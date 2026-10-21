@@ -4,8 +4,8 @@
  */
 export const SITE = {
   name: 'Project Tracker',
-    tagline: 'Project management for teams that deliver',
-  description: 'Plan projects, track tasks and time, see portfolio risk at a glance and get answers from an AI assistant. Secure project management for every team.',
+  tagline: 'Projects, operations and an AI employee for teams that deliver',
+  description: 'Plan projects, run your support desk, document every API and let an AI employee answer calls and WhatsApp in your customers\' language. One secure workspace for teams that deliver.',
   alternateNames: ['ProjectTracker', 'projecttracker.in'],
   /** The one address for every question: sales, billing, help and security reports. */
   supportEmail: 'support@projecttracker.in',
@@ -16,6 +16,7 @@ export const SITE = {
 export interface NavLink { label: string; href: string }
 export const NAV: NavLink[] = [
   { label: 'Features', href: '/features/' },
+  { label: 'AI employee', href: '/features/ai-employee/' },
   { label: 'Pricing', href: '/pricing/' },
   { label: 'Security', href: '/security/' },
   { label: 'Download', href: '/download/' },
@@ -31,17 +32,19 @@ export const DOWNLOAD_FILES = {
 
 export interface Feature { title: string; text: string; icon: string }
 export const FEATURES: Feature[] = [
+  { icon: 'phone', title: 'An AI employee on your support line', text: 'It picks up calls and WhatsApp messages, speaks your customers\' language, checks who is calling, answers from what your team has taught it and hands over to a person whenever it should. Every conversation becomes a ticket with the full record.' },
+  { icon: 'bolt', title: 'An operations desk with service levels', text: 'Tickets, bugs and requests in one queue and on a board, with response and resolution targets that warn before they are missed, insights on what keeps coming back and suggestions for who should take each one.' },
+  { icon: 'message', title: 'WhatsApp support, team by team', text: 'Each team connects its own business number. Answers come first from what you already know; people step in from a shared inbox when it matters, and nothing is lost between a chat, a call and a ticket.' },
+  { icon: 'layers', title: 'DocTracker for APIs and documents', text: 'Every project\'s APIs, architecture and documents in one place, with a score that shows what is missing, diagrams drawn on a canvas, sensitive values masked by default and a record of everyone who looked.' },
+  { icon: 'mic', title: 'A notetaker in every meeting', text: 'Send it to the call and get clear minutes afterwards: what was decided, who does what and by when.' },
   { icon: 'kanban', title: 'Projects and delivery timelines', text: 'Boards, lists, stages, sprints and milestones with task dependencies, so every project shows what is next and what is blocked.' },
   { icon: 'monitor', title: 'A portfolio view for leaders', text: 'Every project ranked by risk with the reasons, a forecast of when it will really finish, and the history of every delivery date that moved.' },
-  { icon: 'users', title: 'Teams that stay separate', text: 'Five access levels, job-role profiles and teams. Choose whether everyone sees every project or each team sees only its own, and switch the whole app to one team.' },
-  { icon: 'sparkle', title: 'An assistant that knows your work', text: 'Ask in plain words. It answers from your own projects and prepares changes you review and confirm before anything happens. Every plan includes a taste of it; Pro adds 60 credits per person a month, Business 200 with deep reasoning.' },
-  { icon: 'note', title: 'Documents linked to the work', text: 'Write requirement documents, API documentation and test plans from templates, keep them next to the project, and link each one to the tasks that build it and the tests that check it. Publish versions, compare any two and go back to an earlier one, send a document through the approvals you set up, list its requirements and see which are built and tested, document an API endpoint by endpoint, import OpenAPI, Postman or cURL and export OpenAPI and Postman, and see which changes between versions will break callers, choose exactly who can open each document and why, and keep keys and passwords in an encrypted panel that hides them, shows them only to people you allow for the time you set, and records every reveal in a tamper-evident audit trail. Draw flowcharts from text that look the same on screen and in print. Download any document as a PDF with a cover, contents and approval record, and search every word of every document you may open.' },
-  { icon: 'alarm', title: 'Reminders that arrive on time', text: 'Automatic due-date reminders, a daily briefing, a weekly portfolio brief and push or e-mail delivery, in each person\'s own working hours.' },
+  { icon: 'sparkle', title: 'An assistant that knows your work', text: 'Ask in plain words. It answers from your own projects and prepares changes you review and confirm before anything happens.' },
+  { icon: 'users', title: 'Teams that stay separate', text: 'Five access levels, job-role profiles and teams. Choose whether everyone sees every project or each team sees only its own.' },
   { icon: 'clock', title: 'Time, workload and capacity', text: 'Timesheets with approvals, workload by person and weekly capacity, so work is shared out before people are overloaded.' },
-  { icon: 'bolt', title: 'Operational work with service levels', text: 'Bugs, support and requests with response and resolution targets that warn before they are missed. Business plan and above.' },
-  { icon: 'message', title: 'Team chat and files', text: 'Direct, group and project conversations with attachments, live delivery and unread counts that stay accurate.' },
-  { icon: 'key', title: 'A mobile app and passwordless sign-in', text: 'Install it on Android or iPhone, sign in with a passkey, or approve a sign-in by tapping a number on your phone. Mobile app and phone sign-in from the Pro plan.' },
-  { icon: 'git', title: 'Connects to what you already use', text: 'GitHub and Azure DevOps links, Slack and Teams webhooks, an API, single sign-on (OIDC and SAML) and SCIM provisioning.' },
+  { icon: 'alarm', title: 'Reminders and one notification centre', text: 'Due dates, a daily briefing, support alerts and your own reminders in one place, delivered in each person\'s working hours. The browser asks once, never again.' },
+  { icon: 'key', title: 'Apps and passwordless sign-in', text: 'Desktop and mobile apps, passkeys, and sign-in on a computer by tapping a number on your phone.' },
+  { icon: 'git', title: 'Connects to what you already use', text: 'GitHub and Azure DevOps, Slack and Teams, single sign-on and provisioning, signed webhooks and an API.' },
 ];
 
 export interface Plan { name: string; price: string; unit?: number; perUser?: boolean; blurb: string; points: string[]; cta: string; featured?: boolean }
@@ -51,9 +54,9 @@ export interface Plan { name: string; price: string; unit?: number; perUser?: bo
  */
 export const PLANS: Plan[] = [
   { name: 'Free', price: '₹0', blurb: 'For one person getting started.', cta: 'Start free', points: ['One person, free for good', '5 projects and 500 tasks', '500 MB of files', 'Reminders, calendar and timesheets', 'Portfolio view', 'Up to 10 documents, linked to your work', 'Try the AI assistant: 10 quick answers a month'] },
-  { name: 'Pro', price: '₹349', unit: 349, perUser: true, blurb: 'For teams that plan and deliver together.', cta: 'Start with Pro', featured: true, points: ['Add as many people as you need', 'Unlimited projects, tasks and teams', '5 GB of files per person', 'Custom workflows, fields and automation', 'Advanced reports and workload', 'Unlimited documents with approval workflows, shared with your teams', 'Mobile app with phone sign-in', 'AI assistant: 60 credits per person every month'] },
-  { name: 'Business', price: '₹699', unit: 699, perUser: true, blurb: 'For growing teams and departments.', cta: 'Start with Business', points: ['Everything in Pro', '25 GB of files per person', 'AI with deep reasoning, file understanding and confirmed actions: 200 credits per person', 'Audit log, API access and advanced permissions, with document approvals per type', 'Single sign-on, two-step rules, IP allowlist', 'Resource management and service levels'] },
-  { name: 'Enterprise', price: 'Custom', blurb: 'Unlimited scale and governance.', cta: 'Talk to us', points: ['Unlimited members and storage', 'A large shared AI pool, sized to your contract', 'Everything in Business', 'Longest history and audit retention', 'Priority onboarding and support'] },
+  { name: 'Pro', price: '₹449', unit: 449, perUser: true, blurb: 'For teams that plan and deliver together.', cta: 'Start with Pro', featured: true, points: ['Add as many people as you need', 'Unlimited projects, tasks and teams', 'DocTracker: 2,000 API endpoints, architecture diagrams, approvals', 'Meeting notetaker with minutes and action items', 'Custom workflows, fields and automation', 'Advanced reports, workload and PDF export', 'Mobile and desktop apps with phone sign-in', '5 GB of files and 80 AI credits per person each month'] },
+  { name: 'Business', price: '₹999', unit: 999, perUser: true, blurb: 'For support, operations and growing departments.', cta: 'Start with Business', points: ['Everything in Pro', 'Operations desk with service levels and insights', 'AI employee for calls and WhatsApp, in your customers\' languages', 'DocTracker Security Center: masking, reveal timer, audit trail', '300 AI credits per person, with deep reasoning and confirmed actions', 'Single sign-on, audit log, API access, IP allowlist', '25 GB of files per person, resource management'] },
+  { name: 'Enterprise', price: 'Custom', blurb: 'Unlimited scale and governance.', cta: 'Talk to us', points: ['Everything in Business', 'Unlimited members, storage and API endpoints', 'A large shared AI pool for your AI employee, sized to your contract', 'Your own phone numbers and WhatsApp accounts per team', 'Longest history and audit retention', 'Priority onboarding and a named contact'] },
 ];
 
 /** The discounts, as the live price list states them (/api/v1/public/pricing); these are what shows before it loads. */
@@ -109,19 +112,77 @@ export interface StaticPage { path: string; title: string; description: string; 
 export const PAGES: StaticPage[] = [
   { path: '/download/', title: 'Download the apps | Project Tracker', h1: 'Project Tracker on every screen', lead: 'Install the app for Windows, macOS, Linux and Android, or add it to your iPhone. Free to download.',
     description: 'Download Project Tracker for Windows, macOS, Linux and Android, or install it on iPhone from your browser. Alerts, a tray icon and sign-in with your phone or a passkey.' },
-  { path: '/features/', title: 'Features | Project Tracker', h1: 'Everything a delivery team needs, in one workspace', lead: 'From the first task to the portfolio review, without stitching tools together.',
-    description: 'Projects and timelines, a portfolio view with risk and forecasts, team-separated access, reminders, timesheets, chat and an AI assistant. See what Project Tracker does.' },
-  { path: '/pricing/', title: 'Pricing | Project Tracker', h1: 'Simple plans that grow with your teams', lead: 'Start free. Move up when you need more people, teams, reports or governance.',
-    description: 'Free, Pro, Business and Enterprise plans for Project Tracker. Per-person pricing with yearly and team discounts. Compare storage, the AI assistant and its credits, audit log and single sign-on.' },
+  { path: '/features/', title: 'Features | Project Tracker', h1: 'Everything a delivery team needs, in one workspace', lead: 'From the first task to the support call, without stitching tools together.',
+    description: 'Projects and timelines, an operations desk with service levels, an AI employee for calls and WhatsApp, DocTracker for APIs, a meeting notetaker and an AI assistant. See what Project Tracker does.' },
+  { path: '/pricing/', title: 'Pricing | Project Tracker', h1: 'Simple plans that grow with your teams', lead: 'Start free. Move up when you need an operations desk, an AI employee or more governance.',
+    description: 'Free, Pro, Business and Enterprise plans for Project Tracker. Per-person pricing with yearly and team discounts. Compare DocTracker, the operations desk, the AI employee, AI credits, audit log and single sign-on.' },
   { path: '/security/', title: 'Security | Project Tracker', h1: 'Security and privacy built into the foundations', lead: 'How we keep each organization\'s work separate, controlled and recoverable.',
     description: 'How Project Tracker protects your data: organization isolation, role-based access, two-step verification, single sign-on, audit log, encrypted traffic and nightly backups.' },
 ];
 
-export const HOME = { path: '/', title: `${SITE.name} | Project Management Software for Teams`, description: SITE.description, h1: 'Plan the work, see risk early, ship on time.', lead: 'Projects, tasks, timesheets and portfolio reporting in one secure workspace, with an assistant that works from your real data.' };
+export const HOME = { path: '/', title: `${SITE.name} | Projects, Support Desk and AI Employee`, description: SITE.description, h1: 'Plan the work, see risk early, ship on time.', lead: 'Projects, an operations desk, API documentation and an AI employee that answers your customers, in one secure workspace.' };
 
 /** One page per thing people search for, written to stand on its own. Every statement here describes what the product does today. */
 export interface DetailPage extends StaticPage { sections: { title: string; text: string; points: string[] }[]; related: string[] }
 export const DETAILS: DetailPage[] = [
+  {
+    path: '/features/ai-employee/', title: 'AI Employee for Calls and WhatsApp | Project Tracker', h1: 'An AI employee that answers your customers',
+    lead: 'It answers calls and WhatsApp messages in your customers\' own language, follows your rules, and hands over to your team the moment a person is needed.',
+    description: 'An AI voice and WhatsApp agent for support teams: answers in Telugu, Hindi, Tamil, Kannada and English, checks the caller, raises tickets with the full record and hands over to people. Part of Project Tracker Business.',
+    sections: [
+      { title: 'Speaks like your best agent', text: 'Natural, short answers in the caller\'s language, with a pause to think that sounds like a person checking, not a machine.',
+        points: ['Telugu, Hindi, Tamil, Kannada and English, switching when the caller does', 'Greets with your company name and the agent name you choose', 'Taught by your team in plain words: products, policies, branch hours, common answers'] },
+      { title: 'Careful with account details', text: 'It checks who is calling before it shares anything personal, the way your policy says.',
+        points: ['The checks you choose, such as date of birth and part of an account number', 'Looks up only what you connect it to', 'Personal values masked in what your team reads later'] },
+      { title: 'Every conversation becomes work', text: 'Nothing is lost between a chat, a call and a ticket.',
+        points: ['A ticket with a summary, the full conversation and, for calls, the recording', 'Lands in the operations desk with its service level running', 'Your team is alerted when someone asks for a person'] },
+      { title: 'WhatsApp, team by team', text: 'Each support team connects its own business number and works its own inbox.',
+        points: ['Answers first from what you already know', 'Take over a chat, reply, raise a ticket or close it from one screen', 'Chats are stored encrypted'] },
+    ],
+    related: ['/features/operations/', '/pricing/'],
+  },
+  {
+    path: '/features/operations/', title: 'Operations Desk with Service Levels | Project Tracker', h1: 'A support desk that warns you before a promise is broken',
+    lead: 'Tickets, bugs and requests in one queue, with targets that count working hours, a board for the day\'s work and insights on what keeps coming back.',
+    description: 'Run support and operational work in Project Tracker: a queue and board, response and resolution targets in working hours, triage suggestions, insights, CSV and PDF exports, and tickets from calls and WhatsApp.',
+    sections: [
+      { title: 'One queue, one board', text: 'Everything that needs doing, whichever door it came through.',
+        points: ['A queue with quick views, filters and bulk changes', 'A board you drag work across as it moves', 'Tickets from people, from calls and from WhatsApp in the same place'] },
+      { title: 'Service levels that count properly', text: 'Response and resolution targets by priority, measured in your working hours and holidays.',
+        points: ['A warning before a target is missed, not after', 'Business plan and above'] },
+      { title: 'Know what keeps coming back', text: 'Insights show volume, speed and the causes behind repeat work.',
+        points: ['Resolution notes that become answers for next time', 'Suggestions for type, priority and who should take it', 'Export to CSV, Excel or PDF'] },
+    ],
+    related: ['/features/ai-employee/', '/features/timesheets-and-workload/'],
+  },
+  {
+    path: '/features/doctracker/', title: 'DocTracker: API Documentation and Architecture | Project Tracker', h1: 'API documentation your team will actually keep up to date',
+    lead: 'Every project\'s APIs, architecture and documents in one place, scored for completeness, drawn on a canvas and protected by default.',
+    description: 'DocTracker in Project Tracker: API documentation with a completeness score, OpenAPI and Postman import and export, a read-only Swagger view, architecture diagrams, masked sensitive values with audited reveal, approvals and PDF.',
+    sections: [
+      { title: 'A score that shows what is missing', text: 'Each endpoint is checked for the things a caller needs, and the gaps are listed so fixing them is quick.',
+        points: ['A Control Center across every project', 'The weakest endpoints first', 'Import from OpenAPI, Postman or cURL; export the same'] },
+      { title: 'Architecture you can see', text: 'Draw systems and request flows on a canvas with a library of components, and keep them beside the APIs they explain.',
+        points: ['Templates to start from', 'Picture and file export', 'Per project, with notes'] },
+      { title: 'Protected by default', text: 'Mobile numbers, IDs, account numbers and credentials are hidden before they leave the server.',
+        points: ['Reveal for a few seconds with a reason', 'Every reveal recorded', 'Rules you can add for your own fields'] },
+      { title: 'Ready for review', text: 'Versions, approvals and a printable copy when someone outside needs it.',
+        points: ['Compare any two versions, with breaking changes called out', 'Approvals before publishing', 'PDF with a cover and contents'] },
+    ],
+    related: ['/features/operations/', '/security/'],
+  },
+  {
+    path: '/features/meeting-notetaker/', title: 'AI Meeting Notetaker and Minutes | Project Tracker', h1: 'Minutes you do not have to write',
+    lead: 'Send the notetaker to your call. Afterwards you get the summary, the decisions and the action items with owners and dates.',
+    description: 'An AI meeting notetaker in Project Tracker: joins the call, writes minutes with decisions and action items, so nothing agreed is forgotten.',
+    sections: [
+      { title: 'Joins when you ask', text: 'Send it to the meeting link; it asks to be let in like any guest.',
+        points: ['Works with the online meetings your team already holds', 'Shows who it is, so nobody is surprised', 'Leaves when the meeting ends'] },
+      { title: 'Minutes worth reading', text: 'Short, concrete and based only on what was said.',
+        points: ['Summary, decisions, risks and next meeting', 'Action items with owner and due date', 'Action items ready to become tasks on the project'] },
+    ],
+    related: ['/features/ai-assistant/', '/pricing/'],
+  },
   {
     path: '/features/portfolio/', title: 'Project Portfolio Management and Risk Forecasting | Project Tracker', h1: 'See which projects will miss their dates, and why',
     lead: 'A portfolio view that works out risk, forecasts the real finish date and remembers every date that moved, so leaders can act before a deadline is missed.',
@@ -231,9 +292,18 @@ export const COMPARE: { group: string; rows: { label: string; v: [string, string
     { label: 'Full document audit trail and export', v: ['–', '–', '✓', '✓'] },
     { label: 'Mobile app and phone sign-in', v: ['–', '✓', '✓', '✓'] },
   ] },
+  { group: 'Support and operations', rows: [
+    { label: 'Operations queue and board', v: ['✓', '✓', '✓', '✓'] },
+    { label: 'Service levels in working hours', v: ['–', '–', '✓', '✓'] },
+    { label: 'AI employee for calls and WhatsApp', v: ['Try it', 'On your credits', '✓', 'Sized to your contract'] },
+    { label: 'WhatsApp numbers per team, shared inbox', v: ['✓', '✓', '✓', '✓'] },
+    { label: 'Meeting notetaker and minutes', v: ['Try it', '✓', '✓', '✓'] },
+    { label: 'DocTracker: score, Swagger view, architecture', v: ['✓', '✓', '✓', '✓'] },
+    { label: 'Masked values with a reveal you set', v: ['Masked', 'Masked', 'Reveal timer and audit check', '✓'] },
+  ] },
   { group: 'Intelligence', rows: [
     { label: 'AI assistant', v: ['Try it', 'Quick and Standard', 'Quick, Standard and Deep', 'All levels'] },
-    { label: 'AI credits each month', v: ['10', '60 per person', '200 per person', 'A shared pool'] },
+    { label: 'AI credits each month', v: ['10', '80 per person', '300 per person', 'A shared pool'] },
     { label: 'AI reads files and takes confirmed actions', v: ['–', 'Reads files', '✓', '✓'] },
   ] },
   { group: 'Control and security', rows: [
@@ -261,7 +331,9 @@ export const FAQ: { q: string; a: string }[] = [
   { q: 'Is there a free plan?', a: 'Yes. Free is for one person, for good: 5 projects, 500 tasks and 500 MB of files, with reminders, calendar, timesheets, the portfolio view and ten quick AI answers a month to try the assistant.' },
   { q: 'How does per-person pricing work?', a: 'Pro and Business are priced per person per month, and you pay for the people in your workspace. Storage and AI credits grow with each person and are shared by the whole team. Add people any time; the owner chooses the number of seats under Settings, Billing.' },
   { q: 'What discounts are there?', a: 'Paying for a year at once takes 20% off. Teams of 10 or more get 10% off, 25 or more 15%, and 100 or more 20%, automatically. The two add up, to at most 30% off. Prices are in Indian rupees and exclude GST.' },
-  { q: 'What is an AI credit?', a: 'A unit of AI use. A quick answer costs 1 credit, a standard answer 4 and a deep analysis 20. Each person on Pro brings 60 credits a month and each person on Business 200, pooled across the team and renewed on the 1st. When the pool runs out the assistant waits until the next month; nothing else is affected.' },
+  { q: 'What is an AI credit?', a: 'A unit of AI use. A quick answer costs 1 credit, a standard answer 4 and a deep analysis 20; a spoken reply from the AI employee costs 2, and the notetaker a little for each hour it sits in a call. Each person on Pro brings 80 credits a month and each person on Business 300, pooled across the team and renewed on the 1st. When the pool runs out the AI waits until the next month; nothing else is affected.' },
+  { q: 'Who pays for phone calls and WhatsApp messages?', a: 'Your phone and WhatsApp providers bill you directly for calls and conversations, at their own rates, on the accounts you connect. We charge only the AI credits the AI employee uses.' },
+  { q: 'Can the AI employee speak our customers\' language?', a: 'Yes. It answers in Telugu, Hindi, Tamil, Kannada and English, and follows the caller when they switch. You choose which languages it uses and which one it greets in.' },
   { q: 'Is there a free trial of the paid plans?', a: 'Yes. Start a 14-day trial of Pro or Business from Settings, Billing: up to 5 people and 100 AI credits, no payment taken.' },
   { q: 'Can I change plans or the number of people later?', a: 'Yes. An owner changes the plan, the number of seats and monthly or yearly billing under Settings, Billing. Adding seats works at once; the new amount starts at your next renewal, so nothing is charged twice.' },
   { q: 'Does the assistant change my projects by itself?', a: 'No. It answers from the projects you can open and proposes changes. Nothing happens until you confirm it.' },

@@ -71,7 +71,11 @@ const credits = () => {
 <div class="cr"><b>${c.standard} credits</b><span>Standard</span><em>Summaries, reading a file, a plan for the week.</em></div>
 <div class="cr"><b>${c.deep} credits</b><span>Deep</span><em>Root causes, forecasts and an executive brief. Business and above.</em></div>
 </div>
-<p class="note2 center">Pro brings 60 credits per person every month, about 15 standard answers. Business brings 200, about 50 standard answers or 10 deep analyses. When the pool is used up the assistant waits for the 1st; nothing else changes.</p></div>`;
+<div class="credit-grid two-up">
+<div class="cr"><b>2 credits</b><span>A spoken reply</span><em>The AI employee answering a caller out loud. A WhatsApp reply is a quick answer.</em></div>
+<div class="cr"><b>A few an hour</b><span>Notetaker</span><em>For the time it sits in your meeting, plus the minutes it writes.</em></div>
+</div>
+<p class="note2 center">Pro brings 80 credits per person every month. Business brings 300, enough for a busy support line. When the pool is used up the AI waits for the 1st; nothing else changes. Calls and WhatsApp conversations are billed by your own providers.</p></div>`;
 };
 
 const matrix = () => `<div class="matrix" ${reveal()}><table><thead><tr><th scope="col">Compare plans</th>${PLANS.map((p) => `<th scope="col"${p.featured ? ' class="hotc"' : ''}>${p.name}</th>`).join('')}</tr></thead><tbody>${COMPARE.map((g) =>
@@ -200,6 +204,42 @@ const trio = `<div class="trio">
 <div class="vis"><div class="rq" aria-hidden="true"><div class="l a"><code>POST /projects</code><span>201 created</span></div><div class="l b"><code>retry · same key</code><span>same answer, nothing added</span></div></div></div></article>
 </div>`;
 
+// ---- the AI employee: a call, a WhatsApp chat and the ticket they become, on a loop
+
+const wave = Array.from({ length: 22 }, (_, i) => `<i style="--i:${i};--h:${[30, 55, 80, 45, 95, 60, 35, 70, 100, 50, 25, 65, 90, 40, 75, 55, 30, 85, 60, 45, 70, 35][i]}%"></i>`).join('');
+const employee = `<div class="emp" ${reveal()}>
+<div class="emp-copy"><p class="eyebrow">AI employee</p><h2>The colleague who answers every customer, in their language</h2>
+<p class="sub" style="margin-bottom:22px">Calls and WhatsApp messages answered in seconds, day and night. When a person is needed, your team takes over with the whole story in front of them.</p>
+<ul class="sg-points"><li>${tick}<span><b>Speaks Telugu, Hindi, Tamil, Kannada and English</b>, and follows the caller when they switch.</span></li>
+<li>${tick}<span><b>Checks who is calling</b> before anything personal is shared.</span></li>
+<li>${tick}<span><b>Every conversation becomes a ticket</b> with a summary and the full record.</span></li></ul>
+<a class="btn btn-brand" href="/features/ai-employee/">Meet your AI employee ${arrowUp}</a></div>
+<div class="emp-stage" role="img" aria-label="A call answered in Telugu, a WhatsApp question answered, and both turned into a ticket with its service level running">
+<div class="emp-call glass"><div class="emp-ch"><span class="emp-av">A</span><span><b>Asha · AI employee</b><small>On a call · <em class="emp-lang"><i>తెలుగు</i><i>हिन्दी</i><i>தமிழ்</i><i>English</i></em></small></span><span class="emp-live"><i></i>Live</span></div>
+<div class="emp-wave" aria-hidden="true">${wave}</div>
+<div class="emp-line"><span>Caller</span><p>My EMI date, please?</p></div><div class="emp-line a"><span>Asha</span><p>It is due on the 5th. Shall I send a reminder?</p></div></div>
+<div class="emp-wa"><div class="emp-wh">${icon('message', 14)}<b>WhatsApp</b><small>Support · North</small></div>
+<p class="w u">Need my foreclosure letter</p><p class="w a">I have raised it for you. A colleague will call by 4 pm.</p></div>
+<div class="emp-ticket"><div><b>WT-128</b><span>Foreclosure letter</span></div><div class="emp-sla"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15"/><circle class="go" cx="18" cy="18" r="15" pathLength="100"/></svg><small>Due in 4h</small></div><span class="emp-tag">Recording and transcript attached</span></div>
+</div></div>`;
+
+// ---- the suite: operations, DocTracker and the notetaker, each with a small live picture
+
+const suite = `<div class="suite">
+<article class="tile" ${reveal(0)}><span class="tag">Operations</span><h3>Promises kept, not just tracked</h3><p>A queue and board with service levels that warn before a target slips.</p>
+<div class="vis ops" aria-hidden="true">
+<div class="op"><b>Card not working</b><span class="chip bad">High</span><div class="bar sla"><i style="--w:86%"></i></div><small>Response due in 12 min</small></div>
+<div class="op"><b>Statement request</b><span class="chip ok">Normal</span><div class="bar sla"><i style="--w:34%"></i></div><small>On time</small></div></div>
+<a href="/features/operations/">Operations desk →</a></article>
+<article class="tile" ${reveal(1)}><span class="tag">DocTracker</span><h3>API docs with a score</h3><p>See what every endpoint is missing, and keep sensitive values hidden.</p>
+<div class="vis doc" aria-hidden="true"><span class="score"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15"/><circle class="go" cx="18" cy="18" r="15" pathLength="100"/></svg><b>92</b></span>
+<div class="eps"><div><i class="m post">POST</i><code>/payments</code></div><div><i class="m get">GET</i><code>/loans/{id}</code></div><div><i class="m get">GET</i><code>mobile ••••3210</code></div></div></div>
+<a href="/features/doctracker/">DocTracker →</a></article>
+<article class="tile" ${reveal(2)}><span class="tag">Notetaker</span><h3>Minutes you did not write</h3><p>It sits in the call and hands you the decisions and who does what.</p>
+<div class="vis mom" aria-hidden="true"><div class="ml" style="--md:.2s"><b>Decided</b> Launch on the 14th</div><div class="ml" style="--md:.8s"><b>Priya</b> Update the release notes · Fri</div><div class="ml" style="--md:1.4s"><b>Arun</b> Share the test plan · Mon</div></div>
+<a href="/features/meeting-notetaker/">Notetaker →</a></article>
+</div>`;
+
 // ---- tangled tools, then one clear line
 
 const TANGLE = 'M30 276 C90 96 250 66 282 176 C314 286 150 306 192 206 C234 106 404 96 424 206 C444 316 334 336 354 256 C374 176 560 136 612 96';
@@ -240,7 +280,7 @@ ${ring('r1', [sq('calendar'), pill(`${tick} Release approved`, 'ok'), person('PM
 ${ring('r2', [person('KR', 'c'), pill('3 new comments'), sq('chart'), pill(`${tick} Risk: low`, 'ok'), person('SN'), sq('key'), pill('Sprint review 12:00', 'pu'), sq('bolt')], -40)}
 <div class="orbit-center"><div class="stats"><div><b>3</b><span>AI speeds</span></div><div><b>5</b><span>apps and devices</span></div><div><b>₹0</b><span>free for one person</span></div></div>
 <p class="orbit-title">Everything your delivery team touches, in one workspace</p></div></div>
-<div class="tags">${[['kanban', 'Projects'], ['checks', 'Tasks'], ['note', 'Documents'], ['timer', 'Timesheets'], ['message', 'Chat'], ['chart', 'Reports'], ['sparkle', 'Assistant']].map(([i, t]) => `<span>${icon(i, 16)}${t}</span>`).join('')}</div></div>`;
+<div class="tags">${[['kanban', 'Projects'], ['bolt', 'Operations'], ['phone', 'AI employee'], ['layers', 'DocTracker'], ['mic', 'Notetaker'], ['timer', 'Timesheets'], ['message', 'Chat'], ['chart', 'Reports'], ['sparkle', 'Assistant']].map(([i, t]) => `<span>${icon(i, 16)}${t}</span>`).join('')}</div></div>`;
 
 // ---- the apps: a logo and one button each
 
@@ -269,7 +309,7 @@ export function landing(): string {
   return `${header()}
 <main>
 <section class="dark hero">${aurora}<div class="wrap">
-<span class="kicker"><b>New</b> Passkeys, phone sign-in and a mobile app</span>
+<span class="kicker"><b>New</b> An AI employee for your calls and WhatsApp</span>
 ${headline}
 <p class="lead">${esc(HOME.lead)}</p>
 <div class="cta"><a class="btn btn-primary btn-lg" href="/register">Start free ${arrowUp}</a><a class="link" href="/features/">See what it does</a></div>
@@ -277,6 +317,8 @@ ${headline}
 ${fan}</div></section>
 <div class="marquee" aria-label="Works with"><div class="track">${[...INTEGRATIONS, ...INTEGRATIONS].map((x) => `<span>${esc(x)}</span>`).join('')}</div></div>
 ${section(`${heading('Why teams switch', 'Your team\'s week, untangled', 'Every disconnected tool adds friction. Put the work, the people and the truth on one clear line.')}${mess}`)}
+${section(employee, false)}
+${section(`${heading('Run the whole service', 'Support, documentation and meetings, handled', 'The work around the work, in the same place as the projects it serves.')}${suite}`, false)}
 ${section(`${heading('One workspace', 'From the first task to the portfolio review')}<div style="height:10px"></div>${orbit}`, false)}
 ${section(`${heading('Everything in one place', 'Planning, doing and reporting', 'One workspace for the whole delivery, so leaders see the truth without chasing updates.')}${bento}<p style="margin-top:26px;text-align:center"><a href="/features/"><strong>Explore every feature →</strong></a></p>`, false)}
 ${section(`${signin}<div style="height:18px"></div>${trio}`, false)}
@@ -344,7 +386,7 @@ ${dlCard('web', OS_ICONS.web, 'In your browser', 'Nothing to install', '<a class
 
 const bodies: Record<string, () => string> = {
   '/download/': downloadBody,
-  '/features/': () => `<div class="wrap"><div class="grid">${FEATURES.map(featureCard).join('')}</div>
+  '/features/': () => `<div class="wrap">${employee}<div style="height:28px"></div>${suite}<h2 style="margin:64px 0 20px">Everything else in the workspace</h2><div class="grid">${FEATURES.map(featureCard).join('')}</div>
 <h2 style="margin:64px 0 20px">Go deeper</h2><div class="grid">${DETAILS.map((d, i) => `<article class="card" ${reveal(i % 3)}><h3><a href="${d.path}">${esc(d.h1)}</a></h3><p>${esc(d.description)}</p></article>`).join('')}</div>
 <div style="height:30px"></div>${band('See it with your own projects', 'The free plan has no time limit.')}</div>`,
   '/pricing/': () => `<div class="wrap">${calculator()}<div class="plans">${PLANS.map(planCard).join('')}</div>${plansNote}${offers()}<div style="height:40px"></div>${credits()}${matrix()}

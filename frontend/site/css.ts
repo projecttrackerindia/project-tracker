@@ -52,6 +52,13 @@ const KEYFRAMES = `
 @keyframes pt-glow-pulse{0%,100%{opacity:.5}50%{opacity:1}}
 @keyframes pt-tangle{0%{opacity:0}100%{opacity:1}}
 @keyframes pt-flow{to{stroke-dashoffset:-36}}
+@keyframes pt-wave{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+@keyframes pt-lang{0%,22%{transform:translateY(0)}25%,47%{transform:translateY(-100%)}50%,72%{transform:translateY(-200%)}75%,97%{transform:translateY(-300%)}100%{transform:translateY(0)}}
+@keyframes pt-emp-line{0%,6%{opacity:0;transform:translateY(8px)}12%,90%{opacity:1;transform:none}100%{opacity:0}}
+@keyframes pt-emp-ticket{0%,52%{opacity:0;transform:translate(24px,16px) scale(.94)}60%,92%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-8px)}}
+@keyframes pt-emp-sla{0%,58%{stroke-dashoffset:100}80%,100%{stroke-dashoffset:28}}
+@keyframes pt-score{from{stroke-dashoffset:100}to{stroke-dashoffset:8}}
+@keyframes pt-sla{0%{width:20%}100%{width:var(--w)}}
 `;
 
 const COMPONENTS = `
@@ -421,6 +428,44 @@ footer ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}footer a{color
 footer .legal{margin-top:34px;padding-top:20px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:clamp(40px,8vw,120px)}
 footer .brand{color:var(--ink)}
 
+/* ---- the AI employee: a looping scene of a call, a WhatsApp chat and the ticket they become */
+.emp{display:grid;grid-template-columns:1fr 1.1fr;gap:48px;align-items:center;padding:clamp(24px,3.4vw,48px);border-radius:36px;background:linear-gradient(140deg,#fff 0%,#f6f2ff 55%,#eef7ff 100%);border:1px solid var(--line);box-shadow:var(--card)}
+.emp h2{font-size:clamp(26px,3.4vw,42px);letter-spacing:-.04em;margin-bottom:10px}
+.emp-stage{position:relative;min-height:520px;border-radius:28px;background:radial-gradient(110% 80% at 0% 0%,rgba(167,139,250,.35),transparent 60%),radial-gradient(100% 80% at 100% 100%,rgba(52,211,153,.28),transparent 60%),#15122b;overflow:hidden;padding:22px}
+.emp-call{position:relative;z-index:1;width:min(74%,380px);padding:16px;border-radius:22px;background:rgba(255,255,255,.94)}
+.emp-ch{display:flex;align-items:center;gap:10px}.emp-ch>span:nth-child(2){display:grid;line-height:1.25;min-width:0}.emp-ch b{font-size:14px;color:var(--ink)}.emp-ch small{font-size:12px;color:var(--muted);display:flex;gap:4px;align-items:center}
+.emp-av{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;flex:none;background:linear-gradient(135deg,#7c3aed,#ec4899);color:#fff;font:800 15px var(--disp)}
+.emp-live{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:#15803d}.emp-live i{width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pt-blink 1.4s infinite}
+.emp-lang{display:inline-block;height:1.6em;line-height:1.6em;overflow:hidden;vertical-align:middle;font-style:normal;font-weight:700;color:var(--brand)}.emp-lang i{display:block;font-style:normal;height:1.6em;line-height:1.6em;animation:pt-lang 10s infinite}
+.emp-wave{display:flex;align-items:center;gap:3px;height:46px;margin:14px 0 10px}.emp-wave i{flex:1;height:var(--h);border-radius:3px;background:linear-gradient(180deg,#7c3aed,#3b82f6);transform-origin:center;animation:pt-wave 1.1s ease-in-out infinite;animation-delay:calc(var(--i) * -.07s)}
+.emp-line{display:grid;gap:2px;margin-top:8px;animation:pt-emp-line 10s infinite}.emp-line span{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.emp-line p{font-size:13.5px;color:var(--ink)}
+.emp-line.a{animation-delay:1.2s}.emp-line.a p{color:var(--brand);font-weight:600}
+.emp-wa{position:absolute;z-index:2;right:18px;bottom:128px;width:min(54%,270px);padding:12px;border-radius:18px;background:#e9fbe9;box-shadow:0 20px 44px -18px rgba(0,0,0,.5)}
+.emp-wh{display:flex;align-items:center;gap:6px;color:#128c4a;margin-bottom:8px}.emp-wh b{font-size:12.5px}.emp-wh small{margin-left:auto;font-size:11px;color:#3f6b52}
+.emp-wa .w{font-size:12.5px;padding:8px 10px;border-radius:12px;margin-top:6px;max-width:92%;animation:pt-emp-line 10s infinite}
+.emp-wa .w.u{background:#fff;color:#1c2b22;animation-delay:2.4s}.emp-wa .w.a{margin-left:auto;background:#c8f5cf;color:#0f3d22;animation-delay:3.6s}
+.emp-ticket{position:absolute;z-index:3;left:22px;bottom:20px;display:grid;grid-template-columns:1fr auto;gap:6px 14px;align-items:center;width:min(56%,300px);padding:14px 16px;border-radius:18px;background:#fff;box-shadow:0 26px 60px -20px rgba(0,0,0,.55);animation:pt-emp-ticket 10s infinite}
+.emp-ticket>div:first-child{display:grid;line-height:1.3}.emp-ticket b{font:800 15px var(--disp);color:var(--ink)}.emp-ticket span{font-size:13px;color:var(--muted)}
+.emp-sla{display:grid;justify-items:center;gap:2px}.emp-sla svg{width:40px;height:40px;transform:rotate(-90deg)}.emp-sla circle{fill:none;stroke:#efe9ff;stroke-width:4}.emp-sla .go{stroke:#16a34a;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;animation:pt-emp-sla 10s infinite}
+.emp-sla small{font-size:10.5px;font-weight:700;color:#15803d}
+.emp-tag{grid-column:1/-1;font-size:11.5px!important;font-weight:650;color:var(--brand)!important}
+
+/* ---- the suite tiles: operations, DocTracker, notetaker */
+.suite{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.suite .tile{grid-column:auto}
+.suite .tile>a{margin-top:14px;font-weight:700;font-size:14px}
+.ops{display:grid;gap:10px}.op{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;padding:12px;border-radius:14px;background:var(--surface-2)}.op b{font-size:13.5px;color:var(--ink)}.op small{grid-column:1/-1;font-size:12px;color:var(--muted)}
+.bar.sla i{background:linear-gradient(90deg,#22c55e,#f59e0b 70%,#ef4444)}
+.in .bar.sla i{animation:pt-sla 2.4s cubic-bezier(.2,.7,.2,1) .4s both}
+.doc{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center}
+.score{position:relative;width:72px;height:72px;display:grid;place-items:center}.score svg{position:absolute;inset:0;transform:rotate(-90deg)}.score circle{fill:none;stroke:var(--surface-2);stroke-width:4}
+.score .go{stroke:#16a34a;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:8}.in .score .go{animation:pt-score 1.8s cubic-bezier(.2,.7,.2,1) .3s both}
+.score b{font:800 22px var(--disp);color:var(--ink)}
+.eps{display:grid;gap:6px}.eps div{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;background:var(--surface-2);min-width:0}.eps code{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m{font:700 9.5px/1 var(--disp);padding:4px 6px;border-radius:6px;font-style:normal;flex:none}.m.get{background:#dbeafe;color:#1e40af}.m.post{background:#d1fae5;color:#065f46}
+.mom{display:grid;gap:8px}.ml{font-size:13px;padding:9px 12px;border-radius:12px;background:var(--surface-2);color:var(--ink)}.ml b{color:var(--brand);margin-right:6px}
+__JS__ .ml{opacity:0}.in .ml{animation:pt-note .55s cubic-bezier(.2,.7,.2,1) both;animation-delay:var(--md,0s)}
+.credit-grid.two-up{grid-template-columns:repeat(2,1fr);max-width:820px;margin-top:14px}
+
 /* ---- sign in the way you unlock your phone */
 .sg{display:grid;grid-template-columns:1fr 1.05fr;gap:48px;align-items:center;padding:clamp(24px,3.4vw,48px);border-radius:36px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--card)}
 .sg h2{font-size:clamp(26px,3.4vw,40px);letter-spacing:-.04em;margin-bottom:10px}
@@ -501,8 +546,10 @@ footer .brand{color:var(--ink)}
 footer .cols>*{min-width:0}footer a{overflow-wrap:anywhere}
 @media (max-width:480px){footer .cols{grid-template-columns:minmax(0,1fr)}.price{font-size:34px}}
 @media (min-width:1600px){.wrap{max-width:1560px}.stage{max-width:1280px}}
+@media (max-width:980px){.emp{grid-template-columns:1fr;gap:28px}.suite{grid-template-columns:1fr}}
+@media (max-width:620px){.emp{padding:22px 18px}.emp-stage{min-height:560px;padding:16px}.emp-call{width:100%}.emp-wa{right:12px;bottom:126px;width:78%}.emp-ticket{left:12px;right:12px;width:auto;bottom:12px}.credit-grid.two-up{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}
-  __JS__ [data-r]{opacity:1!important;transform:none!important}.msg,.note,.app,.say{opacity:1!important}__JS__ .tube.draw,__JS__ .path .curve{stroke-dashoffset:0!important}}
+  __JS__ [data-r]{opacity:1!important;transform:none!important}.msg,.note,.app,.say,.ml,.emp-line,.emp-wa .w,.emp-ticket{opacity:1!important}__JS__ .tube.draw,__JS__ .path .curve{stroke-dashoffset:0!important}}
 `;
 
 /** Gives every class in the stylesheet (and in the markup, see `scoped`) the pt- prefix. */
