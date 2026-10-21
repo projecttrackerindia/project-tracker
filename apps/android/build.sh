@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds the Android app (an APK) from this folder. Needs Node 20+, JDK 17 and the Android SDK (ANDROID_HOME). Used by the release workflow.
+# Builds the Android app from this folder: an APK (downloaded from the website) and an AAB (uploaded to Google Play).
+# Needs Node 22+, JDK 21 and the Android SDK 36 (ANDROID_HOME). Used by the release workflow and by deploy/gcp/android.sh (Cloud Build).
 #
 #   PT_APP_URL=https://your-site.example.com  ANDROID_KEYSTORE=./release.keystore  ANDROID_KEYSTORE_PASSWORD=...  ANDROID_KEY_ALIAS=projecttracker  bash build.sh
 #
@@ -46,7 +47,7 @@ if command -v convert >/dev/null 2>&1; then
   sed -i 's#<color name="ic_launcher_background">[^<]*</color>#<color name="ic_launcher_background">\#7c3aed</color>#' android/app/src/main/res/values/ic_launcher_background.xml 2>/dev/null || true
 fi
 
-(cd android && ./gradlew --no-daemon assembleRelease)
+(cd android && ./gradlew --no-daemon assembleRelease bundleRelease)
 UNSIGNED="android/app/build/outputs/apk/release/app-release-unsigned.apk"
 OUT="ProjectTracker.apk"
 if [ -n "${ANDROID_KEYSTORE:-}" ] && [ -f "${ANDROID_KEYSTORE}" ]; then
@@ -56,6 +57,10 @@ if [ -n "${ANDROID_KEYSTORE:-}" ] && [ -f "${ANDROID_KEYSTORE}" ]; then
   "$BT/apksigner" verify "$OUT"
   rm -f aligned.apk
   echo "Built and signed $OUT"
+  # The bundle Google Play takes: signed with the same (upload) key; Play then signs what it delivers to phones.
+  jarsigner -keystore "$ANDROID_KEYSTORE" -storepass:env ANDROID_KEYSTORE_PASSWORD -sigalg SHA256withRSA -digestalg SHA-256 \
+    -signedjar ProjectTracker.aab android/app/build/outputs/bundle/release/app-release.aab "${ANDROID_KEY_ALIAS:-projecttracker}" >/dev/null
+  jarsigner -verify ProjectTracker.aab >/dev/null && echo "Built and signed ProjectTracker.aab (for Google Play)"
 else
   cp "$UNSIGNED" ProjectTracker-unsigned.apk
   echo "No keystore given: built ProjectTracker-unsigned.apk (it cannot be installed until it is signed)."

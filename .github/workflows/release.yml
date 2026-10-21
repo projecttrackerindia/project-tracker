@@ -80,7 +80,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
       - name: Tools
         run: sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
       - name: Build and sign

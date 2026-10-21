@@ -29,6 +29,9 @@
       "backgroundColor": "#7c3aed",
       "showSpinner": false
     },
-    "PushNotifications": {}
+    "PushNotifications": {},
+    "SystemBars": {
+      "insetsHandling": "css"
+    }
   }
 }

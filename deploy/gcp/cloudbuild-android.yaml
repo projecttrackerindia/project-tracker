@@ -1,0 +1,29 @@
+# Builds and signs the Android app on Google Cloud. Started by android.sh. The signing key never leaves Secret Manager and this build.
+# Outputs ProjectTracker.aab (Google Play) and ProjectTracker.apk (website download) to gs://<bucket>/releases/android/<version>/.
+steps:
+  - id: builder
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args: ['-c', 'docker pull ${_IMAGES}/android-builder:latest || true; docker build --cache-from ${_IMAGES}/android-builder:latest -t ${_IMAGES}/android-builder:latest -f apps/android/Dockerfile.build apps/android && docker push -q ${_IMAGES}/android-builder:latest']
+  - id: app
+    name: ${_IMAGES}/android-builder:latest
+    dir: apps/android
+    entrypoint: bash
+    secretEnv: [KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD, GOOGLE_SERVICES_B64]
+    env: ['PT_APP_URL=${_SITE_URL}', 'APP_VERSION=${_VERSION}', 'APP_VERSION_CODE=${_VERSION_CODE}', 'ANDROID_KEY_ALIAS=projecttracker']
+    args: ['-c', 'echo "$$KEYSTORE_B64" | base64 -d > /tmp/release.keystore && export ANDROID_KEYSTORE=/tmp/release.keystore && [ "$$GOOGLE_SERVICES_B64" != none ] || unset GOOGLE_SERVICES_B64; bash build.sh && rm -f /tmp/release.keystore']
+  - id: publish
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args: ['-c', 'gcloud storage cp apps/android/ProjectTracker.aab apps/android/ProjectTracker.apk gs://${_BUCKET}/releases/android/${_VERSION}/ && gcloud storage cp apps/android/ProjectTracker.apk gs://${_BUCKET}/releases/android/latest/ProjectTracker.apk']
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/android-keystore/versions/latest
+      env: KEYSTORE_B64
+    - versionName: projects/$PROJECT_ID/secrets/android-keystore-password/versions/latest
+      env: ANDROID_KEYSTORE_PASSWORD
+    - versionName: projects/$PROJECT_ID/secrets/android-google-services/versions/latest
+      env: GOOGLE_SERVICES_B64
+timeout: 3600s
+options:
+  logging: CLOUD_LOGGING_ONLY

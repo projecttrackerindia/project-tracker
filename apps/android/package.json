@@ -2,20 +2,23 @@
   "name": "project-tracker-android",
   "version": "1.0.0",
   "private": true,
-  "description": "Project Tracker for Android: the app in a native shell, built into an APK that is downloaded from the website",
+  "description": "Project Tracker for Android: the app in a native shell, built into an APK (website download) and an AAB (Google Play)",
   "scripts": {
     "sync": "cap sync android"
   },
   "dependencies": {
-    "@capacitor/android": "^6.2.0",
-    "@capacitor/app": "^6.0.3",
-    "@capacitor/browser": "^6.0.3",
-    "@capacitor/cli": "^6.2.0",
-    "@capacitor/core": "^6.2.0",
-    "@capacitor/filesystem": "^6.0.4",
-    "@capacitor/push-notifications": "^6.0.5",
-    "@capacitor/share": "^6.0.4",
-    "@capacitor/splash-screen": "^6.0.4",
-    "@capacitor/status-bar": "^6.0.3"
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/push-notifications": "^8.1.3",
+    "@capacitor/share": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
