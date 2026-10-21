@@ -19,7 +19,9 @@ const localKey = (uid: string) => `pm_sidebar_${uid}`;
 const readLocal = (uid: string): NavPrefs | null => { try { const v = localStorage.getItem(localKey(uid)); return v ? normalize(JSON.parse(v)) : null; } catch { return null; } };
 const writeLocal = (uid: string, p: NavPrefs) => { try { localStorage.setItem(localKey(uid), JSON.stringify(p)); } catch { /* storage unavailable */ } };
 
-const strings = (v: unknown, max = 60): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length <= 120).slice(0, max) : []);
+/** Places that moved keep the person's choices (Documents became DocTracker). */
+const RENAMED: Record<string, string> = { '/documents': '/doctracker' };
+const strings = (v: unknown, max = 60): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length <= 120).map((x) => RENAMED[x] ?? x).slice(0, max) : []);
 export function normalize(v: unknown): NavPrefs {
   if (!v || typeof v !== 'object') return EMPTY_PREFS;
   const o = v as Record<string, unknown>;

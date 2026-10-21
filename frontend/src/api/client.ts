@@ -189,6 +189,15 @@ export async function fetchBlobUrl(path: string, signal?: AbortSignal): Promise<
   return URL.createObjectURL(await res.blob());
 }
 
+/** An authenticated file's text (an export read in the app rather than saved). */
+export async function fetchText(path: string, signal?: AbortSignal): Promise<string> {
+  const send = async () => fetch(`${BASE}/api/v1${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include', signal });
+  let res = await send();
+  if (res.status === 401) res = await renewOrLose(res, send);
+  if (!res.ok) throw (await parse(res)).error ?? new ApiError(res.status, 'Could not load the file', []);
+  return res.text();
+}
+
 /** Authenticated file download (CSV). Blob downloads are user-initiated from a click handler. */
 export async function download(path: string, filename: string, signal?: AbortSignal) {
   const send = () => fetch(`${BASE}/api/v1${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include', signal });

@@ -94,12 +94,12 @@ try{
  // Customize: pin Timesheet to the top, hide Activity, then Done.
  await page.getByRole('button',{name:'Customize'}).click();
  await page.getByRole('button',{name:'Pin Timesheet'}).click();
- await page.getByRole('button',{name:'Hide Documents'}).click();   // Activity is already hidden in the lean defaultawait page.waitForTimeout(300);
+ await page.getByRole('button',{name:'Hide DocTracker'}).click();   // Activity is already hidden in the lean defaultawait page.waitForTimeout(300);
  await shot(page,'customize-1440.png');
  await page.getByRole('button',{name:'Done'}).click();await page.waitForTimeout(800);
  assert.equal((await titles(page))[0],'Pinned');assert.equal((await labels(page))[0],'Timesheet');
- assert.ok(!(await labels(page)).includes('Documents'));assert.ok(!(await labels(page)).includes('Activity'));
- assert.deepEqual(saved.pinned,['/timesheet']);assert.ok(saved.hidden.includes('/documents')&&saved.hidden.includes('/activity'));checks.push('pin-hide');
+ assert.ok(!(await labels(page)).includes('DocTracker'));assert.ok(!(await labels(page)).includes('Activity'));
+ assert.deepEqual(saved.pinned,['/timesheet']);assert.ok(saved.hidden.includes('/doctracker')&&saved.hidden.includes('/activity'));checks.push('pin-hide');
  await shot(page,'customized-1440.png');
 
  // The layout is the account's: a new page (another device) gets it.

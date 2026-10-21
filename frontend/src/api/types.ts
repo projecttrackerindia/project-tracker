@@ -745,7 +745,16 @@ export interface ApiDefinition {
 export interface ApiOverview { definitions: ApiDefinition[]; endpoints: number; live: boolean; reading: string; versionId: string | null; canEdit: boolean; limit: number; used: number }
 export interface EndpointItem { id: string; definitionId: string; definition: string; method: ApiMethod; path: string; summary: string; tag: string | null; deprecated: boolean; owner: UserRef | null }
 export interface EndpointPage { items: EndpointItem[]; nextCursor: string | null; total: number | null }
-export interface EndpointDetail { item: EndpointItem; details: EndpointDetails; readOnly: boolean }
+export interface EndpointDetail { item: EndpointItem; details: EndpointDetails; readOnly: boolean; maskedCount?: number; revealed?: boolean; revealSeconds?: number; canReveal?: boolean }
+
+// ---- DocTracker: every project's APIs (scored), documents and architecture
+export interface DtEndpoint { id: string; documentId: string; definitionId: string; definition: string; method: ApiMethod; path: string; summary: string; tag: string | null; deprecated: boolean; score: number; gaps: string[]; stage: ApiStage; updatedAt: string | null }
+export interface DtDefinition { id: string; documentId: string; name: string; version: string | null; stage: ApiStage; auth: ApiAuthScheme; servers: string[] }
+export interface DtDocument { id: string; key: string; title: string; typeCode: string; typeName: string; typeColor: string; status: DocumentStatus; classification: DocumentClassification; updatedAt: string; isApi: boolean }
+export interface DtProject { id: string | null; key: string | null; name: string; endpoints: DtEndpoint[]; definitions: DtDefinition[]; documents: DtDocument[]; diagrams: number }
+export interface DtCatalog { projects: DtProject[]; canCreate: boolean; isAdmin: boolean; truncated: number }
+export interface DtDiagram { key: string; title: string; kind: 'architecture' | 'flow'; data: { nodes: unknown[]; edges: unknown[] } }
+export interface DtArchitecture { projectId: string | null; diagrams: DtDiagram[]; notes: string | null; canEdit: boolean; updatedAt: string | null; updatedBy: string | null }
 export interface SaveEndpoint { definitionId: string; method: string; path: string; summary: string; tag: string | null; deprecated: boolean; ownerId: string | null; details: EndpointDetails }
 export interface SaveDefinition { name: string; description: string | null; basePath: string | null; version: string | null; auth: ApiAuthScheme; authNote: string | null; servers: string[]; stage?: ApiStage }
 export interface ImportIssue { severity: 'error' | 'warning'; line: number | null; column: number | null; pointer: string | null; message: string }

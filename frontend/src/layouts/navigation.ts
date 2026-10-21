@@ -78,7 +78,7 @@ export function useMainNav(): NavGroup[] {
       { to: '/portfolio', label: 'Portfolio', icon: 'monitor', show: lv('projects') > 0 },
       { to: '/operations', label: 'Operations', icon: 'bolt', show: lv('work') > 0, hint: 'Support and operational work, queues and service levels' },
       { to: '/timesheet', label: 'Timesheet', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0 },
-      { to: '/documents', label: 'Documents', icon: 'note', show: lv('documents') > 0, match: (p) => p === '/documents' || p.startsWith('/documents/') },
+      { to: '/doctracker', label: 'DocTracker', icon: 'layers', show: lv('documents') > 0, match: (p) => p === '/doctracker' || p === '/documents' || p.startsWith('/documents/') },
     ] },
     { title: 'Insights', items: [
       { to: '/workload', label: 'Workload', icon: 'users', show: !personal && (hasReports || broad) },

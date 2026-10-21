@@ -20,7 +20,7 @@ type PaletteItem = { kind: ArchNodeData['kind']; icon?: string; shape?: string; 
 /**
  * Architecture Studio: draw a system on a canvas - drag components from the library, join them with arrows (drag from a dot on a box's
  * edge), group them in frames, label everything, and style lines (dashed, animated, two-way). Undo/redo, tidy up, templates, and export to
- * PNG, SVG or JSON. "Done" puts the diagram back into the document; nothing is saved until the document is saved.
+ * PNG, SVG or JSON. "Done" hands the diagram back to the caller, which saves it.
  */
 export function ArchStudio(props: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void }) {
   return createPortal(<ReactFlowProvider><Studio {...props} /></ReactFlowProvider>, document.body);

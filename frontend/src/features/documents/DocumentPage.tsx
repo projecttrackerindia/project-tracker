@@ -27,7 +27,8 @@ import { ApiReference } from './ApiReference';
 import { DocumentSecrets } from './DocumentSecrets';
 import { AccessModal } from './DocumentSharing';
 import { SectionEditor } from './SectionEditor';
-import { DocShell, DocumentsSidebar } from './DocumentsSidebar';
+import { DocShell } from './DocumentsSidebar';
+import { DtTreeStandalone } from '../doctracker/DocTrackerPage';
 import { CLASSIFICATION, ClassificationBadge, DocStatusBadge, TypeCode, VISIBILITY } from './docUi';
 
 /** Whether a section has anything in it (a table: a row; text: a word, a picture, a list item or a diagram). Reading hides sections that have nothing yet. */
@@ -90,13 +91,9 @@ const DOC_TABS: DocTab[] = ['doc', 'links', 'requirements', 'files', 'secrets', 
 /** A document with the Documents tree beside it (the tree opens on this document and lists its sections). */
 export function DocumentPage() {
   const { id = '' } = useParams();
-  const nav = useNavigate();
-  const q = useWsQuery(['documents', id], () => documentApi.get(id), { retry: false });
-  const inbox = useWsQuery(['documents', 'inbox'], documentApi.inbox);
   return (
     <div className="doc-scope dv-shell-page">
-      <DocShell tree={<DocumentsSidebar view={null} waiting={inbox.data?.waiting ?? 0} activeProject={null} activeDoc={q.data ?? null}
-        onSelectView={(v) => nav(v === 'all' ? '/documents' : `/documents?view=${v}`)} onSelectProject={(p) => nav(p ? `/documents?project=${p}` : '/documents')} />}>
+      <DocShell browseLabel="Browse DocTracker" tree={<DtTreeStandalone activeDocId={id} />}>
         <DocumentView />
       </DocShell>
     </div>
@@ -224,9 +221,9 @@ function DocumentView() {
   return (
     <div className="dv doc-scope" style={{ '--dc': d.typeColor } as CSSProperties}>
       <nav className="dv-crumb" aria-label="Breadcrumb">
-        <Link to="/documents">Documents</Link>
+        <Link to="/doctracker">DocTracker</Link>
         <Icon name="chevronR" size={13} />
-        {d.projectId ? <Link to={`/projects/${d.projectId}?tab=documents`}>{d.projectName}</Link> : <span>{d.teamName ?? 'General'}</span>}
+        <Link to={`/doctracker?p=${d.projectId ?? 'general'}`}>{d.projectId ? d.projectName : d.teamName ?? 'General'}</Link>
         <Icon name="chevronR" size={13} />
         <span className="dv-crumb-key">{d.key}</span>
       </nav>
@@ -267,7 +264,7 @@ function DocumentView() {
             { label: 'Reopen', icon: 'folder', onSelect: () => run.mutate(() => documentApi.reopen(id)), hidden: !(d.status === 'Archived' && detail.can.delete) },
             { label: 'Delete', hint: 'Recoverable for 30 days', icon: 'trash', danger: true, hidden: !detail.can.delete, onSelect: async () => {
               if (!(await confirmDialog({ title: 'Delete this document?', message: `${d.key} “${d.title}” disappears for everyone. You can bring it back for 30 days.`, confirmText: 'Delete', danger: false }))) return;
-              try { await documentApi.remove(id); invalidateWorkspace(wid, 'documents'); toast('Document deleted.', 'warning'); nav(d.projectId ? `/projects/${d.projectId}?tab=documents` : '/documents'); }
+              try { await documentApi.remove(id); invalidateWorkspace(wid, 'documents'); toast('Document deleted.', 'warning'); nav(`/doctracker?p=${d.projectId ?? 'general'}&t=documents`); }
               catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete.', 'error'); }
             } },
           ]} />

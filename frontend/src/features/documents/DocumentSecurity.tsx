@@ -15,6 +15,16 @@ const PRESETS = [10, 15, 30, 60];
 
 /** Owners and admins: how long a revealed value stays on screen, the data key, and the check of the audit trail. */
 export function DocumentSecurityModal({ onClose }: { onClose: () => void }) {
+  return (
+    <Modal title="Document security" subtitle="Secrets, reveal time and the audit trail." size="lg" onClose={onClose} className="doc-scope" footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
+      <div className="dsec"><MaskingSection /></div>
+      <SecuritySettings />
+    </Modal>
+  );
+}
+
+/** Reveal time, the data key and the audit chain check (owners and admins). */
+export function SecuritySettings() {
   const wid = useWorkspaceId();
   const q = useWsQuery(['document-security'], documentApi.security);
   const d = q.data;
@@ -28,10 +38,9 @@ export function DocumentSecurityModal({ onClose }: { onClose: () => void }) {
   const verify = useMutation({ mutationFn: () => documentApi.verifyAudit(), onSuccess: (r) => { done(r.intact ? 'The audit trail is intact.' : 'The audit trail does not verify.'); }, onError: fail });
   const customValid = /^\d+$/.test(custom) && +custom >= 5 && +custom <= 300;
   return (
-    <Modal title="Document security" subtitle="Secrets, reveal time and the audit trail." size="lg" onClose={onClose} className="doc-scope" footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}>
+    <>
       {q.isLoading ? <PageLoader /> : q.isError || !d ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <div className="dsec">
-          <MaskingSection />
           <section>
             <h4>Reveal time</h4>
             <p className="muted">A revealed value hides again after this long. It protects an unattended screen; the audit record protects against a copy.</p>
@@ -67,7 +76,7 @@ export function DocumentSecurityModal({ onClose }: { onClose: () => void }) {
           </section>
         </div>
       )}
-    </Modal>
+    </>
   );
 }
 
@@ -84,7 +93,7 @@ const maskingApi = {
 const STRATEGY: Record<string, string> = { full: 'Hide all', last4: 'Show last 4', last2: 'Show last 2', first2last2: 'Show first 2 and last 2', email: 'Hide the name, keep the domain', secret: 'Credential' };
 
 /** What is masked in documents: on or off, the built-in kinds, the workspace's own rules, and a box to try a sample. */
-function MaskingSection() {
+export function MaskingSection() {
   const wid = useWorkspaceId();
   const q = useWsQuery(['document-security', 'masking'], maskingApi.get);
   const [field, setField] = useState(''); const [strategy, setStrategy] = useState('full'); const [match, setMatch] = useState('exact');

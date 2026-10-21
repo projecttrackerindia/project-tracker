@@ -1,5 +1,5 @@
-import { del, download, get, post, put, uploadFile } from './client';
-import type { ReportExport,InvoiceSeller,EmailOverview,EmailBlocked,EmailDomainCheck,UnsubscribeInfo,Priority,DocumentType,DocumentPage,DocumentDetail,DocumentFilters,DocumentVisibility,DocumentClassification,LinkedWork,LinkedDocuments,LinkTarget,LinkRelation,DocVersions,DocVersionContent,VersionDiff,DocAccess,DocAccessLevel,GrantPrincipal,DocFile,DocWorkflows,DocWorkflow,ApiOverview,EndpointPage,EndpointDetail,SaveEndpoint,SaveDefinition,ApiImportResult,ApiChanges,EndpointHit,SaveWorkflow,DocumentReview,DocumentInbox,DocumentGate,AccessRequest,Requirement,Coverage,DocActivity,DocComment,DocAuditPage,SecretClass,DocumentDashboard,RequiredGap,SecretList,SecretReveal,StepUpToken,ChainStatus,DocSecurity,Passkey,PasskeyChallenge,AuthResponse,ArtifactVersions,ArtifactVersion,ArtifactCompare } from './types';
+import { del, download, fetchText, get, post, put, uploadFile } from './client';
+import type { ReportExport,InvoiceSeller,EmailOverview,EmailBlocked,EmailDomainCheck,UnsubscribeInfo,Priority,DocumentType,DocumentPage,DocumentDetail,DocumentFilters,DocumentVisibility,DocumentClassification,LinkedWork,LinkedDocuments,LinkTarget,LinkRelation,DocVersions,DocVersionContent,VersionDiff,DocAccess,DocAccessLevel,GrantPrincipal,DocFile,DocWorkflows,DocWorkflow,ApiOverview,EndpointPage,EndpointDetail,SaveEndpoint,SaveDefinition,ApiImportResult,ApiChanges,EndpointHit,SaveWorkflow,DocumentReview,DocumentInbox,DocumentGate,AccessRequest,Requirement,Coverage,DocActivity,DocComment,DocAuditPage,SecretClass,DocumentDashboard,RequiredGap,SecretList,SecretReveal,StepUpToken,ChainStatus,DocSecurity,Passkey,PasskeyChallenge,AuthResponse,ArtifactVersions,ArtifactVersion,ArtifactCompare,DtCatalog,DtArchitecture,DtDiagram } from './types';
 
 // ---- passkeys: sign in with the device's own fingerprint, face or screen lock
 export const passkeyApi = {
@@ -121,9 +121,19 @@ export const apiDocApi = {
   addEndpoint: (id: string, b: SaveEndpoint) => post<EndpointDetail>(`/documents/${id}/api/endpoints`, b),
   updateEndpoint: (id: string, endpointId: string, b: SaveEndpoint) => put<EndpointDetail>(`/documents/${id}/api/endpoints/${endpointId}`, b),
   removeEndpoint: (id: string, endpointId: string) => del(`/documents/${id}/api/endpoints/${endpointId}`),
+  revealEndpoint: (id: string, endpointId: string, b: { purpose: 'edit' | 'read'; reason?: string }) => post<EndpointDetail>(`/documents/${id}/api/endpoints/${endpointId}/reveal`, b),
+  /** The OpenAPI file as text (for the in-app Swagger view). */
+  openApiText: (id: string, definitionId: string) => fetchText(`/documents/${id}/api/export?format=openapi&definitionId=${definitionId}`),
   import: (id: string, b: { content: string; fileName: string; definitionId?: string | null; newDefinitionName?: string | null; mode: 'merge' | 'replace'; dryRun: boolean }) => post<ApiImportResult>(`/documents/${id}/api/import`, b),
   export: (id: string, format: 'openapi' | 'postman', definitionId: string, versionId: string | null, fileName: string) =>
     download(`/documents/${id}/api/export?format=${format}&definitionId=${definitionId}${versionId ? `&versionId=${versionId}` : ''}`, fileName),
   changes: (id: string, from: string, to: string) => get<ApiChanges>(`/documents/${id}/api/changes`, { from, to }),
   search: (q: string, projectId?: string) => get<EndpointHit[]>('/api-search', { q, projectId }),
+};
+
+export const docTrackerApi = {
+  catalog: () => get<DtCatalog>('/doctracker/catalog'),
+  architecture: (projectId: string | null) => get<DtArchitecture>('/doctracker/architecture', { projectId: projectId ?? undefined }),
+  saveArchitecture: (projectId: string | null, b: { diagrams: DtDiagram[]; notes: string | null }) => put<DtArchitecture>(`/doctracker/architecture${projectId ? `?projectId=${projectId}` : ''}`, b),
+  apiHome: (projectId: string | null) => post<{ documentId: string; definitionId: string }>(`/doctracker/api-home${projectId ? `?projectId=${projectId}` : ''}`, {}),
 };

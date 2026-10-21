@@ -58,7 +58,7 @@ export function DocumentGate({ id, original }: { id: string; original: unknown }
             <SubmitButton busy={send.isPending}>Request access</SubmitButton>
           </form>
         )}
-        <p className="gate-back"><Link to="/documents">Back to documents</Link></p>
+        <p className="gate-back"><Link to="/doctracker">Back to DocTracker</Link></p>
       </div>
     </div>
   );

@@ -44,7 +44,7 @@ const AgentWorkflowsPage = page(() => import('./features/ai/AgentWorkflowsPage')
 const AiPage = page(() => import('./features/ai/AiPage'), 'AiPage');
 const CalendarPage = page(() => import('./features/calendar/CalendarPage'), 'CalendarPage');
 const ChatPage = page(() => import('./features/chat/ChatPage'), 'ChatPage');
-const DocumentsPage = page(() => import('./features/documents/DocumentsPage'), 'DocumentsPage');
+const DocTrackerPage = page(() => import('./features/doctracker/DocTrackerPage'), 'DocTrackerPage');
 const DocumentPage = page(() => import('./features/documents/DocumentPage'), 'DocumentPage');
 const DashboardPage = page(() => import('./features/dashboard/DashboardPage'), 'DashboardPage');
 const MailboxPage = page(() => import('./features/dev/MailboxPage'), 'MailboxPage');
@@ -243,6 +243,13 @@ function RequireAuth() {
 }
 
 /** Hide pages the current role / workspace type cannot use, instead of showing a screen of 403s. */
+/** The old Documents library now lives in DocTracker; keep old links (and their project filter) working. */
+function LegacyDocuments() {
+  const loc = useLocation();
+  const project = new URLSearchParams(loc.search).get('project');
+  return <Navigate to={project ? `/doctracker?p=${encodeURIComponent(project)}&t=documents` : '/doctracker'} replace />;
+}
+
 function Guard({ allow, children }: { allow: boolean; children: React.ReactNode }) {
   return allow ? <>{children}</> : <Navigate to="/" replace />;
 }
@@ -359,7 +366,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="portfolio" element={<Guard allow={mProjects}><ProjectStatusPage /></Guard>} />
         <Route path="operations" element={<Guard allow={mWork}><WorkTasksPage /></Guard>} />
         <Route path="support" element={<Moved to="/operations" />} />
-        <Route path="documents" element={<Guard allow={mDocuments}><DocumentsPage /></Guard>} />
+        <Route path="doctracker" element={<Guard allow={mDocuments}><DocTrackerPage /></Guard>} />
+        <Route path="documents" element={<Guard allow={mDocuments}><LegacyDocuments /></Guard>} />
         <Route path="documents/:id" element={<Guard allow={mDocuments}><DocumentPage /></Guard>} />
         {/* Insights */}
         <Route path="workload" element={<Guard allow={!personal && (hasReports || broad)}><WorkloadPage /></Guard>} />
