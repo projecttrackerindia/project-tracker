@@ -48,7 +48,7 @@ public record SupportReplyRequest(string Text);
 /// </summary>
 public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ISecretProtector secrets, PermissionService permissions,
     IAiClient ai, AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions, IOptions<SupportOptions> options,
-    IOptions<AppOptions> app, IHttpClientFactory http, WorkTaskService workTasks, Recorder recorder, ILogger<SupportChannelService> log)
+    IOptions<AppOptions> app, IHttpClientFactory http, WorkTaskService workTasks, WorkTypeService workTypes, Recorder recorder, ILogger<SupportChannelService> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly Regex Digits = new(@"^[0-9]{5,25}$", RegexOptions.Compiled);
@@ -350,8 +350,9 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
 
     private async Task<string?> RaiseTicketAsync(SupportChannel channel, SupportConversation c, List<SupportMessageDto> messages, string title, string? summary, Priority priority, CancellationToken ct)
     {
-        var typeId = channel.WorkTypeId ?? await db.WorkTypes.Where(t => t.IsActive).OrderBy(t => t.Order).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct);
-        if (typeId is null) return null;
+        await workTypes.EnsureDefaultsAsync(ct);   // a new workspace gets its ticket types on first use
+        var typeId = channel.WorkTypeId ?? await db.WorkTypes.Where(t => t.IsActive).OrderBy(t => t.Order).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct)
+            ?? throw new ConflictException("Add a work type in Operations › Settings first.");
         var who = c.ContactName is { Length: > 0 } n ? $"{n} (+{secrets.Unprotect(c.ContactProtected)})" : "+" + secrets.Unprotect(c.ContactProtected);
         var chat = string.Join("\n", messages.TakeLast(40).Select(m => $"- {(m.From == "contact" ? "Customer" : m.From == "ai" ? channel.AgentName + " (AI)" : m.By ?? "Agent")}: {m.Text}"));
         var details = $"{(summary is { Length: > 0 } ? summary + "\n\n" : "")}From WhatsApp ({channel.Name}) - {who}.\n\nChat:\n{chat}";

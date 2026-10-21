@@ -68,7 +68,7 @@ public record VoiceFillerDto(string Kind, string Audio);
 /// </summary>
 public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ISecretProtector secrets, PermissionService permissions, IAiClient ai,
     AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions, IOptions<VoiceOptions> voice, IHttpClientFactory http,
-    WorkTaskService workTasks, Recorder recorder, VoiceSpeechService speech, ILogger<VoiceAgentService> log)
+    WorkTaskService workTasks, WorkTypeService workTypes, Recorder recorder, VoiceSpeechService speech, ILogger<VoiceAgentService> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly Regex Placeholder = new(@"\{([A-Za-z][A-Za-z0-9_]{0,40})\}", RegexOptions.Compiled);
@@ -412,6 +412,7 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
                         .OrderByDescending(t => t.CreatedAt).Take(5).Select(t => new { t.Number, t.Title, t.Status, t.CreatedAt }).ToListAsync(ct);
                     return found.Count == 0 ? "No requests found." : JsonSerializer.Serialize(found.Select(f => new { key = $"WT-{f.Number}", f.Title, status = f.Status.ToString(), f.CreatedAt }), Json);
                 case "create_ticket":
+                    await workTypes.EnsureDefaultsAsync(ct);
                     var typeId = s.WorkTypeId ?? await db.WorkTypes.Where(t => t.IsActive).OrderBy(t => t.Order).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct);
                     if (typeId is null) return "Tickets cannot be created: no work type is set up.";
                     var title = args?["title"]?.ToString()?.Trim() ?? "Phone request";
