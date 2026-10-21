@@ -1,5 +1,6 @@
 /** The markup of the public pages, built from ./content.ts. Class names are written plainly; `scoped` (css.ts) adds the prefix. */
 import { PATHS } from '../src/components/Icon';
+import { ARTICLES, BLOG_INDEX, DOCS_INDEX, GUIDES, LIBRARY, type Block, type LibraryPage } from './library';
 import { COMPARE, DETAILS, DOWNLOAD_BASE, DOWNLOAD_FILES, FAQ, FEATURES, HOME, INTEGRATIONS, NAV, OFFERS, PAGES, PLANS, SECURITY, SITE, VERSUS, type DetailPage, type StaticPage } from './content';
 
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -21,6 +22,7 @@ export const header = (active = '') => `<div class="progress" aria-hidden="true"
 export const footer = () => `<footer><div class="wrap"><div class="cols">
 <div><a class="brand" href="/">${logoMark('lg2')}${SITE.name}</a><p style="margin-top:14px;max-width:22em">${esc(SITE.tagline)}.</p></div>
 <div><h4>Product</h4><ul>${NAV.map((n) => `<li><a href="${n.href}">${n.label}</a></li>`).join('')}${DETAILS.map((d) => `<li><a href="${d.path}">${esc(d.title.split(' | ')[0].replace(/ and /g, ' & '))}</a></li>`).join('')}</ul></div>
+<div><h4>Resources</h4><ul><li><a href="/docs/">Help Center</a></li><li><a href="/blog/">Blog</a></li>${GUIDES.slice(0, 3).map((g) => `<li><a href="${g.path}">${esc(g.h1)}</a></li>`).join('')}</ul></div>
 <div><h4>Account</h4><ul><li><a href="/login">Sign in</a></li><li><a href="/register">Create account</a></li></ul></div>
 <div><h4>Contact</h4><ul><li><a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a></li><li><span style="opacity:.75">Sales, billing, help and security</span></li></ul></div>
 <div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li><li><a href="/delete-account/">Delete your account</a></li></ul></div>
@@ -350,7 +352,8 @@ ${band('Bring your projects into one clear view', 'Create your workspace in a mi
 
 // ---- the static pages
 
-const pageHead = (p: StaticPage) => `<section class="dark page-head">${aurora}<div class="wrap"><p class="eyebrow">${esc(p.title.split(' | ')[0])}</p><h1>${esc(p.h1)}</h1><p class="lead">${esc(p.lead)}</p></div></section>`;
+const eyebrowFor = (p: StaticPage) => /^\/blog\/.+/.test(p.path) ? 'Blog' : /^\/docs\/.+/.test(p.path) ? 'Help Center' : p.title.split(' | ')[0];
+const pageHead = (p: StaticPage) => `<section class="dark page-head">${aurora}<div class="wrap"><p class="eyebrow">${esc(eyebrowFor(p))}</p><h1>${esc(p.h1)}</h1><p class="lead">${esc(p.lead)}</p></div></section>`;
 
 const detailBody = (d: DetailPage) => `<div class="wrap"><div class="grid two">${d.sections.map((x, i) => `<article class="card" ${reveal(i % 2)}><h3>${esc(x.title)}</h3><p>${esc(x.text)}</p><ul>${x.points.map((t) => `<li>${tick}<span>${esc(t)}</span></li>`).join('')}</ul></article>`).join('')}</div>
 <div style="height:50px"></div>${band('Try it on your own projects', 'Start on the free plan and move up when your team grows.')}
@@ -401,6 +404,28 @@ ${dlCard('web', OS_ICONS.web, 'In your browser', 'Nothing to install', '<a class
 <p class="note2" ${reveal()}>Each release lists a checksum for every file: <a href="${dlLink(DOWNLOAD_FILES.checksums)}">SHA256SUMS.txt</a>. These apps are not signed with a paid publisher certificate, which is why Windows and macOS ask you to confirm the first time. Questions? <a href="mailto:${SITE.securityEmail.replace('security@', 'support@')}">${SITE.securityEmail.replace('security@', 'support@')}</a></p>
 <div style="height:30px"></div>${band('Start with a free account', 'Install the app on the devices you use. Your work is waiting on all of them.')}</div>`;
 
+// ---- the Help Center and the blog
+
+const longDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+const linkify = (t: string) => esc(t).replace(/https:\/\/projecttracker\.in\/[\w/.-]*/g, (u) => `<code>${u}</code>`).replace(/support@projecttracker\.in/g, (m) => `<a href="mailto:${m}">${m}</a>`);
+const block = (b: Block) => [
+  b.h ? `<h2>${esc(b.h)}</h2>` : '',
+  b.p ? `<p>${linkify(b.p)}</p>` : '',
+  b.steps ? `<ol>${b.steps.map((x) => `<li>${linkify(x)}</li>`).join('')}</ol>` : '',
+  b.list ? `<ul>${b.list.map((x) => `<li>${linkify(x)}</li>`).join('')}</ul>` : '',
+  b.tip ? `<p class="tipbox">${linkify(b.tip)}</p>` : '',
+].join('');
+const libraryCard = (d: LibraryPage, i: number) => `<article class="card" ${reveal(i % 3)}><p class="meta">${esc(d.topic)} · ${d.minutes} min read</p><h3><a href="${d.path}">${esc(d.h1)}</a></h3><p>${esc(d.lead)}</p></article>`;
+const libraryIndex = (items: LibraryPage[], title: string) => `<div class="wrap"><h2 style="margin:0 0 20px">${esc(title)}</h2><div class="libgrid">${items.map(libraryCard).join('')}</div>
+<div style="height:40px"></div><p class="note2">${items === GUIDES ? `Can\u2019t find an answer? Write to <a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a>. Looking for ideas instead? Read the <a href="/blog/">blog</a>.` : `Looking for step-by-step help? Visit the <a href="/docs/">Help Center</a>.`}</p></div>`;
+const libraryBody = (d: LibraryPage) => {
+  const related = d.related.map((r) => [...PAGES, ...DETAILS, ...LIBRARY].find((x) => x.path === r)).filter((x): x is StaticPage => !!x);
+  return `<div class="wrap"><p class="byline"><span class="tag">${esc(d.topic)}</span><span>${d.kind === 'guide' ? 'Updated' : 'Published'} ${longDate(d.date)}</span><span>${d.minutes} min read</span></p>
+<article class="prose">${d.blocks.map(block).join('')}</article>
+<div style="height:40px"></div><h2 style="margin-bottom:20px">Keep reading</h2><div class="grid">${related.map((t, i) => `<article class="card" ${reveal(i)}><h3><a href="${t.path}">${esc(t.h1)}</a></h3><p>${esc(t.description)}</p></article>`).join('')}</div>
+<div style="height:50px"></div>${band('Try it on your own projects', 'Start on the free plan and move up when your team grows.')}</div>`;
+};
+
 const bodies: Record<string, () => string> = {
   '/download/': downloadBody,
   '/features/': () => `<div class="wrap">${employee}<div style="height:28px"></div>${suite}<h2 style="margin:64px 0 20px">Everything else in the workspace</h2><div class="grid">${FEATURES.map(featureCard).join('')}</div><div style="height:40px"></div>${assist}
@@ -418,6 +443,9 @@ const bodies: Record<string, () => string> = {
 <article class="card" ${reveal(2)}><h3>What is deleted, and when</h3><ul><li>Within 30 days: your account, profile, photo, sign-in methods, devices, notification settings and personal data.</li><li>If you own a workspace, we first agree with you who takes it over or whether it closes, so your team keeps its work.</li><li>Kept: invoices as long as tax law requires, and security logs while they are needed; backups age out within 14 days.</li></ul></article>
 </div><div style="height:30px"></div>${band('Questions?', `Write to ${SITE.supportEmail}.`)}</div>`,
   ...Object.fromEntries(DETAILS.map((d) => [d.path, () => detailBody(d)])),
+  [DOCS_INDEX.path]: () => libraryIndex(GUIDES, 'Every guide'),
+  [BLOG_INDEX.path]: () => libraryIndex(ARTICLES, 'Latest articles'),
+  ...Object.fromEntries(LIBRARY.map((d) => [d.path, () => libraryBody(d)])),
 };
 
 export const staticMain = (p: StaticPage) => `${header(p.path)}<main>${pageHead(p)}<section class="block" style="padding-top:56px">${bodies[p.path]()}</section></main>${footer()}`;

@@ -357,6 +357,22 @@ __JS__ .in .path .curve,__JS__ .path.in .curve{animation:pt-draw 2.6s cubic-bezi
 .price{font:800 40px/1.1 var(--disp);letter-spacing:-.05em;min-height:74px;color:var(--ink)}.price small{display:block;margin-top:2px;font:600 14px/1.3 Inter,sans-serif;color:var(--muted);letter-spacing:0}
 .plan ul{list-style:none;padding:0;margin:18px 0 24px;display:grid;gap:10px;flex:1}.plan li{display:flex;gap:9px;font-size:14.5px}.plan li svg{flex:none;color:var(--ok);margin-top:3px}
 .note2{color:var(--muted);font-size:14px;margin-top:24px}
+.prose{max-width:760px;margin:0 auto;font-size:17px;line-height:1.75;color:var(--ink)}
+.prose h2{font-family:var(--disp);font-size:24px;line-height:1.3;margin:40px 0 12px}
+.prose p{margin:0 0 18px;color:var(--ink)}
+.prose ul,.prose ol{margin:0 0 22px;padding-left:22px}
+.prose li{margin:0 0 10px}
+.prose ol li::marker{color:var(--brand);font-weight:700}
+.prose ul li::marker{color:var(--brand)}
+.prose a{color:var(--brand);text-decoration:underline;text-underline-offset:3px}
+.prose code{font-size:15px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:1px 6px}
+.byline{display:flex;gap:10px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:14px;margin:0 auto 26px;max-width:760px}
+.byline .tag{background:var(--brand-soft);color:var(--brand);border-radius:999px;padding:3px 10px;font-weight:600}
+.tipbox{border:1px solid var(--line);border-left:4px solid var(--brand);background:var(--surface-2);border-radius:14px;padding:14px 18px;margin:0 0 22px;color:var(--ink)}
+.libgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+.libgrid .card h3{margin:8px 0 8px;font-size:19px}
+.libgrid .card p{color:var(--muted);margin:0 0 10px}
+.libgrid .meta{color:var(--muted);font-size:13px}
 .price .was{font-size:20px;font-weight:600;color:var(--muted);letter-spacing:0;margin-right:8px;text-decoration:line-through}
 .ptotal{margin:2px 0 0;font-size:13.5px;color:var(--muted);min-height:20px}.ptotal b{color:var(--text)}
 .calc{max-width:1100px;margin:0 auto 30px;padding:18px 22px;border:1px solid var(--line);border-radius:24px;background:var(--surface);box-shadow:var(--card);display:grid;gap:14px}

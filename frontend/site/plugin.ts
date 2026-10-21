@@ -7,6 +7,7 @@
 import type { Plugin } from 'vite';
 import { DETAILS, FAQ, HOME, PAGES, PLANS, SITE, type StaticPage } from './content';
 import { CLIENT_SCRIPT } from './client';
+import { BLOG_INDEX, DOCS_INDEX, LIBRARY } from './library';
 import { landingCss, pageCss, scoped } from './css';
 import { esc, landing, staticMain } from './sections';
 
@@ -97,9 +98,17 @@ function staticPage(p: StaticPage): string {
   const trail: { name: string; path: string }[] = [{ name: SITE.name, path: '/' }];
   if (p.path.startsWith('/features/') && p.path !== '/features/') trail.push({ name: 'Features', path: '/features/' });
   if (p.path.startsWith('/solutions/')) trail.push({ name: 'Features', path: '/features/' });
+  if (p.path.startsWith('/docs/') && p.path !== '/docs/') trail.push({ name: 'Help Center', path: '/docs/' });
+  if (p.path.startsWith('/blog/') && p.path !== '/blog/') trail.push({ name: 'Blog', path: '/blog/' });
   trail.push({ name: p.title.split(' | ')[0], path: p.path });
   const crumbs = { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: trail.map((t, i) => ({ '@type': 'ListItem', position: i + 1, name: t.name, item: abs(t.path) })) };
   const page = { '@context': 'https://schema.org', '@type': 'WebPage', '@id': abs(p.path), url: abs(p.path), name: p.title, description: p.description, isPartOf: { '@id': abs('/#website') }, inLanguage: 'en' };
+  const lib = LIBRARY.find((x) => x.path === p.path);
+  const articleLd = lib && {
+    '@context': 'https://schema.org', '@type': lib.kind === 'guide' ? 'TechArticle' : 'BlogPosting', headline: lib.h1, description: lib.description,
+    mainEntityOfPage: abs(lib.path), datePublished: lib.date, dateModified: lib.date, image: abs('/og-image.png'), inLanguage: 'en-IN',
+    author: { '@id': abs('/#organization') }, publisher: { '@id': abs('/#organization') }, articleSection: lib.topic,
+  };
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -107,7 +116,7 @@ function staticPage(p: StaticPage): string {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/sora-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
-    ${meta(p, p.path === '/pricing/' ? [crumbs, page, orgLd, appLd, faqLd] : [crumbs, page, orgLd])}
+    ${meta(p, p.path === '/pricing/' ? [crumbs, page, orgLd, appLd, faqLd] : articleLd ? [crumbs, articleLd, orgLd] : [crumbs, page, orgLd])}
     <style>${pageCss()}</style>
   </head>
   <body>
@@ -121,7 +130,7 @@ ${p.path === '/pricing/' ? PRICE_SCRIPT : ''}
 
 const sitemap = () => {
   const day = new Date().toISOString().slice(0, 10);
-  const urls = ['/', ...PAGES.map((p) => p.path), ...DETAILS.map((d) => d.path), '/login', '/register', '/terms', '/privacy'];
+  const urls = ['/', ...PAGES.map((p) => p.path), ...DETAILS.map((d) => d.path), DOCS_INDEX.path, BLOG_INDEX.path, ...LIBRARY.map((d) => d.path), '/login', '/register', '/terms', '/privacy'];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${abs(u)}</loc><lastmod>${day}</lastmod></url>`).join('\n')}\n</urlset>\n`;
 };
 
@@ -148,7 +157,7 @@ function files(): Record<string, { type: string; body: string; emit: string }> {
     '/sitemap.xml': { type: 'application/xml', body: sitemap(), emit: 'sitemap.xml' },
     '/robots.txt': { type: 'text/plain', body: robots(), emit: 'robots.txt' },
   };
-  for (const p of [...PAGES, ...DETAILS]) out[p.path] = { type: 'text/html', body: staticPage(p), emit: `${p.path.slice(1)}index.html` };
+  for (const p of [...PAGES, ...DETAILS, DOCS_INDEX, BLOG_INDEX, ...LIBRARY]) out[p.path] = { type: 'text/html', body: staticPage(p), emit: `${p.path.slice(1)}index.html` };
   if (INDEXNOW_KEY) out[`/${INDEXNOW_KEY}.txt`] = { type: 'text/plain', body: INDEXNOW_KEY, emit: `${INDEXNOW_KEY}.txt` };
   return out;
 }

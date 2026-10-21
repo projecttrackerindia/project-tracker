@@ -20,6 +20,7 @@ export const NAV: NavLink[] = [
   { label: 'Pricing', href: '/pricing/' },
   { label: 'Security', href: '/security/' },
   { label: 'Download', href: '/download/' },
+  { label: 'Help', href: '/docs/' },
 ];
 
 /** Where the apps are published (GitHub releases of the repository: free, and "latest/download/<name>" always points at the newest version). A company hosting its own copy can set SITE_DOWNLOAD_BASE. */
