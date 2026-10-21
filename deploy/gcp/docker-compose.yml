@@ -6,7 +6,7 @@ x-log: &log
 
 services:
   caddy:
-    image: caddy:2.8-alpine
+    image: mirror.gcr.io/library/caddy:2.8-alpine
     restart: unless-stopped
     depends_on: [web]
     ports: ["80:80", "443:443"]
@@ -41,7 +41,7 @@ services:
     logging: *log
 
   redis:                               # shared cache and the AI request limits (Gemini refuses to answer without them)
-    image: redis:7.4-alpine
+    image: mirror.gcr.io/library/redis:7.4-alpine
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-lru"]
     logging: *log
