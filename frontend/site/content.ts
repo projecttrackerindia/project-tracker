@@ -95,6 +95,8 @@ export const SECURITY: Pillar[] = [
     'Application tracing and metrics (OpenTelemetry) and health checks on every component.',
   ] },
   { icon: 'database', title: 'Your data', points: [
+    'Hosted in India: the app, its database, your files and the backups run on Google Cloud in Mumbai.',
+    'Daily database backups kept for 14 days, with point-in-time recovery.',
     'Workspace owners can export everything as JSON files in one zip, at any time.',
     'Retention you control: activity, notifications, chat and the audit log can be deleted after a period you choose.',
     'Files are kept in object storage with checksums; deleted projects\u2019 files are purged.',
@@ -278,6 +280,42 @@ export const DETAILS: DetailPage[] = [
   },
 ];
 
+/** Pages written for what people search for ("project tracker", "project management software India"). Statements stay true of the product. */
+DETAILS.push(
+  {
+    path: '/solutions/free-project-tracker/', title: 'Free Online Project Tracker for Teams | Project Tracker', h1: 'A free online project tracker that grows with your team',
+    lead: 'Track projects, tasks, deadlines and time in one place. Start free in a minute, with no card, and move up only when your team needs more.',
+    description: 'Project Tracker is a free online project tracker: projects, tasks, boards, timelines, reminders, a calendar and timesheets. Free for one person forever; Pro and Business for teams, priced per person in rupees.',
+    sections: [
+      { title: 'Everything you need to track a project', text: 'From the first task to the final hand-over, without spreadsheets.',
+        points: ['Projects with tasks, owners, priorities and due dates', 'Boards, lists, timelines and a portfolio view across projects', 'Reminders and a calendar, so nothing is forgotten', 'Timesheets to log time against the work'] },
+      { title: 'Free, for good', text: 'The Free plan is for one person and never expires.',
+        points: ['5 projects, 500 tasks and 500 MB of files', 'Reminders, calendar, timesheets and the portfolio view', 'Ten quick AI answers a month to try the assistant', 'Passkeys and two-step sign-in included'] },
+      { title: 'When your team joins', text: 'Pro and Business add people, unlimited projects and the tools teams rely on.',
+        points: ['Pro: unlimited projects and tasks, custom workflows, advanced reports, mobile and desktop apps', 'Business: an operations desk with service levels and an AI employee for calls and WhatsApp', 'A 14-day trial of either, with no payment taken'] },
+      { title: 'Safe from day one', text: 'The same protection on every plan.',
+        points: ['Each organization\u2019s data kept separate in the data layer', 'Hosted in India on Google Cloud, with daily backups', 'Export everything as files at any time'] },
+    ],
+    related: ['/pricing/', '/features/'],
+  },
+  {
+    path: '/solutions/project-management-software-india/', title: 'Project Management Software for Indian Teams | Project Tracker', h1: 'Project management software built for teams in India',
+    lead: 'Plans in rupees, data kept in India, and an AI employee that speaks your customers\u2019 languages. Projects, support and documentation in one workspace.',
+    description: 'Project management software for Indian businesses: priced in rupees with invoices that carry your GSTIN, hosted in Mumbai on Google Cloud, an AI employee that answers in Telugu, Hindi, Tamil, Kannada and English, and an operations desk with service levels.',
+    sections: [
+      { title: 'Priced and billed for India', text: 'Per-person plans in Indian rupees, with discounts for yearly billing and larger teams.',
+        points: ['Pro at \u20b9449 and Business at \u20b9999 per person per month', '20% off yearly, and up to 20% more for teams of 10, 25 or 100 people', 'Prices exclude GST; every payment gets an invoice that can carry your GSTIN'] },
+      { title: 'Your data stays in India', text: 'The app, its database, files and backups run on Google Cloud in Mumbai.',
+        points: ['The AI assistant runs on Google Gemini in the same region', 'Encrypted traffic, daily backups kept for 14 days', 'Export everything at any time'] },
+      { title: 'Speaks your customers\u2019 languages', text: 'The AI employee answers calls and WhatsApp in the language the customer uses.',
+        points: ['Telugu, Hindi, Tamil, Kannada and English', 'Checks who is calling before sharing anything personal', 'Every conversation becomes a ticket with the full record'] },
+      { title: 'One workspace for delivery and support', text: 'No stitching tools together.',
+        points: ['Projects, timelines, timesheets and workload', 'An operations desk with service levels in your working hours and holidays', 'DocTracker for APIs, architecture and documents'] },
+    ],
+    related: ['/features/ai-employee/', '/pricing/'],
+  },
+);
+
 /** The plan comparison. From the plan catalog (DatabaseInitializer): keep it in step with that. A tick is true, a dash is not included. */
 export const COMPARE: { group: string; rows: { label: string; v: [string, string, string, string] }[] }[] = [
   { group: 'Scale', rows: [
@@ -360,6 +398,7 @@ export const FAQ: { q: string; a: string }[] = [
   { q: 'How is each organization\'s data kept separate?', a: 'In the data layer itself, not only in the screens, and automated tests check every screen for leaks between organizations, teams and roles.' },
   { q: 'What is a passkey, and do I need a paid plan?', a: 'A passkey lets you sign in with your fingerprint, face or screen lock instead of a password. It works only on this site and cannot be phished. Passkeys are on every plan, including Free.' },
   { q: 'Is there a mobile app?', a: 'Yes, from the Pro plan: install Project Tracker on your phone from Account, Mobile app, get alerts when it is closed, and sign in on a computer by tapping a number on your phone. No password to type.' },
+  { q: 'Where is our data stored?', a: 'In India. The app, its database, your files, call recordings and backups run on Google Cloud in Mumbai, and the AI assistant runs on Google Gemini in the same region. Traffic is encrypted, and backups are taken daily and kept for 14 days.' },
   { q: 'Can I take my data with me?', a: 'Yes. Owners can export everything as files in one zip at any time, and set how long history is kept.' },
   { q: 'Does it support single sign-on?', a: 'Yes, on Business and Enterprise: OpenID Connect and SAML 2.0, with SCIM provisioning to add and remove people automatically.' },
 ];

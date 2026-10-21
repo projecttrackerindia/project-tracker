@@ -24,7 +24,7 @@ export const footer = () => `<footer><div class="wrap"><div class="cols">
 <div><h4>Account</h4><ul><li><a href="/login">Sign in</a></li><li><a href="/register">Create account</a></li></ul></div>
 <div><h4>Contact</h4><ul><li><a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a></li><li><span style="opacity:.75">Sales, billing, help and security</span></li></ul></div>
 <div><h4>Legal</h4><ul><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/security/#report">Report a vulnerability</a></li></ul></div>
-</div><div class="legal"><span>© ${new Date().getFullYear()} ${SITE.name}</span><span>Made for teams that deliver.</span></div></div></footer>`;
+</div><div class="legal"><span>© ${new Date().getFullYear()} ${SITE.name}</span><span>Hosted in India on Google Cloud (Mumbai) · Prices in INR</span><span>Made for teams that deliver.</span></div></div></footer>`;
 
 const planCard = (p: (typeof PLANS)[number], i: number) => {
   const code = p.name.toUpperCase();

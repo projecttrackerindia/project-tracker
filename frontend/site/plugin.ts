@@ -5,7 +5,7 @@
  * the signed-in app is untouched.
  */
 import type { Plugin } from 'vite';
-import { DETAILS, HOME, PAGES, SITE, type StaticPage } from './content';
+import { DETAILS, FAQ, HOME, PAGES, PLANS, SITE, type StaticPage } from './content';
 import { CLIENT_SCRIPT } from './client';
 import { landingCss, pageCss, scoped } from './css';
 import { esc, landing, staticMain } from './sections';
@@ -51,14 +51,22 @@ d.querySelectorAll('[data-per="'+p.code+'"]').forEach(function(e){e.style.displa
 const orgLd = {
   '@context': 'https://schema.org', '@type': 'Organization', '@id': abs('/#organization'), name: SITE.name, url: abs('/'),
   logo: { '@type': 'ImageObject', url: abs('/icons/icon-512.png'), width: 512, height: 512 },
-  email: SITE.supportEmail,
-  contactPoint: { '@type': 'ContactPoint', contactType: 'customer support', email: SITE.supportEmail, availableLanguage: ['en'] },
+  email: SITE.supportEmail, areaServed: 'IN', address: { '@type': 'PostalAddress', addressCountry: 'IN' },
+  sameAs: ['https://github.com/projecttrackerindia'],
+  contactPoint: { '@type': 'ContactPoint', contactType: 'customer support', email: SITE.supportEmail, areaServed: 'IN', availableLanguage: ['en', 'hi', 'te'] },
 };
 const siteLd = { '@context': 'https://schema.org', '@type': 'WebSite', '@id': abs('/#website'), url: abs('/'), name: SITE.name, alternateName: SITE.alternateNames, description: SITE.description, publisher: { '@id': abs('/#organization') }, inLanguage: 'en' };
 const appLd = {
-  '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: SITE.name, url: abs('/'), applicationCategory: 'BusinessApplication', operatingSystem: 'Web',
-  description: SITE.description, image: abs('/og-image.png'), offers: { '@type': 'Offer', price: '0', priceCurrency: 'INR', description: 'Free plan' },
+  '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: SITE.name, url: abs('/'), applicationCategory: 'BusinessApplication',
+  applicationSubCategory: 'Project management', operatingSystem: 'Web, Windows, macOS, Linux, Android, iOS',
+  description: SITE.description, image: abs('/og-image.png'), publisher: { '@id': abs('/#organization') },
+  offers: PLANS.filter((p) => typeof p.unit === 'number' || p.price === '\u20b90').map((p) => ({
+    '@type': 'Offer', name: `${p.name} plan`, price: String(p.unit ?? 0), priceCurrency: 'INR', url: abs('/pricing/'),
+    ...(p.perUser ? { priceSpecification: { '@type': 'UnitPriceSpecification', price: String(p.unit), priceCurrency: 'INR', unitText: 'per person per month', valueAddedTaxIncluded: false } } : {}),
+  })),
 };
+/** The questions shown on the home and pricing pages, so search engines can read them as answers. */
+const faqLd = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: FAQ.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })) };
 
 function meta(page: { path: string; title: string; description: string }, extra: unknown[] = []): string {
   const url = abs(page.path);
@@ -88,6 +96,7 @@ function meta(page: { path: string; title: string; description: string }, extra:
 function staticPage(p: StaticPage): string {
   const trail: { name: string; path: string }[] = [{ name: SITE.name, path: '/' }];
   if (p.path.startsWith('/features/') && p.path !== '/features/') trail.push({ name: 'Features', path: '/features/' });
+  if (p.path.startsWith('/solutions/')) trail.push({ name: 'Features', path: '/features/' });
   trail.push({ name: p.title.split(' | ')[0], path: p.path });
   const crumbs = { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: trail.map((t, i) => ({ '@type': 'ListItem', position: i + 1, name: t.name, item: abs(t.path) })) };
   const page = { '@context': 'https://schema.org', '@type': 'WebPage', '@id': abs(p.path), url: abs(p.path), name: p.title, description: p.description, isPartOf: { '@id': abs('/#website') }, inLanguage: 'en' };
@@ -98,7 +107,7 @@ function staticPage(p: StaticPage): string {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/sora-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
-    ${meta(p, [crumbs, page, orgLd])}
+    ${meta(p, p.path === '/pricing/' ? [crumbs, page, orgLd, appLd, faqLd] : [crumbs, page, orgLd])}
     <style>${pageCss()}</style>
   </head>
   <body>
@@ -159,7 +168,7 @@ export function publicSite(): Plugin {
     transformIndexHtml: {
       order: 'pre',
       handler: (html) => html
-        .replace('<!--site:head-->', meta(HOME, [siteLd, orgLd, appLd]))
+        .replace('<!--site:head-->', meta(HOME, [siteLd, orgLd, appLd, faqLd]))
         .replace('<!--site:css-->', landingCss())
         .replace('<!--site:body-->', scoped(landing()))
         .replace('<!--site:scripts-->', CLIENT_SCRIPT + PRICE_SCRIPT),
