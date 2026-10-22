@@ -289,12 +289,12 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
                 try
                 {
                     var minutes = await WriteMinutesAsync(bot, p.UserId, ct);
-                    var created = p.AutoTasks ? await CreateTasksAsync(bot.ProjectId, minutes, ct) : [];
+                    var created = p.AutoTasks ? await ProposeTasksAsync(bot, p.UserId, minutes, ct) : [];
                     if (p.AutoEmail) await EmailOwnerAsync(p.UserId, bot, minutes, created, ct);
                     if (p.DeleteTranscript)
                         await db.AgentMeetingBots.Where(b => b.Id == bot.Id).ExecuteUpdateAsync(u => u.SetProperty(b => b.TranscriptProtected, (string?)null), ct);
                     await notifications.AddAsync(p.UserId, NotificationType.Meeting, $"Minutes ready: {minutes.Title}",
-                        created.Count > 0 ? $"Your notetaker wrote up the call and created {created.Count} task(s) from it." : "Your notetaker wrote up the call. Review and send the minutes.",
+                        created.Count > 0 ? $"Your notetaker wrote up the call and proposed {created.Count} task(s) from it for your approval." : "Your notetaker wrote up the call. Review and send the minutes.",
                         $"/notetaker?session={bot.Id}", $"minutes:{bot.Id}", toSelf: true, ct: ct);
                     await db.SaveChangesAsync(ct);
                     done++;
@@ -314,9 +314,14 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
         return done;
     }
 
-    /// <summary>The minutes' action items as tasks in the project, assigned where the owner named in the call matches a member.</summary>
-    private async Task<List<string>> CreateTasksAsync(Guid projectId, MinutesDto minutes, CancellationToken ct)
+    /// <summary>
+    /// The minutes' action items as the project agent's proposals, in the name of the person whose notetaker it is: each one waits in the
+    /// project's agent inbox for a person who may edit the project to approve, like every other change the agent suggests. Nothing is
+    /// written to the project here. The owner named in the call is matched to a member where that is unambiguous.
+    /// </summary>
+    private async Task<List<string>> ProposeTasksAsync(AgentMeetingBot bot, Guid ownerId, MinutesDto minutes, CancellationToken ct)
     {
+        var projectId = bot.ProjectId;
         var members = await db.ProjectMembers.AsNoTracking().Where(m => m.ProjectId == projectId).Join(db.Users, m => m.UserId, u => u.Id, (m, u) => new { u.Id, u.DisplayName }).ToListAsync(ct);
         Guid? Match(string? name)
         {
@@ -327,21 +332,31 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
             var first = members.Where(m => m.DisplayName.Split(' ')[0].Equals(n.Split(' ')[0], StringComparison.OrdinalIgnoreCase)).ToList();
             return first.Count == 1 ? first[0].Id : null;
         }
-        var created = new List<string>();
-        foreach (var a in minutes.Content.ActionItems.Take(15))
+        var items = minutes.Content.ActionItems.Where(a => !string.IsNullOrWhiteSpace(a.Task)).Take(15).ToList();
+        if (items.Count == 0) return [];
+        var tenantId = ctx.RequireTenantId();
+        var now = clock.Now;
+        var run = new AgentRun { TenantId = tenantId, ProjectId = projectId, Trigger = "minutes", Status = "done", SignalCount = 0, FindingCount = items.Count,
+            Summary = AgentAnalysisService.Cut($"Action items from the minutes of {minutes.Title}.", 4000), StartedAt = now, FinishedAt = now, MeetingId = bot.MeetingId, CreatedAt = now, CreatedBy = ownerId };
+        db.AgentRuns.Add(run);
+        var proposed = new List<string>();
+        foreach (var a in items)
         {
-            DateOnly? due = DateOnly.TryParse(a.Due, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) && d >= DateOnly.FromDateTime(clock.Now) ? d : null;
-            var title = a.Task.Length > 200 ? a.Task[..200] : a.Task;
-            try
+            DateOnly? due = DateOnly.TryParse(a.Due, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) && d >= DateOnly.FromDateTime(now) ? d : null;
+            var title = AgentAnalysisService.Cut(a.Task.Trim(), 200)!;
+            db.AgentFindings.Add(new AgentFinding
             {
-                await tasks.CreateAsync(projectId, new ProjectManagement.Application.Features.Tasks.CreateTaskRequest(title,
-                    $"From the minutes of {minutes.Title}.{(a.Owner is null ? "" : $" Owner named in the call: {a.Owner}.")}{(a.Due is not null && due is null ? $" Due as said: {a.Due}." : "")}",
-                    null, Priority.Medium, Match(a.Owner), null, due, null, null, null), ct);
-                created.Add(title);
-            }
-            catch (AppException ex) { log.LogInformation("A task from the minutes could not be created: {Reason}", ex.Message); }
+                TenantId = tenantId, ProjectId = projectId, RunId = run.Id, Kind = AgentFindingKind.CreateTask, Status = AgentFindingStatus.Proposed,
+                Title = title,
+                Detail = AgentAnalysisService.Cut($"From the minutes of {minutes.Title}.{(a.Owner is null ? "" : $" Owner named in the call: {a.Owner}.")}{(a.Due is not null && due is null ? $" Due as said: {a.Due}." : "")}", 1500),
+                Evidence = AgentAnalysisService.Cut(a.Task.Trim(), 400), SourceLabel = AgentAnalysisService.Cut($"Minutes · {minutes.Title}", 200),
+                AssigneeId = Match(a.Owner), DueDate = due, Priority = Priority.Medium, Confidence = 80, Grounded = true,
+                CreatedAt = now, CreatedBy = ownerId,
+            });
+            proposed.Add(title);
         }
-        return created;
+        recorder.Audit("agent.minutes_proposed", "Project", projectId, null, new { session = bot.Id, count = proposed.Count, owner = ownerId });
+        return proposed;
     }
 
     /// <summary>The minutes, by email, to the person who sent the notetaker (through the app's own mail, so no mailbox is needed).</summary>
@@ -358,7 +373,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
         html.Append($"<h3>Summary</h3><p>{H(c.Summary)}</p>");
         if (c.Decisions.Count > 0) html.Append("<h3>Decisions</h3>").Append(Bullets(c.Decisions));
         if (c.ActionItems.Count > 0) html.Append("<h3>Action items</h3>").Append(Bullets(c.ActionItems.Select(a => a.Task + (a.Owner is null ? "" : $" — {a.Owner}") + (a.Due is null ? "" : $" (by {a.Due})"))));
-        if (created.Count > 0) html.Append($"<p><b>{created.Count} task(s) were created in the project</b> from these action items.</p>");
+        if (created.Count > 0) html.Append($"<p><b>{created.Count} task(s) were proposed to the project</b> from these action items and wait for approval in the project's agent inbox.</p>");
         if (c.Risks.Count > 0) html.Append("<h3>Risks and blockers</h3>").Append(Bullets(c.Risks));
         if (c.NextMeeting is not null) html.Append($"<p><b>Next meeting:</b> {H(c.NextMeeting)}</p>");
         var open = $"{ProjectManagement.Application.Features.Sso.PublicUrls.Web(app.Value)}/notetaker?session={bot.Id}";

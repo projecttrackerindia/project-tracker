@@ -248,6 +248,9 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
         using var res = await http.CreateClient("voice-connector").SendAsync(req, timeout.Token);
         var body = await res.Content.ReadAsStringAsync(timeout.Token);
         if (body.Length > 6000) body = body[..6000];
+        // Every outbound call the agent makes on a caller's behalf is on the record: which connector, which method, how the system answered.
+        // Never the arguments or the answer, which carry the caller's details.
+        recorder.Audit("voice.connector_called", "VoiceConnector", c.Id, null, new { c.Name, c.Method, status = (int)res.StatusCode, fields = args.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray() });
         return res.IsSuccessStatusCode ? body : $"(the API answered {(int)res.StatusCode})";
     }
 
@@ -540,6 +543,8 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var pr = Enum.TryParse<Priority>(priority, true, out var p) ? p : Priority.Medium;
         var ticket = await workTasks.CreateAsync(new CreateWorkTaskRequest(title[..Math.Min(200, title.Length)], full, typeId, null, null, pr, null, null, null), ct);
         call.WorkTaskId = ticket.Id;
+        // One ticket per call (the check above), created by the voice agent and on the record as such.
+        recorder.Audit("voice.ticket_created", "WorkTask", ticket.Id, null, new { call = call.Id, ticket.Key, priority = pr.ToString(), channel = call.Channel });
         return $"Created ticket {ticket.Key}.";
     }
 
