@@ -54,11 +54,14 @@ public class GeminiChatTests
     {
         public int Calls;
         public HttpClient CreateClient(string name) => new(this, false);
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
-                """{"model":"backup-model","message":{"role":"assistant","content":"Local answer"},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":2}""" + "\n") });
+            // The OpenAI chat-completions shape: server-sent events when a stream was asked for, one JSON answer otherwise.
+            var streamed = request.Content is not null && (await request.Content.ReadAsStringAsync(ct)).Contains("\"stream\":true");
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(streamed
+                ? "data: {\"choices\":[{\"delta\":{\"content\":\"Local answer\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}\n\ndata: [DONE]\n\n"
+                : """{"model":"backup-model","choices":[{"message":{"role":"assistant","content":"Local answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2}}""") };
         }
     }
 
