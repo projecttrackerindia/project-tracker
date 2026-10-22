@@ -64,3 +64,12 @@
 .nt-presets button:disabled { opacity: .5; cursor: default; }
 .nt-advanced summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-2); padding: 4px 0; }
 .nt-advanced[open] { display: flex; flex-direction: column; gap: 10px; }
+/* action items to tasks: who and when are filled from the call, editable, then one click each or all */
+.nt-items { display: grid; gap: 10px; }
+.nt-actions li { flex-wrap: wrap; }
+.nt-actions li.done { background: var(--surface-2); }
+.nt-item-main b { font-weight: 600; }
+.nt-actions .nt-item-who { width: 170px; height: 32px; }
+.nt-actions .nt-item-due { width: 150px; height: 32px; }
+.nt-all { justify-self: end; }
+@media (max-width: 640px) { .nt-actions .nt-item-who, .nt-actions .nt-item-due { flex: 1 1 140px; width: auto; } }

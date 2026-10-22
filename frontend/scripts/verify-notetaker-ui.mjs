@@ -18,7 +18,7 @@ const overview={settings:{projectId:'p1',autoJoin:false,autoMinutes:true,autoEma
 const sessions=[{id:'s1',projectId:'p1',projectName:'Atlas',title:'Daily stand-up',meetUrl:'https://meet.google.com/aaa-bbbb-ccc',start:iso(-5),end:iso(25),status:'in_call',workerStatus:'in_call_recording',error:null,transcriptLength:1200,hasMinutes:false,minutesStatus:null,mine:true,automatic:true},
  {id:'s2',projectId:'p1',projectName:'Atlas',title:'Client review',meetUrl:'https://meet.google.com/ddd-eeee-fff',start:iso(-240),end:iso(-180),status:'done',workerStatus:'done',error:null,transcriptLength:9000,hasMinutes:false,minutesStatus:null,mine:true,automatic:false},
  {id:'s3',projectId:'p1',projectName:'Atlas',title:'Vendor call',meetUrl:null,start:iso(-2000),end:iso(-1940),status:'failed',workerStatus:'fatal',error:'Nobody let the bot into the meeting.',transcriptLength:0,hasMinutes:false,minutesStatus:null,mine:true,automatic:false}];
-const MIN={sessionId:'s2',projectId:'p1',title:'Client review · 20 Oct 2026',status:'ready',createdAt:iso(0),sentAt:null,model:'test',content:{title:'Client review · 20 Oct 2026',summary:'The client approved the dashboard design and asked for the export by Friday.',attendees:['Ravi','Asha'],discussion:['Dashboard design walkthrough'],decisions:['Design approved'],actionItems:[{task:'Build CSV export',owner:'Asha',due:'2026-10-23'},{task:'Share UAT plan',owner:null,due:null}],risks:['Data access pending'],nextMeeting:'Monday 10 am'}};
+const MIN={sessionId:'s2',projectId:'p1',title:'Client review · 20 Oct 2026',status:'ready',createdAt:iso(0),sentAt:null,model:'test',content:{title:'Client review · 20 Oct 2026',summary:'The client approved the dashboard design and asked for the export by Friday.',attendees:['Ravi','Asha'],discussion:['Dashboard design walkthrough'],decisions:['Design approved'],actionItems:[{task:'Build CSV export',owner:'Asha',due:'2026-10-23'},{task:'Share UAT plan',owner:null,due:null},{task:'Send revised estimate',owner:'Ravi (client)',due:'Friday'}],risks:['Data access pending'],nextMeeting:'Monday 10 am'}};
 let minutes=null;
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
@@ -36,7 +36,7 @@ try{
    else if(ep==='/api/v1/me/notetaker/settings'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});overview.settings=b;data=b;}
    else if(ep==='/api/v1/me/notetaker/sessions/s2/minutes'&&method==='POST'){writes.push({ep});minutes=MIN;sessions[1].hasMinutes=true;sessions[1].minutesStatus='ready';data=MIN;}
    else if(ep==='/api/v1/me/notetaker/sessions/s2/minutes/send'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={...MIN,status:'sent',sentAt:iso(0)};}
-   else if(ep==='/api/v1/projects/p1/tasks'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data={id:'t9'};}
+   else if(ep==='/api/v1/projects/p1/tasks'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data={id:'t'+writes.length,key:'ATL-'+writes.length};}
    else if(ep==='/api/v1/me/mailbox/send'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={accepted:true,to:'ravi@client.test',cc:b.replyAll?'meena@client.test':'',subject:'Re: Portal login fix'};}
    else if(ep==='/api/v1/me/mailbox/agent/assist'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data=assist;}
    else if(ep==='/api/v1/me/mailbox/agent/compose'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={body:b.draft.trim()+'\n\nImproved.',model:'test'};}
@@ -61,7 +61,7 @@ try{
     else if(ep==='/api/v1/me/mailbox/thread'){const acc=p.get('account');const m=[...gmail,...rediff].find(x=>x.id===p.get('messageId'));data={account:acc,email:'asha@example.test',folder:'inbox',threadId:m.id,messages:[m],truncated:false};}
     else if(ep==='/api/v1/work-tasks'){const st=url.searchParams.get('status'),open=url.searchParams.get('open');let it=tasks.filter(t=>(!st||t.status===st)&&(open!=='true'||['ToDo','InProgress','OnHold'].includes(t.status)));if(url.searchParams.get('unassigned')==='true')it=it.filter(t=>!t.assignee);if(url.searchParams.get('sla')==='breached')it=it.filter(t=>t.sla?.state==='Breached');data={items:it,page:1,pageSize:25,totalPages:1,totalItems:it.length};}
     else if(ep==='/api/v1/work-types')data=[{id:'t1',name:'Production Support',description:null,order:0,isActive:true,taskCount:3},{id:'t2',name:'Analysis',description:null,order:1,isActive:true,taskCount:1}];
-    else if(ep==='/api/v1/workspace/members')data=members;
+    else if(ep==='/api/v1/workspace/members')data=[{userId:user.id,displayName:user.displayName,email:user.email,role:'Owner'},{userId:'u-ravi',displayName:'Ravi Kumar',email:'ravi@example.test',role:'Member'}];
     else if(ep==='/api/v1/operations/settings')data=settings;
     else if(ep==='/api/v1/operations/insights')data=insights;
     else if(ep==='/api/v1/work/sla')data={entitled:true,canManage:true,defaults:[{priority:'Critical',responseMinutes:30,resolutionMinutes:240},{priority:'High',responseMinutes:120,resolutionMinutes:1440},{priority:'Medium',responseMinutes:480,resolutionMinutes:4320},{priority:'Low',responseMinutes:1440,resolutionMinutes:10080}],overrides:[]};
@@ -97,8 +97,17 @@ try{
  await page.locator('.nt-session',{hasText:'Client review'}).getByRole('button',{name:/Write minutes/}).click();
  await page.getByRole('dialog').getByRole('button',{name:'Write the minutes'}).click();
  await page.locator('.nt-minutes').waitFor();assert.match(await page.locator('.nt-minutes').innerText(),/Design approved/);
- await page.locator('.nt-actions li',{hasText:'Build CSV export'}).getByRole('button',{name:'Create task'}).click();
- const t=await waitWrite(w=>w.ep==='/api/v1/projects/p1/tasks');assert.equal(t.b.title,'Build CSV export');assert.equal(t.b.dueDate,'2026-10-23');
+ // The person named in the call is matched to a member and the date said is read; both can be changed before creating.
+ assert.equal((await page.getByLabel('Assign “Build CSV export” to').innerText()).split('\n')[0].trim(),'Asha Rao');
+ assert.equal((await page.getByLabel('Assign “Send revised estimate” to').innerText()).split('\n')[0].trim(),'Ravi Kumar');
+ assert.match(await page.getByLabel('Due date for “Send revised estimate”').inputValue(),/^\d{4}-\d{2}-\d{2}$/);
+ await page.locator('.nt-actions li',{hasText:'Build CSV export'}).getByRole('button',{name:'Create'}).click();
+ const t=await waitWrite(w=>w.ep==='/api/v1/projects/p1/tasks');assert.equal(t.b.title,'Build CSV export');assert.equal(t.b.dueDate,'2026-10-23');assert.equal(t.b.assigneeId,user.id);
+ await page.locator('.nt-actions li.done',{hasText:'Build CSV export'}).waitFor();
+ await page.getByRole('button',{name:'Create all 2 tasks'}).click();
+ for(let i=0;i<30&&writes.filter(w=>w.ep==='/api/v1/projects/p1/tasks').length<3;i++)await page.waitForTimeout(100);
+ const est=writes.filter(w=>w.ep==='/api/v1/projects/p1/tasks').map(w=>w.b).find(b=>b.title==='Send revised estimate');assert.equal(est.assigneeId,'u-ravi');
+ await page.locator('.nt-actions li.done').nth(2).waitFor();
  await shot(page,'minutes-1440.png');checks.push('minutes-tasks');
  await page.getByRole('button',{name:'Email minutes'}).click();
  const mail=page.getByRole('dialog',{name:'Email the minutes'});await mail.waitFor();

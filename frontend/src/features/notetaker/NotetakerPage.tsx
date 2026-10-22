@@ -4,6 +4,8 @@ import { ApiError } from '../../api/client';
 import { integrationsApi } from '../../api/endpoints';
 import { microsoftApi } from '../../api/endpoints.platform';
 import { taskApi } from '../../api/endpoints.projects';
+import { workspaceApi } from '../../api/endpoints';
+import { matchPerson, parseDueWords } from '../../lib/quickTask';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { Modal, PageLoader, ErrorState, Spinner } from '../../components/ui';
@@ -91,7 +93,7 @@ export function NotetakerPage() {
         <ul className="nt-checks" aria-label="Readiness">
           <li className={data.botReady ? 'ok' : 'bad'}><Icon name={data.botReady ? 'checkCircle' : 'alert'} size={15} />{data.botReady ? 'Meeting bot online' : 'Meeting bot not set up'}</li>
           <li className={data.signedInAccount ? 'ok' : 'warn'}><Icon name={data.signedInAccount ? 'checkCircle' : 'info'} size={15} />
-            <span>{data.signedInAccount ? <>Joins as <b>{data.accountName}</b>, let in automatically in your company's calls</> : 'Joins as a guest: the host lets it in'}</span></li>
+            <span>{data.signedInAccount ? <>Joins as <b>{data.accountName}</b>, let in automatically in your company's calls</> : <>Joins as a guest. Google Meet often refuses guest bots: ask your administrator to add a notetaker Google account</>}</span></li>
           <li className={data.calendarConnected ? 'ok' : 'warn'}><Icon name={data.calendarConnected ? 'checkCircle' : 'info'} size={15} />
             <span>{data.calendarConnected ? 'Google Calendar connected' : <>Connect Google in <Link to="/account/integrations">Connected accounts</Link> to join calendar calls</>}</span></li>
           <li className={data.aiAvailable ? 'ok' : 'warn'}><Icon name={data.aiAvailable ? 'checkCircle' : 'info'} size={15} />{data.aiAvailable ? 'Minutes written by AI' : 'AI is off: transcripts only'}</li>
@@ -182,13 +184,80 @@ export function NotetakerPage() {
   );
 }
 
-function MinutesModal({ sessionId, session, ai, onClose }: { sessionId: string; session?: NotetakerSession; ai: boolean; onClose: () => void }) {
+/**
+ * The call's action items as tasks to approve: the person named in the call is matched to a member and the date said ("Friday",
+ * "25 Oct") is read, both editable before anything is created. One click per item or all at once; items that already have a task with
+ * the same title in the project show it instead, so opening the minutes again never makes duplicates.
+ */
+function ActionItemsToTasks({ minutes }: { minutes: Minutes }) {
   const wid = useWorkspaceId();
+  const meUser = useAuth((s) => s.ctx?.user);
+  const members = useWsQuery(['members'], workspaceApi.members, { staleTime: 300_000 });
+  const existing = useWsQuery(['tasks', 'project', minutes.projectId, 'for-minutes'], () => taskApi.listForProject(minutes.projectId, {}), { staleTime: 15_000 });
+  const people = useMemo(() => (members.data ?? []).filter((m) => m.role !== 'Guest').map((m) => ({ id: m.userId, name: m.displayName })), [members.data]);
+  const me = meUser ? { id: meUser.id, name: meUser.displayName } : undefined;
+  const base = useMemo(() => minutes.content.actionItems.map((a) => {
+    const owner = a.owner ? matchPerson(a.owner.replace(/\(.*?\)/g, '').split(/\s+/).slice(0, 2).join(' '), people, me) ?? matchPerson(a.owner.split(/\s+/)[0], people) : undefined;
+    return { title: a.task.trim().slice(0, 200), owner: a.owner, assigneeId: owner?.id ?? '', due: a.due ? parseDueWords(a.due) ?? '' : '', dueSaid: a.due };
+  }), [minutes.content.actionItems, people, me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [edits, setEdits] = useState<Record<number, { assigneeId?: string; due?: string }>>({});
+  const [made, setMade] = useState<Record<number, string>>({});
+  const [busy, setBusy] = useState<number | 'all' | null>(null);
+  const rows = base.map((r, i) => ({ ...r, ...edits[i] }));
+  const already = (title: string) => existing.data?.items.find((t) => t.title.trim().toLowerCase() === title.toLowerCase());
+  const open = rows.map((_, i) => i).filter((i) => !made[i] && !already(rows[i].title));
+
+  const create = async (i: number) => {
+    const r = rows[i];
+    const t = await taskApi.create(minutes.projectId, {
+      title: r.title, priority: 'Medium', assigneeId: r.assigneeId || null, dueDate: r.due || null,
+      description: `From the minutes of ${minutes.title}${r.owner ? `\nNamed in the call: ${r.owner}` : ''}${r.dueSaid && !r.due ? `\nDue as said: ${r.dueSaid}` : ''}`,
+    });
+    setMade((m) => ({ ...m, [i]: t.key }));
+  };
+  const one = async (i: number) => {
+    setBusy(i);
+    try { await create(i); toast('Task created.'); void invalidateWorkspace(wid, 'tasks'); }
+    catch (e) { toast(errText(e, 'Could not create the task.'), 'error'); } finally { setBusy(null); }
+  };
+  const all = async () => {
+    setBusy('all');
+    let done = 0;
+    try { for (const i of open) { await create(i); done++; } toast(`${done} task${done === 1 ? '' : 's'} created.`, 'success'); }
+    catch (e) { toast(`${done} created; then: ${errText(e, 'one could not be created.')}`, 'error'); }
+    finally { setBusy(null); void invalidateWorkspace(wid, 'tasks'); }
+  };
+
+  return (
+    <div className="nt-items">
+      <ul className="nt-actions">
+        {rows.map((r, i) => {
+          const have = made[i] ?? already(r.title)?.key;
+          return (
+            <li key={i} className={have ? 'done' : ''}>
+              <span className="nt-item-main"><b>{r.title}</b>
+                <small>{r.owner ? `Named: ${r.owner}` : 'No owner named'}{r.dueSaid && !/^\d{4}-\d{2}-\d{2}$/.test(r.dueSaid) ? ` · said “${r.dueSaid}”` : ''}</small></span>
+              {have ? <span className="nt-done"><Icon name="check" size={13} /> {have}</span> : <>
+                <Select className="select nt-item-who" aria-label={`Assign “${r.title}” to`} value={r.assigneeId} onChange={(e) => setEdits((x) => ({ ...x, [i]: { ...x[i], assigneeId: e.target.value } }))}>
+                  <option value="">Unassigned</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+                <input type="date" className="input nt-item-due" aria-label={`Due date for “${r.title}”`} value={r.due} onChange={(e) => setEdits((x) => ({ ...x, [i]: { ...x[i], due: e.target.value } }))} />
+                <button className="btn btn-sm" disabled={busy !== null} onClick={() => void one(i)}>{busy === i ? <Spinner /> : <Icon name="plus" size={13} />} Create</button>
+              </>}
+            </li>
+          );
+        })}
+      </ul>
+      {open.length > 1 && <button className="btn btn-primary btn-sm nt-all" disabled={busy !== null} onClick={() => void all()}>{busy === 'all' ? <Spinner /> : <Icon name="checks" size={14} />} Create all {open.length} tasks</button>}
+    </div>
+  );
+}
+
+function MinutesModal({ sessionId, session, ai, onClose }: { sessionId: string; session?: NotetakerSession; ai: boolean; onClose: () => void }) {
   const me = useAuth((s) => s.ctx?.user.displayName ?? '');
   const m = useWsQuery(['notetaker', 'minutes', sessionId], () => notetakerApi.minutes(sessionId));
   const [writing, setWriting] = useState(false);
   const [mail, setMail] = useState(false);
-  const [created, setCreated] = useState<Set<number>>(new Set());
   const write = async () => {
     setWriting(true);
     try { await notetakerApi.writeMinutes(sessionId); await m.refetch(); }
@@ -196,14 +265,6 @@ function MinutesModal({ sessionId, session, ai, onClose }: { sessionId: string; 
     finally { setWriting(false); }
   };
   const minutes = m.data;
-  const createTask = async (i: number, minutesRow: Minutes) => {
-    const a = minutesRow.content.actionItems[i];
-    const due = a.due && /^\d{4}-\d{2}-\d{2}$/.test(a.due) ? a.due : null;
-    try {
-      await taskApi.create(minutesRow.projectId, { title: a.task.slice(0, 200), description: `From the minutes of ${minutesRow.title}${a.owner ? `\nOwner named in the call: ${a.owner}` : ''}${a.due && !due ? `\nDue as said: ${a.due}` : ''}`, priority: 'Medium', dueDate: due });
-      setCreated((c) => new Set(c).add(i)); toast('Task created.'); void invalidateWorkspace(wid, 'tasks');
-    } catch (e) { toast(errText(e, 'Could not create the task.'), 'error'); }
-  };
   return (
     <Modal title={minutes?.title ?? session?.title ?? 'Minutes'} subtitle={session ? `${formatDateTime(session.start)} · ${session.projectName}` : undefined} onClose={onClose} size="lg"
       footer={minutes ? <>
@@ -222,11 +283,7 @@ function MinutesModal({ sessionId, session, ai, onClose }: { sessionId: string; 
           {minutes.content.attendees.length > 0 && <p className="nt-attendees"><b>Attendees:</b> {minutes.content.attendees.join(', ')}</p>}
           <h3>Summary</h3><p>{minutes.content.summary}</p>
           {minutes.content.decisions.length > 0 && <><h3>Decisions</h3><ul>{minutes.content.decisions.map((d, i) => <li key={i}>{d}</li>)}</ul></>}
-          {minutes.content.actionItems.length > 0 && <><h3>Action items</h3>
-            <ul className="nt-actions">{minutes.content.actionItems.map((a, i) => (
-              <li key={i}><span><b>{a.task}</b><small>{[a.owner, a.due && `by ${a.due}`].filter(Boolean).join(' · ') || 'No owner named'}</small></span>
-                {created.has(i) ? <span className="nt-done"><Icon name="check" size={13} /> Task created</span> : <button className="btn btn-sm" onClick={() => void createTask(i, minutes)}><Icon name="plus" size={13} /> Create task</button>}</li>
-            ))}</ul></>}
+          {minutes.content.actionItems.length > 0 && <><h3>Action items</h3><ActionItemsToTasks minutes={minutes} /></>}
           {minutes.content.discussion.length > 0 && <><h3>Discussion</h3><ul>{minutes.content.discussion.map((d, i) => <li key={i}>{d}</li>)}</ul></>}
           {minutes.content.risks.length > 0 && <><h3>Risks and blockers</h3><ul>{minutes.content.risks.map((d, i) => <li key={i}>{d}</li>)}</ul></>}
           {minutes.content.nextMeeting && <p><b>Next meeting:</b> {minutes.content.nextMeeting}</p>}

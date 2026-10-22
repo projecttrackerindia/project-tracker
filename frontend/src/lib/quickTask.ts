@@ -60,6 +60,23 @@ const DATE_RULES: Rule[] = [
   { re: new RegExp(`${LEAD}\\b(${MONTHS.join('|')})[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`, 'i'), date: (m, t) => nextDate(t, monthIndex(m[1]), Number(m[2]), m[3] ? Number(m[3]) : undefined) },
 ];
 
+/** The member a name refers to: the full name, then a first name, then (3+ letters) the start of a name; "me" is the person typing. */
+export function matchPerson(words: string, people: QuickPerson[], me?: QuickPerson): QuickPerson | undefined {
+  const w = words.trim().toLowerCase();
+  if (!w) return undefined;
+  if (me && (w === 'me' || w === 'myself')) return me;
+  const named = [...people].sort((a, b) => b.name.length - a.name.length);
+  return named.find((p) => p.name.toLowerCase() === w)
+    ?? named.find((p) => p.name.toLowerCase().split(/\s+/)[0] === w)
+    ?? (w.length >= 3 ? named.find((p) => p.name.toLowerCase().startsWith(w)) : undefined);
+}
+
+/** A date said in words ("Friday", "25 Oct", "next week") as yyyy-mm-dd, or undefined. */
+export function parseDueWords(words: string, today: Date = new Date()): string | undefined {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(words.trim())) return words.trim();
+  return parseQuickTask(`x by ${words}`, [], today).dueDate;
+}
+
 export type QuickPart = 'estimate' | 'priority' | 'due' | 'assignee';
 
 /** `skip`: parts the person dismissed in the preview; their words stay in the title. */
@@ -91,14 +108,7 @@ export function parseQuickTask(text: string, people: QuickPerson[] = [], today: 
   }
 
   // Who: "@ravi", "for Ravi", "assign to Ravi Kumar", "to me". Longest matching name wins (so "Ravi Kumar" beats "Ravi").
-  const named = [...people].sort((a, b) => b.name.length - a.name.length);
-  const findPerson = (words: string): QuickPerson | undefined => {
-    const w = words.toLowerCase();
-    if (me && (w === 'me' || w === 'myself')) return me;
-    return named.find((p) => p.name.toLowerCase() === w)
-      ?? named.find((p) => p.name.toLowerCase().split(/\s+/)[0] === w)
-      ?? (w.length >= 3 ? named.find((p) => p.name.toLowerCase().startsWith(w)) : undefined);
-  };
+  const findPerson = (words: string) => matchPerson(words, people, me);
   const who = skip.has('assignee') ? null : rest.match(/(?:@([\w.-]+(?:\s[\w.-]+)?)|\b(?:assign(?:ed)?\s+to|for|to(?=\s+me\b))\s+([A-Za-z][\w.-]*(?:\s[A-Za-z][\w.-]*)?))/i);
   if (who) {
     const raw = (who[1] ?? who[2]).trim();
