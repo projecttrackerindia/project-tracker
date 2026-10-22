@@ -42,8 +42,8 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
   const [joining, setJoining] = useState(false);
   const refresh = () => { void invalidateWorkspace(wid, 'agent'); };
 
-  if (q.isLoading) return <PageLoader />;
-  if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
+  // A failed background refresh keeps what is on screen (and any open dialog); only a first load that fails shows the error.
+  if (!q.data) return q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : <PageLoader />;
   const a = q.data;
   const manage = a.canManage && !archived;
 
