@@ -32,7 +32,9 @@ public partial class AppDbContext
             e.HasIndex(x => new { x.TenantId, x.TypeId });
             e.HasIndex(x => new { x.TenantId, x.OwnerId });
             e.HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAt });
+            e.HasIndex(x => new { x.TenantId, x.ParentId, x.PageOrder });
             e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Icon).HasMaxLength(16);
             e.Property(x => x.Revision).IsConcurrencyToken();
             e.Property(x => x.ApiHash).HasMaxLength(64);
             e.HasOne(x => x.Type).WithMany().HasForeignKey(x => x.TypeId).OnDelete(DeleteBehavior.Restrict);

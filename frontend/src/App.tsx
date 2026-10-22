@@ -1,9 +1,10 @@
 import { createContext, lazy, Suspense, useContext, useEffect, useReducer, useRef, useState, type ComponentType } from 'react';
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { orgFromPath, firstSegment } from './lib/orgPath';
 import { setTitleParts } from './lib/title';
 import { ApiError } from './api/client';
-import { consentApi, meApi } from './api/endpoints';
+import { consentApi, meApi, taskApi } from './api/endpoints';
+import { useWsQuery } from './lib/hooks';
 import type { ConsentDocument } from './api/types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Icon } from './components/Icon';
@@ -251,6 +252,15 @@ function LegacyDocuments() {
   return <Navigate to={project ? `/doctracker?p=${encodeURIComponent(project)}&t=documents` : '/doctracker'} replace />;
 }
 
+/** A task by id alone (a #task mention in a document): look up its project and open it there. */
+function TaskLink() {
+  const { id = '' } = useParams();
+  const q = useWsQuery(['tasks', id, 'link'], () => taskApi.get(id), { retry: false });
+  if (q.data) return <Navigate to={`/projects/${q.data.task.projectId}?task=${id}`} replace />;
+  if (q.isError) return <Navigate to="/" replace />;
+  return <PageLoader />;
+}
+
 function Guard({ allow, children }: { allow: boolean; children: React.ReactNode }) {
   return allow ? <>{children}</> : <Navigate to="/" replace />;
 }
@@ -371,6 +381,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="doctracker" element={<Guard allow={mDocuments}><DocTrackerPage /></Guard>} />
         <Route path="documents" element={<Guard allow={mDocuments}><LegacyDocuments /></Guard>} />
         <Route path="documents/:id" element={<Guard allow={mDocuments}><DocumentPage /></Guard>} />
+        <Route path="tasks/:id" element={<TaskLink />} />
         {/* Insights */}
         <Route path="workload" element={<Guard allow={!personal && (hasReports || broad)}><WorkloadPage /></Guard>} />
         <Route path="workload/capacity" element={<Guard allow={!personal && (hasReports || broad)}><WorkloadPage section="capacity" /></Guard>} />

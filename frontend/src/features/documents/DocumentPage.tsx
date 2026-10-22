@@ -30,6 +30,8 @@ import { SectionEditor } from './SectionEditor';
 import { DocShell } from './DocumentsSidebar';
 import { DtTreeStandalone } from '../doctracker/DocTrackerPage';
 import { CLASSIFICATION, ClassificationBadge, DocStatusBadge, TypeCode, VISIBILITY } from './docUi';
+import { PageView } from './PageView';
+import { PAGE_CODE } from './pages';
 
 /** Whether a section has anything in it (a table: a row; text: a word, a picture, a list item or a diagram). Reading hides sections that have nothing yet. */
 function hasContent(kind: string, value: string): boolean {
@@ -194,6 +196,8 @@ function DocumentView() {
     setMode('edit'); if (tab !== 'doc' && tab !== 'api') setTab('doc');
   };
   const masked = q.data?.maskedCount ?? 0;
+  // A page (free-form, nestable) opens in the page view; one holding masked personal data stays here, where reveals are audited.
+  if (d.typeCode === PAGE_CODE && masked === 0 && !plain) return <PageView detail={detail} canEdit={canEdit} />;
   const shownSections = editable ? detail.sections : detail.sections.filter((s) => hasContent(s.kind, edits[s.key] ?? s.content));
   const set = (key: string, v: string) => setEdits((x) => {
     const orig = detail.sections.find((s) => s.key === key)?.content;

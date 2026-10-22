@@ -15,8 +15,10 @@ public static class SectionContent
     public const int MaxChars = 200_000, MaxNodes = 20_000, MaxDepth = 14, MaxColumns = 12, MaxRows = 500, MaxCell = 2000;
     private const string Empty = """{"type":"doc","content":[{"type":"paragraph"}]}""";
 
-    private static readonly HashSet<string> Blocks = ["doc", "paragraph", "heading", "bulletList", "orderedList", "listItem", "blockquote", "codeBlock", "horizontalRule", "table", "tableRow", "tableCell", "tableHeader", "taskList", "taskItem", "docImage", "archDiagram"];
-    private static readonly HashSet<string> Inline = ["text", "hardBreak"];
+    private static readonly HashSet<string> Blocks = ["doc", "paragraph", "heading", "bulletList", "orderedList", "listItem", "blockquote", "codeBlock", "horizontalRule", "table", "tableRow", "tableCell", "tableHeader", "taskList", "taskItem", "docImage", "archDiagram", "callout"];
+    private static readonly HashSet<string> Inline = ["text", "hardBreak", "mention"];
+    private static readonly HashSet<string> MentionKinds = ["person", "task", "page"];
+    private static readonly HashSet<string> CalloutTones = ["info", "warning", "success", "danger"];
     private static readonly HashSet<string> Marks = ["bold", "italic", "underline", "strike", "code", "link", "highlight"];
     private static readonly string[] SafeLinks = ["http://", "https://", "mailto:", "/", "#"];
 
@@ -80,6 +82,17 @@ public static class SectionContent
             return o;
         }
 
+        if (type == "mention")
+        {
+            // @person, #task or [[page]]: who or what it points to by id, and the words shown. Never an address or markup.
+            var kind = node["attrs"]?["kind"] is JsonValue kv && kv.TryGetValue<string>(out var ks) ? ks : "";
+            var mid = node["attrs"]?["id"] is JsonValue iv && iv.TryGetValue<string>(out var ids) ? ids.Trim() : "";
+            var label = node["attrs"]?["label"] is JsonValue lv2 && lv2.TryGetValue<string>(out var ls) ? ls.Trim() : "";
+            if (!MentionKinds.Contains(kind) || mid.Length is 0 or > 64 || !mid.All(c => char.IsLetterOrDigit(c) || c == '-') || label.Length == 0) return null;
+            o["attrs"] = new JsonObject { ["kind"] = kind, ["id"] = mid, ["label"] = label.Length > 120 ? label[..120] : label };
+            return o;
+        }
+
         if (type == "archDiagram")
         {
             // A diagram from Architecture Studio: rebuilt from known fields with limits (ArchDiagram.Clean).
@@ -91,6 +104,7 @@ public static class SectionContent
         var attrs = new JsonObject();
         if (node["attrs"] is JsonObject a)
         {
+            if (type == "callout") attrs["tone"] = a["tone"] is JsonValue tov && tov.TryGetValue<string>(out var tone) && CalloutTones.Contains(tone) ? tone : "info";
             if (type == "heading") attrs["level"] = a["level"] is JsonValue lv && lv.TryGetValue<int>(out var lvl) ? Math.Clamp(lvl, 1, 4) : 2;
             if (type == "orderedList" && a["start"] is JsonValue sv && sv.TryGetValue<int>(out var start)) attrs["start"] = Math.Clamp(start, 1, 100_000);
             if (type == "taskItem") attrs["checked"] = a["checked"] is JsonValue cv && cv.TryGetValue<bool>(out var chk) && chk;
@@ -100,6 +114,7 @@ public static class SectionContent
                     if (a[n] is JsonValue nv && nv.TryGetValue<int>(out var span)) attrs[n] = Math.Clamp(span, 1, 20);
         }
         if (type == "heading" && attrs["level"] is null) attrs["level"] = 2;
+        if (type == "callout" && attrs["tone"] is null) attrs["tone"] = "info";
         if (attrs.Count > 0) o["attrs"] = attrs;
 
         if (node["content"] is JsonArray children)
@@ -155,6 +170,7 @@ public static class SectionContent
                 {
                     case JsonObject o:
                         if (o["text"] is JsonValue t && t.TryGetValue<string>(out var s)) sb.Append(s).Append(' ');
+                        if (o["type"] is JsonValue mt && mt.TryGetValue<string>(out var ms) && ms == "mention" && o["attrs"]?["label"] is JsonValue ml && ml.TryGetValue<string>(out var label)) sb.Append(label).Append(' ');
                         foreach (var kv in o) if (kv.Key is "content" or "rows") Walk(kv.Value);
                         if (kind == SectionKind.Table && o["columns"] is null) foreach (var kv in o) if (kv.Value is JsonValue v && v.TryGetValue<string>(out var cell)) sb.Append(cell).Append(' ');
                         break;

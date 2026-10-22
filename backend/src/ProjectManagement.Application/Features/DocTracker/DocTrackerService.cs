@@ -16,7 +16,8 @@ namespace ProjectManagement.Application.Features.DocTracker;
 public record DtEndpoint(Guid Id, Guid DocumentId, Guid DefinitionId, string Definition, string Method, string Path, string Summary, string? Tag, bool Deprecated,
     int Score, IReadOnlyList<string> Gaps, string Stage, DateTime? UpdatedAt);
 public record DtDefinition(Guid Id, Guid DocumentId, string Name, string? Version, string Stage, string Auth, IReadOnlyList<string> Servers);
-public record DtDocument(Guid Id, string Key, string Title, string TypeCode, string TypeName, string TypeColor, DocumentStatus Status, DocumentClassification Classification, DateTime UpdatedAt, bool IsApi);
+public record DtDocument(Guid Id, string Key, string Title, string TypeCode, string TypeName, string TypeColor, DocumentStatus Status, DocumentClassification Classification, DateTime UpdatedAt, bool IsApi,
+    Guid? ParentId = null, int PageOrder = 0, string? Icon = null);
 public record DtProject(Guid? Id, string? Key, string Name, IReadOnlyList<DtEndpoint> Endpoints, IReadOnlyList<DtDefinition> Definitions, IReadOnlyList<DtDocument> Documents, int Diagrams);
 public record DtCatalog(IReadOnlyList<DtProject> Projects, bool CanCreate, bool IsAdmin, int Truncated);
 public record DtDiagram(string Key, string Title, string Kind, JsonNode Data);
@@ -46,7 +47,7 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var docs = await (from d in db.Documents.AsNoTracking()
                           join t in db.DocumentTypes.AsNoTracking() on d.TypeId equals t.Id
                           where d.Status != DocumentStatus.Archived
-                          select new { d.Id, d.Number, d.Title, d.ProjectId, d.Status, d.Classification, Updated = d.UpdatedAt ?? d.CreatedAt, t.Code, t.Name, t.Color }).Take(5000).ToListAsync(ct);
+                          select new { d.Id, d.Number, d.Title, d.ProjectId, d.Status, d.Classification, Updated = d.UpdatedAt ?? d.CreatedAt, t.Code, t.Name, t.Color, d.ParentId, d.PageOrder, d.Icon }).Take(5000).ToListAsync(ct);
         var docIds = docs.Select(d => d.Id).ToList();
         var defs = await db.ApiDefinitions.AsNoTracking().Where(x => docIds.Contains(x.DocumentId)).OrderBy(x => x.SortOrder).ToListAsync(ct);
         var apiDocIds = defs.Select(x => x.DocumentId).Distinct().ToList();
@@ -89,7 +90,7 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
             return new DtProject(pid, key, name,
                 endpoints.Where(e => mineIds.Contains(e.Doc)).Select(ToEp).OrderBy(e => e.Tag ?? "~").ThenBy(e => e.Path).ToList(),
                 defs.Where(x => mineIds.Contains(x.DocumentId)).Select(x => new DtDefinition(x.Id, x.DocumentId, x.Name, x.Version, x.Stage.ToString(), x.Auth.ToString(), ApiJson.ReadServers(x.ServersJson))).ToList(),
-                mine.OrderByDescending(d => d.Updated).Select(d => new DtDocument(d.Id, DocumentService.KeyOf(d.Number), d.Title, d.Code, d.Name, d.Color, d.Status, d.Classification, d.Updated, apiDocIds.Contains(d.Id))).ToList(),
+                mine.OrderByDescending(d => d.Updated).Select(d => new DtDocument(d.Id, DocumentService.KeyOf(d.Number), d.Title, d.Code, d.Name, d.Color, d.Status, d.Classification, d.Updated, apiDocIds.Contains(d.Id), d.ParentId, d.PageOrder, d.Icon)).ToList(),
                 Diagrams(pid ?? Guid.Empty));
         }
         var list = projects.Select(p => Build(p.Id, p.Key, p.Name)).ToList();

@@ -636,7 +636,11 @@ export interface DocumentItem {
   projectId: string | null; projectKey: string | null; projectName: string | null; teamId: string | null; teamName: string | null;
   owner: UserRef; status: DocumentStatus; visibility: DocumentVisibility; classification: DocumentClassification; tags: string[]; updatedAt: string; createdAt: string; linkedCount: number;
   versionLabel: string; sharedCount: number;
+  /** Pages: the page this one sits under, its place among siblings, and its emoji. */
+  parentId?: string | null; pageOrder?: number; icon?: string | null;
 }
+/** A page that links to another with [[ ]]. */
+export interface Backlink { id: string; key: string; title: string; typeCode: string; typeColor: string; icon: string | null; projectId: string | null }
 export interface DocumentPage { items: DocumentItem[]; nextCursor: string | null; total: number | null }
 export interface DocumentSection { key: string; title: string; kind: SectionKind; sortOrder: number; content: string }
 export interface DocumentDetail {
@@ -754,7 +758,8 @@ export interface EndpointDetail { item: EndpointItem; details: EndpointDetails; 
 // ---- DocTracker: every project's APIs (scored), documents and architecture
 export interface DtEndpoint { id: string; documentId: string; definitionId: string; definition: string; method: ApiMethod; path: string; summary: string; tag: string | null; deprecated: boolean; score: number; gaps: string[]; stage: ApiStage; updatedAt: string | null }
 export interface DtDefinition { id: string; documentId: string; name: string; version: string | null; stage: ApiStage; auth: ApiAuthScheme; servers: string[] }
-export interface DtDocument { id: string; key: string; title: string; typeCode: string; typeName: string; typeColor: string; status: DocumentStatus; classification: DocumentClassification; updatedAt: string; isApi: boolean }
+export interface DtDocument { id: string; key: string; title: string; typeCode: string; typeName: string; typeColor: string; status: DocumentStatus; classification: DocumentClassification; updatedAt: string; isApi: boolean;
+  parentId?: string | null; pageOrder?: number; icon?: string | null }
 export interface DtProject { id: string | null; key: string | null; name: string; endpoints: DtEndpoint[]; definitions: DtDefinition[]; documents: DtDocument[]; diagrams: number }
 export interface DtCatalog { projects: DtProject[]; canCreate: boolean; isAdmin: boolean; truncated: number }
 export interface DtDiagram { key: string; title: string; kind: 'architecture' | 'flow'; data: { nodes: unknown[]; edges: unknown[] } }

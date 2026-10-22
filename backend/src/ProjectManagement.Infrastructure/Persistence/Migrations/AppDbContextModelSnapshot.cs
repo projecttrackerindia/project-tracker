@@ -3355,6 +3355,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("DraftVersionId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Icon")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
@@ -3362,6 +3366,12 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PageOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ParentId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("ProjectId")
@@ -3426,6 +3436,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "OwnerId");
 
                     b.HasIndex("TenantId", "TypeId");
+
+                    b.HasIndex("TenantId", "ParentId", "PageOrder");
 
                     b.HasIndex("TenantId", "ProjectId", "UpdatedAt");
 

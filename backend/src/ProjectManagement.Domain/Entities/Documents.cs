@@ -77,6 +77,13 @@ public class Document : TenantEntity, ITenantScoped, ISoftDelete
     /// <summary>The project the document belongs to. Null for general documents (policies, process descriptions) that belong to a team or the whole organization.</summary>
     public Guid? ProjectId { get; set; }
     public Guid? TeamId { get; set; }
+    /// <summary>The page this one sits under (pages nest like a book's chapters). Null for a top-level document. Always in the same project
+    /// (or both general); checked in the service, not by a foreign key, so deleting a parent moves its children up instead of failing.</summary>
+    public Guid? ParentId { get; set; }
+    /// <summary>Position among the pages that share a parent; lower first, then by title.</summary>
+    public int PageOrder { get; set; }
+    /// <summary>An emoji shown before the title (a page's look); null shows the type's code.</summary>
+    public string? Icon { get; set; }
     public Guid OwnerId { get; set; }
     public DocumentStatus Status { get; set; } = DocumentStatus.Draft;
     public DocumentVisibility Visibility { get; set; } = DocumentVisibility.Project;

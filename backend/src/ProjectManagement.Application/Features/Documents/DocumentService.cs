@@ -18,7 +18,7 @@ public record DocumentCan(bool Edit, bool Delete, bool Link, bool Share = false,
 public record DocumentItemDto(Guid Id, string Key, int Number, string Title, Guid TypeId, string TypeCode, string TypeName, string TypeColor, string TypeIcon,
     Guid? ProjectId, string? ProjectKey, string? ProjectName, Guid? TeamId, string? TeamName, UserRefDto Owner, DocumentStatus Status, DocumentVisibility Visibility,
     IReadOnlyList<string> Tags, DateTime UpdatedAt, DateTime CreatedAt, int LinkedCount, DocumentClassification Classification = DocumentClassification.Internal,
-    string VersionLabel = "Draft", int SharedCount = 0);
+    string VersionLabel = "Draft", int SharedCount = 0, Guid? ParentId = null, int PageOrder = 0, string? Icon = null);
 public record DocumentPageDto(IReadOnlyList<DocumentItemDto> Items, string? NextCursor, int? Total);
 public record SectionDto(string Key, string Title, SectionKind Kind, int SortOrder, string Content);
 /// <param name="MaskedCount">How many personal or secret values were masked in what is sent (0 when nothing was, or for a revealed copy).</param>
@@ -30,7 +30,12 @@ public record DocumentRevealRequest(string? Reason, string? Purpose);
 
 public record SectionInput(string Key, string? Content);
 public record CreateDocumentRequest(string Title, Guid TypeId, Guid? ProjectId = null, Guid? TeamId = null, DocumentVisibility? Visibility = null,
-    IReadOnlyList<string>? Tags = null, IReadOnlyList<SectionInput>? Sections = null, DocumentClassification? Classification = null);
+    IReadOnlyList<string>? Tags = null, IReadOnlyList<SectionInput>? Sections = null, DocumentClassification? Classification = null, Guid? ParentId = null, string? Icon = null);
+/// <summary>Where a page sits: under <see cref="ParentId"/> (null = top level) at <see cref="PageOrder"/> among its siblings.</summary>
+public record PlaceDocumentRequest(Guid? ParentId, int PageOrder);
+public record DocumentIconRequest(string? Icon);
+/// <summary>A page that mentions this one (a [[link]] in its text).</summary>
+public record BacklinkDto(Guid Id, string Key, string Title, string TypeCode, string TypeColor, string? Icon, Guid? ProjectId);
 public record UpdateDocumentRequest(string Title, DocumentVisibility Visibility, IReadOnlyList<string>? Tags, Guid? OwnerId, int Revision, Guid? TeamId = null,
     DocumentClassification? Classification = null);
 public record SaveSectionsRequest(int Revision, IReadOnlyList<SectionInput> Sections);
@@ -259,7 +264,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 r.ProjectId, pr?.Key, pr?.Name, teamId, teamId is { } tid ? teams.GetValueOrDefault(tid) : null,
                 new UserRefDto(r.OwnerId, owners.GetValueOrDefault(r.OwnerId) ?? "Former member"), r.Status, r.Visibility,
                 tags.GetValueOrDefault(r.Id) ?? [], r.UpdatedAt ?? r.CreatedAt, r.CreatedAt, linked.GetValueOrDefault(r.Id), r.Classification,
-                versionLabel, sharedCounts.GetValueOrDefault(r.Id));
+                versionLabel, sharedCounts.GetValueOrDefault(r.Id), r.ParentId, r.PageOrder, r.Icon);
         }).ToList();
     }
 
@@ -343,17 +348,26 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var count = await db.Documents.IgnoreQueryFilters().CountAsync(d => d.TenantId == tid && !d.IsDeleted, ct);
         await entitlements.EnsureWithinLimitAsync(FeatureKeys.DocumentLimit, count, 1, ct);
 
-        Project? project = null; Guid? teamId = req.TeamId;
-        if (req.ProjectId is { } pid) { project = await access.GetProjectAsync(pid, ct); teamId = project.TeamId; }
-        var visibility = await ResolveVisibilityAsync(req.Visibility, project, teamId, ct);
-        var classification = req.Classification ?? DocumentClassification.Internal;
+        // A page made inside another lives where its parent lives: same project (or both general), same team and, unless asked, same visibility.
+        Document? parent = null;
+        if (req.ParentId is { } parentId)
+        {
+            parent = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == parentId, ct) ?? throw new ValidationException("parentId", "The page to put this one in was not found.");
+            if (req.ProjectId is { } asked && asked != parent.ProjectId) throw new ValidationException("parentId", "A page inside another must be in the same project.");
+        }
+        Project? project = null; Guid? teamId = parent is null ? req.TeamId : parent.TeamId;
+        var projectId = parent is null ? req.ProjectId : parent.ProjectId;
+        if (projectId is { } pid) { project = await access.GetProjectAsync(pid, ct); teamId = project.TeamId; }
+        var visibility = await ResolveVisibilityAsync(req.Visibility ?? parent?.Visibility, project, teamId, ct);
+        var classification = req.Classification ?? parent?.Classification ?? DocumentClassification.Internal;
+        var pageOrder = parent is null ? 0 : (await db.Documents.Where(d => d.ParentId == parent.Id).MaxAsync(d => (int?)d.PageOrder, ct) ?? -1) + 1;
 
         var now = clock.Now;
         var doc = new Document
         {
             TenantId = tid, Title = title, TypeId = type.Id, ProjectId = project?.Id, TeamId = project is null ? teamId : null, OwnerId = uid,
             Visibility = visibility, Classification = classification, Status = DocumentStatus.Draft, CreatedAt = now, UpdatedAt = now, CreatedBy = uid,
-            Number = await NextNumberAsync(tid, ct),
+            Number = await NextNumberAsync(tid, ct), ParentId = parent?.Id, PageOrder = pageOrder, Icon = CleanIcon(req.Icon),
         };
         var version = new DocumentVersion { TenantId = tid, DocumentId = doc.Id, Major = 0, Minor = 0, IsDraft = true, CreatedAt = now, CreatedBy = uid };
         var given = (req.Sections ?? []).Where(s => !string.IsNullOrEmpty(s.Key)).GroupBy(s => s.Key).ToDictionary(g => g.Key, g => g.Last().Content);
@@ -457,7 +471,10 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (hash != version.ContentHash) await workflows.OnContentChangedAsync(doc, ct);
         version.ContentHash = hash; version.UpdatedAt = now;
         Touch(doc);
-        recorder.Activity("document.edited", "Document", doc.Id, $"Edited {KeyOf(doc.Number)} \"{doc.Title}\"", doc.ProjectId);
+        // Autosave saves every few seconds: the activity feed says "edited" once per person per document per 10 minutes, not per save.
+        var since = now.AddMinutes(-10);
+        var recentlyNoted = await db.Activities.AsNoTracking().AnyAsync(a => a.EntityId == doc.Id && a.ActorId == ctx.UserId && a.Action == "document.edited" && a.CreatedAt >= since, ct);
+        if (!recentlyNoted) recorder.Activity("document.edited", "Document", doc.Id, $"Edited {KeyOf(doc.Number)} \"{doc.Title}\"", doc.ProjectId);
         recorder.Audit("document.edited", "Document", doc.Id, null, new { sections = req.Sections.Select(x => x.Key), hash });   // which sections, never the words
         await SaveAsync(ct);
         if (doc.PublishedVersionId is null) await indexer.IndexAsync(doc.Id, ct);   // readers see the draft until there is a published version
@@ -485,9 +502,78 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var doc = await db.Documents.FirstOrDefaultAsync(d => d.Id == id, ct) ?? throw new NotFoundException("Document not found.");
         if (!(await CanAsync(doc, ct)).Delete) throw new ForbiddenException("You cannot delete this document.", "PERMISSION_DENIED");
         doc.IsDeleted = true; doc.DeletedAt = clock.Now; doc.DeletedBy = ctx.UserId;
+        // Its pages are not lost with it: they move up to where it was.
+        foreach (var child in await db.Documents.IgnoreQueryFilters().Where(d => d.TenantId == doc.TenantId && d.ParentId == doc.Id).ToListAsync(ct)) child.ParentId = doc.ParentId;
         recorder.Activity("document.deleted", "Document", doc.Id, $"Deleted {KeyOf(doc.Number)} \"{doc.Title}\"", doc.ProjectId);
         recorder.Audit("document.deleted", "Document", doc.Id, new { doc.Number, doc.Title });
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Moves a page: under another page of the same project (or both general), or to the top level, at a position among its siblings. A page
+    /// cannot go inside itself or one of its own pages. The siblings are renumbered so the order stays clean.
+    /// </summary>
+    public async Task<DocumentDto> PlaceAsync(Guid id, PlaceDocumentRequest req, CancellationToken ct = default)
+    {
+        var doc = await RequireEditableAsync(id, ct);
+        if (req.ParentId is { } pid)
+        {
+            if (pid == doc.Id) throw new ValidationException("parentId", "A page cannot go inside itself.");
+            var parent = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == pid, ct) ?? throw new ValidationException("parentId", "The page to move this one into was not found.");
+            if (parent.ProjectId != doc.ProjectId) throw new ValidationException("parentId", "A page can only move inside a page of the same project.");
+            // Walk up from the new parent: meeting this page means the move would make a loop.
+            var up = parent.ParentId;
+            for (var depth = 0; up is { } u && depth < 100; depth++)
+            {
+                if (u == doc.Id) throw new ValidationException("parentId", "A page cannot go inside one of its own pages.");
+                up = await db.Documents.AsNoTracking().Where(d => d.Id == u).Select(d => d.ParentId).FirstOrDefaultAsync(ct);
+            }
+        }
+        var siblings = await db.Documents.Where(d => d.ParentId == req.ParentId && d.ProjectId == doc.ProjectId && d.Id != doc.Id).OrderBy(d => d.PageOrder).ThenBy(d => d.Title).ToListAsync(ct);
+        var at = Math.Clamp(req.PageOrder, 0, siblings.Count);
+        siblings.Insert(at, doc);
+        for (var i = 0; i < siblings.Count; i++) siblings[i].PageOrder = i;
+        var moved = doc.ParentId != req.ParentId;
+        doc.ParentId = req.ParentId;
+        Touch(doc);
+        if (moved) recorder.Activity("document.moved", "Document", doc.Id, $"Moved {KeyOf(doc.Number)} \"{doc.Title}\"", doc.ProjectId);
+        await SaveAsync(ct);
+        return await GetAsync(id, ct);
+    }
+
+    public async Task<DocumentDto> SetIconAsync(Guid id, DocumentIconRequest req, CancellationToken ct = default)
+    {
+        var doc = await RequireEditableAsync(id, ct);
+        doc.Icon = CleanIcon(req.Icon);
+        Touch(doc);
+        await SaveAsync(ct);
+        return await GetAsync(id, ct);
+    }
+
+    /// <summary>An emoji (or short symbol) for a page: up to 16 characters with no letters or digits, so it can never carry text or markup.</summary>
+    private static string? CleanIcon(string? icon)
+    {
+        var v = icon?.Trim();
+        if (string.IsNullOrEmpty(v)) return null;
+        if (v.Length > 16 || v.Any(c => char.IsLetterOrDigit(c) || c is '<' or '>' or '&' or '"' or '\'')) throw new ValidationException("icon", "Choose an emoji for the icon.");
+        return v;
+    }
+
+    /// <summary>
+    /// The pages that link to this one: a [[page]] mention of it in their current text. Only pages the person may open are listed (the
+    /// document filter applies), and only their newest text counts.
+    /// </summary>
+    public async Task<IReadOnlyList<BacklinkDto>> BacklinksAsync(Guid id, CancellationToken ct = default)
+    {
+        _ = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id, ct) ?? throw new NotFoundException("Document not found.");
+        var needle = $"\"id\":\"{id}\"";
+        var rows = await (from d in db.Documents.AsNoTracking()
+                          join s in db.DocumentSections.AsNoTracking() on d.DraftVersionId equals s.VersionId
+                          join t in db.DocumentTypes.AsNoTracking() on d.TypeId equals t.Id
+                          where d.Id != id && s.ContentJson.Contains(needle) && s.ContentJson.Contains("\"mention\"")
+                          select new { d.Id, d.Number, d.Title, t.Code, t.Color, d.Icon, d.ProjectId, Updated = d.UpdatedAt ?? d.CreatedAt })
+            .Distinct().OrderByDescending(x => x.Updated).Take(50).ToListAsync(ct);
+        return rows.Select(r => new BacklinkDto(r.Id, KeyOf(r.Number), r.Title, r.Code, r.Color, r.Icon, r.ProjectId)).ToList();
     }
 
     /// <summary>Deleted documents can be brought back for 30 days, by whoever deleted them and by the organization's owners and admins.</summary>

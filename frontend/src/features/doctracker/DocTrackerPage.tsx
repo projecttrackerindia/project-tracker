@@ -16,6 +16,7 @@ import { DtSecurity } from './DtSecurity';
 import { WorkflowsModal } from '../documents/DocumentWorkflows';
 import { RequiredDocumentsModal } from '../documents/NeedsAttention';
 import { DocumentWizard } from '../documents/DocumentWizard';
+import { pageTree, useNewPage } from '../documents/pages';
 import './doctracker.css';
 
 export const GENERAL = 'general';
@@ -168,7 +169,7 @@ function DtTree({ catalog, activeDocId }: { catalog: DtCatalog; activeDocId?: st
         <>
           <div className="ds-rail-heading">Projects</div>
           <ul className="ds-rail-list ds-rail-projects ds-tree-projects">
-            {catalog.projects.map((p) => <ProjectNode key={pid(p)} p={p} activeDocId={activeDocId} />)}
+            {catalog.projects.map((p) => <ProjectNode key={pid(p)} p={p} activeDocId={activeDocId} canCreate={catalog.canCreate} />)}
           </ul>
         </>
       )}
@@ -176,7 +177,7 @@ function DtTree({ catalog, activeDocId }: { catalog: DtCatalog; activeDocId?: st
   );
 }
 
-function ProjectNode({ p, activeDocId }: { p: DtProject; activeDocId?: string }) {
+function ProjectNode({ p, activeDocId, canCreate }: { p: DtProject; activeDocId?: string; canCreate: boolean }) {
   const nav = useDtNav();
   const id = pid(p);
   const hasDoc = !!activeDocId && p.documents.some((d) => d.id === activeDocId);
@@ -210,7 +211,7 @@ function ProjectNode({ p, activeDocId }: { p: DtProject; activeDocId?: string })
             {sub('overview', 'Overview', 'dashboard')}
             {sub('architecture', 'Architecture', 'workflow', p.diagrams)}
           </ul></li>
-          {p.documents.length > 0 && <DocGroup projectId={id} docs={p.documents} activeDocId={activeDocId} />}
+          {(p.documents.length > 0 || canCreate) && <DocGroup projectId={id} realProjectId={p.id} docs={p.documents} activeDocId={activeDocId} canCreate={canCreate} />}
           {tags.map(([tag, eps]) => <TagGroup key={tag} projectId={id} tag={tag} eps={eps} />)}
           {p.endpoints.length === 0 && <li className="ds-rail-empty">No endpoints yet.</li>}
         </ul>
@@ -248,27 +249,51 @@ function TagGroup({ projectId, tag, eps }: { projectId: string; tag: string; eps
   );
 }
 
-function DocGroup({ projectId, docs, activeDocId }: { projectId: string; docs: DtProject['documents']; activeDocId?: string }) {
+function DocGroup({ projectId, realProjectId, docs, activeDocId, canCreate }: { projectId: string; realProjectId: string | null; docs: DtProject['documents']; activeDocId?: string; canCreate: boolean }) {
   const key = `pm_dt_docs:${projectId}`;
   const hasActive = !!activeDocId && docs.some((d) => d.id === activeDocId);
   const [closed, setClosed] = useState(() => store.get(key) !== '1');
   useEffect(() => { if (hasActive) setClosed(false); }, [hasActive]);
+  const tree = useMemo(() => pageTree(docs), [docs]);
+  const newPage = useNewPage();
   return (
     <li className={`ds-type${closed ? '' : ' open'}`}>
-      <button type="button" className="ds-type-head" aria-expanded={!closed} onClick={() => setClosed((c) => { store.set(key, c ? '1' : '0'); return !c; })}>
-        <Icon name="note" size={11} /><span className="ds-type-name">Documents</span><span className="ds-rail-count soft">{docs.length}</span><Icon name="chevronR" size={11} />
-      </button>
-      {!closed && (
-        <ul className="ds-tree-docs">
-          {docs.map((d) => (
-            <li key={d.id} className={`ds-doc${d.id === activeDocId ? ' active' : ''}`}>
-              <Link to={`/documents/${d.id}`} className="ds-doc-row" aria-current={d.id === activeDocId ? 'page' : undefined} title={`${d.key} · ${d.title}`}>
-                <span className="ds-type-code" style={{ '--dc': d.typeColor } as CSSProperties}>{d.typeCode}</span><span className="ds-doc-title">{d.title}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="dt-group-head">
+        <button type="button" className="ds-type-head" aria-expanded={!closed} onClick={() => setClosed((c) => { store.set(key, c ? '1' : '0'); return !c; })}>
+          <Icon name="note" size={11} /><span className="ds-type-name">Documents</span><span className="ds-rail-count soft">{docs.length}</span><Icon name="chevronR" size={11} />
+        </button>
+        {canCreate && <button type="button" className="dt-add" title="New page" aria-label="New page" onClick={() => void newPage.create({ projectId: realProjectId })}><Icon name="plus" size={12} /></button>}
+      </div>
+      {!closed && <ul className="ds-tree-docs">{tree.roots.map((d) => <PageNode key={d.id} d={d} tree={tree} activeDocId={activeDocId} canCreate={canCreate} depth={0} />)}</ul>}
+    </li>
+  );
+}
+
+type Tree = ReturnType<typeof pageTree<DtProject['documents'][number]>>;
+
+/** One page in the tree: its icon (or type code), title, a caret when it has pages inside, and "+" to add one inside it. */
+function PageNode({ d, tree, activeDocId, canCreate, depth }: { d: DtProject['documents'][number]; tree: Tree; activeDocId?: string; canCreate: boolean; depth: number }) {
+  const kids = tree.children(d.id);
+  const holdsActive = useMemo(() => {
+    if (!activeDocId) return false;
+    const walk = (id: string): boolean => tree.children(id).some((c) => c.id === activeDocId || walk(c.id));
+    return walk(d.id);
+  }, [activeDocId, d.id, tree]);
+  const [open, setOpen] = useState(() => store.get(`pm_dt_page:${d.id}`) === '1');
+  useEffect(() => { if (holdsActive) setOpen(true); }, [holdsActive]);
+  const toggle = () => setOpen((o) => { store.set(`pm_dt_page:${d.id}`, o ? '0' : '1'); return !o; });
+  const newPage = useNewPage();
+  return (
+    <li className={`ds-doc dt-page${d.id === activeDocId ? ' active' : ''}`}>
+      <div className="dt-page-row" style={{ paddingLeft: depth * 12 } as CSSProperties}>
+        {kids.length > 0 ? <button type="button" className={`dt-caret${open ? ' open' : ''}`} aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} pages inside ${d.title}`} onClick={toggle}><Icon name="chevronR" size={11} /></button> : <span className="dt-caret-gap" />}
+        <Link to={`/documents/${d.id}`} className="ds-doc-row" aria-current={d.id === activeDocId ? 'page' : undefined} title={`${d.key} · ${d.title}`}>
+          {d.icon ? <span className="dt-page-icon" aria-hidden="true">{d.icon}</span> : <span className="ds-type-code" style={{ '--dc': d.typeColor } as CSSProperties}>{d.typeCode}</span>}
+          <span className="ds-doc-title">{d.title}</span>
+        </Link>
+        {canCreate && <button type="button" className="dt-add" title="Add a page inside" aria-label={`Add a page inside ${d.title}`} onClick={() => { void newPage.create({ parentId: d.id }); }}><Icon name="plus" size={12} /></button>}
+      </div>
+      {open && kids.length > 0 && <ul className="ds-tree-docs">{kids.map((c) => <PageNode key={c.id} d={c} tree={tree} activeDocId={activeDocId} canCreate={canCreate} depth={depth + 1} />)}</ul>}
     </li>
   );
 }

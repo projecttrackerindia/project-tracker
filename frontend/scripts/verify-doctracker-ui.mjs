@@ -31,6 +31,13 @@ const catalog={projects:[{id:pid,key:'PAY',name:'Payments Core',endpoints:eps,de
   documents:[{id:'d1',key:'DOC-1',title:'Payments APIs',typeCode:'API',typeName:'API documentation',typeColor:'#35c491',status:'Published',classification:'Internal',updatedAt:iso(-60),isApi:true},
    {id:'d3',key:'DOC-3',title:'Payments BRD',typeCode:'BRD',typeName:'Business requirements',typeColor:'#5c7cfa',status:'InReview',classification:'Confidential',updatedAt:iso(-180),isApi:false}],diagrams:1},
   {id:null,key:null,name:'General',endpoints:[],definitions:[],documents:[],diagrams:0}],canCreate:true,isAdmin:true,truncated:0};
+// Pages: a handbook with a page inside it, and the page made in the test.
+catalog.projects[0].documents.push({id:'p1',key:'DOC-7',title:'Engineering handbook',typeCode:'PAGE',typeName:'Page',typeColor:'#4f46e5',status:'Draft',classification:'Internal',updatedAt:iso(-20),isApi:false,parentId:null,pageOrder:0,icon:'📘'},
+ {id:'p2',key:'DOC-8',title:'Code review',typeCode:'PAGE',typeName:'Page',typeColor:'#4f46e5',status:'Draft',classification:'Internal',updatedAt:iso(-25),isApi:false,parentId:'p1',pageOrder:0,icon:null});
+const pageItem=(id,title,parentId=null,icon=null)=>({...D(9,title,'PAGE','Page','#4f46e5','Draft'),id,key:id==='pnew'?'DOC-9':'DOC-7',typeId:'t3',parentId,pageOrder:0,icon});
+const pageDetail=(id,title,body,rev=1,parentId=null,icon=null)=>({item:pageItem(id,title,parentId,icon),revision:rev,versionLabel:'Draft',publishedLabel:null,hasUnpublishedChanges:false,viewingPublished:false,
+  can:{edit:true,delete:true,link:true,share:true,publish:true},maskedCount:0,revealed:false,revealSeconds:0,canReveal:false,sections:[{key:'body',title:'Page',kind:'RichText',sortOrder:0,content:body}]});
+let made=null;
 const item=(e)=>({id:e.id,definitionId:'def1',definition:'Payments API',method:e.method,path:e.path,summary:e.summary,tag:e.tag,deprecated:false,owner:{id:user.id,name:user.displayName}});
 const details=(mobile,pan)=>({description:'Takes a payment.',auth:'inherit',parameters:[{name:'mobile',in:'query',required:true,type:'string',description:'Customer mobile',example:mobile,schema:null}],
   requestBody:{contentType:'application/json',required:true,description:null,schema:null,example:JSON.stringify({pan,amount:500})},responses:[{status:'200',description:'OK',contentType:'application/json',schema:null,example:'{"ok":true}'}],errors:[],samples:[],dependencies:[]});
@@ -55,6 +62,9 @@ try{
    const json=(d)=>route.fulfill({contentType:'application/json',body:JSON.stringify({data:d})});
    if(ep==='/api/v1/documents/d1/api/endpoints/e1/reveal'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});await json(real);return;}
    if(ep==='/api/v1/documents/d3/reveal'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});await json({...detail,maskedCount:0,revealed:true,revealSeconds:15,sections:detail.sections.map((x,i)=>i===0?{...x,content:rich('Escalations: 9876543210.')}:x)});return;}
+   if(ep==='/api/v1/documents'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});made=pageDetail('pnew',b.title,b.sections?.[0]?.content??rich(''),1,b.parentId??null);await json(made);return;}
+   if(ep==='/api/v1/documents/pnew/sections'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});assert.equal(b.revision,made.revision,'each save carries the newest revision');made={...made,revision:made.revision+1,sections:[{...made.sections[0],content:b.sections[0].content}]};await json(made);return;}
+   if(ep==='/api/v1/documents/pnew'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});made={...made,revision:made.revision+1,item:{...made.item,title:b.title}};await json(made);return;}
    if(ep==='/api/v1/doctracker/architecture'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});arch={...arch,diagrams:b.diagrams,notes:b.notes};await json(arch);return;}
    if(ep==='/api/v1/documents/d1/api/export'){await route.fulfill({contentType:'application/json',body:JSON.stringify(spec)});return;}
    assert.ok(method==='GET'||ep.endsWith('/auth/refresh')||ep.endsWith('/views'),`Unexpected write: ${method} ${ep}`);
@@ -73,8 +83,13 @@ try{
    else if(ep==='/api/v1/document-security/masking')data=masking;
    else if(ep==='/api/v1/audit-logs')data={items:[{id:'a1',tenantId:ws.id,tenantName:null,userId:user.id,userName:'Asha Rao',action:'api.pii_revealed',entityType:'ApiEndpoint',entityId:'e1',oldValue:null,newValue:'{"purpose":"read","reason":"Partner call"}',ipAddress:null,createdAt:iso(-5)}],page:1,totalPages:1,totalItems:1};
    else if(ep==='/api/v1/documents/d3')data=detail;
-   else if(ep==='/api/v1/document-types')data=[['BRD','Business requirements','#2563eb','What the business needs and why'],['API','API documentation','#059669','Endpoints, examples and errors'],['SOP','Standard operating procedure','#d97706','Step-by-step instructions for a task']].map(([code,name,color,description],i)=>({id:'t'+i,code,name,color,description,icon:'note',sections:[],sortOrder:i}));
-   else if(ep.startsWith('/api/v1/documents/d3/')||ep.startsWith('/api/v1/documents/d1/'))status=404;
+   else if(ep==='/api/v1/documents/pnew')data=made;
+   else if(ep==='/api/v1/documents/p1')data=pageDetail('p1','Engineering handbook',rich('How we work.'),4,null,'📘');
+   else if(ep.endsWith('/backlinks'))data=ep.includes('/p1/')?[{id:'p2',key:'DOC-8',title:'Code review',typeCode:'PAGE',typeColor:'#4f46e5',icon:null,projectId:pid}]:[];
+   else if(ep==='/api/v1/search')data={hits:[{type:'task',id:'t1',title:'Fix refund rounding',subtitle:'PAY-12',projectId:pid,taskId:'t1'}]};
+   else if(ep==='/api/v1/document-types')data=[['BRD','Business requirements','#2563eb','What the business needs and why'],['API','API documentation','#059669','Endpoints, examples and errors'],['SOP','Standard operating procedure','#d97706','Step-by-step instructions for a task'],['PAGE','Page','#4f46e5','A free-form page']].map(([code,name,color,description],i)=>({id:'t'+i,code,name,color,description,icon:'note',sortOrder:i,
+     sections:code==='PAGE'?[{key:'body',title:'Page',kind:'RichText',hint:'',columns:null}]:[{key:'steps',title:'Steps',kind:'RichText',hint:'',columns:null},{key:'roles',title:'Roles',kind:'Table',hint:'',columns:['Role','Responsibility']}]}));
+   else if(/^\/api\/v1\/documents\/(d3|d1|pnew|p1)\//.test(ep))status=404;
    else if(ep==='/api/v1/timer')data=null;
    else if(ep.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
    else if(ep.endsWith('/ai/status'))data={enabled:true,configured:true,entitled:true,allowedHere:true};
@@ -88,19 +103,40 @@ try{
   return ctx;};
  const shot=async(page,name)=>{await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(400);await page.screenshot({path:path.join(out,name)});};
  const noScroll=(page)=>fitsPhone(page,'phone',assert);
- let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')console.error('console:',m.text().slice(0,300));});await page.setViewportSize({width:1440,height:1000});
+ let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>{errors.push(e.message);console.log('STACK',e.stack?.split('\n').slice(0,6).join(' | '))});page.on('console',m=>{if(m.type()==='error')console.error('console:',m.text().slice(0,300));});await page.setViewportSize({width:1440,height:1000});
 
  // The old Documents link lands in DocTracker; the Control Center sums up scores.
  await page.goto(origin+'/preview-org/documents');await page.waitForURL(/\/doctracker/);
  await page.locator('.dt-home .dt-hero',{hasText:'API quality'}).waitFor();
- assert.equal(await page.locator('.dl-starter').count(),3,'start a document from a template');await page.locator('.dl-rows .dl-row',{hasText:'Payments BRD'}).first().waitFor();
+ assert.equal(await page.locator('.dl-starter').count(),4,'a blank page and three templates');await page.locator('.dl-rows .dl-row',{hasText:'Payments BRD'}).first().waitFor();
  assert.equal(await page.locator('.dt-kpis').count(),0,'no wall of counters');
  await page.getByLabel('Search DocTracker').fill('refunds');await page.locator('.dl-section[aria-label="Search results"] .dl-row',{hasText:'/refunds'}).waitFor();await page.getByLabel('Search DocTracker').fill('');
  assert.equal((await page.locator('.dt-hero .dt-ring b').first().textContent()).trim(),'77');   // (90+100+40)/3
  await page.locator('.dt-weak li',{hasText:'/refunds'}).waitFor();
  assert.equal(await page.locator('.dt-weak li').count(),1);
  await page.waitForTimeout(900);await page.screenshot({path:path.join(out,'control-center-1440.png'),fullPage:true,animations:'disabled'});checks.push('legacy-redirect','control-center');
- await page.locator('.dl-starter',{hasText:'Standard operating procedure'}).click();await page.getByRole('dialog').waitFor();await page.waitForTimeout(300);await shot(page,'new-from-template-1440.png');await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'detached'});
+ // A template starts a free-form page with its headings; the title is selected, "/" makes a callout, "@" mentions a person, and it saves itself.
+ await page.locator('.dl-starter',{hasText:'Standard operating procedure'}).click();
+ const created=writes.find(w=>w.ep==='/api/v1/documents').b;assert.equal(created.typeId,'t3');assert.match(created.sections[0].content,/"text":"Steps"/);assert.match(created.sections[0].content,/"tableHeader"/);
+ await page.locator('.pg-title').waitFor();assert.equal(await page.locator('.pg-title').inputValue(),'Standard operating procedure');
+ assert.equal(await page.evaluate(()=>document.activeElement?.classList.contains('pg-title')),true,'the new page is ready to name');
+ await page.locator('.pg-title').fill('Refund SOP');await page.keyboard.press('Enter');
+ for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/documents/pnew'&&w.b.title);i++)await page.waitForTimeout(100);assert.equal(writes.find(w=>w.ep==='/api/v1/documents/pnew').b.title,'Refund SOP');
+ await page.locator('.pg-body .ProseMirror h2',{hasText:'Steps'}).waitFor();
+ await page.locator('.pg-body .ProseMirror p').first().click();await page.keyboard.type('/call');await page.locator('.sgm-item',{hasText:'Callout'}).waitFor();await page.waitForTimeout(150);await shot(page,'page-slash-1440.png');
+ await page.keyboard.press('Enter');await page.keyboard.type('Customers get refunds in 5 days. Ask ');await page.keyboard.type('@As');await page.locator('.sgm-item',{hasText:'Asha Rao'}).waitFor();await page.keyboard.press('Enter');
+ for(let i=0;i<40&&!writes.some(w=>w.ep==='/api/v1/documents/pnew/sections'&&/"mention"/.test(w.b.sections[0].content));i++)await page.waitForTimeout(100);
+ const savedBody=writes.filter(w=>w.ep==='/api/v1/documents/pnew/sections').at(-1).b.sections[0].content;
+ assert.match(savedBody,/"type":"callout"/);assert.match(savedBody,/"kind":"person"/);assert.match(savedBody,/Customers get refunds in 5 days/);
+ await page.locator('.pg-save',{hasText:/Saved/}).waitFor();await page.waitForTimeout(200);await shot(page,'page-1440.png');
+ // The tree shows pages inside pages, and "+" on a page adds one inside it.
+ await page.goto(origin+'/preview-org/documents/p1');await page.locator('.pg-title').waitFor();
+ await page.locator('.pg-under .pg-list a',{hasText:'Code review'}).first().waitFor();
+ const before=writes.filter(w=>w.ep==='/api/v1/documents').length;
+ await page.locator('.dt-page-row',{hasText:'Engineering handbook'}).hover();await page.getByRole('button',{name:'Add a page inside Engineering handbook'}).click();
+ for(let i=0;i<20&&writes.filter(w=>w.ep==='/api/v1/documents').length===before;i++)await page.waitForTimeout(100);
+ assert.equal(writes.filter(w=>w.ep==='/api/v1/documents').at(-1).b.parentId,'p1');checks.push('pages');
+ await page.goto(origin+'/preview-org/doctracker');await page.locator('.dt-home').waitFor();
 
  // The tree: project ▸ overview, architecture, documents, tags ▸ endpoints.
  await page.getByRole('button',{name:'Open Payments Core'}).click();
@@ -183,7 +219,7 @@ try{
  await page.close();await ctx.close();
 
  // Phone: the tree is a drawer, pages fit.
- ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
+ ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>{errors.push(e.message);console.log('STACK',e.stack?.split('\n').slice(0,6).join(' | '))});await page.setViewportSize({width:390,height:844});
  await page.goto(origin+'/preview-org/doctracker?p='+pid);await page.locator('.dt-phead h2').waitFor();
  assert.equal(await page.locator('.ds-shell-side').isVisible(),false);await noScroll(page);
  await shot(page,'project-390.png');

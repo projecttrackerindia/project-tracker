@@ -9,6 +9,7 @@ import { timeAgo } from '../../lib/format';
 import { Method } from '../documents/ApiView';
 import { avatarColor } from '../documents/docUi';
 import { NeedsAttention } from '../documents/NeedsAttention';
+import { PAGE_CODE, useNewPage } from '../documents/pages';
 import { pid, scoreTone, useDtNav } from './DocTrackerPage';
 
 export const avg = (eps: DtEndpoint[]) => (eps.length ? Math.round(eps.reduce((a, e) => a + e.score, 0) / eps.length) : 0);
@@ -65,7 +66,9 @@ export function DtHome({ catalog, onRequired, onNew }: { catalog: DtCatalog; onR
   // What needs attention, from the same numbers the list uses; when there is nothing, one line instead of an empty card.
   const dash = useWsQuery(['documents', 'dashboard'], documentApi.dashboard);
   const attention = dash.data ? (dash.data.projectsMissingRequired ?? 0) + dash.data.notUpdatedIn90Days + dash.data.unpublished : 0;
-  const starters = (types.data ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder).slice(0, 6);
+  // Templates start a free-form page with their headings (the Page kind itself and build artifacts are not templates).
+  const starters = (types.data ?? []).filter((t) => t.code !== PAGE_CODE && t.code !== 'ARTIFACT').sort((a, b) => a.sortOrder - b.sortOrder).slice(0, 5);
+  const newPage = useNewPage();
 
   return (
     <div className="dt-home dl">
@@ -90,8 +93,11 @@ export function DtHome({ catalog, onRequired, onNew }: { catalog: DtCatalog; onR
           <section className="dl-section" aria-label="Start a document">
             <header><h3>Start a document</h3><button type="button" className="mb-link" onClick={() => onNew()}>All templates</button></header>
             <div className="dl-starters">
+              <button type="button" className="dl-starter blank" onClick={() => void newPage.create()}>
+                <span className="dl-starter-code">＋</span><b>Blank page</b><small>Write anything; type / for blocks</small>
+              </button>
               {starters.map((t) => (
-                <button key={t.id} type="button" className="dl-starter" style={{ '--dc': t.color } as CSSProperties} onClick={() => onNew(t.id)}>
+                <button key={t.id} type="button" className="dl-starter" style={{ '--dc': t.color } as CSSProperties} onClick={() => void newPage.create({ template: t })} title="Starts a page with this template's headings">
                   <span className="dl-starter-code">{t.code}</span><b>{t.name}</b>{t.description && <small>{t.description}</small>}
                 </button>
               ))}

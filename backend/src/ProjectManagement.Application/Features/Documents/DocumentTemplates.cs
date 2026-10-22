@@ -9,6 +9,8 @@ public static class DocumentTemplates
     private static SectionTemplate Rich(string key, string title, string hint) => new(key, title, SectionKind.RichText, hint);
     private static SectionTemplate Grid(string key, string title, string hint, params string[] columns) => new(key, title, SectionKind.Table, hint, columns);
 
+    public const string PageCode = "PAGE", PageBody = "body";
+
     public sealed record BuiltIn(string Code, string Name, string Description, string Icon, string Color, SectionTemplate[] Sections);
 
     private static readonly SectionTemplate[] Overview = [Rich("overview", "Overview", "What this document covers and who it is for."), Rich("details", "Details", "The content.")];
@@ -67,6 +69,8 @@ public static class DocumentTemplates
         [Rich("summary", "Summary", "What this release delivers."), Rich("changes", "Changes", "New, changed and fixed."), Rich("knownIssues", "Known issues", ""), Rich("upgrade", "Upgrade notes", "")]),
         new("ENV", "Environment documentation", "A system landscape: servers, URLs, access and configuration notes.", "server", "#0d9488",
         [Rich("overview", "Overview", ""), Grid("components", "Components", "", "Component", "Location", "Purpose", "Owner"), Rich("access", "Access and configuration", "Describe how access is granted. Do not paste secrets here.")]),
+        // A page: one free-form body, no fixed sections. Pages nest under each other; the other kinds' sections become starting headings.
+        new(PageCode, "Page", "A free-form page: write anything, add pages inside it.", "note", "#4f46e5", [Rich(PageBody, "Page", "")]),
         // No sections: what this document carries is a build file, versioned and compared like every other document's text (see DocumentVersionArtifact).
         new("ARTIFACT", "Build artifact", "A built release file (jar, zip, installer...) with automatic versioning, so every build stays traceable and comparable.", "layers", "#f97316", []),
     ];

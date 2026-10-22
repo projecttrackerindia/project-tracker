@@ -68,6 +68,18 @@ public class DocumentsController(DocumentService documents, DocumentLinkService 
     [HttpPut("documents/{id:guid}/sections")]
     public async Task<IActionResult> Save(Guid id, [FromBody] SaveSectionsRequest req, CancellationToken ct) => Ok(await documents.SaveSectionsAsync(id, req, ct));
 
+    /// <summary>Moves a page under another page of the same project (or to the top level), at a position among its siblings.</summary>
+    [HttpPut("documents/{id:guid}/place")]
+    public async Task<IActionResult> Place(Guid id, [FromBody] PlaceDocumentRequest req, CancellationToken ct) => Ok(await documents.PlaceAsync(id, req, ct));
+
+    /// <summary>Sets or clears a page's emoji icon.</summary>
+    [HttpPut("documents/{id:guid}/icon")]
+    public async Task<IActionResult> Icon(Guid id, [FromBody] DocumentIconRequest req, CancellationToken ct) => Ok(await documents.SetIconAsync(id, req, ct));
+
+    /// <summary>The pages that link to this one, limited to those the caller may open.</summary>
+    [HttpGet("documents/{id:guid}/backlinks")]
+    public async Task<IActionResult> Backlinks(Guid id, CancellationToken ct) => Ok(await documents.BacklinksAsync(id, ct));
+
     /// <summary>The real values of a masked document (editors to edit; readers with the permission, with a reason). Audited; never cached.</summary>
     [HttpPost("documents/{id:guid}/reveal"), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> Reveal(Guid id, [FromBody] DocumentRevealRequest req, CancellationToken ct) => Ok(await documents.RevealAsync(id, req, ct));

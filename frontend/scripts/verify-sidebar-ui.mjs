@@ -18,6 +18,8 @@ const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{exec
 try{
  const make=async()=>{
   const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
+  // These checks are about the classic layout (the Assistant entry); the AI-first Home, the default, is checked in verify-command-ui.
+  await ctx.addInitScript(()=>{if(!localStorage.getItem('pm_home_mode'))localStorage.setItem('pm_home_mode','classic');});
   await ctx.addInitScript(()=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme','light');});
   await ctx.route('**/*',async route=>{
    const req=route.request(),url=new URL(req.url()),ep=url.pathname,method=req.method();

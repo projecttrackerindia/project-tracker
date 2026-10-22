@@ -50,9 +50,10 @@ let agent={projectId:pid,enabled:true,readMailbox:true,readChat:true,readMeeting
 const writes=[],errors=[],checks=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
- const make=async(theme)=>{
+ // home: 'classic' starts on the classic Home (the person chose it once); null keeps the default, which is the AI-first Home.
+ const make=async(theme,home='classic')=>{
  const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
- await ctx.addInitScript((t)=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme',t);},theme);
+ await ctx.addInitScript(([t,h])=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme',t);if(h&&!localStorage.getItem('pm_home_mode'))localStorage.setItem('pm_home_mode',h);},[theme,home]);
  await ctx.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url()),ep=url.pathname,method=req.method();
   if(url.origin!==origin){await route.abort();return;}
@@ -222,8 +223,8 @@ try{
  assert.match(made.dueDate,/^\d{4}-\d{2}-\d{2}$/);for(let i=0;i<30&&await qa.inputValue()!=='';i++)await page.waitForTimeout(100);assert.equal(await qa.inputValue(),'','the box empties after adding');checks.push('quick-add');
  await page.close();await ctx.close();
  // AI-first Home: Home becomes the assistant (ask box, conversations, four rule tiles); the sidebar's Assistant becomes Agents; Classic view returns.
- ctx=await make('light');page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+'/preview-org/command-center');await page.getByRole('button',{name:'AI-first home'}).click();
+ ctx=await make('light',null);page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
+ await page.goto(origin+'/preview-org/command-center');// AI-first is the default: no switch to press.
  await page.locator('.aih-hero h1').waitFor();assert.match(await page.locator('.aih-hero h1').innerText(),/Good (morning|afternoon|evening)/);
  await page.locator('.aih-tile').nth(3).waitFor();assert.equal(await page.locator('.aih-tile').count(),4);
  assert.ok(await page.locator('.aih-hero .ai-composer.stacked').isVisible(),'the ask box sits in the middle of Home');
