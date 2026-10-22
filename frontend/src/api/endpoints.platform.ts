@@ -1,5 +1,5 @@
 import { providerConnectionUrl } from './providerConnection';
-import { del, download, fetchBlobUrl, get, post, put, uploadFile } from './client';
+import { del, download, fetchBlobUrl, get, post, put, uploadFile, create } from './client';
 import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
 export const platformApi = {
   billing: () => get<PlatformBilling>('/admin/billing'),
@@ -201,7 +201,7 @@ export const workApi = {
 
   list: (f: WorkFilters = {}) => get<Paged<WorkTask>>('/work-tasks', { pageSize: 25, ...f }),
   get: (id: string) => get<WorkTask>(`/work-tasks/${id}`),
-  create: (b: WorkTaskInput) => post<WorkTask>('/work-tasks', b),
+  create: (b: WorkTaskInput) => create<WorkTask>('/work-tasks', b),
   update: (id: string, b: WorkTaskInput & { status: string; priority: string; version: number }) => put<WorkTask>(`/work-tasks/${id}`, b),
   setStatus: (id: string, status: string) => put<WorkTask>(`/work-tasks/${id}/status`, { status }),
   remove: (id: string) => del<void>(`/work-tasks/${id}`),

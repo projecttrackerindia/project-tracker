@@ -1,4 +1,4 @@
-import { del, download, get, patch, post, put } from './client';
+import { del, download, get, patch, post, put, create } from './client';
 import type { TimelineTemplate,Activity,AdminPlan,AdminStats,AdminTenant,AdminTenantDetail,AdminUser,AdminUserDetail,AppNotification,AuditLog,BillingOverview,CalendarEvent,Comment,Dashboard,Label,Paged,Project,ProjectDetail,ProjectMember,LensTeam,ReportSummary,SearchHit,Stage,Task,TaskDetail,WorkflowStatus,InvoiceBuyer,UpiPayment,AdminUpiPayment,UpiAccountHealth } from './types';
 export interface ProjectFilters { q?: string; status?: string; priority?: string; ownerId?: string; teamId?: string; projectGroupId?: string; projectType?: string; includeArchived?: boolean; sort?: string; page?: number; pageSize?: number; mineOnly?: boolean }
 export interface ProjectInput {
@@ -44,7 +44,7 @@ export const projectApi = {
   reorderStages: (projectId: string, stageIds: string[], projectVersion?: number) => put<Stage[]>(`/projects/${projectId}/stages/order`, { stageIds, projectVersion }),
   previewSchedule: (id: string, body: ProjectScheduleInput) => post<ProjectSchedulePreview>(`/projects/${id}/schedule/preview`, body),
   saveSchedule: (id: string, body: ProjectScheduleInput) => put<ProjectDetail>(`/projects/${id}/schedule`, body),
-  create: (b: ProjectInput) => post<ProjectDetail>('/projects', b),
+  create: (b: ProjectInput) => create<ProjectDetail>('/projects', b),
   update: (id: string, b: Omit<ProjectInput, 'key' | 'memberIds'> & { status: string; version: number; enforceDependencies?: boolean }) => put<ProjectDetail>(`/projects/${id}`, b),
   remove: (id: string) => del(`/projects/${id}`),
   /** Projects board: a different status moves the card to another column; the same status only re-orders it. */
@@ -83,7 +83,7 @@ export interface TaskInput {
 export const taskApi = {
   listForProject: (projectId: string, f: Omit<TaskFilters, 'projectId'> = {}) => get<Paged<Task>>(`/projects/${projectId}/tasks`, { pageSize: 500, ...f }),
   get: (id: string) => get<TaskDetail>(`/tasks/${id}`),
-  create: (projectId: string, b: TaskInput) => post<Task>(`/projects/${projectId}/tasks`, b),
+  create: (projectId: string, b: TaskInput) => create<Task>(`/projects/${projectId}/tasks`, b),
   update: (id: string, b: Omit<TaskInput, 'parentTaskId' | 'statusId'> & { statusId: string; actualHours?: number | null; version: number }) => put<Task>(`/tasks/${id}`, b),
   move: (id: string, b: { statusId: string; position?: number }) => patch<Task>(`/tasks/${id}/move`, b),
   remove: (id: string) => del(`/tasks/${id}`),

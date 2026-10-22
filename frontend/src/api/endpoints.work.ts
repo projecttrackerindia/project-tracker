@@ -1,4 +1,4 @@
-import { del, download, fetchBlobUrl, get, patch, post, put, uploadFile } from './client';
+import { del, download, fetchBlobUrl, get, patch, post, put, uploadFile, create } from './client';
 import type { EffectiveAccessList,AutomationInput,AutomationRule,ProjectTime,TaskTime,TimeEntry,Timesheet,AccessMatrix,DependencyType,Milestone,MilestoneInput,TaskDependencies,ActionItem,ActionItemInput,ActionItemStatus,Attachment,AttachmentLimits,ProjectGroup,ProjectStatusReport,StatusGroup,Issue,IssueDetail,IssueInput,DevEmail,OrgRole,OrgStructure,TimesheetWeek,Approvals,BulkReviewResult,TimesheetGrid,GridCellChange,SaveGridResult,TimesheetInsights } from './types';
 
 export const devApi = { emails: () => get<DevEmail[]>('/dev/emails', undefined, { auth: false }) };
@@ -50,7 +50,7 @@ export const statusApi = {
 export const issueApi = {
   list: (projectId: string, f: { stageId?: string; openOnly?: boolean } = {}) => get<Issue[]>(`/projects/${projectId}/issues`, f),
   get: (projectId: string, id: string) => get<IssueDetail>(`/projects/${projectId}/issues/${id}`),
-  create: (projectId: string, b: IssueInput) => post<IssueDetail>(`/projects/${projectId}/issues`, b),
+  create: (projectId: string, b: IssueInput) => create<IssueDetail>(`/projects/${projectId}/issues`, b),
   update: (projectId: string, id: string, b: { title?: string; details?: string; severity?: string; stageId?: string }) => put<IssueDetail>(`/projects/${projectId}/issues/${id}`, b),
   assign: (projectId: string, id: string, assigneeId: string | null) => put<IssueDetail>(`/projects/${projectId}/issues/${id}/assignee`, { assigneeId }),
   setStatus: (projectId: string, id: string, status: string, note?: string) => put<IssueDetail>(`/projects/${projectId}/issues/${id}/status`, { status, note: note ?? null }),

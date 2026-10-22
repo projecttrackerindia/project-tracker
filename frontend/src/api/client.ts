@@ -112,14 +112,41 @@ export function refreshSession(): Promise<AuthResponse | null> {
   return refreshing;
 }
 
-interface Options { auth?: boolean; retry?: boolean; signal?: AbortSignal }
+interface Options { auth?: boolean; retry?: boolean; signal?: AbortSignal; idempotent?: boolean }
+
+/**
+ * Creating things (projects, tasks, tickets, issues) must never happen twice for one intention: a double click, Enter plus a click, a
+ * tap while the network is slow, or a retry after a dropped connection. Identical create requests share one call while it runs, and for
+ * a short while after, the same Idempotency-Key, so the server replays the first result instead of creating a copy.
+ */
+const DEDUPE_MS = 10_000;
+const inFlight = new Map<string, Promise<unknown>>();
+const recentKeys = new Map<string, { key: string; at: number }>();
+const newKey = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`);
 
 export async function api<T = void>(method: string, path: string, body?: unknown, opts: Options = {}): Promise<T> {
+  if (opts.idempotent) {
+    const sig = `${method} ${path} ${body === undefined ? '' : JSON.stringify(body)}`;
+    const running = inFlight.get(sig);
+    if (running) return running as Promise<T>;
+    const now = Date.now();
+    for (const [k, v] of recentKeys) if (now - v.at > DEDUPE_MS) recentKeys.delete(k);
+    const key = recentKeys.get(sig)?.key ?? newKey();
+    recentKeys.set(sig, { key, at: now });
+    const p = send<T>(method, path, body, opts, key).finally(() => inFlight.delete(sig));
+    inFlight.set(sig, p);
+    return p;
+  }
+  return send<T>(method, path, body, opts);
+}
+
+async function send<T>(method: string, path: string, body: unknown, opts: Options, idempotencyKey?: string): Promise<T> {
   const { auth = true, retry = true, signal } = opts;
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
   Object.assign(headers, lensHeaders(method, path));
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
 
   const res = await fetch(`${BASE}/api/v1${path}`, {
     method, headers, credentials: 'include', signal, body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -129,7 +156,7 @@ export async function api<T = void>(method: string, path: string, body?: unknown
 
   if (error.status === 401 && auth && retry && !path.startsWith('/auth/')) {
     const renewed = await refreshSession();
-    if (renewed) return api<T>(method, path, body, { ...opts, retry: false });
+    if (renewed) return send<T>(method, path, body, { ...opts, retry: false }, idempotencyKey);
     accessToken = null;
     onAuthLost?.();
   }
@@ -138,6 +165,8 @@ export async function api<T = void>(method: string, path: string, body?: unknown
 
 export const get = <T>(path: string, query?: Query, opts?: Options) => api<T>('GET', path + qs(query), undefined, opts);
 export const post = <T = void>(path: string, body?: unknown, opts?: Options) => api<T>('POST', path, body ?? {}, opts);
+/** A POST that creates something: sent once however many times it is triggered (see DEDUPE_MS). */
+export const create = <T = void>(path: string, body?: unknown) => api<T>('POST', path, body ?? {}, { idempotent: true });
 export const put = <T = void>(path: string, body: unknown) => api<T>('PUT', path, body);
 export const patch = <T = void>(path: string, body: unknown) => api<T>('PATCH', path, body);
 export const del = <T = void>(path: string) => api<T>('DELETE', path);
