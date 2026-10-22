@@ -78,6 +78,7 @@ public class MigrationOrderTests
         "20261010143636_EnterpriseAgentWorkflows",
         "20261010145303_TransactionalAiCredits",
         "20261010152701_AiUserAndTeamBudgets",
+        "20261010154349_AiProviderPriceSnapshots",
         "20261010170118_EnterpriseKnowledgeEvidence",
         "20261010171145_VerifiedSupportResolutions",
         "20261010182752_OrganizationSlackOAuth",
