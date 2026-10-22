@@ -87,11 +87,17 @@ export class MeetBot {
       await page.goto(this.meetingUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
       const p = this.platform;
       if (this.identity && p.signedOut && await p.signedOut(page)) throw new Error('NOTETAKER_SIGNED_OUT: the notetaker account is signed out - sign it in again.');
-      await p.askToJoin(page, this.botName, (m) => this.log(m));
+      await p.askToJoin(page, this.botName, (m) => this.log(m), !!this.identity);
       this.setStatus('waiting_admission');
       const admitted = await p.waitUntilAdmitted(page, this.deps.admitTimeoutMs, (m) => this.log(m));
       if (admitted === 'timeout' && p.lobbyState) this.log(`gave up waiting (${await p.lobbyState(page)})`);
-      if (admitted !== 'admitted') throw new Error(admitted === 'denied' ? 'The bot was not let into the meeting.' : 'Nobody let the bot into the meeting.');
+      if (admitted !== 'admitted') {
+        // Say why, from what the meeting page showed, so the person who sent the bot knows what to change.
+        const seen = p.pageText ? await p.pageText(page) : '';
+        this.log(`not admitted (${admitted}): ${seen.replace(/\s+/g, ' ').trim().slice(0, 160)}`);
+        throw new Error(p.explain ? p.explain(admitted, seen, !!this.identity)
+          : admitted === 'denied' ? 'The bot was not let into the meeting.' : 'Nobody let the bot into the meeting.');
+      }
       this.log(`in the call (${p.name})`);
       if (!(await p.enableCaptions(page))) this.log('captions could not be switched on');
       else if (this.captionLanguage && !(await p.setCaptionLanguage(page, this.captionLanguage))) this.log(`captions stay in the meeting's default language (${this.captionLanguage} not offered)`);

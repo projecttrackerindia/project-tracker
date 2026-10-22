@@ -28,6 +28,24 @@ export const TEXT = {
   alone: /(you're the only one here|you are the only one here|no one else is here)/i,
 };
 
+/**
+ * Why the bot is not in the call, in words the person who sent it can act on. `kind` is what waitUntilAdmitted returned (or 'denied' when the join
+ * screen itself refused); `text` is what the Meet page said; `signedIn` is whether the bot joined as a notetaker Google account.
+ */
+export function explain(kind, text = '', signedIn = false) {
+  const t = String(text);
+  if (/(you can't join this video call|you cannot join this video call)/i.test(t)) return signedIn
+    ? 'Google Meet did not let the notetaker account in: the meeting may be limited to people in the organiser\'s organisation. Invite the notetaker account to the meeting.'
+    : 'Google Meet blocks guest bots for this meeting. Add a notetaker Google account (Platform admin > Notetaker accounts) so the bot joins signed in.';
+  if (/(someone in the call denied your request|your request to join was declined)/i.test(t)) return 'Someone in the call declined the bot\'s request to join.';
+  if (/this meeting has been locked/i.test(t)) return 'The meeting is locked. The host must unlock it, or invite the notetaker account.';
+  if (TEXT.ended.test(t)) return 'The meeting ended before the bot got in.';
+  if (kind === 'timeout' || /no one responded to your request/i.test(t)) return 'Nobody admitted the bot. When "Project Tracker Notetaker asks to join" appears in the meeting, click Admit.';
+  return signedIn
+    ? 'Google Meet refused the bot without giving a reason. Check that the meeting link is right and that the notetaker account may join.'
+    : 'Google Meet refused the bot without giving a reason, which usually means guests are blocked. Add a notetaker Google account (Platform admin > Notetaker accounts).';
+}
+
 const firstVisible = async (page, selectors) => {
   for (const s of selectors) {
     const l = page.locator(s).first();
@@ -69,7 +87,7 @@ export async function signedOut(page) {
 }
 
 /** The pre-join screen: type the bot's name, switch off camera and microphone, ask to join. */
-export async function askToJoin(page, botName, log) {
+export async function askToJoin(page, botName, log, signedIn = false) {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     await clickButton(page, SEL.dismiss);
@@ -84,14 +102,15 @@ export async function askToJoin(page, botName, log) {
       while (Date.now() < settle) {
         await page.waitForTimeout(700);
         const state = await lobbyState(page);
-        if (state === 'refused') throw new Error('Google Meet does not let the bot join this meeting.');
+        if (state === 'refused') throw new Error(explain('denied', await pageText(page), signedIn));
         if (state === 'in the call' || state === 'waiting in the lobby') { log(state === 'in the call' ? 'joined' : 'asked to join (waiting in the lobby)'); return; }
         if (state.startsWith('unknown') && !(await visibleButton(page, SEL.join))) { log('asked to join (' + state + ')'); return; }
       }
       log('the join request did not register; trying again');
       continue;
     }
-    if (TEXT.denied.test(await pageText(page))) throw new Error('Google Meet does not let the bot join this meeting.');
+    const seen = await pageText(page);
+    if (TEXT.denied.test(seen)) throw new Error(explain('denied', seen, signedIn));
     await page.waitForTimeout(1000);
   }
   throw new Error('The Google Meet join screen did not appear.');
