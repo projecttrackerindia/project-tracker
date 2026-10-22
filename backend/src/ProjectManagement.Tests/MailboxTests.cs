@@ -53,6 +53,29 @@ public class MailboxTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Company_mail_servers_are_checked_before_they_are_saved_or_tested()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Sam Owner");
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("BUSINESS");
+        var member = await owner.AddMemberAsync(factory, ProjectManagement.Domain.Enums.TenantRole.Member, "Mia Member");
+        object Servers(string host, int port, string smtp = "smtp.example.test", int smtpPort = 465, string incoming = "pop") =>
+            new { provider = "rediffpro", domains = "fivestar.test", incoming, incomingHost = host, incomingPort = port, smtpHost = smtp, smtpPort };
+        async Task<string?> Field(object body) => (await owner.Put("/api/v1/me/mailbox/company", body)).Json?["errors"]?[0]?["field"]?.GetValue<string>();
+
+        // An address instead of a name, a local name, a wrong port for the protocol and an unusual SMTP port are all refused before any connection.
+        Assert.Equal("incomingHost", await Field(Servers("10.0.0.5", 995)));
+        Assert.Equal("incomingHost", await Field(Servers("localhost", 995)));
+        Assert.Equal("incomingPort", await Field(Servers("pop.example.test", 993)));
+        Assert.Equal("incomingPort", await Field(Servers("imap.example.test", 995, incoming: "imap")));
+        Assert.Equal("smtpPort", await Field(Servers("pop.example.test", 995, smtpPort: 25)));
+        Assert.Equal("smtpHost", await Field(Servers("pop.example.test", 995, smtp: "127.0.0.1")));
+        // Only owners and administrators may try servers with a password.
+        var test = await member.Post("/api/v1/me/mailbox/company/test", new { settings = Servers("pop.example.test", 995), email = "mia@fivestar.test", password = "x" });
+        Assert.Equal(HttpStatusCode.Forbidden, test.Status);
+    }
+
+    [Fact]
     public void Html_mail_is_reduced_to_readable_text()
     {
         var text = MailboxService.HtmlToText("<style>p{}</style><p>Hello&nbsp;team,</p><div>Ship <b>Friday</b></div><script>x()</script>");

@@ -3,7 +3,9 @@ import { del, get, post, put } from '../../api/client';
 export type MailFolder = 'inbox' | 'sent';
 export interface MailPreset { id: string; name: string; imapHost: string; imapPort: number; smtpHost: string; smtpPort: number; domain: string }
 export interface MailImapAccount { id: string; provider: string; name: string; email: string; connectedAt: string; lastSyncedAt: string | null; lastError: string | null }
-export interface CompanyMail { provider: string; name: string; domains: string[] }
+export interface CompanyMail { provider: string; name: string; domains: string[]; incoming: 'imap' | 'pop'; incomingHost: string; incomingPort: number; smtpHost: string; smtpPort: number; custom: boolean }
+export interface CompanyMailInput { provider: string; domains: string; incoming?: 'imap' | 'pop'; incomingHost?: string; incomingPort?: number; smtpHost?: string; smtpPort?: number }
+export interface MailServerCheck { server: string; ok: boolean; detail: string }
 export interface MailAccounts { imap: MailImapAccount[]; presets: MailPreset[]; company: CompanyMail | null; canManageCompany: boolean; myEmail: string | null }
 export interface MailMessage { id: string; threadId: string; subject: string; from: string; to: string; cc: string; date: string | null; unread: boolean; hasAttachments: boolean; body?: string | null; bodyTruncated?: boolean }
 export interface MailList { account: string; email: string; folder: MailFolder; messages: MailMessage[]; cursor: string | null }
@@ -17,7 +19,8 @@ export type ComposeMode = 'reply' | 'improve' | 'shorter' | 'formal' | 'friendly
 
 export const mailboxApi = {
   accounts: () => get<MailAccounts>('/me/mailbox/accounts'),
-  saveCompany: (b: { provider: string; domains: string }) => put<CompanyMail | null>('/me/mailbox/company', b),
+  saveCompany: (b: CompanyMailInput) => put<CompanyMail | null>('/me/mailbox/company', b),
+  testCompany: (b: { settings: CompanyMailInput; email: string; password: string }) => post<{ ok: boolean; checks: MailServerCheck[] }>('/me/mailbox/company/test', b),
   connectImap: (b: { provider: string; email: string; password: string }) => post<MailImapAccount>('/me/mailbox/accounts/imap', b),
   disconnectImap: (id: string) => del(`/me/mailbox/accounts/imap/${id}`),
   messages: (account: string, folder: MailFolder, cursor?: string | null, q?: string, signal?: AbortSignal) =>

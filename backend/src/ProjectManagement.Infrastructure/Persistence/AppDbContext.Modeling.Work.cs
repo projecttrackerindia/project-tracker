@@ -137,6 +137,7 @@ public partial class AppDbContext
         {
             e.HasIndex(x => x.TenantId).IsUnique();
             e.Property(x => x.Provider).HasMaxLength(20); e.Property(x => x.Domains).HasMaxLength(500);
+            e.Property(x => x.IncomingProtocol).HasMaxLength(8); e.Property(x => x.IncomingHost).HasMaxLength(200); e.Property(x => x.SmtpHost).HasMaxLength(200);
         });
         b.Entity<MailAccount>(e =>
         {

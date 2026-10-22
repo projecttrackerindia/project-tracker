@@ -22,4 +22,10 @@ public class CompanyMailSettings : TenantEntity, ITenantScoped
     public string Provider { get; set; } = "rediffpro";
     /// <summary>The company's mail domains, comma separated (fivestargroup.in).</summary>
     public string Domains { get; set; } = "";
+    /// <summary>"imap" or "pop" when an administrator set the servers themselves; null uses the preset's IMAP server.</summary>
+    public string? IncomingProtocol { get; set; }
+    public string? IncomingHost { get; set; }
+    public int? IncomingPort { get; set; }
+    public string? SmtpHost { get; set; }
+    public int? SmtpPort { get; set; }
 }
