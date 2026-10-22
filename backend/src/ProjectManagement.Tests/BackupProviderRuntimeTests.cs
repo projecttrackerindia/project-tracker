@@ -8,7 +8,7 @@ using ProjectManagement.Infrastructure.Services;
 
 namespace ProjectManagement.Tests;
 
-public sealed class LocalAiRuntimeTests
+public sealed class BackupProviderRuntimeTests
 {
     private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler
     {
@@ -20,26 +20,35 @@ public sealed class LocalAiRuntimeTests
     }
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     { public HttpClient CreateClient(string name) => new(handler, false); }
-    private static AiOptions Settings() => new() { AnthropicApiKey = "unused-test-key", Fallback = new() { BaseUrl = "http://ollama:11434/v1", Model = "qwen2.5:7b", Wire = "ollama" } };
+    private static AiOptions Settings() => new() { PrimaryProvider = "local", AnthropicApiKey = "unused-test-key", Fallback = new() { BaseUrl = "http://backup.test/v1", Model = "backup-model" } };
     private static OpenAiCompatibleClient Client(Handler h, AiOptions o) => new(new Factory(h), Options.Create(o), NullLogger<OpenAiCompatibleClient>.Instance);
     private static OpenAiCompatibleChat Chat(Handler h, AiOptions o) => new(new Factory(h), Options.Create(o), Client(h, o), NullLogger<OpenAiCompatibleChat>.Instance);
     private static AiChatRequest Ask() => new("claude-opus-5-5", "Be concise.", "", [AiTurn.User("Hello")], [], 16000, "high", true);
     private static async Task<List<AiChatEvent>> Read(IAiChat chat, AiChatRequest? request = null, CancellationToken ct = default)
     { var events = new List<AiChatEvent>(); await foreach (var e in chat.StreamAsync(request ?? Ask(), ct)) events.Add(e); return events; }
     private static HttpResponseMessage Answer(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body) };
+    /// <summary>A one-shot chat-completions answer.</summary>
+    private static HttpResponseMessage OneShot(string text) =>
+        Answer("{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"" + text + "\"},\"finish_reason\":\"stop\"}]}");
+    /// <summary>A streamed chat-completions answer: one text delta, a finish reason and usage, then [DONE].</summary>
+    private static HttpResponseMessage Streamed(string text, int input = 12, int output = 2) => new(HttpStatusCode.OK) { Content = new StringContent(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"" + text + "\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":" + input + ",\"completion_tokens\":" + output + "}}\n\ndata: [DONE]\n\n",
+        System.Text.Encoding.UTF8, "text/event-stream") };
+    /// <summary>Answers the one-shot and the streamed route with the same text, whichever is asked.</summary>
+    private static Handler Both(string text) => new((req, _) => Task.FromResult(req.Content is null ? OneShot(text) : req.Content.ReadAsStringAsync().Result.Contains("\"stream\":true") ? Streamed(text) : OneShot(text)));
 
     [Fact]
     public async Task A_key_alone_cannot_select_or_charge_Anthropic_in_either_router()
     {
         var o = Settings();
-        var local = new Handler((_, _) => Task.FromResult(Answer("""{"message":{"content":"Hello"},"done":true}""")));
+        var local = Both("Hello");
         var paid = new Handler((_, _) => throw new InvalidOperationException("Paid provider must not be invoked"));
         var router = new AiRouter(new AnthropicClient(new Factory(paid), Options.Create(o), NullLogger<AnthropicClient>.Instance), Client(local, o), NullLogger<AiRouter>.Instance);
-        Assert.Equal("qwen2.5:7b", router.Model);
-        Assert.Equal("qwen2.5:7b", (await router.CompleteAsync("Be brief", "Hello", 50, default)).Model);
+        Assert.Equal("backup-model", router.Model);
+        Assert.Equal("backup-model", (await router.CompleteAsync("Be brief", "Hello", 50, default)).Model);
         var streamed = new AiChatRouter(new AnthropicChat(Options.Create(o), NullLogger<AnthropicChat>.Instance), Chat(local, o), NullLogger<AiChatRouter>.Instance);
         await Read(streamed);
-        Assert.Equal("qwen2.5:7b", streamed.ModelFor("claude-haiku-4-5"));
+        Assert.Equal("backup-model", streamed.ModelFor("claude-haiku-4-5"));
         Assert.Equal(0, paid.Calls);
         Assert.Equal(2, local.Calls);
     }
@@ -53,29 +62,10 @@ public sealed class LocalAiRuntimeTests
         Assert.False(new AiChatRouter(new AnthropicChat(Options.Create(o), NullLogger<AnthropicChat>.Instance), Chat(h, o), NullLogger<AiChatRouter>.Instance).Configured);
     }
 
-    [Fact]
-    public async Task Native_one_shot_and_streamed_requests_use_the_same_model_limits_and_cpu_settings()
-    {
-        var o = Settings(); o.AnthropicApiKey = null; o.Fallback.NumCtx = 8192; o.Fallback.NumThread = 2; o.Fallback.MaxOutputTokens = 256;
-        var h = new Handler((_, _) => Task.FromResult(Answer("""{"message":{"content":"Hello"},"done":true,"eval_count":2,"prompt_eval_count":12}""")));
-        await Client(h, o).CompleteAsync("Brief", "Hello", 9999, default);
-        Assert.EndsWith("/api/chat", h.Url!.ToString());
-        var body = JsonNode.Parse(h.Body!)!;
-        Assert.False(body["stream"]!.GetValue<bool>());
-        Assert.Equal(256, body["options"]!["num_predict"]!.GetValue<int>());
-        var events = await Read(Chat(h, o));
-        body = JsonNode.Parse(h.Body!)!;
-        Assert.Equal(256, body["options"]!["num_predict"]!.GetValue<int>());
-        Assert.Equal(2, body["options"]!["num_thread"]!.GetValue<int>());
-        Assert.Equal(8192, body["options"]!["num_ctx"]!.GetValue<int>());
-        Assert.Equal("10m", body["keep_alive"]!.GetValue<string>());
-        Assert.Equal(12, Assert.Single(events.OfType<AiTurnEnd>()).InputTokens);
-    }
-
     [Theory]
-    [InlineData("{\"message\":{\"content\":\"Partial\"},\"done\":false}\n", "AI_INCOMPLETE_RESPONSE")]
-    [InlineData("broken-json\n", "AI_MALFORMED_RESPONSE")]
-    [InlineData("{\"error\":\"sensitive details\"}\n", "AI_MODEL_ERROR")]
+    [InlineData("data: {\"choices\":[{\"delta\":{\"content\":\"Partial\"}}]}\n\n", "AI_INCOMPLETE_RESPONSE")]
+    [InlineData("data: broken-json\n\n", "AI_MALFORMED_RESPONSE")]
+    [InlineData("data: {\"error\":\"sensitive details\"}\n\n", "AI_MODEL_ERROR")]
     public async Task Broken_streams_are_failures_not_successful_answers(string body, string code)
     {
         var h = new Handler((_, _) => Task.FromResult(Answer(body)));
@@ -88,7 +78,7 @@ public sealed class LocalAiRuntimeTests
     public async Task Context_overflow_fails_before_sending_and_releases_capacity()
     {
         var o = Settings(); o.Fallback.MaxPromptChars = 300;
-        var h = new Handler((_, _) => Task.FromResult(Answer("""{"message":{"content":"Hi"},"done":true}""")));
+        var h = new Handler((_, _) => Task.FromResult(Streamed("Hi")));
         var chat = Chat(h, o);
         var error = await Assert.ThrowsAsync<AppException>(() => Read(chat, Ask() with { Context = new string('x', 500) }));
         Assert.Equal("AI_CONTEXT_OVERFLOW", error.Code); Assert.Equal(0, h.Calls);
@@ -132,15 +122,6 @@ public sealed class LocalAiRuntimeTests
         Assert.Equal(0, gate.QueueDepth);
     }
     [Fact]
-    public async Task Native_runtime_metrics_preserve_load_prompt_generation_and_cache_evidence()
-    {
-        var h = new Handler((_, _) => Task.FromResult(Answer("""{"message":{"content":"Hi"},"done":true,"load_duration":60000000000,"prompt_eval_duration":250000000,"eval_duration":750000000,"total_duration":61000000000,"prompt_eval_cached_count":37}""")));
-        var end = Assert.Single((await Read(Chat(h, Settings()))).OfType<AiTurnEnd>());
-        Assert.Equal(60000, end.Runtime!.LoadMs); Assert.Equal(250, end.Runtime.PromptEvalMs);
-        Assert.Equal(750, end.Runtime.GenerationMs); Assert.Equal(61000, end.Runtime.TotalMs); Assert.Equal(37, end.Runtime.CachedPromptTokens);
-    }
-
-    [Fact]
     public async Task A_hundred_request_burst_is_bounded_and_drains_without_leaking_capacity()
     {
         var o = Settings();
@@ -168,10 +149,10 @@ public sealed class LocalAiRuntimeTests
     }
 
     [Fact]
-    public async Task Diagnostics_exposes_local_capacity_without_sending_inference()
+    public async Task Diagnostics_exposes_backup_capacity_without_sending_inference()
     {
         var o = Settings(); o.AnthropicApiKey = null;
-        var h = new Handler((_, _) => Task.FromResult(Answer("""{"models":[{"name":"qwen2.5:7b"}]}""")));
+        var h = new Handler((_, _) => Task.FromResult(Answer("""{"data":[{"id":"backup-model"}]}""")));
         using var gate = new AiInferenceGate(Options.Create(o));
         using var lease = await gate.EnterAsync(default);
         using var cancel = new CancellationTokenSource();
@@ -181,7 +162,7 @@ public sealed class LocalAiRuntimeTests
         Assert.True(health.ModelAvailable);
         Assert.Equal(1, health.ActiveRequests); Assert.Equal(1, health.MaxConcurrentRequests);
         Assert.Equal(1, health.QueueDepth); Assert.Equal(4, health.MaxQueuedRequests); Assert.Equal(10, health.QueueTimeoutSeconds);
-        Assert.EndsWith("/api/tags", h.Url!.ToString());
+        Assert.EndsWith("/models", h.Url!.ToString());
         cancel.Cancel(); await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
     }
 

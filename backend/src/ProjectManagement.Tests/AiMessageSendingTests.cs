@@ -24,7 +24,7 @@ public sealed partial class AiMessageSendingTests(ApiFactory factory)
         try
         {
             options.PrimaryProvider = "local"; factory.Chat.Reset(); factory.Chat.Configured = true;
-            factory.Chat.ModelOverride = "qwen2.5:7b";
+            factory.Chat.ModelOverride = "gemini-3.5-flash-lite";
             var sender = await TestClient.RegisterAsync(factory, "Prasanna"); await sender.CreateOrgAsync(); await sender.UpgradeAsync("BUSINESS");
             var recipient = await sender.AddMemberAsync(factory, TenantRole.Member, recipientName);
             await test(sender, recipient);
@@ -208,7 +208,7 @@ public sealed partial class AiMessageSendingTests(ApiFactory factory)
     [InlineData("Can you send a message to Siva Reddy?")]
     public Task Missing_body_asks_a_focused_question_without_a_model_or_action(string request) => Run(async (sender, recipient) =>
     {
-        factory.Chat.Fail = new InvalidOperationException("Clarification must not call Ollama");
+        factory.Chat.Fail = new InvalidOperationException("Clarification must not call the model");
         var reply = await Ask(sender, request);
         Assert.Contains("What exact message", reply["content"]!.GetValue<string>());
         Assert.Contains("Siva Reddy", reply["content"]!.GetValue<string>());

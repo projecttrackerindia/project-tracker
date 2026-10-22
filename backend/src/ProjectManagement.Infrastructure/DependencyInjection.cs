@@ -38,8 +38,9 @@ public static class DependencyInjection
         services.AddOptions<ProjectManagement.Application.Features.Ai.AiOptions>()
             .Bind(config.GetSection(ProjectManagement.Application.Features.Ai.AiOptions.Section))
             .PostConfigure(o => { if (string.IsNullOrWhiteSpace(o.Gemini.ApiKey)) o.Gemini.ApiKey = config["AI_gemini_apikey"]; })
-            .Validate(o => o.PrimaryProvider is "local" or "anthropic" or "gemini", "Ai:PrimaryProvider must be local, anthropic or gemini.")
-            .Validate(o => o.PrimaryProvider != "gemini" || o.Gemini.Enabled && (o.Gemini.Vertex || !string.IsNullOrWhiteSpace(o.Gemini.ApiKey)), "Gemini requires explicit enablement and a backend key (or Vertex AI).")
+            .Validate(o => o.PrimaryProvider is "gemini" or "anthropic" or "local", "Ai:PrimaryProvider must be gemini, anthropic or local.")
+            // Gemini is the default provider. Enabled, it needs Vertex AI or a key; not enabled, the assistant stays off rather than failing start-up.
+            .Validate(o => !o.Gemini.Enabled || o.Gemini.Vertex || !string.IsNullOrWhiteSpace(o.Gemini.ApiKey), "Gemini requires a backend key or Vertex AI when enabled.")
             .Validate(o => !o.Gemini.Vertex || System.Text.RegularExpressions.Regex.IsMatch(o.Gemini.Location, "^[a-z0-9-]+$"), "Ai:Gemini:Location must be a Google Cloud region such as asia-south1.")
             .Validate(o => !o.Gemini.Enabled || !string.IsNullOrWhiteSpace(o.Gemini.Model) && System.Text.RegularExpressions.Regex.IsMatch(o.Gemini.ProjectId, "^[a-zA-Z0-9-]+$"), "Gemini needs a model and a valid project identifier.")
             .Validate(o => o.Gemini.MaxOutputTokens is >= 1 and <= 16000 && o.Gemini.TimeoutSeconds is >= 1 and <= 600 && o.Gemini.MaxPromptBytes >= 256 && o.Gemini.RequestsPerMinute > 0 && o.Gemini.InputTokensPerMinute > 0 && o.Gemini.RequestsPerDay > 0 && o.Gemini.PilotInputTokenAllowance > 0 && o.Gemini.PilotOutputTokenAllowance > 0, "Gemini capacity and pilot settings are invalid.")
@@ -120,11 +121,10 @@ public static class DependencyInjection
         services.AddSingleton<ProjectManagement.Application.Features.Sso.ISamlProtocol, SamlProtocol>();
         services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier, DnsDomainVerifier>();
         services.AddSingleton<DevMailbox>();
-        // The AI assistant: Claude through the Anthropic API when Ai:AnthropicApiKey is set, and the backup model (Ai:Fallback:*) when
-        // Claude cannot answer or on its own.
+        // The AI assistant's providers: Gemini (primary), Claude when explicitly allowed, and the backup endpoint (Ai:Fallback:*).
         services.AddHttpClient("anthropic", c => c.Timeout = TimeSpan.FromSeconds(90));
         services.AddHttpClient("ai-backup", c => c.Timeout = TimeSpan.FromSeconds(90));
-        services.AddHttpClient("ai-backup-stream", c => c.Timeout = TimeSpan.FromMinutes(5));   // a CPU-only local model can take far longer than a one-shot sizing call
+        services.AddHttpClient("ai-backup-stream", c => c.Timeout = TimeSpan.FromMinutes(5));   // a streamed, tool-using turn runs far longer than a one-shot sizing call
         services.AddSingleton<AnthropicClient>();
         services.AddHostedService<AiTraceRetentionWorker>();
         services.Configure<AiOperationsOptions>(config.GetSection(AiOperationsOptions.Section));
@@ -139,10 +139,10 @@ public static class DependencyInjection
         services.AddSingleton<GoogleAccessToken>();
         services.AddHttpClient("gcp-metadata", c => c.Timeout = TimeSpan.FromSeconds(5));
         services.AddSingleton<GeminiChat>();
-        services.AddHttpClient("ai-gemini", c => c.Timeout = Timeout.InfiniteTimeSpan);
-        // The AI workspace: streamed, with tools and files. Claude first, the same Ai:Fallback:* provider as backup - a self-hosted
-        // Ollama/llama.cpp server for a CPU-only deployment, or any other OpenAI-compatible address, used when Claude cannot answer or
-        // there is no Anthropic key at all.
+        // Streamed turns are bounded by Ai:Gemini:TimeoutSeconds per request; this is the outer guard against a hung connection.
+        services.AddHttpClient("ai-gemini", c => c.Timeout = TimeSpan.FromMinutes(10));
+        // The AI workspace: streamed, with tools and files. Gemini first, with the Ai:Fallback:* OpenAI-compatible endpoint as backup
+        // when Gemini cannot answer before any output has streamed.
         services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat, AiChatRouter>();
         if ((config["Storage:Provider"] ?? "Local").Equals("S3", StringComparison.OrdinalIgnoreCase))
         {

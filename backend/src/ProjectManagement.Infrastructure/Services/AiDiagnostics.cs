@@ -21,15 +21,13 @@ public sealed class AiDiagnostics(IHttpClientFactory http, IOptions<AiOptions> o
         try
         {
             var root = settings.BaseUrl!.Trim().TrimEnd('/');
-            var native = settings.Wire?.Equals("ollama", StringComparison.OrdinalIgnoreCase) == true;
-            if (native && root.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) root = root[..^3];
-            using var req = new HttpRequestMessage(HttpMethod.Get, root + (native ? "/api/tags" : "/models"));
+            using var req = new HttpRequestMessage(HttpMethod.Get, root + "/models");
             if (!string.IsNullOrWhiteSpace(settings.ApiKey)) req.Headers.Authorization = new("Bearer", settings.ApiKey.Trim());
             using var response = await http.CreateClient("ai-backup").SendAsync(req, deadline.Token);
             if (!response.IsSuccessStatusCode) return Report(true, false, false, "AI_HEALTH_FAILED");
             var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(deadline.Token));
-            var models = body?[native ? "models" : "data"] as JsonArray;
-            var available = models?.Any(m => m?[native ? "name" : "id"]?.GetValue<string>() == model) == true;
+            var models = body?["data"] as JsonArray;
+            var available = models?.Any(m => m?["id"]?.GetValue<string>() == model) == true;
             return Report(true, true, available, available ? null : "AI_MODEL_UNKNOWN");
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)

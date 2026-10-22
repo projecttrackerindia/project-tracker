@@ -1,3 +1,5 @@
+> Historical note (October 2026): this document predates the move to Google Cloud. Google Gemini on Vertex AI is now the only production model provider; sections describing a self-hosted or local model are retained for the record and no longer apply. Current operations: [AI-OPERATIONS.md](AI-OPERATIONS.md).
+
 # AI message sending and confirmation
 
 ## Root cause

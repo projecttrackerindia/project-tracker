@@ -1,3 +1,5 @@
+> Historical note (October 2026): this document predates the move to Google Cloud. Google Gemini on Vertex AI is now the only production model provider; sections describing a self-hosted or local model are retained for the record and no longer apply. Current operations: [AI-OPERATIONS.md](AI-OPERATIONS.md).
+
 # AI agent reliability review — 10 October 2026
 
 Baseline: `main` at `bb84ea21d3b5c27cb0487d4e09c316bff53b8f05`. This review addresses the supplied scalability/reliability brief with the existing React, .NET, PostgreSQL/SQLite and local-model architecture.

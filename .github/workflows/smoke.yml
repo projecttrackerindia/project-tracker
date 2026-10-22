@@ -1,8 +1,11 @@
 name: Browser smoke test
 
-# Opens the real app in a browser after every push to main and checks the pages people use most. It reports problems but never blocks:
-# the CI workflow stays the gate. Run it by hand from the Actions tab too.
+# Opens the real app in a browser on every pull request and every push to main. The core journeys (sign-in, the main pages, a project
+# created from the form, a task created, edited and moved) block the merge, the same as the CI workflow. The extended scripts (documents,
+# mobile, public pages) are reported but do not block until they run reliably on the development database; see Phase H of the
+# platform review. The API runs on PostgreSQL, as in production. Run it by hand from the Actions tab too.
 on:
+  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
@@ -13,8 +16,21 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    continue-on-error: true
+    timeout-minutes: 30
+    # The API runs on PostgreSQL, the production engine: the Development SQLite file locks under the background workers and fails
+    # writes intermittently, which made the browser checks unreliable.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -30,6 +46,8 @@ jobs:
         env:
           ASPNETCORE_ENVIRONMENT: Development
           ASPNETCORE_URLS: http://localhost:5080
+          Database__Provider: Postgres
+          ConnectionStrings__Default: Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=pm_smoke
         run: |
           dotnet build -c Release -v q
           nohup dotnet bin/Release/net9.0/ProjectManagement.Api.dll > "$RUNNER_TEMP/api.log" 2>&1 &
@@ -40,15 +58,16 @@ jobs:
           npm ci
           nohup npx vite --host 127.0.0.1 > "$RUNNER_TEMP/vite.log" 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:5173/ && break; sleep 2; done
-      - name: Smoke test
+      - name: Prepare the browser
         working-directory: frontend
         run: |
           npm i --no-save playwright-core
           npx playwright-core install chromium
-          # Each script runs on its own; a failure is reported as an annotation with the script's last lines (job logs are not always
-          # readable from outside), and the rest still run.
+      - name: Core journeys (blocking)
+        working-directory: frontend
+        run: |
           failed=0
-          for s in smoke invitations public mobile documents documents-api documents-review documents-secrets documents-pdf; do
+          for s in smoke core-journeys invitations; do
             if ! node "e2e/$s.mjs" > "$RUNNER_TEMP/$s.log" 2>&1; then
               failed=1
               detail=$( (grep -E "^FAIL|Error:|waiting for|at .*e2e/" "$RUNNER_TEMP/$s.log" | head -n 14; echo ---; tail -n 4 "$RUNNER_TEMP/$s.log") | tr -d '\r' | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
@@ -61,6 +80,27 @@ jobs:
             [ -n "$api" ] && echo "::warning title=API log around the failure::$api"
           fi
           exit $failed
+      - name: Extended scripts (reported, not blocking)
+        working-directory: frontend
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          failed=0
+          for s in public mobile documents documents-api documents-review documents-secrets documents-pdf; do
+            if ! node "e2e/$s.mjs" > "$RUNNER_TEMP/$s.log" 2>&1; then
+              failed=1
+              detail=$( (grep -E "^FAIL|Error:|waiting for|at .*e2e/" "$RUNNER_TEMP/$s.log" | head -n 14; echo ---; tail -n 4 "$RUNNER_TEMP/$s.log") | tr -d '\r' | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
+              echo "::warning title=Extended smoke e2e/$s.mjs failed::$detail"
+            fi
+            tail -n 5 "$RUNNER_TEMP/$s.log"
+          done
+          exit $failed
       - name: Logs
         if: failure()
-        run: tail -n 60 "$RUNNER_TEMP/api.log" "$RUNNER_TEMP/vite.log" || true
+        run: |
+          echo "==> API errors with context"
+          grep -n -B3 -A40 -E "\[[0-9:]+ (ERR|FTL)\]" "$RUNNER_TEMP/api.log" | tail -n 400 || true
+          echo "==> API log tail"
+          tail -n 60 "$RUNNER_TEMP/api.log" || true
+          echo "==> Vite log tail"
+          tail -n 40 "$RUNNER_TEMP/vite.log" || true

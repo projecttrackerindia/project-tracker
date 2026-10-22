@@ -23,7 +23,7 @@ public sealed class LocalAiWorkflowTests(ApiFactory factory)
         try
         {
             options.PrimaryProvider = "local"; factory.Chat.Reset(); factory.Chat.Configured = true;
-            factory.Chat.ModelOverride = "qwen2.5:7b";
+            factory.Chat.ModelOverride = "gemini-3.5-flash-lite";
             var owner = await TestClient.RegisterAsync(factory); await owner.CreateOrgAsync(); await owner.UpgradeAsync("BUSINESS");
             await test(owner);
         }

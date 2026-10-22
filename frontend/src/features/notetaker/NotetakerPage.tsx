@@ -21,7 +21,7 @@ const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.err
 const DURATIONS = [30, 45, 60, 90, 120, 180];
 const PRESETS = [
   { id: 'notes', label: 'Notes only', text: 'Joins when you send it, writes the minutes and emails them to you.', values: { autoJoin: false, autoMinutes: true, autoEmail: true, autoTasks: false } },
-  { id: 'tasks', label: 'Notes + tasks', text: 'Also turns the action items into tasks in the project.', values: { autoJoin: false, autoMinutes: true, autoEmail: true, autoTasks: true } },
+  { id: 'tasks', label: 'Notes + tasks', text: 'Also proposes the action items as tasks for approval in the project.', values: { autoJoin: false, autoMinutes: true, autoEmail: true, autoTasks: true } },
   { id: 'auto', label: 'Fully automatic', text: 'Also joins every call on your Google Calendar by itself.', values: { autoJoin: true, autoMinutes: true, autoEmail: true, autoTasks: true } },
 ] as const;
 
@@ -142,7 +142,7 @@ export function NotetakerPage() {
             <label className="nt-toggle"><input type="checkbox" checked={settings.autoEmail} disabled={!settings.autoMinutes} onChange={(e) => void save({ autoEmail: e.target.checked })} />
               <span><b>Email me the minutes</b><small>Sent to your ProjectTracker address as soon as they are written.</small></span></label>
             <label className="nt-toggle"><input type="checkbox" checked={settings.autoTasks} disabled={!settings.autoMinutes} onChange={(e) => void save({ autoTasks: e.target.checked })} />
-              <span><b>Create tasks from the action items</b><small>Added to the project, assigned when the person named in the call is a member, with the date said.</small></span></label>
+              <span><b>Propose tasks from the action items</b><small>Each one waits for approval in the project's agent inbox, assigned when the person named in the call is a member, with the date said.</small></span></label>
             <label className="nt-toggle"><input type="checkbox" checked={settings.deleteTranscript} onChange={(e) => void save({ deleteTranscript: e.target.checked })} />
               <span><b>Delete the transcript afterwards</b><small>Once the minutes are written and the agent has read the call, only the minutes are kept. Audio is never stored.</small></span></label>
           </div>

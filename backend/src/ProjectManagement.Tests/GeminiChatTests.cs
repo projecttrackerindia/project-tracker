@@ -50,21 +50,26 @@ public class GeminiChatTests
         { await Task.Delay(Timeout.Infinite, ct); throw new InvalidOperationException("Unreachable after cancellation"); }
     }
 
+    /// <summary>The OpenAI-compatible backup endpoint: a one-shot chat-completions answer, or a streamed one when the request asks for a stream.</summary>
     private sealed class LocalStub : HttpMessageHandler, IHttpClientFactory
     {
         public int Calls;
         public HttpClient CreateClient(string name) => new(this, false);
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
-                """{"model":"backup-model","message":{"role":"assistant","content":"Local answer"},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":2}""" + "\n") });
+            var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct);
+            if (body.Contains("\"stream\":true"))
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                    "data: " + """{"choices":[{"delta":{"content":"Local answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2}}""" + "\n\ndata: [DONE]\n\n", System.Text.Encoding.UTF8, "text/event-stream") };
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                """{"model":"backup-model","choices":[{"message":{"role":"assistant","content":"Local answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2}}""") };
         }
     }
 
     private static AiChatRouter Router(IOptions<AiOptions> o, IHttpClientFactory cloud, LocalStub local, GeminiAdmission? admission = null)
     {
-        o.Value.Fallback = new() { BaseUrl = "http://local.test/v1", Model = "backup-model", Wire = "ollama", MaxQueuedRequests = 0 };
+        o.Value.Fallback = new() { BaseUrl = "http://backup.test/v1", Model = "backup-model", MaxQueuedRequests = 0 };
         var one = new OpenAiCompatibleClient(local, o, NullLogger<OpenAiCompatibleClient>.Instance);
         return new(new AnthropicChat(o, NullLogger<AnthropicChat>.Instance), new OpenAiCompatibleChat(local, o, one, NullLogger<OpenAiCompatibleChat>.Instance),
             NullLogger<AiChatRouter>.Instance, new GeminiChat(cloud, o, admission ?? new Admission(o)));
@@ -301,13 +306,13 @@ public class GeminiChatTests
     }
 
     [Fact]
-    public void Railway_alias_binds_only_to_backend_key_and_keeps_local_provider_default()
+    public void Gemini_key_alias_binds_only_to_the_backend_key_and_the_provider_defaults_to_gemini()
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         { ["AI_gemini_apikey"] = "test-only", ["Database:Provider"] = "Sqlite", ["ConnectionStrings:Default"] = "Data Source=:memory:" }).Build();
         var services = new ServiceCollection(); services.AddLogging(); services.AddInfrastructure(config);
         using var provider = services.BuildServiceProvider(); var o = provider.GetRequiredService<IOptions<AiOptions>>().Value;
-        Assert.Equal("test-only", o.Gemini.ApiKey); Assert.False(o.UsesGemini); Assert.Equal("local", o.PrimaryProvider);
+        Assert.Equal("test-only", o.Gemini.ApiKey); Assert.False(o.UsesGemini); Assert.Equal("gemini", o.PrimaryProvider);
     }
 
     [RedisFact]
