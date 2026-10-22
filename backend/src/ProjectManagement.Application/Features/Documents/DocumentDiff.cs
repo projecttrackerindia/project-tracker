@@ -77,6 +77,7 @@ public static class DocumentDiff
                 case "hardBreak": sb.Append(' '); break;
                 case "docImage": sb.Append("[image] ").Append(o["attrs"]?["alt"]?.GetValue<string>()); break;
                 case "archDiagram": sb.Append("[diagram] ").Append(o["attrs"]?["title"]?.GetValue<string>()); break;
+                case "mention": sb.Append(o["attrs"]?["kind"]?.ToString() switch { "task" => "#", "page" => "", _ => "@" }).Append(o["attrs"]?["label"]?.ToString()); break;   // @person, #task and linked pages are words of the page
                 default: foreach (var c in o["content"] as JsonArray ?? []) Go(c); break;
             }
         }
