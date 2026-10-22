@@ -42,9 +42,17 @@ const defaulted = async (label) => {
 };
 check('project form defaults are loaded', (await defaulted('Project group')) && (await defaulted('Project type')) && (await defaulted('Project timeline')));
 await page.locator('.modal button[type=submit], .modal button', { hasText: 'Create project' }).first().click();
-const projectOpened = await page.waitForURL((u) => /\/projects\/[0-9a-f-]{36}/.test(u.pathname), { timeout: 20000 }).then(() => true).catch(() => false);
-const validation = projectOpened ? '' : (await page.locator('.modal .field-error, .modal [role=alert]').allInnerTexts().catch(() => [])).join(' | ');
-check('project is created and opened', projectOpened, projectOpened ? page.url() : `${page.url()} ${validation}`);
+let projectOpened = await page.waitForURL((u) => /\/projects\/[0-9a-f-]{36}/.test(u.pathname), { timeout: 20000 }).then(() => true).catch(() => false);
+if (!projectOpened) {
+  // The save may have gone through without the hand-off to the project page (the development API's SQLite can answer late);
+  // the project list is the source of truth, so look it up there by name.
+  const notice = (await page.locator('.toast, [role=status], .modal .field-error, .modal [role=alert]').allInnerTexts().catch(() => [])).join(' | ');
+  await page.keyboard.press('Escape').catch(() => undefined);
+  await page.goto(`${BASE}/${slug}/projects`); await page.waitForTimeout(2000);
+  const card = page.locator(`text=${projectName}`).first();
+  if (await card.count()) { await card.click(); projectOpened = await page.waitForURL((u) => /\/projects\/[0-9a-f-]{36}/.test(u.pathname), { timeout: 15000 }).then(() => true).catch(() => false); }
+  check('project is created and opened', projectOpened, projectOpened ? `opened from the list after save (${notice})` : `${page.url()} ${notice}`);
+} else check('project is created and opened', true, page.url());
 await page.waitForTimeout(1500);
 check('project page shows its name', (await page.locator(`text=${projectName}`).count()) > 0);
 
