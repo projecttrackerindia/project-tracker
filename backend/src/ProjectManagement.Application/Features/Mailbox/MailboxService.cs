@@ -26,9 +26,15 @@ namespace ProjectManagement.Application.Features.Mailbox;
 
 public record MailPreset(string Id, string Name, string ImapHost, int ImapPort, string SmtpHost, int SmtpPort, string Domain);
 public record MailImapAccountDto(Guid Id, string Provider, string Name, string Email, DateTime ConnectedAt, DateTime? LastSyncedAt, string? LastError);
-public record CompanyMailDto(string Provider, string Name, IReadOnlyList<string> Domains);
+/// <summary>The company's mail system as everyone connects to it: the preset's servers, or the ones the administrator entered.</summary>
+public record CompanyMailDto(string Provider, string Name, IReadOnlyList<string> Domains, string Incoming = "imap", string IncomingHost = "", int IncomingPort = 993,
+    string SmtpHost = "", int SmtpPort = 465, bool Custom = false);
 public record MailAccountsDto(IReadOnlyList<MailImapAccountDto> Imap, IReadOnlyList<MailPreset> Presets, CompanyMailDto? Company = null, bool CanManageCompany = false, string? MyEmail = null);
-public record SaveCompanyMailRequest(string Provider, string Domains);
+public record SaveCompanyMailRequest(string Provider, string Domains, string? Incoming = null, string? IncomingHost = null, int? IncomingPort = null, string? SmtpHost = null, int? SmtpPort = null);
+/// <summary>Tries the servers with one person's sign-in before saving; the password is used once and never kept.</summary>
+public record TestCompanyMailRequest(SaveCompanyMailRequest Settings, string Email, string Password);
+public record MailServerCheck(string Server, bool Ok, string Detail);
+public record TestCompanyMailDto(bool Ok, IReadOnlyList<MailServerCheck> Checks);
 public record ConnectImapRequest(string Provider, string Email, string Password);
 public record MailMessageDto(string Id, string ThreadId, string Subject, string From, string To, string Cc, DateTimeOffset? Date, bool Unread, bool HasAttachments, string? Body = null, bool BodyTruncated = false);
 public record MailListDto(string Account, string Email, string Folder, IReadOnlyList<MailMessageDto> Messages, string? Cursor);
@@ -53,7 +59,11 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         new("rediffpro", "Rediffmail Pro", "imap.rediffmailpro.com", 993, "smtp.rediffmailpro.com", 465, ""),
         new("yahoo", "Yahoo Mail", "imap.mail.yahoo.com", 993, "smtp.mail.yahoo.com", 465, "yahoo.com"),
         new("zoho", "Zoho Mail", "imap.zoho.com", 993, "smtp.zoho.com", 465, "zoho.com"),
+        new("outlook", "Outlook / Microsoft 365", "outlook.office365.com", 993, "smtp.office365.com", 587, ""),
+        new("custom", "Other (enter the servers)", "", 993, "", 465, ""),
     ];
+    private static readonly int[] IncomingPorts = [993, 995];
+    private static readonly int[] SmtpPorts = [465, 587];
     /// <summary>
     /// The POP servers of the same providers. Some company mailboxes (Rediffmail Pro among them) have only POP switched on, the way Outlook
     /// is often set up; when IMAP sign-in fails, the same password is tried over POP and the inbox is read from there.
@@ -79,8 +89,107 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         return new(rows.Select(Dto).ToArray(), Presets, company is null ? null : CompanyDto(company), await permissions.HasAsync(Permissions.OrgManage, ct), me);
     }
 
-    private static CompanyMailDto CompanyDto(CompanyMailSettings c) =>
-        new(c.Provider, Presets.FirstOrDefault(p => p.Id == c.Provider)?.Name ?? c.Provider, c.Domains.Split(',', StringSplitOptions.RemoveEmptyEntries));
+    private static CompanyMailDto CompanyDto(CompanyMailSettings c)
+    {
+        var p = Presets.FirstOrDefault(x => x.Id == c.Provider);
+        var (incoming, host, port, smtp, smtpPort) = Servers(c);
+        return new(c.Provider, p?.Name ?? c.Provider, c.Domains.Split(',', StringSplitOptions.RemoveEmptyEntries), incoming, host, port, smtp, smtpPort, c.IncomingHost is not null);
+    }
+
+    /// <summary>The servers people on the company's domains connect to: the administrator's own, or the preset's IMAP and SMTP.</summary>
+    private static (string Incoming, string Host, int Port, string Smtp, int SmtpPort) Servers(CompanyMailSettings c)
+    {
+        var p = Presets.FirstOrDefault(x => x.Id == c.Provider);
+        var incoming = c.IncomingProtocol ?? "imap";
+        return (incoming, c.IncomingHost ?? p?.ImapHost ?? "", c.IncomingPort ?? (incoming == "pop" ? PopPort : p?.ImapPort ?? 993), c.SmtpHost ?? p?.SmtpHost ?? "", c.SmtpPort ?? p?.SmtpPort ?? 465);
+    }
+
+    /// <summary>
+    /// Checks servers an administrator typed: a plain host name (not an address), a standard secure mail port, and a host that resolves only to
+    /// public addresses, so this setting can never be used to reach the server's own network.
+    /// </summary>
+    private static async Task<(string Incoming, string Host, int Port, string Smtp, int SmtpPort)?> CheckServersAsync(SaveCompanyMailRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.IncomingHost) && string.IsNullOrWhiteSpace(req.SmtpHost))
+        {
+            if (req.Provider == "custom") throw new ValidationException("incomingHost", "Enter the incoming and outgoing mail servers.");
+            return null;   // the preset's servers
+        }
+        var incoming = (req.Incoming ?? "imap").ToLowerInvariant();
+        if (incoming is not ("imap" or "pop")) throw new ValidationException("incoming", "Choose IMAP or POP for incoming mail.");
+        var host = Host(req.IncomingHost, "incomingHost", "incoming");
+        var smtp = Host(req.SmtpHost, "smtpHost", "outgoing (SMTP)");
+        var port = req.IncomingPort ?? (incoming == "pop" ? PopPort : 993);
+        var smtpPort = req.SmtpPort ?? 465;
+        if (!IncomingPorts.Contains(port) || (incoming == "pop") != (port == PopPort))
+            throw new ValidationException("incomingPort", incoming == "pop" ? "POP over SSL/TLS uses port 995." : "IMAP over SSL/TLS uses port 993.");
+        if (!SmtpPorts.Contains(smtpPort)) throw new ValidationException("smtpPort", "Outgoing mail uses port 465 (SSL/TLS) or 587 (STARTTLS).");
+        foreach (var (h, field) in new[] { (host, "incomingHost"), (smtp, "smtpHost") })
+        {
+            System.Net.IPAddress[] addrs;
+            try { addrs = await System.Net.Dns.GetHostAddressesAsync(h, ct); }
+            catch (System.Net.Sockets.SocketException) { throw new ValidationException(field, $"{h} could not be found. Check the server name."); }
+            if (addrs.Length == 0 || addrs.Any(PrivateAddress)) throw new ValidationException(field, $"{h} points to a private network address, which is not allowed.");
+        }
+        return (incoming, host, port, smtp, smtpPort);
+
+        static string Host(string? value, string field, string what)
+        {
+            var h = (value ?? "").Trim().ToLowerInvariant();
+            if (h.Length is 0 or > 200 || System.Net.IPAddress.TryParse(h, out _) || !Regex.IsMatch(h, @"^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$"))
+                throw new ValidationException(field, $"Enter the {what} server name, like pop.rediffmailpro.com.");
+            return h;
+        }
+    }
+
+    private static bool PrivateAddress(System.Net.IPAddress a)
+    {
+        if (System.Net.IPAddress.IsLoopback(a)) return true;
+        if (a.IsIPv4MappedToIPv6) a = a.MapToIPv4();
+        if (a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6) return a.IsIPv6LinkLocal || a.IsIPv6SiteLocal || a.IsIPv6UniqueLocal;
+        var b = a.GetAddressBytes();
+        return b[0] is 10 or 127 or 0 || (b[0] == 172 && b[1] is >= 16 and <= 31) || (b[0] == 192 && b[1] == 168) || (b[0] == 169 && b[1] == 254) || (b[0] == 100 && b[1] is >= 64 and <= 127);
+    }
+
+    /// <summary>
+    /// Owners and admins try the servers with their own mailbox before saving: incoming sign-in (IMAP or POP) and outgoing sign-in (SMTP).
+    /// The password is used for this check only and is never stored or logged.
+    /// </summary>
+    public async Task<TestCompanyMailDto> TestCompanyAsync(TestCompanyMailRequest req, CancellationToken ct)
+    {
+        await permissions.RequireAsync(Permissions.OrgManage, ct);
+        if (string.IsNullOrEmpty(req.Password) || req.Password.Length > 500) throw new ValidationException("password", "Enter the mailbox password.");
+        var email = (req.Email ?? "").Trim().ToLowerInvariant();
+        if (!System.Net.Mail.MailAddress.TryCreate(email, out _)) throw new ValidationException("email", "Enter a full email address on the company's mail.");
+        var preset = Presets.FirstOrDefault(p => p.Id == req.Settings.Provider) ?? throw new ValidationException("provider", "Choose your company's mail provider.");
+        var custom = await CheckServersAsync(req.Settings, ct);
+        var (incoming, host, port, smtp, smtpPort) = custom ?? ("imap", preset.ImapHost, preset.ImapPort, preset.SmtpHost, preset.SmtpPort);
+        var secret = secrets.Protect(req.Password);
+        var probe = new MailAccount { Email = email, ImapHost = host, ImapPort = port, SmtpHost = smtp, SmtpPort = smtpPort, SecretProtected = secret };
+        var checks = new List<MailServerCheck>();
+        try
+        {
+            if (incoming == "pop") { using var pop = await PopAsync(probe, ct); await pop.DisconnectAsync(true, ct); }
+            else { using var imap = await ImapAsync(probe, ct); await imap.DisconnectAsync(true, ct); }
+            checks.Add(new($"{(incoming == "pop" ? "POP" : "IMAP")} {host}:{port}", true, "Signed in."));
+        }
+        catch (AppException e) { checks.Add(new($"{(incoming == "pop" ? "POP" : "IMAP")} {host}:{port}", false, e.Message)); }
+        try
+        {
+            using var client = new SmtpClient { Timeout = 20000 };
+            await client.ConnectAsync(smtp, smtpPort, smtpPort == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls, ct);
+            await client.AuthenticateAsync(email, req.Password, ct);
+            await client.DisconnectAsync(true, ct);
+            checks.Add(new($"SMTP {smtp}:{smtpPort}", true, "Signed in; mail can be sent."));
+        }
+        catch (AuthenticationException) { checks.Add(new($"SMTP {smtp}:{smtpPort}", false, "The server rejected the sign-in.")); }
+        catch (Exception e) when (e is IOException or System.Net.Sockets.SocketException or SmtpCommandException or SmtpProtocolException or SslHandshakeException or TimeoutException)
+        {
+            log?.LogInformation("SMTP test to {Host}:{Port} failed with {Type}: {Message}", smtp, smtpPort, e.GetType().Name, e.Message);
+            checks.Add(new($"SMTP {smtp}:{smtpPort}", false, "The server could not be reached on this port."));
+        }
+        return new(checks.All(c => c.Ok), checks);
+    }
 
     /// <summary>
     /// An administrator names the company's mail system once (for example Rediffmail Pro on fivestargroup.in): everyone with an address on
@@ -101,9 +210,11 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         if (domains.Count > 10 || domains.Any(d => d.Length > 100 || !System.Text.RegularExpressions.Regex.IsMatch(d, @"^[a-z0-9-]+(\.[a-z0-9-]+)+$")))
             throw new ValidationException("domains", "Enter your company's mail domains, like fivestargroup.in.");
         if (Presets.All(p => p.Id != req.Provider)) throw new ValidationException("provider", "Choose your company's mail provider.");
+        var servers = await CheckServersAsync(req, ct);
         if (row is null) { row = new CompanyMailSettings { TenantId = tid, CreatedAt = clock.Now, CreatedBy = ctx.UserId }; db.CompanyMailSettings.Add(row); }
         row.Provider = req.Provider; row.Domains = string.Join(',', domains); row.UpdatedAt = clock.Now; row.UpdatedBy = ctx.UserId;
-        recorder.Audit("mailbox.company_set", "CompanyMailSettings", row.Id, null, new { provider = req.Provider, domains = row.Domains });
+        row.IncomingProtocol = servers?.Incoming; row.IncomingHost = servers?.Host; row.IncomingPort = servers?.Port; row.SmtpHost = servers?.Smtp; row.SmtpPort = servers?.SmtpPort;
+        recorder.Audit("mailbox.company_set", "CompanyMailSettings", row.Id, null, new { provider = req.Provider, domains = row.Domains, row.IncomingProtocol, row.IncomingHost, row.IncomingPort, row.SmtpHost, row.SmtpPort });
         await db.SaveChangesAsync(ct);
         return CompanyDto(row);
     }
@@ -120,9 +231,19 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         if (await Mine.AnyAsync(a => a.Email == email, ct)) throw new ConflictException("This mailbox is already connected.");
         var account = new MailAccount { TenantId = tid, UserId = uid, Provider = preset.Id, Email = email, ImapHost = preset.ImapHost, ImapPort = preset.ImapPort,
             SmtpHost = preset.SmtpHost, SmtpPort = preset.SmtpPort, SecretProtected = secrets.Protect(preset.Id == "gmail" ? req.Password.Replace(" ", "") : req.Password) };
+        // An address on the company's domains uses the servers the administrator set (IMAP or POP), whatever was picked.
+        var company = await db.CompanyMailSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+        var companyDomain = company is not null && company.Domains.Split(',', StringSplitOptions.RemoveEmptyEntries).Any(d => email.EndsWith("@" + d, StringComparison.Ordinal));
+        if (companyDomain)
+        {
+            var (_, host, port, smtp, smtpPort) = Servers(company!);
+            account.Provider = company!.Provider; account.ImapHost = host; account.ImapPort = port; account.SmtpHost = smtp; account.SmtpPort = smtpPort;
+        }
+        else if (preset.Id == "custom") throw new ValidationException("provider", "Choose your mail provider, or ask an administrator to set up the company's mail servers.");
         // Prove the sign-in works before keeping anything: IMAP first, then POP with the same password (mailboxes with only POP switched on).
-        try { using (var client = await ImapAsync(account, ct)) await client.DisconnectAsync(true, ct); }
-        catch (AppException imapFailure) when (imapFailure.Code is "MAILBOX_AUTH_FAILED" or "MAILBOX_SIGNIN_FAILED" && PopHosts.TryGetValue(preset.Id, out var popHost))
+        if (IsPop(account)) { using (var popClient = await PopAsync(account, ct)) await popClient.DisconnectAsync(true, ct); }
+        else try { using (var client = await ImapAsync(account, ct)) await client.DisconnectAsync(true, ct); }
+        catch (AppException imapFailure) when (imapFailure.Code is "MAILBOX_AUTH_FAILED" or "MAILBOX_SIGNIN_FAILED" && !companyDomain && PopHosts.TryGetValue(preset.Id, out var popHost))
         {
             var pop = new MailAccount { Email = email, ImapHost = popHost, ImapPort = PopPort, SecretProtected = account.SecretProtected };
             try { using (var client = await PopAsync(pop, ct)) await client.DisconnectAsync(true, ct); }

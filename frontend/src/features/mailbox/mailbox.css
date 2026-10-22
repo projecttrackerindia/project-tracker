@@ -207,3 +207,25 @@ div.mb-guide { padding-left: 0; }
 
 .mb-agent-tasks-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .mb-agent-tasks-head h4 { margin: 0; }
+
+/* Company mail dialog: provider, incoming (IMAP or POP), outgoing, and a test with one's own mailbox. */
+.mbc { display: flex; flex-direction: column; gap: 14px; }
+.mbc-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.mbc-field { display: flex; flex-direction: column; gap: 5px; flex: 1 1 200px; min-width: 0; }
+.mbc-field.grow { flex: 2 1 220px; }
+.mbc-field.port { flex: 0 0 150px; }
+.mbc-field > span { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.mbc-field input { width: 100%; box-sizing: border-box; }
+.mbc-group { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px 14px; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.mbc-group legend { padding: 0 6px; font-size: 13px; font-weight: 700; }
+.mbc-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-2); flex-wrap: wrap; align-self: flex-start; }
+.mbc-seg button { border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 8px; color: var(--text-2); cursor: pointer; }
+.mbc-seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.mbc-note { color: var(--text-3); font-size: 12px; }
+.mbc-test { flex: none; }
+.mbc-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mbc-checks li { display: grid; grid-template-columns: 18px auto 1fr; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px; font-size: 13px; }
+.mbc-checks li.ok { background: var(--success-soft); color: var(--success); }
+.mbc-checks li.bad { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
+.mbc-checks li span { color: var(--text-2); }
+@media (max-width: 560px) { .mbc-field.port { flex: 1 1 100%; } }

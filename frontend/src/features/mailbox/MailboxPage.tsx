@@ -14,7 +14,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { addressOf, displayName, mailboxApi } from './mailboxApi';
-import type { ComposeMode, MailAccounts, MailAssist, MailFolder, MailMessage, MailTaskSuggestion } from './mailboxApi';
+import type { CompanyMailInput, ComposeMode, MailAccounts, MailAssist, MailFolder, MailMessage, MailTaskSuggestion } from './mailboxApi';
 import './mailbox.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -644,7 +644,7 @@ function CompanyConnect({ accounts, onConnected }: { accounts: MailAccounts; onC
   return (
     <form className="mb-company" onSubmit={e => { e.preventDefault(); void connect(); }}>
       <b>Connect your company mail</b>
-      <small>{company.name} · {company.domains.join(', ')}. Enter your normal mail password; the server is already set up. If it fails, ask your mail admin to allow IMAP for you.</small>
+      <small>{company.name} · {company.domains.join(', ')}. Enter the password you use for webmail or Outlook; your administrator has already set up the servers.</small>
       {!mine && <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={`you@${company.domains[0]}`} aria-label="Company email" autoComplete="username" />}
       {mine && <span className="mb-company-email">{mine}</span>}
       <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="Mail password" aria-label="Mail password" autoComplete="current-password" />
@@ -653,31 +653,93 @@ function CompanyConnect({ accounts, onConnected }: { accounts: MailAccounts; onC
   );
 }
 
-/** Owners and admins: name the company's mail system once for everyone. */
+/** Owners and admins: set the company's mail servers once (like Outlook's account settings); everyone else connects with just their password. */
 function CompanyMailSetup({ accounts, onSaved }: { accounts: MailAccounts; onSaved: () => void }) {
-  const [open, setOpen] = useState(!accounts.company);
-  const [provider, setProvider] = useState(accounts.company?.provider ?? 'rediffpro');
-  const [domains, setDomains] = useState(accounts.company?.domains.join(', ') ?? '');
-  const [busy, setBusy] = useState(false);
-  const save = async () => {
-    setBusy(true);
-    try { const r = await mailboxApi.saveCompany({ provider, domains }); toast(r ? `Company mail set: ${r.name}.` : 'Company mail switched off.'); onSaved(); setOpen(false); }
-    catch (e) { toast(errText(e, 'Could not save.'), 'error'); }
-    finally { setBusy(false); }
-  };
+  const [open, setOpen] = useState(false);
   return (
     <div className="mb-company-setup">
-      <button type="button" className="mb-link" onClick={() => setOpen(o => !o)} aria-expanded={open}>
-        <Icon name="building" size={14} /> {accounts.company ? `Company mail: ${accounts.company.name} (${accounts.company.domains.join(', ')})` : 'Set your company mail for everyone'}
+      <button type="button" className="mb-link" onClick={() => setOpen(true)}>
+        <Icon name="building" size={14} /> {accounts.company ? `Company mail: ${accounts.company.name} (${accounts.company.domains.join(', ')})` : 'Set up company mail for everyone'}
       </button>
-      {open && <div className="mb-company-form">
-        <small>Everyone with an address on these domains connects with just their password.</small>
-        <Select className="select" aria-label="Company mail provider" value={provider} onChange={e => setProvider(e.target.value)}>
-          {accounts.presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </Select>
-        <input value={domains} onChange={e => setDomains(e.target.value)} placeholder="fivestargroup.in" aria-label="Company mail domains" />
-        <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => void save()}>{busy ? <Spinner /> : null} Save for everyone</button>
-      </div>}
+      {open && <CompanyMailDialog accounts={accounts} onClose={() => setOpen(false)} onSaved={() => { setOpen(false); onSaved(); }} />}
     </div>
+  );
+}
+
+/** Ready-made POP servers for presets whose IMAP is often switched off (the way Outlook is set up in many companies). */
+const POP_HOSTS: Record<string, string> = { rediffpro: 'pop.rediffmailpro.com', rediff: 'pop.rediffmail.com', gmail: 'pop.gmail.com', zoho: 'pop.zoho.com', yahoo: 'pop.mail.yahoo.com', outlook: 'outlook.office365.com' };
+
+function CompanyMailDialog({ accounts, onClose, onSaved }: { accounts: MailAccounts; onClose: () => void; onSaved: () => void }) {
+  const c = accounts.company;
+  const [provider, setProvider] = useState(c?.provider ?? 'rediffpro');
+  const [domains, setDomains] = useState(c?.domains.join(', ') ?? (accounts.myEmail?.split('@')[1] ?? ''));
+  const [incoming, setIncoming] = useState<'imap' | 'pop'>(c?.incoming ?? 'imap');
+  const [inHost, setInHost] = useState(c?.incomingHost ?? '');
+  const [inPort, setInPort] = useState(c?.incomingPort ?? 993);
+  const [smtpHost, setSmtpHost] = useState(c?.smtpHost ?? '');
+  const [smtpPort, setSmtpPort] = useState(c?.smtpPort ?? 465);
+  const [email, setEmail] = useState(accounts.myEmail ?? '');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState<'save' | 'test' | null>(null);
+  const [checks, setChecks] = useState<{ server: string; ok: boolean; detail: string }[] | null>(null);
+  // Filling in from a preset, or switching IMAP/POP, sets the matching servers; anything can still be typed over.
+  const fill = (id: string, proto: 'imap' | 'pop') => {
+    const p = accounts.presets.find(x => x.id === id);
+    if (!p || id === 'custom') return;
+    setInHost(proto === 'pop' ? POP_HOSTS[id] ?? p.imapHost.replace(/^imap\./, 'pop.') : p.imapHost); setInPort(proto === 'pop' ? 995 : p.imapPort);
+    setSmtpHost(p.smtpHost); setSmtpPort(p.smtpPort);
+  };
+  useEffect(() => { if (!c) fill(provider, incoming); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const input = (): CompanyMailInput => ({ provider, domains, incoming, incomingHost: inHost.trim(), incomingPort: inPort, smtpHost: smtpHost.trim(), smtpPort });
+  const test = async () => {
+    setBusy('test'); setChecks(null);
+    try { const r = await mailboxApi.testCompany({ settings: input(), email: email.trim(), password }); setChecks(r.checks); }
+    catch (e) { toast(errText(e, 'The test did not run.'), 'error'); } finally { setBusy(null); }
+  };
+  const save = async () => {
+    setBusy('save');
+    try { const r = await mailboxApi.saveCompany(input()); toast(r ? `Company mail saved: ${r.name}.` : 'Company mail switched off.'); onSaved(); }
+    catch (e) { toast(errText(e, 'Could not save.'), 'error'); } finally { setBusy(null); }
+  };
+  return (
+    <Modal title="Company mail" subtitle="Set the servers once. Everyone with an address on these domains connects with just their password." onClose={onClose} size="lg"
+      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => void save()}>{busy === 'save' ? <Spinner /> : null} Save for everyone</button></>}>
+      <div className="mbc">
+        <div className="mbc-row">
+          <label className="mbc-field"><span>Mail provider</span>
+            <Select className="select" value={provider} onChange={e => { setProvider(e.target.value); fill(e.target.value, incoming); setChecks(null); }} aria-label="Mail provider">
+              {accounts.presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
+          <label className="mbc-field"><span>Company domains</span><input value={domains} onChange={e => setDomains(e.target.value)} placeholder="fivestargroup.in" /></label>
+        </div>
+        <fieldset className="mbc-group"><legend>Incoming mail</legend>
+          <div className="mbc-seg" role="radiogroup" aria-label="Incoming protocol">
+            {(['imap', 'pop'] as const).map(p => <button key={p} type="button" role="radio" aria-checked={incoming === p} className={incoming === p ? 'on' : ''}
+              onClick={() => { setIncoming(p); fill(provider, p); setChecks(null); }}>{p === 'imap' ? 'IMAP (folders, read state)' : 'POP (inbox only, like Outlook POP)'}</button>)}
+          </div>
+          <div className="mbc-row">
+            <label className="mbc-field grow"><span>Server</span><input className="mono" value={inHost} onChange={e => setInHost(e.target.value)} placeholder={incoming === 'pop' ? 'pop.rediffmailpro.com' : 'imap.rediffmailpro.com'} /></label>
+            <label className="mbc-field port"><span>Port</span><Select className="select" value={String(inPort)} onChange={e => setInPort(Number(e.target.value))} aria-label="Incoming port">
+              {incoming === 'pop' ? <option value="995">995 · SSL/TLS</option> : <option value="993">993 · SSL/TLS</option>}</Select></label>
+          </div>
+        </fieldset>
+        <fieldset className="mbc-group"><legend>Outgoing mail (SMTP)</legend>
+          <div className="mbc-row">
+            <label className="mbc-field grow"><span>Server</span><input className="mono" value={smtpHost} onChange={e => setSmtpHost(e.target.value)} placeholder="smtp.rediffmailpro.com" /></label>
+            <label className="mbc-field port"><span>Port</span><Select className="select" value={String(smtpPort)} onChange={e => setSmtpPort(Number(e.target.value))} aria-label="Outgoing port">
+              <option value="465">465 · SSL/TLS</option><option value="587">587 · STARTTLS</option></Select></label>
+          </div>
+          <small className="mbc-note">Signs in with the same address and password as incoming mail.</small>
+        </fieldset>
+        <fieldset className="mbc-group"><legend>Test with your mailbox (optional)</legend>
+          <div className="mbc-row">
+            <label className="mbc-field grow"><span>Email</span><input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" /></label>
+            <label className="mbc-field grow"><span>Password</span><PasswordInput value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" /></label>
+            <button type="button" className="btn mbc-test" disabled={!!busy || !email || !password} onClick={() => void test()}>{busy === 'test' ? <Spinner /> : <Icon name="checks" size={14} />} Test</button>
+          </div>
+          <small className="mbc-note">Used once for this test and never stored.</small>
+          {checks && <ul className="mbc-checks">{checks.map(k => <li key={k.server} className={k.ok ? 'ok' : 'bad'}><Icon name={k.ok ? 'checkCircle' : 'xCircle'} size={15} /><b className="mono">{k.server}</b><span>{k.detail}</span></li>)}</ul>}
+        </fieldset>
+      </div>
+    </Modal>
   );
 }
