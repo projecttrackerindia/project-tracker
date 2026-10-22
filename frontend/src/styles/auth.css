@@ -620,3 +620,18 @@
 .auth-socials { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 .auth-socials.four { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .auth-social.sso svg { color: var(--primary); }
+
+/* Sign-up: Personal or Organisation, one workspace only. */
+.ws-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.ws-choice-card { display: flex; align-items: center; gap: 10px; text-align: left; padding: 12px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); color: var(--text); cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; font: inherit; }
+.ws-choice-card:hover { border-color: var(--primary); }
+.ws-choice-card.on { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); background: color-mix(in srgb, var(--primary) 6%, var(--surface)); }
+.ws-choice-card:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent); }
+.ws-choice-ico { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); }
+.ws-choice-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ws-choice-text b { font-size: 14px; }
+.ws-choice-text span { font-size: 12.5px; color: var(--text-2); line-height: 1.35; }
+@media (max-width: 420px) { .ws-choice { grid-template-columns: 1fr; } }
+.auth-form > .field + .field, .auth-form > .field + .pw-rules, .auth-form > .pw-rules + .field, .auth-form > .ws-choice + .field { margin-top: 14px; }
+.auth-form > .field + .auth-remember { margin-top: 14px; }

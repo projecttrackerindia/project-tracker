@@ -12,7 +12,9 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Auth;
 
-public record RegisterRequest(string Email, string Password, string DisplayName, bool AcceptedTerms, string? ReturnUrl = null);
+/// <summary>WorkspaceType: "personal" (default) or "organization" (needs OrganizationName), or "invited" to create none and join by invitation.</summary>
+public record RegisterRequest(string Email, string Password, string DisplayName, bool AcceptedTerms, string? ReturnUrl = null,
+    string? WorkspaceType = null, string? OrganizationName = null);
 public record LoginRequest(string Email, string Password);
 public record VerifyEmailRequest(string Token);
 public record ResendVerificationRequest(string Email, string? ReturnUrl = null);
@@ -97,9 +99,24 @@ public class AuthService(
         if (_opt.RequireEmailVerification) rawToken = SetVerificationToken(user);
         db.Users.Add(user);
 
-        var workspace = await provisioner.CreateAsync("Personal Workspace", WorkspaceType.Personal, user.Id, null,
-            $"{user.DisplayName} personal", ct);
-        recorder.Audit("user.registered", "User", user.Id, tenantId: workspace.Id, userId: user.Id);
+        // One workspace, the kind the person chose: never a personal one on top of an organization.
+        var kind = (req.WorkspaceType ?? "personal").Trim().ToLowerInvariant();
+        if (kind == "invited")
+        {
+            var at = clock.Now;
+            if (!await db.TenantInvitations.AnyAsync(i => i.NormalizedEmail == normalized && i.Status == InvitationStatus.Pending && i.ExpiresAt > at, ct))
+                kind = "personal";   // nothing to join: fall back to a workspace of their own
+        }
+        Tenant? workspace = null;
+        if (kind is "organization" or "organisation")
+        {
+            var org = req.OrganizationName?.Trim() ?? "";
+            if (org.Length is < 2 or > 100) throw new ValidationException("organizationName", "Enter your organisation's name (2 to 100 characters).");
+            workspace = await provisioner.CreateAsync(org, WorkspaceType.Organization, user.Id, null, org, ct);
+        }
+        else if (kind != "invited")
+            workspace = await provisioner.CreateAsync("Personal Workspace", WorkspaceType.Personal, user.Id, null, $"{user.DisplayName} personal", ct);
+        recorder.Audit("user.registered", "User", user.Id, newValue: new { Workspace = kind }, tenantId: workspace?.Id, userId: user.Id);
         await db.SaveChangesAsync(ct);
         await consent.RecordCurrentAsync(user.Id, ctx.IpAddress, ct);
 

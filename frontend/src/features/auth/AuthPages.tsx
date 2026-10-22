@@ -286,7 +286,8 @@ export function LoginPage() {
 }
 
 // ------------------------------------------------------------------ register
-type RegisterValues = { displayName: string; email: string; password: string; confirm: string; acceptedTerms: boolean };
+type RegisterValues = { displayName: string; email: string; password: string; confirm: string; acceptedTerms: boolean; organizationName: string };
+type WorkspaceChoice = 'personal' | 'organization';
 
 /** The Terms of Service and Privacy Policy text, read on demand so the sign-up form doesn't need to fetch it up front. */
 function LegalDocsModal({ onClose }: { onClose: () => void }) {
@@ -311,6 +312,9 @@ export function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [showLegal, setShowLegal] = useState(false);
   const redirect = safeRedirect(params.get('redirect'));
+  // Joining by invitation: the person lands in that workspace, so nothing else is created for them.
+  const invited = redirect.startsWith('/invite');
+  const [kind, setKind] = useState<WorkspaceChoice>(params.get('type') === 'organization' ? 'organization' : 'personal');
   const { policy, field: passwordField } = usePolicyPassword();
   const registerSchema = useMemo(() => z.object({
     displayName: z.string().trim().min(1, 'Enter your name.').max(100),
@@ -318,20 +322,26 @@ export function RegisterPage() {
     password: passwordField,
     confirm: z.string(),
     acceptedTerms: z.boolean().refine((v) => v, { message: 'You must accept the Terms of Service and Privacy Policy.' }),
-  }).refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'Passwords do not match.' }), [passwordField]);
+    organizationName: z.string().trim().max(100),
+  }).refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'Passwords do not match.' })
+    .refine((v) => invited || kind !== 'organization' || v.organizationName.trim().length >= 2, { path: ['organizationName'], message: "Enter your organisation's name." }),
+  [passwordField, kind, invited]);
   const { register, handleSubmit, watch, setError: setFieldError, formState: { errors } } = useForm<RegisterValues>({
-    resolver: zodResolver(registerSchema), defaultValues: { email: params.get('email') ?? '', acceptedTerms: false },
+    resolver: zodResolver(registerSchema), defaultValues: { email: params.get('email') ?? '', acceptedTerms: false, organizationName: '' },
   });
   const typed = watch('password') ?? '';
 
   const m = useMutation({
-    mutationFn: (v: RegisterValues) => authApi.register({ email: v.email, password: v.password, displayName: v.displayName, acceptedTerms: v.acceptedTerms, returnUrl: redirect }),
+    mutationFn: (v: RegisterValues) => authApi.register({
+      email: v.email, password: v.password, displayName: v.displayName, acceptedTerms: v.acceptedTerms, returnUrl: redirect,
+      workspaceType: invited ? 'invited' : kind, organizationName: !invited && kind === 'organization' ? v.organizationName.trim() : undefined,
+    }),
     // The "check your email" step is swapped in underneath the success moment, which then lifts to reveal it.
     onSuccess: (_r, v) => celebrate({
       kind: 'register', name: firstName(v.displayName), detail: v.email,
       origin: originOf('.auth-card button[type="submit"]'), onHandoff: () => setDone(v.email),
     }),
-    onError: (e) => setError(applyServerErrors(e, setFieldError, ['email', 'password', 'displayName'])),
+    onError: (e) => setError(applyServerErrors(e, setFieldError, ['email', 'password', 'displayName', 'organizationName'])),
   });
 
   if (status === 'authenticated') return <Navigate to={redirect} replace />;
@@ -347,10 +357,26 @@ export function RegisterPage() {
     </AuthLayout>
   );
   return (
-    <AuthLayout title="Create your account" sub="Start with a free personal workspace. Create or join an organization anytime."
+    <AuthLayout title="Create your account" sub={invited ? 'Create your account to join the workspace you were invited to.' : 'Choose how you will use Project Tracker. You get only the workspace you pick.'}
       footer={<>Already have an account? <Link className="link" to={`/login${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Sign in</Link></>}>
       <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); m.mutate(v); })} noValidate>
         {error && <div className="form-error" role="alert">{error}</div>}
+        {!invited && (
+          <div className="ws-choice" role="radiogroup" aria-label="Workspace type">
+            {([
+              ['personal', 'user', 'Personal', 'Just me'],
+              ['organization', 'building', 'Organisation', 'My company or team'],
+            ] as const).map(([value, icon, title, text]) => (
+              <button key={value} type="button" role="radio" aria-checked={kind === value} className={`ws-choice-card${kind === value ? ' on' : ''}`} onClick={() => setKind(value)}>
+                <span className="ws-choice-ico"><Icon name={icon} size={18} /></span>
+                <span className="ws-choice-text"><b>{title}</b><span>{text}</span></span>
+              </button>
+            ))}
+          </div>
+        )}
+        {!invited && kind === 'organization' && (
+          <Field label="Organisation name" error={errors.organizationName?.message}><input className="input" autoComplete="organization" placeholder="e.g. Five Star Business Finance" {...register('organizationName')} /></Field>
+        )}
         <Field label="Full name" error={errors.displayName?.message}><input className="input" autoComplete="name" autoFocus {...register('displayName')} /></Field>
         <Field label="Email" error={errors.email?.message}><input className="input" type="email" autoComplete="email" {...register('email')} /></Field>
         <Field label="Password" error={errors.password?.message}><PasswordInput autoComplete="new-password" {...register('password')} /></Field>

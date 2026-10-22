@@ -299,7 +299,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (user is null)
         {
             if (!c.AutoProvision) throw new ForbiddenException($"You do not have an account in {tenant.Name} yet. Ask an administrator to add you.", "SSO_NOT_PROVISIONED");
-            user = await CreateAccountAsync(email, name, emailVerified: true, ct);
+            user = await CreateAccountAsync(email, name, emailVerified: true, ct, joinsOrganization: true);
         }
         else if (login is null)
         {
@@ -351,7 +351,7 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     }
 
     /// <summary>A new account for someone an identity provider vouched for: no password of its own (one can be set with "forgot password").</summary>
-    private async Task<User> CreateAccountAsync(string email, string? name, bool emailVerified, CancellationToken ct)
+    private async Task<User> CreateAccountAsync(string email, string? name, bool emailVerified, CancellationToken ct, bool joinsOrganization = false)
     {
         var displayName = string.IsNullOrWhiteSpace(name) ? email[..email.IndexOf('@')] : Text.Truncate(name.Trim(), 100)!;
         var user = new User
@@ -360,8 +360,10 @@ public class SsoLoginService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             EmailVerified = emailVerified, CreatedAt = clock.Now,
         };
         db.Users.Add(user);
-        var personal = await provisioner.CreateAsync("Personal Workspace", WorkspaceType.Personal, user.Id, null, $"{displayName} personal", ct);
-        recorder.Audit("user.registered", "User", user.Id, newValue: new { Via = "external" }, tenantId: personal.Id, userId: user.Id);
+        // Someone arriving through their organization's single sign-on belongs to that organization only; a personal workspace is
+        // made just for a social sign-up that has nowhere else to land.
+        var personal = joinsOrganization ? null : await provisioner.CreateAsync("Personal Workspace", WorkspaceType.Personal, user.Id, null, $"{displayName} personal", ct);
+        recorder.Audit("user.registered", "User", user.Id, newValue: new { Via = "external" }, tenantId: personal?.Id, userId: user.Id);
         return user;
     }
 

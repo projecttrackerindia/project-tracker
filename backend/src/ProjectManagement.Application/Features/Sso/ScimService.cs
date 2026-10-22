@@ -212,8 +212,7 @@ public partial class ScimService(IAppDbContext db, ICurrentContext ctx, AppClock
         if (user is null)
         {
             user = new User { Email = email, NormalizedEmail = normalized, DisplayName = Text.Truncate(name, 100)!, PasswordHash = PasswordHashes.None, EmailVerified = true, CreatedAt = clock.Now };
-            db.Users.Add(user);
-            await provisioner.CreateAsync("Personal Workspace", WorkspaceType.Personal, user.Id, null, $"{user.DisplayName} personal", ct);
+            db.Users.Add(user);   // provisioned into this organization only: no personal workspace beside it
         }
         var login = await db.UserLogins.FirstOrDefaultAsync(l => l.Provider == provider && l.UserId == user.Id, ct);
         if (login is null) db.UserLogins.Add(new UserLogin { UserId = user.Id, Provider = provider, Subject = externalId ?? user.Id.ToString(), Email = email, CreatedAt = clock.Now });

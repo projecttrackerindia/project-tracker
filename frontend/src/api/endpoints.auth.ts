@@ -3,7 +3,7 @@ import type { AppContext,AuthResponse,MfaChallenge,MfaSetup,MfaStatus,PasswordPo
 
 export const authApi = {
   passwordPolicy: () => get<PasswordPolicy>('/auth/password-policy', undefined, { auth: false }),
-  register: (b: { email: string; password: string; displayName: string; acceptedTerms: boolean; returnUrl?: string }) => post<{ userId: string; requiresEmailVerification: boolean }>('/auth/register', b, { auth: false }),
+  register: (b: { email: string; password: string; displayName: string; acceptedTerms: boolean; returnUrl?: string; workspaceType?: 'personal' | 'organization' | 'invited'; organizationName?: string }) => post<{ userId: string; requiresEmailVerification: boolean }>('/auth/register', b, { auth: false }),
   login: (b: { email: string; password: string }) => post<AuthResponse | MfaChallenge>('/auth/login', b, { auth: false }),
   loginMfa: (b: { challenge: string; code: string }) => post<AuthResponse>('/auth/login/mfa', b, { auth: false }),
   logout: () => post('/auth/logout', {}, { auth: true, retry: false }),
