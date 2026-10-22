@@ -144,10 +144,17 @@ public class MigrationOrderTests
 
     private static IReadOnlyList<(string File, string Id)> Migrations()
     {
-        var rx = new Regex(@"\[Migration\(""([0-9]{14}_[A-Za-z0-9]+)""\)\]");
+        // A generated migration carries its [Migration] attribute in the .Designer.cs partial; a hand-written one carries it inline.
+        static string IdOf(string file)
+        {
+            var designer = Path.ChangeExtension(file, null) + ".Designer.cs";
+            foreach (var candidate in new[] { file, designer })
+                if (File.Exists(candidate) && new Regex(@"\[Migration\(""([0-9]{14}_[A-Za-z0-9]+)""\)\]").Match(File.ReadAllText(candidate)) is { Success: true } m) return m.Groups[1].Value;
+            return "";
+        }
         return Directory.EnumerateFiles(MigrationsDir(), "*.cs")
             .Where(f => !f.EndsWith(".Designer.cs", StringComparison.Ordinal) && !f.EndsWith("ModelSnapshot.cs", StringComparison.Ordinal))
-            .Select(f => (File: Path.GetFileNameWithoutExtension(f), Id: rx.Match(File.ReadAllText(f)) is { Success: true } m ? m.Groups[1].Value : ""))
+            .Select(f => (File: Path.GetFileNameWithoutExtension(f), Id: IdOf(f)))
             .OrderBy(m => m.File, StringComparer.Ordinal).ToList();
     }
 

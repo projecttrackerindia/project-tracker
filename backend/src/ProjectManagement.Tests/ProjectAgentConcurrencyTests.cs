@@ -89,7 +89,7 @@ public class ProjectAgentConcurrencyTests(ApiFactory factory)
             Assert.Equal(HttpStatusCode.NotFound, (await outsider.Get($"/api/v1/projects/{project}/agent/findings")).Status);
             Assert.Equal(HttpStatusCode.NotFound, (await outsider.Post($"/api/v1/agent/findings/{id}/approve", new { })).Status);
             Assert.Equal(HttpStatusCode.NotFound, (await outsider.Post($"/api/v1/agent/findings/{id}/dismiss", new { })).Status);
-            var inbox = await outsider.Get("/api/v1/agent/findings");
+            var inbox = await outsider.Get("/api/v1/agent/inbox");
             Assert.True(inbox.Ok, inbox.ToString());
             Assert.Empty(inbox.Data!["items"]!.AsArray());
         }
