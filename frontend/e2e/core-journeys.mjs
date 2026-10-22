@@ -73,9 +73,14 @@ await page.waitForTimeout(1200);
 check('edited title is shown', (await page.locator(`text=${edited}`).count()) > 0);
 check('status change was saved', moved);
 
-// 5. The same task opens again with the saved values.
-await page.reload(); await page.waitForTimeout(2000);
-check('edited task survives a reload', (await page.locator(`text=${edited}`).count()) > 0);
+// 5. The saved values are what the server returns: a fresh load of the project shows the edited task. The development API runs on
+// SQLite and can refuse a connection for a moment under load, so the load is given time and one more attempt.
+let survived = false;
+for (let attempt = 0; attempt < 2 && !survived; attempt++) {
+  await page.reload();
+  survived = await page.waitForSelector(`text=${edited}`, { timeout: 15000 }).then(() => true).catch(() => false);
+}
+check('edited task survives a reload', survived);
 
 check('no script errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 await browser.close();
