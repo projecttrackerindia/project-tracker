@@ -65,3 +65,82 @@
 .wa-reply textarea { flex: 1; resize: vertical; }
 .wa-chat-actions { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; }
 @media (max-width: 640px) { .wa-hero { padding: 16px; } .wa-msg { max-width: 92%; } .wa-channels { grid-template-columns: 1fr; } }
+
+/* ---- numbers strip (once connected, numbers live behind one button) ---- */
+.wa-numbers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.wa-number { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
+.wa-number i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+.wa-number.ok i { background: var(--success); }
+.wa-number.bad i { background: var(--danger); }
+.wa-number-alert { display: inline-flex; gap: 5px; align-items: center; font-size: 12.5px; color: var(--danger); font-weight: 600; }
+.wa-manage { margin-left: auto; }
+
+/* ---- the desk: list | chat ---- */
+.wad { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); height: clamp(480px, calc(100dvh - 380px), 900px); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; }
+.wad-list { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--border); }
+.wad-views { display: flex; gap: 2px; padding: 8px 8px 0; overflow-x: auto; scrollbar-width: none; flex: none; }
+.wad-views::-webkit-scrollbar { display: none; }
+.wad-views button { flex: none; padding: 7px 8px; border-radius: 9px 9px 0 0; font-size: 13px; font-weight: 600; color: var(--text-2); border-bottom: 2px solid transparent; display: inline-flex; align-items: center; gap: 5px; }
+.wad-views button.on { color: var(--text); border-bottom-color: var(--primary); }
+.wad-n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; font-size: 11px; display: inline-grid; place-items: center; background: var(--surface-3); color: var(--text-2); }
+.wad-views button.on .wad-n { background: var(--primary-soft); color: var(--primary); }
+.wad-tools { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); flex: none; }
+.wad-tools .select { width: auto; max-width: 140px; }
+.wad-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-3); background: var(--surface-2); }
+.wad-search input { flex: 1; min-width: 0; border: 0; background: none; padding: 7px 0; font: inherit; font-size: 13.5px; color: var(--text); outline: none; }
+.wad-late { margin: 0; padding: 7px 12px; font-size: 12.5px; font-weight: 600; color: var(--danger); background: var(--danger-soft); display: flex; gap: 6px; align-items: center; flex: none; }
+.wad-list .wa-chats { overflow-y: auto; flex: 1; min-height: 0; }
+.wad-list .wa-empty { padding: 18px 14px; }
+.wad-list .wa-chats li button { padding: 10px 12px; }
+.wad-list .wa-chats li button.on { background: var(--primary-soft); }
+.wa-chat-tags em.wa-due { background: var(--surface-2); color: var(--text-2); }
+.wa-chat-tags em.wa-due.soon { background: var(--warning-soft); color: var(--warning); }
+.wa-chat-tags em.wa-due.late { background: var(--danger-soft); color: var(--danger); font-weight: 700; }
+.wa-chat-tags em.wa-rated { color: var(--warning); }
+.wad-chat { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.wad-pick { margin: auto; display: grid; justify-items: center; gap: 6px; color: var(--text-3); text-align: center; padding: 20px; }
+.wad-pick p { margin: 0; font-size: 13.5px; }
+.wad-pane-load { margin: auto; }
+.wad-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.wad-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex: none; min-width: 0; }
+.wad-back { display: none; }
+.wad-who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.wad-who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wad-who small { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wad-owner { width: auto; max-width: 180px; flex: none; }
+.wad-actions { display: flex; gap: 4px; flex-wrap: wrap; padding: 6px 10px; border-bottom: 1px solid var(--border); flex: none; }
+.wad-pane .wa-thread { flex: 1; min-height: 0; max-height: none; border-radius: 0; padding: 12px 14px; }
+.wa-msg.update { background: color-mix(in srgb, var(--info) 12%, var(--surface)); }
+.wa-note { align-self: center; margin: 2px 0; max-width: 90%; font-size: 12px; color: var(--text-3); text-align: center; display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 4px; align-items: center; }
+.wa-note time { font-size: 11px; }
+.wa-media-img img { display: block; max-width: min(260px, 100%); max-height: 260px; border-radius: 8px; }
+.wa-media-video { max-width: min(280px, 100%); border-radius: 8px; }
+.wa-media-voice { display: flex; flex-direction: column; gap: 4px; }
+.wa-media-voice audio { max-width: 240px; height: 34px; }
+.wa-media-voice small { font-size: 13px; color: var(--text); white-space: pre-wrap; }
+.wa-media-wait { display: grid; place-items: center; width: 120px; height: 80px; }
+.wa-media-missing { font-size: 12.5px; color: var(--text-3); display: inline-flex; gap: 5px; align-items: center; }
+.wad-pane .wa-reply { position: relative; margin: 0; padding: 10px 12px; border-top: 1px solid var(--border); flex-direction: column; align-items: stretch; gap: 6px; flex: none; }
+.wad-pane .wa-reply textarea { resize: none; min-height: 44px; max-height: 160px; }
+.wa-reply-tools { display: flex; justify-content: space-between; gap: 6px; }
+.wa-saved { position: absolute; left: 12px; right: 12px; bottom: calc(100% - 4px); z-index: 5; max-height: 260px; overflow-y: auto; padding: 5px; border-radius: 12px; background: var(--panel-solid); border: 1px solid var(--border); box-shadow: var(--shadow-lg); display: grid; gap: 2px; }
+.wa-saved button { text-align: left; padding: 7px 9px; border-radius: 8px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.wa-saved button:hover, .wa-saved button:focus-visible { background: var(--hover-bg); }
+.wa-saved button span { font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-saved .wa-muted { padding: 8px; }
+.wa-window { margin: 0; padding: 12px 14px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-2); display: flex; gap: 8px; align-items: flex-start; flex: none; }
+.wa-saved-edit { display: grid; gap: 8px; }
+.wa-field-label { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.wa-field-label small { font-weight: 400; color: var(--text-3); }
+.wa-saved-row { display: grid; grid-template-columns: minmax(0, 160px) minmax(0, 1fr) auto; gap: 6px; align-items: start; }
+.wa-saved-row input, .wa-saved-row textarea { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; min-width: 0; resize: vertical; }
+
+@media (max-width: 768px) {
+  .wad { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 420px; }
+  .wad-list { border-right: 0; }
+  .wa-saved-row { grid-template-columns: minmax(0, 1fr) auto; }
+}
+.wad-full { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; background: var(--surface); padding: var(--safe-t, 0px) 0 var(--safe-b, 0px); }
+.wad-full .wad-pane { flex: 1; height: auto; }
+.wad-full .wad-back { display: inline-grid; }
+.wad-full .wad-owner { max-width: 130px; }

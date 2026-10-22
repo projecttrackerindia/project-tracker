@@ -172,6 +172,8 @@ export function ChatRealtime() {
       notify(e.conversationId, e.message);
     });
     // Somebody just created a notification for me (a mention): refresh the bell now instead of at the next poll.
+    // A WhatsApp support chat changed (a message came in or went out, someone took it): the desk refreshes at once.
+    connection.on('support', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'support'] }); });
     connection.on('notification', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] }); window.dispatchEvent(new Event(CHECK_NOTIFICATIONS)); });
     connection.on('message.updated', (e: { conversationId: string; message: ChatMessage }) => {
       putInThread(e.conversationId, e.message, true);

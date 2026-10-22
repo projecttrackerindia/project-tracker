@@ -103,6 +103,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     /// <summary>Stands in for our own meeting-bot service (apps/meetbot).</summary>
     public FakeMeetingBot MeetingBot { get; } = new();
     public FakeWhatsAppInstallation WhatsApp { get; } = new();
+    /// <summary>Stands in for Meta's Graph API for teams' own WhatsApp support numbers.</summary>
+    public FakeSupportGraph SupportGraph { get; } = new();
     /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
     public FakeDns Dns { get; } = new();
     /// <summary>Stands in for Claude (off until a test switches it on).</summary>
@@ -157,6 +159,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ProjectManagement.Application.Features.Resumes.IResumePaymentGateway>(ResumePayments);
             services.AddHttpClient("push").ConfigurePrimaryHttpMessageHandler(() => Push);
             services.AddHttpClient("whatsapp-installation").ConfigurePrimaryHttpMessageHandler(() => WhatsApp);
+            services.AddHttpClient("support-whatsapp").ConfigurePrimaryHttpMessageHandler(() => SupportGraph);
             services.RemoveAll<ProjectManagement.Application.Abstractions.IChangeFeed>();
             services.AddSingleton<ProjectManagement.Application.Abstractions.IChangeFeed>(Changes);
         });

@@ -125,6 +125,7 @@ public partial class AppDbContext
             e.Property(x => x.BusinessAccountId).HasMaxLength(40); e.Property(x => x.DisplayPhone).HasMaxLength(40); e.Property(x => x.VerifiedName).HasMaxLength(120);
             e.Property(x => x.AccessTokenProtected).HasMaxLength(4000); e.Property(x => x.AppSecretProtected).HasMaxLength(1000); e.Property(x => x.VerifyToken).HasMaxLength(64);
             e.Property(x => x.AgentName).HasMaxLength(60); e.Property(x => x.LastError).HasMaxLength(500);
+            e.Property(x => x.UpdateTemplate).HasMaxLength(512); e.Property(x => x.UpdateTemplateLanguage).HasMaxLength(10); e.Property(x => x.SavedReplies).HasMaxLength(40000);
         });
         b.Entity<SupportConversation>(e =>
         {
@@ -132,6 +133,7 @@ public partial class AppDbContext
             e.Property(x => x.ContactKey).HasMaxLength(64); e.Property(x => x.ContactProtected).HasMaxLength(400); e.Property(x => x.ContactName).HasMaxLength(120);
             e.Property(x => x.Language).HasMaxLength(10); e.Property(x => x.Status).HasMaxLength(20); e.Property(x => x.Mode).HasMaxLength(10);
             e.Property(x => x.MessagesProtected).HasMaxLength(400000);
+            e.Property(x => x.TicketState).HasMaxLength(80); e.HasIndex(x => x.MediaPending);
         });
         b.Entity<CompanyMailSettings>(e =>
         {

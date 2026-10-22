@@ -29,6 +29,20 @@ public class SupportChannel : TenantEntity, ITenantScoped
     public DateTime? LastInboundAt { get; set; }
     public DateTime? CheckedAt { get; set; }
     public string? LastError { get; set; }
+    /// <summary>How soon a new message should get its first answer (AI or person), in minutes: the chat shows late after that.</summary>
+    public int FirstReplyMinutes { get; set; } = 15;
+    /// <summary>Tell the customer on WhatsApp when their ticket is picked up, put on hold or resolved.</summary>
+    public bool TellCustomer { get; set; } = true;
+    /// <summary>Ask for a 1-5 rating when a chat or its ticket is closed.</summary>
+    public bool AskRating { get; set; } = true;
+    /// <summary>
+    /// An approved Meta message template used for ticket updates more than 24 hours after the customer last wrote (WhatsApp allows only
+    /// templates then). Its body takes two values: the ticket key and what happened. Empty: such updates wait until they write again.
+    /// </summary>
+    public string? UpdateTemplate { get; set; }
+    public string UpdateTemplateLanguage { get; set; } = "en";
+    /// <summary>Saved replies the team inserts with "/" (JSON list of title and text).</summary>
+    public string? SavedReplies { get; set; }
 }
 
 /// <summary>One person's WhatsApp chat with a support number. The number and the messages are stored encrypted.</summary>
@@ -52,4 +66,15 @@ public class SupportConversation : TenantEntity, ITenantScoped
     public int Unread { get; set; }
     public Guid? WorkTaskId { get; set; }
     public string MessagesProtected { get; set; } = "";
+    /// <summary>The person on the team who owns this chat; empty while it waits in the queue.</summary>
+    public Guid? AssigneeId { get; set; }
+    /// <summary>Since when the customer has been waiting for an answer (the oldest unanswered message); empty once someone replied.</summary>
+    public DateTime? WaitingSince { get; set; }
+    /// <summary>A voice note or file arrived that still has to be fetched (voice notes are transcribed before the AI answers).</summary>
+    public bool MediaPending { get; set; }
+    /// <summary>What the customer was last told about the ticket ("status|assignee"), so each change is told once.</summary>
+    public string? TicketState { get; set; }
+    public DateTime? RatingAskedAt { get; set; }
+    /// <summary>1 (poor) to 5 (great), the customer's answer to the question after closing.</summary>
+    public int? Rating { get; set; }
 }

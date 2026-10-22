@@ -5636,6 +5636,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<bool>("AskRating")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("AutoReply")
                         .HasColumnType("boolean");
 
@@ -5663,6 +5666,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("FirstReplyMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -5685,11 +5691,27 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<string>("SavedReplies")
+                        .HasMaxLength(40000)
+                        .HasColumnType("character varying(40000)");
+
                     b.Property<Guid?>("TeamId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("TellCustomer")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("UpdateTemplate")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("UpdateTemplateLanguage")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -5723,6 +5745,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AssigneeId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("ChannelId")
@@ -5759,6 +5784,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("LastMessageAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("MediaPending")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("MessagesProtected")
                         .IsRequired()
                         .HasMaxLength(400000)
@@ -5772,6 +5800,12 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<bool>("NeedsReply")
                         .HasColumnType("boolean");
 
+                    b.Property<int?>("Rating")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("RatingAskedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("ReplyAttempts")
                         .HasColumnType("integer");
 
@@ -5783,6 +5817,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("TicketState")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
                     b.Property<int>("Unread")
                         .HasColumnType("integer");
 
@@ -5792,10 +5830,15 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("WaitingSince")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("WorkTaskId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("MediaPending");
 
                     b.HasIndex("NeedsReply");
 

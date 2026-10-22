@@ -13,15 +13,19 @@ namespace ProjectManagement.Application.Features.Support;
 /// </summary>
 public class SupportReplyProcessor(IServiceScopeFactory scopes, ILogger<SupportReplyProcessor> log)
 {
+    private int rounds;
+
     public async Task<int> ProcessAsync(CancellationToken ct = default)
     {
+        await MediaAsync(ct);   // voice notes are transcribed before the AI employee answers them
+        if (Interlocked.Increment(ref rounds) % 10 == 1) await TicketUpdatesAsync(ct);
         List<(Guid Id, Guid Tenant)> due;
         using (var scan = scopes.CreateScope())
         {
             var db = scan.ServiceProvider.GetRequiredService<IAppDbContext>();
             // Cross-workspace scheduling reads only ids and the waiting flag; the chat itself is read in its own workspace below.
             due = (await db.SupportConversations.IgnoreQueryFilters().AsNoTracking()
-                .Where(c => c.NeedsReply && c.Mode == "ai" && c.ReplyAttempts < 3)
+                .Where(c => c.NeedsReply && !c.MediaPending && c.Mode == "ai" && c.ReplyAttempts < 3)
                 .OrderBy(c => c.LastMessageAt).Select(c => new { c.Id, c.TenantId }).Take(20).ToListAsync(ct))
                 .Select(x => (x.Id, x.TenantId)).ToList();
         }
@@ -31,6 +35,60 @@ public class SupportReplyProcessor(IServiceScopeFactory scopes, ILogger<SupportR
             if (await AnswerAsync(row.Id, row.Tenant, cancellation)) Interlocked.Increment(ref answered);
         });
         return answered;
+    }
+
+    /// <summary>Chats with a new voice note: what was said is fetched and written down, each in its own workspace.</summary>
+    public async Task<int> MediaAsync(CancellationToken ct = default)
+    {
+        List<(Guid Id, Guid Tenant)> due;
+        using (var scan = scopes.CreateScope())
+        {
+            var db = scan.ServiceProvider.GetRequiredService<IAppDbContext>();
+            // Cross-workspace scheduling reads only ids and the pending flag.
+            due = (await db.SupportConversations.IgnoreQueryFilters().AsNoTracking().Where(c => c.MediaPending)
+                .OrderBy(c => c.LastMessageAt).Select(c => new { c.Id, c.TenantId }).Take(10).ToListAsync(ct)).Select(x => (x.Id, x.TenantId)).ToList();
+        }
+        foreach (var (id, tenant) in due)
+        {
+            using var scope = scopes.CreateScope();
+            scope.ServiceProvider.GetRequiredService<CurrentContext>().TenantId = tenant;
+            try { await scope.ServiceProvider.GetRequiredService<SupportChannelService>().ProcessMediaAsync(id, ct); }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                log.LogWarning("WhatsApp chat {Chat}: media not processed ({Kind})", id, e.GetType().Name);
+                await scope.ServiceProvider.GetRequiredService<IAppDbContext>().SupportConversations.Where(c => c.Id == id).ExecuteUpdateAsync(s => s.SetProperty(c => c.MediaPending, false), ct);
+            }
+        }
+        return due.Count;
+    }
+
+    /// <summary>
+    /// Chats whose ticket changed since the customer was last told (picked up, on hold, resolved, closed): each is told in its own workspace.
+    /// Chats closed more than a week ago are left alone.
+    /// </summary>
+    public async Task<int> TicketUpdatesAsync(CancellationToken ct = default)
+    {
+        List<(Guid Id, Guid Tenant)> due;
+        using (var scan = scopes.CreateScope())
+        {
+            var db = scan.ServiceProvider.GetRequiredService<IAppDbContext>();
+            var since = DateTime.UtcNow.AddDays(-7);
+            // Cross-workspace scheduling compares the told state with the ticket's status and assignee only (both rows of the same workspace).
+            due = (await (from c in db.SupportConversations.IgnoreQueryFilters().AsNoTracking()
+                          join t in db.WorkTasks.IgnoreQueryFilters().AsNoTracking() on c.WorkTaskId equals (Guid?)t.Id
+                          where t.TenantId == c.TenantId && (c.Status != "closed" || c.UpdatedAt > since)
+                          select new { c.Id, c.TenantId, c.TicketState, t.Status, t.AssigneeId }).Take(2000).ToListAsync(ct))
+                .Where(x => x.TicketState != $"{x.Status}|{x.AssigneeId}").Take(25).Select(x => (x.Id, x.TenantId)).ToList();
+        }
+        var told = 0;
+        foreach (var (id, tenant) in due)
+        {
+            using var scope = scopes.CreateScope();
+            scope.ServiceProvider.GetRequiredService<CurrentContext>().TenantId = tenant;
+            try { if (await scope.ServiceProvider.GetRequiredService<SupportChannelService>().TellTicketUpdateAsync(id, ct)) told++; }
+            catch (Exception e) when (e is not OperationCanceledException) { log.LogWarning("WhatsApp chat {Chat}: ticket update not told ({Kind})", id, e.GetType().Name); }
+        }
+        return told;
     }
 
     private async Task<bool> AnswerAsync(Guid id, Guid tenant, CancellationToken ct)

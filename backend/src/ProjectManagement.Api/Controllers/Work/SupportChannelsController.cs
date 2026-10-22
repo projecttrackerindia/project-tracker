@@ -14,7 +14,19 @@ public class SupportChannelsController(SupportChannelService support) : ApiContr
     [HttpPut("channels/{id:guid}")] public async Task<IActionResult> Save(Guid id, [FromBody] SaveSupportChannelRequest req, CancellationToken ct) => Ok(await support.SaveChannelAsync(id, req, ct));
     [HttpPost("channels/{id:guid}/check")] public async Task<IActionResult> Check(Guid id, CancellationToken ct) => Ok(await support.CheckChannelAsync(id, ct));
     [HttpDelete("channels/{id:guid}")] public async Task<IActionResult> Remove(Guid id, CancellationToken ct) { await support.DeleteChannelAsync(id, ct); return NoContent(); }
-    [HttpGet("conversations")] public async Task<IActionResult> Conversations([FromQuery] Guid? channelId, [FromQuery] string? status, CancellationToken ct) => Ok(await support.ConversationsAsync(channelId, status, ct));
+    [HttpGet("conversations")] public async Task<IActionResult> Conversations([FromQuery] Guid? channelId, [FromQuery] string? status, [FromQuery] string? view, CancellationToken ct) =>
+        Ok(await support.ConversationsAsync(channelId, status, ct, view));
+    [HttpGet("queues")] public async Task<IActionResult> Queues(CancellationToken ct) => Ok(await support.QueueCountsAsync(ct));
+    [HttpPost("conversations/{id:guid}/assign")] public async Task<IActionResult> Assign(Guid id, [FromBody] SupportAssignRequest req, CancellationToken ct) => Ok(await support.AssignAsync(id, req, ct));
+    [HttpPost("conversations/{id:guid}/suggest")] public async Task<IActionResult> Suggest(Guid id, CancellationToken ct) => Ok(await support.SuggestAsync(id, ct));
+    [HttpGet("conversations/{id:guid}/media/{mediaId:regex(^\\d{{1,40}}$)}")]
+    public async Task<IActionResult> Media(Guid id, string mediaId, CancellationToken ct)
+    {
+        var f = await support.MediaAsync(id, mediaId, ct);
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        Response.Headers["Content-Security-Policy"] = "default-src 'none'; sandbox";
+        return File(f.Content, f.ContentType, f.ContentType == "application/octet-stream" ? f.FileName : null);
+    }
     [HttpGet("conversations/{id:guid}")] public async Task<IActionResult> Conversation(Guid id, CancellationToken ct) => Ok(await support.ConversationAsync(id, ct));
     [HttpPost("conversations/{id:guid}/reply")] public async Task<IActionResult> Reply(Guid id, [FromBody] SupportReplyRequest req, CancellationToken ct) => Ok(await support.ReplyAsync(id, req, ct));
     [HttpPost("conversations/{id:guid}/ticket")] public async Task<IActionResult> Ticket(Guid id, CancellationToken ct) => Ok(await support.CreateTicketAsync(id, ct));
