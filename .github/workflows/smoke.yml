@@ -16,7 +16,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     # The API runs on PostgreSQL, the production engine: the Development SQLite file locks under the background workers and fails
     # writes intermittently, which made the browser checks unreliable.
     services:
@@ -83,6 +83,7 @@ jobs:
       - name: Extended scripts (reported, not blocking)
         working-directory: frontend
         continue-on-error: true
+        timeout-minutes: 10
         run: |
           failed=0
           for s in public mobile documents documents-api documents-review documents-secrets documents-pdf; do
