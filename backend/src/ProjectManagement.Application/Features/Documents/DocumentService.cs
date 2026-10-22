@@ -537,6 +537,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         doc.ParentId = req.ParentId;
         Touch(doc);
         if (moved) recorder.Activity("document.moved", "Document", doc.Id, $"Moved {KeyOf(doc.Number)} \"{doc.Title}\"", doc.ProjectId);
+        recorder.Audit("document.placed", "Document", doc.Id, null, new { parent = req.ParentId, order = doc.PageOrder });
         await SaveAsync(ct);
         return await GetAsync(id, ct);
     }
@@ -544,8 +545,10 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     public async Task<DocumentDto> SetIconAsync(Guid id, DocumentIconRequest req, CancellationToken ct = default)
     {
         var doc = await RequireEditableAsync(id, ct);
+        var before = doc.Icon;
         doc.Icon = CleanIcon(req.Icon);
         Touch(doc);
+        recorder.Audit("document.icon_changed", "Document", doc.Id, new { icon = before }, new { icon = doc.Icon });
         await SaveAsync(ct);
         return await GetAsync(id, ct);
     }

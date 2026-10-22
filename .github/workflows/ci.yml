@@ -150,7 +150,8 @@ jobs:
       - name: Build
         run: npm run build
       - name: Install browser for synthetic UI regression checks
-        run: npx playwright install --with-deps chromium
+        # The package mirror sometimes stalls: give each try 5 minutes and try three times rather than hanging the job.
+        run: for i in 1 2 3; do timeout 300 npx playwright install --with-deps chromium && exit 0; echo "Browser install try $i failed; retrying"; done; exit 1
       - name: Enterprise UI regression checks (no live APIs or providers)
         run: npm run test:ui
       - name: Keep UI previews and results

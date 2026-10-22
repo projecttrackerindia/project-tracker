@@ -48,7 +48,7 @@ public class DocumentPagesTests(ApiFactory factory)
 
         // A different project cannot be named for a page inside this one.
         var other = await owner.CreateProjectAsync("Payments");
-        Assert.Equal(HttpStatusCode.BadRequest, (await NewPage(owner, page, "Wrong place", other, parent: Id(root))).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await NewPage(owner, page, "Wrong place", other, parent: Id(root))).Status);
 
         // The catalog carries the tree.
         var catalog = (await owner.Get("/api/v1/doctracker/catalog")).Data!;
@@ -66,8 +66,8 @@ public class DocumentPagesTests(ApiFactory factory)
         var c = Id(await NewPage(owner, page, "C", parent: b));
 
         // A inside C would make a loop (C is inside B, which is inside A); a page inside itself too.
-        Assert.Equal(HttpStatusCode.BadRequest, (await owner.Put($"/api/v1/documents/{a}/place", new { parentId = c, pageOrder = 0 })).Status);
-        Assert.Equal(HttpStatusCode.BadRequest, (await owner.Put($"/api/v1/documents/{a}/place", new { parentId = a, pageOrder = 0 })).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put($"/api/v1/documents/{a}/place", new { parentId = c, pageOrder = 0 })).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put($"/api/v1/documents/{a}/place", new { parentId = a, pageOrder = 0 })).Status);
 
         // C moves up beside B, first.
         var moved = await owner.Put($"/api/v1/documents/{c}/place", new { parentId = a, pageOrder = 0 });
@@ -88,7 +88,7 @@ public class DocumentPagesTests(ApiFactory factory)
         var (owner, page, project) = await Setup();
         var target = Id(await NewPage(owner, page, "Refund policy", project));
         Assert.True((await owner.Put($"/api/v1/documents/{target}/icon", new { icon = "💸" })).Ok);
-        Assert.Equal(HttpStatusCode.BadRequest, (await owner.Put($"/api/v1/documents/{target}/icon", new { icon = "<b>x</b>" })).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put($"/api/v1/documents/{target}/icon", new { icon = "<b>x</b>" })).Status);
         Assert.Null((await owner.Put($"/api/v1/documents/{target}/icon", new { icon = "" })).Data!["item"]!["icon"]);
 
         // A page that links to it with [[ ]], mentions a person with @, and has a callout; an unknown kind of mention is dropped.

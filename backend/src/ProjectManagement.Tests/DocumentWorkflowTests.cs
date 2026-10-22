@@ -594,6 +594,8 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
             ["POST documents/{id:guid}/archive"] = () => owner.Post($"/api/v1/documents/{spare}/archive"),
             ["POST documents/{id:guid}/reopen"] = () => owner.Post($"/api/v1/documents/{spare}/reopen"),
             ["POST documents/{id:guid}/restore"] = async () => { var gone = await Make(owner, brd, "Deleted one"); await owner.Delete($"/api/v1/documents/{gone}"); return await owner.Post($"/api/v1/documents/{gone}/restore"); },
+            ["PUT documents/{id:guid}/place"] = () => owner.Put($"/api/v1/documents/{doc}/place", new { parentId = (Guid?)null, pageOrder = 0 }),
+            ["PUT documents/{id:guid}/icon"] = () => owner.Put($"/api/v1/documents/{doc}/icon", new { icon = "📘" }),
             ["DELETE documents/{id:guid}"] = async () => owner.Delete($"/api/v1/documents/{await Make(owner, brd, "Will go")}").Result,
             ["POST documents/{id:guid}/links"] = async () => { var r = await owner.Post($"/api/v1/documents/{doc}/links", new { targetType = "Task", targetId = task, relation = "Describes" }); link = Guid.Parse(S(r.Data!["items"]![0]!["linkId"])); return r; },
             ["DELETE documents/{id:guid}/links/{linkId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/links/{link}"),
