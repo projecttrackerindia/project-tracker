@@ -1,3 +1,5 @@
+> **Historical (22 Oct 2026):** this document describes the earlier self-hosted Ollama setup. Production now runs on Google Gemini only and the Ollama code has been removed.
+
 # Enterprise agent implementation audit
 
 Baseline: `8b343da2f96c67d2f8d50e862b56b9eb56a2e64c`, October 10, 2026. The three supplied enterprise briefs guide this work. The latest instruction prohibits bulk AI tests; use scripted models, targeted regression tests and existing CI instead. Earlier simple provider bursts are historical evidence, not enterprise workload capacity.

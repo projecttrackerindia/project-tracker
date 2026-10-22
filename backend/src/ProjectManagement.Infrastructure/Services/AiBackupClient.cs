@@ -12,7 +12,7 @@ namespace ProjectManagement.Infrastructure.Services;
 /// <summary>
 /// The backup model. Google Gemini addresses (generativelanguage.googleapis.com) use Google's own generateContent API with the key in
 /// x-goog-api-key, the way AI Studio documents its keys - including the newer AQ.… ones. Any other address is taken to speak the OpenAI
-/// chat-completions API (POST {BaseUrl}/chat/completions with a bearer key): Groq, OpenRouter, Mistral, a self-hosted Ollama. Nothing is
+/// chat-completions API (POST {BaseUrl}/chat/completions with a bearer key): Groq, OpenRouter, Mistral. Nothing is
 /// called unless <c>Ai:Fallback:BaseUrl</c> and <c>Model</c> are set.
 /// </summary>
 public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions> options, ILogger<OpenAiCompatibleClient> log, AiInferenceGate? gate = null)
@@ -52,7 +52,7 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
         // Models that think before answering count the thinking against the same limit, so they get room for it on top.
         var tokens = Math.Clamp(maxTokens + Math.Max(0, F.ThinkingTokens), 1, F.MaxOutputTokens);
         var gemini = UsesGeminiApi;
-        using var req = gemini ? GeminiRequest(system, user, tokens) : F.Wire?.Equals("ollama", StringComparison.OrdinalIgnoreCase) == true ? OllamaRequest(system, user, tokens) : ChatRequest(system, user, tokens);
+        using var req = gemini ? GeminiRequest(system, user, tokens) : ChatRequest(system, user, tokens);
 
         HttpResponseMessage res;
         try { res = await http.CreateClient("ai-backup").SendAsync(req, token); }
@@ -73,7 +73,7 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
             }
             JsonNode? json;
             try { json = JsonNode.Parse(text); } catch (JsonException) { json = null; }
-            var (content, finish) = gemini ? GeminiAnswer(json) : F.Wire?.Equals("ollama", StringComparison.OrdinalIgnoreCase) == true ? (json?["message"]?["content"]?.GetValue<string>(), json?["done_reason"]?.ToString()) : ChatAnswer(json);
+            var (content, finish) = gemini ? GeminiAnswer(json) : ChatAnswer(json);
             if (string.IsNullOrWhiteSpace(content))
             {
                 log.LogWarning("The backup model ({Name}) gave no answer (finish reason {Reason})", Name, finish);
@@ -84,20 +84,6 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
     }
 
     // ------------------------------------------------------------------ OpenAI chat completions
-
-    private HttpRequestMessage OllamaRequest(string system, string user, int tokens)
-    {
-        var root = F.BaseUrl!.Trim().TrimEnd('/');
-        if (root.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) root = root[..^3];
-        var settings = new JsonObject { ["num_predict"] = tokens };
-        if (F.NumCtx is { } context) settings["num_ctx"] = context;
-        if (F.NumThread is { } threads) settings["num_thread"] = threads;
-        var body = new JsonObject { ["model"] = Model, ["stream"] = false, ["think"] = false, ["keep_alive"] = F.KeepAlive,
-            ["options"] = settings, ["messages"] = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = system }, new JsonObject { ["role"] = "user", ["content"] = user }) };
-        var req = new HttpRequestMessage(HttpMethod.Post, $"{root}/api/chat") { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
-        if (!string.IsNullOrWhiteSpace(F.ApiKey)) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", F.ApiKey.Trim());
-        return req;
-    }
 
     private HttpRequestMessage ChatRequest(string system, string user, int tokens)
     {

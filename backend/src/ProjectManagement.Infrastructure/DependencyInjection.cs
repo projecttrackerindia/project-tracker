@@ -141,7 +141,7 @@ public static class DependencyInjection
         services.AddSingleton<GeminiChat>();
         services.AddHttpClient("ai-gemini", c => c.Timeout = Timeout.InfiniteTimeSpan);
         // The AI workspace: streamed, with tools and files. Claude first, the same Ai:Fallback:* provider as backup - a self-hosted
-        // Ollama/llama.cpp server for a CPU-only deployment, or any other OpenAI-compatible address, used when Claude cannot answer or
+        // Any OpenAI-compatible address, used when Claude cannot answer or
         // there is no Anthropic key at all.
         services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat, AiChatRouter>();
         if ((config["Storage:Provider"] ?? "Local").Equals("S3", StringComparison.OrdinalIgnoreCase))

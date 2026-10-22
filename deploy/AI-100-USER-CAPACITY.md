@@ -1,3 +1,5 @@
+> **Historical (22 Oct 2026):** this document describes the earlier self-hosted Ollama setup. Production now runs on Google Gemini only and the Ollama code has been removed.
+
 # Agent capacity for 100 users — 10 October 2026
 
 This review starts from `ec39c2a`. It distinguishes 100 concurrent application users from 100 simultaneous model generations. The latter is not certified on the existing CPU deployment.

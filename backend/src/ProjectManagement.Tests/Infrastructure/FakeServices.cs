@@ -36,7 +36,7 @@ public sealed class FakeAiChat : IAiChat
 {
     public string? ModelOverride { get; set; }
     public string ModelFor(string model) => ModelOverride ?? model;
-    public string Provider => ModelOverride is null ? "scripted provider" : "Ollama";
+    public string Provider => ModelOverride is null ? "scripted provider" : "Backup model";
     public bool Configured { get; set; }
     public ConcurrentQueue<Func<AiChatRequest, IEnumerable<AiChatEvent>>> Script { get; } = new();
     public ConcurrentQueue<AiChatRequest> Requests { get; } = new();

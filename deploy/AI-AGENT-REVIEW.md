@@ -1,3 +1,5 @@
+> **Historical (22 Oct 2026):** this document describes the earlier self-hosted Ollama setup. Production now runs on Google Gemini only and the Ollama code has been removed.
+
 # AI agent reliability review — 10 October 2026
 
 Baseline: `main` at `bb84ea21d3b5c27cb0487d4e09c316bff53b8f05`. This review addresses the supplied scalability/reliability brief with the existing React, .NET, PostgreSQL/SQLite and local-model architecture.

@@ -1,3 +1,5 @@
+> **Historical (22 Oct 2026):** this document describes the earlier self-hosted Ollama setup. Production now runs on Google Gemini only and the Ollama code has been removed.
+
 # AI orchestration, reliability and measurement
 
 This increment implements the repository work from the full performance/accuracy specification. It follows the recipient/task fix merged in `c4975a6`; see [AI-INTENT-ROUTING.md](AI-INTENT-ROUTING.md) and [AI-MESSAGING.md](AI-MESSAGING.md). It does **not** claim that the entire ten-phase transformation or live model comparison has been completed.

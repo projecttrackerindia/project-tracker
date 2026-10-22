@@ -1,3 +1,5 @@
+> **Historical (22 Oct 2026):** this document describes the earlier self-hosted Ollama setup. Production now runs on Google Gemini only and the Ollama code has been removed.
+
 # AI scaling rollout
 
 ## Step 1: plan-based admission and greeting routing

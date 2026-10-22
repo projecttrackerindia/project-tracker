@@ -64,7 +64,7 @@ public class GeminiChatTests
 
     private static AiChatRouter Router(IOptions<AiOptions> o, IHttpClientFactory cloud, LocalStub local, GeminiAdmission? admission = null)
     {
-        o.Value.Fallback = new() { BaseUrl = "http://local.test/v1", Model = "backup-model", Wire = "ollama", MaxQueuedRequests = 0 };
+        o.Value.Fallback = new() { BaseUrl = "http://local.test/v1", Model = "backup-model", MaxQueuedRequests = 0 };
         var one = new OpenAiCompatibleClient(local, o, NullLogger<OpenAiCompatibleClient>.Instance);
         return new(new AnthropicChat(o, NullLogger<AnthropicChat>.Instance), new OpenAiCompatibleChat(local, o, one, NullLogger<OpenAiCompatibleChat>.Instance),
             NullLogger<AiChatRouter>.Instance, new GeminiChat(cloud, o, admission ?? new Admission(o)));

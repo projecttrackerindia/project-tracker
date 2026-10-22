@@ -203,7 +203,7 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         Assert.Equal(["system", "user"], body["messages"]!.AsArray().Select(m => S(m!["role"])));
         Assert.Equal("Be brief.", S(body["messages"]![0]!["content"]));
 
-        Assert.Equal("a model on your own server", OpenAiCompatibleClient.NameFor("http://ollama:11434/v1"));
+        Assert.Equal("a model on your own server", OpenAiCompatibleClient.NameFor("http://llm:8000/v1"));
     }
 
     [Fact]
