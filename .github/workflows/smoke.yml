@@ -96,4 +96,10 @@ jobs:
           exit $failed
       - name: Logs
         if: failure()
-        run: tail -n 60 "$RUNNER_TEMP/api.log" "$RUNNER_TEMP/vite.log" || true
+        run: |
+          echo "==> API errors with context"
+          grep -n -B3 -A40 -E "\[[0-9:]+ (ERR|FTL)\]" "$RUNNER_TEMP/api.log" | tail -n 400 || true
+          echo "==> API log tail"
+          tail -n 60 "$RUNNER_TEMP/api.log" || true
+          echo "==> Vite log tail"
+          tail -n 40 "$RUNNER_TEMP/vite.log" || true
