@@ -195,7 +195,8 @@ export function TabBar() {
     const usual = ['/projects', '/mailbox', '/chat', '/calendar'].map(find).filter(Boolean) as typeof all;
     const picks = [...pins.filter((p) => p.to !== '/'), ...usual].filter((x, i, list) => list.findIndex((y) => y.to === x.to) === i).slice(0, 2);
     const label: Record<string, string> = { '/': 'Home', '/command-center': 'Focus' };
-    return [{ to: '/', label: 'Home', icon: 'dashboard' as IconName, end: true }, ...picks.map((i) => ({ to: i.to, label: label[i.to] ?? i.label, icon: i.icon, badge: badgeOf(i.to), match: i.match }))];
+    // Home lives at / and at /command-center: both light this tab, so the last tab never takes the name "Home" a second time.
+    return [{ to: '/', label: 'Home', icon: 'dashboard' as IconName, end: true, match: (p: string) => p === '/' || p === '/command-center' }, ...picks.map((i) => ({ to: i.to, label: label[i.to] ?? i.label, icon: i.icon, badge: badgeOf(i.to), match: i.match }))];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all, admin, pins, chat.data?.count, reminders.data?.now]);
 
