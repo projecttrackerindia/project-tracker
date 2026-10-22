@@ -3,7 +3,7 @@ name: Browser smoke test
 # Opens the real app in a browser on every pull request and every push to main. The core journeys (sign-in, the main pages, a project
 # created from the form, a task created, edited and moved) block the merge, the same as the CI workflow. The extended scripts (documents,
 # mobile, public pages) are reported but do not block until they run reliably on the development database; see Phase H of the
-# platform review. Run it by hand from the Actions tab too.
+# platform review. The API runs on PostgreSQL, as in production. Run it by hand from the Actions tab too.
 on:
   pull_request:
   push:
@@ -17,6 +17,20 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The API runs on PostgreSQL, the production engine: the Development SQLite file locks under the background workers and fails
+    # writes intermittently, which made the browser checks unreliable.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -32,6 +46,8 @@ jobs:
         env:
           ASPNETCORE_ENVIRONMENT: Development
           ASPNETCORE_URLS: http://localhost:5080
+          Database__Provider: Postgres
+          ConnectionStrings__Default: Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=pm_smoke
         run: |
           dotnet build -c Release -v q
           nohup dotnet bin/Release/net9.0/ProjectManagement.Api.dll > "$RUNNER_TEMP/api.log" 2>&1 &
