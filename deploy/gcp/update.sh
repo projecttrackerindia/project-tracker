@@ -3,6 +3,11 @@
 # The new website's web-server settings are checked first; if they are wrong, nothing restarts and the current version keeps running.
 set -euo pipefail
 cd "$(dirname "$0")"; source ./config.sh
+# Only main goes live: a copy left on a work branch would ship unfinished code. ALLOW_BRANCH=1 overrides it on purpose.
+branch=$(git -C ../.. rev-parse --abbrev-ref HEAD)
+if [ "$branch" != "main" ] && [ "${ALLOW_BRANCH:-}" != "1" ]; then
+  echo "This copy is on branch '$branch', not main. Run: git -C ~/project-tracker checkout main   (or ALLOW_BRANCH=1 ./update.sh)" >&2; exit 1
+fi
 git -C ../.. pull --ff-only
 ./2-build.sh
 # The compose file and Caddyfile travel with each release, so changes to them take effect too.
