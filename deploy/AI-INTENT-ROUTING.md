@@ -1,3 +1,5 @@
+> Historical note (October 2026): this document predates the move to Google Cloud. Google Gemini on Vertex AI is now the only production model provider; sections describing a self-hosted or local model are retained for the record and no longer apply. Current operations: [AI-OPERATIONS.md](AI-OPERATIONS.md).
+
 # Local AI recipient resolution and task routing
 
 This change addresses the October 10 conversation containing `sivaredy`, `sivareddy`, and `siva reddy`, missing message content, and current-task questions. It builds on the verified messaging/confirmation implementation documented in [AI-MESSAGING.md](AI-MESSAGING.md).

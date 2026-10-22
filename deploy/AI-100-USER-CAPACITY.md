@@ -1,3 +1,5 @@
+> Historical note (October 2026): this document predates the move to Google Cloud. Google Gemini on Vertex AI is now the only production model provider; sections describing a self-hosted or local model are retained for the record and no longer apply. Current operations: [AI-OPERATIONS.md](AI-OPERATIONS.md).
+
 # Agent capacity for 100 users — 10 October 2026
 
 This review starts from `ec39c2a`. It distinguishes 100 concurrent application users from 100 simultaneous model generations. The latter is not certified on the existing CPU deployment.

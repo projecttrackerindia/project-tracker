@@ -13,12 +13,12 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public sealed class AgentTrackerTests(ApiFactory factory)
 {
-    private static AiExecutionTrace Trace(string correlation = "correlation") => new("project-assistant", "2", correlation, "Ollama", "qwen2.5:7b", DateTime.UtcNow, 1234, 34, 300, 2000, 4, "succeeded", null,
+    private static AiExecutionTrace Trace(string correlation = "correlation") => new("project-assistant", "2", correlation, "Google Gemini", "gemini-3.5-flash-lite", DateTime.UtcNow, 1234, 34, 300, 2000, 4, "succeeded", null,
         [new(0, 1200, 40, 10, "end_turn")], [new("find_work", 10, true, "read")]);
     private Guid Insert(TestClient user, string? trace = null) => factory.WithDb(db =>
     {
         var conv = new AiConversation { TenantId = user.WorkspaceId, UserId = user.UserId, Title = "private" };
-        var message = new AiMessage { TenantId = user.WorkspaceId, UserId = conv.UserId, ConversationId = conv.Id, Role = "assistant", Content = "private password or confidential notes", Model = "qwen2.5:7b", InputTokens = 40, OutputTokens = 10,
+        var message = new AiMessage { TenantId = user.WorkspaceId, UserId = conv.UserId, ConversationId = conv.Id, Role = "assistant", Content = "private password or confidential notes", Model = "gemini-3.5-flash-lite", InputTokens = 40, OutputTokens = 10,
             ExecutionJson = trace ?? JsonSerializer.Serialize(Trace(), new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
         db.AiConversations.Add(conv); db.AiMessages.Add(message); db.SaveChanges(); return message.Id;
     });
@@ -103,7 +103,7 @@ public sealed class AgentTrackerTests(ApiFactory factory)
     {
         var owner = await TestClient.RegisterAsync(factory); await owner.CreateOrgAsync();
         Insert(owner); Insert(owner); Insert(owner, "invalid JSON");
-        var page = await owner.Get("/api/v1/ai/tracker?page=2&pageSize=1&status=succeeded&model=qwen2.5%3A7b"); page.CheckStatus(HttpStatusCode.OK);
+        var page = await owner.Get("/api/v1/ai/tracker?page=2&pageSize=1&status=succeeded&model=gemini-3.5-flash-lite"); page.CheckStatus(HttpStatusCode.OK);
         Assert.Equal(2, page.Data!["total"]!.GetValue<int>()); Assert.Single(page.Data["runs"]!.AsArray());
         Assert.Empty((await owner.Get("/api/v1/ai/tracker?status=failed")).Data!["runs"]!.AsArray());
         (await owner.Get("/api/v1/ai/tracker?pageSize=101")).CheckStatus(HttpStatusCode.UnprocessableEntity);
@@ -132,7 +132,7 @@ public sealed class AgentTrackerTests(ApiFactory factory)
             factory.Chat.Reset(); factory.Chat.Configured = true;
             await owner.Post("/api/v1/ai/ask", new { text = "Hello" });
             var baseline = factory.Chat.Requests.Last();
-            options.PrimaryProvider = "local"; factory.Chat.ModelOverride = "qwen2.5:7b";
+            options.PrimaryProvider = "local"; factory.Chat.ModelOverride = "gemini-3.5-flash-lite";
             factory.Chat.Requests.Clear(); factory.Chat.Classified.Clear();
             await owner.Post("/api/v1/ai/ask", new { text = "Hello" });
             Assert.Empty(factory.Chat.Requests); // simple greetings never wake the 7B runner

@@ -17,8 +17,11 @@ namespace ProjectManagement.Application.Features.Ai;
 public class AiOptions
 {
     public const string Section = "Ai";
-    /// <summary>local (default), anthropic or gemini. A key alone never enables a paid provider.</summary>
-    public string PrimaryProvider { get; set; } = "local";
+    /// <summary>
+    /// gemini (default), anthropic, or local. Gemini on Vertex AI is the production provider; "local" means the OpenAI-compatible
+    /// backup endpoint (<c>Ai:Fallback:*</c>) answers on its own. A key alone never enables a paid provider.
+    /// </summary>
+    public string PrimaryProvider { get; set; } = "gemini";
     public int TraceRetentionDays { get; set; } = 30;
     public bool AllowAnthropic { get; set; }
     public bool UsesAnthropic => AllowAnthropic && PrimaryProvider.Equals("anthropic", StringComparison.OrdinalIgnoreCase);
@@ -61,8 +64,9 @@ public sealed class AiGeminiOptions
 }
 
 /// <summary>
-/// Any provider that speaks the OpenAI chat-completions API: Google Gemini (https://generativelanguage.googleapis.com/v1beta/openai), Groq
-/// (https://api.groq.com/openai/v1), OpenRouter, Mistral, or a self-hosted Ollama (http://host:11434/v1). BaseUrl and Model turn it on.
+/// The backup provider: any hosted endpoint that speaks the OpenAI chat-completions API (Groq, OpenRouter, Mistral, or Gemini's
+/// OpenAI-compatible route at https://generativelanguage.googleapis.com/v1beta/openai). BaseUrl and Model turn it on. It answers when the
+/// primary provider cannot, or on its own when <see cref="AiOptions.PrimaryProvider"/> is "local".
 /// </summary>
 public class AiFallbackOptions
 {
@@ -82,29 +86,7 @@ public class AiFallbackOptions
     public int QueueTimeoutSeconds { get; set; } = 10;
     /// <summary>Conservative character guard, not a tokenizer. Overflow is rejected, never silently truncated.</summary>
     public int MaxPromptChars { get; set; } = 48000;
-    public string KeepAlive { get; set; } = "10m";
     public bool SupportsImages { get; set; }
-    /// <summary>
-    /// "ollama" talks to a self-hosted Ollama server's own native API (POST {BaseUrl}/api/chat) for the streamed AI workspace instead of
-    /// the OpenAI-compatible one - BaseUrl is still the same address either way (a trailing /v1 is stripped automatically if present).
-    /// Needed because Ollama's own /v1/chat/completions has repeatedly refused real, correctly-shaped requests outright for a model with
-    /// no thinking capability (confirmed live, independent of every documented thinking-related field), while its native route handles
-    /// the exact same model and request correctly. Left empty (default), every address including a self-hosted Ollama one is assumed to
-    /// speak plain OpenAI chat-completions, which is correct for Groq, OpenRouter and most other providers.
-    /// </summary>
-    public string? Wire { get; set; }
-    /// <summary>
-    /// Native wire only. Ollama auto-sizes a model's context window from the hardware it sees (CPU-only: 4096 by default for most
-    /// models), which can be well under the system prompt plus the full tool list alone - confirmed live: Ollama silently truncated a
-    /// 4,736-token request to 2,050, then errored. Set this to whatever the server can hold comfortably (e.g. 8192) to stop that.
-    /// </summary>
-    public int? NumCtx { get; set; }
-    /// <summary>
-    /// Native wire only. llama.cpp defaults to one thread per logical CPU it can see, which can badly oversubscribe a container whose
-    /// cgroup limit is lower than that (confirmed live: 48 threads against a ~10 vCPU Railway allocation, with prompt processing running
-    /// at a CPU-bound-but-anomalously-slow ~12 tokens/sec). Set this to the container's real vCPU allocation.
-    /// </summary>
-    public int? NumThread { get; set; }
 }
 
 /// <summary>A language model behind one call: a system prompt and a user message in, the answer and the model that gave it out.</summary>

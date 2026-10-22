@@ -1,3 +1,5 @@
+> Historical note (October 2026): Google Gemini on Vertex AI is now the only production model provider; references to a self-hosted or local model below are retained for the record and no longer apply. Current operations: [deploy/AI-OPERATIONS.md](../deploy/AI-OPERATIONS.md).
+
 # Enterprise agent implementation audit
 
 Baseline: `8b343da2f96c67d2f8d50e862b56b9eb56a2e64c`, October 10, 2026. The three supplied enterprise briefs guide this work. The latest instruction prohibits bulk AI tests; use scripted models, targeted regression tests and existing CI instead. Earlier simple provider bursts are historical evidence, not enterprise workload capacity.

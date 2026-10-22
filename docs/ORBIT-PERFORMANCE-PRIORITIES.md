@@ -1,3 +1,5 @@
+> Historical note (October 2026): Google Gemini on Vertex AI is now the only production model provider; references to a self-hosted or local model below are retained for the record and no longer apply. Current operations: [deploy/AI-OPERATIONS.md](../deploy/AI-OPERATIONS.md).
+
 # Orbit AI and application performance priorities
 
 The screenshot's credit/rate wrapping was a header layout issue. The header now aligns identity and controls on one row when space allows, and adapts to the conversation pane's actual width on smaller screens. A compact Usage button combines a credit ring with an accessible balance popover. The arc shrinks as shared organization credits are consumed and grows when the balance renews; it is not a provider-capacity or personal request meter. Numeric per-minute/hour/day caps are absent from the AI header and its popover; backend safeguards still apply. Agent Tracker uses a workflow icon; Activity keeps its activity trace. The AI display identity is Orbit AI; it does not rename the underlying Gemini provider or model.

@@ -1,3 +1,5 @@
+> Historical note (October 2026): Google Gemini on Vertex AI is now the only production model provider; references to a self-hosted or local model below are retained for the record and no longer apply. Current operations: [deploy/AI-OPERATIONS.md](../deploy/AI-OPERATIONS.md).
+
 # AI scaling rollout
 
 ## Step 1: plan-based admission and greeting routing
