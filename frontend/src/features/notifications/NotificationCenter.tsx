@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -8,7 +8,7 @@ import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, PageLoader, Pager, SectionLayout, type SectionLink } from '../../components/ui';
 import { TimeZonePicker } from '../../components/TimeZonePicker';
 import { formatDateTime, timeAgo } from '../../lib/format';
-import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { invalidateWorkspace, useDetailsDismiss, useWsQuery } from '../../lib/hooks';
 import { playSound, setSoundOn, soundOn, unlockSound, type AttentionKind } from '../../lib/attention';
 import { deviceZone, formatInZone, isoDateIn, useAppZone, zoneCity, zoneOffsetLabel, zoneToday, shiftIsoDate } from '../../lib/zone';
 import { isDesktopApp } from '../../lib/desktop';
@@ -97,20 +97,107 @@ function dayHeading(isoDay: string) {
   return formatInZone(new Date(`${isoDay}T12:00:00Z`), { weekday: 'long', day: 'numeric', month: 'long' }, 'UTC');
 }
 
+/** One line per kind: why this reached the person, so a notice never feels random. */
+const WHY: Record<NotificationType, string> = {
+  TaskAssigned: 'You are the assignee of this task.',
+  Mention: 'Someone mentioned you with @.',
+  Comment: 'Someone commented on work you are assigned to or follow.',
+  DueSoon: 'Work assigned to you is due soon (your automatic reminders).',
+  Overdue: 'Work assigned to you is past its due date.',
+  Invitation: 'Someone invited you to a workspace or project.',
+  Subscription: 'You look after this workspace\'s plan and billing.',
+  Security: 'Something happened on your account. Security notices always reach you.',
+  ReportReady: 'A report or export you asked for is ready.',
+  Issue: 'An issue you raised, own or follow changed.',
+  Approval: 'Your approval is asked for, or one you asked for was decided.',
+  ServiceLevel: 'A ticket you are responsible for is close to, or past, its response time.',
+  Reminder: 'A reminder you or a teammate set.',
+  Nudge: 'A teammate reminded you about your work.',
+  Briefing: 'Your morning briefing, at the time set in Schedule.',
+  Message: 'A chat message for you that you had not seen.',
+  PortfolioDigest: 'The digest for projects you lead or follow.',
+  Document: 'A document you own, review or follow changed.',
+  Meeting: 'A meeting you are invited to, or its notes.',
+  TaskUpdated: 'A task assigned to you changed (priority, due date or status).',
+  ProjectUpdated: 'A project you are a member of changed.',
+  CertificationExpiry: 'A certification you hold or manage is about to expire.',
+  AgentAlert: 'An AI agent you set up found something.',
+  AgentDigest: 'A summary from an AI agent you set up.',
+  TimesheetReminder: 'Your timesheet for the week is not submitted yet.',
+  Support: 'A support conversation you are part of has a reply.',
+};
+
+type Lane = 'needs' | 'info' | 'archived';
+
+/** Notices about the same thing on the same day are one row: the newest on top, the rest behind "+n". */
+interface Bundle { key: string; head: AppNotification; rest: AppNotification[] }
+function bundle(items: AppNotification[]): Bundle[] {
+  const out: Bundle[] = [];
+  const byLink = new Map<string, Bundle>();
+  for (const n of items) {
+    const b = n.link ? byLink.get(n.link) : undefined;
+    if (b) { b.rest.push(n); continue; }
+    const nb: Bundle = { key: n.id, head: n, rest: [] };
+    out.push(nb);
+    if (n.link) byLink.set(n.link, nb);
+  }
+  return out;
+}
+
 function Inbox() {
   const wid = useWorkspaceId();
   const nav = useNavigate();
   const [page, setPage] = useState(1);
-  const [unreadOnly, setUnreadOnly] = useState(true);
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [picked, setPicked] = useState<Lane | null>(null);
   const [cat, setCat] = useState<Category | 'all'>('all');
+  const [why, setWhy] = useState<string | null>(null);
+  const [open, setOpen] = useState<Set<string>>(new Set());
   useAppZone();   // re-group when the zone changes
-  const q = useWsQuery(['notifications', 'page', page, unreadOnly], () => notificationApi.list(page, unreadOnly), { placeholderData: (p) => p });
+  const counts = useWsQuery(['notifications', 'counts'], notificationApi.counts, { refetchInterval: 60_000 });
+  // Until the person picks, open the lane that has something in it: what needs them first.
+  const lane: Lane = picked ?? (counts.data && counts.data.needsYou === 0 && counts.data.forInfo > 0 ? 'info' : 'needs');
+  const q = useWsQuery(['notifications', 'page', lane, page, unreadOnly], () =>
+    notificationApi.list(page, unreadOnly && lane !== 'archived', lane === 'archived' ? undefined : lane, lane === 'archived'), { placeholderData: (p) => p });
   const refresh = () => invalidateWorkspace(wid, 'notifications');
   const readAll = useMutation({ mutationFn: notificationApi.readAll, onSuccess: () => { refresh(); toast('All caught up.', 'success'); } });
+  const clearRead = useMutation({
+    mutationFn: notificationApi.archiveRead,
+    onSuccess: (r) => { refresh(); toast(r.archived ? `Archived ${r.archived} read notification${r.archived === 1 ? '' : 's'}.` : 'Nothing read to clear.', 'success'); },
+  });
 
-  const open = async (n: AppNotification) => {
-    if (!n.isRead) { await notificationApi.read(n.id).catch(() => undefined); refresh(); }
-    if (n.link) nav(n.link);
+  const read = async (ns: AppNotification[]) => {
+    const unread = ns.filter((n) => !n.isRead);
+    if (!unread.length) return;
+    await Promise.all(unread.map((n) => notificationApi.read(n.id).catch(() => undefined)));
+    refresh();
+  };
+  const go = async (n: AppNotification, all: AppNotification[]) => { await read(all); if (n.link) nav(n.link); };
+  const archive = async (ns: AppNotification[]) => {
+    await Promise.all(ns.map((n) => notificationApi.archive(n.id).catch(() => undefined)));
+    refresh();
+    toast(ns.length === 1 ? 'Archived.' : `Archived ${ns.length}.`, 'success', {
+      label: 'Undo', onClick: () => void Promise.all(ns.map((n) => notificationApi.unarchive(n.id).catch(() => undefined))).then(refresh),
+    });
+  };
+  const unarchive = async (ns: AppNotification[]) => {
+    await Promise.all(ns.map((n) => notificationApi.unarchive(n.id).catch(() => undefined)));
+    refresh();
+    toast('Back in your inbox.', 'success');
+  };
+  const mute = async (type: NotificationType) => {
+    try {
+      const prefs = await queryClient.fetchQuery({ queryKey: PREFS_KEY, queryFn: meApi.notificationPrefs });
+      const p = prefs.find((x) => x.type === type);
+      if (!p) return;
+      if (p.locked) { toast(`${p.label} can't be muted: it keeps your account safe.`, 'info'); return; }
+      const before = { type, inApp: p.inApp, email: p.email, browser: p.browser };
+      const saved = await meApi.setNotificationPrefs([{ ...before, inApp: false, browser: false }]);
+      queryClient.setQueryData(PREFS_KEY, saved);
+      toast(`Muted “${p.label}” in the app and on your devices.${p.email ? ' Email still comes.' : ''}`, 'success', {
+        label: 'Undo', onClick: () => void meApi.setNotificationPrefs([before]).then((d) => { queryClient.setQueryData(PREFS_KEY, d); toast('Unmuted.', 'success'); }),
+      });
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not mute this kind of notification.', 'error'); }
   };
 
   const items = useMemo(() => (q.data?.items ?? []).filter((n) => cat === 'all' || categoryOf(n.type) === cat), [q.data, cat]);
@@ -121,49 +208,101 @@ function Inbox() {
       const last = out[out.length - 1];
       if (last?.day === day) last.items.push(n); else out.push({ day, items: [n] });
     }
-    return out;
+    return out.map((d) => ({ day: d.day, bundles: bundle(d.items) }));
   }, [items]);
+
+  const pick = (l: Lane) => { setPicked(l); setPage(1); setWhy(null); };
+  const c = counts.data;
+  const LANES: { id: Lane; label: string; count?: number }[] = [
+    { id: 'needs', label: 'Needs you', count: c?.needsYou },
+    { id: 'info', label: 'Updates', count: c?.forInfo },
+    { id: 'archived', label: 'Archived' },
+  ];
+  const empty = lane === 'needs'
+    ? { title: 'Nothing needs you right now', text: 'Assignments, mentions, approvals, reminders and messages for you land here first.' }
+    : lane === 'info' ? { title: 'No updates', text: 'Changes, comments, digests and reports you follow show up here.' }
+      : { title: 'Nothing archived', text: 'Archive a notification to put it away. It stays findable here.' };
 
   return (
     <>
       <div className="nc-toolbar">
-        <div className="nc-seg" role="tablist" aria-label="Show">
-          <button role="tab" aria-selected={unreadOnly} className={unreadOnly ? 'on' : ''} onClick={() => { setUnreadOnly(true); setPage(1); }}>Unread</button>
-          <button role="tab" aria-selected={!unreadOnly} className={!unreadOnly ? 'on' : ''} onClick={() => { setUnreadOnly(false); setPage(1); }}>All</button>
-        </div>
-        <div className="nc-chips" role="group" aria-label="Filter by kind">
-          <button className={`nc-chip ${cat === 'all' ? 'on' : ''}`} onClick={() => setCat('all')}>Everything</button>
-          {(Object.keys(CATEGORY) as Category[]).map((c) => (
-            <button key={c} className={`nc-chip ${cat === c ? 'on' : ''}`} onClick={() => setCat(c)}><Icon name={CATEGORY[c].icon} size={13} /> {CATEGORY[c].label}</button>
+        <div className="nc-seg nc-lanes" role="tablist" aria-label="Inbox">
+          {LANES.map((l) => (
+            <button key={l.id} role="tab" aria-selected={lane === l.id} className={lane === l.id ? 'on' : ''} onClick={() => pick(l.id)}>
+              {l.label}{!!l.count && <span className={`nc-count ${l.id === 'needs' ? 'hot' : ''}`}>{l.count}</span>}
+            </button>
           ))}
         </div>
-        <button className="btn btn-ghost btn-sm nc-readall" disabled={readAll.isPending} onClick={() => readAll.mutate()}><Icon name="checks" size={14} /> Mark all read</button>
+        <select className="input nc-kind" aria-label="Kind" value={cat} onChange={(e) => setCat(e.target.value as Category | 'all')}>
+          <option value="all">All kinds</option>
+          {(Object.keys(CATEGORY) as Category[]).map((k) => <option key={k} value={k}>{CATEGORY[k].label}</option>)}
+        </select>
+        {lane !== 'archived' && (
+          <label className="nc-unread"><input type="checkbox" checked={unreadOnly} onChange={(e) => { setUnreadOnly(e.target.checked); setPage(1); }} /> Unread only</label>
+        )}
+        {lane !== 'archived' && (
+          <div className="nc-readall">
+            <button className="btn btn-ghost btn-sm" disabled={readAll.isPending} onClick={() => readAll.mutate()}><Icon name="checks" size={14} /> Mark all read</button>
+            <button className="btn btn-ghost btn-sm" disabled={clearRead.isPending} onClick={() => clearRead.mutate()} title="Archive everything already read"><Icon name="inbox" size={14} /> Clear read</button>
+          </div>
+        )}
       </div>
 
       {q.isLoading ? <PageLoader /> : q.isError || !q.data ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <div className="nc-inbox">
           {days.length === 0 ? (
-            <EmptyState icon="bell" title={unreadOnly ? "You're all caught up" : 'Nothing here yet'}
-              text={unreadOnly ? 'New assignments, mentions, messages and reminders appear here.' : 'Notifications you received show up here.'} />
+            <EmptyState icon={lane === 'archived' ? 'inbox' : 'bell'} title={unreadOnly && lane !== 'archived' ? "You're all caught up" : empty.title} text={empty.text} />
           ) : days.map((d) => (
             <div key={d.day} className="nc-day">
               <div className="nc-day-head">{dayHeading(d.day)}</div>
               <ul className="nc-list">
-                {d.items.map((n) => {
-                  const c = categoryOf(n.type);
+                {d.bundles.map((b) => {
+                  const n = b.head;
+                  const all = [n, ...b.rest];
+                  const k = categoryOf(n.type);
+                  const unread = all.some((x) => !x.isRead);
+                  const expanded = open.has(b.key);
                   return (
-                    <li key={n.id} className={`nc-item cat-${c} ${n.isRead ? '' : 'unread'}`}>
-                      <button className="nc-item-main" onClick={() => void open(n)}>
-                        <span className="nc-item-ico"><Icon name={TYPE_ICON[n.type] ?? 'bell'} size={16} /></span>
-                        <span className="nc-item-text">
-                          <b>{n.title}</b>
-                          {n.body && <span className="nc-item-body">{n.body}</span>}
-                          <span className="nc-item-meta"><span>{CATEGORY[c].label}</span> · <time title={formatDateTime(n.createdAt)} dateTime={n.createdAt}>{timeAgo(n.createdAt)}</time></span>
+                    <li key={b.key} className={`nc-item cat-${k} ${unread ? 'unread' : ''} ${n.needsYou ? 'needs' : ''}`}>
+                      <div className="nc-item-row">
+                        <button className="nc-item-main" onClick={() => void go(n, all)}>
+                          <span className="nc-item-ico"><Icon name={TYPE_ICON[n.type] ?? 'bell'} size={16} /></span>
+                          <span className="nc-item-text">
+                            <b>{n.title}</b>
+                            {n.body && <span className="nc-item-body">{n.body}</span>}
+                            <span className="nc-item-meta"><span>{CATEGORY[k].label}</span> · <time title={formatDateTime(n.createdAt)} dateTime={n.createdAt}>{timeAgo(n.createdAt)}</time></span>
+                          </span>
+                        </button>
+                        {b.rest.length > 0 && (
+                          <button className="nc-more" aria-expanded={expanded} onClick={() => setOpen((s) => { const x = new Set(s); if (x.has(b.key)) x.delete(b.key); else x.add(b.key); return x; })}>
+                            +{b.rest.length}
+                          </button>
+                        )}
+                        <span className="nc-item-acts">
+                          {unread && lane !== 'archived' && (
+                            <button className="btn-icon" aria-label="Mark as read" title="Mark as read" onClick={() => void read(all)}><Icon name="tick" size={14} /></button>
+                          )}
+                          {lane === 'archived'
+                            ? <button className="btn-icon" aria-label="Move to inbox" title="Move to inbox" onClick={() => void unarchive(all)}><Icon name="undo" size={14} /></button>
+                            : <button className="btn-icon" aria-label="Archive" title="Archive" onClick={() => void archive(all)}><Icon name="inbox" size={14} /></button>}
+                          <ItemMenu label={n.title} onWhy={() => setWhy(why === b.key ? null : b.key)} onMute={() => void mute(n.type)}
+                            onRead={unread && lane !== 'archived' ? () => void read(all) : undefined}
+                            onArchive={lane === 'archived' ? undefined : () => void archive(all)} onRestore={lane === 'archived' ? () => void unarchive(all) : undefined} />
                         </span>
-                      </button>
-                      {!n.isRead && (
-                        <button className="btn-icon nc-item-read" aria-label="Mark as read" title="Mark as read"
-                          onClick={async () => { await notificationApi.read(n.id).catch(() => undefined); refresh(); }}><Icon name="tick" size={14} /></button>
+                      </div>
+                      {why === b.key && (
+                        <p className="nc-why" role="note"><Icon name="info" size={13} /> {WHY[n.type] ?? 'This reached you because of your delivery settings.'}{' '}
+                          <button className="link-btn" onClick={() => nav('/notifications/preferences')}>Change where this reaches you</button></p>
+                      )}
+                      {expanded && (
+                        <ul className="nc-sub">
+                          {b.rest.map((r) => (
+                            <li key={r.id} className={r.isRead ? '' : 'unread'}>
+                              <button onClick={() => void go(r, [r])}><b>{r.title}</b>{r.body && <span> · {r.body}</span>}
+                                <time dateTime={r.createdAt}>{timeAgo(r.createdAt)}</time></button>
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </li>
                   );
@@ -175,6 +314,28 @@ function Inbox() {
         </div>
       )}
     </>
+  );
+}
+
+/** The quieter actions of a notification: why it came, and muting its kind. */
+function ItemMenu({ label, onWhy, onMute, onRead, onArchive, onRestore }: {
+  label: string; onWhy: () => void; onMute: () => void; onRead?: () => void; onArchive?: () => void; onRestore?: () => void;
+}) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  useDetailsDismiss(ref);
+  const close = () => { if (ref.current) ref.current.open = false; };
+  return (
+    <details className="nc-menu" ref={ref}>
+      <summary className="btn-icon" aria-label={`More for ${label}`} title="More"><Icon name="more" size={14} /></summary>
+      <div className="nc-menu-pop" role="menu">
+        {/* On a phone the row has no room for separate buttons: reading and archiving live here too. */}
+        {onRead && <button role="menuitem" className="nc-phone-only" onClick={() => { close(); onRead(); }}><Icon name="tick" size={13} /> Mark as read</button>}
+        {onArchive && <button role="menuitem" className="nc-phone-only" onClick={() => { close(); onArchive(); }}><Icon name="inbox" size={13} /> Archive</button>}
+        {onRestore && <button role="menuitem" className="nc-phone-only" onClick={() => { close(); onRestore(); }}><Icon name="undo" size={13} /> Move to inbox</button>}
+        <button role="menuitem" onClick={() => { close(); onWhy(); }}><Icon name="info" size={13} /> Why am I getting this?</button>
+        <button role="menuitem" onClick={() => { close(); onMute(); }}><Icon name="eyeOff" size={13} /> Mute this kind</button>
+      </div>
+    </details>
   );
 }
 

@@ -14,7 +14,24 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Notifications;
 
-public record NotificationDto(Guid Id, NotificationType Type, string Title, string? Body, string? Link, bool IsRead, DateTime CreatedAt, bool Browser);
+public record NotificationDto(Guid Id, NotificationType Type, string Title, string? Body, string? Link, bool IsRead, DateTime CreatedAt, bool Browser, bool NeedsYou = false, bool Archived = false);
+/// <summary>The inbox at a glance: unread overall, and unread in each lane.</summary>
+public record NotificationCountsDto(int Unread, int NeedsYou, int ForInfo);
+
+/// <summary>
+/// Which notifications ask something of the person (approve, answer, act, sign in safely) and which only tell them something. The inbox shows
+/// the first lane on top, so what needs someone is never buried under updates.
+/// </summary>
+public static class NotificationLanes
+{
+    public static readonly NotificationType[] NeedsYou =
+    [
+        NotificationType.TaskAssigned, NotificationType.Mention, NotificationType.Approval, NotificationType.Overdue, NotificationType.DueSoon,
+        NotificationType.Reminder, NotificationType.Nudge, NotificationType.Invitation, NotificationType.Security, NotificationType.ServiceLevel,
+        NotificationType.Message, NotificationType.Support, NotificationType.AgentAlert, NotificationType.CertificationExpiry, NotificationType.TimesheetReminder,
+    ];
+    public static bool IsNeedsYou(NotificationType t) => Array.IndexOf(NeedsYou, t) >= 0;
+}
 public record UnreadCountDto(int Count);
 
 public record NotificationPreferenceDto(NotificationType Type, string Label, string Description, bool InApp, bool Email, bool Browser, bool Locked);
@@ -133,23 +150,60 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
     /// <summary>Whether this person wants this kind of notice in the bell (their own choice, or the default).</summary>
     public async Task<bool> WantsInAppAsync(Guid userId, NotificationType type, CancellationToken ct = default) => (await router.ChannelsAsync(userId, type, ct)).InApp;
 
-    public async Task<PagedResult<NotificationDto>> ListAsync(bool unreadOnly, int page, int pageSize, CancellationToken ct = default)
+    /// <param name="lane">needs (asks something of you), info (tells you something), or empty for both.</param>
+    /// <param name="archived">The archive instead of the inbox.</param>
+    public async Task<PagedResult<NotificationDto>> ListAsync(bool unreadOnly, int page, int pageSize, CancellationToken ct = default, string? lane = null, bool archived = false)
     {
         var uid = ctx.RequireUserId();
         var q = db.Notifications.AsNoTracking().Where(n => n.UserId == uid && n.InApp);
+        q = archived ? q.Where(n => n.ArchivedAt != null) : q.Where(n => n.ArchivedAt == null);
+        var needs = NotificationLanes.NeedsYou;
+        if (string.Equals(lane, "needs", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => needs.Contains(n.Type));
+        else if (string.Equals(lane, "info", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => !needs.Contains(n.Type));
         if (unreadOnly) q = q.Where(n => n.ReadAt == null);
         var p = new PageQuery(page, pageSize);
         var total = await q.CountAsync(ct);
         var rows = await q.OrderByDescending(n => n.CreatedAt).Skip((p.SafePage - 1) * p.SafeSize()).Take(p.SafeSize()).ToListAsync(ct);
         return new PagedResult<NotificationDto>(
-            rows.Select(n => new NotificationDto(n.Id, n.Type, n.Title, n.Body, n.Link, n.ReadAt != null, n.CreatedAt, n.Browser)).ToList(),
+            rows.Select(n => new NotificationDto(n.Id, n.Type, n.Title, n.Body, n.Link, n.ReadAt != null, n.CreatedAt, n.Browser, NotificationLanes.IsNeedsYou(n.Type), n.ArchivedAt != null)).ToList(),
             p.SafePage, p.SafeSize(), total);
     }
 
     public async Task<UnreadCountDto> UnreadCountAsync(CancellationToken ct = default)
     {
         var uid = ctx.RequireUserId();
-        return new UnreadCountDto(await db.Notifications.CountAsync(n => n.UserId == uid && n.InApp && n.ReadAt == null, ct));
+        return new UnreadCountDto(await db.Notifications.CountAsync(n => n.UserId == uid && n.InApp && n.ReadAt == null && n.ArchivedAt == null, ct));
+    }
+
+    public async Task<NotificationCountsDto> CountsAsync(CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        var needs = NotificationLanes.NeedsYou;
+        var unread = db.Notifications.Where(n => n.UserId == uid && n.InApp && n.ReadAt == null && n.ArchivedAt == null);
+        var total = await unread.CountAsync(ct);
+        var needing = await unread.CountAsync(n => needs.Contains(n.Type), ct);
+        return new NotificationCountsDto(total, needing, total - needing);
+    }
+
+    /// <summary>Puts a notification away (and marks it read), or brings it back to the inbox.</summary>
+    public async Task SetArchivedAsync(Guid id, bool archived, CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        var n = await db.Notifications.FirstOrDefaultAsync(x => x.Id == id && x.UserId == uid, ct) ?? throw new NotFoundException("Notification not found.");
+        n.ArchivedAt = archived ? n.ArchivedAt ?? clock.Now : null;
+        if (archived) n.ReadAt ??= clock.Now;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Clears the inbox of everything already read.</summary>
+    public async Task<int> ArchiveReadAsync(CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        var now = clock.Now;
+        var rows = await db.Notifications.Where(x => x.UserId == uid && x.InApp && x.ReadAt != null && x.ArchivedAt == null).Take(5000).ToListAsync(ct);
+        foreach (var n in rows) n.ArchivedAt = now;
+        await db.SaveChangesAsync(ct);
+        return rows.Count;
     }
 
     public async Task MarkReadAsync(Guid id, CancellationToken ct = default)

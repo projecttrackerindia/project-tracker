@@ -1,5 +1,5 @@
 import { del, download, get, patch, post, put, create } from './client';
-import type { TaskSuggestions,TimelineTemplate,Activity,AdminPlan,AdminStats,AdminTenant,AdminTenantDetail,AdminUser,AdminUserDetail,AppNotification,AuditLog,BillingOverview,CalendarEvent,Comment,Dashboard,Label,Paged,Project,ProjectDetail,ProjectMember,LensTeam,ReportSummary,SearchHit,Stage,Task,TaskDetail,WorkflowStatus,InvoiceBuyer,UpiPayment,AdminUpiPayment,UpiAccountHealth } from './types';
+import type { TaskSuggestions,TimelineTemplate,Activity,AdminPlan,AdminStats,AdminTenant,AdminTenantDetail,AdminUser,AdminUserDetail,AppNotification,NotificationCounts,AuditLog,BillingOverview,CalendarEvent,Comment,Dashboard,Label,Paged,Project,ProjectDetail,ProjectMember,LensTeam,ReportSummary,SearchHit,Stage,Task,TaskDetail,WorkflowStatus,InvoiceBuyer,UpiPayment,AdminUpiPayment,UpiAccountHealth } from './types';
 export interface ProjectFilters { q?: string; status?: string; priority?: string; ownerId?: string; teamId?: string; projectGroupId?: string; projectType?: string; includeArchived?: boolean; sort?: string; page?: number; pageSize?: number; mineOnly?: boolean }
 export interface ProjectInput {
   stageScheduleMode?: 'Manual' | 'FixedDeadline' | 'FollowSchedule';
@@ -106,8 +106,13 @@ export const insightApi = {
 };
 
 export const notificationApi = {
-  list: (page = 1, unreadOnly = false) => get<Paged<AppNotification>>('/notifications', { page, pageSize: 20, unreadOnly }),
+  list: (page = 1, unreadOnly = false, lane?: 'needs' | 'info', archived = false) =>
+    get<Paged<AppNotification>>('/notifications', { page, pageSize: 20, unreadOnly, lane, archived: archived || undefined }),
   unread: () => get<{ count: number }>('/notifications/unread-count'),
+  counts: () => get<NotificationCounts>('/notifications/counts'),
+  archive: (id: string) => post(`/notifications/${id}/archive`),
+  unarchive: (id: string) => post(`/notifications/${id}/unarchive`),
+  archiveRead: () => post<{ archived: number }>('/notifications/archive-read'),
   read: (id: string) => post(`/notifications/${id}/read`),
   readAll: () => post('/notifications/read-all'),
 };

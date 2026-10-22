@@ -163,6 +163,49 @@ public class NotificationTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task The_inbox_splits_what_needs_you_from_updates_and_archived_notices_leave_it_but_stay_findable()
+    {
+        var (owner, mia, project) = await Setup();
+        var task = await Assign(owner, project, mia, "Lanes");                 // assigned: needs you
+        var taskId = task["id"]!.GetValue<string>();
+        Assert.True((await owner.Post($"/api/v1/tasks/{taskId}/comments", new { body = "Just so you know" })).Ok);   // a comment: for your information
+
+        var counts = (await mia.Get("/api/v1/notifications/counts")).Data!;
+        Assert.True(counts["needsYou"]!.GetValue<int>() >= 1);
+        Assert.True(counts["forInfo"]!.GetValue<int>() >= 1);
+        Assert.Equal(counts["unread"]!.GetValue<int>(), counts["needsYou"]!.GetValue<int>() + counts["forInfo"]!.GetValue<int>());
+
+        var needs = (await mia.Get("/api/v1/notifications?lane=needs")).Data!["items"]!.AsArray();
+        Assert.All(needs, n => Assert.True(n!["needsYou"]!.GetValue<bool>()));
+        Assert.Contains(needs, n => n!["type"]!.GetValue<string>() == "TaskAssigned");
+        var info = (await mia.Get("/api/v1/notifications?lane=info")).Data!["items"]!.AsArray();
+        Assert.Contains(info, n => n!["type"]!.GetValue<string>() == "Comment");
+        Assert.DoesNotContain(info, n => n!["type"]!.GetValue<string>() == "TaskAssigned");
+
+        // Archiving puts it away (and reads it); it shows under Archived and can come back.
+        var comment = info.First(n => n!["type"]!.GetValue<string>() == "Comment")!["id"]!.GetValue<string>();
+        Assert.Equal(HttpStatusCode.NoContent, (await mia.Post($"/api/v1/notifications/{comment}/archive", new { })).Status);
+        Assert.DoesNotContain((await mia.Get("/api/v1/notifications")).Data!["items"]!.AsArray(), n => n!["id"]!.GetValue<string>() == comment);
+        var archived = (await mia.Get("/api/v1/notifications?archived=true")).Data!["items"]!.AsArray();
+        var put = archived.Single(n => n!["id"]!.GetValue<string>() == comment)!;
+        Assert.True(put["isRead"]!.GetValue<bool>());
+        Assert.True(put["archived"]!.GetValue<bool>());
+        Assert.Equal(HttpStatusCode.NoContent, (await mia.Post($"/api/v1/notifications/{comment}/unarchive", new { })).Status);
+        Assert.Contains((await mia.Get("/api/v1/notifications")).Data!["items"]!.AsArray(), n => n!["id"]!.GetValue<string>() == comment);
+
+        // Someone else's notification cannot be archived.
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.Post($"/api/v1/notifications/{comment}/archive", new { })).Status);
+
+        // Clear read: everything read leaves the inbox; unread stays.
+        Assert.True((await mia.Post($"/api/v1/notifications/{comment}/read", new { })).Ok);
+        var cleared = await mia.Post("/api/v1/notifications/archive-read", new { });
+        Assert.True(cleared.Data!["archived"]!.GetValue<int>() >= 1);
+        var left = (await mia.Get("/api/v1/notifications")).Data!["items"]!.AsArray();
+        Assert.All(left, n => Assert.False(n!["isRead"]!.GetValue<bool>()));
+        Assert.Contains(left, n => n!["type"]!.GetValue<string>() == "TaskAssigned");
+    }
+
+    [Fact]
     public async Task Changing_a_task_s_priority_or_due_date_notifies_the_assignee_without_touching_the_assignee_field()
     {
         var (owner, mia, project) = await Setup();
