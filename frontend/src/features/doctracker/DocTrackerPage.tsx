@@ -112,12 +112,15 @@ function DtTree({ catalog, activeDocId }: { catalog: DtCatalog; activeDocId?: st
     const key = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || t?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      e.preventDefault(); input.current?.focus(); input.current?.select();
+      const box = input.current ?? document.querySelector<HTMLInputElement>('.dl-search input');
+      if (!box) return;
+      e.preventDefault(); box.focus(); box.select();
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, []);
-  const dq = q.trim().toLowerCase();
+  const onHome = !activeDocId && !nav.p && !nav.view;
+  const dq = onHome ? '' : q.trim().toLowerCase();
   const hits = useMemo(() => {
     if (dq.length < 2) return null;
     const eps: { p: DtProject; e: DtEndpoint }[] = []; const docs: { p: DtProject; d: DtProject['documents'][number] }[] = [];
@@ -131,11 +134,12 @@ function DtTree({ catalog, activeDocId }: { catalog: DtCatalog; activeDocId?: st
   const pinned: { id: 'home' | 'security'; label: string; icon: IconName }[] = [{ id: 'home', label: 'Home', icon: 'grid' }, ...(nav.view === 'security' ? [{ id: 'security' as const, label: 'Security Center', icon: 'shield' as IconName }] : [])];
   return (
     <nav className="doc-sidebar ds-rail ds-tree dt-tree" aria-label="DocTracker">
-      <div className="ds-rail-search">
+      {/* On the front page the big search does this job, so the tree does not show a second box. */}
+      {!onHome && <div className="ds-rail-search">
         <Icon name="search" size={14} />
         <input ref={input} type="search" placeholder="Search APIs and documents…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search APIs, endpoints and documents" />
         <kbd className="dt-kbd" title="Press / to search">/</kbd>
-      </div>
+      </div>}
       <ul className="ds-rail-list">
         {pinned.map((v) => {
           const on = v.id === 'home' ? !nav.p && !nav.view : nav.view === 'security';
