@@ -239,10 +239,10 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
             if (!string.Equals(hd.Name, c.HeaderName, StringComparison.OrdinalIgnoreCase)) req.Headers.TryAddWithoutValidation(hd.Name, Placeholder.Replace(hd.Value ?? "", m => Value(m.Groups[1].Value)));
         if (c.Method == "POST")
         {
-            var body = flow?.BodyTemplate is { Length: > 0 } t
+            var requestBody = flow?.BodyTemplate is { Length: > 0 } t
                 ? Placeholder.Replace(t, m => JsonEncodedText.Encode(Value(m.Groups[1].Value)).ToString())
                 : new JsonObject(args.Select(a => KeyValuePair.Create(a.Key, (JsonNode?)JsonValue.Create(a.Value)))).ToJsonString();
-            req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+            req.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
         }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(8));
         using var res = await http.CreateClient("voice-connector").SendAsync(req, timeout.Token);
