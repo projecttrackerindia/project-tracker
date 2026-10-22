@@ -1,6 +1,7 @@
 import { AgentsHubNav } from '../agents/AgentsHubNav';
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useHomeMode } from '../../stores/homeMode';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
 import { PageLoader } from '../../components/ui';
@@ -32,10 +33,29 @@ function settled(over: Partial<AiMessage>): AiMessage {
 
 // ------------------------------------------------------------------ the page
 
-export function AiPage() {
-  const { id } = useParams();
-  const nav = useNavigate();
+/**
+ * `home`: the assistant as the AI-first Home. The conversation stays on Home (its id in ?c=), the agents bar is left out, and the empty
+ * state shows Home's start screen (`home.start`, given the function that asks) instead of the assistant's own.
+ */
+export function AiPage({ home }: { home?: { start: (ask: (q: string) => void) => ReactNode; top: ReactNode } } = {}) {
+  const routeId = useParams().id;
+  const [search] = useSearchParams();
+  const id = home ? search.get('c') ?? undefined : routeId;
+  const navigate = useNavigate();
   const loc = useLocation();
+  const aiFirst = useHomeMode((s) => s.aiFirst);
+  // Where a conversation lives: /ai/{id} on the Assistant page, ?c={id} on the AI-first Home. "/ai" means a new conversation.
+  // Stable on purpose (effects depend on it): it reads the current address from a ref instead of re-creating itself on every change.
+  const here = useRef(loc); here.current = loc;
+  const isHome = !!home;
+  const nav = useCallback((to: string, opts?: { replace?: boolean; state?: unknown }) => {
+    if (!isHome || !to.startsWith('/ai')) { navigate(to, opts); return; }
+    const cid = to.startsWith('/ai/') ? to.slice(4) : '';
+    const next = new URLSearchParams(here.current.search);
+    if (cid) next.set('c', cid); else next.delete('c');
+    const qs = next.toString();
+    navigate(`${here.current.pathname}${qs ? `?${qs}` : ''}`, { replace: opts?.replace });
+  }, [isHome, navigate]);
   const wid = useWorkspaceId();
   const firstName = useAuth((s) => s.ctx?.user.displayName?.split(' ')[0] ?? '');
   const status = useAiStatus();
@@ -256,7 +276,7 @@ export function AiPage() {
     const ask = state?.ask;
     if (!ask || !usage || asked.current === (state?.ts ?? ask)) return;
     asked.current = state?.ts ?? ask;
-    nav(loc.pathname, { replace: true, state: null });
+    navigate(loc.pathname + loc.search, { replace: true, state: null });
     void send(ask);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loc.state, usage]);
@@ -350,9 +370,12 @@ export function AiPage() {
 
   const outOfCredits = !!usage && !usage.unlimited && usage.creditsLeft <= 0;
 
+  // With the AI-first Home, the conversation lives on Home: the Assistant page's own addresses lead there (with any question in hand).
+  if (!home && aiFirst) return <Navigate to={id ? `/?c=${id}` : '/'} replace state={loc.state} />;
+
   return (
-    <div className="ai-page">
-    <AgentsHubNav sub="Ask, analyse, plan and get things done" />
+    <div className={`ai-page${home ? ' ai-home' : ''}`}>
+    {home ? home.top : <AgentsHubNav sub="Ask, analyse, plan and get things done" />}
     <div className={`ai-shell ${railOpen ? 'rail-open' : ''}`} onDragEnter={onDrag} onDragOver={onDrag} onDragLeave={onDrag} onDrop={onDrag}>
       <Rail list={listQ.data ?? []} loading={listQ.isLoading} current={convId} onNew={newChat} onPick={(cid) => { setRailOpen(false); nav(`/ai/${cid}`); }}
         onChanged={refresh} onDeleted={(cid) => { refresh(); if (cid === convId) newChat(); }} />
@@ -376,7 +399,8 @@ export function AiPage() {
 
         <div className="ai-scroll" ref={scroller} onScroll={onScroll}>
           {messages.length === 0 && !live ? (
-            <Hero name={firstName} onPick={pick} onAsk={(p) => void send(p)} canAttach={canAttach} starters={startersQ.data?.starters} insights={insightsQ.data} />
+            home ? home.start((p) => void send(p))
+              : <Hero name={firstName} onPick={pick} onAsk={(p) => void send(p)} canAttach={canAttach} starters={startersQ.data?.starters} insights={insightsQ.data} />
           ) : (
             <div className="ai-thread" aria-live="polite" aria-busy={streaming}>
               {messages.map((m, i) => (

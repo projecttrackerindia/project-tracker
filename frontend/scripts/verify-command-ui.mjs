@@ -95,6 +95,9 @@ try{
    else if(ep==='/api/v1/reports/summary'||ep==='/api/v1/work-tasks/summary')data=null;
    else if(ep==='/api/v1/dashboard')data={counts:{myDueToday:1,myCompletedToday:0,myOpen:3,myOverdue:0,activeProjects:1,completedProjects:0,totalProjects:1,openTasks:6,overdueTasks:1,members:4,overallProgress:42,myLoggedMinutesThisWeek:90},myTasks:[],projects:[],activity:[],myWork:[]};
    else if(ep.endsWith('/ai/status'))data={enabled:true,configured:true,entitled:true,allowedHere:true};
+   else if(ep.endsWith('/ai/usage'))data={month:'2030-01',creditsUsed:20,creditsLimit:200,creditsLeft:180,unlimited:false,maxTier:'deep',attachments:true,actions:true,tiers:['quick','standard','deep'].map((id,i)=>({id,label:id,model:'synthetic',credits:i+1,allowed:true,description:'Preview mode'})),attachmentTypes:[],maxFiles:3,maxImageMb:2,maxDocumentMb:2,requestLimits:{perMinute:20,perHour:300,perDay:1500}};
+   else if(ep.endsWith('/ai/starters'))data={greeting:'Welcome back',starters:[]};
+   else if(ep.endsWith('/ai/insights'))data={items:[]};
    else if(ep==='/api/v1/ai/conversations')data=[{id:'c1',title:'Why is CRIF HIGHMARK delayed?',lastMessageAt:new Date(Date.now()-3600e3).toISOString(),isPinned:false}];
    else if(ep.endsWith('/workspace/logo'))data={hasLogo:false};
    else if(ep==='/api/v1/chat/projects/unread')data=[];
@@ -203,14 +206,18 @@ try{
  await tm.getByRole('button',{name:'Use all'}).click();await page.waitForTimeout(200);
  assert.equal(await tm.locator('input[type=number]').first().inputValue(),'7');assert.equal(await tm.locator('input[type=date]').last().inputValue(),'2030-01-17');
  assert.equal(await tm.locator('.tsg-chip').count(),0,'every suggestion was used');checks.push('task-suggestions');await page.close();await ctx.close();
- // AI-first Home: opt in from Home, ask box, four rule tiles, last conversation; Classic view returns and the choice is remembered.
+ // AI-first Home: Home becomes the assistant (ask box, conversations, four rule tiles); the sidebar's Assistant becomes Agents; Classic view returns.
  ctx=await make('light');page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
  await page.goto(origin+'/preview-org/command-center');await page.getByRole('button',{name:'AI-first home'}).click();
  await page.locator('.aih-hero h1').waitFor();assert.match(await page.locator('.aih-hero h1').innerText(),/What do you want to get done/);
- await page.locator('.aih-tile').nth(3).waitFor();assert.equal(await page.locator('.aih-tile').count(),4);await page.getByRole('link',{name:'Continue'}).waitFor();
- await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'ai-first-home-1440.png'),fullPage:true,animations:'disabled'});
+ await page.locator('.aih-tile').nth(3).waitFor();assert.equal(await page.locator('.aih-tile').count(),4);
+ assert.ok(await page.locator('.ai-composer').isVisible(),'the ask box is on Home');
+ await page.getByRole('link',{name:'Agents'}).first().waitFor();assert.equal(await page.getByRole('link',{name:'Assistant',exact:true}).count(),0,'no separate Assistant entry');
+ await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'ai-first-home-1440.png'),animations:'disabled'});
+ await page.goto(origin+'/preview-org/ai');await page.locator('.aih-hero').waitFor();assert.ok(!new URL(page.url()).pathname.endsWith('/ai'),'the Assistant page leads to Home');
  await page.reload();await page.locator('.aih-hero').waitFor();
- await page.getByRole('button',{name:'Classic view'}).click();await page.locator('.cmd-tabs').waitFor();checks.push('ai-first-home');await page.close();await ctx.close();
+ await page.getByRole('button',{name:'Classic view'}).click();await page.locator('.cmd-tabs').waitFor();await page.getByRole('link',{name:'Assistant',exact:true}).first().waitFor();
+ checks.push('ai-first-home');await page.close();await ctx.close();
  assert.deepEqual(errors,[]);
  await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,writes:writes.length,errors,scope:'Built frontend with synthetic fixtures; no live meetings, mail or AI.'},null,2));
  console.log(JSON.stringify({checks,writes:writes.length,errors}));

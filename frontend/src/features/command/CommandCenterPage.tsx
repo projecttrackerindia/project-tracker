@@ -17,6 +17,7 @@ import { BriefModal, DecisionsView, AuditView, WhatIfModal, SettingsCard } from 
 import { MyWorkPage } from '../workitems/MyWorkPage';
 import { errText } from './shared';
 import { AiFirstHome } from './AiFirstHome';
+import { useHomeMode } from '../../stores/homeMode';
 import { useAiStatus } from '../ai/Assistant';
 import '../agent/agent.css';
 
@@ -72,13 +73,14 @@ export function CommandCenterPage() {
   const setTab = (t: Tab) => { const next = new URLSearchParams(params); if (t === 'dashboard') next.delete('tab'); else next.set('tab', t); setParams(next, { replace: true }); };
   // The AI-first Home is opt-in and remembered in this browser; Classic (the tabs) stays the default.
   const ai = useAiStatus();
-  const [aiFirst, setAiFirst] = useState(() => { try { return localStorage.getItem('pm_home_mode') === 'ai'; } catch { return false; } });
-  const chooseHome = (on: boolean) => { setAiFirst(on); try { localStorage.setItem('pm_home_mode', on ? 'ai' : 'classic'); } catch { /* private window: this visit only */ } };
+  const aiFirst = useHomeMode((s) => s.aiFirst);
+  const chooseHome = useHomeMode((s) => s.setAiFirst);
+  // A tab in the address (Today, My work…) still opens the classic tab; Home itself is the assistant.
   const showAiFirst = aiFirst && !!ai?.enabled && !params.get('tab');
 
   if (showAiFirst) return (
     <div className="cmd-page">
-      <AiFirstHome c={q.data} loading={q.isLoading} onTab={(t) => setTab(t)} onClassic={() => chooseHome(false)} />
+      <AiFirstHome c={q.data} onTab={(t) => setTab(t)} />
     </div>
   );
   return (
@@ -92,7 +94,7 @@ export function CommandCenterPage() {
           </button>
         ))}
       </nav>
-      {!!ai?.enabled && <button type="button" className="btn btn-sm cmd-aifirst" onClick={() => { chooseHome(true); setTab('dashboard'); }}><Icon name="sparkle" size={14} /> AI-first home</button>}
+      {!!ai?.enabled && <button type="button" className="btn btn-sm cmd-aifirst" onClick={() => { chooseHome(true); setTab('dashboard'); }}><Icon name="sparkle" size={14} /> {aiFirst ? 'Back to Home' : 'AI-first home'}</button>}
       </div>
       {tab === 'dashboard' ? <div className="cmd-dashboard"><Suspense fallback={<PageLoader />}><DashboardPage /></Suspense></div>
         : q.isLoading ? <PageLoader /> : q.isError || !q.data ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (

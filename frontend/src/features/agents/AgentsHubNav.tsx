@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { agentApi } from '../../api/endpoints';
+import { useHomeMode } from '../../stores/homeMode';
 import { AgentMark } from '../../components/AgentMark';
 import { Icon, type IconName } from '../../components/Icon';
 import { useWsQuery } from '../../lib/hooks';
@@ -14,6 +15,7 @@ import './agents.css';
 export function AgentsHubNav({ sub, compact = false }: { sub?: string; compact?: boolean }) {
   const { pathname } = useLocation();
   const ai = useAi();
+  const aiFirst = useHomeMode((s) => s.aiFirst);
   const personal = useIsPersonal();
   const role = useAuth((s) => s.ctx?.current?.role);
   const projects = useModule('projects') > 0;
@@ -21,7 +23,8 @@ export function AgentsHubNav({ sub, compact = false }: { sub?: string; compact?:
   const admin = role === 'Owner' || role === 'Admin';
   const inbox = useWsQuery(['agent', 'inbox'], agentApi.inbox, { enabled: proposals, staleTime: 60_000 });
   const tabs: { to: string; label: string; icon: IconName | 'mark'; show: boolean; on: boolean; badge?: number }[] = [
-    { to: '/ai', label: 'Ask', icon: 'mark', show: ai, on: pathname === '/ai' || (pathname.startsWith('/ai/') && pathname !== '/ai/operations') },
+    // With the AI-first Home, Ask is Home itself.
+    { to: aiFirst ? '/' : '/ai', label: aiFirst ? 'Ask (Home)' : 'Ask', icon: 'mark', show: ai, on: pathname === '/ai' || (pathname.startsWith('/ai/') && pathname !== '/ai/operations') },
     { to: '/notetaker', label: 'Meetings', icon: 'video', show: projects && role !== 'Guest', on: pathname === '/notetaker' },
     { to: '/project-agent', label: 'Proposals', icon: 'sparkle', show: proposals, on: pathname.startsWith('/project-agent'), badge: inbox.data?.pending },
     { to: '/ai/operations', label: 'Workflows', icon: 'workflow', show: ai, on: pathname === '/ai/operations' },

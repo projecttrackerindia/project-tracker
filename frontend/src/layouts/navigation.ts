@@ -4,6 +4,7 @@ import { useVisibleKinds } from '../features/workitems/workItems';
 import { usePeopleSections } from '../features/people/sections';
 import { useAi } from '../features/ai/Assistant';
 import { AI_NAME } from '../features/ai/aiBrand';
+import { useHomeMode } from '../stores/homeMode';
 
 /** `match`: the item is active for these addresses instead of just its own (for items that lead into a section with tabs). */
 export interface NavDef {
@@ -59,7 +60,9 @@ export function useMainNav(): NavGroup[] {
   const command = lv('projects') > 0 && !isGuest;
   const proposals = lv('projects') > 0 && !personal && ai && !isGuest;
   const notes = lv('projects') > 0 && !isGuest;
-  const agentsTo = ai ? '/ai' : notes ? '/notetaker' : proposals ? '/project-agent' : '/agent-tracker';
+  // With the AI-first Home, asking happens on Home itself: the sidebar entry becomes Agents (meetings, proposals, workflows, tracker).
+  const aiFirst = useHomeMode((s) => s.aiFirst) && ai;
+  const agentsTo = ai && !aiFirst ? '/ai' : notes ? '/notetaker' : proposals ? '/project-agent' : ai ? '/ai/operations' : '/agent-tracker';
   const agentsPath = (p: string) => p === '/ai' || p.startsWith('/ai/') || p === '/project-agent' || p.startsWith('/project-agent/') || p === '/agent-tracker' || p === '/notetaker';
   return [
     { title: 'Home', items: [
@@ -67,7 +70,7 @@ export function useMainNav(): NavGroup[] {
       { id: '/', to: '/', label: 'Dashboard', icon: 'dashboard', end: true, show: !command, hint: 'Your day at a glance' },
       { id: '/command-center', to: '/', label: 'Home', icon: 'radar', show: command, hint: 'What needs you today, your work, meetings and decisions',
         match: (p) => p === '/' || p === '/command-center' },
-      { id: 'agents', to: agentsTo, label: 'Assistant', icon: 'agent', show: ai || proposals || isAdmin || notes, match: agentsPath, hint: 'Ask the assistant, your notetaker, proposals and workflows' },
+      { id: 'agents', to: agentsTo, label: aiFirst ? 'Agents' : 'Assistant', icon: 'agent', show: ai || proposals || isAdmin || notes, match: agentsPath, hint: aiFirst ? 'Your notetaker, proposals, workflows and the tracker (ask on Home)' : 'Ask the assistant, your notetaker, proposals and workflows' },
       { to: '/calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0 },
       { to: '/chat', label: 'Chat', icon: 'message', show: canChat },
       { to: '/mailbox', label: 'Mailbox', icon: 'mail', hint: 'Gmail, Outlook and Rediffmail in one inbox, with the mail agent' },
