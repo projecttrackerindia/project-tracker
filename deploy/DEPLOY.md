@@ -189,6 +189,12 @@ Database migrations run automatically at start. To pause changes while you upgra
 Maintenance mode** first (people can still read and sign in; only platform administrators can change data), and switch it off after.
 Take a backup right before with `docker compose exec backup sh /backup.sh now`.
 
+**Adding a migration.** Several shipped migrations carry hand-written identifiers dated ahead of the calendar; the chain's frontier is
+`20261104000100`. A migration generated from the clock before that date would sort into the middle of the chain and apply in a different
+position on a fresh database than on an upgraded one. Give every new migration an identifier greater than the frontier (the frontier plus
+one minute is fine), keep the `[Migration("…")]` attribute and the file name identical, and never rename or remove a migration that has
+shipped. `MigrationOrderTests` in the test project refuses a migration that breaks this rule.
+
 ## 8. Day-to-day
 
 - **Health:** Admin → System health (database, workers, queues, errors). `GET /health/ready` is suitable for an uptime monitor.
