@@ -361,10 +361,10 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         {
             if (chat.AssigneeId is { } owner)
             {
-                var key = $"support:{chat.Id:N}";
-                if (!await db.Notifications.AnyAsync(n => n.DedupeKey == key && n.UserId == owner && n.ReadAt == null, ct))
+                var noticeKey = $"support:{chat.Id:N}";
+                if (!await db.Notifications.AnyAsync(n => n.DedupeKey == noticeKey && n.UserId == owner && n.ReadAt == null, ct))
                     await notifications.AddAsync(owner, NotificationType.Support, $"{Who(chat)} wrote on WhatsApp", $"{channel.Name}: {(text.Length > 140 ? text[..140] + "…" : text)}",
-                        $"/operations?view=whatsapp&chat={chat.Id}", key, ct: ct);
+                        $"/operations?view=whatsapp&chat={chat.Id}", noticeKey, ct: ct);
             }
             else await NotifyTeamAsync(channel, chat, $"{Who(chat)} wrote on WhatsApp", $"{channel.Name}: {(text.Length > 140 ? text[..140] + "…" : text)}", ct);
         }

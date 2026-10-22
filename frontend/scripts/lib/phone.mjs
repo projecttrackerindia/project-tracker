@@ -8,6 +8,7 @@ export async function cutOff(page) {
       if (!r.width || r.right <= innerWidth + 1 || r.left >= innerWidth) continue;
       const cs = getComputedStyle(el);
       if (cs.visibility === 'hidden' || cs.display === 'none' || cs.position === 'fixed') continue;
+      if (el.closest('.toast-root')) continue;   // toasts slide in from the edge for a moment, then settle on screen
       let p = el.parentElement, scroller = false;
       while (p) { const o = getComputedStyle(p).overflowX; if (o === 'auto' || o === 'scroll') { scroller = true; break; } p = p.parentElement; }
       if (scroller) continue;
