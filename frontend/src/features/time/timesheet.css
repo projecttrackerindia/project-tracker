@@ -2,10 +2,8 @@
 
 /* ---- the week summary */
 .tsg-hero { position: relative; display: grid; gap: 16px; padding: 18px 20px; margin-bottom: 16px; border-radius: var(--radius-lg); overflow: hidden;
-  background: linear-gradient(135deg, rgba(var(--accent-rgb), .10), rgba(56, 189, 248, .07) 55%, rgba(52, 211, 153, .07)), var(--surface);
+  background: var(--surface);
   border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
-.tsg-hero::after { content: ''; position: absolute; right: -60px; top: -80px; width: 240px; height: 240px; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(circle, rgba(var(--accent-rgb), .16), transparent 70%); }
 .tsg-hero-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; position: relative; z-index: 1; }
 .tsg-hero-week { display: flex; flex-direction: column; min-width: 190px; text-align: center; }
 .tsg-hero-week b { font-size: 16px; letter-spacing: -.01em; }
