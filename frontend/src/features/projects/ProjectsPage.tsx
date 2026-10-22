@@ -19,10 +19,10 @@ export function ProjectCard({ project: p, onOpen }: { project: Project; onOpen: 
   return (
     <div className="project-card" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}>
       <div className="pc-head">
-        <div style={{ minWidth: 0 }}><div className="pc-name">{p.name}</div><div className="pc-code">{p.key}{p.teamName ? ` · ${p.teamName}` : ''}{p.projectGroupName ? ` · ${p.projectGroupName}` : ''}</div></div>
+        <div style={{ minWidth: 0 }}><div className="pc-name" title={p.name}>{p.name}</div><div className="pc-code" title={[p.key, p.teamName, p.projectGroupName].filter(Boolean).join(' · ')}>{p.key}{p.teamName ? ` · ${p.teamName}` : ''}{p.projectGroupName ? ` · ${p.projectGroupName}` : ''}</div></div>
         <div className="row" style={{ gap: 6, flexShrink: 0 }}><HealthBadge health={p.health} /><ProjectChatButton projectId={p.id} name={p.name} /></div>
       </div>
-      {p.description && <div className="pc-desc">{p.description}</div>}
+      <div className="pc-desc" title={p.description ?? undefined}>{p.description || <span className="pc-desc-empty">No description</span>}</div>
       <div className="pc-stats">
         <div className="pc-stat"><b>{p.stats.total}</b><span>Tasks</span></div>
         <div className="pc-stat"><b style={{ color: 'var(--success)' }}>{p.stats.done}</b><span>Done</span></div>

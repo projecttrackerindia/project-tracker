@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { installStableTabs } from './lib/stableTabs';
 import { QueryClientProvider } from '@tanstack/react-query';
 import '@fontsource-variable/inter';
 import '@fontsource/jetbrains-mono/400.css';
@@ -68,6 +69,7 @@ window.addEventListener('unhandledrejection', (e) => {
 // (no second <main>/<h1> for screen readers, nothing hidden to lay out).
 if (document.documentElement.classList.contains('app')) document.getElementById('site')?.remove();
 
+installStableTabs();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

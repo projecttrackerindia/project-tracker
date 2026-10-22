@@ -174,6 +174,13 @@ try{
  await page.getByRole('button',{name:'Hang up'}).click();
  for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/voice/calls/c1/end');i++)await page.waitForTimeout(100);checks.push('voice');
  await page.getByRole('tab',{name:'Calls'}).click();await page.locator('.va-calldetail .va-transcript').waitFor();await shot(page,'voice-calls-1440.png');
+ // Switching tabs never moves the screen: scroll down a little, go from a tall tab to a short one and back, and the tab bar stays put.
+ await page.setViewportSize({width:1440,height:700});await page.getByRole('tab',{name:'Agent'}).click();await page.locator('.va-langs').waitFor();
+ await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));await page.waitForTimeout(150);
+ const barTop=()=>page.evaluate(()=>Math.round(document.querySelector('.va-tabs').getBoundingClientRect().top));
+ const t0=await barTop();
+ for(const name of ['Calls','Setup','Agent','Overview','Tools']){await page.getByRole('tab',{name}).click();await page.waitForTimeout(250);const t=await barTop();assert.ok(Math.abs(t-t0)<=1,`tab bar moved ${t-t0}px switching to ${name}`);}
+ await page.setViewportSize({width:1440,height:1000});checks.push('tabs-stay-put');
  // WhatsApp: a team connects its number, sees the webhook setup, then answers a chat from the inbox.
  await page.goto(origin+'/preview-org/operations?view=whatsapp');await page.locator('.wa-hero').waitFor();
  await page.getByRole('button',{name:'Connect WhatsApp'}).click();

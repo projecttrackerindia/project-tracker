@@ -290,13 +290,13 @@ function ToolTurn({ t }: { t: Turn }) {
 }
 
 function Transcript({ turns, typing }: { turns: Turn[]; typing?: boolean }) {
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'nearest' }); }, [turns.length, typing]);
+  const box = useRef<HTMLDivElement>(null);
+  // Scroll the transcript itself to the newest line, never the whole page.
+  useEffect(() => { const b = box.current; if (b) b.scrollTop = b.scrollHeight; }, [turns.length, typing]);
   return (
-    <div className="va-transcript">
+    <div className="va-transcript" ref={box}>
       {turns.map((t, i) => t.role === 'tool' ? <ToolTurn key={i} t={t} /> : <div key={i} className={`va-bubble ${t.role}`}>{t.text}</div>)}
       {typing && <div className="va-bubble agent typing"><Spinner /></div>}
-      <div ref={end} />
     </div>
   );
 }

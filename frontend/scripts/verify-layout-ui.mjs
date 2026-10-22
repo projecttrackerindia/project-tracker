@@ -14,7 +14,10 @@ const leaveQueries=[];
 const project={id:pid,key:'DEMO',name:'Infrastructure delivery',description:'A synthetic project for responsive layout verification.',groupName:'Delivery',status:'Active',health:'OnTrack',progress:33,active:67,startDate:'2026-10-01',dueDate:'2027-07-09',originalDueDate:'2027-07-09',delayedDays:0,projectType:'NewProject',stats:{total:3,done:1,inProgress:2,cancelled:0,todo:0,overdue:0}};
 const tasks=[0,1,2].map(i=>({id:`10000000-0000-0000-0000-00000000000${i+1}`,key:`DEMO-${i+1}`,title:['Review integration traffic and verify the approved activity with evidence','Coordinate environment maintenance and record change approval','Prepare deployment access documentation'][i],parentTaskId:null,startDate:'2026-10-05',dueDate:'2026-10-20',originalDueDate:null,delayedDays:0,statusName:i?'In Progress':'Done',statusCategory:i?'InProgress':'Done',statusColor:i?'#7c3aed':'#059669',assignee:{id:user.id,name:user.displayName},overdueDays:0,revisions:0,blockedBy:[]}));
 const usage={month:'2026-10',creditsUsed:240,creditsLimit:1000,creditsLeft:740,unlimited:false,maxTier:'deep',attachments:true,actions:true,tiers:[],attachmentTypes:[],maxFiles:3,maxImageMb:2,maxDocumentMb:2};
-const errors=[],checks=[],writes=[];let leaves=[];
+const errors=[],checks=[],writes=[];let leaves=[];let cardProjects=null;
+const owner=(id,name)=>({id:`30000000-0000-0000-0000-00000000000${id}`,name});
+const card=(n,name,key,desc,group,health,total,done,progress,priority,type,who,due)=>({id:`40000000-0000-0000-0000-00000000000${n}`,key,name,description:desc,status:'Active',priority,owner:who,teamId:null,teamName:'MULESOFT',
+ startDate:'2026-10-01',dueDate:due,progress,health,stats:{total,done,inProgress:total-done,overdue:0,cancelled:0,todo:0,blocked:0},memberCount:2,version:1,position:n,enforceDependencies:false,projectGroupId:null,projectGroupName:group,projectType:type,deliveryMethod:'Waterfall'});
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
  const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
@@ -31,6 +34,8 @@ try{
    if(ep.endsWith('/auth/refresh'))data={accessToken:'synthetic-token',expiresAt:'2099-01-01T00:00:00Z',user};
    else if(ep==='/api/v1/me')data={user,workspaces:[ws],fingerprint:'preview',pendingConsent:[],current:{...ws,permissions:['org.manage','work.view','work.edit','work.create','reports.view','reports.broad'],modules:{projects:3,tasks:3,calendar:3,work:3,ai:3,activity:3,documents:3,people:3,reports:3,billing:3},plan:{code:'BUSINESS',name:'Business',status:'Active'},entitlements:{AI_ASSISTANT:3,RESOURCE_MANAGEMENT:1}}};
    else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
+   else if(ep==='/api/v1/chat/projects/unread')data=[];
+   else if(ep==='/api/v1/projects'&&cardProjects)data={items:cardProjects,page:1,totalPages:1,totalItems:cardProjects.length};
    else if(ep==='/api/v1/projects'||ep==='/api/v1/work-tasks')data={items:[],page:1,totalPages:0,totalItems:0};
    else if(ep.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
    else if(ep.endsWith('/workspace/members'))data=[{userId:user.id,displayName:user.displayName,email:user.email,role:'Owner'}];
@@ -79,5 +84,18 @@ try{
  assert.equal(await page.getByRole('link',{name:'Support center',exact:true}).count(),0);
  await open('/preview-org/portfolio?project='+pid,'.ps-table',1440);assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0);
  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.agent-mark.animated .agent-ribbon').first().evaluate(el=>getComputedStyle(el).animationName),'none');
+ // Project cards line up across a row whatever the name, code or description length (the numbers, bar, badges and owner sit at the same height).
+ cardProjects=[card(1,'idfc-qr-callback-api','IQCA','Api Configuration and Validation','Mule Soft','AtRisk',1,0,0,'Medium','Integration',owner(1,'Shiva kumar'),'2026-11-13'),
+  card(2,'Payment Engine Disaster Recovery (DR) Setup','PEDR','Payment Engine Disaster Recovery (DR) setup in the AWS Hyderabad region, including failover runbooks and quarterly drills.','Mule Soft','AtRisk',1,0,0,'High','NewProject',owner(2,'Prasanna Krishna'),'2026-11-21'),
+  card(3,'TCN Call Recording API','TCRA','TCN Call Recording API request implementation, sharing Postman collections with the vendor.','Mule Soft','OnTrack',1,1,100,'Medium','Integration',owner(2,'Prasanna Krishna'),'2026-12-20'),
+  card(4,'GEN AI','GA2',null,'Mule Soft','OnTrack',1,1,100,'Medium','NewProject',owner(2,'Prasanna Krishna'),'2027-02-14')];
+ await ctx.addInitScript(()=>{try{localStorage.setItem('pm_projects_view','cards');}catch{}});
+ await open('/preview-org/projects','.project-grid',1440);await page.locator('.project-card').nth(3).waitFor();
+ for(const width of [1440,1100]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(200);
+  const cards=await page.evaluate(()=>[...document.querySelectorAll('.project-card')].map(c=>({row:Math.round(c.getBoundingClientRect().top),parts:['.pc-stats','.progress','.task-meta','.pc-foot'].map(s=>Math.round(c.querySelector(s)?.getBoundingClientRect().top??-1))})));
+  for(const row of new Set(cards.map(c=>c.row))){const same=cards.filter(c=>c.row===row);if(same.length<2)continue;
+   for(const part of [0,1,2,3]){const tops=same.map(c=>c.parts[part]);assert.ok(Math.max(...tops)-Math.min(...tops)<=1,`project cards misaligned at ${width}px (${['numbers','progress','badges','owner'][part]}): ${tops.join(', ')}`);}}}
+ await page.setViewportSize({width:1440,height:1000});
+ await capture('project-cards-1440');cardProjects=null;
  assert.deepEqual(errors,[]);await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,writes:writes.length,errors,scope:'Production bundle with synthetic APIs only; no customer or paid AI actions.'},null,2));console.log(JSON.stringify({checks,writes:writes.length,errors}));
 }finally{await browser.close();}
