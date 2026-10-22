@@ -56,7 +56,8 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         if (reason is { Length: > 0 } && !AgentCredits.Reasons.ContainsKey(reason))
             throw new ValidationException("reason", "Choose not_needed, wrong, duplicate, already_done, not_ours or other.");
         var f = await DecidableAsync(id, ct);
-        f.Status = AgentFindingStatus.Dismissed; f.DecidedBy = ctx.RequireUserId(); f.DecidedAt = clock.Now; f.UpdatedAt = clock.Now;
+        await ClaimAsync(f, ct);
+        f.Status = AgentFindingStatus.Dismissed;
         f.DismissReason = reason is { Length: > 0 } ? reason : null;
         recorder.Audit("agent.finding_dismissed", "AgentFinding", f.Id, null, new { f.Kind, f.DismissReason });
         await AnswerRequesterAsync(f, false, ct);
@@ -68,6 +69,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
     public async Task<AgentFindingDto> ApproveAsync(Guid id, ApproveFindingRequest? edits, CancellationToken ct = default)
     {
         var f = await DecidableAsync(id, ct);
+        await ClaimAsync(f, ct);
         if (edits is not null) await EditAsync(f, edits, ct);
         await ApplyAsync(f, ct);
         await MinutesAsync([f.RunId], ct);
@@ -87,6 +89,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         foreach (var id in ids)
         {
             var f = await db.AgentFindings.FirstAsync(x => x.Id == id, ct);
+            if (!await TryClaimAsync(f, ct)) { skipped++; continue; }
             await ApplyAsync(f, ct);
             if (f.Status == AgentFindingStatus.Applied) applied++; else failed++;
         }
@@ -107,6 +110,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         var done = new List<AgentFinding>();
         foreach (var f in candidates.Where(f => AgentAutonomy.MayAutoApply(s, f)))
         {
+            if (!await TryClaimAsync(f, ct)) continue;
             f.AutoApplied = true;
             await ApplyAsync(f, ct);
             if (f.Status == AgentFindingStatus.Applied) done.Add(f);
@@ -202,6 +206,30 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         return f;
     }
 
+    /// <summary>How long a claim stands before an interrupted decision may be taken over by someone else.</summary>
+    private static readonly TimeSpan ClaimLease = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Takes the proposal for this decision with one compare-and-swap on the row: it must still be undecided and unclaimed (or its claim
+    /// must have lapsed). Two people approving at once, or an approve-all racing the autonomous apply, therefore carry it out once. The
+    /// claim is the decider and the time; a decision that fails releases it so the proposal can be edited and tried again.
+    /// </summary>
+    private async Task ClaimAsync(AgentFinding f, CancellationToken ct)
+    {
+        if (!await TryClaimAsync(f, ct)) throw new ConflictException("That proposal is already being handled.", "AGENT_ALREADY_DECIDED");
+    }
+
+    private async Task<bool> TryClaimAsync(AgentFinding f, CancellationToken ct)
+    {
+        var now = clock.Now; var me = ctx.RequireUserId(); var lapsed = now - ClaimLease;
+        var claimed = await db.AgentFindings
+            .Where(x => x.Id == f.Id && (x.Status == AgentFindingStatus.Proposed || x.Status == AgentFindingStatus.Failed) && (x.DecidedBy == null || x.DecidedAt == null || x.DecidedAt < lapsed))
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.DecidedBy, me).SetProperty(x => x.DecidedAt, now).SetProperty(x => x.UpdatedAt, now), ct);
+        if (claimed != 1) return false;
+        f.DecidedBy = me; f.DecidedAt = now; f.UpdatedAt = now;
+        return true;
+    }
+
     private async Task EditAsync(AgentFinding f, ApproveFindingRequest e, CancellationToken ct)
     {
         // What the approver changed is kept, so the agent learns how this team wants things written and given out.
@@ -255,8 +283,9 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
             var failed = await db.AgentFindings.FirstAsync(x => x.Id == id, ct);
             Copy(f, failed);
             failed.Status = AgentFindingStatus.Failed; failed.Error = AgentAnalysisService.Cut(ex.Message, 500); failed.UpdatedAt = clock.Now;
+            failed.DecidedBy = null; failed.DecidedAt = null;   // the claim is released so the proposal can be edited and tried again
             await db.SaveChangesAsync(ct);
-            f.Status = AgentFindingStatus.Failed; f.Error = failed.Error;
+            f.Status = AgentFindingStatus.Failed; f.Error = failed.Error; f.DecidedBy = null; f.DecidedAt = null;
             return;
         }
         var row = await db.AgentFindings.FirstAsync(x => x.Id == id, ct);
