@@ -118,7 +118,7 @@ public class AiAnalysis(IAppDbContext db, ICurrentContext ctx, AppClock clock, P
     private static readonly HashSet<string> Stop = new(StringComparer.OrdinalIgnoreCase)
         { "the", "a", "an", "and", "or", "of", "to", "for", "in", "on", "with", "from", "by", "is", "are", "be", "update", "create", "add", "fix", "make", "new", "task" };
 
-    private static HashSet<string> Words(string s) =>
+    internal static HashSet<string> Words(string s) =>
         s.Split([' ', '-', '_', '/', ',', '.', ':', ';', '(', ')'], StringSplitOptions.RemoveEmptyEntries).Select(w => w.ToLowerInvariant()).Where(w => w.Length > 2 && !Stop.Contains(w)).ToHashSet();
 
     /// <summary>
@@ -128,11 +128,29 @@ public class AiAnalysis(IAppDbContext db, ICurrentContext ctx, AppClock clock, P
     /// </summary>
     public async Task<(string Text, int Count)> SuggestAssigneeAsync(string title, Guid? projectId, string? projectLabel, double? estimateHours, DateOnly? due, CancellationToken ct)
     {
+        var top = await RankAssigneesAsync(title, projectId, 5, ct);
+        if (top.Count == 0) return ("There is nobody to assign to.", 0);
+        var sb = new StringBuilder($"Best fits for “{Clean(title)}”{(projectLabel is null ? "" : $" on {projectLabel}")}{(due is null ? "" : $", due {due:d MMM yyyy}")}{(estimateHours is null ? "" : $", about {Num(estimateHours.Value)}h")}, best first:\n");
+        var rank = 1;
+        foreach (var t in top) sb.AppendLine($"{rank++}. {t.Name} (score {Num(t.Score)}): {t.Why}");
+        sb.AppendLine("Scores favour people with room and a track record on similar work; they are a guide, not a rule. State the trade-off when the best fit is already stretched.");
+        return (sb.ToString(), top.Count);
+    }
+
+    /// <summary>One ranked candidate: who, how strong the fit is, and the facts behind it in plain words.</summary>
+    public sealed record AssigneeFit(Guid UserId, string Name, double Score, string Why);
+
+    /// <summary>
+    /// The ranking behind <see cref="SuggestAssigneeAsync"/>, as data: the same scoring the assistant uses, so the task form and the assistant
+    /// always agree on who fits best. Rules only, no model call.
+    /// </summary>
+    public async Task<IReadOnlyList<AssigneeFit>> RankAssigneesAsync(string title, Guid? projectId, int take, CancellationToken ct)
+    {
         var tid = ctx.RequireTenantId();
         var candidates = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest && m.User!.IsActive)
             .Select(m => new { m.UserId, m.User!.DisplayName, m.WeeklyCapacityMinutes, JobRole = db.OrgRoles.Where(r => r.Id == m.OrgRoleId).Select(r => r.Name).FirstOrDefault() })
             .Take(300).ToListAsync(ct);
-        if (candidates.Count == 0) return ("There is nobody to assign to.", 0);
+        if (candidates.Count == 0) return [];
         var ids = candidates.Select(c => c.UserId).ToList();
         var counts = await workItems.CountsAsync(ids, WorkItemScope.Caller, ct);
         var words = Words(title);
@@ -141,7 +159,7 @@ public class AiAnalysis(IAppDbContext db, ICurrentContext ctx, AppClock clock, P
         var cutoff = clock.Now.AddDays(-365);
         var doneQuery = access.VisibleTasks().AsNoTracking().Where(t => t.AssigneeId != null && ids.Contains(t.AssigneeId.Value) && t.CompletedAt != null && t.CompletedAt >= cutoff);
         var done = await doneQuery.OrderByDescending(t => t.CompletedAt).Select(t => new { Who = t.AssigneeId!.Value, t.Title, t.ProjectId, t.CompletedAt, t.DueDate }).Take(2000).ToListAsync(ct);
-        var scored = new List<(string Name, double Score, string Why)>();
+        var scored = new List<AssigneeFit>();
         foreach (var c in candidates)
         {
             var n = counts.GetValueOrDefault(c.UserId);
@@ -157,14 +175,9 @@ public class AiAnalysis(IAppDbContext db, ICurrentContext ctx, AppClock clock, P
             if (similar > 0) why.Add($"{similar} similar task{(similar == 1 ? "" : "s")} done before");
             if (dated >= 3) why.Add($"{Num(100.0 * onTime / dated)}% of dated work delivered on time");
             if (c.JobRole is not null) why.Add($"job role {Clean(c.JobRole)}");
-            scored.Add((Clean(c.DisplayName), score, string.Join("; ", why)));
+            scored.Add(new AssigneeFit(c.UserId, Clean(c.DisplayName), score, string.Join("; ", why)));
         }
-        var top = scored.OrderByDescending(s => s.Score).Take(5).ToList();
-        var sb = new StringBuilder($"Best fits for “{Clean(title)}”{(projectLabel is null ? "" : $" on {projectLabel}")}{(due is null ? "" : $", due {due:d MMM yyyy}")}{(estimateHours is null ? "" : $", about {Num(estimateHours.Value)}h")}, best first:\n");
-        var rank = 1;
-        foreach (var t in top) sb.AppendLine($"{rank++}. {t.Name} (score {Num(t.Score)}): {t.Why}");
-        sb.AppendLine("Scores favour people with room and a track record on similar work; they are a guide, not a rule. State the trade-off when the best fit is already stretched.");
-        return (sb.ToString(), top.Count);
+        return scored.OrderByDescending(s => s.Score).Take(Math.Clamp(take, 1, 20)).ToList();
     }
 
     // ------------------------------------------------------------------ what the past says

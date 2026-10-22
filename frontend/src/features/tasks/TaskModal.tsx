@@ -22,6 +22,7 @@ import { reportTaskError } from './actions';
 import { Select } from '../../components/Select';
 import { DueChangeFields, dueChange } from '../projects/DueChangeFields';
 import { RemindMeButton } from '../reminders/RemindMe';
+import { TaskSuggestionsStrip } from './TaskSuggestionsStrip';
 
 interface Form {
   title: string; description: string; statusId: string; priority: Priority; assigneeId: string;
@@ -175,6 +176,15 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
           <Field label="Task title" required full error={errors.title}>
             <input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Complete API development" maxLength={200} />
           </Field>
+          {!isEdit && !readOnly && pid && (
+            <TaskSuggestionsStrip projectId={pid} title={f.title}
+              values={{ assigneeId: f.assigneeId, estimatedHours: f.estimatedHours, dueDate: f.dueDate, priority: f.priority }}
+              onUse={(patch) => {
+                // Estimate and priority live under "More options": open it so the person sees what was filled in.
+                if (patch.estimatedHours !== undefined || patch.priority !== undefined) setMore(true);
+                setF((p) => ({ ...p, ...patch }));
+              }} />
+          )}
           {show && <Field label="Description" full error={errors.description}>
             <textarea className="textarea" value={f.description} onChange={(e) => set('description', e.target.value)} placeholder="What needs to be done?" />
           </Field>}

@@ -8,7 +8,7 @@ using ProjectManagement.Domain;
 namespace ProjectManagement.Api.Controllers.Projects;
 
 [Route("api/v1/projects"), RequireWorkspace, RequireModule(Modules.Projects)]
-public class ProjectsController(ProjectService projects, TaskService tasks, ActivityService activity, TimelineTemplateService timelineTemplates) : ApiControllerBase
+public class ProjectsController(ProjectService projects, TaskService tasks, ActivityService activity, TimelineTemplateService timelineTemplates, TaskSuggestionService suggestions) : ApiControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] ProjectQuery query, CancellationToken ct) => Ok(await projects.ListAsync(query, ct));
@@ -143,4 +143,9 @@ public class ProjectsController(ProjectService projects, TaskService tasks, Acti
     [HttpPost("{id:guid}/tasks"), RequireModule(Modules.Tasks)]
     public async Task<IActionResult> CreateTask(Guid id, [FromBody] CreateTaskRequest req, CancellationToken ct) =>
         Created(await tasks.CreateAsync(id, req, ct));
+
+    /// <summary>Suggestions for a new task in this project from past work (assignee, estimate, due date, priority); rules only, no AI call.</summary>
+    [HttpGet("{id:guid}/tasks/suggest"), RequireModule(Modules.Tasks)]
+    public async Task<IActionResult> SuggestTask(Guid id, [FromQuery] string? title, CancellationToken ct) =>
+        Ok(await suggestions.SuggestAsync(id, title, ct));
 }

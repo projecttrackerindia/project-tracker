@@ -931,3 +931,12 @@ export interface OpsBreakdown { name: string; id: string | null; open: number; c
 export interface OpsInsights { days: number; open: number; unassigned: number; breached: number; atRisk: number; compliance: number | null; medianResolutionHours: number | null; medianResponseMinutes: number | null;
   createdInPeriod: number; completedInPeriod: number; weeks: { weekStart: string; created: number; completed: number; breached: number; compliance: number | null }[]; aging: { label: string; count: number }[];
   byType: OpsBreakdown[]; byPriority: OpsBreakdown[]; byPerson: OpsBreakdown[]; businessHours: boolean }
+
+/** Suggestions for a new task, from finished work in the workspace; each carries the facts behind it. */
+export interface TaskSuggestions {
+  assignees: { userId: string; name: string; why: string }[];
+  estimateLow: number | null; estimateHigh: number | null; estimate: number | null; estimateWhy: string | null;
+  dueDate: string | null; dueWhy: string | null;
+  priority: Priority | null; priorityWhy: string | null;
+  similar: { id: string; key: string; title: string; hours: number | null; assignee: string | null }[];
+}

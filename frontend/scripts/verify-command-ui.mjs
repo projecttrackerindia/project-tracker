@@ -84,6 +84,7 @@ try{
    if(ep.endsWith('/auth/refresh'))data={accessToken:'synthetic-token',expiresAt:'2099-01-01T00:00:00Z',user};
    else if(ep==='/api/v1/me')data={user,workspaces:[ws],fingerprint:'preview',pendingConsent:[],current:{...ws,permissions:['projects.view','projects.edit','tasks.view','tasks.edit','tasks.create','org.manage','work.view','reports.view'],modules:{projects:3,tasks:3,calendar:3,work:3,ai:3,activity:3,documents:3,people:3,reports:3,billing:3},plan:{code:'BUSINESS',name:'Business',status:'Active'},entitlements:{AI_ASSISTANT:3}}};
    else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
+   else if(ep===`/api/v1/projects/${pid}/tasks/suggest`)data={assignees:[{userId:user.id,name:user.displayName,why:'1 open, 0 overdue, 0 due this week; 3 similar tasks done before'}],estimateLow:5,estimateHigh:9,estimate:7,estimateWhy:'3 similar finished tasks took 5, 7, 9 h.',dueDate:'2030-01-17',dueWhy:'About 2 working days from today at 6 h a day.',priority:'High',priorityWhy:'3 of 3 similar tasks were High.',similar:[{id:'s1',key:'PAY-3',title:'Bank statement API integration',hours:5,assignee:null},{id:'s2',key:'PAY-5',title:'UPI refund API integration',hours:9,assignee:null}]};
    else if(ep===`/api/v1/projects/${pid}`)data=detail;
    else if(ep===`/api/v1/projects/${pid}/meetings`)data=[];
    else if(ep==='/api/v1/projects')data={items:[project],page:1,totalPages:1,totalItems:1};
@@ -192,6 +193,15 @@ try{
   await page.close();await ctx.close();
  }
 
+ // A new task suggests who, how long, when and how urgent from similar finished work; "Use all" fills only empty fields.
+ ctx=await make('light');page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
+ await page.goto(origin+`/preview-org/projects/${pid}`);await page.getByRole('button',{name:'Add task'}).first().click();
+ const tm=page.getByRole('dialog');await tm.getByPlaceholder('e.g. Complete API development').fill('CRIF HIGHMARK API integration');
+ await tm.locator('.tsg-chip').first().waitFor();assert.equal(await tm.locator('.tsg-chip').count(),4);
+ await page.waitForTimeout(400);await page.screenshot({path:path.join(out,'task-suggestions-1440.png'),animations:'disabled'});
+ await tm.getByRole('button',{name:'Use all'}).click();await page.waitForTimeout(200);
+ assert.equal(await tm.locator('input[type=number]').first().inputValue(),'7');assert.equal(await tm.locator('input[type=date]').last().inputValue(),'2030-01-17');
+ assert.equal(await tm.locator('.tsg-chip').count(),0,'every suggestion was used');checks.push('task-suggestions');await page.close();await ctx.close();
  assert.deepEqual(errors,[]);
  await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,writes:writes.length,errors,scope:'Built frontend with synthetic fixtures; no live meetings, mail or AI.'},null,2));
  console.log(JSON.stringify({checks,writes:writes.length,errors}));
