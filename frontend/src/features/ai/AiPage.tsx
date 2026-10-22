@@ -1,5 +1,5 @@
 import { AgentsHubNav } from '../agents/AgentsHubNav';
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode, type RefObject } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useHomeMode } from '../../stores/homeMode';
 import { ApiError } from '../../api/client';
@@ -11,7 +11,7 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { useAiStatus } from './Assistant';
 import { aiWorkspaceApi, type AiFeedbackReason, askAi, type AiAction, type AiConversation, type AiMessage, type AiMode, type AiStreamEvent, type AiTier, type AiToolUse } from './aiApi';
-import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, CreditMeter, Reasoning, RouteChip, ToolChips, ActionCard, hasFiles, tierName, withoutTrailer, type PendingFile, type Suggestion } from './AiParts';
+import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, ModeMenu, CreditMeter, useDismiss, Reasoning, RouteChip, ToolChips, ActionCard, hasFiles, tierName, withoutTrailer, type PendingFile, type Suggestion } from './AiParts';
 import { AI_NAME } from './aiBrand';
 import { saveFile } from '../../lib/native';
 import { Markdown } from './Markdown';
@@ -23,6 +23,8 @@ interface Live {
   route?: { tier: AiTier; reason: string; limited: boolean; wanted: AiTier; credits: number };
 }
 
+/** A mouse or trackpad: the ask box may take focus on its own (on a phone that would pop the keyboard up). */
+const finePointer = () => { try { return window.matchMedia('(pointer: fine)').matches; } catch { return false; } };
 const extOf = (n: string) => n.split('.').pop()?.toLowerCase() ?? '';
 const zone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } };
 
@@ -33,11 +35,20 @@ function settled(over: Partial<AiMessage>): AiMessage {
 
 // ------------------------------------------------------------------ the page
 
+/** What the AI-first Home puts around the assistant. */
+export interface AiHomeSlots {
+  /** The right end of the top bar (after usage), e.g. the switch back to the classic Home. */
+  actions: ReactNode;
+  /** The start screen before the first question: it places the ask box itself, between the greeting and the rest. */
+  start: (p: { ask: (q: string) => void; composer: ReactNode; recent: AiConversation[]; open: (id: string) => void; showAll: () => void }) => ReactNode;
+}
+
 /**
- * `home`: the assistant as the AI-first Home. The conversation stays on Home (its id in ?c=), the agents bar is left out, and the empty
- * state shows Home's start screen (`home.start`, given the function that asks) instead of the assistant's own.
+ * `home`: the assistant as the AI-first Home, laid out like a modern chat app: one centred column, no conversation list beside it. Past chats
+ * are a searchable menu in the top bar (and the latest few under the ask box); the level and attach live in the ask box. The conversation stays
+ * on Home (its id in ?c=).
  */
-export function AiPage({ home }: { home?: { start: (ask: (q: string) => void) => ReactNode; top: ReactNode } } = {}) {
+export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
   const routeId = useParams().id;
   const [search] = useSearchParams();
   const id = home ? search.get('c') ?? undefined : routeId;
@@ -124,7 +135,7 @@ export function AiPage({ home }: { home?: { start: (ask: (q: string) => void) =>
   useEffect(() => () => { abort.current?.abort(); filesRef.current.forEach((f) => f.previewUrl && URL.revokeObjectURL(f.previewUrl)); }, []);
 
   // keep the newest text in view, unless the person has scrolled up to read
-  useEffect(() => { const el = scroller.current; if (el && stick.current) el.scrollTop = el.scrollHeight; }, [messages, live]);
+  useEffect(() => { const el = scroller.current; if (el && stick.current) el.scrollTop = messages.length || live ? el.scrollHeight : 0; }, [messages, live]);
   const onScroll = () => { const el = scroller.current; if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140; };
 
   // ---- files
@@ -346,7 +357,15 @@ export function AiPage({ home }: { home?: { start: (ask: (q: string) => void) =>
     if (e.type === 'drop') { dragDepth.current = 0; setDragging(false); addFiles(Array.from(e.dataTransfer.files)); }
   };
 
-  const newChat = () => { abort.current?.abort(); setRailOpen(false); setMessages([]); setLive(null); setError(null); setConvId(null); nav('/ai'); };
+  const history = useRef<HTMLDetailsElement>(null);
+  const openHistory = () => {
+    const el = history.current;
+    if (!el) return;
+    el.open = true;
+    el.scrollIntoView({ block: 'nearest' });
+    window.setTimeout(() => el.querySelector<HTMLInputElement>('input')?.focus(), 0);
+  };
+  const newChat = () => { abort.current?.abort(); setRailOpen(false); if (history.current) history.current.open = false; setMessages([]); setLive(null); setError(null); setConvId(null); nav('/ai'); };
   const title = convId ? listQ.data?.find((c) => c.id === convId)?.title ?? 'Conversation' : AI_NAME;
   const lastAssistant = [...messages].reverse().findIndex((m) => m.role === 'assistant');
   const lastAssistantIndex = lastAssistant < 0 ? -1 : messages.length - 1 - lastAssistant;
@@ -373,9 +392,57 @@ export function AiPage({ home }: { home?: { start: (ask: (q: string) => void) =>
   // With the AI-first Home, the conversation lives on Home: the Assistant page's own addresses lead there (with any question in hand).
   if (!home && aiFirst) return <Navigate to={id ? `/?c=${id}` : '/'} replace state={loc.state} />;
 
+  const disabledReason = cooldownSeconds > 0 ? `Please wait ${cooldownSeconds} seconds before asking again.` : outOfCredits ? 'This month\'s AI credits are used up. They renew on the 1st.' : null;
+  const empty = messages.length === 0 && !live;
+
+  if (home) {
+    const composer = (
+      <Composer value={text} onChange={setText} onSend={sendFromBox} onStop={stop} onFiles={addFiles} onRemoveFile={removeFile} files={files} streaming={streaming}
+        canAttach={canAttach} usage={usage} mode={mode} disabledReason={disabledReason} autoFocus={empty && finePointer()}
+        tools={<ModeMenu mode={mode} onChange={setMode} usage={usage} disabled={streaming} />} />
+    );
+    const thinking = streaming ? (live?.stage === 'queued' ? 'Waiting for the assistant…' : live?.stage === 'writing' ? 'Writing…' : 'Thinking…') : null;
+    return (
+      <div className="ai-page ai-home">
+        <div className="ai-shell home" onDragEnter={onDrag} onDragOver={onDrag} onDragLeave={onDrag} onDrop={onDrag}>
+          <section className="ai-main">
+            <header className="aih-bar">
+              <HistoryMenu control={history} list={listQ.data ?? []} loading={listQ.isLoading} current={convId} onNew={newChat} onPick={(cid) => nav(`/ai/${cid}`)}
+                onChanged={refresh} onDeleted={(cid) => { refresh(); if (cid === convId) newChat(); }} />
+              <div className="aih-bar-title">{!empty && <><b title={title}>{title}</b>{thinking && <span>{thinking}</span>}</>}</div>
+              <div className="aih-bar-end">
+                {!empty && <button type="button" className="ai-chip-btn" onClick={newChat} title="Start a new chat"><Icon name="edit" size={14} /><span>New chat</span></button>}
+                <CreditMeter usage={usage} compact />
+                {home.actions}
+              </div>
+            </header>
+            <div className="ai-scroll" ref={scroller} onScroll={onScroll}>
+              {empty
+                ? home.start({ ask: (p) => void send(p), composer, recent: (listQ.data ?? []).slice(0, 4), open: (cid) => nav(`/ai/${cid}`), showAll: openHistory })
+                : (
+                  <div className="ai-thread" aria-live="polite" aria-busy={streaming}>
+                    {messages.map((m, i) => (
+                      <MessageView key={m.id} m={m} busyAction={busyAction} canEmail={canAct && !streaming} canRegenerate={!streaming && i === lastAssistantIndex}
+                        onReconcile={(a) => void act(m, a, 'reconcile')} onConfirm={(a) => void act(m, a, 'confirm')} onDismiss={(a) => void act(m, a, 'dismiss')} onCopy={() => copy(m)} onDownload={() => download(m)}
+                        onRegenerate={() => regenerate(i)} onEmail={() => void send('Email this answer to me as a report.')}
+                        onFollowUp={(t) => void send(t)} onConfirmAll={() => void confirmAll(m)} onFeedback={(rating, reason) => void rate(m, rating, reason)} />
+                    ))}
+                    {live && <LiveAnswer live={live} />}
+                  </div>
+                )}
+            </div>
+            {error && <div className="ai-banner" role="alert"><Icon name="alert" size={15} /><span>{error}</span><button type="button" aria-label="Dismiss" onClick={() => setError(null)}><Icon name="close" size={13} /></button></div>}
+            {!empty && composer}
+            {dragging && <DropOverlay />}
+          </section>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`ai-page${home ? ' ai-home' : ''}`}>
-    {home ? home.top : <AgentsHubNav sub="Ask, analyse, plan and get things done" />}
+    <div className="ai-page">
+    <AgentsHubNav sub="Ask, analyse, plan and get things done" />
     <div className={`ai-shell ${railOpen ? 'rail-open' : ''}`} onDragEnter={onDrag} onDragOver={onDrag} onDragLeave={onDrag} onDrop={onDrag}>
       <Rail list={listQ.data ?? []} loading={listQ.isLoading} current={convId} onNew={newChat} onPick={(cid) => { setRailOpen(false); nav(`/ai/${cid}`); }}
         onChanged={refresh} onDeleted={(cid) => { refresh(); if (cid === convId) newChat(); }} />
@@ -398,9 +465,8 @@ export function AiPage({ home }: { home?: { start: (ask: (q: string) => void) =>
         </header>
 
         <div className="ai-scroll" ref={scroller} onScroll={onScroll}>
-          {messages.length === 0 && !live ? (
-            home ? home.start((p) => void send(p))
-              : <Hero name={firstName} onPick={pick} onAsk={(p) => void send(p)} canAttach={canAttach} starters={startersQ.data?.starters} insights={insightsQ.data} />
+          {empty ? (
+            <Hero name={firstName} onPick={pick} onAsk={(p) => void send(p)} canAttach={canAttach} starters={startersQ.data?.starters} insights={insightsQ.data} />
           ) : (
             <div className="ai-thread" aria-live="polite" aria-busy={streaming}>
               {messages.map((m, i) => (
@@ -416,7 +482,7 @@ export function AiPage({ home }: { home?: { start: (ask: (q: string) => void) =>
 
         {error && <div className="ai-banner" role="alert"><Icon name="alert" size={15} /><span>{error}</span><button type="button" aria-label="Dismiss" onClick={() => setError(null)}><Icon name="close" size={13} /></button></div>}
         <Composer value={text} onChange={setText} onSend={sendFromBox} onStop={stop} onFiles={addFiles} onRemoveFile={removeFile} files={files} streaming={streaming}
-          canAttach={canAttach} usage={usage} mode={mode} disabledReason={cooldownSeconds > 0 ? `Please wait ${cooldownSeconds} seconds before asking again.` : outOfCredits ? 'This month\'s AI credits are used up. They renew on the 1st.' : null} />
+          canAttach={canAttach} usage={usage} mode={mode} disabledReason={disabledReason} />
         {dragging && <DropOverlay />}
       </section>
     </div>
@@ -455,9 +521,31 @@ function bucket(c: AiConversation): string {
   return c.isPinned ? 'Pinned' : days < 1 ? 'Today' : days < 2 ? 'Yesterday' : days < 8 ? 'Previous 7 days' : 'Older';
 }
 
-function Rail({ list, loading, current, onNew, onPick, onChanged, onDeleted }: {
-  list: AiConversation[]; loading: boolean; current: string | null; onNew: () => void; onPick: (id: string) => void; onChanged: () => void; onDeleted: (id: string) => void;
-}) {
+type ListProps = { list: AiConversation[]; loading: boolean; current: string | null; onNew: () => void; onPick: (id: string) => void; onChanged: () => void; onDeleted: (id: string) => void };
+
+function Rail(p: ListProps) {
+  return (
+    <aside className="ai-rail" aria-label="Conversations">
+      <ConversationList {...p} />
+    </aside>
+  );
+}
+
+/** Past chats as a menu in the AI-first Home's top bar: new chat, search, then pinned and recent chats by day. */
+function HistoryMenu({ control, ...p }: ListProps & { control: RefObject<HTMLDetailsElement | null> }) {
+  useDismiss(control);
+  const close = () => { if (control.current) control.current.open = false; };
+  return (
+    <details ref={control} className="ai-menu aih-history">
+      <summary className="ai-chip-btn" aria-label="Chats" title="Your chats"><Icon name="clock" size={14} /><span>Chats</span><Icon name="chevronD" size={12} /></summary>
+      <div className="ai-menu-panel aih-history-panel" aria-label="Your chats">
+        <ConversationList {...p} onNew={() => { close(); p.onNew(); }} onPick={(id) => { close(); p.onPick(id); }} />
+      </div>
+    </details>
+  );
+}
+
+function ConversationList({ list, loading, current, onNew, onPick, onChanged, onDeleted }: ListProps) {
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -480,7 +568,7 @@ function Rail({ list, loading, current, onNew, onPick, onChanged, onDeleted }: {
   };
 
   return (
-    <aside className="ai-rail" aria-label="Conversations">
+    <>
       <button type="button" className="ai-new" onClick={onNew}><Icon name="plus" size={16} /> New chat</button>
       <label className="search-box"><Icon name="search" size={14} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search conversations" aria-label="Search conversations" /></label>
       <div className="ai-rail-list">
@@ -508,6 +596,6 @@ function Rail({ list, loading, current, onNew, onPick, onChanged, onDeleted }: {
           </div>
         ))}
       </div>
-    </aside>
+    </>
   );
 }

@@ -279,21 +279,27 @@
 .cmd-aifirst { flex: none; margin-bottom: 6px; }
 .cmd-aifirst svg { color: var(--primary); }
 
-/* AI-first Home (opt-in): one question box, counts from rules, the next meeting and the last conversation. */
-.aih { display: grid; gap: 28px; width: min(980px, 100%); margin: 0 auto; padding-bottom: 12px; }
-.aih-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; }
-.aih-top > span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 650; color: var(--text-2); }
-.aih-top > span svg { color: var(--primary); }
-.aih-hero { display: grid; justify-items: center; gap: 12px; text-align: center; padding: 20px 16px 4px; }
-.aih-mark { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; color: var(--primary-text); background: var(--primary-fill); box-shadow: 0 10px 28px -14px rgba(var(--accent-rgb), .7); }
-.aih-hero h1 { margin: 6px 0 0; font-size: clamp(24px, 3.2vw, 34px); font-weight: 750; letter-spacing: -.02em; }
-.aih-hero > p { margin: 0; max-width: 560px; color: var(--text-2); font-size: 14.5px; line-height: 1.55; }
-.aih-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 720px; }
-.aih-chips button { height: 32px; padding: 0 14px; border: 1px solid var(--border); border-radius: 99px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 13px; font-weight: 550; cursor: pointer; }
-.aih-chips button:hover { border-color: var(--primary); color: var(--primary); }
+/* AI-first Home: one centred column like a modern chat app - greeting, the ask box, one-click asks, recent chats as small tabs, then the cards. */
+.aih { display: grid; gap: 36px; width: min(940px, 100%); margin: 0 auto; padding: 0 24px 24px; }
+.aih-hero { display: grid; gap: 14px; width: min(720px, 100%); margin: 0 auto; padding-top: clamp(20px, 9vh, 96px); }
+.aih-hero h1 { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 0 0 10px; font-size: clamp(26px, 3.4vw, 36px); font-weight: 600; letter-spacing: -.03em; text-align: center; }
+.aih-mark { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--primary-text); background: var(--brand-grad, var(--primary-fill)); }
+.aih-hero .ai-composer { padding: 0; max-width: none; }
+.aih-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.aih-chips button { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 13px; font-weight: 550; cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
+.aih-chips button svg { color: var(--text-3); }
+.aih-chips button:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.aih-chips button:hover svg { color: var(--primary); }
+.aih-recent { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.aih-recent button { display: inline-flex; align-items: center; gap: 6px; max-width: 240px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.aih-recent button:hover { background: var(--primary-soft); color: var(--primary); }
+.aih-recent button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aih-recent button svg { flex: none; color: var(--text-3); }
+.aih-recent time { flex: none; font-size: 11px; color: var(--text-3); }
+.aih-recent .aih-recent-all { background: transparent; color: var(--primary); font-weight: 600; }
 .aih-glance { display: grid; gap: 14px; }
 .aih-glance > header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.aih-glance h2 { margin: 0; font-size: 16px; font-weight: 700; }
+.aih-glance h2 { margin: 0; font-size: 15px; font-weight: 650; }
 .aih-glance > header span { font-size: 12px; color: var(--text-3); }
 .aih-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .aih-tile { display: grid; justify-items: start; gap: 2px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: border-color .15s; }
@@ -304,14 +310,15 @@
 .aih-tile b { font-size: 26px; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .aih-tile span { font-size: 13.5px; font-weight: 600; }
 .aih-tile small { font-size: 12px; color: var(--text-3); }
-.aih-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .aih-card { display: grid; gap: 4px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
 .aih-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: 12px; color: var(--text-3); }
 .aih-card header span { display: inline-flex; align-items: center; gap: 6px; }
 .aih-card b { font-size: 14px; }
 .aih-card small { font-size: 12.5px; color: var(--text-3); }
 @media (max-width: 900px) { .aih-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 640px) { .cmd-aifirst span, .cmd-aifirst { display: none; } .aih-hero { padding-top: 8px; } }
-/* Inside the assistant panel on Home: breathing room around the start screen. */
-.ai-home .aih { padding: 12px 24px 16px; }
-@media (max-width: 640px) { .ai-home .aih { padding: 8px 12px 12px; } }
+@media (max-width: 640px) {
+  .cmd-aifirst span, .cmd-aifirst { display: none; }
+  .aih { padding: 0 12px 16px; gap: 28px; }
+  .aih-hero { padding-top: 12px; }
+  .aih-hero h1 { font-size: 24px; }
+}

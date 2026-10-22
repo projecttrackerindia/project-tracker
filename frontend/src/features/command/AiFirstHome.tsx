@@ -1,28 +1,32 @@
+import type { ReactNode } from 'react';
 import type { CommandCenter } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
-import { formatTime } from '../../lib/format';
+import { formatTime, timeAgo } from '../../lib/format';
 import { useAuth } from '../../stores/auth';
 import { AiPage } from '../ai/AiPage';
+import type { AiConversation } from '../ai/aiApi';
 import { useHomeMode } from '../../stores/homeMode';
 
 type Tab = 'today' | 'work' | 'meetings' | 'decisions';
 
 /**
- * The AI-first Home (opt-in): Home is the assistant. Ask in the box at the bottom; answers, approval cards and your conversations stay here.
- * Before the first question it shows four counts from rules (no model call, no credits) and the next meeting. "Classic view" returns to the tabs.
+ * The AI-first Home (opt-in): Home is the assistant, laid out like a modern chat app. A greeting, the ask box in the middle (attach and the
+ * thinking level inside it), a few one-click asks, the latest chats as small tabs, then today's cards. Past chats are the "Chats" menu in the
+ * top bar. The cards come from rules (no model call, no credits). "Classic view" returns to the tabs.
  */
 export function AiFirstHome({ c, onTab }: { c: CommandCenter | undefined; onTab: (t: Tab) => void }) {
   const setAiFirst = useHomeMode((s) => s.setAiFirst);
-  const top = (
-    <div className="aih-top">
-      <span><Icon name="sparkle" size={14} /> Home · Assistant</span>
-      <button type="button" className="btn btn-sm" onClick={() => setAiFirst(false)}><Icon name="dashboard" size={14} /> Classic view</button>
-    </div>
+  const actions = (
+    <button type="button" className="ai-chip-btn" onClick={() => setAiFirst(false)} title="Back to the classic Home with tabs">
+      <Icon name="dashboard" size={14} /><span>Classic view</span>
+    </button>
   );
-  return <AiPage home={{ top, start: (ask) => <HomeStart c={c} onTab={onTab} ask={ask} /> }} />;
+  return <AiPage home={{ actions, start: (p) => <HomeStart c={c} onTab={onTab} {...p} /> }} />;
 }
 
-function HomeStart({ c, onTab, ask }: { c: CommandCenter | undefined; onTab: (t: Tab) => void; ask: (q: string) => void }) {
+function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
+  c: CommandCenter | undefined; onTab: (t: Tab) => void; ask: (q: string) => void; composer: ReactNode; recent: AiConversation[]; open: (id: string) => void; showAll: () => void;
+}) {
   const first = useAuth((s) => s.ctx?.user.displayName?.split(' ')[0] ?? '');
   const atRisk = c?.health.filter((h) => h.level === 'high' || h.level === 'medium') ?? [];
   const next = c?.today.filter((m) => new Date(m.endUtc).getTime() > Date.now()).sort((a, b) => a.startUtc.localeCompare(b.startUtc))[0];
@@ -35,15 +39,24 @@ function HomeStart({ c, onTab, ask }: { c: CommandCenter | undefined; onTab: (t:
   return (
     <div className="aih">
       <section className="aih-hero">
-        <span className="aih-mark" aria-hidden="true"><Icon name="sparkle" size={22} /></span>
-        <h1>What do you want to get done{first ? `, ${first}` : ''}?</h1>
-        <p>Ask about any project, task or person you can see, or tell the assistant what to change. Changes come back as cards you confirm.</p>
+        <h1><span className="aih-mark" aria-hidden="true"><Icon name="sparkle" size={18} /></span>{greeting()}{first ? `, ${first}` : ''}</h1>
+        {composer}
         <div className="aih-chips">
-          <button type="button" onClick={() => onTab('work')}>Show my work today</button>
-          <button type="button" onClick={() => ask('Which projects are delayed and why?')}>Which projects are delayed?</button>
-          <button type="button" onClick={() => ask('Create a task')}>Create a task</button>
-          <button type="button" onClick={() => onTab('decisions')}>Approve pending items</button>
+          <button type="button" onClick={() => onTab('work')}><Icon name="list" size={13} /> My work today</button>
+          <button type="button" onClick={() => ask('Which projects are delayed and why?')}><Icon name="gauge" size={13} /> Delayed projects</button>
+          <button type="button" onClick={() => ask('Create a task')}><Icon name="plus" size={13} /> Create a task</button>
+          <button type="button" onClick={() => onTab('decisions')}><Icon name="checks" size={13} /> Approvals</button>
         </div>
+        {recent.length > 0 && (
+          <nav className="aih-recent" aria-label="Recent chats">
+            {recent.map((r) => (
+              <button key={r.id} type="button" onClick={() => open(r.id)} title={r.title}>
+                <Icon name="message" size={12} /><span>{r.title}</span><time>{timeAgo(r.lastMessageAt)}</time>
+              </button>
+            ))}
+            <button type="button" className="aih-recent-all" onClick={showAll}>All chats <Icon name="chevronR" size={12} /></button>
+          </nav>
+        )}
       </section>
       {c && (
         <section className="aih-glance" aria-label="Today at a glance">
@@ -67,4 +80,9 @@ function HomeStart({ c, onTab, ask }: { c: CommandCenter | undefined; onTab: (t:
       )}
     </div>
   );
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }

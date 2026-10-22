@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { fetchBlobUrl } from '../../api/client';
 import { Icon, type IconName } from '../../components/Icon';
@@ -61,10 +61,8 @@ export function ModeSwitch({ mode, onChange, usage, disabled }: { mode: AiMode; 
   );
 }
 
-/** A compact balance control. The arc represents remaining organization credits, never provider capacity. */
-export function CreditMeter({ usage }: { usage?: AiUsage }) {
-  const role = useAuth((s) => s.ctx?.current?.role);
-  const control = useRef<HTMLDetailsElement>(null);
+/** Closes a <details> menu on a click outside it or on Escape (focus goes back to its button). */
+export function useDismiss(control: RefObject<HTMLDetailsElement | null>) {
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => {
       if (control.current?.open && event.target instanceof Node && !control.current.contains(event.target)) control.current.open = false;
@@ -81,14 +79,63 @@ export function CreditMeter({ usage }: { usage?: AiUsage }) {
       document.removeEventListener('pointerdown', closeOutside);
       document.removeEventListener('keydown', closeOnEscape);
     };
-  }, []);
+  }, [control]);
+}
+
+/**
+ * The thinking level as one small menu inside the ask box (Auto, Quick, Standard, Deep), in place of the row of buttons.
+ * Each level shows what it is for and what an answer costs; levels above the plan are shown locked.
+ */
+export function ModeMenu({ mode, onChange, usage, disabled }: { mode: AiMode; onChange: (m: AiMode) => void; usage?: AiUsage; disabled?: boolean }) {
+  const control = useRef<HTMLDetailsElement>(null);
+  useDismiss(control);
+  const options: { id: AiMode; label: string; icon: IconName; info?: AiTierInfo; hint: string }[] = [
+    { id: 'auto', label: 'Auto', icon: 'refresh', hint: 'Picks the right level for each question' },
+    ...(['quick', 'standard', 'deep'] as AiTier[]).map((t) => {
+      const info = usage?.tiers.find((x) => x.id === t);
+      return { id: t as AiMode, label: TIER_NAME[t], icon: TIER_ICON[t], info, hint: `${info?.description ?? ''}${info ? `${info.description ? ' · ' : ''}${info.credits} credit${info.credits === 1 ? '' : 's'}` : ''}` };
+    }),
+  ];
+  const current = options.find((o) => o.id === mode) ?? options[0];
+  const choose = (o: (typeof options)[number]) => {
+    if (o.info && !o.info.allowed) return;
+    onChange(o.id);
+    if (control.current) { control.current.open = false; control.current.querySelector('summary')?.focus(); }
+  };
+  return (
+    <details ref={control} className={`ai-menu ai-mode-menu${disabled ? ' disabled' : ''}`} onToggle={(e) => { if (disabled) e.currentTarget.open = false; }}>
+      <summary className="ai-chip-btn" aria-label={`Thinking level: ${current.label}`} title="How much thinking">
+        <Icon name={current.icon} size={14} /><span>{current.id === 'deep' ? 'Deep' : current.label}</span><Icon name="chevronD" size={12} />
+      </summary>
+      <div className="ai-menu-panel" role="menu" aria-label="How much thinking">
+        {options.map((o) => {
+          const locked = o.info ? !o.info.allowed : false;
+          return (
+            <button key={o.id} type="button" role="menuitemradio" aria-checked={mode === o.id} aria-disabled={locked} className={`ai-menu-item${mode === o.id ? ' on' : ''}${locked ? ' locked' : ''}`}
+              onClick={() => choose(o)} title={locked ? `${o.label} is not included in your plan` : undefined}>
+              <Icon name={locked ? 'lock' : o.icon} size={15} />
+              <span><b>{o.label}</b>{o.hint && <small>{locked ? 'Not in your plan' : o.hint}</small>}</span>
+              {mode === o.id && <Icon name="check" size={14} />}
+            </button>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
+/** A compact balance control. The arc represents remaining organization credits, never provider capacity. `compact`: just the ring. */
+export function CreditMeter({ usage, compact = false }: { usage?: AiUsage; compact?: boolean }) {
+  const role = useAuth((s) => s.ctx?.current?.role);
+  const control = useRef<HTMLDetailsElement>(null);
+  useDismiss(control);
   if (!usage) return null;
   const unlimited = usage.unlimited;
   const pct = unlimited ? 100 : usage.creditsLimit > 0 ? Math.max(0, Math.min(100, (usage.creditsLeft / usage.creditsLimit) * 100)) : 0;
   const low = !unlimited && pct < 15;
   const r = 17, c = 2 * Math.PI * r;
   return (
-    <details ref={control} className={`ai-credit-control ${low ? 'low' : ''}`}>
+    <details ref={control} className={`ai-credit-control ${low ? 'low' : ''}${compact ? ' compact' : ''}`}>
       <summary className="ai-credit-button" aria-label={unlimited ? 'Usage: unlimited organization credits' : `Usage: ${usage.creditsLeft.toLocaleString()} organization credits remaining, ${Math.round(pct)} percent`} title="View organization credit balance">
         <span className="ai-credit-ring">
           <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true">
@@ -97,7 +144,7 @@ export function CreditMeter({ usage }: { usage?: AiUsage }) {
           </svg>
           <Icon name={unlimited ? 'sparkle' : 'bolt'} size={15} />
         </span>
-        <span>Usage</span><Icon name="chevronD" size={12} />
+        {!compact && <><span>Usage</span><Icon name="chevronD" size={12} /></>}
       </summary>
       <div className="ai-credit-panel">
         <div className="ai-credit-panel-heading"><span>Organization credits</span><Icon name="agent" size={18} /></div>
@@ -348,9 +395,13 @@ export function Hero({ name, onPick, onAsk, canAttach, starters, insights }: { n
 
 export interface PendingFile { localId: string; file: File; status: 'uploading' | 'ready' | 'error'; attachment?: AiAttachment; previewUrl?: string; error?: string }
 
-export function Composer({ value, onChange, onSend, onStop, onFiles, onRemoveFile, files, streaming, canAttach, usage, mode, disabledReason }: {
+/**
+ * The ask box. `tools` (stacked layout): the text on top and one row under it with attach, the given controls (the level menu, usage) and send,
+ * as in a modern chat app. Without `tools` it is the single-row box used on the Assistant page.
+ */
+export function Composer({ value, onChange, onSend, onStop, onFiles, onRemoveFile, files, streaming, canAttach, usage, mode, disabledReason, tools, autoFocus }: {
   value: string; onChange: (v: string) => void; onSend: () => void; onStop: () => void; onFiles: (f: File[]) => void; onRemoveFile: (id: string) => void;
-  files: PendingFile[]; streaming: boolean; canAttach: boolean; usage?: AiUsage; mode: AiMode; disabledReason?: string | null;
+  files: PendingFile[]; streaming: boolean; canAttach: boolean; usage?: AiUsage; mode: AiMode; disabledReason?: string | null; tools?: ReactNode; autoFocus?: boolean;
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -371,33 +422,59 @@ export function Composer({ value, onChange, onSend, onStop, onFiles, onRemoveFil
     if (pasted.length > 0 && canAttach) { e.preventDefault(); onFiles(pasted); }
   };
   const accept = usage ? usage.attachmentTypes.map((x) => `.${x}`).join(',') : undefined;
+  const picked = <input ref={picker} type="file" multiple hidden accept={accept} onChange={(e) => { onFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />;
+  const sendButton = streaming
+    ? <button type="button" className="ai-send stop" onClick={onStop} aria-label="Stop"><span className="ai-stop-square" /></button>
+    : <button type="button" className="ai-send" onClick={onSend} disabled={!ready || uploading || !!disabledReason} aria-label="Send"><Icon name="send" size={17} /></button>;
+  const pending = files.length > 0 && (
+    <div className="ai-pending">
+      {files.map((f) => (
+        <span key={f.localId} className={`ai-pending-item ${f.status}`} title={f.error ?? f.file.name}>
+          {f.previewUrl ? <img src={f.previewUrl} alt="" /> : <Icon name="note" size={15} />}
+          <span className="ai-pending-name">{f.file.name}</span>
+          {f.status === 'uploading' && <span className="spinner" />}
+          {f.status === 'error' && <Icon name="alert" size={13} />}
+          <button type="button" aria-label={`Remove ${f.file.name}`} onClick={() => onRemoveFile(f.localId)}><Icon name="close" size={12} /></button>
+        </span>
+      ))}
+    </div>
+  );
+
+  if (tools !== undefined) {
+    return (
+      <div className="ai-composer stacked">
+        <div className={`ai-box stacked ${streaming ? 'busy' : ''}`}>
+          {pending}
+          <textarea ref={area} rows={2} value={value} maxLength={8000} autoFocus={autoFocus} placeholder={disabledReason ?? 'Ask about your work, or tell the assistant what to do…'} aria-label="Message the assistant"
+            onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} onPaste={onPaste} disabled={!!disabledReason} />
+          <div className="ai-box-bar">
+            <button type="button" className="ai-attach" disabled={!canAttach || streaming} aria-label="Attach files"
+              title={canAttach ? 'Attach pictures, PDFs, spreadsheets or documents' : 'Reading files is not included in your plan'} onClick={() => picker.current?.click()}>
+              <Icon name="plus" size={18} />
+            </button>
+            {picked}
+            {tools}
+            <span className="ai-box-gap" />
+            {sendButton}
+          </div>
+        </div>
+        <div className="ai-fineprint short"><span><Icon name="lock" size={11} /> Only what you can already see is shared with the model. Check important answers.</span></div>
+      </div>
+    );
+  }
 
   return (
     <div className="ai-composer">
-      {files.length > 0 && (
-        <div className="ai-pending">
-          {files.map((f) => (
-            <span key={f.localId} className={`ai-pending-item ${f.status}`} title={f.error ?? f.file.name}>
-              {f.previewUrl ? <img src={f.previewUrl} alt="" /> : <Icon name="note" size={15} />}
-              <span className="ai-pending-name">{f.file.name}</span>
-              {f.status === 'uploading' && <span className="spinner" />}
-              {f.status === 'error' && <Icon name="alert" size={13} />}
-              <button type="button" aria-label={`Remove ${f.file.name}`} onClick={() => onRemoveFile(f.localId)}><Icon name="close" size={12} /></button>
-            </span>
-          ))}
-        </div>
-      )}
+      {pending}
       <div className={`ai-box ${streaming ? 'busy' : ''}`}>
         <button type="button" className="ai-attach" disabled={!canAttach || streaming} aria-label="Attach files"
           title={canAttach ? 'Attach pictures, PDFs, spreadsheets or documents' : 'Reading files is not included in your plan'} onClick={() => picker.current?.click()}>
           <Icon name="paperclip" size={18} />
         </button>
-        <input ref={picker} type="file" multiple hidden accept={accept} onChange={(e) => { onFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
+        {picked}
         <textarea ref={area} rows={1} value={value} maxLength={8000} placeholder={disabledReason ?? 'Ask about your work, or paste a screenshot…'} aria-label="Message the assistant"
           onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} onPaste={onPaste} disabled={!!disabledReason} />
-        {streaming
-          ? <button type="button" className="ai-send stop" onClick={onStop} aria-label="Stop"><span className="ai-stop-square" /></button>
-          : <button type="button" className="ai-send" onClick={onSend} disabled={!ready || uploading || !!disabledReason} aria-label="Send"><Icon name="send" size={17} /></button>}
+        {sendButton}
       </div>
       <div className="ai-fineprint">
         <span><Icon name="lock" size={11} /> Only what you can already see is shared with the model. Check important answers before acting on them.</span>

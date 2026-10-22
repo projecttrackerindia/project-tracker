@@ -36,6 +36,7 @@ export function useMainNav(): NavGroup[] {
   const people = usePeopleSections();
   const hasReports = (ctx?.current?.reportCount ?? 0) > 0;
   const ai = useAi();
+  const aiFirstPref = useHomeMode((s) => s.aiFirst);
 
   if (ctx?.user.isPlatformAdmin) return [
     { title: 'Platform', items: [
@@ -61,7 +62,7 @@ export function useMainNav(): NavGroup[] {
   const proposals = lv('projects') > 0 && !personal && ai && !isGuest;
   const notes = lv('projects') > 0 && !isGuest;
   // With the AI-first Home, asking happens on Home itself: the sidebar entry becomes Agents (meetings, proposals, workflows, tracker).
-  const aiFirst = useHomeMode((s) => s.aiFirst) && ai;
+  const aiFirst = aiFirstPref && ai;
   const agentsTo = ai && !aiFirst ? '/ai' : notes ? '/notetaker' : proposals ? '/project-agent' : ai ? '/ai/operations' : '/agent-tracker';
   const agentsPath = (p: string) => p === '/ai' || p.startsWith('/ai/') || p === '/project-agent' || p.startsWith('/project-agent/') || p === '/agent-tracker' || p === '/notetaker';
   return [

@@ -98,6 +98,9 @@ try{
    else if(ep.endsWith('/ai/usage'))data={month:'2030-01',creditsUsed:20,creditsLimit:200,creditsLeft:180,unlimited:false,maxTier:'deep',attachments:true,actions:true,tiers:['quick','standard','deep'].map((id,i)=>({id,label:id,model:'synthetic',credits:i+1,allowed:true,description:'Preview mode'})),attachmentTypes:[],maxFiles:3,maxImageMb:2,maxDocumentMb:2,requestLimits:{perMinute:20,perHour:300,perDay:1500}};
    else if(ep.endsWith('/ai/starters'))data={greeting:'Welcome back',starters:[]};
    else if(ep.endsWith('/ai/insights'))data={items:[]};
+   else if(ep==='/api/v1/ai/conversations/c1')data={id:'c1',title:'Why is CRIF HIGHMARK delayed?',messages:[
+     {id:'m1',role:'user',content:'Why is CRIF HIGHMARK delayed?',reasoning:null,tier:null,model:null,routeReason:null,credits:0,status:'complete',tools:[],actions:[],attachments:[],createdAt:new Date(Date.now()-3600e3).toISOString()},
+     {id:'m2',role:'assistant',content:'**CRIF HIGHMARK** is 6 days behind. Two tasks are blocked on the vendor API keys, and the QA estimate grew from 16 to 30 hours.',reasoning:null,tier:'standard',model:'synthetic',routeReason:'Needs project data',credits:2,status:'complete',tools:[],actions:[],attachments:[],createdAt:new Date(Date.now()-3590e3).toISOString()}]};
    else if(ep==='/api/v1/ai/conversations')data=[{id:'c1',title:'Why is CRIF HIGHMARK delayed?',lastMessageAt:new Date(Date.now()-3600e3).toISOString(),isPinned:false}];
    else if(ep.endsWith('/workspace/logo'))data={hasLogo:false};
    else if(ep==='/api/v1/chat/projects/unread')data=[];
@@ -209,9 +212,22 @@ try{
  // AI-first Home: Home becomes the assistant (ask box, conversations, four rule tiles); the sidebar's Assistant becomes Agents; Classic view returns.
  ctx=await make('light');page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
  await page.goto(origin+'/preview-org/command-center');await page.getByRole('button',{name:'AI-first home'}).click();
- await page.locator('.aih-hero h1').waitFor();assert.match(await page.locator('.aih-hero h1').innerText(),/What do you want to get done/);
+ await page.locator('.aih-hero h1').waitFor();assert.match(await page.locator('.aih-hero h1').innerText(),/Good (morning|afternoon|evening)/);
  await page.locator('.aih-tile').nth(3).waitFor();assert.equal(await page.locator('.aih-tile').count(),4);
- assert.ok(await page.locator('.ai-composer').isVisible(),'the ask box is on Home');
+ assert.ok(await page.locator('.aih-hero .ai-composer.stacked').isVisible(),'the ask box sits in the middle of Home');
+ assert.equal(await page.locator('.ai-rail').count(),0,'no conversation list beside the chat');
+ assert.ok(await page.locator('.ai-box-bar .ai-attach').isVisible(),'attach is inside the ask box');
+ await page.locator('.aih-recent button',{hasText:'CRIF HIGHMARK'}).waitFor();
+ await page.locator('.ai-mode-menu > summary[aria-label="Thinking level: Auto"]').click();await page.waitForTimeout(250);await page.screenshot({path:path.join(out,'ai-first-home-level-1440.png'),animations:'disabled'});await page.getByRole('menuitemradio',{name:/Quick/}).click();
+ await page.locator('.ai-mode-menu > summary[aria-label="Thinking level: Quick"]').waitFor();
+ await page.locator('.aih-history > summary').click();await page.locator('.aih-history-panel input[aria-label="Search conversations"]').waitFor();await page.waitForTimeout(250);await page.screenshot({path:path.join(out,'ai-first-home-chats-1440.png'),animations:'disabled'});
+ await page.locator('.aih-history-panel input[aria-label="Search conversations"]').fill('zzz');await page.locator('.aih-history-panel',{hasText:'Nothing matches.'}).waitFor();
+ await page.keyboard.press('Escape');assert.ok(!(await page.locator('.aih-history-panel').isVisible()),'Escape closes the Chats menu');
+ await page.locator('.aih-recent button',{hasText:'CRIF HIGHMARK'}).click();await page.locator('.ai-thread .ai-msg').nth(1).waitFor();assert.match(page.url(),/[?&]c=c1/,'the chat stays on Home');
+ assert.ok(await page.locator('.ai-main > .ai-composer.stacked').isVisible(),'the ask box moves to the bottom in a chat');await page.locator('.aih-bar-title b',{hasText:'CRIF HIGHMARK'}).waitFor();
+ await page.waitForTimeout(250);await page.screenshot({path:path.join(out,'ai-first-home-chat-1440.png'),animations:'disabled'});
+ await page.getByRole('button',{name:'New chat'}).click();await page.locator('.aih-hero h1').waitFor();
+ await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'ai-first-home-phone.png'),animations:'disabled'});await page.setViewportSize({width:1440,height:1000});
  await page.getByRole('link',{name:'Agents'}).first().waitFor();assert.equal(await page.getByRole('link',{name:'Assistant',exact:true}).count(),0,'no separate Assistant entry');
  await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'ai-first-home-1440.png'),animations:'disabled'});
  await page.goto(origin+'/preview-org/ai');await page.locator('.aih-hero').waitFor();assert.ok(!new URL(page.url()).pathname.endsWith('/ai'),'the Assistant page leads to Home');
