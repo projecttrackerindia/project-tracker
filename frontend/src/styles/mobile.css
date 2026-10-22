@@ -14,6 +14,8 @@
   .m-shell.m-conversation .content { flex:1; min-height:0; padding:6px 10px 0; overflow:hidden; animation:none; }
   .m-shell.m-conversation .ai-shell,.m-shell.m-conversation .chat-shell { height:100%; min-height:0; border-radius:18px; }
   .m-shell.m-conversation .ai-shell.solo { overflow-y:auto; }
+  .m-shell.m-conversation .ai-page { height:100%; min-height:0; gap:0; }
+  .m-shell.m-conversation .ai-page > .agh { display:none; }
   .m-shell.m-conversation .m-tabs { position:relative; bottom:auto; flex-shrink:0; margin-top:6px; padding:6px 10px calc(var(--safe-b) + 8px); }
   .m-shell.m-conversation.keyboard-open .m-tabs { display:none; }
   .m-shell.m-conversation.keyboard-open .content { padding-bottom:4px; }
