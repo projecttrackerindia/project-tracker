@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // Agent Tracker against the built frontend and synthetic API fixtures only. No live model, meeting or AI calls.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/tracker-ui');
@@ -95,7 +96,7 @@ try{
    await route.fulfill({contentType:'application/json',body:JSON.stringify({data})});
   });
   return ctx;};
- const noOverflow=async(page,what)=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,`${what}: no sideways scroll`);
+ const noOverflow=(page,what)=>fitsPhone(page,what,assert);
  const tab=(page,name)=>page.locator('.trk-tabs button',{hasText:name}).click();
  // A full-page capture by growing the window to the page's height (Playwright's fullPage capture briefly re-lays the page out, which remounts it).
  const shot=async(page,name,full=true)=>{await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(1600);

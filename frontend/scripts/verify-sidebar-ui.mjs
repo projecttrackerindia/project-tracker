@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // The sidebar: hubs instead of duplicate places, sections that fold, drag to reorder (mouse and keyboard), Customize (pin, hide, reset),
 // saved to the account; the Agents hub bar; pins on the phone's tab bar. Built frontend with synthetic API fixtures only.
@@ -119,7 +120,7 @@ try{
  ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
  await page.goto(origin+'/preview-org/project-agent');await page.locator('.m-tabs').waitFor();await page.waitForTimeout(600);
  assert.ok(await page.locator('.m-tabs .m-tab[aria-label="Operations"]').count()===1,'the pinned place is a tab');
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
  await shot(page,'phone-390.png');checks.push('phone-pins');
  await page.close();await ctx.close();
  assert.deepEqual(errors,[]);

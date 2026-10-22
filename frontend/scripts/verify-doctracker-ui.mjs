@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // DocTracker: the Control Center, the project tree (overview ▸ architecture ▸ documents ▸ tags ▸ endpoints), an endpoint with masked
 // values and an audited reveal, the JSON view, Architecture Studio saving per project, Swagger (read only), the Security Center, "/"
@@ -86,7 +87,7 @@ try{
   });
   return ctx;};
  const shot=async(page,name)=>{await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(400);await page.screenshot({path:path.join(out,name)});};
- const noScroll=async(page)=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+ const noScroll=(page)=>fitsPhone(page,'phone',assert);
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')console.error('console:',m.text().slice(0,300));});await page.setViewportSize({width:1440,height:1000});
 
  // The old Documents link lands in DocTracker; the Control Center sums up scores.

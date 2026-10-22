@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // The Command Center and the agent's autonomy against the built frontend and synthetic API fixtures only. No live meetings, mail or AI.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/command-ui');
@@ -110,7 +111,7 @@ try{
   await route.fulfill({contentType:'application/json',body:JSON.stringify({data})});
  });
  return ctx;};
- const noOverflow=async(page,what)=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,`${what}: no sideways scroll`);
+ const noOverflow=(page,what)=>fitsPhone(page,what,assert);
  const shot=async(page,name,full=false)=>{await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,name),animations:'disabled',fullPage:full});};
 
  // Desktop: what needs me, with the evidence; answer a check-in; send the agent; what if; meetings, brief, settings; decisions; audit.

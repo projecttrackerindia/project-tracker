@@ -1173,3 +1173,8 @@ tr.row-deleted .td-title { font-style: italic; }
 /* Anywhere: actions in a card header wrap instead of squeezing into each other. */
 .card-head > .row { flex-wrap: wrap; justify-content: flex-end; }
 .legend { flex-direction: row; }
+
+/* One-column grid wrappers never grow past their container: an implicit grid column sizes to its widest content (a row of tabs or
+   chips), which pushes every card off the right edge on a phone. minmax(0, 1fr) keeps the column to the space there is. */
+.cmd-page, .ops-channels, .aih, .aih-hero, .aih-glance, .dl, .dl-section, .qa, .nt-items, .twd, .twd-day, .dv-related { grid-template-columns: minmax(0, 1fr); }
+.cmd-tabbar, .cmd-tabbar > .tabs { min-width: 0; }

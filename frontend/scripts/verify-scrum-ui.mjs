@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // Only the built frontend and synthetic API fixtures are used. No live project or AI calls.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/scrum-ui');
@@ -80,7 +81,7 @@ try{
   await dialog.locator('input[type=date]').fill('2030-01-07');await dialog.locator('input[type=time]').fill('09:30');
   await dialog.getByLabel('Repeat',{exact:true}).selectOption('Weekdays');await dialog.getByLabel('Total sessions',{exact:true}).fill('10');
   await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,`scrum-${width}.png`),animations:'disabled'});
-  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'No viewport overflow');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'No viewport overflow');assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
   const controls=await dialog.locator('input,select,textarea').evaluateAll(xs=>xs.every(x=>x.getBoundingClientRect().right<=innerWidth+1));assert.ok(controls,'Fields fit viewport');
   await dialog.getByRole('button',{name:'Create series & invite'}).click();await dialog.getByText('Google Meet ready',{exact:true}).waitFor();
   assert.deepEqual(saves.at(-1).repeat,{frequency:'Weekdays',occurrences:10});assert.equal(saves.at(-1).startTime,'2030-01-07T04:00:00.000Z');

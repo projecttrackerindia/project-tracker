@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 const origin='https://projecttracker-preview.test';const dist=path.resolve('dist');
 const artifacts=path.resolve('test-results/chat-ui');await fs.mkdir(artifacts,{recursive:true});
@@ -67,7 +68,7 @@ try {
  await page.locator('.composer-editable').click();await page.keyboard.type('Thanks!');
  assert.equal(await page.locator('.send-btn.ready').count(),1);
  await page.screenshot({path:path.join(artifacts,'phone-typing.png')});checks.push('send-wakes');
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
  await page.close();await context.close();
  // Desktop: hover toolbar still there; Aa opens formatting.
  context=await make();page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1280,height:860});

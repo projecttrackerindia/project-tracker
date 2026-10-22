@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // The sidebar: hubs instead of duplicate places, sections that fold, drag to reorder (mouse and keyboard), Customize (pin, hide, reset),
 // saved to the account; the Agents hub bar; pins on the phone's tab bar. Built frontend with synthetic API fixtures only.
@@ -169,7 +170,7 @@ try{
  // A narrow screen: the flow rail scrolls sideways instead of squeezing the editor.
  await page.setViewportSize({width:390,height:844});await page.getByRole('tab',{name:'Tools'}).click();await page.getByRole('button',{name:'New tool'}).click();
  await page.locator('.vt-template',{hasText:'Payment status'}).click();await page.locator('.vb-rail').waitFor();
- assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),'the tool builder scrolls sideways on a phone');
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),'the tool builder scrolls sideways on a phone');assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
  await shot(page,'voice-tool-390.png');await page.setViewportSize({width:1440,height:1000});
  await page.goto(origin+'/preview-org/operations?view=voice');await page.locator('.va-top').waitFor();
  await page.getByRole('button',{name:'Test call'}).click();await page.getByRole('dialog').getByRole('button',{name:'Start'}).click();
@@ -202,9 +203,9 @@ try{
  // Phone.
  ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
  await page.goto(origin+'/preview-org/operations?view=board');await page.locator('.ops-board').waitFor();await page.waitForTimeout(400);
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await shot(page,'board-390.png');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');await shot(page,'board-390.png');
  await page.goto(origin+'/preview-org/operations?view=insights');await page.locator('.ops-kpis').waitFor();await page.waitForTimeout(500);
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await shot(page,'insights-390.png');checks.push('phone');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');await shot(page,'insights-390.png');checks.push('phone');
  await page.close();await ctx.close();
  assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,writes:writes.length,errors}));
 }finally{await browser.close();}

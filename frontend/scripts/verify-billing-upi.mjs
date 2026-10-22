@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // Paying for a plan by UPI QR, against the built frontend and synthetic API fixtures only: the QR, "Try another QR", the UTR, and the
 // administrator's confirmation. No live payments.
@@ -54,7 +55,7 @@ try{
   }
   await route.fulfill({contentType:'application/json',body:JSON.stringify({data})});
  });
- const noOverflow=async(page,what)=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,`${what}: no sideways scroll`);
+ const noOverflow=(page,what)=>fitsPhone(page,what,assert);
 
  let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')console.log('console:',m.text().slice(0,400));});await page.setViewportSize({width:1440,height:1100});
  await page.goto(origin+'/preview-org/settings/billing');

@@ -68,7 +68,7 @@ public class TimeController(TimeService time, TimesheetApprovalService approvals
 
     /// <summary>A first draft of my empty days this week from what I changed or commented on each day, less meetings. Nothing is saved.</summary>
     [HttpGet("time/grid/draft")]
-    public async Task<IActionResult> Draft([FromQuery] DateOnly weekStart, CancellationToken ct) => Ok(await grid.DraftAsync(weekStart, ct));
+    public async Task<IActionResult> Draft([FromQuery] DateOnly? weekStart, CancellationToken ct) => Ok(await grid.DraftAsync(weekStart, ct));
 
     /// <summary>Fills my empty cells this week with what I logged on the same weekday last week.</summary>
     [HttpPost("time/grid/copy-previous")]

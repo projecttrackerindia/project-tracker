@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // Mailbox: accounts rail, unified inbox, reading, the mail agent (summary, task suggestions, reply drafts), reply all and connecting
 // Rediffmail. Built frontend with synthetic API fixtures only; mail content must render as literal text.
@@ -149,9 +150,9 @@ try{
  // Phone: one pane at a time, no sideways scroll.
  ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
  await page.goto(origin+'/preview-org/mailbox');await page.locator('.mb-row').first().waitFor();
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await shot(page,'list-390.png');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');await shot(page,'list-390.png');
  await page.locator('.mb-row').first().click();await page.locator('.mb-msg-body').waitFor();assert.equal(await page.locator('.mb-list').isVisible(),false);
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await shot(page,'read-390.png');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');await shot(page,'read-390.png');
  await page.getByRole('button',{name:'Back to messages'}).click();await page.locator('.mb-row').first().waitFor();checks.push('phone');
  await page.close();await ctx.close();
  assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,writes:writes.length,errors}));

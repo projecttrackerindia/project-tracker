@@ -176,10 +176,10 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
     /// day's meetings is shared across the tasks and work the person changed or commented on that day, weighted by how much they did on
     /// each, in quarter hours. Days with no such activity are left empty (with the reason) rather than guessed. Nothing is saved here.
     /// </summary>
-    public async Task<WeekDraftDto> DraftAsync(DateOnly weekStart, CancellationToken ct = default)
+    public async Task<WeekDraftDto> DraftAsync(DateOnly? weekStart, CancellationToken ct = default)
     {
         var me = ctx.RequireUserId();
-        var week = TimesheetApprovalService.WeekOf(weekStart);
+        var week = TimesheetApprovalService.WeekOf(weekStart ?? clock.Today);
         var end = week.AddDays(6);
         var grid = await GridAsync(week, null, ct);
         if (!grid.Editable) throw new ConflictException("This week is locked, so it cannot be drafted.", "WEEK_LOCKED");

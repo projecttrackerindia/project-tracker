@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // The project agent screens against the built frontend and synthetic API fixtures only. No live project, mail, meeting or AI calls.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/agent-ui');
@@ -87,7 +88,7 @@ try{
   }
   await route.fulfill({contentType:'application/json',body:JSON.stringify({data})});
  });
- const noOverflow=async(page,what)=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,`${what}: no sideways scroll`);
+ const noOverflow=(page,what)=>fitsPhone(page,what,assert);
 
  // Desktop: switch the agent on, review, approve, edit and approve, dismiss, add a transcript.
  let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1100});

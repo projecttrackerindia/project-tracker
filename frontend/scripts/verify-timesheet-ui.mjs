@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // The timesheet: the week grid (typing, keyboard, notes, rows, quick add, copy, export), Insights, Entries, bulk approval and the phone
 // day view. Built frontend with synthetic API fixtures only.
@@ -231,10 +232,10 @@ try{
  await page.getByRole('button',{name:'15 minutes more on PAY-12'}).click();
  w=await lastPut(puts()+1);
  assert.deepEqual(w.b.cells.map(c=>[c.targetId,c.date,c.minutes]),[['t1',dates[0],mon+15]]);
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
  await shot(page,'phone-390.png');
  await page.goto(`${origin}/preview-org/timesheet/insights`);await page.locator('.tsi-kpis').waitFor();
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
  await shot(page,'insights-390.png');
  checks.push('phone-day-view');
  await page.close();await ctx.close();

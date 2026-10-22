@@ -241,3 +241,6 @@
 .twd-row { font-weight: 400; color: var(--text); margin: 0; }
 .twd-head b { font-weight: 650; }
 .twd .twd-time { font-size: 13px; }
+/* Insights fit a phone: the page column never grows past the screen, and the paired cards stack. */
+.tsi, .tsi-weeks, .tsi-shares { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 760px) { .tsi-grid { grid-template-columns: minmax(0, 1fr); } .tsi-week-name { width: 96px; } }

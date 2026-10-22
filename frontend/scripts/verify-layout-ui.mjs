@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 const origin='https://projecttracker-preview.test',dist=path.resolve('dist'),out=path.resolve('test-results/layout-ui');
 await fs.mkdir(out,{recursive:true});
 const csp=(await fs.readFile('nginx.conf','utf8')).match(/set \$sec_csp "([^"]+)";/)[1];
@@ -62,7 +63,7 @@ try{
  });
  let page;
  async function open(url,selector,width){await page?.close();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height:1000});await page.goto(origin+url);try{await page.locator(selector).waitFor({timeout:15000});}catch(e){await fs.writeFile(path.join(out,'failure.json'),JSON.stringify({url:page.url(),errors,body:await page.locator('body').innerText()}));throw e;}await page.evaluate(()=>document.fonts.ready);}
- async function capture(name){assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,name+' viewport overflow');await page.screenshot({path:path.join(out,name+'.png'),animations:'disabled'});checks.push(name);}
+ async function capture(name){assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,name+' viewport overflow');assert.deepEqual(await cutOff(page),[],'cut off at the right edge');await page.screenshot({path:path.join(out,name+'.png'),animations:'disabled'});checks.push(name);}
  for(const width of [1440,1080,820,390]){
   await open('/preview-org/portfolio?project='+pid,'.ps-table',width);
   assert.equal(await page.locator('.ps-head').evaluate(el=>[...el.children].every(c=>c.getBoundingClientRect().right<=el.getBoundingClientRect().right+1)),true,'Project heading stays inside the panel');

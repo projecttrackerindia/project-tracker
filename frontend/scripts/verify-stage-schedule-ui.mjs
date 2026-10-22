@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // Only the built frontend and synthetic API fixtures are used. No live project or AI calls.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/stage-schedule-ui');
@@ -68,7 +69,7 @@ try{
   assert.equal(await dialog.getByRole('button',{name:'Apply schedule'}).count(),0,'Preview required before apply');
   await dialog.getByRole('button',{name:'Preview schedule'}).click();await dialog.getByRole('button',{name:'Apply schedule'}).waitFor();
   assert.match(await dialog.locator('.schedule-preview').innerText(),/14 Jan 2030/);assert.equal(saves.length,width===1440?0:1,'Preview does not save');
-  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'No viewport overflow');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'No viewport overflow');assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
   const bounded=await dialog.locator('.schedule-stage-row').evaluateAll(rows=>rows.every(row=>[...row.children].every(c=>c.getBoundingClientRect().right<=row.getBoundingClientRect().right+1)));
   assert.ok(bounded,'Allocation controls stay within each row');await dialog.locator('.schedule-preview').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,`schedule-preview-${width}.png`),animations:'disabled'});checks.push(`preview-${width}`);
   if(width===1440){

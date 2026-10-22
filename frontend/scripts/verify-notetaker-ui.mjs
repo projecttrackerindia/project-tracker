@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cutOff, fitsPhone } from './lib/phone.mjs';
 
 // Notetaker: readiness, join a call for me, automatic settings, sessions, minutes (write, create tasks, email). Synthetic API only.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/notetaker-ui');
@@ -119,7 +120,7 @@ try{
  await page.close();await ctx.close();
  ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
  await page.goto(origin+'/preview-org/notetaker');await page.locator('.nt-hero').waitFor();
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await shot(page,'notetaker-390.png');checks.push('phone');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');await shot(page,'notetaker-390.png');checks.push('phone');
  await page.close();await ctx.close();
  assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,writes:writes.length,errors}));
 }finally{await browser.close();}
