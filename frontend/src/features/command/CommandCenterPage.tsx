@@ -71,9 +71,9 @@ export function CommandCenterPage() {
 
   return (
     <div className="cmd-page">
-      <nav className="cmd-tabs" aria-label="Home">
+      <nav className="tabs cmd-tabs" aria-label="Home">
         {TABS.map((t) => (
-          <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} aria-pressed={tab === t.id} onClick={() => { haptic(4); setTab(t.id); }}>
+          <button key={t.id} type="button" className={`tab${tab === t.id ? ' active' : ''}`} aria-pressed={tab === t.id} onClick={() => { haptic(4); setTab(t.id); }}>
             <Icon name={t.icon} size={15} /><span>{t.label}</span>
             {t.id === 'meetings' && (q.data?.counts.meetingsToday ?? 0) > 0 && <em>{q.data!.counts.meetingsToday}</em>}
           </button>

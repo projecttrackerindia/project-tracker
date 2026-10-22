@@ -293,7 +293,7 @@
 .msg.mine.tail .bubble { border-bottom-right-radius: 6px; }
 .msg.grouped:not(.mine) .bubble { border-top-left-radius: 6px; }
 .msg.mine.grouped .bubble { border-top-left-radius: 18px; border-top-right-radius: 6px; }
-.msg.mine .bubble { background: linear-gradient(135deg, var(--primary-fill), color-mix(in srgb, var(--primary-fill) 82%, #7c3aed)); }
+.msg.mine .bubble { background: var(--primary-fill); }
 /* time, "edited" and ticks float at the end of the last line, inside the bubble */
 .bubble-meta { float: right; display: inline-flex; align-items: center; gap: 4px; margin: 6px 0 -3px 10px; font-size: 10.5px; line-height: 1; color: var(--text-3); white-space: nowrap; font-style: normal; user-select: none; }
 .msg.mine .bubble-meta { color: rgba(255, 255, 255, .75); }

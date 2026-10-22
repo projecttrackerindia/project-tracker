@@ -48,9 +48,9 @@ export function VoiceAgentPanel() {
         </div>
         <button className="btn btn-primary" onClick={() => setTest(true)}><Icon name="phone" size={15} /> Test call</button>
       </header>
-      <nav className="va-tabs" role="tablist" aria-label="Voice agent">
+      <nav className="tabs va-tabs" role="tablist" aria-label="Voice agent">
         {tabs.map((t) => (
-          <button key={t.id} role="tab" aria-selected={current === t.id} className={current === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>
+          <button key={t.id} role="tab" aria-selected={current === t.id} className={`tab${current === t.id ? ' active' : ''}`} onClick={() => setTab(t.id)}>
             <Icon name={t.icon} size={15} /> {t.label}
           </button>
         ))}
@@ -240,7 +240,7 @@ function CallsTab() {
   return (
     <div className="va-callsplit">
       <section className="va-card va-calllist">
-        <div className="va-seg" role="tablist">{([['all', 'All'], ['ticket', 'With ticket'], ['transferred', 'Handed over'], ['test', 'Tests']] as const).map(([k, l]) =>
+        <div className="seg va-seg" role="tablist">{([['all', 'All'], ['ticket', 'With ticket'], ['transferred', 'Handed over'], ['test', 'Tests']] as const).map(([k, l]) =>
           <button key={k} role="tab" aria-selected={filter === k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>{l}</button>)}</div>
         {list.length === 0 ? <p className="va-muted">No calls here yet.</p> : <ul className="va-calls">{list.map((c) => <CallRow key={c.id} c={c} active={c.id === selected} onOpen={() => setOpen(c.id)} />)}</ul>}
       </section>

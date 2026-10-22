@@ -192,7 +192,7 @@
   .btn:active { transform: scale(.97); }
   .icon-btn, .btn-icon { width: 44px; height: 44px; }
   .field label { font-size: 13px; }
-  .tab { min-height: 44px; }
+  .tab { height: 44px; }
   .badge, .chip { font-size: 12px; }
 
   .page-head { flex-direction: column; align-items: stretch; gap: 12px; margin: 6px 0 18px; }
@@ -222,8 +222,7 @@
   .tabs, .route-tabs, .section-nav, .kind-chips, .ps-chips, .toolbar { scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
   .tabs::-webkit-scrollbar, .route-tabs::-webkit-scrollbar, .section-nav::-webkit-scrollbar, .kind-chips::-webkit-scrollbar, .ps-chips::-webkit-scrollbar, .toolbar::-webkit-scrollbar { display: none; }
   .tab, .kind-chip, .seg button { scroll-snap-align: start; }
-  .tab { padding: 9px 15px; font-size: 14px; }
-  .seg button { height: 38px; }
+  .seg { height: 42px; } .seg button { height: 34px; }
   .kind-chip { height: 38px; padding: 0 14px; font-size: 13.5px; }
   .kind-chips, .ps-chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
   .kind-chip, .ps-chips button { white-space: nowrap; flex: none; }
@@ -370,10 +369,6 @@
   .m-shell .dash-mywork, .m-shell .dash-projects { display: none; }
 
   /* pill switchers, as in the references */
-  .seg { border-radius: 99px; padding: 4px; }
-  .seg button { border-radius: 99px; }
-  .tabs { border-radius: 99px; }
-  .tab { border-radius: 99px; }
 }
 
 @keyframes m-sheet { from { transform: translateY(100%); } to { transform: translateY(0); } }

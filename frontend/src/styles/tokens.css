@@ -26,6 +26,9 @@
   --primary-fill: #4a5fe0;
   --primary-soft: rgba(74, 95, 224, .09);
   --primary-text: #ffffff;
+  /* The one brand gradient: blue into sky. Used for the few hero surfaces; everything else is flat blue on white. */
+  --brand-sky: #0ea5e9;
+  --brand-grad: linear-gradient(120deg, var(--primary-fill) 0%, color-mix(in srgb, var(--primary-fill) 55%, var(--brand-sky)) 100%);
   /* How to use the accent so it reads in BOTH themes (scripts/check-theme-colors.mjs enforces it):
      - accent text, icons, borders, selected chips on --primary-soft or a surface  -> color: var(--primary)
      - solid filled buttons, badges, counts with white text                        -> background: var(--primary-fill); color: #fff
@@ -102,6 +105,7 @@
   --primary-fill: #5c7cfa;
   --primary-soft: rgba(92, 124, 250, .16);
   --primary-text: #0b1020;
+  --brand-sky: #38bdf8;
 
   --success: #35c491;
   --success-soft: rgba(53, 196, 145, .12);

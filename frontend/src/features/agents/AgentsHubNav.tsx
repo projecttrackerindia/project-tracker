@@ -31,9 +31,9 @@ export function AgentsHubNav({ sub, compact = false }: { sub?: string; compact?:
   if (shown.length < 2) return null;
   if (compact) return (
     // Inside the assistant's own header: the other agent places, without the hub's title.
-    <nav className="agh-tabs agh-compact" aria-label="Assistant">
+    <nav className="tabs agh-tabs agh-compact" aria-label="Assistant">
       {shown.filter((t) => !t.on).map((t) => (
-        <NavLink key={t.to} to={t.to} end title={t.label} aria-label={t.label}>
+        <NavLink key={t.to} to={t.to} end className="tab" title={t.label} aria-label={t.label}>
           {t.icon === 'mark' ? <AgentMark size={16} /> : <Icon name={t.icon} size={15} />}<span>{t.label}</span>{!!t.badge && <em>{t.badge > 99 ? '99+' : t.badge}</em>}
         </NavLink>
       ))}
@@ -42,9 +42,9 @@ export function AgentsHubNav({ sub, compact = false }: { sub?: string; compact?:
   return (
     <div className="agh">
       <div className="agh-title"><span className="agh-mark"><AgentMark size={20} animated /></span><div><b>Assistant</b>{sub && <small>{sub}</small>}</div></div>
-      <nav className="agh-tabs" aria-label="Assistant">
+      <nav className="tabs agh-tabs" aria-label="Assistant">
         {shown.map((t) => (
-          <NavLink key={t.to} to={t.to} end className={t.on ? 'on' : ''} aria-current={t.on ? 'page' : undefined}>
+          <NavLink key={t.to} to={t.to} end className={`tab${t.on ? ' active' : ''}`} aria-current={t.on ? 'page' : undefined}>
             {t.icon === 'mark' ? <AgentMark size={16} /> : <Icon name={t.icon} size={15} />}<span>{t.label}</span>
             {!!t.badge && <em>{t.badge > 99 ? '99+' : t.badge}</em>}
           </NavLink>

@@ -105,9 +105,6 @@
 [data-theme='dark'] .check.checked, [data-theme='dark'] .perm-toggle.on { background: var(--primary-fill); box-shadow: none; }
 
 /* ---------- tabs and segmented controls: a dark track with a lifted, neutral pill for the chosen one ---------- */
-[data-theme='dark'] .tabs, [data-theme='dark'] .seg { background: rgba(8, 13, 24, .32); box-shadow: none; }
-[data-theme='dark'] .tab.active, [data-theme='dark'] .seg button.active { background: var(--panel-solid); color: var(--text); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 1px 3px rgba(4, 8, 16, .4); }
-[data-theme='dark'] .tab.active svg, [data-theme='dark'] .seg button.active svg { color: var(--primary); }
 
 /* ---------- kanban, project timeline ---------- */
 [data-theme='dark'] .kb-col { background: rgba(8, 13, 24, .26); box-shadow: none; }

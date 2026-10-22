@@ -99,8 +99,8 @@ export function AgentTrackerPage() {
         {(toggle.isError || health.isError) && <ErrorState error={toggle.error ?? health.error} retry={() => { toggle.reset(); health.reset(); }} />}
       </header>
 
-      <nav className="trk-tabs" aria-label="Agent Tracker" ref={tabsRef}>
-        {TABS.map((t) => <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} aria-pressed={tab === t.id} onClick={() => setTab(t.id)}><Icon name={t.icon} size={15} /><span>{t.label}</span>
+      <nav className="tabs trk-tabs" aria-label="Agent Tracker" ref={tabsRef}>
+        {TABS.map((t) => <button key={t.id} type="button" className={`tab${tab === t.id ? ' active' : ''}`} aria-pressed={tab === t.id} onClick={() => setTab(t.id)}><Icon name={t.icon} size={15} /><span>{t.label}</span>
           {t.id === 'alerts' && !!alerts.data?.active.length && <em className={`trk-tab-count sev-${alerts.data.active.some((a) => a.severity === 'critical') ? 'critical' : 'warning'}`} aria-label={`${alerts.data.active.length} active`}>{alerts.data.active.length}</em>}</button>)}
       </nav>
 

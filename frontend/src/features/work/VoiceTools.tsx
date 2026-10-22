@@ -284,7 +284,7 @@ function RequestEditor({ d, set, flow, setFlow, hasSecret, aliases }: { d: Conne
           <small>Leave empty to send the collected inputs as JSON.</small></label>}
       </details>
       <div className="vb-sub"><h4>Sample answer</h4><p>Paste a real answer from your API (with test data). It lets you pick fields instead of typing paths, and test the whole flow without calling anything.</p></div>
-      {aliases.length > 1 && <div className="vb-seg" role="tablist">{aliases.map((a) => <button key={a} role="tab" aria-selected={alias === a} className={alias === a ? 'on' : ''} onClick={() => setAlias(a)}>{a === 'main' ? 'This API' : a}</button>)}</div>}
+      {aliases.length > 1 && <div className="seg vb-seg" role="tablist">{aliases.map((a) => <button key={a} role="tab" aria-selected={alias === a} className={alias === a ? 'on' : ''} onClick={() => setAlias(a)}>{a === 'main' ? 'This API' : a}</button>)}</div>}
       <textarea className="mono vb-sample" rows={10} value={flow.samples[alias] ?? ''} aria-label="Sample answer"
         onChange={(e) => setFlow({ samples: { ...flow.samples, [alias]: e.target.value } })} placeholder={'{\n  "loan": { "number": "1234567890", "outstanding": 124999.5, "nextDue": "2026-11-05" },\n  "customer": { "dob": "1990-04-12" }\n}'} />
       <div className="vb-row-end"><small>{samplePaths(alias, flow.samples[alias]).length} fields found</small><button type="button" className="btn btn-ghost btn-sm" onClick={pretty}>Format JSON</button></div>
@@ -410,7 +410,7 @@ function ResponseEditor({ flow, setFlow, paths, s }: { flow: VoiceFlow; setFlow:
       <button type="button" className="btn btn-sm" disabled={flow.fields.length >= 20} onClick={() => setFlow({ fields: [...flow.fields, { key: '', path: '', format: 'text' }] })}><Icon name="plus" size={13} /> Add fact</button>
 
       <div className="vb-sub"><h4>What the agent says</h4><p>One sentence per language. Without one, the agent words the facts itself — always in the caller's language, never adding figures.</p></div>
-      <div className="vb-seg" role="tablist">{s.languages.map((l) => <button key={l} role="tab" aria-selected={lang === l} className={`${lang === l ? 'on' : ''} ${flow.templates[l] ? 'has' : ''}`} onClick={() => setLang(l)}>{s.availableLanguages[l] ?? l}</button>)}</div>
+      <div className="seg vb-seg" role="tablist">{s.languages.map((l) => <button key={l} role="tab" aria-selected={lang === l} className={`${lang === l ? 'on' : ''} ${flow.templates[l] ? 'has' : ''}`} onClick={() => setLang(l)}>{s.availableLanguages[l] ?? l}</button>)}</div>
       <textarea rows={3} aria-label={`Sentence in ${s.availableLanguages[lang] ?? lang}`} value={flow.templates[lang] ?? ''}
         onChange={(e) => { const t = { ...flow.templates }; if (e.target.value) t[lang] = e.target.value; else delete t[lang]; setFlow({ templates: t }); }}
         placeholder={lang === 'en' ? 'For your loan {loan}, the outstanding balance is {balance}. Your next EMI of {emiAmount} is due on {emiDate}.' : 'Write it the way people speak — common English words like EMI and loan are fine.'} />
@@ -461,7 +461,7 @@ function TestPanel({ d, id, s, canRun }: { d: ConnectorDraft; id?: string; s: Vo
           ))}</ol>
           {r.say && <div className="vb-say"><Icon name="message" size={14} /><span>{r.say}</span></div>}
           {r.action !== 'none' && <div className={`vb-action a-${r.action}`}><b>{r.action === 'ticket' ? 'Logs a ticket' : r.action === 'transfer' ? 'Hands over to a person' : r.action === 'ask' ? 'Asks the caller' : 'Shares nothing'}</b>{r.actionText && <span>{r.actionText}</span>}</div>}
-          <div className="vb-seg sm" role="tablist">
+          <div className="seg vb-seg sm" role="tablist">
             {(['facts', 'agent', 'raw'] as const).map((k) => <button key={k} role="tab" aria-selected={show === k} className={show === k ? 'on' : ''} onClick={() => setShow(k)}>{k === 'facts' ? 'Facts' : k === 'agent' ? 'What the agent sees' : 'Raw answer'}</button>)}
           </div>
           {show === 'facts' && (Object.keys(r.facts).length ? <dl className="vb-facts">{Object.entries(r.facts).map(([k, v]) => <div key={k}><dt className="mono">{k}</dt><dd>{v}</dd></div>)}</dl> : <p className="vb-muted">No facts shared{r.error ? `: ${r.error}` : '.'}</p>)}

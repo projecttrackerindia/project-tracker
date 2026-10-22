@@ -49,8 +49,8 @@ export function DtProjectView({ project: p, tab, catalog }: { project: DtProject
           ]} />}
         </div>
       </header>
-      <div className="dt-tabs" role="tablist">
-        {TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => nav.go({ p: id, t: t.id })}>{t.label}
+      <div className="tabs dt-tabs" role="tablist">
+        {TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} className={`tab${tab === t.id ? ' active' : ''}`} onClick={() => nav.go({ p: id, t: t.id })}>{t.label}
           {t.id === 'apis' && p.endpoints.length > 0 && <i>{p.endpoints.length}</i>}{t.id === 'architecture' && p.diagrams > 0 && <i>{p.diagrams}</i>}{t.id === 'documents' && docs.length > 0 && <i>{docs.length}</i>}</button>)}
       </div>
 

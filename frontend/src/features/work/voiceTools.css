@@ -5,12 +5,6 @@
 .va-who p { margin: 2px 0 0; color: var(--text-3); font-size: 13px; }
 .va-avatar { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; color: #fff; flex: none;
   background: var(--primary-fill); box-shadow: 0 6px 18px color-mix(in srgb, var(--primary-fill) 30%, transparent); }
-.va-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
-.va-tabs::-webkit-scrollbar { display: none; }
-.va-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; border: 0; background: none; color: var(--text-2); font: inherit; font-weight: 600; font-size: 14px;
-  border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; white-space: nowrap; }
-.va-tabs button:hover { color: var(--text); }
-.va-tabs button.on { color: var(--primary); border-bottom-color: var(--primary); }
 .va-panel { min-width: 0; }
 .va-stack { display: flex; flex-direction: column; gap: 14px; padding-bottom: 64px; }
 .va-card-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin-bottom: 10px; }
@@ -52,9 +46,6 @@
 .va-callsplit { display: grid; grid-template-columns: minmax(260px, 380px) minmax(0, 1fr); gap: 14px; align-items: start; }
 .va-calllist { max-height: 72vh; overflow: auto; }
 .va-calls li.on button { background: color-mix(in srgb, var(--primary) 8%, transparent); }
-.va-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-2); margin-bottom: 10px; flex-wrap: wrap; }
-.va-seg button { border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 10px; border-radius: 8px; color: var(--text-2); cursor: pointer; }
-.va-seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .va-detail-head h3 { margin: 0; }
 .va-detail-head small { color: var(--text-3); }
 .va-flags { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
@@ -152,11 +143,6 @@
 .vb-more summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
 .vb-more[open] { display: flex; flex-direction: column; gap: 8px; }
 .vb-sample { min-height: 180px; }
-.vb-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-2); flex-wrap: wrap; align-self: flex-start; }
-.vb-seg button { border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 10px; border-radius: 8px; color: var(--text-2); cursor: pointer; }
-.vb-seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.vb-seg button.has::after { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--success); margin-left: 6px; vertical-align: middle; }
-.vb-seg.sm button { font-size: 12px; padding: 4px 8px; }
 
 .vb-table { display: flex; flex-direction: column; gap: 6px; }
 .vb-tr { display: grid; grid-template-columns: 1.1fr 1.1fr 1fr 1fr 64px 36px; gap: 6px; align-items: center; }
@@ -255,3 +241,8 @@
   .vt-card-actions { flex-direction: row; justify-content: flex-end; padding-top: 0; }
   .vb-arg { grid-template-columns: 1fr; }
 }
+
+.va-tabs { margin-bottom: 4px; }
+.va-seg { margin-bottom: 10px; }
+.vb-seg { align-self: flex-start; flex-wrap: wrap; height: auto; }
+.vb-seg.sm button { font-size: 12px; height: 24px; padding: 0 8px; }

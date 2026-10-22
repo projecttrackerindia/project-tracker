@@ -54,7 +54,7 @@ export function DtSecurity({ isAdmin }: { isAdmin: boolean }) {
         <span className="dt-sec-ic"><Icon name="shield" size={26} /></span>
         <div><h2>Security Center</h2><p className="muted">Personal and secret data in documents and APIs is masked before it leaves the server. Real values show only through a reveal that is time-limited and recorded.</p></div>
       </section>
-      <div className="dt-tabs" role="tablist">{tabs.filter((t) => t.show).map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}><Icon name={t.icon} size={13} /> {t.label}</button>)}</div>
+      <div className="tabs dt-tabs" role="tablist">{tabs.filter((t) => t.show).map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} className={`tab${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id)}><Icon name={t.icon} size={13} /> {t.label}</button>)}</div>
       <div className="dt-card dt-sec-body">
         {tab === 'masking' && <div className="dsec"><MaskingSection /></div>}
         {tab === 'access' && <InboxView />}

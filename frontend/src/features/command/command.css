@@ -20,12 +20,9 @@
 .cmd-stat-danger:not(.zero) { background: var(--danger-soft); border-color: transparent; } .cmd-stat-danger:not(.zero) svg, .cmd-stat-danger:not(.zero) b { color: var(--danger); }
 .cmd-stat-warning:not(.zero) { background: var(--warning-soft); border-color: transparent; } .cmd-stat-warning:not(.zero) svg, .cmd-stat-warning:not(.zero) b { color: var(--warning); }
 
-/* tabs: a quiet segmented row that scrolls on a phone */
-.cmd-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); overflow-x: auto; scrollbar-width: none; justify-self: start; max-width: 100%; }
-.cmd-tabs::-webkit-scrollbar { display: none; }
-.cmd-tabs button { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 0; border-radius: 9px; background: none; color: var(--text-2); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-.cmd-tabs button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
-.cmd-tabs button em { font-style: normal; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--primary); color: var(--primary-text); font-size: 11px; display: inline-grid; place-items: center; }
+/* Home tabs use the shared .tabs/.tab style; only the meeting counter is local. */
+.cmd-tabs { justify-self: stretch; }
+.cmd-tabs .tab em { font-style: normal; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--primary); color: var(--primary-text); font-size: 11px; display: inline-grid; place-items: center; }
 
 .cmd-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
 .cmd-main { display: grid; gap: 12px; min-width: 0; align-content: start; }

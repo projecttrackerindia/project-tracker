@@ -1,15 +1,15 @@
 /* The start screen (see AppSplash; index.html paints the same look before the app's code has loaded). */
 .app-splash { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px;
-  background: radial-gradient(60% 45% at 50% 40%, color-mix(in srgb, #7c3aed 10%, var(--bg, #fff)), var(--bg, #fff) 70%); color: var(--text, #0f172a);
+  background: radial-gradient(60% 45% at 50% 40%, color-mix(in srgb, var(--primary-fill) 8%, var(--bg, #fff)), var(--bg, #fff) 70%); color: var(--text, #0f172a);
   animation: as-in .35s ease both; }
 .as-mark { position: relative; width: 96px; height: 96px; display: grid; place-items: center; }
 .as-badge { position: relative; z-index: 2; width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center;
-  background: linear-gradient(135deg, #7c3aed, #a855f7 55%, #6366f1); box-shadow: 0 14px 34px -12px rgba(124, 58, 237, .65); animation: as-breathe 2.2s ease-in-out infinite; }
-.as-ring { position: absolute; inset: 14px; border-radius: 24px; border: 2px solid rgba(124, 58, 237, .35); animation: as-ring 2.2s ease-out infinite; }
+  background: var(--brand-grad); box-shadow: 0 14px 34px -12px rgba(var(--accent-rgb), .55); animation: as-breathe 2.2s ease-in-out infinite; }
+.as-ring { position: absolute; inset: 14px; border-radius: 24px; border: 2px solid rgba(var(--accent-rgb), .35); animation: as-ring 2.2s ease-out infinite; }
 .as-ring-2 { animation-delay: 1.1s; }
 .as-name { font-weight: 750; font-size: 15px; letter-spacing: -.01em; }
-.as-bar { width: 132px; height: 3px; border-radius: 99px; overflow: hidden; background: color-mix(in srgb, #7c3aed 14%, transparent); }
-.as-bar i { display: block; width: 40%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #7c3aed, #6366f1); animation: as-sweep 1.3s cubic-bezier(.4, 0, .2, 1) infinite; }
+.as-bar { width: 132px; height: 3px; border-radius: 99px; overflow: hidden; background: var(--primary-soft); }
+.as-bar i { display: block; width: 40%; height: 100%; border-radius: inherit; background: var(--brand-grad); animation: as-sweep 1.3s cubic-bezier(.4, 0, .2, 1) infinite; }
 .as-text { margin: 0; max-width: 300px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--text-3, #64748b); min-height: 20px; }
 .as-retry { height: 34px; padding: 0 16px; border-radius: 99px; border: 1px solid var(--border, #e2e8f0); background: var(--surface, #fff); color: var(--text, #0f172a); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
 .app-splash.is-offline .as-badge { animation: none; filter: saturate(.4); }

@@ -59,7 +59,7 @@ try{
  assert.deepEqual(await titles(page),['Home','Work','Insights']);
  const hub=await page.locator('.agh-tabs a').allInnerTexts();
  assert.ok(hub.some(t=>t.startsWith('Proposals'))&&hub.some(t=>t.startsWith('Tracker'))&&hub.some(t=>t.startsWith('Workflows')));
- assert.ok(await page.locator('.agh-tabs a.on',{hasText:'Proposals'}).isVisible());checks.push('hubs');
+ assert.ok(await page.locator('.agh-tabs a.tab.active',{hasText:'Proposals'}).isVisible());checks.push('hubs');
  await shot(page,'hub-1440.png');
  // The light / dark switch, both ways.
  const sw=page.locator('.topbar .theme-switch');await sw.waitFor();
