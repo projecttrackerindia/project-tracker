@@ -41,18 +41,27 @@ const defaulted = async (label) => {
   return false;
 };
 check('project form defaults are loaded', (await defaulted('Project group')) && (await defaulted('Project type')) && (await defaulted('Project timeline')));
-await page.locator('.modal button[type=submit], .modal button', { hasText: 'Create project' }).first().click();
-let projectOpened = await page.waitForURL((u) => /\/projects\/[0-9a-f-]{36}/.test(u.pathname), { timeout: 20000 }).then(() => true).catch(() => false);
-if (!projectOpened) {
-  // The save may have gone through without the hand-off to the project page (the development API's SQLite can answer late);
-  // the project list is the source of truth, so look it up there by name.
-  const notice = (await page.locator('.toast, [role=status], .modal .field-error, .modal [role=alert]').allInnerTexts().catch(() => [])).join(' | ');
+// Submit and record what the server answered, so a failure names the cause rather than the symptom.
+const projectPost = () => page.waitForResponse((r) => r.request().method() === 'POST' && /\/api\/v1\/projects(\?|$)/.test(r.url()), { timeout: 20000 }).catch(() => null);
+let posted = projectPost();
+await page.locator('.modal button[type=submit]', { hasText: 'Create project' }).first().click();
+let response = await posted;
+if (!response) {
+  // The click did not reach the form (for example a focus or overlay race); the form also submits on Enter in a field.
+  posted = projectPost();
+  await field('Project name').locator('input').press('Enter');
+  response = await posted;
+}
+const answered = response ? `${response.status()} ${(await response.text().catch(() => '')).slice(0, 300)}` : 'no POST /api/v1/projects was sent';
+let projectOpened = response?.ok() ? await page.waitForURL((u) => /\/projects\/[0-9a-f-]{36}/.test(u.pathname), { timeout: 20000 }).then(() => true).catch(() => false) : false;
+if (!projectOpened && response?.ok()) {
+  // Created, but the hand-off to the project page did not happen: the list is the source of truth.
   await page.keyboard.press('Escape').catch(() => undefined);
   await page.goto(`${BASE}/${slug}/projects`); await page.waitForTimeout(2000);
   const card = page.locator(`text=${projectName}`).first();
   if (await card.count()) { await card.click(); projectOpened = await page.waitForURL((u) => /\/projects\/[0-9a-f-]{36}/.test(u.pathname), { timeout: 15000 }).then(() => true).catch(() => false); }
-  check('project is created and opened', projectOpened, projectOpened ? `opened from the list after save (${notice})` : `${page.url()} ${notice}`);
-} else check('project is created and opened', true, page.url());
+}
+check('project is created and opened', projectOpened, projectOpened ? page.url() : `${page.url()} :: ${answered}`);
 await page.waitForTimeout(1500);
 check('project page shows its name', (await page.locator(`text=${projectName}`).count()) > 0);
 
