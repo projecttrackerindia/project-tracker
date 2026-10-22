@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { workItemApi, workspaceApi } from '../api/endpoints';
 import { queryClient, useAuth, useCan, useWorkspaceId } from '../stores/auth';
@@ -41,4 +41,25 @@ export function usePersonPicker() {
     ? (members.data ?? []).map((m) => ({ id: m.userId, name: m.displayName }))
     : (team.data?.members ?? []).map((m) => ({ id: m.userId, name: m.name }));
   return { canPick: canSeeOthers || hasReports, choices };
+}
+
+/** Closes a <details> menu on a click outside it or on Escape (focus goes back to its button). */
+export function useDetailsDismiss(control: RefObject<HTMLDetailsElement | null>) {
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      if (control.current?.open && event.target instanceof Node && !control.current.contains(event.target)) control.current.open = false;
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && control.current?.open) {
+        control.current.open = false;
+        control.current.querySelector('summary')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [control]);
 }

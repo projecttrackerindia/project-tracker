@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { opsApi, projectApi, workApi, workspaceApi, type WorkFilters } from '../../api/endpoints';
 import type { WorkTask } from '../../api/types';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconName } from '../../components/Icon';
 import { Menu } from '../../components/Menu';
 import { Select } from '../../components/Select';
 import { Avatar, EmptyState, ErrorState, PageHead, PageLoader, Pager, PriorityBadge, PriorityOptions } from '../../components/ui';
 import { formatDate } from '../../lib/format';
-import { useDebounced, useWsQuery } from '../../lib/hooks';
+import { useDebounced, useDetailsDismiss, useWsQuery } from '../../lib/hooks';
 import { WORK_STATUSES } from '../../lib/workLabels';
 import { useCan, useModule } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -20,14 +20,20 @@ import { WhatsAppSupportPanel } from './WhatsAppSupport';
 import { get, put } from '../../api/client';
 
 type Tab = 'queue' | 'board' | 'insights' | 'whatsapp' | 'voice' | 'settings';
+/** The page's three places (the queue and board are one place shown two ways; WhatsApp and the voice agent are the channels tickets come from). */
+type Place = 'tickets' | 'insights' | 'channels' | 'settings';
+const placeOf = (t: Tab): Place => (t === 'queue' || t === 'board' ? 'tickets' : t === 'whatsapp' || t === 'voice' ? 'channels' : t);
 interface SavedView { name: string; f: Record<string, string | boolean> }
-const VIEWS: { id: string; label: string; icon: 'bolt' | 'user' | 'users' | 'alert' | 'timer' | 'calendar'; f: Record<string, string | boolean> }[] = [
+type ViewIcon = 'bolt' | 'user' | 'users' | 'alert' | 'timer' | 'calendar' | 'list' | 'checkCircle';
+const VIEWS: { id: string; label: string; icon: ViewIcon; f: Record<string, string | boolean> }[] = [
   { id: 'open', label: 'Open', icon: 'bolt', f: { view: 'open' } },
   { id: 'mine', label: 'My queue', icon: 'user', f: { view: 'open', mine: true } },
   { id: 'unassigned', label: 'Unassigned', icon: 'users', f: { view: 'open', unassigned: true } },
   { id: 'late', label: 'SLA breached', icon: 'alert', f: { sla: 'breached' } },
   { id: 'risk', label: 'At risk', icon: 'timer', f: { sla: 'atRisk' } },
   { id: 'overdue', label: 'Overdue', icon: 'calendar', f: { overdue: true } },
+  { id: 'all', label: 'All tickets', icon: 'list', f: {} },
+  { id: 'closed', label: 'Closed', icon: 'checkCircle', f: { view: 'closed' } },
 ];
 
 const NO_PROJECT = '__none';
@@ -136,112 +142,172 @@ export function WorkTasksPage() {
   const dropView = async (name: string) => { const views = (saved.data ?? []).filter((v) => v.name !== name); await put('/me/ui/operations', { value: views.length ? { views } : null }).catch(() => undefined); void saved.refetch(); };
   const togglePick = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const settingsQ = useWsQuery(['ops', 'settings'], opsApi.settings, { staleTime: 300_000 });
+  const canManage = !!settingsQ.data?.canManage;
+  const place = placeOf(tab);
+  // Live counts for the strip over the list (the same numbers Insights shows); hidden when they cannot be read.
+  const counts = useWsQuery(['ops', 'insights', 30], () => opsApi.insights(30), { staleTime: 30_000, retry: false });
+  const activeView = VIEWS.find((v) => sameAs(v.f)) ?? (saved.data ?? []).map((v) => ({ id: `saved:${v.name}`, label: v.name, icon: 'bolt' as ViewIcon, f: v.f })).find((v) => sameAs(v.f));
+  const viewLabel = activeView?.label ?? 'Custom view';
+  const strip: { id: string; label: string; value: number; tone?: 'danger' | 'warning'; f: Record<string, string | boolean> }[] = counts.data ? [
+    { id: 'open', label: 'Open', value: counts.data.open, f: VIEWS[0].f },
+    { id: 'unassigned', label: 'Unassigned', value: counts.data.unassigned, tone: counts.data.unassigned ? 'warning' : undefined, f: VIEWS[2].f },
+    { id: 'late', label: 'SLA breached', value: counts.data.breached, tone: counts.data.breached ? 'danger' : undefined, f: VIEWS[3].f },
+    { id: 'risk', label: 'At risk', value: counts.data.atRisk, tone: counts.data.atRisk ? 'warning' : undefined, f: VIEWS[4].f },
+  ] : [];
+  const showDue = items.some((t) => t.dueDate);
   return (
-    <>
+    <div className="ops-page">
       <PageHead title="Operations" sub="Tickets, bug fixes and requests, with service levels.">
         <Menu label="Export" icon="download" items={[
           { label: 'CSV (this list, now)', icon: 'download', onSelect: exportCsv },
           { label: 'Excel or PDF report', icon: 'download', onSelect: () => navigate('/reports?kind=WorkTasks'), hidden: !canReports },
         ]} />
+        {canManage && <button type="button" className={`btn ${place === 'settings' ? 'btn-soft' : ''}`} onClick={() => setTab(place === 'settings' ? 'queue' : 'settings')} aria-pressed={place === 'settings'}><Icon name="settings" /> Settings</button>}
         {canCreate && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New ticket</button>}
       </PageHead>
 
-      <nav className="tabs route-tabs ops-tabs" aria-label="Operations">
-        {([['queue', 'Queue', 'list'], ['board', 'Board', 'kanban'], ['insights', 'Insights', 'chart'], ['whatsapp', 'WhatsApp', 'message'], ...(settingsQ.data?.canManage ? [['voice', 'Voice agent', 'phone'], ['settings', 'Settings', 'settings']] : [])] as [Tab, string, 'list'][]).map(([id, label, icon]) => (
-          <button key={id} type="button" className={`tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}><Icon name={icon} />{label}</button>
+      <nav className="tabs ops-tabs" aria-label="Operations">
+        {([['tickets', 'Tickets', 'list', 'queue'], ['insights', 'Insights', 'chart', 'insights'], ['channels', 'Channels', 'message', 'whatsapp']] as [Place, string, IconName, Tab][]).map(([id, label, icon, to]) => (
+          <button key={id} type="button" className={`tab ${place === id ? 'active' : ''}`} aria-current={place === id ? 'page' : undefined} onClick={() => setTab(id === 'tickets' && tab === 'board' ? 'board' : to)}><Icon name={icon} />{label}</button>
         ))}
       </nav>
-      {tab === 'insights' ? <OpsInsights /> : tab === 'whatsapp' ? <WhatsAppSupportPanel canManage={!!settingsQ.data?.canManage} /> : tab === 'voice' ? <VoiceAgentPanel /> : tab === 'settings' ? <OpsSettingsPanel /> : (
-      <div className="card">
-        <div className="ops-views" role="group" aria-label="Views">
-          {VIEWS.map((v) => <button key={v.id} type="button" className={`ops-view ${sameAs(v.f) ? 'on' : ''}`} onClick={() => applyView(v.f)}><Icon name={v.icon} size={13} />{v.label}</button>)}
-          {(saved.data ?? []).map((v) => (
-            <span key={v.name} className={`ops-view saved ${sameAs(v.f) ? 'on' : ''}`}><button type="button" onClick={() => applyView(v.f)}><Icon name="star" size={12} />{v.name}</button>
-              <button type="button" className="ops-view-x" aria-label={`Remove the ${v.name} view`} onClick={() => void dropView(v.name)}><Icon name="close" size={10} /></button></span>
-          ))}
-          {hasFilters && naming === null && <button type="button" className="ops-view add" onClick={() => setNaming('')}><Icon name="plus" size={12} />Save view</button>}
-          {naming !== null && (
-            <form className="ops-view-name" onSubmit={(e) => { e.preventDefault(); void saveView(naming); }}>
-              <input className="input" autoFocus maxLength={40} placeholder="Name this view" value={naming} onChange={(e) => setNaming(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setNaming(null); }} aria-label="View name" />
-              <button type="submit" className="btn btn-primary btn-sm" disabled={!naming.trim()}>Save</button>
-            </form>
-          )}
+
+      {place === 'insights' ? <OpsInsights /> : place === 'settings' ? <OpsSettingsPanel /> : place === 'channels' ? (
+        <div className="ops-channels">
+          <div className="seg ops-channel-seg" role="group" aria-label="Channel">
+            <button type="button" className={tab === 'whatsapp' ? 'active' : ''} aria-pressed={tab === 'whatsapp'} onClick={() => setTab('whatsapp')}><Icon name="message" size={14} /> WhatsApp</button>
+            {canManage && <button type="button" className={tab === 'voice' ? 'active' : ''} aria-pressed={tab === 'voice'} onClick={() => setTab('voice')}><Icon name="phone" size={14} /> Voice agent</button>}
+          </div>
+          {tab === 'voice' ? <VoiceAgentPanel /> : <WhatsAppSupportPanel canManage={canManage} />}
         </div>
-        {/* One compact row: quick views, search and a Filters button; the detailed filters open only when asked for. */}
-        <div className="ops-search-row">
-          <div className="search-field"><Icon name="search" /><input className="input" placeholder="Search tickets…" value={q} onChange={(e) => on(setQ)(e.target.value)} aria-label="Search work tasks" /></div>
-          <div className="seg ops-open-seg" role="group" aria-label="Show work tasks">
-            {([['all', 'All'], ['open', 'Open'], ['closed', 'Closed']] as const).map(([id, label]) => (
-              <button key={id} type="button" className={view === id ? 'active' : ''} aria-pressed={view === id} onClick={() => on(setView)(id)} disabled={!!status}>{label}</button>
+      ) : (
+      <>
+        {strip.length > 0 && (
+          <div className="ops-strip" role="group" aria-label="Queue at a glance">
+            {strip.map((x) => (
+              <button key={x.id} type="button" className={`ops-stat${x.tone ? ` ${x.tone}` : ''}${sameAs(x.f) ? ' on' : ''}`} aria-pressed={sameAs(x.f)} onClick={() => applyView(x.f)}>
+                <b>{x.value}</b><span>{x.label}</span>
+              </button>
             ))}
           </div>
-          <button type="button" className={`btn btn-sm ops-filter-btn ${showFilters ? 'btn-soft' : 'btn-ghost'}`} aria-expanded={showFilters} onClick={() => setShowFilters((v) => !v)}>
-            <Icon name="settings" size={14} />Filters{activeCount > 0 && <em className="ops-count">{activeCount}</em>}
-          </button>
-          {hasFilters && <button type="button" className="btn btn-ghost btn-sm" onClick={reset}>Clear</button>}
-        </div>
-        {showFilters && (
-          <div className="ops-filters" role="group" aria-label="Filters">
-            <label className="ops-f"><span>Work type</span><Select className="select" value={typeId} onChange={(e) => on(setTypeId)(e.target.value)} aria-label="Work type">
-              <option value="">All work types</option>{types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></label>
-            <label className="ops-f"><span>Related project</span><Select className="select" value={projectId} onChange={(e) => on(setProjectId)(e.target.value)} aria-label="Related project">
-              <option value="">All projects</option><option value={NO_PROJECT}>No related project</option>
-              {projects.data?.items.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}</Select></label>
-            {!mine && <label className="ops-f"><span>Assigned to</span><Select className="select" value={assigneeId} onChange={(e) => on(setAssigneeId)(e.target.value)} aria-label="Assigned to">
-              <option value="">Anyone</option>{members.data?.filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></label>}
-            <label className="ops-f"><span>Priority</span><Select className="select" value={priority} onChange={(e) => on(setPriority)(e.target.value)} aria-label="Priority"><option value="">All priorities</option><PriorityOptions /></Select></label>
-            <label className="ops-f"><span>Status</span><Select className="select" value={status} onChange={(e) => on(setStatus)(e.target.value)} aria-label="Status">
-              <option value="">Any status</option>{WORK_STATUSES.map((st) => <option key={st.id} value={st.id}>{st.label}</option>)}</Select></label>
-            <label className="ops-f"><span>Service level</span><Select className="select" value={sla} onChange={(e) => on(setSla)(e.target.value)} aria-label="Service level">
-              <option value="">Any SLA</option><option value="atRisk">SLA at risk</option><option value="breached">SLA breached</option><option value="tracked">With SLA targets</option></Select></label>
-            <label className="ops-f"><span>Due from</span><input className="input" type="date" value={dueFrom} onChange={(e) => on(setDueFrom)(e.target.value)} aria-label="Due from" /></label>
-            <label className="ops-f"><span>Due to</span><input className="input" type="date" value={dueTo} onChange={(e) => on(setDueTo)(e.target.value)} aria-label="Due to" /></label>
-            <label className="ops-f ops-f-check"><input type="checkbox" checked={overdue} onChange={(e) => on(setOverdue)(e.target.checked)} /><span>Overdue only</span></label>
-          </div>
         )}
-        {!showFilters && chips.length > 0 && (
-          <div className="ops-chips" aria-label="Active filters">
-            {chips.map((c) => <button key={c.label} type="button" className="ops-chip" onClick={c.clear} aria-label={`Remove filter ${c.label}`}>{c.label}<Icon name="close" size={11} /></button>)}
-          </div>
-        )}
-
-        {tab === 'board' ? <div className="card-body"><OpsBoard filters={filters} onOpen={openTask} /></div> : <>
-        <BulkBar ids={picked} onDone={() => setPicked([])} />
-        {list.isLoading ? <PageLoader /> : list.isError ? <ErrorState error={list.error} retry={() => void list.refetch()} /> : items.length === 0 ? (
-          <EmptyState icon="bolt" title={hasFilters ? 'No work tasks match these filters' : mine ? 'Nothing is assigned to you' : 'No work tasks yet'}
-            text={hasFilters ? undefined : 'Operations is the support desk: log tickets, bug fixes, analysis and other operational work that does not need a project.'}
-            action={hasFilters ? <button type="button" className="btn btn-ghost" onClick={reset}>Clear filters</button> : canCreate ? <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New ticket</button> : undefined} />
-        ) : (
-          <>
-            <div className="table-wrap">
-              <table className="work-table">
-                <thead><tr><th className="ops-pick"><input type="checkbox" aria-label="Select all on this page" checked={items.length > 0 && items.every((t) => picked.includes(t.id))}
-                  onChange={(e) => setPicked(e.target.checked ? [...new Set([...picked, ...items.filter((t) => t.can.edit).map((t) => t.id)])] : picked.filter((id) => !items.some((t) => t.id === id)))} /></th>{th('title', 'Work task')}{th('type', 'Work type')}{th('project', 'Related project')}{th('assignee', 'Assigned to')}{th('priority', 'Priority')}{th('due', 'Due date')}{th('sla', 'SLA')}{th('status', 'Status')}</tr></thead>
-                <tbody>
-                  {items.map((t) => (
-                    <tr key={t.id} className="clickable" tabIndex={0} onClick={() => openTask(t.id)} onKeyDown={(e) => { if (e.key === 'Enter') openTask(t.id); }} aria-label={`Open ${t.key} ${t.title}`}>
-                      <td className="ops-pick" onClick={(e) => e.stopPropagation()}>{t.can.edit && <input type="checkbox" aria-label={`Select ${t.key}`} checked={picked.includes(t.id)} onChange={() => togglePick(t.id)} />}</td>
-                      <td><div className="td-title"><span className="task-key">{t.key}</span> {t.title}</div>{(t.commentCount > 0 || t.attachmentCount > 0) && <div className="td-sub">{t.commentCount > 0 ? `${t.commentCount} comment${t.commentCount === 1 ? '' : 's'}` : ''}{t.commentCount > 0 && t.attachmentCount > 0 ? ' · ' : ''}{t.attachmentCount > 0 ? `${t.attachmentCount} file${t.attachmentCount === 1 ? '' : 's'}` : ''}</div>}</td>
-                      <td className="cell-muted">{t.workType}</td>
-                      <td className="cell-muted">{t.relatedProject ? <span title={`${t.relatedProject.name} (${t.relatedProject.status})`}>{t.relatedProject.name}</span> : '—'}</td>
-                      <td>{t.assignee ? <span className="row" style={{ gap: 6 }}><Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} />{t.assignee.name}</span> : <span className="muted">Unassigned</span>}</td>
-                      <td><PriorityBadge priority={t.priority} /></td>
-                      <td className={t.isOverdue ? 'work-late' : 'cell-muted'}>{t.dueDate ? formatDate(t.dueDate) : '—'}{t.isOverdue ? ' · overdue' : ''}</td>
-                      <td><SlaChip sla={t.sla} /></td>
-                      <td><WorkStatusBadge status={t.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <div className="card ops-list">
+          {/* One row: which tickets (a view), search, filters, and list or board. */}
+          <div className="ops-toolbar">
+            <ViewMenu label={viewLabel} views={VIEWS} saved={saved.data ?? []} isOn={sameAs} onPick={applyView} onDrop={(n) => void dropView(n)}
+              canSave={hasFilters && !activeView} onSave={() => setNaming('')} />
+            {naming !== null && (
+              <form className="ops-view-name" onSubmit={(e) => { e.preventDefault(); void saveView(naming); }}>
+                <input className="input" autoFocus maxLength={40} placeholder="Name this view" value={naming} onChange={(e) => setNaming(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setNaming(null); }} aria-label="View name" />
+                <button type="submit" className="btn btn-primary btn-sm" disabled={!naming.trim()}>Save</button>
+              </form>
+            )}
+            <div className="search-field ops-search"><Icon name="search" /><input className="input" placeholder="Search tickets…" value={q} onChange={(e) => on(setQ)(e.target.value)} aria-label="Search work tasks" /></div>
+            <button type="button" className={`btn btn-sm ops-filter-btn ${showFilters ? 'btn-soft' : 'btn-ghost'}`} aria-expanded={showFilters} onClick={() => setShowFilters((v) => !v)}>
+              <Icon name="settings" size={14} />Filters{activeCount > 0 && <em className="ops-count">{activeCount}</em>}
+            </button>
+            {(activeCount > 0 || q) && <button type="button" className="btn btn-ghost btn-sm" onClick={reset}>Clear</button>}
+            <div className="seg ops-display" role="group" aria-label="Show as">
+              <button type="button" className={tab === 'queue' ? 'active' : ''} aria-pressed={tab === 'queue'} onClick={() => setTab('queue')} title="List"><Icon name="list" size={14} /><span>List</span></button>
+              <button type="button" className={tab === 'board' ? 'active' : ''} aria-pressed={tab === 'board'} onClick={() => setTab('board')} title="Board"><Icon name="kanban" size={14} /><span>Board</span></button>
             </div>
-            <Pager page={list.data!.page} totalPages={list.data!.totalPages} totalItems={list.data!.totalItems} onPage={setPage} />
-          </>
-        )}
-        </>}
-      </div>)}
+          </div>
+          {showFilters && (
+            <div className="ops-filters" role="group" aria-label="Filters">
+              <label className="ops-f"><span>Show</span><Select className="select" value={status ? '' : view} disabled={!!status} onChange={(e) => on(setView)(e.target.value as View)} aria-label="Open or closed">
+                <option value="all">Open and closed</option><option value="open">Open</option><option value="closed">Closed</option></Select></label>
+              <label className="ops-f"><span>Work type</span><Select className="select" value={typeId} onChange={(e) => on(setTypeId)(e.target.value)} aria-label="Work type">
+                <option value="">All work types</option>{types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></label>
+              <label className="ops-f"><span>Related project</span><Select className="select" value={projectId} onChange={(e) => on(setProjectId)(e.target.value)} aria-label="Related project">
+                <option value="">All projects</option><option value={NO_PROJECT}>No related project</option>
+                {projects.data?.items.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}</Select></label>
+              {!mine && <label className="ops-f"><span>Assigned to</span><Select className="select" value={assigneeId} onChange={(e) => on(setAssigneeId)(e.target.value)} aria-label="Assigned to">
+                <option value="">Anyone</option>{members.data?.filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></label>}
+              <label className="ops-f"><span>Priority</span><Select className="select" value={priority} onChange={(e) => on(setPriority)(e.target.value)} aria-label="Priority"><option value="">All priorities</option><PriorityOptions /></Select></label>
+              <label className="ops-f"><span>Status</span><Select className="select" value={status} onChange={(e) => on(setStatus)(e.target.value)} aria-label="Status">
+                <option value="">Any status</option>{WORK_STATUSES.map((st) => <option key={st.id} value={st.id}>{st.label}</option>)}</Select></label>
+              <label className="ops-f"><span>Service level</span><Select className="select" value={sla} onChange={(e) => on(setSla)(e.target.value)} aria-label="Service level">
+                <option value="">Any SLA</option><option value="atRisk">SLA at risk</option><option value="breached">SLA breached</option><option value="tracked">With SLA targets</option></Select></label>
+              <label className="ops-f"><span>Due from</span><input className="input" type="date" value={dueFrom} onChange={(e) => on(setDueFrom)(e.target.value)} aria-label="Due from" /></label>
+              <label className="ops-f"><span>Due to</span><input className="input" type="date" value={dueTo} onChange={(e) => on(setDueTo)(e.target.value)} aria-label="Due to" /></label>
+              <label className="ops-f ops-f-check"><input type="checkbox" checked={overdue} onChange={(e) => on(setOverdue)(e.target.checked)} /><span>Overdue only</span></label>
+            </div>
+          )}
+          {!showFilters && chips.length > 0 && (
+            <div className="ops-chips" aria-label="Active filters">
+              {chips.map((c) => <button key={c.label} type="button" className="ops-chip" onClick={c.clear} aria-label={`Remove filter ${c.label}`}>{c.label}<Icon name="close" size={11} /></button>)}
+            </div>
+          )}
+
+          {tab === 'board' ? <div className="card-body"><OpsBoard filters={filters} onOpen={openTask} /></div> : <>
+          {list.isLoading ? <PageLoader /> : list.isError ? <ErrorState error={list.error} retry={() => void list.refetch()} /> : items.length === 0 ? (
+            <EmptyState icon="bolt" title={hasFilters ? 'No tickets match this view' : mine ? 'Nothing is assigned to you' : 'No tickets yet'}
+              text={hasFilters ? undefined : 'Operations is the support desk: log tickets, bug fixes, analysis and other operational work that does not need a project.'}
+              action={hasFilters ? <button type="button" className="btn btn-ghost" onClick={reset}>Clear filters</button> : canCreate ? <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New ticket</button> : undefined} />
+          ) : (
+            <>
+              <div className="table-wrap">
+                <table className="work-table ops-table">
+                  <thead><tr><th className="ops-pick"><input type="checkbox" aria-label="Select all on this page" checked={items.length > 0 && items.every((t) => picked.includes(t.id))}
+                    onChange={(e) => setPicked(e.target.checked ? [...new Set([...picked, ...items.filter((t) => t.can.edit).map((t) => t.id)])] : picked.filter((id) => !items.some((t) => t.id === id)))} /></th>{th('title', 'Ticket')}{th('assignee', 'Assigned to')}{th('priority', 'Priority')}{th('sla', 'SLA')}{th('status', 'Status')}{showDue && th('due', 'Due')}</tr></thead>
+                  <tbody>
+                    {items.map((t) => (
+                      <tr key={t.id} className={`clickable${picked.includes(t.id) ? ' picked' : ''}`} tabIndex={0} onClick={() => openTask(t.id)} onKeyDown={(e) => { if (e.key === 'Enter') openTask(t.id); }} aria-label={`Open ${t.key} ${t.title}`}>
+                        <td className="ops-pick" onClick={(e) => e.stopPropagation()}>{t.can.edit && <input type="checkbox" aria-label={`Select ${t.key}`} checked={picked.includes(t.id)} onChange={() => togglePick(t.id)} />}</td>
+                        <td className="ops-ticket">
+                          <div className="td-title"><span className="task-key">{t.key}</span> {t.title}</div>
+                          <div className="td-sub">{[t.workType, t.relatedProject?.name, t.commentCount > 0 ? `${t.commentCount} comment${t.commentCount === 1 ? '' : 's'}` : '', t.attachmentCount > 0 ? `${t.attachmentCount} file${t.attachmentCount === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')}</div>
+                        </td>
+                        <td>{t.assignee ? <span className="row ops-person"><Avatar name={t.assignee.name} size="sm" userId={t.assignee.id} />{t.assignee.name}</span> : <span className="muted">Unassigned</span>}</td>
+                        <td><PriorityBadge priority={t.priority} /></td>
+                        <td><SlaChip sla={t.sla} /></td>
+                        <td><WorkStatusBadge status={t.status} /></td>
+                        {showDue && <td className={t.isOverdue ? 'work-late' : 'cell-muted'}>{t.dueDate ? formatDate(t.dueDate) : '—'}{t.isOverdue ? ' · overdue' : ''}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pager page={list.data!.page} totalPages={list.data!.totalPages} totalItems={list.data!.totalItems} onPage={setPage} />
+            </>
+          )}
+          </>}
+        </div>
+        <BulkBar ids={picked} onDone={() => setPicked([])} />
+      </>)}
 
       {creating && <WorkTaskModal defaults={{ relatedProjectId: projectId && projectId !== NO_PROJECT ? projectId : undefined }} onClose={() => setCreating(false)} />}
       {openId && <WorkTaskModal taskId={openId} onClose={() => openTask(null)} />}
-    </>
+    </div>
+  );
+}
+
+/** Which tickets: the built-in views, then the person's saved ones (each removable), then "Save this view" when the filters are new. */
+function ViewMenu({ label, views, saved, isOn, onPick, onDrop, canSave, onSave }: {
+  label: string; views: typeof VIEWS; saved: SavedView[]; isOn: (f: Record<string, string | boolean>) => boolean;
+  onPick: (f: Record<string, string | boolean>) => void; onDrop: (name: string) => void; canSave: boolean; onSave: () => void;
+}) {
+  const control = useRef<HTMLDetailsElement>(null);
+  useDetailsDismiss(control);
+  const close = () => { if (control.current) control.current.open = false; };
+  return (
+    <details ref={control} className="ops-dd">
+      <summary className="btn btn-sm ops-dd-btn" aria-label={`View: ${label}`}><Icon name="layers" size={14} /><span>{label}</span><Icon name="chevronD" size={12} /></summary>
+      <div className="ops-dd-panel" role="menu" aria-label="Views">
+        {views.map((v) => (
+          <button key={v.id} type="button" role="menuitemradio" aria-checked={isOn(v.f)} className={`ops-dd-item${isOn(v.f) ? ' on' : ''}`} onClick={() => { onPick(v.f); close(); }}>
+            <Icon name={v.icon} size={14} /><span>{v.label}</span>{isOn(v.f) && <Icon name="check" size={13} />}
+          </button>
+        ))}
+        {saved.length > 0 && <div className="ops-dd-label">Saved views</div>}
+        {saved.map((v) => (
+          <div key={v.name} className={`ops-dd-item saved${isOn(v.f) ? ' on' : ''}`}>
+            <button type="button" role="menuitemradio" aria-checked={isOn(v.f)} onClick={() => { onPick(v.f); close(); }}><Icon name="star" size={13} /><span>{v.name}</span></button>
+            <button type="button" className="ops-dd-x" aria-label={`Remove the ${v.name} view`} onClick={() => onDrop(v.name)}><Icon name="close" size={11} /></button>
+          </div>
+        ))}
+        {canSave && <button type="button" className="ops-dd-item add" onClick={() => { close(); onSave(); }}><Icon name="plus" size={14} /><span>Save this view</span></button>}
+      </div>
+    </details>
   );
 }

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { fetchBlobUrl } from '../../api/client';
 import { Icon, type IconName } from '../../components/Icon';
 import { formatDateTime } from '../../lib/format';
 import type { AiAction, AiAttachment, AiFeedbackReason, AiInsight, AiMessage, AiMode, AiStarter, AiTier, AiTierInfo, AiToolUse, AiUsage } from './aiApi';
 import { Markdown } from './Markdown';
+import { useDetailsDismiss } from '../../lib/hooks';
 import { AI_NAME } from './aiBrand';
 import { AgentMark } from '../../components/AgentMark';
 import { useAuth } from '../../stores/auth';
@@ -61,26 +62,7 @@ export function ModeSwitch({ mode, onChange, usage, disabled }: { mode: AiMode; 
   );
 }
 
-/** Closes a <details> menu on a click outside it or on Escape (focus goes back to its button). */
-export function useDismiss(control: RefObject<HTMLDetailsElement | null>) {
-  useEffect(() => {
-    const closeOutside = (event: PointerEvent) => {
-      if (control.current?.open && event.target instanceof Node && !control.current.contains(event.target)) control.current.open = false;
-    };
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape' && control.current?.open) {
-        control.current.open = false;
-        control.current.querySelector('summary')?.focus();
-      }
-    };
-    document.addEventListener('pointerdown', closeOutside);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOutside);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [control]);
-}
+
 
 /**
  * The thinking level as one small menu inside the ask box (Auto, Quick, Standard, Deep), in place of the row of buttons.
@@ -88,7 +70,7 @@ export function useDismiss(control: RefObject<HTMLDetailsElement | null>) {
  */
 export function ModeMenu({ mode, onChange, usage, disabled }: { mode: AiMode; onChange: (m: AiMode) => void; usage?: AiUsage; disabled?: boolean }) {
   const control = useRef<HTMLDetailsElement>(null);
-  useDismiss(control);
+  useDetailsDismiss(control);
   const options: { id: AiMode; label: string; icon: IconName; info?: AiTierInfo; hint: string }[] = [
     { id: 'auto', label: 'Auto', icon: 'refresh', hint: 'Picks the right level for each question' },
     ...(['quick', 'standard', 'deep'] as AiTier[]).map((t) => {
@@ -128,7 +110,7 @@ export function ModeMenu({ mode, onChange, usage, disabled }: { mode: AiMode; on
 export function CreditMeter({ usage, compact = false }: { usage?: AiUsage; compact?: boolean }) {
   const role = useAuth((s) => s.ctx?.current?.role);
   const control = useRef<HTMLDetailsElement>(null);
-  useDismiss(control);
+  useDetailsDismiss(control);
   if (!usage) return null;
   const unlimited = usage.unlimited;
   const pct = unlimited ? 100 : usage.creditsLimit > 0 ? Math.max(0, Math.min(100, (usage.creditsLeft / usage.creditsLimit) * 100)) : 0;

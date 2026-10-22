@@ -5,13 +5,13 @@ import { useHomeMode } from '../../stores/homeMode';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
 import { PageLoader } from '../../components/ui';
-import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { invalidateWorkspace, useDetailsDismiss, useWsQuery } from '../../lib/hooks';
 import { timeAgo } from '../../lib/format';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { useAiStatus } from './Assistant';
 import { aiWorkspaceApi, type AiFeedbackReason, askAi, type AiAction, type AiConversation, type AiMessage, type AiMode, type AiStreamEvent, type AiTier, type AiToolUse } from './aiApi';
-import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, ModeMenu, CreditMeter, useDismiss, Reasoning, RouteChip, ToolChips, ActionCard, hasFiles, tierName, withoutTrailer, type PendingFile, type Suggestion } from './AiParts';
+import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, ModeMenu, CreditMeter, Reasoning, RouteChip, ToolChips, ActionCard, hasFiles, tierName, withoutTrailer, type PendingFile, type Suggestion } from './AiParts';
 import { AI_NAME } from './aiBrand';
 import { saveFile } from '../../lib/native';
 import { Markdown } from './Markdown';
@@ -533,7 +533,7 @@ function Rail(p: ListProps) {
 
 /** Past chats as a menu in the AI-first Home's top bar: new chat, search, then pinned and recent chats by day. */
 function HistoryMenu({ control, ...p }: ListProps & { control: RefObject<HTMLDetailsElement | null> }) {
-  useDismiss(control);
+  useDetailsDismiss(control);
   const close = () => { if (control.current) control.current.open = false; };
   return (
     <details ref={control} className="ai-menu aih-history">

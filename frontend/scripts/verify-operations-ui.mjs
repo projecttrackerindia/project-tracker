@@ -86,14 +86,19 @@ try{
  const shot=async(page,name)=>{await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(500);await page.screenshot({path:path.join(out,name)});};
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
  await page.goto(origin+'/preview-org/operations');await page.locator('.work-table').waitFor();
- const tabs=await page.locator('.ops-tabs .tab').allInnerTexts();assert.deepEqual(tabs.map(t=>t.trim()),['Queue','Board','Insights','WhatsApp','Voice agent','Settings']);
+ const tabs=await page.locator('.ops-tabs .tab').allInnerTexts();assert.deepEqual(tabs.map(t=>t.trim()),['Tickets','Insights','Channels']);
+ assert.equal(await page.locator('.ops-stat').count(),4,'the counts strip');assert.ok(await page.getByRole('button',{name:'Settings'}).isVisible(),'Settings is a header button');
+ assert.equal(await page.locator('.ops-toolbar').count(),1,'one toolbar row');assert.equal(await page.locator('.work-table thead th',{hasText:'Related project'}).count(),0,'no column of dashes');
  // Views and saving one.
- await page.locator('.ops-view',{hasText:'Unassigned'}).click();await page.waitForTimeout(400);
- assert.equal(await page.locator('.work-table tbody tr').count(),1);assert.ok(await page.locator('.ops-view.on',{hasText:'Unassigned'}).isVisible());
- await page.locator('.ops-view',{hasText:'Open'}).first().click();await page.waitForTimeout(300);
- await page.getByRole('button',{name:'Save view'}).click();await page.getByLabel('View name').fill('Desk open');await page.getByRole('button',{name:'Save',exact:true}).click();
+ await page.locator('.ops-stat',{hasText:'Unassigned'}).click();await page.waitForTimeout(400);
+ assert.equal(await page.locator('.work-table tbody tr').count(),1);assert.ok(await page.locator('.ops-stat.on',{hasText:'Unassigned'}).isVisible());
+ assert.ok(await page.locator('.ops-dd-btn[aria-label="View: Unassigned"]').isVisible(),'the view menu names the view');
+ await page.locator('.ops-dd > summary').click();await page.getByRole('menuitemradio',{name:'Open',exact:true}).click();await page.waitForTimeout(300);
+ await page.getByRole('button',{name:'Filters'}).click();await page.getByLabel('Service level',{exact:true}).click();await page.getByRole('option',{name:'With SLA targets',exact:true}).click();await page.getByRole('button',{name:'Filters'}).click();
+ await page.locator('.ops-dd > summary').click();await page.waitForTimeout(200);await shot(page,'views-menu-1440.png');await page.getByRole('button',{name:'Save this view'}).click();await page.getByLabel('View name').fill('Desk open');await page.getByRole('button',{name:'Save',exact:true}).click();
  for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/me/ui/operations');i++)await page.waitForTimeout(100);
- assert.equal(saved.views[0].name,'Desk open');await page.locator('.ops-view.saved').waitFor();checks.push('views');
+ assert.equal(saved.views[0].name,'Desk open');await page.locator('.ops-dd-btn[aria-label="View: Desk open"]').waitFor();
+ await page.locator(".ops-dd > summary").click();await page.getByRole('menuitemradio',{name:'Open',exact:true}).click();await page.waitForTimeout(300);checks.push('views');
  // Bulk: pick two, raise priority.
  await page.getByLabel('Select WT-2').check();await page.getByLabel('Select WT-4').check();await page.locator('.ops-bulk').waitFor();
  await shot(page,'queue-bulk-1440.png');
@@ -101,7 +106,7 @@ try{
  for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/operations/bulk');i++)await page.waitForTimeout(100);
  assert.deepEqual(writes.find(w=>w.ep==='/api/v1/operations/bulk').b,{ids:['w2','w4'],priority:'High'});checks.push('bulk');
  // Board: drag WT-4 from To Do to In Progress.
- await page.locator('.ops-tabs .tab',{hasText:'Board'}).click();await page.locator('.ops-board').waitFor();await page.waitForTimeout(300);
+ await page.getByRole('button',{name:'Board'}).click();await page.locator('.ops-board').waitFor();await page.waitForTimeout(300);
  assert.equal(await page.locator('.ops-col').count(),4);
  const card=page.locator('.ops-card',{hasText:'Export monthly settlement report'});const target=page.locator('.ops-col.InProgress');
  const a=await card.boundingBox(),b=await target.boundingBox();
@@ -115,13 +120,13 @@ try{
  assert.ok((await page.locator('.ops-kpis').innerText()).includes('86%'));assert.equal(await page.locator('.ops-aging > div').count(),4);
  await shot(page,'insights-1440.png');checks.push('insights');
  // Settings: business hours on.
- await page.locator('.ops-tabs .tab',{hasText:'Settings'}).click();await page.locator('.ops-settings').waitFor();
+ await page.getByRole('button',{name:'Settings'}).click();await page.locator('.ops-settings').waitFor();
  await page.getByText('Count business hours only').click();await page.getByRole('button',{name:'Save',exact:true}).first().click();
  for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/operations/settings');i++)await page.waitForTimeout(100);
  assert.equal(writes.find(w=>w.ep==='/api/v1/operations/settings').b.businessHoursOnly,true);
  assert.ok(await page.locator('.ops-rule',{hasText:'Production Support'}).isVisible());await shot(page,'settings-1440.png');checks.push('settings');
  // New work: smart triage.
- await page.locator('.ops-tabs .tab',{hasText:'Queue'}).click();await page.getByRole('button',{name:'New ticket'}).click();
+ await page.locator('.ops-tabs .tab',{hasText:'Tickets'}).click();await page.getByRole('button',{name:'List'}).click();await page.getByRole('button',{name:'New ticket'}).click();
  await page.getByPlaceholder('e.g. Fix production issue in payment calculation').fill('Printer stuck urgent on floor 3');
  await page.locator('.ops-triage').waitFor({timeout:5000});assert.ok(await page.locator('.ops-dupe',{hasText:'WT-1'}).isVisible());
  await page.locator('.ops-sug',{hasText:'High priority'}).click();await shot(page,'triage-1440.png');checks.push('triage');

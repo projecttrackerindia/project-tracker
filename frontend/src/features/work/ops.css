@@ -1,24 +1,13 @@
 /* Operations: views, bulk bar, board, triage, insights, settings */
-.ops-tabs { margin-bottom: 14px; }
-.ops-views { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 16px 0; align-items: center; }
-.ops-view { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .12s ease; }
-.ops-view:hover { border-color: var(--primary); color: var(--primary); }
-.ops-view.on { background: var(--primary-fill); border-color: var(--primary); color: #fff; }
-.ops-view.saved { padding: 0; overflow: hidden; }
-.ops-view.saved > button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 4px 5px 11px; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; }
-.ops-view-x { padding: 5px 9px 5px 4px !important; opacity: .6; }
-.ops-view-x:hover { opacity: 1; }
-.ops-view.add { border-style: dashed; color: var(--text-3); }
-.ops-view-name { display: inline-flex; gap: 6px; align-items: center; }
-.ops-view-name .input { height: 30px; width: 170px; }
 .ops-pick { width: 34px; text-align: center; }
-.ops-bulk { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 16px 10px; padding: 8px 12px; border-radius: 14px;
-  background: linear-gradient(135deg, rgba(var(--accent-rgb), .12), rgba(56, 189, 248, .08)); border: 1px solid rgba(var(--accent-rgb), .25); animation: opsIn .18s ease; }
+.ops-bulk { position: fixed; z-index: 60; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: calc(100vw - 32px);
+  padding: 8px 10px 8px 16px; border-radius: 16px; background: var(--panel-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg); animation: opsIn .18s ease; }
 .ops-bulk b { font-size: 13px; margin-right: 4px; }
-.ops-bulk .select { width: auto; min-width: 120px; height: 32px; }
+.ops-bulk .select { width: auto; min-width: 112px; height: 32px; }
+@media (min-width: 761px) { .ops-bulk { flex-wrap: nowrap; white-space: nowrap; } }
 .ops-bulk-date { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); }
 .ops-bulk-date .input { height: 32px; }
-@keyframes opsIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes opsIn { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
 
 .ops-board { display: grid; grid-template-columns: repeat(4, minmax(240px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 4px; }
 .ops-col { display: flex; flex-direction: column; min-height: 320px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--border); transition: border-color .12s ease, background .12s ease; }
@@ -110,9 +99,6 @@
 
 /* Queue toolbar: views, then one row with search, open/closed and a Filters button; details open on demand. */
 .ops-views { padding: 12px 16px 0; }
-.ops-search-row { display: flex; align-items: center; gap: 8px; padding: 10px 16px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.ops-search-row .search-field { flex: 1 1 260px; max-width: 420px; }
-.ops-open-seg { flex: none; }
 .ops-filter-btn { display: inline-flex; align-items: center; gap: 6px; }
 .ops-count { font-style: normal; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--primary-fill); color: #fff; font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
 .ops-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 12px; padding: 12px 16px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
@@ -127,6 +113,56 @@
 .ops-chip:hover { border-color: var(--primary); }
 .ops-chip svg { opacity: .6; }
 @media (max-width: 720px) {
-  .ops-search-row .search-field { flex-basis: 100%; max-width: none; }
   .ops-filters { grid-template-columns: 1fr 1fr; }
+}
+
+/* ---- the page: three places, a strip of counts that filter, one toolbar row, a lean table */
+.ops-tabs { margin-bottom: 16px; }
+.ops-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.ops-stat { display: flex; align-items: baseline; gap: 8px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color .15s, background .15s; }
+.ops-stat b { font-size: 22px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1; }
+.ops-stat span { font-size: 13px; font-weight: 550; }
+.ops-stat:hover { border-color: var(--primary); }
+.ops-stat.on { border-color: var(--primary); background: var(--primary-soft); }
+.ops-stat.on span { color: var(--primary); }
+.ops-stat.danger b { color: var(--danger); }
+.ops-stat.warning b { color: var(--warning); }
+.ops-list { overflow: visible; }
+.ops-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.ops-search { flex: 1 1 220px; max-width: 420px; }
+.ops-display { margin-left: auto; flex: none; }
+.ops-display button { display: inline-flex; align-items: center; gap: 6px; }
+.ops-view-name { display: inline-flex; gap: 6px; align-items: center; }
+.ops-view-name .input { height: 32px; width: 170px; }
+.ops-dd { position: relative; }
+.ops-dd-btn { display: inline-flex; align-items: center; gap: 6px; list-style: none; font-weight: 600; }
+.ops-dd-btn::-webkit-details-marker { display: none; }
+.ops-dd-btn > svg:last-child { color: var(--text-3); }
+.ops-dd[open] > .ops-dd-btn { background: var(--hover-bg); }
+.ops-dd-panel { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; display: grid; gap: 1px; width: 230px; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-solid); box-shadow: var(--shadow-lg); }
+.ops-dd-item { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.ops-dd-item > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops-dd-item > svg:first-child { color: var(--text-3); flex: none; }
+.ops-dd-item:hover { background: var(--hover-bg); }
+.ops-dd-item.on, .ops-dd-item.on > svg { color: var(--primary); }
+.ops-dd-item.saved { padding: 0 4px 0 0; }
+.ops-dd-item.saved > button:first-child { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 10px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ops-dd-item.saved > button:first-child svg { color: var(--warning); }
+.ops-dd-x { width: 24px; height: 24px; display: grid; place-items: center; border: 0; border-radius: 6px; background: none; color: var(--text-3); cursor: pointer; }
+.ops-dd-x:hover { background: var(--danger-soft); color: var(--danger); }
+.ops-dd-item.add { color: var(--primary); }
+.ops-dd-item.add > svg:first-child { color: var(--primary); }
+.ops-dd-label { padding: 8px 10px 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); }
+.ops-table .ops-ticket { min-width: 280px; }
+.ops-table .td-sub { margin-top: 2px; font-size: 12px; color: var(--text-3); }
+.ops-table tr.picked { background: var(--primary-soft); }
+.ops-person { gap: 6px; white-space: nowrap; }
+.ops-channels { display: grid; gap: 14px; }
+.ops-channel-seg { justify-self: start; }
+.ops-channel-seg button { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 760px) {
+  .ops-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ops-search { flex-basis: 100%; max-width: none; order: 3; }
+  .ops-display span { display: none; }
+  .ops-bulk { bottom: 84px; }
 }
