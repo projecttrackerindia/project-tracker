@@ -62,8 +62,7 @@ if (!projectOpened && response?.ok()) {
   if (await card.count()) { await card.click(); projectOpened = await page.waitForURL((u) => /\/projects\/[0-9a-f-]{36}/.test(u.pathname), { timeout: 15000 }).then(() => true).catch(() => false); }
 }
 check('project is created and opened', projectOpened, projectOpened ? page.url() : `${page.url()} :: ${answered}`);
-await page.waitForTimeout(1500);
-check('project page shows its name', (await page.locator(`text=${projectName}`).count()) > 0);
+check('project page shows its name', await page.waitForSelector(`text=${projectName}`, { timeout: 15000 }).then(() => true).catch(() => false));
 
 // 3. Create a task from the project page.
 const taskTitle = `Smoke task ${stamp}`;
@@ -74,8 +73,7 @@ const phase = field('Timeline phase').locator('select');
 if (await phase.count() && !(await phase.inputValue())) await phase.selectOption({ index: 1 }).catch(() => undefined);
 await page.locator('.modal button[type=submit], .modal button', { hasText: 'Save task' }).first().click();
 check('task form closes after save', await modalGone());
-await page.waitForTimeout(1200);
-check('new task is listed on the project', (await page.locator(`text=${taskTitle}`).count()) > 0);
+check('new task is listed on the project', await page.waitForSelector(`text=${taskTitle}`, { timeout: 15000 }).then(() => true).catch(() => false));
 
 // 4. Edit the task: a new title and a new status, then the page reflects both.
 const edited = `${taskTitle} (edited)`;
@@ -94,8 +92,7 @@ if (await status.count()) {
 }
 await page.locator('.modal button[type=submit], .modal button', { hasText: 'Save changes' }).first().click();
 check('task edit form closes after save', await modalGone());
-await page.waitForTimeout(1200);
-check('edited title is shown', (await page.locator(`text=${edited}`).count()) > 0);
+check('edited title is shown', await page.waitForSelector(`text=${edited}`, { timeout: 15000 }).then(() => true).catch(() => false));
 check('status change was saved', moved);
 
 // 5. The saved values are what the server returns: a fresh load of the project shows the edited task. The development API runs on
