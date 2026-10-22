@@ -9,6 +9,7 @@ using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Features.Time;
 using ProjectManagement.Application.Services;
+using ProjectManagement.Domain.Entities;
 using ProjectManagement.Domain.Enums;
 using ProjectManagement.Infrastructure.Persistence;
 using ProjectManagement.Tests.Infrastructure;
@@ -130,6 +131,51 @@ public class TimesheetGridTests(ApiFactory factory)
         Assert.Equal(60, CellMinutes(grid, t.TaskId, LastMonday.AddDays(1)));      // copied
         Assert.Equal(0, CellMinutes(grid, t.OtherTaskId, LastMonday.AddDays(5)));  // Saturday: left alone
         Assert.Equal(1, I(copied.Data!["saved"]));
+    }
+
+    [Fact]
+    public async Task Drafting_the_week_shares_the_free_day_across_what_was_worked_on_and_saves_nothing()
+    {
+        var t = await Setup();
+        // Last Monday: three changes on the login page and one on the docs; last Tuesday: nothing; last Wednesday: already logged.
+        var monday = DateTime.SpecifyKind(LastMonday.ToDateTime(new TimeOnly(11, 0)).AddMinutes(-AppDay.OffsetMinutes), DateTimeKind.Utc);   // 11:00 local
+        factory.WithDb(db =>
+        {
+            void Act(string id, int minutes) => db.Activities.Add(new Activity { Id = Guid.NewGuid(), TenantId = t.Owner.WorkspaceId, ActorId = t.Dev.UserId, ProjectId = t.Project,
+                Action = "task.updated", EntityType = "Task", EntityId = Guid.Parse(id), Summary = "changed", CreatedAt = monday.AddMinutes(minutes) });
+            Act(t.TaskId, 0); Act(t.TaskId, 30); Act(t.TaskId, 60); Act(t.OtherTaskId, 90);
+            db.Activities.Add(new Activity { Id = Guid.NewGuid(), TenantId = t.Owner.WorkspaceId, ActorId = t.Dev.UserId, ProjectId = t.Project,
+                Action = "task.updated", EntityType = "Task", EntityId = Guid.Parse(t.TaskId), Summary = "changed", CreatedAt = monday.AddDays(2) });
+            return db.SaveChanges();
+        });
+        Assert.True((await Save(t.Dev, LastMonday, Cell(t.OtherTaskId, LastMonday.AddDays(2), 60))).Ok);
+
+        var draft = await t.Dev.Get($"/api/v1/time/grid/draft?weekStart={Iso(LastMonday)}");
+        Assert.True(draft.Ok, draft.ToString());
+        var cells = draft.Data!["cells"]!.AsArray();
+        int Minutes(string id, DateOnly d) => cells.Where(c => S(c!["targetId"]) == id && S(c["date"]) == Iso(d)).Sum(c => I(c!["minutes"]));
+        Assert.Equal(360, Minutes(t.TaskId, LastMonday));        // 8 h shared 3 : 1
+        Assert.Equal(120, Minutes(t.OtherTaskId, LastMonday));
+        Assert.Contains("3 changes or comments", S(cells.First(c => S(c!["targetId"]) == t.TaskId)!["why"]));
+        var days = draft.Data!["days"]!.AsArray();
+        Assert.Equal("No changes or comments that day", S(days[1]!["skipped"]));
+        Assert.Equal("Already logged", S(days[2]!["skipped"]));
+        Assert.Equal("Weekend", S(days[5]!["skipped"]));
+        Assert.DoesNotContain(cells, c => S(c!["date"]) == Iso(LastMonday.AddDays(2)));
+
+        // Nothing was saved: the week still has only the hour typed in by hand.
+        var grid = (await t.Dev.Get($"/api/v1/time/grid?weekStart={Iso(LastMonday)}")).Data!;
+        Assert.Equal(60, I(grid["totalMinutes"]));
+        // Someone else's week cannot be drafted from here: it is always the caller's own.
+        Assert.Equal(0, (await t.Peer.Get($"/api/v1/time/grid/draft?weekStart={Iso(LastMonday)}")).Data!["cells"]!.AsArray().Count);
+    }
+
+    [Fact]
+    public void Quarter_hours_are_shared_so_the_parts_add_up()
+    {
+        Assert.Equal(new[] { 360, 120 }, TimesheetGridService.SplitQuarterHours(480, new[] { 3, 1 }));
+        Assert.Equal(new[] { 165, 150, 150 }, TimesheetGridService.SplitQuarterHours(465, new[] { 1, 1, 1 }));
+        Assert.Equal(new[] { 0, 0 }, TimesheetGridService.SplitQuarterHours(10, new[] { 1, 1 }));
     }
 
     [Fact]

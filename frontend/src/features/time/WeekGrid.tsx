@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { insightApi, timeApi } from '../../api/endpoints';
-import type { GridCellChange, GridKind, GridRow, GridSuggestion, SearchHit, TimesheetGrid } from '../../api/types';
+import type { DraftCell, GridCellChange, GridKind, GridRow, GridSuggestion, SearchHit, TimesheetGrid } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { EmptyState, ErrorState, PageLoader } from '../../components/ui';
+import { EmptyState, ErrorState, Modal, PageLoader } from '../../components/ui';
 import { formatDate, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { useIsMobile, haptic } from '../../lib/mobile';
@@ -47,6 +47,7 @@ export function WeekGrid({ week, onWeek, userId }: { week: string; onWeek: (w: s
   const [focus, setFocus] = useState<{ row: string; date: string } | null>(null);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [drafting, setDrafting] = useState(false);
   const today = todayISO();
 
   useEffect(() => { setExtra([]); setDrafts({}); setErrors({}); setFocus(null); pending.current.clear(); }, [week, userId]);
@@ -150,6 +151,7 @@ export function WeekGrid({ week, onWeek, userId }: { week: string; onWeek: (w: s
     <div className="tsg">
       <WeekHeader grid={grid} week={week} onWeek={onWeek} saving={saving} />
       <WeekApprovalBar weekStart={week} userId={userId || undefined} />
+      {drafting && <DraftWeek week={week} onClose={() => setDrafting(false)} onSaved={(g) => { put(g); setDrafting(false); }} beforeSave={flush} />}
 
       <div className="tsg-tools">
         {editable && <QuickAdd grid={grid} rows={rows} onAdd={(r, date, minutes, note) => {
@@ -161,6 +163,7 @@ export function WeekGrid({ week, onWeek, userId }: { week: string; onWeek: (w: s
         <div className="tsg-tool-btns">
           {editable && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdding((a) => !a)} aria-expanded={adding}><Icon name="plus" size={14} />Add row</button>}
           {editable && <button type="button" className="btn btn-ghost btn-sm" onClick={copyRows} title="Add last week's rows, empty"><Icon name="repeat" size={14} />Last week's rows</button>}
+          {editable && <button type="button" className="btn btn-soft btn-sm" disabled={busy} onClick={() => setDrafting(true)} title="Propose time for your empty days from what you changed or commented on each day, less meetings"><Icon name="sparkle" size={14} />Draft my week</button>}
           {editable && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void copyHours()} title="Fill this week's empty days with what you logged on the same day last week"><Icon name="copy" size={14} />Copy last week</button>}
           <button type="button" className="btn btn-ghost btn-sm" onClick={exportCsv}><Icon name="download" size={14} />Export</button>
         </div>
@@ -485,5 +488,53 @@ function DayView({ grid, rows, drafts, errors, canLogOn, today, onCommit }: {
         })}
       </div>
     </div>
+  );
+}
+
+/**
+ * "Draft my week": proposed time for the empty working days, each with the reason (what you changed or commented on that day, and the
+ * time left after meetings). Untick anything that is wrong; nothing is saved until "Add". Days left alone say why.
+ */
+function DraftWeek({ week, onClose, onSaved, beforeSave }: { week: string; onClose: () => void; onSaved: (g: TimesheetGrid) => void; beforeSave: () => Promise<void> }) {
+  const q = useWsQuery(['time', 'draft', week], () => timeApi.draft(week), { staleTime: 0, retry: false });
+  const [off, setOff] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const cells = q.data?.cells ?? [];
+  const id = (c: DraftCell) => `${c.kind}:${c.targetId}:${c.date}`;
+  const chosen = cells.filter((c) => !off.has(id(c)));
+  const total = chosen.reduce((a, c) => a + c.minutes, 0);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await beforeSave();
+      const res = await timeApi.saveGrid(week, chosen.map((c) => ({ kind: c.kind, targetId: c.targetId, date: c.date, minutes: c.minutes, note: null })));
+      toast(res.errors.length ? `Added ${res.saved}; ${res.errors.length} could not be: ${res.errors[0].message}` : `Added ${res.saved} entr${res.saved === 1 ? 'y' : 'ies'} (${formatMinutes(total)}).`, res.errors.length ? 'error' : 'success');
+      onSaved(res.grid);
+    } catch (e) { toast(errText(e, 'Could not add the time.'), 'error'); } finally { setSaving(false); }
+  };
+  const byDay = (q.data?.days ?? []).map((d) => ({ d, cells: cells.filter((c) => c.date === d.date) }));
+  return (
+    <Modal title="Draft my week" subtitle="From what you changed or commented on each day, less your meetings. Untick anything that is wrong; nothing is saved until you add it." onClose={onClose} size="lg"
+      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button type="button" className="btn btn-primary" disabled={saving || chosen.length === 0} onClick={() => void save()}>{saving && <span className="spinner" />}Add {chosen.length} entr{chosen.length === 1 ? 'y' : 'ies'}{chosen.length ? ` · ${formatMinutes(total)}` : ''}</button></>}>
+      {q.isLoading ? <PageLoader /> : q.isError ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : (
+        <div className="twd">
+          {cells.length === 0 && <p className="twd-none">Nothing to propose: there is no day this week with changes or comments by you and no time logged yet.</p>}
+          {byDay.filter((x) => x.d.date <= todayISO() && !(x.d.skipped === 'Weekend' && x.cells.length === 0)).map(({ d, cells: list }) => (
+            <div key={d.date} className="twd-day">
+              <div className="twd-head"><b>{dayName(d.date)} {dayNum(d.date)}</b>
+                <span>{d.skipped ?? `${formatMinutes(d.availableMinutes)} to fill${d.meetingMinutes ? ` after ${formatMinutes(d.meetingMinutes)} of meetings` : ''}`}</span></div>
+              {list.map((c) => (
+                <label key={id(c)} className={`twd-row${off.has(id(c)) ? ' off' : ''}`}>
+                  <input type="checkbox" checked={!off.has(id(c))} onChange={() => setOff((s) => { const n = new Set(s); if (n.has(id(c))) n.delete(id(c)); else n.add(id(c)); return n; })} />
+                  <span className="twd-main"><b><span className="task-key">{c.key}</span> {c.title}</b><small>{c.why}</small></span>
+                  <span className="twd-time">{formatMinutes(c.minutes)}</span>
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }

@@ -333,6 +333,10 @@ export interface TimesheetGrid {
 }
 export interface GridCellChange { kind: GridKind; targetId: string; date: string; minutes: number; note?: string | null; addAsNew?: boolean }
 export interface GridCellError { kind: GridKind; targetId: string; date: string; message: string }
+/** "Draft my week": proposed cells (nothing saved) and, per day, the time there was or why the day was left alone. */
+export interface DraftCell { kind: GridKind; targetId: string; key: string; title: string; projectName: string | null; date: string; minutes: number; why: string }
+export interface DraftDay { date: string; availableMinutes: number; meetingMinutes: number; skipped: string | null }
+export interface WeekDraft { weekStart: string; cells: DraftCell[]; days: DraftDay[] }
 export interface SaveGridResult { grid: TimesheetGrid; saved: number; errors: GridCellError[] }
 export interface InsightWeek { weekStart: string; loggedMinutes: number; billableMinutes: number; targetMinutes: number; overtimeMinutes: number; leaveDays: number; missingDays: number; status: TimesheetStatus }
 export interface TimesheetInsights {

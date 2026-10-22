@@ -29,6 +29,11 @@ public record SaveGridRequest(DateOnly WeekStart, IReadOnlyList<GridCellChange> 
 public record GridCellError(string Kind, Guid TargetId, DateOnly Date, string Message);
 public record SaveGridResult(TimesheetGridDto Grid, int Saved, IReadOnlyList<GridCellError> Errors);
 public record CopyWeekRequest(DateOnly WeekStart);
+/// <summary>A proposed cell of "draft my week": nothing is saved until the person accepts it (through the ordinary save).</summary>
+public record DraftCellDto(string Kind, Guid TargetId, string Key, string Title, string? ProjectName, DateOnly Date, int Minutes, string Why);
+/// <summary>Each day of the draft: the time there was to fill, the meetings it left room for, or why the day was left alone.</summary>
+public record DraftDayDto(DateOnly Date, int AvailableMinutes, int MeetingMinutes, string? Skipped);
+public record WeekDraftDto(DateOnly WeekStart, IReadOnlyList<DraftCellDto> Cells, IReadOnlyList<DraftDayDto> Days);
 
 /// <summary>
 /// The timesheet as a week grid: one row per task or piece of work, one column per day, each cell the total logged there. Typing a new
@@ -161,6 +166,99 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var names = await db.Projects.AsNoTracking().Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name, ct);
         return list.Select(s => s.ProjectName is null && s.ProjectId is { } p ? s with { ProjectName = names.GetValueOrDefault(p) } : s).ToList();
     }
+
+    // ------------------------------------------------------------------ draft the week
+
+    private sealed record DraftTarget(string Kind, Guid Id, string Key, string Title, string? ProjectName);
+
+    /// <summary>
+    /// A first draft of the caller's empty days, from evidence only: for each past working day with nothing logged, the normal day less that
+    /// day's meetings is shared across the tasks and work the person changed or commented on that day, weighted by how much they did on
+    /// each, in quarter hours. Days with no such activity are left empty (with the reason) rather than guessed. Nothing is saved here.
+    /// </summary>
+    public async Task<WeekDraftDto> DraftAsync(DateOnly weekStart, CancellationToken ct = default)
+    {
+        var me = ctx.RequireUserId();
+        var week = TimesheetApprovalService.WeekOf(weekStart);
+        var end = week.AddDays(6);
+        var grid = await GridAsync(week, null, ct);
+        if (!grid.Editable) throw new ConflictException("This week is locked, so it cannot be drafted.", "WEEK_LOCKED");
+        var today = clock.Today;
+        var from = clock.StartOfDayUtc(week); var to = clock.StartOfDayUtc(end.AddDays(1));
+        var acts = await db.Activities.AsNoTracking()
+            .Where(a => a.ActorId == me && (a.EntityType == "Task" || a.EntityType == "WorkTask") && a.EntityId != null
+                        && a.CreatedAt >= from && a.CreatedAt < to && !a.Action.Contains("time"))
+            .Select(a => new { a.EntityType, Id = a.EntityId!.Value, a.CreatedAt }).Take(3000).ToListAsync(ct);
+
+        var targets = new Dictionary<(string Kind, Guid Id), DraftTarget>();
+        var taskIds = acts.Where(a => a.EntityType == "Task").Select(a => a.Id).Distinct().ToList();
+        if (taskIds.Count > 0)
+        {
+            var tasks = await access.VisibleTasks().Where(t => taskIds.Contains(t.Id) && t.Project!.Status != ProjectStatus.Archived)
+                .Select(t => new { t.Id, t.Number, t.Title, Key = t.Project!.Key, Name = t.Project.Name }).ToListAsync(ct);
+            foreach (var t in tasks) targets[("task", t.Id)] = new DraftTarget("task", t.Id, $"{t.Key}-{t.Number}", t.Title, t.Name);
+        }
+        var workIds = acts.Where(a => a.EntityType == "WorkTask").Select(a => a.Id).Distinct().ToList();
+        if (workIds.Count > 0)
+        {
+            var seesWork = await permissions.LevelAsync(Modules.Work, ct) > 0;
+            var work = await db.WorkTasks.AsNoTracking().Where(w => workIds.Contains(w.Id) && (w.Kind == WorkTaskKind.ActionItem || seesWork))
+                .Select(w => new { w.Id, w.Kind, w.Number, w.Title }).ToListAsync(ct);
+            foreach (var w in work) targets[("work", w.Id)] = new DraftTarget("work", w.Id, WorkItemService.KeyOf(w.Kind, w.Number), w.Title, null);
+        }
+
+        var cells = new List<DraftCellDto>();
+        var days = new List<DraftDayDto>();
+        foreach (var day in grid.Days)
+        {
+            var available = Math.Max(0, day.TargetMinutes - day.MeetingMinutes);
+            string? skipped = day.Date > today ? "Still to come"
+                : day.Leave ? "Planned leave"
+                : day.Weekend ? "Weekend"
+                : day.Minutes > 0 ? "Already logged"
+                : available < 15 ? (day.MeetingMinutes > 0 ? "Meetings fill the day" : "No working time")
+                : null;
+            var counts = new List<(DraftTarget Target, int Count)>();
+            if (skipped is null)
+            {
+                counts = acts.Where(a => clock.LocalDate(a.CreatedAt) == day.Date)
+                    .GroupBy(a => (Kind: a.EntityType == "Task" ? "task" : "work", a.Id))
+                    .Where(g => targets.ContainsKey(g.Key))
+                    .Select(g => (targets[g.Key], g.Count()))
+                    .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1.Key).Take(6).ToList();
+                if (counts.Count == 0) skipped = "No changes or comments that day";
+            }
+            days.Add(new DraftDayDto(day.Date, skipped is null ? available : 0, day.MeetingMinutes, skipped));
+            if (skipped is not null) continue;
+
+            var shares = SplitQuarterHours(available, counts.Select(c => c.Count).ToList());
+            var room = day.MeetingMinutes > 0 ? $"{Hm(available)} free after {Hm(day.MeetingMinutes)} of meetings" : $"{Hm(available)} working day";
+            for (var i = 0; i < counts.Count; i++)
+            {
+                if (shares[i] < 15) continue;
+                var (target, count) = counts[i];
+                var why = $"{count} change{(count == 1 ? "" : "s")} or comment{(count == 1 ? "" : "s")} by you that day · {room}";
+                cells.Add(new DraftCellDto(target.Kind, target.Id, target.Key, target.Title, target.ProjectName, day.Date, shares[i], why));
+            }
+        }
+        return new WeekDraftDto(week, cells, days);
+    }
+
+    /// <summary>Shares <paramref name="minutes"/> across the weights in quarter hours (largest remainders first), so the parts add up.</summary>
+    public static List<int> SplitQuarterHours(int minutes, IReadOnlyList<int> weights)
+    {
+        var units = minutes / 15;
+        var sum = weights.Sum();
+        if (units <= 0 || sum <= 0) return weights.Select(_ => 0).ToList();
+        var raw = weights.Select(w => (double)units * w / sum).ToList();
+        var whole = raw.Select(r => (int)Math.Floor(r)).ToList();
+        var left = units - whole.Sum();
+        var order = raw.Select((r, i) => (Frac: r - Math.Floor(r), Index: i)).OrderByDescending(x => x.Frac).ThenBy(x => x.Index).Take(left).Select(x => x.Index).ToList();
+        foreach (var i in order) whole[i]++;
+        return whole.Select(u => u * 15).ToList();
+    }
+
+    private static string Hm(int minutes) => minutes < 60 ? $"{minutes} min" : minutes % 60 == 0 ? $"{minutes / 60} h" : $"{minutes / 60} h {minutes % 60} min";
 
     // ------------------------------------------------------------------ write
 

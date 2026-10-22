@@ -73,6 +73,10 @@ try{
    if(!ep.startsWith('/api/')){const file=path.resolve(dist,ep.startsWith('/assets/')?ep.slice(1):'index.html');assert.ok(file.startsWith(dist+path.sep));await route.fulfill({contentType:{'.html':'text/html','.js':'application/javascript','.css':'text/css','.woff2':'font/woff2'}[path.extname(file)]||'application/octet-stream',body:await fs.readFile(file),headers:ep.startsWith('/assets/')?{}:{'content-security-policy':csp}});return;}
    let data=[];
    if(ep==='/api/v1/time/grid'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});apply(b.cells);data={grid:grid(),saved:b.cells.length,errors:[]};}
+   else if(ep==='/api/v1/time/grid/draft'){data={weekStart:week,cells:[
+     {kind:'task',targetId:'t1',key:'PAY-12',title:'Gateway integration',projectName:'Payments',date:dates[3],minutes:360,why:'3 changes or comments by you that day · 8 h working day'},
+     {kind:'task',targetId:'t2',key:'PAY-14',title:'Refund API',projectName:'Payments',date:dates[3],minutes:120,why:'1 change or comment by you that day · 8 h working day'}],
+     days:dates.map((d,i)=>({date:d,availableMinutes:i===3?480:0,meetingMinutes:0,skipped:i===3?null:i>4?'Weekend':'Already logged'}))};}
    else if(ep==='/api/v1/time/grid/copy-previous'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});apply([{kind:'task',targetId:'t1',date:dates[2],minutes:180},{kind:'task',targetId:'t1',date:dates[4],minutes:120}]);data={grid:grid(),saved:2,errors:[]};}
    else if(ep==='/api/v1/time/approvals/approve'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={approved:b.ids.length,failed:[]};}
    else if(ep==='/api/v1/agent/inbox')data={items:[],pending:0,canDecide:true};
@@ -180,6 +184,12 @@ try{
  assert.ok(file.suggestedFilename().endsWith(`${week}.csv`));
  const csv=await fs.readFile(await file.path(),'utf8');assert.ok(csv.includes('PAY-12')&&csv.includes('Gateway integration'),csv);
  checks.push('copy-export');
+ // Draft my week: proposals with reasons, untick one, add the rest through the ordinary save.
+ await page.getByRole('button',{name:'Draft my week'}).click();const dw=page.getByRole('dialog',{name:'Draft my week'});await dw.locator('.twd-row').nth(1).waitFor();
+ assert.match(await dw.innerText(),/3 changes or comments by you that day/);await shot(page,'draft-week-1440.png');
+ const beforeDraft=puts();await dw.locator('.twd-row',{hasText:'Refund API'}).locator('input').uncheck();
+ await dw.getByRole('button',{name:/Add 1 entry/}).click();const dput=await lastPut(beforeDraft+1);
+ assert.deepEqual(dput.b.cells.map(c=>[c.targetId,c.date,c.minutes]),[['t1',dates[3],360]]);await dw.waitFor({state:'detached'});checks.push('draft-week');
  await shot(page,'week-after-1440.png');
 
  // Insights.

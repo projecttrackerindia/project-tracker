@@ -224,3 +224,20 @@
   .tsg-quick .btn-ghost { width: 100%; justify-content: center; }
   .tsi-week-name { width: 110px; }
 }
+
+/* Draft my week: proposed time per day with the reason, untick what is wrong */
+.twd { display: grid; gap: 16px; }
+.twd-none { margin: 0; color: var(--text-3); }
+.twd-day { display: grid; gap: 6px; }
+.twd-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; }
+.twd-head span { color: var(--text-3); font-size: 12px; }
+.twd-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.twd-row.off { opacity: .55; }
+.twd-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.twd-main b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.twd-main small { font-size: 12px; color: var(--text-3); }
+.twd-time { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
+.twd, .twd * { text-transform: none; letter-spacing: normal; }
+.twd-row { font-weight: 400; color: var(--text); margin: 0; }
+.twd-head b { font-weight: 650; }
+.twd .twd-time { font-size: 13px; }

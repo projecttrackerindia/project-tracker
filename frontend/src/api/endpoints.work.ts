@@ -1,5 +1,5 @@
 import { del, download, fetchBlobUrl, get, patch, post, put, uploadFile, create } from './client';
-import type { EffectiveAccessList,AutomationInput,AutomationRule,ProjectTime,TaskTime,TimeEntry,Timesheet,AccessMatrix,DependencyType,Milestone,MilestoneInput,TaskDependencies,ActionItem,ActionItemInput,ActionItemStatus,Attachment,AttachmentLimits,ProjectGroup,ProjectStatusReport,StatusGroup,Issue,IssueDetail,IssueInput,DevEmail,OrgRole,OrgStructure,TimesheetWeek,Approvals,BulkReviewResult,TimesheetGrid,GridCellChange,SaveGridResult,TimesheetInsights } from './types';
+import type { WeekDraft,EffectiveAccessList,AutomationInput,AutomationRule,ProjectTime,TaskTime,TimeEntry,Timesheet,AccessMatrix,DependencyType,Milestone,MilestoneInput,TaskDependencies,ActionItem,ActionItemInput,ActionItemStatus,Attachment,AttachmentLimits,ProjectGroup,ProjectStatusReport,StatusGroup,Issue,IssueDetail,IssueInput,DevEmail,OrgRole,OrgStructure,TimesheetWeek,Approvals,BulkReviewResult,TimesheetGrid,GridCellChange,SaveGridResult,TimesheetInsights } from './types';
 
 export const devApi = { emails: () => get<DevEmail[]>('/dev/emails', undefined, { auth: false }) };
 
@@ -104,6 +104,8 @@ export const timeApi = {
   grid: (weekStart?: string, userId?: string) => get<TimesheetGrid>('/time/grid', { weekStart, userId }),
   saveGrid: (weekStart: string, cells: GridCellChange[]) => put<SaveGridResult>('/time/grid', { weekStart, cells }),
   copyPrevious: (weekStart: string) => post<SaveGridResult>('/time/grid/copy-previous', { weekStart }),
+  /** A first draft of my empty days from what I changed or commented on, less meetings; nothing is saved. */
+  draft: (weekStart: string) => get<WeekDraft>('/time/grid/draft', { weekStart }),
   insights: (userId?: string, weeks = 8) => get<TimesheetInsights>('/time/insights', { userId, weeks: String(weeks) }),
 };
 
