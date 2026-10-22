@@ -34,9 +34,17 @@ await page.goto(`${BASE}/${slug}/projects`); await page.waitForTimeout(1500);
 await page.locator('button', { hasText: 'New project' }).first().click();
 await page.waitForSelector('.modal', { timeout: 10000 });
 await field('Project name').locator('input').fill(projectName);
+// Group, type and timeline are defaulted once their lists load; submitting before that trips the required-field validation.
+const defaulted = async (label) => {
+  const select = field(label).locator('select');
+  for (let i = 0; i < 50; i++) { if ((await select.count()) === 0 || (await select.inputValue())) return true; await page.waitForTimeout(200); }
+  return false;
+};
+check('project form defaults are loaded', (await defaulted('Project group')) && (await defaulted('Project type')) && (await defaulted('Project timeline')));
 await page.locator('.modal button[type=submit], .modal button', { hasText: 'Create project' }).first().click();
 const projectOpened = await page.waitForURL((u) => /\/projects\/[0-9a-f-]{36}/.test(u.pathname), { timeout: 20000 }).then(() => true).catch(() => false);
-check('project is created and opened', projectOpened, page.url());
+const validation = projectOpened ? '' : (await page.locator('.modal .field-error, .modal [role=alert]').allInnerTexts().catch(() => [])).join(' | ');
+check('project is created and opened', projectOpened, projectOpened ? page.url() : `${page.url()} ${validation}`);
 await page.waitForTimeout(1500);
 check('project page shows its name', (await page.locator(`text=${projectName}`).count()) > 0);
 
