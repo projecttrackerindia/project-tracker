@@ -12,6 +12,9 @@
   background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: none; overflow: hidden;
 }
+.ai-page { display: flex; flex-direction: column; gap: 14px; height: calc(100vh - var(--topbar-h) - 48px); min-height: 600px; }
+/* Ask shares the Assistant header with Meetings, Proposals, Workflows and Tracker; the chat fills what is left of the screen. */
+.ai-page > .ai-shell { height: auto; flex: 1; min-height: 460px; }
 .ai-shell.solo { display: grid; place-items: center; grid-template-columns: 1fr; height: auto; min-height: 60vh; }
 [data-theme='dark'] .ai-shell { --ai-a: #8f7bf0; --ai-b: #d65fa4; --ai-c: #4cc9e0; }
 
@@ -271,6 +274,8 @@
 /* ---- smaller screens: the conversation list slides in */
 @media (max-width: 900px) {
   .ai-shell { grid-template-columns: 1fr; height: calc(100dvh - var(--topbar-h) - 28px); }
+  .ai-page { height: calc(100dvh - var(--topbar-h) - 28px); min-height: 0; gap: 10px; }
+  .ai-page > .ai-shell { height: auto; min-height: 0; }
   .ai-rail { position: fixed; z-index: 61; top: 0; bottom: 0; left: 0; width: min(310px, 88vw); background: var(--panel-solid); transform: translateX(-105%); transition: transform .22s ease; box-shadow: var(--shadow-lg); }
   .ai-shell.rail-open .ai-rail { transform: none; }
   .ai-shell.rail-open .ai-rail-scrim { display: block; position: fixed; inset: 0; z-index: 60; background: rgba(15, 23, 42, .4); }

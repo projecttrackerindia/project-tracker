@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { opsApi, projectApi, workApi, workspaceApi, type WorkFilters } from '../../api/endpoints';
 import type { WorkTask } from '../../api/types';
 import { Icon } from '../../components/Icon';
+import { Menu } from '../../components/Menu';
 import { Select } from '../../components/Select';
 import { Avatar, EmptyState, ErrorState, PageHead, PageLoader, Pager, PriorityBadge, PriorityOptions } from '../../components/ui';
 import { formatDate } from '../../lib/format';
@@ -13,7 +14,6 @@ import { useCan, useModule } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { WorkTaskModal } from './WorkTaskModal';
 import { SlaChip } from './Sla';
-import { useIsMobile } from '../../lib/mobile';
 import { BulkBar, OpsBoard, OpsInsights, OpsSettingsPanel } from './Ops';
 import { VoiceAgentPanel } from './VoiceAgent';
 import { WhatsAppSupportPanel } from './WhatsAppSupport';
@@ -67,7 +67,7 @@ export function WorkTasksPage() {
   const [tab, setTabState] = useState<Tab>((params.get('view') as Tab) ?? 'queue');
   const setTab = (t: Tab) => { setTabState(t); const n = new URLSearchParams(params); if (t === 'queue') n.delete('view'); else n.set('view', t); setParams(n, { replace: true }); };
   const [naming, setNaming] = useState<string | null>(null);
-  const mobile = useIsMobile();
+  const navigate = useNavigate();
   const [showFilters, setShowFilters] = useState(false);
   const saved = useWsQuery(['ui', 'operations'], async () => ((await get<{ value: { views?: SavedView[] } | null }>('/me/ui/operations')).value?.views ?? []), { staleTime: 300_000 });
   const [page, setPage] = useState(1);
@@ -97,6 +97,20 @@ export function WorkTasksPage() {
   const on = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
   const hasFilters = !!(mineOnly || unassigned || q || typeId || projectId || assigneeId || priority || status || dueFrom || dueTo || overdue || sla || (view !== (mine ? 'open' : 'all')));
   const reset = () => { setMineOnly(false); setUnassigned(false); setQ(''); setTypeId(''); setProjectId(''); setAssigneeId(''); setPriority(''); setStatus(''); setDueFrom(''); setDueTo(''); setOverdue(false); setSla(''); setView(mine ? 'open' : 'all'); setPage(1); };
+  const nameOf = <T extends { id?: string; userId?: string }>(list: T[] | undefined, id: string, label: (x: T) => string) => { const x = list?.find((i) => (i.id ?? i.userId) === id); return x ? label(x) : 'selected'; };
+  /** The filters in use, each as a small chip that removes itself. */
+  const chips: { label: string; clear: () => void }[] = [
+    ...(typeId ? [{ label: `Type: ${nameOf(types.data, typeId, (t) => t.name)}`, clear: () => on(setTypeId)('') }] : []),
+    ...(projectId ? [{ label: projectId === NO_PROJECT ? 'No related project' : `Project: ${nameOf(projects.data?.items, projectId, (x) => x.key)}`, clear: () => on(setProjectId)('') }] : []),
+    ...(assigneeId && !mine ? [{ label: `Assigned: ${nameOf(members.data, assigneeId, (m) => m.displayName)}`, clear: () => on(setAssigneeId)('') }] : []),
+    ...(priority ? [{ label: `Priority: ${priority}`, clear: () => on(setPriority)('') }] : []),
+    ...(status ? [{ label: `Status: ${WORK_STATUSES.find((x) => x.id === status)?.label ?? status}`, clear: () => on(setStatus)('') }] : []),
+    ...(sla ? [{ label: sla === 'atRisk' ? 'SLA at risk' : sla === 'breached' ? 'SLA breached' : 'With SLA targets', clear: () => on(setSla)('') }] : []),
+    ...(dueFrom ? [{ label: `Due from ${dueFrom}`, clear: () => on(setDueFrom)('') }] : []),
+    ...(dueTo ? [{ label: `Due to ${dueTo}`, clear: () => on(setDueTo)('') }] : []),
+    ...(overdue ? [{ label: 'Overdue only', clear: () => on(setOverdue)(false) }] : []),
+  ];
+  const activeCount = chips.length;
   const sortBy = (key: string) => { setSort((s) => (s === key ? `-${key}` : key)); setPage(1); };
   const th = (key: string, label: string) => (
     <th aria-sort={sort === key ? 'ascending' : sort === `-${key}` ? 'descending' : 'none'}>
@@ -124,9 +138,11 @@ export function WorkTasksPage() {
   const settingsQ = useWsQuery(['ops', 'settings'], opsApi.settings, { staleTime: 300_000 });
   return (
     <>
-      <PageHead title="Operations" sub="Your support desk and operational work: tickets, bug fixes, analysis and requests, with SLA tracking, resolution notes and analytics.">
-        <button type="button" className="btn btn-ghost" onClick={exportCsv} title="Download the filtered list as a CSV file now"><Icon name="download" /> Export CSV</button>
-        {canReports && <Link className="btn btn-ghost" to="/reports?kind=WorkTasks" title="Excel or PDF, built in the background"><Icon name="download" /> Excel / PDF</Link>}
+      <PageHead title="Operations" sub="Tickets, bug fixes and requests, with service levels.">
+        <Menu label="Export" icon="download" items={[
+          { label: 'CSV (this list, now)', icon: 'download', onSelect: exportCsv },
+          { label: 'Excel or PDF report', icon: 'download', onSelect: () => navigate('/reports?kind=WorkTasks'), hidden: !canReports },
+        ]} />
         {canCreate && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New ticket</button>}
       </PageHead>
 
@@ -151,47 +167,43 @@ export function WorkTasksPage() {
             </form>
           )}
         </div>
-        {mobile && (
-          <div className="ops-mobile-search">
-            <div className="search-field"><Icon name="search" /><input className="input" placeholder="Search…" value={q} onChange={(e) => on(setQ)(e.target.value)} aria-label="Search work tasks" /></div>
-            <button type="button" className={`btn btn-ghost btn-sm ${showFilters ? 'btn-soft' : ''}`} aria-expanded={showFilters} onClick={() => setShowFilters((v) => !v)}><Icon name="settings" size={14} />Filters</button>
-          </div>
-        )}
-        {(!mobile || showFilters) && <>
-        <div className="toolbar">
-          {!mobile && <div className="search-field"><Icon name="search" /><input className="input" placeholder="Search work tasks…" value={q} onChange={(e) => on(setQ)(e.target.value)} aria-label="Search work tasks" /></div>}
-          <Select className="select filter-input" value={typeId} onChange={(e) => on(setTypeId)(e.target.value)} aria-label="Work type">
-            <option value="">All work types</option>{types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </Select>
-          <Select className="select filter-input" value={projectId} onChange={(e) => on(setProjectId)(e.target.value)} aria-label="Related project">
-            <option value="">All projects</option><option value={NO_PROJECT}>No related project</option>
-            {projects.data?.items.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
-          </Select>
-          {!mine && (
-            <Select className="select filter-input" value={assigneeId} onChange={(e) => on(setAssigneeId)(e.target.value)} aria-label="Assigned to">
-              <option value="">Anyone</option>{members.data?.filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
-            </Select>
-          )}
-          <Select className="select filter-input" value={priority} onChange={(e) => on(setPriority)(e.target.value)} aria-label="Priority"><option value="">All priorities</option><PriorityOptions /></Select>
-          <Select className="select filter-input" value={status} onChange={(e) => on(setStatus)(e.target.value)} aria-label="Status">
-            <option value="">Any status</option>{WORK_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </Select>
-        </div>
-        <div className="toolbar" style={{ paddingTop: 0 }}>
-          <div className="seg" role="group" aria-label="Show work tasks">
+        {/* One compact row: quick views, search and a Filters button; the detailed filters open only when asked for. */}
+        <div className="ops-search-row">
+          <div className="search-field"><Icon name="search" /><input className="input" placeholder="Search tickets…" value={q} onChange={(e) => on(setQ)(e.target.value)} aria-label="Search work tasks" /></div>
+          <div className="seg ops-open-seg" role="group" aria-label="Show work tasks">
             {([['all', 'All'], ['open', 'Open'], ['closed', 'Closed']] as const).map(([id, label]) => (
               <button key={id} type="button" className={view === id ? 'active' : ''} aria-pressed={view === id} onClick={() => on(setView)(id)} disabled={!!status}>{label}</button>
             ))}
           </div>
-          <label className="row" style={{ gap: 6, fontSize: 12.5 }}>Due from <input className="input filter-input" type="date" value={dueFrom} onChange={(e) => on(setDueFrom)(e.target.value)} aria-label="Due from" /></label>
-          <label className="row" style={{ gap: 6, fontSize: 12.5 }}>to <input className="input filter-input" type="date" value={dueTo} onChange={(e) => on(setDueTo)(e.target.value)} aria-label="Due to" /></label>
-          <button type="button" className={`btn btn-sm ${overdue ? 'btn-soft' : 'btn-ghost'}`} aria-pressed={overdue} onClick={() => on(setOverdue)(!overdue)}><Icon name="alert" /> Overdue only</button>
-          <Select className="select filter-input" value={sla} onChange={(e) => on(setSla)(e.target.value)} aria-label="Service level">
-            <option value="">Any SLA</option><option value="atRisk">SLA at risk</option><option value="breached">SLA breached</option><option value="tracked">With SLA targets</option>
-          </Select>
-          {hasFilters && <button type="button" className="btn btn-ghost btn-sm" onClick={reset}>Clear filters</button>}
+          <button type="button" className={`btn btn-sm ops-filter-btn ${showFilters ? 'btn-soft' : 'btn-ghost'}`} aria-expanded={showFilters} onClick={() => setShowFilters((v) => !v)}>
+            <Icon name="settings" size={14} />Filters{activeCount > 0 && <em className="ops-count">{activeCount}</em>}
+          </button>
+          {hasFilters && <button type="button" className="btn btn-ghost btn-sm" onClick={reset}>Clear</button>}
         </div>
-        </>}
+        {showFilters && (
+          <div className="ops-filters" role="group" aria-label="Filters">
+            <label className="ops-f"><span>Work type</span><Select className="select" value={typeId} onChange={(e) => on(setTypeId)(e.target.value)} aria-label="Work type">
+              <option value="">All work types</option>{types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></label>
+            <label className="ops-f"><span>Related project</span><Select className="select" value={projectId} onChange={(e) => on(setProjectId)(e.target.value)} aria-label="Related project">
+              <option value="">All projects</option><option value={NO_PROJECT}>No related project</option>
+              {projects.data?.items.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}</Select></label>
+            {!mine && <label className="ops-f"><span>Assigned to</span><Select className="select" value={assigneeId} onChange={(e) => on(setAssigneeId)(e.target.value)} aria-label="Assigned to">
+              <option value="">Anyone</option>{members.data?.filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></label>}
+            <label className="ops-f"><span>Priority</span><Select className="select" value={priority} onChange={(e) => on(setPriority)(e.target.value)} aria-label="Priority"><option value="">All priorities</option><PriorityOptions /></Select></label>
+            <label className="ops-f"><span>Status</span><Select className="select" value={status} onChange={(e) => on(setStatus)(e.target.value)} aria-label="Status">
+              <option value="">Any status</option>{WORK_STATUSES.map((st) => <option key={st.id} value={st.id}>{st.label}</option>)}</Select></label>
+            <label className="ops-f"><span>Service level</span><Select className="select" value={sla} onChange={(e) => on(setSla)(e.target.value)} aria-label="Service level">
+              <option value="">Any SLA</option><option value="atRisk">SLA at risk</option><option value="breached">SLA breached</option><option value="tracked">With SLA targets</option></Select></label>
+            <label className="ops-f"><span>Due from</span><input className="input" type="date" value={dueFrom} onChange={(e) => on(setDueFrom)(e.target.value)} aria-label="Due from" /></label>
+            <label className="ops-f"><span>Due to</span><input className="input" type="date" value={dueTo} onChange={(e) => on(setDueTo)(e.target.value)} aria-label="Due to" /></label>
+            <label className="ops-f ops-f-check"><input type="checkbox" checked={overdue} onChange={(e) => on(setOverdue)(e.target.checked)} /><span>Overdue only</span></label>
+          </div>
+        )}
+        {!showFilters && chips.length > 0 && (
+          <div className="ops-chips" aria-label="Active filters">
+            {chips.map((c) => <button key={c.label} type="button" className="ops-chip" onClick={c.clear} aria-label={`Remove filter ${c.label}`}>{c.label}<Icon name="close" size={11} /></button>)}
+          </div>
+        )}
 
         {tab === 'board' ? <div className="card-body"><OpsBoard filters={filters} onOpen={openTask} /></div> : <>
         <BulkBar ids={picked} onDone={() => setPicked([])} />

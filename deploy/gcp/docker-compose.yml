@@ -36,6 +36,7 @@ services:
   meetbot:
     image: ${IMAGES}/meetbot:${TAG:-latest}
     restart: unless-stopped
+    stop_grace_period: 3h               # on SIGTERM it finishes the meetings it is in, then exits; never cut a call off
     shm_size: "1gb"
     env_file: [meetbot.env]
     logging: *log

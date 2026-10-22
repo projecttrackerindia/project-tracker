@@ -351,6 +351,8 @@ export function AiPage() {
   const outOfCredits = !!usage && !usage.unlimited && usage.creditsLeft <= 0;
 
   return (
+    <div className="ai-page">
+    <AgentsHubNav sub="Ask, analyse, plan and get things done" />
     <div className={`ai-shell ${railOpen ? 'rail-open' : ''}`} onDragEnter={onDrag} onDragOver={onDrag} onDragLeave={onDrag} onDrop={onDrag}>
       <Rail list={listQ.data ?? []} loading={listQ.isLoading} current={convId} onNew={newChat} onPick={(cid) => { setRailOpen(false); nav(`/ai/${cid}`); }}
         onChanged={refresh} onDeleted={(cid) => { refresh(); if (cid === convId) newChat(); }} />
@@ -368,7 +370,6 @@ export function AiPage() {
           </div>
           <div className="ai-head-controls">
             <ModeSwitch mode={mode} onChange={setMode} usage={usage} disabled={streaming} />
-            <AgentsHubNav compact />
             <CreditMeter usage={usage} />
           </div>
         </header>
@@ -394,6 +395,7 @@ export function AiPage() {
           canAttach={canAttach} usage={usage} mode={mode} disabledReason={cooldownSeconds > 0 ? `Please wait ${cooldownSeconds} seconds before asking again.` : outOfCredits ? 'This month\'s AI credits are used up. They renew on the 1st.' : null} />
         {dragging && <DropOverlay />}
       </section>
+    </div>
     </div>
   );
 }

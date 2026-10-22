@@ -5,12 +5,15 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using MailKit;
 using MailKit.Net.Imap;
+using MailKit.Net.Pop3;
 using MailKit.Net.Smtp;
 using MailKit.Search;
 using MailKit.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MimeKit;
+using MimeKit.Utils;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
@@ -38,7 +41,8 @@ public record MailSendResultDto(bool Accepted, string To, string Cc, string Subj
 /// IMAP/SMTP providers such as Rediffmail through a stored, encrypted app password. Mail content is never logged or audited.
 /// </summary>
 public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInboxService inbox, GoogleCalendarAuthService google,
-    MicrosoftProductivityAuthService microsoft, IHttpClientFactory http, ISecretProtector secrets, AppClock clock, Recorder recorder, PermissionService permissions)
+    MicrosoftProductivityAuthService microsoft, IHttpClientFactory http, ISecretProtector secrets, AppClock clock, Recorder recorder, PermissionService permissions,
+    Microsoft.Extensions.Logging.ILogger<MailboxService>? log = null)
 {
     // Only well-known providers: the person never supplies a host, so the server cannot be pointed at internal addresses.
     public static readonly MailPreset[] Presets =
@@ -50,6 +54,16 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         new("yahoo", "Yahoo Mail", "imap.mail.yahoo.com", 993, "smtp.mail.yahoo.com", 465, "yahoo.com"),
         new("zoho", "Zoho Mail", "imap.zoho.com", 993, "smtp.zoho.com", 465, "zoho.com"),
     ];
+    /// <summary>
+    /// The POP servers of the same providers. Some company mailboxes (Rediffmail Pro among them) have only POP switched on, the way Outlook
+    /// is often set up; when IMAP sign-in fails, the same password is tried over POP and the inbox is read from there.
+    /// </summary>
+    private static readonly Dictionary<string, string> PopHosts = new()
+    {
+        ["rediffpro"] = "pop.rediffmailpro.com", ["rediff"] = "pop.rediffmail.com", ["gmail"] = "pop.gmail.com", ["yahoo"] = "pop.mail.yahoo.com", ["zoho"] = "pop.zoho.com",
+    };
+    private const int PopPort = 995;
+    private static bool IsPop(MailAccount a) => a.ImapPort == PopPort;
     private const int PageSize = 25;
     private IQueryable<MailAccount> Mine => db.MailAccounts.Where(a => a.UserId == ctx.RequireUserId());
 
@@ -106,8 +120,16 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         if (await Mine.AnyAsync(a => a.Email == email, ct)) throw new ConflictException("This mailbox is already connected.");
         var account = new MailAccount { TenantId = tid, UserId = uid, Provider = preset.Id, Email = email, ImapHost = preset.ImapHost, ImapPort = preset.ImapPort,
             SmtpHost = preset.SmtpHost, SmtpPort = preset.SmtpPort, SecretProtected = secrets.Protect(preset.Id == "gmail" ? req.Password.Replace(" ", "") : req.Password) };
-        // Prove the sign-in works before keeping anything.
-        using (var client = await ImapAsync(account, ct)) await client.DisconnectAsync(true, ct);
+        // Prove the sign-in works before keeping anything: IMAP first, then POP with the same password (mailboxes with only POP switched on).
+        try { using (var client = await ImapAsync(account, ct)) await client.DisconnectAsync(true, ct); }
+        catch (AppException imapFailure) when (imapFailure.Code is "MAILBOX_AUTH_FAILED" or "MAILBOX_SIGNIN_FAILED" && PopHosts.TryGetValue(preset.Id, out var popHost))
+        {
+            var pop = new MailAccount { Email = email, ImapHost = popHost, ImapPort = PopPort, SecretProtected = account.SecretProtected };
+            try { using (var client = await PopAsync(pop, ct)) await client.DisconnectAsync(true, ct); }
+            catch (AppException) { throw imapFailure; }
+            account.ImapHost = popHost; account.ImapPort = PopPort;
+            log?.LogInformation("Mailbox for {Provider} connected over POP (IMAP sign-in was refused)", preset.Id);
+        }
         account.LastSyncedAt = clock.Now;
         db.MailAccounts.Add(account);
         recorder.Audit("mailbox.connected", "MailAccount", account.Id, null, new { provider = preset.Id });
@@ -148,6 +170,7 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         }
         var row = await ImapAccountAsync(account, ct);
         var offset = int.TryParse(cursor, out var o) && o >= 0 && o < 100000 ? o : 0;
+        if (IsPop(row)) return await PopListAsync(row, account, f, offset, search, ct);
         return await RunImapAsync(row, async client =>
         {
             var box = await OpenAsync(client, f, FolderAccess.ReadOnly, ct);
@@ -184,6 +207,12 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
             return new(account, t.Account, f, t.ThreadId, t.Messages.Select(m => new MailMessageDto(m.Id, m.ThreadId, m.Subject, m.Sender, "", "", m.ReceivedAt, m.Unread, m.HasAttachments, m.Body, m.BodyTruncated)).ToArray(), t.Truncated);
         }
         var row = await ImapAccountAsync(account, ct);
+        if (IsPop(row))
+        {
+            var popMessage = await PopMessageAsync(row, messageId, ct);
+            var popDto = ToDto(popMessage, messageId);
+            return new MailThreadDto(account, row.Email, f, messageId, [popDto], popDto.BodyTruncated);
+        }
         if (!uint.TryParse(messageId, out var uidValue) || uidValue == 0) throw new ValidationException("messageId", "Invalid mailbox message reference.");
         return await RunImapAsync(row, async client =>
         {
@@ -238,7 +267,56 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
 
     private async Task<ImapClient> ImapAsync(MailAccount a, CancellationToken ct)
     {
+        // Some servers (Rediffmail Pro among them) offer only AUTH=PLAIN and answer it in a way the SASL exchange does not accept, so the
+        // sign-in never reaches the password check. Then the classic IMAP LOGIN command is tried once on a fresh connection.
+        try { return await SignInAsync(a, plainLogin: false, ct); }
+        catch (Exception e) when (e is ImapProtocolException or ImapCommandException or IOException)
+        {
+            log?.LogInformation("IMAP sign-in to {Host} failed with {Type}: {Message}; trying LOGIN", a.ImapHost, e.GetType().Name, e.Message);
+            return await SignInAsync(a, plainLogin: true, ct);
+        }
+    }
+
+    private async Task<ImapClient> SignInAsync(MailAccount a, bool plainLogin, CancellationToken ct)
+    {
         var client = new ImapClient { Timeout = 20000 };
+        try
+        {
+            await client.ConnectAsync(a.ImapHost, a.ImapPort, SecureSocketOptions.SslOnConnect, ct);
+        }
+        catch (Exception e) when (e is IOException or System.Net.Sockets.SocketException or ImapProtocolException or SslHandshakeException or TimeoutException)
+        {
+            client.Dispose();
+            log?.LogWarning("IMAP connection to {Host}:{Port} failed with {Type}: {Message}", a.ImapHost, a.ImapPort, e.GetType().Name, e.Message);
+            throw new AppException(502, "MAILBOX_UNREACHABLE", e is SslHandshakeException
+                ? "The mail server's secure connection could not be verified. Try again later."
+                : "The mail server could not be reached. Try again.");
+        }
+        try
+        {
+            if (plainLogin) client.AuthenticationMechanisms.Clear();   // MailKit then sends LOGIN user password
+            await client.AuthenticateAsync(a.Email, secrets.Unprotect(a.SecretProtected), ct);
+            return client;
+        }
+        catch (AuthenticationException)
+        {
+            client.Dispose();
+            throw new ConflictException("The mail provider rejected the sign-in. Check the email address and password - for company mail, use the password you sign in to webmail with; some providers need IMAP switched on by your mail admin.", "MAILBOX_AUTH_FAILED");
+        }
+        catch (Exception e) when (plainLogin && e is ImapProtocolException or ImapCommandException or IOException)
+        {
+            client.Dispose();
+            log?.LogWarning("IMAP LOGIN to {Host} failed with {Type}: {Message}", a.ImapHost, e.GetType().Name, e.Message);
+            throw new AppException(502, "MAILBOX_SIGNIN_FAILED", "The mail server did not accept the sign-in method. Ask your mail admin to allow IMAP access for your mailbox.");
+        }
+        catch { client.Dispose(); throw; }
+    }
+
+    // ------------------------------------------------------------------ POP (inbox only, newest first, read without removing anything)
+
+    private async Task<Pop3Client> PopAsync(MailAccount a, CancellationToken ct)
+    {
+        var client = new Pop3Client { Timeout = 20000 };
         try
         {
             await client.ConnectAsync(a.ImapHost, a.ImapPort, SecureSocketOptions.SslOnConnect, ct);
@@ -248,14 +326,82 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         catch (AuthenticationException)
         {
             client.Dispose();
-            throw new ConflictException("The mail provider rejected the sign-in. Check the password - many providers need an app password with IMAP switched on.", "MAILBOX_AUTH_FAILED");
+            throw new ConflictException("The mail provider rejected the sign-in. Check the email address and password - for company mail, use the password you sign in to webmail or Outlook with.", "MAILBOX_AUTH_FAILED");
         }
-        catch (Exception e) when (e is IOException or System.Net.Sockets.SocketException or ImapProtocolException or SslHandshakeException or TimeoutException)
+        catch (Exception e) when (e is IOException or System.Net.Sockets.SocketException or Pop3ProtocolException or Pop3CommandException or SslHandshakeException or TimeoutException)
         {
             client.Dispose();
+            log?.LogWarning("POP connection to {Host}:{Port} failed with {Type}: {Message}", a.ImapHost, a.ImapPort, e.GetType().Name, e.Message);
             throw new AppException(502, "MAILBOX_UNREACHABLE", "The mail server could not be reached. Try again.");
         }
     }
+
+    private async Task<T> RunPopAsync<T>(MailAccount row, Func<Pop3Client, Task<T>> work, CancellationToken ct)
+    {
+        try
+        {
+            using var client = await PopAsync(row, ct);
+            var result = await work(client);
+            try { await client.DisconnectAsync(true, ct); } catch (Exception e) when (e is IOException or Pop3ProtocolException) { }
+            await Mine.Where(a => a.Id == row.Id).ExecuteUpdateAsync(x => x.SetProperty(a => a.LastSyncedAt, clock.Now).SetProperty(a => a.LastError, (string?)null), ct);
+            return result;
+        }
+        catch (AppException e)
+        {
+            await Mine.Where(a => a.Id == row.Id).ExecuteUpdateAsync(x => x.SetProperty(a => a.LastError, Clip(e.Message, 300)), CancellationToken.None);
+            throw;
+        }
+    }
+
+    /// <summary>POP message references are the server's unique ids (UIDL), carried as "pop-" plus URL-safe base64.</summary>
+    private static string PopId(string uid) => "pop-" + Convert.ToBase64String(Encoding.UTF8.GetBytes(uid)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    private static string? PopUid(string id)
+    {
+        if (!id.StartsWith("pop-", StringComparison.Ordinal) || id.Length > 200) return null;
+        var b = id[4..].Replace('-', '+').Replace('_', '/');
+        b = b.PadRight(b.Length + (4 - b.Length % 4) % 4, '=');
+        try { return Encoding.UTF8.GetString(Convert.FromBase64String(b)); } catch (FormatException) { return null; }
+    }
+
+    private Task<MailListDto> PopListAsync(MailAccount row, string account, string folder, int offset, string? search, CancellationToken ct) => RunPopAsync(row, async client =>
+    {
+        if (folder != "inbox") return new MailListDto(account, row.Email, folder, [], null);   // POP only has the inbox
+        var count = await client.GetMessageCountAsync(ct);
+        var uids = client.SupportsUids ? await client.GetMessageUidsAsync(ct) : null;
+        var q = (search ?? "").Trim();
+        var list = new List<MailMessageDto>(); string? next = null;
+        // Newest first; a search looks through the latest 300 messages' headers.
+        var scan = string.IsNullOrEmpty(q) ? PageSize : 300;
+        var hi = count - 1 - offset; var lo = Math.Max(0, hi - scan + 1);
+        for (var i = hi; i >= lo && list.Count < PageSize; i--)
+        {
+            var h = await client.GetMessageHeadersAsync(i, ct);
+            var subject = h[HeaderId.Subject] ?? ""; var from = h[HeaderId.From] ?? "";
+            if (q.Length > 0 && !subject.Contains(q, StringComparison.OrdinalIgnoreCase) && !from.Contains(q, StringComparison.OrdinalIgnoreCase)) continue;
+            DateTimeOffset? date = DateUtils.TryParse(h[HeaderId.Date] ?? "", out var d) ? d : null;
+            var id = uids is not null ? PopId(uids[i]) : PopId("#" + i);
+            list.Add(new MailMessageDto(id, id, Clip(Decode(subject), 500), Clip(Decode(from), 500), Clip(Decode(h[HeaderId.To] ?? ""), 1000), Clip(Decode(h[HeaderId.Cc] ?? ""), 1000),
+                date, false, (h[HeaderId.ContentType] ?? "").Contains("multipart/mixed", StringComparison.OrdinalIgnoreCase)));
+        }
+        if (lo > 0 && string.IsNullOrEmpty(q)) next = (offset + PageSize).ToString();
+        return new MailListDto(account, row.Email, folder, list, next);
+    }, ct);
+
+    private static string Decode(string header) { try { return Rfc2047.DecodeText(Encoding.UTF8.GetBytes(header)); } catch (Exception) { return header; } }
+
+    private Task<MimeMessage> PopMessageAsync(MailAccount row, string id, CancellationToken ct) => RunPopAsync(row, async client =>
+    {
+        var uid = PopUid(id) ?? throw new ValidationException("messageId", "Invalid mailbox message reference.");
+        int index;
+        if (uid.StartsWith('#') && int.TryParse(uid[1..], out var n)) index = n;
+        else
+        {
+            var uids = client.SupportsUids ? await client.GetMessageUidsAsync(ct) : [];
+            index = uids.ToList().IndexOf(uid);
+        }
+        if (index < 0 || index >= await client.GetMessageCountAsync(ct)) throw new NotFoundException("That message is no longer in the mailbox.");
+        return await client.GetMessageAsync(index, ct);
+    }, ct);
 
     private async Task<T> RunImapAsync<T>(MailAccount row, Func<ImapClient, Task<T>> work, CancellationToken ct)
     {
@@ -412,8 +558,13 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         message.From.Add(MailboxAddress.Parse(row.Email));
         if (isReply)
         {
-            if (!uint.TryParse(req.ReplyToId, out var uidValue) || uidValue == 0) throw new ValidationException("replyToId", "Invalid mailbox message reference.");
-            var original = await RunImapAsync(row, async client => { var box = await OpenAsync(client, Folder(req.Folder), FolderAccess.ReadOnly, ct); return await box.GetMessageAsync(new UniqueId(uidValue), ct); }, ct);
+            MimeMessage original;
+            if (IsPop(row)) original = await PopMessageAsync(row, req.ReplyToId ?? "", ct);
+            else
+            {
+                if (!uint.TryParse(req.ReplyToId, out var uidValue) || uidValue == 0) throw new ValidationException("replyToId", "Invalid mailbox message reference.");
+                original = await RunImapAsync(row, async client => { var box = await OpenAsync(client, Folder(req.Folder), FolderAccess.ReadOnly, ct); return await box.GetMessageAsync(new UniqueId(uidValue), ct); }, ct);
+            }
             (to, cc, subject) = ReplyHeaders(message, row.Email, original.From, original.ReplyTo, original.To, original.Cc, original.Subject ?? "", original.MessageId, original.References, req.ReplyAll);
         }
         else { to = Addresses(req.To, "to"); cc = Addresses(req.Cc, "cc"); subject = Subject(req.Subject); }
@@ -432,7 +583,8 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         catch (Exception e) when (e is IOException or System.Net.Sockets.SocketException or SmtpCommandException or SmtpProtocolException or SslHandshakeException)
         { throw new AppException(502, "MAILBOX_SEND_FAILED", "The mail server did not accept the message. Try again."); }
         // Keep a copy in Sent, as mail apps do; the message is already on its way if this fails.
-        try { await RunImapAsync(row, async client => { var box = await OpenAsync(client, "sent", FolderAccess.ReadWrite, ct); await box.AppendAsync(message, MessageFlags.Seen, ct); return true; }, ct); }
+        // POP has no folders: the provider keeps sent mail itself (as it does for Outlook over POP).
+        if (!IsPop(row)) try { await RunImapAsync(row, async client => { var box = await OpenAsync(client, "sent", FolderAccess.ReadWrite, ct); await box.AppendAsync(message, MessageFlags.Seen, ct); return true; }, ct); }
         catch (Exception e) when (e is AppException or NotFoundException or ConflictException) { }
         await AuditAsync(req, row.Provider);
         return new(true, to.ToString(), cc.ToString(), subject);
