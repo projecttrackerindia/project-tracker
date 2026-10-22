@@ -79,6 +79,7 @@ try{
   else if(ep===`/api/v1/projects/${pid}/agent`&&method==='PUT'){const b=body();writes.push({ep,b});agent={...agent,...b};data=agent;}
   else if(ep===`/api/v1/projects/${pid}/agent`)data=agent;
   else if(ep===`/api/v1/projects/${pid}/agent/findings`)data={items:[],pending:0,canDecide:true};
+  else if(ep===`/api/v1/projects/${pid}/tasks`&&method==='POST'){const b=body();writes.push({ep,b});data={id:'t9',key:'PAY-9',title:b.title};}
   else{
    assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
    if(ep.endsWith('/auth/refresh'))data={accessToken:'synthetic-token',expiresAt:'2099-01-01T00:00:00Z',user};
@@ -208,7 +209,17 @@ try{
  await page.waitForTimeout(400);await page.screenshot({path:path.join(out,'task-suggestions-1440.png'),animations:'disabled'});
  await tm.getByRole('button',{name:'Use all'}).click();await page.waitForTimeout(200);
  assert.equal(await tm.locator('input[type=number]').first().inputValue(),'7');assert.equal(await tm.locator('input[type=date]').last().inputValue(),'2030-01-17');
- assert.equal(await tm.locator('.tsg-chip').count(),0,'every suggestion was used');checks.push('task-suggestions');await page.close();await ctx.close();
+ assert.equal(await tm.locator('.tsg-chip').count(),0,'every suggestion was used');checks.push('task-suggestions');
+ // Quick add: one line of plain words, what was understood shown as chips, one dismissed, Enter adds.
+ await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'detached'}).catch(()=>{});
+ const qa=page.getByLabel('Add a task in plain words');await qa.waitFor();await qa.fill('fix login bug for me by tomorrow, high, 3h');
+ await page.locator('.qa-chip').nth(3).waitFor();assert.equal(await page.locator('.qa-chip').count(),4);assert.equal((await page.locator('.qa-title').innerText()).trim(),'Fix login bug');
+ await page.waitForTimeout(200);await page.screenshot({path:path.join(out,'quick-add-1440.png'),animations:'disabled'});
+ await page.getByRole('button',{name:/Not the estimate/}).click();assert.equal((await page.locator('.qa-title').innerText()).trim(),'Fix login bug, 3h');
+ await qa.press('Enter');for(let i=0;i<20&&!writes.some(w=>w.ep===`/api/v1/projects/${pid}/tasks`);i++)await page.waitForTimeout(100);
+ const made=writes.find(w=>w.ep===`/api/v1/projects/${pid}/tasks`).b;assert.equal(made.title,'Fix login bug, 3h');assert.equal(made.priority,'High');assert.equal(made.assigneeId,user.id);assert.equal(made.estimatedHours,null);
+ assert.match(made.dueDate,/^\d{4}-\d{2}-\d{2}$/);for(let i=0;i<30&&await qa.inputValue()!=='';i++)await page.waitForTimeout(100);assert.equal(await qa.inputValue(),'','the box empties after adding');checks.push('quick-add');
+ await page.close();await ctx.close();
  // AI-first Home: Home becomes the assistant (ask box, conversations, four rule tiles); the sidebar's Assistant becomes Agents; Classic view returns.
  ctx=await make('light');page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
  await page.goto(origin+'/preview-org/command-center');await page.getByRole('button',{name:'AI-first home'}).click();

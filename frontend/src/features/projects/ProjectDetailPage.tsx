@@ -9,6 +9,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { TaskModal } from '../tasks/TaskModal';
+import { QuickAdd } from '../tasks/QuickAdd';
 import { Board, ListView } from './Board';
 import { ProjectFormModal } from './ProjectFormModal';
 import { Attachments } from '../files/Attachments';
@@ -213,6 +214,7 @@ export function ProjectDetailPage() {
         ].filter((t) => allowedTabs.includes(t.id))} />
       </div>
 
+      {(tab === 'board' || tab === 'list') && canCreate && !archived && <QuickAdd projectId={p.id} />}
       {tab === 'board' && <Board projectId={p.id} statuses={detail.statuses} stages={detail.stages} archived={archived} canCreate={canCreate && !archived} onOpenTask={openTask} onAddTask={(statusId) => setNewTask({ statusId })} />}
       {tab === 'list' && <ListView projectId={p.id} stages={detail.stages} archived={archived} canCreate={canCreate && !archived} onOpenTask={openTask} onAddTask={() => setNewTask({})} />}
       {tab === 'issues' && <IssuesPanel projectId={p.id} stages={detail.stages} canReport={reportable} stageFilter={issueStage} onStageFilter={setIssueStage} onOpen={openIssue} onReport={(stageId) => setReporting({ stageId })} />}

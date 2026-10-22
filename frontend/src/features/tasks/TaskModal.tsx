@@ -32,7 +32,7 @@ const EMPTY: Form = { title: '', description: '', statusId: '', priority: 'Mediu
 const NO_STATUSES: WorkflowStatus[] = [];
 
 /** Create or edit a task. Also hosts subtasks and the comment thread when editing. */
-export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: string; projectId?: string; statusId?: string; onClose: () => void }) {
+export function TaskModal({ taskId, projectId, statusId, initial, onClose }: { taskId?: string; projectId?: string; statusId?: string; initial?: Partial<Pick<Form, 'title' | 'priority' | 'assigneeId' | 'dueDate' | 'estimatedHours'>>; onClose: () => void }) {
   const wid = useWorkspaceId();
   const canCreate = useCan('tasks.create');
   const canDelete = useCan('tasks.delete');
@@ -40,7 +40,7 @@ export function TaskModal({ taskId, projectId, statusId, onClose }: { taskId?: s
 
   const [currentId, setCurrentId] = useState<string | undefined>(taskId);
   const [pickedProject, setPickedProject] = useState(projectId ?? '');
-  const [f, setF] = useState<Form>({ ...EMPTY, statusId: statusId ?? '' });
+  const [f, setF] = useState<Form>({ ...EMPTY, ...initial, statusId: statusId ?? '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   // Why an existing due date is being moved (kept in the task's date history and shown on the Portfolio page).
