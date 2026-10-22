@@ -72,7 +72,7 @@ try{
    else if(ep==='/api/v1/document-security/masking')data=masking;
    else if(ep==='/api/v1/audit-logs')data={items:[{id:'a1',tenantId:ws.id,tenantName:null,userId:user.id,userName:'Asha Rao',action:'api.pii_revealed',entityType:'ApiEndpoint',entityId:'e1',oldValue:null,newValue:'{"purpose":"read","reason":"Partner call"}',ipAddress:null,createdAt:iso(-5)}],page:1,totalPages:1,totalItems:1};
    else if(ep==='/api/v1/documents/d3')data=detail;
-   else if(ep==='/api/v1/document-types')data=[];
+   else if(ep==='/api/v1/document-types')data=[['BRD','Business requirements','#2563eb','What the business needs and why'],['API','API documentation','#059669','Endpoints, examples and errors'],['SOP','Standard operating procedure','#d97706','Step-by-step instructions for a task']].map(([code,name,color,description],i)=>({id:'t'+i,code,name,color,description,icon:'note',sections:[],sortOrder:i}));
    else if(ep.startsWith('/api/v1/documents/d3/')||ep.startsWith('/api/v1/documents/d1/'))status=404;
    else if(ep==='/api/v1/timer')data=null;
    else if(ep.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
@@ -91,11 +91,15 @@ try{
 
  // The old Documents link lands in DocTracker; the Control Center sums up scores.
  await page.goto(origin+'/preview-org/documents');await page.waitForURL(/\/doctracker/);
- await page.locator('.dt-home .dt-hero',{hasText:'Control Center'}).waitFor();
+ await page.locator('.dt-home .dt-hero',{hasText:'API quality'}).waitFor();
+ assert.equal(await page.locator('.dl-starter').count(),3,'start a document from a template');await page.locator('.dl-rows .dl-row',{hasText:'Payments BRD'}).first().waitFor();
+ assert.equal(await page.locator('.dt-kpis').count(),0,'no wall of counters');
+ await page.getByLabel('Search DocTracker').fill('refunds');await page.locator('.dl-section[aria-label="Search results"] .dl-row',{hasText:'/refunds'}).waitFor();await page.getByLabel('Search DocTracker').fill('');
  assert.equal((await page.locator('.dt-hero .dt-ring b').first().textContent()).trim(),'77');   // (90+100+40)/3
  await page.locator('.dt-weak li',{hasText:'/refunds'}).waitFor();
  assert.equal(await page.locator('.dt-weak li').count(),1);
- await shot(page,'control-center-1440.png');checks.push('legacy-redirect','control-center');
+ await page.waitForTimeout(900);await page.screenshot({path:path.join(out,'control-center-1440.png'),fullPage:true,animations:'disabled'});checks.push('legacy-redirect','control-center');
+ await page.locator('.dl-starter',{hasText:'Standard operating procedure'}).click();await page.getByRole('dialog').waitFor();await page.waitForTimeout(300);await shot(page,'new-from-template-1440.png');await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'detached'});
 
  // The tree: project ▸ overview, architecture, documents, tags ▸ endpoints.
  await page.getByRole('button',{name:'Open Payments Core'}).click();
@@ -158,7 +162,7 @@ try{
  await page.getByLabel('Search APIs, endpoints and documents').fill('');checks.push('search');
 
  // Security Center: masking rules, audit log.
- await page.getByRole('button',{name:'Security Center'}).click();
+ await page.getByRole('button',{name:'Manage'}).click();await page.getByRole('menuitem',{name:/Security Center/}).click();
  await page.locator('.dt-sec .dt-hero',{hasText:'Security Center'}).waitFor();
  await page.locator('.dt-sec-body',{hasText:'Mobile number'}).waitFor();
  await page.getByRole('tab',{name:'Audit log'}).click();await page.locator('.dt-audit code',{hasText:'api.pii_revealed'}).waitFor();

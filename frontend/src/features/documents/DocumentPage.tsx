@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -7,7 +7,7 @@ import type { DocumentClassification, DocumentDetail, DocumentVisibility } from 
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { Avatar, ErrorState, Field, Modal, PageLoader, SubmitButton } from '../../components/ui';
-import { formatDate, formatDateTime, labelize, timeAgo } from '../../lib/format';
+import { formatDate, formatDateTime, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { queryClient, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
@@ -85,8 +85,10 @@ function DetailsModal({ detail, onClose }: { detail: DocumentDetail; onClose: ()
   );
 }
 
-type DocTab = 'doc' | 'api' | 'artifact' | 'links' | 'requirements' | 'files' | 'secrets' | 'comments' | 'activity';
-const DOC_TABS: DocTab[] = ['doc', 'links', 'requirements', 'files', 'secrets', 'comments', 'activity'];
+type DocTab = 'doc' | 'api' | 'artifact' | 'related' | 'comments' | 'activity';
+const DOC_TABS: DocTab[] = ['doc', 'related', 'comments', 'activity'];
+/** The old separate tabs (links, requirements, files, secrets) are one "Related" tab now; their addresses open it at that card. */
+const RELATED_PARTS = ['links', 'requirements', 'files', 'secrets'] as const;
 
 /** A document with the Documents tree beside it (the tree opens on this document and lists its sections). */
 export function DocumentPage() {
@@ -203,6 +205,7 @@ function DocumentView() {
     const t = params.get('tab') as DocTab | null;
     if (t === 'api') return hasApi ? 'api' : 'doc';
     if (t === 'artifact') return isArtifact ? 'artifact' : 'doc';
+    if ((RELATED_PARTS as readonly string[]).includes(t ?? '')) return 'related';
     return t && (DOC_TABS as string[]).includes(t) ? t : 'doc';
   })();
   const place = d.projectId ? `${d.projectKey} · ${d.projectName}` : d.teamName ?? 'Organization';
@@ -210,10 +213,7 @@ function DocumentView() {
     { id: 'doc', label: 'Document' },
     ...(hasApi ? [{ id: 'api' as const, label: 'API reference', count: apiOverview.data?.endpoints || undefined }] : []),
     ...(isArtifact ? [{ id: 'artifact' as const, label: 'Artifact' }] : []),
-    { id: 'links', label: 'Linked work', count: d.linkedCount || undefined },
-    { id: 'requirements', label: 'Requirements' },
-    { id: 'files', label: 'Files' },
-    { id: 'secrets', label: 'Secrets' },
+    { id: 'related', label: 'Related', count: d.linkedCount || undefined },
     { id: 'comments', label: 'Comments' },
     { id: 'activity', label: 'Activity' },
   ];
@@ -230,9 +230,9 @@ function DocumentView() {
 
       <header className="dv-head">
         <div className="dv-head-main">
-          <div className="dv-eyebrow"><TypeCode doc={d} /><span>{d.typeName}</span></div>
           <h1>{d.title}</h1>
           <div className="dv-byline">
+            <span className="dv-type" title={d.typeName}><TypeCode doc={d} /><span>{d.typeName}</span></span>
             <span className="dv-by"><Avatar name={d.owner.name} userId={d.owner.id} /><b>{d.owner.name}</b></span>
             <span title={formatDateTime(d.updatedAt)}>Updated {timeAgo(d.updatedAt)}</span>
             <span>Version {detail.versionLabel}</span>
@@ -315,15 +315,11 @@ function DocumentView() {
             <div className="dv-props">
               <div className="dv-aside-title">Details{detail.can.edit && <button type="button" className="link" onClick={() => setDetails(true)}>Edit</button>}</div>
               <dl>
-                <dt>Type</dt><dd><i className="dv-swatch" />{d.typeName}</dd>
-                <dt>Status</dt><dd>{labelize(d.status)}</dd>
-                <dt>Version</dt><dd>{detail.versionLabel}{detail.publishedLabel && detail.publishedLabel !== detail.versionLabel && <span className="dv-muted"> · published {detail.publishedLabel}</span>}</dd>
+                {detail.publishedLabel && detail.publishedLabel !== detail.versionLabel && <><dt>Published</dt><dd>v{detail.publishedLabel}</dd></>}
                 <dt>Belongs to</dt><dd>{d.projectId ? <Link to={`/projects/${d.projectId}`}>{place}</Link> : place}</dd>
                 <dt>Visible to</dt><dd title={VISIBILITY[d.visibility].hint}>{VISIBILITY[d.visibility].label}</dd>
                 <dt>Sensitivity</dt><dd title={CLASSIFICATION[d.classification].hint}>{CLASSIFICATION[d.classification].label}</dd>
-                <dt>Owner</dt><dd>{d.owner.name}</dd>
                 <dt>Created</dt><dd title={formatDateTime(d.createdAt)}>{formatDate(d.createdAt)}</dd>
-                <dt>Updated</dt><dd title={formatDateTime(d.updatedAt)}>{timeAgo(d.updatedAt)}</dd>
               </dl>
               {d.tags.length > 0 && <div className="dv-tags">{d.tags.map((t) => <span className="dv-tag" key={t}>{t}</span>)}</div>}
             </div>
@@ -336,10 +332,12 @@ function DocumentView() {
         // the server checks the same permission on every change.
         <div className="dv-panel" role="tabpanel">
           {tab === 'artifact' && <ArtifactCard detail={detail} canEdit={canEdit} />}
-          {tab === 'links' && <LinkedWork documentId={id} canLink={detail.can.link && canWrite} />}
-          {tab === 'requirements' && <RequirementsCard documentId={id} canEdit={canEdit} />}
-          {tab === 'files' && <DocumentFiles documentId={id} canEdit={canEdit} />}
-          {tab === 'secrets' && <DocumentSecrets documentId={id} canEdit={canEdit} />}
+          {tab === 'related' && <RelatedPanel focus={params.get('tab')}>
+            <div id="rel-links"><LinkedWork documentId={id} canLink={detail.can.link && canWrite} /></div>
+            <div id="rel-files"><DocumentFiles documentId={id} canEdit={canEdit} /></div>
+            <div id="rel-requirements"><RequirementsCard documentId={id} canEdit={canEdit} /></div>
+            <div id="rel-secrets"><DocumentSecrets documentId={id} canEdit={canEdit} /></div>
+          </RelatedPanel>}
           {tab === 'comments' && <CommentsCard id={id} title={`${d.key} · ${d.title}`} />}
           {tab === 'activity' && <ActivityCard id={id} title={`${d.key} · ${d.title}`} />}
         </div>
@@ -352,6 +350,14 @@ function DocumentView() {
       {panel === 'publishApproved' && review.data && <PublishApprovedModal detail={detail} review={review.data} onClose={() => setPanel(null)} />}
     </div>
   );
+}
+
+/** Everything around the document's text - linked work, files, requirements and secrets - on one page; an old tab address scrolls to its card. */
+function RelatedPanel({ focus, children }: { focus: string | null; children: ReactNode }) {
+  useEffect(() => {
+    if (focus && focus !== 'related') document.getElementById(`rel-${focus}`)?.scrollIntoView({ block: 'start' });
+  }, [focus]);
+  return <div className="dv-related">{children}</div>;
 }
 
 /** Why someone needs to see the masked values: the reason goes into the audit trail with the reveal. */

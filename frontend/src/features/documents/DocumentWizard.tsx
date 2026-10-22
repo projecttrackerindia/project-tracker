@@ -21,7 +21,7 @@ const hasText = (json: string | undefined) => !!json && /"text":"[^"]*\S/.test(j
  * Create a document in a few steps: what it is and where it lives, then its sections a handful at a time (a BRD is five steps in all), then a
  * look over what was written. Nothing has to be filled in: every section can be written later.
  */
-export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () => void; projectId?: string; onCreated: (id: string) => void }) {
+export function DocumentWizard({ onClose, projectId, onCreated, typeId: startType }: { onClose: () => void; projectId?: string; onCreated: (id: string) => void; typeId?: string }) {
   const wid = useWorkspaceId();
   const personal = useIsPersonal();
   const myId = useAuth((s) => s.ctx?.user?.id);
@@ -32,7 +32,7 @@ export function DocumentWizard({ onClose, projectId, onCreated }: { onClose: () 
   const members = useWsQuery(['members'], workspaceApi.members, { enabled: !personal });
 
   const [step, setStep] = useState(0);
-  const [typeId, setTypeId] = useState('');
+  const [typeId, setTypeId] = useState(startType ?? '');
   const [title, setTitle] = useState('');
   const [where, setWhere] = useState<'project' | 'general'>(projectId || personal ? 'project' : 'project');
   const [project, setProject] = useState(projectId ?? '');

@@ -4,6 +4,7 @@ import { docTrackerApi } from '../../api/endpoints';
 import type { DtCatalog, DtEndpoint, DtProject } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { ErrorState, PageLoader } from '../../components/ui';
+import { Menu } from '../../components/Menu';
 import { useWsQuery } from '../../lib/hooks';
 import { Method } from '../documents/ApiView';
 import { DocShell } from '../documents/DocumentsSidebar';
@@ -62,6 +63,8 @@ export function DocTrackerPage() {
   const nav = useDtNav();
   const navigate = useNavigate();
   const [modal, setModal] = useState<null | 'flows' | 'required' | 'new'>(null);
+  const [newType, setNewType] = useState<string | undefined>();
+  const startNew = (typeId?: string) => { setNewType(typeId); setModal('new'); };
   const catalog = useWsQuery(['documents', 'doctracker', 'catalog'], docTrackerApi.catalog, { staleTime: 20_000 });
   const c = catalog.data;
   const project = c && nav.p ? c.projects.find((x) => pid(x) === nav.p) ?? null : null;
@@ -73,26 +76,29 @@ export function DocTrackerPage() {
   else if (nav.view === 'security') main = <DtSecurity isAdmin={c.isAdmin} />;
   else if (project && endpoint) main = <DtEndpointView project={project} endpoint={endpoint} catalog={c} />;
   else if (project) main = <DtProjectView project={project} tab={nav.t} catalog={c} />;
-  else if (nav.p && !project) main = <div className="dt-missing"><Icon name="alert" /> That project is not here any more, or you can't open it. <Link to="/doctracker">Back to the Control Center</Link></div>;
-  else main = <DtHome catalog={c} onRequired={() => setModal('required')} />;
+  else if (nav.p && !project) main = <div className="dt-missing"><Icon name="alert" /> That project is not here any more, or you can't open it. <Link to="/doctracker">Back to DocTracker</Link></div>;
+  else main = <DtHome catalog={c} onRequired={() => setModal('required')} onNew={startNew} />;
 
   return (
     <div className="doc-scope ds-page dt-page">
       <header className="ds-head dt-head">
         <div className="ds-head-main">
           <h1><span className="dt-logo" aria-hidden><Icon name="layers" size={18} /></span> DocTracker</h1>
-          <p>Every project's APIs, architecture and documents - scored, masked and audited.</p>
+          <p>Your documents, APIs and architecture, in one place.</p>
         </div>
         <div className="ds-head-actions">
-          {c?.isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setModal('required')}><Icon name="checks" size={14} /> Required documents</button>}
-          <button className="btn btn-ghost btn-sm" onClick={() => setModal('flows')}><Icon name="checks" size={14} /> Approval workflows</button>
-          {c?.canCreate && <button className="btn btn-primary" onClick={() => setModal('new')}><Icon name="plus" /> New document</button>}
+          <Menu label="Manage" icon="settings" items={[
+            { label: 'Security Center', hint: 'Masking, reveals, access requests and the audit trail', icon: 'shield', onSelect: () => nav.go({ view: 'security' }) },
+            { label: 'Approval workflows', hint: 'Who reviews before a document is published', icon: 'checks', onSelect: () => setModal('flows') },
+            { label: 'Required documents', hint: 'Documents every project must have', icon: 'flag', onSelect: () => setModal('required'), hidden: !c?.isAdmin },
+          ]} />
+          {c?.canCreate && <button className="btn btn-primary" onClick={() => startNew()}><Icon name="plus" /> New document</button>}
         </div>
       </header>
       <DocShell browseLabel="Browse DocTracker" tree={c ? <DtTree catalog={c} /> : <div className="ds-rail"><PageLoader /></div>}>{main}</DocShell>
       {modal === 'flows' && <WorkflowsModal onClose={() => setModal(null)} />}
       {modal === 'required' && <RequiredDocumentsModal onClose={() => setModal(null)} />}
-      {modal === 'new' && <DocumentWizard projectId={project?.id ?? undefined} onClose={() => setModal(null)} onCreated={(id) => navigate(`/documents/${id}`)} />}
+      {modal === 'new' && <DocumentWizard projectId={project?.id ?? undefined} typeId={newType} onClose={() => setModal(null)} onCreated={(id) => navigate(`/documents/${id}`)} />}
     </div>
   );
 }
@@ -121,7 +127,8 @@ function DtTree({ catalog, activeDocId }: { catalog: DtCatalog; activeDocId?: st
     }
     return { eps: eps.slice(0, 40), docs: docs.slice(0, 20), projects: catalog.projects.filter((p) => `${p.name} ${p.key ?? ''}`.toLowerCase().includes(dq)) };
   }, [catalog, dq]);
-  const pinned: { id: 'home' | 'security'; label: string; icon: IconName }[] = [{ id: 'home', label: 'Control Center', icon: 'grid' }, { id: 'security', label: 'Security Center', icon: 'shield' }];
+  // Home first; the Security Center shows here only while it is open (it is reached from Manage).
+  const pinned: { id: 'home' | 'security'; label: string; icon: IconName }[] = [{ id: 'home', label: 'Home', icon: 'grid' }, ...(nav.view === 'security' ? [{ id: 'security' as const, label: 'Security Center', icon: 'shield' as IconName }] : [])];
   return (
     <nav className="doc-sidebar ds-rail ds-tree dt-tree" aria-label="DocTracker">
       <div className="ds-rail-search">

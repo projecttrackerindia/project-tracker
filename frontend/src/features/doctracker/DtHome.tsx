@@ -1,5 +1,8 @@
-import { type CSSProperties } from 'react';
-import type { DtCatalog, DtEndpoint, DtProject } from '../../api/types';
+import { useState, type CSSProperties } from 'react';
+import { Link } from 'react-router-dom';
+import { documentApi } from '../../api/endpoints';
+import { useWsQuery } from '../../lib/hooks';
+import type { DtCatalog, DtDocument, DtEndpoint, DtProject } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState } from '../../components/ui';
 import { timeAgo } from '../../lib/format';
@@ -9,7 +12,6 @@ import { NeedsAttention } from '../documents/NeedsAttention';
 import { pid, scoreTone, useDtNav } from './DocTrackerPage';
 
 export const avg = (eps: DtEndpoint[]) => (eps.length ? Math.round(eps.reduce((a, e) => a + e.score, 0) / eps.length) : 0);
-const lastUpdate = (p: DtProject) => [...p.endpoints.map((e) => e.updatedAt), ...p.documents.map((d) => d.updatedAt)].filter(Boolean).sort().pop() ?? null;
 
 /** A ring showing a 0-100 score. */
 export function ScoreRing({ score, size = 54, label }: { score: number; size?: number; label?: string }) {
@@ -36,83 +38,142 @@ export function Kpi({ icon, label, value, hint, tone }: { icon: IconName; label:
 
 export const ScoreBar = ({ score }: { score: number }) => <span className={`dt-bar ${scoreTone(score)}`} title={`Documentation score ${score} / 100`}><span className="dt-bar-track"><i style={{ width: `${score}%` }} /></span><b>{score}</b></span>;
 
-/** The DocTracker Control Center: how well every project's APIs are documented, and what to fix first. */
-export function DtHome({ catalog, onRequired }: { catalog: DtCatalog; onRequired: () => void }) {
+/**
+ * DocTracker's front page, built around what people come here to do: find a document, start one from a template, see what needs them and
+ * pick up recent work. How well the APIs are documented is one compact card further down (the full scores live on each project).
+ */
+export function DtHome({ catalog, onRequired, onNew }: { catalog: DtCatalog; onRequired: () => void; onNew: (typeId?: string) => void }) {
   const nav = useDtNav();
+  const [q, setQ] = useState('');
+  const types = useWsQuery(['document-types'], documentApi.types, { staleTime: 300_000 });
   const projects = catalog.projects;
   const eps = projects.flatMap((p) => p.endpoints.map((e) => ({ p, e })));
   const apis = projects.reduce((a, p) => a + p.definitions.length, 0);
-  const docs = projects.reduce((a, p) => a + p.documents.filter((d) => !d.isApi).length, 0);
-  const diagrams = projects.reduce((a, p) => a + p.diagrams, 0);
   const score = avg(eps.map((x) => x.e));
   const weak = eps.filter((x) => x.e.score < 70).sort((a, b) => a.e.score - b.e.score);
-  const live = eps.filter((x) => x.e.stage === 'Production').length;
-  const active = projects.filter((p) => p.endpoints.length || p.documents.length || p.diagrams);
   const gaps = new Map<string, number>();
   for (const { e } of eps) for (const g of e.gaps) gaps.set(g, (gaps.get(g) ?? 0) + 1);
-  const topGaps = [...gaps.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const topGaps = [...gaps.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const docs = projects.flatMap((p) => p.documents.map((d) => ({ p, d })));
+  const recent = [...docs].sort((a, b) => b.d.updatedAt.localeCompare(a.d.updatedAt)).slice(0, 8);
+  const dq = q.trim().toLowerCase();
+  const hits = dq.length < 2 ? null : {
+    docs: docs.filter(({ d }) => `${d.key} ${d.title} ${d.typeName}`.toLowerCase().includes(dq)).slice(0, 8),
+    eps: eps.filter(({ e }) => `${e.method} ${e.path} ${e.summary} ${e.tag ?? ''}`.toLowerCase().includes(dq)).slice(0, 8),
+    projects: projects.filter((p) => `${p.name} ${p.key ?? ''}`.toLowerCase().includes(dq)).slice(0, 4),
+  };
+  // What needs attention, from the same numbers the list uses; when there is nothing, one line instead of an empty card.
+  const dash = useWsQuery(['documents', 'dashboard'], documentApi.dashboard);
+  const attention = dash.data ? (dash.data.projectsMissingRequired ?? 0) + dash.data.notUpdatedIn90Days + dash.data.unpublished : 0;
+  const starters = (types.data ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder).slice(0, 6);
 
   return (
-    <div className="dt-home">
-      <section className="dt-hero">
-        <ScoreRing score={score} size={92} label="Average documentation score" />
-        <div>
-          <h2>Control Center</h2>
-          <p className="muted">{eps.length ? `${eps.length.toLocaleString()} endpoints across ${apis.toLocaleString()} API${apis === 1 ? '' : 's'} average ${score}/100. ${weak.length ? `${weak.length.toLocaleString()} need work.` : 'Everything is well documented.'}` : 'Describe or import an API in a project to start scoring its documentation.'}</p>
-        </div>
-      </section>
-      <div className="dt-kpis">
-        <Kpi icon="folder" label="Projects documented" value={active.length} hint={`of ${projects.length}`} />
-        <Kpi icon="layers" label="APIs" value={apis} />
-        <Kpi icon="code" label="Endpoints" value={eps.length.toLocaleString()} hint={live ? `${live} in production` : undefined} />
-        <Kpi icon="alert" label="Need work" value={weak.length} hint="score under 70" tone={weak.length ? 'warn' : 'good'} />
-        <Kpi icon="workflow" label="Diagrams" value={diagrams} />
-        <Kpi icon="note" label="Documents" value={docs} />
-      </div>
-      {catalog.truncated > 0 && <div className="doc-alert info"><Icon name="info" size={16} /><div>Showing the first endpoints only; {catalog.truncated.toLocaleString()} more are not scored here.</div></div>}
+    <div className="dt-home dl">
+      <label className="dl-search">
+        <Icon name="search" size={18} />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search documents, APIs and endpoints" aria-label="Search DocTracker" />
+      </label>
 
-      <section className="dt-card">
-        <div className="dt-card-head"><h3>Projects</h3><span className="muted">Open one for its APIs, architecture and documents</span></div>
-        {projects.length === 0 ? <EmptyState icon="folder" title="No projects yet" /> : (
-          <div className="dt-table-wrap"><table className="dt-table">
-            <thead><tr><th>Project</th><th>APIs</th><th>Endpoints</th><th className="w-score">Score</th><th>Diagrams</th><th>Documents</th><th>Updated</th></tr></thead>
-            <tbody>{projects.map((p) => (
-              <tr key={pid(p)} onClick={() => nav.go({ p: pid(p) })} className="clickable">
-                <td><span className="dt-proj"><span className="ds-avatar" style={{ '--av': p.id ? avatarColor(p.id) : 'var(--text-3)' } as CSSProperties}>{(p.key ?? p.name).charAt(0).toUpperCase()}</span><b>{p.name}</b>{p.key && <small>{p.key}</small>}</span></td>
-                <td>{p.definitions.length || '–'}</td><td>{p.endpoints.length || '–'}</td>
-                <td>{p.endpoints.length ? <ScoreBar score={avg(p.endpoints)} /> : <span className="muted">–</span>}</td>
-                <td>{p.diagrams || '–'}</td><td>{p.documents.filter((d) => !d.isApi).length || '–'}</td>
-                <td className="muted">{lastUpdate(p) ? timeAgo(lastUpdate(p)) : '–'}</td>
-              </tr>
-            ))}</tbody>
-          </table></div>
+      {hits ? (
+        <section className="dl-section" aria-label="Search results">
+          {hits.docs.length + hits.eps.length + hits.projects.length === 0 && <p className="dl-empty">Nothing matches “{q.trim()}”.</p>}
+          {hits.docs.length > 0 && <><h3>Documents</h3><ul className="dl-rows">{hits.docs.map(({ p, d }) => <DocRow key={d.id} p={p} d={d} />)}</ul></>}
+          {hits.eps.length > 0 && <><h3>Endpoints</h3><ul className="dl-rows">{hits.eps.map(({ p, e }) => (
+            <li key={e.id}><button type="button" className="dl-row" onClick={() => nav.go({ p: pid(p), ep: e.id })}>
+              <Method m={e.method} /><code className="dl-path">{e.path}</code><span className="dl-row-sub">{e.summary || p.name}</span><ScoreBar score={e.score} />
+            </button></li>))}</ul></>}
+          {hits.projects.length > 0 && <><h3>Projects</h3><ul className="dl-rows">{hits.projects.map((p) => (
+            <li key={pid(p)}><button type="button" className="dl-row" onClick={() => nav.go({ p: pid(p) })}><ProjectMark p={p} /><b>{p.name}</b><span className="dl-row-sub">{p.key}</span></button></li>))}</ul></>}
+        </section>
+      ) : <>
+        {catalog.canCreate && starters.length > 0 && (
+          <section className="dl-section" aria-label="Start a document">
+            <header><h3>Start a document</h3><button type="button" className="mb-link" onClick={() => onNew()}>All templates</button></header>
+            <div className="dl-starters">
+              {starters.map((t) => (
+                <button key={t.id} type="button" className="dl-starter" style={{ '--dc': t.color } as CSSProperties} onClick={() => onNew(t.id)}>
+                  <span className="dl-starter-code">{t.code}</span><b>{t.name}</b>{t.description && <small>{t.description}</small>}
+                </button>
+              ))}
+            </div>
+          </section>
         )}
-      </section>
 
-      <div className="dt-split">
-        <section className="dt-card">
-          <div className="dt-card-head"><h3>Fix these first</h3><span className="muted">Lowest documentation scores</span></div>
-          {weak.length === 0 ? <p className="muted dt-pad">Nothing below 70. Nice.</p> : (
-            <ul className="dt-weak">{weak.slice(0, 10).map(({ p, e }) => (
-              <li key={e.id}><button type="button" onClick={() => nav.go({ p: pid(p), ep: e.id })}>
-                <Method m={e.method} /><code>{e.path}</code><span className="muted dt-weak-proj">{p.name}</span><ScoreBar score={e.score} />
-                <small className="dt-weak-gaps">{e.gaps.slice(0, 3).join(' · ')}</small>
-              </button></li>
-            ))}</ul>
-          )}
-        </section>
-        <section className="dt-card">
-          <div className="dt-card-head"><h3>Most common gaps</h3></div>
-          {topGaps.length === 0 ? <p className="muted dt-pad">No gaps found.</p> : (
-            <ul className="dt-gaps">{topGaps.map(([g, n]) => <li key={g}><span>{g}</span><b>{n}</b><i style={{ width: `${Math.round((n / eps.length) * 100)}%` }} /></li>)}</ul>
-          )}
-          <p className="muted dt-pad dt-score-help">Score: summary 15 · description 15 · authentication 15 · described parameters 15 · request example 15 · success example 15 · error cases 10.</p>
-        </section>
-      </div>
-      <section className="dt-card dt-attn">
-        <div className="dt-card-head"><h3>Documents that need attention</h3><span className="muted">Missing required documents, unpublished changes, nothing updated in 90 days</span></div>
-        <div className="dt-pad"><NeedsAttention canCreate={catalog.canCreate} isAdmin={catalog.isAdmin} onRequired={onRequired} /></div>
-      </section>
+        <div className="dl-split">
+          <section className="dl-section" aria-label="Recent documents">
+            <header><h3>Recent documents</h3></header>
+            {recent.length === 0 ? <EmptyState icon="note" title="No documents yet" text={catalog.canCreate ? 'Start one from a template above.' : undefined} /> : (
+              <ul className="dl-rows">{recent.map(({ p, d }) => <DocRow key={d.id} p={p} d={d} />)}</ul>
+            )}
+          </section>
+          <section className="dl-section" aria-label="Projects">
+            <header><h3>Projects</h3></header>
+            <ul className="dl-projects">
+              {projects.map((p) => {
+                const n = p.documents.filter((d) => !d.isApi).length;
+                return (
+                  <li key={pid(p)}><button type="button" className="dl-project" onClick={() => nav.go({ p: pid(p) })}>
+                    <ProjectMark p={p} />
+                    <span className="dl-project-main"><b>{p.name}</b>
+                      <small>{[n ? `${n} document${n === 1 ? '' : 's'}` : '', p.endpoints.length ? `${p.endpoints.length} endpoint${p.endpoints.length === 1 ? '' : 's'}` : '', p.diagrams ? `${p.diagrams} diagram${p.diagrams === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ') || 'Nothing yet'}</small></span>
+                    {p.endpoints.length > 0 && <ScoreBar score={avg(p.endpoints)} />}
+                  </button></li>
+                );
+              })}
+              {projects.length === 0 && <li className="dl-empty">No projects yet.</li>}
+            </ul>
+          </section>
+        </div>
+
+        {attention > 0 ? (
+          <section className="dl-section dt-attn" aria-label="Needs attention">
+            <header><h3>Needs attention</h3><span className="muted">Missing required documents, nothing updated in 90 days, never published</span></header>
+            <NeedsAttention canCreate={catalog.canCreate} isAdmin={catalog.isAdmin} onRequired={onRequired} />
+          </section>
+        ) : dash.data && (
+          <p className="dl-allclear"><Icon name="checkCircle" size={15} /> Nothing needs attention: no missing, stale or unpublished documents.
+            {catalog.isAdmin && dash.data.requiredTypes === 0 && <button type="button" className="mb-link" onClick={onRequired}>Choose documents every project must have</button>}</p>
+        )}
+
+        {eps.length > 0 && (
+          <section className="dl-section dt-quality" aria-label="API quality">
+            <div className="dt-hero">
+              <ScoreRing score={score} size={64} label="Average documentation score" />
+              <div>
+                <h3>API quality</h3>
+                <p className="muted">{`${eps.length.toLocaleString()} endpoint${eps.length === 1 ? '' : 's'} across ${apis.toLocaleString()} API${apis === 1 ? '' : 's'} average ${score}/100. ${weak.length ? `${weak.length.toLocaleString()} need work.` : 'Everything is well documented.'}`}</p>
+                {topGaps.length > 0 && <div className="dl-gaps">{topGaps.map(([g, n]) => <span key={g}>{g} <b>{n}</b></span>)}</div>}
+              </div>
+            </div>
+            {catalog.truncated > 0 && <div className="doc-alert info"><Icon name="info" size={16} /><div>Showing the first endpoints only; {catalog.truncated.toLocaleString()} more are not scored here.</div></div>}
+            {weak.length > 0 && (
+              <ul className="dt-weak">{weak.slice(0, 5).map(({ p, e }) => (
+                <li key={e.id}><button type="button" onClick={() => nav.go({ p: pid(p), ep: e.id })}>
+                  <Method m={e.method} /><code>{e.path}</code><span className="muted dt-weak-proj">{p.name}</span><ScoreBar score={e.score} />
+                  <small className="dt-weak-gaps">{e.gaps.slice(0, 3).join(' · ')}</small>
+                </button></li>
+              ))}</ul>
+            )}
+          </section>
+        )}
+      </>}
     </div>
+  );
+}
+
+function ProjectMark({ p }: { p: DtProject }) {
+  return <span className="ds-avatar" style={{ '--av': p.id ? avatarColor(p.id) : 'var(--text-3)' } as CSSProperties}>{(p.key ?? p.name).charAt(0).toUpperCase()}</span>;
+}
+
+function DocRow({ p, d }: { p: DtProject; d: DtDocument }) {
+  return (
+    <li>
+      <Link to={`/documents/${d.id}`} className="dl-row">
+        <span className="ds-type-code" style={{ '--dc': d.typeColor } as CSSProperties}>{d.typeCode}</span>
+        <b className="dl-row-title">{d.title}</b>
+        <span className="dl-row-sub">{p.name}</span>
+        <time className="dl-row-time" dateTime={d.updatedAt}>{timeAgo(d.updatedAt)}</time>
+      </Link>
+    </li>
   );
 }
