@@ -28,10 +28,12 @@ public sealed class BackupProviderRuntimeTests
     { var events = new List<AiChatEvent>(); await foreach (var e in chat.StreamAsync(request ?? Ask(), ct)) events.Add(e); return events; }
     private static HttpResponseMessage Answer(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body) };
     /// <summary>A one-shot chat-completions answer.</summary>
-    private static HttpResponseMessage OneShot(string text) => Answer($$"""{"choices":[{"message":{"role":"assistant","content":"{{text}}"},"finish_reason":"stop"}]}""");
+    private static HttpResponseMessage OneShot(string text) =>
+        Answer("{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"" + text + "\"},\"finish_reason\":\"stop\"}]}");
     /// <summary>A streamed chat-completions answer: one text delta, a finish reason and usage, then [DONE].</summary>
     private static HttpResponseMessage Streamed(string text, int input = 12, int output = 2) => new(HttpStatusCode.OK) { Content = new StringContent(
-        $$"""data: {"choices":[{"delta":{"content":"{{text}}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":{{input}},"completion_tokens":{{output}}}}""" + "\n\ndata: [DONE]\n\n", System.Text.Encoding.UTF8, "text/event-stream") };
+        "data: {\"choices\":[{\"delta\":{\"content\":\"" + text + "\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":" + input + ",\"completion_tokens\":" + output + "}}\n\ndata: [DONE]\n\n",
+        System.Text.Encoding.UTF8, "text/event-stream") };
     /// <summary>Answers the one-shot and the streamed route with the same text, whichever is asked.</summary>
     private static Handler Both(string text) => new((req, _) => Task.FromResult(req.Content is null ? OneShot(text) : req.Content.ReadAsStringAsync().Result.Contains("\"stream\":true") ? Streamed(text) : OneShot(text)));
 

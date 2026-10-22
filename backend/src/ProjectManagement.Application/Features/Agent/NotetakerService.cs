@@ -37,7 +37,7 @@ public record SendMinutesRequest(string Account, string To, string? Cc, string S
 public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetingService meetings, ProjectAccess access, MeetingBotClient botService,
     ISecretProtector secrets, AppClock clock, IAiClient ai, AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions,
     MailboxService mailbox, GoogleMeetingClient google, NotificationService notifications, Recorder recorder, ILogger<NotetakerService> log, AgentSignalService signals,
-    ProjectManagement.Application.Features.Tasks.TaskService tasks, IEmailSender email, AgentSettingsService agentSettings, IOptions<ProjectManagement.Application.Common.AppOptions> app)
+    IEmailSender email, AgentSettingsService agentSettings, IOptions<ProjectManagement.Application.Common.AppOptions> app)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
