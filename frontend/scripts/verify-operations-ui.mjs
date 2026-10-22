@@ -121,7 +121,7 @@ try{
  assert.equal(writes.find(w=>w.ep==='/api/v1/operations/settings').b.businessHoursOnly,true);
  assert.ok(await page.locator('.ops-rule',{hasText:'Production Support'}).isVisible());await shot(page,'settings-1440.png');checks.push('settings');
  // New work: smart triage.
- await page.locator('.ops-tabs .tab',{hasText:'Queue'}).click();await page.getByRole('button',{name:'New work task'}).click();
+ await page.locator('.ops-tabs .tab',{hasText:'Queue'}).click();await page.getByRole('button',{name:'New ticket'}).click();
  await page.getByPlaceholder('e.g. Fix production issue in payment calculation').fill('Printer stuck urgent on floor 3');
  await page.locator('.ops-triage').waitFor({timeout:5000});assert.ok(await page.locator('.ops-dupe',{hasText:'WT-1'}).isVisible());
  await page.locator('.ops-sug',{hasText:'High priority'}).click();await shot(page,'triage-1440.png');checks.push('triage');

@@ -161,7 +161,7 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
   ) : <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>;
 
   return (
-    <Modal title={task ? `${task.key} · Work task` : 'New work task'} subtitle={task ? (canEdit ? 'Update the details of this work task.' : 'You can read this work task but not change it.') : 'Operational work that is not a task on a project’s timeline.'}
+    <Modal title={task ? `${task.key} · Ticket` : 'New ticket'} subtitle={task ? (canEdit ? 'Update the details of this ticket.' : 'You can read this ticket but not change it.') : 'A support request, bug, change or other operational work, outside a project’s timeline.'}
       onClose={onClose} size="lg" footer={footer} onSubmit={tab === 'details' && canEdit ? submit : undefined}>
       {task && (
         <div className="rm-bar"><Viewers kind="work" id={task.id} />

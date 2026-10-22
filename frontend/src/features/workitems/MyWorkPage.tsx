@@ -82,10 +82,10 @@ export function MyWorkPage({ embedded = false }: { embedded?: boolean } = {}) {
   return (
     <>
       {embedded ? (
-        canCreateWork && <div className="mywork-embedded-actions"><button type="button" className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New work task</button></div>
+        canCreateWork && <div className="mywork-embedded-actions"><button type="button" className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New ticket</button></div>
       ) : (
         <PageHead title="My work" sub="Everything assigned to you, whatever kind of work it is, in the order it is due.">
-          {canCreateWork && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New work task</button>}
+          {canCreateWork && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New ticket</button>}
         </PageHead>
       )}
 

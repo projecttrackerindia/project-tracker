@@ -127,7 +127,7 @@ export function WorkTasksPage() {
       <PageHead title="Operations" sub="Your support desk and operational work: tickets, bug fixes, analysis and requests, with SLA tracking, resolution notes and analytics.">
         <button type="button" className="btn btn-ghost" onClick={exportCsv} title="Download the filtered list as a CSV file now"><Icon name="download" /> Export CSV</button>
         {canReports && <Link className="btn btn-ghost" to="/reports?kind=WorkTasks" title="Excel or PDF, built in the background"><Icon name="download" /> Excel / PDF</Link>}
-        {canCreate && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New work task</button>}
+        {canCreate && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New ticket</button>}
       </PageHead>
 
       <nav className="tabs route-tabs ops-tabs" aria-label="Operations">
@@ -198,7 +198,7 @@ export function WorkTasksPage() {
         {list.isLoading ? <PageLoader /> : list.isError ? <ErrorState error={list.error} retry={() => void list.refetch()} /> : items.length === 0 ? (
           <EmptyState icon="bolt" title={hasFilters ? 'No work tasks match these filters' : mine ? 'Nothing is assigned to you' : 'No work tasks yet'}
             text={hasFilters ? undefined : 'Operations is the support desk: log tickets, bug fixes, analysis and other operational work that does not need a project.'}
-            action={hasFilters ? <button type="button" className="btn btn-ghost" onClick={reset}>Clear filters</button> : canCreate ? <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New work task</button> : undefined} />
+            action={hasFilters ? <button type="button" className="btn btn-ghost" onClick={reset}>Clear filters</button> : canCreate ? <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New ticket</button> : undefined} />
         ) : (
           <>
             <div className="table-wrap">

@@ -253,6 +253,21 @@ public sealed class GeminiChat(IHttpClientFactory http, IOptions<AiOptions> opti
 
     private static AppException Bad(string code) => new(502, code, "Gemini returned an incomplete or unsupported response. Please try a narrower question.");
 
+    /// <summary>
+    /// Gemini 2.5 models think before answering, and that thinking counts against maxOutputTokens: a short structured task (a triage suggestion,
+    /// a search filter, a risk score) would spend its whole budget thinking and return cut-off JSON. Thinking is switched off unless the person
+    /// asked to see the reasoning; Flash allows a budget of 0, Pro needs at least 128, so Pro gets its smallest budget on top of the answer's.
+    /// </summary>
+    public static JsonObject Generation(AiChatRequest request, int maxOutput)
+    {
+        var config = new JsonObject { ["maxOutputTokens"] = maxOutput };
+        if (request.ShowReasoning || !request.Model.Contains("2.5", StringComparison.Ordinal)) return config;
+        var pro = request.Model.Contains("pro", StringComparison.OrdinalIgnoreCase);
+        config["thinkingConfig"] = new JsonObject { ["thinkingBudget"] = pro ? 128 : 0 };
+        if (pro) config["maxOutputTokens"] = maxOutput + 128;
+        return config;
+    }
+
     private JsonObject Build(AiChatRequest request, int maxOutput)
     {
         var contents = new JsonArray();
@@ -291,7 +306,7 @@ public sealed class GeminiChat(IHttpClientFactory http, IOptions<AiOptions> opti
         {
             ["systemInstruction"] = new JsonObject { ["parts"] = new JsonArray(new JsonObject { ["text"] = request.System + "\n\n" + request.Context }) },
             ["contents"] = contents,
-            ["generationConfig"] = new JsonObject { ["maxOutputTokens"] = maxOutput }
+            ["generationConfig"] = Generation(request, maxOutput)
         };
         if (request.Tools.Count > 0) body["tools"] = new JsonArray(new JsonObject
         {
