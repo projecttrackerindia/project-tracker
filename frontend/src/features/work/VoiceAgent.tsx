@@ -1,206 +1,291 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ApiError, del, get, post, put, uploadFile } from '../../api/client';
 import { workApi } from '../../api/endpoints.platform';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconName } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { Modal, PageLoader, ErrorState, Spinner } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
-import { confirmDialog, toast } from '../../stores/ui';
+import { toast } from '../../stores/ui';
 import './voice.css';
+import './voiceTools.css';
 import { audioSupported, playParts, startRecording, stopPlayback, unlockAudio, wavSeconds, type Recording } from './voiceAudio';
+import { errText, voiceApi, type Call, type CallItem, type Reply, type Turn, type VoiceSettings } from './voiceApi';
+import { ToolsTab } from './VoiceTools';
 
-interface VoiceSettings {
-  enabled: boolean; agentName: string; companyName: string; languages: string[]; knowledge: string | null; requireVerification: boolean; verificationRule: string;
-  transferNumber: string | null; workTypeId: string | null; storageKeyPattern: string; archiveConfigured: boolean; canManage: boolean; availableLanguages: Record<string, string>; speechConfigured?: boolean;
-}
-interface Connector { id: string; name: string; description: string; method: string; urlTemplate: string; headerName: string | null; hasSecret: boolean; enabled: boolean; placeholders: string[] }
-interface Turn { role: 'agent' | 'caller' | 'tool'; text: string; at: string; tool?: string | null }
-interface Call { id: string; channel: string; direction: string; callerNumber: string | null; language: string; status: string; startedAt: string; endedAt: string | null; turns: Turn[]; summary: string | null; workTaskId: string | null; ticketKey: string | null; verified: boolean; transferred: boolean; archiveKey: string | null }
-interface Reply { call: Call; say: string; ended: boolean; audio?: string | null; heard?: string | null; audioParts?: string[] | null; fillers?: { kind: 'ack' | 'hold'; audio: string }[] | null }
-interface CallItem { id: string; channel: string; callerNumber: string | null; language: string; status: string; startedAt: string; endedAt: string | null; summary: string | null; ticketKey: string | null; transferred: boolean }
-
-const voiceApi = {
-  settings: () => get<VoiceSettings>('/voice/settings'),
-  save: (b: Omit<VoiceSettings, 'archiveConfigured' | 'canManage' | 'availableLanguages' | 'speechConfigured'>) => put<VoiceSettings>('/voice/settings', b),
-  connectors: () => get<Connector[]>('/voice/connectors'),
-  saveConnector: (b: Partial<Connector> & { secret?: string }, id?: string) => (id ? put<Connector>(`/voice/connectors/${id}`, b) : post<Connector>('/voice/connectors', b)),
-  removeConnector: (id: string) => del(`/voice/connectors/${id}`),
-  calls: () => get<CallItem[]>('/voice/calls'),
-  call: (id: string) => get<Call>(`/voice/calls/${id}`),
-  start: (b: { callerNumber?: string; language?: string; speak?: boolean }) => post<Reply>('/voice/calls/test', b),
-  say: (id: string, text: string, speak = false) => post<Reply>(`/voice/calls/${id}/say`, { text, speak }),
-  listen: (id: string, audio: File) => uploadFile<Reply>(`/voice/calls/${id}/listen`, audio),
-  end: (id: string) => post<Call>(`/voice/calls/${id}/end`, {}),
-};
-const errText = (e: unknown, f: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : f);
 const PATTERN_HELP = '{yyyy} {MM} {dd} {HH} {callId} {ticket} {language} {channel}';
+type Tab = 'overview' | 'agent' | 'tools' | 'calls' | 'setup';
+const TABS: { id: Tab; label: string; icon: IconName; manage?: boolean }[] = [
+  { id: 'overview', label: 'Overview', icon: 'dashboard' },
+  { id: 'agent', label: 'Agent', icon: 'user', manage: true },
+  { id: 'tools', label: 'Tools', icon: 'link', manage: true },
+  { id: 'calls', label: 'Calls', icon: 'phone' },
+  { id: 'setup', label: 'Setup', icon: 'settings', manage: true },
+];
+const TAB_KEY = 'pt.voice.tab';
 
-/** Operations › Voice agent: the AI that answers the support line, in the caller's language. */
+/** Operations › Voice agent: the AI that answers the support line, in the caller's language. One area per job instead of one long page. */
 export function VoiceAgentPanel() {
   const q = useWsQuery(['voice', 'settings'], voiceApi.settings);
   const [test, setTest] = useState(false);
+  const [tab, setTabState] = useState<Tab>(() => { try { return (localStorage.getItem(TAB_KEY) as Tab) || 'overview'; } catch { return 'overview'; } });
+  const setTab = (t: Tab) => { setTabState(t); try { localStorage.setItem(TAB_KEY, t); } catch { /* per-browser convenience only */ } };
   if (q.isLoading) return <PageLoader />;
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => void q.refetch()} />;
   const s = q.data;
+  const tabs = TABS.filter((t) => !t.manage || s.canManage);
+  const current = tabs.some((t) => t.id === tab) ? tab : 'overview';
   return (
     <div className="va">
-      <header className="va-hero">
-        <div>
-          <span className="va-eyebrow"><Icon name="phone" size={13} /> AI voice agent</span>
-          <h2>{s.agentName} answers your support line</h2>
-          <p>Speaks {s.languages.map((l) => s.availableLanguages[l] ?? l).join(', ')}. Checks the caller, reads your systems, logs a ticket and hands over to a person when needed.</p>
+      <header className="va-top">
+        <div className="va-who">
+          <span className="va-avatar" aria-hidden="true"><Icon name="mic" size={18} /></span>
+          <div>
+            <h2>{s.agentName}<span className={`va-state ${s.enabled ? 'on' : ''}`}>{s.enabled ? 'Answering' : 'Off'}</span></h2>
+            <p>AI voice agent · {s.languages.map((l) => s.availableLanguages[l] ?? l).join(', ')}</p>
+          </div>
         </div>
-        <div className="va-hero-actions">
-          <span className={`va-state ${s.enabled ? 'on' : ''}`}>{s.enabled ? 'On' : 'Off'}</span>
-          <button className="btn btn-primary" onClick={() => setTest(true)}><Icon name="message" size={15} /> Try a test call</button>
-        </div>
+        <button className="btn btn-primary" onClick={() => setTest(true)}><Icon name="phone" size={15} /> Test call</button>
       </header>
-      <ol className="va-steps">
-        <li className="done"><b>1. Agent and languages</b><span>Below</span></li>
-        <li className={s.archiveConfigured ? 'done' : ''}><b>2. Storage for recordings</b><span>{s.archiveConfigured ? 'S3 bucket connected' : 'Add the S3 bucket in Railway'}</span></li>
-        <li className={s.speechConfigured ? 'done' : ''}><b>3. Speech (Sarvam AI)</b><span>{s.speechConfigured ? 'Voice ready — try a spoken test call' : 'Add the key in Railway for real voice'}</span></li>
-        <li><b>4. Phone number</b><span>Plivo or Exotel trial; calls your verified mobile</span></li>
-      </ol>
-      {s.canManage && <SettingsForm s={s} />}
-      {s.canManage && <Connectors />}
-      <CallLog />
+      <nav className="va-tabs" role="tablist" aria-label="Voice agent">
+        {tabs.map((t) => (
+          <button key={t.id} role="tab" aria-selected={current === t.id} className={current === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>
+            <Icon name={t.icon} size={15} /> {t.label}
+          </button>
+        ))}
+      </nav>
+      <div className="va-panel" role="tabpanel">
+        {current === 'overview' && <Overview s={s} go={setTab} onTest={() => setTest(true)} />}
+        {current === 'agent' && <AgentTab s={s} />}
+        {current === 'tools' && <ToolsTab s={s} />}
+        {current === 'calls' && <CallsTab />}
+        {current === 'setup' && <SetupTab s={s} />}
+      </div>
       {test && <TestCall s={s} onClose={() => setTest(false)} />}
     </div>
   );
 }
 
-function SettingsForm({ s }: { s: VoiceSettings }) {
+// ------------------------------------------------------------------ overview
+
+function Overview({ s, go, onTest }: { s: VoiceSettings; go: (t: Tab) => void; onTest: () => void }) {
+  const calls = useWsQuery(['voice', 'calls'], voiceApi.calls, { refetchInterval: 30_000 });
+  const tools = useWsQuery(['voice', 'connectors'], voiceApi.connectors, { enabled: s.canManage });
+  const list = calls.data ?? [];
+  const week = Date.now() - 7 * 86400_000;
+  const recent = list.filter((c) => new Date(c.startedAt).getTime() >= week);
+  const real = recent.filter((c) => c.channel !== 'test');
+  const tickets = recent.filter((c) => c.ticketKey).length;
+  const transferred = recent.filter((c) => c.transferred).length;
+  const durations = recent.filter((c) => c.endedAt).map((c) => (new Date(c.endedAt!).getTime() - new Date(c.startedAt).getTime()) / 1000);
+  const avg = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null;
+  const resolved = recent.length ? Math.round(((recent.length - transferred - tickets) / recent.length) * 100) : null;
+  const toolList = tools.data ?? [];
+  const steps: { done: boolean; title: string; text: string; tab?: Tab; action?: () => void }[] = [
+    { done: !!s.agentName && s.languages.length > 0, title: 'Persona and languages', text: `${s.agentName} speaks ${s.languages.length} language${s.languages.length === 1 ? '' : 's'}`, tab: 'agent' },
+    { done: !!s.knowledge?.trim(), title: 'Company knowledge', text: s.knowledge?.trim() ? 'Policies and answers added' : 'Add products, policies and branch hours', tab: 'agent' },
+    { done: toolList.length > 0, title: 'Connect your systems', text: toolList.length ? `${toolList.length} tool${toolList.length === 1 ? '' : 's'} · ${toolList.filter((t) => t.flow).length} with a flow` : 'Add your loan or payment API', tab: 'tools' },
+    { done: !!s.speechConfigured, title: 'Real voice (Sarvam AI)', text: s.speechConfigured ? 'Speech ready' : 'Add the Sarvam key on the server', tab: 'setup' },
+    { done: s.archiveConfigured, title: 'Recordings storage', text: s.archiveConfigured ? 'Bucket connected' : 'Connect a bucket for transcripts', tab: 'setup' },
+    { done: list.length > 0, title: 'Try a test call', text: list.length ? 'Done — keep testing after each change' : 'Speak or type as a caller would', action: onTest },
+    { done: false, title: 'Phone number', text: 'Plivo or Exotel; your number forwards to the agent', tab: 'setup' },
+  ];
+  const done = steps.filter((x) => x.done).length;
+  return (
+    <div className="va-over">
+      <div className="va-kpis">
+        <Kpi label="Calls this week" value={String(recent.length)} sub={real.length ? `${real.length} from customers` : 'all test calls'} />
+        <Kpi label="Handled by the agent" value={resolved === null ? '—' : `${Math.max(0, resolved)}%`} sub="no ticket, no handover" />
+        <Kpi label="Tickets logged" value={String(tickets)} sub="for the team to follow up" />
+        <Kpi label="Handed to a person" value={String(transferred)} sub={s.transferNumber ? `to ${s.transferNumber}` : 'no number set'} />
+        <Kpi label="Average call" value={avg === null ? '—' : avg >= 60 ? `${Math.floor(avg / 60)}m ${avg % 60}s` : `${avg}s`} sub="from greeting to goodbye" />
+      </div>
+      <div className="va-over-grid">
+        {s.canManage && (
+          <section className="va-card">
+            <div className="va-card-head"><h3><Icon name="checks" size={16} /> Setup</h3><span className="va-progress"><i style={{ width: `${(done / steps.length) * 100}%` }} /></span><small>{done} of {steps.length}</small></div>
+            <ul className="va-check">{steps.map((x) => (
+              <li key={x.title} className={x.done ? 'done' : ''}>
+                <span className="va-check-ic">{x.done ? <Icon name="check" size={13} /> : null}</span>
+                <span><b>{x.title}</b><small>{x.text}</small></span>
+                {(x.tab || x.action) && !x.done && <button className="btn btn-ghost btn-sm" onClick={() => (x.action ? x.action() : go(x.tab!))}>Open</button>}
+              </li>))}
+            </ul>
+          </section>
+        )}
+        <section className="va-card">
+          <div className="va-card-head"><h3><Icon name="phone" size={16} /> Latest calls</h3><button className="btn btn-ghost btn-sm" onClick={() => go('calls')}>All calls</button></div>
+          {list.length === 0 ? <p className="va-muted">No calls yet.</p> : <ul className="va-calls compact">{list.slice(0, 5).map((c) => <CallRow key={c.id} c={c} onOpen={() => go('calls')} />)}</ul>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function Kpi({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return <div className="va-kpi"><small>{label}</small><b>{value}</b><span>{sub}</span></div>;
+}
+
+// ------------------------------------------------------------------ agent (persona, knowledge, rules)
+
+function useSettingsForm(s: VoiceSettings) {
   const wid = useWorkspaceId();
-  const types = useWsQuery(['work-types'], () => workApi.types(), { staleTime: 300_000 });
   const [f, setF] = useState(s);
   const [busy, setBusy] = useState(false);
   useEffect(() => setF(s), [s]);
+  const dirty = useMemo(() => JSON.stringify(f) !== JSON.stringify(s), [f, s]);
   const set = <K extends keyof VoiceSettings>(k: K, v: VoiceSettings[K]) => setF((x) => ({ ...x, [k]: v }));
-  const toggleLang = (l: string) => set('languages', f.languages.includes(l) ? f.languages.filter((x) => x !== l) : [...f.languages, l]);
   const save = async () => {
     setBusy(true);
     try { await voiceApi.save(f); toast('Voice agent saved.'); void invalidateWorkspace(wid, 'voice'); }
     catch (e) { toast(errText(e, 'Could not save.'), 'error'); }
     finally { setBusy(false); }
   };
-  return (
-    <section className="va-card" aria-labelledby="va-agent">
-      <h3 id="va-agent"><Icon name="user" size={16} /> The agent</h3>
-      <div className="va-grid">
-        <label className="va-field"><span>Name</span><input value={f.agentName} onChange={(e) => set('agentName', e.target.value)} /></label>
-        <label className="va-field"><span>Company name it says</span><input value={f.companyName} onChange={(e) => set('companyName', e.target.value)} placeholder="FiveStar Business Finance" /></label>
-      </div>
-      <div className="va-field"><span>Languages (the first is the greeting language)</span>
-        <div className="va-langs">{Object.entries(f.availableLanguages).map(([code, name]) => (
-          <button key={code} type="button" className={f.languages.includes(code) ? 'on' : ''} aria-pressed={f.languages.includes(code)} onClick={() => toggleLang(code)}>
-            {f.languages.includes(code) && <span className="va-order">{f.languages.indexOf(code) + 1}</span>}{name}</button>
-        ))}</div></div>
-      <label className="va-field"><span>What it should know (products, policies, branch hours, common answers)</span>
-        <textarea rows={6} value={f.knowledge ?? ''} onChange={(e) => set('knowledge', e.target.value)} placeholder={'EMI is due on the 5th of each month.\nBranches open 9:30 am to 6 pm, Monday to Saturday.\nFor a foreclosure letter, the customer must visit the branch with ID.'} /></label>
-      <label className="va-toggle"><input type="checkbox" checked={f.requireVerification} onChange={(e) => set('requireVerification', e.target.checked)} />
-        <span><b>Check the caller before sharing account details</b><small>They confirm:</small>
-          <input value={f.verificationRule} onChange={(e) => set('verificationRule', e.target.value)} disabled={!f.requireVerification} aria-label="What the caller confirms" /></span></label>
-      <div className="va-grid">
-        <label className="va-field"><span>Transfer to a person at</span><input value={f.transferNumber ?? ''} onChange={(e) => set('transferNumber', e.target.value || null)} placeholder="+91 …" /></label>
-        <label className="va-field"><span>Tickets are created as</span>
-          <Select className="select" aria-label="Ticket type" value={f.workTypeId ?? ''} onChange={(e) => set('workTypeId', e.target.value || null)}>
-            <option value="">First work type</option>{(types.data ?? []).filter((t) => t.isActive).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></label>
-      </div>
-      <label className="va-field"><span>Storage folders for recordings and transcripts</span>
-        <input value={f.storageKeyPattern} onChange={(e) => set('storageKeyPattern', e.target.value)} />
-        <small>Use {PATTERN_HELP}. Example: {'{yyyy}/{MM}/{dd}/{ticket}-{callId}'} → 2026/10/20/WT-42-a1b2…/transcript.json</small></label>
-      <div className="va-actions">
-        <label className="va-toggle inline"><input type="checkbox" checked={f.enabled} onChange={(e) => set('enabled', e.target.checked)} /><span><b>Agent on</b></span></label>
-        <button className="btn btn-primary" disabled={busy} onClick={() => void save()}>{busy ? <Spinner /> : null} Save</button>
-      </div>
-    </section>
+  const bar = (
+    <div className={`va-savebar ${dirty ? 'show' : ''}`} aria-hidden={!dirty}>
+      <span>Unsaved changes</span>
+      <button className="btn btn-ghost btn-sm" onClick={() => setF(s)} tabIndex={dirty ? 0 : -1}>Discard</button>
+      <button className="btn btn-primary btn-sm" disabled={busy || !dirty} onClick={() => void save()} tabIndex={dirty ? 0 : -1}>{busy ? <Spinner /> : null} Save</button>
+    </div>
   );
+  return { f, set, bar };
 }
 
-function Connectors() {
-  const q = useWsQuery(['voice', 'connectors'], voiceApi.connectors);
-  const [edit, setEdit] = useState<Connector | 'new' | null>(null);
-  const remove = async (c: Connector) => {
-    if (!(await confirmDialog({ title: `Remove ${c.name}?`, message: 'The agent can no longer read this system.', confirmText: 'Remove', danger: true }))) return;
-    try { await voiceApi.removeConnector(c.id); void q.refetch(); } catch (e) { toast(errText(e, 'Could not remove.'), 'error'); }
-  };
+function AgentTab({ s }: { s: VoiceSettings }) {
+  const types = useWsQuery(['work-types'], () => workApi.types(), { staleTime: 300_000 });
+  const { f, set, bar } = useSettingsForm(s);
+  const toggleLang = (l: string) => set('languages', f.languages.includes(l) ? f.languages.filter((x) => x !== l) : [...f.languages, l]);
   return (
-    <section className="va-card" aria-labelledby="va-conn">
-      <div className="va-card-head"><h3 id="va-conn"><Icon name="link" size={16} /> Your systems it can read</h3>
-        <button className="btn btn-sm" onClick={() => setEdit('new')}><Icon name="plus" size={14} /> Add API</button></div>
-      <p className="va-muted">Your MuleSoft APIs (loan details, EMI schedule, payments). The agent only reads them, and only says figures they return. Keys are stored encrypted and never shown again.</p>
-      {(q.data ?? []).length === 0 ? <p className="va-muted">None yet. Without them the agent takes a ticket for account questions.</p> : (
-        <ul className="va-conns">{q.data!.map((c) => (
-          <li key={c.id}><div><b>{c.name}</b> <small>{c.method} · {c.urlTemplate}</small><p>{c.description}</p></div>
-            <span className="va-conn-actions"><button className="btn btn-sm btn-ghost" onClick={() => setEdit(c)}>Edit</button><button className="btn btn-sm btn-ghost" onClick={() => void remove(c)}>Remove</button></span></li>
-        ))}</ul>
-      )}
-      {edit && <ConnectorModal c={edit === 'new' ? null : edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); void q.refetch(); }} />}
-    </section>
-  );
-}
-
-function ConnectorModal({ c, onClose, onSaved }: { c: Connector | null; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState({ name: c?.name ?? '', description: c?.description ?? '', method: c?.method ?? 'GET', urlTemplate: c?.urlTemplate ?? '', headerName: c?.headerName ?? 'client_id', secret: '', enabled: c?.enabled ?? true });
-  const [busy, setBusy] = useState(false);
-  const save = async () => {
-    setBusy(true);
-    try { await voiceApi.saveConnector(f, c?.id); toast('Saved.'); onSaved(); } catch (e) { toast(errText(e, 'Could not save.'), 'error'); } finally { setBusy(false); }
-  };
-  return (
-    <Modal title={c ? `Edit ${c.name}` : 'Add an API'} onClose={onClose} size="lg"
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy} onClick={() => void save()}>{busy ? <Spinner /> : null} Save</button></>}>
-      <div className="va-form">
-        <label className="va-field"><span>Name (the agent uses it)</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="loan_details" /></label>
-        <label className="va-field"><span>What it returns and when to use it</span><input value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Loan balance, next EMI date and amount, and the customer's date of birth, by loan number" /></label>
+    <div className="va-stack">
+      <section className="va-card">
+        <h3><Icon name="user" size={16} /> Persona</h3>
         <div className="va-grid">
-          <label className="va-field va-short"><span>Method</span><Select className="select" aria-label="Method" value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}><option>GET</option><option>POST</option></Select></label>
-          <label className="va-field"><span>Address (https; caller values in braces)</span><input value={f.urlTemplate} onChange={(e) => setF({ ...f, urlTemplate: e.target.value })} placeholder="https://api.yourcompany.in/loans/v1/{loanNumber}" /></label>
+          <label className="va-field"><span>Name</span><input value={f.agentName} onChange={(e) => set('agentName', e.target.value)} /></label>
+          <label className="va-field"><span>Company name it says</span><input value={f.companyName} onChange={(e) => set('companyName', e.target.value)} placeholder="FiveStar Business Finance" /></label>
         </div>
+        <div className="va-field"><span>Languages — tap in order; the first is the greeting language</span>
+          <div className="va-langs">{Object.entries(f.availableLanguages).map(([code, name]) => (
+            <button key={code} type="button" className={f.languages.includes(code) ? 'on' : ''} aria-pressed={f.languages.includes(code)} onClick={() => toggleLang(code)}>
+              {f.languages.includes(code) && <span className="va-order">{f.languages.indexOf(code) + 1}</span>}{name}</button>
+          ))}</div></div>
+        <label className="va-toggle inline"><input type="checkbox" checked={f.enabled} onChange={(e) => set('enabled', e.target.checked)} /><span><b>Agent answers calls</b><small>Off: callers hear your normal line.</small></span></label>
+      </section>
+      <section className="va-card">
+        <h3><Icon name="note" size={16} /> Knowledge</h3>
+        <label className="va-field"><span>Products, policies, branch hours and common answers. The agent trusts this and never invents beyond it.</span>
+          <textarea rows={9} value={f.knowledge ?? ''} onChange={(e) => set('knowledge', e.target.value)} placeholder={'EMI is due on the 5th of each month.\nBranches open 9:30 am to 6 pm, Monday to Saturday.\nFor a foreclosure letter, the customer must visit the branch with ID.'} />
+          <small>{(f.knowledge ?? '').length.toLocaleString('en-IN')} / 20,000 characters</small></label>
+      </section>
+      <section className="va-card">
+        <h3><Icon name="shield" size={16} /> Caller check and handover</h3>
+        <label className="va-toggle"><input type="checkbox" checked={f.requireVerification} onChange={(e) => set('requireVerification', e.target.checked)} />
+          <span><b>Check the caller before sharing account details</b><small>Tools with an identity check verify it against your system; otherwise the agent asks for:</small>
+            <input value={f.verificationRule} onChange={(e) => set('verificationRule', e.target.value)} disabled={!f.requireVerification} aria-label="What the caller confirms" /></span></label>
         <div className="va-grid">
-          <label className="va-field"><span>Key header</span><input value={f.headerName} onChange={(e) => setF({ ...f, headerName: e.target.value })} placeholder="client_id or Authorization" /></label>
-          <label className="va-field"><span>Key {c?.hasSecret ? '(leave empty to keep)' : ''}</span><input type="password" value={f.secret} onChange={(e) => setF({ ...f, secret: e.target.value })} autoComplete="off" /></label>
+          <label className="va-field"><span>Hand over to a person at</span><input value={f.transferNumber ?? ''} onChange={(e) => set('transferNumber', e.target.value || null)} placeholder="+91 …" /></label>
+          <label className="va-field"><span>Tickets are created as</span>
+            <Select className="select" aria-label="Ticket type" value={f.workTypeId ?? ''} onChange={(e) => set('workTypeId', e.target.value || null)}>
+              <option value="">First work type</option>{(types.data ?? []).filter((t) => t.isActive).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></label>
         </div>
-        <p className="va-muted">Use a read-only key made for the agent. Private and local addresses are refused.</p>
-      </div>
-    </Modal>
+      </section>
+      {bar}
+    </div>
   );
 }
 
-function CallLog() {
+// ------------------------------------------------------------------ setup (speech, storage, phone)
+
+function SetupTab({ s }: { s: VoiceSettings }) {
+  const { f, set, bar } = useSettingsForm(s);
+  const example = f.storageKeyPattern.replace('{yyyy}', '2026').replace('{MM}', '10').replace('{dd}', '22').replace('{HH}', '09').replace('{callId}', 'a1b2c3').replace('{ticket}', 'WT-42').replace('{language}', 'te').replace('{channel}', 'phone');
+  return (
+    <div className="va-stack">
+      <div className="va-setup">
+        <SetupItem icon="mic" title="Speech — Sarvam AI" ok={!!s.speechConfigured} okText="Ready: the agent hears and speaks Indian languages." todo="Add Voice__SarvamApiKey on the server to talk by voice. Until then, test calls are typed." />
+        <SetupItem icon="database" title="Recordings and transcripts" ok={s.archiveConfigured} okText="Bucket connected: each call is archived when it ends." todo="Connect an S3-compatible bucket (Google Cloud Storage, S3, R2) to keep transcripts." />
+        <SetupItem icon="phone" title="Phone number" ok={false} okText="" todo="Take a number from Plivo or Exotel (trial calls your verified mobile) and forward it to the agent. Ask support to connect it." />
+      </div>
+      <section className="va-card">
+        <h3><Icon name="folder" size={16} /> Where calls are stored</h3>
+        <label className="va-field"><span>Folder pattern</span><input className="mono" value={f.storageKeyPattern} onChange={(e) => set('storageKeyPattern', e.target.value)} />
+          <small>Use {PATTERN_HELP}. This gives <span className="mono">{example}/transcript.json</span></small></label>
+      </section>
+      {bar}
+    </div>
+  );
+}
+
+function SetupItem({ icon, title, ok, okText, todo }: { icon: IconName; title: string; ok: boolean; okText: string; todo: string }) {
+  return <div className={`va-setup-item ${ok ? 'ok' : ''}`}><span className="va-setup-ic"><Icon name={icon} size={18} /></span><span><b>{title}</b><small>{ok ? okText : todo}</small></span><em>{ok ? 'Ready' : 'To do'}</em></div>;
+}
+
+// ------------------------------------------------------------------ calls
+
+function CallRow({ c, onOpen, active }: { c: CallItem; onOpen: () => void; active?: boolean }) {
+  return (
+    <li className={active ? 'on' : ''}><button onClick={onOpen}>
+      <span className={`va-dot ${c.status}`} /><span className="va-call-main"><b>{c.callerNumber ?? (c.channel === 'test' ? 'Test call' : 'Unknown caller')}</b>
+        <small>{formatDateTime(c.startedAt)} · {c.language.toUpperCase()}{c.ticketKey ? ` · ${c.ticketKey}` : ''}{c.transferred ? ' · handed over' : ''}</small>
+        {c.summary && <span className="va-sum">{c.summary}</span>}</span></button></li>
+  );
+}
+
+function CallsTab() {
   const q = useWsQuery(['voice', 'calls'], voiceApi.calls, { refetchInterval: 30_000 });
+  const [filter, setFilter] = useState<'all' | 'ticket' | 'transferred' | 'test'>('all');
   const [open, setOpen] = useState<string | null>(null);
+  const list = (q.data ?? []).filter((c) => filter === 'all' || (filter === 'ticket' ? !!c.ticketKey : filter === 'transferred' ? c.transferred : c.channel === 'test'));
+  const selected = open ?? list[0]?.id ?? null;
   return (
-    <section className="va-card" aria-labelledby="va-calls">
-      <h3 id="va-calls"><Icon name="list" size={16} /> Calls</h3>
-      {(q.data ?? []).length === 0 ? <p className="va-muted">No calls yet. Try a test call above.</p> : (
-        <ul className="va-calls">{q.data!.map((c) => (
-          <li key={c.id}><button onClick={() => setOpen(c.id)}>
-            <span className={`va-dot ${c.status}`} /><span className="va-call-main"><b>{c.callerNumber ?? (c.channel === 'test' ? 'Test call' : 'Unknown caller')}</b>
-              <small>{formatDateTime(c.startedAt)} · {c.language.toUpperCase()}{c.ticketKey ? ` · ${c.ticketKey}` : ''}{c.transferred ? ' · transferred' : ''}</small>
-              {c.summary && <span className="va-sum">{c.summary}</span>}</span></button></li>
-        ))}</ul>
-      )}
-      {open && <CallModal id={open} onClose={() => setOpen(null)} />}
-    </section>
+    <div className="va-callsplit">
+      <section className="va-card va-calllist">
+        <div className="va-seg" role="tablist">{([['all', 'All'], ['ticket', 'With ticket'], ['transferred', 'Handed over'], ['test', 'Tests']] as const).map(([k, l]) =>
+          <button key={k} role="tab" aria-selected={filter === k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>{l}</button>)}</div>
+        {list.length === 0 ? <p className="va-muted">No calls here yet.</p> : <ul className="va-calls">{list.map((c) => <CallRow key={c.id} c={c} active={c.id === selected} onOpen={() => setOpen(c.id)} />)}</ul>}
+      </section>
+      <section className="va-card va-calldetail">{selected ? <CallDetail id={selected} /> : <p className="va-muted">Choose a call to see its transcript.</p>}</section>
+    </div>
   );
 }
 
-function CallModal({ id, onClose }: { id: string; onClose: () => void }) {
+function CallDetail({ id }: { id: string }) {
   const q = useWsQuery(['voice', 'call', id], () => voiceApi.call(id));
   const c = q.data;
+  if (!c) return <PageLoader />;
+  const secs = c.endedAt ? Math.round((new Date(c.endedAt).getTime() - new Date(c.startedAt).getTime()) / 1000) : null;
   return (
-    <Modal title={c ? `${c.channel === 'test' ? 'Test call' : 'Call'} · ${formatDateTime(c.startedAt)}` : 'Call'} onClose={onClose} size="lg">
-      {!c ? <PageLoader /> : <>
-        {c.summary && <p className="va-summary"><b>Summary:</b> {c.summary}</p>}
-        <p className="va-muted">{[c.ticketKey && `Ticket ${c.ticketKey}`, c.verified && 'Caller verified', c.transferred && 'Transferred', c.archiveKey && `Archived: ${c.archiveKey}`].filter(Boolean).join(' · ')}
-          {c.workTaskId && <> · <Link to={`/operations?task=${c.workTaskId}`}>Open ticket</Link></>}</p>
-        <Transcript turns={c.turns} />
-      </>}
-    </Modal>
+    <div className="va-detail">
+      <div className="va-detail-head">
+        <h3>{c.callerNumber ?? (c.channel === 'test' ? 'Test call' : 'Call')}</h3>
+        <small>{formatDateTime(c.startedAt)}{secs !== null ? ` · ${secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`}` : ''} · {c.language.toUpperCase()}</small>
+      </div>
+      <div className="va-flags">
+        {c.verified && <span className="va-flag ok"><Icon name="shield" size={12} /> Verified</span>}
+        {c.ticketKey && <span className="va-flag"><Icon name="tag" size={12} /> {c.ticketKey}</span>}
+        {c.transferred && <span className="va-flag warn"><Icon name="users" size={12} /> Handed over</span>}
+        {c.archiveKey && <span className="va-flag" title={c.archiveKey}><Icon name="database" size={12} /> Archived</span>}
+        {c.workTaskId && <Link className="btn btn-sm" to={`/operations?task=${c.workTaskId}`}>Open ticket</Link>}
+      </div>
+      {c.summary && <p className="va-summary"><b>Summary</b>{c.summary}</p>}
+      <Transcript turns={c.turns} />
+    </div>
+  );
+}
+
+/** A tool turn: for a tool with a flow, the facts and outcome it returned; otherwise the start of the raw answer. */
+function ToolTurn({ t }: { t: Turn }) {
+  let parsed: { facts?: Record<string, string>; identity?: string; next?: string; error?: string; say_this?: string } | null = null;
+  try { const j = JSON.parse(t.text); if (j && typeof j === 'object' && ('facts' in j || 'identity' in j || 'next' in j || 'error' in j)) parsed = j; } catch { parsed = null; }
+  if (!parsed) return <div className="va-tool"><Icon name="database" size={12} /> {t.tool}: {t.text.length > 160 ? t.text.slice(0, 160) + '…' : t.text}</div>;
+  return (
+    <div className="va-tool rich">
+      <span className="va-tool-name"><Icon name="database" size={12} /> {t.tool}</span>
+      {parsed.identity && <span className={`va-tool-tag ${parsed.identity.startsWith('confirmed') ? 'ok' : 'bad'}`}>{parsed.identity.startsWith('confirmed') ? 'Identity confirmed' : 'Identity did not match'}</span>}
+      {parsed.facts && Object.entries(parsed.facts).map(([k, v]) => <span key={k} className="va-tool-fact"><i>{k}</i> {v}</span>)}
+      {parsed.next && <span className="va-tool-next">{parsed.next}</span>}
+      {parsed.error && <span className="va-tool-next">{parsed.error}</span>}
+    </div>
   );
 }
 
@@ -209,9 +294,7 @@ function Transcript({ turns, typing }: { turns: Turn[]; typing?: boolean }) {
   useEffect(() => { end.current?.scrollIntoView({ block: 'nearest' }); }, [turns.length, typing]);
   return (
     <div className="va-transcript">
-      {turns.map((t, i) => t.role === 'tool'
-        ? <div key={i} className="va-tool"><Icon name="database" size={12} /> {t.tool}: {t.text.length > 160 ? t.text.slice(0, 160) + '…' : t.text}</div>
-        : <div key={i} className={`va-bubble ${t.role}`}>{t.text}</div>)}
+      {turns.map((t, i) => t.role === 'tool' ? <ToolTurn key={i} t={t} /> : <div key={i} className={`va-bubble ${t.role}`}>{t.text}</div>)}
       {typing && <div className="va-bubble agent typing"><Spinner /></div>}
       <div ref={end} />
     </div>

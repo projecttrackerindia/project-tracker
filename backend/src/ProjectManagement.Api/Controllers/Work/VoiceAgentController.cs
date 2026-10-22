@@ -12,6 +12,9 @@ public class VoiceAgentController(VoiceAgentService voice) : ApiControllerBase
     [HttpGet("connectors")] public async Task<IActionResult> Connectors(CancellationToken ct) => Ok(await voice.ConnectorsAsync(ct));
     [HttpPost("connectors")] public async Task<IActionResult> AddConnector([FromBody] SaveVoiceConnectorRequest req, CancellationToken ct) => Created(await voice.SaveConnectorAsync(null, req, ct));
     [HttpPut("connectors/{id:guid}")] public async Task<IActionResult> SaveConnector(Guid id, [FromBody] SaveVoiceConnectorRequest req, CancellationToken ct) => Ok(await voice.SaveConnectorAsync(id, req, ct));
+    /// <summary>Runs a tool from the builder (before or after saving) and shows every step; with samples nothing is sent.</summary>
+    [HttpPost("connectors/test"), AiRequestLimit] public async Task<IActionResult> TestNew([FromBody] TestVoiceConnectorRequest req, CancellationToken ct) => Ok(await voice.TestConnectorAsync(null, req, ct));
+    [HttpPost("connectors/{id:guid}/test"), AiRequestLimit] public async Task<IActionResult> Test(Guid id, [FromBody] TestVoiceConnectorRequest req, CancellationToken ct) => Ok(await voice.TestConnectorAsync(id, req, ct));
     [HttpDelete("connectors/{id:guid}")] public async Task<IActionResult> DeleteConnector(Guid id, CancellationToken ct) { await voice.DeleteConnectorAsync(id, ct); return NoContent(); }
     [HttpGet("calls")] public async Task<IActionResult> Calls(CancellationToken ct) => Ok(await voice.CallsAsync(ct));
     [HttpGet("calls/{id:guid}")] public async Task<IActionResult> Call(Guid id, CancellationToken ct) => Ok(await voice.CallAsync(id, ct));

@@ -51,6 +51,8 @@ try{
    else if(ep==='/api/v1/voice/calls/test'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});vcall={id:'c1',channel:'test',direction:'inbound',callerNumber:null,language:'te',status:'active',startedAt:iso(0),endedAt:null,turns:[{role:'agent',text:'నమస్కారం, FiveStar కి స్వాగతం. నేను Asha.',at:iso(0)}],summary:null,workTaskId:null,ticketKey:null,verified:false,transferred:false,archiveKey:null};data={call:vcall,say:vcall.turns[0].text,ended:false};}
    else if(ep==='/api/v1/voice/calls/c1/say'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});vcall={...vcall,turns:[...vcall.turns,{role:'caller',text:b.text,at:iso(0)},{role:'tool',tool:'create_ticket',text:'Created ticket WT-9.',at:iso(0)},{role:'agent',text:'మీ అభ్యర్థన నమోదు చేయబడింది: WT-9.',at:iso(0)}],ticketKey:'WT-9',workTaskId:'w9'};data={call:vcall,say:'ok',ended:false};}
    else if(ep==='/api/v1/voice/calls/c1/end'&&method==='POST'){writes.push({ep});data={...vcall,status:'ended'};}
+   else if(ep==='/api/v1/voice/connectors/test'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={ok:true,trace:[{step:'Source',status:'ok',detail:'loanNumber = ••••••7890, dob = 1990-04-12'},{step:'Request',status:'ok',detail:'Used the sample answer'},{step:'1. Date of birth matches',status:'passed',detail:'dob matches main.customer.dob'},{step:'2. Overdue accounts',status:'skipped',detail:'main.loan.status = ACTIVE is OVERDUE'},{step:'Response',status:'ok',detail:'balance = ₹1,24,999.50'}],raw:{main:b.draft.flow.samples.main},facts:{loan:'ending 7890',balance:'₹1,24,999.50',emiAmount:'₹4,850',emiDate:'5 November 2026'},say:'For your loan ending 7890, the outstanding balance is ₹1,24,999.50. Your next EMI of ₹4,850 is due on 5 November 2026.',action:'none',actionText:null,verifiedNow:true,agentSees:'{"ok":true}',error:null};}
+   else if(ep==='/api/v1/voice/connectors'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={id:'k1',...b,hasSecret:!!b.secret,placeholders:['loanNumber'],updatedAt:iso(0)};}
    else{
     assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
     if(ep.endsWith('/auth/refresh'))data={accessToken:token,expiresAt:'2099-01-01T00:00:00Z',user};
@@ -66,6 +68,7 @@ try{
     else if(ep==='/api/v1/support/conversations/w1')data={chat:waChat,messages:waMessages};
     else if(ep==='/api/v1/teams')data=[];
     else if(ep==='/api/v1/voice/connectors')data=[];
+    else if(ep==='/api/v1/voice/calls/c1')data={...vcall,status:'ended',endedAt:iso(0),summary:'Caller asked about EMI date; ticket WT-9 created.'};
     else if(ep==='/api/v1/voice/calls')data=vcall?[{id:'c1',channel:'test',callerNumber:null,language:'te',status:'ended',startedAt:iso(0),endedAt:iso(0),summary:'Caller asked about EMI date; ticket WT-9 created.',ticketKey:'WT-9',transferred:false}]:[];
     else if(ep==='/api/v1/operations/insights')data=insights;
     else if(ep==='/api/v1/work/sla')data={entitled:true,canManage:true,defaults:[{priority:'Critical',responseMinutes:30,resolutionMinutes:240},{priority:'High',responseMinutes:120,resolutionMinutes:1440},{priority:'Medium',responseMinutes:480,resolutionMinutes:4320},{priority:'Low',responseMinutes:1440,resolutionMinutes:10080}],overrides:[]};
@@ -123,7 +126,9 @@ try{
  await page.locator('.ops-triage').waitFor({timeout:5000});assert.ok(await page.locator('.ops-dupe',{hasText:'WT-1'}).isVisible());
  await page.locator('.ops-sug',{hasText:'High priority'}).click();await shot(page,'triage-1440.png');checks.push('triage');
  // Voice agent: settings, then a typed test call in Telugu that creates a ticket.
- await page.goto(origin+'/preview-org/operations?view=voice');await page.locator('.va-hero').waitFor();
+ await page.goto(origin+'/preview-org/operations?view=voice');await page.locator('.va-top').waitFor();
+ await page.locator('.va-kpi').first().waitFor();await shot(page,'voice-overview-1440.png');
+ await page.getByRole('tab',{name:'Agent'}).click();await page.locator('.va-langs').waitFor();
  // Selected language chips stay readable in both themes (text vs. the background actually behind it, WCAG contrast).
  const contrast=(sel)=>page.evaluate((sel)=>{
   const parse=(c)=>{const m=c.match(/[\d.]+/g).map(Number);return {r:m[0],g:m[1],b:m[2],a:m[3]??1};};
@@ -137,17 +142,38 @@ try{
   const c=await contrast('.va-langs button.on');assert.ok(c>=4.5,`selected language chip contrast ${c.toFixed(2)} in ${theme} theme`);
   await shot(page,`voice-settings-${theme}-1440.png`);
  }
- await page.evaluate(()=>localStorage.setItem('pm_theme','light'));await page.reload();await page.locator('.va-hero').waitFor();checks.push('theme-contrast');
+ await page.evaluate(()=>localStorage.setItem('pm_theme','light'));await page.reload();await page.locator('.va-langs').waitFor();checks.push('theme-contrast');
  await page.locator('.va-langs button',{hasText:'Kannada'}).click();
- await page.getByRole('button',{name:'Save',exact:true}).click();
+ await page.locator('.va-savebar.show').getByRole('button',{name:'Save',exact:true}).click();
  for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/voice/settings');i++)await page.waitForTimeout(100);
  assert.deepEqual(writes.find(w=>w.ep==='/api/v1/voice/settings').b.languages,['te','hi','en','ta','kn']);
- await page.getByRole('button',{name:'Try a test call'}).click();await page.getByRole('dialog').getByRole('button',{name:'Start'}).click();
+ // Tools: start from the loan template, walk the four parts of the flow, test it offline with the sample, then save it with its flow.
+ await page.getByRole('tab',{name:'Tools'}).click();await page.locator('.vt-empty').waitFor();
+ await page.getByRole('button',{name:'New tool'}).click();await page.locator('.vt-template',{hasText:'Loan details'}).click();
+ await page.locator('.vb-rail').waitFor();await shot(page,'voice-tool-source-1440.png');
+ for(const part of ['Request','Logic','Response']){await page.locator('.vb-node',{hasText:part}).click();await page.locator('.vb-editor-head h3',{hasText:part}).waitFor();await shot(page,`voice-tool-${part.toLowerCase()}-1440.png`);}
+ await page.locator('.vb-node',{hasText:'Logic'}).click();await page.locator('.vb-step.verify').waitFor();
+ await page.getByRole('button',{name:'Use the examples'}).click();await page.getByRole('button',{name:'Run test'}).click();
+ await page.locator('.vb-say').waitFor();await page.locator('.vb-facts',{hasText:'₹1,24,999.50'}).waitFor();await shot(page,'voice-tool-test-1440.png');
+ const tested=writes.find(w=>w.ep==='/api/v1/voice/connectors/test').b;
+ assert.equal(tested.useSamples,true);assert.equal(tested.inputs.loanNumber,'1234567890');assert.equal(tested.draft.flow.steps[0].type,'verify');
+ await page.getByRole('button',{name:'Save tool'}).click();
+ for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/voice/connectors');i++)await page.waitForTimeout(100);
+ const savedTool=writes.find(w=>w.ep==='/api/v1/voice/connectors').b;
+ assert.equal(savedTool.name,'loan_details');assert.equal(savedTool.flow.requiresVerifiedCaller,true);assert.ok(savedTool.flow.fields.some(f=>f.format==='inr'));checks.push('voice-tools');
+ // A narrow screen: the flow rail scrolls sideways instead of squeezing the editor.
+ await page.setViewportSize({width:390,height:844});await page.getByRole('tab',{name:'Tools'}).click();await page.getByRole('button',{name:'New tool'}).click();
+ await page.locator('.vt-template',{hasText:'Payment status'}).click();await page.locator('.vb-rail').waitFor();
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),'the tool builder scrolls sideways on a phone');
+ await shot(page,'voice-tool-390.png');await page.setViewportSize({width:1440,height:1000});
+ await page.goto(origin+'/preview-org/operations?view=voice');await page.locator('.va-top').waitFor();
+ await page.getByRole('button',{name:'Test call'}).click();await page.getByRole('dialog').getByRole('button',{name:'Start'}).click();
  await page.locator('.va-bubble.agent').first().waitFor();
  await page.getByLabel('What the caller says').fill('నా EMI ఎప్పుడు?');await page.getByLabel('What the caller says').press('Enter');
  await page.locator('.va-tool',{hasText:'create_ticket'}).waitFor();await shot(page,'voice-test-1440.png');
  await page.getByRole('button',{name:'Hang up'}).click();
  for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/voice/calls/c1/end');i++)await page.waitForTimeout(100);checks.push('voice');
+ await page.getByRole('tab',{name:'Calls'}).click();await page.locator('.va-calldetail .va-transcript').waitFor();await shot(page,'voice-calls-1440.png');
  // WhatsApp: a team connects its number, sees the webhook setup, then answers a chat from the inbox.
  await page.goto(origin+'/preview-org/operations?view=whatsapp');await page.locator('.wa-hero').waitFor();
  await page.getByRole('button',{name:'Connect WhatsApp'}).click();

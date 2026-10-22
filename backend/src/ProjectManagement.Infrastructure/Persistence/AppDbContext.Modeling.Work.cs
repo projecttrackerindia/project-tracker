@@ -109,6 +109,7 @@ public partial class AppDbContext
             e.HasIndex(x => x.TenantId);
             e.Property(x => x.Name).HasMaxLength(60); e.Property(x => x.Description).HasMaxLength(500); e.Property(x => x.Method).HasMaxLength(8);
             e.Property(x => x.UrlTemplate).HasMaxLength(500); e.Property(x => x.HeaderName).HasMaxLength(100); e.Property(x => x.SecretProtected).HasMaxLength(4000);
+            e.Property(x => x.FlowJson).HasMaxLength(60000);
         });
         b.Entity<VoiceCall>(e =>
         {

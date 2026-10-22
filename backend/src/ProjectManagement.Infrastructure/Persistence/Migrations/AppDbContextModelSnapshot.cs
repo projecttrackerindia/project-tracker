@@ -5474,6 +5474,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("FlowJson")
+                        .HasMaxLength(60000)
+                        .HasColumnType("character varying(60000)");
+
                     b.Property<string>("HeaderName")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");

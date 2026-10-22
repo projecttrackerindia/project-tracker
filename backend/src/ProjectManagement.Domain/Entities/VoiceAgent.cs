@@ -32,6 +32,8 @@ public class VoiceConnector : TenantEntity, ITenantScoped
     public string? HeaderName { get; set; }
     public string? SecretProtected { get; set; }
     public bool Enabled { get; set; } = true;
+    /// <summary>How the agent uses it (inputs, request extras, logic steps, the facts it may say) as JSON; null for a plain lookup.</summary>
+    public string? FlowJson { get; set; }
 }
 
 /// <summary>A conversation with the voice agent (a phone call, or a typed test), its transcript and outcome.</summary>

@@ -49,8 +49,13 @@ public record VoiceSettingsDto(bool Enabled, string AgentName, string CompanyNam
     string? TransferNumber, Guid? WorkTypeId, string StorageKeyPattern, bool ArchiveConfigured, bool CanManage, IReadOnlyDictionary<string, string> AvailableLanguages, bool SpeechConfigured = false);
 public record SaveVoiceSettingsRequest(bool Enabled, string AgentName, string? CompanyName, IReadOnlyList<string> Languages, string? Knowledge, bool RequireVerification,
     string? VerificationRule, string? TransferNumber, Guid? WorkTypeId, string? StorageKeyPattern);
-public record VoiceConnectorDto(Guid Id, string Name, string Description, string Method, string UrlTemplate, string? HeaderName, bool HasSecret, bool Enabled, IReadOnlyList<string> Placeholders);
-public record SaveVoiceConnectorRequest(string Name, string Description, string? Method, string UrlTemplate, string? HeaderName, string? Secret, bool Enabled);
+public record VoiceConnectorDto(Guid Id, string Name, string Description, string Method, string UrlTemplate, string? HeaderName, bool HasSecret, bool Enabled, IReadOnlyList<string> Placeholders,
+    VoiceFlow? Flow = null, DateTime? UpdatedAt = null);
+public record SaveVoiceConnectorRequest(string Name, string Description, string? Method, string UrlTemplate, string? HeaderName, string? Secret, bool Enabled, VoiceFlow? Flow = null);
+/// <summary>Tries a tool before (or after) saving it: the draft as it stands in the builder, sample or real inputs, and whether to call the real API.</summary>
+public record TestVoiceConnectorRequest(SaveVoiceConnectorRequest Draft, Dictionary<string, string>? Inputs, string? Language, bool UseSamples, bool CallerVerified);
+public record VoiceToolTestDto(bool Ok, IReadOnlyList<FlowTrace> Trace, IReadOnlyDictionary<string, string> Raw, IReadOnlyDictionary<string, string> Facts, string? Say,
+    string Action, string? ActionText, bool? VerifiedNow, string AgentSees, string? Error);
 public record VoiceTurnDto(string Role, string Text, DateTime At, string? Tool = null);
 public record VoiceCallDto(Guid Id, string Channel, string Direction, string? CallerNumber, string Language, string Status, DateTime StartedAt, DateTime? EndedAt,
     IReadOnlyList<VoiceTurnDto> Turns, string? Summary, Guid? WorkTaskId, string? TicketKey, bool Verified, bool Transferred, string? ArchiveKey);
@@ -110,7 +115,7 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
     }
 
     private static VoiceConnectorDto Dto(VoiceConnector c) => new(c.Id, c.Name, c.Description, c.Method, c.UrlTemplate, c.HeaderName, c.SecretProtected != null, c.Enabled,
-        Placeholder.Matches(c.UrlTemplate).Select(m => m.Groups[1].Value).Distinct().ToList());
+        Placeholder.Matches(c.UrlTemplate).Select(m => m.Groups[1].Value).Distinct().ToList(), VoiceFlowRunner.Parse(c.FlowJson), c.UpdatedAt ?? c.CreatedAt);
 
     public async Task<IReadOnlyList<VoiceConnectorDto>> ConnectorsAsync(CancellationToken ct)
     {
@@ -121,15 +126,7 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
     public async Task<VoiceConnectorDto> SaveConnectorAsync(Guid? id, SaveVoiceConnectorRequest req, CancellationToken ct)
     {
         await permissions.RequireAsync(Permissions.WorkTypesManage, ct);
-        var name = (req.Name ?? "").Trim();
-        if (!Regex.IsMatch(name, @"^[a-z][a-z0-9_]{1,59}$")) throw new ValidationException("name", "Use a short name like loan_details (lower case, digits, _).");
-        if (string.IsNullOrWhiteSpace(req.Description)) throw new ValidationException("description", "Say what it returns and when to use it.");
-        var method = (req.Method ?? "GET").ToUpperInvariant();
-        if (method is not ("GET" or "POST")) throw new ValidationException("method", "Choose GET or POST.");
-        var url = (req.UrlTemplate ?? "").Trim();
-        if (!Uri.TryCreate(Placeholder.Replace(url, "x"), UriKind.Absolute, out var u) || u.Scheme != "https" || url.Length > 500)
-            throw new ValidationException("urlTemplate", "Enter an https address; put what the caller says in {braces}, like {loanNumber}.");
-        if (req.HeaderName is { Length: > 0 } h && !Regex.IsMatch(h, @"^[A-Za-z0-9_-]{1,100}$")) throw new ValidationException("headerName", "Enter a header name like Authorization or client_id.");
+        var (name, method, url, flowJson) = await CheckAsync(id, req, ct);
         var row = id is { } existing ? await db.VoiceConnectors.FirstOrDefaultAsync(c => c.Id == existing, ct) ?? throw new NotFoundException("Connector not found.") : null;
         if (row is null)
         {
@@ -139,11 +136,82 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
         if (await db.VoiceConnectors.AnyAsync(c => c.Name == name && c.Id != row.Id, ct)) throw new ConflictException("Another connector has this name.");
         row.Name = name; row.Description = req.Description.Trim()[..Math.Min(500, req.Description.Trim().Length)]; row.Method = method; row.UrlTemplate = url;
         row.HeaderName = string.IsNullOrWhiteSpace(req.HeaderName) ? null : req.HeaderName.Trim(); row.Enabled = req.Enabled; row.UpdatedAt = clock.Now;
+        row.FlowJson = flowJson;
         if (!string.IsNullOrEmpty(req.Secret)) row.SecretProtected = secrets.Protect(req.Secret);   // write-only: never returned
         recorder.Audit("voice.connector_saved", "VoiceConnector", row.Id, null, new { name, method });
         await db.SaveChangesAsync(ct);
         return Dto(row);
     }
+
+    /// <summary>The checks shared by saving and testing a tool. Returns the cleaned name, method, address and the flow as stored JSON (null without one).</summary>
+    private async Task<(string Name, string Method, string Url, string? FlowJson)> CheckAsync(Guid? id, SaveVoiceConnectorRequest req, CancellationToken ct)
+    {
+        var name = (req.Name ?? "").Trim();
+        if (!Regex.IsMatch(name, @"^[a-z][a-z0-9_]{1,59}$")) throw new ValidationException("name", "Use a short name like loan_details (lower case, digits, _).");
+        if (string.IsNullOrWhiteSpace(req.Description)) throw new ValidationException("description", "Say when the agent should use it.");
+        var method = (req.Method ?? "GET").ToUpperInvariant();
+        if (method is not ("GET" or "POST")) throw new ValidationException("method", "Choose GET or POST.");
+        var url = (req.UrlTemplate ?? "").Trim();
+        if (!Uri.TryCreate(Placeholder.Replace(url, "x"), UriKind.Absolute, out var u) || u.Scheme != "https" || url.Length > 500)
+            throw new ValidationException("urlTemplate", "Enter an https address; put what the caller says in {braces}, like {loanNumber}.");
+        if (req.HeaderName is { Length: > 0 } h && !Regex.IsMatch(h, @"^[A-Za-z0-9_-]{1,100}$")) throw new ValidationException("headerName", "Enter a header name like Authorization or client_id.");
+        if (req.Flow is not { } flow) return (name, method, url, null);
+        var others = await db.VoiceConnectors.AsNoTracking().Where(c => c.Id != id && c.Name != name).Select(c => c.Name).ToListAsync(ct);
+        var problems = VoiceFlowRunner.Validate(flow, Placeholder.Matches(url).Select(m => m.Groups[1].Value).Distinct().ToList(), others).ToList();
+        foreach (var hd in flow.Headers)
+            if (!Regex.IsMatch(hd.Name ?? "", @"^[A-Za-z0-9_-]{1,100}$") || (hd.Value ?? "").Length > 300) problems.Add($"Header \"{hd.Name}\": use a plain header name and a short value.");
+        if (flow.Headers.Count > 10) problems.Add("Up to 10 extra headers.");
+        if (flow.BodyTemplate is { Length: > 0 } body)
+        {
+            if (method != "POST") problems.Add("A body is only sent with POST.");
+            if (body.Length > 4000) problems.Add("Keep the body under 4,000 characters.");
+            else { try { JsonNode.Parse(Placeholder.Replace(body, "0")); } catch (JsonException) { problems.Add("The body is not valid JSON (put placeholders inside quotes for text, like \"{loanNumber}\")."); } }
+        }
+        foreach (var (alias, sample) in flow.Samples)
+            if (sample.Length > 20000) problems.Add($"The sample answer for {alias} is too long (20,000 characters at most).");
+        if (problems.Count > 0) throw new ValidationException("flow", string.Join(" ", problems.Take(6)));
+        var json = JsonSerializer.Serialize(flow, VoiceFlowRunner.Opts);
+        if (json.Length > 60000) throw new ValidationException("flow", "This flow is too large; remove some samples or steps.");
+        return (name, method, url, json);
+    }
+
+    /// <summary>
+    /// The builder's "Run test": runs the draft exactly as a call would (inputs checked, request, logic, response) and shows every step,
+    /// the raw answers, the facts kept and what the agent would say. With samples, nothing is sent anywhere.
+    /// </summary>
+    public async Task<VoiceToolTestDto> TestConnectorAsync(Guid? id, TestVoiceConnectorRequest req, CancellationToken ct)
+    {
+        await permissions.RequireAsync(Permissions.WorkTypesManage, ct);
+        var draft = req.Draft ?? throw new ValidationException("draft", "Nothing to test.");
+        var (name, method, url, _) = await CheckAsync(id, draft, ct);
+        var saved = id is { } existing ? await db.VoiceConnectors.AsNoTracking().FirstOrDefaultAsync(c => c.Id == existing, ct) : null;
+        var temp = new VoiceConnector { Name = name, Method = method, UrlTemplate = url, HeaderName = string.IsNullOrWhiteSpace(draft.HeaderName) ? null : draft.HeaderName.Trim(),
+            SecretProtected = !string.IsNullOrEmpty(draft.Secret) ? secrets.Protect(draft.Secret) : saved?.SecretProtected, Description = draft.Description ?? "" };
+        var language = req.Language is { } l && VoiceLanguages.Names.ContainsKey(l) ? l : "en";
+        var inputs = req.Inputs ?? [];
+        var others = await db.VoiceConnectors.AsNoTracking().Where(c => c.Enabled).ToListAsync(ct);
+        recorder.Audit("voice.connector_tested", "VoiceConnector", saved?.Id ?? Guid.Empty, null, new { name, samples = req.UseSamples });
+        if (draft.Flow is not { } flow)
+        {
+            // A tool without a flow: the agent is given the raw answer, so that is what the test shows.
+            if (req.UseSamples) throw new ValidationException("useSamples", "Add a flow with a sample answer to test without calling the API.");
+            string body;
+            try { body = await SendAsync(temp, inputs, null, ct); }
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or SocketException) { body = $"(no answer: {e.Message})"; }
+            return new(true, [new("Request", "ok", $"{name} answered ({body.Length} characters)")], new Dictionary<string, string> { ["main"] = body },
+                new Dictionary<string, string>(), null, "none", null, null, body, null);
+        }
+        var r = await VoiceFlowRunner.RunAsync(flow, inputs, name, req.CallerVerified, language, (c, a, t) => c == name ? SendAsync(temp, a, flow, t) : SendOtherAsync(others, c, a, t), ct,
+            req.UseSamples ? flow.Samples : null);
+        if (req.UseSamples)
+            foreach (var step in flow.Steps.Where(s => s.Type == "chain" && s.As is { } a && !flow.Samples.ContainsKey(a)))
+                r = r with { Trace = [.. r.Trace, new FlowTrace($"Call {step.Connector}", "note", $"No sample for \"{step.As}\": add one to test this step without calling it")] };
+        return new(r.Ok, r.Trace, r.Raw, r.Facts, r.Say, r.Action, r.ActionText, r.VerifiedNow, r.ForAgent(), r.Error);
+    }
+
+    private Task<string> SendOtherAsync(List<VoiceConnector> connectors, string name, IReadOnlyDictionary<string, string> args, CancellationToken ct) =>
+        connectors.FirstOrDefault(c => c.Name == name) is { } c ? SendAsync(c, args, VoiceFlowRunner.Parse(c.FlowJson), ct)
+            : throw new NotFoundException($"There is no API called {name}.");
 
     public async Task DeleteConnectorAsync(Guid id, CancellationToken ct)
     {
@@ -153,20 +221,29 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
     }
 
     /// <summary>Calls a connector with values the caller gave. Only public https hosts: private and local addresses are refused.</summary>
-    private async Task<string> CallConnectorAsync(VoiceConnector c, JsonObject? args, CancellationToken ct)
+    private async Task<string> SendAsync(VoiceConnector c, IReadOnlyDictionary<string, string> args, VoiceFlow? flow, CancellationToken ct)
     {
-        var url = Placeholder.Replace(c.UrlTemplate, m =>
+        string Value(string key)
         {
-            var v = args?[m.Groups[1].Value]?.ToString() ?? throw new ValidationException(m.Groups[1].Value, $"'{m.Groups[1].Value}' is needed.");
-            if (v.Length > 64 || !Regex.IsMatch(v, @"^[A-Za-z0-9 _\-./@]+$")) throw new ValidationException(m.Groups[1].Value, "That value cannot be used.");
-            return Uri.EscapeDataString(v.Trim());
-        });
+            var v = args.TryGetValue(key, out var x) ? x : throw new ValidationException(key, $"'{key}' is needed.");
+            if (v.Length > 64 || !Regex.IsMatch(v, @"^[\p{L}\p{N} _\-./@,]+$")) throw new ValidationException(key, "That value cannot be used.");
+            return v.Trim();
+        }
+        var url = Placeholder.Replace(c.UrlTemplate, m => Uri.EscapeDataString(Value(m.Groups[1].Value)));
         var uri = new Uri(url);
         foreach (var addr in await Dns.GetHostAddressesAsync(uri.Host, ct))
             if (IPAddress.IsLoopback(addr) || Private(addr)) throw new ConflictException("This connector points at a private address.");
         using var req = new HttpRequestMessage(c.Method == "POST" ? HttpMethod.Post : HttpMethod.Get, uri);
         if (c.HeaderName is { } h && c.SecretProtected is { } sec) req.Headers.TryAddWithoutValidation(h, secrets.Unprotect(sec));
-        if (c.Method == "POST") req.Content = new StringContent((args ?? new JsonObject()).ToJsonString(), Encoding.UTF8, "application/json");
+        foreach (var hd in flow?.Headers ?? [])
+            if (!string.Equals(hd.Name, c.HeaderName, StringComparison.OrdinalIgnoreCase)) req.Headers.TryAddWithoutValidation(hd.Name, Placeholder.Replace(hd.Value ?? "", m => Value(m.Groups[1].Value)));
+        if (c.Method == "POST")
+        {
+            var body = flow?.BodyTemplate is { Length: > 0 } t
+                ? Placeholder.Replace(t, m => JsonEncodedText.Encode(Value(m.Groups[1].Value)).ToString())
+                : new JsonObject(args.Select(a => KeyValuePair.Create(a.Key, (JsonNode?)JsonValue.Create(a.Value)))).ToJsonString();
+            req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+        }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(8));
         using var res = await http.CreateClient("voice-connector").SendAsync(req, timeout.Token);
         var body = await res.Content.ReadAsStringAsync(timeout.Token);
@@ -363,7 +440,16 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
         system.Append("If you cannot solve it, create a ticket and tell the caller its number. If the caller is upset, asks for a person, or it is complex, transfer. ");
         if (s.Knowledge is { } k) system.Append("\nCompany knowledge (trust this):\n").Append(k);
         system.Append("\nConnectors you can use with lookup:\n");
-        foreach (var c in connectors) system.Append($"- {c.Name}: {c.Description} (needs: {string.Join(", ", Placeholder.Matches(c.UrlTemplate).Select(m => m.Groups[1].Value).Distinct())})\n");
+        foreach (var c in connectors)
+        {
+            var flow = VoiceFlowRunner.Parse(c.FlowJson);
+            var needs = flow is { Inputs.Count: > 0 }
+                ? string.Join(", ", flow.Inputs.Select(i => $"{i.Name} ({(string.IsNullOrWhiteSpace(i.Label) ? i.Type : i.Label)}{(i.Required ? "" : ", optional")})"))
+                : string.Join(", ", Placeholder.Matches(c.UrlTemplate).Select(m => m.Groups[1].Value).Distinct());
+            system.Append($"- {c.Name}: {c.Description} (ask the caller for: {(needs.Length == 0 ? "nothing" : needs)})");
+            if (flow is not null) system.Append(" — it checks identity and returns only approved facts; if it gives say_this, say that (in the caller's language)");
+            system.Append('\n');
+        }
         if (connectors.Count == 0) system.Append("(none yet: you cannot look up accounts, so take a ticket for account questions)\n");
         if (call.CallerNumber is { } n) system.Append($"\nThe caller is calling from {n}.");
         system.Append('\n').Append(Protocol);
@@ -410,7 +496,18 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
             {
                 case "lookup":
                     var c = connectors.FirstOrDefault(x => x.Name == args?["connector"]?.ToString());
-                    return c is null ? "No such connector." : await CallConnectorAsync(c, args, ct);
+                    if (c is null) return "No such connector.";
+                    var given = (args ?? new JsonObject()).Where(a => a.Key != "connector" && a.Value is JsonValue)
+                        .ToDictionary(a => a.Key, a => a.Value!.ToString(), StringComparer.Ordinal);
+                    if (VoiceFlowRunner.Parse(c.FlowJson) is not { } flow) return await SendAsync(c, given, null, ct);
+                    var r = await VoiceFlowRunner.RunAsync(flow, given, c.Name, call.Verified, call.Language,
+                        (n, a, t) => n == c.Name ? SendAsync(c, a, flow, t) : SendOtherAsync(connectors, n, a, t), ct);
+                    if (r.VerifiedNow == true) call.Verified = true;
+                    var outcome = r.ForAgent();
+                    if (r.Action == "ticket")
+                        outcome += " " + await CreateTicketAsync(call, s, r.ActionText ?? $"Request from a call ({c.Name})", $"The {c.Name} rule asked for a ticket.", r.Priority, ct);
+                    else if (r.Action == "transfer") { call.Transferred = true; outcome += s.TransferNumber is null ? " No person is available: log a ticket instead." : $" Transferring to {s.TransferNumber}."; }
+                    return outcome;
                 case "find_tickets":
                     var q = args?["query"]?.ToString()?.Trim() ?? "";
                     if (q.Length < 3) return "Give a phone number, loan number or a few words.";
@@ -418,15 +515,7 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
                         .OrderByDescending(t => t.CreatedAt).Take(5).Select(t => new { t.Number, t.Title, t.Status, t.CreatedAt }).ToListAsync(ct);
                     return found.Count == 0 ? "No requests found." : JsonSerializer.Serialize(found.Select(f => new { key = $"WT-{f.Number}", f.Title, status = f.Status.ToString(), f.CreatedAt }), Json);
                 case "create_ticket":
-                    await workTypes.EnsureDefaultsAsync(ct);
-                    var typeId = s.WorkTypeId ?? await db.WorkTypes.Where(t => t.IsActive).OrderBy(t => t.Order).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct);
-                    if (typeId is null) return "Tickets cannot be created: no work type is set up.";
-                    var title = args?["title"]?.ToString()?.Trim() ?? "Phone request";
-                    var details = $"{args?["details"]}\n\nFrom a {(call.Channel == "test" ? "test " : "")}call{(call.CallerNumber is null ? "" : $" with {call.CallerNumber}")} ({VoiceLanguages.Names.GetValueOrDefault(call.Language, call.Language)}).";
-                    var pr = Enum.TryParse<Priority>(args?["priority"]?.ToString(), true, out var p) ? p : Priority.Medium;
-                    var ticket = await workTasks.CreateAsync(new CreateWorkTaskRequest(title[..Math.Min(200, title.Length)], details, typeId, null, null, pr, null, null, null), ct);
-                    call.WorkTaskId = ticket.Id;
-                    return $"Created ticket {ticket.Key}.";
+                    return await CreateTicketAsync(call, s, args?["title"]?.ToString()?.Trim() ?? "Phone request", args?["details"]?.ToString() ?? "", args?["priority"]?.ToString(), ct);
                 case "verified":
                     call.Verified = args?["passed"] is JsonValue v && v.TryGetValue<bool>(out var ok) && ok;
                     return call.Verified ? "Identity confirmed." : "Not confirmed.";
@@ -438,6 +527,20 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
         }
         catch (AppException e) { return $"Could not do that: {e.Message}"; }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or SocketException) { log.LogInformation("Voice connector failed: {Reason}", e.Message); return "That system did not answer. Apologise and take a ticket."; }
+    }
+
+    private async Task<string> CreateTicketAsync(VoiceCall call, VoiceAgentSettings s, string title, string details, string? priority, CancellationToken ct)
+    {
+        if (call.WorkTaskId is { } existing && await TicketKeyAsync(existing, ct) is { } key) return $"Ticket {key} already exists for this call.";
+        await workTypes.EnsureDefaultsAsync(ct);
+        var typeId = s.WorkTypeId ?? await db.WorkTypes.Where(t => t.IsActive).OrderBy(t => t.Order).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct);
+        if (typeId is null) return "Tickets cannot be created: no work type is set up.";
+        title = string.IsNullOrWhiteSpace(title) ? "Phone request" : title.Trim();
+        var full = $"{details}\n\nFrom a {(call.Channel == "test" ? "test " : "")}call{(call.CallerNumber is null ? "" : $" with {call.CallerNumber}")} ({VoiceLanguages.Names.GetValueOrDefault(call.Language, call.Language)}).";
+        var pr = Enum.TryParse<Priority>(priority, true, out var p) ? p : Priority.Medium;
+        var ticket = await workTasks.CreateAsync(new CreateWorkTaskRequest(title[..Math.Min(200, title.Length)], full, typeId, null, null, pr, null, null, null), ct);
+        call.WorkTaskId = ticket.Id;
+        return $"Created ticket {ticket.Key}.";
     }
 
     /// <summary>Ends the call: a short summary for the ticket, and the transcript archived under the workspace's key pattern.</summary>
