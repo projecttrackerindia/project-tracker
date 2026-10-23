@@ -320,6 +320,19 @@ public partial class AppDbContext
             e.Property(x => x.LastError).HasMaxLength(300);
             e.HasOne<WorkType>().WithMany().HasForeignKey(x => x.WorkTypeId).OnDelete(DeleteBehavior.SetNull);
         });
+        b.Entity<GitHubInstallation>(e =>
+        {
+            e.HasIndex(x => x.InstallationId).IsUnique(); e.HasIndex(x => x.TenantId);
+            e.Property(x => x.AccountLogin).HasMaxLength(100); e.Property(x => x.AccountType).HasMaxLength(20); e.Property(x => x.RepositorySelection).HasMaxLength(10);
+            e.Property(x => x.Repositories).HasMaxLength(20000); e.Property(x => x.StatusRules).HasMaxLength(2000); e.Property(x => x.RiskyPaths).HasMaxLength(2000);
+            e.Property(x => x.LastError).HasMaxLength(300);
+        });
+        b.Entity<GitDeployment>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.DeploymentId }).IsUnique(); e.HasIndex(x => new { x.TenantId, x.Repository, x.StartedAt });
+            e.Property(x => x.Repository).HasMaxLength(200); e.Property(x => x.Environment).HasMaxLength(100); e.Property(x => x.Sha).HasMaxLength(64);
+            e.Property(x => x.State).HasMaxLength(20); e.Property(x => x.Url).HasMaxLength(500);
+        });
         b.Entity<GitConnection>(e =>
         {
             e.HasIndex(x => x.Token).IsUnique();
@@ -452,6 +465,10 @@ public partial class AppDbContext
             e.Property(x => x.Repository).HasMaxLength(200);
             e.Property(x => x.Author).HasMaxLength(120);
             e.Property(x => x.State).HasMaxLength(20);
+            e.Property(x => x.Branch).HasMaxLength(200); e.Property(x => x.HeadSha).HasMaxLength(64); e.Property(x => x.ChecksState).HasMaxLength(20);
+            e.Property(x => x.ReviewState).HasMaxLength(20); e.Property(x => x.ReviewerIds).HasMaxLength(400); e.Property(x => x.Files).HasMaxLength(8000);
+            e.Property(x => x.RiskReasons).HasMaxLength(600);
+            e.HasIndex(x => x.HeadSha);
             e.HasOne<TaskItem>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.WorkTaskId).OnDelete(DeleteBehavior.Cascade);
         });

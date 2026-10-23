@@ -115,13 +115,62 @@ public class MfaOptions
     public const string Section = "Mfa";
     /// <summary>Key that encrypts authenticator secrets. When empty, one is derived from the JWT signing key (rotating that key then invalidates enrolments, so set this in production).</summary>
     public string? EncryptionKey { get; set; }
+    /// <summary>
+    /// The same key, encrypted by Google Cloud KMS (base64 of the KMS ciphertext). When set with <see cref="KmsKeyName"/>, the key is never in the
+    /// server settings in clear: it is unwrapped by KMS once at start-up (with the machine's own service account), and lives only in memory.
+    /// </summary>
+    public string? EncryptionKeyWrapped { get; set; }
+    /// <summary>projects/P/locations/L/keyRings/R/cryptoKeys/K</summary>
+    public string? KmsKeyName { get; set; }
+}
+
+/// <summary>
+/// Unwraps the master key with Google Cloud KMS: an access token from the machine's metadata server (the VM's or Cloud Run's service account,
+/// which needs the CryptoKey Decrypter role), then KMS decrypt. Fails loudly: running with a different key would make every stored secret unreadable.
+/// </summary>
+public static class KmsMasterKey
+{
+    private const string Metadata = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
+
+    public static string Unwrap(string keyName, string wrappedBase64, HttpMessageHandler? handler = null)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(keyName, @"^projects/[^/]+/locations/[^/]+/keyRings/[^/]+/cryptoKeys/[^/]+$"))
+            throw new InvalidOperationException("Mfa:KmsKeyName must look like projects/P/locations/L/keyRings/R/cryptoKeys/K.");
+        using var http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+        http.Timeout = TimeSpan.FromSeconds(15);
+        using var tokenReq = new HttpRequestMessage(HttpMethod.Get, Metadata);
+        tokenReq.Headers.Add("Metadata-Flavor", "Google");
+        using var tokenRes = http.Send(tokenReq);
+        if (!tokenRes.IsSuccessStatusCode) throw new InvalidOperationException($"KMS: the metadata server gave no token ({(int)tokenRes.StatusCode}).");
+        var token = System.Text.Json.JsonDocument.Parse(tokenRes.Content.ReadAsStream()).RootElement.GetProperty("access_token").GetString();
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"https://cloudkms.googleapis.com/v1/{keyName}:decrypt")
+        {
+            Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(new { ciphertext = wrappedBase64.Trim() }), Encoding.UTF8, "application/json"),
+        };
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        using var res = http.Send(req);
+        var body = new StreamReader(res.Content.ReadAsStream()).ReadToEnd();
+        if (!res.IsSuccessStatusCode) throw new InvalidOperationException($"KMS could not unwrap the master key ({(int)res.StatusCode}). Check the key name and that the service account may decrypt with it.");
+        var plain = System.Text.Json.JsonDocument.Parse(body).RootElement.GetProperty("plaintext").GetString() ?? "";
+        return Encoding.UTF8.GetString(Convert.FromBase64String(plain));
+    }
 }
 
 /// <summary>AES-256-GCM: every value gets its own random nonce and is authenticated, so tampering is detected.</summary>
 public class AesSecretProtector(IOptions<JwtOptions> jwt, IOptions<MfaOptions> mfa) : ISecretProtector
 {
-    private readonly byte[] _key = HKDF.DeriveKey(HashAlgorithmName.SHA256,
-        Encoding.UTF8.GetBytes(string.IsNullOrWhiteSpace(mfa.Value.EncryptionKey) ? jwt.Value.SigningKey : mfa.Value.EncryptionKey), 32, info: Encoding.UTF8.GetBytes("pm-mfa-secret"));
+    private readonly byte[] _key = HKDF.DeriveKey(HashAlgorithmName.SHA256, Encoding.UTF8.GetBytes(Material(jwt.Value, mfa.Value)), 32, info: Encoding.UTF8.GetBytes("pm-mfa-secret"));
+
+    /// <summary>The key material: unwrapped by KMS when a wrapped key is configured, else the configured key, else the JWT signing key.</summary>
+    private static string Material(JwtOptions jwt, MfaOptions mfa)
+    {
+        if (!string.IsNullOrWhiteSpace(mfa.EncryptionKeyWrapped))
+        {
+            if (string.IsNullOrWhiteSpace(mfa.KmsKeyName)) throw new InvalidOperationException("Mfa:EncryptionKeyWrapped is set without Mfa:KmsKeyName.");
+            return KmsMasterKey.Unwrap(mfa.KmsKeyName, mfa.EncryptionKeyWrapped);
+        }
+        return string.IsNullOrWhiteSpace(mfa.EncryptionKey) ? jwt.SigningKey : mfa.EncryptionKey;
+    }
 
     public string Protect(string plainText)
     {

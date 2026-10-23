@@ -92,7 +92,7 @@ public class SupportVerifiedActionsTests(ApiFactory factory)
             Assert.True(channel.Data!["linked"]!.GetValue<bool>());
             Assert.Equal(phoneId, S(channel.Data["phoneNumberId"]));
             Assert.True((await owner.Get("/api/v1/support/channels/connection")).Data!["alreadyUsed"]!.GetValue<bool>());
-            factory.WithDb(db => Assert.Equal("", db.SupportChannels.IgnoreQueryFilters().Single(c => c.PhoneNumberId == phoneId).AccessTokenProtected));
+            Assert.Equal("", factory.WithDb(db => db.SupportChannels.IgnoreQueryFilters().Single(c => c.PhoneNumberId == phoneId).AccessTokenProtected));
 
             factory.Connectors.Answers["/loans/LN778899"] = """{"customer":{"mobile":"98123 00456","name":"Kavya"},"emi":{"amount":12500,"due":"2026-11-05"}}""";
             factory.Ai.Reset(); factory.Ai.Configured = true;

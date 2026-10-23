@@ -121,6 +121,8 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<CalendarFeed> CalendarFeeds => Set<CalendarFeed>();
     public DbSet<InboundMailbox> InboundMailboxes => Set<InboundMailbox>();
     public DbSet<GitConnection> GitConnections => Set<GitConnection>();
+    public DbSet<GitHubInstallation> GitHubInstallations => Set<GitHubInstallation>();
+    public DbSet<GitDeployment> GitDeployments => Set<GitDeployment>();
     public DbSet<MicrosoftConnection> MicrosoftConnections => Set<MicrosoftConnection>();
     public DbSet<PersonalCalendarProposal> PersonalCalendarProposals => Set<PersonalCalendarProposal>();
     public DbSet<PersonalEmailDraft> PersonalEmailDrafts => Set<PersonalEmailDraft>();

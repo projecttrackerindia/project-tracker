@@ -48,3 +48,21 @@ public sealed class FakePwnedPasswords : HttpMessageHandler
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(string.Join("\r\n", lines)) });
     }
 }
+
+/// <summary>Stands in for GitHub as the ProjectTracker GitHub App sees it: answers by method and path, records every call.</summary>
+public sealed class FakeGitHub : HttpMessageHandler
+{
+    public ConcurrentDictionary<string, string> Routes { get; } = new();
+    public ConcurrentQueue<(string Method, string Path, string? Body)> Calls { get; } = new();
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        var path = request.RequestUri!.AbsolutePath + request.RequestUri.Query;
+        var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
+        Calls.Enqueue((request.Method.Method, path, body));
+        var key = $"{request.Method.Method} {request.RequestUri.AbsolutePath}";
+        return Routes.TryGetValue(key, out var json)
+            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") }
+            : new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{\"message\":\"Not Found\"}", Encoding.UTF8, "application/json") };
+    }
+}

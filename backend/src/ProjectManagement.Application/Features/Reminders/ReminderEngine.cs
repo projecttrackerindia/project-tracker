@@ -130,9 +130,57 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
             Interlocked.Exchange(ref _lastFollowUps, now.Ticks);
             try { await FollowUpsAsync(now, ct); }
             catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "Owed follow-ups could not be checked; the reminders carry on"); }
+            try { await ReviewNudgesAsync(now, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "Review nudges could not be checked; the reminders carry on"); }
         }
         metrics.Ran(now);
         return fired;
+    }
+
+    // ------------------------------------------------------------------ pull requests waiting for review
+
+    /// <summary>
+    /// A pull request (linked to a task) that has waited two days for a requested reviewer: each reviewer whose GitHub account is connected
+    /// gets a nudge, again every two days while it still waits.
+    /// </summary>
+    public async Task<int> ReviewNudgesAsync(DateTime now, CancellationToken ct = default)
+    {
+        var due = now.AddDays(-2);
+        var waiting = await db.DevLinks.IgnoreQueryFilters().Where(l => l.Kind == "pull_request" && l.State == "open" && !l.Draft && l.ReviewerIds != null
+                && l.ReviewRequestedAt < due && (l.NudgedAt == null || l.NudgedAt < due))
+            .OrderBy(l => l.ReviewRequestedAt).Take(200).ToListAsync(ct);
+        var sent = 0;
+        foreach (var pr in waiting.GroupBy(l => (l.TenantId, l.Repository, l.ExternalId)))
+        {
+            var first = pr.First();
+            var ids = (first.ReviewerIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
+            var reviewers = await (from l in db.UserLogins.AsNoTracking()
+                                   join m in db.TenantMembers.IgnoreQueryFilters().AsNoTracking() on l.UserId equals m.UserId
+                                   where l.Provider == "github" && ids.Contains(l.Subject) && m.TenantId == first.TenantId
+                                   select l.UserId).Distinct().ToListAsync(ct);
+            string? link = null;
+            if (first.TaskId is { } tid)
+            {
+                var project = await db.Tasks.IgnoreQueryFilters().Where(t => t.Id == tid).Select(t => (Guid?)t.ProjectId).FirstOrDefaultAsync(ct);
+                if (project is { } pid) link = $"/projects/{pid}?task={tid}";
+            }
+            else if (first.WorkTaskId is { } wid) link = $"/operations?task={wid}";
+            var days = (int)Math.Floor((now - first.ReviewRequestedAt!.Value).TotalDays);
+            foreach (var user in reviewers)
+            {
+                var n = new Notification
+                {
+                    TenantId = first.TenantId, UserId = user, Type = NotificationType.Reminder, CreatedAt = now, Link = link,
+                    Title = Text($"{first.Repository}#{first.ExternalId} waits on your review ({days} days)", 200)!,
+                    Body = Text($"“{first.Title}”{(first.Author is null ? "" : $" by {first.Author}")}. Reviewing it keeps the work moving.", 500),
+                    DedupeKey = $"pr-review:{first.Id:N}:{user:N}:{now:yyyyMMdd}",
+                };
+                if (await router.ApplyAsync(n, ct)) { db.Notifications.Add(n); sent++; }
+            }
+            foreach (var l in pr) l.NudgedAt = now;
+        }
+        if (waiting.Count > 0) await db.SaveChangesAsync(ct);
+        return sent;
     }
 
     // ------------------------------------------------------------------ owed follow-ups

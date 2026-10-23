@@ -23,6 +23,31 @@ public class AccountSecurityTests(ApiFactory factory)
         Assert.Equal(0, PasswordBreachCheck.Count(body, "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
     }
 
+    private sealed class FakeKms : HttpMessageHandler
+    {
+        public List<string> Calls { get; } = [];
+        protected override HttpResponseMessage Send(HttpRequestMessage request, CancellationToken ct) => SendAsync(request, ct).GetAwaiter().GetResult();
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Calls.Add(request.RequestUri!.ToString());
+            if (request.RequestUri.Host == "metadata.google.internal")
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"access_token\":\"ya29.test\",\"expires_in\":3599}") });
+            Assert.Equal("Bearer ya29.test", request.Headers.Authorization!.ToString());
+            var plain = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("master-key-material-from-kms"));
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"plaintext\":\"" + plain + "\"}") });
+        }
+    }
+
+    [Fact]
+    public void The_master_key_can_be_held_by_cloud_kms()
+    {
+        var kms = new FakeKms();
+        var key = ProjectManagement.Infrastructure.Services.KmsMasterKey.Unwrap("projects/p/locations/asia-south1/keyRings/projecttracker/cryptoKeys/secrets-master", "Y2lwaGVy", kms);
+        Assert.Equal("master-key-material-from-kms", key);
+        Assert.Contains(kms.Calls, c => c.EndsWith("/cryptoKeys/secrets-master:decrypt", StringComparison.Ordinal));
+        Assert.Throws<InvalidOperationException>(() => ProjectManagement.Infrastructure.Services.KmsMasterKey.Unwrap("not-a-key-name", "x", kms));
+    }
+
     [Fact]
     public async Task A_breached_password_is_refused_and_only_five_characters_of_its_hash_are_sent()
     {

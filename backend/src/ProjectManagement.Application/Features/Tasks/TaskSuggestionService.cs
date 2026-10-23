@@ -23,7 +23,7 @@ public record TaskSuggestionsDto(
 /// and a track record on similar work, how long similar finished work really took, a due date from that, and the priority similar work had.
 /// Every suggestion carries the facts behind it, and only work the person may already see is used.
 /// </summary>
-public class TaskSuggestionService(IAppDbContext db, ProjectAccess access, AiAnalysis analysis, AppClock clock)
+public class TaskSuggestionService(IAppDbContext db, ProjectAccess access, AiAnalysis analysis, AppClock clock, ProjectManagement.Application.Features.Integrations.GitHubAppService? gitHub = null)
 {
     /// <summary>Working hours a person typically spends on one task in a day, used to turn an estimate into working days.</summary>
     private const decimal HoursPerDay = 6m;
@@ -35,6 +35,13 @@ public class TaskSuggestionService(IAppDbContext db, ProjectAccess access, AiAna
         var people = (await analysis.RankAssigneesAsync(text, projectId, 3, ct)).Select(f => new SuggestedPerson(f.UserId, f.Name, f.Why)).ToList();
 
         HashSet<string> words = text.Length == 0 ? new() : AiAnalysis.Words(text);
+        // Who actually changed the code this is about (from merged pull requests), first.
+        if (gitHub is not null && words.Count > 0)
+        {
+            var owners = await gitHub.CodeOwnersAsync(words, ct);
+            people = [.. owners.Select(o => new SuggestedPerson(o.UserId, o.Name, o.Why)), .. people.Where(p => !owners.Any(o => o.UserId == p.UserId))];
+            people = people.Take(3).ToList();
+        }
         if (words.Count == 0) return new TaskSuggestionsDto(people, null, null, null, null, null, null, null, null, []);
 
         // Finished work in the last year that shares words with the new title, this project first, then by how many words match.

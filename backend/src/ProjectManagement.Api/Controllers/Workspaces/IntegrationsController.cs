@@ -14,7 +14,8 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 
 /// <summary>Setting up integrations: the work mailbox, repository connections, my calendar subscription, development links on tasks, and the data policy.</summary>
 [Route("api/v1"), RequireWorkspace]
-public class IntegrationsController(InboundEmailService inbound, GitLinkService git, CalendarFeedService calendar, DataPolicyService data, GoogleCalendarAuthService google, IWebHostEnvironment environment) : ApiControllerBase
+public class IntegrationsController(InboundEmailService inbound, GitLinkService git, CalendarFeedService calendar, DataPolicyService data, GoogleCalendarAuthService google, IWebHostEnvironment environment,
+    GitHubAppService gitHub) : ApiControllerBase
 {
     public const string GoogleProofCookie="__Secure-pt-google-connect";
     // ---- Google Workspace (Calendar + Meet): one connection per person, not a shared workspace credential - see GoogleCalendarAuthService.
@@ -79,6 +80,47 @@ public class IntegrationsController(InboundEmailService inbound, GitLinkService 
         await git.DeleteAsync(id, ct);
         return NoContent();
     }
+
+    // ---- the GitHub App
+    [HttpGet("integrations/github-app")]
+    public async Task<IActionResult> GitHubApp(CancellationToken ct) => Ok(await gitHub.StatusAsync(ct));
+
+    /// <summary>Where to send the admin to install the app on GitHub (with a sealed state for this workspace and person).</summary>
+    [HttpPost("integrations/github-app/install")]
+    public IActionResult InstallGitHub() => Ok(gitHub.Start());
+
+    /// <summary>GitHub sent the admin back: the installation, checked against who installed it.</summary>
+    [HttpPost("integrations/github-app/complete")]
+    public async Task<IActionResult> CompleteGitHub([FromBody] GitHubInstallCompleteRequest req, CancellationToken ct) => Ok(await gitHub.CompleteAsync(req, ct));
+
+    [HttpPut("integrations/github-app")]
+    public async Task<IActionResult> SaveGitHub([FromBody] SaveGitHubSettingsRequest req, CancellationToken ct) => Ok(await gitHub.SaveSettingsAsync(req, ct));
+
+    [HttpDelete("integrations/github-app")]
+    public async Task<IActionResult> DisconnectGitHub(CancellationToken ct)
+    {
+        await gitHub.DisconnectAsync(ct);
+        return NoContent();
+    }
+
+    [HttpPost("tasks/{taskId:guid}/github-branch"), RequireModule(Modules.Tasks)]
+    public async Task<IActionResult> CreateBranch(Guid taskId, [FromBody] CreateBranchRequest req, CancellationToken ct) => Ok(await gitHub.CreateBranchAsync(taskId, req, ct));
+
+    /// <summary>Pull requests waiting on my review, and mine waiting on others (Home).</summary>
+    [HttpGet("me/review-queue")]
+    public async Task<IActionResult> ReviewQueue(CancellationToken ct) => Ok(await gitHub.ReviewQueueAsync(ct));
+
+    [HttpGet("projects/{projectId:guid}/release-notes"), RequireModule(Modules.Projects)]
+    public async Task<IActionResult> ReleaseNotes(Guid projectId, [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct) =>
+        Ok(await gitHub.ReleaseNotesAsync(projectId, from, to, ct));
+
+    [HttpPost("projects/{projectId:guid}/release-notes/page"), RequireModule(Modules.Projects)]
+    public async Task<IActionResult> ReleaseNotesPage(Guid projectId, [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct) =>
+        Ok(new { documentId = await gitHub.ReleaseNotesPageAsync(projectId, from, to, ct) });
+
+    /// <summary>Delivery metrics for a project (its tasks' repositories), or the whole workspace without a project.</summary>
+    [HttpGet("integrations/github-app/delivery")]
+    public async Task<IActionResult> Delivery([FromQuery] Guid? projectId, [FromQuery] int days = 90, CancellationToken ct = default) => Ok(await gitHub.MetricsAsync(projectId, days, ct));
 
     [HttpGet("tasks/{taskId:guid}/dev-links"), RequireModule(Modules.Tasks)]
     public async Task<IActionResult> TaskLinks(Guid taskId, CancellationToken ct) => Ok(await git.ForTaskAsync(taskId, ct));
@@ -227,6 +269,18 @@ public class InboundController(IServiceProvider services, GoogleCalendarAuthServ
             return new InboundEmail(J("FromFull") is { } full && JsonNode.Parse(full)?["Email"]?.ToString() is { } e ? e : J("from", "From", "sender"),
                 J("to", "To", "OriginalRecipient", "recipient"), J("subject", "Subject"), J("StrippedTextReply", "text", "TextBody", "body"));
         }
+    }
+
+    /// <summary>The ProjectTracker GitHub App's webhook (every workspace's installations): checked with the app's secret.</summary>
+    [HttpPost("integrations/github-app/webhook")]
+    [RequestSizeLimit(26 * 1024 * 1024)]
+    public async Task<IActionResult> GitHubAppWebhook(CancellationToken ct)
+    {
+        using var ms = new MemoryStream();
+        await Request.Body.CopyToAsync(ms, ct);
+        var ok = await services.GetRequiredService<ProjectManagement.Application.Features.Integrations.GitHubAppWebhook>()
+            .ReceiveAsync(ms.ToArray(), Request.Headers["X-Hub-Signature-256"].FirstOrDefault(), Request.Headers["X-GitHub-Event"].FirstOrDefault(), ct);
+        return ok ? Ok(new { received = true }) : Unauthorized();
     }
 
     [HttpPost("inbound/git/{provider}/{token}")]

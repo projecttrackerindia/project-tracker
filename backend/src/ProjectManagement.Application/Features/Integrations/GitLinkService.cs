@@ -22,7 +22,9 @@ namespace ProjectManagement.Application.Features.Integrations;
 public record GitConnectionDto(Guid Id, GitProvider Provider, string Name, string WebhookUrl, bool CloseOnKeyword, int Received, DateTime? LastReceivedAt, string? LastError, DateTime CreatedAt);
 public record CreatedGitConnectionDto(GitConnectionDto Connection, string Secret);
 public record SaveGitConnectionRequest(GitProvider Provider, string? Name, bool CloseOnKeyword = true);
-public record DevLinkDto(Guid Id, GitProvider Provider, string Kind, string ExternalId, string Title, string Url, string? Repository, string? Author, string? State, DateTime OccurredAt);
+public record DevLinkDto(Guid Id, GitProvider Provider, string Kind, string ExternalId, string Title, string Url, string? Repository, string? Author, string? State, DateTime OccurredAt,
+    string? Branch = null, string? ChecksState = null, string? ReviewState = null, bool Draft = false, int? Additions = null, int? Deletions = null, int? ChangedFiles = null,
+    int? RiskScore = null, IReadOnlyList<string>? RiskReasons = null, DateTime? MergedAt = null, bool AwaitingReview = false);
 
 /// <summary>One commit or pull request, whatever the provider.</summary>
 public record GitChange(string Kind, string ExternalId, string Title, string Message, string Url, string? Repository, string? Author, string? AuthorEmail,
@@ -95,7 +97,9 @@ public class GitLinkService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
 
     // ------------------------------------------------------------------ links on a task
 
-    private static DevLinkDto ToDto(DevLink l) => new(l.Id, l.Provider, l.Kind, l.ExternalId, l.Title, l.Url, l.Repository, l.Author, l.State, l.OccurredAt);
+    private static DevLinkDto ToDto(DevLink l) => new(l.Id, l.Provider, l.Kind, l.ExternalId, l.Title, l.Url, l.Repository, l.Author, l.State, l.OccurredAt,
+        l.Branch, l.ChecksState, l.ReviewState, l.Draft, l.Additions, l.Deletions, l.ChangedFiles, l.RiskScore,
+        string.IsNullOrEmpty(l.RiskReasons) ? null : l.RiskReasons.Split('\n', StringSplitOptions.RemoveEmptyEntries), l.MergedAt, !string.IsNullOrEmpty(l.ReviewerIds) && l.State == "open");
 
     public async Task<IReadOnlyList<DevLinkDto>> ForTaskAsync(Guid taskId, CancellationToken ct = default)
     {
@@ -271,7 +275,7 @@ public class GitLinkService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
 
                 if (conn.CloseOnKeyword && change.Completes && closed.Contains(key))
                 {
-                    try { await CompleteAsync(sp, db, cc, conn, tenant.Type, change.AuthorEmail, taskId, workTaskId, ct); }
+                    try { await CompleteAsync(sp, db, cc, conn.TenantId, conn.CreatedBy, tenant.Type, change.AuthorEmail, taskId, workTaskId, ct); }
                     catch (AppException ex) { conn.LastError = Cut($"{clock.Now:dd MMM HH:mm} UTC: {key} could not be completed: {ex.Message}", 300); log.LogInformation("Git close of {Key} refused: {Reason}", key, ex.Message); }
                 }
             }
@@ -283,15 +287,16 @@ public class GitLinkService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     private static string? Cut(string? s, int max) => s is null ? null : s.Length <= max ? s : s[..(max - 1)] + "…";
 
     /// <summary>Completes a task as the commit's author when they are a member (their own rights apply), otherwise as whoever connected the repository.</summary>
-    private static async Task CompleteAsync(IServiceProvider sp, IAppDbContext db, CurrentContext cc, GitConnection conn, WorkspaceType type, string? authorEmail,
-        Guid? taskId, Guid? workTaskId, CancellationToken ct)
+    internal static async Task CompleteAsync(IServiceProvider sp, IAppDbContext db, CurrentContext cc, Guid tenantId, Guid? fallbackUser, WorkspaceType type, string? authorEmail,
+        Guid? taskId, Guid? workTaskId, CancellationToken ct, Guid? actingUser = null)
     {
         var normalized = authorEmail is null ? null : Text.NormalizeEmail(authorEmail);
-        var member = normalized is null ? null : await db.TenantMembers.IgnoreQueryFilters().AsNoTracking()
-            .FirstOrDefaultAsync(m => m.TenantId == conn.TenantId && m.User!.NormalizedEmail == normalized && m.User.IsActive, ct);
-        member ??= await db.TenantMembers.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(m => m.TenantId == conn.TenantId && m.UserId == conn.CreatedBy, ct);
+        var member = actingUser is { } acting ? await db.TenantMembers.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(m => m.TenantId == tenantId && m.UserId == acting, ct) : null;
+        member ??= normalized is null ? null : await db.TenantMembers.IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(m => m.TenantId == tenantId && m.User!.NormalizedEmail == normalized && m.User.IsActive, ct);
+        member ??= await db.TenantMembers.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(m => m.TenantId == tenantId && m.UserId == fallbackUser, ct);
         if (member is null) return;
-        cc.UserId = member.UserId; cc.TenantId = conn.TenantId; cc.Role = member.Role; cc.WorkspaceType = type; cc.IsPlatformAdmin = false;
+        cc.UserId = member.UserId; cc.TenantId = tenantId; cc.Role = member.Role; cc.WorkspaceType = type; cc.IsPlatformAdmin = false;
 
         if (workTaskId is { } wid)
         {

@@ -37,6 +37,14 @@ if (publishDocs) builder.Services.AddApiSwagger();
 
 var app = builder.Build();
 
+// With the master key held by Google Cloud KMS, unwrap it now: a wrong key name or a missing permission stops the start with a clear message,
+// rather than every encrypted value failing later.
+if (!string.IsNullOrWhiteSpace(app.Configuration["Mfa:EncryptionKeyWrapped"]))
+{
+    var protector = app.Services.GetRequiredService<ProjectManagement.Application.Abstractions.ISecretProtector>();
+    if (protector.Unprotect(protector.Protect("kms-probe")) != "kms-probe") throw new InvalidOperationException("The KMS master key does not round-trip.");
+}
+
 app.UseResponseCompression();
 app.UseMiddleware<MetricsMiddleware>();
 // Outside the exception handler, so each request is logged with the status the caller really got: an expected refusal (401, 403,

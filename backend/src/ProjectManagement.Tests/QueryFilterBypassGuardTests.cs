@@ -49,6 +49,8 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Integrations/ApiKeyService.cs",
         "ProjectManagement.Application/Features/Integrations/CalendarFeedService.cs",
         "ProjectManagement.Application/Features/Integrations/GitLinkService.cs",
+        "ProjectManagement.Application/Features/Integrations/GitHubAppService.cs", // an installation id may belong to one workspace only: uniqueness check across workspaces, nothing else read
+        "ProjectManagement.Application/Features/Integrations/GitHubAppWebhook.cs", // signed GitHub App webhook: the installation id picks the workspace (routing row and tenant status only); everything after runs in that workspace
         "ProjectManagement.Application/Features/Integrations/InboundEmailService.cs",
         "ProjectManagement.Application/Features/Integrations/SlackConnectionService.cs", // global workspace uniqueness and signed lifecycle routing only; no business-data reads; exact team/app mapping establishes tenant before writes
         "ProjectManagement.Application/Features/Integrations/WhatsAppInstallationService.cs", // exact app/phone uniqueness metadata only; current authenticated tenant/user checked before persistence

@@ -102,6 +102,72 @@ namespace ProjectManagement.Domain.Entities
         /// <summary>Pull requests: open, merged or closed.</summary>
         public string? State { get; set; }
         public DateTime OccurredAt { get; set; }
+
+        // From the GitHub App (richer than a plain webhook): the branch, checks, reviews, size and risk of a pull request.
+        public string? Branch { get; set; }
+        public string? HeadSha { get; set; }
+        /// <summary>success, failure or pending (the latest checks on the head commit).</summary>
+        public string? ChecksState { get; set; }
+        /// <summary>approved, changes_requested or pending.</summary>
+        public string? ReviewState { get; set; }
+        /// <summary>GitHub user ids asked to review, comma separated, and since when.</summary>
+        public string? ReviewerIds { get; set; }
+        public DateTime? ReviewRequestedAt { get; set; }
+        public long? AuthorGitHubId { get; set; }
+        public bool Draft { get; set; }
+        public int? Additions { get; set; }
+        public int? Deletions { get; set; }
+        public int? ChangedFiles { get; set; }
+        /// <summary>The files changed (up to 60 paths, one per line): for risk and for who knows which part of the code.</summary>
+        public string? Files { get; set; }
+        /// <summary>0-100, and the reasons (a reason to look twice, never a gate).</summary>
+        public int? RiskScore { get; set; }
+        public string? RiskReasons { get; set; }
+        public DateTime? OpenedAt { get; set; }
+        public DateTime? MergedAt { get; set; }
+        /// <summary>The first commit of a merged pull request (lead time starts here).</summary>
+        public DateTime? FirstCommitAt { get; set; }
+        public DateTime? NudgedAt { get; set; }
+    }
+
+    /// <summary>
+    /// The workspace's installation of the ProjectTracker GitHub App: no secrets to paste, every chosen repository's events arrive, and the
+    /// app can create branches. One GitHub account (organization or user) per row; an installation belongs to one workspace.
+    /// </summary>
+    public class GitHubInstallation : TenantEntity, ITenantScoped
+    {
+        public long InstallationId { get; set; }
+        public string AccountLogin { get; set; } = "";
+        public string AccountType { get; set; } = "Organization";
+        /// <summary>all or selected.</summary>
+        public string RepositorySelection { get; set; } = "selected";
+        /// <summary>The repositories it can see (full names, one per line), refreshed on install and on changes.</summary>
+        public string Repositories { get; set; } = "";
+        public Guid InstalledBy { get; set; }
+        public DateTime? SuspendedAt { get; set; }
+        /// <summary>Status follows the code: which task status each event moves to (JSON). Empty: the defaults.</summary>
+        public string? StatusRules { get; set; }
+        /// <summary>Folders where a first-time change is a reason to look twice (one per line, like db/migrations or src/payments).</summary>
+        public string RiskyPaths { get; set; } = "";
+        /// <summary>"Fixes WEB-12" in a merged pull request or a commit on the default branch completes the task.</summary>
+        public bool CloseOnKeyword { get; set; } = true;
+        public int Received { get; set; }
+        public DateTime? LastEventAt { get; set; }
+        public string? LastError { get; set; }
+    }
+
+    /// <summary>A deployment GitHub reported (for delivery metrics): which commit went to which environment, and how it ended.</summary>
+    public class GitDeployment : TenantEntity, ITenantScoped
+    {
+        public long DeploymentId { get; set; }
+        public string Repository { get; set; } = "";
+        public string Environment { get; set; } = "";
+        public string Sha { get; set; } = "";
+        /// <summary>success, failure, error, in_progress or queued.</summary>
+        public string State { get; set; } = "queued";
+        public DateTime StartedAt { get; set; }
+        public DateTime? FinishedAt { get; set; }
+        public string? Url { get; set; }
     }
 
     /// <summary>

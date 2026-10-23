@@ -32,6 +32,7 @@ public static class DependencyInjection
         services.Configure<ProjectManagement.Application.Features.Voice.VoiceOptions>(config.GetSection("Voice"));
         services.Configure<ProjectManagement.Application.Features.Support.SupportOptions>(config.GetSection(ProjectManagement.Application.Features.Support.SupportOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Auth.PasswordBreachOptions>(config.GetSection(ProjectManagement.Application.Features.Auth.PasswordBreachOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Integrations.GitHubAppOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.GitHubAppOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.PersonalInboxAttachmentOptions>(config.GetSection("PersonalInboxAttachments"));
         services.Configure<ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.WhatsAppOptions>(config.GetSection("WhatsApp"));
@@ -112,6 +113,7 @@ public static class DependencyInjection
         services.AddHttpClient("voice-speech", c => c.Timeout = TimeSpan.FromSeconds(25));
         services.AddHttpClient("support-whatsapp", c => c.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient("pwned-passwords", c => c.Timeout = TimeSpan.FromSeconds(5));
+        services.AddHttpClient("github-app", c => c.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient("meetbot", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddHttpClient("whatsapp-installation", c => c.Timeout = TimeSpan.FromSeconds(20))

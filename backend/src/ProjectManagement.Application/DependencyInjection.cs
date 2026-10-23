@@ -203,6 +203,9 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Integrations.CalendarFeedService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.InboundEmailService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.GitLinkService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.GitHubAppClient>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.GitHubAppService>();
+        services.AddScoped<ProjectManagement.Application.Features.Integrations.GitHubAppWebhook>();
         services.AddScoped<ProjectManagement.Application.Features.Compliance.DataPolicyService>();
         services.AddScoped<ProjectManagement.Application.Features.Compliance.WorkspaceExporter>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiAssistant>();

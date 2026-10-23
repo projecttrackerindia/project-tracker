@@ -107,6 +107,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public FakeSupportGraph SupportGraph { get; } = new();
     public FakeConnectorApi Connectors { get; } = new();
     public FakePwnedPasswords Pwned { get; } = new();
+    public FakeGitHub GitHub { get; } = new();
     /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
     public FakeDns Dns { get; } = new();
     /// <summary>Stands in for Claude (off until a test switches it on).</summary>
@@ -164,6 +165,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddHttpClient("support-whatsapp").ConfigurePrimaryHttpMessageHandler(() => SupportGraph);
             services.AddHttpClient("voice-connector").ConfigurePrimaryHttpMessageHandler(() => Connectors);
             services.AddHttpClient("pwned-passwords").ConfigurePrimaryHttpMessageHandler(() => Pwned);
+            services.AddHttpClient("github-app").ConfigurePrimaryHttpMessageHandler(() => GitHub);
             services.RemoveAll<ProjectManagement.Application.Features.Voice.ConnectorCaller>();
             services.AddScoped<ProjectManagement.Application.Features.Voice.ConnectorCaller, TestConnectorCaller>();
             services.RemoveAll<ProjectManagement.Application.Abstractions.IChangeFeed>();
