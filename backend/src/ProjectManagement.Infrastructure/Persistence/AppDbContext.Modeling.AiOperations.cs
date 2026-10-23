@@ -8,6 +8,13 @@ public partial class AppDbContext
     private static void ConfigureAiOperations(ModelBuilder b)
     {
         b.Entity<AiMessage>().Property(m => m.EstimatedProviderCostUsd).HasPrecision(18, 8);
+        b.Entity<AiEvaluationRun>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.RanAt });
+            e.Property(x => x.Model).HasMaxLength(100);
+            e.Property(x => x.Mode).HasMaxLength(16);
+            e.Property(x => x.SummaryJson).HasMaxLength(8000);
+        });
         b.Entity<AiSearchChunk>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.SourceKind, x.SourceId });

@@ -56,7 +56,16 @@ export interface Alerts { settings: AlertSettings; active: AgentAlert[]; checked
 export interface Digest { title: string; lines: string[]; from: string; to: string; quiet: boolean }
 export interface AutonomyHint { projectId: string; projectKey: string; projectName: string; kind: string; decided: number; rate: number; level: number; message: string }
 
+export interface QualityWeek { week: string; answers: number; down: number; up: number; reasked: number; cardsProposed: number; cardsConfirmed: number; cardsDismissed: number; cardsUndone: number; toolFailures: number }
+export interface QualityArea { area: string; answers: number; downRate: number; reaskRate: number; dismissRate: number; toolFailureRate: number; score: number }
+export interface Evaluation { id: string; ranAt: string; model: string | null; mode: string | null; total: number; passed: number; rate: number; credits: number; summary: { byArea?: Record<string, { pass: number; total: number }>; byLang?: Record<string, { pass: number; total: number }> } }
+export interface Quality {
+  from: string; to: string; answers: number; downRate: number; reaskRate: number; dismissRate: number; undoRate: number; toolFailureRate: number;
+  weeks: QualityWeek[]; areas: QualityArea[]; downReasons: { reason: string; count: number }[]; evaluations: Evaluation[]; sampleLimited: boolean;
+}
+
 export const trackerApi = {
+  quality: (from: string) => get<Quality>('/ai/tracker/quality', { from }),
   list: (q: { page: number; status?: string; model?: string; intent?: string; from: string }) => get<Tracker>('/ai/tracker', q),
   fleet: (from: string) => get<Fleet>('/ai/tracker/fleet', { from }),
   health: () => get<Health>('/ai/tracker/health'),

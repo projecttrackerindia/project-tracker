@@ -200,6 +200,7 @@ public interface IAppDbContext
     DbSet<AiMessage> AiMessages { get; }
     DbSet<AiWatch> AiWatches { get; }
     DbSet<AiSearchChunk> AiSearchChunks { get; }
+    DbSet<AiEvaluationRun> AiEvaluationRuns { get; }
     DbSet<AiAttachment> AiAttachments { get; }
     DbSet<ChatAttachment> ChatAttachments { get; }
     DbSet<ChatReaction> ChatReactions { get; }

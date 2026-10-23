@@ -8,8 +8,16 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 
 [Route("api/v1/ai/tracker"), RequireWorkspace]
 public sealed class AgentTrackerController(AgentTrackerService tracker, IAiDiagnostics diagnostics, AiAssistant assistant, AgentCostService costs,
-    AgentAlertService alerts, AgentDigestService digest, AgentAutonomyHintService hints) : ApiControllerBase
+    AgentAlertService alerts, AgentDigestService digest, AgentAutonomyHintService hints, AiQualityService quality) : ApiControllerBase
 {
+    /// <summary>How well the assistant is landing: not-helpful answers, questions asked again, cards dismissed or undone, tool failures, by week and area, and scenario gradings.</summary>
+    [HttpGet("quality")]
+    public async Task<IActionResult> Quality([FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct) => Ok(await quality.GetAsync(from, to, ct));
+
+    /// <summary>Records a scenario grading (numbers only), sent by tools/ai-evaluation/run-scenarios.mjs when asked to.</summary>
+    [HttpPost("evaluations")]
+    public async Task<IActionResult> ReportEvaluation([FromBody] ReportEvaluationRequest req, CancellationToken ct) => Created(await quality.ReportAsync(req, ct));
+
     /// <summary>AI credits this month by agent and project, the last two weeks, and when they run out at the current pace.</summary>
     [HttpGet("cost")]
     public async Task<IActionResult> Cost(CancellationToken ct) => Ok(await costs.GetAsync(ct));

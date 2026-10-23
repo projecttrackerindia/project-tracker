@@ -10,13 +10,14 @@ import { useAuth } from '../../stores/auth';
 import { ActivityChart, BarList, FleetTrend, Histogram, LatencyTrend, Ring, Spark, StackBar } from './tracker/TrackerCharts';
 import { compact, KIND_LABEL, KIND_ORDER, pct, secs, series, SOURCE_LABEL, STATUS, trackerApi, words, type Fleet, type Run, type Tracker } from './tracker/types';
 import { AlertList, AlertsView, CostView, TrustPanels } from './tracker/TrackerWatch';
+import { QualityView } from './tracker/TrackerQuality';
 import type { Alerts } from './tracker/types';
 import { AgentsHubNav } from '../agents/AgentsHubNav';
 import './tracker/tracker.css';
 
-type Tab = 'overview' | 'assistant' | 'agent' | 'meetings' | 'costs' | 'alerts' | 'runs';
+type Tab = 'overview' | 'assistant' | 'quality' | 'agent' | 'meetings' | 'costs' | 'alerts' | 'runs';
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
-  { id: 'overview', label: 'Overview', icon: 'dashboard' }, { id: 'assistant', label: 'Assistant', icon: 'agent' }, { id: 'agent', label: 'Project agent', icon: 'sparkle' },
+  { id: 'overview', label: 'Overview', icon: 'dashboard' }, { id: 'assistant', label: 'Assistant', icon: 'agent' }, { id: 'quality', label: 'Quality', icon: 'target' }, { id: 'agent', label: 'Project agent', icon: 'sparkle' },
   { id: 'meetings', label: 'Meetings & follow-ups', icon: 'video' }, { id: 'costs', label: 'Credits', icon: 'bolt' }, { id: 'alerts', label: 'Alerts', icon: 'radar' },
   { id: 'runs', label: 'Runs', icon: 'list' },
 ];
@@ -109,6 +110,7 @@ export function AgentTrackerPage() {
           {d.sampleLimited && <p className="trk-note"><Icon name="info" size={13} />Figures cover the latest 10,000 matching runs - choose a shorter period for complete results.</p>}
           {tab === 'overview' && <Overview d={d} fleet={fleet.data} alerts={alerts.data} onFilter={filter} goTo={setTab} />}
           {tab === 'assistant' && <AssistantView d={d} onFilter={filter} />}
+          {tab === 'quality' && <QualityView from={from} />}
           {tab === 'agent' && (fleet.isLoading ? <PageLoader /> : fleet.data ? <ProjectAgentView f={fleet.data} /> : <ErrorState error={fleet.error} retry={() => fleet.refetch()} />)}
           {tab === 'meetings' && (fleet.isLoading ? <PageLoader /> : fleet.data ? <MeetingsView f={fleet.data} /> : <ErrorState error={fleet.error} retry={() => fleet.refetch()} />)}
           {tab === 'costs' && <CostView />}

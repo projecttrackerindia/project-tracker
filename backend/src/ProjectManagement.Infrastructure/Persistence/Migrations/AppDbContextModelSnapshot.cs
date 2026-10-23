@@ -1900,6 +1900,59 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("AiCreditReservations");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiEvaluationRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Credits")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Mode")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("Passed")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("RanAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SummaryJson")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Total")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "RanAt");
+
+                    b.ToTable("AiEvaluationRuns");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.AiForecastSnapshot", b =>
                 {
                     b.Property<Guid>("Id")

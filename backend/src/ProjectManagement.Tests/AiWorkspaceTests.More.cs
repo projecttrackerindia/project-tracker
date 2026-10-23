@@ -171,6 +171,47 @@ public partial class AiWorkspaceTests
         await NoCard(o.Owner, AiToolbox.Watch, new { key = S(other["key"]), when = "status", status = "Shipped to Mars" }, $"Tell me when {S(other["key"])} is shipped to Mars");
         Assert.Contains("has no status", ToolResult());
     }
+
+    [Fact]
+    public async Task Quality_counts_what_people_did_with_answers_by_area_and_keeps_scenario_gradings_numbers_only()
+    {
+        var o = await Setup();
+        // An answer about work that missed (👎), then the same question asked again at once.
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("find_work", new { overdue = true }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Nothing is late."));
+        var first = await Ask(o.Owner, "Which tasks are late?");
+        Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{S(first.Done["id"])}/feedback", new { rating = "down", reason = "wrong" })).Ok);
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Let me look again."));
+        await Ask(o.Owner, "Which tasks are overdue in Atlas?", conversation: first.Conversation);
+        // A card that was dismissed.
+        var card = await Card(o.Owner, "propose_create_task", new { project = "Atlas", title = "Nice to have" }, "Add a task to Atlas: nice to have");
+        Assert.True((await o.Owner.Post(card.Url.Replace("/confirm", "/dismiss"))).Ok);
+
+        var quality = await o.Owner.Get("/api/v1/ai/tracker/quality");
+        Assert.True(quality.Ok, quality.ToString());
+        var d = quality.Data!;
+        Assert.True(d["answers"]!.GetValue<int>() >= 3);
+        Assert.True(d["downRate"]!.GetValue<double>() > 0);
+        Assert.True(d["reaskRate"]!.GetValue<double>() > 0);
+        Assert.True(d["dismissRate"]!.GetValue<double>() > 0);
+        var tasks = d["areas"]!.AsArray().Single(a => S(a!["area"]) == "tasks")!;
+        Assert.True(tasks["answers"]!.GetValue<int>() >= 2);
+        Assert.Contains("wrong", d["downReasons"]!.ToJsonString());
+        Assert.DoesNotContain("Which tasks are late", d.ToJsonString());   // counts only, never what was asked
+        Assert.Equal(HttpStatusCode.Forbidden, (await o.Guest.Get("/api/v1/ai/tracker/quality")).Status);
+
+        // A grading report keeps numbers only: free text in it is dropped.
+        var report = await o.Owner.Post("/api/v1/ai/tracker/evaluations", new { model = "gemini-test", mode = "quick", total = 40, passed = 34, credits = 52,
+            byArea = new Dictionary<string, object> { ["vault"] = new { pass = 8, total = 9 }, ["safety"] = new { pass = 12, total = 13, note = "secret text" }, ["bad name with spaces"] = new { pass = 1, total = 1 } } });
+        Assert.True(report.Ok, report.ToString());
+        var evals = (await o.Owner.Get("/api/v1/ai/tracker/quality")).Data!["evaluations"]!.AsArray();
+        var latest = evals[0]!;
+        Assert.Equal(0.85, latest["rate"]!.GetValue<double>());
+        Assert.Contains("vault", latest["summary"]!.ToJsonString());
+        Assert.DoesNotContain("secret text", latest.ToJsonString());
+        Assert.DoesNotContain("bad name", latest.ToJsonString());
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await o.Owner.Post("/api/v1/ai/tracker/evaluations", new { total = 5, passed = 9, credits = 0 })).Status);
+    }
 }
 
 /// <summary>When a watch's condition holds.</summary>

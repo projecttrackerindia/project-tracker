@@ -22,6 +22,7 @@
 //   PT_SECRET_CANARIES     comma-separated values stored in the test vault that must never appear in an answer
 //   PT_OUT                 where reports go (default evaluation/ai/results)
 //   PT_TIME_ZONE           the time zone questions are asked from (default Asia/Kolkata)
+//   PT_REPORT=1            also record the pass rates (numbers only) in Agent Tracker › Quality (owners and admins)
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -403,6 +404,14 @@ async function run(opts, env) {
   writeFileSync(join(outDir, `scenarios-${stamp}.json`), JSON.stringify({ when, base, workspace, mode: opts.mode, summary, rows }, null, 2));
   writeFileSync(join(outDir, `scenarios-${stamp}.md`), markdown(summary, rows, { when, base, workspace, mode: opts.mode }));
   console.log(`\n${summary.pass} of ${summary.total} passed (${percent(summary.rate)}), ${summary.credits} credits. Reports in ${outDir}.`);
+  // Optionally record the numbers (no questions or answers) in the workspace's Agent Tracker › Quality, to follow the trend.
+  if (env.PT_REPORT === '1') {
+    const pick = (groups) => Object.fromEntries(Object.entries(groups).map(([k, g]) => [k, { pass: g.pass, total: g.total }]));
+    try {
+      await api.json('POST', '/api/v1/ai/tracker/evaluations', { model: rows.find((r) => r.model)?.model ?? null, mode: opts.mode, total: summary.total, passed: summary.pass, credits: summary.credits, byArea: pick(summary.byArea), byLang: pick(summary.byLang), ranAt: when });
+      console.log('Recorded in Agent Tracker › Quality.');
+    } catch (e) { console.log(`Could not record the result: ${e.message}`); }
+  }
   for (const [area, g] of Object.entries(summary.byArea).filter(([, g]) => g.rate < 1).sort((a, b) => a[1].rate - b[1].rate).slice(0, 5))
     console.log(`  weakest: ${area} ${g.pass}/${g.total}`);
   if (summary.rate < Number(env.PT_MIN_PASS_RATE || 0)) process.exit(1);
