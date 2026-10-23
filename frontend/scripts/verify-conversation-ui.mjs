@@ -47,6 +47,7 @@ try {
   for(const [kind,url,composer] of [['agent','/preview-org/ai','.ai-composer'],['chat','/preview-org/chat/'+conversation.id,'.composer']]){
    const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height});
    await page.goto(origin+url);await page.locator(composer).waitFor({state:'visible'});await page.evaluate(()=>document.fonts.ready);
+   await page.waitForFunction(s=>!!document.querySelector(s)&&!!document.querySelector('.m-tabs'),composer);await page.waitForTimeout(150);
    const geometry=await page.evaluate(selector=>{
     const i0=document.querySelector(selector),t0=document.querySelector(".m-tabs");if(!i0||!t0)return {missing:[!!i0,!!t0,location.pathname,document.body.innerText.slice(0,200)]};const input=i0.getBoundingClientRect();const tabs=t0.getBoundingClientRect();
     return {inputBottom:input.bottom,tabsTop:tabs.top,tabsBottom:tabs.bottom,height:innerHeight,overflow:document.documentElement.scrollWidth>innerWidth+1};
