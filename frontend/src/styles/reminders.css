@@ -287,3 +287,13 @@
   .rs-item { flex-wrap: wrap; }
   .rs-acts { width: 100%; justify-content: flex-end; }
 }
+
+/* ---- watches ("tell me when…") */
+.rp-watch { align-items: center; }
+.rp-watch-ico { width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); }
+.rp-watch.fired .rp-watch-ico { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.rp-watch.stopped .rp-watch-ico, .rp-watch.ended .rp-watch-ico { color: var(--text-3); background: var(--surface-3); }
+.rp-watch-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.rp-watch-main b { font-size: 14px; }
+.rp-watch-main span { font-size: 12.5px; color: var(--text-2); overflow-wrap: anywhere; }
+.rp-watch-main small { font-size: 11.5px; color: var(--text-3); }

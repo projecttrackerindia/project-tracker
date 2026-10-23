@@ -15,7 +15,7 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 [Route("api/v1/ai"), RequireWorkspace]
 public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysis analysis, AiPortfolio portfolio, AiFileService files, AiUsageService usage,
     ProjectManagement.Application.Features.Reminders.PortfolioDigestService digest, ProjectManagement.Application.Abstractions.ICurrentContext current, ProjectManagement.Application.Services.AppClock clock,
-    ILogger<AiWorkspaceController> log) : ApiControllerBase
+    ILogger<AiWorkspaceController> log, AiWatchService watches) : ApiControllerBase
 {
     private static readonly JsonSerializerOptions StreamJson = Make();
     private static JsonSerializerOptions Make() { var o = new JsonSerializerOptions(); Json.Configure(o); return o; }
@@ -163,6 +163,14 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysi
 
     [HttpPost("messages/{id:guid}/feedback")]
     public async Task<IActionResult> Feedback(Guid id, [FromBody] AiFeedbackRequest req, CancellationToken ct) { await guidance.FeedbackAsync(id, req.Rating, req.Reason, ct); return NoContent(); }
+
+    // ---- "tell me when…" watches (the caller's own)
+
+    [HttpGet("watches")]
+    public async Task<IActionResult> Watches(CancellationToken ct) => Ok(await watches.MineAsync(ct));
+
+    [HttpPost("watches/{id:guid}/stop")]
+    public async Task<IActionResult> StopWatch(Guid id, CancellationToken ct) { await watches.StopAsync(id, ct); return NoContent(); }
 
     /// <summary>The caller's own answers marked "not helpful", shaped as scenarios for the evaluation set.</summary>
     [HttpGet("feedback/missed")]

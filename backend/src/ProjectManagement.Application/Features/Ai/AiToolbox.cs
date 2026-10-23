@@ -56,11 +56,11 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         ListPeople = "list_people", MyWorkSummary = "my_work_summary",
         CreateTask = "propose_create_task", CreateWork = "propose_create_work", CreateActionItem = "propose_create_action_item",
         CreateReminder = "propose_reminder", SendReport = "propose_send_report", CreateProject = "propose_create_project", InviteMember = "propose_invite_member",
-        UpdateProject = "propose_update_project", UpdateStagePlan = "propose_update_stage_dates", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work", DeleteWork = "propose_delete_work",
+        UpdateProject = "propose_update_project", UpdateStagePlan = "propose_update_stage_dates", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work", DeleteWork = "propose_delete_work", Watch = "propose_watch", StopWatch = "propose_stop_watch", ListWatches = "list_watches",
         CreateDocument = "propose_create_document", ListMeetings = "list_project_meetings", StartMeeting = "propose_start_meeting", ScheduleMeeting = "propose_schedule_meeting";
 
     public const string ScheduleProject = "propose_schedule_project";
-    public static readonly string[] WriteTools = [DeleteWork, PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, ScheduleMeeting,
+    public static readonly string[] WriteTools = [Watch, StopWatch, DeleteWork, PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, ScheduleMeeting,
         .. AiHomeTools.WriteTools, .. AiWorkdayTools.WriteTools];
 
     /// <summary>
@@ -108,9 +108,10 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         Include(@"\b(meeting|calendar|scrum|standup|stand-up)\b", ListMeetings);
         Include(@"\b(document|documents|notes|knowledge)\b", SearchDocuments, ReadDocument);
         Include(@"\b(knowledge|evidence|reference|search|find)\b", SearchKnowledge, ReadKnowledge);
-        Include(@"\b(my day|plan my day|today|tomorrow|calendar|free|busy|agenda|due this week|due today)\b", AiWorkdayTools.MySchedule, AiHomeTools.NeedsYou, ListMeetings);
+        Include(@"\b(my day|plan my day|today|tomorrow|calendar|free|busy|agenda|due this week|due today|next meeting|my meetings?)\b", AiWorkdayTools.MySchedule, AiHomeTools.NeedsYou, ListMeetings);
         Include(@"\b(what should i|first|priorit\w*|pending|waiting|inbox)\b", AiHomeTools.NeedsYou, AiWorkdayTools.MySchedule);
         Include(@"\b(mail|mails|email|emails|gmail|outlook|inbox)\b", AiWorkdayTools.MailInbox, AiWorkdayTools.MailRead);
+        Include(@"\b(watch|watching|watches|keep an eye)\b", ListWatches);
         Include(@"\b(decide|decided|decision|decisions|agreed)\b", AiWorkdayTools.DecisionLog, AiHomeTools.ChatSearch);
         Include(@"\b(chat|chats|messages|said)\b", AiHomeTools.ChatCatchUp, AiHomeTools.ChatSearch);
         Include(@"\b(page|pages|doc|docs|wiki|section)\b", SearchDocuments, ReadDocument);
@@ -175,6 +176,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 """{"type":"object","properties":{"project":{"type":"string","description":"Optional project key or name; default all the person can see."},"days":{"type":"integer","description":"Look-back window, 14 to 365. Default 90."}},"required":[]}"""),
             new(ListMeetings, "List a project's Google Meet meetings, upcoming and recent past, with who organized each one and their real RSVP status (accepted, declined, tentative, or awaiting a response) straight from Google Calendar. Use for 'what meetings are scheduled', 'who accepted tomorrow's meeting'.",
                 """{"type":"object","properties":{"project":{"type":"string","description":"A project key or name."}},"required":["project"]}"""),
+            new(ListWatches, "The person's own \"tell me when\" watches: what they are waiting to hear about (a task done, a status, overdue, a project slipping past a date), with ids, and the ones that fired recently.",
+                """{"type":"object","properties":{},"required":[]}"""),
         };
         tools.AddRange(home.Definitions(false));
         tools.AddRange(workday.Definitions(false));
@@ -192,6 +195,10 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                  "title":{"type":"string"},"description":{"type":"string","description":"The full new description (replaces the old one)."},"estimate_hours":{"type":"number"},
                  "priority":{"type":"string","enum":["Low","Medium","High","Critical"]},"comment":{"type":"string"},"reason":{"type":"string","description":"Why the due date moves later."}},"required":["key"]}
                 """),
+            new(Watch, "Propose a \"tell me when\" watch for the person: they get one notification when a task, operational work item or action item (by key, e.g. ATL-12) or a project (key or name) is done, reaches a status, becomes overdue, or slips past a date. Use for 'tell me when ATL-12 is done', 'ping me if Atlas slips past Friday', 'let me know when WT-4 is In Progress'. Not a reminder at a time: use propose_reminder for that.",
+                """{"type":"object","properties":{"key":{"type":"string","description":"A work item key (ATL-12, WT-3, AI-4)"},"project":{"type":"string","description":"A project key or name, to watch the project itself"},"when":{"type":"string","enum":["done","status","overdue","slips"]},"status":{"type":"string","description":"For when=status"},"date":{"type":"string","description":"yyyy-mm-dd, for when=slips"},"note":{"type":"string","maxLength":300},"days":{"type":"integer","minimum":1,"maximum":365,"description":"How long to keep watching; default 60"}},"required":["when"]}"""),
+            new(StopWatch, "Propose stopping one of the person's watches (an id from list_watches).",
+                """{"type":"object","properties":{"watch_id":{"type":"string","format":"uuid"}},"required":["watch_id"]}"""),
             new(DeleteWork, "Propose deleting a task, operational work item or action item by its key (ATL-12, WT-3, AI-4), only when the person asked to delete that item. It goes to the bin (a task takes its subtasks with it) and can be undone for a while. The person confirms first.",
                 """{"type":"object","properties":{"key":{"type":"string"},"reason":{"type":"string","maxLength":300}},"required":["key"]}"""),
             new(UpdateStagePlan, "Change a stage planned start, end or allocated duration. Read project_report for exact IDs and scheduling mode. Automatic schedules recalculate downstream stages; FollowSchedule aligns the project end. Manual mode changes only that stage. Preserve task deadlines, actual dates and dependency locks. Explicit routine edits may execute directly under the backend policy; otherwise return a confirmation card. Later planned ends and project extensions need a reason.",
@@ -316,6 +323,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 HistoryInsights => await HistoryInsightsAsync(a, ct),
                 UpdateWork => await ProposeUpdateAsync(a, ct),
                 DeleteWork => await ProposeDeleteAsync(a, ct),
+                Watch => await ProposeWatchAsync(a, ct),
+                StopWatch => await ProposeStopWatchAsync(a, ct),
+                ListWatches => await ListWatchesAsync(ct),
                 UpdateProject => await ProposeUpdateProjectAsync(a, ct),
                 UpdateStagePlan => await ProposeUpdateStagePlanAsync(a, ct),
                 ScheduleProject => await ProposeScheduleProjectAsync(a, ct),
@@ -576,6 +586,62 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     // ------------------------------------------------------------------ proposing (nothing is changed here)
 
     private static readonly System.Text.RegularExpressions.Regex ItemKey = new(@"^([A-Z][A-Z0-9]*)-(\d+)$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private async Task<AiToolOutcome> ProposeWatchAsync(JsonElement a, CancellationToken ct)
+    {
+        var when = Str(a, "when") ?? "done";
+        if (!AiWatchService.Kinds.Contains(when)) throw new AiToolException("Watch for done, status, overdue or slips.");
+        string type, key, title, link; Guid id; Guid? projectId;
+        if (Str(a, "key") is { } itemKey)
+        {
+            var (kind, itemId, k, t) = await ResolveWorkItemAsync(itemKey, ct);
+            type = kind; id = itemId; key = k; title = t;
+            projectId = kind == "Task" ? await db.Tasks.AsNoTracking().Where(x => x.Id == itemId).Select(x => (Guid?)x.ProjectId).FirstOrDefaultAsync(ct)
+                : await db.WorkTasks.AsNoTracking().Where(x => x.Id == itemId).Select(x => x.RelatedProjectId).FirstOrDefaultAsync(ct);
+            link = kind switch { "Task" => $"/projects/{projectId}?task={itemId}", "Operational" => $"/operations?task={itemId}", _ => ActionItemService.LinkOf(projectId ?? Guid.Empty, itemId) };
+        }
+        else if (Str(a, "project") is { } projectText)
+        {
+            var project = await ProjectAsync(projectText, ct);
+            if (project.IsPending) throw new AiToolException($"{project.Label} does not exist yet.");
+            type = "Project"; id = project.Id; key = project.Key; title = project.Name; projectId = project.Id; link = $"/projects/{project.Id}";
+            if (when == "overdue") when = "slips";
+        }
+        else throw new AiToolException("What should be watched? Give a work item key (ATL-12) or a project.");
+        var status = Str(a, "status");
+        DateOnly? on = DateOnly.TryParse(Str(a, "date"), System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+        if (when == "status" && status is null) throw new AiToolException("Which status should it reach? Ask the person.");
+        if (when == "slips" && on is null) throw new AiToolException("Which date should it not go past? Ask the person.");
+        if (when == "status" && type == "Task")
+        {
+            var pid = projectId;
+            var names = await db.WorkflowStatuses.AsNoTracking().Where(x => x.ProjectId == pid).Select(x => x.Name).ToListAsync(ct);
+            var match = names.FirstOrDefault(n => n.Equals(status, StringComparison.OrdinalIgnoreCase))
+                ?? throw new AiToolException($"{key}'s project has no status “{status}”. Its statuses: {string.Join(", ", names)}.");
+            status = match;
+        }
+        var days = a.TryGetProperty("days", out var dv) && dv.TryGetInt32(out var nd) ? Math.Clamp(nd, 1, AiWatchService.MaxDays) : AiWatchService.DefaultDays;
+        var label = AiWatchService.Label(when, key, status, on);
+        return Propose("watch", $"Tell you {label}", $"{Clip(title, 90)} · one notification, then it stops · watching for {days} days", new { kind = when, targetType = type, targetId = id, targetKey = key, targetTitle = title, projectId, status, onDate = on, note = Str(a, "note"), link, days });
+    }
+
+    private async Task<AiToolOutcome> ProposeStopWatchAsync(JsonElement a, CancellationToken ct)
+    {
+        var id = Str(a, "watch_id") is { } s && Guid.TryParse(s, out var g) ? g : throw new AiToolException("Which watch? Use an id from list_watches.");
+        var me = ctx.RequireUserId();
+        var w = await db.AiWatches.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.UserId == me && x.State == "active", ct) ?? throw new AiToolException("That is not one of the person's active watches.");
+        return Propose("stop_watch", $"Stop watching {w.TargetKey}", $"No longer tell you {AiWatchService.Label(w.Kind, w.TargetKey, w.Status, w.OnDate)}", new { watchId = id });
+    }
+
+    private async Task<AiToolOutcome> ListWatchesAsync(CancellationToken ct)
+    {
+        var me = ctx.RequireUserId();
+        var since = clock.Now.AddDays(-14);
+        var rows = await db.AiWatches.AsNoTracking().Where(w => w.UserId == me && (w.State == "active" || w.FiredAt >= since)).OrderByDescending(w => w.CreatedAt).Take(50).ToListAsync(ct);
+        if (rows.Count == 0) return new AiToolOutcome("The person is not watching anything.", "No watches", 0);
+        return new AiToolOutcome(JsonSerializer.Serialize(rows.Select(w => new { id = w.Id, watching = AiWatchService.Label(w.Kind, w.TargetKey, w.Status, w.OnDate), title = w.TargetTitle, state = w.State, until = w.ExpiresAt, fired = w.FiredAt, outcome = w.Outcome, link = w.Link }), Json),
+            "Read your watches", rows.Count);
+    }
 
     private async Task<AiToolOutcome> ProposeDeleteAsync(JsonElement a, CancellationToken ct)
     {

@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using MimeKit;
 using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Application.Features.Mailbox;
@@ -121,8 +122,75 @@ public partial class AiWorkspaceTests
         {
             var row = db.AiMessages.IgnoreQueryFilters().Single(m => m.Id == Guid.Parse(again.Message));
             row.ActionsJson = row.ActionsJson!.Replace(System.Text.RegularExpressions.Regex.Match(row.ActionsJson, "\"undoUntil\":\"[^\"]+\"").Value, "\"undoUntil\":\"2020-01-01T00:00:00Z\"");
-            db.SaveChanges();
+            return db.SaveChanges();
         });
         Assert.Equal(HttpStatusCode.Conflict, (await o.Owner.Post(again.Url.Replace("/confirm", "/undo"))).Status);
+    }
+
+    [Fact]
+    public async Task A_watch_is_a_card_then_fires_once_when_the_work_is_done_and_can_be_listed_and_stopped()
+    {
+        var o = await Setup();
+        var task = await o.Owner.CreateTaskAsync(o.Project, "Ship the release notes");
+        var key = S(task["key"]); var id = Guid.Parse(S(task["id"]));
+
+        var card = await Card(o.Owner, AiToolbox.Watch, new { key, when = "done", note = "then email the client" }, $"Tell me when {key} is done");
+        Assert.Equal("watch", card.Kind);
+        Assert.Contains($"when {key} is done", S(card.Action["title"]));
+        Assert.Equal("done", await Confirmed(o.Owner, card));
+        var mine = (await o.Owner.Get("/api/v1/ai/watches")).Data!.AsArray();
+        var watch = Assert.Single(mine)!;
+        Assert.Equal("active", S(watch["state"]));
+        Assert.Empty((await o.Manager.Get("/api/v1/ai/watches")).Data!.AsArray());   // private to the person
+
+        async Task<int> Check() { using var scope = factory.Services.CreateScope(); return await scope.ServiceProvider.GetRequiredService<AiWatchService>().CheckAsync(force: true); }
+        Assert.Equal(0, await Check());   // not done yet: nothing
+        factory.WithDb(db =>
+        {
+            var t = db.Tasks.IgnoreQueryFilters().Single(x => x.Id == id);
+            t.StatusId = db.WorkflowStatuses.IgnoreQueryFilters().First(s => s.ProjectId == t.ProjectId && s.Category == ProjectManagement.Domain.Enums.StatusCategory.Done).Id;
+            return db.SaveChanges();
+        });
+        Assert.Equal(1, await Check());
+        Assert.Equal(0, await Check());   // once only
+        var fired = Assert.Single((await o.Owner.Get("/api/v1/ai/watches")).Data!.AsArray())!;
+        Assert.Equal("fired", S(fired["state"]));
+        Assert.Contains($"{key}", S(fired["outcome"]));
+        Assert.True(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == o.Owner.UserId && n.Title.Contains(key) && n.Body!.Contains("then email the client"))));
+
+        // A project that slips past a date; stopping a watch keeps it from firing.
+        var slip = await Card(o.Owner, AiToolbox.Watch, new { project = "Atlas", when = "slips", date = Iso(30) }, "Warn me if Atlas slips past next month");
+        Assert.Equal("done", await Confirmed(o.Owner, slip));
+        var slipId = S((await o.Owner.Get("/api/v1/ai/watches")).Data!.AsArray().First(w => S(w!["state"]) == "active")!["id"]);
+        Assert.Equal(HttpStatusCode.NoContent, (await o.Owner.Post($"/api/v1/ai/watches/{slipId}/stop")).Status);
+        await o.Owner.CreateTaskAsync(o.Project, "Late extra work", new { title = "Late extra work", priority = "Medium", dueDate = Iso(60) });
+        Assert.Equal(0, await Check());
+
+        // Asking for a status the project does not have is answered, not guessed.
+        var other = await o.Owner.CreateTaskAsync(o.Project, "Another");
+        await NoCard(o.Owner, AiToolbox.Watch, new { key = S(other["key"]), when = "status", status = "Shipped to Mars" }, $"Tell me when {S(other["key"])} is shipped to Mars");
+        Assert.Contains("has no status", ToolResult());
+    }
+}
+
+/// <summary>When a watch's condition holds.</summary>
+public class AiWatchRulesTests
+{
+    private static readonly DateOnly Today = new(2026, 10, 23);
+    private static ProjectManagement.Domain.Entities.AiWatch W(string kind, DateOnly? on = null, string? status = null) => new() { Kind = kind, TargetKey = "ATL-1", TargetTitle = "Release", OnDate = on, Status = status };
+    private static AiWatchService.State S(bool finished = false, DateOnly? due = null, string status = "In Progress") => new(Guid.NewGuid(), Guid.NewGuid(), false, status, finished, due);
+
+    [Fact]
+    public void Rules()
+    {
+        Assert.Null(AiWatchService.Evaluate(W("done"), S(), Today));
+        Assert.Contains("is Done", AiWatchService.Evaluate(W("done"), S(true, status: "Done"), Today));
+        Assert.Contains("moved to Review", AiWatchService.Evaluate(W("status", status: "review"), S(status: "Review"), Today));
+        Assert.Null(AiWatchService.Evaluate(W("overdue"), S(due: Today), Today));
+        Assert.Contains("overdue", AiWatchService.Evaluate(W("overdue"), S(due: Today.AddDays(-1)), Today));
+        Assert.Null(AiWatchService.Evaluate(W("overdue"), S(true, Today.AddDays(-1)), Today));   // finished work is not overdue
+        Assert.Null(AiWatchService.Evaluate(W("slips", Today.AddDays(5)), S(due: Today.AddDays(5)), Today));
+        Assert.Contains("after", AiWatchService.Evaluate(W("slips", Today.AddDays(5)), S(due: Today.AddDays(6)), Today));
+        Assert.Contains("has passed", AiWatchService.Evaluate(W("slips", Today.AddDays(-1)), S(), Today));
     }
 }

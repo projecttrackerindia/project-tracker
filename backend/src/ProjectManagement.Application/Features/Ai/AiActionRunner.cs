@@ -33,7 +33,7 @@ public sealed record AiActionResult(string? Link, Guid? RecordId = null, string?
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
     ReminderService reminders, ChatService messages, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email,
     ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
-    ProjectManagement.Application.Features.Time.TimeService time, AiHomeActions home)
+    ProjectManagement.Application.Features.Time.TimeService time, AiHomeActions home, AiWatchService watches)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -87,6 +87,17 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             }
             case "update_work":
                 return await UpdateWorkAsync(a, ct);
+            case "watch":
+            {
+                DateOnly? on = Date(a, "onDate");
+                var saved = await watches.CreateAsync(new CreateAiWatchRequest(Str(a, "kind") ?? "done", Str(a, "targetType") ?? "Task", Guid(a, "targetId") ?? throw new ValidationException("target", "Choose what to watch."),
+                    Str(a, "targetKey") ?? "", Str(a, "targetTitle") ?? "", Guid(a, "projectId"), Str(a, "status"), on, Str(a, "note"), Str(a, "link"),
+                    a.TryGetProperty("days", out var dv) && dv.TryGetInt32(out var nd) ? nd : null), ct);
+                return new AiActionResult("/reminders?tab=watching", saved.Id);
+            }
+            case "stop_watch":
+                await watches.StopAsync(Guid(a, "watchId") ?? throw new ValidationException("watch", "Choose the watch."), ct);
+                return new AiActionResult("/reminders?tab=watching");
             case "delete_work":
             {
                 var id = Guid(a, "id") ?? throw new ValidationException("id", "Choose the item to delete.");

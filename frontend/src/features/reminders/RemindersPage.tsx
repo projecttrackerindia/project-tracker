@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
 import { EmptyState, ErrorState, PageHead, PageLoader } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { queryClient, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { reminderApi, SNOOZE_CHOICES, type Reminder, type ReminderList, type SnoozePreset } from './api';
+import { reminderApi, SNOOZE_CHOICES, watchApi, type Reminder, type ReminderList, type SnoozePreset, type Watch } from './api';
 import { openReminderComposer, refreshReminders } from './store';
 import { ReminderSuggestions } from './Suggestions';
 import { addDays, atTime, dayFirst, describeInstant, deviceZone, iso, parseReminder, relative, sameDay, toRRule, wall } from './time';
@@ -56,7 +56,10 @@ export function RemindersPage() {
   const insights = useWsQuery(['reminders', 'insights'], reminderApi.insights, { staleTime: 120_000 });
   const nav = useNavigate();
   const settings = useWsQuery(['reminders', 'settings'], reminderApi.settings, { staleTime: 300_000 });
-  const [tab, setTab] = useState<'upcoming' | 'completed'>('upcoming');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<'upcoming' | 'completed' | 'watching'>(params.get('tab') === 'watching' ? 'watching' : 'upcoming');
+  const watches = useWsQuery(['reminders', 'watches'], watchApi.list, { staleTime: 60_000, retry: false });
+  const watching = (watches.data ?? []).filter((w) => w.state === 'active').length;
   const [filter, setFilter] = useState<Filter>('all');
   const [bump, setBump] = useState(0);
   const completedTab = useRef<HTMLButtonElement>(null);
@@ -181,6 +184,11 @@ export function RemindersPage() {
           <button type="button" role="tab" ref={completedTab} key={bump} aria-selected={tab === 'completed'} className={`tab ${tab === 'completed' ? 'active' : ''} ${bump ? 'rp-bump' : ''}`} onClick={() => setTab('completed')}>
             <Icon name="checkCircle" size={15} /> Completed {data!.completed.length > 0 && <span className="tab-badge">{data!.completed.length}</span>}
           </button>
+          {watches.isSuccess && (
+            <button type="button" role="tab" aria-selected={tab === 'watching'} className={`tab ${tab === 'watching' ? 'active' : ''}`} onClick={() => setTab('watching')} data-testid="tab-watching">
+              <Icon name="eye" size={15} /> Watching {watching > 0 && <span className="tab-badge">{watching}</span>}
+            </button>
+          )}
         </div>
         {tab === 'upcoming' && (
           <div className="rp-filters" role="group" aria-label="Show">
@@ -209,7 +217,63 @@ export function RemindersPage() {
           </section>
         )))}
 
+      {tab === 'watching' && <WatchList items={watches.data ?? []} onStopped={() => void watches.refetch()} />}
     </div>
+  );
+}
+
+/** What the person asked to be told about, and what was found. Watches are made from the assistant ("tell me when ATL-12 is done"). */
+function WatchList({ items, onStopped }: { items: Watch[]; onStopped: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const active = items.filter((w) => w.state === 'active');
+  const past = items.filter((w) => w.state !== 'active');
+  const stop = async (w: Watch) => {
+    setBusy(w.id);
+    try { await watchApi.stop(w.id); toast(`Stopped watching ${w.targetKey}.`); onStopped(); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not stop watching.', 'error'); }
+    finally { setBusy(null); }
+  };
+  if (items.length === 0) return (
+    <EmptyState icon="eye" title="Not watching anything" text="Ask the assistant “tell me when ATL-12 is done” or “warn me if Atlas slips past Friday”. You get one notification, then it stops." />
+  );
+  return (
+    <>
+      {active.length > 0 && (
+        <section className="rp-group" aria-label="Watching" data-testid="watch-list">
+          <h3>Watching<em>{active.length}</em></h3>
+          <ul className="rp-list">
+            {active.map((w) => (
+              <li key={w.id} className="rp-card rp-watch">
+                <span className="rp-watch-ico"><Icon name="eye" size={16} /></span>
+                <div className="rp-watch-main">
+                  <b>Tell me {w.label}</b>
+                  <span>{w.link ? <Link to={w.link}>{w.targetTitle}</Link> : w.targetTitle}{w.note ? ` · “${w.note}”` : ''}</span>
+                  <small>Until {new Date(w.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</small>
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" disabled={busy === w.id} onClick={() => void stop(w)}>Stop</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {past.length > 0 && (
+        <section className="rp-group" aria-label="Recently">
+          <h3>Recently<em>{past.length}</em></h3>
+          <ul className="rp-list">
+            {past.map((w) => (
+              <li key={w.id} className={`rp-card rp-watch ${w.state}`}>
+                <span className="rp-watch-ico"><Icon name={w.state === 'fired' ? 'bell' : 'eyeOff'} size={16} /></span>
+                <div className="rp-watch-main">
+                  <b>{w.outcome ?? `Stopped: ${w.label}`}</b>
+                  <span>{w.link ? <Link to={w.link}>{w.targetKey} {w.targetTitle}</Link> : `${w.targetKey} ${w.targetTitle}`}</span>
+                  {w.firedAt && <small>{new Date(w.firedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   );
 }
 

@@ -8,6 +8,21 @@ public partial class AppDbContext
     private static void ConfigureAiOperations(ModelBuilder b)
     {
         b.Entity<AiMessage>().Property(m => m.EstimatedProviderCostUsd).HasPrecision(18, 8);
+        b.Entity<AiWatch>(e =>
+        {
+            e.HasIndex(x => new { x.State, x.LastCheckedAt });
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.State });
+            e.HasIndex(x => new { x.TenantId, x.TargetId });
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.TargetType).HasMaxLength(16);
+            e.Property(x => x.TargetKey).HasMaxLength(40);
+            e.Property(x => x.TargetTitle).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(80);
+            e.Property(x => x.Note).HasMaxLength(300);
+            e.Property(x => x.Link).HasMaxLength(300);
+            e.Property(x => x.State).HasMaxLength(16);
+            e.Property(x => x.Outcome).HasMaxLength(300);
+        });
         b.Entity<AiForecastSnapshot>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.JobId, x.ProjectId }).IsUnique();

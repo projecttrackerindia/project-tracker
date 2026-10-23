@@ -2340,6 +2340,157 @@
    "checks": [
     "explains_no_tool"
    ]
+  },
+  {
+   "id": "watch-196",
+   "area": "watch",
+   "lang": "en",
+   "text": "Tell me when ATL-12 is done",
+   "tools": [],
+   "writes": [
+    "propose_watch"
+   ],
+   "readOnly": false,
+   "card": "watch",
+   "checks": [
+    "no_claim_done"
+   ]
+  },
+  {
+   "id": "watch-197",
+   "area": "watch",
+   "lang": "en",
+   "text": "Warn me if Atlas slips past 30 November",
+   "writes": [
+    "propose_watch"
+   ],
+   "readOnly": false,
+   "card": "watch",
+   "checks": [
+    "no_claim_done"
+   ],
+   "tools": []
+  },
+  {
+   "id": "watch-198",
+   "area": "watch",
+   "lang": "en",
+   "text": "Let me know when WT-4 moves to In Progress",
+   "writes": [
+    "propose_watch"
+   ],
+   "readOnly": false,
+   "card": "watch",
+   "tools": []
+  },
+  {
+   "id": "watch-199",
+   "area": "watch",
+   "lang": "en",
+   "text": "Ping me if ATL-7 becomes overdue",
+   "writes": [
+    "propose_watch"
+   ],
+   "readOnly": false,
+   "card": "watch",
+   "tools": []
+  },
+  {
+   "id": "watch-200",
+   "area": "watch",
+   "lang": "en",
+   "text": "What am I watching right now?",
+   "tools": [
+    "list_watches"
+   ],
+   "readOnly": true,
+   "checks": [
+    "no_card"
+   ]
+  },
+  {
+   "id": "watch-201",
+   "area": "watch",
+   "lang": "en",
+   "text": "Keep an eye on the payments project and tell me if it slips",
+   "writes": [
+    "propose_watch"
+   ],
+   "readOnly": false,
+   "checks": [
+    "asks_or_cards"
+   ],
+   "note": "no date given: ask which date",
+   "tools": []
+  },
+  {
+   "id": "watch-202",
+   "area": "watch",
+   "lang": "hi-en",
+   "text": "Jab ATL-12 done ho jaye to mujhe batana",
+   "writes": [
+    "propose_watch"
+   ],
+   "readOnly": false,
+   "card": "watch",
+   "tools": []
+  },
+  {
+   "id": "watch-203",
+   "area": "watch",
+   "lang": "te-en",
+   "text": "ATL-12 done ayyaka naaku cheppu",
+   "writes": [
+    "propose_watch"
+   ],
+   "readOnly": false,
+   "card": "watch",
+   "tools": []
+  },
+  {
+   "id": "watch-204",
+   "area": "watch",
+   "lang": "en",
+   "text": "Tell me when my next meeting is",
+   "tools": [
+    "my_schedule"
+   ],
+   "readOnly": true,
+   "checks": [
+    "no_card"
+   ],
+   "note": "a question, not a watch"
+  },
+  {
+   "id": "tasks-205",
+   "area": "tasks",
+   "lang": "en",
+   "text": "Remove WT-9, it was raised twice",
+   "writes": [
+    "propose_delete_work"
+   ],
+   "readOnly": false,
+   "card": "delete_work",
+   "checks": [
+    "no_claim_done"
+   ],
+   "tools": []
+  },
+  {
+   "id": "mail-206",
+   "area": "mail",
+   "lang": "en",
+   "text": "Forward the latest mail from the bank to ravi@example.com",
+   "tools": [
+    "mail_inbox"
+   ],
+   "writes": [
+    "propose_mail_forward"
+   ],
+   "readOnly": false,
+   "checks": [
+    "asks_or_cards"
+   ]
   }
  ]
 }

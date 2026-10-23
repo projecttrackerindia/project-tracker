@@ -11,6 +11,8 @@ public class ReminderOptions
     public const string Section = "Reminders";
     public bool WorkerEnabled { get; set; } = true;
     public int IntervalSeconds { get; set; } = 30;
+    /// <summary>Check "tell me when…" watches on the same loop (tests turn it off and run the check themselves).</summary>
+    public bool WatchesEnabled { get; set; } = true;
 }
 
 /// <summary>Hosted worker: fires reminders, keeps the automatic ones in step with the work, and sends morning briefings.</summary>
@@ -35,6 +37,9 @@ public class ReminderWorker(IServiceScopeFactory scopes, IOptions<ReminderOption
                     var chats = await ProjectManagement.Application.Features.Chat.ChatService.SendDueAsync(scope.ServiceProvider,
                         scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Services.AppClock>(), log, stoppingToken);
                     if (chats > 0) log.LogInformation("Sent {Count} scheduled chat message(s)", chats);
+                    // "Tell me when…" watches (checked every couple of minutes; each fires once).
+                    var watched = !options.Value.WatchesEnabled ? 0 : await scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Features.Ai.AiWatchService>().CheckAsync(ct: stoppingToken);
+                    if (watched > 0) log.LogInformation("{Count} watch(es) fired", watched);
                     beats.Beat("Reminders", every);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

@@ -25,13 +25,13 @@ public sealed record AiUndoBefore(string Target, Guid Id, Guid? ProjectId, strin
 /// never show the button.
 /// </summary>
 public class AiUndoService(IAppDbContext db, ICurrentContext ctx, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems, DocumentService documents,
-    ReminderService reminders, TimeService time)
+    ReminderService reminders, TimeService time, AiWatchService watches)
 {
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(10);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
     /// <summary>Kinds that can be undone, given what the confirmed result recorded.</summary>
-    public static bool Supports(string kind) => kind is "create_task" or "create_work" or "create_action_item" or "create_document" or "reminder" or "delete_work" or "update_work" or "log_time";
+    public static bool Supports(string kind) => kind is "create_task" or "create_work" or "create_action_item" or "create_document" or "reminder" or "delete_work" or "update_work" or "log_time" or "watch";
 
     /// <summary>A short description of what Undo will do, for the person (the card's button title and the result).</summary>
     public static string Describe(string kind) => kind switch
@@ -42,6 +42,7 @@ public class AiUndoService(IAppDbContext db, ICurrentContext ctx, TaskService ta
         "delete_work" => "Brings it back from the bin",
         "update_work" => "Puts back the earlier values (comments added stay)",
         "log_time" => "Removes the logged time",
+        "watch" => "Stops the watch",
         _ => "",
     };
 
@@ -89,6 +90,9 @@ public class AiUndoService(IAppDbContext db, ICurrentContext ctx, TaskService ta
                 foreach (var entry in ids) await time.DeleteAsync(entry, ct);
                 return;
             }
+            case "watch":
+                await watches.StopAsync(id ?? throw Missing(), ct);
+                return;
             case "update_work":
                 await PutBackAsync(Undo<AiUndoBefore>(p) ?? throw Missing(), ct);
                 return;

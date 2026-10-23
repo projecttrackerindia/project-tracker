@@ -41,11 +41,19 @@ public static class AiExecutionPolicy
     private const string IndianVerbAtEnd = @"\b(?:karo|kar\s+do|kardo|daalo|daal\s+do|cheyi|chey)\b[\s.!?]*$";
     private const string IndianVerb = @"\b(?:bhejo|bhej\s+do|banao|bana\s+do|lagao|laga\s+do|dilao|dila\s+do|pampu|pampandi|pampinchu|cheyyi|cheyandi|cheyyandi|pettu|pettandi|marchu|marchandi)\b";
 
+    // "Tell me when ATL-12 is done", "warn me if Atlas slips past Friday", "keep an eye on WT-4": a request to set up a watch, which is a
+    // change (a card) even though it starts like a question. A condition word is required, so "tell me when my next meeting is" stays a question.
+    private const string WatchRequest = @"^(?:(?:please|can you|could you|pls|kindly)\s+)?(?:(?:tell|let|notify|alert|warn|ping|inform|message)\s+me(?:\s+know)?\s+(?:when|if|once|as\s+soon\s+as|whenever)\b.*\b(?:done|finished|completed?|closed|resolved|overdue|late|slips?|slipping|slipped|moves?\s+to|reaches|becomes?|changes|starts|ready|approved|merged|shipped|blocked|delayed|past)\b|(?:keep\s+an\s+eye\s+on|watch)\s+\S)";
+    private const string IndianWatch = @"\b(?:jab|jaise\s+hi)\b.*\b(?:batana|bata\s+dena|batao|bata\s+do)\b|\b(?:ayyaka|aite|ayyinappudu|avvagane)\b.*\b(?:cheppu|cheppandi|cheppi)\b";
+
+    /// <summary>A request to be told when something happens ("tell me when ATL-12 is done").</summary>
+    public static bool IsWatchRequest(string text) => Matches(text.Trim(), WatchRequest) || Matches(text.Trim(), IndianWatch);
+
     public static AiRequestIntent Classify(string text)
     {
         var query = text.Trim();
         var action = Matches(query, "^" + Command) || Matches(query, @"(?:[.!?,;:]\s+|\b(?:and|then|also)\s+)" + Command)
-            || Matches(query, "^" + MoreCommands) || Matches(query, @"(?:[.!?,;:]\s+|\b(?:and|then|also)\s+)" + MoreCommands) || Matches(query, IndianVerbAtEnd) || Matches(query, IndianVerb);
+            || Matches(query, "^" + MoreCommands) || Matches(query, @"(?:[.!?,;:]\s+|\b(?:and|then|also)\s+)" + MoreCommands) || Matches(query, IndianVerbAtEnd) || Matches(query, IndianVerb) || IsWatchRequest(query);
         var analysis = Matches(query, @"\b(?:analyse|analyze|explain|why|assess|evaluate|tell me|what changed|on track)\b");
         if (action) return analysis ? AiRequestIntent.Combined : AiRequestIntent.Execute;
         if (Matches(query, @"^(?:please\s+)?(?:recommend|suggest|advise)\b")) return AiRequestIntent.Recommend;

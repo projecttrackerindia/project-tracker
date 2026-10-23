@@ -17,7 +17,7 @@ public class AiScenarioLibraryTests(ApiFactory factory)
     private sealed record Case(string Id, string Area, string Lang, string Text, string[] Tools, string[] Writes, bool? ReadOnly, string? Card, string[] Never, string[] Checks);
 
     private static readonly string[] CoreKinds = ["create_project", "invite_member", "update_work", "update_project", "update_stage_dates", "schedule_project", "planned_leave", "log_time",
-        "create_task", "create_work", "create_action_item", "update_reminder", "reminder", "send_message", "send_report", "create_document", "start_meeting", "schedule_meeting"];
+        "create_task", "create_work", "create_action_item", "update_reminder", "reminder", "send_message", "send_report", "create_document", "start_meeting", "schedule_meeting", "delete_work", "watch", "stop_watch"];
 
     private static readonly Lazy<(IReadOnlyList<Case> Cases, HashSet<string> Checks)> Library = new(() =>
     {
@@ -116,6 +116,11 @@ public class AiScenarioLibraryTests(ApiFactory factory)
     [InlineData("Am I free at 3 pm today?", AiRequestIntent.Ask, true)]
     [InlineData("Give me an executive summary of the portfolio", AiRequestIntent.Ask, true)]
     [InlineData("Share your thoughts on the plan", AiRequestIntent.Ask, false)]
+    [InlineData("Tell me when ATL-12 is done", AiRequestIntent.Combined, false)]
+    [InlineData("Warn me if Atlas slips past Friday", AiRequestIntent.Execute, false)]
+    [InlineData("Tell me when my next meeting is", AiRequestIntent.Analyze, true)]
+    [InlineData("Jab ATL-12 done ho jaye to mujhe batana", AiRequestIntent.Execute, false)]
+    [InlineData("Delete ATL-30", AiRequestIntent.Execute, false)]
     public void Intent_covers_more_ways_people_ask_for_changes(string text, AiRequestIntent intent, bool readOnly)
     {
         Assert.Equal(intent, AiExecutionPolicy.Classify(text));

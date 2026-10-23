@@ -44,6 +44,18 @@ export interface ReminderSuggestion { id: string; title: string; fireAt: string;
 
 export type SnoozePreset = '10m' | '30m' | '1h' | '3h' | 'evening' | 'tomorrow' | 'nextweek' | 'workday';
 
+/** A "tell me when…" watch: one notification when work is done, reaches a status, becomes overdue or slips past a date. */
+export interface Watch {
+  id: string; kind: 'done' | 'status' | 'overdue' | 'slips'; targetType: 'Task' | 'Operational' | 'ActionItem' | 'Project'; targetKey: string; targetTitle: string;
+  status: string | null; onDate: string | null; note: string | null; link: string | null; state: 'active' | 'fired' | 'stopped' | 'ended';
+  createdAt: string; expiresAt: string; firedAt: string | null; outcome: string | null; label: string;
+}
+
+export const watchApi = {
+  list: () => get<Watch[]>('/ai/watches'),
+  stop: (id: string) => post<void>(`/ai/watches/${id}/stop`),
+};
+
 export const reminderApi = {
   list: () => get<ReminderList>('/reminders'),
   counts: () => get<ReminderCounts>('/reminders/counts'),
