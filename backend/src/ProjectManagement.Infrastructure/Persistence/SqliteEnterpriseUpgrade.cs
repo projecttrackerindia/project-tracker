@@ -55,7 +55,8 @@ public static class SqliteEnterpriseUpgrade
         "20261102000100_SupportChannels",
         "20261102000200_DocumentMasking",
         "20261102000300_ProjectArchitecture",
-        "20261103000100_OAuthConnectedApps"
+        "20261103000100_OAuthConnectedApps",
+        "20261106000500_WhatsAppReminderApproval"
     ];
 
     public static async Task ApplyAsync(AppDbContext db,CancellationToken ct=default)

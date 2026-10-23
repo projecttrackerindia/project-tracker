@@ -258,7 +258,7 @@ public class WhatsAppDeliveryTests(ApiFactory factory)
             var body=ProofBody(c,"919876543211",code.Data!["message"]!.GetValue<string>());using var proof=await Webhook(body);Assert.Equal(HttpStatusCode.OK,proof.StatusCode);
             var v=(await b.Get("/api/v1/me/whatsapp-contact/notification-preferences")).Data!["version"]!.GetValue<int>();var minute=DateTime.UtcNow.Hour*60+DateTime.UtcNow.Minute;
             Assert.True((await b.Put("/api/v1/me/whatsapp-contact/notification-preferences",new{version=v,optIn=true,acceptedConsentVersion=WhatsAppContactService.NotificationConsent,taskAssignments=true,overdue=false,supportUpdates=false,timeZone="UTC",quietStartMinutes=(minute+60)%1440,quietEndMinutes=(minute+120)%1440})).Ok);
-            await Queue(a,await Notify(a));await Queue(b,await Notify(b));factory.WhatsApp.RequestPaths.Clear();await Processor.ProcessAsync();Assert.Equal(2,factory.WhatsApp.Sends.Count);Assert.Equal(9,factory.WhatsApp.RequestPaths.Count);
+            await Queue(a,await Notify(a));await Queue(b,await Notify(b));factory.WhatsApp.RequestPaths.Clear();await Processor.ProcessAsync();Assert.Equal(2,factory.WhatsApp.Sends.Count);Assert.Equal(6+ProjectManagement.Application.Features.Integrations.WhatsAppTemplateService.Definitions.Count,factory.WhatsApp.RequestPaths.Count);
         }finally{Reset();}
     }
     [Theory][InlineData("Asia/Kolkata","2026-10-11T17:00:00Z",1320,480,"2026-10-12T02:30:00Z")]
