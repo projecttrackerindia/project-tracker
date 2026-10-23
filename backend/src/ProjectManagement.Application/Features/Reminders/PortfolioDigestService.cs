@@ -19,12 +19,23 @@ public class PortfolioDigestService(IAppDbContext db, IServiceScopeFactory scope
     private static long _last;
 
     /// <summary>The notice for a brief: a headline that says how many projects are in trouble, and the first things that need a look.</summary>
-    public static (string Title, string Body) Describe(PortfolioBriefDto brief)
+    public static (string Title, string Body) Describe(PortfolioBriefDto brief, ProjectManagement.Application.Features.Projects.PortfolioBoardDto? board = null)
     {
         var concerns = brief.Ranked.Where(r => r.Score >= 2).Take(3).Select(r => $"{r.Name} ({r.Level}): {r.Reasons.FirstOrDefault() ?? "needs a look"}").ToList();
         var title = brief.AtRisk + brief.Delayed == 0
             ? $"Portfolio this week: all {brief.Projects} project{(brief.Projects == 1 ? "" : "s")} on track"
             : $"Portfolio this week: {brief.Delayed} delayed, {brief.AtRisk} at risk";
+        if (board is not null)
+        {
+            // The Monday summary: the page's own summary, then the decisions with their best option, money and people.
+            var lines = new List<string> { board.Summary };
+            foreach (var d in board.Decisions.Take(2))
+                lines.Add(d.Options.Count == 0 ? d.Headline : $"{d.Headline} Option: {d.Options[0].Title} ({d.Options[0].Effect}).");
+            foreach (var m in board.Money.Projects.Where(m => m.Warning is not null).Take(2)) lines.Add($"{m.Key}: {m.Warning}.");
+            if (board.Capacity.Over.Count > 0) lines.Add($"Over 100% in the next 4 weeks: {string.Join(", ", board.Capacity.Over.Take(4).Select(p => $"{p.Name} ({p.Load}%)"))}.");
+            var text = string.Join("\n", lines);
+            return (title, text.Length > 900 ? text[..900] : text);
+        }
         var body = string.Join("\n", brief.Headlines.Take(2).Concat(concerns));
         return (title, body.Length > 600 ? body[..600] : body);
     }
@@ -71,15 +82,19 @@ public class PortfolioDigestService(IAppDbContext db, IServiceScopeFactory scope
             if (await db.Notifications.IgnoreQueryFilters().AnyAsync(n => n.DedupeKey == key, ct)) continue;
 
             PortfolioBriefDto brief;
+            ProjectManagement.Application.Features.Projects.PortfolioBoardDto? board = null;
             using (var scope = scopes.CreateScope())
             {
                 var c = scope.ServiceProvider.GetRequiredService<CurrentContext>();
                 c.TenantId = p.TenantId; c.UserId = p.UserId; c.Role = p.Role; c.WorkspaceType = WorkspaceType.Organization;   // an owner or admin: every project of the organization
                 brief = await scope.ServiceProvider.GetRequiredService<AiPortfolio>().BriefAsync(null, ct);
+                if (brief.Projects > 0)
+                    try { board = await scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Features.Projects.PortfolioBoardService>().BoardAsync(new(), ct); }
+                    catch (ProjectManagement.Application.Exceptions.AppException) { board = null; }   // the plain brief still goes out
             }
             if (brief.Projects == 0) continue;
 
-            var (title, body) = Describe(brief);
+            var (title, body) = Describe(brief, board);
             var n = new Notification
             {
                 TenantId = p.TenantId, UserId = p.UserId, Type = NotificationType.PortfolioDigest, CreatedAt = now, Link = "/portfolio",

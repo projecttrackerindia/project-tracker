@@ -60,7 +60,7 @@ public class WebhooksIncomingTests(ApiFactory factory)
         Assert.Contains("/api/v1/hooks/in/", url);
         Assert.True(created.Data["hook"]!["requiresSecret"]!.GetValue<bool>());
 
-        string Alert(string status) => $$"""{"status":"{{status}}","alerts":[{"fingerprint":"ab12","labels":{"alertname":"CoreBankingEOD","instance":"cbs-01","severity":"page"},"annotations":{"summary":"EOD batch failed at step 4"}}]}""";
+        string Alert(string status) => "{\"status\":\"" + status + "\"," + """ "alerts":[{"fingerprint":"ab12","labels":{"alertname":"CoreBankingEOD","instance":"cbs-01","severity":"page"},"annotations":{"summary":"EOD batch failed at step 4"}}]}""";
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await PostIn(url, Alert("firing"))).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await PostIn(url, Alert("firing"), secret: "whsec_wrong")).StatusCode);

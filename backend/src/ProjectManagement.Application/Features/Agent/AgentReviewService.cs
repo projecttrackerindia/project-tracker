@@ -19,7 +19,7 @@ namespace ProjectManagement.Application.Features.Agent;
 /// </summary>
 public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, ProjectAccess access, AgentSettingsService settings,
     TaskService tasks, ActionItemService actionItems, IssueService issues, NotificationService notifications, AgentMinutesService minutes,
-    ILogger<AgentReviewService> log)
+    ILogger<AgentReviewService> log, ProjectManagement.Application.Features.Projects.ProjectService projects)
 {
     private const int PageSize = 100;
 
@@ -229,7 +229,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         }
         if (e.NewStatus is { } st)
         {
-            var ok = f.Kind == AgentFindingKind.UpdateTask ? st is "todo" or "in_progress" or "done" : f.Kind == AgentFindingKind.UpdateIssue && st is "in_progress" or "fixed" or "resolved";
+            var ok = f.Kind == AgentFindingKind.UpdateTask ? st is "todo" or "in_progress" or "done" or "cancelled" : f.Kind == AgentFindingKind.UpdateIssue && st is "in_progress" or "fixed" or "resolved";
             if (!ok && st.Length > 0) throw new ValidationException("newStatus", "That status does not fit this proposal.");
             f.NewStatus = st.Length == 0 ? null : st;
         }
@@ -334,6 +334,14 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
                 await tasks.AddCommentAsync(taskId, new CreateCommentRequest(AgentAnalysisService.Cut($"Delay flagged: {f.Detail ?? f.Title}{Footer(f)}", 4000)!, null, null), ct);
                 return (taskId, await KeyOfAsync(taskId, ct));
             }
+            case AgentFindingKind.Decision when f.NewStatus == "project_due" && f.DueDate is { } newDue:
+            {
+                // A portfolio decision to accept a later delivery date: the project's due date moves, with the reason in its date history.
+                var project = await db.Projects.AsNoTracking().FirstAsync(p => p.Id == f.ProjectId, ct);
+                await projects.UpdateAsync(project.Id, new UpdateProjectRequest(project.Name, project.Description, project.Priority, project.Status, project.OwnerId, project.TeamId,
+                    project.StartDate, newDue, project.Version, null, project.ProjectGroupId, AgentAnalysisService.Cut($"Portfolio decision: {f.Title}", 480), null), ct);
+                return (project.Id, project.Key);
+            }
             default:
                 return (f.TaskId ?? f.IssueId, f.TaskId is { } t ? await KeyOfAsync(t, ct) : null);
         }
@@ -354,11 +362,22 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
             var statusId = task.StatusId;
             if (f.NewStatus is { } st)
             {
-                var category = st switch { "done" => StatusCategory.Done, "in_progress" => StatusCategory.Active, _ => StatusCategory.Todo };
+                var category = st switch { "done" => StatusCategory.Done, "in_progress" => StatusCategory.Active, "cancelled" => StatusCategory.Cancelled, _ => StatusCategory.Todo };
                 var current = await db.WorkflowStatuses.Where(s => s.Id == task.StatusId).Select(s => s.Category).FirstAsync(ct);
                 if (current != category)
-                    statusId = await db.WorkflowStatuses.Where(s => s.ProjectId == task.ProjectId && s.Category == category).OrderBy(s => s.Order).Select(s => (Guid?)s.Id).FirstOrDefaultAsync(ct)
-                        ?? throw new ValidationException("newStatus", "The project has no status for that.");
+                {
+                    var found = await db.WorkflowStatuses.Where(s => s.ProjectId == task.ProjectId && s.Category == category).OrderBy(s => s.Order).Select(s => (Guid?)s.Id).FirstOrDefaultAsync(ct);
+                    if (found is null && category == StatusCategory.Cancelled)
+                    {
+                        // Taking work out of scope needs somewhere to put it: the project gets an "Out of scope" column the first time.
+                        var last = await db.WorkflowStatuses.Where(s => s.ProjectId == task.ProjectId).MaxAsync(s => (int?)s.Order, ct) ?? 0;
+                        var column = new WorkflowStatus { TenantId = task.TenantId, ProjectId = task.ProjectId, Name = "Out of scope", Order = last + 1, Category = StatusCategory.Cancelled, Color = "#9aa0b5", CreatedAt = clock.Now, CreatedBy = ctx.UserId };
+                        db.WorkflowStatuses.Add(column);
+                        await db.SaveChangesAsync(ct);
+                        found = column.Id;
+                    }
+                    statusId = found ?? throw new ValidationException("newStatus", "The project has no status for that.");
+                }
             }
             var labels = await db.TaskLabels.Where(l => l.TaskId == taskId).Select(l => l.LabelId).ToListAsync(ct);
             var due = f.DueDate ?? task.DueDate;
