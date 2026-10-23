@@ -244,6 +244,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderActionService>();
         services.AddSingleton<ProjectManagement.Application.Features.Reminders.ReminderMetrics>();
         services.AddScoped<ProjectManagement.Application.Features.Chat.ChatService>();
+        services.AddScoped<ProjectManagement.Application.Features.Chat.ChatAiService>();
         services.AddScoped<PlatformService>();
         services.AddScoped<GoLiveService>();
         services.AddSingleton<PlatformSettingsCache>();

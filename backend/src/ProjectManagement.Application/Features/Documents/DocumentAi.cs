@@ -46,14 +46,15 @@ public partial class DocumentAiService(IAppDbContext db, ICurrentContext ctx, IA
     public const int MaxContext = 30_000, MaxQuestion = 500, MaxSelection = 8000;
     public static readonly string[] Actions = ["rewrite", "shorten", "expand", "fix", "translate", "simpler", "formal", "friendly"];
 
-    private static string LanguageName(string? code) => (code ?? "en").Trim().ToLowerInvariant() switch
+    public static string LanguageName(string? code) => (code ?? "en").Trim().ToLowerInvariant() switch
     {
         "hi" or "hindi" => "Hindi (Devanagari script)",
         "te" or "telugu" => "Telugu (Telugu script)",
         _ => "English",
     };
 
-    private async Task EnsureAiAsync(CancellationToken ct)
+    /// <summary>AI is set up, in the plan and not switched off here (shared with chat's AI).</summary>
+    public async Task EnsureAiAsync(CancellationToken ct)
     {
         if (!ai.Configured) throw new ConflictException("The AI assistant is not set up on this server.", "AI_NOT_CONFIGURED");
         await entitlements.EnsureFeatureAsync(FeatureKeys.AiAssistant, ct);
@@ -62,7 +63,8 @@ public partial class DocumentAiService(IAppDbContext db, ICurrentContext ctx, IA
             throw new ConflictException("The assistant is switched off in this workspace (Workspace settings → AI).", "AI_OFF");
     }
 
-    private async Task<AiAnswer> AskModelAsync(string feature, string system, string user, int maxTokens, int weight, CancellationToken ct)
+    /// <summary>One model call paid from the workspace's AI credits (reserved first, settled after).</summary>
+    public async Task<AiAnswer> AskModelAsync(string feature, string system, string user, int maxTokens, int weight, CancellationToken ct)
     {
         var cost = Math.Clamp(aiOptions.Value.Chat.Quick.Credits * weight, 1, 10000);
         await using var lease = await credits.ReserveAsync(Guid.NewGuid(), cost, feature, ct);

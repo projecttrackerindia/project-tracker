@@ -8,7 +8,7 @@ namespace ProjectManagement.Api.Controllers.Chat;
 
 /// <summary>Chat between people of the workspace: private chats and groups. Live delivery is through the hub at /hubs/chat.</summary>
 [Route("api/v1/chat"), RequireWorkspace]
-public class ChatController(ChatService chat, ReminderSuggestionService promises) : ApiControllerBase
+public class ChatController(ChatService chat, ChatAiService chatAi, ReminderSuggestionService promises) : ApiControllerBase
 {
     [HttpGet("people")]
     public async Task<IActionResult> People(CancellationToken ct) => Ok(await chat.PeopleAsync(ct));
@@ -132,4 +132,106 @@ public class ChatController(ChatService chat, ReminderSuggestionService promises
 
     [HttpDelete("messages/{id:guid}/reaction")]
     public async Task<IActionResult> Unreact(Guid id, [FromQuery] string emoji, CancellationToken ct) => Ok(await chat.ReactAsync(id, emoji, false, ct));
+
+    // ---- threads, pins, saved messages, seen by, questions waiting for me
+
+    [HttpGet("messages/{id:guid}/thread")]
+    public async Task<IActionResult> Thread(Guid id, CancellationToken ct) => Ok(await chat.ThreadAsync(id, ct));
+
+    [HttpPut("messages/{id:guid}/pin")]
+    public async Task<IActionResult> Pin(Guid id, CancellationToken ct) => Ok(await chat.PinAsync(id, true, ct));
+
+    [HttpDelete("messages/{id:guid}/pin")]
+    public async Task<IActionResult> Unpin(Guid id, CancellationToken ct) => Ok(await chat.PinAsync(id, false, ct));
+
+    [HttpGet("conversations/{id:guid}/pins")]
+    public async Task<IActionResult> Pins(Guid id, CancellationToken ct) => Ok(await chat.PinsAsync(id, ct));
+
+    [HttpPut("messages/{id:guid}/save")]
+    public async Task<IActionResult> Save(Guid id, CancellationToken ct) => Ok(await chat.SaveMessageAsync(id, true, ct));
+
+    [HttpDelete("messages/{id:guid}/save")]
+    public async Task<IActionResult> Unsave(Guid id, CancellationToken ct) => Ok(await chat.SaveMessageAsync(id, false, ct));
+
+    [HttpGet("saved")]
+    public async Task<IActionResult> Saved(CancellationToken ct) => Ok(await chat.SavedAsync(ct));
+
+    [HttpGet("messages/{id:guid}/seen")]
+    public async Task<IActionResult> SeenBy(Guid id, CancellationToken ct) => Ok(await chat.SeenByAsync(id, ct));
+
+    /// <summary>Questions put to the caller in the last two weeks that they have not answered.</summary>
+    [HttpGet("questions")]
+    public async Task<IActionResult> Questions(CancellationToken ct) => Ok(await chat.QuestionsAsync(ct));
+
+    // ---- status and do-not-disturb
+
+    [HttpGet("status")]
+    public async Task<IActionResult> Status(CancellationToken ct) => Ok(await chat.MyStatusAsync(ct));
+
+    [HttpPut("status")]
+    public async Task<IActionResult> SetStatus([FromBody] SetChatStatusRequest req, CancellationToken ct) => Ok(await chat.SetStatusAsync(req, ct));
+
+    // ---- polls
+
+    [HttpPost("conversations/{id:guid}/polls")]
+    public async Task<IActionResult> CreatePoll(Guid id, [FromBody] CreatePollRequest req, CancellationToken ct) => Created(await chat.CreatePollAsync(id, req, ct));
+
+    [HttpPost("polls/{id:guid}/vote")]
+    public async Task<IActionResult> Vote(Guid id, [FromBody] VotePollRequest req, CancellationToken ct) => Ok(await chat.VoteAsync(id, req, ct));
+
+    [HttpPost("polls/{id:guid}/close")]
+    public async Task<IActionResult> ClosePoll(Guid id, [FromBody] ClosePollRequest? req, CancellationToken ct) => Ok(await chat.ClosePollAsync(id, req ?? new ClosePollRequest(null), ct));
+
+    // ---- scheduled send
+
+    [HttpPost("conversations/{id:guid}/scheduled")]
+    public async Task<IActionResult> Schedule(Guid id, [FromBody] ScheduleMessageRequest req, CancellationToken ct) => Created(await chat.ScheduleAsync(id, req, ct));
+
+    [HttpGet("scheduled")]
+    public async Task<IActionResult> Scheduled([FromQuery] Guid? conversationId, CancellationToken ct) => Ok(await chat.ScheduledAsync(conversationId, ct));
+
+    [HttpPut("scheduled/{id:guid}")]
+    public async Task<IActionResult> UpdateScheduled(Guid id, [FromBody] ScheduleMessageRequest req, CancellationToken ct) => Ok(await chat.UpdateScheduledAsync(id, req, ct));
+
+    [HttpDelete("scheduled/{id:guid}")]
+    public async Task<IActionResult> CancelScheduled(Guid id, CancellationToken ct)
+    {
+        await chat.CancelScheduledAsync(id, ct);
+        return NoContent();
+    }
+
+    // ---- voice notes (a WAV recorded in the browser; transcribed when it arrives)
+
+    [HttpPost("conversations/{id:guid}/voice"), RequestSizeLimit(25 * 1024 * 1024), RequestFormLimits(MultipartBodyLengthLimit = 25 * 1024 * 1024)]
+    public async Task<IActionResult> UploadVoice(Guid id, IFormFile file, [FromForm] int? seconds, CancellationToken ct)
+    {
+        await using var stream = file.OpenReadStream();
+        return Created(await chat.UploadVoiceAsync(id, stream, file.Length, seconds, ct));
+    }
+
+    // ---- what was made from a message, and task / page keys as live cards
+
+    [HttpPost("messages/{id:guid}/links")]
+    public async Task<IActionResult> Link(Guid id, [FromBody] LinkMessageRequest req, CancellationToken ct) => Ok(await chat.LinkAsync(id, req, ct));
+
+    [HttpGet("unfurl")]
+    public async Task<IActionResult> Unfurl([FromQuery] string? keys, CancellationToken ct) =>
+        Ok(await chat.UnfurlAsync((keys ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), ct));
+
+    // ---- AI: catch me up, ask the chat, smart replies, fields from a message, rewrite or translate
+
+    [HttpPost("ai/catch-up"), AiRequestLimit]
+    public async Task<IActionResult> CatchUp([FromBody] ChatCatchUpRequest? req, CancellationToken ct) => Ok(await chatAi.CatchUpAsync(req ?? new ChatCatchUpRequest(null), ct));
+
+    [HttpPost("ai/ask"), AiRequestLimit]
+    public async Task<IActionResult> Ask([FromBody] ChatAskRequest req, CancellationToken ct) => Ok(await chatAi.AskAsync(req, ct));
+
+    [HttpPost("messages/{id:guid}/replies"), AiRequestLimit]
+    public async Task<IActionResult> Replies(Guid id, CancellationToken ct) => Ok(await chatAi.RepliesAsync(id, ct));
+
+    [HttpPost("messages/{id:guid}/extract")]
+    public async Task<IActionResult> Extract(Guid id, [FromBody] ChatExtractRequest req, CancellationToken ct) => Ok(await chatAi.ExtractAsync(id, req, ct));
+
+    [HttpPost("ai/transform"), AiRequestLimit]
+    public async Task<IActionResult> Transform([FromBody] ChatTransformRequest req, CancellationToken ct) => Ok(await chatAi.TransformAsync(req, ct));
 }

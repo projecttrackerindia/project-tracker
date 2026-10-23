@@ -604,7 +604,8 @@ export type ConversationType = 'Direct' | 'Group' | 'Project';
 /** active = using the app, away = open but idle (5+ minutes without activity), offline = not connected. */
 export type PresenceStatus = 'active' | 'away' | 'offline';
 export interface ChatPerson { userId: string; name: string; email: string; online: boolean; status?: PresenceStatus; hasAvatar?: boolean }
-export interface ChatMember { userId: string; name: string; role: 'Member' | 'Admin'; lastReadAt: string; online: boolean; status?: PresenceStatus; hasAvatar?: boolean }
+export interface ChatMember { userId: string; name: string; role: 'Member' | 'Admin'; lastReadAt: string; online: boolean; status?: PresenceStatus; hasAvatar?: boolean;
+  /** Their own status line and do-not-disturb. */ statusEmoji?: string | null; statusText?: string | null; dnd?: boolean }
 export interface ChatLastMessage { id: string; senderName: string | null; snippet: string; at: string; isMine: boolean; isSystem: boolean }
 export interface Conversation {
   id: string; type: ConversationType; name: string; members: ChatMember[]; lastMessage: ChatLastMessage | null;
@@ -615,15 +616,37 @@ export interface Conversation {
 /** A project whose team chat has news for the signed-in person. */
 export interface ProjectChatUnread { projectId: string; conversationId: string; unread: number; mentions: number }
 export interface ChatReplyPreview { id: string; senderName: string | null; snippet: string; isDeleted: boolean }
-export interface ChatAttachment { id: string; fileName: string; contentType: string; sizeBytes: number; isImage: boolean }
+export interface ChatAttachment { id: string; fileName: string; contentType: string; sizeBytes: number; isImage: boolean;
+  /** A voice note: what was said, the language heard and how long it is. */ isVoice?: boolean; transcript?: string | null; transcriptLanguage?: string | null; durationSeconds?: number | null }
+/** Something made from a message. */
+export interface ChatLink { kind: 'task' | 'ticket' | 'reminder' | 'page'; id: string; key: string | null; title: string }
+export interface ChatPollOption { index: number; text: string; votes: number; mine: boolean; names: string[] }
+export interface ChatPoll { id: string; question: string; options: ChatPollOption[]; multiple: boolean; closesAt: string | null; closedAt: string | null; decision: string | null; voters: number; canClose: boolean }
 export interface ChatFile { id: string; fileName: string; contentType: string; sizeBytes: number; isImage: boolean; messageId: string; senderId: string | null; senderName: string; createdAt: string }
 export interface ChatFilePage { items: ChatFile[]; hasMore: boolean }
 export interface ChatReaction { emoji: string; count: number; mine: boolean; names: string[] }
 export interface ChatMessage {
-  id: string; conversationId: string; senderId: string | null; senderName: string | null; kind: 'User' | 'System' | 'Meeting'; body: string;
+  id: string; conversationId: string; senderId: string | null; senderName: string | null; kind: 'User' | 'System' | 'Meeting' | 'Poll'; body: string;
   replyTo: ChatReplyPreview | null; createdAt: string; editedAt: string | null; isDeleted: boolean;
   attachments?: ChatAttachment[] | null; reactions?: ChatReaction[] | null;
+  /** A reply inside a thread (not shown in the conversation); on a thread's first message, how many replies and when the last came. */
+  threadRootId?: string | null; threadReplies?: number; threadLastAt?: string | null;
+  pinnedAt?: string | null; pinnedBy?: string | null; saved?: boolean;
+  /** It asks the signed-in person something they have not answered yet. */ asksMe?: boolean;
+  poll?: ChatPoll | null; linked?: ChatLink[] | null;
 }
+export interface ChatThreadView { root: ChatMessage; replies: ChatMessage[] }
+export interface ChatSavedItem { message: ChatMessage; conversationName: string; savedAt: string }
+export interface ChatSeenBy { seen: { userId: string; name: string; at: string }[]; notYet: string[] }
+export interface ChatQuestion { messageId: string; conversationId: string; conversationName: string; senderName: string | null; snippet: string; at: string; threadRootId: string | null }
+export interface ChatStatus { emoji: string | null; text: string | null; clearAt: string | null; dndUntil: string | null; dnd: boolean }
+export interface ChatScheduled { id: string; conversationId: string; conversationName: string; body: string; sendAt: string; status: 'Scheduled' | 'Sent' | 'Cancelled' | 'Failed'; threadRootId: string | null; error: string | null }
+export interface ChatUnfurl { key: string; kind: 'task' | 'page'; id: string; title: string; status: string | null; statusColor: string | null; assignee: string | null; due: string | null; done: boolean; link: string }
+export interface ChatCatchUpItem { text: string; messageId: string | null; conversationId: string | null; conversationName: string | null; owner?: string | null; due?: string | null }
+export interface ChatCatchUp { summary: string; decisions: ChatCatchUpItem[]; questions: ChatCatchUpItem[]; actions: ChatCatchUpItem[]; conversations: number; messages: number; model: string | null }
+export interface ChatCitation { n: number; messageId: string; conversationId: string; conversationName: string; senderName: string | null; at: string; snippet: string; threadRootId: string | null }
+export interface ChatAskAnswer { answer: string; citations: ChatCitation[]; searched: number; found: boolean; model: string | null }
+export interface ChatExtract { kind: 'task' | 'ticket' | 'reminder' | 'page'; title: string; description: string; due: string | null; priority: string | null; assigneeId: string | null; assigneeName: string | null; projectId: string | null; byAi: boolean }
 export interface ChatThread { items: ChatMessage[]; hasMore: boolean }
 export interface ChatSearchHit { messageId: string; conversationId: string; conversationName: string; senderName: string | null; snippet: string; at: string }
 

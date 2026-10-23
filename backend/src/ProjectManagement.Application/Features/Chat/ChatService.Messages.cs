@@ -18,25 +18,32 @@ public partial class ChatService
 {
     // ------------------------------------------------------------------ messages
 
-    private async Task<List<ChatMessageDto>> ToDtosAsync(IReadOnlyList<ChatMessage> messages, CancellationToken ct)
+    private async Task<List<ChatMessageDto>> ToDtosAsync(IReadOnlyList<ChatMessage> messages, CancellationToken ct, IReadOnlySet<Guid>? asksMe = null)
     {
         var replyIds = messages.Where(m => m.ReplyToId != null).Select(m => m.ReplyToId!.Value).Distinct().ToList();
         var replies = replyIds.Count == 0 ? [] : await db.ChatMessages.AsNoTracking().Where(m => replyIds.Contains(m.Id))
             .Select(m => new { m.Id, m.SenderId, m.Body, m.DeletedAt }).ToListAsync(ct);
-        var userIds = messages.Where(m => m.SenderId != null).Select(m => m.SenderId!.Value).Concat(replies.Where(r => r.SenderId != null).Select(r => r.SenderId!.Value)).Distinct().ToList();
+        var userIds = messages.Where(m => m.SenderId != null).Select(m => m.SenderId!.Value)
+            .Concat(replies.Where(r => r.SenderId != null).Select(r => r.SenderId!.Value))
+            .Concat(messages.Where(m => m.PinnedBy != null).Select(m => m.PinnedBy!.Value)).Distinct().ToList();
         var names = await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
 
         var ids = messages.Select(m => m.Id).ToList();
         var me = ctx.UserId;
         var fileRows = await db.ChatAttachments.AsNoTracking().Where(a => a.MessageId != null && ids.Contains(a.MessageId.Value)).OrderBy(a => a.CreatedAt)
-            .Select(a => new { a.Id, MessageId = a.MessageId!.Value, a.FileName, a.ContentType, a.SizeBytes }).ToListAsync(ct);
+            .Select(a => new { a.Id, MessageId = a.MessageId!.Value, a.FileName, a.ContentType, a.SizeBytes, a.IsVoice, a.Transcript, a.TranscriptLanguage, a.DurationSeconds }).ToListAsync(ct);
         var reactionRows = await db.ChatReactions.AsNoTracking().Where(r => ids.Contains(r.MessageId)).OrderBy(r => r.CreatedAt).Select(r => new { r.MessageId, r.UserId, r.Emoji }).ToListAsync(ct);
         var reactorNames = reactionRows.Count == 0 ? [] : await db.Users.AsNoTracking().Where(u => reactionRows.Select(r => r.UserId).Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var saved = me is { } uid ? (await db.ChatSavedMessages.AsNoTracking().Where(x => x.UserId == uid && ids.Contains(x.MessageId)).Select(x => x.MessageId).ToListAsync(ct)).ToHashSet() : [];
+        var pollIds = messages.Where(m => m.Kind == ChatMessageKind.Poll).Select(m => m.Id).ToList();
+        var polls = pollIds.Count == 0 ? [] : await PollsAsync(pollIds, ct);
 
         return messages.Select(m =>
         {
-            var attachments = m.DeletedAt != null ? null : fileRows.Where(f => f.MessageId == m.Id).Select(f => new ChatAttachmentDto(f.Id, f.FileName, f.ContentType, f.SizeBytes, FileRules.IsImage(f.ContentType))).ToList();
-            var reactions = m.DeletedAt != null ? null : reactionRows.Where(r => r.MessageId == m.Id).GroupBy(r => r.Emoji)
+            var gone = m.DeletedAt != null;
+            var attachments = gone ? null : fileRows.Where(f => f.MessageId == m.Id)
+                .Select(f => new ChatAttachmentDto(f.Id, f.FileName, f.ContentType, f.SizeBytes, FileRules.IsImage(f.ContentType), f.IsVoice, f.Transcript, f.TranscriptLanguage, f.DurationSeconds)).ToList();
+            var reactions = gone ? null : reactionRows.Where(r => r.MessageId == m.Id).GroupBy(r => r.Emoji)
                 .Select(g => new ChatReactionDto(g.Key, g.Count(), g.Any(r => r.UserId == me), g.Take(10).Select(r => reactorNames.GetValueOrDefault(r.UserId) ?? "Someone").ToList())).ToList();
             ReplyPreviewDto? reply = null;
             if (m.ReplyToId is { } rid)
@@ -46,8 +53,10 @@ public partial class ChatService
                     : new ReplyPreviewDto(r.Id, r.SenderId is { } s ? names.GetValueOrDefault(s) : null, r.DeletedAt is null ? Snippet(r.Body) : "", r.DeletedAt != null);
             }
             return new ChatMessageDto(m.Id, m.ConversationId, m.SenderId, m.SenderId is { } sid ? names.GetValueOrDefault(sid) : null, m.Kind,
-                m.DeletedAt is null ? m.Body : "", reply, m.CreatedAt, m.EditedAt, m.DeletedAt != null,
-                attachments is { Count: > 0 } ? attachments : null, reactions is { Count: > 0 } ? reactions : null);
+                gone ? "" : m.Body, reply, m.CreatedAt, m.EditedAt, gone,
+                attachments is { Count: > 0 } ? attachments : null, reactions is { Count: > 0 } ? reactions : null,
+                m.ThreadRootId, m.ThreadReplies, m.ThreadLastAt, gone ? null : m.PinnedAt, !gone && m.PinnedBy is { } pb ? names.GetValueOrDefault(pb) : null,
+                saved.Contains(m.Id), !gone && asksMe?.Contains(m.Id) == true, polls.GetValueOrDefault(m.Id), gone ? null : ReadLinks(m.LinkedJson));
         }).ToList();
     }
 
@@ -58,12 +67,13 @@ public partial class ChatService
         var take = Math.Clamp(limit ?? PageSize, 1, 100);
 
         // A person sees what was said since they joined, not what was said before.
-        var query = db.ChatMessages.AsNoTracking().Where(m => m.ConversationId == conversationId && m.CreatedAt >= mine.CreatedAt);
+        // Replies inside a thread are read in the thread, not here.
+        var query = db.ChatMessages.AsNoTracking().Where(m => m.ConversationId == conversationId && m.CreatedAt >= mine.CreatedAt && m.ThreadRootId == null);
         if (before is { } b) query = query.Where(m => m.CreatedAt < b);
         var rows = await query.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id).Take(take + 1).ToListAsync(ct);
         var hasMore = rows.Count > take;
         var page = rows.Take(take).Reverse().ToList();
-        return new MessagePageDto(await ToDtosAsync(page, ct), hasMore);
+        return new MessagePageDto(await ToDtosAsync(page, ct, await AsksMeAsync(conversationId, page, me, ct)), hasMore);
     }
 
     /// <summary>Every file ever sent in a conversation, newest first - the "Files" view next to the thread, same membership rule as messages.</summary>
@@ -154,6 +164,14 @@ public partial class ChatService
         if (attachRows.Count > 0) await entitlements.EnsureFeatureAsync(FeatureKeys.ChatAttachments, ct);
         var text = attachRows.Count > 0 && string.IsNullOrWhiteSpace(normalized) ? "" : CleanBody(normalized);
 
+        ChatMessage? root = null;
+        if (req.ThreadRootId is { } rootId)
+        {
+            root = await db.ChatMessages.FirstOrDefaultAsync(m => m.Id == rootId && m.ConversationId == conversationId, ct)
+                ?? throw new ValidationException("threadRootId", "The message this thread is under was not found.");
+            if (root.ThreadRootId is not null) throw new ValidationException("threadRootId", "Reply in the thread of the first message.");
+            if (root.DeletedAt is not null || root.Kind == ChatMessageKind.System) throw new ValidationException("threadRootId", "This message cannot have a thread.");
+        }
         Guid? replyTo = null;
         if (req.ReplyToId is { } r)
         {
@@ -170,23 +188,31 @@ public partial class ChatService
                 throw new ConflictException("This person is no longer in the workspace, so you cannot send them messages.", "CHAT_PARTNER_UNAVAILABLE");
         }
         var now = clock.Now;
-        var msg = new ChatMessage { ConversationId = conversationId, SenderId = me, Kind = ChatMessageKind.User, Body = text, ReplyToId = replyTo };
+        var msg = new ChatMessage { ConversationId = conversationId, SenderId = me, Kind = ChatMessageKind.User, Body = text, ReplyToId = replyTo, ThreadRootId = root?.Id };
         if (idempotencyId is { } messageId) msg.Id = messageId;
         db.ChatMessages.Add(msg);
-        var preview = text.Length > 0 ? text : attachRows.Count == 1 ? $"Sent a file: {attachRows[0].FileName}" : $"Sent {attachRows.Count} files";
-        conv.LastMessageAt = now; conv.LastMessageId = msg.Id; conv.LastMessageSenderId = me; conv.LastMessageSnippet = Snippet(preview);
-        mine.LastReadAt = now;   // writing means the sender has caught up
+        var preview = text.Length > 0 ? text : attachRows.Any(a => a.IsVoice) ? "Sent a voice note" : attachRows.Count == 1 ? $"Sent a file: {attachRows[0].FileName}" : $"Sent {attachRows.Count} files";
+        if (root is null)
+        {
+            conv.LastMessageAt = now; conv.LastMessageId = msg.Id; conv.LastMessageSenderId = me; conv.LastMessageSnippet = Snippet(preview);
+            mine.LastReadAt = now;   // writing means the sender has caught up
+        }
+        else { root.ThreadReplies++; root.ThreadLastAt = now; }
         foreach (var a in attachRows) a.MessageId = msg.Id;
         foreach (var u in mentioned) db.ChatMentions.Add(new ChatMention { MessageId = msg.Id, ConversationId = conversationId, UserId = u });
         if (mentioned.Count > 0) await NotifyMentionsAsync(tenant, conv, projectName, text, mentioned, ct);
         var to = audience?.ToList() ?? await RecipientsAsync(tenant, conversationId, ct);
         // Direct and group messages leave a notice for the people who are away from the conversation (project chats only do so for @mentions, above).
-        var noticed = conv.Type == ConversationType.Project ? [] : await NotifyMessageAsync(conv, preview, to, ct);
+        // A thread reply tells the people in that thread instead.
+        var noticed = root is not null ? await NotifyThreadAsync(conv, root, preview, to, mentioned, ct)
+            : conv.Type == ConversationType.Project ? [] : await NotifyMessageAsync(conv, preview, to, ct);
         await db.SaveChangesAsync(ct);
 
         var dto = (await ToDtosAsync([msg], ct))[0];
         await PushAsync(tenant, to, ChatEvents.Message,
             new { conversationId, message = dto, projectId = conv.ProjectId, conversationName = conv.Type == ConversationType.Project ? projectName : null, mentioned }, ct);
+        if (root is not null)
+            await PushAsync(tenant, to, ChatEvents.MessageUpdated, new { conversationId, message = (await ToDtosAsync([root], ct))[0] }, ct);
         var nudge = mentioned.Concat(noticed).Where(u => u != me).Distinct().ToList();
         if (nudge.Count > 0) await PushAsync(tenant, nudge, ChatEvents.Notification, new { }, ct);
         return dto;
@@ -209,7 +235,7 @@ public partial class ChatService
         {
             var mem = members.FirstOrDefault(m => m.UserId == u);
             if (mem is null || mem.IsMuted) continue;
-            var unread = await db.ChatMessages.CountAsync(m => m.ConversationId == conv.Id && m.CreatedAt > mem.LastReadAt && m.SenderId != u && m.Kind == ChatMessageKind.User && m.DeletedAt == null, ct) + 1;
+            var unread = await db.ChatMessages.CountAsync(m => m.ConversationId == conv.Id && m.CreatedAt > mem.LastReadAt && m.SenderId != u && m.Kind == ChatMessageKind.User && m.DeletedAt == null && m.ThreadRootId == null, ct) + 1;
             var body = unread <= 1 ? Snippet(preview) : $"{unread} new messages. Latest: {Snippet(preview)}";
             var existing = await db.Notifications.FirstOrDefaultAsync(n => n.UserId == u && n.Type == NotificationType.Message && n.Link == link && n.ReadAt == null, ct);
             if (existing is not null)
@@ -268,7 +294,7 @@ public partial class ChatService
         var (tenant, me) = Require();
         var msg = await db.ChatMessages.FirstOrDefaultAsync(m => m.Id == messageId, ct) ?? throw new NotFoundException("This message was not found.", "MESSAGE_NOT_FOUND");
         var mine = await MembershipAsync(msg.ConversationId, me, ct);
-        if (msg.Kind != ChatMessageKind.User) throw new ForbiddenException("This line cannot be deleted.", "MESSAGE_NOT_YOURS");
+        if (msg.Kind is not (ChatMessageKind.User or ChatMessageKind.Poll)) throw new ForbiddenException("This line cannot be deleted.", "MESSAGE_NOT_YOURS");
         var conv = await db.Conversations.FirstAsync(c => c.Id == msg.ConversationId, ct);
         var moderator = CanModerate(conv.Type, mine.Role);
         if (msg.SenderId != me && !moderator) throw new ForbiddenException("You can only delete your own messages.", "MESSAGE_NOT_YOURS");

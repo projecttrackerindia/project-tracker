@@ -59,7 +59,7 @@ public partial class ChatService
         var unread = await (from msg in db.ChatMessages.AsNoTracking()
                             join m in db.ConversationMembers.AsNoTracking() on msg.ConversationId equals m.ConversationId
                             where ids.Contains(msg.ConversationId) && m.UserId == me && msg.CreatedAt > m.LastReadAt && msg.CreatedAt >= m.CreatedAt
-                                  && msg.Kind == ChatMessageKind.User && msg.SenderId != me && msg.DeletedAt == null
+                                  && msg.Kind == ChatMessageKind.User && msg.SenderId != me && msg.DeletedAt == null && msg.ThreadRootId == null
                             group msg by msg.ConversationId into g
                             select new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
 
@@ -77,6 +77,7 @@ public partial class ChatService
                 mentionUnread[h.ConversationId] = mentionUnread.GetValueOrDefault(h.ConversationId) + 1;
         }
 
+        var statuses = await StatusesAsync(members.Select(m => m.UserId), ct);
         var senderIds = conversations.Where(c => c.LastMessageSenderId != null).Select(c => c.LastMessageSenderId!.Value).Distinct().ToList();
         var senderNames = await db.Users.AsNoTracking().Where(u => senderIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
 
@@ -92,7 +93,8 @@ public partial class ChatService
                     c.LastMessageSenderId == me, c.LastMessageSenderId is null)
                 : null;
             result[c.Id] = new ConversationDto(c.Id, c.Type, name,
-                others.OrderBy(m => m.Name).Select(m => new ChatMemberDto(m.UserId, m.Name, m.Role, m.LastReadAt, presence.IsOnline(tenant, m.UserId), m.HasAvatar, presence.Status(tenant, m.UserId))).ToList(),
+                others.OrderBy(m => m.Name).Select(m => new ChatMemberDto(m.UserId, m.Name, m.Role, m.LastReadAt, presence.IsOnline(tenant, m.UserId), m.HasAvatar, presence.Status(tenant, m.UserId),
+                    statuses.GetValueOrDefault(m.UserId)?.Emoji, statuses.GetValueOrDefault(m.UserId)?.Text, statuses.GetValueOrDefault(m.UserId)?.Dnd == true)).ToList(),
                 last, unread.GetValueOrDefault(c.Id), mine.IsMuted,
                 CanModerate(c.Type, mine.Role), other?.UserId, c.LastMessageAt, c.ProjectId, mentionUnread.GetValueOrDefault(c.Id));
         }
@@ -224,7 +226,7 @@ public partial class ChatService
         var unread = await (from msg in db.ChatMessages.AsNoTracking()
                             join m in db.ConversationMembers.AsNoTracking() on msg.ConversationId equals m.ConversationId
                             where m.UserId == me && ids.Contains(msg.ConversationId) && msg.CreatedAt > m.LastReadAt
-                                  && msg.Kind == ChatMessageKind.User && msg.SenderId != me && msg.DeletedAt == null
+                                  && msg.Kind == ChatMessageKind.User && msg.SenderId != me && msg.DeletedAt == null && msg.ThreadRootId == null
                             group msg by msg.ConversationId into g
                             select new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
         var mentions = await (from mn in db.ChatMentions.AsNoTracking()

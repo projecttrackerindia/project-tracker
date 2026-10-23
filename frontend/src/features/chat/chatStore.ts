@@ -86,5 +86,13 @@ export const chatKeys = {
   project: (wid: string, projectId: string) => [wid, 'chat', 'project', projectId] as const,
   projectUnread: (wid: string) => [wid, 'chat', 'project-unread'] as const,
   people: (wid: string) => [wid, 'chat', 'people'] as const,
+  /** A thread under one message (its replies), the pinned messages of a conversation, and the person's own lists. */
+  threadView: (wid: string, rootId: string) => [wid, 'chat', 'thread-view', rootId] as const,
+  pins: (wid: string, id: string) => [wid, 'chat', 'pins', id] as const,
+  saved: (wid: string) => [wid, 'chat', 'saved'] as const,
+  questions: (wid: string) => [wid, 'chat', 'questions'] as const,
+  myStatus: (wid: string) => [wid, 'chat', 'my-status'] as const,
+  scheduled: (wid: string, id?: string) => [wid, 'chat', 'scheduled', id ?? 'all'] as const,
+  unfurl: (wid: string, keys: string) => [wid, 'chat', 'unfurl', keys] as const,
   all: (wid: string) => [wid, 'chat'] as const,
 };

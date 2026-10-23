@@ -186,6 +186,11 @@ public interface IAppDbContext
     DbSet<AiAttachment> AiAttachments { get; }
     DbSet<ChatAttachment> ChatAttachments { get; }
     DbSet<ChatReaction> ChatReactions { get; }
+    DbSet<ChatSavedMessage> ChatSavedMessages { get; }
+    DbSet<ChatScheduledMessage> ChatScheduledMessages { get; }
+    DbSet<ChatPoll> ChatPolls { get; }
+    DbSet<ChatPollVote> ChatPollVotes { get; }
+    DbSet<ChatUserStatus> ChatUserStatuses { get; }
     DbSet<AiUserProfile> AiUserProfiles { get; }
     DbSet<ReminderSettings> ReminderSettings { get; }
     DbSet<ReminderSuggestion> ReminderSuggestions { get; }

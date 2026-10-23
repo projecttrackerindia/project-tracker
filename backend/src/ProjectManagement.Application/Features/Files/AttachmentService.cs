@@ -17,7 +17,7 @@ public record AttachmentDto(Guid Id, Guid ProjectId, Guid? TaskId, string? TaskK
 
 public record AttachmentLimitsDto(long MaxFileBytes, long StorageLimitBytes, long StorageUsedBytes, IReadOnlyList<string> AllowedExtensions);
 
-public enum FileKind { Png, Jpeg, Gif, Webp, Pdf, Zip, Ole, Text, SevenZip, Rar, Gzip, Video, Binary }
+public enum FileKind { Png, Jpeg, Gif, Webp, Pdf, Zip, Ole, Text, SevenZip, Rar, Gzip, Video, Binary, Wav }
 
 /// <summary>What may be uploaded. The extension decides the type, and the first bytes of the file must agree with it.</summary>
 public static class FileRules
@@ -52,6 +52,8 @@ public static class FileRules
         ["rtf"] = ("application/rtf", FileKind.Text), ["java"] = ("text/x-java-source", FileKind.Text), ["py"] = ("text/x-python", FileKind.Text),
         // Short screen recordings and demos
         ["mp4"] = ("video/mp4", FileKind.Video), ["mov"] = ("video/quicktime", FileKind.Video),
+        // Voice notes recorded in chat (plain WAV: what every phone and browser can record the same way)
+        ["wav"] = ("audio/wav", FileKind.Wav),
     };
 
     public static IReadOnlyList<string> Extensions => Allowed.Keys.OrderBy(k => k).ToList();
@@ -108,6 +110,7 @@ public static class FileRules
             || h[4..8].SequenceEqual("wide"u8) || h[4..8].SequenceEqual("free"u8)),
         // An unrecognized extension has no fixed shape to check the bytes against; the SHA-256 integrity hash and the size cap are the checks it gets.
         FileKind.Binary => true,
+        FileKind.Wav => h.Length >= 12 && h[..4].SequenceEqual("RIFF"u8) && h[8..12].SequenceEqual("WAVE"u8),
         _ => false,
     };
 }

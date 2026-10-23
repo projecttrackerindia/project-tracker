@@ -518,6 +518,42 @@ public partial class AppDbContext
             e.Property(x => x.ContentType).HasMaxLength(120);
             e.Property(x => x.StorageKey).HasMaxLength(200);
             e.Property(x => x.Sha256).HasMaxLength(64);
+            e.Property(x => x.Transcript).HasMaxLength(4000);
+            e.Property(x => x.TranscriptLanguage).HasMaxLength(12);
+        });
+        b.Entity<ChatSavedMessage>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.MessageId }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.CreatedAt });
+            e.HasOne<ChatMessage>().WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ChatScheduledMessage>(e =>
+        {
+            e.HasIndex(x => new { x.Status, x.SendAt });
+            e.HasIndex(x => new { x.ConversationId, x.SenderId });
+            e.Property(x => x.Body).HasMaxLength(4000);
+            e.Property(x => x.Error).HasMaxLength(300);
+            e.HasOne<Conversation>().WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ChatPoll>(e =>
+        {
+            e.HasIndex(x => x.MessageId).IsUnique();
+            e.HasIndex(x => x.ConversationId);
+            e.Property(x => x.Question).HasMaxLength(300);
+            e.Property(x => x.OptionsJson).HasMaxLength(2000);
+            e.Property(x => x.Decision).HasMaxLength(500);
+            e.HasOne<ChatMessage>().WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ChatPollVote>(e =>
+        {
+            e.HasIndex(x => new { x.PollId, x.UserId, x.Option }).IsUnique();
+            e.HasOne<ChatPoll>().WithMany().HasForeignKey(x => x.PollId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ChatUserStatus>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            e.Property(x => x.Emoji).HasMaxLength(16);
+            e.Property(x => x.Text).HasMaxLength(100);
         });
         b.Entity<ChatReaction>(e =>
         {
@@ -704,7 +740,9 @@ public partial class AppDbContext
         b.Entity<ChatMessage>(e =>
         {
             e.HasIndex(x => new { x.ConversationId, x.CreatedAt });
+            e.HasIndex(x => x.ThreadRootId);
             e.Property(x => x.Body).HasMaxLength(4000);
+            e.Property(x => x.LinkedJson).HasMaxLength(2000);
             e.HasOne<Conversation>().WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<ChatMention>(e =>

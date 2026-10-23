@@ -118,7 +118,7 @@ public partial class ChatService
                            join m in db.ConversationMembers.AsNoTracking() on msg.ConversationId equals m.ConversationId
                            join c in db.Conversations.AsNoTracking() on msg.ConversationId equals c.Id
                            where c.Type != ConversationType.Project && m.UserId == me && !m.IsMuted && msg.CreatedAt > m.LastReadAt && msg.CreatedAt >= m.CreatedAt
-                                 && msg.Kind == ChatMessageKind.User && msg.SenderId != me && msg.DeletedAt == null
+                                 && msg.Kind == ChatMessageKind.User && msg.SenderId != me && msg.DeletedAt == null && msg.ThreadRootId == null
                            select msg.Id).CountAsync(ct);
         return new UnreadDto(count);
     }

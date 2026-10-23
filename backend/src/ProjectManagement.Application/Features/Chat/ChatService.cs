@@ -40,18 +40,28 @@ public static class ChatEvents
 }
 
 public record ChatPersonDto(Guid UserId, string Name, string Email, bool Online, bool HasAvatar = false, string Status = "offline");
-public record ChatMemberDto(Guid UserId, string Name, ConversationRole Role, DateTime LastReadAt, bool Online, bool HasAvatar = false, string Status = "offline");
+/// <param name="StatusEmoji">The person's own status ("🌴 On leave till Monday") and whether they asked not to be disturbed.</param>
+public record ChatMemberDto(Guid UserId, string Name, ConversationRole Role, DateTime LastReadAt, bool Online, bool HasAvatar = false, string Status = "offline",
+    string? StatusEmoji = null, string? StatusText = null, bool Dnd = false);
 public record ChatLastMessageDto(Guid Id, string? SenderName, string Snippet, DateTime At, bool IsMine, bool IsSystem);
 public record ConversationDto(Guid Id, ConversationType Type, string Name, IReadOnlyList<ChatMemberDto> Members, ChatLastMessageDto? LastMessage,
     int Unread, bool IsMuted, bool CanManage, Guid? OtherUserId, DateTime LastActivityAt, Guid? ProjectId = null, int UnreadMentions = 0);
 /// <summary>How much of a project's team chat the caller has not read, and how many of those messages @mention them.</summary>
 public record ProjectChatUnreadDto(Guid ProjectId, Guid ConversationId, int Unread, int Mentions);
 public record ReplyPreviewDto(Guid Id, string? SenderName, string Snippet, bool IsDeleted);
-public record ChatAttachmentDto(Guid Id, string FileName, string ContentType, long SizeBytes, bool IsImage);
+public record ChatAttachmentDto(Guid Id, string FileName, string ContentType, long SizeBytes, bool IsImage,
+    bool IsVoice = false, string? Transcript = null, string? TranscriptLanguage = null, int? DurationSeconds = null);
+/// <summary>Something made from a message: a task, a ticket, a reminder or a page.</summary>
+public record ChatLinkDto(string Kind, Guid Id, string? Key, string Title);
+public record ChatPollOptionDto(int Index, string Text, int Votes, bool Mine, IReadOnlyList<string> Names);
+public record ChatPollDto(Guid Id, string Question, IReadOnlyList<ChatPollOptionDto> Options, bool Multiple, DateTime? ClosesAt, DateTime? ClosedAt,
+    string? Decision, int Voters, bool CanClose);
 public record ChatReactionDto(string Emoji, int Count, bool Mine, IReadOnlyList<string> Names);
 public record ChatMessageDto(Guid Id, Guid ConversationId, Guid? SenderId, string? SenderName, ChatMessageKind Kind, string Body,
     ReplyPreviewDto? ReplyTo, DateTime CreatedAt, DateTime? EditedAt, bool IsDeleted,
-    IReadOnlyList<ChatAttachmentDto>? Attachments = null, IReadOnlyList<ChatReactionDto>? Reactions = null);
+    IReadOnlyList<ChatAttachmentDto>? Attachments = null, IReadOnlyList<ChatReactionDto>? Reactions = null,
+    Guid? ThreadRootId = null, int ThreadReplies = 0, DateTime? ThreadLastAt = null, DateTime? PinnedAt = null, string? PinnedBy = null,
+    bool Saved = false, bool AsksMe = false, ChatPollDto? Poll = null, IReadOnlyList<ChatLinkDto>? Linked = null);
 public record MessagePageDto(IReadOnlyList<ChatMessageDto> Items, bool HasMore);
 public record ChatFileDto(Guid Id, string FileName, string ContentType, long SizeBytes, bool IsImage, Guid MessageId, Guid? SenderId, string SenderName, DateTime CreatedAt);
 public record ChatFilePageDto(IReadOnlyList<ChatFileDto> Items, bool HasMore);
@@ -62,7 +72,8 @@ public record OpenDirectRequest(Guid UserId);
 public record CreateGroupRequest(string Name, IReadOnlyList<Guid>? MemberIds);
 public record RenameGroupRequest(string Name);
 public record AddMembersRequest(IReadOnlyList<Guid>? UserIds);
-public record SendMessageRequest(string? Body, Guid? ReplyToId, IReadOnlyList<Guid>? AttachmentIds = null);
+/// <param name="ThreadRootId">A reply in the thread under this message (shown in the thread, not in the conversation).</param>
+public record SendMessageRequest(string? Body, Guid? ReplyToId, IReadOnlyList<Guid>? AttachmentIds = null, Guid? ThreadRootId = null);
 public record ReactRequest(string? Emoji);
 public record EditMessageRequest(string? Body);
 public record MuteRequest(bool Muted);
@@ -72,7 +83,8 @@ public record MuteRequest(bool Muted);
 /// here (so the rules are checked in one place); the live hub only carries the news to open browser tabs.
 /// </summary>
 public partial class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock clock, IChatNotifier notifier, IChatPresence presence, PermissionService permissions,
-    NotificationService notifications, AttachmentService files, IFileStorage storage, EntitlementService entitlements, ILogger<ChatService> log)
+    NotificationService notifications, AttachmentService files, IFileStorage storage, EntitlementService entitlements, ILogger<ChatService> log,
+    ProjectManagement.Application.Features.Voice.VoiceSpeechService speech)
 {
     public const int MaxBody = 4000;
     public const int MaxGroupMembers = 50;

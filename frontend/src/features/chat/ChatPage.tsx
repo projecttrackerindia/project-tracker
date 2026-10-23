@@ -11,6 +11,8 @@ import { listTime } from './chatFormat';
 import { chatKeys, useChat, useTypingNames } from './chatStore';
 import { fallbackStatus } from './Presence';
 import { FilesPanel, InfoPanel, NewChatModal } from './Panels';
+import { AskChatDialog, CatchUpDialog, QuestionsBox, SavedPanel, ScheduledPanel, StatusButton } from './ChatTools';
+import { Menu } from '../../components/Menu';
 import { ConversationAvatar, Thread } from './Thread';
 
 const NO_CONVERSATIONS: Conversation[] = [];
@@ -41,7 +43,8 @@ export function ChatPage() {
 
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
-  const [panel, setPanel] = useState<'info' | 'files' | null>(null);
+  const [panel, setPanel] = useState<'info' | 'files' | 'saved' | 'scheduled' | null>(null);
+  const [dialog, setDialog] = useState<null | 'catchup' | 'ask'>(null);
   const term = useDebounced(search.trim(), 300);
 
   const conversations = useQuery({
@@ -78,14 +81,24 @@ export function ChatPage() {
       <aside className={`chat-list ${id && !missing ? 'hide-narrow' : ''}`} aria-label="Conversations">
         <div className="chat-list-head">
           <h2>Chat</h2>
+          <StatusButton />
+          <Menu label="" icon="more" items={[
+            { label: 'Saved messages', hint: 'Messages you kept for later', icon: 'star', onSelect: () => setPanel('saved') },
+            { label: 'Scheduled messages', hint: 'Written now, sent later', icon: 'clock', onSelect: () => setPanel('scheduled') },
+            { label: 'Ask the chat', hint: 'Answers from your conversations, with links', icon: 'search', onSelect: () => setDialog('ask') },
+          ]} />
           <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New</button>
         </div>
+        <button type="button" className="catchup-btn" onClick={() => setDialog('catchup')}>
+          <Icon name="sparkle" size={15} /><span><b>Catch me up</b><small>What you missed: decisions, questions for you, actions</small></span>
+        </button>
         <div className="search-box"><Icon name="search" size={15} />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search people and messages" aria-label="Search conversations" />
           {search && <button className="btn-icon" onClick={() => setSearch('')} aria-label="Clear search"><Icon name="close" size={13} /></button>}
         </div>
 
         <div className="chat-list-scroll">
+          {!search && <QuestionsBox />}
           {list.length === 0 && !search && (
             <EmptyState icon="message" title="No conversations yet" text="Message a colleague or start a group."
               action={<button className="btn btn-primary" onClick={() => setCreating(true)}>Start a conversation</button>} />
@@ -123,6 +136,10 @@ export function ChatPage() {
 
       {current && panel === 'info' && <InfoPanel key={current.id} conversation={current} onClose={() => setPanel(null)} />}
       {current && panel === 'files' && <FilesPanel key={current.id} conversation={current} onClose={() => setPanel(null)} />}
+      {panel === 'saved' && <SavedPanel onClose={() => setPanel(null)} />}
+      {panel === 'scheduled' && <ScheduledPanel onClose={() => setPanel(null)} />}
+      {dialog === 'catchup' && <CatchUpDialog onClose={() => setDialog(null)} />}
+      {dialog === 'ask' && <AskChatDialog onClose={() => setDialog(null)} />}
       {creating && <NewChatModal onClose={() => setCreating(false)} />}
     </div>
   );
@@ -142,7 +159,7 @@ function ConversationRow({ c, me, active, onOpen }: { c: Conversation; me: strin
       <button className={`conv-row ${active ? 'active' : ''} ${c.unread > 0 ? 'unread' : ''}`} onClick={onOpen} aria-current={active ? 'true' : undefined}>
         <ConversationAvatar conversation={c} status={presence} />
         <span className="conv-text">
-          <span className="conv-top"><b>{c.name}</b>{c.isMuted && <Icon name="bell" size={12} style={{ opacity: 0.5 }} />}<time>{last ? listTime(last.at) : ''}</time></span>
+          <span className="conv-top"><b>{c.name}</b>{other?.dnd && <span title="Do not disturb" aria-label="Do not disturb">🔕</span>}{other?.statusEmoji && <span title={other.statusText ?? undefined}>{other.statusEmoji}</span>}{c.isMuted && <Icon name="bell" size={12} style={{ opacity: 0.5 }} />}<time>{last ? listTime(last.at) : ''}</time></span>
           <span className="conv-bottom"><span className="conv-preview">{preview}</span>{c.unread > 0 && <span className="unread-badge" aria-label={`${c.unread} unread`}>{c.unread > 99 ? '99+' : c.unread}</span>}</span>
         </span>
       </button>

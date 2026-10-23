@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { HubConnection } from '@microsoft/signalr';
 import { getAccessToken, refreshSession } from '../../api/client';
+import { chatApi } from '../../api/endpoints';
 import type { ChatMessage, ChatThread, Conversation, PresenceStatus } from '../../api/types';
 import { appPath } from '../../lib/orgPath';
 import { firstTime, getAttention } from '../../lib/attention';
@@ -12,6 +13,7 @@ import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { plainText } from './chatFormat';
 import { chatKeys, useChat } from './chatStore';
+import { putMessage } from './chatCache';
 import { useProjectChat } from './projectChatStore';
 import { emitReminders, emitViewing, notifyLiveConnected, setLiveConnection, type ReminderEvent, type ViewingEvent } from '../live/bus';
 
@@ -135,7 +137,10 @@ export function ChatRealtime() {
         return replace ? old : { ...old, items: [...old.items, message] };
       });
 
+    // Do not disturb: no toasts or system pop-ups for messages (they are still in the list and the bell).
+    const quiet = () => !!queryClient.getQueryData<{ dnd?: boolean }>(chatKeys.myStatus(wid))?.dnd;
     const notify = (conversationId: string, message: ChatMessage) => {
+      if (quiet()) return;
       const conversation = queryClient.getQueryData<Conversation[]>(chatKeys.conversations(wid))?.find((c) => c.id === conversationId);
       if (conversation?.isMuted) return;
       const text = message.body.length > 120 ? `${message.body.slice(0, 119)}…` : message.body;
@@ -153,6 +158,7 @@ export function ChatRealtime() {
 
     // A message in a project's team chat only raises an alert when it @mentions you (the icon on the project shows the unread count either way).
     const notifyMention = (projectId: string, projectName: string, message: ChatMessage) => {
+      if (quiet()) return;
       const text = plainText(message.body).length > 120 ? `${plainText(message.body).slice(0, 119)}…` : plainText(message.body);
       const title = `${message.senderName ?? 'Someone'} mentioned you in ${projectName}`;
       const open = () => { window.focus(); useProjectChat.getState().openChat(projectId, projectName); };
@@ -163,7 +169,15 @@ export function ChatRealtime() {
     };
 
     connection.on('message', (e: { conversationId: string; message: ChatMessage; projectId?: string | null; conversationName?: string | null; mentioned?: string[] }) => {
+      // A reply inside a thread goes to that thread (its first message's count comes as an update); the conversation itself is unchanged.
+      if (e.message.threadRootId) {
+        putMessage(wid, e.message);
+        if (e.message.senderId) useChat.getState().clearTyping(e.conversationId, e.message.senderId);
+        void queryClient.invalidateQueries({ queryKey: chatKeys.questions(wid) });
+        return;
+      }
       putInThread(e.conversationId, e.message, false);
+      if (e.message.senderId !== me) void queryClient.invalidateQueries({ queryKey: chatKeys.questions(wid) });
       if (e.message.senderId) useChat.getState().clearTyping(e.conversationId, e.message.senderId);
       refreshLists();
       const viewing = useChat.getState().openConversation === e.conversationId && !away();
@@ -176,6 +190,7 @@ export function ChatRealtime() {
     connection.on('support', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'support'] }); });
     connection.on('notification', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] }); window.dispatchEvent(new Event(CHECK_NOTIFICATIONS)); });
     connection.on('message.updated', (e: { conversationId: string; message: ChatMessage }) => {
+      putMessage(wid, e.message);
       putInThread(e.conversationId, e.message, true);
       refreshLists();
     });
@@ -185,6 +200,11 @@ export function ChatRealtime() {
         : { ...c, members: c.members.map((m) => (m.userId === e.userId ? { ...m, lastReadAt: e.at } : m)) }));
     });
     connection.on('typing', (e: { conversationId: string; userId: string; name: string | null }) => useChat.getState().markTyping(e.conversationId, e.userId, e.name ?? 'Someone'));
+    // Someone changed their status line or do-not-disturb: their member rows show it at once.
+    connection.on('status', (e: { userId: string; emoji: string | null; text: string | null; dnd: boolean }) => {
+      queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid), (old) => old?.map((c) => ({ ...c,
+        members: c.members.map((m) => (m.userId === e.userId ? { ...m, statusEmoji: e.emoji, statusText: e.text, dnd: e.dnd } : m)) })));
+    });
     connection.on('presence', (e: { userId: string; online: boolean; status?: PresenceStatus }) => useChat.getState().setOnline(e.userId, e.online, e.status));
 
     connection.onreconnecting(() => useChat.getState().setLink('reconnecting'));
@@ -212,6 +232,7 @@ export function ChatRealtime() {
         useChat.getState().setLink('connected');
         if (idle.isIdle()) sendIdle(true);
         notifyLiveConnected();
+        void queryClient.prefetchQuery({ queryKey: chatKeys.myStatus(wid), queryFn: () => chatApi.status(), staleTime: 60_000 });   // do not disturb
         // Catch up on anything sent before the live link was up - but not data that was fetched a moment ago (no double requests on load).
         void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid), predicate: (q) => Date.now() - q.state.dataUpdatedAt > 5000 });
       } catch {

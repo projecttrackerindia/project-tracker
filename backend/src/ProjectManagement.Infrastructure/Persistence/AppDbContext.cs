@@ -172,6 +172,11 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<AiAttachment> AiAttachments => Set<AiAttachment>();
     public DbSet<ChatAttachment> ChatAttachments => Set<ChatAttachment>();
     public DbSet<ChatReaction> ChatReactions => Set<ChatReaction>();
+    public DbSet<ChatSavedMessage> ChatSavedMessages => Set<ChatSavedMessage>();
+    public DbSet<ChatScheduledMessage> ChatScheduledMessages => Set<ChatScheduledMessage>();
+    public DbSet<ChatPoll> ChatPolls => Set<ChatPoll>();
+    public DbSet<ChatPollVote> ChatPollVotes => Set<ChatPollVote>();
+    public DbSet<ChatUserStatus> ChatUserStatuses => Set<ChatUserStatus>();
     public DbSet<AiUserProfile> AiUserProfiles => Set<AiUserProfile>();
     public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();
     public DbSet<ReminderSuggestion> ReminderSuggestions => Set<ReminderSuggestion>();
@@ -220,6 +225,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         builder.Properties<ConversationType>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<ConversationRole>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<ChatMessageKind>().HaveConversion<string>().HaveMaxLength(32);
+        builder.Properties<ChatScheduleStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<WebhookDeliveryStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<AutomationTrigger>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<AutomationAction>().HaveConversion<string>().HaveMaxLength(32);

@@ -61,12 +61,12 @@ try {
  await touch(page,'[data-msg$="103"] .bubble-wrap',[[0,520]]);await page.locator('.msg-sheet').waitFor();
  await page.waitForTimeout(300);await page.screenshot({path:path.join(artifacts,'phone-sheet.png')});
  assert.ok(await page.getByRole('button',{name:'Copy text'}).isVisible());
- await page.locator('.msg-sheet-list button',{hasText:'Reply'}).click();await page.locator('.composer-ctx').waitFor();
+ await page.locator('.msg-sheet-list').getByRole('button',{name:'Reply',exact:true}).click();await page.locator('.composer-ctx').waitFor();
  await page.locator('.composer-ctx button').click();checks.push('long-press-sheet');
  await touch(page,'[data-msg$="102"] .bubble-wrap',[[20,30],[60,30],[100,30],[120,30]]);await page.locator('.composer-ctx').waitFor();checks.push('swipe-to-reply');
- assert.equal(await page.locator('.send-btn.ready').count(),0);
+ assert.equal(await page.locator('.send-btn.ready:not(.mic)').count(),0);
  await page.locator('.composer-editable').click();await page.keyboard.type('Thanks!');
- assert.equal(await page.locator('.send-btn.ready').count(),1);
+ assert.equal(await page.locator('.send-btn.ready:not(.mic)').count(),1);
  await page.screenshot({path:path.join(artifacts,'phone-typing.png')});checks.push('send-wakes');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
  await page.close();await context.close();

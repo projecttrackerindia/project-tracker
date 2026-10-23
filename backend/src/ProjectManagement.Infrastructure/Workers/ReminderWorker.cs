@@ -31,6 +31,10 @@ public class ReminderWorker(IServiceScopeFactory scopes, IOptions<ReminderOption
                     using var scope = scopes.CreateScope();
                     var n = await scope.ServiceProvider.GetRequiredService<ReminderEngine>().RunAsync(ct: stoppingToken);
                     if (n > 0) log.LogInformation("Sent {Count} reminder(s)", n);
+                    // Chat messages scheduled to be sent now (each is sent as its writer, in its own scope).
+                    var chats = await ProjectManagement.Application.Features.Chat.ChatService.SendDueAsync(scope.ServiceProvider,
+                        scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Services.AppClock>(), log, stoppingToken);
+                    if (chats > 0) log.LogInformation("Sent {Count} scheduled chat message(s)", chats);
                     beats.Beat("Reminders", every);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

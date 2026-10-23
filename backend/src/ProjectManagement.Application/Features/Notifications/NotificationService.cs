@@ -143,6 +143,12 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
         n.PushPending = n.Browser;        // and is also pushed to the person's devices, for when the app is closed
         if ((n.EmailPending || n.PushPending) && options.Value.HoldNotificationsInQuietHours && !QuietHours.NeverHeld(n.Type))
             n.DeliverAfter = await QuietUntilAsync(n.UserId, n.TenantId, ct);
+        // Do not disturb (set in chat): nothing pops up on the screen, and e-mail and push wait until it ends. Security alerts still go out.
+        if (!QuietHours.NeverHeld(n.Type) && !NotificationCatalog.For(n.Type).Locked && await DndUntilAsync(n.UserId, n.TenantId, ct) is { } dnd)
+        {
+            n.Browser = false;
+            if ((n.EmailPending || n.PushPending) && (n.DeliverAfter is null || n.DeliverAfter < dnd)) n.DeliverAfter = dnd;
+        }
         // Digest mode: an update (it asks nothing of the person) is not pushed, and its email waits for the daily digest, sent as one.
         if ((n.EmailPending || n.PushPending) && !NotificationLanes.IsNeedsYou(n.Type) && !QuietHours.NeverHeld(n.Type))
         {
@@ -155,6 +161,19 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
             }
         }
         return c.Any;
+    }
+
+    private readonly Dictionary<(Guid, Guid), DateTime?> _dnd = new();
+
+    /// <summary>When the person's do-not-disturb ends, if it is on now (loaded once per person per request).</summary>
+    private async Task<DateTime?> DndUntilAsync(Guid userId, Guid tenantId, CancellationToken ct)
+    {
+        if (!_dnd.TryGetValue((userId, tenantId), out var until))
+        {
+            until = await db.ChatUserStatuses.IgnoreQueryFilters().AsNoTracking().Where(s => s.UserId == userId && s.TenantId == tenantId).Select(s => s.DndUntil).FirstOrDefaultAsync(ct);
+            _dnd[(userId, tenantId)] = until;
+        }
+        return until is { } u && u > clock.Now ? u : null;
     }
 
     /// <summary>The recipient's quiet hours and zone (their own zone, else the workspace's, else the platform default), loaded once per person.</summary>

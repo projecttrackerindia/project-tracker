@@ -1,6 +1,6 @@
 import { providerConnectionUrl } from './providerConnection';
 import { del, download, fetchBlobUrl, get, post, put, uploadFile, create, qs } from './client';
-import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,GitHubAppStatus,GitHubStatusRules,GitHubBranch,ReviewQueue,ReleaseNotes,DeliveryMetrics,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
+import type { ChatAttachment,ChatThreadView,ChatSavedItem,ChatSeenBy,ChatQuestion,ChatStatus,ChatScheduled,ChatLink,ChatUnfurl,ChatCatchUp,ChatAskAnswer,ChatExtract,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,GitHubAppStatus,GitHubStatusRules,GitHubBranch,ReviewQueue,ReleaseNotes,DeliveryMetrics,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
 export const platformApi = {
   billing: () => get<PlatformBilling>('/admin/billing'),
   usage: (p: { q?: string; sort?: string; warningsOnly?: boolean; page?: number }) => get<Paged<AdminUsage>>('/admin/usage', { pageSize: 25, ...p }),
@@ -40,8 +40,33 @@ export const chatApi = {
   messages: (id: string, before?: string) => get<ChatThread>(`/chat/conversations/${id}/messages`, { before, limit: 40 }),
   /** Every file ever sent in the conversation, newest first - the Files view next to the thread. */
   files: (id: string, before?: string) => get<ChatFilePage>(`/chat/conversations/${id}/files`, { before, limit: 40 }),
-  send: (id: string, body: string, replyToId?: string | null, attachmentIds?: string[]) =>
-    post<ChatMessage>(`/chat/conversations/${id}/messages`, { body, replyToId: replyToId ?? null, attachmentIds: attachmentIds ?? [] }),
+  send: (id: string, body: string, replyToId?: string | null, attachmentIds?: string[], threadRootId?: string | null) =>
+    post<ChatMessage>(`/chat/conversations/${id}/messages`, { body, replyToId: replyToId ?? null, attachmentIds: attachmentIds ?? [], threadRootId: threadRootId ?? null }),
+  thread: (rootId: string) => get<ChatThreadView>(`/chat/messages/${rootId}/thread`),
+  pin: (messageId: string, on: boolean) => (on ? put<ChatMessage>(`/chat/messages/${messageId}/pin`, {}) : del<ChatMessage>(`/chat/messages/${messageId}/pin`)),
+  pins: (id: string) => get<ChatMessage[]>(`/chat/conversations/${id}/pins`),
+  save: (messageId: string, on: boolean) => (on ? put<ChatMessage>(`/chat/messages/${messageId}/save`, {}) : del<ChatMessage>(`/chat/messages/${messageId}/save`)),
+  saved: () => get<ChatSavedItem[]>('/chat/saved'),
+  seenBy: (messageId: string) => get<ChatSeenBy>(`/chat/messages/${messageId}/seen`),
+  questions: () => get<ChatQuestion[]>('/chat/questions'),
+  status: () => get<ChatStatus>('/chat/status'),
+  setStatus: (b: { emoji?: string | null; text?: string | null; clearAt?: string | null; dndUntil?: string | null }) => put<ChatStatus>('/chat/status', b),
+  createPoll: (id: string, b: { question: string; options: string[]; multiple?: boolean; closesAt?: string | null }) => post<ChatMessage>(`/chat/conversations/${id}/polls`, b),
+  vote: (pollId: string, options: number[]) => post<ChatMessage>(`/chat/polls/${pollId}/vote`, { options }),
+  closePoll: (pollId: string, decision?: string) => post<ChatMessage>(`/chat/polls/${pollId}/close`, { decision: decision ?? null }),
+  schedule: (id: string, b: { body: string; sendAt: string; replyToId?: string | null; threadRootId?: string | null }) => post<ChatScheduled>(`/chat/conversations/${id}/scheduled`, b),
+  scheduled: (conversationId?: string) => get<ChatScheduled[]>('/chat/scheduled', conversationId ? { conversationId } : {}),
+  updateScheduled: (scheduledId: string, b: { body: string; sendAt: string }) => put<ChatScheduled>(`/chat/scheduled/${scheduledId}`, b),
+  cancelScheduled: (scheduledId: string) => del(`/chat/scheduled/${scheduledId}`),
+  /** A voice note (WAV) for a message about to be sent; it is transcribed on arrival. */
+  uploadVoice: (id: string, wav: Blob, seconds: number) => uploadFile<ChatAttachment>(`/chat/conversations/${id}/voice`, new File([wav], 'voice.wav', { type: 'audio/wav' }), { seconds: String(Math.round(seconds)) }),
+  link: (messageId: string, b: { kind: ChatLink['kind']; id: string }) => post<ChatMessage>(`/chat/messages/${messageId}/links`, b),
+  unfurl: (keys: string[]) => get<ChatUnfurl[]>('/chat/unfurl', { keys: keys.join(',') }),
+  catchUp: (conversationId?: string | null) => post<ChatCatchUp>('/chat/ai/catch-up', { conversationId: conversationId ?? null }),
+  ask: (question: string, conversationId?: string | null) => post<ChatAskAnswer>('/chat/ai/ask', { question, conversationId: conversationId ?? null }),
+  replies: (messageId: string) => post<{ replies: string[]; model: string | null }>(`/chat/messages/${messageId}/replies`, {}),
+  extract: (messageId: string, kind: ChatExtract['kind']) => post<ChatExtract>(`/chat/messages/${messageId}/extract`, { kind }),
+  transform: (text: string, action: string, language?: string) => post<{ text: string; blocks: string | null; model: string; inline?: boolean }>('/chat/ai/transform', { text, action, language: language ?? null }),
   /** Stores a file for a message about to be sent (the plan decides whether, how big and how much). */
   uploadFile: (id: string, file: File) => uploadFile<ChatAttachment>(`/chat/conversations/${id}/files`, file),
   removeFile: (fileId: string) => del(`/chat/files/${fileId}`),

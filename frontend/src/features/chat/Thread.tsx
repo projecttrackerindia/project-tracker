@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject, type SyntheticEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { chatApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
 import type { ChatAttachment, ChatMessage, ChatThread, Conversation, MeetingCard, StandupCard, StandupItem } from '../../api/types';
@@ -18,6 +18,9 @@ import { sendTyping } from './ChatRealtime';
 import { openReminderComposer } from '../reminders/store';
 import { offerReminderAfterSend } from '../reminders/Suggestions';
 import { GoogleMeetButton } from '../meetings/GoogleMeetButton';
+import { LinkedChips, MakeFromMessage, PollCard, putMessage, SeenByDialog, SmartReplies, TranslateLine, UnfurlCards, UnfurlContext, useUnfurls, VoiceNote } from './MessageExtras';
+import { AskChatDialog, CatchUpDialog, COMPOSER_AI, PollDialog, ScheduleDialog, useVoiceRecorder } from './ChatTools';
+import type { ChatExtract } from '../../api/types';
 import { haptic } from '../../lib/mobile';
 
 /** A Google Meet message card (spec section 7): the meeting's own public details only - never anything from the Google connection itself. */
@@ -105,6 +108,13 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
   const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [newBelow, setNewBelow] = useState(0);
+  const [params, setParams] = useSearchParams();
+  const [openThread, setOpenThread] = useState<string | null>(() => params.get('thread'));
+  const [side, setSide] = useState<null | 'pins'>(null);
+  const [dialog, setDialog] = useState<null | 'catchup' | 'ask' | 'poll'>(null);
+  const unfurls = useUnfurls(items);
+  const pins = useQuery({ queryKey: chatKeys.pins(wid, id), queryFn: () => chatApi.pins(id), staleTime: 60_000 });
+  const pinCount = pins.data?.length ?? 0;
 
   const listRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -160,6 +170,23 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
     finally { setLoadingOlder(false); }
   };
 
+  // A link to a message (a search hit, a citation, a catch-up line, a saved message) opens the conversation scrolled to it.
+  const wanted = params.get('m');
+  useEffect(() => {
+    if (!wanted || !thread.data || params.get('thread')) return;
+    const t = window.setTimeout(() => {
+      const el = listRef.current?.querySelector<HTMLElement>(`[data-msg="${wanted}"]`);
+      if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); window.setTimeout(() => el.classList.remove('flash'), 1600); }
+      const next = new URLSearchParams(params); next.delete('m'); setParams(next, { replace: true });
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [wanted, thread.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const t = params.get('thread'); if (t) setOpenThread(t); }, [params]);
+  const closeThread = () => {
+    setOpenThread(null);
+    if (params.get('thread')) { const next = new URLSearchParams(params); next.delete('thread'); next.delete('m'); setParams(next, { replace: true }); }
+  };
+
   // ---- tell the server what has been read
   const reading = useRef(false);
   const unread = useRef(conversation.unread);
@@ -209,7 +236,8 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
   const status = typingNames.length
     ? <span className="typing-text">{conversation.type === 'Direct' ? 'typing' : typingNames.length === 1 ? `${typingNames[0].split(' ')[0]} is typing` : `${typingNames.slice(0, 2).map((n) => n.split(' ')[0]).join(' and ')} are typing`}<i className="dots"><b /><b /><b /></i></span>
     : conversation.type === 'Direct'
-      ? (otherStatus === 'active' ? <span className="status-on">{PRESENCE_LABEL.active}</span> : otherStatus === 'away' ? <span className="status-away">{PRESENCE_LABEL.away}</span> : PRESENCE_LABEL.offline)
+      ? <>{otherStatus === 'active' ? <span className="status-on">{PRESENCE_LABEL.active}</span> : otherStatus === 'away' ? <span className="status-away">{PRESENCE_LABEL.away}</span> : PRESENCE_LABEL.offline}
+          {other?.statusText && <span className="status-line"> · {other.statusEmoji} {other.statusText}</span>}{other?.dnd && <span className="status-line" title="Do not disturb"> · 🔕 do not disturb</span>}</>
       : `${conversation.members.length} members${onlineCount ? ` · ${onlineCount} online` : ''}`;
 
   // A message I sent counts as read once everyone else in the conversation has read past it (the recipient in a direct
@@ -225,6 +253,11 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
           <h2>{conversation.name}</h2>
           <div className="chat-sub" aria-live="polite">{status}</div>
         </div>
+        <button className="btn-icon chat-head-action ai" onClick={() => setDialog('catchup')} aria-label="Catch me up on this conversation" title="Catch me up"><Icon name="sparkle" size={16} /></button>
+        <button className="btn-icon chat-head-action" onClick={() => setDialog('ask')} aria-label="Ask this conversation" title="Ask this conversation"><Icon name="search" size={16} /></button>
+        <button className={`btn-icon chat-head-action ${side === 'pins' ? 'on' : ''}`} onClick={() => setSide((v) => (v === 'pins' ? null : 'pins'))} aria-label={`Pinned messages${pinCount ? ` (${pinCount})` : ''}`} aria-pressed={side === 'pins'} title="Pinned">
+          <span aria-hidden="true">📌</span>{pinCount > 0 && <span className="head-count">{pinCount}</span>}
+        </button>
         {variant === 'page' && (
           <>
             <button className={`btn-icon chat-head-action ${filesOpen ? 'on' : ''}`} onClick={onFiles} aria-label="Files shared in this conversation" aria-pressed={filesOpen} title="Files"><Icon name="folder" size={17} /></button>
@@ -234,6 +267,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
         {variant === 'panel' && <button className="btn-icon" onClick={onClose ?? onBack} aria-label="Close chat" title="Close"><Icon name="close" /></button>}
       </header>
 
+      <UnfurlContext.Provider value={unfurls}>
       <div className="chat-messages" ref={listRef} onScroll={onScroll} role="log" aria-label={`Messages with ${conversation.name}`}>
         {thread.isLoading && <PageLoader />}
         {thread.isError && !(thread.error instanceof ApiError && thread.error.status === 404) && (
@@ -263,17 +297,18 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
                 ? <MeetingCardMessage body={m.body} projectId={conversation.projectId} />
                 : <MessageRow m={m} mine={mine} grouped={grouped} tail={tail} showName={conversation.type !== 'Direct'} canModerate={conversation.canManage}
                     ticks={conversation.type !== 'Project'} aboutMe={!mine && mentionsUser(m.body, me)}
-                    read={mine && isRead(m)}
+                    read={mine && isRead(m)} conversation={conversation} onThread={() => setOpenThread(m.id)}
                     onReply={() => { setEditing(null); setReplyTo(m); }}
                     onEdit={() => { setReplyTo(null); setEditing(m); }} onDelete={() => void remove(m)} onJump={jumpTo} />}
             </div>
           );
         })}
       </div>
+      </UnfurlContext.Provider>
 
       {newBelow > 0 && <button className="new-below" onClick={() => toBottom(true)}><Icon name="chevronD" size={14} /> {newBelow} new {newBelow === 1 ? 'message' : 'messages'}</button>}
 
-      <Composer key={`${id}:${editing?.id ?? ''}`} conversation={conversation} replyTo={replyTo} editing={editing}
+      <Composer key={`${id}:${editing?.id ?? ''}`} conversation={conversation} replyTo={replyTo} editing={editing} onPoll={() => setDialog('poll')}
         mentionable={conversation.type === 'Project' ? conversation.members.filter((m) => m.userId !== me).map((m) => ({ userId: m.userId, name: m.name })) : []}
         onCancel={() => { setReplyTo(null); setEditing(null); }}
         onSent={(m) => {
@@ -284,7 +319,86 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
           });
           void queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid) });
         }} />
+
+      {openThread && <ThreadPanel key={openThread} conversation={conversation} rootId={openThread} focus={params.get('thread') ? params.get('m') : null} onClose={closeThread} unfurls={unfurls} />}
+      {side === 'pins' && !openThread && <PinsPanel conversation={conversation} onClose={() => setSide(null)} onJump={(mid) => { setSide(null); jumpTo(mid); }} />}
+      {dialog === 'catchup' && <CatchUpDialog conversationId={id} onClose={() => setDialog(null)} />}
+      {dialog === 'ask' && <AskChatDialog conversationId={id} onClose={() => setDialog(null)} />}
+      {dialog === 'poll' && <PollDialog conversation={conversation} onClose={() => setDialog(null)} />}
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ a thread beside the conversation
+/** A thread: its first message and the replies under it, with its own composer. Replies stay here and do not fill the conversation. */
+function ThreadPanel({ conversation, rootId, focus, onClose, unfurls }: { conversation: Conversation; rootId: string; focus: string | null; onClose: () => void; unfurls: Map<string, import('../../api/types').ChatUnfurl> }) {
+  const wid = useWorkspaceId()!;
+  const me = useAuth((s) => s.ctx!.user.id);
+  const q = useQuery({ queryKey: chatKeys.threadView(wid, rootId), queryFn: () => chatApi.thread(rootId), staleTime: 15_000 });
+  const listRef = useRef<HTMLDivElement>(null);
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [editing, setEditing] = useState<ChatMessage | null>(null);
+  const count = q.data?.replies.length ?? 0;
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || !q.data) return;
+    const target = focus ? el.querySelector<HTMLElement>(`[data-msg="${focus}"]`) : null;
+    if (target) { target.scrollIntoView({ block: 'center' }); target.classList.add('flash'); window.setTimeout(() => target.classList.remove('flash'), 1600); }
+    else el.scrollTop = el.scrollHeight;
+  }, [count, q.data, focus]);
+  const remove = async (m: ChatMessage) => {
+    if (!(await confirmDialog({ title: 'Delete message', message: 'This message will be removed for everyone in the thread.', confirmText: 'Delete' }))) return;
+    try { await chatApi.deleteMessage(m.id); } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete the message.', 'error'); }
+  };
+  const all = q.data ? [q.data.root, ...q.data.replies] : [];
+  return (
+    <aside className="thread-side" aria-label="Thread">
+      <div className="thread-side-head">
+        <div><h3>Thread</h3><span className="muted">{count} {count === 1 ? 'reply' : 'replies'}</span></div>
+        <button className="btn-icon" onClick={onClose} aria-label="Close thread"><Icon name="close" /></button>
+      </div>
+      <UnfurlContext.Provider value={unfurls}>
+        <div className="thread-side-list chat-messages" ref={listRef}>
+          {q.isLoading && <PageLoader />}
+          {q.isError && <div className="chat-note">This thread is not available.</div>}
+          {all.map((m, i) => (
+            <div key={m.id} className={i === 0 ? 'thread-root' : ''}>
+              <MessageRow m={m} mine={m.senderId === me} grouped={false} tail showName canModerate={conversation.canManage} ticks={false}
+                aboutMe={m.senderId !== me && mentionsUser(m.body, me)} read={false} conversation={conversation} inThread
+                onReply={() => { setEditing(null); setReplyTo(m); }} onEdit={() => { setReplyTo(null); setEditing(m); }} onDelete={() => void remove(m)}
+                onJump={(mid) => listRef.current?.querySelector<HTMLElement>(`[data-msg="${mid}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })} />
+              {i === 0 && count > 0 && <div className="thread-sep"><span>{count} {count === 1 ? 'reply' : 'replies'}</span></div>}
+            </div>
+          ))}
+        </div>
+      </UnfurlContext.Provider>
+      {q.data && !q.data.root.isDeleted && (
+        <Composer key={`${rootId}:${editing?.id ?? ''}`} conversation={conversation} replyTo={replyTo} editing={editing} threadRootId={rootId}
+          mentionable={conversation.type === 'Project' ? conversation.members.filter((m) => m.userId !== me).map((m) => ({ userId: m.userId, name: m.name })) : []}
+          onCancel={() => { setReplyTo(null); setEditing(null); }}
+          onSent={(m) => { setReplyTo(null); setEditing(null); putMessage(wid, m); }} />
+      )}
+    </aside>
+  );
+}
+
+/** The pinned messages of the conversation; clicking one goes to it. */
+function PinsPanel({ conversation, onClose, onJump }: { conversation: Conversation; onClose: () => void; onJump: (id: string) => void }) {
+  const wid = useWorkspaceId()!;
+  const q = useQuery({ queryKey: chatKeys.pins(wid, conversation.id), queryFn: () => chatApi.pins(conversation.id), staleTime: 15_000 });
+  return (
+    <aside className="thread-side" aria-label="Pinned messages">
+      <div className="thread-side-head"><div><h3>📌 Pinned</h3><span className="muted">{q.data?.length ?? 0} pinned</span></div><button className="btn-icon" onClick={onClose} aria-label="Close pinned messages"><Icon name="close" /></button></div>
+      <div className="thread-side-list">
+        {q.data?.length === 0 && <p className="chat-note">Nothing pinned yet. Pin a message to keep it at hand for everyone here.</p>}
+        <ul className="pin-list">{(q.data ?? []).map((m) => (
+          <li key={m.id}><button type="button" className="saved-row" onClick={() => (m.threadRootId ? toast('That message is in a thread.', 'info') : onJump(m.id))}>
+            <b>{m.senderName ?? 'Decision'}</b><span>{plainText(m.body).slice(0, 200) || 'Attachment'}</span>
+            <time>{m.pinnedBy ? `pinned by ${m.pinnedBy}` : ''}</time>
+          </button></li>
+        ))}</ul>
+      </div>
+    </aside>
   );
 }
 
@@ -359,12 +473,34 @@ const remindAbout = (m: ChatMessage) =>
  * One message. Time, "edited" and the read ticks sit inside the bubble; the avatar shows once, beside the last message of a run. With a
  * mouse, a small toolbar appears on hover; on a phone, a long press opens the actions as a sheet and a swipe to the right replies.
  */
-function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, aboutMe, read, onReply, onEdit, onDelete, onJump }: {
+function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, aboutMe, read, onReply, onEdit, onDelete, onJump, conversation, onThread, inThread = false }: {
   m: ChatMessage; mine: boolean; grouped: boolean; tail: boolean; showName: boolean; canModerate: boolean; ticks: boolean; aboutMe: boolean; read: boolean;
   onReply: () => void; onEdit: () => void; onDelete: () => void; onJump: (id: string) => void;
+  conversation: Conversation; onThread?: () => void; inThread?: boolean;
 }) {
   const wid = useWorkspaceId();
   const [picking, setPicking] = useState(false);
+  const [more, setMore] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  useClickOutside(moreRef, () => setMore(false));
+  const [extra, setExtra] = useState<null | 'translate' | 'replies'>(null);
+  const [making, setMaking] = useState<ChatExtract['kind'] | null>(null);
+  const [seen, setSeen] = useState(false);
+  const isPoll = m.kind === 'Poll';
+  const canThread = !inThread && !m.threadRootId && !!onThread;
+  const update = (updated: ChatMessage) => { if (wid) putMessage(wid, updated); };
+  const pin = () => chatApi.pin(m.id, !m.pinnedAt).then(update).catch((e) => toast(e instanceof ApiError ? e.message : 'Could not pin it.', 'error'));
+  const save = () => chatApi.save(m.id, !m.saved).then((u) => { update(u); toast(u.saved ? 'Saved. Find it under Saved in the chat list.' : 'Removed from saved.', 'success'); })
+    .catch((e) => toast(e instanceof ApiError ? e.message : 'Could not save it.', 'error'));
+  const moreItems: { label: string; icon: string; run: () => void; hidden?: boolean }[] = [
+    { label: 'Make a task', icon: '✅', run: () => setMaking('task') },
+    { label: 'Make a ticket', icon: '🎫', run: () => setMaking('ticket') },
+    { label: 'Make a reminder', icon: '⏰', run: () => setMaking('reminder') },
+    { label: 'Make a page', icon: '📄', run: () => setMaking('page') },
+    { label: 'Translate', icon: '🌐', run: () => setExtra('translate'), hidden: !m.body || isPoll },
+    { label: 'Suggest replies', icon: '✨', run: () => setExtra('replies'), hidden: mine || isPoll || !m.body },
+    { label: 'Seen by', icon: '👁', run: () => setSeen(true), hidden: !mine || conversation.type === 'Project' },
+  ];
   const [sheet, setSheetState] = useState(false);
   const sheetAt = useRef(0);
   const setSheet = (open: boolean) => { if (open) sheetAt.current = performance.now(); setSheetState(open); };
@@ -418,10 +554,12 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
     <div className={`msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''} ${tail ? 'tail' : ''} ${aboutMe ? 'mentions-me' : ''}`} data-msg={m.id} ref={pickRef}>
       {!mine && (tail ? <Avatar name={m.senderName} size="sm" userId={m.senderId ?? undefined} /> : <span className="avatar-gap" />)}
       <div className="msg-col">
-        {!grouped && ((!mine && showName) || (aboutMe && !m.isDeleted)) && (
+        {(!grouped || m.pinnedAt || m.asksMe) && ((!mine && showName && !grouped) || (aboutMe && !m.isDeleted) || m.pinnedAt || m.asksMe) && (
           <div className="msg-meta">
-            {!mine && showName && <strong>{m.senderName ?? 'Former member'}</strong>}
+            {!mine && showName && !grouped && <strong>{m.senderName ?? 'Former member'}</strong>}
             {aboutMe && !m.isDeleted && <span className="mention-flag" title="You were mentioned">@ you</span>}
+            {m.asksMe && !m.isDeleted && <span className="asks-flag" title="A question for you that you have not answered yet">❓ Waiting for your answer</span>}
+            {m.pinnedAt && <span className="pin-flag" title={m.pinnedBy ? `Pinned by ${m.pinnedBy}` : 'Pinned'}>📌 Pinned</span>}
           </div>
         )}
         <div className="bubble-wrap" style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}
@@ -439,12 +577,22 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
               ? <em className="deleted">This message was deleted{meta}</em>
               : <>
                   {(m.attachments?.length ?? 0) > 0 && (
-                    <div className="chat-files">{m.attachments!.map((f) => (f.isImage ? <ChatImage key={f.id} file={f} /> : <ChatFile key={f.id} file={f} />))}</div>
+                    <div className="chat-files">{m.attachments!.map((f) => (f.isVoice ? <VoiceNote key={f.id} file={f} /> : f.isImage ? <ChatImage key={f.id} file={f} /> : <ChatFile key={f.id} file={f} />))}</div>
                   )}
-                  <div className="msg-text">{m.body ? renderBody(m.body) : null}{meta}</div>
+                  {isPoll && m.poll ? <><PollCard poll={m.poll} onChanged={update} /><div className="msg-text">{meta}</div></>
+                    : <div className="msg-text">{m.body ? renderBody(m.body) : null}{meta}</div>}
                 </>}
           </div>
         </div>
+        {!m.isDeleted && m.kind === 'User' && <UnfurlCards body={m.body} />}
+        {!m.isDeleted && <LinkedChips links={m.linked} />}
+        {canThread && (m.threadReplies ?? 0) > 0 && (
+          <button type="button" className="thread-link" onClick={onThread}>
+            <Icon name="message" size={13} /> {m.threadReplies} {m.threadReplies === 1 ? 'reply' : 'replies'}{m.threadLastAt && <span> · last {timeOf(m.threadLastAt)}</span>}
+          </button>
+        )}
+        {extra === 'translate' && <TranslateLine m={m} onClose={() => setExtra(null)} />}
+        {extra === 'replies' && <SmartReplies m={m} onClose={() => setExtra(null)} />}
         {!m.isDeleted && (m.reactions?.length ?? 0) > 0 && (
           <div className="chat-reactions">
             {m.reactions!.map((r) => (
@@ -466,11 +614,24 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
               )}
             </div>
             <button className="btn-icon" onClick={onReply} aria-label="Reply" title="Reply"><Icon name="undo" size={14} /></button>
+            {canThread && <button className="btn-icon" onClick={onThread} aria-label="Reply in thread" title="Reply in thread"><Icon name="message" size={14} /></button>}
             <button className="btn-icon" onClick={() => remindAbout(m)} aria-label="Remind me about this" title="Remind me about this"><Icon name="alarm" size={14} /></button>
-            {mine && <button className="btn-icon" onClick={onEdit} aria-label="Edit" title="Edit"><Icon name="edit" size={14} /></button>}
+            <button className={`btn-icon ${m.saved ? 'on' : ''}`} onClick={() => void save()} aria-label={m.saved ? 'Remove from saved' : 'Save for later'} aria-pressed={!!m.saved} title={m.saved ? 'Saved' : 'Save for later'}><Icon name="star" size={14} /></button>
+            {mine && !isPoll && <button className="btn-icon" onClick={onEdit} aria-label="Edit" title="Edit"><Icon name="edit" size={14} /></button>}
             {(mine || canModerate) && <button className="btn-icon danger" onClick={onDelete} aria-label="Delete" title="Delete"><Icon name="trash" size={14} /></button>}
+            <div className="react-wrap" ref={moreRef}>
+              <button className="btn-icon" onClick={() => setMore((v) => !v)} aria-label="More actions" aria-expanded={more} title="More"><Icon name="more" size={14} /></button>
+              {more && (
+                <div className="more-pop" role="menu" aria-label="More actions">
+                  <button type="button" role="menuitem" onClick={() => { setMore(false); void pin(); }}><span aria-hidden="true">📌</span>{m.pinnedAt ? 'Unpin' : 'Pin to the conversation'}</button>
+                  {moreItems.filter((x) => !x.hidden).map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { setMore(false); x.run(); }}><span aria-hidden="true">{x.icon}</span>{x.label}</button>)}
+                </div>
+              )}
+            </div>
           </div>
         )}
+        {making && <MakeFromMessage m={m} conversation={conversation} kind={making} onClose={() => setMaking(null)} />}
+        {seen && <SeenByDialog m={m} onClose={() => setSeen(false)} />}
       </div>
       {sheet && createPortal(
         <div className="msg-sheet-scrim" onClick={() => { if (performance.now() - sheetAt.current > 350) setSheet(false); }}>
@@ -484,9 +645,13 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
             </div>
             <div className="msg-sheet-list">
               <button type="button" onClick={() => { setSheet(false); onReply(); }}><Icon name="undo" size={17} />Reply</button>
+              {canThread && <button type="button" onClick={() => { setSheet(false); onThread!(); }}><Icon name="message" size={17} />Reply in thread</button>}
               {m.body && <button type="button" onClick={() => { setSheet(false); copy(); }}><Icon name="copy" size={17} />Copy text</button>}
               <button type="button" onClick={() => { setSheet(false); remindAbout(m); }}><Icon name="alarm" size={17} />Remind me</button>
-              {mine && <button type="button" onClick={() => { setSheet(false); onEdit(); }}><Icon name="edit" size={17} />Edit</button>}
+              <button type="button" onClick={() => { setSheet(false); void save(); }}><Icon name="star" size={17} />{m.saved ? 'Remove from saved' : 'Save for later'}</button>
+              <button type="button" onClick={() => { setSheet(false); void pin(); }}><span className="sheet-emoji" aria-hidden="true">📌</span>{m.pinnedAt ? 'Unpin' : 'Pin'}</button>
+              {moreItems.filter((x) => !x.hidden).map((x) => <button key={x.label} type="button" onClick={() => { setSheet(false); x.run(); }}><span className="sheet-emoji" aria-hidden="true">{x.icon}</span>{x.label}</button>)}
+              {mine && !isPoll && <button type="button" onClick={() => { setSheet(false); onEdit(); }}><Icon name="edit" size={17} />Edit</button>}
               {(mine || canModerate) && <button type="button" className="danger" onClick={() => { setSheet(false); onDelete(); }}><Icon name="trash" size={17} />Delete</button>}
             </div>
           </div>
@@ -496,13 +661,24 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
 }
 
 // ------------------------------------------------------------------ writing
-function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSent }: {
+function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSent, threadRootId = null, onPoll }: {
   conversation: Conversation; replyTo: ChatMessage | null; editing: ChatMessage | null; mentionable: { userId: string; name: string }[];
   onCancel: () => void; onSent: (m: ChatMessage) => void;
+  /** Writing in a thread: the reply goes under this message. */ threadRootId?: string | null;
+  onPoll?: () => void;
 }) {
   const id = conversation.id;
+  const draftKey = threadRootId ? `${id}:${threadRootId}` : id;   // a thread keeps its own unsent draft
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [later, setLater] = useState(false);
+  const aiRef = useRef<HTMLDivElement>(null);
+  const plusRef = useRef<HTMLDivElement>(null);
+  useClickOutside(aiRef, () => setAiOpen(false));
+  useClickOutside(plusRef, () => setPlusOpen(false));
   const me = useAuth((s) => s.ctx!.user.id);
-  const [text, setText] = useState(() => editing?.body ?? drafts.get(id) ?? '');
+  const [text, setText] = useState(() => editing?.body ?? drafts.get(draftKey) ?? '');
   const [isEmpty, setIsEmpty] = useState(() => !text);
   const [marks, setMarks] = useState({ bold: false, italic: false, underline: false });
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -599,14 +775,42 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   }, []);
 
   const send = useMutation({
-    mutationFn: (v: { body: string; ids: string[] }) => (editing ? chatApi.edit(editing.id, v.body) : chatApi.send(id, v.body, replyTo?.id, v.ids)),
-    onSuccess: (m, v) => { drafts.delete(id); setPending([]); onSent(m); if (!editing) offerReminderAfterSend(v.body); },
+    mutationFn: (v: { body: string; ids: string[] }) => (editing ? chatApi.edit(editing.id, v.body) : chatApi.send(id, v.body, replyTo?.id, v.ids, threadRootId)),
+    onSuccess: (m, v) => { drafts.delete(draftKey); setPending([]); onSent(m); if (!editing) offerReminderAfterSend(v.body); },
     onError: (e, v) => {
       setText(v.body);
       if (box.current) { box.current.innerHTML = markdownToHtml(v.body); setIsEmpty(!v.body); }
       toast(e instanceof ApiError ? e.message : 'The message could not be sent.', 'error');
     },
   });
+
+  /** Replaces what is in the box (a rewritten or translated draft, a suggested reply). */
+  const setBox = (value: string) => {
+    if (!box.current) return;
+    box.current.innerHTML = markdownToHtml(value);
+    box.current.focus();
+    const sel = window.getSelection(); const r = document.createRange(); r.selectNodeContents(box.current); r.collapse(false); sel?.removeAllRanges(); sel?.addRange(r);
+    sync();
+  };
+  useEffect(() => {
+    const onInsert = (e: Event) => {
+      const d = (e as CustomEvent<{ conversationId: string; text: string; threadRootId: string | null }>).detail;
+      if (d.conversationId !== id || (d.threadRootId ?? null) !== (threadRootId ?? null) || editing) return;
+      setBox(d.text);
+    };
+    window.addEventListener('chat:insert', onInsert);
+    return () => window.removeEventListener('chat:insert', onInsert);
+  });
+  const rewrite = async (action: string, language?: string) => {
+    setAiOpen(false);
+    const body = text.trim();
+    if (!body) return;
+    setAiBusy(true);
+    try { setBox((await chatApi.transform(plainText(body), action, language)).text); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'The AI could not rewrite it right now.', 'error'); }
+    setAiBusy(false);
+  };
+  const voice = useVoiceRecorder(id, (attachmentId) => send.mutate({ body: '', ids: [attachmentId] }));
 
   const submit = () => {
     const body = text.trim();
@@ -630,7 +834,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
     setText(value);
     setIsEmpty(!value);
     updateMarks();
-    if (!editing) { if (value) drafts.set(id, value); else drafts.delete(id); }
+    if (!editing) { if (value) drafts.set(draftKey, value); else drafts.delete(draftKey); }
     if (value && Date.now() - lastTyping.current > 2500) { lastTyping.current = Date.now(); sendTyping(id); }
     detectMention();
   };
@@ -730,8 +934,27 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
           ))}
         </ul>
       )}
+      {voice.state !== 'idle' && (
+        <div className="voice-rec" role="status">
+          {voice.state === 'recording' ? <><span className="aid-dot" aria-hidden="true" /> Recording {Math.floor(voice.secs / 60)}:{String(voice.secs % 60).padStart(2, '0')}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={voice.cancel}>Cancel</button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => void voice.finish()}><Icon name="send" size={13} /> Send</button></>
+            : <><Spinner /> Sending and transcribing…</>}
+        </div>
+      )}
       <div className="composer-row">
         <div className="composer-pill">
+          {!editing && !threadRootId && (
+            <div className="emoji-wrap" ref={plusRef}>
+              <button type="button" className={`btn-icon pill-btn ${plusOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setPlusOpen((v) => !v)} aria-label="More: poll, send later" aria-expanded={plusOpen} title="Poll, send later"><Icon name="plus" size={17} /></button>
+              {plusOpen && (
+                <div className="more-pop up" role="menu" aria-label="More">
+                  {onPoll && <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); onPoll(); }}><span aria-hidden="true">📊</span>Poll</button>}
+                  <button type="button" role="menuitem" disabled={!text.trim()} onClick={() => { setPlusOpen(false); setLater(true); }}><span aria-hidden="true">⏰</span>Send later{!text.trim() ? ' (write first)' : ''}</button>
+                </div>
+              )}
+            </div>
+          )}
           {!editing && (
             <>
               <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
@@ -750,6 +973,15 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
             onKeyUp={(e) => { updateMarks(); if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') detectMention(); }}
             onMouseUp={() => { updateMarks(); detectMention(); }}
             onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} />
+          <div className="emoji-wrap" ref={aiRef}>
+            <button type="button" className={`btn-icon pill-btn ai ${aiOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setAiOpen((v) => !v)} disabled={isEmpty || aiBusy}
+              aria-label="Rewrite or translate with AI" aria-expanded={aiOpen} title="Rewrite or translate with AI">{aiBusy ? <Spinner /> : <Icon name="sparkle" size={16} />}</button>
+            {aiOpen && (
+              <div className="more-pop up" role="menu" aria-label="Rewrite with AI">
+                {COMPOSER_AI.map((a) => <button key={a.label} type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => void rewrite(a.id, a.language)}>{a.label}</button>)}
+              </div>
+            )}
+          </div>
           <button type="button" className={`btn-icon pill-btn ${formatting ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setFormatting((v) => !v)}
             aria-label="Formatting" aria-pressed={formatting} title="Formatting"><span className="aa">Aa</span></button>
           <div className="emoji-wrap" ref={emojiRef}>
@@ -765,10 +997,14 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
             )}
           </div>
         </div>
-        <button className={`send-btn ${ready ? 'ready' : ''}`} onMouseDown={keepFocus} onClick={submit} disabled={!ready} aria-label={editing ? 'Save' : 'Send'}>
-          {send.isPending ? <Spinner /> : <Icon name={editing ? 'tick' : 'send'} size={17} />}
-        </button>
+        {isEmpty && !editing && pending.length === 0 && canAttach && voice.supported && voice.state === 'idle'
+          ? <button className="send-btn ready mic" onMouseDown={keepFocus} onClick={() => void voice.start()} aria-label="Record a voice note" title="Record a voice note (Telugu, Hindi or English)"><Icon name="mic" size={17} /></button>
+          : <button className={`send-btn ${ready ? 'ready' : ''}`} onMouseDown={keepFocus} onClick={submit} disabled={!ready} aria-label={editing ? 'Save' : 'Send'}>
+              {send.isPending ? <Spinner /> : <Icon name={editing ? 'tick' : 'send'} size={17} />}
+            </button>}
       </div>
+      {later && <ScheduleDialog conversation={conversation} body={text.trim()} threadRootId={threadRootId} onClose={() => setLater(false)}
+        onScheduled={() => { setText(''); setIsEmpty(true); if (box.current) box.current.innerHTML = ''; drafts.delete(draftKey); }} />}
       {over && <div className="composer-hint"><span className={text.length > MAX_LENGTH ? 'over' : ''}>{text.length.toLocaleString()} / {MAX_LENGTH.toLocaleString()}</span></div>}
     </div>
   );

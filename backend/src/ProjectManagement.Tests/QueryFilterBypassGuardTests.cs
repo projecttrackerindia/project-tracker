@@ -62,6 +62,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Integrations/WhatsAppGatewayService.cs", // signed provider callbacks resolve exact app/WABA/phone installation metadata only; tenant scope restored and no business reads/actions
         "ProjectManagement.Application/Features/Integrations/WebhookService.cs",
         "ProjectManagement.Application/Features/Integrations/IncomingWebhookService.cs", // anonymous incoming webhook: the address is found by the token in its URL (and its secret, when set); everything after runs in that workspace as the member who set it up
+        "ProjectManagement.Application/Features/Chat/ChatService.Upgrades.cs", // scheduled send: finds due rows (ids, workspace and sender only), then sends each as its sender inside that workspace
         "ProjectManagement.Application/Features/Issues/IssueService.cs",
         "ProjectManagement.Application/Features/Notifications/NotificationService.cs",
         "ProjectManagement.Application/Features/Notifications/PushService.cs",
