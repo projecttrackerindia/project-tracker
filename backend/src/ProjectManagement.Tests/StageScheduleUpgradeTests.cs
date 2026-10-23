@@ -21,11 +21,16 @@ public class StageScheduleUpgradeTests
             builder.Entity<Tenant>().Ignore(t => t.TimeZone);   // added later by 20261018000050_WorkspaceTimeZone
         }
     }
-    private static async Task<(Guid Project, Guid Stage)> SeedOldAsync(AppDbContext db, CurrentContext context)
+    /// <param name="postgres">The PostgreSQL database still at the older migration: the person is written there with the columns it has then
+    /// (later migrations add Users columns the current model maps, so the model cannot write that row).</param>
+    private static async Task<(Guid Project, Guid Stage)> SeedOldAsync(AppDbContext db, CurrentContext context, string? postgres = null)
     {
         var user = new User { Email = "schedule-upgrade@example.test", NormalizedEmail = "SCHEDULE-UPGRADE@EXAMPLE.TEST", DisplayName = "Existing scheduler", PasswordHash = "fixture-only", IsActive = true };
         var tenant = new Tenant { Name = "Existing organization", Slug = "schedule-upgrade", Type = WorkspaceType.Organization, OwnerUserId = user.Id };
-        db.Users.Add(user); db.Tenants.Add(tenant); await db.SaveChangesAsync();
+        if (postgres is null) db.Users.Add(user);
+        else await OldSchemaRows.InsertAsync(postgres, "Users", new() { ["Id"] = user.Id, ["Email"] = user.Email, ["NormalizedEmail"] = user.NormalizedEmail,
+            ["DisplayName"] = user.DisplayName, ["PasswordHash"] = user.PasswordHash, ["IsActive"] = true });
+        db.Tenants.Add(tenant); await db.SaveChangesAsync();
         context.UserId = user.Id; context.TenantId = tenant.Id; context.Role = TenantRole.Owner; context.WorkspaceType = WorkspaceType.Organization;
         var group = new ProjectGroup { TenantId = tenant.Id, Name = "Existing delivery", IsActive = true }; db.ProjectGroups.Add(group);
         var project = new Project { TenantId = tenant.Id, Name = "Existing plan", Key = "OLD", OwnerId = user.Id, ProjectGroupId = group.Id,
@@ -62,7 +67,7 @@ public class StageScheduleUpgradeTests
             await using var db = new AppDbContext(options, context, TimeProvider.System);
             await db.GetService<IMigrator>().MigrateAsync("20261012171600_PlannedTimesheetLeave");
             Guid project; Guid stage;
-            await using (var old = new PreviousContext(options, context)) (project, stage) = await SeedOldAsync(old, context);
+            await using (var old = new PreviousContext(options, context)) (project, stage) = await SeedOldAsync(old, context, configured.ConnectionString);
             await db.Database.MigrateAsync(); await db.Database.MigrateAsync(); await AssertPreservedAsync(db, project, stage);
             Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         }
