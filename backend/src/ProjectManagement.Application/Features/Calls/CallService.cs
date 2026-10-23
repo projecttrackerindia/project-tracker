@@ -69,8 +69,11 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         title ??= "Call";
         if (title.Length > 200) title = title[..200];
 
-        // Who is invited: the people named (members of this workspace only), plus everyone in the chat for a chat call.
+        // Who is invited: the people named (members of this workspace only), plus everyone in the chat for a chat call. A project call with
+        // nobody named (the assistant's "call the team") invites the project's people; an empty list from the start screen means nobody.
         var invite = (req.Invite ?? []).Distinct().Take(MaxInvite).ToList();
+        if (req.Invite is null && kind == "project" && projectId is { } team)
+            invite.AddRange(await db.ProjectMembers.AsNoTracking().Where(m => m.ProjectId == team).Select(m => m.UserId).Take(MaxInvite).ToListAsync(ct));
         if (conversationId is { } conv) invite.AddRange(await db.ConversationMembers.AsNoTracking().Where(m => m.ConversationId == conv).Select(m => m.UserId).Take(MaxInvite).ToListAsync(ct));
         invite = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tenant && invite.Contains(m.UserId) && m.User!.IsActive).Select(m => m.UserId).Distinct().ToListAsync(ct);
         invite.Remove(me);

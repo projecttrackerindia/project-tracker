@@ -16,6 +16,7 @@ import { useAi } from './features/ai/Assistant';
 import { AppSplash } from './components/AppSplash';
 import { useVisibleKinds } from './features/workitems/workItems';
 import { AppLayout } from './layouts/AppLayout';
+import { CallRoute } from './features/calls/CallHost';
 
 /**
  * Pages are loaded when they are first opened rather than all up front, so the first visit downloads a fraction of the app. Each page
@@ -358,6 +359,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="my-work" element={<Guard allow={kinds.length > 0}>{mProjects && !isGuest ? <Moved to="/command-center?tab=work" /> : <MyWorkPage />}</Guard>} />
         <Route path="agents" element={<Navigate to={ai ? '/ai' : '/project-agent'} replace />} />
         <Route path="agent-tracker" element={<AgentTrackerPage />} />
+        <Route path="calls/:id" element={<CallRoute />} />
         <Route path="command-center" element={<Guard allow={mProjects && !isGuest}><CommandCenterPage /></Guard>} />
         <Route path="project-agent" element={<Guard allow={mProjects && !personal}><AgentPage section="review" /></Guard>} />
         <Route path="project-agent/assigned" element={<Guard allow={mProjects && !personal}><AgentPage section="assigned" /></Guard>} />

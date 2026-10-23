@@ -82,6 +82,13 @@ It waits until the API reports healthy, then prints the server address.
 6. In Google Search Console (property `projecttracker.in`), open **Sitemaps** and submit `https://projecttracker.in/sitemap.xml`, then use **URL inspection › Request indexing** on the home page.
 7. Keep the Railway project for a week without deleting it. To go back, point the A record at Railway again. After that week, delete the Railway project: nothing on Google Cloud depends on it.
 
+## Video calls on our own server (optional, about 10 minutes)
+
+Once the app is running, `./calls.sh` sets up our own media server (LiveKit) on a second machine, `pt-calls`, at `calls.<domain>`, and
+switches on the Call buttons. It asks you to add one DNS record (`calls.<domain>` → the address it prints) and waits for it. The project
+agent joins these calls by itself (no lobby, no one has to let it in) and writes the minutes. Details, ports, growing and costs:
+[docs/VIDEO-CALLS.md](../../docs/VIDEO-CALLS.md).
+
 ## Day to day
 
 - **Release a new version:** `cd ~/project-tracker/deploy/gcp && ./update.sh` (builds, then restarts with about a minute of interruption).

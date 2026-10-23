@@ -30,7 +30,8 @@ export function fillAppCsp(nginxText, indexHtml) {
 export async function cspFor(dist = path.resolve('dist')) {
   const conf = await fs.readFile('nginx.conf', 'utf8');
   const site = conf.match(/set \$sec_csp "([^"]+)";/)[1];
-  const app = fillAppCsp(conf, await fs.readFile(path.join(dist, 'index.html'), 'utf8'));
+  // nginx fills ${CALLS_ORIGIN} (the media server) at container start; the checks have none.
+  const app = fillAppCsp(conf, await fs.readFile(path.join(dist, 'index.html'), 'utf8')).replace('${CALLS_ORIGIN} ', process.env.CALLS_ORIGIN ? `${process.env.CALLS_ORIGIN} ` : '');
   const index = path.join(dist, 'index.html');
   return (file = 'index.html') => { const f = path.resolve(dist, String(file)); return f === index ? app : f.endsWith('.html') ? site : app; };
 }

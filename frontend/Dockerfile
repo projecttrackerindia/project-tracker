@@ -17,6 +17,8 @@ FROM nginx:1.27-alpine
 # A template, not the final config: nginx's own entrypoint fills in ${API_HOST} at container start (see nginx.conf).
 COPY --from=build /app/nginx.generated.conf /etc/nginx/templates/default.conf.template
 ENV API_HOST=api
+# Our own media server for video calls, allowed in the app's connect-src (e.g. "wss://calls.projecttracker.in https://calls.projecttracker.in"); empty = no calls.
+ENV CALLS_ORIGIN=""
 # Makes the nginx entrypoint export NGINX_LOCAL_RESOLVERS (the container's DNS servers) for use in nginx.conf.
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 COPY --from=build /app/dist /usr/share/nginx/html

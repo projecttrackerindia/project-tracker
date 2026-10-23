@@ -115,7 +115,7 @@ public class CallTests(ApiFactory factory)
         Assert.Equal(room, (string)payload["video"]!["room"]!);
 
         // The media server says who is in; unsigned events are refused.
-        var joined = $$"""{"event":"participant_joined","room":{"name":"{{room}}"},"participant":{"identity":"{{CallService.Identity(manager.UserId)}}"}}""";
+        var joined = $$$"""{"event":"participant_joined","room":{"name":"{{{room}}}"},"participant":{"identity":"{{{CallService.Identity(manager.UserId)}}}"}}""";
         Assert.Equal(HttpStatusCode.Unauthorized, await Webhook(joined, null));
         Assert.Equal(HttpStatusCode.OK, await Webhook(joined, LiveKitTokenTests.SignedWebhook("testkey", ApiFactory.CallsSecret, joined, DateTimeOffset.UtcNow)));
         Assert.Contains((await owner.Get($"/api/v1/calls/{id}")).Data!["people"]!.AsArray(), p => S(p!["userId"]) == manager.UserId.ToString() && p["inCall"]!.GetValue<bool>());

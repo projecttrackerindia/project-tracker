@@ -1,0 +1,195 @@
+/* Our own video calls. The call itself is LiveKit's dark stage; the frame around it follows the app.
+   The shell sits over the assistant (155) and chat (150) launchers and under dialogs (200) and toasts (300). */
+.call-shell { position: fixed; inset: 0; z-index: 170; display: flex; flex-direction: column; background: #111318; color: #f2f3f5; }
+.call-shell.in-call .call-room { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.call-stage { flex: 1; min-height: 0; }
+.call-stage .lk-video-conference { height: 100%; }
+.call-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid rgba(255, 255, 255, .08); min-height: 56px; }
+.call-head-title { flex: 1; min-width: 0; display: grid; }
+.call-head-title b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.call-head-title small { font-size: 12px; color: rgba(242, 243, 245, .65); }
+.call-head-title a { color: inherit; text-decoration: underline; }
+.call-icon-btn { width: 36px; height: 36px; border-radius: 10px; border: 0; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; }
+.call-icon-btn:hover { background: rgba(255, 255, 255, .08); }
+.call-icon-btn:focus-visible, .call-end:focus-visible { outline: 2px solid #8ab4ff; outline-offset: 2px; }
+.call-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 12px; background: rgba(255, 255, 255, .08); white-space: nowrap; }
+.call-badge.agent { background: rgba(138, 180, 255, .18); color: #cfe0ff; }
+.call-end { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 10px; border: 0; background: #d93636; color: #fff; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.call-end:hover { background: #c22d2d; }
+.call-prejoin { flex: 1; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 520px); gap: 28px; align-items: center; padding: 24px clamp(16px, 5vw, 64px); }
+.call-prejoin-intro h2 { margin: 0 0 8px; font-size: 26px; }
+.call-prejoin-intro p { margin: 0 0 10px; color: rgba(242, 243, 245, .75); }
+.call-agent-note { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: rgba(138, 180, 255, .12); color: #dbe7ff !important; font-size: 13.5px; }
+.call-prejoin .lk-prejoin { width: 100%; }
+.call-shell.over { background: var(--bg); color: var(--text); overflow-y: auto; }
+.call-shell.over > .loader, .call-shell.over > * { margin: auto; }
+.call-over { min-height: 70vh; display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center; padding: 24px; }
+.call-over h2 { margin: 0; }
+.call-over p { margin: 0; color: var(--text-2); max-width: 560px; }
+.call-agent-note svg { flex: none; margin-top: 2px; }
+.call-agent-note span { text-align: left; }
+.call-over .call-agent-note { color: var(--text) !important; background: var(--primary-soft); }
+.call-over-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+/* starting a call */
+.call-start { display: grid; gap: 14px; }
+.call-start-note { display: flex; gap: 8px; align-items: center; margin: 0; }
+.call-start-note svg { flex: none; }
+.call-invite { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 0; }
+.call-invite legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
+.call-invite-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; max-height: 220px; overflow-y: auto; }
+.call-invite-item { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.call-agent { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--surface-3); cursor: pointer; }
+.call-agent span { display: grid; gap: 2px; }
+.call-agent small { color: var(--text-2); font-size: 12.5px; }
+/* live calls you can join, shown at the top of the app */
+.call-live-bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: color-mix(in srgb, var(--success) 14%, var(--surface)); border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.call-live-bar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+.call-live-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) {
+  .call-prejoin { grid-template-columns: 1fr; align-items: start; }
+  .call-head { gap: 6px; padding: 8px 10px; }
+  .call-head .call-badge { display: none; }   /* the agent's own tile says it is taking notes */
+  .call-head-title small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .call-end { padding: 8px 10px; }
+  .call-end span { display: none; }
+}
+
+/* ---- In the call: laid out like Google Meet. Dark tiles, a ring around whoever speaks, initials when the camera is off, round controls.
+   Every rule starts at .cs so it outranks LiveKit's own stylesheet. ---- */
+.call-shell.in-call { background: #202124; color: #e8eaed; }
+.call-shell.in-call .call-head { border-bottom: 0; }
+.cs { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.cs .cs-main { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 8px 16px 0; }
+.cs .cs-grid { flex: 1; min-width: 0; height: 100%; padding: 0; gap: 10px; }
+.cs .lk-participant-tile { position: relative; background: #3c4043; border-radius: 12px; overflow: hidden; padding: 0; display: block; }
+.cs .lk-participant-tile::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 0 #8ab4f8; transition: box-shadow .15s ease; pointer-events: none; }
+.cs .lk-participant-tile[data-lk-speaking="true"]:not([data-lk-source="screen_share"])::after { box-shadow: inset 0 0 0 3px #8ab4f8; }
+.cs .cs-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 0; }
+.cs .cs-video.contain { object-fit: contain; background: #000; }
+.cs .cs-avatar-wrap { position: absolute; inset: 0; display: grid; place-items: center; }
+.cs .cs-avatar { --h: 210; width: clamp(56px, 28%, 128px); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; font-size: clamp(20px, 4.5vw, 44px); font-weight: 500;
+  letter-spacing: .02em; color: #fff; background: hsl(var(--h) 45% 42%); transition: box-shadow .2s ease; user-select: none; }
+.cs .cs-avatar.agent { background: linear-gradient(135deg, #4f6bed, #8a5cf6); }
+.cs .lk-participant-tile[data-lk-speaking="true"] .cs-avatar { box-shadow: 0 0 0 6px rgba(138, 180, 248, .32), 0 0 0 12px rgba(138, 180, 248, .14); }
+.cs .cs-name { position: absolute; left: 10px; bottom: 8px; right: 40px; display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 500; color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .6); min-width: 0; }
+.cs .cs-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs .cs-name small { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: rgba(138, 180, 248, .22); color: #d2e3fc; font-size: 11.5px; text-shadow: none; white-space: nowrap; }
+.cs .cs-muted { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: rgba(32, 33, 36, .72); color: #fff; }
+.cs .cs-quality { position: absolute; right: 10px; bottom: 8px; width: 16px; height: 16px; opacity: .8; }
+.cs .cs-focus { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 232px; gap: 10px; }
+.cs .cs-share { min-height: 0; display: grid; }
+.cs .cs-share > .lk-participant-tile { height: 100%; }
+.cs .cs-strip { display: grid; grid-auto-rows: 132px; gap: 10px; overflow-y: auto; align-content: start; }
+/* Messages: a light panel beside the people, as in Meet. LiveKit's chat is themed through its own colour variables. */
+.cs .cs-chat { width: 340px; flex: none; border-radius: 12px; overflow: hidden; display: flex; color-scheme: light;
+  --lk-bg: #f1f3f4; --lk-bg2: #fff; --lk-bg5: #e8f0fe; --lk-accent4: #f1f3f4; --lk-fg: #202124; --lk-fg5: #5f6368; --lk-border-color: #e8eaed;
+  --lk-control-bg: #f1f3f4; --lk-control-fg: #202124; --lk-control-hover-bg: #e8eaed; --lk-control-active-hover-bg: #e8eaed; background: #fff; color: #202124; }
+.cs .cs-chat[hidden] { display: none; }
+.cs .cs-chat .lk-chat { position: static; width: 100%; height: 100%; max-width: none; border: 0; background: #fff; color: #202124; }
+.cs .cs-chat .lk-chat-header { justify-content: flex-start; font-size: 16px; font-weight: 500; padding: 16px 18px; border-bottom: 1px solid #e8eaed; }
+.cs .cs-chat .lk-chat-header .lk-close-button { right: 8px; transform: none; color: #5f6368; }
+.cs .cs-chat .lk-chat-messages { padding: 6px 10px; }
+.cs .cs-chat .lk-chat-entry .lk-meta-data { color: #5f6368; }
+.cs .cs-chat .lk-chat-entry .lk-participant-name { color: #202124; font-weight: 600; }
+.cs .cs-chat .lk-chat-entry .lk-message-body { color: #202124; }
+.cs .cs-chat .lk-chat-form { padding: 10px 12px; gap: 8px; }
+.cs .cs-chat .lk-chat-form-input { background: #f1f3f4; color: #202124; border: 0; border-radius: 999px; padding: 10px 16px; }
+.cs .cs-chat .lk-chat-form .lk-button { background: transparent; color: #1a73e8; font-weight: 600; }
+/* The controls. */
+.cs .cs-bar { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; padding: 14px 20px 18px; }
+.cs .cs-bar-side { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 15px; }
+.cs .cs-bar-left b { font-weight: 500; white-space: nowrap; }
+.cs .cs-bar-left i { width: 1px; height: 18px; background: #5f6368; }
+.cs .cs-bar-left span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs .cs-bar-right { justify-content: flex-end; }
+.cs .cs-bar-mid { display: flex; align-items: center; gap: 10px; }
+.cs .cs-btn { width: 48px; height: 48px; border-radius: 50%; border: 0; padding: 0; gap: 0; display: grid; place-items: center; background-color: #3c4043; color: #e8eaed; cursor: pointer; transition: background-color .15s ease; }
+.cs .cs-btn:not(:disabled):hover { background-color: #4a4e51; }
+.cs .cs-btn .on, .cs .cs-btn .off { place-items: center; }
+.cs .cs-btn .off { display: none; }
+.cs .cs-btn[data-lk-enabled="false"] .on { display: none; }
+.cs .cs-btn[data-lk-enabled="false"] .off { display: grid; }
+.cs .cs-pair { display: flex; align-items: center; border-radius: 999px; background-color: #3c4043; transition: background-color .15s ease; }
+.cs .cs-pair > .cs-btn, .cs .cs-pair > .cs-btn[aria-pressed], .cs .cs-pair > .cs-btn:not(:disabled):hover { background-color: transparent; }
+.cs .cs-pair:hover { background-color: #4a4e51; }
+.cs .cs-pair:has(> .cs-btn[data-lk-enabled="false"]) { background-color: #ea4335; color: #fff; }
+.cs .cs-pair:has(> .cs-btn[data-lk-enabled="false"]):hover { background-color: #d93025; }
+.cs .cs-pair > .cs-btn[data-lk-enabled="false"] { color: #fff; }
+.cs .cs-pair > .cs-menu { width: 26px; height: 48px; margin-left: -8px; padding: 0 6px 0 0; border: 0; border-radius: 0 999px 999px 0; background-color: transparent; color: inherit; display: grid; place-items: center; }
+.cs .cs-btn.share[data-lk-enabled="true"], .cs .cs-btn.chat[aria-pressed="true"] { background-color: #8ab4f8; color: #202124; }
+.cs .cs-btn.chat[data-lk-unread-msgs]:not([data-lk-unread-msgs="0"])::after { content: ''; top: 9px; right: 10px; left: auto; margin: 0; padding: 0; width: 9px; height: 9px; border-radius: 50%; background: #8ab4f8; box-shadow: 0 0 0 2px #3c4043; }
+.cs .cs-leave { width: 64px; height: 48px; border-radius: 999px; border: 0; padding: 0; background-color: #ea4335; color: #fff; display: grid; place-items: center; cursor: pointer; }
+.cs .cs-leave:not(:disabled):hover { background-color: #d93025; color: #fff; }
+.cs .cs-btn:focus-visible, .cs .cs-leave:focus-visible, .cs .cs-menu:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 2px; }
+.cs .cs-start-audio { border-radius: 999px; border: 0; padding: 8px 14px; background-color: #8ab4f8; color: #202124; font-weight: 600; }
+.cs .lk-device-menu { color-scheme: dark; }
+.cs .lk-toast-connection-state { top: 72px; }
+/* Raised hands: a badge on the tile (with its place in line when there are several) and a list at the bottom left. */
+.cs .cs-hand { position: absolute; top: 10px; left: 10px; z-index: 2; display: inline-flex; align-items: center; gap: 4px; height: 30px; min-width: 30px; padding: 0 8px;
+  border-radius: 999px; background: #fdd663; color: #202124; font-size: 13px; box-shadow: 0 2px 8px rgba(0, 0, 0, .3); animation: cs-pop .28s cubic-bezier(.3, 1.6, .5, 1); }
+.cs .cs-hand b { font-weight: 700; }
+.cs .lk-participant-tile:has(.cs-hand)::after { box-shadow: inset 0 0 0 3px #fdd663; }
+.cs .cs-hands { position: absolute; left: 24px; bottom: 12px; z-index: 4; min-width: 220px; max-width: min(320px, 70%); border-radius: 14px; background: #fff; color: #202124;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .35); overflow: hidden; animation: cs-pop .25s ease-out; }
+.cs .cs-hands-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+.cs .cs-hands-head > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs .cs-hands-icon { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #fdd663; flex: none; }
+.cs .cs-hands ol { list-style: none; margin: 0; padding: 0 8px 8px; display: grid; gap: 2px; counter-reset: hand; }
+.cs .cs-hands li { counter-increment: hand; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13.5px; }
+.cs .cs-hands li::before { content: counter(hand); width: 20px; color: #5f6368; font-variant-numeric: tabular-nums; }
+.cs .cs-hands li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs .cs-hands li button, .cs .cs-hands-all { border: 0; background: transparent; color: #1a73e8; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: 6px; }
+.cs .cs-hands li button:hover, .cs .cs-hands-all:hover { background: #e8f0fe; }
+.cs .cs-hands-all { display: block; width: calc(100% - 16px); margin: 0 8px 8px; padding: 8px; border-top: 1px solid #e8eaed; border-radius: 0 0 8px 8px; }
+.cs .cs-btn.hand.on { background-color: #fdd663; color: #202124; }
+.cs .cs-btn.react.on { background-color: #8ab4f8; color: #202124; }
+/* Reactions: the bar of emoji above the controls, and each reaction floating up the left of the call with its sender's name. */
+.cs .cs-react { position: relative; }
+.cs .cs-react-bar { position: absolute; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 6px; border-radius: 999px;
+  background: #3c4043; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); animation: cs-rise-in .18s ease-out; z-index: 5; }
+.cs .cs-react-bar button { width: 42px; height: 42px; border: 0; border-radius: 50%; background: transparent; font-size: 24px; line-height: 1; cursor: pointer; transition: transform .12s ease, background-color .12s ease; }
+.cs .cs-react-bar button:hover, .cs .cs-react-bar button:focus-visible { background: rgba(255, 255, 255, .12); transform: scale(1.18); outline: none; }
+.cs .cs-react-bar button:active { transform: scale(.92); }
+.cs .cs-main { position: relative; }
+.cs .cs-reactions { position: absolute; left: 24px; bottom: 40px; top: 0; width: 160px; pointer-events: none; z-index: 3; overflow: hidden; }
+.cs .cs-float { --lane: 0; position: absolute; bottom: 0; left: calc(var(--lane) * 22px); display: grid; justify-items: center; gap: 2px;
+  animation: cs-float 4.2s cubic-bezier(.25, .6, .3, 1) forwards; }
+.cs .cs-float .emoji { font-size: 38px; line-height: 1; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .35)); animation: cs-sway 1.4s ease-in-out infinite alternate; }
+.cs .cs-float small { padding: 2px 8px; border-radius: 999px; background: rgba(32, 33, 36, .82); color: #fff; font-size: 11.5px; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.cs .cs-hand ~ .cs-tile-react { top: 46px; }
+.cs .cs-tile-react { position: absolute; left: 10px; top: 8px; z-index: 2; font-size: 30px; line-height: 1; animation: cs-tile-react 4.2s ease forwards; pointer-events: none; }
+@keyframes cs-float { 0% { transform: translateY(20px) scale(.6); opacity: 0; } 10% { transform: translateY(0) scale(1.08); opacity: 1; } 18% { transform: translateY(-6%) scale(1); }
+  80% { opacity: 1; } 100% { transform: translateY(calc(-1 * min(68vh, 520px))); opacity: 0; } }
+@keyframes cs-sway { from { transform: translateX(-6px) rotate(-6deg); } to { transform: translateX(6px) rotate(6deg); } }
+@keyframes cs-tile-react { 0% { transform: scale(.4); opacity: 0; } 8% { transform: scale(1.25); opacity: 1; } 16% { transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes cs-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cs-rise-in { from { transform: translate(-50%, 8px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .cs .cs-float { animation: cs-fade 4.2s linear forwards; bottom: 40%; }
+  .cs .cs-float .emoji, .cs .cs-hand, .cs .cs-hands, .cs .cs-react-bar, .cs .cs-tile-react { animation: none; }
+  .cs .cs-react-bar button:hover { transform: none; }
+}
+@keyframes cs-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+/* Your own shared screen: a card instead of your screen inside your screen, with the way to stop. */
+.cs .cs-you-present { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px; background: #2d2e31; color: #e8eaed; text-align: center; padding: 16px; }
+.cs .cs-you-present b { font-size: 20px; font-weight: 500; }
+.cs .cs-stop-present { border: 0; border-radius: 999px; padding: 10px 20px; background: #8ab4f8; color: #202124; font: inherit; font-weight: 600; cursor: pointer; }
+.cs .cs-stop-present:hover { background: #aecbfa; }
+@media (max-width: 860px) {
+  .cs .cs-main { position: relative; padding: 4px 8px 0; }
+  .cs .cs-chat { position: absolute; inset: 4px 8px 4px; width: auto; z-index: 3; box-shadow: 0 12px 32px rgba(0, 0, 0, .4); }
+  .cs .cs-focus { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 112px; }
+  .cs .cs-strip { grid-auto-flow: column; grid-auto-columns: 150px; grid-auto-rows: auto; overflow-x: auto; overflow-y: hidden; }
+  .cs .cs-bar { grid-template-columns: 1fr; padding: 10px 8px calc(12px + env(safe-area-inset-bottom)); }
+  .cs .cs-bar-side { display: none; }
+  .cs .cs-bar-mid { justify-content: center; gap: 8px; }
+  .cs .cs-pair > .cs-menu { display: none; }
+  .cs .cs-btn { width: 46px; height: 46px; }
+  .cs .cs-leave { width: 58px; height: 46px; }
+  .cs .cs-bar-mid { gap: 6px; }
+  .cs .cs-btn { width: 44px; height: 44px; }
+  .cs .cs-hands { left: 8px; bottom: 8px; }
+  .cs .cs-reactions { left: 8px; }
+  .cs .cs-react-bar { left: auto; right: -96px; transform: none; flex-wrap: wrap; width: 236px; border-radius: 22px; justify-content: center; animation: none; }
+}

@@ -37,7 +37,7 @@ public static class AiExecutionPolicy
 
     // Further requests to act, recognised for the intent only (never for auto-running a change), and requests that end in a Hindi or Telugu
     // verb in Latin letters ("Ravi ko message bhejo", "timesheet submit cheyyi").
-    private const string MoreCommands = @"(?:(?:please|can you|could you|kindly|pls)\s+)?(?:approve|reject|submit|reply|snooze|dismiss|rotate|reassign|forward|book|log|clear|archive|close|reopen|fix|delete|remove|watch|undo|message|text|ping|email|draft|turn|rebalance|push|raise|tell(?!\s+me\b))\b";
+    private const string MoreCommands = @"(?:(?:please|can you|could you|kindly|pls)\s+)?(?:approve|reject|submit|reply|snooze|dismiss|rotate|reassign|forward|book|log|clear|archive|close|reopen|fix|delete|remove|watch|undo|message|text|ping|email|draft|turn|rebalance|push|raise|call|huddle|tell(?!\s+me\b))\b";
     private const string IndianVerbAtEnd = @"\b(?:karo|kar\s+do|kardo|daalo|daal\s+do|cheyi|chey)\b[\s.!?]*$";
     private const string IndianVerb = @"\b(?:bhejo|bhej\s+do|banao|bana\s+do|lagao|laga\s+do|dilao|dila\s+do|pampu|pampandi|pampinchu|cheyyi|cheyandi|cheyyandi|pettu|pettandi|marchu|marchandi)\b";
 

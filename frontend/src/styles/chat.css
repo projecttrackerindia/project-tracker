@@ -355,6 +355,10 @@
 }
 /* A phone's composer: the text gets the whole first line, the tools sit under it (four buttons beside it left room for one word). */
 @media (max-width: 560px) {
+  /* Six header buttons on a phone: a little tighter so the name keeps its room. */
+  .chat-head { gap: 2px; padding-inline: 8px; }
+  .chat-head .chat-head-action, .chat-head .chat-back { width: 30px; height: 32px; }
+  .chat-head-text { margin-left: 6px; }
   .composer-pill { flex-wrap: wrap; border-radius: 20px; row-gap: 0; }
   .composer-pill .composer-editable { order: -1; flex: 1 0 100%; padding: 8px 10px 4px; }
 }

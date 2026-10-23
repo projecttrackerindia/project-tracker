@@ -8,14 +8,16 @@ import { appCsp } from './lib/csp.mjs';
 const origin='https://projecttracker-preview.test';const dist=path.resolve('dist');
 const artifacts=path.resolve('test-results/chat-ui');await fs.mkdir(artifacts,{recursive:true});
 const csp = await appCsp();
+const at=(m)=>new Date(Date.now()-m*60000).toISOString();
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Alex Morgan',email:'preview@example.test',emailVerified:true,timeZone:'Asia/Kolkata',isPlatformAdmin:false};
 const colleague={userId:'00000000-0000-0000-0000-000000000003',name:'Sam Rivera',role:'Member',online:true,lastReadAt:'2026-10-12T10:00:00Z'};
 const workspace={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Design Workspace',type:'Organization',role:'Owner',planCode:'BUSINESS',memberCount:2};
 const conversation={id:'00000000-0000-0000-0000-000000000010',type:'Direct',name:'Sam Rivera',members:[{...colleague}, {userId:user.id,name:user.displayName,role:'Admin',online:true,lastReadAt:'2026-10-12T10:00:00Z'}],unread:0,isMuted:false,canManage:false,otherUserId:colleague.userId,projectId:null,unreadMentions:0,lastMessage:null,lastActivityAt:'2026-10-12T10:00:00Z'};
-const at=(m)=>new Date(Date.now()-m*60000).toISOString();
 const M=(id,mine,body,mins,extra={})=>({id:'00000000-0000-0000-0000-0000000001'+String(id).padStart(2,'0'),conversationId:conversation.id,senderId:mine?user.id:colleague.userId,senderName:mine?user.displayName:colleague.name,kind:'User',replyTo:null,editedAt:null,body,createdAt:at(mins),attachments:[],reactions:[],isDeleted:false,...extra});
 const items=[M(1,false,'I will start the RAML today',1500),M(2,false,'Hi Alex',9),M(3,false,'Can you review the **payments** spec when you get a minute?',8,{reactions:[{emoji:'👍',count:1,mine:true,names:['Alex Morgan']}]}),M(4,true,'Hey Sam',5),M(5,true,'Sure, looking now. Will share comments by lunch.',4,{editedAt:at(3)})];
-const errors=[];const checks=[];let writes=0;
+const errors=[];const checks=[];let writes=0;let started=null;
+// Our own video calls: one is on in another chat (the bar at the top offers to join), and this chat can start its own.
+const liveCall={id:'c-live',title:'Payments sync',kind:'chat',projectId:null,projectKey:null,conversationId:'00000000-0000-0000-0000-000000000011',status:'live',startedAt:at(6),endedAt:null,startedBy:colleague.userId,startedByName:colleague.name,agentEnabled:false,agentStatus:null,canEnd:false,people:[{userId:colleague.userId,name:colleague.name,role:'host',inCall:true,joinedAt:at(6)}]};
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try {
  const make=async(opts={})=>{const context=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block',...opts});
@@ -41,6 +43,10 @@ try {
   else if(endpoint.includes('/unread')||endpoint.includes('/counts'))data={count:0,total:0};
   else if(endpoint==='/api/v1/timer')data=null;
   else if(endpoint.endsWith('/workspace/logo'))data={hasLogo:false};
+  else if(endpoint==='/api/v1/calls/status')data={available:true,maxParticipants:50};
+  else if(endpoint==='/api/v1/calls/live')data=[liveCall];
+  else if(endpoint==='/api/v1/calls'&&route.request().method()==='POST'){started=route.request().postDataJSON();data={...liveCall,id:'c-new',title:'Chat call',conversationId:conversation.id,startedBy:user.id,startedByName:user.displayName,canEnd:true,people:[{userId:user.id,name:user.displayName,role:'host',inCall:false,joinedAt:null},{userId:colleague.userId,name:colleague.name,role:'member',inCall:false,joinedAt:null}]};}
+  else if(endpoint==='/api/v1/calls/c-new')data={...liveCall,id:'c-new',title:'Chat call',conversationId:conversation.id,startedBy:user.id,startedByName:user.displayName,canEnd:true,people:[{userId:user.id,name:user.displayName,role:'host',inCall:false,joinedAt:null}]};
   if(route.request().method()!=='GET'&&!endpoint.endsWith('/auth/refresh')){
    writes++;
   }
@@ -58,6 +64,8 @@ try {
  assert.equal(await page.locator('.composer-tools').count(),0);assert.equal(await page.locator('.composer-hint').count(),0);
  assert.equal(await page.locator('.msg:not(.mine) .avatar').count(),2,'one avatar per run of messages');
  assert.ok((await page.locator('.bubble-meta').count())>=5);
+ const head=await page.locator('.chat-head').evaluate(h=>{const t=h.querySelector('.chat-head-text');const n=h.querySelector('h2');return {text:t&&Math.round(t.getBoundingClientRect().width),name:n&&Math.round(n.getBoundingClientRect().width),shown:n&&getComputedStyle(n).display,full:n&&n.scrollWidth};});
+ assert.ok(head.name>=60,`the other person's name is readable in a phone's chat header: ${JSON.stringify(head)}`);
  await page.screenshot({path:path.join(artifacts,'phone-thread.png')});checks.push('phone-clean-thread');
  await touch(page,'[data-msg$="103"] .bubble-wrap',[[0,520]]);await page.locator('.msg-sheet').waitFor();
  await page.waitForTimeout(300);await page.screenshot({path:path.join(artifacts,'phone-sheet.png')});
@@ -77,6 +85,17 @@ try {
  await page.locator('[data-msg$="103"] .bubble').hover();assert.ok(await page.locator('[data-msg$="103"] .msg-actions').isVisible());
  await page.getByRole('button',{name:'Formatting'}).click();assert.ok(await page.locator('.composer-tools').isVisible());
  await page.screenshot({path:path.join(artifacts,'desktop.png')});checks.push('desktop-hover-and-format');
+ // A call on elsewhere shows as a bar with Join; starting one here notifies everyone in the chat and opens the camera check.
+ assert.match(await page.locator('[data-testid="call-live-bar"]').innerText(),/Sam Rivera.*is in “Payments sync”/s);
+ assert.equal(await page.locator('[data-testid="call-live-bar"] a').getAttribute('href'),'/preview-org/calls/c-live');
+ await page.locator('[data-testid="call-live-bar"]').getByRole('button',{name:'Not now'}).click();assert.equal(await page.locator('[data-testid="call-live-bar"]').count(),0);
+ await page.locator('.chat-head [data-testid="start-call"]').click();const dlg=page.getByRole('dialog');await dlg.waitFor();
+ assert.match(await dlg.innerText(),/Everyone in this chat gets a notification to join/);
+ assert.equal(await dlg.locator('.call-agent').count(),0,'the project agent is offered only in projects');
+ await page.waitForTimeout(400);await page.screenshot({path:path.join(artifacts,'start-call.png')});
+ await dlg.locator('[data-testid="start-call-go"]').click();await page.waitForURL(/\/calls\/c-new$/);
+ assert.deepEqual(started,{projectId:null,conversationId:conversation.id,invite:[],agent:false});   // the server notifies everyone in the chat
+ await page.locator('[data-testid="call-prejoin"]').waitFor();checks.push('start-call-from-chat');
  await page.close();await context.close();
  assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,writes,errors}));
 }finally{await browser.close();}

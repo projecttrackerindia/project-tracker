@@ -2491,6 +2491,56 @@
    "checks": [
     "asks_or_cards"
    ]
+  },
+  {
+   "id": "meetings-207",
+   "area": "meetings",
+   "lang": "en",
+   "text": "Start a call with the Atlas team now and bring the agent to take notes",
+   "writes": [
+    "propose_start_call"
+   ],
+   "readOnly": false,
+   "card": "start_call"
+  },
+  {
+   "id": "meetings-208",
+   "area": "meetings",
+   "lang": "en",
+   "text": "Huddle with the Payments project",
+   "writes": [
+    "propose_start_call"
+   ],
+   "readOnly": false,
+   "checks": [
+    "asks_or_cards"
+   ]
+  },
+  {
+   "id": "meetings-209",
+   "area": "meetings",
+   "lang": "en",
+   "text": "Call Ravi and Priya on Atlas for a quick sync",
+   "writes": [
+    "propose_start_call"
+   ],
+   "readOnly": false,
+   "checks": [
+    "asks_or_cards"
+   ]
+  },
+  {
+   "id": "meetings-210",
+   "area": "meetings",
+   "lang": "hi",
+   "text": "Atlas team ke saath abhi video call karo, agent bhi notes le",
+   "writes": [
+    "propose_start_call"
+   ],
+   "readOnly": false,
+   "checks": [
+    "asks_or_cards"
+   ]
   }
  ]
 }

@@ -1,0 +1,13 @@
+# The calls server's front door: Caddy gets and renews the HTTPS certificate for calls.<domain> by itself and passes the media server's
+# signalling (a WebSocket) and its management API through. The video itself does not pass here: it flows directly over UDP 50000-60000.
+{
+	email {$ACME_EMAIL}
+}
+
+{$CALLS_HOST} {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:7880
+}

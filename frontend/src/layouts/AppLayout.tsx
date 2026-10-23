@@ -39,6 +39,8 @@ import { pushCoversThisDevice, systemNotification } from '../features/reminders/
 import { openReminderComposer, useReminderComposer, useReminderCounts } from '../features/reminders/store';
 import { reminderApi } from '../features/reminders/api';
 import { ReminderSuggestions } from '../features/reminders/Suggestions';
+import { LiveCallsBar } from '../features/calls/LiveCallsBar';
+import { CallHost } from '../features/calls/CallHost';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -353,7 +355,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);
   useEffect(() => { window.scrollTo({ top: 0 }); }, [loc.pathname]);
-  const page = <Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense>;
+  const page = <><LiveCallsBar /><Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense></>;
   return (
     <div ref={shell} className={`app-shell ${phone ? 'm-shell' : ''} ${phone && conversation ? 'm-conversation' : ''}`}>
       <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); main.current?.focus(); }}>Skip to content</a>
@@ -378,6 +380,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       )}
       <SignInIsland />
       <NetworkPill />
+      <CallHost />
       <ToastRoot />
       <ConfirmRoot />
       <DesktopNotifier />

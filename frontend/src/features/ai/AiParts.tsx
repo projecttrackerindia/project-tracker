@@ -224,7 +224,7 @@ export function PlanSteps({ steps, actions, live = false }: { steps: AiPlanStep[
 const ACTION_ICON: Record<string, IconName> = {
   send_report: 'mail', reminder: 'alarm', update_reminder: 'alarm', send_message: 'send', chat_reply: 'message', decide_agent_proposal: 'agent', review_timesheet: 'checks',
   submit_week: 'timer', log_time: 'timer', planned_leave: 'calendar', clear_notification: 'bell', edit_page: 'edit', page_comment: 'message', apply_portfolio_option: 'gauge',
-  vault_request: 'key', vault_share: 'lock', update_work: 'edit', delete_work: 'trash', mail_forward: 'arrowRight', mail_reply: 'mail', answer_check_in: 'checkCircle', update_project: 'edit', start_meeting: 'video', schedule_meeting: 'video', invite_member: 'userPlus',
+  vault_request: 'key', vault_share: 'lock', update_work: 'edit', delete_work: 'trash', mail_forward: 'arrowRight', mail_reply: 'mail', answer_check_in: 'checkCircle', update_project: 'edit', start_meeting: 'video', start_call: 'video', schedule_meeting: 'video', invite_member: 'userPlus',
 };
 
 /** A change the assistant proposed. Nothing happens until Confirm. */
@@ -251,6 +251,12 @@ export function ActionCard({ action, onConfirm, onDismiss, onReconcile, onUndo, 
     return () => window.clearTimeout(timeout);
   }, [action.status, expiresAt]);
   const icon: IconName = ACTION_ICON[action.kind] ?? 'plus';
+  // A call the person just confirmed opens straight away: they asked to be in it.
+  const seen = useRef(action.status);
+  useEffect(() => {
+    if (action.kind === 'start_call' && action.status === 'done' && seen.current !== 'done' && action.link) nav(action.link);
+    seen.current = action.status;
+  }, [action.kind, action.status, action.link, nav]);
   return (
     <div className={`ai-action ${action.status}`}>
       <span className="ai-action-icon"><Icon name={icon} size={16} /></span>
@@ -273,7 +279,7 @@ export function ActionCard({ action, onConfirm, onDismiss, onReconcile, onUndo, 
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onDismiss}>Not now</button>
         </>}
         {action.status === 'running' && <><span className="ai-action-state"><span className="spinner" /> Working…</span>{action.kind === 'send_message' && onReconcile && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onReconcile}>Check saved result</button>}</>}
-        {action.status === 'done' && <span className="ai-action-state ok"><Icon name="checkCircle" size={14} /> Done{action.link && <button type="button" className="link-btn" onClick={() => nav(action.link!)}>Open</button>}</span>}
+        {action.status === 'done' && <span className="ai-action-state ok"><Icon name="checkCircle" size={14} /> Done{action.link && <button type="button" className="link-btn" onClick={() => nav(action.link!)}>{action.kind === 'start_call' ? 'Join' : 'Open'}</button>}</span>}
         {action.status === 'done' && onUndo && undoLeft !== null && (
           <button type="button" className="btn btn-ghost btn-sm ai-undo" data-testid="ai-undo" disabled={busy} onClick={onUndo} title={`Undo is available for ${Math.floor(undoLeft / 60)}:${String(undoLeft % 60).padStart(2, '0')} more`}>
             <Icon name="undo" size={13} /> Undo <span className="ai-undo-left">{Math.floor(undoLeft / 60)}:{String(undoLeft % 60).padStart(2, '0')}</span>

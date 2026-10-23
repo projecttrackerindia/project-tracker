@@ -33,7 +33,7 @@ public sealed record AiActionResult(string? Link, Guid? RecordId = null, string?
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
     ReminderService reminders, ChatService messages, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email,
     ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
-    ProjectManagement.Application.Features.Time.TimeService time, AiHomeActions home, AiWatchService watches)
+    ProjectManagement.Application.Features.Time.TimeService time, AiHomeActions home, AiWatchService watches, ProjectManagement.Application.Features.Calls.CallService calls)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -197,6 +197,14 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 var projectId = Guid(a, "projectId")!.Value;
                 var m = await meetings.StartNowAsync(projectId, new ProjectManagement.Application.Features.ProjectMeetings.StartMeetingRequest(Str(a, "title"), Guids(a, "participantUserIds")), ct);
                 return new AiActionResult($"/projects/{projectId}?tab=meetings&meeting={m.Id}", m.Id);
+            }
+            case "start_call":
+            {
+                // People named are notified; with nobody named, every project member is (the call is the project's).
+                var projectId = Guid(a, "projectId")!.Value;
+                var call = await calls.StartAsync(new ProjectManagement.Application.Features.Calls.StartCallRequest(Str(a, "title"), projectId, null, null,
+                    Guids(a, "participantUserIds"), a.TryGetProperty("agent", out var withAgent) && withAgent.ValueKind == JsonValueKind.True), ct);
+                return new AiActionResult($"/calls/{call.Id}", call.Id);
             }
             case "schedule_meeting":
             {

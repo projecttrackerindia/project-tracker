@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Adds what the app needs to the generated Android project: permissions (notifications, camera for photos and scans), links that open the
+"""Adds what the app needs to the generated Android project: permissions (notifications, camera for photos, scans and video calls,
+microphone for calls and voice notes - the app's WebView turns a page's request into Android's own prompt), links that open the
 app (https addresses of the site and projecttracker://), the notification icon and channel for push, and the screen shield (the page marks
 the screen secure while it shows the password vault: screenshots, recordings, casting and the recent-apps preview are black). Safe to run again."""
 import re, shutil, sys, pathlib
@@ -9,14 +10,16 @@ root = pathlib.Path('android/app/src/main')
 manifest = root / 'AndroidManifest.xml'
 xml = manifest.read_text()
 
-perms = ['POST_NOTIFICATIONS', 'CAMERA', 'VIBRATE']
+perms = ['POST_NOTIFICATIONS', 'CAMERA', 'VIBRATE', 'RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS']
 for p in perms:
     line = f'<uses-permission android:name="android.permission.{p}" />'
     if line not in xml:
         xml = xml.replace('</manifest>', f'    {line}\n</manifest>')
-# a camera is optional: the app also works on devices without one
+# a camera and a microphone are optional: the app also works on devices without them
 if 'android.hardware.camera' not in xml:
     xml = xml.replace('</manifest>', '    <uses-feature android:name="android.hardware.camera" android:required="false" />\n</manifest>')
+if 'android.hardware.microphone' not in xml:
+    xml = xml.replace('</manifest>', '    <uses-feature android:name="android.hardware.microphone" android:required="false" />\n</manifest>')
 
 links = f'''
             <intent-filter>

@@ -24,7 +24,7 @@ public sealed record AiUndoBefore(string Target, Guid Id, Guid? ProjectId, strin
 /// changed gets its earlier values. Things that left the building (a sent message, mail, a report, an invitation) cannot be undone and
 /// never show the button.
 /// </summary>
-public class AiUndoService(IAppDbContext db, ICurrentContext ctx, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems, DocumentService documents,
+public class AiUndoService(IAppDbContext db, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems, DocumentService documents,
     ReminderService reminders, TimeService time, AiWatchService watches)
 {
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(10);

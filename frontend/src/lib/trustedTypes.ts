@@ -17,10 +17,16 @@ const URL_ATTRS = new Set(['href', 'src', 'xlink:href', 'action', 'formaction', 
 const SAFE_DATA = /^data:image\/(png|jpe?g|gif|webp|avif|bmp);/i;
 const SCRIPT_HOSTS = ['https://checkout.razorpay.com/', 'https://connect.facebook.net/'];
 
+// Shapes that only live inside an <svg>. Markup that starts with one of them is an icon or a diagram's inside, written for an <svg>.
+const SVG_PARTS = /^\s*<(path|rect|circle|ellipse|line|polyline|polygon|g|defs|use|text|tspan|lineargradient|radialgradient|stop|clippath|mask|pattern|symbol|marker|image|foreignobject)[\s/>]/i;
+
 /** Cleans markup in an inert template (nothing in it loads or runs), then hands back the cleaned text. */
 export function cleanHtml(html: string, parse: (s: string) => string | unknown): string {
   const tpl = document.createElement('template');
-  (tpl as unknown as { innerHTML: unknown }).innerHTML = parse(html);
+  // An SVG fragment is read inside an <svg>: read as HTML, `<rect/>` does not close itself and every later shape would end up inside it,
+  // so an icon drawn from several shapes would show only its first one.
+  const svg = SVG_PARTS.test(html);
+  (tpl as unknown as { innerHTML: unknown }).innerHTML = parse(svg ? `<svg>${html}</svg>` : html);
   const walk = (root: ParentNode) => {
     for (const el of Array.from(root.querySelectorAll('*'))) {
       const tag = el.localName.toLowerCase();
@@ -36,7 +42,8 @@ export function cleanHtml(html: string, parse: (s: string) => string | unknown):
     }
   };
   walk(tpl.content);
-  return tpl.innerHTML;
+  const root = svg && tpl.content.childElementCount === 1 ? tpl.content.firstElementChild : null;
+  return root?.localName === 'svg' ? root.innerHTML : tpl.innerHTML;
 }
 
 const cache = new Map<string, string>();

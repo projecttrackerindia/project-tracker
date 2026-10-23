@@ -42,7 +42,7 @@ public sealed class AiToolException(string message) : Exception(message);
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
     WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, AiPortfolio portfolio, ActionItemService actionItems, TaskService tasks, WorkTaskService workTasks, ProjectService projects, DocumentService documents, ReminderService reminders,
     ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiToolbox> log, AiKnowledgeService knowledge, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
-    AiHomeTools home, AiWorkdayTools workday)
+    AiHomeTools home, AiWorkdayTools workday, Microsoft.Extensions.Options.IOptions<ProjectManagement.Application.Features.Calls.CallsOptions> callsOptions)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
@@ -57,10 +57,10 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         CreateTask = "propose_create_task", CreateWork = "propose_create_work", CreateActionItem = "propose_create_action_item",
         CreateReminder = "propose_reminder", SendReport = "propose_send_report", CreateProject = "propose_create_project", InviteMember = "propose_invite_member",
         UpdateProject = "propose_update_project", UpdateStagePlan = "propose_update_stage_dates", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work", DeleteWork = "propose_delete_work", Watch = "propose_watch", StopWatch = "propose_stop_watch", ListWatches = "list_watches",
-        CreateDocument = "propose_create_document", ListMeetings = "list_project_meetings", StartMeeting = "propose_start_meeting", ScheduleMeeting = "propose_schedule_meeting";
+        CreateDocument = "propose_create_document", ListMeetings = "list_project_meetings", StartMeeting = "propose_start_meeting", ScheduleMeeting = "propose_schedule_meeting", StartCall = "propose_start_call";
 
     public const string ScheduleProject = "propose_schedule_project";
-    public static readonly string[] WriteTools = [Watch, StopWatch, DeleteWork, PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, ScheduleMeeting,
+    public static readonly string[] WriteTools = [Watch, StopWatch, DeleteWork, PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, StartCall, ScheduleMeeting,
         .. AiHomeTools.WriteTools, .. AiWorkdayTools.WriteTools];
 
     /// <summary>
@@ -95,7 +95,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             && (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(reminder|reminders|remind)\b")
             || System.Text.RegularExpressions.Regex.IsMatch(lower, @"^(please\s+)?(change|move|reschedule)\s+(it|that)\s+(to|at)\s+\d{1,2}:\d{2}[.!?]*$")))
             return all.Where(t => new[] { ListReminders, CreateReminder, ReviseReminder, UpdateReminder, FindWork, ListPeople }.Contains(t.Name)).ToList();
-        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(create|add|assign|update|change|edit|invite|send|schedule|start|remind|write|yes|please|do|crete|creat|move|mark|comment|rename|apply|rebalance|turn|draft|email|fix|push|put|raise|make|give|plan|book)\b")
+        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(create|add|assign|update|change|edit|invite|send|schedule|start|remind|write|yes|please|do|crete|creat|move|mark|comment|rename|apply|rebalance|turn|draft|email|fix|push|put|raise|make|give|plan|book|call|huddle)\b")
             || AiExecutionPolicy.Classify(text) is AiRequestIntent.Execute or AiRequestIntent.Combined) return all;
         var selected = new HashSet<string> { FindWork, ListProjects, ProjectReport, MyWorkSummary };
         var matched = false;
@@ -263,6 +263,12 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                  "team":{"type":"string","description":"Optional: a team name, when there's no project."},
                  "tags":{"type":"array","items":{"type":"string"}}},"required":["title","content"]}
                 """),
+            new(StartCall, "Propose starting a video call right now in Project Tracker itself (our own calls: no Google account needed), on a project, optionally with the project agent joining to take notes and write the minutes. Use this for \"start a call\", \"call the team\", \"huddle\", \"quick sync now\"; use propose_start_meeting only when the person asks for Google Meet. Every project member is notified unless specific people are named. The person confirms first; the call opens for them.",
+                """
+                {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string","description":"Optional, e.g. \"Stand-up\"."},
+                 "participants":{"type":"array","items":{"type":"string"},"description":"Names to notify. Default: every project member."},
+                 "with_agent":{"type":"boolean","description":"Bring the project agent to take notes (default true when the person asks for notes, minutes or the agent)."}},"required":["project"]}
+                """),
             new(StartMeeting, "Propose starting a Google Meet right now on a project (an hour long by default). Every project member is invited unless specific people are named. The person confirms first, and needs their own Google account connected (Settings > Google Workspace) - if they have not connected it, say so rather than guessing why it failed.",
                 """
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string","description":"Default: \"<project name> Discussion\"."},
@@ -340,6 +346,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 CreateDocument => await ProposeDocumentAsync(a, ct),
                 ListMeetings => await ListMeetingsAsync(a, ct),
                 StartMeeting => await ProposeStartMeetingAsync(a, ct),
+                StartCall => await ProposeStartCallAsync(a, ct),
                 ScheduleMeeting => await ProposeScheduleMeetingAsync(a, timeZone, ct),
                 _ => await home.ExecuteAsync(name, a, timeZone, HomePersonAsync, ct) ?? await workday.ExecuteAsync(name, a, timeZone, MemberEmailAsync, ct)
                     ?? throw new AiToolException($"There is no tool called {name}."),
@@ -1180,6 +1187,19 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var payload = new { projectId = project.Id, title, participantUserIds = participantIds };
         var summary = $"In {project.Label}{(participantIds is null ? ", every project member invited" : $", {participantIds.Count} invited")}";
         return Propose("start_meeting", $"Start a Google Meet{(title is null ? "" : $" “{title}”")}", summary, payload);
+    }
+
+    private async Task<AiToolOutcome> ProposeStartCallAsync(JsonElement a, CancellationToken ct)
+    {
+        if (!callsOptions.Value.Configured) throw new AiToolException("Video calls are not set up on this server yet. A Google Meet can be started instead (propose_start_meeting).");
+        var project = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
+        if (project.IsPending) throw new AiToolException($"{project.Label} does not exist yet. Confirm its creation first.");
+        var title = Str(a, "title");
+        var participantIds = await ParticipantIdsAsync(a, ct);
+        var agent = a.TryGetProperty("with_agent", out var w) && w.ValueKind == JsonValueKind.True;
+        var payload = new { projectId = project.Id, title, participantUserIds = participantIds, agent };
+        var summary = $"In {project.Label}{(participantIds is null ? ", every project member notified" : $", {participantIds.Count} notified")}{(agent ? " · the project agent joins to take notes" : "")}";
+        return Propose("start_call", $"Start a call{(title is null ? "" : $" “{title}”")}", summary, payload);
     }
 
     private async Task<AiToolOutcome> ProposeScheduleMeetingAsync(JsonElement a, string? timeZone, CancellationToken ct)

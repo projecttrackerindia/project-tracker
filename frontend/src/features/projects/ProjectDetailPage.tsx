@@ -31,6 +31,7 @@ import { IssueDetailModal, ReportIssueModal } from '../issues/IssueModals';
 import { IssuesPanel } from '../issues/IssuesPanel';
 import { RiskButton } from '../ai/Assistant';
 import { GoogleMeetButton } from '../meetings/GoogleMeetButton';
+import { StartCallButton } from '../calls/StartCall';
 import { MeetingsTab } from '../meetings/MeetingsTab';
 import { ProjectAgentTab } from '../agent/ProjectAgentTab';
 import { agentApi } from '../../api/endpoints';
@@ -154,6 +155,7 @@ export function ProjectDetailPage() {
         </div>
         <div className="page-actions">
           <RiskButton projectId={p.id} />
+          {!archived && <StartCallButton projectId={p.id} people={detail.members.map((m) => ({ userId: m.userId, name: m.name }))} label="Call" agentAvailable />}
           {!archived && <GoogleMeetButton projectId={p.id} projectName={p.name} organizerUserId={me} />}
           <ProjectChatButton projectId={p.id} name={p.name} label />
           {method === 'Agile' && canEdit && !archived && <button className="btn btn-ghost" onClick={() => setScheduling(true)}><Icon name="calendar" /> Schedule studio</button>}

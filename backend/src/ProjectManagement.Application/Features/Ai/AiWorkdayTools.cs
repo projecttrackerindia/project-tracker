@@ -19,7 +19,7 @@ namespace ProjectManagement.Application.Features.Ai;
 /// projects, check-ins to answer, and their mail (accounts they connected themselves). Mail and meeting text are other people's words:
 /// treated as data, and anything sent goes out only from a card the person confirms.
 /// </summary>
-public class AiWorkdayTools(IAppDbContext db, ICurrentContext ctx, AppClock clock, AgentDelegationService delegations, AgentFollowUpService followUps,
+public class AiWorkdayTools(ICurrentContext ctx, AppClock clock, AgentDelegationService delegations, AgentFollowUpService followUps,
     AgentCommandCenterService commandCenter, TimeService time, WorkItemService workItems, MailboxService mail, ProjectAccess access)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };

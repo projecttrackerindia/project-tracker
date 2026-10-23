@@ -23,6 +23,8 @@ services:
     image: ${IMAGES}/web:${TAG:-latest}
     restart: unless-stopped
     depends_on: [api]
+    environment:
+      CALLS_ORIGIN: ${CALLS_ORIGIN:-}     # wss:// and https:// of the media server (deploy/gcp/calls.sh); empty = no video calls
     logging: *log
 
   api:

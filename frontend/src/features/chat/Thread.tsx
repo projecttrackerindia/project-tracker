@@ -18,6 +18,7 @@ import { sendTyping } from './ChatRealtime';
 import { openReminderComposer } from '../reminders/store';
 import { offerReminderAfterSend } from '../reminders/Suggestions';
 import { GoogleMeetButton } from '../meetings/GoogleMeetButton';
+import { StartCallButton } from '../calls/StartCall';
 import { LinkedChips, MakeFromMessage, PollCard, putMessage, SeenByDialog, SmartReplies, TranslateLine, UnfurlCards, UnfurlContext, useUnfurls, VoiceNote } from './MessageExtras';
 import { AskChatDialog, CatchUpDialog, COMPOSER_AI, PollDialog, ScheduleDialog, useVoiceRecorder } from './ChatTools';
 import type { ChatExtract } from '../../api/types';
@@ -253,6 +254,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
           <h2>{conversation.name}</h2>
           <div className="chat-sub" aria-live="polite">{status}</div>
         </div>
+        <StartCallButton conversationId={conversation.id} label="Call everyone in this chat" compact className="btn-icon chat-head-action call" />
         <button className="btn-icon chat-head-action ai" onClick={() => setDialog('catchup')} aria-label="Catch me up on this conversation" title="Catch me up"><Icon name="sparkle" size={16} /></button>
         <button className="btn-icon chat-head-action" onClick={() => setDialog('ask')} aria-label="Ask this conversation" title="Ask this conversation"><Icon name="search" size={16} /></button>
         <button className={`btn-icon chat-head-action ${side === 'pins' ? 'on' : ''}`} onClick={() => setSide((v) => (v === 'pins' ? null : 'pins'))} aria-label={`Pinned messages${pinCount ? ` (${pinCount})` : ''}`} aria-pressed={side === 'pins'} title="Pinned">

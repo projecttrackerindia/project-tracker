@@ -1,0 +1,15 @@
+# The calls server (pt-calls). LiveKit runs as a system service (see vm-startup.sh); Caddy, here, only handles HTTPS in front of it.
+services:
+  caddy:
+    image: mirror.gcr.io/library/caddy:2.8-alpine
+    network_mode: host          # the media server listens on this machine's 127.0.0.1
+    restart: unless-stopped
+    environment:
+      CALLS_HOST: ${CALLS_HOST}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-data:/data      # the certificate lives here; the media server reads it for TURN over TLS
+      - caddy_config:/config
+volumes:
+  caddy_config: {}

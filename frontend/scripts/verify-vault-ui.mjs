@@ -201,11 +201,15 @@ try {
   const tt = await page.evaluate(() => {
     const d = document.createElement('div');
     d.innerHTML = '<img src="x" onerror="window.__x=1"><b>ok</b><script>window.__y=1<' + '/script><svg><a href="javascript:alert(1)"><text>t</text></a></svg><iframe srcdoc="x"></iframe>';
-    return { html: d.innerHTML, policy: !!(window.trustedTypes && window.trustedTypes.defaultPolicy) };
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.innerHTML = '<rect x="2" y="6" width="14" height="12"/><polygon points="22 8 16 12 22 16"/><line x1="1" y1="1" x2="2" y2="2" onclick="window.__z=1"/>';
+    return { html: d.innerHTML, policy: !!(window.trustedTypes && window.trustedTypes.defaultPolicy), icon: [...icon.children].map((c) => c.localName).join(' '), iconHtml: icon.innerHTML };
   });
   assert.ok(tt.policy, 'a default Trusted Types policy');
   assert.ok(/require-trusted-types-for 'script'/.test(csp) && !/unsafe-inline|unsafe-eval/.test(csp.match(/script-src[^;]*/)[0]), 'scripts by hash only, Trusted Types required');
   assert.match(tt.html, /<b>ok<\/b>/); assert.ok(!/onerror|<script|javascript:|<iframe/i.test(tt.html), `cleaned: ${tt.html}`);
+  assert.equal(tt.icon, 'rect polygon line', 'an icon drawn from several shapes keeps every shape, side by side');   // not nested in the first one
+  assert.ok(!/onclick/.test(tt.iconHtml));
   checks.push('trusted-types');
   // Tiles drawn here (nothing fetched), health at a glance, and copying straight from the list with the keyboard.
   assert.equal(await page.locator('.vlt-item[data-item="AWS root account"] .vlt-tile-text').innerText(), 'aws');

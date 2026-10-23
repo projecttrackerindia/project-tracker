@@ -84,6 +84,31 @@ public partial class AiWorkspaceTests
     }
 
     [Fact]
+    public async Task Starting_a_call_from_the_assistant_is_a_card_that_opens_our_own_call_for_the_project_people()
+    {
+        var o = await Setup();
+        Assert.True((await o.Owner.Post($"/api/v1/projects/{o.Project}/members", new { userId = o.Manager.UserId })).Ok);
+
+        var card = await Card(o.Owner, AiToolbox.StartCall, new { project = "Atlas", title = "Quick sync", with_agent = false }, "Start a call with the Atlas team");
+        Assert.Equal("start_call", card.Kind);
+        Assert.Contains("every project member notified", S(card.Action["summary"]));
+        Assert.Empty((await o.Owner.Get("/api/v1/calls/live")).Data!.AsArray());   // nothing happens before Confirm
+
+        var done = await o.Owner.Post(card.Url);
+        Assert.Equal("done", S(done.Data!["status"]));
+        var link = S(done.Data["link"]);
+        Assert.StartsWith("/calls/", link);
+        var call = (await o.Owner.Get($"/api/v1{link}")).Data!;
+        Assert.Equal("Quick sync", S(call["title"]));
+        Assert.Equal("project", S(call["kind"]));
+        // Nobody was named, so the project's people are called; the manager sees it and can join.
+        Assert.Contains(call["people"]!.AsArray(), p => S(p!["userId"]) == o.Manager.UserId.ToString());
+        Assert.Contains((await o.Manager.Get("/api/v1/calls/live")).Data!.AsArray(), c => S(c!["id"]) == S(call["id"]));
+        Assert.True((await o.Manager.Post($"/api/v1{link}/join")).Ok);
+        Assert.Null(done.Data["undoUntil"]);   // a call that started cannot be taken back; it can be ended
+    }
+
+    [Fact]
     public async Task Forwarding_needs_a_connected_mailbox_and_a_real_recipient()
     {
         var o = await Setup();

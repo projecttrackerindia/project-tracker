@@ -17,7 +17,7 @@ public class AiScenarioLibraryTests(ApiFactory factory)
     private sealed record Case(string Id, string Area, string Lang, string Text, string[] Tools, string[] Writes, bool? ReadOnly, string? Card, string[] Never, string[] Checks);
 
     private static readonly string[] CoreKinds = ["create_project", "invite_member", "update_work", "update_project", "update_stage_dates", "schedule_project", "planned_leave", "log_time",
-        "create_task", "create_work", "create_action_item", "update_reminder", "reminder", "send_message", "send_report", "create_document", "start_meeting", "schedule_meeting", "delete_work", "watch", "stop_watch"];
+        "create_task", "create_work", "create_action_item", "update_reminder", "reminder", "send_message", "send_report", "create_document", "start_meeting", "start_call", "schedule_meeting", "delete_work", "watch", "stop_watch"];
 
     private static readonly Lazy<(IReadOnlyList<Case> Cases, HashSet<string> Checks)> Library = new(() =>
     {
