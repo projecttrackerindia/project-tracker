@@ -31,7 +31,9 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Admin/PlatformService.cs",
         "ProjectManagement.Application/Features/Ai/AiPortfolio.cs",
         "ProjectManagement.Application/Features/Ai/AiOperationsProcessor.cs", // scheduling metadata and atomic leases; retrieval uses fresh current requester scope
+        "ProjectManagement.Application/Features/Ai/AiSemanticIndex.cs", // background embedding across workspaces; every search hit is re-opened with the reader's own access
         "ProjectManagement.Application/Features/Ai/AiToolbox.cs",
+        "ProjectManagement.Application/Features/Ai/AiWatchService.cs", // the background watch check reads each watch's target by id, for its own tenant only, and notifies only the watch's owner
         "ProjectManagement.Application/Features/Ai/AiUsageService.cs",
         "ProjectManagement.Application/Features/Auth/AccountDeletionService.cs", // the signed-in person's own account, the workspaces they own (count only) and the platform administrators' e-mail addresses
         "ProjectManagement.Application/Features/Billing/BillingMailer.cs", // billing e-mails are sent from webhooks and background jobs with no signed-in workspace: it reads only that workspace's name and its owner's address
@@ -84,6 +86,8 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Projects/ProjectService.cs", // project-key uniqueness only, scoped to the current tenant; no data is read
         "ProjectManagement.Application/Features/Projects/ProjectService.Statuses.cs",
         "ProjectManagement.Application/Features/Projects/ProjectStatusService.cs",
+        "ProjectManagement.Application/Features/Calls/CallService.cs", // signed media-server webhooks name a room before a tenant is known; only that room's rows change
+        "ProjectManagement.Application/Features/Projects/ActionItemService.cs", // restoring an action item from the bin (deleted rows are filtered out otherwise), checked against its project and tenant
         "ProjectManagement.Application/Features/Reminders/PortfolioDigestService.cs",
         "ProjectManagement.Application/Features/Reminders/ReminderEngine.cs",
         "ProjectManagement.Application/Features/Reports/ReportExportService.cs",

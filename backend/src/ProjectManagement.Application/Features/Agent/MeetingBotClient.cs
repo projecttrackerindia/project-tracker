@@ -40,7 +40,8 @@ public record BotWorkerBotReport(string? JobId, string? Status, string? Error, i
 /// <summary>A worker's report: who it is, how many meetings it can attend at once, whether it is shutting down, and its bots.</summary>
 public record BotWorkerReport(string? WorkerId, string? Host, string? Version, int Capacity, bool Draining, IReadOnlyList<BotWorkerBotReport>? Bots);
 public record BotJobDto(string JobId, string MeetingUrl, string BotName, DateTime JoinAt, DateTime LeaveAt, string WebhookUrl,
-    string? IntroMessage, string? AgendaMessage, string? CaptionLanguage, bool Rejoin, string? RaiseMessage = null, bool ReadChat = false, BotIdentityDto? Identity = null);
+    string? IntroMessage, string? AgendaMessage, string? CaptionLanguage, bool Rejoin, string? RaiseMessage = null, bool ReadChat = false, BotIdentityDto? Identity = null,
+    string? LiveKitUrl = null, string? LiveKitToken = null);
 public record BotInstructionDto(string JobId, IReadOnlyList<string> Chat, bool Stop);
 public record BotPollResponse(IReadOnlyList<BotJobDto> Jobs, IReadOnlyList<BotInstructionDto> Bots, int PollSeconds);
 
@@ -56,7 +57,8 @@ public record MeetingBotOverviewDto(bool Configured, int Capacity, int Active, i
 /// - chat messages for a bot wait on its row until its worker collects them.
 /// Workers only ever call the API, so they can run as any number of replicas behind one address.
 /// </summary>
-public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clock, MeetingBotClient bots, IOptions<AppOptions> app, ILogger<MeetingBotQueue> log, MeetingBotIdentityService identities)
+public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clock, MeetingBotClient bots, IOptions<AppOptions> app, ILogger<MeetingBotQueue> log, MeetingBotIdentityService identities,
+    IOptions<ProjectManagement.Application.Features.Calls.CallsOptions> calls)
 {
     public static readonly TimeSpan Lease = TimeSpan.FromMinutes(2);
     /// <summary>A session can be picked up from shortly before it starts until a few minutes before it ends.</summary>
@@ -144,9 +146,27 @@ public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clo
                     continue;
                 }
                 var rejoin = c.Attempts > 0;
+                // One of our own calls: the worker gets the media server's address and a pass for that room only, made now (so it is fresh),
+                // in the agent's own name. Nobody has to let it in.
+                string? liveKitUrl = null, liveKitToken = null;
+                if (join.MeetingUrl.StartsWith("livekit:", StringComparison.Ordinal))
+                {
+                    var o = calls.Value;
+                    if (!o.Configured)
+                    {
+                        await db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.Id == c.Id)
+                            .ExecuteUpdateAsync(u => u.SetProperty(b => b.Status, "failed").SetProperty(b => b.Error, "Video calls are not set up on this installation."), ct);
+                        continue;
+                    }
+                    liveKitUrl = o.Url;
+                    liveKitToken = ProjectManagement.Application.Features.Calls.LiveKitTokens.Mint(o.ApiKey!, o.ApiSecret!, ProjectManagement.Application.Features.Calls.CallService.AgentIdentity(c.Id), join.BotName,
+                        new ProjectManagement.Application.Features.Calls.LiveKitGrant(Room: join.MeetingUrl["livekit:".Length..], RoomJoin: true), TimeSpan.FromHours(13), new DateTimeOffset(now, TimeSpan.Zero),
+                        JsonSerializer.Serialize(new { agent = true }));
+                }
                 jobs.Add(new BotJobDto(c.Id.ToString(), join.MeetingUrl, join.BotName, c.SessionStartUtc, c.SessionEndUtc.AddMinutes(30),
                     $"{PublicUrls.Api(app.Value)}/api/v1/agent/bot/{c.WebhookToken}",
-                    rejoin ? null : join.IntroMessage, rejoin ? null : join.AgendaMessage, join.CaptionLanguage, rejoin, rejoin ? null : join.RaiseMessage, join.ReadChat, await identities.PickAsync(join.MeetingUrl, ct)));
+                    rejoin ? null : join.IntroMessage, rejoin ? null : join.AgendaMessage, join.CaptionLanguage, rejoin, rejoin ? null : join.RaiseMessage, join.ReadChat,
+                    liveKitUrl is null ? await identities.PickAsync(join.MeetingUrl, ct) : null, liveKitUrl, liveKitToken));
                 log.LogInformation("Meeting bot session {Session} handed to worker {Worker}{Rejoin}", c.Id, workerId, rejoin ? " (rejoining)" : "");
             }
         }

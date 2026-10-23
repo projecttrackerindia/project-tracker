@@ -199,3 +199,21 @@ public sealed class FakeEmbedder : ProjectManagement.Application.Features.Ai.IAi
         return Math.Abs(h % 64);
     }
 }
+
+/// <summary>A stand-in media server: remembers the rooms opened and closed, and who it was asked to remove.</summary>
+public sealed class FakeLiveKitRooms : ProjectManagement.Application.Features.Calls.ILiveKitRooms
+{
+    public ConcurrentDictionary<string, int> Open { get; } = new();
+    public ConcurrentBag<string> Closed { get; } = [];
+    public bool Down { get; set; }
+
+    public Task CreateAsync(string room, int maxParticipants, int emptyTimeoutSeconds, CancellationToken ct)
+    {
+        if (Down) throw new HttpRequestException("down");
+        Open[room] = maxParticipants;
+        return Task.CompletedTask;
+    }
+    public Task DeleteAsync(string room, CancellationToken ct) { Open.TryRemove(room, out _); Closed.Add(room); return Task.CompletedTask; }
+    public Task<IReadOnlyList<string>> ParticipantsAsync(string room, CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>([]);
+    public Task RemoveAsync(string room, string identity, CancellationToken ct) => Task.CompletedTask;
+}

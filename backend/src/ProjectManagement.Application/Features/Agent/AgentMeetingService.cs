@@ -256,6 +256,28 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         return bot;
     }
 
+    /// <summary>
+    /// Sends the project agent into one of our own calls (a room on our media server). Our server lets it in itself, so nobody has to admit it;
+    /// it hears each person separately. The session is filed under the project like any meeting, so minutes and follow-ups work the same.
+    /// </summary>
+    public async Task<AgentMeetingBot> JoinCallAsync(Guid projectId, Guid callId, string room, string title, DateTime end, CancellationToken ct)
+    {
+        if (!botService.Configured) throw new ConflictException("The meeting agent is not set up on this installation, so the call goes ahead without it.", "MEETBOT_UNAVAILABLE");
+        var s = await db.ProjectAgentSettings.FirstOrDefaultAsync(x => x.ProjectId == projectId, ct);
+        if (s is not { Enabled: true }) throw new ConflictException("The project agent is off for this project (Project › Agent), so the call goes ahead without it.", "AGENT_OFF");
+        if (!s.ReadMeetings) throw new ConflictException("The project agent may not read meetings yet (Project › Agent › Sources), so the call goes ahead without it.", "AGENT_MEETINGS_OFF");
+        var w = await db.AgentWorkspaceSettings.FirstOrDefaultAsync(ct) ?? new AgentWorkspaceSettings { TenantId = s.TenantId };
+        var now = clock.Now;
+        var url = $"livekit:{room}";
+        var bot = new AgentMeetingBot { TenantId = s.TenantId, ProjectId = projectId, MeetingId = CalendarMeetingId(projectId, $"call:{callId}"), SessionStartUtc = now, SessionEndUtc = end,
+            Kind = "bot", Status = "scheduled", WebhookToken = AgentSettingsService.NewToken(16), CreatedAt = now, CreatedBy = ctx.UserId,
+            Title = AgentAnalysisService.Cut(title, 300), MeetUrl = url };
+        db.AgentMeetingBots.Add(bot);
+        await db.SaveChangesAsync(ct);
+        await SendAsync(s, w, bot, url, [], ct);
+        return bot;
+    }
+
     private static bool SameMeet(string a, string b) =>
         string.Equals(a.TrimEnd('/').Split('?')[0], b.TrimEnd('/').Split('?')[0], StringComparison.OrdinalIgnoreCase);
 
@@ -451,6 +473,27 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
             default: return;
         }
         if (lines.Count > 0) await AppendAsync(db, secrets, bot, lines, ct);
+    }
+
+    /// <summary>
+    /// One thing a person said in one of our own calls (the worker hears each person on their own audio, so the speaker is exact): turned into
+    /// text by the speech service and added to the session's transcript. Returns the text, or null when nothing was understood.
+    /// </summary>
+    public static async Task<string?> ReceiveSpeechAsync(IServiceProvider sp, string token, string? name, byte[] audio, string contentType, CancellationToken ct)
+    {
+        if (token.Length != 32 || !token.All(Uri.IsHexDigit)) throw new NotFoundException("Unknown bot.");
+        if (audio.Length is < 1000 or > 4 * 1024 * 1024) return null;
+        var db = sp.GetRequiredService<IAppDbContext>();
+        var secrets = sp.GetRequiredService<ISecretProtector>();
+        var bot = await db.AgentMeetingBots.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(b => b.WebhookToken == token.ToLowerInvariant(), ct)
+            ?? throw new NotFoundException("Unknown bot.");
+        if (bot.Status is "done" or "failed" || !(bot.MeetUrl ?? "").StartsWith("livekit:", StringComparison.Ordinal)) return null;
+        var speech = sp.GetRequiredService<ProjectManagement.Application.Features.Voice.VoiceSpeechService>();
+        if (!speech.Configured) throw new ConflictException("The speech service is not set up; the worker transcribes after the call instead.", "VOICE_UNAVAILABLE");
+        var heard = await speech.TranscribeAsync(audio, contentType, ct);
+        if (heard is not { } h || string.IsNullOrWhiteSpace(h.Text)) return null;
+        await AppendAsync(db, secrets, bot, [(Speaker(name), Spoken(h.Text))], ct);
+        return h.Text;
     }
 
     private static string Speaker(string? who)

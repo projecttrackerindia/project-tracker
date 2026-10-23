@@ -229,6 +229,28 @@ public class InboundController(IServiceProvider services, GoogleCalendarAuthServ
         return Ok(new { received = true });
     }
 
+    /// <summary>One person's words in one of our own calls, as audio (the worker hears each person separately); the token picks the agent's session.</summary>
+    [HttpPost("agent/bot/{token}/speech")]
+    [RequestSizeLimit(5 * 1024 * 1024), RequestFormLimits(MultipartBodyLengthLimit = 5 * 1024 * 1024)]
+    public async Task<IActionResult> BotSpeech(string token, IFormFile file, [FromForm] string? name, CancellationToken ct)
+    {
+        await using var stream = file.OpenReadStream();
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer, ct);
+        var text = await AgentMeetingService.ReceiveSpeechAsync(services, token, name, buffer.ToArray(), file.ContentType ?? "audio/wav", ct);
+        return Ok(new { text });
+    }
+
+    /// <summary>Events from our own media server (who joined or left a call, a call that closed), signed with the shared secret.</summary>
+    [HttpPost("calls/livekit")]
+    [RequestSizeLimit(256 * 1024)]
+    public async Task<IActionResult> LiveKitWebhook(CancellationToken ct)
+    {
+        using var reader = new StreamReader(Request.Body, Encoding.UTF8);
+        var body = await reader.ReadToEndAsync(ct);
+        return await ProjectManagement.Application.Features.Calls.CallService.WebhookAsync(services, Request.Headers.Authorization.ToString(), body, ct) ? Ok(new { received = true }) : Unauthorized();
+    }
+
     /// <summary>
     /// A meeting-bot worker (apps/meetbot) reporting its bots and asking for sessions (Bearer Agent:MeetingBotSecret). Workers call this every
     /// few seconds; any number of them can run.

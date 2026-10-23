@@ -8,6 +8,24 @@ public partial class AppDbContext
     private static void ConfigureAiOperations(ModelBuilder b)
     {
         b.Entity<AiMessage>().Property(m => m.EstimatedProviderCostUsd).HasPrecision(18, 8);
+        b.Entity<CallRoom>(e =>
+        {
+            e.HasIndex(x => x.RoomName).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.Status, x.StartedAt });
+            e.HasIndex(x => new { x.TenantId, x.ProjectId });
+            e.HasIndex(x => new { x.TenantId, x.ConversationId });
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.RoomName).HasMaxLength(80);
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Status).HasMaxLength(16);
+        });
+        b.Entity<CallParticipant>(e =>
+        {
+            e.HasIndex(x => new { x.CallId, x.UserId }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.UserId });
+            e.Property(x => x.Role).HasMaxLength(16);
+            e.HasOne<CallRoom>().WithMany().HasForeignKey(x => x.CallId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<AiEvaluationRun>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.RanAt });

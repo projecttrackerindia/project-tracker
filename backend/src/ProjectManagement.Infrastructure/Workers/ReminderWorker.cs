@@ -40,6 +40,8 @@ public class ReminderWorker(IServiceScopeFactory scopes, IOptions<ReminderOption
                     // "Tell me when…" watches (checked every couple of minutes; each fires once).
                     var watched = !options.Value.WatchesEnabled ? 0 : await scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Features.Ai.AiWatchService>().CheckAsync(ct: stoppingToken);
                     if (watched > 0) log.LogInformation("{Count} watch(es) fired", watched);
+                    // Calls left marked live after a missed media-server event.
+                    await ProjectManagement.Application.Features.Calls.CallService.SweepAsync(scope.ServiceProvider, stoppingToken);
                     beats.Beat("Reminders", every);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

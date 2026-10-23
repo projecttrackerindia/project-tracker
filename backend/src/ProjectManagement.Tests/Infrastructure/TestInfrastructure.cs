@@ -73,6 +73,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Automation__WorkerEnabled", "false"); // tests run the automation scheduler explicitly
         Environment.SetEnvironmentVariable("Reminders__WatchesEnabled", "false"); // tests run the watch check explicitly
         Environment.SetEnvironmentVariable("Ai__Search__WorkerEnabled", "false"); // tests index for meaning search explicitly
+        Environment.SetEnvironmentVariable("Calls__Url", "wss://calls.test");
+        Environment.SetEnvironmentVariable("Calls__ApiKey", "testkey");
+        Environment.SetEnvironmentVariable("Calls__ApiSecret", "test-livekit-secret-0123456789abcdef0123");
         Environment.SetEnvironmentVariable("Ai__Operations__WorkerEnabled", "false");
         Environment.SetEnvironmentVariable("Push__WorkerEnabled", "false"); // tests run the push dispatcher explicitly
         Environment.SetEnvironmentVariable("App__HoldNotificationsInQuietHours", "false"); // e-mail/push timing must not depend on the hour CI runs at; QuietHoursTests cover the rule
@@ -129,6 +132,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public LogSink Logs { get; } = new();
     public FakePayments Payments { get; } = new();
     public FakeEmbedder Embedder { get; } = new();
+    public FakeLiveKitRooms LiveKit { get; } = new();
+    public const string CallsSecret = "test-livekit-secret-0123456789abcdef0123";
     public FakeResumePayments ResumePayments {get;}=new();
 
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
@@ -161,6 +166,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient>(Ai);
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiChat>();
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat>(Chat);
+            services.RemoveAll<ProjectManagement.Application.Features.Calls.ILiveKitRooms>();
+            services.AddSingleton<ProjectManagement.Application.Features.Calls.ILiveKitRooms>(LiveKit);
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiEmbedder>();
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiEmbedder>(Embedder);
             services.RemoveAll<ProjectManagement.Application.Abstractions.IPaymentProvider>();

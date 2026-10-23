@@ -188,6 +188,10 @@ public static class DependencyInjection
         services.Configure<GoogleMeetSyncOptions>(config.GetSection(GoogleMeetSyncOptions.Section));
         services.AddHostedService<GoogleMeetSyncWorker>();
         services.Configure<ProjectManagement.Application.Features.Agent.AgentOptions>(config.GetSection(ProjectManagement.Application.Features.Agent.AgentOptions.Section));
+        // Our own video calls on a LiveKit media server (Calls:Url, Calls:ApiKey, Calls:ApiSecret); off until those are set.
+        services.Configure<ProjectManagement.Application.Features.Calls.CallsOptions>(config.GetSection(ProjectManagement.Application.Features.Calls.CallsOptions.Section));
+        services.AddHttpClient("livekit", c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddSingleton<ProjectManagement.Application.Features.Calls.ILiveKitRooms, ProjectManagement.Application.Features.Calls.LiveKitRooms>();
         services.AddHostedService<ProjectAgentWorker>();
         services.Configure<AutomationOptions>(config.GetSection(AutomationOptions.Section));
         services.AddHostedService<AutomationWorker>();
