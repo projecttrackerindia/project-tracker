@@ -29,7 +29,8 @@ public static class TimeWords
 
     private const string HourWord = "h|hr|hrs|hour|hours|ghanta|ghante|ghanton|ganta|gantalu|gantha|ganthalu|घंटा|घंटे|घण्टे|गंटे|గంట|గంటలు|గంటల";
     private const string MinWord = "m|min|mins|minute|minutes|minat|minut|nimishalu|nimishaalu|मिनट|నిమిషాలు|నిమిషాల|నిమిషం";
-    private static readonly Regex Hours = new($@"{L}(\d+(?:[.,]\d+)?)\s*(?:{HourWord})(?![\p{{L}}\p{{M}}])(?:\s*(?:and\s+)?(\d{{1,2}})\s*(?:{MinWord})?{R})?", Opts);
+    // Minutes after the hours need their word ("1h 30m", "2 hours and 15 minutes") unless they touch the hours ("1h30"), so "2h 3 days ago" is two hours.
+    private static readonly Regex Hours = new($@"{L}(\d+(?:[.,]\d+)?)\s*(?:{HourWord})(?![\p{{L}}\p{{M}}])(?:\s*(?:and\s+)?(\d{{1,2}})\s*(?:{MinWord}){R}|(\d{{1,2}}){R})?", Opts);
     private static readonly Regex Minutes = new($@"{L}(\d+)\s*(?:{MinWord}){R}", Opts);
     private static readonly Regex Clock = new($@"(?<!(?:at|by|from|till|until)\s+){L}(\d{{1,2}}):([0-5]\d){R}(?!\s*(?:am|pm|a\.m\.|p\.m\.|-|–|to\s+\d))", Opts);
     private static readonly Regex Range = new(
@@ -166,7 +167,7 @@ public static class TimeWords
         var h = Hours.Match(text);
         if (h.Success && double.TryParse(h.Groups[1].Value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var hours) && hours > 0)
         {
-            var extra = h.Groups[2].Success ? int.Parse(h.Groups[2].Value, CultureInfo.InvariantCulture) : 0;
+            var extra = h.Groups[2].Success ? int.Parse(h.Groups[2].Value, CultureInfo.InvariantCulture) : h.Groups[3].Success ? int.Parse(h.Groups[3].Value, CultureInfo.InvariantCulture) : 0;
             best.Add(new Found(h.Index, h.Length, (int)Math.Round(hours * 60) + extra));
         }
         var m = Minutes.Match(text);

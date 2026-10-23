@@ -137,7 +137,10 @@ public class ChatUpgradesTests(ApiFactory factory)
         Assert.Contains((await ravi.Get("/api/v1/chat/questions")).Data!.AsArray(), x => S(x!["messageId"]) == S(q["id"]));
         // A mention in a group asks the person named; others are not asked.
         var mention = await Say(kumar, g, $"@[Ravi]({ravi.UserId}) who approves the audit?");
-        Assert.Contains((await ravi.Get("/api/v1/chat/questions")).Data!.AsArray(), x => S(x!["messageId"]) == S(mention["id"]));
+        var inGroup = (await ravi.Get($"/api/v1/chat/conversations/{g}/messages")).Data!["items"]!.AsArray().Single(x => S(x!["id"]) == S(mention["id"]))!;
+        Assert.True(inGroup["asksMe"]!.GetValue<bool>(), inGroup.ToJsonString());
+        var waiting = (await ravi.Get("/api/v1/chat/questions")).Data!.AsArray();
+        Assert.True(waiting.Any(x => S(x!["messageId"]) == S(mention["id"])), waiting.ToJsonString());
         Assert.DoesNotContain((await priya.Get("/api/v1/chat/questions")).Data!.AsArray(), x => S(x!["messageId"]) == S(mention["id"]));
         await Say(ravi, d, "Sending it now");
         Assert.DoesNotContain((await ravi.Get("/api/v1/chat/questions")).Data!.AsArray(), x => S(x!["messageId"]) == S(q["id"]));
