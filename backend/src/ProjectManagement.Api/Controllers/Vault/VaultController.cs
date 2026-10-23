@@ -12,7 +12,7 @@ namespace ProjectManagement.Api.Controllers.Vault;
 /// and written to the audit trail. No vault response is ever cached.
 /// </summary>
 [Route("api/v1/vault"), RequireWorkspace, SecretResponse]
-public class VaultController(VaultService vault, StepUpService stepUp) : ApiControllerBase
+public class VaultController(VaultService vault, StepUpService stepUp, ProjectManagement.Application.Features.Auth.PasskeyService passkeys) : ApiControllerBase
 {
     private const long UploadCeiling = VaultService.MaxAttachmentBytes + 256 * 1024;
 
@@ -210,6 +210,46 @@ public class VaultController(VaultService vault, StepUpService stepUp) : ApiCont
 
     [HttpGet("devices/{id:guid}")]
     public async Task<IActionResult> DeviceStatus(Guid id, CancellationToken ct) { NoStore(); return Ok(await vault.DeviceLinkStatusAsync(id, ct)); }
+
+    // ------------------------------------------------------------- controls: decoys, the two-person rule, just-in-time access, passkey step-up
+
+    [HttpPost("step-up/passkey/options")]
+    public async Task<IActionResult> StepUpPasskeyOptions(CancellationToken ct) { NoStore(); return Ok(await passkeys.BeginStepUpAsync(ct)); }
+
+    [HttpPost("step-up/passkey")]
+    public async Task<IActionResult> StepUpPasskey([FromBody] ProjectManagement.Application.Features.Auth.PasskeyFinishRequest req, CancellationToken ct)
+    {
+        NoStore();
+        await passkeys.FinishStepUpAsync(req, ct);
+        return Ok(await stepUp.IssueAsync("passkey", ct));
+    }
+
+    [HttpPost("items/{id:guid}/requests")]
+    public async Task<IActionResult> RequestReveal(Guid id, [FromBody] VaultRequestInput req, CancellationToken ct) { NoStore(); return Ok(await vault.RequestRevealAsync(id, req, ct)); }
+
+    [HttpGet("requestable")]
+    public async Task<IActionResult> Requestable(CancellationToken ct) { NoStore(); return Ok(await vault.RequestableAsync(ct)); }
+
+    [HttpPost("collections/{id:guid}/requests")]
+    public async Task<IActionResult> RequestCollection(Guid id, [FromBody] VaultRequestInput req, CancellationToken ct) { NoStore(); return Ok(await vault.RequestCollectionAsync(id, req, ct)); }
+
+    [HttpGet("requests")]
+    public async Task<IActionResult> Requests(CancellationToken ct) { NoStore(); return Ok(await vault.RequestsAsync(ct)); }
+
+    [HttpPost("requests/{id:guid}/approve")]
+    public async Task<IActionResult> Approve(Guid id, [FromBody] VaultDecisionInput req, CancellationToken ct) { NoStore(); return Ok(await vault.DecideAsync(id, true, req, ct)); }
+
+    [HttpPost("requests/{id:guid}/deny")]
+    public async Task<IActionResult> Deny(Guid id, [FromBody] VaultDecisionInput req, CancellationToken ct) { NoStore(); return Ok(await vault.DecideAsync(id, false, req, ct)); }
+
+    [HttpPost("requests/{id:guid}/cancel")]
+    public async Task<IActionResult> CancelRequest(Guid id, CancellationToken ct) { await vault.CancelRequestAsync(id, ct); return NoContent(); }
+
+    [HttpPut("items/{id:guid}/decoy")]
+    public async Task<IActionResult> Decoy(Guid id, [FromBody] VaultDecoyInput req, CancellationToken ct) { NoStore(); return Ok(await vault.SetDecoyAsync(id, req, ct)); }
+
+    [HttpGet("decoys")]
+    public async Task<IActionResult> Decoys(CancellationToken ct) { NoStore(); return Ok(await vault.DecoysAsync(ct)); }
 }
 
 public record VaultDirectoryRequest(IReadOnlyList<Guid>? UserIds);

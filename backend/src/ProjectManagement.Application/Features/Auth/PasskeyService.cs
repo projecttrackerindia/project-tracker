@@ -151,6 +151,45 @@ public class PasskeyService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         return await auth.SignInExternalAsync(user, "passkey", null, null, ct);
     }
 
+    // ------------------------------------------------------------------ a fresh check with a passkey (instead of an authenticator code)
+
+    /// <summary>A challenge only this person's passkeys can answer (for a fresh check before sensitive steps, such as the vault's).</summary>
+    public async Task<PasskeyOptionsDto> BeginStepUpAsync(CancellationToken ct = default)
+    {
+        var me = ctx.RequireUserId();
+        var creds = await db.PasskeyCredentials.AsNoTracking().Where(p => p.UserId == me).Select(p => p.CredentialId).ToListAsync(ct);
+        if (creds.Count == 0) throw new ConflictException("Add a passkey to your account first (My account → Security).", "NO_PASSKEY");
+        var options = Relying().GetAssertionOptions(new GetAssertionOptionsParams
+        {
+            AllowedCredentials = creds.Select(c => new PublicKeyCredentialDescriptor(B64.Decode(c))).ToList(), UserVerification = UserVerificationRequirement.Required,
+        });
+        return await StoreAsync(me, "step-up", options.ToJson(), ct);
+    }
+
+    /// <summary>Checks the answer: one of this person's own passkeys, with their fingerprint, face or PIN (user verification), once.</summary>
+    public async Task FinishStepUpAsync(PasskeyFinishRequest req, CancellationToken ct = default)
+    {
+        var me = ctx.RequireUserId();
+        var challenge = await TakeAsync(req.ChallengeId, "step-up", me, ct);
+        var options = AssertionOptions.FromJson(challenge.OptionsJson);
+        var assertion = JsonSerializer.Deserialize<AuthenticatorAssertionRawResponse>(req.Response.GetRawText()) ?? throw new ValidationException("passkey", "The device sent nothing.");
+        var credentialId = B64.Encode(assertion.RawId);
+        var stored = await db.PasskeyCredentials.FirstOrDefaultAsync(p => p.CredentialId == credentialId && p.UserId == me, ct)
+            ?? throw new ForbiddenException("That passkey is not one of yours.", "PASSKEY_NOT_YOURS");
+        try
+        {
+            var result = await Relying().MakeAssertionAsync(new MakeAssertionParams
+            {
+                AssertionResponse = assertion, OriginalOptions = options, StoredPublicKey = stored.PublicKey, StoredSignatureCounter = (uint)stored.SignCount,
+                IsUserHandleOwnerOfCredentialIdCallback = (args, token) => Task.FromResult(args.UserHandle is null || args.UserHandle.AsSpan().SequenceEqual(stored.UserHandle)),
+            }, ct);
+            stored.SignCount = result.SignCount;
+        }
+        catch (Fido2VerificationException) { throw new ForbiddenException("This passkey could not be verified.", "PASSKEY_INVALID"); }
+        stored.LastUsedAt = clock.Now;
+        await db.SaveChangesAsync(ct);
+    }
+
     // ------------------------------------------------------------------ challenges
 
     private async Task<PasskeyOptionsDto> StoreAsync(Guid? userId, string purpose, string json, CancellationToken ct)

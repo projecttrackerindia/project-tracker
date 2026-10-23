@@ -30,11 +30,18 @@ public class StepUpService(IAppDbContext db, ICurrentContext ctx, AppClock clock
             await mfa.RegisterFailureAsync(user, "code", ct);
             throw new ValidationException("code", "That code is not correct.");
         }
+        return await IssueAsync("code", ct);
+    }
+
+    /// <summary>A fresh-check token after the person proved it is them (an authenticator code here, or a verified passkey elsewhere).</summary>
+    public async Task<StepUpDto> IssueAsync(string method, CancellationToken ct = default)
+    {
+        var me = ctx.RequireUserId();
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
         var expires = clock.Now.AddMinutes(Minutes);
         db.StepUpGrants.RemoveRange(await db.StepUpGrants.Where(g => g.UserId == me && g.ExpiresAt < clock.Now).ToListAsync(ct));
         db.StepUpGrants.Add(new StepUpGrant { UserId = me, TokenHash = Hash(token), ExpiresAt = expires });
-        recorder.Audit("user.step_up", "User", me, null, new { minutes = Minutes });
+        recorder.Audit("user.step_up", "User", me, null, new { minutes = Minutes, method });
         await db.SaveChangesAsync(ct);
         return new StepUpDto(token, expires);
     }

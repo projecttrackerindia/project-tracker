@@ -17,7 +17,7 @@ const WIN = process.platform === 'win32', MAC = process.platform === 'darwin';
 
 /** What the person chose in the tray menu. Kept in a small file next to the window state. */
 const DEFAULT_ZOOM = 1; // Keep text and editing controls at their intended size; preserve saved user zoom.
-const defaults = { keepRunning: true, startHidden: false, zoom: DEFAULT_ZOOM };
+const defaults = { keepRunning: true, startHidden: false, zoom: DEFAULT_ZOOM, shieldAlways: false };
 function settings() { try { return { ...defaults, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; } catch { return { ...defaults }; } }
 function saveSettings(patch) { try { fs.writeFileSync(settingsFile(), JSON.stringify({ ...settings(), ...patch })); } catch { /* not worth stopping for */ } }
 const UA_MARK = () => `ProjectTrackerDesktop/${app.getVersion()}`;
@@ -50,6 +50,20 @@ function showOffline() {
   win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
 }
 
+/**
+ * Screen-share shield. The page turns it on while a screen with secrets is open (the password vault); the person can also keep the whole
+ * window out of sharing all the time. Windows excludes the window from every capture (shares and recordings show black); on a Mac the
+ * window is marked not shareable, which many (not all) capture tools honour. Linux has no such switch.
+ */
+const CAN_SHIELD = WIN || MAC;
+let pageShield = false;
+function applyShield() {
+  if (!CAN_SHIELD || !win || win.isDestroyed()) return;
+  try { win.setContentProtection(!!(settings().shieldAlways || pageShield)); } catch { /* an older system without it */ }
+}
+const shieldMenuItem = () => ({ label: 'Hide this window from screen sharing at all times', type: 'checkbox', checked: settings().shieldAlways,
+  click: (i) => { saveSettings({ shieldAlways: i.checked }); applyShield(); rebuildTray(); buildMenu(); } });
+
 function setZoom(z) { const v = Math.min(1.5, Math.max(0.6, Math.round(z * 100) / 100)); saveSettings({ zoom: v }); win?.webContents.setZoomFactor(v); }
 function createWindow() {
   const st = loadState();
@@ -63,6 +77,9 @@ function createWindow() {
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true, backgroundThrottling: false, preload: path.join(__dirname, 'preload.js') },
   });
   win.setMenuBarVisibility(false);
+  applyShield();
+  // A new page (a reload, a new sign-in) asks again for the shield if it shows secrets; one that does not leaves it off.
+  win.webContents.on('did-navigate', () => { pageShield = false; applyShield(); });
   win.on('focus', () => win.flashFrame(false));
   win.webContents.setUserAgent(`${win.webContents.getUserAgent().replace(/ Electron\/\S+/, '')} ${UA_MARK()}`);
   if (st.maximized) win.maximize();
@@ -143,6 +160,7 @@ function createTray() {
     { type: 'separator' },
     { label: 'Start when I sign in to my computer', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => { app.setLoginItemSettings({ openAtLogin: i.checked, args: ['--hidden'] }); saveSettings({ startHidden: i.checked }); } },
     { label: 'Keep running in the tray when the window is closed', type: 'checkbox', checked: settings().keepRunning, click: (i) => saveSettings({ keepRunning: i.checked }) },
+    ...(CAN_SHIELD ? [shieldMenuItem()] : []),
     { type: 'separator' },
     ...(updateReady ? [{ label: `Restart to update to ${updateReady}`, click: installUpdate }] : []),
     { label: 'Quit', click: () => { quitting = true; app.quit(); } },
@@ -170,7 +188,7 @@ function buildMenu() {
       { label: 'Back', accelerator: 'Alt+Left', click: () => win && win.webContents.navigationHistory.canGoBack() && win.webContents.navigationHistory.goBack() },
       { label: 'Forward', accelerator: 'Alt+Right', click: () => win && win.webContents.navigationHistory.canGoForward() && win.webContents.navigationHistory.goForward() },
     ] },
-    { label: 'View', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { type: 'separator' }, { label: 'Actual size', accelerator: 'CommandOrControl+0', click: () => setZoom(DEFAULT_ZOOM) }, { label: 'Zoom in', accelerator: 'CommandOrControl+Plus', click: () => setZoom(settings().zoom + 0.05) }, { label: 'Zoom out', accelerator: 'CommandOrControl+-', click: () => setZoom(settings().zoom - 0.05) }, { type: 'separator' }, { role: 'togglefullscreen' }] },
+    { label: 'View', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { type: 'separator' }, { label: 'Actual size', accelerator: 'CommandOrControl+0', click: () => setZoom(DEFAULT_ZOOM) }, { label: 'Zoom in', accelerator: 'CommandOrControl+Plus', click: () => setZoom(settings().zoom + 0.05) }, { label: 'Zoom out', accelerator: 'CommandOrControl+-', click: () => setZoom(settings().zoom - 0.05) }, { type: 'separator' }, { role: 'togglefullscreen' }, ...(CAN_SHIELD ? [{ type: 'separator' }, shieldMenuItem()] : [])] },
     { role: 'windowMenu' },
     { label: 'Help', submenu: [...(updateReady ? [{ label: `Restart to update to ${updateReady}`, click: installUpdate }, { type: 'separator' }] : []), { label: 'Open in browser', click: () => shell.openExternal(BASE) }, { label: 'Check for updates', click: () => checkUpdates(true) }, { label: 'Downloads page', click: () => shell.openExternal(DOWNLOAD_PAGE) }, { type: 'separator' }, { label: `Version ${app.getVersion()}`, enabled: false }] },
   ]));
@@ -242,6 +260,12 @@ else {
       else if (action === 'maximize') { if (win.isMaximized()) win.unmaximize(); else win.maximize(); }
       else if (action === 'close') win.close();
       else if (action === 'query') win.webContents.send('win-maximized', win.isMaximized());
+    });
+    // The page turns the screen-share shield on while it shows the password vault, and off when it leaves it.
+    ipcMain.on('protect-content', (e, on) => {
+      if (!win || win.isDestroyed() || e.sender !== win.webContents || !isInternal(e.sender.getURL(), BASE)) return;
+      pageShield = on === true;
+      applyShield();
     });
     // The page asks for attention when an alert arrives and the window is not in front: the taskbar button flashes (Windows, Linux) or the
     // dock icon bounces (Mac) until the person comes back. Urgent alerts (reminders, overdue, security) keep going until then.

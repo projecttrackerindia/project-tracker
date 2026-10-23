@@ -40,6 +40,10 @@ public class VaultCollection : TenantEntity, ITenantScoped
     public int SealedKeyVersion { get; set; }
     /// <summary>Sealed: someone who had the key lost access; the next manager to open it makes a new key and re-encrypts everything.</summary>
     public bool RekeyNeeded { get; set; }
+    /// <summary>Two-person rule (guarded only): every reveal, copy, code or file needs someone else's approval first, for a limited time.</summary>
+    public bool RequireApproval { get; set; }
+    /// <summary>Members who are not on the list can see its name and ask for time-boxed access (just-in-time access).</summary>
+    public bool Requestable { get; set; }
 }
 
 /// <summary>One entry of a collection's access list. A share can end by itself (<see cref="ExpiresAt"/>) for time-boxed access.</summary>
@@ -105,6 +109,8 @@ public class VaultItem : TenantEntity, ITenantScoped
     public Guid? DeletedBy { get; set; }
     /// <summary>Encrypted in the browser with the collection key (<see cref="Cipher"/> is that ciphertext; title and fields are inside it).</summary>
     public bool Sealed { get; set; }
+    /// <summary>A decoy (honeytoken): it looks real, and any reveal, copy, code or download of it alerts the vault admins at once.</summary>
+    public bool Decoy { get; set; }
 }
 
 /// <summary>An earlier value of an item, kept encrypted with the key it had then. The last ten are kept.</summary>
@@ -197,4 +203,27 @@ public class VaultDeviceLink : TenantEntity, ITenantScoped
     public bool Denied { get; set; }
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
+}
+
+public enum VaultRequestKind { Reveal = 0, Collection = 1 }
+public enum VaultRequestStatus { Pending = 0, Approved = 1, Denied = 2, Cancelled = 3, Expired = 4 }
+
+/// <summary>
+/// Just-in-time access. <see cref="VaultRequestKind.Reveal"/>: one use window for an item in a collection under the two-person rule.
+/// <see cref="VaultRequestKind.Collection"/>: time-boxed access to a collection the person is not on. Someone else decides; it ends by itself.
+/// </summary>
+public class VaultAccessRequest : TenantEntity, ITenantScoped
+{
+    public VaultRequestKind Kind { get; set; }
+    public Guid CollectionId { get; set; }
+    public Guid? ItemId { get; set; }
+    public Guid RequesterId { get; set; }
+    public string Reason { get; set; } = "";
+    public VaultAccess Access { get; set; } = VaultAccess.View;
+    public int Minutes { get; set; }
+    public VaultRequestStatus Status { get; set; }
+    public Guid? DecidedBy { get; set; }
+    public DateTime? DecidedAt { get; set; }
+    public string? DecisionNote { get; set; }
+    public DateTime? GrantedUntil { get; set; }
 }

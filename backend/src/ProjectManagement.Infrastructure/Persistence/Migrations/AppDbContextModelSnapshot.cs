@@ -11830,6 +11830,12 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<bool>("RekeyNeeded")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("Requestable")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RequireApproval")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("RequireStepUp")
                         .HasColumnType("boolean");
 
@@ -11949,6 +11955,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("Decoy")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
@@ -12432,6 +12441,83 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "UserId", "ExpiresAt");
 
                     b.ToTable("VaultDeviceLinks");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.VaultAccessRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Access")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("CollectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DecidedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DecisionNote")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTime?>("GrantedUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("Minutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("RequesterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CollectionId", "Status");
+
+                    b.HasIndex("TenantId", "ItemId", "RequesterId");
+
+                    b.HasIndex("TenantId", "RequesterId", "Status");
+
+                    b.ToTable("VaultAccessRequests");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.Webhook", b =>

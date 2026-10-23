@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, Modal, PageHead, PageLoader } from '../../components/ui';
 import { timeAgo } from '../../lib/format';
+import { holdScreenShield, screenShieldInfo, type ShieldInfo } from '../../lib/screenShield';
 import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
@@ -83,6 +85,12 @@ function Vault() {
     return () => { window.clearTimeout(t); evs.forEach((e) => window.removeEventListener(e, bump)); };
   }, [step]);
   useEffect(() => { if (keyring.get().identity && !keyring.isOpenFor(wid, meId)) keyring.lock(); }, [wid, meId]);
+
+  // Screen sharing: the apps keep this window out of every share and recording while the vault is open; in a browser tab (which cannot)
+  // the vault covers itself whenever the window is not the one in use — switching to the meeting app is enough to hide it.
+  const shield = useMemo(screenShieldInfo, []);
+  useEffect(() => holdScreenShield(), []);
+  const away = useAway(shield.level !== 'blocked');
 
   const sealedData = useSealedData(o.collections, wid, meId);
   const unlocked = sealedData.unlocked;
@@ -179,6 +187,7 @@ function Vault() {
         <button className="btn btn-ghost" onClick={() => setImporting(true)}><Icon name="upload" size={15} /> Import</button>
         <button className="btn btn-primary" onClick={() => setEditing('new')}><Icon name="plus" size={15} /> New item</button>
       </PageHead>
+      <ShieldNote info={shield} />
       {!o.mfaEnabled && (
         <div className="vlt-banner" role="note"><Icon name="shield" size={16} /><span>Turn on two-step verification to open confidential items and earlier values.</span><Link className="btn btn-ghost btn-xs" to="/account/security">Set it up</Link></div>
       )}
@@ -246,7 +255,7 @@ function Vault() {
 
       <DeviceApprovals unlocked={unlocked} />
       {editing && <ItemEditor existing={editing === 'new' || 'collection' in editing ? null : editing} sealedEdit={editing !== 'new' && 'collection' in editing ? editing : null}
-        collections={o.collections} defaultCollection={collectionId ?? personal?.id ?? null} clipboardSeconds={o.policy.clipboardSeconds}
+        collections={o.collections} defaultCollection={collectionId ?? personal?.id ?? null} clipboardSeconds={o.policy.clipboardSeconds} revealSeconds={o.policy.revealSeconds}
         onClose={() => setEditing(null)} onSaved={(id) => { setEditing(null); refresh(); set({ item: id, view: null }); }} />}
       {collectionEdit && <CollectionEditor existing={collectionEdit === 'new' ? null : collectionEdit} canSeal={canSeal} onSeal={(c) => void sealIt(c)} onClose={() => setCollectionEdit(null)}
         onSaved={(id) => { const wasNew = collectionEdit === 'new'; setCollectionEdit(null); refresh(); set({ c: id, item: null, view: null }); if (wasNew && id) void vaultApi.collection(id).then(setSharing).catch(() => undefined); }} />}
@@ -258,6 +267,41 @@ function Vault() {
         </Modal>
       )}
       <span hidden data-ring={ring.version} />
+      {away && createPortal(<div className="vlt-cover" role="status" aria-live="polite" data-testid="vault-cover"><Icon name="lock" size={28} /><b>Vault hidden</b><span>It shows again when you come back to this window.</span></div>, document.body)}
+    </div>
+  );
+}
+
+/** True while this window is not the one in use (another app or tab is in front, or the window is minimised). */
+function useAway(enabled: boolean) {
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    const off = () => setAway(true), on = () => setAway(false);
+    const vis = () => setAway(document.hidden || !document.hasFocus());
+    window.addEventListener('blur', off); window.addEventListener('focus', on); document.addEventListener('visibilitychange', vis);
+    return () => { window.removeEventListener('blur', off); window.removeEventListener('focus', on); document.removeEventListener('visibilitychange', vis); };
+  }, [enabled]);
+  return enabled && away;
+}
+
+const SHIELD_NOTE_KEY = 'pt-vault-shield-note';
+/** Says plainly what screen sharing can see here, and where it is fully black. */
+function ShieldNote({ info }: { info: ShieldInfo }) {
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(SHIELD_NOTE_KEY) === info.where; } catch { return false; } });
+  if (info.level === 'blocked') {
+    return <p className="vlt-shield ok" data-testid="shield-note"><Icon name="eyeOff" size={14} /> Hidden from screen sharing and screenshots on this {info.where === 'android' ? 'phone' : 'computer'}: others see a black window.</p>;
+  }
+  if (hidden) return null;
+  const dismiss = () => { setHidden(true); try { localStorage.setItem(SHIELD_NOTE_KEY, info.where); } catch { /* storage unavailable */ } };
+  return (
+    <div className="vlt-banner vlt-shield" role="note" data-testid="shield-note">
+      <Icon name="eye" size={16} />
+      <span>{info.level === 'partial'
+        ? 'On a Mac, most screenshots and shares show this window black, but some newer recording apps can still see it. Values are never shown outside the edit screen, and the vault hides itself when you switch windows.'
+        : 'A browser tab cannot hide itself from screen sharing. Values are never shown here (copy only), and the vault hides itself when you switch to another window. For a fully black share, use the Windows or Android app.'}</span>
+      {info.where === 'browser' && <a className="btn btn-ghost btn-xs" href="/download/" target="_blank" rel="noopener noreferrer">Get the app</a>}
+      <button className="btn-icon" aria-label="Dismiss" onClick={dismiss}><Icon name="close" size={14} /></button>
     </div>
   );
 }

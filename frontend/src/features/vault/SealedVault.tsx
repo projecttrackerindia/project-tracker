@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
 import { ErrorState, Modal, Spinner } from '../../components/ui';
 import { formatBytes, formatDate, formatDateTime, timeAgo } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { saveFile } from '../../lib/native';
-import { useAuth } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { ACTION_LABEL, HEALTH_LABEL, KIND_ICON, KIND_LABEL, vaultApi, type DeviceLink, type VaultCollection, type VaultKeysMe, type VaultPolicy } from './api';
 import { linkCode, totpNow } from './e2ee/crypto';
@@ -249,26 +248,10 @@ export function SealedItemPanel({ c, item, policy, lockEpoch, binned, onEdit, on
   c: VaultCollection; item: sealed.SealedItem; policy: VaultPolicy; lockEpoch: number; binned: boolean; onEdit: () => void; onClose: () => void; onChanged: () => void;
 }) {
   const p = item.payload;
-  const [shown, setShown] = useState<Record<string, number>>({});
-  const timers = useRef<Record<string, number>>({});
   const [tab, setTab] = useState<'details' | 'files' | 'history' | 'activity'>('details');
   const manage = item.row.myAccess === 'Manage';
-  const hide = useCallback((k: string) => { window.clearTimeout(timers.current[k]); setShown((s) => { const n = { ...s }; delete n[k]; return n; }); }, []);
-  const hideAll = useCallback(() => { Object.values(timers.current).forEach((t) => window.clearTimeout(t)); timers.current = {}; setShown({}); }, []);
-  useEffect(() => {
-    const onHidden = () => { if (document.hidden) hideAll(); };
-    document.addEventListener('visibilitychange', onHidden); window.addEventListener('blur', hideAll);
-    return () => { document.removeEventListener('visibilitychange', onHidden); window.removeEventListener('blur', hideAll); hideAll(); };
-  }, [hideAll]);
-  useEffect(() => { hideAll(); setTab('details'); }, [item.row.id, lockEpoch, hideAll]);
-  const viewer = useAuth((st) => st.ctx?.user.displayName ?? '');
+  useEffect(() => { setTab('details'); }, [item.row.id, lockEpoch]);
   if (!p) return <section className="vlt-panel"><ErrorState error={new Error(item.error ?? 'This item cannot be read on this device.')} /></section>;
-  const show = (k: string, label: string) => {
-    window.clearTimeout(timers.current[k]);
-    setShown((s) => ({ ...s, [k]: policy.revealSeconds }));
-    timers.current[k] = window.setTimeout(() => hide(k), policy.revealSeconds * 1000);
-    void vaultApi.sealedEvent(item.row.id, 'revealed', label).catch(() => undefined);
-  };
   const copy = async (value: string, label: string) => {
     const ok = await copySecret(value, policy.clipboardSeconds);
     toast(ok ? `${label} copied. The clipboard clears in ${policy.clipboardSeconds} seconds.` : 'The browser did not allow copying.', ok ? 'success' : 'error');
@@ -310,18 +293,15 @@ export function SealedItemPanel({ c, item, policy, lockEpoch, binned, onEdit, on
                 <span className="vlt-field-label">{f.label}</span>
                 <div className="vlt-field-row">
                   {!f.secret ? <span className="vlt-field-value">{f.value}</span>
-                    : shown[f.key] ? (f.type === 'note' || f.type === 'key' ? <pre className="vlt-field-value vlt-secret open vlt-watermark" data-mark={viewer} data-state="revealed">{f.value}</pre>
-                      : <code className="vlt-field-value vlt-secret open" data-state="revealed" aria-live="polite">{f.value}</code>)
-                    : <code className="vlt-field-value vlt-secret" data-state="masked">••••••••••••</code>}
-                  {f.secret && (shown[f.key]
-                    ? <button className="btn-icon" aria-label={`Hide ${f.label}`} onClick={() => hide(f.key)}><Icon name="eyeOff" size={15} /></button>
-                    : <button className="btn-icon" aria-label={`Reveal ${f.label}`} onClick={() => show(f.key, f.label)}><Icon name="eye" size={15} /></button>)}
+                    : <code className="vlt-field-value vlt-secret" data-state="masked" aria-label={`${f.label}, hidden`}>••••••••••••</code>}
                   <button className="btn-icon" aria-label={`Copy ${f.label}`} onClick={() => void (f.secret ? copy(f.value!, f.label) : navigator.clipboard?.writeText(f.value!).then(() => toast(`${f.label} copied.`)))}><Icon name="copy" size={15} /></button>
                 </div>
-                {f.secret && shown[f.key] && <div className="vlt-timer" role="timer" aria-label={`Hides in ${shown[f.key]} seconds`}><i style={{ animationDuration: `${shown[f.key]}s` }} /></div>}
-                {f.type === 'password' && shown[f.key] && <p className="vlt-small muted">Strength: {STRENGTH_LABEL[strength(f.value!)]}</p>}
+                {f.type === 'password' && <p className="vlt-small muted">Strength: {STRENGTH_LABEL[strength(f.value!)]}</p>}
               </div>
             ))}
+          {!binned && p.fields.some((f) => f.secret && f.value && f.type !== 'totp') && (
+            <p className="vlt-small muted vlt-copy-only"><Icon name="lock" size={13} /> {manage ? 'Values are never shown here. Copy them, or open Edit to see one.' : 'Values are never shown. Copy one into a sign-in form; the clipboard clears itself.'}</p>
+          )}
           <dl className="vlt-meta">
             {item.row.expiresAt && <><dt>Change by</dt><dd className={Date.parse(item.row.expiresAt) <= Date.now() ? 'danger' : ''}>{formatDate(item.row.expiresAt)}</dd></>}
             {item.row.rotateEveryDays && <><dt>Change every</dt><dd>{item.row.rotateEveryDays} days</dd></>}
@@ -339,7 +319,7 @@ export function SealedItemPanel({ c, item, policy, lockEpoch, binned, onEdit, on
         </div>
       )}
       {tab === 'files' && <SealedFiles c={c} item={item} manage={manage && !binned} onChanged={onChanged} />}
-      {tab === 'history' && <SealedHistory c={c} itemId={item.row.id} />}
+      {tab === 'history' && <SealedHistory c={c} itemId={item.row.id} policy={policy} />}
       {tab === 'activity' && <SealedActivity id={item.row.id} />}
     </section>
   );
@@ -396,20 +376,31 @@ function SealedFiles({ c, item, manage, onChanged }: { c: VaultCollection; item:
   );
 }
 
-function SealedHistory({ c, itemId }: { c: VaultCollection; itemId: string }) {
+function SealedHistory({ c, itemId, policy }: { c: VaultCollection; itemId: string; policy: VaultPolicy }) {
   const [rows, setRows] = useState<Awaited<ReturnType<typeof sealed.sealedHistory>> | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
   useEffect(() => { void sealed.sealedHistory(c, itemId).then(setRows).catch(() => setRows([])); }, [c, itemId]);
-  useEffect(() => { if (!open) return; const t = window.setTimeout(() => setOpen(null), 15_000); return () => window.clearTimeout(t); }, [open]);
   if (!rows) return <div className="vlt-pad"><Spinner /></div>;
   if (rows.length === 0) return <p className="muted vlt-pad">No earlier values yet. The last ten are kept, encrypted like the item.</p>;
   return (
-    <div className="vlt-history"><ul>{rows.map((v) => (
-      <li key={v.id}>
-        <div><b>{formatDateTime(v.at)}</b> <span className="muted">{v.by ? `by ${v.by.name}` : ''}{v.reason ? ` · ${v.reason}` : ''}</span></div>
-        {open === v.id ? <code className="vlt-secret open">{v.payload?.fields.filter((f) => f.secret && f.value && f.type !== 'totp').map((f) => `${f.label}: ${f.value}`).join('\n') || '—'}</code>
-          : <button className="btn btn-ghost btn-sm" onClick={() => setOpen(v.id)}><Icon name="eye" size={14} /> Reveal</button>}
-      </li>))}</ul></div>
+    <div className="vlt-history">
+      <ul>{rows.map((v) => (
+        <li key={v.id}>
+          <div><b>{formatDateTime(v.at)}</b> <span className="muted">{v.by ? `by ${v.by.name}` : ''}{v.reason ? ` · ${v.reason}` : ''}</span></div>
+          <div className="vlt-history-fields">
+            {(v.payload?.fields ?? []).filter((f) => f.secret && f.value && f.type !== 'totp').map((f) => (
+              <span key={f.key} className="vlt-history-field">
+                <span className="muted">{f.label}</span> <code className="vlt-secret" data-state="masked">••••••••</code>
+                <button className="btn-icon" aria-label={`Copy the earlier ${f.label}`} onClick={() => void copySecret(f.value!, policy.clipboardSeconds).then((ok) => {
+                  toast(ok ? `Earlier ${f.label.toLowerCase()} copied. The clipboard clears in ${policy.clipboardSeconds} seconds.` : 'The browser did not allow copying.', ok ? 'success' : 'error');
+                  if (ok) void vaultApi.sealedEvent(itemId, 'copied', `${f.label} (earlier value)`).catch(() => undefined);
+                })}><Icon name="copy" size={14} /></button>
+              </span>
+            ))}
+            {!v.payload && <span className="muted">This earlier value cannot be read on this device.</span>}
+          </div>
+        </li>))}</ul>
+      <p className="vlt-small muted">Earlier values are never shown. Each copy is recorded.</p>
+    </div>
   );
 }
 

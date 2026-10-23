@@ -54,7 +54,7 @@ public static class WebhookEvents
         "meeting.scheduled", "meeting.rescheduled", "meeting.cancelled",
         "reminder.fired", "reminder.completed",
         "whatsapp.chat_started", "whatsapp.handed_over", "whatsapp.ticket_created", "whatsapp.rated",
-        "vault.rotation_due",
+        "vault.rotation_due", "vault.decoy_triggered", "vault.access_requested",
         Audit,
     ];
 
@@ -89,6 +89,8 @@ public static class WebhookEvents
         ["meeting.scheduled"] = ("Meeting", "Scheduled \u201cRefunds stand-up\u201d for 24 Oct 10:00", null, null),
         ["actionitem.created"] = ("ActionItem", "Created AI-9 \u201cShare the UAT sign-off\u201d", null, null),
         ["vault.rotation_due"] = ("VaultItem", "\u201cAWS root account\u201d should be changed by 30 Nov 2026", null, null),
+        ["vault.decoy_triggered"] = ("VaultItem", "Decoy credential \u201cbackup-admin\u201d in Payments servers was used by Ravi Kumar", null, null),
+        ["vault.access_requested"] = ("VaultItem", "Access to \u201cAWS root account\u201d asked for 30 minutes", null, null),
     };
 
     /// <summary>A realistic example of an event's data (the same shape a real delivery has), for the explorer and "send me a test of this event".</summary>

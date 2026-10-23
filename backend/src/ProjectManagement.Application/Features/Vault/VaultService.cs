@@ -30,23 +30,23 @@ public record VaultItemDto(VaultItemSummaryDto Item, IReadOnlyList<VaultFieldDto
 public record VaultShareDto(Guid Id, VaultPrincipal PrincipalType, Guid? PrincipalId, TenantRole? Role, string Name, VaultAccess Access, DateTime? ExpiresAt);
 public record VaultCollectionDto(Guid Id, string Name, string? Description, VaultCollectionKind Kind, Guid? ProjectId, string? ProjectName, Guid? TeamId, string? TeamName,
     VaultAccess MyAccess, int Items, int AtRisk, bool RequireStepUp, int? RotateEveryDays, bool Locked, IReadOnlyList<VaultShareDto>? Shares,
-    bool Sealed = false, bool RekeyNeeded = false, int KeyVersion = 0);
+    bool Sealed = false, bool RekeyNeeded = false, int KeyVersion = 0, bool RequireApproval = false, bool Requestable = false);
 public record VaultPolicyDto(bool StepUpAlways, int ClipboardSeconds, int RevealSeconds, bool SharedAdminsOnly);
 public record VaultHealthDto(int Total, int Weak, int Reused, int Breached, int Expired, int Old, int ToRotate, int Score);
 public record VaultOverviewDto(IReadOnlyList<VaultCollectionDto> Collections, VaultPolicyDto Policy, bool CanAdmin, bool CanCreateShared, VaultHealthDto Health, bool MfaEnabled,
-    VaultIdentityDto? Identity = null);
+    VaultIdentityDto? Identity = null, bool HasPasskeys = false);
 public record VaultRevealDto(string Value, int RevealSeconds, int ClipboardSeconds);
 public record VaultTotpDto(string Code, int SecondsLeft, int Period, int Digits);
 public record VaultCheckDto(int Strength, int BreachCount);
 public record VaultActivityDto(DateTime At, string Action, UserRefDto? By, string? Field, string? IpAddress);
 
 public record SaveVaultCollectionRequest(string? Name, string? Description, VaultCollectionKind Kind, Guid? ProjectId, Guid? TeamId, bool RequireStepUp = false,
-    int? RotateEveryDays = null, VaultAccess? ShareWithMembers = null, bool Sealed = false);
+    int? RotateEveryDays = null, VaultAccess? ShareWithMembers = null, bool Sealed = false, bool RequireApproval = false, bool Requestable = false);
 public record VaultShareInput(VaultPrincipal PrincipalType, Guid? PrincipalId, TenantRole? Role, VaultAccess Access, DateTime? ExpiresAt);
 public record SaveVaultSharesRequest(IReadOnlyList<VaultShareInput>? Shares);
 public record SaveVaultItemRequest(Guid CollectionId, VaultItemKind Kind, string? Title, string? Url, IReadOnlyList<string>? Tags, SensitivityClass Class,
     bool UseOnly, Guid? OwnerUserId, int? RotateEveryDays, DateTime? ExpiresAt, IReadOnlyList<VaultFieldInput>? Fields, IReadOnlyList<VaultLinkDto>? Links, string? Reason);
-public record VaultRevealRequest(string? Field, string? StepUp, bool Copy = false);
+public record VaultRevealRequest(string? Field, string? StepUp, bool Copy = false, bool ForEdit = false);
 public record VaultStepUpRequest(string? StepUp);
 public record VaultAdminAccessRequest(string? Reason, string? StepUp);
 public record VaultImportRow(string? Title, string? Url, string? Username, string? Password, string? Totp, string? Notes);
@@ -73,7 +73,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
     public const int MaxItemsPerCollection = 2000, MaxFields = 30, MaxValueChars = 8000, MaxVersions = 10, MaxImport = 500, MaxAttachments = 5;
     public const long MaxAttachmentBytes = 2 * 1024 * 1024;
     public const int RevealsPerMinute = 60, UnusualDistinctItems = 15, UnusualWindowMinutes = 10, BinDays = 30;
-    private static readonly string[] UseActions = ["vault.revealed", "vault.copied", "vault.totp_used", "vault.version_revealed"];
+    private static readonly string[] UseActions = ["vault.revealed", "vault.copied", "vault.totp_used", "vault.version_revealed", "vault.version_copied"];
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     // ------------------------------------------------------------------ the fields each kind starts with
@@ -197,13 +197,14 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
             .Select(r => new VaultCollectionDto(r.C.Id, r.C.Name, r.C.Description, r.C.Kind, r.C.ProjectId, r.C.ProjectId is { } p ? pNames.GetValueOrDefault(p) : null,
                 r.C.TeamId, r.C.TeamId is { } t ? tNames.GetValueOrDefault(t) : null, r.A, all.Count(i => i.CollectionId == r.C.Id),
                 all.Count(i => i.CollectionId == r.C.Id && flags[i.Id].Count > 0), r.C.RequireStepUp, r.C.RotateEveryDays, r.C.LockedAt != null, null,
-                r.C.Sealed, r.C.RekeyNeeded, r.C.SealedKeyVersion)).ToList();
+                r.C.Sealed, r.C.RekeyNeeded, r.C.SealedKeyVersion, r.C.RequireApproval, r.C.Requestable)).ToList();
         var policy = await PolicyAsync(ct);
         var canAdmin = await permissions.HasAsync(Permissions.VaultAdmin, ct);
         var mfa = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.MfaEnabled).FirstOrDefaultAsync(ct);
         var guardedFlags = items.ToDictionary(i => i.Id, i => flags[i.Id]);
         return new VaultOverviewDto(collections, policy, canAdmin, !policy.SharedAdminsOnly || canAdmin, Health(items, guardedFlags), mfa,
-            await db.VaultIdentities.AsNoTracking().Where(i => i.UserId == me).Select(i => (VaultIdentityDto?)new VaultIdentityDto(i.UserId, i.X25519Public, i.MlKemPublic, i.Ed25519Public, i.SelfSignature, i.Fingerprint, i.Generation)).FirstOrDefaultAsync(ct));
+            await db.VaultIdentities.AsNoTracking().Where(i => i.UserId == me).Select(i => (VaultIdentityDto?)new VaultIdentityDto(i.UserId, i.X25519Public, i.MlKemPublic, i.Ed25519Public, i.SelfSignature, i.Fingerprint, i.Generation)).FirstOrDefaultAsync(ct),
+            await db.PasskeyCredentials.AsNoTracking().AnyAsync(p => p.UserId == me, ct));
     }
 
     /// <summary>Everyone who can use the vault has a personal collection; it is made the first time they open it.</summary>
@@ -255,7 +256,9 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         {
             TenantId = tid, Name = name, Description = Clip(req.Description, 300), Kind = req.Kind, RequireStepUp = req.RequireStepUp,
             RotateEveryDays = CleanDays(req.RotateEveryDays), CreatedAt = clock.Now, CreatedBy = me, Sealed = req.Sealed, SealedKeyVersion = req.Sealed ? 1 : 0,
+            RequireApproval = req.RequireApproval, Requestable = req.Requestable,
         };
+        if (req.Sealed && req.RequireApproval) throw new ValidationException("requireApproval", "The two-person rule needs a guarded collection: in a sealed one, whoever holds the key can read without asking.");
         if (req.Sealed && !await db.VaultIdentities.AnyAsync(i => i.UserId == me, ct)) throw new ConflictException("Set up your vault keys first: a sealed collection is opened with them.", "VAULT_NO_KEYS");
         if (req.Kind == VaultCollectionKind.Project)
         {
@@ -287,7 +290,10 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await RequireUseAsync(ct);
         var (c, _) = await CollectionAsync(id, VaultAccess.Manage, ct);
         var before = new { c.Name, c.RequireStepUp, c.RotateEveryDays };
+        if (c.Sealed && req.RequireApproval) throw new ValidationException("requireApproval", "The two-person rule needs a guarded collection: in a sealed one, whoever holds the key can read without asking.");
+        if (c.Kind == VaultCollectionKind.Personal && req.Requestable) throw new ValidationException("requestable", "Nobody can ask for a personal vault.");
         c.Name = CleanName(req.Name); c.Description = Clip(req.Description, 300); c.RequireStepUp = req.RequireStepUp; c.RotateEveryDays = CleanDays(req.RotateEveryDays);
+        c.RequireApproval = req.RequireApproval; c.Requestable = req.Requestable;
         c.UpdatedAt = clock.Now; c.UpdatedBy = ctx.UserId;
         recorder.Audit("vault.collection_changed", "VaultCollection", c.Id, before, new { c.Name, c.RequireStepUp, c.RotateEveryDays });
         await db.SaveChangesAsync(ct);
@@ -316,7 +322,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var pName = c.ProjectId is { } p ? await db.Projects.AsNoTracking().Where(x => x.Id == p).Select(x => x.Name).FirstOrDefaultAsync(ct) : null;
         var tName = c.TeamId is { } t ? await db.Teams.AsNoTracking().Where(x => x.Id == t).Select(x => x.Name).FirstOrDefaultAsync(ct) : null;
         return new VaultCollectionDto(c.Id, c.Name, c.Description, c.Kind, c.ProjectId, pName, c.TeamId, tName, access, items.Count, items.Count(i => HealthOf(i, reused).Count > 0),
-            c.RequireStepUp, c.RotateEveryDays, c.LockedAt != null, shares, c.Sealed, c.RekeyNeeded, c.SealedKeyVersion);
+            c.RequireStepUp, c.RotateEveryDays, c.LockedAt != null, shares, c.Sealed, c.RekeyNeeded, c.SealedKeyVersion, c.RequireApproval, c.Requestable);
     }
 
     private async Task<List<VaultShareDto>> SharesAsync(VaultCollection c, CancellationToken ct)
@@ -630,6 +636,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var (item, c, access) = await ItemAsync(id, VaultAccess.UseOnly, ct);
         RejectSealed(item);
         var key = (req.Field ?? "").Trim();
+        await TripwireAsync(item, c, key, ct);
         var def = ReadDefs(item.FieldsJson).FirstOrDefault(d => d.Key == key) ?? throw new NotFoundException("That field is not on this item.", "VAULT_NOT_FOUND");
         var action = req.Copy ? "vault.copied" : "vault.revealed";
         if (!req.Copy && (item.UseOnly || access < VaultAccess.View))
@@ -647,7 +654,8 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         }
         if (string.IsNullOrEmpty(value)) throw new NotFoundException("That field is empty.", "VAULT_EMPTY");
         item.LastUsedAt = clock.Now; item.LastUsedBy = me;
-        recorder.Audit(action, "VaultItem", item.Id, null, new { item = item.Title, collection = c.Name, field = def.Label });
+        // The app shows a value only in the edit screen (to someone who can manage the item); everywhere else it is copied, never drawn.
+        recorder.Audit(action, "VaultItem", item.Id, null, new { item = item.Title, collection = c.Name, field = def.Label, risk = _risk?.Score, inEditor = !req.Copy && req.ForEdit && access == VaultAccess.Manage });
         await db.SaveChangesAsync(ct);
         var policy = await PolicyAsync(ct);
         return new VaultRevealDto(value, policy.RevealSeconds, policy.ClipboardSeconds);
@@ -684,7 +692,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await GuardAsync(item, c, req.Field ?? "", req.StepUp, ct);
         var value = (await crypto.OpenAsync(tid, item.Id, v.Cipher, v.WrappedItemKey, v.KeyVersion, ct)).GetValueOrDefault((req.Field ?? "").Trim())
             ?? throw new NotFoundException("That field was empty then.", "VAULT_EMPTY");
-        recorder.Audit("vault.version_revealed", "VaultItem", item.Id, null, new { item = item.Title, collection = c.Name, field = req.Field, version = v.CreatedAt });
+        recorder.Audit(req.Copy ? "vault.version_copied" : "vault.version_revealed", "VaultItem", item.Id, null, new { item = item.Title, collection = c.Name, field = req.Field, version = v.CreatedAt });
         await db.SaveChangesAsync(ct);
         var policy = await PolicyAsync(ct);
         return new VaultRevealDto(value, policy.RevealSeconds, policy.ClipboardSeconds);
@@ -694,10 +702,16 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
     private async Task GuardAsync(VaultItem item, VaultCollection c, string field, string? stepUpToken, CancellationToken ct)
     {
         var (tid, me) = Who();
+        await TripwireAsync(item, c, field, ct);
         var policy = await PolicyAsync(ct);
         var fresh = await stepUp.IsFreshAsync(me, stepUpToken, ct);
+        if (c.RequireApproval && !await HasApprovalAsync(item, me, ct))
+            throw await DenyAsync(item, c, field, "no approval (two-person rule)", new ForbiddenException("Someone else must approve this first (the two-person rule). Ask for access: it ends by itself.", "VAULT_APPROVAL_REQUIRED"), ct);
         if (NeedsStepUp(item, c, policy) && !fresh)
-            throw await DenyAsync(item, c, field, "no fresh two-step check", new ForbiddenException("This needs a fresh two-step check. Confirm with your authenticator first.", "STEP_UP_REQUIRED"), ct);
+            throw await DenyAsync(item, c, field, "no fresh two-step check", new ForbiddenException("This needs a fresh two-step check. Confirm it is you first.", "STEP_UP_REQUIRED"), ct);
+        _risk = await RiskAsync(item, ct);
+        if (_risk.Score >= RiskThreshold && !fresh)
+            throw await DenyAsync(item, c, field, $"unusual: {Sentence(_risk.Reasons)}", new ForbiddenException($"This looks unusual — {Sentence(_risk.Reasons)}. Confirm it is you.", "STEP_UP_REQUIRED"), ct);
         var minute = clock.Now.AddMinutes(-1);
         if (await db.AuditLogs.CountAsync(a => a.TenantId == tid && a.UserId == me && a.CreatedAt > minute && a.EntityType == "VaultItem" && (UseActions.Contains(a.Action) || a.Action == "vault.reveal_denied"), ct) >= RevealsPerMinute)
             throw new TooManyRequestsException("Too many in a minute. Wait a moment.", "VAULT_LIMITED");

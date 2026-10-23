@@ -89,6 +89,14 @@ public partial class AppDbContext
             e.Property(x => x.Signature).HasMaxLength(120);
             e.HasOne<VaultCollection>().WithMany().HasForeignKey(x => x.CollectionId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<VaultAccessRequest>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.CollectionId, x.Status });
+            e.HasIndex(x => new { x.TenantId, x.RequesterId, x.Status });
+            e.HasIndex(x => new { x.TenantId, x.ItemId, x.RequesterId });
+            e.Property(x => x.Reason).HasMaxLength(500);
+            e.Property(x => x.DecisionNote).HasMaxLength(300);
+        });
         b.Entity<VaultDeviceLink>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.UserId, x.ExpiresAt });

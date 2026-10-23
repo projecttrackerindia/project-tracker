@@ -19,7 +19,7 @@ namespace ProjectManagement.Application.Features.Vault;
 /// </summary>
 public class VaultOffboarding(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, NotificationService notifications)
 {
-    private static readonly string[] UseActions = ["vault.revealed", "vault.copied", "vault.totp_used", "vault.version_revealed"];
+    private static readonly string[] UseActions = ["vault.revealed", "vault.copied", "vault.totp_used", "vault.version_revealed", "vault.version_copied"];
     /// <summary>Fetching a sealed collection's ciphertext: with the key, everything in it can be read, so it counts as using every item.</summary>
     private const string SealedListed = "vault.sealed_listed";
 

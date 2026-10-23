@@ -9,7 +9,7 @@ import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 
-// The password vault: values stay masked until asked for and hide again by themselves, copying clears the clipboard, confidential items ask
+// The password vault: values are never drawn outside the edit screen (copy only), the vault covers itself when the window is left, copying clears the clipboard, confidential items ask
 // for a two-step code once, use-only items can be copied but not shown, one-time codes come from the server, the editor's generator and
 // strength meter, import from a CSV export, sharing, health, administration, and the phone layout in both themes. Then the sealed vault:
 // keys made in the browser with a passkey (a virtual authenticator with PRF), the recovery kit, a sealed collection and item whose
@@ -66,8 +66,8 @@ const err = (status, code, message) => ({ status, body: { errors: [{ code, messa
 
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 try {
-  const make = async (theme = 'light') => {
-    const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
+  const make = async (theme = 'light', extra = {}) => {
+    const ctx = await browser.newContext({ ...extra, timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
     await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
     await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); }, theme);
     await ctx.route('**/*', async (route) => {
@@ -157,20 +157,18 @@ try {
   checks.push('list-without-secrets');
   await shot(page, 'list-1440.png');
 
-  // Reveal: one field, masked again by itself.
+  // The item view never draws a secret: masked, copy only (the edit screen is the one place a value shows).
   await page.locator('.vlt-item[data-item="Bank portal"]').click();
   await page.locator('.vlt-panel[data-item="Bank portal"]').waitFor();
   assert.equal(await page.locator('[data-field="password"] .vlt-secret').getAttribute('data-state'), 'masked');
   assert.ok(await page.getByText('ravi@fivestar.in').isVisible(), 'non-secret user name shown');
   assert.ok(!(await html(page)).includes(SECRETS.i1.password));
-  await page.getByRole('button', { name: 'Reveal Password' }).click();
-  await page.locator('[data-field="password"] [data-state="revealed"]').waitFor();
-  assert.equal(await page.locator('[data-field="password"] [data-state="revealed"]').innerText(), SECRETS.i1.password);
-  assert.deepEqual(writes.filter((w) => w.ep.endsWith('/i1/reveal')).at(-1).body, { field: 'password', copy: false });
-  assert.ok(!(await html(page)).includes(SECRETS.i1.note), 'only the field asked for');
-  await page.locator('[data-field="password"] [data-state="masked"]').waitFor({ timeout: 6000 });
-  assert.ok(!(await html(page)).includes(SECRETS.i1.password), 'hidden again after the reveal time');
-  checks.push('reveal-one-field-then-hide');
+  assert.equal(await page.locator('.vlt-panel').getByRole('button', { name: /^(Reveal|Show) / }).count(), 0, 'no reveal button in the item view');
+  assert.equal(await page.locator('.vlt-panel [data-state="revealed"]').count(), 0);
+  assert.equal(writes.filter((w) => w.ep.endsWith('/reveal')).length, 0, 'opening an item fetches no value');
+  assert.match(await page.locator('.vlt-copy-only').innerText(), /never shown here/);
+  assert.match(await page.getByTestId('shield-note').innerText(), /browser tab cannot hide itself from screen sharing/);
+  checks.push('item-view-copy-only');
 
   // Copy: on the clipboard, then cleared.
   await page.getByRole('button', { name: 'Copy Password' }).click();
@@ -182,30 +180,33 @@ try {
   assert.equal(await clip(page), '', 'clipboard cleared after the workspace time');
   checks.push('copy-and-clear-clipboard');
 
-  // Leaving the tab hides everything at once.
-  await page.getByRole('button', { name: 'Reveal Notes' }).click();
-  await page.locator('[data-field="note"] [data-state="revealed"]').waitFor();
-  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
-  await page.locator('[data-field="note"] [data-state="masked"]').waitFor();
-  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); });
-  checks.push('hide-when-tab-left');
+  // Switching to another window (a meeting app sharing the screen) covers the vault at once; coming back uncovers it.
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await page.getByTestId('vault-cover').waitFor();
+  assert.match(await page.getByTestId('vault-cover').innerText(), /Vault hidden/);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.getByTestId('vault-cover').waitFor({ state: 'detached' });
+  checks.push('cover-when-window-left');
 
   // Files: download goes by POST and records.
   await page.getByRole('tab', { name: /Files/ }).click();
   const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download recovery.txt' }).click()]);
   assert.equal(dl.suggestedFilename(), 'recovery.txt');
   assert.ok(writes.some((w) => w.ep === '/api/v1/vault/attachments/a1/download'));
-  // History: always a two-step check (asked for first, so nothing is refused for nothing).
+  // History: copied, never shown; always a two-step check (asked for first, so nothing is refused for nothing).
   await page.getByRole('tab', { name: /Earlier values/ }).click();
-  await page.locator('.vlt-history').getByRole('button', { name: 'Reveal' }).click();
+  assert.equal(await page.locator('.vlt-history').getByRole('button', { name: /Reveal/ }).count(), 0);
+  await page.locator('.vlt-history').getByRole('button', { name: 'Copy the earlier Password' }).click();
   await page.locator('.modal').getByText('Confirm it is you').waitFor();
   assert.equal(writes.filter((w) => w.ep.includes('/versions/')).length, 0, 'the code is asked for before the request');
   await page.getByLabel('Two-step code').fill('000000'); await page.getByRole('button', { name: 'Confirm' }).click();
   await page.locator('.modal .form-error').waitFor();
   await page.getByLabel('Two-step code').fill('123 456'); await page.getByRole('button', { name: 'Confirm' }).click();
-  await page.locator('.vlt-history code.vlt-secret').waitFor();
-  assert.equal(await page.locator('.vlt-history code.vlt-secret').innerText(), 'Old!Value#2025');
-  assert.equal(writes.filter((w) => w.ep.includes('/versions/')).at(-1).body.stepUp, STEP);
+  await waitFor(() => writes.some((w) => w.ep.includes('/versions/') && w.body.stepUp === STEP), 'earlier value copied');
+  await page.waitForTimeout(300);
+  assert.equal(await clip(page), 'Old!Value#2025');
+  assert.equal(writes.filter((w) => w.ep.includes('/versions/')).at(-1).body.copy, true);
+  assert.ok(!(await html(page)).includes('Old!Value#2025'), 'an earlier value is never drawn');
   await page.getByRole('tab', { name: 'Activity' }).click();
   await page.locator('.vlt-activity li.warn').waitFor();
   checks.push('files-history-activity');
@@ -214,10 +215,11 @@ try {
   await page.locator('.vlt-item[data-item="AWS root account"]').click();
   await page.locator('.vlt-panel[data-item="AWS root account"]').waitFor();
   assert.ok(await page.locator('.vlt-badges').getByText('Confidential').isVisible());
-  await page.getByRole('button', { name: 'Reveal Password' }).click();
-  await page.locator('[data-field="password"] [data-state="revealed"]').waitFor();
+  await page.getByRole('button', { name: 'Copy Password' }).click();
+  await waitFor(() => writes.some((w) => w.ep.endsWith('/i2/reveal')), 'confidential copy');
   assert.equal(await page.locator('.modal').count(), 0);
   assert.equal(writes.filter((w) => w.ep.endsWith('/i2/reveal')).at(-1).body.stepUp, STEP);
+  assert.equal(writes.filter((w) => w.ep.endsWith('/i2/reveal')).at(-1).body.copy, true);
   checks.push('confidential-step-up-once');
 
   // Use only: no reveal, only copy.
@@ -266,19 +268,30 @@ try {
   assert.equal(created.fields.find((f) => f.key === 'totp').value, 'JBSW Y3DP EHPK 3PXP');
   checks.push('create-with-generator');
 
-  // Edit: a secret left empty is kept, not erased.
+  // Edit: the one place a value shows — fetched only when asked for (recorded as for the edit screen), masked again when the window is
+  // left; a secret left as it was is kept, not erased or re-saved.
   await page.locator('.vlt-item[data-item="Bank portal"]').click();
   await page.locator('.vlt-panel[data-item="Bank portal"]').waitFor();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.locator('.modal').getByText('Edit “Bank portal”').waitFor();
   assert.equal(await page.locator('#vf-password').inputValue(), '');
+  assert.ok(!(await html(page)).includes(SECRETS.i1.password), 'not in the edit screen until asked for');
+  await page.getByRole('button', { name: 'Show the current Password' }).click();
+  await page.locator('#vf-password[data-state="revealed"]').waitFor();
+  assert.equal(await page.locator('#vf-password').inputValue(), SECRETS.i1.password);
+  assert.equal(await page.locator('#vf-password').getAttribute('type'), 'text');
+  { const b = writes.filter((w) => w.ep.endsWith('/i1/reveal')).at(-1).body; assert.deepEqual([b.field, b.copy, b.forEdit], ['password', false, true]); }
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await page.locator('#vf-password[data-state="masked"]').waitFor();
+  assert.equal(await page.locator('#vf-password').getAttribute('type'), 'password');
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await page.locator('#vi-title').fill('Bank portal (main)');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items/i1' && w.body), 'update');
   const updated = writes.find((w) => w.ep === '/api/v1/vault/items/i1').body;
   assert.deepEqual(updated.fields.find((f) => f.key === 'password'), { key: 'password', label: 'Password', type: 'password', secret: true, keep: true });
   assert.equal(updated.title, 'Bank portal (main)');
-  checks.push('edit-keeps-secret');
+  checks.push('edit-shows-on-request-and-keeps-secret');
 
   // Import a Bitwarden export.
   await page.getByRole('button', { name: 'Import' }).click();
@@ -383,11 +396,22 @@ try {
   assert.match(sent.id, /^[0-9a-f-]{36}$/, 'the id is made in the browser (it is bound into the encryption)');
   await page.locator('.vlt-panel-sealed[data-item="Cloud root"]').waitFor();
   const revealsBefore = writes.filter((w) => w.ep.endsWith('/reveal')).length;
-  await page.getByRole('button', { name: 'Reveal Password' }).click();
-  assert.equal(await page.locator('.vlt-panel-sealed [data-field="password"] [data-state="revealed"]').innerText(), 'Se@led!Root#2026x');
+  assert.equal(await page.locator('.vlt-panel-sealed').getByRole('button', { name: /^(Reveal|Show) / }).count(), 0, 'no reveal in the sealed item view');
+  assert.ok(!(await html(page)).includes('Se@led!Root#2026x'), 'decrypted in memory, never drawn');
+  await page.locator('.vlt-panel-sealed').getByRole('button', { name: 'Copy Password' }).click();
+  await page.waitForTimeout(300);
+  assert.equal(await clip(page), 'Se@led!Root#2026x');
   assert.equal(writes.filter((w) => w.ep.endsWith('/reveal')).length, revealsBefore, 'decrypted here, not asked of the server');
-  await waitFor(() => sealedState.events.some((e) => e.action === 'revealed'), 'the reveal is recorded');
+  await waitFor(() => sealedState.events.some((e) => e.action === 'copied'), 'the copy is recorded');
   assert.ok(await page.locator('.vlt-panel-sealed .vlt-e2ee').isVisible());
+  // In the edit screen it can be shown (recorded), and it masks itself again.
+  await page.locator('.vlt-panel-sealed').getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.locator('#vf-password[data-state="masked"]').waitFor();
+  await page.getByRole('button', { name: 'Show Password', exact: true }).click();
+  await page.locator('#vf-password[data-state="revealed"]').waitFor();
+  assert.equal(await page.locator('#vf-password').inputValue(), 'Se@led!Root#2026x');
+  await waitFor(() => sealedState.events.some((e) => e.action === 'revealed' && /edit screen/.test(e.field)), 'the edit-screen reveal is recorded');
+  await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click();
   checks.push('sealed-item-never-readable-on-server');
   await shot(page, 'sealed-item-1440.png');
 
@@ -450,8 +474,7 @@ try {
     await page.locator('.vlt-item[data-item^="Bank portal"]').click();
     await page.locator('.vlt-panel[data-item^="Bank portal"]').waitFor();
     assert.equal(await page.locator('.vlt-main').isVisible(), false, 'the panel replaces the list on a phone');
-    await page.getByRole('button', { name: 'Reveal Password' }).click();
-    await page.locator('[data-field="password"] [data-state="revealed"]').waitFor();
+    assert.equal(await page.locator('[data-field="password"] .vlt-secret').getAttribute('data-state'), 'masked');
     await fitsPhone(page, `vault item ${theme}`, assert);
     await shot(page, `phone-item-${theme}.png`);
     await page.getByRole('button', { name: 'Back to the list' }).click();
@@ -463,6 +486,23 @@ try {
     await ctx.close();
   }
   checks.push('phone-both-themes');
+
+  // The desktop app: the window is kept out of screen sharing while the vault is open, and let go when it is left.
+  ctx = await make('light', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/141 ProjectTrackerDesktop/1.0.0' });
+  await ctx.addInitScript(() => { window.__shield = []; window.ptDesktop = { platform: 'win32', protectContent: (on) => window.__shield.push(on), windowControl: () => {}, onMaximizeChange: () => {}, attention: () => {} }; });
+  page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message)); await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${origin}/preview-org/vault`); await page.locator('.vlt-items').waitFor();
+  assert.deepEqual(await page.evaluate(() => window.__shield), [true], 'shield on while the vault is open');
+  assert.match(await page.getByTestId('shield-note').innerText(), /Hidden from screen sharing/);
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await page.waitForTimeout(200);
+  assert.equal(await page.getByTestId('vault-cover').count(), 0, 'no cover needed where the system hides the window');
+  await page.evaluate(() => { history.pushState({}, '', '/preview-org/projects'); dispatchEvent(new PopStateEvent('popstate')); });
+  await waitFor(() => true, 'navigation');
+  await page.waitForFunction(() => window.__shield.length === 2);
+  assert.deepEqual(await page.evaluate(() => window.__shield), [true, false], 'shield off once the vault is left');
+  await ctx.close();
+  checks.push('desktop-screen-share-shield');
   assert.deepEqual(errors, []);
   console.log(`Vault UI OK: ${checks.join(', ')}`);
 } finally { await browser.close(); }

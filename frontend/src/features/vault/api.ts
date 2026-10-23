@@ -86,9 +86,9 @@ export const vaultApi = {
   update: (id: string, b: SaveItem) => put<VaultItem>(`/vault/items/${id}`, b),
   remove: (id: string) => del(`/vault/items/${id}`),
   restore: (id: string) => post<VaultItem>(`/vault/items/${id}/restore`, {}),
-  reveal: (id: string, field: string, copy: boolean, stepUp?: string) => post<VaultReveal>(`/vault/items/${id}/reveal`, { field, copy, stepUp }),
+  reveal: (id: string, field: string, copy: boolean, stepUp?: string, forEdit = false) => post<VaultReveal>(`/vault/items/${id}/reveal`, { field, copy, stepUp, forEdit }),
   totp: (id: string, stepUp?: string) => post<VaultTotp>(`/vault/items/${id}/totp`, { stepUp }),
-  revealVersion: (id: string, versionId: string, field: string, stepUp?: string) => post<VaultReveal>(`/vault/items/${id}/versions/${versionId}/reveal`, { field, stepUp }),
+  revealVersion: (id: string, versionId: string, field: string, stepUp?: string, copy = false) => post<VaultReveal>(`/vault/items/${id}/versions/${versionId}/reveal`, { field, stepUp, copy }),
   activity: (id: string) => get<VaultActivity[]>(`/vault/items/${id}/activity`),
   upload: (id: string, file: File) => uploadFile<VaultAttachment>(`/vault/items/${id}/attachments`, file),
   download: (attachmentId: string, fileName: string, stepUp?: string) => downloadPost(`/vault/attachments/${attachmentId}/download`, { stepUp }, fileName),
@@ -146,7 +146,7 @@ export const HEALTH_LABEL: Record<VaultHealthFlag, string> = {
   weak: 'Weak password', reused: 'Used on another item', breached: 'In a public breach', expired: 'Past its change date', old: 'Not changed in a year', rotate: 'Should be changed',
 };
 export const ACTION_LABEL: Record<string, string> = {
-  'vault.revealed': 'Revealed', 'vault.copied': 'Copied', 'vault.totp_used': 'Took a one-time code', 'vault.version_revealed': 'Revealed an earlier value',
+  'vault.revealed': 'Revealed', 'vault.copied': 'Copied', 'vault.totp_used': 'Took a one-time code', 'vault.version_revealed': 'Revealed an earlier value', 'vault.version_copied': 'Copied an earlier value',
   'vault.reveal_denied': 'Refused', 'vault.unusual_activity': 'Paused for unusual use', 'vault.item_created': 'Created', 'vault.item_changed': 'Changed',
   'vault.item_moved': 'Moved', 'vault.item_deleted': 'Moved to the bin', 'vault.item_restored': 'Restored', 'vault.file_added': 'Added a file', 'vault.file_removed': 'Removed a file',
   'vault.unreadable': 'Could not be read',

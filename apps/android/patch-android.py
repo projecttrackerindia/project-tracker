@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Adds what the app needs to the generated Android project: permissions (notifications, camera for photos and scans), links that open the
-app (https addresses of the site and projecttracker://), the notification icon and channel for push. Safe to run again."""
+app (https addresses of the site and projecttracker://), the notification icon and channel for push, and the screen shield (the page marks
+the screen secure while it shows the password vault: screenshots, recordings, casting and the recent-apps preview are black). Safe to run again."""
 import re, shutil, sys, pathlib
 
 host = sys.argv[1]
@@ -48,4 +49,47 @@ shutil.copytree('native/res', res, dirs_exist_ok=True)
 colors = res / 'values' / 'notification_colors.xml'
 colors.parent.mkdir(parents=True, exist_ok=True)
 colors.write_text('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="notification_accent">#7C3AED</color>\n</resources>\n')
+
+# The screen shield: a small plugin the page calls (ScreenShield.set({ on })), registered in the main activity.
+mains = list((root / 'java').rglob('MainActivity.java'))
+if not mains:
+    sys.exit('MainActivity.java not found: run "npx cap add android" first')
+main = mains[0]
+pkg = re.search(r'^package\s+([\w.]+);', main.read_text(), re.M).group(1)
+(main.parent / 'ScreenShieldPlugin.java').write_text(f'''package {pkg};
+
+import android.view.WindowManager;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+/** Marks the screen secure while the page shows secrets: screenshots, screen recordings, casting and the recent-apps preview show black. */
+@CapacitorPlugin(name = "ScreenShield")
+public class ScreenShieldPlugin extends Plugin {{
+    @PluginMethod
+    public void set(PluginCall call) {{
+        final boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        getActivity().runOnUiThread(() -> {{
+            if (on) getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            else getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            call.resolve();
+        }});
+    }}
+}}
+''')
+src = main.read_text()
+if 'ScreenShieldPlugin' not in src:
+    src = re.sub(r'public class MainActivity extends BridgeActivity\s*\{\s*\}', '''public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(android.os.Bundle savedInstanceState) {
+        registerPlugin(ScreenShieldPlugin.class);
+        super.onCreate(savedInstanceState);
+    }
+}''', src)
+    if 'ScreenShieldPlugin' not in src:
+        src = src.replace('super.onCreate(savedInstanceState);', 'registerPlugin(ScreenShieldPlugin.class);\n        super.onCreate(savedInstanceState);', 1)
+    if 'ScreenShieldPlugin' not in src:
+        sys.exit('Could not register the screen shield in MainActivity.java')
+    main.write_text(src)
 print('Android project patched')

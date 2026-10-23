@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { projectApi, teamApi, workspaceApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
@@ -13,6 +13,7 @@ import { copySecret, generatePassphrase, generatePassword, looksLikeTotp, readEx
 import { keyring } from './e2ee/keyring';
 import { SealedKeysPanel } from './SealedVault';
 import * as sealed from './e2ee/sealed';
+import { useStepUp } from './stepUpContext';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 const KINDS: VaultItemKind[] = ['Login', 'ApiKey', 'Server', 'Database', 'Card', 'Note', 'Other'];
@@ -81,25 +82,65 @@ export function Generator({ onUse, clipboardSeconds }: { onUse?: (v: string) => 
   );
 }
 
-function SecretInput({ field, value, onChange, existing, clipboardSeconds }: { field: { key: string; label: string; type: FieldType }; value: string; onChange: (v: string) => void; existing: boolean; clipboardSeconds: number }) {
-  const [visible, setVisible] = useState(false);
+/**
+ * A secret in the edit screen — the only place a value can be shown. It stays masked until asked for, hides itself again after the
+ * workspace's reveal time, and as soon as the window loses focus or the tab is left. For a guarded item the current value is not in the page
+ * at all until someone who can manage the item asks for it here (with any two-step check it needs); that is recorded.
+ */
+function SecretInput({ field, value, onChange, existing, clipboardSeconds, revealSeconds, onLoadCurrent, onShown }: {
+  field: { key: string; label: string; type: FieldType }; value: string; onChange: (v: string) => void; existing: boolean; clipboardSeconds: number; revealSeconds: number;
+  onLoadCurrent?: () => Promise<boolean>; onShown?: () => void;
+}) {
+  const [visible, setVisibleRaw] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const told = useRef(false);
+  const setVisible = useCallback((v: boolean) => {
+    setVisibleRaw(v);
+    if (v && onShown && !told.current) { told.current = true; onShown(); }
+  }, [onShown]);
+  useEffect(() => {
+    if (!visible) return;
+    const off = () => setVisibleRaw(false);
+    const onHidden = () => { if (document.hidden) off(); };
+    const t = window.setTimeout(off, Math.max(5, revealSeconds) * 1000);
+    window.addEventListener('blur', off); document.addEventListener('visibilitychange', onHidden);
+    return () => { window.clearTimeout(t); window.removeEventListener('blur', off); document.removeEventListener('visibilitychange', onHidden); };
+  }, [visible, revealSeconds]);
   const [gen, setGen] = useState(false);
   const [check, setCheck] = useState<{ strength: number; breachCount: number } | null>(null);
   const [checking, setChecking] = useState(false);
-  const placeholder = existing ? 'Unchanged — type to replace it' : field.type === 'totp' ? 'Setup key (JBSW Y3DP …) or otpauth:// address' : '';
+  const canLoad = existing && value === '' && !!onLoadCurrent;
+  const placeholder = existing ? (canLoad ? 'Unchanged — type to replace it, or show the current value' : 'Unchanged — type to replace it') : field.type === 'totp' ? 'Setup key (JBSW Y3DP …) or otpauth:// address' : '';
   const multi = field.type === 'note' || field.type === 'key';
   const totpBad = field.type === 'totp' && !looksLikeTotp(value);
+  const toggle = async () => {
+    if (visible) { setVisibleRaw(false); return; }
+    if (canLoad) {
+      setLoading(true);
+      try { if (await onLoadCurrent!()) setVisibleRaw(true); } finally { setLoading(false); }
+      return;
+    }
+    setVisible(true);
+  };
+  const eye = (value !== '' || canLoad) && (
+    <button type="button" className="btn-icon" aria-label={visible ? `Hide ${field.label}` : canLoad ? `Show the current ${field.label}` : `Show ${field.label}`} aria-pressed={visible} disabled={loading} onClick={() => void toggle()}>
+      {loading ? <Spinner /> : <Icon name={visible ? 'eyeOff' : 'eye'} size={15} />}
+    </button>
+  );
   return (
     <div className={`field full vlt-secret-input${totpBad ? ' invalid' : ''}`} data-field={field.key}>
       <label htmlFor={`vf-${field.key}`}>{field.label}</label>
       {multi ? (
-        <textarea id={`vf-${field.key}`} className={`textarea vlt-mono${visible || !value ? '' : ' vlt-blur'}`} rows={field.type === 'key' ? 5 : 3} value={value} placeholder={placeholder}
-          spellCheck={false} autoComplete="off" onChange={(e) => onChange(e.target.value)} onFocus={() => setVisible(true)} onBlur={() => setVisible(false)} />
+        <div className="vlt-input-row vlt-input-row-top">
+          <textarea id={`vf-${field.key}`} className={`textarea vlt-mono${visible || !value ? '' : ' vlt-blur'}`} rows={field.type === 'key' ? 5 : 3} value={value} placeholder={placeholder}
+            data-state={visible ? 'revealed' : 'masked'} spellCheck={false} autoComplete="off" onChange={(e) => onChange(e.target.value)} />
+          {eye}
+        </div>
       ) : (
         <div className="vlt-input-row">
-          <input id={`vf-${field.key}`} className="input vlt-mono" type={visible || field.type === 'totp' ? 'text' : 'password'} value={value} placeholder={placeholder}
-            autoComplete="new-password" spellCheck={false} data-lpignore="true" data-1p-ignore="true" onChange={(e) => { onChange(e.target.value); setCheck(null); }} />
-          {field.type !== 'totp' && <button type="button" className="btn-icon" aria-label={visible ? `Hide ${field.label}` : `Show ${field.label}`} onClick={() => setVisible((v) => !v)}><Icon name={visible ? 'eyeOff' : 'eye'} size={15} /></button>}
+          <input id={`vf-${field.key}`} className="input vlt-mono" type={visible ? 'text' : 'password'} value={value} placeholder={placeholder}
+            data-state={visible ? 'revealed' : 'masked'} autoComplete="new-password" spellCheck={false} data-lpignore="true" data-1p-ignore="true" onChange={(e) => { onChange(e.target.value); setCheck(null); }} />
+          {eye}
           {field.type === 'password' && <button type="button" className="btn-icon" aria-label="Generate" aria-expanded={gen} onClick={() => setGen((g) => !g)}><Icon name="sparkle" size={15} /></button>}
         </div>
       )}
@@ -116,22 +157,23 @@ function SecretInput({ field, value, onChange, existing, clipboardSeconds }: { f
             : <span className="vlt-check ok" role="status">Not found in public breaches.</span>)}
         </div>
       )}
-      {gen && <Generator clipboardSeconds={clipboardSeconds} onUse={(v) => { onChange(v); setGen(false); setVisible(false); }} />}
+      {gen && <Generator clipboardSeconds={clipboardSeconds} onUse={(v) => { onChange(v); setGen(false); setVisibleRaw(false); }} />}
     </div>
   );
 }
 
 // ------------------------------------------------------------------ item editor
 
-interface Row { key: string; label: string; type: FieldType; secret: boolean; value: string; existing: boolean; custom: boolean }
+interface Row { key: string; label: string; type: FieldType; secret: boolean; value: string; existing: boolean; custom: boolean; /** the stored value, once shown here */ orig?: string }
 
 /** A sealed item being edited: its decrypted contents (from this page's memory) and where it lives. */
 export interface SealedEdit { item: sealed.SealedItem; collection: VaultCollection }
 const sealedOpen = (c: VaultCollection) => c.sealed && !!keyring.collectionKey(c.id, c.keyVersion);
 
-export function ItemEditor({ existing, sealedEdit, collections, defaultCollection, clipboardSeconds, onClose, onSaved }: {
-  existing: VaultItem | null; sealedEdit?: SealedEdit | null; collections: VaultCollection[]; defaultCollection: string | null; clipboardSeconds: number; onClose: () => void; onSaved: (id: string) => void;
+export function ItemEditor({ existing, sealedEdit, collections, defaultCollection, clipboardSeconds, revealSeconds = 30, onClose, onSaved }: {
+  existing: VaultItem | null; sealedEdit?: SealedEdit | null; collections: VaultCollection[]; defaultCollection: string | null; clipboardSeconds: number; revealSeconds?: number; onClose: () => void; onSaved: (id: string) => void;
 }) {
+  const step = useStepUp();
   // Sealed collections are offered when their key is open on this device; a guarded item cannot move into one (it is copied when sealing).
   const manageable = collections.filter((c) => c.myAccess === 'Manage' && !c.locked && !c.rekeyNeeded && (!c.sealed || (sealedOpen(c) && !existing)));
   const members = useWsQuery(['vault', 'members'], () => workspaceApi.members(), { staleTime: 300_000, retry: false });
@@ -159,7 +201,18 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
   const [rows, setRows] = useState<Row[]>(() => initialRows(kind));
   const [adding, setAdding] = useState<{ label: string; type: FieldType } | null>(null);
   const target = sealedEdit?.collection ?? collections.find((c) => c.id === collectionId);
-  const changedSecret = sp ? rows.some((r) => r.secret && r.value !== (sp.fields.find((f) => f.key === r.key)?.value ?? '')) : rows.some((r) => r.secret && r.value !== '');
+  const changedSecret = sp ? rows.some((r) => r.secret && r.value !== (sp.fields.find((f) => f.key === r.key)?.value ?? '')) : rows.some((r) => r.secret && r.value !== (r.orig ?? ''));
+  // A guarded item's current value comes to this screen only when asked for (recorded, with any two-step check it needs).
+  const loadCurrent = (r: Row) => async () => {
+    if (!existing) return false;
+    try {
+      const res = await step.run((t) => vaultApi.reveal(existing.item.id, r.key, false, t, true), existing.needsStepUp);
+      if (!res) return false;
+      setRows((rs) => rs.map((x) => (x.key === r.key ? { ...x, value: res.value, orig: res.value } : x)));
+      return true;
+    } catch (e) { toast(errText(e, 'Could not show it.'), 'error'); return false; }
+  };
+  const shownSealed = (r: Row) => () => { if (sealedEdit && sp?.fields.some((f) => f.key === r.key && f.value)) void vaultApi.sealedEvent(sealedEdit.item.row.id, 'revealed', `${r.label} (edit screen)`).catch(() => undefined); };
 
   const setRow = (key: string, value: string) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, value } : r)));
   const totpBad = rows.some((r) => r.type === 'totp' && !looksLikeTotp(r.value));
@@ -170,7 +223,7 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
     if (!collectionId) { setError('Choose where to keep it.'); return; }
     if (totpBad) { setError('Fix the one-time-code key first.'); return; }
     const fields: FieldInput[] = rows.map((r) => r.secret
-      ? (r.value === '' && r.existing ? { key: r.key, label: r.label, type: r.type, secret: true, keep: true } : { key: r.key, label: r.label, type: r.type, secret: true, value: r.value || null })
+      ? ((r.value === '' || r.value === r.orig) && r.existing ? { key: r.key, label: r.label, type: r.type, secret: true, keep: true } : { key: r.key, label: r.label, type: r.type, secret: true, value: r.value || null })
       : { key: r.key, label: r.label, type: r.type, secret: false, value: r.value.trim() || null });
     const body = {
       collectionId, kind, title: title.trim(), url: url.trim() || null, tags: tags.split(',').map((t) => t.trim()).filter(Boolean), class: cls, useOnly,
@@ -221,7 +274,8 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
         </Field>
         {kind !== 'Note' && kind !== 'Card' && <Field label="Address" full><input className="input" value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} placeholder="https://console.aws.amazon.com" inputMode="url" /></Field>}
         {rows.map((r) => r.secret
-          ? <SecretInput key={r.key} field={r} value={r.value} existing={r.existing} clipboardSeconds={clipboardSeconds} onChange={(v) => setRow(r.key, v)} />
+          ? <SecretInput key={r.key} field={r} value={r.value} existing={r.existing} clipboardSeconds={clipboardSeconds} revealSeconds={revealSeconds}
+              onLoadCurrent={existing?.canReveal && existing.canManage ? loadCurrent(r) : undefined} onShown={sealedEdit ? shownSealed(r) : undefined} onChange={(v) => setRow(r.key, v)} />
           : (
             <div key={r.key} className="field" data-field={r.key}>
               <label htmlFor={`vf-${r.key}`}>{r.label}</label>
@@ -247,7 +301,7 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
 
         <fieldset className="field full vlt-protect">
           <legend>Protection</legend>
-          <label><input type="radio" name="vcls" checked={cls === 'Secret'} onChange={() => setCls('Secret')} /> <b>Secret</b> <span className="muted">Shown or copied by people with access; every use is recorded.</span></label>
+          <label><input type="radio" name="vcls" checked={cls === 'Secret'} onChange={() => setCls('Secret')} /> <b>Secret</b> <span className="muted">Copied by people with access (shown only here, to managers); every use is recorded.</span></label>
           <label><input type="radio" name="vcls" checked={cls === 'Confidential'} onChange={() => setCls('Confidential')} /> <b>Confidential</b> <span className="muted">Also needs a fresh two-step check every time.</span></label>
           {target?.sealed
             ? <p className="vlt-small muted"><Icon name="lock" size={12} /> Sealed collections have no use-only items: whoever holds the key can read the value. Use a guarded collection for that.</p>

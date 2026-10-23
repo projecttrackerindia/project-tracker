@@ -39,6 +39,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     Sealed = table.Column<bool>(type: "boolean", nullable: false),
                     SealedKeyVersion = table.Column<int>(type: "integer", nullable: false),
                     RekeyNeeded = table.Column<bool>(type: "boolean", nullable: false),
+                    RequireApproval = table.Column<bool>(type: "boolean", nullable: false),
+                    Requestable = table.Column<bool>(type: "boolean", nullable: false),
                     TenantId = table.Column<Guid>(type: "uuid", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
@@ -113,6 +115,7 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     DeletedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     DeletedBy = table.Column<Guid>(type: "uuid", nullable: true),
                     Sealed = table.Column<bool>(type: "boolean", nullable: false),
+                    Decoy = table.Column<bool>(type: "boolean", nullable: false),
                     TenantId = table.Column<Guid>(type: "uuid", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
@@ -289,11 +292,43 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     table.PrimaryKey("PK_VaultDeviceLinks", x => x.Id);
                 });
             migrationBuilder.CreateIndex(name: "IX_VaultDeviceLinks_TenantId_UserId_ExpiresAt", table: "VaultDeviceLinks", columns: new[] { "TenantId", "UserId", "ExpiresAt" });
+
+            migrationBuilder.CreateTable(
+                name: "VaultAccessRequests",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Kind = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    CollectionId = table.Column<Guid>(type: "uuid", nullable: false),
+                    ItemId = table.Column<Guid>(type: "uuid", nullable: true),
+                    RequesterId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Reason = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
+                    Access = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    Minutes = table.Column<int>(type: "integer", nullable: false),
+                    Status = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    DecidedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    DecidedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    DecisionNote = table.Column<string>(type: "character varying(300)", maxLength: 300, nullable: true),
+                    GrantedUntil = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VaultAccessRequests", x => x.Id);
+                });
+            migrationBuilder.CreateIndex(name: "IX_VaultAccessRequests_TenantId_CollectionId_Status", table: "VaultAccessRequests", columns: new[] { "TenantId", "CollectionId", "Status" });
+            migrationBuilder.CreateIndex(name: "IX_VaultAccessRequests_TenantId_RequesterId_Status", table: "VaultAccessRequests", columns: new[] { "TenantId", "RequesterId", "Status" });
+            migrationBuilder.CreateIndex(name: "IX_VaultAccessRequests_TenantId_ItemId_RequesterId", table: "VaultAccessRequests", columns: new[] { "TenantId", "ItemId", "RequesterId" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(name: "VaultAccessRequests");
             migrationBuilder.DropTable(name: "VaultDeviceLinks");
             migrationBuilder.DropTable(name: "VaultKeyEnvelopes");
             migrationBuilder.DropTable(name: "VaultUnlocks");

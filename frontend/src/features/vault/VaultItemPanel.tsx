@@ -7,17 +7,16 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { ACTION_LABEL, HEALTH_LABEL, KIND_ICON, KIND_LABEL, vaultApi, type VaultField, type VaultItem, type VaultPolicy, type VaultTotp } from './api';
-import { copySecret, strength, STRENGTH_LABEL } from './secure';
+import { copySecret, STRENGTH_LABEL } from './secure';
 import { useStepUp } from './stepUpContext';
 
 const MASK = '••••••••••••';
-interface Shown { value: string; seconds: number }
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 /**
- * One item. Secret fields arrive masked; a value is fetched only when asked for, one field at a time, kept in this component's memory (never
- * in the query cache), hidden again after the workspace's reveal time, when the tab is left, or when the vault locks.
+ * One item. Secret values are never drawn here: they stay masked, and a value is fetched only to be copied (one field at a time, straight to
+ * the clipboard, which clears itself). The only place a value can be shown is the edit screen, for people who can manage the item.
  */
 export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, onClose, onChanged }: {
   id: string; policy: VaultPolicy; lockEpoch: number; binned?: boolean; onEdit: (item: VaultItem) => void; onClose: () => void; onChanged: () => void;
@@ -25,39 +24,15 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, 
   const wid = useWorkspaceId();
   const q = useWsQuery(['vault', 'item', id], () => vaultApi.item(id), { staleTime: 0 });
   const step = useStepUp();
-  const [shown, setShown] = useState<Record<string, Shown>>({});
-  const timers = useRef<Record<string, number>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [tab, setTab] = useState<'details' | 'files' | 'history' | 'activity'>('details');
-
-  const hide = useCallback((key: string) => {
-    window.clearTimeout(timers.current[key]); delete timers.current[key];
-    setShown((s) => { if (!(key in s)) return s; const n = { ...s }; delete n[key]; return n; });
-  }, []);
-  const hideAll = useCallback(() => { Object.values(timers.current).forEach((t) => window.clearTimeout(t)); timers.current = {}; setShown({}); }, []);
-  useEffect(() => {
-    const onHidden = () => { if (document.hidden) hideAll(); };
-    document.addEventListener('visibilitychange', onHidden); window.addEventListener('pagehide', hideAll);
-    return () => { document.removeEventListener('visibilitychange', onHidden); window.removeEventListener('pagehide', hideAll); hideAll(); };
-  }, [hideAll]);
-  useEffect(() => { hideAll(); setTab('details'); }, [id, lockEpoch, hideAll]);
+  useEffect(() => { setTab('details'); }, [id, lockEpoch]);
 
   const d = q.data;
   if (q.isLoading) return <div className="vlt-panel vlt-panel-loading"><Spinner /></div>;
   if (q.error || !d) return <div className="vlt-panel"><ErrorState error={q.error} retry={() => q.refetch()} /></div>;
   const it = d.item;
 
-  const show = async (f: VaultField) => {
-    setBusy(`show:${f.key}`);
-    try {
-      const res = await step.run((t) => vaultApi.reveal(id, f.key, false, t), d.needsStepUp);
-      if (!res) return;
-      window.clearTimeout(timers.current[f.key]);
-      setShown((s) => ({ ...s, [f.key]: { value: res.value, seconds: res.revealSeconds } }));
-      timers.current[f.key] = window.setTimeout(() => hide(f.key), res.revealSeconds * 1000);
-    } catch (e) { toast(errText(e, 'Could not reveal it.'), 'error'); }
-    finally { setBusy(null); }
-  };
   const copy = async (f: VaultField) => {
     setBusy(`copy:${f.key}`);
     try {
@@ -86,7 +61,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, 
       </header>
 
       <div className="vlt-badges">
-        {it.class === 'Confidential' && <span className="badge badge-warning" title="Every reveal or copy needs a fresh two-step check"><Icon name="shield" size={12} /> Confidential</span>}
+        {it.class === 'Confidential' && <span className="badge badge-warning" title="Every copy needs a fresh two-step check"><Icon name="shield" size={12} /> Confidential</span>}
         {d.needsStepUp && it.class !== 'Confidential' && <span className="badge badge-warning"><Icon name="shield" size={12} /> Two-step check</span>}
         {it.useOnly && <span className="badge badge-info" title="Can be copied into a sign-in form, never shown">Use only</span>}
         {it.myAccess !== 'Manage' && <span className="badge badge-neutral">Your access: {it.myAccess === 'UseOnly' ? 'use only' : it.myAccess.toLowerCase()}</span>}
@@ -137,23 +112,18 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, 
                 ) : (
                   <>
                     <div className="vlt-field-row">
-                      {shown[f.key]
-                        ? (f.type === 'note' || f.type === 'key'
-                          ? <pre className="vlt-field-value vlt-secret open" data-state="revealed">{shown[f.key].value}</pre>
-                          : <code className="vlt-field-value vlt-secret open" data-state="revealed" aria-live="polite">{shown[f.key].value}</code>)
-                        : <code className="vlt-field-value vlt-secret" data-state="masked">{MASK}</code>}
-                      {shown[f.key]
-                        ? <button className="btn-icon" aria-label={`Hide ${f.label}`} onClick={() => hide(f.key)}><Icon name="eyeOff" size={15} /></button>
-                        : d.canReveal && !binned && <button className="btn-icon" aria-label={`Reveal ${f.label}`} disabled={busy !== null} onClick={() => void show(f)}>{busy === `show:${f.key}` ? <Spinner /> : <Icon name="eye" size={15} />}</button>}
+                      <code className="vlt-field-value vlt-secret" data-state="masked" aria-label={`${f.label}, hidden`}>{MASK}</code>
                       {d.canCopy && !binned && <button className="btn-icon" aria-label={`Copy ${f.label}`} disabled={busy !== null} onClick={() => void copy(f)}>{busy === `copy:${f.key}` ? <Spinner /> : <Icon name="copy" size={15} />}</button>}
                     </div>
-                    {shown[f.key] && <div className="vlt-timer" role="timer" aria-label={`Hides in ${shown[f.key].seconds} seconds`}><i style={{ animationDuration: `${shown[f.key].seconds}s` }} /></div>}
-                    {f.type === 'password' && shown[f.key] && <p className="vlt-small muted">Strength: {STRENGTH_LABEL[strength(shown[f.key].value)]}</p>}
                   </>
                 )}
               </div>
             ))}
-          {!d.canReveal && d.canCopy && <p className="vlt-small muted"><Icon name="lock" size={13} /> You can copy these values into a sign-in form but not see them.</p>}
+          {d.fields.some((f) => f.secret && f.type !== 'totp') && d.canCopy && !binned && (
+            <p className="vlt-small muted vlt-copy-only"><Icon name="lock" size={13} /> {d.canManage && d.canReveal
+              ? 'Values are never shown here. Copy them, or open Edit to see one.'
+              : 'Values are never shown. Copy one into a sign-in form; the clipboard clears itself.'}</p>
+          )}
           <dl className="vlt-meta">
             {it.owner && <><dt>Owner</dt><dd>{it.owner.name}</dd></>}
             <dt>Strength</dt><dd>{it.strength === null ? '—' : STRENGTH_LABEL[it.strength]}</dd>
@@ -184,7 +154,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, 
         </div>
       )}
       {tab === 'files' && <FilesTab item={d} onChanged={() => void q.refetch()} />}
-      {tab === 'history' && d.canManage && <HistoryTab item={d} lockEpoch={lockEpoch} />}
+      {tab === 'history' && d.canManage && <HistoryTab item={d} />}
       {tab === 'activity' && d.canManage && <ActivityTab id={id} />}
     </section>
   );
@@ -281,41 +251,39 @@ function FilesTab({ item, onChanged }: { item: VaultItem; onChanged: () => void 
   );
 }
 
-function HistoryTab({ item, lockEpoch }: { item: VaultItem; lockEpoch: number }) {
+function HistoryTab({ item }: { item: VaultItem }) {
   const step = useStepUp();
   const secretFields = item.fields.filter((f) => f.secret && f.type !== 'totp');
   const [field, setField] = useState(secretFields.find((f) => f.key === 'password')?.key ?? secretFields[0]?.key ?? '');
-  const [shown, setShown] = useState<{ version: string; value: string } | null>(null);
-  useEffect(() => setShown(null), [lockEpoch, item.item.id]);
-  useEffect(() => {
-    if (!shown) return;
-    const t = window.setTimeout(() => setShown(null), 15_000);
-    return () => window.clearTimeout(t);
-  }, [shown]);
+  const [busy, setBusy] = useState<string | null>(null);
   if (item.versions.length === 0) return <p className="muted vlt-pad">No earlier values yet. When a secret changes, the old value is kept here (encrypted) for the last ten changes.</p>;
+  const label = secretFields.find((f) => f.key === field)?.label ?? 'Value';
   return (
     <div className="vlt-history">
       {secretFields.length > 1 && (
         <label className="field vlt-inline-field"><span>Field</span>
-          <select className="input" value={field} onChange={(e) => { setField(e.target.value); setShown(null); }}>{secretFields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}</select>
+          <select className="input" value={field} onChange={(e) => setField(e.target.value)}>{secretFields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}</select>
         </label>
       )}
       <ul>
         {item.versions.map((v) => (
           <li key={v.id}>
             <div><b>{formatDateTime(v.at)}</b> <span className="muted">{v.by ? `by ${v.by.name}` : ''}{v.reason ? ` · ${v.reason}` : ''}</span></div>
-            {shown?.version === v.id ? <code className="vlt-secret open">{shown.value}</code> : (
-              <button className="btn btn-ghost btn-sm" onClick={async () => {
-                try {
-                  const res = await step.run((t) => vaultApi.revealVersion(item.item.id, v.id, field, t), true);
-                  if (res) setShown({ version: v.id, value: res.value });
-                } catch (e) { toast(errText(e, 'Could not reveal it.'), 'error'); }
-              }}><Icon name="eye" size={14} /> Reveal</button>
-            )}
+            <code className="vlt-secret" data-state="masked">{MASK}</code>
+            <button className="btn btn-ghost btn-sm" disabled={busy !== null} aria-label={`Copy the earlier ${label}`} onClick={async () => {
+              setBusy(v.id);
+              try {
+                const res = await step.run((t) => vaultApi.revealVersion(item.item.id, v.id, field, t, true), true);
+                if (!res) return;
+                const ok = await copySecret(res.value, res.clipboardSeconds);
+                toast(ok ? `Earlier ${label.toLowerCase()} copied. The clipboard clears in ${res.clipboardSeconds} seconds.` : 'The browser did not allow copying.', ok ? 'success' : 'error');
+              } catch (e) { toast(errText(e, 'Could not copy it.'), 'error'); }
+              finally { setBusy(null); }
+            }}>{busy === v.id ? <Spinner /> : <Icon name="copy" size={14} />} Copy</button>
           </li>
         ))}
       </ul>
-      <p className="vlt-small muted">Reading an earlier value always needs a fresh two-step check and is recorded.</p>
+      <p className="vlt-small muted">Earlier values are never shown. Copying one always needs a fresh two-step check and is recorded.</p>
     </div>
   );
 }
