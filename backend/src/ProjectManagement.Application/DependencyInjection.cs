@@ -242,6 +242,7 @@ public static class DependencyInjection
         services.AddSingleton<WorkerHeartbeats>();
         services.AddScoped<ReportingLineService>();
         services.AddScoped<WebhookService>();
+        services.AddScoped<IncomingWebhookService>();
         services.AddSingleton<WebhookProcessor>();
         services.AddScoped<ApiKeyService>();
         services.AddScoped<OAuthService>();

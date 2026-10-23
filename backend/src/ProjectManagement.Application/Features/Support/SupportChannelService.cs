@@ -435,7 +435,9 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         {
             chat = new SupportConversation { TenantId = channel.TenantId, ChannelId = channel.Id, ContactKey = key, ContactProtected = secrets.Protect(from), CreatedAt = now,
                 MessagesProtected = secrets.Protect("[]") };
+            if (name is { Length: > 0 }) chat.ContactName = name.Length > 120 ? name[..120] : name;
             db.SupportConversations.Add(chat);
+            await EmitChatAsync(chat, "whatsapp.chat_started", null, ct);
         }
         var messages = Messages(chat);
         if (messages.Any(x => x.ProviderId == providerId)) return;   // Meta delivers again when it is unsure we got it
@@ -456,6 +458,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         if (media is null && chat.RatingAskedAt is { } asked && asked > now.AddDays(-3) && chat.Rating is null && RatingAnswer.Match(text) is { Success: true } rated)
         {
             chat.Rating = int.Parse(rated.Groups[1].Value); chat.RatedAt = now;
+            await EmitChatAsync(chat, "whatsapp.rated", new() { ["rating"] = chat.Rating }, ct);
             var thanks = Phrase(chat.Language, "thanks");
             try { await SendAsync(channel, from, thanks, ct); messages.Add(new("update", thanks, now, channel.AgentName)); }
             catch (Exception e) when (e is AppException or HttpRequestException) { messages.Add(new("system", "The thank-you was not sent: " + e.Message, now)); }
@@ -681,7 +684,9 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
                 c.Mode = "ai"; if (c.Status == "waiting") c.Status = "open";
                 c.NeedsReply = c.WaitingSince != null;   // a question still open gets its answer from the AI employee now
                 break;
-            case "human": c.Mode = "human"; c.NeedsReply = false; c.AssigneeId ??= ctx.UserId; break;
+            case "human":
+                if (c.Mode != "human") await EmitChatAsync(c, "whatsapp.handed_over", new() { ["reason"] = "taken over" }, ct);
+                c.Mode = "human"; c.NeedsReply = false; c.AssigneeId ??= ctx.UserId; break;
             case "close":
                 c.Status = "closed"; c.NeedsReply = false; c.WaitingSince = null;
                 await AskRatingAsync(c, ct);
@@ -710,6 +715,15 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         return await ConversationAsync(id, ct);
     }
 
+    /// <summary>A WhatsApp chat event for the workspace's webhooks (never the customer's number or what they wrote).</summary>
+    private async Task EmitChatAsync(SupportConversation c, string eventType, Dictionary<string, object?>? extra, CancellationToken ct)
+    {
+        var channel = await db.SupportChannels.IgnoreQueryFilters().AsNoTracking().Where(x => x.Id == c.ChannelId).Select(x => x.Name).FirstOrDefaultAsync(ct);
+        var data = new Dictionary<string, object?> { ["conversationId"] = c.Id, ["channel"] = channel, ["contactName"] = c.ContactName, ["language"] = c.Language };
+        if (extra is not null) foreach (var (k, v) in extra) data[k] = v;
+        await new ProjectManagement.Application.Features.Integrations.WebhookOutbox(db).EmitAsync(c.TenantId, eventType, clock.Now, data, null, ct);
+    }
+
     private async Task<string?> RaiseTicketAsync(SupportChannel channel, SupportConversation c, List<SupportMessageDto> messages, string title, string? summary, Priority priority, CancellationToken ct)
     {
         await workTypes.EnsureDefaultsAsync(ct);   // a new workspace gets its ticket types on first use
@@ -722,6 +736,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         var ticket = await workTasks.CreateAsync(new CreateWorkTaskRequest(title.Length > 200 ? title[..200] : title, details, typeId, null, null, priority, null, null, null), ct);
         c.WorkTaskId = ticket.Id;
         c.TicketState = await TicketStateAsync(ticket.Id, ct);   // the AI employee tells them itself; later changes are told by the update round
+        await EmitChatAsync(c, "whatsapp.ticket_created", new() { ["ticket"] = new { id = ticket.Id, key = ticket.Key } }, ct);
         return await db.WorkTasks.AsNoTracking().Where(t => t.Id == ticket.Id).Select(t => (int?)t.Number).FirstOrDefaultAsync(ct) is { } num ? $"WT-{num}" : null;
     }
 
@@ -782,6 +797,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         if (!ai.Configured || await entitlements.GetValueAsync(FeatureKeys.AiAssistant, ct) == 0 || await db.Tenants.Where(t => t.Id == tid).Select(t => t.AiDisabled).FirstOrDefaultAsync(ct))
         {
             c.Mode = "human"; c.Status = "waiting"; c.HandedOverAt = clock.Now; c.HandoverReason = "off";
+            await EmitChatAsync(c, "whatsapp.handed_over", new() { ["reason"] = "off" }, ct);
             await NotifyTeamAsync(channel, c, $"{Who(c)} is waiting on WhatsApp", $"{channel.Name}: the AI employee is off, so a person needs to answer.", ct);
             await db.SaveChangesAsync(ct); return;
         }
@@ -856,6 +872,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         if (string.IsNullOrEmpty(reply))
         {
             c.Mode = "human"; c.Status = "waiting"; c.NeedsReply = false; c.HandedOverAt = clock.Now; c.HandoverReason = "unsure";
+            await EmitChatAsync(c, "whatsapp.handed_over", new() { ["reason"] = "unsure" }, ct);
             await NotifyTeamAsync(channel, c, $"{Who(c)} is waiting on WhatsApp", $"{channel.Name}: the AI employee could not answer this one.", ct);
             await db.SaveChangesAsync(ct); return;
         }
@@ -886,6 +903,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         if (action == "human")
         {
             c.Mode = "human"; c.Status = "waiting"; c.HandedOverAt = clock.Now; c.HandoverReason = reason;
+            await EmitChatAsync(c, "whatsapp.handed_over", new() { ["reason"] = reason }, ct);
             await NotifyTeamAsync(channel, c, $"{Who(c)} asked for a person on WhatsApp", $"{channel.Name}: {j?["summary"]?.ToString() ?? "call them back in their language."}", ct);
         }
         await SendAsync(channel, secrets.Unprotect(c.ContactProtected), reply, ct);

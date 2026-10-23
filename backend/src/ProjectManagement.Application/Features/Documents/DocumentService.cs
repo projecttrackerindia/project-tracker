@@ -80,7 +80,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     }
 
     /// <summary>A workspace gets the built-in kinds the first time anyone looks; later releases add any kind that is missing.</summary>
-    private async Task EnsureTypesAsync(CancellationToken ct)
+    internal async Task EnsureTypesAsync(CancellationToken ct)
     {
         var tid = ctx.RequireTenantId();
         var have = await db.DocumentTypes.Select(t => t.Code).ToListAsync(ct);

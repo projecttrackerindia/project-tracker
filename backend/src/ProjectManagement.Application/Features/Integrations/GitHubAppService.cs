@@ -277,6 +277,8 @@ public class GitHubAppService(IAppDbContext db, ICurrentContext ctx, AppClock cl
     public async Task<Guid> ReleaseNotesPageAsync(Guid projectId, DateOnly? fromDate, DateOnly? toDate, CancellationToken ct = default)
     {
         var notes = await ReleaseNotesAsync(projectId, fromDate, toDate, ct);
+        var documents = services.GetRequiredService<DocumentService>();
+        await documents.EnsureTypesAsync(ct);   // a workspace that never opened DocTracker gets its page kinds now
         var type = await db.DocumentTypes.AsNoTracking().Where(t => t.Code == DocumentTemplates.PageCode).Select(t => t.Id).FirstOrDefaultAsync(ct);
         if (type == Guid.Empty) throw new ConflictException("Pages are not set up in this workspace.");
         var content = new JsonArray();
@@ -292,7 +294,6 @@ public class GitHubAppService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         }
         if (notes.Tasks.Count == 0) content.Add(Para(Text("No merged pull requests in this period.")));
         var doc = new JsonObject { ["type"] = "doc", ["content"] = content }.ToJsonString();
-        var documents = services.GetRequiredService<DocumentService>();
         var created = await documents.CreateAsync(new CreateDocumentRequest($"Release notes {notes.From:d MMM} – {notes.To:d MMM yyyy}", type, projectId,
             Sections: [new SectionInput(DocumentTemplates.PageBody, doc)], Icon: "🚀"), ct);
         return created.Item.Id;

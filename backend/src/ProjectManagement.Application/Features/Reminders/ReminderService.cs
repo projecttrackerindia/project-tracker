@@ -201,7 +201,12 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     public async Task<ReminderDto> CompleteAsync(Guid id, CancellationToken ct = default)
     {
         var r = await OwnAsync(id, ct);
+        var wasOpen = r.State is ReminderState.Scheduled or ReminderState.Fired;
         var done = Complete(db, r, clock.Now);
+        if (wasOpen && ProjectManagement.Application.Features.Integrations.ReminderWebhook.IsAboutWork(done))
+            await new ProjectManagement.Application.Features.Integrations.WebhookOutbox(db).EmitAsync(done.TenantId, "reminder.completed", clock.Now,
+                ProjectManagement.Application.Features.Integrations.ReminderWebhook.Data(done, await db.Users.AsNoTracking().Where(u => u.Id == done.UserId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct)),
+                done.TargetProjectId, ct);
         await db.SaveChangesAsync(ct);
         return Dto(done, await NamesAsync([done], ct));
     }

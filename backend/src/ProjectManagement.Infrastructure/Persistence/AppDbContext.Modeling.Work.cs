@@ -301,6 +301,7 @@ public partial class AppDbContext
             e.Property(x => x.Events).HasMaxLength(1000);
             e.Property(x => x.DisabledReason).HasMaxLength(200);
             e.Property(x => x.LastStatus).HasMaxLength(20);
+            e.Property(x => x.FilterProjects).HasMaxLength(2000); e.Property(x => x.FilterPriorities).HasMaxLength(100); e.Property(x => x.FilterStatuses).HasMaxLength(500);
             e.Property(x => x.Format).HasDefaultValue(WebhookFormat.Json).HasSentinel(WebhookFormat.Json);
         });
         b.Entity<CalendarFeed>(e =>
@@ -319,6 +320,24 @@ public partial class AppDbContext
             e.Property(x => x.Token).HasMaxLength(40);
             e.Property(x => x.LastError).HasMaxLength(300);
             e.HasOne<WorkType>().WithMany().HasForeignKey(x => x.WorkTypeId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<IncomingWebhook>(e =>
+        {
+            e.HasIndex(x => x.Token).IsUnique(); e.HasIndex(x => x.TenantId);
+            e.Property(x => x.Name).HasMaxLength(60); e.Property(x => x.Token).HasMaxLength(48); e.Property(x => x.SecretProtected).HasMaxLength(300);
+            e.Property(x => x.Target).HasMaxLength(16); e.Property(x => x.DefaultPriority).HasMaxLength(16); e.Property(x => x.Mapping).HasMaxLength(4000);
+            e.Property(x => x.LastError).HasMaxLength(300); e.Property(x => x.Sample).HasMaxLength(8000);
+        });
+        b.Entity<IncomingWebhookEvent>(e =>
+        {
+            e.HasIndex(x => new { x.IncomingWebhookId, x.ReceivedAt });
+            e.Property(x => x.Status).HasMaxLength(16); e.Property(x => x.DedupeKey).HasMaxLength(200); e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.TargetType).HasMaxLength(16); e.Property(x => x.TargetKey).HasMaxLength(40); e.Property(x => x.Error).HasMaxLength(300); e.Property(x => x.Body).HasMaxLength(4000);
+        });
+        b.Entity<IncomingWebhookThread>(e =>
+        {
+            e.HasIndex(x => new { x.IncomingWebhookId, x.DedupeKey }).IsUnique();
+            e.Property(x => x.DedupeKey).HasMaxLength(200); e.Property(x => x.TargetType).HasMaxLength(16); e.Property(x => x.TargetKey).HasMaxLength(40);
         });
         b.Entity<GitHubInstallation>(e =>
         {

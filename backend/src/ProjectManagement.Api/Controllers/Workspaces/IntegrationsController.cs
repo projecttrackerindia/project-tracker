@@ -283,6 +283,21 @@ public class InboundController(IServiceProvider services, GoogleCalendarAuthServ
         return ok ? Ok(new { received = true }) : Unauthorized();
     }
 
+    /// <summary>
+    /// An incoming webhook: any system posts JSON, a form or text here and it becomes a ticket, a task or a reminder by the address's mapping.
+    /// Answers 202 with what became of it (created, merged, resolved, ignored or failed), 401 for a wrong secret, 404 for an unknown address.
+    /// </summary>
+    [HttpPost("hooks/in/{token}")]
+    [RequestSizeLimit(1024 * 1024)]
+    public async Task<IActionResult> Incoming(string token, CancellationToken ct)
+    {
+        using var ms = new MemoryStream();
+        await Request.Body.CopyToAsync(ms, ct);
+        var headers = Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString(), StringComparer.OrdinalIgnoreCase);
+        var receipt = await ProjectManagement.Application.Features.Integrations.IncomingWebhookService.ReceiveAsync(services, token, ms.ToArray(), Request.ContentType, headers, ct);
+        return receipt is null ? NotFound() : StatusCode(StatusCodes.Status202Accepted, receipt);
+    }
+
     [HttpPost("inbound/git/{provider}/{token}")]
     [RequestSizeLimit(26 * 1024 * 1024)]
     public async Task<IActionResult> Git(string provider, string token, CancellationToken ct)

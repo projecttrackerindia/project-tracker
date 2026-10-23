@@ -277,6 +277,7 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
         var targets = await TargetStates.LoadAsync(db, rows.Where(r => r.TargetId != null).Select(r => (r.TargetType, r.TargetId!.Value)), ct);
         var autoToday = new Dictionary<(Guid, Guid), int>();
         var pending = new List<(Reminder R, string Token)>();
+        var outbox = new ProjectManagement.Application.Features.Integrations.WebhookOutbox(db);
 
         foreach (var r in rows)
         {
@@ -333,6 +334,8 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
 
             metrics.Fired((now - r.NextFireAt!.Value).TotalSeconds);
             r.State = ReminderState.Fired; r.LastFiredAt = now; r.FireCount++; r.IsSnoozed = false; r.Quiet = quiet;
+            if (ProjectManagement.Application.Features.Integrations.ReminderWebhook.IsAboutWork(r))
+                await outbox.EmitAsync(r.TenantId, "reminder.fired", now, ProjectManagement.Application.Features.Integrations.ReminderWebhook.Data(r, user.DisplayName), r.TargetProjectId, ct);
             r.NextFireAt = r.Recurrence is not null ? ReminderService.NextOccurrence(r, now) : null;
             var token = ReminderService.NewActionToken(r, now);
             if (!quiet) pending.Add((r, token));

@@ -137,6 +137,9 @@ public interface IAppDbContext
     DbSet<GitConnection> GitConnections { get; }
     DbSet<GitHubInstallation> GitHubInstallations { get; }
     DbSet<GitDeployment> GitDeployments { get; }
+    DbSet<IncomingWebhook> IncomingWebhooks { get; }
+    DbSet<IncomingWebhookEvent> IncomingWebhookEvents { get; }
+    DbSet<IncomingWebhookThread> IncomingWebhookThreads { get; }
     DbSet<MicrosoftConnection> MicrosoftConnections {get;}
     DbSet<PersonalCalendarProposal> PersonalCalendarProposals {get;}
     DbSet<PersonalEmailDraft> PersonalEmailDrafts { get; }

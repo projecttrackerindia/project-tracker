@@ -47,14 +47,82 @@ public static class WebhookEvents
         "attachment.added", "attachment.deleted", "member.invited", "member.role_changed", "team.created", "team.deleted",
         "worktask.created", "worktask.updated", "worktask.status", "worktask.comment", "worktask.deleted",
         "timesheet.submitted", "timesheet.approved", "timesheet.rejected",
+        "document.created", "document.updated", "document.submitted", "document.approved", "document.changes_requested", "document.published",
+        "document.comment_added", "document.moved", "document.restored", "document.deleted",
+        "issue.reported", "issue.updated", "issue.assigned", "issue.status", "issue.deleted",
+        "actionitem.created", "actionitem.updated", "actionitem.status", "actionitem.deleted",
+        "meeting.scheduled", "meeting.rescheduled", "meeting.cancelled",
+        "reminder.fired", "reminder.completed",
+        "whatsapp.chat_started", "whatsapp.handed_over", "whatsapp.ticket_created", "whatsapp.rated",
         Audit,
     ];
+
+    /// <summary>Never sent, whatever a webhook asks for: they say a secret or personal data was looked at (the audit stream carries them).</summary>
+    public static bool IsSensitive(string action) => action.Contains("secret", StringComparison.Ordinal) || action.Contains("pii", StringComparison.Ordinal)
+        || action.StartsWith("document.access", StringComparison.Ordinal);
+
+    /// <summary>What each group is about, for the event explorer.</summary>
+    public static readonly IReadOnlyDictionary<string, string> Groups = new Dictionary<string, string>
+    {
+        ["task"] = "Project tasks", ["project"] = "Projects", ["milestone"] = "Milestones", ["sprint"] = "Sprints", ["attachment"] = "Files",
+        ["member"] = "People", ["team"] = "Teams", ["worktask"] = "Operations tickets", ["timesheet"] = "Timesheets", ["document"] = "DocTracker pages",
+        ["issue"] = "Issues", ["actionitem"] = "Action items", ["meeting"] = "Meetings", ["reminder"] = "Reminders about work",
+        ["whatsapp"] = "WhatsApp chats", ["audit"] = "Audit log (for a SIEM)",
+    };
+
+    private static readonly Dictionary<string, (string Entity, string Summary, string? Old, string? New)> SampleText = new()
+    {
+        ["task.created"] = ("Task", "Created PAY-12 \u201cFix refund rounding\u201d", null, null),
+        ["task.status_changed"] = ("Task", "PAY-12: status In Progress \u2192 Done", "In Progress", "Done"),
+        ["task.assigned"] = ("Task", "PAY-12 assigned to Ravi Kumar", null, "Ravi Kumar"),
+        ["task.priority_changed"] = ("Task", "PAY-12: priority Medium \u2192 High", "Medium", "High"),
+        ["task.due_changed"] = ("Task", "PAY-12: due 12 Nov \u2192 15 Nov", "2026-11-12", "2026-11-15"),
+        ["task.commented"] = ("Task", "Asha commented on PAY-12", null, null),
+        ["project.status_changed"] = ("Project", "Refunds: Active \u2192 On hold", "Active", "OnHold"),
+        ["worktask.created"] = ("WorkTask", "Created WT-48 \u201cCore banking EOD job failed\u201d", null, null),
+        ["worktask.status"] = ("WorkTask", "WT-48: In progress \u2192 Completed", "InProgress", "Completed"),
+        ["document.published"] = ("Document", "Published DOC-7 version 2.0", null, "2.0"),
+        ["document.approved"] = ("Document", "Approved DOC-7 \u201cRefund policy\u201d", null, null),
+        ["issue.reported"] = ("Issue", "Reported issue PAY-I3 \u201cWrong EMI on statement\u201d in UAT", null, "Observed"),
+        ["issue.status"] = ("Issue", "Issue PAY-I3: Observed \u2192 Fixed", "Observed", "Fixed"),
+        ["meeting.scheduled"] = ("Meeting", "Scheduled \u201cRefunds stand-up\u201d for 24 Oct 10:00", null, null),
+        ["actionitem.created"] = ("ActionItem", "Created AI-9 \u201cShare the UAT sign-off\u201d", null, null),
+    };
+
+    /// <summary>A realistic example of an event's data (the same shape a real delivery has), for the explorer and "send me a test of this event".</summary>
+    public static object Sample(string eventType)
+    {
+        var group = eventType.Split('.')[0];
+        if (eventType == Audit)
+            return new { action = "member.role_changed", entityType = "TenantMember", entityId = Guid.Empty, ipAddress = "203.0.113.7", userAgent = "Mozilla/5.0",
+                user = new { id = Guid.Empty, name = "Asha Rao", email = "asha@example.com" }, oldValue = "{\"role\":\"Member\"}", newValue = "{\"role\":\"Admin\"}" };
+        if (group == "reminder")
+            return new { reminderId = Guid.Empty, title = "PAY-12 is due tomorrow", source = "DueDate", user = new { id = Guid.Empty, name = "Ravi Kumar" },
+                target = new { type = "Task", id = Guid.Empty, key = "PAY-12", title = "Fix refund rounding", link = "/projects/…?task=…" }, projectId = Guid.Empty };
+        if (group == "whatsapp")
+            return eventType switch
+            {
+                "whatsapp.rated" => new { conversationId = Guid.Empty, channel = "Support", contactName = "Kavya", rating = 5 },
+                "whatsapp.handed_over" => new { conversationId = Guid.Empty, channel = "Support", contactName = "Kavya", reason = "unsure" },
+                "whatsapp.ticket_created" => new { conversationId = Guid.Empty, channel = "Support", contactName = "Kavya", ticket = new { id = Guid.Empty, key = "WT-48" } },
+                _ => (object)new { conversationId = Guid.Empty, channel = "Support", contactName = "Kavya", language = "te" },
+            };
+        var entity = group switch
+        {
+            "task" => "Task", "project" => "Project", "milestone" => "Milestone", "sprint" => "Sprint", "attachment" => "Attachment", "member" => "TenantMember",
+            "team" => "Team", "worktask" => "WorkTask", "timesheet" => "Timesheet", "document" => "Document", "issue" => "Issue", "actionitem" => "ActionItem",
+            "meeting" => "Meeting", _ => "Item",
+        };
+        var text = SampleText.TryGetValue(eventType, out var t) ? t : (entity, $"{char.ToUpperInvariant(eventType[0])}{eventType[1..].Replace('.', ' ').Replace('_', ' ')} (example)", (string?)null, (string?)null);
+        return new { summary = text.Summary, entity = new { type = text.Entity, id = Guid.Empty }, projectId = (Guid?)Guid.Empty,
+            actor = new { id = Guid.Empty, name = "Asha Rao" }, oldValue = text.Old, newValue = text.New };
+    }
 
     /// <summary>Every audit record (sign-ins, permission and security changes...), for a SIEM. Only sent to webhooks that name it - "*" does not include it.</summary>
     public const string Audit = "audit.logged";
 
     public static bool IsValidPattern(string p) => p == "*" || All.Contains(p) || (p.EndsWith(".*") && All.Any(e => e.StartsWith(p[..^1])));
-    public static bool Matches(string patterns, string action) =>
+    public static bool Matches(string patterns, string action) => !IsSensitive(action) &&
         patterns.Split(',', StringSplitOptions.RemoveEmptyEntries).Any(p => (p == "*" && !action.StartsWith("audit.")) || p == action || (p.EndsWith(".*") && action.StartsWith(p[..^1])));
     public static bool WantsAudit(string patterns) => Matches(patterns, Audit);
 }
@@ -102,12 +170,90 @@ public static class WebhookUrlRules
     }
 }
 
+/// <summary>
+/// Outgoing filters: only some projects, priorities, or status changes to some statuses. A filter that does not apply to an event (a project
+/// event has no priority) lets it through; an event about something deleted since lets it through too.
+/// </summary>
+public static class WebhookFilters
+{
+    public record Facts(Guid? ProjectId, Priority? Priority);
+
+    public static IReadOnlyList<string> List(string? s) => (s ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    public static bool Any(Webhook h) => !string.IsNullOrWhiteSpace(h.FilterProjects) || !string.IsNullOrWhiteSpace(h.FilterPriorities) || !string.IsNullOrWhiteSpace(h.FilterStatuses);
+    public static bool IsStatusChange(string action) => action.EndsWith(".status_changed", StringComparison.Ordinal) || action.EndsWith(".status", StringComparison.Ordinal);
+
+    private static string Norm(string s) => new string(s.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+    /// <summary>"Done" also matches Completed, Resolved and Fixed; otherwise names are compared without spaces or case.</summary>
+    public static bool StatusMatches(string wanted, string? actual)
+    {
+        if (string.IsNullOrWhiteSpace(actual)) return false;
+        var w = Norm(wanted); var a = Norm(actual);
+        if (w == a) return true;
+        string[] done = ["done", "completed", "complete", "resolved", "fixed", "closed"];
+        return done.Contains(w) && done.Contains(a);
+    }
+
+    public static bool Passes(Webhook h, string action, string? newValue, Facts facts)
+    {
+        var projects = List(h.FilterProjects);
+        if (projects.Count > 0 && facts.ProjectId is { } pid && !projects.Contains(pid.ToString(), StringComparer.OrdinalIgnoreCase)) return false;
+        if (projects.Count > 0 && facts.ProjectId is null && !action.StartsWith("member.") && !action.StartsWith("team.") && !action.StartsWith("audit.")) return false;
+        var priorities = List(h.FilterPriorities);
+        if (priorities.Count > 0 && facts.Priority is { } pr && !priorities.Contains(pr.ToString(), StringComparer.OrdinalIgnoreCase)) return false;
+        var statuses = List(h.FilterStatuses);
+        if (statuses.Count > 0 && IsStatusChange(action) && !statuses.Any(st => StatusMatches(st, newValue))) return false;
+        return true;
+    }
+}
+
+/// <summary>
+/// Events that are not activity records (a reminder going off, a WhatsApp chat starting): queued straight to the matching webhooks of one
+/// workspace, filtered by project. The caller saves.
+/// </summary>
+public sealed class WebhookOutbox(IAppDbContext db)
+{
+    private readonly Dictionary<Guid, List<Webhook>> _hooks = new();
+
+    public async Task EmitAsync(Guid tenantId, string eventType, DateTime now, object data, Guid? projectId, CancellationToken ct)
+    {
+        if (!_hooks.TryGetValue(tenantId, out var hooks))
+            _hooks[tenantId] = hooks = await db.Webhooks.IgnoreQueryFilters().Where(w => w.TenantId == tenantId && w.IsActive).ToListAsync(ct);
+        foreach (var h in hooks.Where(h => WebhookEvents.Matches(h.Events, eventType) && WebhookFilters.Passes(h, eventType, null, new WebhookFilters.Facts(projectId, null))))
+            db.WebhookDeliveries.Add(WebhookProcessor.NewDelivery(h, null, eventType, now, data));
+    }
+}
+
+/// <summary>The reminder events: only reminders about work (a task, an issue, a ticket…) and escalations, never someone's private notes.</summary>
+public static class ReminderWebhook
+{
+    public static bool IsAboutWork(Reminder r) => r.TargetType is not (ReminderTarget.None or ReminderTarget.ChatMessage) || r.Source == ReminderSource.Escalation;
+    public static object Data(Reminder r, string? userName) => new
+    {
+        reminderId = r.SeriesId ?? r.Id, title = r.Title, source = r.Source.ToString(), user = new { id = r.UserId, name = userName },
+        target = r.TargetId is null ? null : new { type = r.TargetType.ToString(), id = r.TargetId, key = r.TargetKey, title = r.TargetTitle, link = r.Link },
+        projectId = r.TargetProjectId,
+    };
+}
+
+public record WebhookHealthSummary(int Total, int Succeeded, int Failed, decimal? SuccessRate, int? AverageMs);
 public record WebhookDto(Guid Id, string Name, string Url, IReadOnlyList<string> Events, bool IsActive, string? DisabledReason, DateTime CreatedAt,
-    DateTime? LastDeliveryAt, string? LastStatus, int ConsecutiveFailures, WebhookFormat Format = WebhookFormat.Json);
+    DateTime? LastDeliveryAt, string? LastStatus, int ConsecutiveFailures, WebhookFormat Format = WebhookFormat.Json,
+    IReadOnlyList<Guid>? FilterProjects = null, IReadOnlyList<string>? FilterPriorities = null, IReadOnlyList<string>? FilterStatuses = null,
+    WebhookHealthSummary? Health = null, int DisableAfter = 10);
 public record CreatedWebhookDto(WebhookDto Webhook, string Secret);
-/// <summary><see cref="Format"/>: Json (signed, for your own systems), Slack or Teams (a message for a channel's incoming webhook).</summary>
-public record UpsertWebhookRequest(string Name, string Url, IReadOnlyList<string>? Events, bool? IsActive, WebhookFormat? Format = null);
-public record WebhookDeliveryDto(Guid Id, string EventType, WebhookDeliveryStatus Status, int Attempts, int? ResponseStatus, string? Error, DateTime CreatedAt, DateTime? DeliveredAt, DateTime? NextAttemptAt);
+/// <summary><see cref="Format"/>: Json (signed, for your own systems), Slack or Teams (a message for a channel's incoming webhook). Filters: null keeps them, an empty list clears.</summary>
+public record UpsertWebhookRequest(string Name, string Url, IReadOnlyList<string>? Events, bool? IsActive, WebhookFormat? Format = null,
+    IReadOnlyList<Guid>? FilterProjects = null, IReadOnlyList<string>? FilterPriorities = null, IReadOnlyList<string>? FilterStatuses = null);
+public record WebhookDeliveryDto(Guid Id, string EventType, WebhookDeliveryStatus Status, int Attempts, int? ResponseStatus, string? Error, DateTime CreatedAt, DateTime? DeliveredAt, DateTime? NextAttemptAt,
+    int? DurationMs = null, Guid? ReplayOf = null);
+public record WebhookDeliveryDetailDto(WebhookDeliveryDto Delivery, string Payload, string? ResponseSnippet);
+public record WebhookDeliveryPageDto(IReadOnlyList<WebhookDeliveryDto> Items, int Total, int Page, int PageSize);
+public record WebhookEventInfo(string Event, string Group, string GroupLabel, object Sample);
+public record WebhookReplayRequest(DateTime? From, DateTime? To, bool OnlyFailed = true, string? Event = null);
+public record WebhookTestRequest(string? Event);
+public record WebhookHealthDay(DateOnly Day, int Total, int Failed, int? AverageMs);
+public record WebhookHealthDto(int Days, int Total, int Succeeded, int Failed, int Pending, decimal? SuccessRate, int? AverageMs, int? P95Ms,
+    IReadOnlyList<WebhookHealthDay> Series, string? LastError, DateTime? LastFailureAt, int ConsecutiveFailures, int WarnAfter, int DisableAfter, bool Warned);
 
 /// <summary>Managing a workspace's webhooks. Owners and admins only, on plans with API access.</summary>
 public class WebhookService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, EntitlementService entitlements,
@@ -120,17 +266,59 @@ public class WebhookService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         if (ctx.Role is not (TenantRole.Owner or TenantRole.Admin)) throw new ForbiddenException("Only owners and admins can manage webhooks.", "PERMISSION_DENIED");
     }
 
-    public static WebhookDto ToDto(Webhook w) => new(w.Id, w.Name, w.Url, w.Events.Split(',', StringSplitOptions.RemoveEmptyEntries), w.IsActive, w.DisabledReason,
-        w.CreatedAt, w.LastDeliveryAt, w.LastStatus, w.ConsecutiveFailures, w.Format);
+    public static WebhookDto ToDto(Webhook w, WebhookHealthSummary? health = null) => new(w.Id, w.Name, w.Url, w.Events.Split(',', StringSplitOptions.RemoveEmptyEntries), w.IsActive, w.DisabledReason,
+        w.CreatedAt, w.LastDeliveryAt, w.LastStatus, w.ConsecutiveFailures, w.Format,
+        WebhookFilters.List(w.FilterProjects).Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList(),
+        WebhookFilters.List(w.FilterPriorities), WebhookFilters.List(w.FilterStatuses), health, WebhookProcessor.DisableAfterFailures);
 
     public static string NewSecret() => "whsec_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     public IReadOnlyList<string> Catalogue() => WebhookEvents.All;
 
+    /// <summary>The event explorer: every event with its group and a sample of its data.</summary>
+    public IReadOnlyList<WebhookEventInfo> Explorer() => WebhookEvents.All.Select(e =>
+    {
+        var g = e.Split('.')[0];
+        return new WebhookEventInfo(e, g, WebhookEvents.Groups.GetValueOrDefault(g, g), WebhookEvents.Sample(e));
+    }).ToList();
+
     public async Task<IReadOnlyList<WebhookDto>> ListAsync(CancellationToken ct = default)
     {
         RequireAdmin();
-        return (await db.Webhooks.AsNoTracking().OrderBy(w => w.CreatedAt).ToListAsync(ct)).Select(ToDto).ToList();
+        var hooks = await db.Webhooks.AsNoTracking().OrderBy(w => w.CreatedAt).ToListAsync(ct);
+        var since = clock.Now.AddDays(-7);
+        var ids = hooks.Select(h => h.Id).ToList();
+        var stats = (await db.WebhookDeliveries.AsNoTracking().Where(d => ids.Contains(d.WebhookId) && d.CreatedAt >= since && d.Status != WebhookDeliveryStatus.Pending)
+                .Select(d => new { d.WebhookId, d.Status, d.DurationMs }).ToListAsync(ct))
+            .GroupBy(d => d.WebhookId).ToDictionary(g => g.Key, g =>
+            {
+                var ok = g.Count(x => x.Status == WebhookDeliveryStatus.Succeeded); var total = g.Count();
+                var times = g.Where(x => x.DurationMs is not null).Select(x => x.DurationMs!.Value).ToList();
+                return new WebhookHealthSummary(total, ok, total - ok, total == 0 ? null : Math.Round(ok * 100m / total, 1), times.Count == 0 ? null : (int)times.Average());
+            });
+        return hooks.Select(h => ToDto(h, stats.GetValueOrDefault(h.Id) ?? new WebhookHealthSummary(0, 0, 0, null, null))).ToList();
+    }
+
+    private async Task ApplyFiltersAsync(Webhook hook, UpsertWebhookRequest req, CancellationToken ct)
+    {
+        if (req.FilterProjects is { } projects)
+        {
+            var wanted = projects.Distinct().Take(50).ToList();
+            var found = await db.Projects.AsNoTracking().Where(p => wanted.Contains(p.Id)).Select(p => p.Id).ToListAsync(ct);
+            if (found.Count != wanted.Count) throw new ValidationException("filterProjects", "One of the projects was not found.");
+            hook.FilterProjects = wanted.Count == 0 ? null : string.Join(',', wanted);
+        }
+        if (req.FilterPriorities is { } priorities)
+        {
+            var clean = priorities.Select(p => (p ?? "").Trim()).Where(p => p.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (clean.Any(p => !Enum.TryParse<Priority>(p, true, out _))) throw new ValidationException("filterPriorities", "Priorities are Low, Medium, High and Critical.");
+            hook.FilterPriorities = clean.Count == 0 ? null : string.Join(',', clean.Select(p => Enum.Parse<Priority>(p, true).ToString()));
+        }
+        if (req.FilterStatuses is { } statuses)
+        {
+            var clean = statuses.Select(p => (p ?? "").Trim().Replace(",", " ")).Where(p => p.Length is > 0 and <= 40).Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToList();
+            hook.FilterStatuses = clean.Count == 0 ? null : string.Join(',', clean);
+        }
     }
 
     private async Task<(string Name, string Url, string Events)> CleanAsync(UpsertWebhookRequest req, CancellationToken ct)
@@ -162,6 +350,7 @@ public class WebhookService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             TenantId = ctx.RequireTenantId(), Name = name, Url = url, Events = events, SecretProtected = protector.Protect(secret),
             CursorAt = clock.Now, AuditCursorAt = clock.Now, CreatedAt = clock.Now, CreatedBy = ctx.RequireUserId(), Format = req.Format ?? WebhookFormat.Json,
         };
+        await ApplyFiltersAsync(hook, req, ct);
         db.Webhooks.Add(hook);
         recorder.Audit("webhook.created", "Webhook", hook.Id, newValue: new { hook.Name, hook.Url, hook.Events });
         await db.SaveChangesAsync(ct);
@@ -177,13 +366,14 @@ public class WebhookService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         if (WebhookEvents.WantsAudit(events) && !WebhookEvents.WantsAudit(hook.Events)) hook.AuditCursorAt = clock.Now;
         hook.Name = name; hook.Url = url; hook.Events = events; hook.UpdatedAt = clock.Now;
         if (req.Format is { } format) hook.Format = format;
+        await ApplyFiltersAsync(hook, req, ct);
         if (req.IsActive is { } active && active != hook.IsActive)
         {
             if (active) await entitlements.EnsureFeatureAsync(FeatureKeys.ApiAccess, ct);
             hook.IsActive = active; hook.DisabledReason = active ? null : "Turned off by an administrator.";
             if (active) { hook.ConsecutiveFailures = 0; hook.CursorAt = clock.Now; hook.AuditCursorAt = clock.Now; } // do not flood it with what happened while it was off
         }
-        recorder.Audit("webhook.updated", "Webhook", id, newValue: new { hook.Name, hook.Url, hook.Events, hook.IsActive, hook.Format });
+        recorder.Audit("webhook.updated", "Webhook", id, newValue: new { hook.Name, hook.Url, hook.Events, hook.IsActive, hook.Format, hook.FilterProjects, hook.FilterPriorities, hook.FilterStatuses });
         await db.SaveChangesAsync(ct);
         return ToDto(hook);
     }
@@ -213,20 +403,113 @@ public class WebhookService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     {
         RequireAdmin();
         if (!await db.Webhooks.AnyAsync(w => w.Id == id, ct)) throw new NotFoundException("Webhook not found.");
-        return await db.WebhookDeliveries.AsNoTracking().Where(d => d.WebhookId == id).OrderByDescending(d => d.CreatedAt).Take(50)
-            .Select(d => new WebhookDeliveryDto(d.Id, d.EventType, d.Status, d.Attempts, d.ResponseStatus, d.Error, d.CreatedAt, d.DeliveredAt, d.Status == WebhookDeliveryStatus.Pending ? d.NextAttemptAt : null))
-            .ToListAsync(ct);
+        return (await db.WebhookDeliveries.AsNoTracking().Where(d => d.WebhookId == id).OrderByDescending(d => d.CreatedAt).Take(50).ToListAsync(ct)).Select(Dto).ToList();
     }
 
-    /// <summary>Queues a harmless "ping" so an administrator can check the receiver end to end.</summary>
-    public async Task<WebhookDeliveryDto> SendTestAsync(Guid id, CancellationToken ct = default)
+    private static WebhookDeliveryDto Dto(WebhookDelivery d) => new(d.Id, d.EventType, d.Status, d.Attempts, d.ResponseStatus, d.Error, d.CreatedAt, d.DeliveredAt,
+        d.Status == WebhookDeliveryStatus.Pending ? d.NextAttemptAt : null, d.DurationMs, d.ReplayOf);
+
+    /// <summary>The whole delivery history (kept 30 days), newest first, a page at a time, by status, event and time.</summary>
+    public async Task<WebhookDeliveryPageDto> HistoryAsync(Guid id, int page, int pageSize, string? status, string? eventType, DateTime? from, DateTime? to, CancellationToken ct = default)
+    {
+        RequireAdmin();
+        if (!await db.Webhooks.AnyAsync(w => w.Id == id, ct)) throw new NotFoundException("Webhook not found.");
+        page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 10, 200);
+        var q = db.WebhookDeliveries.AsNoTracking().Where(d => d.WebhookId == id);
+        if (Enum.TryParse<WebhookDeliveryStatus>(status, true, out var st)) q = q.Where(d => d.Status == st);
+        if (!string.IsNullOrWhiteSpace(eventType)) { var e = eventType.Trim(); q = e.EndsWith(".*") ? q.Where(d => d.EventType.StartsWith(e.Substring(0, e.Length - 1))) : q.Where(d => d.EventType == e); }
+        if (from is { } f) q = q.Where(d => d.CreatedAt >= f);
+        if (to is { } t) q = q.Where(d => d.CreatedAt <= t);
+        var total = await q.CountAsync(ct);
+        var rows = await q.OrderByDescending(d => d.CreatedAt).ThenByDescending(d => d.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        return new WebhookDeliveryPageDto(rows.Select(Dto).ToList(), total, page, pageSize);
+    }
+
+    /// <summary>One delivery with what was sent and what the receiver answered.</summary>
+    public async Task<WebhookDeliveryDetailDto> DeliveryAsync(Guid id, Guid deliveryId, CancellationToken ct = default)
+    {
+        RequireAdmin();
+        var d = await db.WebhookDeliveries.AsNoTracking().FirstOrDefaultAsync(x => x.Id == deliveryId && x.WebhookId == id, ct) ?? throw new NotFoundException("Delivery not found.");
+        return new WebhookDeliveryDetailDto(Dto(d), d.Payload, d.ResponseSnippet);
+    }
+
+    /// <summary>Sends one delivery's event again, whatever became of it (after the receiver was fixed).</summary>
+    public async Task<WebhookDeliveryDto> ReplayAsync(Guid id, Guid deliveryId, CancellationToken ct = default)
     {
         RequireAdmin();
         var hook = await db.Webhooks.FirstOrDefaultAsync(w => w.Id == id, ct) ?? throw new NotFoundException("Webhook not found.");
-        var delivery = WebhookProcessor.NewDelivery(hook, null, "ping", clock.Now, new { message = "This is a test from your workspace.", webhookId = hook.Id });
+        var d = await db.WebhookDeliveries.AsNoTracking().FirstOrDefaultAsync(x => x.Id == deliveryId && x.WebhookId == id, ct) ?? throw new NotFoundException("Delivery not found.");
+        var copy = Copy(hook, d);
+        db.WebhookDeliveries.Add(copy);
+        recorder.Audit("webhook.replayed", "Webhook", id, newValue: new { delivery = deliveryId });
+        await db.SaveChangesAsync(ct);
+        return Dto(copy);
+    }
+
+    private WebhookDelivery Copy(Webhook hook, WebhookDelivery d) => new()
+    {
+        TenantId = hook.TenantId, WebhookId = hook.Id, EventType = d.EventType, Payload = d.Payload, NextAttemptAt = clock.Now, CreatedAt = clock.Now, ReplayOf = d.ReplayOf ?? d.Id,
+    };
+
+    public const int MaxReplay = 500;
+
+    /// <summary>Sends again every delivery (by default only the failed ones) in a time window, oldest first, up to 500 at a time.</summary>
+    public async Task<int> ReplayManyAsync(Guid id, WebhookReplayRequest req, CancellationToken ct = default)
+    {
+        RequireAdmin();
+        var hook = await db.Webhooks.FirstOrDefaultAsync(w => w.Id == id, ct) ?? throw new NotFoundException("Webhook not found.");
+        if (!hook.IsActive) throw new ConflictException("Turn the webhook on before sending events again.", "WEBHOOK_OFF");
+        var from = req.From ?? clock.Now.AddDays(-1); var to = req.To ?? clock.Now;
+        if (to < from) (from, to) = (to, from);
+        var q = db.WebhookDeliveries.AsNoTracking().Where(d => d.WebhookId == id && d.CreatedAt >= from && d.CreatedAt <= to && d.Status != WebhookDeliveryStatus.Pending);
+        if (req.OnlyFailed) q = q.Where(d => d.Status == WebhookDeliveryStatus.Failed);
+        if (!string.IsNullOrWhiteSpace(req.Event)) q = q.Where(d => d.EventType == req.Event);
+        var rows = await q.OrderBy(d => d.CreatedAt).Take(MaxReplay).ToListAsync(ct);
+        // An event already replayed and waiting is not queued twice.
+        var waiting = (await db.WebhookDeliveries.AsNoTracking().Where(d => d.WebhookId == id && d.Status == WebhookDeliveryStatus.Pending && d.ReplayOf != null).Select(d => d.ReplayOf!.Value).ToListAsync(ct)).ToHashSet();
+        var queued = 0;
+        foreach (var d in rows.Where(d => !waiting.Contains(d.ReplayOf ?? d.Id))) { db.WebhookDeliveries.Add(Copy(hook, d)); queued++; }
+        recorder.Audit("webhook.replayed", "Webhook", id, newValue: new { from, to, req.OnlyFailed, req.Event, queued });
+        await db.SaveChangesAsync(ct);
+        return queued;
+    }
+
+    /// <summary>Success rate, response time and failures over the last days, day by day, and how close it is to being switched off.</summary>
+    public async Task<WebhookHealthDto> HealthAsync(Guid id, int days, CancellationToken ct = default)
+    {
+        RequireAdmin();
+        var hook = await db.Webhooks.AsNoTracking().FirstOrDefaultAsync(w => w.Id == id, ct) ?? throw new NotFoundException("Webhook not found.");
+        days = Math.Clamp(days, 1, 30);
+        var since = clock.Now.Date.AddDays(-(days - 1));
+        var rows = await db.WebhookDeliveries.AsNoTracking().Where(d => d.WebhookId == id && d.CreatedAt >= since)
+            .Select(d => new { d.CreatedAt, d.Status, d.DurationMs, d.Error, d.DeliveredAt }).ToListAsync(ct);
+        var done = rows.Where(r => r.Status != WebhookDeliveryStatus.Pending).ToList();
+        var ok = done.Count(r => r.Status == WebhookDeliveryStatus.Succeeded);
+        var times = done.Where(r => r.DurationMs is not null).Select(r => r.DurationMs!.Value).OrderBy(x => x).ToList();
+        var series = Enumerable.Range(0, days).Select(i =>
+        {
+            var day = since.AddDays(i); var inDay = done.Where(r => r.CreatedAt >= day && r.CreatedAt < day.AddDays(1)).ToList();
+            var t = inDay.Where(r => r.DurationMs is not null).Select(r => r.DurationMs!.Value).ToList();
+            return new WebhookHealthDay(DateOnly.FromDateTime(day), inDay.Count, inDay.Count(r => r.Status == WebhookDeliveryStatus.Failed), t.Count == 0 ? null : (int)t.Average());
+        }).ToList();
+        var lastFail = await db.WebhookDeliveries.AsNoTracking().Where(d => d.WebhookId == id && d.Error != null).OrderByDescending(d => d.CreatedAt).Select(d => new { d.Error, d.CreatedAt }).FirstOrDefaultAsync(ct);
+        return new WebhookHealthDto(days, done.Count, ok, done.Count - ok, rows.Count - done.Count, done.Count == 0 ? null : Math.Round(ok * 100m / done.Count, 1),
+            times.Count == 0 ? null : (int)times.Average(), times.Count == 0 ? null : times[Math.Min(times.Count - 1, (int)Math.Ceiling(times.Count * 0.95) - 1)],
+            series, lastFail?.Error, lastFail?.CreatedAt, hook.ConsecutiveFailures, WebhookProcessor.WarnAfterFailures, WebhookProcessor.DisableAfterFailures, hook.WarnedAt is not null);
+    }
+
+    /// <summary>Queues a harmless "ping", or a sample of one event (marked as a test), so an administrator can check the receiver end to end.</summary>
+    public async Task<WebhookDeliveryDto> SendTestAsync(Guid id, CancellationToken ct = default, string? eventType = null)
+    {
+        RequireAdmin();
+        var hook = await db.Webhooks.FirstOrDefaultAsync(w => w.Id == id, ct) ?? throw new NotFoundException("Webhook not found.");
+        if (eventType is not null && !WebhookEvents.All.Contains(eventType)) throw new ValidationException("event", $"“{eventType}” is not an event this system sends.");
+        var delivery = eventType is null
+            ? WebhookProcessor.NewDelivery(hook, null, "ping", clock.Now, new { message = "This is a test from your workspace.", webhookId = hook.Id })
+            : WebhookProcessor.NewDelivery(hook, null, eventType, clock.Now, WebhookEvents.Sample(eventType), test: true);
         db.WebhookDeliveries.Add(delivery);
         await db.SaveChangesAsync(ct);
-        return new WebhookDeliveryDto(delivery.Id, delivery.EventType, delivery.Status, 0, null, null, delivery.CreatedAt, null, delivery.NextAttemptAt);
+        return Dto(delivery);
     }
 
     public async Task RetryAsync(Guid id, Guid deliveryId, CancellationToken ct = default)
@@ -246,17 +529,48 @@ public class WebhookService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
 public class WebhookProcessor(IServiceScopeFactory scopes, TimeProvider time, ILogger<WebhookProcessor> log, Microsoft.Extensions.Options.IOptions<WebhookOptions> options)
 {
     public const int MaxAttempts = 6;
-    private const int DisableAfterFailures = 10;
+    public const int DisableAfterFailures = 10;
+    /// <summary>Half way to the switch-off, the people who set the webhook up are told, so it can be fixed in time.</summary>
+    public const int WarnAfterFailures = 5;
     private static readonly TimeSpan[] Backoff = [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(30), TimeSpan.FromHours(2), TimeSpan.FromHours(12)];
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private DateTime Now => time.GetUtcNow().UtcDateTime;
 
-    public static WebhookDelivery NewDelivery(Webhook hook, Guid? activityId, string eventType, DateTime now, object data) => new()
+    public static WebhookDelivery NewDelivery(Webhook hook, Guid? activityId, string eventType, DateTime now, object data, bool test = false) => new()
     {
         TenantId = hook.TenantId, WebhookId = hook.Id, ActivityId = activityId, EventType = eventType, NextAttemptAt = now, CreatedAt = now,
-        Payload = JsonSerializer.Serialize(new { id = Guid.NewGuid(), @event = eventType, occurredAt = now, workspaceId = hook.TenantId, data }, Json),
+        Payload = test
+            ? JsonSerializer.Serialize(new { id = Guid.NewGuid(), @event = eventType, occurredAt = now, workspaceId = hook.TenantId, test = true, data }, Json)
+            : JsonSerializer.Serialize(new { id = Guid.NewGuid(), @event = eventType, occurredAt = now, workspaceId = hook.TenantId, data }, Json),
     };
+
+    /// <summary>The project and priority of what each activity is about, for the outgoing filters (only read when a webhook has filters).</summary>
+    private static async Task<Dictionary<Guid, WebhookFilters.Facts>> FactsAsync(IAppDbContext db, IReadOnlyList<Activity> activities, CancellationToken ct)
+    {
+        var facts = new Dictionary<Guid, WebhookFilters.Facts>();
+        List<Guid> Ids(string type) => activities.Where(a => a.EntityType == type && a.EntityId != null).Select(a => a.EntityId!.Value).Distinct().ToList();
+        var tasks = Ids("Task"); var work = Ids("WorkTask"); var issues = Ids("Issue");
+        var tp = new List<(Guid Id, Guid? Project, Priority Priority)>();
+        if (tasks.Count > 0) tp.AddRange((await db.Tasks.IgnoreQueryFilters().AsNoTracking().Where(t => tasks.Contains(t.Id)).Select(t => new { t.Id, t.ProjectId, t.Priority }).ToListAsync(ct)).Select(t => (t.Id, (Guid?)t.ProjectId, t.Priority)));
+        var wp = new List<(Guid Id, Guid? Project, Priority Priority)>();
+        if (work.Count > 0) wp.AddRange((await db.WorkTasks.IgnoreQueryFilters().AsNoTracking().Where(t => work.Contains(t.Id)).Select(t => new { t.Id, t.RelatedProjectId, t.Priority }).ToListAsync(ct)).Select(t => (t.Id, t.RelatedProjectId, t.Priority)));
+        var ip = new List<(Guid Id, Guid? Project, Priority Priority)>();
+        if (issues.Count > 0) ip.AddRange((await db.StageIssues.IgnoreQueryFilters().AsNoTracking().Where(t => issues.Contains(t.Id)).Select(t => new { t.Id, t.ProjectId, t.Severity }).ToListAsync(ct)).Select(t => (t.Id, (Guid?)t.ProjectId, t.Severity)));
+        foreach (var a in activities)
+        {
+            Guid? project = a.ProjectId; Priority? priority = null;
+            if (a.EntityId is { } eid)
+            {
+                var hit = a.EntityType switch { "Task" => tp, "WorkTask" => wp, "Issue" => ip, _ => null }
+                    is { } list && list.FindIndex(x => x.Id == eid) is var at and >= 0 ? list[at] : ((Guid Id, Guid? Project, Priority Priority)?)null;
+                if (hit is { } h) { project ??= h.Project; priority = h.Priority; }
+                else if (a.EntityType == "Project") project ??= eid;
+            }
+            facts[a.Id] = new WebhookFilters.Facts(project, priority);
+        }
+        return facts;
+    }
 
     /// <summary>One round: fan out new events, then deliver. Returns how many requests were sent.</summary>
     public async Task<int> RunAsync(CancellationToken ct = default)
@@ -285,7 +599,9 @@ public class WebhookProcessor(IServiceScopeFactory scopes, TimeProvider time, IL
             var actors = activities.Where(a => a.ActorId != null).Select(a => a.ActorId!.Value).Distinct().ToList();
             var names = await db.Users.IgnoreQueryFilters().Where(u => actors.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
 
-            foreach (var a in activities.Where(a => !done.Contains(a.Id) && WebhookEvents.Matches(hook.Events, a.Action)))
+            var facts = WebhookFilters.Any(hook) ? await FactsAsync(db, activities, ct) : null;
+            foreach (var a in activities.Where(a => !done.Contains(a.Id) && WebhookEvents.Matches(hook.Events, a.Action)
+                         && (facts is null || WebhookFilters.Passes(hook, a.Action, a.NewValue, facts[a.Id]))))
                 db.WebhookDeliveries.Add(NewDelivery(hook, a.Id, a.Action, a.CreatedAt, new
                 {
                     summary = a.Summary, entity = new { type = a.EntityType, id = a.EntityId }, projectId = a.ProjectId,
@@ -378,7 +694,9 @@ public class WebhookProcessor(IServiceScopeFactory scopes, TimeProvider time, IL
 
         using var span = ProjectManagement.Application.Common.AppTelemetry.Source.StartActivity("webhook.deliver");
         span?.SetTag("webhook.event", d.EventType);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         var result = await sp.GetRequiredService<IWebhookTransport>().SendAsync(hook.Url, headers, body, ct);
+        d.DurationMs = (int)Math.Min(int.MaxValue, watch.ElapsedMilliseconds);
         d.Attempts++;
         d.ResponseStatus = result.Status; d.ResponseSnippet = result.Snippet;
         var ok = result.Status is >= 200 and < 300;
@@ -389,7 +707,7 @@ public class WebhookProcessor(IServiceScopeFactory scopes, TimeProvider time, IL
         if (ok)
         {
             d.Status = WebhookDeliveryStatus.Succeeded; d.DeliveredAt = now; d.Error = null;
-            hook.LastStatus = "ok"; hook.ConsecutiveFailures = 0;
+            hook.LastStatus = "ok"; hook.ConsecutiveFailures = 0; hook.WarnedAt = null;
         }
         else
         {
@@ -401,6 +719,14 @@ public class WebhookProcessor(IServiceScopeFactory scopes, TimeProvider time, IL
                 if (d.EventType != "ping" && ++hook.ConsecutiveFailures >= DisableAfterFailures && hook.IsActive)
                 {
                     hook.IsActive = false; hook.DisabledReason = $"Switched off automatically after {DisableAfterFailures} deliveries in a row failed.";
+                    await TellOwnersAsync(db, hook, now, $"Webhook “{hook.Name}” was switched off",
+                        $"{DisableAfterFailures} deliveries in a row failed (last: {d.Error}). Fix the receiver, turn it back on, then replay the failed events.", ct);
+                }
+                else if (d.EventType != "ping" && hook.ConsecutiveFailures >= WarnAfterFailures && hook.WarnedAt is null && hook.IsActive)
+                {
+                    hook.WarnedAt = now;
+                    await TellOwnersAsync(db, hook, now, $"Webhook “{hook.Name}” keeps failing",
+                        $"{hook.ConsecutiveFailures} deliveries in a row failed (last: {d.Error}). It is switched off after {DisableAfterFailures}.", ct);
                 }
             }
             else d.NextAttemptAt = now + Backoff[Math.Min(d.Attempts - 1, Backoff.Length - 1)];
@@ -408,12 +734,26 @@ public class WebhookProcessor(IServiceScopeFactory scopes, TimeProvider time, IL
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>Removes old delivery history (kept two weeks).</summary>
+    /// <summary>The person who created the webhook and the workspace's owners and admins hear about it in the app.</summary>
+    private static async Task TellOwnersAsync(IAppDbContext db, Webhook hook, DateTime now, string title, string body, CancellationToken ct)
+    {
+        var people = await db.TenantMembers.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.TenantId == hook.TenantId && (m.UserId == hook.CreatedBy || m.Role == TenantRole.Owner || m.Role == TenantRole.Admin))
+            .Select(m => m.UserId).Distinct().Take(10).ToListAsync(ct);
+        foreach (var user in people)
+            db.Notifications.Add(new Notification
+            {
+                TenantId = hook.TenantId, UserId = user, Type = NotificationType.Security, CreatedAt = now, Link = "/settings/webhooks",
+                Title = title.Length > 200 ? title[..200] : title, Body = body.Length > 500 ? body[..500] : body, DedupeKey = $"webhook-health:{hook.Id:N}:{user:N}:{now:yyyyMMddHH}",
+            });
+    }
+
+    /// <summary>Removes old delivery history (kept 30 days).</summary>
     public async Task<int> PurgeAsync(CancellationToken ct = default)
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-        var cutoff = Now.AddDays(-14);
+        var cutoff = Now.AddDays(-30);
         return await db.WebhookDeliveries.IgnoreQueryFilters().Where(d => d.CreatedAt < cutoff && d.Status != WebhookDeliveryStatus.Pending).ExecuteDeleteAsync(ct);
     }
 }
