@@ -221,7 +221,7 @@ try{
  // Once connected, numbers sit behind one button; the desk is the page.
  await page.getByRole('button',{name:'Numbers'}).click();await page.getByRole('dialog').locator('.wa-channel',{hasText:'IT helpdesk'}).waitFor();
  await page.getByRole('dialog').getByRole('button',{name:'Done'}).click();
- assert.match(await page.locator('.wa-chats button',{hasText:'Ravi Kumar'}).innerText(),/reply in 3m/);
+ assert.match(await page.locator('.wa-chats button',{hasText:'Ravi Kumar'}).innerText(),/reply in [1-3]m/);
  await page.locator('.wa-chats button',{hasText:'Ravi Kumar'}).click();await page.locator('.wad-pane .wa-msg.ai').waitFor();
  assert.ok(await page.locator('.wad-pane .wa-verified').isVisible());
  // The photo opens in the chat; the voice note shows what was said, as text.

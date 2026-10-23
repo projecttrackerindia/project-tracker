@@ -201,16 +201,16 @@ public partial class ChatService
     public async Task<IReadOnlyList<ChatQuestionDto>> QuestionsAsync(CancellationToken ct = default)
     {
         var (_, me) = Require();
-        var from = clock.Now.AddDays(-14);
+        var cutoff = clock.Now.AddDays(-14);
         var convs = await (from m in db.ConversationMembers.AsNoTracking()
                            join c in db.Conversations.AsNoTracking() on m.ConversationId equals c.Id
-                           where m.UserId == me && c.LastMessageAt > from
+                           where m.UserId == me && c.LastMessageAt > cutoff
                            select new { c.Id, c.Type }).ToListAsync(ct);
         var result = new List<ChatQuestionDto>();
         foreach (var c in convs)
         {
             try { await MembershipAsync(c.Id, me, ct); } catch (NotFoundException) { continue; }
-            var rows = await db.ChatMessages.AsNoTracking().Where(m => m.ConversationId == c.Id && m.CreatedAt > from && m.SenderId != me && m.Kind == ChatMessageKind.User
+            var rows = await db.ChatMessages.AsNoTracking().Where(m => m.ConversationId == c.Id && m.CreatedAt > cutoff && m.SenderId != me && m.Kind == ChatMessageKind.User
                     && m.DeletedAt == null && m.Body.Contains("?")).OrderByDescending(m => m.CreatedAt).Take(30).ToListAsync(ct);
             if (rows.Count == 0) continue;
             var open = await AsksMeAsync(c.Id, rows, me, ct);
