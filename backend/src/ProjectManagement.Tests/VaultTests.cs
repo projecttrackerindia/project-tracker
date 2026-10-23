@@ -78,6 +78,7 @@ public class VaultTests(ApiFactory factory)
     {
         var owner = await TestClient.RegisterAsync(factory, name);
         await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("BUSINESS", 20);   // seats for the people each test adds
         owner.Ip = "203.0.113.9";
         return owner;
     }
@@ -584,7 +585,6 @@ public class VaultTests(ApiFactory factory)
     public async Task Rotating_the_workspace_key_rewraps_every_item_key_and_values_still_open()
     {
         var owner = await Owner();
-        await owner.UpgradeAsync("BUSINESS", 20);
         var mine = await MyVault(owner);
         var id = await AddItem(owner, Login(mine));
         Assert.True((await owner.Put($"/api/v1/vault/items/{id}", Login(mine, password: "Sec0nd!Value#77q"))).Ok);

@@ -1,0 +1,342 @@
+import { chromium } from 'playwright';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { fitsPhone } from './lib/phone.mjs';
+
+// The password vault: values stay masked until asked for and hide again by themselves, copying clears the clipboard, confidential items ask
+// for a two-step code once, use-only items can be copied but not shown, one-time codes come from the server, the editor's generator and
+// strength meter, import from a CSV export, sharing, health, administration, and the phone layout in both themes.
+// Built frontend with a synthetic vault API only.
+const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/vault-ui');
+await fs.mkdir(out, { recursive: true });
+const nginx = await fs.readFile('nginx.conf', 'utf8');
+const csp = nginx.match(/set \$sec_csp "([^"]+)";/)[1];
+const user = { id: '00000000-0000-0000-0000-000000000001', displayName: 'Asha Rao', email: 'asha@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
+const ws = { id: '00000000-0000-0000-0000-000000000002', slug: 'preview-org', name: 'Preview Workspace', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 4 };
+const token = `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`;
+const now = new Date().toISOString();
+
+// ---- a tiny vault server
+const SECRETS = { i1: { password: 'Tq7#vLm2!pZx9@Rk', note: 'Branch code 0042' }, i2: { password: 'Root!Acc3ss#2026zz' }, i3: { password: 'Use0nly!Secret#9q' }, i4: { password: 'Summer@2024', totp: 'JBSWY3DPEHPK3PXP' } };
+const collections = [
+  { id: 'c1', name: 'My vault', description: null, kind: 'Personal', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 2, atRisk: 1, requireStepUp: false, rotateEveryDays: null, locked: false, shares: null },
+  { id: 'c2', name: 'Payments servers', description: 'Production and UAT', kind: 'Shared', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 2, atRisk: 0, requireStepUp: false, rotateEveryDays: 90, locked: false,
+    shares: [{ id: 's1', principalType: 'User', principalId: user.id, role: null, name: 'Asha Rao', access: 'Manage', expiresAt: null }, { id: 's2', principalType: 'User', principalId: 'u2', role: null, name: 'Ravi Kumar', access: 'View', expiresAt: null }] },
+];
+const summary = (o) => ({ id: o.id, collectionId: o.c, collectionName: collections.find((c) => c.id === o.c).name, kind: o.kind ?? 'Login', title: o.title, url: o.url ?? null, usernameHint: o.hint ?? null, tags: o.tags ?? [],
+  class: o.cls ?? 'Secret', useOnly: !!o.useOnly, owner: { id: user.id, name: user.displayName }, hasTotp: !!o.totp, strength: o.strength ?? 4, breached: !!o.breached, reused: false, expiresAt: null, expired: false,
+  rotationReason: o.reason ?? null, valueChangedAt: now, lastUsedAt: null, myAccess: o.access ?? 'Manage', health: o.health ?? [] });
+const items = [
+  summary({ id: 'i1', c: 'c1', title: 'Bank portal', url: 'https://netbanking.example.in', hint: 'r***@fivestar.in', tags: ['finance'] }),
+  summary({ id: 'i4', c: 'c1', title: 'Old router', hint: 'a***n', strength: 0, breached: true, totp: true, health: ['weak', 'breached'] }),
+  summary({ id: 'i2', c: 'c2', title: 'AWS root account', url: 'console.aws.amazon.com', cls: 'Confidential', hint: 'o***s' }),
+  summary({ id: 'i3', c: 'c2', title: 'Payments DB', kind: 'Database', useOnly: true, access: 'Manage', hint: 'p***r' }),
+];
+const fields = (id) => {
+  const s = items.find((i) => i.id === id);
+  if (s.kind === 'Database') return [{ key: 'host', label: 'Host', type: 'text', secret: false, value: 'db.payments.internal' }, { key: 'username', label: 'User name', type: 'text', secret: false, value: 'payuser' }, { key: 'password', label: 'Password', type: 'password', secret: true, value: null }];
+  const f = [{ key: 'username', label: 'User name', type: 'text', secret: false, value: id === 'i1' ? 'ravi@fivestar.in' : 'admin' }, { key: 'password', label: 'Password', type: 'password', secret: true, value: null }];
+  if (id === 'i4') f.push({ key: 'totp', label: 'One-time code (2FA)', type: 'totp', secret: true, value: null });
+  if (id === 'i1') f.push({ key: 'note', label: 'Notes', type: 'note', secret: true, value: null });
+  return f;
+};
+const detail = (id) => {
+  const s = items.find((i) => i.id === id);
+  return { item: s, fields: fields(id), links: [], versions: id === 'i1' ? [{ id: 'v1', at: now, by: { id: user.id, name: user.displayName }, reason: 'Rotated' }] : [], attachments: id === 'i1' ? [{ id: 'a1', fileName: 'recovery.txt', contentType: 'text/plain', sizeBytes: 42, at: now }] : [],
+    canReveal: !s.useOnly && s.myAccess !== 'UseOnly', canCopy: true, canManage: s.myAccess === 'Manage', needsStepUp: s.class === 'Confidential', rotateEveryDays: null, createdAt: now, createdBy: { id: user.id, name: user.displayName } };
+};
+const policy = { stepUpAlways: false, clipboardSeconds: 5, revealSeconds: 3, sharedAdminsOnly: false };
+const overview = () => ({ collections, policy, canAdmin: true, canCreateShared: true, health: { total: 4, weak: 1, reused: 0, breached: 1, expired: 0, old: 0, toRotate: 0, score: 75 }, mfaEnabled: true });
+const STEP = 'step-token-1';
+const writes = [], errors = [], checks = [];
+const err = (status, code, message) => ({ status, body: { errors: [{ code, message }], message } });
+
+const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
+try {
+  const make = async (theme = 'light') => {
+    const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
+    await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); }, theme);
+    await ctx.route('**/*', async (route) => {
+      const req = route.request(), url = new URL(req.url()), ep = url.pathname, method = req.method();
+      if (url.origin !== origin) { await route.abort(); return; }
+      if (ep.endsWith('/avatar')) { await route.fulfill({ status: 404, body: '' }); return; }
+      if (!ep.startsWith('/api/')) {
+        const file = path.resolve(dist, ep.startsWith('/assets/') ? ep.slice(1) : 'index.html'); assert.ok(file.startsWith(dist + path.sep));
+        await route.fulfill({ contentType: { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.woff2': 'font/woff2' }[path.extname(file)] || 'application/octet-stream', body: await fs.readFile(file), headers: ep.startsWith('/assets/') ? {} : { 'content-security-policy': csp } });
+        return;
+      }
+      const body = method === 'GET' || method === 'DELETE' ? null : (() => { try { return req.postDataJSON(); } catch { return null; } })();
+      let data = [], fail = null;
+      const m = ep.match(/^\/api\/v1\/vault\/items\/([^/]+)(?:\/(reveal|totp|activity|restore|versions\/([^/]+)\/reveal))?$/);
+      if (ep === '/api/v1/vault/overview') data = overview();
+      else if (ep === '/api/v1/vault/step-up') { writes.push({ ep, body }); data = body.code === '123456' ? { token: STEP, expiresAt: new Date(Date.now() + 300e3).toISOString() } : null; if (!data) fail = err(422, 'MFA_CODE_INVALID', 'That code is not right. Try the current one.'); }
+      else if (ep === '/api/v1/vault/items' && method === 'GET') {
+        writes.push({ ep, q: Object.fromEntries(url.searchParams) });
+        const c = url.searchParams.get('collectionId'), h = url.searchParams.get('health'), q = (url.searchParams.get('q') ?? '').toLowerCase();
+        data = url.searchParams.get('bin') ? [] : items.filter((i) => (!c || i.collectionId === c) && (!h || (h === 'any' ? i.health.length : i.health.includes(h))) && (!q || i.title.toLowerCase().includes(q)));
+      }
+      else if (ep === '/api/v1/vault/items' && method === 'POST') { writes.push({ ep, body }); const s = summary({ id: `n${items.length}`, c: body.collectionId, title: body.title, cls: body.class }); items.push(s); data = detail(s.id); }
+      else if (m && !m[2] && method === 'GET') data = detail(m[1]);
+      else if (m && !m[2] && method === 'PUT') { writes.push({ ep, body }); const s = items.find((i) => i.id === m[1]); s.title = body.title; data = detail(m[1]); }
+      else if (m && m[2] === 'reveal') {
+        writes.push({ ep, body }); const s = items.find((i) => i.id === m[1]);
+        if (s.class === 'Confidential' && body.stepUp !== STEP) fail = err(403, 'STEP_UP_REQUIRED', 'This needs a fresh two-step check. Confirm with your authenticator first.');
+        else if (s.useOnly && !body.copy) fail = err(403, 'VAULT_USE_ONLY', 'This item is use-only.');
+        else data = { value: SECRETS[m[1]][body.field], revealSeconds: policy.revealSeconds, clipboardSeconds: policy.clipboardSeconds };
+      }
+      else if (m && m[2] === 'totp') { writes.push({ ep, body }); data = { code: '492039', secondsLeft: 21, period: 30, digits: 6 }; }
+      else if (m && m[2] === 'activity') data = [{ at: now, action: 'vault.revealed', by: { id: 'u2', name: 'Ravi Kumar' }, field: 'Password', ipAddress: '203.0.113.x' }, { at: now, action: 'vault.reveal_denied', by: { id: 'u3', name: 'Uma' }, field: 'password', ipAddress: null }];
+      else if (m && m[3]) { writes.push({ ep, body }); data = body.stepUp === STEP ? { value: 'Old!Value#2025', revealSeconds: 3, clipboardSeconds: 5 } : null; if (!data) fail = err(403, 'STEP_UP_REQUIRED', 'Earlier values need a fresh two-step check.'); }
+      else if (ep === '/api/v1/vault/check') { writes.push({ ep, body }); data = { strength: 4, breachCount: body.password === 'Summer@2024' ? 4321 : 0 }; }
+      else if (ep === '/api/v1/vault/import') { writes.push({ ep, body }); data = { imported: body.rows.length, skipped: 0, weak: 1 }; }
+      else if (ep.match(/^\/api\/v1\/vault\/collections\/[^/]+$/) && method === 'GET') data = collections.find((c) => c.id === ep.split('/').pop());
+      else if (ep.endsWith('/shares') && method === 'PUT') { writes.push({ ep, body }); data = collections[1]; }
+      else if (ep === '/api/v1/vault/collections' && method === 'POST') { writes.push({ ep, body }); data = { ...collections[1], id: 'c3', name: body.name }; }
+      else if (ep === '/api/v1/vault/policy') { writes.push({ ep, body }); Object.assign(policy, body); data = policy; }
+      else if (ep.startsWith('/api/v1/vault/access-review/')) data = { person: { id: 'u2', name: 'Ravi Kumar' }, collections: [{ id: 'c9', name: 'Ops break-glass', access: 'View', items: 3 }], used: [{ itemId: 'i2', title: 'AWS root account', collection: 'Payments servers', times: 4, last: now }] };
+      else if (ep.endsWith('/admin-access')) { writes.push({ ep, body }); data = collections[1]; if (body.stepUp !== STEP) fail = err(403, 'STEP_UP_REQUIRED', 'Confirm with your authenticator first.'); }
+      else if (ep.startsWith('/api/v1/vault/attachments/') && ep.endsWith('/download')) { writes.push({ ep, body }); await route.fulfill({ status: 200, contentType: 'application/octet-stream', body: 'recovery words here' }); return; }
+      else {
+        assert.ok(method === 'GET' || ep.endsWith('/auth/refresh'), `Unexpected write: ${method} ${ep}`);
+        if (ep.endsWith('/auth/refresh')) data = { accessToken: token, expiresAt: '2099-01-01T00:00:00Z', user };
+        else if (ep === '/api/v1/me') data = { user: { ...user, mfaEnabled: true }, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, reportCount: 4, permissions: ['projects.view', 'projects.edit', 'tasks.view', 'org.manage', 'reports.view', 'vault.use', 'vault.admin'], modules: { projects: 3, tasks: 3, calendar: 3, work: 3, ai: 3, activity: 3, documents: 3, people: 3, reports: 3, billing: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { AI_ASSISTANT: 3 } } };
+        else if (ep === '/api/v1/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };
+        else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
+        else if (ep === '/api/v1/workspace/members') data = [{ userId: user.id, displayName: 'Asha Rao', email: user.email, role: 'Owner', joinedAt: now, jobRole: null }, { userId: 'u2', displayName: 'Ravi Kumar', email: 'ravi@example.test', role: 'Member', joinedAt: now, jobRole: null }, { userId: 'u4', displayName: 'Meera Iyer', email: 'meera@example.test', role: 'Manager', joinedAt: now, jobRole: null }];
+        else if (ep === '/api/v1/teams') data = [{ id: 't1', name: 'Payments', description: null, memberCount: 4, projectCount: 1, lead: null }];
+        else if (ep.endsWith('/projects') || ep.endsWith('/tasks')) data = { items: [], page: 1, totalPages: 0, totalItems: 0 };
+        else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
+        else if (ep.endsWith('/ai/status')) data = { enabled: true, configured: true, entitled: true, allowedHere: true };
+        else if (ep.endsWith('/workspace/logo')) data = { hasLogo: false };
+        else if (ep === '/api/v1/chat/projects/unread') data = [];
+        else if (ep.includes('/counts') || ep.includes('/unread')) data = { count: 0, total: 0 };
+        else if (ep === '/api/v1/timer') data = null;
+        else if (ep === '/api/v1/agent/inbox' || ep === '/api/v1/agent/assigned') data = { items: [], pending: 0, canDecide: false };
+      }
+      if (fail) await route.fulfill({ status: fail.status, contentType: 'application/json', body: JSON.stringify(fail.body) });
+      else await route.fulfill({ contentType: 'application/json', headers: { 'cache-control': 'no-store' }, body: JSON.stringify({ data }) });
+    });
+    return ctx;
+  };
+  const shot = async (page, name) => { await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(400); await page.screenshot({ path: path.join(out, name) }); };
+  const waitFor = async (pred, what) => { for (let i = 0; i < 50; i++) { if (pred()) return; await new Promise((r) => setTimeout(r, 100)); } assert.fail(`waited for ${what}`); };
+  const html = (page) => page.evaluate(() => document.body.innerText + document.body.innerHTML);
+  const clip = (page) => page.evaluate(() => navigator.clipboard.readText());
+
+  let ctx = await make(); let page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message)); await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${origin}/preview-org/vault`); await page.locator('.vlt-items').waitFor();
+  assert.ok(await page.locator('.sidebar a, nav a').filter({ hasText: /^Vault$/ }).first().isVisible(), 'Vault in the sidebar');
+  assert.deepEqual(await page.locator('.vlt-rail [data-collection]').evaluateAll((els) => els.map((e) => e.getAttribute('data-collection'))), ['My vault', 'Payments servers']);
+  assert.equal(await page.locator('.vlt-item').count(), 4);
+  for (const v of Object.values(SECRETS).flatMap((s) => Object.values(s))) assert.ok(!(await html(page)).includes(v), 'no secret in the list page');
+  checks.push('list-without-secrets');
+  await shot(page, 'list-1440.png');
+
+  // Reveal: one field, masked again by itself.
+  await page.locator('.vlt-item[data-item="Bank portal"]').click();
+  await page.locator('.vlt-panel[data-item="Bank portal"]').waitFor();
+  assert.equal(await page.locator('[data-field="password"] .vlt-secret').getAttribute('data-state'), 'masked');
+  assert.ok(await page.getByText('ravi@fivestar.in').isVisible(), 'non-secret user name shown');
+  assert.ok(!(await html(page)).includes(SECRETS.i1.password));
+  await page.getByRole('button', { name: 'Reveal Password' }).click();
+  await page.locator('[data-field="password"] [data-state="revealed"]').waitFor();
+  assert.equal(await page.locator('[data-field="password"] [data-state="revealed"]').innerText(), SECRETS.i1.password);
+  assert.deepEqual(writes.filter((w) => w.ep.endsWith('/i1/reveal')).at(-1).body, { field: 'password', copy: false });
+  assert.ok(!(await html(page)).includes(SECRETS.i1.note), 'only the field asked for');
+  await page.locator('[data-field="password"] [data-state="masked"]').waitFor({ timeout: 6000 });
+  assert.ok(!(await html(page)).includes(SECRETS.i1.password), 'hidden again after the reveal time');
+  checks.push('reveal-one-field-then-hide');
+
+  // Copy: on the clipboard, then cleared.
+  await page.getByRole('button', { name: 'Copy Password' }).click();
+  await waitFor(() => writes.some((w) => w.ep.endsWith('/i1/reveal') && w.body.copy), 'copy request');
+  await page.waitForTimeout(300);
+  assert.equal(await clip(page), SECRETS.i1.password);
+  assert.ok(!(await html(page)).includes(SECRETS.i1.password), 'a copy is never shown');
+  await page.waitForTimeout(5600);
+  assert.equal(await clip(page), '', 'clipboard cleared after the workspace time');
+  checks.push('copy-and-clear-clipboard');
+
+  // Leaving the tab hides everything at once.
+  await page.getByRole('button', { name: 'Reveal Notes' }).click();
+  await page.locator('[data-field="note"] [data-state="revealed"]').waitFor();
+  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await page.locator('[data-field="note"] [data-state="masked"]').waitFor();
+  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); });
+  checks.push('hide-when-tab-left');
+
+  // Files: download goes by POST and records.
+  await page.getByRole('tab', { name: /Files/ }).click();
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download recovery.txt' }).click()]);
+  assert.equal(dl.suggestedFilename(), 'recovery.txt');
+  assert.ok(writes.some((w) => w.ep === '/api/v1/vault/attachments/a1/download'));
+  // History: always a two-step check (asked for first, so nothing is refused for nothing).
+  await page.getByRole('tab', { name: /Earlier values/ }).click();
+  await page.locator('.vlt-history').getByRole('button', { name: 'Reveal' }).click();
+  await page.locator('.modal').getByText('Confirm it is you').waitFor();
+  assert.equal(writes.filter((w) => w.ep.includes('/versions/')).length, 0, 'the code is asked for before the request');
+  await page.getByLabel('Two-step code').fill('000000'); await page.getByRole('button', { name: 'Confirm' }).click();
+  await page.locator('.modal .form-error').waitFor();
+  await page.getByLabel('Two-step code').fill('123 456'); await page.getByRole('button', { name: 'Confirm' }).click();
+  await page.locator('.vlt-history code.vlt-secret').waitFor();
+  assert.equal(await page.locator('.vlt-history code.vlt-secret').innerText(), 'Old!Value#2025');
+  assert.equal(writes.filter((w) => w.ep.includes('/versions/')).at(-1).body.stepUp, STEP);
+  await page.getByRole('tab', { name: 'Activity' }).click();
+  await page.locator('.vlt-activity li.warn').waitFor();
+  checks.push('files-history-activity');
+
+  // Confidential: the check made a moment ago is reused (no second prompt).
+  await page.locator('.vlt-item[data-item="AWS root account"]').click();
+  await page.locator('.vlt-panel[data-item="AWS root account"]').waitFor();
+  assert.ok(await page.locator('.vlt-badges').getByText('Confidential').isVisible());
+  await page.getByRole('button', { name: 'Reveal Password' }).click();
+  await page.locator('[data-field="password"] [data-state="revealed"]').waitFor();
+  assert.equal(await page.locator('.modal').count(), 0);
+  assert.equal(writes.filter((w) => w.ep.endsWith('/i2/reveal')).at(-1).body.stepUp, STEP);
+  checks.push('confidential-step-up-once');
+
+  // Use only: no reveal, only copy.
+  await page.locator('.vlt-item[data-item="Payments DB"]').click();
+  await page.locator('.vlt-panel[data-item="Payments DB"]').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Reveal Password' }).count(), 0);
+  assert.ok(await page.getByRole('button', { name: 'Copy Password' }).isVisible());
+  assert.ok(await page.locator('.vlt-badges').getByText('Use only').isVisible());
+  checks.push('use-only');
+
+  // One-time code from the server.
+  await page.locator('.vlt-item[data-item="Old router"]').click();
+  await page.locator('.vlt-panel[data-item="Old router"]').waitFor();
+  assert.ok(await page.locator('.vlt-health-callout').isVisible(), 'health warning');
+  await page.getByRole('button', { name: 'Show code' }).click();
+  await page.locator('.vlt-totp').waitFor();
+  assert.equal(await page.locator('.vlt-totp').innerText(), '492 039');
+  assert.ok(!(await html(page)).includes(SECRETS.i4.totp), 'the seed never comes to the page');
+  checks.push('totp');
+  await shot(page, 'item-1440.png');
+
+  // New item: generator, strength, breach check, a bad one-time-code key.
+  await page.getByRole('button', { name: 'New item' }).click();
+  await page.locator('.modal').getByText('New vault item').waitFor();
+  await page.getByRole('radio', { name: 'Login' }).click();
+  await page.locator('#vi-title').fill('GitHub');
+  await page.locator('#vf-username').fill('asha-rao');
+  await page.locator('#vf-password').fill('Summer@2024');
+  assert.match(await page.locator('[data-field="password"] .vlt-meter span').innerText(), /Very weak/);
+  await page.getByRole('button', { name: 'Check breaches' }).click();
+  await page.locator('.vlt-check.bad').waitFor();
+  await page.getByRole('button', { name: 'Generate' }).click();
+  const generated = await page.getByTestId('generated').innerText();
+  assert.equal(generated.length, 20);
+  await page.getByRole('button', { name: 'Use this' }).click();
+  assert.equal(await page.locator('#vf-password').inputValue(), generated);
+  assert.match(await page.locator('[data-field="password"] .vlt-meter span').innerText(), /Strong|Good/);
+  await page.locator('#vf-totp').fill('not a key');
+  assert.ok(await page.locator('[data-field="totp"] .field-error').isVisible());
+  await page.locator('#vf-totp').fill('JBSW Y3DP EHPK 3PXP');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items' && w.body), 'create');
+  const created = writes.find((w) => w.ep === '/api/v1/vault/items' && w.body).body;
+  assert.equal(created.title, 'GitHub'); assert.equal(created.collectionId, 'c1'); assert.equal(created.class, 'Secret');
+  assert.deepEqual(created.fields.find((f) => f.key === 'password'), { key: 'password', label: 'Password', type: 'password', secret: true, value: generated });
+  assert.equal(created.fields.find((f) => f.key === 'totp').value, 'JBSW Y3DP EHPK 3PXP');
+  checks.push('create-with-generator');
+
+  // Edit: a secret left empty is kept, not erased.
+  await page.locator('.vlt-item[data-item="Bank portal"]').click();
+  await page.locator('.vlt-panel[data-item="Bank portal"]').waitFor();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.locator('.modal').getByText('Edit “Bank portal”').waitFor();
+  assert.equal(await page.locator('#vf-password').inputValue(), '');
+  await page.locator('#vi-title').fill('Bank portal (main)');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items/i1' && w.body), 'update');
+  const updated = writes.find((w) => w.ep === '/api/v1/vault/items/i1').body;
+  assert.deepEqual(updated.fields.find((f) => f.key === 'password'), { key: 'password', label: 'Password', type: 'password', secret: true, keep: true });
+  assert.equal(updated.title, 'Bank portal (main)');
+  checks.push('edit-keeps-secret');
+
+  // Import a Bitwarden export.
+  await page.getByRole('button', { name: 'Import' }).click();
+  const csv = 'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n,,login,Gmail,,,0,https://mail.google.com,asha,"G,m@il#Pass1",\n,,login,Jira,,,0,https://jira.example,asha,password1,\n';
+  await page.locator('.modal input[type=file]').setInputFiles({ name: 'bitwarden.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await page.locator('.vlt-import-preview').waitFor();
+  assert.match(await page.locator('.vlt-import-preview').innerText(), /2 items found \(Bitwarden\)/);
+  assert.ok(!(await page.locator('.vlt-import-preview').innerText()).includes('G,m@il'), 'no password in the preview');
+  await page.getByRole('button', { name: 'Import 2' }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/import'), 'import');
+  const imp = writes.find((w) => w.ep === '/api/v1/vault/import').body;
+  assert.equal(imp.rows.length, 2); assert.equal(imp.rows[0].password, 'G,m@il#Pass1'); assert.equal(imp.collectionId, 'c1');
+  checks.push('import');
+
+  // Sharing a collection.
+  await page.locator('.vlt-rail [data-collection="Payments servers"]').click();
+  await page.getByRole('button', { name: 'Access' }).click();
+  await page.locator('.vlt-share-row').first().waitFor();
+  assert.equal(await page.locator('.vlt-share-row').count(), 2);
+  await page.getByRole('button', { name: 'Add a person' }).click();
+  await page.locator('.vlt-share-row').last().getByLabel('Name').selectOption('u4');
+  await page.locator('.vlt-share-row').last().getByLabel('Access').selectOption('UseOnly');
+  await page.getByRole('button', { name: 'Save access' }).click();
+  await waitFor(() => writes.some((w) => w.ep.endsWith('/c2/shares')), 'shares');
+  const shares = writes.find((w) => w.ep.endsWith('/c2/shares')).body.shares;
+  assert.deepEqual(shares.at(-1), { principalType: 'User', principalId: 'u4', access: 'UseOnly', expiresAt: null });
+  assert.equal(shares.length, 3);
+  checks.push('sharing');
+
+  // Health.
+  await page.locator('.vlt-rail button', { hasText: 'Health' }).click();
+  await page.locator('.vlt-score').waitFor();
+  await page.locator('.vlt-health-list button', { hasText: 'In a public breach' }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items' && w.q?.health === 'breached'), 'health filter request');
+  await page.waitForFunction(() => document.querySelectorAll('.vlt-item').length === 1);
+  assert.equal(await page.locator('.vlt-item').first().getAttribute('data-item'), 'Old router');
+  assert.ok(await page.locator('.vlt-chip-on', { hasText: 'In a public breach' }).isVisible());
+  checks.push('health');
+
+  // Administration: rules, review, announced access.
+  await page.locator('.vlt-rail button', { hasText: 'Administration' }).click();
+  await page.getByText('Vault rules').waitFor();
+  await page.getByText('Two-step check for every reveal, copy and code').click();
+  await page.getByRole('button', { name: 'Save rules' }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/policy'), 'policy');
+  assert.deepEqual(writes.find((w) => w.ep === '/api/v1/vault/policy').body, { stepUpAlways: true, clipboardSeconds: 5, sharedAdminsOnly: false });
+  await page.getByLabel('Person to review').selectOption('u2');
+  await page.locator('.vlt-review').getByText('Ops break-glass').waitFor();
+  await page.getByRole('button', { name: 'Take 24-hour access' }).click();
+  await page.locator('.modal textarea').fill('Kavya is on leave and the firewall is down');
+  await page.getByRole('button', { name: 'Take access' }).click();
+  await waitFor(() => writes.some((w) => w.ep.endsWith('/admin-access')), 'admin access');
+  assert.deepEqual(writes.find((w) => w.ep.endsWith('/admin-access')).body, { reason: 'Kavya is on leave and the firewall is down', stepUp: STEP });
+  checks.push('admin');
+  await shot(page, 'admin-1440.png');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+
+  // Dark theme and the phone.
+  for (const theme of ['dark', 'light']) {
+    ctx = await make(theme); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${origin}/preview-org/vault`); await page.locator('.vlt-items').waitFor();
+    await fitsPhone(page, `vault list ${theme}`, assert);
+    await shot(page, `phone-list-${theme}.png`);
+    await page.locator('.vlt-item[data-item^="Bank portal"]').click();
+    await page.locator('.vlt-panel[data-item^="Bank portal"]').waitFor();
+    assert.equal(await page.locator('.vlt-main').isVisible(), false, 'the panel replaces the list on a phone');
+    await page.getByRole('button', { name: 'Reveal Password' }).click();
+    await page.locator('[data-field="password"] [data-state="revealed"]').waitFor();
+    await fitsPhone(page, `vault item ${theme}`, assert);
+    await shot(page, `phone-item-${theme}.png`);
+    await page.getByRole('button', { name: 'Back to the list' }).click();
+    await page.locator('.vlt-items').waitFor();
+    await page.getByRole('button', { name: 'New item' }).click();
+    await page.locator('.modal').getByText('New vault item').waitFor();
+    await fitsPhone(page, `vault editor ${theme}`, assert);
+    await shot(page, `phone-editor-${theme}.png`);
+    await ctx.close();
+  }
+  checks.push('phone-both-themes');
+  assert.deepEqual(errors, []);
+  console.log(`Vault UI OK: ${checks.join(', ')}`);
+} finally { await browser.close(); }

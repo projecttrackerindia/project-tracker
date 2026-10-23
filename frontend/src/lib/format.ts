@@ -102,7 +102,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'org.manage': 'Manage organization', 'billing.manage': 'Manage billing', 'members.invite': 'Invite members', 'members.manage': 'Manage members & roles',
   'teams.manage': 'Manage teams', 'projects.create': 'Create projects', 'projects.edit': 'Edit projects', 'projects.delete': 'Delete projects',
   'workflow.manage': 'Manage workflows', 'projectgroups.manage': 'Manage project groups', 'labels.manage': 'Manage labels', 'tasks.create': 'Create tasks', 'tasks.edit': 'Edit tasks',
-  'tasks.delete': 'Delete tasks', 'tasks.comment': 'Comment on tasks', 'reports.view': 'View reports', 'audit.view': 'View audit log', 'permissions.manage': 'Manage permissions', 'org.structure': 'Manage organization chart', 'access.manage': 'Manage job-role access',
+  'tasks.delete': 'Delete tasks', 'tasks.comment': 'Comment on tasks', 'reports.view': 'View reports', 'audit.view': 'View audit log', 'permissions.manage': 'Manage permissions', 'org.structure': 'Manage organization chart', 'access.manage': 'Manage job-role access', 'vault.use': 'Use the password vault', 'vault.admin': 'Administer the password vault',
 };
 
 export const PRIORITIES = ['Critical', 'High', 'Medium', 'Low'] as const;

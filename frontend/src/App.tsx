@@ -57,6 +57,7 @@ const ProjectStatusPage = page(() => import('./features/projects/ProjectStatusPa
 const ReportsPage = page(() => import('./features/reports/ReportsPage'), 'ReportsPage');
 const LegalPage = page(() => import('./features/legal/LegalPage'), 'LegalPage');
 const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'TimesheetPage');
+const VaultPage = page(() => import('./features/vault/VaultPage'), 'VaultPage');
 const UserMailboxPage = page(() => import('./features/mailbox/MailboxPage'), 'MailboxPage');
 const NotetakerPage = page(() => import('./features/notetaker/NotetakerPage'), 'NotetakerPage');
 const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
@@ -326,6 +327,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
   const permReports = useCan('reports.view'), broad = useCan('reports.broad');
   const canReports = permReports && mReports;
   const isGuest = useAuth((s) => s.ctx?.current?.role === 'Guest');
+  const canVault = useCan('vault.use') && !isGuest;
   const kinds = useVisibleKinds();
   const ai = useAi();
   return (
@@ -379,6 +381,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="support" element={<Moved to="/operations" />} />
         <Route path="connect" element={<ConnectPage />} />
         <Route path="doctracker" element={<Guard allow={mDocuments}><DocTrackerPage /></Guard>} />
+        <Route path="vault" element={<Guard allow={canVault}><VaultPage /></Guard>} />
         <Route path="documents" element={<Guard allow={mDocuments}><LegacyDocuments /></Guard>} />
         <Route path="documents/:id" element={<Guard allow={mDocuments}><DocumentPage /></Guard>} />
         <Route path="tasks/:id" element={<TaskLink />} />

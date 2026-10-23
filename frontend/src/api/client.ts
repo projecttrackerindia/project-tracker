@@ -239,6 +239,19 @@ export async function fetchText(path: string, signal?: AbortSignal): Promise<str
   return res.text();
 }
 
+/** A download asked for with a POST (the body can carry a short-lived two-step token, which must never travel in an address). */
+export async function downloadPost(path: string, body: unknown, filename: string, signal?: AbortSignal) {
+  const send = () => fetch(`${BASE}/api/v1${path}`, {
+    method: 'POST', credentials: 'include', signal, body: JSON.stringify(body ?? {}),
+    headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+  });
+  let res = await send();
+  if (res.status === 401) res = await renewOrLose(res, send);
+  if (!res.ok) throw (await parse(res)).error ?? new ApiError(res.status, 'Download failed', []);
+  const blob = await res.blob(); signal?.throwIfAborted();
+  await saveFile(blob, filename);
+}
+
 /** Authenticated file download (CSV). Blob downloads are user-initiated from a click handler. */
 export async function download(path: string, filename: string, signal?: AbortSignal) {
   const send = () => fetch(`${BASE}/api/v1${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include', signal });

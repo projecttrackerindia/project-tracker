@@ -35,6 +35,7 @@ export function useMainNav(): NavGroup[] {
   const people = usePeopleSections();
   const hasReports = (ctx?.current?.reportCount ?? 0) > 0;
   const ai = useAi();
+  const canVault = useCan('vault.use') && ctx?.current?.role !== 'Guest';
 
   if (ctx?.user.isPlatformAdmin) return [
     { title: 'Platform', items: [
@@ -81,6 +82,7 @@ export function useMainNav(): NavGroup[] {
       { to: '/operations', label: 'Operations', icon: 'bolt', show: lv('work') > 0, hint: 'Support and operational work, queues and service levels' },
       { to: '/timesheet', label: 'Timesheet', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0 },
       { to: '/doctracker', label: 'DocTracker', icon: 'layers', show: lv('documents') > 0, match: (p) => p === '/doctracker' || p === '/documents' || p.startsWith('/documents/') },
+      { to: '/vault', label: 'Vault', icon: 'key', show: canVault, hint: 'Team passwords, keys and secrets: encrypted, shared on purpose, every use recorded' },
     ] },
     { title: 'Insights', items: [
       { to: '/workload', label: 'Workload', icon: 'users', show: !personal && (hasReports || broad) },
