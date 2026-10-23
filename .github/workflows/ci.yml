@@ -244,7 +244,15 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: A real bot against a synthetic Google Meet page
+      - name: Our own media server (LiveKit, dev mode) for the agent-in-our-calls test
+        run: |
+          curl -fsSL -o /tmp/livekit.tgz https://github.com/livekit/livekit/releases/download/v1.9.1/livekit_1.9.1_linux_amd64.tar.gz
+          tar -xzf /tmp/livekit.tgz -C /tmp livekit-server
+          (/tmp/livekit-server --dev --bind 127.0.0.1 > /tmp/livekit.log 2>&1 &)
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:7880/ && break; sleep 1; done
+      - name: A real bot against a synthetic Google Meet page, and the agent in a real call on our own media server
+        env:
+          LIVEKIT_TEST_URL: ws://127.0.0.1:7880
         run: npm test
       - name: Project agent evaluation scoring (self-test; the full evaluation runs by hand against a sandbox)
         working-directory: .

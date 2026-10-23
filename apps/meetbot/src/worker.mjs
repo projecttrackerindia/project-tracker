@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { availableParallelism, hostname, totalmem } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { MeetBot } from './bot.mjs';
+import { LiveKitBot } from './livekit.mjs';
 
 /**
  * Worker mode (MEETBOT_API_URL set): instead of waiting to be told, the service asks the API for meetings. Every few seconds it reports its
@@ -61,8 +62,30 @@ export function startWorker({ env, log, deps, bots, allowedHosts, version = '1.2
     return list;
   };
 
+  const liveKitHosts = (env.MEETBOT_LIVEKIT_HOSTS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const liveKitProtocols = ['wss:', ...(env.MEETBOT_ALLOW_HTTP === 'true' ? ['ws:'] : [])];
+
+  /** One of our own calls: the API sends the media server's address and the agent's own pass for that room. No browser, no lobby. */
+  const takeCall = (job) => {
+    let ok = false;
+    try { const u = new URL(job.liveKitUrl); ok = liveKitProtocols.includes(u.protocol) && (!liveKitHosts.length || liveKitHosts.some((h) => h === u.hostname || h === u.host)); } catch { /* not a URL */ }
+    if (!ok || typeof job.liveKitToken !== 'string' || job.liveKitToken.length > 4096) { rejected.set(job.jobId, 'The call server address is not allowed.'); return; }
+    if (webhookHosts.length ? !hostOk(job.webhookUrl, webhookHosts, protocols) : !/^https?:\/\//.test(job.webhookUrl ?? '')) { rejected.set(job.jobId, 'The webhook address is not allowed.'); return; }
+    const bot = new LiveKitBot({
+      liveKitUrl: job.liveKitUrl, liveKitToken: job.liveKitToken, botName: String(job.botName || 'Project Tracker Agent').slice(0, 60), joinAt: job.joinAt, leaveAt: job.leaveAt,
+      webhookUrl: job.webhookUrl, introMessage: job.introMessage ? String(job.introMessage).slice(0, 500) : null,
+      agendaMessage: job.agendaMessage ? String(job.agendaMessage).slice(0, 500) : null, raiseMessage: job.raiseMessage ? String(job.raiseMessage).slice(0, 500) : null,
+      readChat: job.readChat === true,
+    }, { ...deps, onFinished: (b) => { b.finishedAt = Date.now(); deps.onFinished?.(b); } });
+    bot.jobId = job.jobId;
+    jobs.set(job.jobId, bot);
+    bots.set(bot.id, bot);
+    log(`job ${job.jobId.slice(0, 8)} → call ${bot.id.slice(0, 8)}${job.rejoin ? ' (rejoining)' : ''}`);
+  };
+
   const take = (job) => {
     if (jobs.has(job.jobId)) return;
+    if (job.liveKitUrl || String(job.meetingUrl ?? '').startsWith('livekit:')) { takeCall(job); return; }
     if (!hostOk(job.meetingUrl, allowedHosts, protocols)) { rejected.set(job.jobId, 'The meeting address is not a Google Meet or Microsoft Teams link.'); return; }
     // The job comes from the API we authenticated to; MEETBOT_WEBHOOK_HOSTS narrows where captions may go when set.
     if (webhookHosts.length ? !hostOk(job.webhookUrl, webhookHosts, protocols) : !/^https?:\/\//.test(job.webhookUrl ?? '')) { rejected.set(job.jobId, 'The webhook address is not allowed.'); return; }

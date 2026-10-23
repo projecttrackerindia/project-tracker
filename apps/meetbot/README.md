@@ -12,6 +12,22 @@ reminders in the meeting chat. It leaves when the call ends, when it has been al
   More › Language and speech, chat). `src/platform.mjs` picks the page from the link. `MEETBOT_ALLOWED_HOSTS` defaults to Meet and Teams
   (`meet.google.com,teams.microsoft.com,teams.live.com,teams.cloud.microsoft`); if you set it, include the Teams hosts.
 
+## Our own calls (LiveKit)
+
+For calls on our own media server (Project Tracker's built-in video calls) the API hands the worker the server's address and a pass for that
+room in the agent's own name (`liveKitUrl`, `liveKitToken` on the job). There is no browser and no lobby: `src/livekit.mjs` joins with
+`@livekit/rtc-node`, hears each person on their own audio track (so who said what is exact), cuts their speech at pauses and sends each piece
+to the API (`/api/v1/agent/bot/<token>/speech`), which writes it down with the speech service. Without a speech service the pieces are kept
+in one recording and transcribed with Whisper after the call. It reads and writes the call's chat (`lk.chat`) and leaves when the call ends,
+when it is alone for five minutes, or at its time limit. Such a call needs about 60 MB and very little CPU, against about 550 MB for a
+browser in a Meet or Teams call.
+
+| Variable | Meaning |
+| --- | --- |
+| `MEETBOT_LIVEKIT_HOSTS` | Media servers the worker may join, e.g. `calls.projecttracker.in` (empty = any `wss://` address the API sends). |
+
+`npm test` includes a real call against `livekit-server --dev` when `LIVEKIT_TEST_URL` is set (CI downloads the server).
+
 ## Run
 
 | Variable | Meaning |

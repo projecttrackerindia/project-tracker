@@ -489,8 +489,9 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
                 && (who.Contains(m.OrganizerUserId) || m.Participants.Any(p => p.UserId != null && who.Contains(p.UserId.Value) && p.RsvpStatus != AttendeeRsvpStatus.Declined)))
             .Select(m => new { m.TenantId, m.StartTimeUtc, m.Title, m.OrganizerUserId, People = m.Participants.Where(p => p.UserId != null && p.RsvpStatus != AttendeeRsvpStatus.Declined).Select(p => p.UserId!.Value).ToList() })
             .Take(5000).ToListAsync(ct);
-        var proposals = (await db.AgentFindings.IgnoreQueryFilters().AsNoTracking().Where(f => tenantsOf.Contains(f.TenantId) && f.Status == AgentFindingStatus.Proposed && who.Contains(f.Project!.OwnerId) && !f.Project.IsDeleted)
-            .GroupBy(f => new { f.TenantId, f.Project!.OwnerId }).Select(g => new { g.Key.TenantId, g.Key.OwnerId, Count = g.Count() }).ToListAsync(ct))
+        var proposals = (await db.AgentFindings.IgnoreQueryFilters().AsNoTracking().Where(f => tenantsOf.Contains(f.TenantId) && f.Status == AgentFindingStatus.Proposed)
+            .Join(db.Projects.IgnoreQueryFilters().AsNoTracking().Where(p => !p.IsDeleted && who.Contains(p.OwnerId)), f => f.ProjectId, p => p.Id, (f, p) => new { f.TenantId, p.OwnerId })
+            .GroupBy(x => new { x.TenantId, x.OwnerId }).Select(g => new { g.Key.TenantId, g.Key.OwnerId, Count = g.Count() }).ToListAsync(ct))
             .ToDictionary(x => (x.TenantId, x.OwnerId), x => x.Count);
 
         foreach (var (tenant, user, today, tz) in due)

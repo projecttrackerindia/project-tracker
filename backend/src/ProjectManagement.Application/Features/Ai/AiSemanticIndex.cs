@@ -7,6 +7,7 @@ using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain.Entities;
+using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Ai;
 
