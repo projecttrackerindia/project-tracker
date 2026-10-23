@@ -146,7 +146,11 @@ public class CallTests(ApiFactory factory)
         Assert.Contains("agent is off", S(without["agentStatus"]));
         await owner.Post($"/api/v1/calls/{S(without["id"])}/end");
 
-        Assert.True((await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, liveBot = true })).Ok);
+        // The agent works through the AI assistant: switching it on needs one.
+        var aiWas = factory.Ai.Configured;
+        factory.Ai.Configured = true;
+        try { var on = await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, liveBot = true }); Assert.True(on.Ok, on.ToString()); }
+        finally { factory.Ai.Configured = aiWas; }
         var call = (await owner.Post("/api/v1/calls", new { projectId = project, agent = true, title = "Sprint review" })).Data!;
         Assert.True(call["agentEnabled"]!.GetValue<bool>());
         var id = Guid.Parse(S(call["id"]));
