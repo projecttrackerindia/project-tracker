@@ -296,10 +296,8 @@ public partial class AiWorkspaceTests
         await NoCard(o.Manager, AiHomeTools.VaultShare, new { collection = "Payments", person = "Olivia Owner", access = "view" });
 
         // No request to the model ever carried the value.
-        var everything = string.Join("\n", Chat.Requests.SelectMany(r => new[] { r.System, r.Context }.Concat(r.Turns.SelectMany(t => t.Blocks).Select(b => b switch
-        {
-            AiText t => t.Text, AiToolResult tr => tr.Content, AiToolUse u => u.InputJson, _ => "",
-        })))));
+        static string Words(AiBlock b) => b switch { AiText x => x.Text, AiToolResult x => x.Content, AiToolUse x => x.InputJson, _ => "" };
+        var everything = string.Join("\n", Chat.Requests.SelectMany(r => new[] { r.System, r.Context }.Concat(r.Turns.SelectMany(turn => turn.Blocks).Select(Words))));
         Assert.DoesNotContain(value, everything);
     }
 
