@@ -125,10 +125,15 @@ public partial class ChatService
     private async Task NotifyMentionsAsync(Guid tenant, Conversation conv, string projectName, string text, IEnumerable<Guid> people, CancellationToken ct)
     {
         var sender = await NameOfAsync(ctx.RequireUserId(), ct);
-        var link = $"/projects/{conv.ProjectId}?chat=1";
+        var group = conv.Type != ConversationType.Project;
+        var link = group ? $"/chat/{conv.Id}" : $"/projects/{conv.ProjectId}?chat=1";
+        var where = group ? (string.IsNullOrWhiteSpace(conv.Name) ? "a group chat" : conv.Name) : projectName;
         foreach (var u in people.Where(u => u != ctx.UserId))
-            await notifications.AddAsync(u, NotificationType.Mention, $"{sender} mentioned you in {projectName}", Snippet(text), link, ct: ct);
+            await notifications.AddAsync(u, NotificationType.Mention, $"{sender} mentioned you in {where}", Snippet(text), link, ct: ct);
     }
+
+    private async Task<HashSet<Guid>> GroupMembersAsync(Guid conversationId, CancellationToken ct) =>
+        (await db.ConversationMembers.AsNoTracking().Where(m => m.ConversationId == conversationId).Select(m => m.UserId).ToListAsync(ct)).ToHashSet();
 
     public async Task<ChatMessageDto> SendAsync(Guid conversationId, SendMessageRequest req, CancellationToken ct = default, Guid? idempotencyId = null)
     {
@@ -155,7 +160,9 @@ public partial class ChatService
             projectName = name;
             audience = await SyncProjectMembersAsync(tenant, conv, ct);
         }
-        var (normalized, mentioned) = await ResolveMentionsAsync(req.Body, audience, ct);
+        // In a group the members can be @mentioned too (in a direct chat there is nobody else to name).
+        var mentionable = audience ?? (conv.Type == ConversationType.Group ? await GroupMembersAsync(conversationId, ct) : null);
+        var (normalized, mentioned) = await ResolveMentionsAsync(req.Body, mentionable, ct);
         // Files that were uploaded for this message: they must be the sender's own, in this conversation and not yet sent.
         var attachIds = (req.AttachmentIds ?? []).Distinct().ToList();
         if (attachIds.Count > MaxFilesPerMessage) throw new ValidationException("attachmentIds", $"A message can carry up to {MaxFilesPerMessage} files.");
@@ -205,7 +212,7 @@ public partial class ChatService
         // Direct and group messages leave a notice for the people who are away from the conversation (project chats only do so for @mentions, above).
         // A thread reply tells the people in that thread instead.
         var noticed = root is not null ? await NotifyThreadAsync(conv, root, preview, to, mentioned, ct)
-            : conv.Type == ConversationType.Project ? [] : await NotifyMessageAsync(conv, preview, to, ct);
+            : conv.Type == ConversationType.Project ? [] : await NotifyMessageAsync(conv, preview, to.Where(u => !mentioned.Contains(u)), ct);   // the people named get the mention instead
         await db.SaveChangesAsync(ct);
 
         var dto = (await ToDtosAsync([msg], ct))[0];
@@ -262,13 +269,14 @@ public partial class ChatService
         if (msg.DeletedAt != null) throw new ConflictException("This message was deleted.", "MESSAGE_DELETED");
 
         var conv = await db.Conversations.FirstAsync(c => c.Id == msg.ConversationId, ct);
-        var audience = conv.Type == ConversationType.Project ? await ProjectAudienceAsync(tenant, conv.ProjectId!.Value, ct) : null;
+        var audience = conv.Type == ConversationType.Project ? await ProjectAudienceAsync(tenant, conv.ProjectId!.Value, ct)
+            : conv.Type == ConversationType.Group ? await GroupMembersAsync(conv.Id, ct) : null;
         var (normalized, mentioned) = await ResolveMentionsAsync(req.Body, audience, ct);
         var text = CleanBody(normalized);
         if (text == msg.Body) return (await ToDtosAsync([msg], ct))[0];
         msg.Body = text; msg.EditedAt = clock.Now;
         if (conv.LastMessageId == msg.Id) conv.LastMessageSnippet = Snippet(text);
-        if (conv.Type == ConversationType.Project)
+        if (conv.Type is ConversationType.Project or ConversationType.Group)
         {
             // Who is mentioned follows the new text; only people who were not mentioned before are told.
             var before = await db.ChatMentions.Where(x => x.MessageId == msg.Id).ToListAsync(ct);
@@ -277,7 +285,7 @@ public partial class ChatService
             foreach (var u in added) db.ChatMentions.Add(new ChatMention { MessageId = msg.Id, ConversationId = conv.Id, UserId = u });
             if (added.Count > 0)
             {
-                var projectName = await db.Projects.AsNoTracking().Where(p => p.Id == conv.ProjectId).Select(p => p.Name).FirstOrDefaultAsync(ct) ?? "a project";
+                var projectName = conv.ProjectId is null ? "" : await db.Projects.AsNoTracking().Where(p => p.Id == conv.ProjectId).Select(p => p.Name).FirstOrDefaultAsync(ct) ?? "a project";
                 await NotifyMentionsAsync(tenant, conv, projectName, text, added, ct);
                 await PushAsync(tenant, added.Where(u => u != me), ChatEvents.Notification, new { }, ct);
             }
