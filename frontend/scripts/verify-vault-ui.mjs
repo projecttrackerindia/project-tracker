@@ -28,8 +28,8 @@ const now = new Date().toISOString();
 // ---- a tiny vault server
 const SECRETS = { i1: { password: 'Tq7#vLm2!pZx9@Rk', note: 'Branch code 0042' }, i2: { password: 'Root!Acc3ss#2026zz' }, i3: { password: 'Use0nly!Secret#9q' }, i4: { password: 'Summer@2024', totp: 'JBSWY3DPEHPK3PXP' } };
 const collections = [
-  { id: 'c1', name: 'My vault', description: null, kind: 'Personal', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 2, atRisk: 1, requireStepUp: false, rotateEveryDays: null, locked: false, shares: null, sealed: false, rekeyNeeded: false, keyVersion: 0 },
-  { id: 'c2', name: 'Payments servers', description: 'Production and UAT', kind: 'Shared', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 2, atRisk: 0, requireStepUp: false, rotateEveryDays: 90, locked: false, sealed: false, rekeyNeeded: false, keyVersion: 0,
+  { id: 'c1', name: 'My vault', description: null, kind: 'Personal', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 2, atRisk: 1, requireStepUp: false, rotateEveryDays: null, locked: false, shares: null, sealed: false, rekeyNeeded: false, keyVersion: 0, requireApproval: false, requestable: false },
+  { id: 'c2', name: 'Payments servers', description: 'Production and UAT', kind: 'Shared', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 2, atRisk: 0, requireStepUp: false, rotateEveryDays: 90, locked: false, sealed: false, rekeyNeeded: false, keyVersion: 0, requireApproval: false, requestable: false,
     shares: [{ id: 's1', principalType: 'User', principalId: user.id, role: null, name: 'Asha Rao', access: 'Manage', expiresAt: null }, { id: 's2', principalType: 'User', principalId: 'u2', role: null, name: 'Ravi Kumar', access: 'View', expiresAt: null }] },
 ];
 const summary = (o) => ({ id: o.id, collectionId: o.c, collectionName: collections.find((c) => c.id === o.c).name, kind: o.kind ?? 'Login', title: o.title, url: o.url ?? null, usernameHint: o.hint ?? null, tags: o.tags ?? [],
@@ -55,8 +55,11 @@ const detail = (id) => {
     canReveal: !s.useOnly && s.myAccess !== 'UseOnly', canCopy: true, canManage: s.myAccess === 'Manage', needsStepUp: s.class === 'Confidential', rotateEveryDays: null, createdAt: now, createdBy: { id: user.id, name: user.displayName } };
 };
 const policy = { stepUpAlways: false, clipboardSeconds: 5, revealSeconds: 3, sharedAdminsOnly: false };
+const reqState = { mine: [], toDecide: [
+  { id: 'r1', kind: 'Collection', collectionId: 'c9', collectionName: 'Ops break-glass', itemId: null, itemTitle: null, requester: { id: 'u2', name: 'Ravi Kumar' }, reason: 'Firewall change window tonight', access: 'View', minutes: 240, status: 'Pending', decidedBy: null, decidedAt: null, decisionNote: null, grantedUntil: null, createdAt: now, canDecide: true },
+], toHelp: [], recovery: null, decoys: [], requestable: [{ id: 'c8', name: 'Firewall admin', description: 'Edge firewalls', kind: 'Shared', sealed: false }] };
 const sealedState = { identity: null, unlocks: [], envelopes: [], items: [], events: [], pendingDevice: null };
-const overview = () => ({ collections, policy, canAdmin: true, canCreateShared: true, health: { total: 4, weak: 1, reused: 0, breached: 1, expired: 0, old: 0, toRotate: 0, score: 75 }, mfaEnabled: true, identity: sealedState.identity });
+const overview = () => ({ collections, policy, canAdmin: true, canCreateShared: true, health: { total: 4, weak: 1, reused: 0, breached: 1, expired: 0, old: 0, toRotate: 0, score: 75 }, mfaEnabled: true, identity: sealedState.identity, hasPasskeys: true });
 const sha1hex = (s) => createHash('sha1').update(s).digest('hex').toUpperCase();
 const collectionKeys = (id) => ({ collectionId: id, sealed: true, keyVersion: 1, rekeyNeeded: false, myAccess: 'Manage', pending: [],
   mine: sealedState.envelopes.filter((e) => e.collectionId === id).map((e) => ({ ...e, senderUserId: user.id, senderEd25519Public: sealedState.identity.ed25519Public })) });
@@ -94,13 +97,34 @@ try {
       else if (m && !m[2] && method === 'PUT') { writes.push({ ep, body }); const s = items.find((i) => i.id === m[1]); s.title = body.title; data = detail(m[1]); }
       else if (m && m[2] === 'reveal') {
         writes.push({ ep, body }); const s = items.find((i) => i.id === m[1]);
-        if (s.class === 'Confidential' && body.stepUp !== STEP) fail = err(403, 'STEP_UP_REQUIRED', 'This needs a fresh two-step check. Confirm with your authenticator first.');
+        if (reqState.forceStepUp && body.stepUp !== 'passkey-token') { reqState.forceStepUp = false; fail = err(403, 'STEP_UP_REQUIRED', 'This looks unusual — a new browser or device. Confirm it is you.'); }
+        else if (collections.find((c) => c.id === s.collectionId)?.requireApproval && !reqState.mine.some((r) => r.itemId === s.id && r.status === 'Approved')) fail = err(403, 'VAULT_APPROVAL_REQUIRED', 'Someone else must approve this first (the two-person rule).');
+        else if (s.class === 'Confidential' && body.stepUp !== STEP && body.stepUp !== 'passkey-token') fail = err(403, 'STEP_UP_REQUIRED', 'This needs a fresh two-step check. Confirm with your authenticator first.');
         else if (s.useOnly && !body.copy) fail = err(403, 'VAULT_USE_ONLY', 'This item is use-only.');
         else data = { value: SECRETS[m[1]][body.field], revealSeconds: policy.revealSeconds, clipboardSeconds: policy.clipboardSeconds };
       }
       else if (m && m[2] === 'totp') { writes.push({ ep, body }); data = { code: '492039', secondsLeft: 21, period: 30, digits: 6 }; }
       else if (m && m[2] === 'activity') data = [{ at: now, action: 'vault.revealed', by: { id: 'u2', name: 'Ravi Kumar' }, field: 'Password', ipAddress: '203.0.113.x' }, { at: now, action: 'vault.reveal_denied', by: { id: 'u3', name: 'Uma' }, field: 'password', ipAddress: null }];
       else if (m && m[3]) { writes.push({ ep, body }); data = body.stepUp === STEP ? { value: 'Old!Value#2025', revealSeconds: 3, clipboardSeconds: 5 } : null; if (!data) fail = err(403, 'STEP_UP_REQUIRED', 'Earlier values need a fresh two-step check.'); }
+      else if (ep === '/api/v1/vault/keys/circle') data = { circle: null };
+      else if (ep === '/api/v1/vault/keys/directory') data = [{ userId: 'u2', name: 'Ravi Kumar', access: 'None', identity: null }, { userId: 'u4', name: 'Meera Iyer', access: 'None', identity: null }];
+      else if (ep === '/api/v1/vault/recovery/to-help') data = reqState.toHelp;
+      else if (ep.match(/^\/api\/v1\/vault\/recovery\/[^/]+\/refuse$/)) { writes.push({ ep }); reqState.toHelp = []; data = null; }
+      else if (ep.match(/^\/api\/v1\/vault\/recovery\/[^/]+\/finish$/)) { writes.push({ ep, q: Object.fromEntries(url.searchParams) }); reqState.recovery.cancelled = true; data = null; }
+      else if (ep === '/api/v1/vault/recovery' && method === 'POST') { writes.push({ ep, body }); reqState.recovery = { id: 'rec1', threshold: 2, helpers: 3, createdAt: now, expiresAt: new Date(Date.now() + 86400e3).toISOString(), completed: false, cancelled: false, releases: [] }; data = reqState.recovery; }
+      else if (ep === '/api/v1/vault/recovery/rec1') data = reqState.recovery;
+      else if (ep === '/api/v1/vault/requests') data = { mine: reqState.mine, toDecide: reqState.toDecide };
+      else if (ep === '/api/v1/vault/requestable') data = reqState.requestable;
+      else if (ep === '/api/v1/vault/decoys') data = reqState.decoys;
+      else if (ep.match(/^\/api\/v1\/vault\/items\/[^/]+\/requests$/)) { writes.push({ ep, body }); const it = items.find((i) => i.id === ep.split('/')[5]); data = { id: `r${reqState.mine.length + 2}`, kind: 'Reveal', collectionId: it.collectionId, collectionName: it.collectionName, itemId: it.id, itemTitle: it.title, requester: { id: user.id, name: user.displayName }, reason: body.reason, access: 'View', minutes: body.minutes, status: 'Pending', decidedBy: null, decidedAt: null, decisionNote: null, grantedUntil: null, createdAt: now, canDecide: false }; reqState.mine.unshift(data); }
+      else if (ep.match(/^\/api\/v1\/vault\/collections\/[^/]+\/requests$/)) { writes.push({ ep, body }); const c = reqState.requestable.find((x) => x.id === ep.split('/')[5]); data = { id: `r${reqState.mine.length + 2}`, kind: 'Collection', collectionId: c.id, collectionName: c.name, itemId: null, itemTitle: null, requester: { id: user.id, name: user.displayName }, reason: body.reason, access: body.access, minutes: body.minutes, status: 'Pending', decidedBy: null, decidedAt: null, decisionNote: null, grantedUntil: null, createdAt: now, canDecide: false }; reqState.mine.unshift(data); }
+      else if (ep.match(/^\/api\/v1\/vault\/requests\/[^/]+\/(approve|deny|cancel)$/)) { writes.push({ ep, body }); const [, , , , , id, act] = ep.split('/'); const r = [...reqState.toDecide, ...reqState.mine].find((x) => x.id === id);
+        if (act === 'cancel') r.status = 'Cancelled'; else Object.assign(r, { status: act === 'approve' ? 'Approved' : 'Denied', decidedBy: { id: user.id, name: user.displayName }, decidedAt: now, decisionNote: body.note, grantedUntil: act === 'approve' ? new Date(Date.now() + r.minutes * 60e3).toISOString() : null, canDecide: false });
+        reqState.toDecide = reqState.toDecide.filter((x) => x.status === 'Pending'); data = r; }
+      else if (ep.match(/^\/api\/v1\/vault\/items\/[^/]+\/decoy$/)) { writes.push({ ep, body }); const it = items.find((i) => i.id === ep.split('/')[5]); reqState.decoys = body.decoy ? [...reqState.decoys, { itemId: it.id, title: it.title, collectionName: it.collectionName, triggered: 0, lastTriggeredAt: null }] : reqState.decoys.filter((d) => d.itemId !== it.id); data = reqState.decoys.find((d) => d.itemId === it.id) ?? null; }
+      else if (ep === '/api/v1/vault/step-up/passkey/options') { writes.push({ ep }); data = { challengeId: 'ch1', options: { challenge: Buffer.from('a fresh challenge for the vault').toString('base64url'), rpId: new URL(origin).hostname, allowCredentials: [], userVerification: 'required', timeout: 60000 } }; }
+      else if (ep === '/api/v1/vault/step-up/passkey') { writes.push({ ep, body }); data = { token: 'passkey-token', expiresAt: new Date(Date.now() + 300e3).toISOString() }; }
+      else if (ep.match(/^\/api\/v1\/vault\/collections\/[^/]+$/) && method === 'PUT') { writes.push({ ep, body }); const c = collections.find((x) => x.id === ep.split('/').pop()); Object.assign(c, { requireApproval: !!body.requireApproval, requestable: !!body.requestable, requireStepUp: !!body.requireStepUp }); data = c; }
       else if (ep === '/api/v1/vault/check') { writes.push({ ep, body }); data = { strength: 4, breachCount: body.password === 'Summer@2024' ? 4321 : 0 }; }
       else if (ep.startsWith('/api/v1/vault/breach-range/')) { const prefix = ep.split('/').pop(); writes.push({ ep }); const h = sha1hex('Summer@2024'); data = { body: `0000000000000000000000000000000000A:0\r\n${h.startsWith(prefix) ? `${h.slice(5)}:4321` : ''}` }; }
       else if (ep === '/api/v1/vault/keys/me') data = { identity: sealedState.identity, unlocks: sealedState.unlocks };
@@ -144,7 +168,7 @@ try {
     return ctx;
   };
   const shot = async (page, name) => { await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(400); await page.screenshot({ path: path.join(out, name) }); };
-  const waitFor = async (pred, what) => { for (let i = 0; i < 50; i++) { if (pred()) return; await new Promise((r) => setTimeout(r, 100)); } assert.fail(`waited for ${what}`); };
+  const waitFor = async (pred, what) => { for (let i = 0; i < 50; i++) { if (await pred()) return; await new Promise((r) => setTimeout(r, 100)); } assert.fail(`waited for ${what}`); };
   const html = (page) => page.evaluate(() => document.body.innerText + document.body.innerHTML);
   const clip = (page) => page.evaluate(() => navigator.clipboard.readText());
 
@@ -347,6 +371,76 @@ try {
   assert.deepEqual(writes.find((w) => w.ep.endsWith('/admin-access')).body, { reason: 'Kavya is on leave and the firewall is down', stepUp: STEP });
   checks.push('admin');
 
+  // Decoys: a vault admin marks one from its page; the admin view lists it.
+  await page.locator('.vlt-rail button', { hasText: 'All items' }).click();
+  await page.locator('.vlt-item[data-item="Payments DB"]').click();
+  await page.locator('.vlt-panel[data-item="Payments DB"]').waitFor();
+  await page.getByRole('button', { name: 'Make it a decoy' }).click();
+  await page.locator('.modal').getByRole('button', { name: 'Make it a decoy' }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items/i3/decoy'), 'decoy set');
+  assert.deepEqual(writes.find((w) => w.ep === '/api/v1/vault/items/i3/decoy').body, { decoy: true });
+  await page.locator('.vlt-badges').getByText('Decoy').waitFor();
+  await page.locator('.vlt-rail button', { hasText: 'Administration' }).click();
+  await page.getByTestId('decoys').getByText('Payments DB').waitFor();
+  checks.push('decoys');
+
+  // The two-person rule on a collection, set from its settings.
+  await page.locator('.vlt-rail [data-collection="Payments servers"]').click();
+  await page.getByRole('button', { name: 'Collection settings' }).click();
+  await page.locator('.modal').getByText('Two-person rule').click();
+  await page.locator('.modal').getByText('People may ask to join for a while').click();
+  await page.locator('.modal').getByRole('button', { name: 'Save', exact: true }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/collections/c2' && w.body), 'collection rules');
+  const rules = writes.find((w) => w.ep === '/api/v1/vault/collections/c2').body;
+  assert.equal(rules.requireApproval, true); assert.equal(rules.requestable, true);
+  // A copy now asks for approval first; asking sends the reason and the window.
+  await page.reload(); await page.locator('.vlt-items').waitFor();
+  await page.locator('.vlt-item[data-item="AWS root account"]').click();
+  await page.getByTestId('approval').waitFor();
+  assert.match(await page.getByTestId('approval').innerText(), /Two-person rule/);
+  await page.getByRole('button', { name: 'Copy Password' }).click();
+  await page.locator('.modal').getByText('Confirm it is you').waitFor();   // confidential: the check first (the reload forgot it)
+  await page.getByLabel('Two-step code').fill('123456'); await page.getByRole('button', { name: 'Confirm' }).click();
+  await page.locator('.modal').getByText('Ask for “AWS root account”').waitFor();
+  assert.ok(!(await html(page)).includes(SECRETS.i2.password));
+  await page.locator('.modal').getByRole('radio', { name: '15 minutes' }).click();
+  await page.locator('.modal textarea').fill('Rotating the root key in tonight’s window');
+  await page.locator('.modal').getByRole('button', { name: 'Ask', exact: true }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items/i2/requests'), 'reveal request');
+  assert.deepEqual(writes.find((w) => w.ep === '/api/v1/vault/items/i2/requests').body, { reason: 'Rotating the root key in tonight’s window', minutes: 15 });
+  await page.getByTestId('approval').getByText(/waiting for someone to approve/).waitFor();
+  checks.push('two-person-rule-ask');
+
+  // Requests: decide on someone else's, and ask to join a collection for a while.
+  assert.match(await page.getByTestId('rail-requests').innerText(), /1/);
+  await page.getByTestId('rail-requests').click();
+  await page.getByTestId('requests').waitFor();
+  await page.locator('[data-request="r1"]').getByRole('button', { name: /Approve/ }).click();
+  await page.locator('.modal input').fill('Go ahead, rotate after');
+  await page.locator('.modal').getByRole('button', { name: 'Approve', exact: true }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/requests/r1/approve'), 'approve');
+  assert.deepEqual(writes.find((w) => w.ep === '/api/v1/vault/requests/r1/approve').body, { note: 'Go ahead, rotate after' });
+  await page.getByRole('button', { name: 'Ask for access' }).click();
+  await page.locator('.modal').getByRole('radio', { name: 'View' }).click();
+  await page.locator('.modal').getByRole('radio', { name: '1 day' }).click();
+  await page.locator('.modal textarea').fill('Covering the network on-call this week');
+  await page.locator('.modal').getByRole('button', { name: 'Ask', exact: true }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/collections/c8/requests'), 'collection request');
+  assert.deepEqual(writes.find((w) => w.ep === '/api/v1/vault/collections/c8/requests').body, { reason: 'Covering the network on-call this week', minutes: 1440, access: 'View' });
+  await page.getByTestId('requests').getByText(/Waiting/).first().waitFor();
+  await shot(page, 'requests-1440.png');
+  // Approved: the copy goes through.
+  reqState.mine.find((r) => r.itemId === 'i2').status = 'Approved';
+  reqState.mine.find((r) => r.itemId === 'i2').grantedUntil = new Date(Date.now() + 900e3).toISOString();
+  reqState.mine.find((r) => r.itemId === 'i2').decidedBy = { id: 'u4', name: 'Meera Iyer' };
+  await page.goto(`${origin}/preview-org/vault?item=i2`); await page.getByTestId('approval').getByText(/Approved by Meera Iyer/).waitFor();
+  await page.getByRole('button', { name: 'Copy Password' }).click();
+  await page.locator('.modal').getByText('Confirm it is you').waitFor();   // a reload forgot the check: confidential asks again
+  await page.getByLabel('Two-step code').fill('123456'); await page.getByRole('button', { name: 'Confirm' }).click();
+  await waitFor(async () => (await clip(page)) === SECRETS.i2.password, 'approved copy');
+  collections[1].requireApproval = false;
+  checks.push('requests');
+
   // ---- the sealed vault, with a passkey from a virtual authenticator that supports PRF
   const cdp = await ctx.newCDPSession(page);
   await cdp.send('WebAuthn.enable');
@@ -369,6 +463,14 @@ try {
   assert.equal(await page.getByTestId('safety-code').innerText(), setup.fingerprint);
   assert.match(await page.getByTestId('lock-state').innerText(), /Sealed vault open/);
   checks.push('sealed-keys-with-passkey');
+  // The recovery circle: offered once keys exist; only colleagues with vault keys can be chosen.
+  assert.match(await page.getByTestId('circle').innerText(), /No circle yet/);
+  await page.getByRole('button', { name: 'Set up a recovery circle' }).click();
+  await page.locator('.modal').getByText('Ravi Kumar').waitFor();
+  assert.ok(await page.locator('.modal input[type=checkbox]').first().isDisabled(), 'nobody without vault keys');
+  assert.ok(await page.locator('.modal').getByRole('button', { name: 'Split and share' }).isDisabled());
+  await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click();
+  checks.push('recovery-circle-card');
   await shot(page, 'sealed-keys-1440.png');
 
   // A sealed collection: its key is made here and wrapped to me (hybrid X25519 + ML-KEM-768 envelope).
@@ -422,9 +524,37 @@ try {
   await page.locator('.vlt-rail [data-collection="Root secrets"]').click();
   await page.getByTestId('unlock').waitFor();
   assert.ok(!(await html(page)).includes('Se@led!Root#2026x'));
+  const helper = { xPriv: x25519.utils.randomSecretKey(), kem: ml_kem768.keygen() };
+  reqState.toHelp = [{ requestId: 'h1', person: { id: 'u2', name: 'Ravi Kumar' }, x25519Public: Buffer.from(x25519.getPublicKey(helper.xPriv)).toString('base64'), mlKemPublic: Buffer.from(helper.kem.publicKey).toString('base64'),
+    createdAt: now, expiresAt: now, ipAddress: '203.0.113.x', userAgent: 'Firefox', shareEnvelope: 'AAAA', shareSignature: 'AAAA', ownerEd25519Public: 'AAAA', ownerGeneration: 1, threshold: 2 }];
   await page.getByRole('button', { name: 'Unlock with passkey' }).click();
   await page.locator('.vlt-item[data-item="Cloud root"]').waitFor();
   checks.push('unlock-with-passkey');
+  // A colleague asks their circle for help: the code to compare, a warning to call them, and a refusal that reaches the server.
+  await page.getByTestId('circle-help').waitFor();
+  { const hh = sha256(Buffer.concat([Buffer.from('pt-vault/link/v1'), x25519.getPublicKey(helper.xPriv), helper.kem.publicKey]));
+    const nn = String((((hh[0] << 24) >>> 0) + (hh[1] << 16) + (hh[2] << 8) + hh[3]) % 100000000).padStart(8, '0');
+    assert.equal(await page.locator('[data-testid="circle-help"] .vlt-link-code').innerText(), `${nn.slice(0, 4)} ${nn.slice(4)}`); }
+  assert.match(await page.getByTestId('circle-help').innerText(), /Call Ravi Kumar or see them in person/);
+  await page.getByTestId('circle-help').getByRole('button', { name: 'Refuse' }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/recovery/h1/refuse'), 'refused');
+  await page.getByTestId('circle-help').waitFor({ state: 'detached' });
+  checks.push('circle-help-request');
+
+  // A passkey answers a step-up too (the risk check asks here): fingerprint, face or screen lock instead of a code.
+  await page.locator('.vlt-rail button', { hasText: 'All items' }).click();
+  await page.locator('.vlt-item[data-item="AWS root account"]').click();
+  await page.locator('.vlt-panel[data-item="AWS root account"]').waitFor();
+  reqState.forceStepUp = true;
+  await page.evaluate(() => navigator.clipboard.writeText(''));
+  await page.getByRole('button', { name: 'Copy Password' }).click();
+  await page.getByTestId('step-up-passkey').click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/step-up/passkey'), 'passkey step-up');
+  const pk = writes.find((w) => w.ep === '/api/v1/vault/step-up/passkey').body;
+  assert.equal(pk.challengeId, 'ch1'); assert.ok(pk.response.response.signature && pk.response.response.authenticatorData, 'a signed assertion');
+  await waitFor(async () => (await clip(page)) === SECRETS.i2.password, 'copy after the passkey check');
+  assert.equal(writes.filter((w) => w.ep.endsWith('/i2/reveal')).at(-1).body.stepUp, 'passkey-token');
+  checks.push('passkey-step-up');
 
   const eph = { xPriv: x25519.utils.randomSecretKey(), kem: ml_kem768.keygen() };
   const ephPub = { x25519Public: Buffer.from(x25519.getPublicKey(eph.xPriv)).toString('base64'), mlKemPublic: Buffer.from(eph.kem.publicKey).toString('base64') };
@@ -432,6 +562,18 @@ try {
   await page.getByTestId('lock-state').click();
   await page.getByRole('button', { name: 'Lock now' }).click();
   await page.locator('.vlt-rail [data-collection="Root secrets"]').click();
+  await page.getByRole('button', { name: 'Ask my recovery circle' }).click();
+  await page.getByRole('button', { name: 'Ask my circle' }).click();
+  await page.getByTestId('circle-code').waitFor();
+  { const sentEph = writes.find((w) => w.ep === '/api/v1/vault/recovery').body;
+    const hh = sha256(Buffer.concat([Buffer.from('pt-vault/link/v1'), Buffer.from(sentEph.x25519Public, 'base64'), Buffer.from(sentEph.mlKemPublic, 'base64')]));
+    const nn = String((((hh[0] << 24) >>> 0) + (hh[1] << 16) + (hh[2] << 8) + hh[3]) % 100000000).padStart(8, '0');
+    assert.equal(await page.getByTestId('circle-code').innerText(), `${nn.slice(0, 4)} ${nn.slice(4)}`, 'the code helpers compare');
+    assert.equal(Buffer.from(sentEph.mlKemPublic, 'base64').length, 1184, 'one-time post-quantum keys for the shares'); }
+  await page.getByTestId('ask-circle').getByText(/0 of 2 helped/).waitFor();
+  await page.getByTestId('ask-circle').getByRole('button', { name: 'Cancel' }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/recovery/rec1/finish' && w.q.recovered === 'false'), 'cancelled');
+  checks.push('ask-recovery-circle');
   await page.getByRole('button', { name: 'Use my recovery key' }).click();
   await page.getByLabel('Recovery key').fill(kit.toLowerCase());
   await page.getByRole('button', { name: 'Unlock', exact: true }).click();

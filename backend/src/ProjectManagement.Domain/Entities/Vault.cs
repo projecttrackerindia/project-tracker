@@ -205,6 +205,50 @@ public class VaultDeviceLink : TenantEntity, ITenantScoped
     public string? UserAgent { get; set; }
 }
 
+/// <summary>
+/// The recovery circle: the person's identity secret split in their browser (Shamir's secret sharing) among colleagues they trust, each share
+/// encrypted to that colleague's own vault keys and signed by the owner. Any <see cref="Threshold"/> of them can give it back; fewer learn
+/// nothing. One row per colleague.
+/// </summary>
+public class VaultRecoveryShare : TenantEntity, ITenantScoped
+{
+    public Guid UserId { get; set; }
+    public Guid TrusteeUserId { get; set; }
+    public int Threshold { get; set; }
+    /// <summary>The owner's key generation the share belongs to (a key reset makes it useless).</summary>
+    public int Generation { get; set; }
+    /// <summary>The colleague's key generation it was encrypted to (their key reset makes it unopenable).</summary>
+    public int TrusteeGeneration { get; set; }
+    public string Envelope { get; set; } = "";
+    public string Signature { get; set; } = "";
+}
+
+/// <summary>
+/// Someone who lost every way to unlock asks their circle for help from a new browser: it shows a code made from its one-time public keys,
+/// each helper compares it with them (by phone or in person) and sends their share encrypted to those keys.
+/// </summary>
+public class VaultRecoveryRequest : TenantEntity, ITenantScoped
+{
+    public Guid UserId { get; set; }
+    public string X25519Public { get; set; } = "";
+    public string MlKemPublic { get; set; } = "";
+    public DateTime ExpiresAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public bool Cancelled { get; set; }
+    public string? IpAddress { get; set; }
+    public string? UserAgent { get; set; }
+}
+
+/// <summary>One helper's answer to a recovery request: their share re-encrypted to the request's one-time keys, or a refusal.</summary>
+public class VaultRecoveryRelease : TenantEntity, ITenantScoped
+{
+    public Guid RequestId { get; set; }
+    public Guid TrusteeUserId { get; set; }
+    public string? Envelope { get; set; }
+    public string? Signature { get; set; }
+    public bool Refused { get; set; }
+}
+
 public enum VaultRequestKind { Reveal = 0, Collection = 1 }
 public enum VaultRequestStatus { Pending = 0, Approved = 1, Denied = 2, Cancelled = 3, Expired = 4 }
 

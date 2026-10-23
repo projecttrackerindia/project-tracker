@@ -8,6 +8,7 @@ import { useWsQuery } from '../../lib/hooks';
 import { toast } from '../../stores/ui';
 import { ACCESS_LABEL, HEALTH_LABEL, vaultApi, type VaultHealth, type VaultHealthFlag, type VaultPolicy } from './api';
 import { useStepUp } from './stepUpContext';
+import { DecoysCard } from './VaultRequests';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
@@ -103,6 +104,7 @@ export function AdminView({ policy, onPolicy }: { policy: VaultPolicy; onPolicy:
           ))}
         </div>
       </section>
+      <DecoysCard />
       {breakGlass && <BreakGlassModal collection={breakGlass} onClose={() => setBreakGlass(null)} />}
     </div>
   );

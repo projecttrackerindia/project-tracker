@@ -292,4 +292,124 @@ public class SealedVaultTests(ApiFactory factory)
         Assert.All(flagged, r => Assert.Contains("Lalith Leaver", r));
         Assert.Single(factory.WithDb(db => db.WorkTasks.IgnoreQueryFilters().Where(t => t.TenantId == owner.WorkspaceId && t.Title.Contains("sealed collection Prod keys")).ToList()));
     }
+
+    // ------------------------------------------------------------------ the recovery circle
+
+    private static object Share(TestClient who, int generation) => new { trusteeUserId = who.UserId, trusteeGeneration = generation, envelope = Rand(1180), signature = Rand(64) };
+    private static object Ephemeral() => new { label = "New laptop", x25519Public = Rand(32), mlKemPublic = Rand(1184) };
+
+    [Fact]
+    public async Task A_recovery_circle_keeps_only_encrypted_shares_and_passes_them_on_only_to_the_asking_browser()
+    {
+        var owner = await Owner("Rhea Recover");
+        var people = new List<TestClient>();
+        foreach (var n in new[] { "Asha One", "Bala Two", "Chitra Three" }) people.Add(await owner.AddMemberAsync(factory, TenantRole.Member, n));
+        var outsider = await owner.AddMemberAsync(factory, TenantRole.Member, "Omar Outside");
+        await SetupKeys(owner);
+        var gens = new List<int>();
+        foreach (var p in people) gens.Add(await SetupKeys(p));
+        await SetupKeys(outsider);
+        object Circle(int threshold, string? stepUp, params int[] idx) => new { threshold, shares = idx.Select(i => Share(people[i], gens[i])).ToArray(), stepUp };
+
+        Assert.Null((await owner.Get("/api/v1/vault/keys/circle")).Data!["circle"]);
+        Assert.Equal("STEP_UP_REQUIRED", (await owner.Put("/api/v1/vault/keys/circle", Circle(2, null, 0, 1, 2))).ErrorCode);
+        var token = await StepUp(owner);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put("/api/v1/vault/keys/circle", Circle(2, token, 0))).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put("/api/v1/vault/keys/circle", Circle(4, token, 0, 1, 2))).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put("/api/v1/vault/keys/circle", new { threshold = 2, shares = new[] { Share(people[0], gens[0]), Share(owner, 1) }, stepUp = token })).Status);
+        Assert.Equal("VAULT_CIRCLE_KEYS", (await owner.Put("/api/v1/vault/keys/circle", new { threshold = 2, shares = new[] { Share(people[0], gens[0]), Share(people[1], gens[1] + 1) }, stepUp = token })).ErrorCode);
+        var set = await owner.Put("/api/v1/vault/keys/circle", Circle(2, token, 0, 1, 2));
+        Assert.True(set.Ok, set.ToString());
+        Assert.Equal(2, set.Data!["threshold"]!.GetValue<int>());
+        Assert.Equal(3, set.Data["members"]!.AsArray().Count);
+        Assert.True(set.Data["usable"]!.GetValue<bool>());
+        Assert.True(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == people[0].UserId && n.Title == "Rhea Recover added you to their vault recovery circle")));
+        Assert.Single(factory.WithDb(db => db.AuditLogs.Where(a => a.TenantId == owner.WorkspaceId && a.Action == "vault.recovery_circle_set").ToList()));
+
+        // Asking: everyone in the circle and the owner are told.
+        Assert.Empty((await people[0].Get("/api/v1/vault/recovery/to-help")).Data!.AsArray());
+        var asked = await owner.Post("/api/v1/vault/recovery", Ephemeral());
+        Assert.True(asked.Ok, asked.ToString());
+        var rid = G(asked.Data!["id"]);
+        Assert.Equal(2, asked.Data["threshold"]!.GetValue<int>());
+        Assert.Equal(3, asked.Data["helpers"]!.GetValue<int>());
+        Assert.True(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == owner.UserId && n.Title == "Your vault recovery circle was asked for help")));
+        Assert.True(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == people[2].UserId && n.Title == "Rhea Recover asks you to help unlock their vault")));
+
+        // A helper sees their own share (encrypted to them) and the asking browser's one-time keys; nobody else sees anything.
+        var toHelp = await people[0].Get("/api/v1/vault/recovery/to-help");
+        var row = Assert.Single(toHelp.Data!.AsArray())!;
+        Assert.Equal(rid, G(row["requestId"]));
+        var stored = factory.WithDb(db => db.VaultRecoveryShares.IgnoreQueryFilters().Single(x => x.UserId == owner.UserId && x.TrusteeUserId == people[0].UserId));
+        Assert.Equal(stored.Envelope, S(row["shareEnvelope"]));
+        Assert.DoesNotContain(factory.WithDb(db => db.VaultRecoveryShares.IgnoreQueryFilters().Single(x => x.UserId == owner.UserId && x.TrusteeUserId == people[1].UserId)).Envelope, toHelp.ToString());
+        Assert.Empty((await outsider.Get("/api/v1/vault/recovery/to-help")).Data!.AsArray());
+        Assert.Equal(HttpStatusCode.NotFound, (await outsider.Post($"/api/v1/vault/recovery/{rid}/help", new { envelope = Rand(1180), signature = Rand(64) })).Status);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.Post($"/api/v1/vault/recovery/{rid}/help", new { envelope = Rand(1180), signature = Rand(64) })).Status);
+        Assert.Equal(HttpStatusCode.NotFound, (await outsider.Get($"/api/v1/vault/recovery/{rid}")).Status);
+
+        var released = Rand(1180);
+        Assert.Equal(HttpStatusCode.NoContent, (await people[0].Post($"/api/v1/vault/recovery/{rid}/help", new { envelope = released, signature = Rand(64) })).Status);
+        Assert.Equal("VAULT_DECIDED", (await people[0].Post($"/api/v1/vault/recovery/{rid}/help", new { envelope = Rand(1180), signature = Rand(64) })).ErrorCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await people[1].Post($"/api/v1/vault/recovery/{rid}/refuse")).Status);
+        Assert.Empty((await people[0].Get("/api/v1/vault/recovery/to-help")).Data!.AsArray());
+        Assert.True(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == owner.UserId && n.Title == "Asha One helped unlock your vault")));
+
+        var status = await owner.Get($"/api/v1/vault/recovery/{rid}");
+        Assert.True(status.Ok, status.ToString());
+        var releases = status.Data!["releases"]!.AsArray();
+        Assert.Equal(2, releases.Count);
+        Assert.Contains(releases, r => r!["envelope"]?.GetValue<string>() == released);
+        Assert.Contains(releases, r => r!["refused"]!.GetValue<bool>());
+        Assert.All(releases, r => Assert.False(string.IsNullOrEmpty(r!["trusteeEd25519Public"]?.GetValue<string>())));
+
+        // Done: what came back is destroyed; nothing more can be sent.
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.Post($"/api/v1/vault/recovery/{rid}/finish?recovered=true")).Status);
+        Assert.All((await owner.Get($"/api/v1/vault/recovery/{rid}")).Data!["releases"]!.AsArray(), r => Assert.Null(r!["envelope"]?.GetValue<string>()));
+        Assert.False(factory.WithDb(db => db.VaultRecoveryReleases.IgnoreQueryFilters().Any(x => x.RequestId == rid && x.Envelope != null)));
+        Assert.Equal("VAULT_LINK_ENDED", (await people[2].Post($"/api/v1/vault/recovery/{rid}/help", new { envelope = Rand(1180), signature = Rand(64) })).ErrorCode);
+        Assert.Single(factory.WithDb(db => db.AuditLogs.Where(a => a.TenantId == owner.WorkspaceId && a.Action == "vault.recovered_by_circle").ToList()));
+
+        // A few asks a day at most.
+        Assert.True((await owner.Post("/api/v1/vault/recovery", Ephemeral())).Ok);
+        Assert.True((await owner.Post("/api/v1/vault/recovery", Ephemeral())).Ok);
+        Assert.Equal("VAULT_LIMITED", (await owner.Post("/api/v1/vault/recovery", Ephemeral())).ErrorCode);
+    }
+
+    [Fact]
+    public async Task A_circle_goes_stale_when_a_member_resets_their_keys_or_leaves_and_the_owner_is_told()
+    {
+        var owner = await Owner("Stella Stale");
+        var a = await owner.AddMemberAsync(factory, TenantRole.Member, "Arun Resets");
+        var b = await owner.AddMemberAsync(factory, TenantRole.Member, "Bina Stays");
+        var c = await owner.AddMemberAsync(factory, TenantRole.Member, "Chetan Leaves");
+        await SetupKeys(owner);
+        var ga = await SetupKeys(a); var gb = await SetupKeys(b); var gc = await SetupKeys(c);
+        var token = await StepUp(owner);
+        Assert.True((await owner.Put("/api/v1/vault/keys/circle", new { threshold = 2, shares = new[] { Share(a, ga), Share(b, gb) }, stepUp = token })).Ok);
+        Assert.Equal("VAULT_NO_CIRCLE", (await a.Post("/api/v1/vault/recovery", Ephemeral())).ErrorCode);
+
+        // A resets: their share no longer opens; the owner is told and the circle cannot be used.
+        var aToken = await StepUp(a);
+        Assert.True((await a.Post("/api/v1/vault/keys/setup", new { x25519Public = Rand(32), mlKemPublic = Rand(1184), ed25519Public = Rand(32), selfSignature = Rand(64), fingerprint = Fp(),
+            unlocks = new[] { new { kind = "RecoveryKey", salt = Rand(16), wrappedSeed = Rand(60) } }, reset = true, stepUp = aToken })).Ok);
+        Assert.True(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == owner.UserId && n.Title == "Arun Resets changed their vault keys")));
+        var circle = (await owner.Get("/api/v1/vault/keys/circle")).Data!["circle"]!;
+        Assert.False(circle["usable"]!.GetValue<bool>());
+        Assert.True(circle["members"]!.AsArray().Single(m => S(m!["person"]!["name"]) == "Arun Resets")!["stale"]!.GetValue<bool>());
+        Assert.Equal("VAULT_CIRCLE_STALE", (await owner.Post("/api/v1/vault/recovery", Ephemeral())).ErrorCode);
+        Assert.Empty((await a.Get("/api/v1/vault/recovery/to-help")).Data!.AsArray());
+
+        // A new circle; then someone in it leaves the workspace and it falls below its threshold.
+        Assert.True((await owner.Put("/api/v1/vault/keys/circle", new { threshold = 2, shares = new[] { Share(b, gb), Share(c, gc) }, stepUp = token })).Ok);
+        Assert.True((await owner.Delete($"/api/v1/workspace/members/{c.UserId}")).Ok);
+        Assert.False(factory.WithDb(db => db.VaultRecoveryShares.IgnoreQueryFilters().Any(x => x.TrusteeUserId == c.UserId)));
+        Assert.True(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == owner.UserId && n.Title == "Your vault recovery circle needs new people")));
+
+        // The owner's own key reset ends their circle (it split the old secret).
+        var reset = await owner.Post("/api/v1/vault/keys/setup", new { x25519Public = Rand(32), mlKemPublic = Rand(1184), ed25519Public = Rand(32), selfSignature = Rand(64), fingerprint = Fp(),
+            unlocks = new[] { new { kind = "RecoveryKey", salt = Rand(16), wrappedSeed = Rand(60) } }, reset = true, stepUp = token });
+        Assert.True(reset.Ok, reset.ToString());
+        Assert.Null((await owner.Get("/api/v1/vault/keys/circle")).Data!["circle"]);
+    }
 }

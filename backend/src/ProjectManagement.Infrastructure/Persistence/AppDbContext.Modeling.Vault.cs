@@ -108,5 +108,26 @@ public partial class AppDbContext
             e.Property(x => x.IpAddress).HasMaxLength(64);
             e.Property(x => x.UserAgent).HasMaxLength(300);
         });
+        b.Entity<VaultRecoveryShare>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId });
+            e.HasIndex(x => new { x.TenantId, x.TrusteeUserId });
+            e.Property(x => x.Envelope).HasMaxLength(4000);
+            e.Property(x => x.Signature).HasMaxLength(120);
+        });
+        b.Entity<VaultRecoveryRequest>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.ExpiresAt });
+            e.Property(x => x.X25519Public).HasMaxLength(64);
+            e.Property(x => x.MlKemPublic).HasMaxLength(2000);
+            e.Property(x => x.IpAddress).HasMaxLength(64);
+            e.Property(x => x.UserAgent).HasMaxLength(300);
+        });
+        b.Entity<VaultRecoveryRelease>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.RequestId });
+            e.Property(x => x.Envelope).HasMaxLength(4000);
+            e.Property(x => x.Signature).HasMaxLength(120);
+        });
     }
 }

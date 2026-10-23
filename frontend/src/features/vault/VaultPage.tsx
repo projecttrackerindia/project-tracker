@@ -16,11 +16,14 @@ import { sealedSummary, useSealedData, type Me } from './sealedData';
 import { AdminView, HealthView } from './VaultAdmin';
 import { CollectionEditor, Generator, ImportModal, ItemEditor, ShareEditor, type SealedEdit } from './VaultEditors';
 import { VaultItemPanel } from './VaultItemPanel';
+import { CircleHelpRequests } from './RecoveryCircle';
+import { RequestsView } from './VaultRequests';
+import { useVaultRequests } from './requestsData';
 import { StepUpProvider } from './stepUp';
 import { useStepUp } from './stepUpContext';
 import './vault.css';
 
-type View = 'items' | 'health' | 'bin' | 'admin' | 'keys';
+type View = 'items' | 'health' | 'bin' | 'admin' | 'keys' | 'requests';
 type Row = VaultItemSummary & { sealed?: boolean };
 const IDLE_MS = 5 * 60_000;
 const COLLECTION_ICON: Record<VaultCollection['kind'], IconName> = { Personal: 'user', Shared: 'users', Project: 'folder', Team: 'users' };
@@ -34,7 +37,7 @@ export function VaultPage() {
   const overview = useWsQuery(['vault', 'overview'], vaultApi.overview, { staleTime: 30_000 });
   if (overview.isLoading) return <PageLoader />;
   if (overview.error || !overview.data) return <div className="page"><ErrorState error={overview.error} retry={() => overview.refetch()} /></div>;
-  return <StepUpProvider mfaEnabled={overview.data.mfaEnabled}><Vault /></StepUpProvider>;
+  return <StepUpProvider mfaEnabled={overview.data.mfaEnabled} hasPasskeys={overview.data.hasPasskeys}><Vault /></StepUpProvider>;
 }
 
 function Vault() {
@@ -50,7 +53,7 @@ function Vault() {
   const [params, setParams] = useSearchParams();
   const view = ((): View => {
     const v = params.get('view') ?? (params.get('tab') === 'access' ? 'admin' : null);
-    return v === 'health' || v === 'bin' || v === 'keys' || (v === 'admin' && o.canAdmin) ? v : 'items';
+    return v === 'health' || v === 'bin' || v === 'keys' || v === 'requests' || (v === 'admin' && o.canAdmin) ? v : 'items';
   })();
   const collectionId = params.get('c');
   const itemId = params.get('item');
@@ -92,6 +95,8 @@ function Vault() {
   useEffect(() => holdScreenShield(), []);
   const away = useAway(shield.level !== 'blocked');
 
+  const requests = useVaultRequests();
+  const waiting = requests.data?.toDecide.length ?? 0;
   const sealedData = useSealedData(o.collections, wid, meId);
   const unlocked = sealedData.unlocked;
   const collection = o.collections.find((c) => c.id === collectionId) ?? null;
@@ -124,7 +129,7 @@ function Vault() {
   const list: Row[] = view === 'bin' ? [...(items.data ?? []), ...sealedBin.map((r) => r.sum)]
     : sealedOnly ? sealedRows.map((r) => r.sum) : [...(items.data ?? []), ...sealedRows.map((r) => r.sum)].sort((a, b) => (b.health.length > 0 ? 1 : 0) - (a.health.length > 0 ? 1 : 0) || a.title.localeCompare(b.title));
   const selectedSealed = (view === 'bin' ? sealedBin : sealedRows).find((r) => r.s.row.id === itemId) ?? null;
-  const title = view === 'bin' ? 'Bin' : view === 'health' ? 'Health' : view === 'admin' ? 'Administration' : view === 'keys' ? 'My keys' : collection?.name ?? 'All items';
+  const title = view === 'bin' ? 'Bin' : view === 'health' ? 'Health' : view === 'admin' ? 'Administration' : view === 'keys' ? 'My keys' : view === 'requests' ? 'Requests' : collection?.name ?? 'All items';
   const hasKeys = !!keysMe.data?.identity;
   const canSeal = hasKeys && unlocked;
 
@@ -162,6 +167,7 @@ function Vault() {
       {o.canCreateShared && <button className="vlt-rail-add" onClick={() => setCollectionEdit('new')}><Icon name="plus" size={15} /><span>New collection</span></button>}
       <p className="vlt-rail-title">Tools</p>
       <button className={view === 'health' ? 'on' : ''} onClick={() => set({ view: 'health', item: null })}><Icon name="gauge" size={16} /><span>Health</span>{health2.score < 100 && health2.total > 0 && <em className={health2.score < 60 ? 'bad' : ''}>{health2.score}</em>}</button>
+      <button className={view === 'requests' ? 'on' : ''} onClick={() => set({ view: 'requests', item: null })} data-testid="rail-requests"><Icon name="inbox" size={16} /><span>Requests</span>{waiting > 0 && <em className="bad" title={`${waiting} waiting for you`}>{waiting}</em>}</button>
       <button className={view === 'bin' ? 'on' : ''} onClick={() => set({ view: 'bin', c: null, item: null, health: null })}><Icon name="trash" size={16} /><span>Bin</span></button>
       {o.canAdmin && <button className={view === 'admin' ? 'on' : ''} onClick={() => set({ view: 'admin', item: null })}><Icon name="shield" size={16} /><span>Administration</span></button>}
     </nav>
@@ -202,6 +208,7 @@ function Vault() {
                   setBreached(next); toast('Sealed passwords checked against breach lists (only hash prefixes were sent).');
                 }}><Icon name="shield" size={14} /> Check sealed items for breaches</button> : null} />
             : view === 'admin' ? <AdminView policy={o.policy} onPolicy={refresh} />
+            : view === 'requests' ? <RequestsView />
             : (
               <>
                 <div className="vlt-list-head">
@@ -250,10 +257,11 @@ function Vault() {
         {itemId && (view === 'items' || view === 'bin') && (selectedSealed
           ? <SealedItemPanel c={selectedSealed.c} item={selectedSealed.s} policy={o.policy} lockEpoch={lockEpoch} binned={view === 'bin'}
               onEdit={() => setEditing({ item: selectedSealed.s, collection: selectedSealed.c })} onClose={() => set({ item: null })} onChanged={refresh} />
-          : (!collection?.sealed || view === 'bin') && <VaultItemPanel id={itemId} policy={o.policy} lockEpoch={lockEpoch} binned={view === 'bin'} onEdit={(d) => setEditing(d)} onClose={() => set({ item: null })} onChanged={refresh} />)}
+          : (!collection?.sealed || view === 'bin') && <VaultItemPanel id={itemId} policy={o.policy} lockEpoch={lockEpoch} binned={view === 'bin'} collections={o.collections} canAdmin={o.canAdmin} onEdit={(d) => setEditing(d)} onClose={() => set({ item: null })} onChanged={refresh} />)}
       </div>
 
       <DeviceApprovals unlocked={unlocked} />
+      <CircleHelpRequests unlocked={unlocked} />
       {editing && <ItemEditor existing={editing === 'new' || 'collection' in editing ? null : editing} sealedEdit={editing !== 'new' && 'collection' in editing ? editing : null}
         collections={o.collections} defaultCollection={collectionId ?? personal?.id ?? null} clipboardSeconds={o.policy.clipboardSeconds} revealSeconds={o.policy.revealSeconds}
         onClose={() => setEditing(null)} onSaved={(id) => { setEditing(null); refresh(); set({ item: id, view: null }); }} />}
@@ -308,10 +316,11 @@ function ShieldNote({ info }: { info: ShieldInfo }) {
 
 function CollectionButton({ c, active, onClick }: { c: VaultCollection; active: boolean; onClick: () => void }) {
   return (
-    <button className={`${active ? 'on' : ''}${c.sealed ? ' sealed' : ''}`} onClick={onClick} data-collection={c.name} title={c.description ?? (c.sealed ? 'End-to-end encrypted' : undefined)}>
+    <button className={`${active ? 'on' : ''}${c.sealed ? ' sealed' : ''}`} onClick={onClick} data-collection={c.name} title={[c.description, c.sealed ? 'End-to-end encrypted' : null, c.requireApproval ? 'Two-person rule' : null].filter(Boolean).join(' · ') || undefined}>
       <Icon name={c.sealed ? 'lock' : COLLECTION_ICON[c.kind]} size={16} />
       <span>{c.name}</span>
       {c.requireStepUp && <Icon name="shield" size={12} />}
+      {c.requireApproval && <Icon name="users" size={12} />}
       {c.atRisk > 0 ? <em className="bad" title={`${c.atRisk} at risk`}>{c.atRisk}</em> : <i>{c.items}</i>}
     </button>
   );

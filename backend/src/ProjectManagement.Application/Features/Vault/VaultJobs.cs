@@ -38,6 +38,21 @@ public class VaultOffboarding(IAppDbContext db, ICurrentContext ctx, AppClock cl
         db.VaultUnlocks.RemoveRange(await db.VaultUnlocks.IgnoreQueryFilters().Where(u => u.TenantId == tenantId && u.UserId == userId).ToListAsync(ct));
         db.VaultIdentities.RemoveRange(await db.VaultIdentities.IgnoreQueryFilters().Where(i => i.TenantId == tenantId && i.UserId == userId).ToListAsync(ct));
         db.VaultDeviceLinks.RemoveRange(await db.VaultDeviceLinks.IgnoreQueryFilters().Where(l => l.TenantId == tenantId && l.UserId == userId).ToListAsync(ct));
+        // Their own recovery circle and requests go; circles they were in lose them, and an owner whose circle can no longer give their key back is told.
+        db.VaultRecoveryShares.RemoveRange(await db.VaultRecoveryShares.IgnoreQueryFilters().Where(s => s.TenantId == tenantId && s.UserId == userId).ToListAsync(ct));
+        var myRequests = await db.VaultRecoveryRequests.IgnoreQueryFilters().Where(r => r.TenantId == tenantId && r.UserId == userId).ToListAsync(ct);
+        var myRequestIds = myRequests.Select(r => r.Id).ToList();
+        db.VaultRecoveryReleases.RemoveRange(await db.VaultRecoveryReleases.IgnoreQueryFilters().Where(x => x.TenantId == tenantId && (myRequestIds.Contains(x.RequestId) || x.TrusteeUserId == userId)).ToListAsync(ct));
+        db.VaultRecoveryRequests.RemoveRange(myRequests);
+        var heldFor = await db.VaultRecoveryShares.IgnoreQueryFilters().Where(s => s.TenantId == tenantId && s.TrusteeUserId == userId).ToListAsync(ct);
+        db.VaultRecoveryShares.RemoveRange(heldFor);
+        foreach (var share in heldFor)
+        {
+            var left = await db.VaultRecoveryShares.IgnoreQueryFilters().CountAsync(s => s.TenantId == tenantId && s.UserId == share.UserId && s.TrusteeUserId != userId, ct);
+            if (left < share.Threshold && ctx.TenantId == tenantId)
+                await notifications.AddAsync(share.UserId, NotificationType.Security, "Your vault recovery circle needs new people",
+                    $"{name} left the workspace, so your circle can no longer give your key back. Choose people again under My keys.", "/vault?view=keys", toSelf: true, ct: ct);
+        }
         var sealedListed = await db.AuditLogs.IgnoreQueryFilters().Where(a => a.TenantId == tenantId && a.UserId == userId && a.Action == SealedListed && a.EntityId != null && a.CreatedAt > now.AddDays(-90))
             .Select(a => a.EntityId!.Value).Distinct().ToListAsync(ct);
 

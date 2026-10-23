@@ -341,6 +341,8 @@ export function CollectionEditor({ existing, canSeal, onClose, onSaved, onSeal }
   const [projectId, setProjectId] = useState(existing?.projectId ?? '');
   const [teamId, setTeamId] = useState(existing?.teamId ?? '');
   const [requireStepUp, setRequireStepUp] = useState(existing?.requireStepUp ?? false);
+  const [requireApproval, setRequireApproval] = useState(existing?.requireApproval ?? false);
+  const [requestable, setRequestable] = useState(existing?.requestable ?? false);
   const [rotate, setRotate] = useState(existing?.rotateEveryDays ?? 0);
   const [share, setShare] = useState<VaultAccess>('View');
   const [error, setError] = useState<string | null>(null);
@@ -348,12 +350,14 @@ export function CollectionEditor({ existing, canSeal, onClose, onSaved, onSeal }
   const projects = useWsQuery(['vault', 'projects'], () => projectApi.list({ pageSize: 100 }), { staleTime: 300_000, enabled: kind === 'Project' && !existing });
   const teams = useWsQuery(['vault', 'teams'], () => teamApi.list(), { staleTime: 300_000, enabled: kind === 'Team' && !existing });
   const personal = existing?.kind === 'Personal';
+  const isSealed = existing ? existing.sealed : sealedNew;
   return (
     <Modal title={existing ? `Collection: ${existing.name}${existing.sealed ? ' (sealed)' : ''}` : 'New shared collection'} subtitle={existing ? undefined : 'A group of credentials with one access list.'} onClose={onClose} className="vlt-scope"
       onSubmit={async (e) => {
         e.preventDefault(); setError(null); setBusy(true);
         const body = { name: name.trim(), description: description.trim() || null, kind, projectId: kind === 'Project' ? projectId || null : null, teamId: kind === 'Team' ? teamId || null : null,
-          requireStepUp, rotateEveryDays: rotate || null, shareWithMembers: !existing && kind !== 'Shared' ? (sealedNew && share === 'UseOnly' ? 'View' : share) : null, sealed: !existing && sealedNew };
+          requireStepUp, rotateEveryDays: rotate || null, shareWithMembers: !existing && kind !== 'Shared' ? (sealedNew && share === 'UseOnly' ? 'View' : share) : null, sealed: !existing && sealedNew,
+          requireApproval: isSealed ? false : requireApproval, requestable: personal ? false : requestable };
         try {
           const c = existing ? await vaultApi.updateCollection(existing.id, body) : await vaultApi.createCollection(body);
           if (!existing && sealedNew) await sealed.firstKey(c.id);   // its key is made here and wrapped to me; the server never sees it
@@ -400,6 +404,14 @@ export function CollectionEditor({ existing, canSeal, onClose, onSaved, onSeal }
           </div>
         )}
         {!personal && <label className="field full vlt-check-row"><input type="checkbox" checked={requireStepUp} onChange={(e) => setRequireStepUp(e.target.checked)} /> <span><b>Ask for a two-step check on everything here</b><br /><span className="muted">For production keys and other high-risk access.</span></span></label>}
+        {!personal && (
+          <label className="field full vlt-check-row"><input type="checkbox" checked={requireApproval && !isSealed} disabled={isSealed} onChange={(e) => setRequireApproval(e.target.checked)} />
+            <span><b>Two-person rule</b><br /><span className="muted">{isSealed ? 'Needs a guarded collection: in a sealed one, whoever holds the key can read without asking.' : 'Every use needs someone else’s approval first, for a window that ends by itself. Managers included.'}</span></span></label>
+        )}
+        {!personal && (
+          <label className="field full vlt-check-row"><input type="checkbox" checked={requestable} onChange={(e) => setRequestable(e.target.checked)} />
+            <span><b>People may ask to join for a while</b><br /><span className="muted">Its name shows under Requests; a manager approves an hour, a day or a week, then the access ends by itself.</span></span></label>
+        )}
         <Field label="New items are changed every"><select className="input" value={rotate} onChange={(e) => setRotate(Number(e.target.value))} aria-label="Rotation rule">{ROTATE.map((d) => <option key={d} value={d}>{d === 0 ? 'No rule' : `${d} days`}</option>)}</select></Field>
         {error && <p className="form-error full" role="alert">{error}</p>}
       </div>

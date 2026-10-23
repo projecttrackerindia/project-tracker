@@ -13,6 +13,7 @@ import { prfSupported } from './e2ee/passkey';
 import * as sealed from './e2ee/sealed';
 import { copySecret, strength, STRENGTH_LABEL } from './secure';
 import { useStepUp } from './stepUpContext';
+import { AskCircle, CircleCard } from './RecoveryCircle';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError || e instanceof sealed.SealedError || e instanceof Error ? e.message || fallback : fallback);
 import type { Me } from './sealedData';
@@ -77,7 +78,7 @@ const recoveryKit = (key: string, fp: string, me: Me) => [
 // ------------------------------------------------------------------ unlocking
 
 export function UnlockPanel({ tenant, me, keys, onUnlocked }: { tenant: string; me: Me; keys: VaultKeysMe; onUnlocked: () => void }) {
-  const [mode, setMode] = useState<'choose' | 'recovery' | 'link'>('choose');
+  const [mode, setMode] = useState<'choose' | 'recovery' | 'link' | 'circle'>('choose');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,8 +109,10 @@ export function UnlockPanel({ tenant, me, keys, onUnlocked }: { tenant: string; 
               await run(() => sealed.waitForLink(tenant, me.id, keys, started, abort.current!.signal));
             } catch (e) { setError(errText(e, 'Could not start.')); }
           }}><Icon name="monitor" size={16} /> Use a device that is unlocked</button>
+          <button className="btn btn-ghost" onClick={() => { setMode('circle'); setError(null); }}><Icon name="users" size={16} /> Ask my recovery circle</button>
         </div>
       )}
+      {mode === 'circle' && <AskCircle tenant={tenant} me={me} keys={keys} onUnlocked={onUnlocked} onBack={() => setMode('choose')} />}
       {mode === 'recovery' && (
         <form className="vlt-unlock-form" onSubmit={(e) => { e.preventDefault(); void run(() => sealed.unlockWithRecoveryKey(tenant, me.id, keys, text)); }}>
           <input className="input vlt-mono" value={text} autoFocus autoComplete="off" spellCheck={false} placeholder="PTV1-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" aria-label="Recovery key" onChange={(e) => setText(e.target.value)} />
@@ -208,8 +211,9 @@ export function KeysView({ tenant, me, keys, onChanged }: { tenant: string; me: 
           {!unlocked && <p className="vlt-small muted">Unlock first to add a way to unlock.</p>}
         </div>
       </section>
+      <CircleCard tenant={tenant} me={me} unlocked={unlocked} />
       <section className="card vlt-danger-card">
-        <div className="card-head"><div><h3>Lost everything?</h3><p>Make new keys. Shared sealed collections come back as their managers share them again; personal sealed collections cannot.</p></div></div>
+        <div className="card-head"><div><h3>Lost everything?</h3><p>Ask your recovery circle from the locked screen first. Otherwise, make new keys. Shared sealed collections come back as their managers share them again; personal sealed collections cannot.</p></div></div>
         <div className="card-body"><button className="btn btn-ghost btn-sm danger" onClick={async () => {
           if (!(await confirmDialog({ title: 'Make new vault keys?', message: 'Your current keys stop working at once. Only do this if you lost every passkey and the recovery key.', confirmText: 'Continue' }))) return;
           const t = await step.run(async (token) => token ?? '', true);

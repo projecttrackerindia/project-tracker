@@ -57,6 +57,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<VaultUnlock> VaultUnlocks => Set<VaultUnlock>();
     public DbSet<VaultKeyEnvelope> VaultKeyEnvelopes => Set<VaultKeyEnvelope>();
     public DbSet<VaultDeviceLink> VaultDeviceLinks => Set<VaultDeviceLink>();
+    public DbSet<VaultRecoveryShare> VaultRecoveryShares => Set<VaultRecoveryShare>();
+    public DbSet<VaultRecoveryRequest> VaultRecoveryRequests => Set<VaultRecoveryRequest>();
+    public DbSet<VaultRecoveryRelease> VaultRecoveryReleases => Set<VaultRecoveryRelease>();
     public DbSet<VaultAccessRequest> VaultAccessRequests => Set<VaultAccessRequest>();
     public DbSet<DocumentKey> DocumentKeys => Set<DocumentKey>();
     public DbSet<DocumentView> DocumentViews => Set<DocumentView>();

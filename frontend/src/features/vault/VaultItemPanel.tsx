@@ -6,7 +6,9 @@ import { formatBytes, formatDate, formatDateTime, timeAgo } from '../../lib/form
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { ACTION_LABEL, HEALTH_LABEL, KIND_ICON, KIND_LABEL, vaultApi, type VaultField, type VaultItem, type VaultPolicy, type VaultTotp } from './api';
+import { ACTION_LABEL, HEALTH_LABEL, KIND_ICON, KIND_LABEL, vaultApi, type VaultCollection, type VaultField, type VaultItem, type VaultPolicy, type VaultTotp } from './api';
+import { RequestAccessModal } from './VaultRequests';
+import { useItemGrant } from './requestsData';
 import { copySecret, STRENGTH_LABEL } from './secure';
 import { useStepUp } from './stepUpContext';
 
@@ -18,8 +20,8 @@ const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.mes
  * One item. Secret values are never drawn here: they stay masked, and a value is fetched only to be copied (one field at a time, straight to
  * the clipboard, which clears itself). The only place a value can be shown is the edit screen, for people who can manage the item.
  */
-export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, onClose, onChanged }: {
-  id: string; policy: VaultPolicy; lockEpoch: number; binned?: boolean; onEdit: (item: VaultItem) => void; onClose: () => void; onChanged: () => void;
+export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collections = [], canAdmin = false, onEdit, onClose, onChanged }: {
+  id: string; policy: VaultPolicy; lockEpoch: number; binned?: boolean; collections?: VaultCollection[]; canAdmin?: boolean; onEdit: (item: VaultItem) => void; onClose: () => void; onChanged: () => void;
 }) {
   const wid = useWorkspaceId();
   const q = useWsQuery(['vault', 'item', id], () => vaultApi.item(id), { staleTime: 0 });
@@ -27,6 +29,12 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, 
   const [busy, setBusy] = useState<string | null>(null);
   const [tab, setTab] = useState<'details' | 'files' | 'history' | 'activity'>('details');
   useEffect(() => { setTab('details'); }, [id, lockEpoch]);
+  // The two-person rule: someone else approves each use window; this shows where the person stands and lets them ask.
+  const approval = !!collections.find((c) => c.id === q.data?.item.collectionId)?.requireApproval;
+  const { grant, pending, refetch: refetchGrant } = useItemGrant(id, approval);
+  const [asking, setAsking] = useState(false);
+  const decoys = useWsQuery(['vault', 'decoys'], vaultApi.decoys, { enabled: canAdmin, staleTime: 30_000 });
+  const isDecoy = !!decoys.data?.some((x) => x.itemId === id);
 
   const d = q.data;
   if (q.isLoading) return <div className="vlt-panel vlt-panel-loading"><Spinner /></div>;
@@ -40,7 +48,10 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, 
       if (!res) return;
       const ok = await copySecret(res.value, res.clipboardSeconds);
       toast(ok ? `${f.label} copied. The clipboard clears in ${res.clipboardSeconds} seconds.` : 'The browser did not allow copying.', ok ? 'success' : 'error');
-    } catch (e) { toast(errText(e, 'Could not copy it.'), 'error'); }
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'VAULT_APPROVAL_REQUIRED') { setAsking(true); return; }
+      toast(errText(e, 'Could not copy it.'), 'error');
+    }
     finally { setBusy(null); }
   };
 
@@ -66,7 +77,17 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, 
         {it.useOnly && <span className="badge badge-info" title="Can be copied into a sign-in form, never shown">Use only</span>}
         {it.myAccess !== 'Manage' && <span className="badge badge-neutral">Your access: {it.myAccess === 'UseOnly' ? 'use only' : it.myAccess.toLowerCase()}</span>}
         {it.tags.map((t) => <span key={t} className="chip">{t}</span>)}
+        {isDecoy && <span className="badge badge-danger" title="Only vault admins see this">Decoy</span>}
       </div>
+
+      {approval && !binned && (
+        <div className={`vlt-approval${grant ? ' live' : ''}`} role="note" data-testid="approval">
+          <Icon name={grant ? 'checkCircle' : 'users'} size={15} />
+          <span>{grant ? `Approved by ${grant.decidedBy?.name ?? 'a manager'} until ${formatDateTime(grant.grantedUntil!)}.`
+            : pending ? 'Asked — waiting for someone to approve.' : 'Two-person rule: someone else approves each use window.'}</span>
+          {!grant && !pending && <button className="btn btn-ghost btn-xs" onClick={() => setAsking(true)}>Ask for access</button>}
+        </div>
+      )}
 
       {health.length > 0 && (
         <div className="vlt-health-callout" role="note">
@@ -100,7 +121,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, 
             </div>
           )}
           {d.fields.filter((f) => !f.secret ? !!f.value : true).map((f) => f.type === 'totp'
-            ? <TotpField key={f.key} itemId={id} label={f.label} needsStepUp={d.needsStepUp} lockEpoch={lockEpoch} policy={policy} />
+            ? <TotpField key={f.key} itemId={id} label={f.label} needsStepUp={d.needsStepUp} lockEpoch={lockEpoch} policy={policy} onApproval={() => setAsking(true)} />
             : (
               <div key={f.key} className="vlt-field" data-field={f.key}>
                 <span className="vlt-field-label">{f.label}</span>
@@ -142,6 +163,14 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, 
               }}><Icon name="undo" size={14} /> Restore</button>
             </div>
           )}
+          {canAdmin && d.canManage && !binned && (
+            <div className="vlt-decoy-zone">
+              <button className="btn btn-ghost btn-sm" onClick={async () => {
+                if (!isDecoy && !(await confirmDialog({ title: 'Make it a decoy?', message: `Anyone who copies or opens “${it.title}” sets off an alert to the admins at once. Nobody but vault admins can tell it is a decoy. Use it for a credential nobody has a reason to touch.`, confirmText: 'Make it a decoy' }))) return;
+                try { await vaultApi.setDecoy(id, !isDecoy); toast(isDecoy ? 'No longer a decoy.' : 'It is a decoy now. Leave it where an intruder would look.'); void decoys.refetch(); } catch (e) { toast(errText(e, 'Could not change it.'), 'error'); }
+              }}><Icon name="radar" size={14} /> {isDecoy ? 'Stop being a decoy' : 'Make it a decoy'}</button>
+            </div>
+          )}
           {d.canManage && !binned && (
             <div className="vlt-danger-zone">
               <button className="btn btn-ghost btn-sm danger" onClick={async () => {
@@ -156,12 +185,13 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, onEdit, 
       {tab === 'files' && <FilesTab item={d} onChanged={() => void q.refetch()} />}
       {tab === 'history' && d.canManage && <HistoryTab item={d} />}
       {tab === 'activity' && d.canManage && <ActivityTab id={id} />}
+      {asking && <RequestAccessModal target={{ kind: 'item', id, title: it.title }} onClose={() => setAsking(false)} onDone={() => void refetchGrant()} />}
     </section>
   );
 }
 
 /** The current code, computed on the server (the seed never comes to the page), refreshed as each one runs out while the tab is visible. */
-function TotpField({ itemId, label, needsStepUp, lockEpoch, policy }: { itemId: string; label: string; needsStepUp: boolean; lockEpoch: number; policy: VaultPolicy }) {
+function TotpField({ itemId, label, needsStepUp, lockEpoch, policy, onApproval }: { itemId: string; label: string; needsStepUp: boolean; lockEpoch: number; policy: VaultPolicy; onApproval: () => void }) {
   const step = useStepUp();
   const [code, setCode] = useState<(VaultTotp & { at: number }) | null>(null);
   const [left, setLeft] = useState(0);
@@ -172,9 +202,13 @@ function TotpField({ itemId, label, needsStepUp, lockEpoch, policy }: { itemId: 
     try {
       const res = await step.run((t) => vaultApi.totp(itemId, t), needsStepUp);
       if (res) { setCode({ ...res, at: Date.now() }); setLeft(res.secondsLeft); }
-    } catch (e) { toast(errText(e, 'Could not get the code.'), 'error'); setCode(null); }
+    } catch (e) {
+      setCode(null);
+      if (e instanceof ApiError && e.code === 'VAULT_APPROVAL_REQUIRED') onApproval();
+      else toast(errText(e, 'Could not get the code.'), 'error');
+    }
     finally { setBusy(false); }
-  }, [itemId, needsStepUp, step]);
+  }, [itemId, needsStepUp, step, onApproval]);
   useEffect(() => { setCode(null); refreshes.current = 0; }, [itemId, lockEpoch]);
   useEffect(() => {
     if (!code) return;

@@ -1,4 +1,5 @@
 import { del, downloadPost, get, post, postBytes, postForm, put, uploadFile } from '../../api/client';
+import type { PasskeyChallenge } from '../../api/types';
 
 export type VaultCollectionKind = 'Personal' | 'Shared' | 'Project' | 'Team';
 export type VaultItemKind = 'Login' | 'ApiKey' | 'Server' | 'Database' | 'Card' | 'Note' | 'Other';
@@ -27,12 +28,12 @@ export interface VaultShare { id: string; principalType: VaultPrincipal; princip
 export interface VaultCollection {
   id: string; name: string; description: string | null; kind: VaultCollectionKind; projectId: string | null; projectName: string | null; teamId: string | null; teamName: string | null;
   myAccess: VaultAccess; items: number; atRisk: number; requireStepUp: boolean; rotateEveryDays: number | null; locked: boolean; shares: VaultShare[] | null;
-  sealed: boolean; rekeyNeeded: boolean; keyVersion: number;
+  sealed: boolean; rekeyNeeded: boolean; keyVersion: number; requireApproval: boolean; requestable: boolean;
 }
 export interface VaultPolicy { stepUpAlways: boolean; clipboardSeconds: number; revealSeconds: number; sharedAdminsOnly: boolean }
 export interface VaultHealth { total: number; weak: number; reused: number; breached: number; expired: number; old: number; toRotate: number; score: number }
 export interface VaultIdentity { userId: string; x25519Public: string; mlKemPublic: string; ed25519Public: string; selfSignature: string; fingerprint: string; generation: number }
-export interface VaultOverview { collections: VaultCollection[]; policy: VaultPolicy; canAdmin: boolean; canCreateShared: boolean; health: VaultHealth; mfaEnabled: boolean; identity: VaultIdentity | null }
+export interface VaultOverview { collections: VaultCollection[]; policy: VaultPolicy; canAdmin: boolean; canCreateShared: boolean; health: VaultHealth; mfaEnabled: boolean; identity: VaultIdentity | null; hasPasskeys: boolean }
 export type UnlockKind = 'Passkey' | 'RecoveryKey';
 export interface VaultUnlock { id: string; kind: UnlockKind; label: string; credentialId: string | null; salt: string; params: string; wrappedSeed: string; createdAt: string; lastUsedAt: string | null }
 export interface VaultKeysMe { identity: VaultIdentity | null; unlocks: VaultUnlock[] }
@@ -49,6 +50,13 @@ export interface SealedItemRow {
 export interface SealedVersionRow { id: string; keyVersion: number; blob: string; at: string; by: UserRef | null; reason: string | null }
 export interface ExportItem { id: string; kind: VaultItemKind; title: string; url: string | null; tags: string[]; class: VaultClass; fields: VaultField[]; expiresAt: string | null; rotateEveryDays: number | null; files: { id: string; fileName: string; contentType: string; data: string }[] }
 export interface DeviceLink { id: string; label: string; x25519Public: string; mlKemPublic: string; createdAt: string; expiresAt: string; ipAddress: string | null; userAgent: string | null; approved: boolean; denied: boolean; envelope: string | null; signature: string | null }
+export interface VaultCircle { threshold: number; members: { person: UserRef; stale: boolean }[]; createdAt: string; usable: boolean }
+export interface VaultRecoveryRelease { trustee: UserRef; trusteeEd25519Public: string | null; envelope: string | null; signature: string | null; refused: boolean; at: string }
+export interface VaultRecoveryStatus { id: string; threshold: number; helpers: number; createdAt: string; expiresAt: string; completed: boolean; cancelled: boolean; releases: VaultRecoveryRelease[] }
+export interface VaultRecoveryToHelp {
+  requestId: string; person: UserRef; x25519Public: string; mlKemPublic: string; createdAt: string; expiresAt: string; ipAddress: string | null; userAgent: string | null;
+  shareEnvelope: string; shareSignature: string; ownerEd25519Public: string; ownerGeneration: number; threshold: number;
+}
 export interface VaultReveal { value: string; revealSeconds: number; clipboardSeconds: number }
 export interface VaultTotp { code: string; secondsLeft: number; period: number; digits: number }
 export interface VaultActivity { at: string; action: string; by: UserRef | null; field: string | null; ipAddress: string | null }
@@ -57,6 +65,22 @@ export interface VaultAccessReview {
   used: { itemId: string; title: string; collection: string; times: number; last: string }[];
 }
 
+export type VaultRequestKind = 'Reveal' | 'Collection';
+export type VaultRequestStatus = 'Pending' | 'Approved' | 'Denied' | 'Cancelled' | 'Expired';
+export interface VaultRequest {
+  id: string; kind: VaultRequestKind; collectionId: string; collectionName: string; itemId: string | null; itemTitle: string | null; requester: UserRef; reason: string;
+  access: VaultAccess; minutes: number; status: VaultRequestStatus; decidedBy: UserRef | null; decidedAt: string | null; decisionNote: string | null; grantedUntil: string | null;
+  createdAt: string; canDecide: boolean;
+}
+export interface VaultRequests { mine: VaultRequest[]; toDecide: VaultRequest[] }
+export interface VaultRequestable { id: string; name: string; description: string | null; kind: VaultCollectionKind; sealed: boolean }
+export interface VaultDecoy { itemId: string; title: string; collectionName: string; triggered: number; lastTriggeredAt: string | null }
+export const REVEAL_MINUTES = [15, 30, 60, 240] as const;
+export const COLLECTION_MINUTES = [60, 240, 1440, 10080] as const;
+export const durationLabel = (m: number) => (m < 60 ? `${m} minutes` : m === 60 ? '1 hour' : m < 1440 ? `${m / 60} hours` : m === 1440 ? '1 day' : m === 10080 ? '1 week' : `${m / 1440} days`);
+/** A request that is approved and still running: the window it gives. */
+export const activeGrant = (r: VaultRequest) => r.status === 'Approved' && !!r.grantedUntil && Date.parse(r.grantedUntil) > Date.now();
+
 export interface FieldInput { key: string; label?: string | null; type?: FieldType | null; secret: boolean; value?: string | null; keep?: boolean }
 export interface SaveItem {
   collectionId: string; kind: VaultItemKind; title: string; url?: string | null; tags?: string[]; class: VaultClass; useOnly: boolean;
@@ -64,7 +88,7 @@ export interface SaveItem {
 }
 export interface SaveCollection {
   name: string; description?: string | null; kind: VaultCollectionKind; projectId?: string | null; teamId?: string | null; requireStepUp?: boolean;
-  rotateEveryDays?: number | null; shareWithMembers?: VaultAccess | null; sealed?: boolean;
+  rotateEveryDays?: number | null; shareWithMembers?: VaultAccess | null; sealed?: boolean; requireApproval?: boolean; requestable?: boolean;
 }
 export interface ShareInput { principalType: VaultPrincipal; principalId?: string | null; role?: string | null; access: VaultAccess; expiresAt?: string | null }
 export interface ImportRow { title?: string | null; url?: string | null; username?: string | null; password?: string | null; totp?: string | null; notes?: string | null }
@@ -73,6 +97,17 @@ export interface ImportRow { title?: string | null; url?: string | null; usernam
 export const vaultApi = {
   overview: () => get<VaultOverview>('/vault/overview'),
   stepUp: (code: string) => post<{ token: string; expiresAt: string }>('/vault/step-up', { code }),
+  stepUpPasskeyOptions: () => post<PasskeyChallenge>('/vault/step-up/passkey/options', {}),
+  stepUpPasskey: (challengeId: string, response: Record<string, unknown>) => post<{ token: string; expiresAt: string }>('/vault/step-up/passkey', { challengeId, response }),
+  requestReveal: (itemId: string, reason: string, minutes: number) => post<VaultRequest>(`/vault/items/${itemId}/requests`, { reason, minutes }),
+  requestable: () => get<VaultRequestable[]>('/vault/requestable'),
+  requestCollection: (id: string, reason: string, minutes: number, access: VaultAccess) => post<VaultRequest>(`/vault/collections/${id}/requests`, { reason, minutes, access }),
+  requests: () => get<VaultRequests>('/vault/requests'),
+  approve: (id: string, note: string | null) => post<VaultRequest>(`/vault/requests/${id}/approve`, { note }),
+  deny: (id: string, note: string | null) => post<VaultRequest>(`/vault/requests/${id}/deny`, { note }),
+  cancelRequest: (id: string) => post(`/vault/requests/${id}/cancel`, {}),
+  setDecoy: (itemId: string, decoy: boolean) => put<VaultDecoy>(`/vault/items/${itemId}/decoy`, { decoy }),
+  decoys: () => get<VaultDecoy[]>('/vault/decoys'),
   createCollection: (b: SaveCollection) => post<VaultCollection>('/vault/collections', b),
   collection: (id: string) => get<VaultCollection>(`/vault/collections/${id}`),
   updateCollection: (id: string, b: SaveCollection) => put<VaultCollection>(`/vault/collections/${id}`, b),
@@ -123,6 +158,15 @@ export const vaultApi = {
   approveDevice: (id: string, envelope: string, signature: string) => post(`/vault/devices/${id}/approve`, { envelope, signature }),
   refuseDevice: (id: string) => post(`/vault/devices/${id}/refuse`, {}),
   deviceStatus: (id: string) => get<DeviceLink>(`/vault/devices/${id}`),
+  circle: () => get<{ circle: VaultCircle | null }>('/vault/keys/circle'),
+  setCircle: (b: { threshold: number; shares: { trusteeUserId: string; trusteeGeneration: number; envelope: string; signature: string }[]; stepUp?: string }) => put<VaultCircle>('/vault/keys/circle', b),
+  clearCircle: () => del('/vault/keys/circle'),
+  startRecovery: (b: { label: string; x25519Public: string; mlKemPublic: string }) => post<VaultRecoveryStatus>('/vault/recovery', b),
+  recoveryStatus: (id: string) => get<VaultRecoveryStatus>(`/vault/recovery/${id}`),
+  finishRecovery: (id: string, recovered: boolean) => post(`/vault/recovery/${id}/finish?recovered=${recovered}`, {}),
+  recoveryToHelp: () => get<VaultRecoveryToHelp[]>('/vault/recovery/to-help'),
+  helpRecovery: (id: string, envelope: string, signature: string) => post(`/vault/recovery/${id}/help`, { envelope, signature }),
+  refuseRecovery: (id: string) => post(`/vault/recovery/${id}/refuse`, {}),
 };
 
 /** The fields each kind starts with (the server applies the same list). */
@@ -146,7 +190,7 @@ export const HEALTH_LABEL: Record<VaultHealthFlag, string> = {
   weak: 'Weak password', reused: 'Used on another item', breached: 'In a public breach', expired: 'Past its change date', old: 'Not changed in a year', rotate: 'Should be changed',
 };
 export const ACTION_LABEL: Record<string, string> = {
-  'vault.revealed': 'Revealed', 'vault.copied': 'Copied', 'vault.totp_used': 'Took a one-time code', 'vault.version_revealed': 'Revealed an earlier value', 'vault.version_copied': 'Copied an earlier value',
+  'vault.revealed': 'Revealed', 'vault.copied': 'Copied', 'vault.totp_used': 'Took a one-time code', 'vault.version_revealed': 'Revealed an earlier value', 'vault.version_copied': 'Copied an earlier value', 'vault.decoy_triggered': 'Touched a decoy', 'vault.access_requested': 'Asked for access', 'vault.access_approved': 'Approved access', 'vault.access_denied': 'Refused access', 'vault.access_returned': 'Gave access back', 'vault.decoy_set': 'Made it a decoy', 'vault.decoy_cleared': 'Stopped it being a decoy', 'vault.recovery_share_released': 'Helped unlock a vault',
   'vault.reveal_denied': 'Refused', 'vault.unusual_activity': 'Paused for unusual use', 'vault.item_created': 'Created', 'vault.item_changed': 'Changed',
   'vault.item_moved': 'Moved', 'vault.item_deleted': 'Moved to the bin', 'vault.item_restored': 'Restored', 'vault.file_added': 'Added a file', 'vault.file_removed': 'Removed a file',
   'vault.unreadable': 'Could not be read',

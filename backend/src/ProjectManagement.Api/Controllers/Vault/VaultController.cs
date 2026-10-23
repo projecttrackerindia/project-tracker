@@ -211,6 +211,35 @@ public class VaultController(VaultService vault, StepUpService stepUp, ProjectMa
     [HttpGet("devices/{id:guid}")]
     public async Task<IActionResult> DeviceStatus(Guid id, CancellationToken ct) { NoStore(); return Ok(await vault.DeviceLinkStatusAsync(id, ct)); }
 
+    // ------------------------------------------------------------- the recovery circle
+
+    [HttpGet("keys/circle")]
+    public async Task<IActionResult> Circle(CancellationToken ct) { NoStore(); return Ok(new { circle = await vault.RecoveryCircleAsync(ct) }); }
+
+    [HttpPut("keys/circle")]
+    public async Task<IActionResult> SetCircle([FromBody] VaultRecoveryCircleRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.SetRecoveryCircleAsync(req, ct)); }
+
+    [HttpDelete("keys/circle")]
+    public async Task<IActionResult> ClearCircle(CancellationToken ct) { await vault.ClearRecoveryCircleAsync(ct); return NoContent(); }
+
+    [HttpPost("recovery")]
+    public async Task<IActionResult> StartRecovery([FromBody] VaultDeviceLinkRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.StartRecoveryAsync(req, ct)); }
+
+    [HttpGet("recovery/to-help")]
+    public async Task<IActionResult> RecoveryToHelp(CancellationToken ct) { NoStore(); return Ok(await vault.RecoveryToHelpAsync(ct)); }
+
+    [HttpGet("recovery/{id:guid}")]
+    public async Task<IActionResult> RecoveryStatus(Guid id, CancellationToken ct) { NoStore(); return Ok(await vault.RecoveryStatusAsync(id, ct)); }
+
+    [HttpPost("recovery/{id:guid}/finish")]
+    public async Task<IActionResult> FinishRecovery(Guid id, [FromQuery] bool recovered, CancellationToken ct) { await vault.FinishRecoveryAsync(id, recovered, ct); return NoContent(); }
+
+    [HttpPost("recovery/{id:guid}/help")]
+    public async Task<IActionResult> HelpRecovery(Guid id, [FromBody] VaultDeviceApproveRequest req, CancellationToken ct) { await vault.AnswerRecoveryAsync(id, req, true, ct); return NoContent(); }
+
+    [HttpPost("recovery/{id:guid}/refuse")]
+    public async Task<IActionResult> RefuseRecovery(Guid id, CancellationToken ct) { await vault.AnswerRecoveryAsync(id, new VaultDeviceApproveRequest(null, null), false, ct); return NoContent(); }
+
     // ------------------------------------------------------------- controls: decoys, the two-person rule, just-in-time access, passkey step-up
 
     [HttpPost("step-up/passkey/options")]

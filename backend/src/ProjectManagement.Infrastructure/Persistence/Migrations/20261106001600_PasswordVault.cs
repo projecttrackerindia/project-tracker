@@ -323,11 +323,86 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(name: "IX_VaultAccessRequests_TenantId_CollectionId_Status", table: "VaultAccessRequests", columns: new[] { "TenantId", "CollectionId", "Status" });
             migrationBuilder.CreateIndex(name: "IX_VaultAccessRequests_TenantId_RequesterId_Status", table: "VaultAccessRequests", columns: new[] { "TenantId", "RequesterId", "Status" });
             migrationBuilder.CreateIndex(name: "IX_VaultAccessRequests_TenantId_ItemId_RequesterId", table: "VaultAccessRequests", columns: new[] { "TenantId", "ItemId", "RequesterId" });
+
+            migrationBuilder.CreateTable(
+                name: "VaultRecoveryShares",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    TrusteeUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Threshold = table.Column<int>(type: "integer", nullable: false),
+                    Generation = table.Column<int>(type: "integer", nullable: false),
+                    TrusteeGeneration = table.Column<int>(type: "integer", nullable: false),
+                    Envelope = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: false),
+                    Signature = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: false),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VaultRecoveryShares", x => x.Id);
+                });
+            migrationBuilder.CreateIndex(name: "IX_VaultRecoveryShares_TenantId_UserId", table: "VaultRecoveryShares", columns: new[] { "TenantId", "UserId" });
+            migrationBuilder.CreateIndex(name: "IX_VaultRecoveryShares_TenantId_TrusteeUserId", table: "VaultRecoveryShares", columns: new[] { "TenantId", "TrusteeUserId" });
+
+            migrationBuilder.CreateTable(
+                name: "VaultRecoveryRequests",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    X25519Public = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    MlKemPublic = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                    ExpiresAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CompletedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    Cancelled = table.Column<bool>(type: "boolean", nullable: false),
+                    IpAddress = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
+                    UserAgent = table.Column<string>(type: "character varying(300)", maxLength: 300, nullable: true),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VaultRecoveryRequests", x => x.Id);
+                });
+            migrationBuilder.CreateIndex(name: "IX_VaultRecoveryRequests_TenantId_UserId_ExpiresAt", table: "VaultRecoveryRequests", columns: new[] { "TenantId", "UserId", "ExpiresAt" });
+
+            migrationBuilder.CreateTable(
+                name: "VaultRecoveryReleases",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    RequestId = table.Column<Guid>(type: "uuid", nullable: false),
+                    TrusteeUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Envelope = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: true),
+                    Signature = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: true),
+                    Refused = table.Column<bool>(type: "boolean", nullable: false),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VaultRecoveryReleases", x => x.Id);
+                });
+            migrationBuilder.CreateIndex(name: "IX_VaultRecoveryReleases_TenantId_RequestId", table: "VaultRecoveryReleases", columns: new[] { "TenantId", "RequestId" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(name: "VaultRecoveryReleases");
+            migrationBuilder.DropTable(name: "VaultRecoveryRequests");
+            migrationBuilder.DropTable(name: "VaultRecoveryShares");
             migrationBuilder.DropTable(name: "VaultAccessRequests");
             migrationBuilder.DropTable(name: "VaultDeviceLinks");
             migrationBuilder.DropTable(name: "VaultKeyEnvelopes");

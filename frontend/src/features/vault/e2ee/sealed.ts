@@ -1,11 +1,12 @@
 import { saveFile } from '../../../lib/native';
-import { vaultApi, type CollectionKeys, type EnvelopeInput, type SealedFile, type SealedItemRow, type VaultClass, type VaultCollection, type VaultField, type VaultIdentity, type VaultItemKind, type VaultKeysMe, type VaultLink, type UnlockInput } from '../api';
+import { vaultApi, type CollectionKeys, type EnvelopeInput, type SealedFile, type SealedItemRow, type VaultClass, type VaultCollection, type VaultField, type VaultIdentity, type VaultItemKind, type VaultKeysMe, type VaultLink, type VaultRecoveryToHelp, type UnlockInput } from '../api';
 import {
-  aesOpen, aesSeal, b64, breachCount, breachParts, ckContext, concat, deriveIdentity, deviceContext, ephemeralKeys, fromUtf8, itemContext, linkCode, matches, newRecoveryKey,
-  openFrom, parseRecoveryKey, prfKek, publicBundle, random, RECOVERY_PARAMS, recoveryKek, sealTo, seedContext, unb64, utf8, VaultCryptoError, verifyBundle, verifyEnvelope, wipe, type Identity,
+  aesOpen, aesSeal, b64, breachCount, breachParts, circleContext, ckContext, concat, releaseContext, deriveIdentity, deviceContext, ephemeralKeys, fromUtf8, itemContext, linkCode, matches, newRecoveryKey,
+  forget, openFrom, parseRecoveryKey, prfKek, publicBundle, random, RECOVERY_PARAMS, recoveryKek, sealTo, seedContext, unb64, utf8, VaultCryptoError, verifyBundle, verifyEnvelope, wipe, type Identity,
 } from './crypto';
 import { keyring, pins } from './keyring';
 import { createVaultPasskey, evaluate } from './passkey';
+import { combine, split } from './shamir';
 
 /** What a sealed item holds, encrypted as one document. Nothing in it is ever seen by the server. */
 export interface SealedPayload {
@@ -136,6 +137,95 @@ export async function approveLink(link: { id: string; x25519Public: string; mlKe
   const { id, tenant, user } = me();
   const env = await sealTo(link, id.seed, deviceContext(tenant, user, link.id), id);
   await vaultApi.approveDevice(link.id, env.envelope, env.signature);
+}
+
+// ------------------------------------------------------------------ the recovery circle
+
+/**
+ * Splits this person's identity secret among colleagues (any `threshold` of them give it back) and encrypts each share to that colleague's
+ * own keys, signed with this person's key. A colleague whose key changed since this device last saw it is refused until the safety codes
+ * are compared: otherwise a server could slip in its own key and collect a share.
+ */
+export async function setUpCircle(people: { userId: string; name: string; identity: VaultIdentity | null }[], threshold: number, stepUp: string | undefined) {
+  const { id, tenant, user, generation } = me();
+  if (people.some((p) => !p.identity)) throw new SealedError('Everyone in the circle needs vault keys first.');
+  for (const p of people) {
+    if (!verifyBundle(asBundle(p.identity!))) throw new SealedError(`${p.name}'s keys on record are not valid.`);
+    if (pins.check(tenant, p.userId, p.identity!.fingerprint, p.identity!.ed25519Public) === 'changed') throw new SealedError(`${p.name}'s key changed since this device last saw it. Compare safety codes with them first.`);
+  }
+  const shares = split(id.seed, people.length, threshold);
+  try {
+    const sealedShares = [];
+    for (let i = 0; i < people.length; i++) {
+      const p = people[i];
+      const env = await sealTo(p.identity!, shares[i], circleContext(tenant, user, p.userId, generation), id);
+      sealedShares.push({ trusteeUserId: p.userId, trusteeGeneration: p.identity!.generation, envelope: env.envelope, signature: env.signature });
+      pins.accept(tenant, p.userId, p.identity!.fingerprint, p.identity!.ed25519Public);
+    }
+    return await vaultApi.setCircle({ threshold, shares: sealedShares, stepUp });
+  } finally { wipe(...shares); }
+}
+
+/** On a browser that cannot unlock: one-time keys, the request to the circle, and the code each helper compares with this person. */
+export async function startRecovery(label: string) {
+  const eph = ephemeralKeys();
+  const status = await vaultApi.startRecovery({ label, x25519Public: eph.x25519Public, mlKemPublic: eph.mlKemPublic });
+  return { status, eph, code: linkCode(eph.x25519Public, eph.mlKemPublic) };
+}
+
+/** Waits for enough shares, checks each was signed by the colleague who sent it, puts the secret back together and unlocks — only if it gives the keys on record. */
+export async function waitForRecovery(tenant: string, user: string, keys: VaultKeysMe, started: Awaited<ReturnType<typeof startRecovery>>, signal: AbortSignal,
+  onProgress?: (got: number, need: number, refused: number) => void) {
+  const shares: Uint8Array[] = [];
+  try {
+    while (!signal.aborted) {
+      const s = await vaultApi.recoveryStatus(started.status.id);
+      if (s.cancelled) throw new SealedError('The request was cancelled.');
+      if (Date.parse(s.expiresAt) < Date.now()) throw new SealedError('The request ran out of time. Ask again.');
+      wipe(...shares); shares.length = 0;
+      for (const r of s.releases) {
+        if (!r.envelope || !r.signature || !r.trusteeEd25519Public) continue;
+        const ctx = releaseContext(tenant, user, s.id, r.trustee.id);
+        if (!verifyEnvelope(r.trusteeEd25519Public, { envelope: r.envelope, signature: r.signature }, ctx)) continue;   // not from them: ignored
+        try { shares.push(await openFrom(started.eph, r.envelope, ctx)); } catch { /* damaged: ignored */ }
+      }
+      const refused = s.releases.filter((r) => r.refused).length;
+      onProgress?.(shares.length, s.threshold, refused);
+      if (s.threshold >= 2 && shares.length >= s.threshold) {
+        // Any `threshold` of them give the secret; try groups until one gives exactly the keys on record (a bad share only spoils its groups).
+        for (const group of groups(shares, s.threshold)) {
+          const seed = combine(group);
+          const probe = deriveIdentity(new Uint8Array(seed));
+          const ok = !!keys.identity && matches(probe, asBundle(keys.identity));
+          forget(probe);
+          if (!ok) { wipe(seed); continue; }
+          accept(tenant, user, keys, seed, '', 'recovery circle');   // the keyring keeps this secret now: not wiped here
+          await vaultApi.finishRecovery(s.id, true).catch(() => undefined);
+          return;
+        }
+        if (shares.length >= s.helpers) throw new SealedError('The shares that came back do not give your keys. Ask an admin to reset your vault keys.');
+      }
+      if (s.helpers - refused < s.threshold) throw new SealedError('Too many people refused: the circle cannot give your key back this time.');
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+  } finally { wipe(started.eph.xPriv, started.eph.kemSec, ...shares); }
+}
+
+function* groups<T>(xs: T[], k: number, start = 0, acc: T[] = []): Generator<T[]> {
+  if (acc.length === k) { yield [...acc]; return; }
+  for (let i = start; i < xs.length; i++) yield* groups(xs, k, i + 1, [...acc, xs[i]]);
+}
+
+/** A colleague helps, after comparing the code with the person: their share is opened here and re-encrypted to the asking browser's one-time keys. */
+export async function helpRecovery(req: VaultRecoveryToHelp) {
+  const { id, tenant, user } = me();
+  const shareCtx = circleContext(tenant, req.person.id, user, req.ownerGeneration);
+  if (!verifyEnvelope(req.ownerEd25519Public, { envelope: req.shareEnvelope, signature: req.shareSignature }, shareCtx)) throw new SealedError('This share was not signed by their vault keys. Nothing was sent.');
+  const share = await openFrom(id, req.shareEnvelope, shareCtx);
+  try {
+    const env = await sealTo({ x25519Public: req.x25519Public, mlKemPublic: req.mlKemPublic }, share, releaseContext(tenant, req.person.id, req.requestId, user), id);
+    await vaultApi.helpRecovery(req.requestId, env.envelope, env.signature);
+  } finally { wipe(share); }
 }
 
 // ------------------------------------------------------------------ collection keys

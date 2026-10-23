@@ -115,6 +115,12 @@ public partial class VaultService
             existing.X25519Public = x; existing.MlKemPublic = k; existing.Ed25519Public = e; existing.SelfSignature = sig; existing.Fingerprint = fp;
             existing.Generation++; existing.UpdatedAt = clock.Now; existing.UpdatedBy = me;
             recorder.Audit("vault.keys_reset", "User", me, null, new { generation = existing.Generation, droppedKeys = mine.Count });
+            // A recovery circle split the old secret: it is useless now. Circles this person was in can no longer use their share: their owners are told.
+            db.VaultRecoveryShares.RemoveRange(await db.VaultRecoveryShares.Where(s => s.UserId == me).ToListAsync(ct));
+            var who = await NameAsync(me, ct);
+            foreach (var owner in await db.VaultRecoveryShares.Where(s => s.TrusteeUserId == me).Select(s => s.UserId).Distinct().ToListAsync(ct))
+                await notifications.AddAsync(owner, NotificationType.Security, $"{who} changed their vault keys",
+                    "Their part of your recovery circle no longer opens. Set your circle up again under My keys.", "/vault?view=keys", ct: ct);
             // Personal sealed collections opened only with the old keys can never be opened again; they are marked so the owner sees it.
         }
         else

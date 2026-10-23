@@ -138,6 +138,10 @@ export const ckContext = (tenant: string, collection: string, version: number, r
 export const deviceContext = (tenant: string, user: string, link: string) => `device|${tenant}|${user}|${link}`;
 export const seedContext = (tenant: string, user: string, kind: 'Passkey' | 'RecoveryKey') => `seed|${tenant}|${user}|${kind}`;
 export const itemContext = (tenant: string, collection: string, item: string) => `item|${tenant}|${collection}|${item}`;
+/** A recovery-circle share from its owner to one colleague, bound to both people and the owner's key generation. */
+export const circleContext = (tenant: string, owner: string, trustee: string, generation: number) => `circle|${tenant}|${owner}|${trustee}|g${generation}`;
+/** That colleague's share, passed on to the browser that asked for help (bound to the request). */
+export const releaseContext = (tenant: string, owner: string, request: string, trustee: string) => `circle-release|${tenant}|${owner}|${request}|${trustee}`;
 
 // ------------------------------------------------------------------ unlocking: recovery key (Argon2id) and passkey (WebAuthn PRF)
 

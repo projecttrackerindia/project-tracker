@@ -43,10 +43,12 @@ public partial class VaultService
         db.Activities.Add(new Activity { TenantId = tid, ActorId = me, Action = "vault.decoy_triggered", EntityType = "VaultItem", EntityId = item.Id,
             Summary = $"Decoy credential “{item.Title}” in {c.Name} was used by {who}", IpAddress = ctx.IpAddress, CreatedAt = clock.Now });
         var admins = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && (m.Role == TenantRole.Owner || m.Role == TenantRole.Admin)).Select(m => m.UserId).ToListAsync(ct);
-        var hour = clock.Now.ToString("yyyyMMddHH");
-        foreach (var a in admins)
-            await notifications.AddAsync(a, NotificationType.Security, $"Decoy credential used: {who} opened “{item.Title}”", $"In {c.Name}{(ctx.IpAddress is { } ip ? $" from {ip}" : "")}. Nobody has a reason to use it: check what else they did.",
-                "/vault?view=admin", dedupeKey: $"vault-decoy:{item.Id}:{me}:{hour}", toSelf: true, ct: ct);
+        // Told at once, then at most once an hour per person and decoy (every touch is still in the audit trail).
+        var key = $"vault-decoy:{item.Id}:{me}:{clock.Now:yyyyMMddHH}";
+        if (!await db.Notifications.AnyAsync(n => n.DedupeKey == key, ct))
+            foreach (var a in admins)
+                await notifications.AddAsync(a, NotificationType.Security, $"Decoy credential used: {who} opened “{item.Title}”", $"In {c.Name}{(ctx.IpAddress is { } ip ? $" from {ip}" : "")}. Nobody has a reason to use it: check what else they did.",
+                    "/vault?view=admin", dedupeKey: key, toSelf: true, ct: ct);
         await db.SaveChangesAsync(ct);
     }
 
