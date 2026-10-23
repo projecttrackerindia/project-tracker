@@ -227,6 +227,20 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>Brings a deleted action item back, for the person who deleted it or a manager of an open project. Used by Undo.</summary>
+    public async Task RestoreAsync(Guid projectId, Guid id, CancellationToken ct = default)
+    {
+        var project = await ViewableProjectAsync(projectId, ct);
+        RequireOpen(project);
+        var tid = ctx.RequireTenantId();
+        var item = await db.WorkTasks.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.Id == id && w.TenantId == tid && w.RelatedProjectId == projectId && w.Kind == WorkTaskKind.ActionItem && w.IsDeleted, ct)
+            ?? throw new NotFoundException("Action item not found.", "ACTION_ITEM_NOT_FOUND");
+        if (item.DeletedBy != ctx.UserId && !await IsManagerAsync(project, ct)) throw new NotFoundException("Action item not found.", "ACTION_ITEM_NOT_FOUND");
+        item.IsDeleted = false; item.DeletedAt = null; item.DeletedBy = null;
+        recorder.Activity("actionitem.restored", "ActionItem", id, $"Restored action item “{item.Title}”", projectId);
+        await db.SaveChangesAsync(ct);
+    }
+
     /// <summary>Completing stamps who and when; reopening clears it.</summary>
     private void ApplyStatus(WorkTask item, ActionItemStatus next)
     {

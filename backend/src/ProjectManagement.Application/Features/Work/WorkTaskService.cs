@@ -402,6 +402,19 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>Brings a deleted work task back, for the person who deleted it or an owner/admin. Used by Undo.</summary>
+    public async Task RestoreAsync(Guid id, CancellationToken ct = default)
+    {
+        var tid = ctx.RequireTenantId();
+        var task = await db.WorkTasks.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.Id == id && t.TenantId == tid && t.Kind == WorkTaskKind.Operational && t.IsDeleted, ct)
+            ?? throw new NotFoundException("Work task not found.", "WORK_TASK_NOT_FOUND");
+        var admin = ctx.Role is TenantRole.Owner or TenantRole.Admin;
+        if (!admin && task.DeletedBy != ctx.UserId) throw new NotFoundException("Work task not found.", "WORK_TASK_NOT_FOUND");
+        task.IsDeleted = false; task.DeletedAt = null; task.DeletedBy = null;
+        recorder.Activity("worktask.restored", "WorkTask", id, $"Restored work task {KeyOf(task.Number)} “{task.Title}”", null);
+        await db.SaveChangesAsync(ct);
+    }
+
     // ------------------------------------------------------------------ comments
 
     private async Task<Dictionary<Guid, string>> NamesAsync(IEnumerable<Guid?> ids, CancellationToken ct)

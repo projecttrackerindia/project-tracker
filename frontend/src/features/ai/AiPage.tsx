@@ -310,14 +310,17 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
       return saved ? { ...x, actions: saved.actions } : x;
     }))).catch(() => undefined);
   };
-  const act = async (m: AiMessage, a: AiAction, kind: 'confirm' | 'dismiss' | 'reconcile') => {
+  const act = async (m: AiMessage, a: AiAction, kind: 'confirm' | 'dismiss' | 'reconcile' | 'undo') => {
     if (actionLock.current) return;
     actionLock.current = true;
     setBusyAction(a.id);
     try {
-      const res = await (kind === 'reconcile' ? aiWorkspaceApi.reconcile(m.id, a.id) : kind === 'confirm' ? aiWorkspaceApi.confirm(m.id, a.id) : aiWorkspaceApi.dismiss(m.id, a.id));
+      const res = await (kind === 'reconcile' ? aiWorkspaceApi.reconcile(m.id, a.id) : kind === 'confirm' ? aiWorkspaceApi.confirm(m.id, a.id) : kind === 'undo' ? aiWorkspaceApi.undo(m.id, a.id) : aiWorkspaceApi.dismiss(m.id, a.id));
       setMessages((ms) => ms.map((x) => (x.id === m.id ? { ...x, actions: x.actions.map((y) => (y.id === a.id ? res : y)) } : x)));
-      if (kind !== 'dismiss') {
+      if (kind === 'undo') {
+        toast('Undone.', 'success');
+        void invalidateWorkspace(wid);
+      } else if (kind !== 'dismiss') {
         toast(res.status === 'done' ? 'Done.' : res.error ?? 'That could not be done.', res.status === 'done' ? 'success' : 'error');
         if (res.status === 'done') void invalidateWorkspace(wid);
         refreshActionStates();
@@ -426,7 +429,7 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
                   <div className="ai-thread" aria-live="polite" aria-busy={streaming}>
                     {messages.map((m, i) => (
                       <MessageView key={m.id} m={m} busyAction={busyAction} canEmail={canAct && !streaming} canRegenerate={!streaming && i === lastAssistantIndex}
-                        onReconcile={(a) => void act(m, a, 'reconcile')} onConfirm={(a) => void act(m, a, 'confirm')} onDismiss={(a) => void act(m, a, 'dismiss')} onCopy={() => copy(m)} onDownload={() => download(m)}
+                        onReconcile={(a) => void act(m, a, 'reconcile')} onUndo={(a) => void act(m, a, 'undo')} onConfirm={(a) => void act(m, a, 'confirm')} onDismiss={(a) => void act(m, a, 'dismiss')} onCopy={() => copy(m)} onDownload={() => download(m)}
                         onRegenerate={() => regenerate(i)} onEmail={() => void send('Email this answer to me as a report.')}
                         onFollowUp={(t) => void send(t)} onConfirmAll={() => void confirmAll(m)} onFeedback={(rating, reason) => void rate(m, rating, reason)} />
                     ))}
@@ -476,7 +479,7 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
             <div className="ai-thread" aria-live="polite" aria-busy={streaming}>
               {messages.map((m, i) => (
                 <MessageView key={m.id} m={m} busyAction={busyAction} canEmail={canAct && !streaming} canRegenerate={!streaming && i === lastAssistantIndex}
-                  onReconcile={(a) => void act(m, a, 'reconcile')} onConfirm={(a) => void act(m, a, 'confirm')} onDismiss={(a) => void act(m, a, 'dismiss')} onCopy={() => copy(m)} onDownload={() => download(m)}
+                  onReconcile={(a) => void act(m, a, 'reconcile')} onUndo={(a) => void act(m, a, 'undo')} onConfirm={(a) => void act(m, a, 'confirm')} onDismiss={(a) => void act(m, a, 'dismiss')} onCopy={() => copy(m)} onDownload={() => download(m)}
                   onRegenerate={() => regenerate(i)} onEmail={() => void send('Email this answer to me as a report.')}
                   onFollowUp={(t) => void send(t)} onConfirmAll={() => void confirmAll(m)} onFeedback={(rating, reason) => void rate(m, rating, reason)} />
               ))}

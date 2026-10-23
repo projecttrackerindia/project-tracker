@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 using MimeKit;
 using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Application.Features.Mailbox;
@@ -61,8 +62,17 @@ public partial class AiWorkspaceTests
         Assert.Equal("delete_work", card.Kind);
         Assert.Contains(key, S(card.Action["title"]));
         Assert.Equal(HttpStatusCode.OK, (await o.Owner.Get($"/api/v1/tasks/{id}")).Status);   // nothing happens before Confirm
-        Assert.Equal("done", await Confirmed(o.Owner, card));
+        var confirmed = await o.Owner.Post(card.Url);
+        Assert.Equal("done", S(confirmed.Data!["status"]));
+        Assert.NotNull(confirmed.Data["undoUntil"]);   // the card offers Undo for a few minutes
         Assert.Equal(HttpStatusCode.NotFound, (await o.Owner.Get($"/api/v1/tasks/{id}")).Status);
+
+        // Undo brings it back from the bin; a second Undo is refused.
+        var undo = await o.Owner.Post(card.Url.Replace("/confirm", "/undo"));
+        Assert.True(undo.Ok, undo.ToString());
+        Assert.Equal("undone", S(undo.Data!["status"]));
+        Assert.Equal(HttpStatusCode.OK, (await o.Owner.Get($"/api/v1/tasks/{id}")).Status);
+        Assert.Equal(HttpStatusCode.Conflict, (await o.Owner.Post(card.Url.Replace("/confirm", "/undo"))).Status);
 
         // A guest cannot delete tasks: no card is offered.
         var other = await o.Owner.CreateTaskAsync(o.Project, "Keep me");
@@ -81,5 +91,38 @@ public partial class AiWorkspaceTests
         Assert.Contains("could not find", ToolResult(), StringComparison.OrdinalIgnoreCase);
         // A real address but no Gmail connected: nothing to forward from.
         await NoCard(o.Owner, AiWorkdayTools.MailForward, new { account = "google", message_id = "abc123", to = "finance@example.test" }, "Forward the invoice mail to finance@example.test");
+    }
+
+    [Fact]
+    public async Task Undo_takes_back_a_created_task_and_puts_back_earlier_values_but_not_after_the_window_or_for_sent_things()
+    {
+        var o = await Setup();
+        // A task the assistant created goes away again.
+        var create = await Card(o.Owner, "propose_create_task", new { project = "Atlas", title = "Draft the cut-over plan", assignee = "me" }, "Create a task in Atlas to draft the cut-over plan");
+        var made = await o.Owner.Post(create.Url);
+        Assert.Equal("done", S(made.Data!["status"]));
+        var taskId = S(made.Data["resultId"]);
+        Assert.True((await o.Owner.Post(create.Url.Replace("/confirm", "/undo"))).Ok);
+        Assert.Equal(HttpStatusCode.NotFound, (await o.Owner.Get($"/api/v1/tasks/{taskId}")).Status);
+
+        // A change gets its earlier values back.
+        var task = await o.Owner.CreateTaskAsync(o.Project, "Renew the certificate");
+        var update = await Card(o.Owner, "propose_update_work", new { key = S(task["key"]), priority = "Critical" }, $"Make {S(task["key"])} critical");
+        Assert.Equal("done", await Confirmed(o.Owner, update));
+        Assert.Equal("Critical", S((await o.Owner.Get($"/api/v1/tasks/{S(task["id"])}")).Data!["task"]!["priority"]));
+        Assert.True((await o.Owner.Post(update.Url.Replace("/confirm", "/undo"))).Ok);
+        Assert.Equal("Medium", S((await o.Owner.Get($"/api/v1/tasks/{S(task["id"])}")).Data!["task"]!["priority"]));
+
+        // Somebody else cannot undo it; and once the window has passed, Undo is refused.
+        var again = await Card(o.Owner, "propose_update_work", new { key = S(task["key"]), priority = "High" }, $"Make {S(task["key"])} high priority");
+        Assert.Equal("done", await Confirmed(o.Owner, again));
+        Assert.Equal(HttpStatusCode.NotFound, (await o.Manager.Post(again.Url.Replace("/confirm", "/undo"))).Status);
+        factory.WithDb(db =>
+        {
+            var row = db.AiMessages.IgnoreQueryFilters().Single(m => m.Id == Guid.Parse(again.Message));
+            row.ActionsJson = row.ActionsJson!.Replace(System.Text.RegularExpressions.Regex.Match(row.ActionsJson, "\"undoUntil\":\"[^\"]+\"").Value, "\"undoUntil\":\"2020-01-01T00:00:00Z\"");
+            db.SaveChanges();
+        });
+        Assert.Equal(HttpStatusCode.Conflict, (await o.Owner.Post(again.Url.Replace("/confirm", "/undo"))).Status);
     }
 }

@@ -227,7 +227,20 @@ const ACTION_ICON: Record<string, IconName> = {
 };
 
 /** A change the assistant proposed. Nothing happens until Confirm. */
-export function ActionCard({ action, onConfirm, onDismiss, onReconcile, busy, blocked = false }: { action: AiAction; onConfirm: () => void; onDismiss: () => void; onReconcile?: () => void; busy: boolean; blocked?: boolean }) {
+/** Minutes and seconds left to undo, ticking; null once the window has closed. */
+function useUndoLeft(until: string | null | undefined): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  const end = until ? Date.parse(until) : NaN;
+  useEffect(() => {
+    if (!Number.isFinite(end) || end <= Date.now()) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [end]);
+  return Number.isFinite(end) && end > now ? Math.ceil((end - now) / 1000) : null;
+}
+
+export function ActionCard({ action, onConfirm, onDismiss, onReconcile, onUndo, busy, blocked = false }: { action: AiAction; onConfirm: () => void; onDismiss: () => void; onReconcile?: () => void; onUndo?: () => void; busy: boolean; blocked?: boolean }) {
+  const undoLeft = useUndoLeft(action.status === 'done' ? action.undoUntil : null);
   const nav = useNavigate();
   const expiresAt = action.lifecycle?.expiresAt;
   const [expired, setExpired] = useState(() => !!expiresAt && Date.parse(expiresAt) <= Date.now());
@@ -260,6 +273,12 @@ export function ActionCard({ action, onConfirm, onDismiss, onReconcile, busy, bl
         </>}
         {action.status === 'running' && <><span className="ai-action-state"><span className="spinner" /> Working…</span>{action.kind === 'send_message' && onReconcile && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onReconcile}>Check saved result</button>}</>}
         {action.status === 'done' && <span className="ai-action-state ok"><Icon name="checkCircle" size={14} /> Done{action.link && <button type="button" className="link-btn" onClick={() => nav(action.link!)}>Open</button>}</span>}
+        {action.status === 'done' && onUndo && undoLeft !== null && (
+          <button type="button" className="btn btn-ghost btn-sm ai-undo" data-testid="ai-undo" disabled={busy} onClick={onUndo} title={`Undo is available for ${Math.floor(undoLeft / 60)}:${String(undoLeft % 60).padStart(2, '0')} more`}>
+            <Icon name="undo" size={13} /> Undo <span className="ai-undo-left">{Math.floor(undoLeft / 60)}:{String(undoLeft % 60).padStart(2, '0')}</span>
+          </button>
+        )}
+        {action.status === 'undone' && <span className="ai-action-state"><Icon name="undo" size={14} /> Undone</span>}
         {action.status === 'dismissed' && <span className="ai-action-state">Dismissed</span>}
         {action.status === 'failed' && <><span className="ai-action-state">Check the application before making a new proposal.</span>{action.kind === 'send_message' && onReconcile && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onReconcile}>Check saved result</button>}</>}
       </div>
@@ -309,8 +328,8 @@ function Feedback({ m, onFeedback }: { m: AiMessage; onFeedback: (rating: 'up' |
   );
 }
 
-export function MessageView({ m, onConfirm, onDismiss, onReconcile, onCopy, onDownload, onRegenerate, onEmail, onFollowUp, onFeedback, onConfirmAll, busyAction, canEmail, canRegenerate }: {
-  m: AiMessage; onReconcile?: (a: AiAction) => void; onConfirm: (a: AiAction) => void; onDismiss: (a: AiAction) => void; onCopy: () => void; onDownload: () => void;
+export function MessageView({ m, onConfirm, onDismiss, onReconcile, onUndo, onCopy, onDownload, onRegenerate, onEmail, onFollowUp, onFeedback, onConfirmAll, busyAction, canEmail, canRegenerate }: {
+  m: AiMessage; onReconcile?: (a: AiAction) => void; onUndo?: (a: AiAction) => void; onConfirm: (a: AiAction) => void; onDismiss: (a: AiAction) => void; onCopy: () => void; onDownload: () => void;
   onRegenerate?: () => void; onEmail?: () => void; onFollowUp?: (text: string) => void; onConfirmAll?: () => void; onFeedback?: (rating: 'up' | 'down' | 'none', reason?: AiFeedbackReason) => void;
   busyAction: string | null; canEmail: boolean; canRegenerate: boolean;
 }) {
@@ -347,7 +366,7 @@ export function MessageView({ m, onConfirm, onDismiss, onReconcile, onCopy, onDo
           <div className="ai-plan"><span>{m.actions.filter((a) => a.status === 'proposed').length} changes are ready</span>
             <button type="button" className="btn btn-primary btn-sm" disabled={busyAction !== null} onClick={onConfirmAll}>{busyAction === 'all' ? 'Working…' : 'Confirm all in order'}</button></div>
         )}
-        {m.actions.map((a) => <ActionCard key={a.id} action={a} busy={busyAction === a.id} blocked={a.lifecycle?.dependsOn.some((id) => m.actions.find((step) => step.id === id)?.status !== 'done')} onConfirm={() => onConfirm(a)} onDismiss={() => onDismiss(a)} onReconcile={onReconcile ? () => onReconcile(a) : undefined} />)}
+        {m.actions.map((a) => <ActionCard key={a.id} action={a} busy={busyAction === a.id} blocked={a.lifecycle?.dependsOn.some((id) => m.actions.find((step) => step.id === id)?.status !== 'done')} onConfirm={() => onConfirm(a)} onDismiss={() => onDismiss(a)} onReconcile={onReconcile ? () => onReconcile(a) : undefined} onUndo={onUndo ? () => onUndo(a) : undefined} />)}
         {!failed && m.content && (
           <div className="ai-foot">
             <button type="button" className="ai-foot-btn" onClick={onCopy}><Icon name="copy" size={13} /> Copy</button>

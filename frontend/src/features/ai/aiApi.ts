@@ -17,7 +17,7 @@ export interface AiPlanStep { title: string; tool: string | null; state: 'pendin
 export interface AiToolUse { name: string; label: string; count: number | null; steps?: AiPlanStep[] | null }
 export interface AiAttachment { id: string; name: string; contentType: string; sizeBytes: number; isImage: boolean }
 export interface AiAction {
-  lifecycle?: { planId: string; version: number; dependsOn: string[]; expiresAt: string } | null; id: string; kind: string; title: string; summary: string; status: 'proposed' | 'running' | 'done' | 'failed' | 'dismissed'; link: string | null; error: string | null; preview: string | null }
+  lifecycle?: { planId: string; version: number; dependsOn: string[]; expiresAt: string } | null; id: string; kind: string; title: string; summary: string; status: 'proposed' | 'running' | 'done' | 'failed' | 'dismissed' | 'undone'; link: string | null; error: string | null; preview: string | null; undoUntil?: string | null }
 export interface AiMessage {
   id: string; role: 'user' | 'assistant'; content: string; reasoning: string | null; tier: AiTier | null; model: string | null; routeReason: string | null;
   credits: number; status: 'complete' | 'stopped' | 'failed'; tools: AiToolUse[]; actions: AiAction[]; attachments: AiAttachment[]; createdAt: string;
@@ -87,6 +87,7 @@ export const aiWorkspaceApi = {
   reconcile: (messageId: string, actionId: string) => post<AiAction>(`/ai/messages/${messageId}/actions/${actionId}/reconcile`),
   confirm: (messageId: string, actionId: string) => post<AiAction>(`/ai/messages/${messageId}/actions/${actionId}/confirm`),
   dismiss: (messageId: string, actionId: string) => post<AiAction>(`/ai/messages/${messageId}/actions/${actionId}/dismiss`),
+  undo: (messageId: string, actionId: string) => post<AiAction>(`/ai/messages/${messageId}/actions/${actionId}/undo`),
   upload: (file: File) => uploadFile<AiAttachment>('/ai/files', file),
   removeFile: (id: string) => del(`/ai/files/${id}`),
   report: (month: string) => get<AiWorkspaceReport>('/ai/usage/report', { month }),

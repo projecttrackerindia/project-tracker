@@ -469,6 +469,27 @@ public class TaskService(
         if (task.ParentTaskId is null) await completion.SyncStagesAsync([task.StageId], ct);
     }
 
+    /// <summary>
+    /// Brings a deleted task back (with the subtasks deleted with it), for the person who deleted it or an owner/admin, while its project is
+    /// still open. Used by Undo.
+    /// </summary>
+    public async Task RestoreAsync(Guid id, CancellationToken ct = default)
+    {
+        await permissions.RequireAsync(Permissions.TasksDelete, ct);
+        var tid = ctx.RequireTenantId();
+        var task = await db.Tasks.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.Id == id && t.TenantId == tid && t.IsDeleted, ct) ?? throw new NotFoundException("Task not found.");
+        var admin = ctx.Role is TenantRole.Owner or TenantRole.Admin;
+        if (!admin && task.DeletedBy != ctx.UserId) throw new NotFoundException("Task not found.");
+        await access.EnsureWritableAsync(task.ProjectId, "restore its tasks", ct);
+        var deletedAt = task.DeletedAt;
+        foreach (var t in await db.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tid && (t.Id == id || (t.ParentTaskId == id && t.IsDeleted && t.DeletedAt == deletedAt))).ToListAsync(ct))
+        { t.IsDeleted = false; t.DeletedAt = null; t.DeletedBy = null; }
+        recorder.Audit("task.restored", "Task", id, new { task.Title });
+        recorder.Activity("task.restored", "Task", id, $"Restored task \"{task.Title}\"", task.ProjectId);
+        await db.SaveChangesAsync(ct);
+        if (task.ParentTaskId is null) await completion.SyncStagesAsync([task.StageId], ct);
+    }
+
     // ---------------------------------------------------------------- comments
 
     private async Task<TaskItem> VisibleTaskAsync(Guid taskId, CancellationToken ct) =>

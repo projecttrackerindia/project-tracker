@@ -217,6 +217,11 @@
 .ai-action.failed::before { background: var(--danger); }
 .ai-action.dismissed { opacity: .6; }
 .ai-action.dismissed::before { background: var(--text-3); }
+.ai-action.undone { opacity: .7; }
+.ai-action.undone::before { background: var(--text-3); }
+.ai-action.undone .ai-action-main b { text-decoration: line-through; text-decoration-color: var(--text-3); }
+.ai-undo { gap: 5px; }
+.ai-undo-left { font-variant-numeric: tabular-nums; color: var(--text-3); font-weight: 500; }
 
 /* ---- the empty page */
 .ai-hero { max-width: 880px; margin: 0 auto; padding: min(9vh, 80px) 22px 28px; display: flex; flex-direction: column; align-items: center; text-align: center; }

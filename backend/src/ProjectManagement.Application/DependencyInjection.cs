@@ -221,6 +221,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiActionRunner>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiHomeTools>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiWorkdayTools>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiUndoService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiHomeActions>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiFileService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiGuidance>();

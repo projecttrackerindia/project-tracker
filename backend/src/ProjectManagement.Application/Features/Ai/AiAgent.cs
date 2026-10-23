@@ -28,7 +28,7 @@ public sealed record AiRun(AiConversation Conversation, AiMessage Question, stri
 /// access, and anything that would change data comes back as a proposal for the person to confirm. Each answer costs credits by level.
 /// </summary>
 public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IAiChat chat, EntitlementService entitlements, AiRequestLimitService requestLimits,
-    IOptions<AiOptions> options, AiToolbox toolbox, AiActionRunner runner, AiFileService files, AiGuidance guidance, ILogger<AiAgent> log, AiDatabaseTelemetry databaseTelemetry, AiCommandPlanner commandPlanner, AiCreditService creditLedger, AiKnowledgeService knowledge)
+    IOptions<AiOptions> options, AiToolbox toolbox, AiActionRunner runner, AiFileService files, AiGuidance guidance, ILogger<AiAgent> log, AiDatabaseTelemetry databaseTelemetry, AiCommandPlanner commandPlanner, AiCreditService creditLedger, AiKnowledgeService knowledge, AiUndoService undo)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private const string DefaultTitle = "New conversation";
@@ -449,7 +449,8 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
                         catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "An auto-run AI suggestion failed ({Kind})", p.Kind); error = "That could not be done. Try it by hand."; }
                         toolFailed |= error is not null;
                         resultError |= error is not null;
-                        final = final with { Status = error is null ? "done" : "failed", Link = result?.Link, ResultId = result?.RecordId, Error = error, Execution = final.Execution is { } metadata ? metadata with { ApprovedAt = clock.Now, StartedAt = clock.Now, CompletedAt = clock.Now, DurationMs = elapsed.ElapsedMilliseconds - autoStart, ExecutionId = identity, Attempts = 1 } : null };
+                        final = final with { Status = error is null ? "done" : "failed", Link = result?.Link, ResultId = result?.RecordId, Error = error, UndoJson = result?.UndoJson,
+                            UndoUntil = error is null && AiUndoService.Supports(p.Kind) ? clock.Now.Add(AiUndoService.Window) : null, Execution = final.Execution is { } metadata ? metadata with { ApprovedAt = clock.Now, StartedAt = clock.Now, CompletedAt = clock.Now, DurationMs = elapsed.ElapsedMilliseconds - autoStart, ExecutionId = identity, Attempts = 1 } : null };
                         content = error is null ? (p.Kind is "update_project" or "update_stage_dates" ? "Saved and verified: " : "Done: ") + $"{p.Title} ({p.Summary})." + (p.Preview is null ? "" : "\n" + p.Preview) : $"That could not be done: {error}";
                         if (error is not null) actionErrors.Add(error);
                         if (error is not null || p.Kind is "update_project" or "update_stage_dates")
@@ -814,7 +815,8 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         try
         {
             var result = await runner.RunAsync(p, ct, identity, all);
-            done = p with { Status = "done", Link = result.Link, ResultId = result.RecordId };
+            done = p with { Status = "done", Link = result.Link, ResultId = result.RecordId, UndoJson = result.UndoJson,
+                UndoUntil = AiUndoService.Supports(p.Kind) ? clock.Now.Add(AiUndoService.Window) : null };
             recorder.Audit("ai.action_confirmed", "AiAssistant", null, null, new { kind = p.Kind, title = p.Title });
             await LearnAsync(p.Kind, true, ct);
         }
@@ -901,6 +903,33 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         var tid = ctx.RequireTenantId();
         if (await db.Tenants.Where(t => t.Id == tid).Select(t => t.AiDisabled).FirstOrDefaultAsync(ct))
             throw new ForbiddenException("The AI assistant is switched off for this workspace.", "AI_DISABLED");
+    }
+
+    /// <summary>
+    /// Reverses a change confirmed from a card, within <see cref="AiUndoService.Window"/>, through the same services and the person's own
+    /// rights. All or nothing: if the reversal fails nothing changes and the card stays done.
+    /// </summary>
+    public async Task<AiActionDto> UndoAsync(Guid messageId, string actionId, CancellationToken ct = default)
+    {
+        await EnsureAiEnabledAsync(ct);
+        var (msg, all, p) = await ProposalAsync(messageId, actionId, ct);
+        if (p.Status != "done" || !AiUndoService.Supports(p.Kind) || p.UndoUntil is null) throw new ConflictException("This change cannot be undone here.", "AI_UNDO_UNSUPPORTED");
+        if (p.UndoUntil <= clock.Now) throw new ConflictException("Undo is only available for a few minutes after a change. Change it back by hand.", "AI_UNDO_EXPIRED");
+        if (all.Any(a => a.Status == "running")) throw new ConflictException("Another suggestion in this answer is still running.", "AI_ACTION_HANDLED");
+        await using var transaction = await db.Database.BeginOwnedTransactionAsync(ct);
+        var previous = msg.ActionsJson;
+        var undone = p with { Status = "undone", UndoUntil = null, Error = null };
+        Replace(all, undone, msg);
+        var claimed = msg.ActionsJson;
+        var tenant = ctx.RequireTenantId(); var user = ctx.RequireUserId();
+        if (await db.AiMessages.Where(m => m.Id == messageId && m.TenantId == tenant && m.UserId == user && m.ActionsJson == previous)
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.ActionsJson, claimed), ct) != 1)
+            throw new ConflictException("That change is already being undone.", "AI_ACTION_HANDLED");
+        await undo.RunAsync(p, ct);
+        recorder.Audit("ai.action_undone", "AiAssistant", null, null, new { kind = p.Kind, title = p.Title });
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitIfOwnedAsync(ct);
+        return undone.ToDto();
     }
 
     public async Task<AiActionDto> DismissAsync(Guid messageId, string actionId, CancellationToken ct = default)

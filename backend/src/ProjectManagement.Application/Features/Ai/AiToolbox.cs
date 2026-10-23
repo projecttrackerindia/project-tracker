@@ -21,9 +21,9 @@ namespace ProjectManagement.Application.Features.Ai;
 
 /// <summary>A change the assistant suggested, kept with everything needed to carry it out once the person confirms it.</summary>
 public sealed record AiProposal(string Id, string Kind, string Title, string Summary, string PayloadJson, string Status = "proposed", string? Link = null, string? Error = null,
-    string? Preview = null, Guid? ResultId = null, AiActionExecution? Execution = null)
+    string? Preview = null, Guid? ResultId = null, AiActionExecution? Execution = null, string? UndoJson = null, DateTime? UndoUntil = null)
 {
-    public AiActionDto ToDto() => new(Id, Kind, Title, Summary, Status, Link, Error, Preview, ResultId, AiActionPlan.ToDto(Execution));
+    public AiActionDto ToDto() => new(Id, Kind, Title, Summary, Status, Link, Error, Preview, ResultId, AiActionPlan.ToDto(Execution), Status == "done" ? UndoUntil : null);
 }
 
 /// <summary>What a tool gave back: the text the model reads, a short label for the page ("Looked through 12 work items"), and any proposal.</summary>

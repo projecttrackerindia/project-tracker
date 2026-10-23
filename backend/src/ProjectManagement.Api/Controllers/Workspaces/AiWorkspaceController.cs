@@ -94,6 +94,10 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysi
     [HttpPost("messages/{messageId:guid}/actions/{actionId}/dismiss")]
     public async Task<IActionResult> Dismiss(Guid messageId, string actionId, CancellationToken ct) => Ok(await agent.DismissAsync(messageId, actionId, ct));
 
+    /// <summary>Undoes a change confirmed from a card, for a few minutes afterwards.</summary>
+    [HttpPost("messages/{messageId:guid}/actions/{actionId}/undo")]
+    public async Task<IActionResult> Undo(Guid messageId, string actionId, CancellationToken ct) => Ok(await agent.UndoAsync(messageId, actionId, ct));
+
     [HttpPost("messages/{messageId:guid}/actions/{actionId}/reconcile")]
     public async Task<IActionResult> Reconcile(Guid messageId, string actionId, CancellationToken ct) => Ok(await agent.ReconcileAsync(messageId, actionId, ct));
 

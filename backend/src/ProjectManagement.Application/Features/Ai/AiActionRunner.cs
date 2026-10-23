@@ -22,7 +22,8 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Ai;
 
-public sealed record AiActionResult(string? Link, Guid? RecordId = null);
+/// <summary>Where the result is, its id, and (for a change Undo puts back by values rather than by id) what it was before.</summary>
+public sealed record AiActionResult(string? Link, Guid? RecordId = null, string? UndoJson = null);
 
 /// <summary>
 /// Carries out a change the assistant proposed, after the person pressed Confirm. It goes through the same services as the app's own
@@ -216,16 +217,17 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
 
     private async Task<AiActionResult> LogTimeAsync(JsonElement a, CancellationToken ct)
     {
-                Guid? first = null; DateOnly? day = null;
+                Guid? first = null; DateOnly? day = null; var logged = new List<Guid>();
                 foreach (var e in a.GetProperty("entries").EnumerateArray())
                 {
                     var id = Guid(e, "id") ?? throw new ValidationException("entries", "An entry has no work item.");
                     var date = Date(e, "date") ?? throw new ValidationException("entries", "An entry has no day.");
                     var req = new ProjectManagement.Application.Features.Time.LogTimeRequest(e.GetProperty("minutes").GetInt32(), date, Str(e, "note"));
                     var saved = Str(e, "kind") == "work" ? await time.LogOnWorkTaskAsync(id, req, ct) : await time.LogAsync(id, req, ct);
-                    first ??= saved.Id; day ??= date;
+                    first ??= saved.Id; day ??= date; logged.Add(saved.Id);
                 }
-                return new AiActionResult($"/timesheet?week={ProjectManagement.Application.Features.Time.TimesheetApprovalService.WeekOf(day ?? DateOnly.FromDateTime(DateTime.UtcNow)):yyyy-MM-dd}", first);
+                return new AiActionResult($"/timesheet?week={ProjectManagement.Application.Features.Time.TimesheetApprovalService.WeekOf(day ?? DateOnly.FromDateTime(DateTime.UtcNow)):yyyy-MM-dd}", first,
+                    JsonSerializer.Serialize(new { entryIds = logged }, Json));
                 }
 
     private async Task<AiActionResult> RunScheduleActionAsync(Func<Task<AiActionResult>> action, CancellationToken ct)
@@ -333,7 +335,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             var status = statusName is null ? cur.Status : Enum.Parse<ActionItemStatus>(statusName, true);
             await actionItems.UpdateAsync(projectId, id, new UpdateActionItemRequest(Str(a, "newTitle") ?? cur.Title, Str(a, "newDescription") ?? cur.Details,
                 unassign ? null : assigneeId ?? cur.Assignee?.Id, due ?? cur.DueDate, priority ?? cur.Priority, status), ct);
-            return new AiActionResult(ActionItemService.LinkOf(projectId, id), id);
+            return new AiActionResult(ActionItemService.LinkOf(projectId, id), id, JsonSerializer.Serialize(new AiUndoBefore("actionitem", id, projectId, cur.Title, cur.Details, cur.Status.ToString(), null, cur.Priority, cur.Assignee?.Id, null, cur.DueDate, null), Json));
         }
         if (Str(a, "target") == "work")
         {
@@ -342,7 +344,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             await workTasks.UpdateAsync(id, new UpdateWorkTaskRequest(Str(a, "newTitle") ?? w.Title, Str(a, "newDescription") ?? w.Description, w.WorkTypeId, w.RelatedProject?.Id, unassign ? null : assigneeId ?? w.Assignee?.Id, priority ?? w.Priority,
                 status, Date(a, "startDate") ?? w.StartDate, due ?? w.DueDate, w.Version), ct);
             if (comment is not null) await workTasks.AddCommentAsync(id, new WorkCommentRequest(comment), ct);
-            return new AiActionResult($"/operations?task={id}", id);
+            return new AiActionResult($"/operations?task={id}", id, JsonSerializer.Serialize(new AiUndoBefore("work", id, null, w.Title, w.Description, w.Status.ToString(), null, w.Priority, w.Assignee?.Id, w.StartDate, w.DueDate, null), Json));
         }
         var t = (await tasks.GetAsync(id, ct)).Task;
         var statusId = t.StatusId;
@@ -357,7 +359,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
         var verified = await db.Tasks.AsNoTracking().AnyAsync(saved => saved.Id == id && saved.AssigneeId == wantedAssignee
             && saved.StatusId == statusId && saved.Title == (Str(a, "newTitle") ?? t.Title) && saved.Priority == (priority ?? t.Priority), ct);
         if (!verified) throw new ConflictException("The requested task result could not be verified. Check the task before retrying.", "AI_ACTION_UNVERIFIED");
-        return new AiActionResult($"/projects/{t.ProjectId}?task={id}", id);
+        return new AiActionResult($"/projects/{t.ProjectId}?task={id}", id, JsonSerializer.Serialize(new AiUndoBefore("task", id, t.ProjectId, t.Title, t.Description, null, t.StatusId, t.Priority, t.Assignee?.Id, t.StartDate, t.DueDate, t.EstimatedHours), Json));
     }
 
     private async Task SendReportAsync(JsonElement a, CancellationToken ct)
