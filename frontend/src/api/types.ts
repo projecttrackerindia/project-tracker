@@ -498,6 +498,11 @@ export interface ApiKey {
 export interface Webhook {
   id: string; name: string; url: string; events: string[]; isActive: boolean; disabledReason: string | null; createdAt: string;
   lastDeliveryAt: string | null; lastStatus: string | null; consecutiveFailures: number;
+  /** Outgoing filters (empty: none). Status filters apply to status changes only. */
+  filterProjects?: string[]; filterPriorities?: Priority[]; filterStatuses?: string[];
+  /** The last 7 days. */
+  health?: { total: number; succeeded: number; failed: number; successRate: number | null; averageMs: number | null } | null;
+  disableAfter?: number;
   /** Json: signed events for your own systems. Slack / Teams: a ready-made message for a channel. */
   format: WebhookFormat;
 }
@@ -505,6 +510,34 @@ export type WebhookFormat = 'Json' | 'Slack' | 'Teams';
 export interface WebhookDelivery {
   id: string; eventType: string; status: 'Pending' | 'Succeeded' | 'Failed'; attempts: number; responseStatus: number | null; error: string | null;
   createdAt: string; deliveredAt: string | null; nextAttemptAt: string | null;
+  durationMs?: number | null; replayOf?: string | null;
+}
+export interface WebhookDeliveryPage { items: WebhookDelivery[]; total: number; page: number; pageSize: number }
+export interface WebhookDeliveryDetail { delivery: WebhookDelivery; payload: string; responseSnippet: string | null }
+export interface WebhookEventInfo { event: string; group: string; groupLabel: string; sample: unknown }
+export interface WebhookHealth {
+  days: number; total: number; succeeded: number; failed: number; pending: number; successRate: number | null; averageMs: number | null; p95Ms: number | null;
+  series: { day: string; total: number; failed: number; averageMs: number | null }[]; lastError: string | null; lastFailureAt: string | null;
+  consecutiveFailures: number; warnAfter: number; disableAfter: number; warned: boolean;
+}
+/** Incoming webhooks: an address other systems post to, turned into a ticket, a task or a reminder. */
+export type IncomingTarget = 'ticket' | 'task' | 'reminder';
+export interface IncomingMapping {
+  title?: string | null; description?: string | null; priority?: string | null; priorityMap?: Record<string, string> | null;
+  dedupeKey?: string | null; assignee?: string | null; resolveWhen?: string | null; resolveValues?: string | null;
+}
+export interface IncomingWebhook {
+  id: string; name: string; url: string; target: IncomingTarget; projectId: string | null; projectName: string | null; workTypeId: string | null; workTypeName: string | null;
+  assigneeId: string | null; assigneeName: string | null; defaultPriority: Priority; mapping: IncomingMapping; mergeMinutes: number; isActive: boolean; requiresSecret: boolean;
+  actingUserId: string; actingName: string | null; received: number; createdCount: number; mergedCount: number; lastReceivedAt: string | null; lastError: string | null; hasSample: boolean; createdAt: string;
+}
+export interface IncomingField { path: string; placeholder: string; value: string }
+export interface IncomingPreview { title: string; description: string | null; priority: Priority; dedupeKey: string; assignee: string | null; resolves: boolean; problems: string[]; fields: IncomingField[] }
+export interface IncomingEvent { id: string; receivedAt: string; status: 'created' | 'merged' | 'resolved' | 'ignored' | 'rejected' | 'failed'; title: string | null; dedupeKey: string | null;
+  targetType: string | null; targetId: string | null; targetKey: string | null; error: string | null; count: number | null }
+export interface SaveIncomingWebhook {
+  name?: string; target?: IncomingTarget; projectId?: string | null; workTypeId?: string | null; assigneeId?: string | null; defaultPriority?: Priority;
+  mapping?: IncomingMapping; mergeMinutes?: number; isActive?: boolean; requireSecret?: boolean; raiseAsMe?: boolean;
 }
 
 // ---- work of every kind: My work, workload

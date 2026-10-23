@@ -113,7 +113,8 @@ public static class WebhookEvents
             "team" => "Team", "worktask" => "WorkTask", "timesheet" => "Timesheet", "document" => "Document", "issue" => "Issue", "actionitem" => "ActionItem",
             "meeting" => "Meeting", _ => "Item",
         };
-        var text = SampleText.TryGetValue(eventType, out var t) ? t : (entity, $"{char.ToUpperInvariant(eventType[0])}{eventType[1..].Replace('.', ' ').Replace('_', ' ')} (example)", (string?)null, (string?)null);
+        (string Entity, string Summary, string? Old, string? New) text = SampleText.TryGetValue(eventType, out var t) ? t
+            : (entity, $"{char.ToUpperInvariant(eventType[0])}{eventType[1..].Replace('.', ' ').Replace('_', ' ')} (example)", null, null);
         return new { summary = text.Summary, entity = new { type = text.Entity, id = Guid.Empty }, projectId = (Guid?)Guid.Empty,
             actor = new { id = Guid.Empty, name = "Asha Rao" }, oldValue = text.Old, newValue = text.New };
     }

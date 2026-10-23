@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
-import { webhookApi } from '../../api/endpoints';
-import type { Webhook, WebhookFormat } from '../../api/types';
+import { projectApi, webhookApi } from '../../api/endpoints';
+import type { Priority, Webhook, WebhookDelivery, WebhookFormat } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Badge, EmptyState, ErrorState, Field, Modal, SubmitButton } from '../../components/ui';
 import { timeAgo } from '../../lib/format';
@@ -11,6 +11,8 @@ import { useWsQuery } from '../../lib/hooks';
 import { useAuth, useEntitlement, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { IntegrationSetupGuides, WebhookSetupSteps } from './IntegrationSetupGuides';
+import { IncomingWebhooks } from './IncomingWebhooks';
+import { Select } from '../../components/Select';
 
 /** Settings → Webhooks: tell another system, with a signed request, when something happens here. Owners and admins only. */
 export function WebhookSettings() {
@@ -24,6 +26,8 @@ export function WebhookSettings() {
   const [secret, setSecret] = useState<string | null>(null);
   const [log, setLog] = useState<Webhook | null>(null);
   const hooks = q.data ?? [];
+  const projects = useWsQuery(['projects', 'webhook-filters'], () => projectApi.list({ pageSize: 200 }), { enabled: isAdmin && included && hooks.some(hasFilters), staleTime: 300_000 });
+  const projectNames = Object.fromEntries((projects.data?.items ?? []).map((p) => [p.id, p.name]));
   const refresh = () => void qc.invalidateQueries({ queryKey: [wid, 'webhooks'] });
   const fail = (e: unknown, m: string) => toast(e instanceof ApiError ? e.message : m, 'error');
 
@@ -68,10 +72,17 @@ export function WebhookSettings() {
                   {h.lastStatus && <Badge tone={h.lastStatus === 'ok' ? 'success' : 'warning'}>{h.lastStatus === 'ok' ? 'Last delivery ok' : 'Last delivery failed'}</Badge>}
                   <div className="muted" style={{ fontSize: 12, overflowWrap: 'anywhere' }}>{h.url}</div>
                   <div className="muted" style={{ fontSize: 12 }}>{h.events.join(', ')}{h.lastDeliveryAt ? ` · last sent ${timeAgo(h.lastDeliveryAt)}` : ' · nothing sent yet'}</div>
+                  {h.health && h.health.total > 0 && (
+                    <div className={`hook-health ${h.health.successRate != null && h.health.successRate < 90 ? 'bad' : ''}`} aria-label={`Health of ${h.name}`}>
+                      <b>{h.health.successRate}% delivered</b> · {h.health.total} in 7 days{h.health.failed ? ` · ${h.health.failed} failed` : ''}{h.health.averageMs != null ? ` · ${h.health.averageMs} ms on average` : ''}
+                    </div>
+                  )}
+                  {hasFilters(h) && <div className="muted" style={{ fontSize: 12 }}>Filtered: {filterText(h, projectNames)}</div>}
+                  {h.isActive && h.consecutiveFailures > 0 && <div className="form-error" style={{ marginTop: 6 }}>{h.consecutiveFailures} deliveries in a row failed; it switches off after {h.disableAfter ?? 10}.</div>}
                   {h.disabledReason && <div className="form-error" style={{ marginTop: 6 }}>{h.disabledReason}</div>}
                 </div>
                 <div className="td-actions" style={{ flexWrap: 'wrap' }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setLog(h)}>Deliveries</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setLog(h)}>Deliveries & health</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => void test(h)}>Send test</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => void toggle(h)}>{h.isActive ? 'Turn off' : 'Turn on'}</button>
                   <button type="button" className="btn-icon" title="Edit" aria-label={`Edit ${h.name}`} onClick={() => setModal({ hook: h })}><Icon name="edit" /></button>
@@ -93,9 +104,21 @@ export function WebhookSettings() {
       )}
       {log && <DeliveriesModal hook={log} onClose={() => setLog(null)} />}
     </div>
+    {included && hooks.length > 0 && <EventExplorer hooks={hooks} />}
+    {included && <IncomingWebhooks />}
     </>
   );
 }
+
+const hasFilters = (h: Webhook) => (h.filterProjects?.length ?? 0) + (h.filterPriorities?.length ?? 0) + (h.filterStatuses?.length ?? 0) > 0;
+function filterText(h: Webhook, names: Record<string, string>) {
+  const parts: string[] = [];
+  if (h.filterProjects?.length) parts.push(`projects ${h.filterProjects.map((p) => names[p] ?? 'a removed project').join(', ')}`);
+  if (h.filterPriorities?.length) parts.push(`priority ${h.filterPriorities.join(' or ')}`);
+  if (h.filterStatuses?.length) parts.push(`status changes to ${h.filterStatuses.join(' or ')}`);
+  return parts.join(' · ');
+}
+const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical'];
 
 function HookModal({ hook, initialFormat, onClose, onSaved }: { hook?: Webhook; initialFormat?: WebhookFormat; onClose: () => void; onSaved: (secret?: string) => void }) {
   const catalogue = useWsQuery(['webhook-events'], webhookApi.events);
@@ -107,6 +130,11 @@ function HookModal({ hook, initialFormat, onClose, onSaved }: { hook?: Webhook; 
   const [audit, setAudit] = useState(!!hook?.events.includes('*') && hook.events.includes('audit.logged'));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(!!hook && hasFilters(hook));
+  const [fProjects, setFProjects] = useState<string[]>(hook?.filterProjects ?? []);
+  const [fPriorities, setFPriorities] = useState<Priority[]>(hook?.filterPriorities ?? []);
+  const [fStatuses, setFStatuses] = useState((hook?.filterStatuses ?? []).join(', '));
+  const projects = useWsQuery(['projects', 'webhook-filters'], () => projectApi.list({ pageSize: 200 }), { enabled: filterOpen, staleTime: 300_000 });
   const groups = [...new Set((catalogue.data ?? []).map((e) => e.split('.')[0]))];
 
   const toggleEvent = (e: string) => setPicked((p) => (p.includes(e) ? p.filter((x) => x !== e) : [...p, e]));
@@ -122,9 +150,10 @@ function HookModal({ hook, initialFormat, onClose, onSaved }: { hook?: Webhook; 
     setBusy(true); setError(null);
     try {
       const events = all ? (audit ? ['*', 'audit.logged'] : ['*']) : picked;
-      if (hook) { await webhookApi.update(hook.id, { name: name.trim(), url: url.trim(), events, isActive: hook.isActive, format }); toast('Webhook updated.'); onSaved(); }
+      const filters = { filterProjects: fProjects, filterPriorities: fPriorities, filterStatuses: fStatuses.split(',').map((x) => x.trim()).filter(Boolean) };
+      if (hook) { await webhookApi.update(hook.id, { name: name.trim(), url: url.trim(), events, isActive: hook.isActive, format, ...filters }); toast('Webhook updated.'); onSaved(); }
       else {
-        const r = await webhookApi.create({ name: name.trim(), url: url.trim(), events, format });
+        const r = await webhookApi.create({ name: name.trim(), url: url.trim(), events, format, ...filters });
         toast(format === 'Json' ? 'Webhook created.' : `Connected. Send a test to see it in the ${format === 'Slack' ? 'Slack' : 'Teams'} channel.`);
         onSaved(format === 'Json' ? r.secret : undefined);   // chat channels do not check signatures
       }
@@ -167,6 +196,29 @@ function HookModal({ hook, initialFormat, onClose, onSaved }: { hook?: Webhook; 
           ))}
         </div>
       )}
+      <details className="hook-filters" open={filterOpen} onToggle={(e) => setFilterOpen((e.target as HTMLDetailsElement).open)}>
+        <summary>Filters {fProjects.length + fPriorities.length + (fStatuses.trim() ? 1 : 0) > 0 ? <Badge tone="info">On</Badge> : <span className="muted">(optional: fewer, more useful calls)</span>}</summary>
+        <div className="hook-filter-grid">
+          <fieldset>
+            <legend>Only these projects</legend>
+            {projects.isLoading ? <span className="muted">Loading projects…</span> : (projects.data?.items ?? []).length === 0 ? <span className="muted">No projects yet.</span> : (
+              <div className="hook-filter-list">
+                {(projects.data?.items ?? []).map((p) => (
+                  <label key={p.id} className="hook-check"><input type="checkbox" checked={fProjects.includes(p.id)} onChange={() => setFProjects((x) => (x.includes(p.id) ? x.filter((y) => y !== p.id) : [...x, p.id]))} /> {p.name}</label>
+                ))}
+              </div>
+            )}
+          </fieldset>
+          <fieldset>
+            <legend>Only these priorities</legend>
+            {PRIORITIES.map((p) => <label key={p} className="hook-check"><input type="checkbox" checked={fPriorities.includes(p)} onChange={() => setFPriorities((x) => (x.includes(p) ? x.filter((y) => y !== p) : [...x, p]))} /> {p}</label>)}
+            <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>Tasks, tickets and issues. Events without a priority still go.</p>
+          </fieldset>
+          <Field label="Status changes only to" hint="Comma-separated, e.g. Done, Blocked. “Done” also matches Completed and Resolved. Other events are not affected.">
+            <input className="input" maxLength={300} value={fStatuses} onChange={(e) => setFStatuses(e.target.value)} placeholder="Done" aria-label="Status changes only to" />
+          </Field>
+        </div>
+      </details>
     </Modal>
   );
 }
@@ -174,30 +226,175 @@ function HookModal({ hook, initialFormat, onClose, onSaved }: { hook?: Webhook; 
 function DeliveriesModal({ hook, onClose }: { hook: Webhook; onClose: () => void }) {
   const wid = useWorkspaceId();
   const qc = useQueryClient();
-  const q = useWsQuery(['webhooks', hook.id, 'deliveries'], () => webhookApi.deliveries(hook.id), { refetchInterval: 4000 });
-  const rows = q.data ?? [];
-  const retry = async (id: string) => {
-    try { await webhookApi.retry(hook.id, id); void qc.invalidateQueries({ queryKey: [wid, 'webhooks', hook.id, 'deliveries'] }); toast('Queued to send again.'); }
-    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not retry.', 'error'); }
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState('');
+  const [event, setEvent] = useState('');
+  const [open, setOpen] = useState<string | null>(null);
+  const health = useWsQuery(['webhooks', hook.id, 'health'], () => webhookApi.health(hook.id, 7), { refetchInterval: 10_000 });
+  const q = useWsQuery(['webhooks', hook.id, 'history', page, status, event], () => webhookApi.history(hook.id, { page, pageSize: 25, status: status || undefined, event: event.trim() || undefined }),
+    { refetchInterval: 4000, placeholderData: (p) => p });
+  const rows = q.data?.items ?? [];
+  const pages = Math.max(1, Math.ceil((q.data?.total ?? 0) / 25));
+  const refresh = () => void qc.invalidateQueries({ queryKey: [wid, 'webhooks', hook.id] });
+  const replay = async (d: WebhookDelivery) => {
+    try { await webhookApi.replay(hook.id, d.id); refresh(); toast('Queued to send again.'); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not send it again.', 'error'); }
   };
+  const h = health.data;
+  const max = Math.max(1, ...(h?.series ?? []).map((x) => x.total));
   return (
-    <Modal size="lg" title={`Deliveries · ${hook.name}`} subtitle="The last 50 events sent to this address" onClose={onClose} footer={<button type="button" className="btn btn-primary" onClick={onClose}>Close</button>}>
-      {rows.length === 0 ? <EmptyState icon="bolt" title="Nothing sent yet" text="Events appear here a few seconds after they happen." /> : (
-        <div className="cf-list">
+    <Modal size="xl" title={`Deliveries · ${hook.name}`} subtitle="Every event sent in the last 30 days, its health, and sending again after a fix" onClose={onClose} footer={<button type="button" className="btn btn-primary" onClick={onClose}>Close</button>}>
+      {h && (
+        <section className="hook-health-panel" aria-label="Health in the last 7 days">
+          <div className="hook-kpis">
+            <div><span>Delivered</span><b>{h.successRate == null ? '—' : `${h.successRate}%`}</b><small>{h.succeeded} of {h.total} in 7 days</small></div>
+            <div><span>Failed</span><b>{h.failed}</b><small>{h.pending} waiting</small></div>
+            <div><span>Response</span><b>{h.averageMs == null ? '—' : `${h.averageMs} ms`}</b><small>{h.p95Ms == null ? 'average' : `95% under ${h.p95Ms} ms`}</small></div>
+            <div><span>Failed in a row</span><b>{h.consecutiveFailures}</b><small>warned at {h.warnAfter}, off at {h.disableAfter}</small></div>
+          </div>
+          <div className="hook-bars" role="img" aria-label="Deliveries per day, failed in red">
+            {h.series.map((d) => (
+              <div key={d.day} className="hook-bar" title={`${d.day}: ${d.total} sent, ${d.failed} failed${d.averageMs != null ? `, ${d.averageMs} ms` : ''}`}>
+                <div className="hook-bar-stack">
+                  {d.failed > 0 && <i className="f" style={{ height: `${(d.failed / max) * 100}%` }} />}
+                  <i style={{ height: `${((d.total - d.failed) / max) * 100}%` }} />
+                </div>
+                <span>{d.day.slice(8)}</span>
+              </div>
+            ))}
+          </div>
+          {h.lastError && <p className="muted" style={{ fontSize: 12, margin: 0 }}>Last problem{h.lastFailureAt ? ` ${timeAgo(h.lastFailureAt)}` : ''}: {h.lastError}</p>}
+        </section>
+      )}
+      <ReplayWindow hook={hook} onQueued={refresh} />
+      <div className="hook-history-filters">
+        <div className="hook-status-pick"><Select className="select" value={status} aria-label="Status" onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+          <option value="">Every status</option><option value="Succeeded">Delivered</option><option value="Failed">Failed</option><option value="Pending">Waiting</option>
+        </Select></div>
+        <input className="input" value={event} onChange={(e) => { setEvent(e.target.value); setPage(1); }} placeholder="Event, e.g. task.* or task.created" aria-label="Event" />
+        <span className="muted">{q.data?.total ?? 0} in all</span>
+      </div>
+      {rows.length === 0 ? <EmptyState icon="bolt" title={status || event ? 'Nothing matches' : 'Nothing sent yet'} text="Events appear here a few seconds after they happen." /> : (
+        <div className="cf-list" role="list" aria-label="Deliveries">
           {rows.map((d) => (
-            <div className="cf-row" key={d.id}>
+            <div className="cf-row" role="listitem" key={d.id}>
               <div className="cf-main">
-                <code>{d.eventType}</code> <Badge tone={d.status === 'Succeeded' ? 'success' : d.status === 'Failed' ? 'danger' : 'info'}>{d.status === 'Pending' ? 'Waiting' : d.status}</Badge>
+                <code>{d.eventType}</code> <Badge tone={d.status === 'Succeeded' ? 'success' : d.status === 'Failed' ? 'danger' : 'info'}>{d.status === 'Pending' ? 'Waiting' : d.status === 'Succeeded' ? 'Delivered' : 'Failed'}</Badge>
+                {d.replayOf && <> <Badge tone="purple">Sent again</Badge></>}
                 <div className="muted" style={{ fontSize: 12 }}>
-                  {timeAgo(d.createdAt)} · {d.attempts} attempt{d.attempts === 1 ? '' : 's'}{d.responseStatus ? ` · answered ${d.responseStatus}` : ''}{d.error ? ` · ${d.error}` : ''}
+                  {timeAgo(d.createdAt)} · {d.attempts} attempt{d.attempts === 1 ? '' : 's'}{d.responseStatus ? ` · answered ${d.responseStatus}` : ''}{d.durationMs != null ? ` in ${d.durationMs} ms` : ''}{d.error ? ` · ${d.error}` : ''}
                   {d.nextAttemptAt && d.status === 'Pending' && d.attempts > 0 ? ` · next try ${timeAgo(d.nextAttemptAt).includes('ago') ? 'shortly' : 'later'}` : ''}
                 </div>
+                {open === d.id && <DeliveryDetail hookId={hook.id} id={d.id} />}
               </div>
-              {d.status === 'Failed' && <button type="button" className="btn btn-ghost btn-sm" onClick={() => void retry(d.id)}>Retry</button>}
+              <div className="td-actions">
+                <button type="button" className="btn btn-ghost btn-sm" aria-expanded={open === d.id} onClick={() => setOpen(open === d.id ? null : d.id)}>{open === d.id ? 'Hide' : 'View'}</button>
+                {d.status !== 'Pending' && <button type="button" className="btn btn-ghost btn-sm" onClick={() => void replay(d)}>Send again</button>}
+              </div>
             </div>
           ))}
         </div>
       )}
+      {pages > 1 && (
+        <div className="hook-pager">
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Newer</button>
+          <span className="muted">Page {page} of {pages}</span>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Older</button>
+        </div>
+      )}
     </Modal>
+  );
+}
+
+function DeliveryDetail({ hookId, id }: { hookId: string; id: string }) {
+  const q = useWsQuery(['webhooks', hookId, 'delivery', id], () => webhookApi.delivery(hookId, id));
+  if (q.isLoading) return <p className="muted" role="status">Loading…</p>;
+  if (!q.data) return null;
+  let pretty = q.data.payload;
+  try { pretty = JSON.stringify(JSON.parse(q.data.payload), null, 2); } catch { /* not JSON */ }
+  return (
+    <div className="hook-detail">
+      <div><b>Sent</b><pre>{pretty}</pre></div>
+      <div><b>Answer</b><pre>{q.data.responseSnippet || (q.data.delivery.responseStatus ? `HTTP ${q.data.delivery.responseStatus}` : 'No answer yet.')}</pre></div>
+    </div>
+  );
+}
+
+const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+
+/** Sends every failed (or every) delivery in a time window again, after the receiver was fixed. */
+function ReplayWindow({ hook, onQueued }: { hook: Webhook; onQueued: () => void }) {
+  const [from, setFrom] = useState(() => localInput(new Date(Date.now() - 24 * 3_600_000)));
+  const [to, setTo] = useState(() => localInput(new Date()));
+  const [onlyFailed, setOnlyFailed] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    setBusy(true);
+    try {
+      const r = await webhookApi.replayMany(hook.id, { from: new Date(from).toISOString(), to: new Date(to).toISOString(), onlyFailed });
+      toast(r.queued === 0 ? 'Nothing to send again in that window.' : `${r.queued} event${r.queued === 1 ? '' : 's'} queued to send again.`); onQueued();
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not send them again.', 'error'); } finally { setBusy(false); }
+  };
+  return (
+    <details className="hook-replay">
+      <summary>Send events again after fixing the receiver</summary>
+      <div className="hook-replay-row">
+        <label>From <input className="input" type="datetime-local" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label>To <input className="input" type="datetime-local" value={to} min={from} onChange={(e) => setTo(e.target.value)} /></label>
+        <label className="hook-check"><input type="checkbox" checked={onlyFailed} onChange={(e) => setOnlyFailed(e.target.checked)} /> Only the failed ones</label>
+        <button type="button" className="btn btn-primary btn-sm" disabled={busy || !hook.isActive} onClick={() => void go()}>Send these again</button>
+      </div>
+      {!hook.isActive && <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>Turn the webhook on first.</p>}
+    </details>
+  );
+}
+
+/** Every event with a sample of what it sends, and a test of one event to a chosen webhook. */
+function EventExplorer({ hooks }: { hooks: Webhook[] }) {
+  const q = useWsQuery(['webhook-catalogue'], webhookApi.catalogue, { staleTime: 3_600_000 });
+  const [picked, setPicked] = useState('task.status_changed');
+  const [target, setTarget] = useState(hooks[0]?.id ?? '');
+  const [busy, setBusy] = useState(false);
+  const all = q.data ?? [];
+  const current = all.find((e) => e.event === picked) ?? all[0];
+  const groups = [...new Set(all.map((e) => e.group))];
+  const send = async () => {
+    if (!current) return;
+    setBusy(true);
+    try { await webhookApi.test(target, current.event); toast(`A test of ${current.event} is on its way. See “Deliveries & health”.`); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not send the test.', 'error'); } finally { setBusy(false); }
+  };
+  if (all.length === 0) return null;
+  return (
+    <div className="card mb-22" data-testid="event-explorer">
+      <div className="card-head"><div><h3>Event explorer</h3><p>What each event sends. Pick one to see a sample, then send a test of it to your receiver.</p></div></div>
+      <div className="card-body explorer">
+        <nav className="explorer-list" aria-label="Events">
+          {groups.map((g) => (
+            <div key={g}>
+              <h4>{all.find((e) => e.group === g)?.groupLabel}</h4>
+              {all.filter((e) => e.group === g).map((e) => (
+                <button key={e.event} type="button" className={e.event === current?.event ? 'on' : ''} aria-pressed={e.event === current?.event} onClick={() => setPicked(e.event)}>{e.event.slice(g.length + 1).replace(/_/g, ' ')}</button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        {current && (
+          <div className="explorer-sample">
+            <div className="explorer-head"><code>{current.event}</code>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                {hooks.length > 1 && (
+                  <Select className="select" value={target} aria-label="Send the test to" onChange={(e) => setTarget(e.target.value)}>
+                    {hooks.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </Select>
+                )}
+                <button type="button" className="btn btn-primary btn-sm" disabled={busy || !target} onClick={() => void send()}>Send a test of this event</button>
+              </div>
+            </div>
+            <pre aria-label="Sample payload">{JSON.stringify({ id: '…', event: current.event, occurredAt: '2026-10-23T10:00:00Z', workspaceId: '…', test: true, data: current.sample }, null, 2)}</pre>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import { del, get, post, put, uploadFile } from './client';
-import type { Sprint,SprintDetail,ApiKey,Workload,WorkloadPersonDetail,WorkloadScope,WorkItem,WorkItemKind,Webhook,WebhookDelivery,Checklist,CustomField,CustomFieldValue,ImportPreview,ImportResult,PriorityInfo,ReportExport,ReportFormat,ReportKind,WebhookFormat } from './types';
+import type { Sprint,SprintDetail,ApiKey,Workload,WorkloadPersonDetail,WorkloadScope,WorkItem,WorkItemKind,Webhook,WebhookDelivery,WebhookDeliveryPage,WebhookDeliveryDetail,WebhookEventInfo,WebhookHealth,IncomingWebhook,IncomingMapping,IncomingPreview,IncomingEvent,SaveIncomingWebhook,Priority,Checklist,CustomField,CustomFieldValue,ImportPreview,ImportResult,PriorityInfo,ReportExport,ReportFormat,ReportKind,WebhookFormat } from './types';
 
 export const sprintApi = {
   list: (projectId: string) => get<Sprint[]>(`/projects/${projectId}/sprints`),
@@ -70,16 +70,36 @@ export const connectedAppApi = {
   disconnect: (id: string) => del(`/connected-apps/${id}`),
 };
 
+type WebhookFilters = { filterProjects?: string[]; filterPriorities?: Priority[]; filterStatuses?: string[] };
 export const webhookApi = {
   list: () => get<Webhook[]>('/webhooks'),
   events: () => get<string[]>('/webhooks/events'),
-  create: (b: { name: string; url: string; events: string[]; format?: WebhookFormat }) => post<{ webhook: Webhook; secret: string }>('/webhooks', b),
-  update: (id: string, b: { name: string; url: string; events: string[]; isActive: boolean; format?: WebhookFormat }) => put<Webhook>(`/webhooks/${id}`, b),
+  catalogue: () => get<WebhookEventInfo[]>('/webhooks/catalogue'),
+  create: (b: { name: string; url: string; events: string[]; format?: WebhookFormat } & WebhookFilters) => post<{ webhook: Webhook; secret: string }>('/webhooks', b),
+  update: (id: string, b: { name: string; url: string; events: string[]; isActive: boolean; format?: WebhookFormat } & WebhookFilters) => put<Webhook>(`/webhooks/${id}`, b),
   rotate: (id: string) => post<{ webhook: Webhook; secret: string }>(`/webhooks/${id}/rotate-secret`),
   remove: (id: string) => del(`/webhooks/${id}`),
   deliveries: (id: string) => get<WebhookDelivery[]>(`/webhooks/${id}/deliveries`),
-  test: (id: string) => post(`/webhooks/${id}/test`),
+  history: (id: string, q: { page?: number; pageSize?: number; status?: string; event?: string; from?: string; to?: string }) => get<WebhookDeliveryPage>(`/webhooks/${id}/history`, q),
+  delivery: (id: string, deliveryId: string) => get<WebhookDeliveryDetail>(`/webhooks/${id}/deliveries/${deliveryId}`),
+  replay: (id: string, deliveryId: string) => post<WebhookDelivery>(`/webhooks/${id}/deliveries/${deliveryId}/replay`),
+  replayMany: (id: string, b: { from: string; to: string; onlyFailed: boolean; event?: string | null }) => post<{ queued: number }>(`/webhooks/${id}/replay`, b),
+  health: (id: string, days = 7) => get<WebhookHealth>(`/webhooks/${id}/health`, { days }),
+  test: (id: string, event?: string) => post(`/webhooks/${id}/test`, event ? { event } : {}),
   retry: (id: string, deliveryId: string) => post(`/webhooks/${id}/deliveries/${deliveryId}/retry`),
+};
+
+/** Incoming webhooks (owners and admins). */
+export const incomingApi = {
+  list: () => get<IncomingWebhook[]>('/incoming-webhooks'),
+  create: (b: SaveIncomingWebhook) => post<{ hook: IncomingWebhook; secret: string | null }>('/incoming-webhooks', b),
+  update: (id: string, b: SaveIncomingWebhook) => put<{ hook: IncomingWebhook; secret: string | null }>(`/incoming-webhooks/${id}`, b),
+  rotate: (id: string) => post<{ hook: IncomingWebhook; secret: string | null }>(`/incoming-webhooks/${id}/rotate`),
+  remove: (id: string) => del(`/incoming-webhooks/${id}`),
+  sample: (id: string) => get<{ sample: string | null }>(`/incoming-webhooks/${id}/sample`),
+  events: (id: string, page = 1, status?: string) => get<{ items: IncomingEvent[]; total: number; page: number; pageSize: number }>(`/incoming-webhooks/${id}/events`, { page, pageSize: 50, status }),
+  preview: (b: { mapping?: IncomingMapping | null; sample: string; defaultPriority?: Priority }) => post<IncomingPreview>('/incoming-webhooks/preview', b),
+  suggest: (sample: string) => post<IncomingMapping>('/incoming-webhooks/suggest', { sample }),
 };
 
 export interface WorkItemFilters { kinds?: WorkItemKind[]; open?: boolean; projectId?: string; dueFrom?: string; dueTo?: string; overdue?: boolean; q?: string; limit?: number }

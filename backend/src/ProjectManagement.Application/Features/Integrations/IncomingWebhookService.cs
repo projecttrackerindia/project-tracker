@@ -144,8 +144,8 @@ public static class IncomingTemplates
                 case JsonArray a: for (var i = 0; i < Math.Min(a.Count, 5); i++) Walk(a[i], $"{path}.{i}", depth + 1); break;
                 case null: break;
                 default:
-                    var v = Value(n);
-                    list.Add(new IncomingField(path, $"{{{{{path}}}}}", v.Length > 120 ? v[..120] + "…" : v));
+                    var text = Value(n);
+                    list.Add(new IncomingField(path, $"{{{{{path}}}}}", text.Length > 120 ? text[..120] + "…" : text));
                     break;
             }
         }
