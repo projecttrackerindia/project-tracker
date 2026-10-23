@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { CommandCenter } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { formatDate, formatTime, timeAgo } from '../../lib/format';
@@ -9,6 +9,12 @@ import { ReviewQueueCard } from '../github/GitHubApp';
 import type { AiConversation } from '../ai/aiApi';
 
 type Tab = 'dashboard' | 'today' | 'work' | 'meetings' | 'decisions';
+
+/** Questions a link can open Home with (the morning briefing uses "plan"). Only these: a link never carries free text to the assistant. */
+const PRESETS: Record<string, string> = {
+  plan: "Plan my day: my meetings today, what is late or due, and what waits on me. Put it in order with times, say why, and prepare what you can for me to confirm.",
+  needs: 'What needs me right now? Go through it, most urgent first, and prepare what you can for me to confirm.',
+};
 
 /**
  * Home is the assistant, laid out like a modern chat app. A greeting, the ask box in the middle (attach and the
@@ -28,6 +34,16 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
   c: CommandCenter | undefined; onTab: (t: Tab) => void; ask: (q: string) => void; composer: ReactNode; recent: AiConversation[]; open: (id: string) => void; showAll: () => void;
 }) {
   const first = useAuth((s) => s.ctx?.user.displayName?.split(' ')[0] ?? '');
+  // The morning briefing opens Home with ?ask=plan: plan the day straight away, once.
+  const [params, setParams] = useSearchParams();
+  const asked = useRef(false);
+  useEffect(() => {
+    const preset = params.get('ask');
+    if (asked.current || !preset || !PRESETS[preset]) return;
+    asked.current = true;
+    setParams((p) => { const n = new URLSearchParams(p); n.delete('ask'); return n; }, { replace: true });
+    ask(PRESETS[preset]);
+  }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
   const atRisk = c?.health.filter((h) => h.level === 'high' || h.level === 'medium') ?? [];
   const next = c?.today.filter((m) => new Date(m.endUtc).getTime() > Date.now()).sort((a, b) => a.startUtc.localeCompare(b.startUtc))[0];
   const tiles: { icon: IconName; value: number; label: string; sub: string; tone?: 'danger' | 'warning'; go: () => void }[] = c ? [

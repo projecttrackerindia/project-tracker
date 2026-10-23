@@ -483,6 +483,16 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
                 && (r.State == ReminderState.Fired || r.State == ReminderState.Scheduled && r.NextFireAt != null && r.NextFireAt <= horizon))
             .Select(r => new { r.TenantId, r.UserId, r.State, r.NextFireAt, r.Title }).ToListAsync(ct);
 
+        // Meetings in the next day and a half (theirs to run or attend, not declined), and the project agent's proposals waiting in projects they lead.
+        var meetings = await db.ProjectMeetings.IgnoreQueryFilters().AsNoTracking().Where(m => tenantsOf.Contains(m.TenantId) && m.Status == MeetingStatus.Scheduled && m.CancelledAt == null
+                && m.StartTimeUtc >= now.AddHours(-12) && m.StartTimeUtc <= horizon
+                && (who.Contains(m.OrganizerUserId) || m.Participants.Any(p => p.UserId != null && who.Contains(p.UserId.Value) && p.RsvpStatus != AttendeeRsvpStatus.Declined)))
+            .Select(m => new { m.TenantId, m.StartTimeUtc, m.Title, m.OrganizerUserId, People = m.Participants.Where(p => p.UserId != null && p.RsvpStatus != AttendeeRsvpStatus.Declined).Select(p => p.UserId!.Value).ToList() })
+            .Take(5000).ToListAsync(ct);
+        var proposals = (await db.AgentFindings.IgnoreQueryFilters().AsNoTracking().Where(f => tenantsOf.Contains(f.TenantId) && f.Status == AgentFindingStatus.Proposed && who.Contains(f.Project!.OwnerId) && !f.Project.IsDeleted)
+            .GroupBy(f => new { f.TenantId, f.Project!.OwnerId }).Select(g => new { g.Key.TenantId, g.Key.OwnerId, Count = g.Count() }).ToListAsync(ct))
+            .ToDictionary(x => (x.TenantId, x.OwnerId), x => x.Count);
+
         foreach (var (tenant, user, today, tz) in due)
         {
             var mine = items.Where(i => i.TenantId == tenant && i.User == user).ToList();
@@ -490,15 +500,24 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
             var overdue = mine.Where(i => i.Due < today).ToList();
             var endOfDay = ZoneTime.ToUtc(ZoneTime.At(today.AddDays(1), TimeOnly.MinValue), tz);
             var rem = reminders.Where(r => r.TenantId == tenant && r.UserId == user && (r.State == ReminderState.Fired || r.NextFireAt < endOfDay)).ToList();
-            if (dueToday.Count + overdue.Count + rem.Count == 0) continue;
+            var startOfDay = ZoneTime.ToUtc(ZoneTime.At(today, TimeOnly.MinValue), tz);
+            var calls = meetings.Where(m => m.TenantId == tenant && m.StartTimeUtc >= startOfDay && m.StartTimeUtc < endOfDay && (m.OrganizerUserId == user || m.People.Contains(user)))
+                .OrderBy(m => m.StartTimeUtc).ToList();
+            var toDecide = proposals.GetValueOrDefault((tenant, user));
+            if (dueToday.Count + overdue.Count + rem.Count + calls.Count + toDecide == 0) continue;
             var parts = new List<string>();
+            if (calls.Count > 0) parts.Add($"{calls.Count} meeting{(calls.Count == 1 ? "" : "s")}");
             if (dueToday.Count > 0) parts.Add($"{dueToday.Count} due today");
             if (overdue.Count > 0) parts.Add($"{overdue.Count} overdue");
             if (rem.Count > 0) parts.Add($"{rem.Count} reminder{(rem.Count == 1 ? "" : "s")}");
-            var lines = overdue.Select(i => "Overdue: " + i.Label).Concat(dueToday.Select(i => "Today: " + i.Label)).Concat(rem.Select(r => "Reminder: " + r.Title)).Take(6);
+            if (toDecide > 0) parts.Add($"{toDecide} proposal{(toDecide == 1 ? "" : "s")} to decide");
+            var lines = calls.Select(m => $"{ZoneTime.ToLocal(m.StartTimeUtc, tz):HH:mm} {m.Title}")
+                .Concat(overdue.Select(i => "Overdue: " + i.Label)).Concat(dueToday.Select(i => "Today: " + i.Label)).Concat(rem.Select(r => "Reminder: " + r.Title))
+                .Concat(toDecide > 0 ? [$"The project agent has {toDecide} proposal{(toDecide == 1 ? "" : "s")} waiting on you"] : Array.Empty<string>()).Take(7);
             var n = new Notification
             {
-                TenantId = tenant, UserId = user, Type = NotificationType.Briefing, CreatedAt = now, Link = "/reminders",
+                // Opening it asks the assistant on Home to plan the day from all of this.
+                TenantId = tenant, UserId = user, Type = NotificationType.Briefing, CreatedAt = now, Link = "/?ask=plan",
                 Title = "Your day: " + string.Join(", ", parts), Body = Text(string.Join("\n", lines), 500), DedupeKey = $"brief:{tenant:N}:{user:N}:{today:yyyyMMdd}",
             };
             if (await router.ApplyAsync(n, ct)) { db.Notifications.Add(n); briefed++; }

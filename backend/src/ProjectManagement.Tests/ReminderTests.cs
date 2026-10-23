@@ -425,13 +425,21 @@ public class ReminderTests(ApiFactory factory)
         var o = await Setup();
         var day = new WorkCalendar(new ReminderSettings()).WorkingOnOrAfter(LocalToday.AddDays(1));
         await o.Owner.CreateTaskAsync(o.Project, "Ship the release", new { title = "Ship the release", priority = "High", assigneeId = o.Dev.UserId, dueDate = day.ToString("yyyy-MM-dd") });
+        // A meeting they run that day is in the briefing too.
+        factory.WithDb(db =>
+        {
+            db.ProjectMeetings.Add(new ProjectMeeting { TenantId = o.Owner.WorkspaceId, ProjectId = o.Project, OrganizerUserId = o.Dev.UserId, Title = "Release go or no-go",
+                StartTimeUtc = At(day, 11), EndTimeUtc = At(day, 11, 30), TimeZone = "Asia/Kolkata", GoogleCalendarEventId = "brief-" + Guid.NewGuid().ToString("N"), CreatedAt = DateTime.UtcNow });
+            return db.SaveChanges();
+        });
         await Run(At(day, 8, 35));
         await Run(At(day, 8, 45));
         var briefs = factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == o.Dev.UserId && n.TenantId == o.Owner.WorkspaceId && n.Type == NotificationType.Briefing).ToList());
         var brief = Assert.Single(briefs);
-        Assert.StartsWith("Your day: 1 due today", brief.Title);
+        Assert.StartsWith("Your day: 1 meeting, 1 due today", brief.Title);
         Assert.Contains("Ship the release", brief.Body);
-        Assert.Equal("/reminders", brief.Link);
+        Assert.Contains("11:00 Release go or no-go", brief.Body);
+        Assert.Equal("/?ask=plan", brief.Link);   // opens Home, which plans the day with the assistant
     }
 
     [Fact]
