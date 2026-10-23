@@ -268,6 +268,11 @@ try{
  await page.goto(origin+'/preview-org/doctracker');await page.locator('.dt-drafts').waitFor();
  await fitsPhone(page,'DocTracker home on a phone',assert);
  await shot(page,'doctracker-390.png');checks.push('phone-home');
+ // The page tree on a phone, in dark mode.
+ await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));
+ await page.getByRole('button',{name:'Browse DocTracker'}).click();await page.waitForTimeout(400);
+ await fitsPhone(page,'DocTracker tree on a phone (dark)',assert);
+ await shot(page,'doctracker-tree-390-dark.png');checks.push('phone-tree-dark');
  await page.close();await ctx.close();
  assert.deepEqual(errors,[]);
  console.log(JSON.stringify({checks,errors}));

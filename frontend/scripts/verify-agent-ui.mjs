@@ -186,6 +186,10 @@ try{
  await page.goto(origin+`/preview-org/projects/${pid}?tab=agent`);await page.locator('.ag-card').first().waitFor();
  await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,'agent-queue-390.png'),animations:'disabled',fullPage:true});
  await noOverflow(page,'queue 390');checks.push('phone');
+ // The same tab in dark mode on a phone.
+ await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.locator('.ag-card').first().scrollIntoViewIfNeeded();await page.waitForTimeout(300);   // the phone's theme switch is in the account menu
+ await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,'agent-queue-390-dark.png'),animations:'disabled'});
+ await noOverflow(page,'queue 390 dark');checks.push('phone-dark');
  await page.close();
 
  // The Project agent page: review across projects, my inbox, meeting bot.
