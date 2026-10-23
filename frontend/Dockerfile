@@ -13,7 +13,7 @@ RUN npm run build
 # The app's Content-Security-Policy lists its inline scripts by hash: fill them in from the index.html just built (fails if there are none).
 RUN node scripts/csp-nginx.mjs nginx.conf dist/index.html > nginx.generated.conf
 
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 # A template, not the final config: nginx's own entrypoint fills in ${API_HOST} at container start (see nginx.conf).
 COPY --from=build /app/nginx.generated.conf /etc/nginx/templates/default.conf.template
 ENV API_HOST=api
