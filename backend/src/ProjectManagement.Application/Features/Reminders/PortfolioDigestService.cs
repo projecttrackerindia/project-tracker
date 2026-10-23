@@ -28,7 +28,9 @@ public class PortfolioDigestService(IAppDbContext db, IServiceScopeFactory scope
         if (board is not null)
         {
             // The Monday summary: the page's own summary, then the decisions with their best option, money and people.
+            // Projects are named as people know them (the decisions use their keys).
             var lines = new List<string> { board.Summary };
+            lines.AddRange(concerns.Take(2));
             foreach (var d in board.Decisions.Take(2))
                 lines.Add(d.Options.Count == 0 ? d.Headline : $"{d.Headline} Option: {d.Options[0].Title} ({d.Options[0].Effect}).");
             foreach (var m in board.Money.Projects.Where(m => m.Warning is not null).Take(2)) lines.Add($"{m.Key}: {m.Warning}.");

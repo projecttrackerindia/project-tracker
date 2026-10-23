@@ -120,11 +120,15 @@ try{
  await modal.getByLabel('Health in the last 7 days').getByText('95%',{exact:true}).waitFor();
  assert.ok(await modal.getByText('95% under 420 ms').isVisible());
  const list=modal.getByRole('list',{name:'Deliveries'});await list.waitFor();
+ await list.getByRole('listitem').nth(24).waitFor();
  assert.equal(await list.getByRole('listitem').count(),25);
  await modal.getByText('Page 1 of 2').waitFor();
  await modal.getByRole('button',{name:'Older'}).click();await modal.getByText('Page 2 of 2').waitFor();
+ // The page number changes at once; the older rows arrive a moment later.
+ await list.getByRole('listitem').nth(5).waitFor({state:'detached'});
  assert.equal(await list.getByRole('listitem').count(),5);
  await modal.getByRole('button',{name:'Newer'}).click();await modal.getByText('Page 1 of 2').waitFor();
+ await list.getByRole('listitem').nth(24).waitFor();
  const failed=list.getByRole('listitem').first();
  await failed.getByRole('button',{name:'View'}).click();
  await failed.getByText('Internal Server Error').waitFor();

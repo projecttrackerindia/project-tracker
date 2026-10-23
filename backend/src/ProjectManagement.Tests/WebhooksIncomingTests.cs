@@ -67,7 +67,7 @@ public class WebhooksIncomingTests(ApiFactory factory)
         var first = await PostIn(url, Alert("firing"), secret: secret);
         Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
         var receipt = await Json(first);
-        Assert.Equal("created", S(receipt["data"]!["status"]));
+        Assert.True(S(receipt["data"]!["status"]) == "created", receipt.ToJsonString());
         var key = S(receipt["data"]!["key"]);
         Assert.StartsWith("WT-", key);
 
@@ -115,10 +115,10 @@ public class WebhooksIncomingTests(ApiFactory factory)
         var url = S(created["hook"]!["url"]); var id = S(created["hook"]!["id"]);
         Assert.Null(created["secret"]);
         var r = await Json(await PostIn(url, "name=Kavya+Rao&email=kavya%40example.com&message=Need+a+quote", "application/x-www-form-urlencoded"));
-        Assert.Equal("created", S(r["data"]!["status"]));
+        Assert.True(S(r["data"]!["status"]) == "created", r.ToJsonString());
         Assert.Contains("-", S(r["data"]!["key"]));
         var tasks = (await c.Get($"/api/v1/projects/{project}/tasks")).Data!["items"]!.AsArray();
-        Assert.Contains(tasks, t => S(t!["title"]) == "Website enquiry from Kavya Rao");
+        Assert.True(tasks.Any(t => S(t!["title"]) == "Website enquiry from Kavya Rao"), $"{r.ToJsonString()} | {tasks.ToJsonString()[..Math.Min(1500, tasks.ToJsonString().Length)]}");
 
         Assert.True((await c.Put($"/api/v1/incoming-webhooks/{id}", new { isActive = false })).Ok);
         Assert.Equal("ignored", S((await Json(await PostIn(url, "plain words, no form", "text/plain")))["data"]!["status"]));

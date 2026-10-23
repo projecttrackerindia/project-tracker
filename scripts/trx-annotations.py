@@ -31,7 +31,7 @@ def main():
     print(f"{len(items)} failed test(s).")
     groups = [items[i::10] for i in range(min(10, len(items)))]
     for n, group in enumerate(groups, 1):
-        body = "\n\n".join(f"{name}\n{msg[:700]}\n{where}" for name, msg, where in group)
+        body = "\n\n".join(f"{name}\n{msg[:2500]}\n{where}" for name, msg, where in group)
         print(f"::error title=Failed tests ({n}/{len(groups)})::{escape(body[:9000])}")
 
 

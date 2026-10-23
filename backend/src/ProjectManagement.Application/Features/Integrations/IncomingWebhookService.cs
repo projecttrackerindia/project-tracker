@@ -45,7 +45,8 @@ public record IncomingPreviewDto(string Title, string? Description, Priority Pri
 public record IncomingField(string Path, string Placeholder, string Value);
 public record IncomingEventDto(Guid Id, DateTime ReceivedAt, string Status, string? Title, string? DedupeKey, string? TargetType, Guid? TargetId, string? TargetKey, string? Error, int? Count);
 public record IncomingEventPageDto(IReadOnlyList<IncomingEventDto> Items, int Total, int Page, int PageSize);
-public record IncomingReceipt(string Status, string? Key, int? Count);
+/// <param name="Error">Why nothing was raised (failed or ignored), so the sending system can log it.</param>
+public record IncomingReceipt(string Status, string? Key, int? Count, string? Error = null);
 
 /// <summary>Turns an example request into a guess at the mapping, renders templates, and reads requests of any common shape.</summary>
 public static class IncomingTemplates
@@ -410,7 +411,7 @@ public class IncomingWebhookService(IAppDbContext db, ICurrentContext ctx, AppCl
             log.Status = status; log.Error = error is null ? null : IncomingTemplates.Cut(error, 300);
             if (status is "failed" or "rejected") hook.LastError = IncomingTemplates.Cut($"{now:dd MMM HH:mm} UTC: {error}", 300);
             else if (status is "created" or "merged" or "resolved") hook.LastError = null;
-            return new IncomingReceipt(status, key, count);
+            return new IncomingReceipt(status, key, count, status is "failed" or "ignored" ? log.Error : null);
         }
 
         if (hook.SecretProtected is not null && !SecretOk(sp.GetRequiredService<ISecretProtector>().Unprotect(hook.SecretProtected), body, headers))

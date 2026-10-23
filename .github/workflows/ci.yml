@@ -103,7 +103,7 @@ jobs:
       - name: Enterprise expansion upgrade from main on a disposable PostgreSQL database
         env:
           PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
-        run: dotnet test --no-build -c Release --filter FullyQualifiedName~PostgresExpansionUpgradeTests
+        run: dotnet test --no-build -c Release --filter FullyQualifiedName~PostgresExpansionUpgradeTests --logger "trx;LogFileName=upgrade.trx" --results-directory TestResults
       - name: Retry transaction regressions on PostgreSQL
         env:
           PM_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres
