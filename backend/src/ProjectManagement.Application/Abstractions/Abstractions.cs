@@ -85,6 +85,10 @@ public interface IAppDbContext
     DbSet<VaultItem> VaultItems { get; }
     DbSet<VaultItemVersion> VaultItemVersions { get; }
     DbSet<VaultAttachment> VaultAttachments { get; }
+    DbSet<VaultIdentity> VaultIdentities { get; }
+    DbSet<VaultUnlock> VaultUnlocks { get; }
+    DbSet<VaultKeyEnvelope> VaultKeyEnvelopes { get; }
+    DbSet<VaultDeviceLink> VaultDeviceLinks { get; }
     DbSet<DocumentKey> DocumentKeys { get; }
     DbSet<DocumentView> DocumentViews { get; }
     DbSet<DocumentComment> DocumentComments { get; }

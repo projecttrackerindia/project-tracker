@@ -20,6 +20,8 @@ namespace ProjectManagement.Application.Features.Vault;
 public class VaultOffboarding(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, NotificationService notifications)
 {
     private static readonly string[] UseActions = ["vault.revealed", "vault.copied", "vault.totp_used", "vault.version_revealed"];
+    /// <summary>Fetching a sealed collection's ciphertext: with the key, everything in it can be read, so it counts as using every item.</summary>
+    private const string SealedListed = "vault.sealed_listed";
 
     public async Task<int> OnLeavingAsync(Guid tenantId, Guid userId, string name, Guid? by, CancellationToken ct = default)
     {
@@ -27,21 +29,37 @@ public class VaultOffboarding(IAppDbContext db, ICurrentContext ctx, AppClock cl
         foreach (var c in await db.VaultCollections.IgnoreQueryFilters().Where(c => c.TenantId == tenantId && c.Kind == VaultCollectionKind.Personal && c.OwnerUserId == userId && c.LockedAt == null).ToListAsync(ct))
             c.LockedAt = now;
         db.VaultShares.RemoveRange(await db.VaultShares.IgnoreQueryFilters().Where(s => s.TenantId == tenantId && s.PrincipalType == VaultPrincipal.User && s.PrincipalId == userId).ToListAsync(ct));
+        // Their copies of sealed collection keys go now; every sealed collection they could open gets a new key when a manager next opens it.
+        var envelopes = await db.VaultKeyEnvelopes.IgnoreQueryFilters().Where(v => v.TenantId == tenantId && v.RecipientUserId == userId).ToListAsync(ct);
+        var keyed = envelopes.Select(v => v.CollectionId).Distinct().ToList();
+        db.VaultKeyEnvelopes.RemoveRange(envelopes);
+        foreach (var sc in await db.VaultCollections.IgnoreQueryFilters().Where(c => c.TenantId == tenantId && keyed.Contains(c.Id) && c.Kind != VaultCollectionKind.Personal).ToListAsync(ct))
+            sc.RekeyNeeded = true;
+        db.VaultUnlocks.RemoveRange(await db.VaultUnlocks.IgnoreQueryFilters().Where(u => u.TenantId == tenantId && u.UserId == userId).ToListAsync(ct));
+        db.VaultIdentities.RemoveRange(await db.VaultIdentities.IgnoreQueryFilters().Where(i => i.TenantId == tenantId && i.UserId == userId).ToListAsync(ct));
+        db.VaultDeviceLinks.RemoveRange(await db.VaultDeviceLinks.IgnoreQueryFilters().Where(l => l.TenantId == tenantId && l.UserId == userId).ToListAsync(ct));
+        var sealedListed = await db.AuditLogs.IgnoreQueryFilters().Where(a => a.TenantId == tenantId && a.UserId == userId && a.Action == SealedListed && a.EntityId != null && a.CreatedAt > now.AddDays(-90))
+            .Select(a => a.EntityId!.Value).Distinct().ToListAsync(ct);
 
         var since = now.AddDays(-90);
         var usedIds = await db.AuditLogs.IgnoreQueryFilters().Where(a => a.TenantId == tenantId && a.UserId == userId && a.EntityType == "VaultItem" && a.EntityId != null
                 && a.CreatedAt > since && UseActions.Contains(a.Action)).Select(a => a.EntityId!.Value).Distinct().ToListAsync(ct);
-        if (usedIds.Count == 0) { recorder.Audit("vault.offboarded", "User", userId, null, new { name, flagged = 0 }, tenantId: tenantId, userId: by); return 0; }
-        var items = await db.VaultItems.IgnoreQueryFilters().Where(i => i.TenantId == tenantId && usedIds.Contains(i.Id) && i.DeletedAt == null).ToListAsync(ct);
+        if (usedIds.Count == 0 && sealedListed.Count == 0) { recorder.Audit("vault.offboarded", "User", userId, null, new { name, flagged = 0 }, tenantId: tenantId, userId: by); return 0; }
+        var items = await db.VaultItems.IgnoreQueryFilters().Where(i => i.TenantId == tenantId && i.DeletedAt == null
+            && ((!i.Sealed && usedIds.Contains(i.Id)) || (i.Sealed && sealedListed.Contains(i.CollectionId)))).ToListAsync(ct);
         var collectionIds = items.Select(i => i.CollectionId).Distinct().ToList();
         var collections = await db.VaultCollections.IgnoreQueryFilters().Where(c => c.TenantId == tenantId && collectionIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
         var flagged = 0;
         int? number = null;   // one action item per credential, numbered in turn (nothing is saved until the caller saves)
+        var sealedTasked = new HashSet<Guid>();
         foreach (var item in items)
         {
             var c = collections.GetValueOrDefault(item.CollectionId);
             if (c is null || c.Kind == VaultCollectionKind.Personal) continue;   // their own items are locked with their vault
             item.RotationReason = $"{name} could read it and left on {now:dd MMM yyyy}";
+            // A sealed collection is read whole: one action item for the collection, every item in it flagged.
+            if (item.Sealed && !sealedTasked.Add(c.Id)) { flagged++; continue; }
+            var label = item.Sealed ? $"the credentials in sealed collection {c.Name}" : $"“{item.Title}”";
             var owner = item.OwnerUserId is { } o && o != userId ? o
                 : await db.VaultShares.IgnoreQueryFilters().Where(s => s.CollectionId == c.Id && s.Access == VaultAccess.Manage && s.PrincipalType == VaultPrincipal.User && s.PrincipalId != userId)
                     .Select(s => s.PrincipalId).FirstOrDefaultAsync(ct) ?? by;
@@ -50,14 +68,14 @@ public class VaultOffboarding(IAppDbContext db, ICurrentContext ctx, AppClock cl
             db.WorkTasks.Add(new WorkTask
             {
                 TenantId = tenantId, Kind = WorkTaskKind.ActionItem, Number = next, RelatedProjectId = c.ProjectId,
-                Title = Clip($"Change the password of “{item.Title}”", 200),
+                Title = Clip($"Change the password of {label}", 200),
                 Description = $"{name} left the workspace and had used this credential in the last 90 days (vault collection {c.Name}). Change it at the source, then save the new value in the vault.",
                 AssigneeId = owner, ReporterId = by ?? owner ?? userId, Priority = Priority.High, Status = WorkTaskStatus.ToDo, DueDate = DateOnly.FromDateTime(now.AddDays(3)),
                 CreatedAt = now, CreatedBy = by,
             });
             if (owner is { } who)
             {
-                var title = Clip($"Change “{item.Title}”: {name} had used it and left", 200);
+                var title = Clip($"Change {label}: {name} could read it and left", 200);
                 // Provisioning (SCIM) runs without a signed-in workspace; the notice is then written straight to the workspace's inbox.
                 if (ctx.TenantId == tenantId) await notifications.AddAsync(who, NotificationType.Security, title, "An action item has been added for you.", $"/vault?item={item.Id}", toSelf: true, ct: ct);
                 else db.Notifications.Add(new Notification { TenantId = tenantId, UserId = who, Type = NotificationType.Security, Title = title, Body = "An action item has been added for you.", Link = $"/vault?item={item.Id}", CreatedAt = now });
@@ -118,13 +136,14 @@ public class VaultJobs(IAppDbContext db, AppClock clock, VaultCrypto crypto, Pas
                 List<Guid> to = personal is { } p ? [p] : i.OwnerUserId is { } o ? [o] : await sdb.VaultShares
                     .Where(s => s.CollectionId == i.CollectionId && s.Access == VaultAccess.Manage && s.PrincipalType == VaultPrincipal.User && s.PrincipalId != null)
                     .Select(s => s.PrincipalId!.Value).Distinct().ToListAsync(ct);
+                var what = i.Sealed ? "A sealed item" : $"“{i.Title}”";
                 foreach (var u in to)
-                    await notifications.AddAsync(u, NotificationType.Security, expired ? $"“{i.Title}” has expired: change it" : $"“{i.Title}” should be changed by {i.ExpiresAt:dd MMM}",
+                    await notifications.AddAsync(u, NotificationType.Security, expired ? $"{what} has expired: change it" : $"{what} should be changed by {i.ExpiresAt:dd MMM}",
                         "Change it at the source, then save the new value in the vault.", $"/vault?item={i.Id}", dedupeKey: $"vault-expiry:{i.Id}:{(expired ? "expired" : "soon")}", toSelf: true, ct: ct);
                 i.ExpiryNotifiedAt = now;
                 // The webhook event says which credential and when, never anything secret.
                 sdb.Activities.Add(new Activity { TenantId = i.TenantId, Action = "vault.rotation_due", EntityType = "VaultItem", EntityId = i.Id,
-                    Summary = $"“{i.Title}” {(expired ? "has expired" : $"should be changed by {i.ExpiresAt:dd MMM yyyy}")}", CreatedAt = now });
+                    Summary = $"{what} {(expired ? "has expired" : $"should be changed by {i.ExpiresAt:dd MMM yyyy}")}", CreatedAt = now });
             }
             await sdb.SaveChangesAsync(ct);
             total += due.Count;
@@ -196,13 +215,13 @@ public class VaultJobs(IAppDbContext db, AppClock clock, VaultCrypto crypto, Pas
     public async Task<int> RewrapAsync(Guid tenantId, int activeVersion, int max, CancellationToken ct = default)
     {
         var moved = 0;
-        foreach (var i in await db.VaultItems.IgnoreQueryFilters().Where(i => i.TenantId == tenantId && i.KeyVersion != activeVersion).Take(max).ToListAsync(ct))
+        foreach (var i in await db.VaultItems.IgnoreQueryFilters().Where(i => i.TenantId == tenantId && !i.Sealed && i.KeyVersion != activeVersion).Take(max).ToListAsync(ct))
             if (await crypto.RewrapAsync(tenantId, i.Id, i.WrappedItemKey, i.KeyVersion, ct) is { } w) { i.WrappedItemKey = w.WrappedKey; i.KeyVersion = w.KeyVersion; moved++; }
-        foreach (var v in await db.VaultItemVersions.IgnoreQueryFilters().Where(v => v.TenantId == tenantId && v.KeyVersion != activeVersion).Take(max).ToListAsync(ct))
+        foreach (var v in await db.VaultItemVersions.IgnoreQueryFilters().Where(v => v.TenantId == tenantId && !v.Sealed && v.KeyVersion != activeVersion).Take(max).ToListAsync(ct))
             if (await crypto.RewrapAsync(tenantId, v.ItemId, v.WrappedItemKey, v.KeyVersion, ct) is { } w) { v.WrappedItemKey = w.WrappedKey; v.KeyVersion = w.KeyVersion; moved++; }
         await db.SaveChangesAsync(ct);
         // Files: only the key columns are read and written (their encrypted contents, up to 2 MB each, stay where they are).
-        var files = await db.VaultAttachments.IgnoreQueryFilters().AsNoTracking().Where(a => a.TenantId == tenantId && a.KeyVersion != activeVersion).Take(max)
+        var files = await db.VaultAttachments.IgnoreQueryFilters().AsNoTracking().Where(a => a.TenantId == tenantId && !a.Sealed && a.KeyVersion != activeVersion).Take(max)
             .Select(a => new { a.Id, a.ItemId, a.WrappedItemKey, a.KeyVersion }).ToListAsync(ct);
         foreach (var a in files)
             if (await crypto.RewrapAsync(tenantId, a.ItemId, a.WrappedItemKey, a.KeyVersion, ct) is { } w)

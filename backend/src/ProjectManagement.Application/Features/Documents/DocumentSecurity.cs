@@ -150,9 +150,9 @@ public class KeyRotationService(IAppDbContext db, AppClock clock, EnvelopeCrypto
         var tenants = await db.SensitiveValues.IgnoreQueryFilters().Join(db.DocumentKeys.IgnoreQueryFilters().Where(k => k.Active), v => v.TenantId, k => k.TenantId, (v, k) => new { v.TenantId, v.KeyVersion, Active = k.Version })
             .Where(x => x.KeyVersion != x.Active).Select(x => x.TenantId).Distinct().Take(50).ToListAsync(ct);
         var active = db.DocumentKeys.IgnoreQueryFilters().Where(k => k.Active);
-        var vaultTenants = await db.VaultItems.IgnoreQueryFilters().Join(active, v => v.TenantId, k => k.TenantId, (v, k) => new { v.TenantId, v.KeyVersion, Active = k.Version }).Where(x => x.KeyVersion != x.Active).Select(x => x.TenantId)
-            .Union(db.VaultItemVersions.IgnoreQueryFilters().Join(active, v => v.TenantId, k => k.TenantId, (v, k) => new { v.TenantId, v.KeyVersion, Active = k.Version }).Where(x => x.KeyVersion != x.Active).Select(x => x.TenantId))
-            .Union(db.VaultAttachments.IgnoreQueryFilters().Join(active, v => v.TenantId, k => k.TenantId, (v, k) => new { v.TenantId, v.KeyVersion, Active = k.Version }).Where(x => x.KeyVersion != x.Active).Select(x => x.TenantId))
+        var vaultTenants = await db.VaultItems.IgnoreQueryFilters().Where(v => !v.Sealed).Join(active, v => v.TenantId, k => k.TenantId, (v, k) => new { v.TenantId, v.KeyVersion, Active = k.Version }).Where(x => x.KeyVersion != x.Active).Select(x => x.TenantId)
+            .Union(db.VaultItemVersions.IgnoreQueryFilters().Where(v => !v.Sealed).Join(active, v => v.TenantId, k => k.TenantId, (v, k) => new { v.TenantId, v.KeyVersion, Active = k.Version }).Where(x => x.KeyVersion != x.Active).Select(x => x.TenantId))
+            .Union(db.VaultAttachments.IgnoreQueryFilters().Where(v => !v.Sealed).Join(active, v => v.TenantId, k => k.TenantId, (v, k) => new { v.TenantId, v.KeyVersion, Active = k.Version }).Where(x => x.KeyVersion != x.Active).Select(x => x.TenantId))
             .Distinct().Take(50).ToListAsync(ct);
         tenants = tenants.Union(vaultTenants).ToList();
         var total = 0;

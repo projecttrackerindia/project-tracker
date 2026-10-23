@@ -120,4 +120,97 @@ public class VaultController(VaultService vault, StepUpService stepUp) : ApiCont
 
     [HttpGet("access-review/{userId:guid}")]
     public async Task<IActionResult> AccessReview(Guid userId, CancellationToken ct) { NoStore(); return Ok(await vault.AccessReviewAsync(userId, ct)); }
+
+    // ------------------------------------------------------------- sealed (zero-knowledge): keys made and used in the browser
+
+    [HttpGet("keys/me")]
+    public async Task<IActionResult> KeysMe(CancellationToken ct) { NoStore(); return Ok(await vault.KeysMeAsync(ct)); }
+
+    [HttpPost("keys/setup")]
+    public async Task<IActionResult> SetupKeys([FromBody] VaultSetupRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.SetupKeysAsync(req, ct)); }
+
+    [HttpPost("keys/unlocks")]
+    public async Task<IActionResult> AddUnlock([FromBody] VaultUnlockInput req, CancellationToken ct) { NoStore(); return Ok(await vault.AddUnlockAsync(req, ct)); }
+
+    [HttpDelete("keys/unlocks/{id:guid}")]
+    public async Task<IActionResult> RemoveUnlock(Guid id, CancellationToken ct) { NoStore(); return Ok(await vault.RemoveUnlockAsync(id, ct)); }
+
+    [HttpPost("keys/unlocks/{id:guid}/used")]
+    public async Task<IActionResult> Unlocked(Guid id, CancellationToken ct) { await vault.UnlockedAsync(id, ct); return NoContent(); }
+
+    [HttpPost("keys/directory")]
+    public async Task<IActionResult> Directory([FromBody] VaultDirectoryRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.DirectoryAsync(req.UserIds, ct)); }
+
+    [HttpGet("collections/{id:guid}/keys")]
+    public async Task<IActionResult> CollectionKeys(Guid id, CancellationToken ct) { NoStore(); return Ok(await vault.CollectionKeysAsync(id, ct)); }
+
+    [HttpPost("collections/{id:guid}/keys")]
+    public async Task<IActionResult> SaveEnvelopes(Guid id, [FromBody] VaultEnvelopesRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.SaveEnvelopesAsync(id, req.Envelopes, ct)); }
+
+    [HttpPost("collections/{id:guid}/rekey")]
+    [RequestSizeLimit(64 * 1024 * 1024)]
+    public async Task<IActionResult> Rekey(Guid id, [FromBody] VaultRekeyRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.RekeyAsync(id, req, ct)); }
+
+    [HttpPost("collections/{id:guid}/export-for-sealing")]
+    public async Task<IActionResult> ExportForSealing(Guid id, [FromBody] VaultStepUpRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.ExportForSealingAsync(id, req.StepUp, ct)); }
+
+    [HttpPost("collections/{id:guid}/seal")]
+    [RequestSizeLimit(64 * 1024 * 1024)]
+    public async Task<IActionResult> Seal(Guid id, [FromBody] VaultSealRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.SealCollectionAsync(id, req, ct)); }
+
+    [HttpGet("collections/{id:guid}/sealed-items")]
+    public async Task<IActionResult> SealedItems(Guid id, [FromQuery] bool bin, CancellationToken ct) { NoStore(); return Ok(await vault.SealedItemsAsync(id, bin, ct)); }
+
+    [HttpPost("sealed-items")]
+    [RequestSizeLimit(2 * 1024 * 1024)]
+    public async Task<IActionResult> CreateSealed([FromBody] SaveSealedItemRequest req, CancellationToken ct) { NoStore(); return Created(await vault.CreateSealedItemAsync(req, ct)); }
+
+    [HttpPut("sealed-items/{id:guid}")]
+    [RequestSizeLimit(2 * 1024 * 1024)]
+    public async Task<IActionResult> UpdateSealed(Guid id, [FromBody] SaveSealedItemRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.UpdateSealedItemAsync(id, req, ct)); }
+
+    [HttpGet("sealed-items/{id:guid}/versions")]
+    public async Task<IActionResult> SealedVersions(Guid id, CancellationToken ct) { NoStore(); return Ok(await vault.SealedVersionsAsync(id, ct)); }
+
+    [HttpPost("sealed-items/{id:guid}/events")]
+    public async Task<IActionResult> SealedEvent(Guid id, [FromBody] VaultItemEventRequest req, CancellationToken ct) { await vault.SealedEventAsync(id, req, ct); return NoContent(); }
+
+    [HttpPost("sealed-items/{id:guid}/files")]
+    [RequestSizeLimit(UploadCeiling), RequestFormLimits(MultipartBodyLengthLimit = UploadCeiling)]
+    public async Task<IActionResult> AddSealedFile(Guid id, IFormFile file, [FromForm] string wrapped, CancellationToken ct)
+    {
+        NoStore();
+        await using var stream = file.OpenReadStream();
+        return Created(await vault.AddSealedFileAsync(id, wrapped, stream, file.Length, ct));
+    }
+
+    [HttpPost("sealed-files/{attachmentId:guid}")]
+    public async Task<IActionResult> SealedFile(Guid attachmentId, CancellationToken ct)
+    {
+        NoStore();
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(await vault.SealedFileAsync(attachmentId, ct), "application/octet-stream");
+    }
+
+    /// <summary>The breached-password range for a hash prefix; the browser matches the rest, so the password never leaves it.</summary>
+    [HttpGet("breach-range/{prefix}")]
+    public async Task<IActionResult> BreachRange(string prefix, CancellationToken ct) { NoStore(); return Ok(new { body = await vault.BreachRangeAsync(prefix, ct) }); }
+
+    [HttpPost("devices")]
+    public async Task<IActionResult> RequestDevice([FromBody] VaultDeviceLinkRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.RequestDeviceLinkAsync(req, ct)); }
+
+    [HttpGet("devices/pending")]
+    public async Task<IActionResult> PendingDevices(CancellationToken ct) { NoStore(); return Ok(await vault.PendingDeviceLinksAsync(ct)); }
+
+    [HttpPost("devices/{id:guid}/approve")]
+    public async Task<IActionResult> ApproveDevice(Guid id, [FromBody] VaultDeviceApproveRequest req, CancellationToken ct) { await vault.ApproveDeviceLinkAsync(id, req, true, ct); return NoContent(); }
+
+    [HttpPost("devices/{id:guid}/refuse")]
+    public async Task<IActionResult> RefuseDevice(Guid id, CancellationToken ct) { await vault.ApproveDeviceLinkAsync(id, new VaultDeviceApproveRequest(null, null), false, ct); return NoContent(); }
+
+    [HttpGet("devices/{id:guid}")]
+    public async Task<IActionResult> DeviceStatus(Guid id, CancellationToken ct) { NoStore(); return Ok(await vault.DeviceLinkStatusAsync(id, ct)); }
 }
+
+public record VaultDirectoryRequest(IReadOnlyList<Guid>? UserIds);
+public record VaultEnvelopesRequest(IReadOnlyList<VaultEnvelopeInput>? Envelopes);

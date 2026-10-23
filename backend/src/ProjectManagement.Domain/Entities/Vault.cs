@@ -31,6 +31,15 @@ public class VaultCollection : TenantEntity, ITenantScoped
     /// <summary>A personal collection whose owner left: locked for everyone, destroyed after the grace period.</summary>
     public DateTime? LockedAt { get; set; }
     public DateTime? ArchivedAt { get; set; }
+    /// <summary>
+    /// Zero-knowledge: items are encrypted in the members' browsers with the collection key, which reaches each member only wrapped to their
+    /// own public keys (<see cref="VaultKeyEnvelope"/>). The server stores ciphertext it cannot open.
+    /// </summary>
+    public bool Sealed { get; set; }
+    /// <summary>Sealed: which collection key the items are encrypted with now (it changes when someone loses access).</summary>
+    public int SealedKeyVersion { get; set; }
+    /// <summary>Sealed: someone who had the key lost access; the next manager to open it makes a new key and re-encrypts everything.</summary>
+    public bool RekeyNeeded { get; set; }
 }
 
 /// <summary>One entry of a collection's access list. A share can end by itself (<see cref="ExpiresAt"/>) for time-boxed access.</summary>
@@ -94,6 +103,8 @@ public class VaultItem : TenantEntity, ITenantScoped
     /// <summary>In the bin: restorable for 30 days, then destroyed with its history and attachments.</summary>
     public DateTime? DeletedAt { get; set; }
     public Guid? DeletedBy { get; set; }
+    /// <summary>Encrypted in the browser with the collection key (<see cref="Cipher"/> is that ciphertext; title and fields are inside it).</summary>
+    public bool Sealed { get; set; }
 }
 
 /// <summary>An earlier value of an item, kept encrypted with the key it had then. The last ten are kept.</summary>
@@ -104,6 +115,7 @@ public class VaultItemVersion : TenantEntity, ITenantScoped
     public string WrappedItemKey { get; set; } = "";
     public int KeyVersion { get; set; }
     public string? Reason { get; set; }
+    public bool Sealed { get; set; }
 }
 
 /// <summary>A small file kept with an item (a key file, a certificate, a recovery sheet), encrypted with the item's key.</summary>
@@ -114,7 +126,75 @@ public class VaultAttachment : TenantEntity, ITenantScoped
     public string ContentType { get; set; } = "application/octet-stream";
     public long SizeBytes { get; set; }
     public byte[] Cipher { get; set; } = [];
-    /// <summary>The item key that encrypted it (wrapped), so it survives the item's value changing.</summary>
+    /// <summary>The item key that encrypted it (wrapped), so it survives the item's value changing. Sealed: the file's own key, wrapped by the collection key.</summary>
     public string WrappedItemKey { get; set; } = "";
     public int KeyVersion { get; set; }
+    public bool Sealed { get; set; }
+}
+
+public enum VaultUnlockKind { Passkey = 0, RecoveryKey = 1 }
+
+/// <summary>
+/// A person's vault identity in a workspace: the public halves of an X25519 key, an ML-KEM-768 key (post-quantum) and an Ed25519 signing key.
+/// All three come from one secret made in their browser; the server never sees it.
+/// </summary>
+public class VaultIdentity : TenantEntity, ITenantScoped
+{
+    public Guid UserId { get; set; }
+    public string X25519Public { get; set; } = "";
+    public string MlKemPublic { get; set; } = "";
+    public string Ed25519Public { get; set; } = "";
+    /// <summary>The bundle signed with its own Ed25519 key (proof the browser holds the secret).</summary>
+    public string SelfSignature { get; set; } = "";
+    /// <summary>The safety code people compare to be sure the server did not swap a key.</summary>
+    public string Fingerprint { get; set; } = "";
+    /// <summary>Goes up when the person resets their keys; envelopes for an older generation no longer open.</summary>
+    public int Generation { get; set; } = 1;
+}
+
+/// <summary>One way to unlock the identity secret: a passkey (its PRF output) or the printed recovery key. Only the wrapped secret is kept.</summary>
+public class VaultUnlock : TenantEntity, ITenantScoped
+{
+    public Guid UserId { get; set; }
+    public VaultUnlockKind Kind { get; set; }
+    public string Label { get; set; } = "";
+    /// <summary>Passkey: its credential id (base64url), so the browser can ask for that one.</summary>
+    public string? CredentialId { get; set; }
+    public string Salt { get; set; } = "";
+    /// <summary>How the unlock key is derived (for a recovery key: the Argon2id cost).</summary>
+    public string Params { get; set; } = "";
+    public string WrappedSeed { get; set; } = "";
+    public DateTime? LastUsedAt { get; set; }
+}
+
+/// <summary>A sealed collection's key, encrypted to one member's public keys (hybrid X25519 + ML-KEM-768) and signed by whoever shared it.</summary>
+public class VaultKeyEnvelope : TenantEntity, ITenantScoped
+{
+    public Guid CollectionId { get; set; }
+    public int KeyVersion { get; set; }
+    public Guid RecipientUserId { get; set; }
+    public int RecipientGeneration { get; set; }
+    public Guid SenderUserId { get; set; }
+    public string Envelope { get; set; } = "";
+    public string Signature { get; set; } = "";
+}
+
+/// <summary>
+/// Linking a new device: it shows a code made from its one-time public keys; a device that is already unlocked shows the same code, and when
+/// they match the person approves there, which sends the identity secret encrypted to the new device's one-time keys.
+/// </summary>
+public class VaultDeviceLink : TenantEntity, ITenantScoped
+{
+    public Guid UserId { get; set; }
+    public string Label { get; set; } = "";
+    public string X25519Public { get; set; } = "";
+    public string MlKemPublic { get; set; } = "";
+    public string? Envelope { get; set; }
+    public string? Signature { get; set; }
+    public DateTime ExpiresAt { get; set; }
+    public DateTime? ApprovedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public bool Denied { get; set; }
+    public string? IpAddress { get; set; }
+    public string? UserAgent { get; set; }
 }

@@ -61,5 +61,44 @@ public partial class AppDbContext
             e.Property(x => x.WrappedItemKey).HasMaxLength(500);
             e.HasOne<VaultItem>().WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
         });
+
+        // The sealed (zero-knowledge) side: public keys, wrapped secrets and wrapped collection keys only.
+        b.Entity<VaultIdentity>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            e.Property(x => x.X25519Public).HasMaxLength(64);
+            e.Property(x => x.MlKemPublic).HasMaxLength(2000);
+            e.Property(x => x.Ed25519Public).HasMaxLength(64);
+            e.Property(x => x.SelfSignature).HasMaxLength(120);
+            e.Property(x => x.Fingerprint).HasMaxLength(80);
+        });
+        b.Entity<VaultUnlock>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId });
+            e.Property(x => x.Label).HasMaxLength(80);
+            e.Property(x => x.CredentialId).HasMaxLength(1400);
+            e.Property(x => x.Salt).HasMaxLength(200);
+            e.Property(x => x.Params).HasMaxLength(200);
+            e.Property(x => x.WrappedSeed).HasMaxLength(400);
+        });
+        b.Entity<VaultKeyEnvelope>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.CollectionId, x.KeyVersion });
+            e.HasIndex(x => new { x.TenantId, x.RecipientUserId });
+            e.Property(x => x.Envelope).HasMaxLength(4000);
+            e.Property(x => x.Signature).HasMaxLength(120);
+            e.HasOne<VaultCollection>().WithMany().HasForeignKey(x => x.CollectionId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<VaultDeviceLink>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.ExpiresAt });
+            e.Property(x => x.Label).HasMaxLength(80);
+            e.Property(x => x.X25519Public).HasMaxLength(64);
+            e.Property(x => x.MlKemPublic).HasMaxLength(2000);
+            e.Property(x => x.Envelope).HasMaxLength(4000);
+            e.Property(x => x.Signature).HasMaxLength(120);
+            e.Property(x => x.IpAddress).HasMaxLength(64);
+            e.Property(x => x.UserAgent).HasMaxLength(300);
+        });
     }
 }

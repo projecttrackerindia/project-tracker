@@ -47,6 +47,32 @@ public class PasswordBreachCheck(IHttpClientFactory http, IOptions<PasswordBreac
         }
     }
 
+    /// <summary>
+    /// The padded range answer for a five-character SHA-1 prefix, for a browser that matches the suffix itself (the vault's sealed items: the
+    /// password never leaves the browser). Empty when the check is off or the service cannot be reached.
+    /// </summary>
+    public async Task<string> RangeAsync(string prefix, CancellationToken ct = default)
+    {
+        if (!options.Value.Enabled) return "";
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(4));
+            using var req = new HttpRequestMessage(HttpMethod.Get, options.Value.RangeUrl.TrimEnd('/') + "/" + prefix);
+            req.Headers.TryAddWithoutValidation("Add-Padding", "true");
+            req.Headers.TryAddWithoutValidation("User-Agent", "ProjectTracker-password-check");
+            using var res = await http.CreateClient("pwned-passwords").SendAsync(req, timeout.Token);
+            if (!res.IsSuccessStatusCode) return "";
+            var body = await res.Content.ReadAsStringAsync(timeout.Token);
+            return body.Length > 2_000_000 ? "" : body;
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            log.LogInformation("Password breach range unavailable ({Reason})", e.GetType().Name);
+            return "";
+        }
+    }
+
     /// <summary>The count for <paramref name="suffix"/> in a range answer ("SUFFIX:COUNT" per line; padding lines have a count of 0).</summary>
     public static int Count(string rangeBody, string suffix)
     {

@@ -36,6 +36,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     RotateEveryDays = table.Column<int>(type: "integer", nullable: true),
                     LockedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     ArchivedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    Sealed = table.Column<bool>(type: "boolean", nullable: false),
+                    SealedKeyVersion = table.Column<int>(type: "integer", nullable: false),
+                    RekeyNeeded = table.Column<bool>(type: "boolean", nullable: false),
                     TenantId = table.Column<Guid>(type: "uuid", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
@@ -109,6 +112,7 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     LinksJson = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: false),
                     DeletedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     DeletedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    Sealed = table.Column<bool>(type: "boolean", nullable: false),
                     TenantId = table.Column<Guid>(type: "uuid", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
@@ -137,6 +141,7 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     WrappedItemKey = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     KeyVersion = table.Column<int>(type: "integer", nullable: false),
                     Reason = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    Sealed = table.Column<bool>(type: "boolean", nullable: false),
                     TenantId = table.Column<Guid>(type: "uuid", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
@@ -164,6 +169,7 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     Cipher = table.Column<byte[]>(type: "bytea", nullable: false),
                     WrappedItemKey = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     KeyVersion = table.Column<int>(type: "integer", nullable: false),
+                    Sealed = table.Column<bool>(type: "boolean", nullable: false),
                     TenantId = table.Column<Guid>(type: "uuid", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
@@ -178,11 +184,120 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(name: "IX_VaultAttachments_ItemId", table: "VaultAttachments", column: "ItemId");
             migrationBuilder.CreateIndex(name: "IX_VaultAttachments_TenantId_ItemId", table: "VaultAttachments", columns: new[] { "TenantId", "ItemId" });
             migrationBuilder.CreateIndex(name: "IX_VaultAttachments_TenantId_KeyVersion", table: "VaultAttachments", columns: new[] { "TenantId", "KeyVersion" });
+
+            migrationBuilder.CreateTable(
+                name: "VaultIdentities",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    X25519Public = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    MlKemPublic = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                    Ed25519Public = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    SelfSignature = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: false),
+                    Fingerprint = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
+                    Generation = table.Column<int>(type: "integer", nullable: false),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VaultIdentities", x => x.Id);
+                });
+            migrationBuilder.CreateIndex(name: "IX_VaultIdentities_TenantId_UserId", table: "VaultIdentities", columns: new[] { "TenantId", "UserId" }, unique: true);
+
+            migrationBuilder.CreateTable(
+                name: "VaultUnlocks",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Kind = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    Label = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
+                    CredentialId = table.Column<string>(type: "character varying(1400)", maxLength: 1400, nullable: true),
+                    Salt = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Params = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    WrappedSeed = table.Column<string>(type: "character varying(400)", maxLength: 400, nullable: false),
+                    LastUsedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VaultUnlocks", x => x.Id);
+                });
+            migrationBuilder.CreateIndex(name: "IX_VaultUnlocks_TenantId_UserId", table: "VaultUnlocks", columns: new[] { "TenantId", "UserId" });
+
+            migrationBuilder.CreateTable(
+                name: "VaultKeyEnvelopes",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    CollectionId = table.Column<Guid>(type: "uuid", nullable: false),
+                    KeyVersion = table.Column<int>(type: "integer", nullable: false),
+                    RecipientUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    RecipientGeneration = table.Column<int>(type: "integer", nullable: false),
+                    SenderUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Envelope = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: false),
+                    Signature = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: false),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VaultKeyEnvelopes", x => x.Id);
+                    table.ForeignKey(name: "FK_VaultKeyEnvelopes_VaultCollections_CollectionId", column: x => x.CollectionId, principalTable: "VaultCollections", principalColumn: "Id", onDelete: ReferentialAction.Cascade);
+                });
+            migrationBuilder.CreateIndex(name: "IX_VaultKeyEnvelopes_CollectionId", table: "VaultKeyEnvelopes", column: "CollectionId");
+            migrationBuilder.CreateIndex(name: "IX_VaultKeyEnvelopes_TenantId_CollectionId_KeyVersion", table: "VaultKeyEnvelopes", columns: new[] { "TenantId", "CollectionId", "KeyVersion" });
+            migrationBuilder.CreateIndex(name: "IX_VaultKeyEnvelopes_TenantId_RecipientUserId", table: "VaultKeyEnvelopes", columns: new[] { "TenantId", "RecipientUserId" });
+
+            migrationBuilder.CreateTable(
+                name: "VaultDeviceLinks",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Label = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
+                    X25519Public = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    MlKemPublic = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                    Envelope = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: true),
+                    Signature = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: true),
+                    ExpiresAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    ApprovedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    CompletedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    Denied = table.Column<bool>(type: "boolean", nullable: false),
+                    IpAddress = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
+                    UserAgent = table.Column<string>(type: "character varying(300)", maxLength: 300, nullable: true),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VaultDeviceLinks", x => x.Id);
+                });
+            migrationBuilder.CreateIndex(name: "IX_VaultDeviceLinks_TenantId_UserId_ExpiresAt", table: "VaultDeviceLinks", columns: new[] { "TenantId", "UserId", "ExpiresAt" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(name: "VaultDeviceLinks");
+            migrationBuilder.DropTable(name: "VaultKeyEnvelopes");
+            migrationBuilder.DropTable(name: "VaultUnlocks");
+            migrationBuilder.DropTable(name: "VaultIdentities");
             migrationBuilder.DropTable(name: "VaultAttachments");
             migrationBuilder.DropTable(name: "VaultItemVersions");
             migrationBuilder.DropTable(name: "VaultItems");

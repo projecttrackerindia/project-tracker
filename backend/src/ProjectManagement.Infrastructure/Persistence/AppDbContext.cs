@@ -53,6 +53,10 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<VaultItem> VaultItems => Set<VaultItem>();
     public DbSet<VaultItemVersion> VaultItemVersions => Set<VaultItemVersion>();
     public DbSet<VaultAttachment> VaultAttachments => Set<VaultAttachment>();
+    public DbSet<VaultIdentity> VaultIdentities => Set<VaultIdentity>();
+    public DbSet<VaultUnlock> VaultUnlocks => Set<VaultUnlock>();
+    public DbSet<VaultKeyEnvelope> VaultKeyEnvelopes => Set<VaultKeyEnvelope>();
+    public DbSet<VaultDeviceLink> VaultDeviceLinks => Set<VaultDeviceLink>();
     public DbSet<DocumentKey> DocumentKeys => Set<DocumentKey>();
     public DbSet<DocumentView> DocumentViews => Set<DocumentView>();
     public DbSet<DocumentComment> DocumentComments => Set<DocumentComment>();
@@ -280,6 +284,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         builder.Properties<VaultItemKind>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<VaultAccess>().HaveConversion<string>().HaveMaxLength(16);
         builder.Properties<VaultPrincipal>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<VaultUnlockKind>().HaveConversion<string>().HaveMaxLength(16);
 
         // Everything is UTC. SQLite hands back "unspecified" kinds, which would serialise without a 'Z'.
         builder.Properties<DateTime>().HaveConversion<UtcConverter>();

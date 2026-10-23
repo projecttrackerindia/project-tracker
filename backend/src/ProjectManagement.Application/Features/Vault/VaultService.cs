@@ -29,17 +29,19 @@ public record VaultItemDto(VaultItemSummaryDto Item, IReadOnlyList<VaultFieldDto
     IReadOnlyList<VaultAttachmentDto> Attachments, bool CanReveal, bool CanCopy, bool CanManage, bool NeedsStepUp, int? RotateEveryDays, DateTime CreatedAt, UserRefDto? CreatedBy);
 public record VaultShareDto(Guid Id, VaultPrincipal PrincipalType, Guid? PrincipalId, TenantRole? Role, string Name, VaultAccess Access, DateTime? ExpiresAt);
 public record VaultCollectionDto(Guid Id, string Name, string? Description, VaultCollectionKind Kind, Guid? ProjectId, string? ProjectName, Guid? TeamId, string? TeamName,
-    VaultAccess MyAccess, int Items, int AtRisk, bool RequireStepUp, int? RotateEveryDays, bool Locked, IReadOnlyList<VaultShareDto>? Shares);
+    VaultAccess MyAccess, int Items, int AtRisk, bool RequireStepUp, int? RotateEveryDays, bool Locked, IReadOnlyList<VaultShareDto>? Shares,
+    bool Sealed = false, bool RekeyNeeded = false, int KeyVersion = 0);
 public record VaultPolicyDto(bool StepUpAlways, int ClipboardSeconds, int RevealSeconds, bool SharedAdminsOnly);
 public record VaultHealthDto(int Total, int Weak, int Reused, int Breached, int Expired, int Old, int ToRotate, int Score);
-public record VaultOverviewDto(IReadOnlyList<VaultCollectionDto> Collections, VaultPolicyDto Policy, bool CanAdmin, bool CanCreateShared, VaultHealthDto Health, bool MfaEnabled);
+public record VaultOverviewDto(IReadOnlyList<VaultCollectionDto> Collections, VaultPolicyDto Policy, bool CanAdmin, bool CanCreateShared, VaultHealthDto Health, bool MfaEnabled,
+    VaultIdentityDto? Identity = null);
 public record VaultRevealDto(string Value, int RevealSeconds, int ClipboardSeconds);
 public record VaultTotpDto(string Code, int SecondsLeft, int Period, int Digits);
 public record VaultCheckDto(int Strength, int BreachCount);
 public record VaultActivityDto(DateTime At, string Action, UserRefDto? By, string? Field, string? IpAddress);
 
 public record SaveVaultCollectionRequest(string? Name, string? Description, VaultCollectionKind Kind, Guid? ProjectId, Guid? TeamId, bool RequireStepUp = false,
-    int? RotateEveryDays = null, VaultAccess? ShareWithMembers = null);
+    int? RotateEveryDays = null, VaultAccess? ShareWithMembers = null, bool Sealed = false);
 public record VaultShareInput(VaultPrincipal PrincipalType, Guid? PrincipalId, TenantRole? Role, VaultAccess Access, DateTime? ExpiresAt);
 public record SaveVaultSharesRequest(IReadOnlyList<VaultShareInput>? Shares);
 public record SaveVaultItemRequest(Guid CollectionId, VaultItemKind Kind, string? Title, string? Url, IReadOnlyList<string>? Tags, SensitivityClass Class,
@@ -96,6 +98,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
     private async Task RequireUseAsync(CancellationToken ct)
     {
         if (ctx.Role is null or TenantRole.Guest) throw new ForbiddenException("Guests cannot use the vault.", "VAULT_DENIED");
+        if (ctx.ViaApiKey) throw new ForbiddenException("The vault is not open to API keys. Machines get secrets through their own short-lived identity.", "VAULT_DENIED");
         await permissions.RequireAsync(Permissions.VaultUse, ct);
     }
 
@@ -181,21 +184,26 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await EnsurePersonalAsync(ct);
         var reach = await ReachableAsync(ct);
         var ids = reach.Select(r => r.C.Id).ToList();
-        var items = ids.Count == 0 ? [] : await db.VaultItems.AsNoTracking().Where(i => ids.Contains(i.CollectionId) && i.DeletedAt == null).ToListAsync(ct);
+        var all = ids.Count == 0 ? [] : await db.VaultItems.AsNoTracking().Where(i => ids.Contains(i.CollectionId) && i.DeletedAt == null).ToListAsync(ct);
+        // Sealed items are measured in the browser (only it can read them); here they count, and only their dates and change flags show.
+        var items = all.Where(i => !i.Sealed).ToList();
         var reused = ReusedSet(items);
-        var flags = items.ToDictionary(i => i.Id, i => HealthOf(i, reused));
+        var flags = all.ToDictionary(i => i.Id, i => HealthOf(i, reused));
         var projectIds = reach.Where(r => r.C.ProjectId != null).Select(r => r.C.ProjectId!.Value).Distinct().ToList();
         var teamIds = reach.Where(r => r.C.TeamId != null).Select(r => r.C.TeamId!.Value).Distinct().ToList();
         var pNames = projectIds.Count == 0 ? [] : await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name, ct);
         var tNames = teamIds.Count == 0 ? [] : await db.Teams.AsNoTracking().Where(t => teamIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
         var collections = reach.OrderBy(r => r.C.Kind != VaultCollectionKind.Personal).ThenBy(r => r.C.Name)
             .Select(r => new VaultCollectionDto(r.C.Id, r.C.Name, r.C.Description, r.C.Kind, r.C.ProjectId, r.C.ProjectId is { } p ? pNames.GetValueOrDefault(p) : null,
-                r.C.TeamId, r.C.TeamId is { } t ? tNames.GetValueOrDefault(t) : null, r.A, items.Count(i => i.CollectionId == r.C.Id),
-                items.Count(i => i.CollectionId == r.C.Id && flags[i.Id].Count > 0), r.C.RequireStepUp, r.C.RotateEveryDays, r.C.LockedAt != null, null)).ToList();
+                r.C.TeamId, r.C.TeamId is { } t ? tNames.GetValueOrDefault(t) : null, r.A, all.Count(i => i.CollectionId == r.C.Id),
+                all.Count(i => i.CollectionId == r.C.Id && flags[i.Id].Count > 0), r.C.RequireStepUp, r.C.RotateEveryDays, r.C.LockedAt != null, null,
+                r.C.Sealed, r.C.RekeyNeeded, r.C.SealedKeyVersion)).ToList();
         var policy = await PolicyAsync(ct);
         var canAdmin = await permissions.HasAsync(Permissions.VaultAdmin, ct);
         var mfa = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.MfaEnabled).FirstOrDefaultAsync(ct);
-        return new VaultOverviewDto(collections, policy, canAdmin, !policy.SharedAdminsOnly || canAdmin, Health(items, flags), mfa);
+        var guardedFlags = items.ToDictionary(i => i.Id, i => flags[i.Id]);
+        return new VaultOverviewDto(collections, policy, canAdmin, !policy.SharedAdminsOnly || canAdmin, Health(items, guardedFlags), mfa,
+            await db.VaultIdentities.AsNoTracking().Where(i => i.UserId == me).Select(i => (VaultIdentityDto?)new VaultIdentityDto(i.UserId, i.X25519Public, i.MlKemPublic, i.Ed25519Public, i.SelfSignature, i.Fingerprint, i.Generation)).FirstOrDefaultAsync(ct));
     }
 
     /// <summary>Everyone who can use the vault has a personal collection; it is made the first time they open it.</summary>
@@ -246,8 +254,9 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var c = new VaultCollection
         {
             TenantId = tid, Name = name, Description = Clip(req.Description, 300), Kind = req.Kind, RequireStepUp = req.RequireStepUp,
-            RotateEveryDays = CleanDays(req.RotateEveryDays), CreatedAt = clock.Now, CreatedBy = me,
+            RotateEveryDays = CleanDays(req.RotateEveryDays), CreatedAt = clock.Now, CreatedBy = me, Sealed = req.Sealed, SealedKeyVersion = req.Sealed ? 1 : 0,
         };
+        if (req.Sealed && !await db.VaultIdentities.AnyAsync(i => i.UserId == me, ct)) throw new ConflictException("Set up your vault keys first: a sealed collection is opened with them.", "VAULT_NO_KEYS");
         if (req.Kind == VaultCollectionKind.Project)
         {
             if (req.ProjectId is not { } pid || !await projects.VisibleProjects().AnyAsync(p => p.Id == pid, ct)) throw new ValidationException("projectId", "Choose a project you can see.");
@@ -262,6 +271,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         db.VaultShares.Add(new VaultShare { TenantId = tid, CollectionId = c.Id, PrincipalType = VaultPrincipal.User, PrincipalId = me, Access = VaultAccess.Manage, CreatedAt = clock.Now, CreatedBy = me });
         if (req.ShareWithMembers is { } access && access > VaultAccess.None)
         {
+            if (c.Sealed && access == VaultAccess.UseOnly) access = VaultAccess.View;   // whoever holds a sealed key can read the value
             if (c.ProjectId is { } p) db.VaultShares.Add(new VaultShare { TenantId = tid, CollectionId = c.Id, PrincipalType = VaultPrincipal.Project, PrincipalId = p, Access = Cap(access), CreatedAt = clock.Now, CreatedBy = me });
             if (c.TeamId is { } t) db.VaultShares.Add(new VaultShare { TenantId = tid, CollectionId = c.Id, PrincipalType = VaultPrincipal.Team, PrincipalId = t, Access = Cap(access), CreatedAt = clock.Now, CreatedBy = me });
         }
@@ -301,12 +311,12 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await RequireUseAsync(ct);
         var (c, access) = await CollectionAsync(id, VaultAccess.UseOnly, ct);
         var items = await db.VaultItems.AsNoTracking().Where(i => i.CollectionId == id && i.DeletedAt == null).ToListAsync(ct);
-        var reused = ReusedSet(items);
+        var reused = ReusedSet(items.Where(i => !i.Sealed));
         var shares = access == VaultAccess.Manage ? await SharesAsync(c, ct) : null;
         var pName = c.ProjectId is { } p ? await db.Projects.AsNoTracking().Where(x => x.Id == p).Select(x => x.Name).FirstOrDefaultAsync(ct) : null;
         var tName = c.TeamId is { } t ? await db.Teams.AsNoTracking().Where(x => x.Id == t).Select(x => x.Name).FirstOrDefaultAsync(ct) : null;
         return new VaultCollectionDto(c.Id, c.Name, c.Description, c.Kind, c.ProjectId, pName, c.TeamId, tName, access, items.Count, items.Count(i => HealthOf(i, reused).Count > 0),
-            c.RequireStepUp, c.RotateEveryDays, c.LockedAt != null, shares);
+            c.RequireStepUp, c.RotateEveryDays, c.LockedAt != null, shares, c.Sealed, c.RekeyNeeded, c.SealedKeyVersion);
     }
 
     private async Task<List<VaultShareDto>> SharesAsync(VaultCollection c, CancellationToken ct)
@@ -340,6 +350,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
             if (!Enum.IsDefined(s.PrincipalType) || !Enum.IsDefined(s.Access) || s.Access == VaultAccess.None) throw new ValidationException("shares", "Each entry needs who and what access.");
             if (s.PrincipalType == VaultPrincipal.Role ? s.Role is null or TenantRole.Guest : s.PrincipalId is null) throw new ValidationException("shares", "Choose the person, team, project or role.");
             if (s.ExpiresAt is { } e && e <= clock.Now) throw new ValidationException("shares", "An end date must be in the future.");
+            if (c.Sealed && s.Access == VaultAccess.UseOnly) throw new ValidationException("shares", "A sealed collection cannot have use-only access: whoever holds its key can read the values. Use a guarded collection for that.");
         }
         var managers = list.Where(s => s.Access == VaultAccess.Manage && (s.ExpiresAt is null)).ToList();
         if (managers.Count == 0) throw new ConflictException("Keep at least one person or group who manages the collection without an end date.", "VAULT_NO_MANAGER");
@@ -359,6 +370,12 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
             db.VaultShares.Add(new VaultShare { TenantId = tid, CollectionId = id, PrincipalType = s.PrincipalType, PrincipalId = s.PrincipalType == VaultPrincipal.Role ? null : s.PrincipalId,
                 Role = s.PrincipalType == VaultPrincipal.Role ? s.Role : null, Access = Cap(s.Access), ExpiresAt = s.ExpiresAt, CreatedAt = clock.Now, CreatedBy = me });
         recorder.Audit("vault.access_changed", "VaultCollection", id, before, list.Select(s => new { s.PrincipalType, s.PrincipalId, s.Role, s.Access, s.ExpiresAt }));
+        if (c.Sealed)
+        {
+            // Whoever lost access loses their copy of the key now, and the collection gets a new key the next time a manager opens it.
+            await db.SaveChangesAsync(ct);
+            await DropStaleEnvelopesAsync(c, await AccessByUserAsync(c, ct), ct);
+        }
         var sender = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Someone";
         foreach (var u in userIds.Where(u => u != me && !old.Any(o => o.PrincipalType == VaultPrincipal.User && o.PrincipalId == u)))
             await notifications.AddAsync(u, NotificationType.Security, $"{sender} gave you access to the vault collection {c.Name}", "Every use of it is recorded.", $"/vault?c={c.Id}", ct: ct);
@@ -401,7 +418,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         if (bin) reach = reach.Where(r => r.A == VaultAccess.Manage).ToList();
         var ids = reach.Select(r => r.C.Id).ToList();
         if (ids.Count == 0) return [];
-        var rows = await db.VaultItems.AsNoTracking().Where(i => ids.Contains(i.CollectionId) && (bin ? i.DeletedAt != null : i.DeletedAt == null)).ToListAsync(ct);
+        var rows = await db.VaultItems.AsNoTracking().Where(i => ids.Contains(i.CollectionId) && !i.Sealed && (bin ? i.DeletedAt != null : i.DeletedAt == null)).ToListAsync(ct);
         var reused = ReusedSet(rows);
         var text = (q ?? "").Trim();
         var list = rows.Where(i => kind is null || i.Kind == kind)
@@ -429,6 +446,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var (tid, _) = Who();
         var (item, c, access) = await ItemAsync(id, VaultAccess.UseOnly, ct, includeBin: true);
         if (item.DeletedAt is not null && access < VaultAccess.Manage) throw new NotFoundException("Item not found.", "VAULT_NOT_FOUND");
+        RejectSealed(item);
         var defs = ReadDefs(item.FieldsJson);
         Dictionary<string, string> values;
         try { values = await crypto.OpenAsync(tid, item.Id, item.Cipher, item.WrappedItemKey, item.KeyVersion, ct); }
@@ -459,6 +477,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await RequireUseAsync(ct);
         var (tid, me) = Who();
         var (c, _) = await CollectionAsync(req.CollectionId, VaultAccess.Manage, ct);
+        if (c.Sealed) throw new ConflictException("This collection is sealed: items are encrypted in your browser.", "VAULT_SEALED");
         if (await db.VaultItems.CountAsync(i => i.CollectionId == c.Id && i.DeletedAt == null, ct) >= MaxItemsPerCollection)
             throw new ValidationException("collectionId", $"A collection holds at most {MaxItemsPerCollection:N0} items.");
         var item = new VaultItem { TenantId = tid, CollectionId = c.Id, CreatedAt = clock.Now, CreatedBy = me, OwnerUserId = me };
@@ -475,10 +494,12 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await RequireUseAsync(ct);
         var (tid, me) = Who();
         var (item, c, _) = await ItemAsync(id, VaultAccess.Manage, ct);
+        RejectSealed(item);
         if (req.CollectionId != item.CollectionId)
         {
             // Moving it: the person must manage both collections. Moving out of a personal vault shares it, which is what they asked for.
             var (target, _) = await CollectionAsync(req.CollectionId, VaultAccess.Manage, ct);
+            if (target.Sealed) throw new ConflictException("Seal it by copying it into the sealed collection (it is encrypted in your browser there).", "VAULT_SEALED");
             recorder.Audit("vault.item_moved", "VaultItem", item.Id, new { from = c.Name }, new { to = target.Name });
             item.CollectionId = target.Id; c = target;
         }
@@ -586,14 +607,14 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<VaultItemDto> RestoreItemAsync(Guid id, CancellationToken ct = default)
+    public async Task<VaultItemDto?> RestoreItemAsync(Guid id, CancellationToken ct = default)
     {
         await RequireUseAsync(ct);
         var (item, c, _) = await ItemAsync(id, VaultAccess.Manage, ct, includeBin: true);
         item.DeletedAt = null; item.DeletedBy = null;
         recorder.Audit("vault.item_restored", "VaultItem", item.Id, null, new { item.Title, collection = c.Name });
         await db.SaveChangesAsync(ct);
-        return await GetAsync(id, ct);
+        return item.Sealed ? null : await GetAsync(id, ct);
     }
 
     // ------------------------------------------------------------------ revealing, copying, one-time codes
@@ -607,6 +628,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await RequireUseAsync(ct);
         var (tid, me) = Who();
         var (item, c, access) = await ItemAsync(id, VaultAccess.UseOnly, ct);
+        RejectSealed(item);
         var key = (req.Field ?? "").Trim();
         var def = ReadDefs(item.FieldsJson).FirstOrDefault(d => d.Key == key) ?? throw new NotFoundException("That field is not on this item.", "VAULT_NOT_FOUND");
         var action = req.Copy ? "vault.copied" : "vault.revealed";
@@ -637,6 +659,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await RequireUseAsync(ct);
         var (tid, me) = Who();
         var (item, c, _) = await ItemAsync(id, VaultAccess.UseOnly, ct);
+        RejectSealed(item);
         var def = ReadDefs(item.FieldsJson).FirstOrDefault(d => d.Type == "totp") ?? throw new NotFoundException("This item has no one-time code.", "VAULT_NOT_FOUND");
         await GuardAsync(item, c, def.Key, req.StepUp, ct);
         var seed = (await crypto.OpenAsync(tid, item.Id, item.Cipher, item.WrappedItemKey, item.KeyVersion, ct)).GetValueOrDefault(def.Key);
@@ -654,6 +677,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await RequireUseAsync(ct);
         var (tid, me) = Who();
         var (item, c, _) = await ItemAsync(id, VaultAccess.Manage, ct);
+        RejectSealed(item);
         var v = await db.VaultItemVersions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == versionId && x.ItemId == id, ct) ?? throw new NotFoundException("That version was not found.", "VAULT_NOT_FOUND");
         if (!await stepUp.IsFreshAsync(me, req.StepUp, ct))
             throw await DenyAsync(item, c, req.Field ?? "", "earlier value without a two-step check", new ForbiddenException("Earlier values need a fresh two-step check.", "STEP_UP_REQUIRED"), ct);
@@ -736,6 +760,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await RequireUseAsync(ct);
         var (tid, me) = Who();
         var (item, c, _) = await ItemAsync(id, VaultAccess.Manage, ct);
+        RejectSealed(item);
         if (length > MaxAttachmentBytes) throw new ValidationException("file", "A file kept in the vault can be up to 2 MB.");
         if (await db.VaultAttachments.CountAsync(a => a.ItemId == id, ct) >= MaxAttachments) throw new ValidationException("file", $"An item keeps at most {MaxAttachments} files.");
         using var ms = new MemoryStream();
@@ -760,6 +785,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var (tid, _) = Who();
         var att = await db.VaultAttachments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == attachmentId, ct) ?? throw new NotFoundException("File not found.", "VAULT_NOT_FOUND");
         var (item, c, access) = await ItemAsync(att.ItemId, VaultAccess.View, ct);
+        RejectSealed(item);
         if (item.UseOnly) throw new ForbiddenException("Files of a use-only item cannot be downloaded.", "VAULT_USE_ONLY");
         await GuardAsync(item, c, att.FileName, stepUpToken, ct);
         var bytes = await crypto.OpenFileAsync(tid, item.Id, att.Id, att.WrappedItemKey, att.KeyVersion, att.Cipher, ct);
@@ -787,6 +813,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await RequireUseAsync(ct);
         var (tid, me) = Who();
         var (c, _) = await CollectionAsync(req.CollectionId, VaultAccess.Manage, ct);
+        if (c.Sealed) throw new ConflictException("This collection is sealed: the import is encrypted in your browser.", "VAULT_SEALED");
         var rows = (req.Rows ?? []).ToList();
         if (rows.Count == 0) throw new ValidationException("rows", "Nothing to import.");
         if (rows.Count > MaxImport) throw new ValidationException("rows", $"Import at most {MaxImport} at once.");
