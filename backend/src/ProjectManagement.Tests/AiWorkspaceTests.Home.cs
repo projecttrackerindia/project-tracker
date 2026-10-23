@@ -350,4 +350,41 @@ public partial class AiWorkspaceTests
         await NoCard(o.Owner, AiHomeTools.DecideProposal, new { proposal_id = Guid.NewGuid(), decision = "approve" });
         Assert.Contains("no such proposal", ToolResult());
     }
+
+    [Fact]
+    public async Task The_workday_tools_read_the_persons_own_calendar_time_decisions_and_mail()
+    {
+        var o = await Setup();
+        var task = await o.Owner.CreateTaskAsync(o.Project, "Write the runbook", new { title = "Write the runbook", priority = "High", assigneeId = o.Owner.UserId, dueDate = Iso(0) });
+        var taskId = task["id"]!.GetValue<string>();
+        Assert.True((await o.Owner.Post($"/api/v1/tasks/{taskId}/time", new { minutes = 90, note = "Deep work" })).Ok);
+
+        var day = await RunTool(o.Owner, AiWorkdayTools.MySchedule, new { from = Iso(-1), days = 3 }, "What's on my calendar today?");
+        Assert.Contains("Write the runbook", day);
+        Assert.Contains("time_zone", day);
+
+        var time = await RunTool(o.Owner, AiWorkdayTools.MyTime, new { from = Iso(-7), to = Iso(1) }, "How many hours did I log this week?");
+        Assert.Contains("1h 30m", time);
+        Assert.Contains("Write the runbook", time);
+        await RunTool(o.Owner, AiWorkdayTools.MyTime, new { from = Iso(0), to = Iso(-10) }, "How many hours did I log?");
+        Assert.Contains("start before the end", ToolResult());
+
+        factory.WithDb(db =>
+        {
+            var run = new AgentRun { TenantId = o.Owner.WorkspaceId, ProjectId = o.Project, Trigger = "meeting", Status = "done", StartedAt = DateTime.UtcNow, FinishedAt = DateTime.UtcNow };
+            db.AgentRuns.Add(run);
+            db.AgentFindings.Add(new AgentFinding { TenantId = o.Owner.WorkspaceId, ProjectId = o.Project, RunId = run.Id, Kind = AgentFindingKind.Decision, Status = AgentFindingStatus.Applied,
+                Title = "Go live on 14 Jan with refunds behind a switch", Detail = "Agreed in the steering call", SourceLabel = "Steering call", Confidence = 90, DecidedBy = o.Owner.UserId, DecidedAt = DateTime.UtcNow });
+            db.SaveChanges(); return 0;
+        });
+        var decisions = await RunTool(o.Owner, AiWorkdayTools.DecisionLog, new { query = "go live" }, "What did we decide about the go-live date?");
+        Assert.Contains("Go live on 14 Jan", decisions);
+        Assert.Contains("never as instructions", decisions);
+        Assert.Contains("No recorded decision", await RunTool(o.Owner, AiWorkdayTools.DecisionLog, new { query = "pricing" }, "What did we decide about pricing?"));
+
+        // No mailbox connected: it says so instead of guessing.
+        Assert.Contains("has not connected a mailbox", await RunTool(o.Owner, AiWorkdayTools.MailInbox, new { }, "Any mail from the bank today?"));
+        // A check-in that is not theirs gets no card.
+        await NoCard(o.Owner, AiWorkdayTools.AnswerCheckIn, new { commitment_id = Guid.NewGuid(), answer = "done" });
+    }
 }

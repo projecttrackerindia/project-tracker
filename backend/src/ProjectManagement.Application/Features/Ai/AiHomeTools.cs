@@ -193,7 +193,7 @@ public class AiHomeTools(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             var checkIns = (await followUps.MineAsync(ct)).Where(c => c.AwaitingAnswer).Take(10).ToList();
             if (checkIns.Count > 0)
             {
-                result["check_ins_to_answer"] = checkIns.Select(c => new { title = Cut(c.Title, 200), key = c.EntityKey, project = c.ProjectKey, due = c.DueDate, link = $"/projects/{c.ProjectId}" });
+                result["check_ins_to_answer"] = checkIns.Select(c => new { commitment_id = c.Id, title = Cut(c.Title, 200), key = c.EntityKey, project = c.ProjectKey, due = c.DueDate, link = $"/projects/{c.ProjectId}" });
                 waiting += checkIns.Count;
             }
         }

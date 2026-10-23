@@ -21,7 +21,8 @@ namespace ProjectManagement.Application.Features.Ai;
 /// against what was approved before it is reported done.
 /// </summary>
 public class AiHomeActions(IAppDbContext db, ICurrentContext ctx, AgentReviewService review, TimesheetApprovalService timesheets, NotificationService notifications,
-    ChatService chat, DocumentService documents, DocumentCommentService comments, PortfolioBoardService portfolio, VaultService vault)
+    ChatService chat, DocumentService documents, DocumentCommentService comments, PortfolioBoardService portfolio, VaultService vault, AgentFollowUpService followUps,
+    ProjectManagement.Application.Features.Mailbox.MailboxService mail)
 {
     private static string? Str(JsonElement a, string n) => a.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
     private static Guid Id(JsonElement a, string n) => Guid.TryParse(Str(a, n), out var g) ? g : throw new ValidationException(n, "The approved suggestion is incomplete. Ask again.");
@@ -135,6 +136,20 @@ public class AiHomeActions(IAppDbContext db, ICurrentContext ctx, AgentReviewSer
                 if (saved.Shares is { } shares && !shares.Any(s => s.PrincipalType == VaultPrincipal.User && s.PrincipalId == userId && s.Access == access))
                     throw new ConflictException("The new access could not be verified. Check the collection's sharing.", "AI_ACTION_UNVERIFIED");
                 return new AiActionResult($"/vault?c={collectionId}", collectionId);
+            }
+            case "answer_check_in":
+            {
+                var id = Id(a, "commitmentId");
+                DateOnly? newDate = DateOnly.TryParse(Str(a, "newDate"), System.Globalization.CultureInfo.InvariantCulture, out var nd) ? nd : null;
+                var answered = await followUps.AnswerAsync(id, new AgentCheckInRequest(Str(a, "answer"), Str(a, "note"), newDate), ct);
+                return new AiActionResult($"/projects/{answered.ProjectId}", id);
+            }
+            case "mail_reply":
+            {
+                var sent = await mail.SendAsync(new ProjectManagement.Application.Features.Mailbox.MailSendRequest(Str(a, "account")!, Str(a, "messageId"), "inbox",
+                    a.TryGetProperty("replyAll", out var all) && all.ValueKind == JsonValueKind.True, null, null, null, Str(a, "body") ?? throw new ValidationException("body", "Write the reply."), true), ct);
+                if (!sent.Accepted) throw new ConflictException("The mail server did not accept the reply. Check Mailbox before trying again.", "AI_ACTION_UNVERIFIED");
+                return new AiActionResult("/mailbox", null);
             }
             default:
                 return null;

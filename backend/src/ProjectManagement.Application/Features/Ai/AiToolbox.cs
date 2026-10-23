@@ -42,7 +42,7 @@ public sealed class AiToolException(string message) : Exception(message);
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
     WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, AiPortfolio portfolio, ActionItemService actionItems, TaskService tasks, WorkTaskService workTasks, ProjectService projects, DocumentService documents, ReminderService reminders,
     ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiToolbox> log, AiKnowledgeService knowledge, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
-    AiHomeTools home)
+    AiHomeTools home, AiWorkdayTools workday)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
@@ -61,7 +61,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
     public const string ScheduleProject = "propose_schedule_project";
     public static readonly string[] WriteTools = [PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, ScheduleMeeting,
-        .. AiHomeTools.WriteTools];
+        .. AiHomeTools.WriteTools, .. AiWorkdayTools.WriteTools];
 
     /// <summary>
     /// Proposal kinds (<see cref="AiProposal.Kind"/>) that run the instant they are proposed, with no card to click: ordinary, reversible
@@ -87,13 +87,16 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(leave|timesheet|absence|time off|log|logged|spent|hours)\b")) return all;
         // Running the day from Home: what needs the person, chat catch-up and threads, pages, portfolio options, the vault.
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(needs? (me|you)|waiting (on|for) me|my inbox|catch (me )?up|unread|thread|reply|replied|what did .{1,40} say|what was (said|agreed)|agreed|snooze|mark .{0,30}\bdone|submit (my|the|this|last) week|approve|dismiss|send (it |them )?back|proposals?|portfolio decision|decision option|section|comment on|vault|password|credential|api key|rotate|rotation)\b")) return all;
-        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(message|dm|chat)\b") && !System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b"))
+        // Sending one chat message (not reading or searching chat): only the message tool and people.
+        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(message|dm|chat)\b") && System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(send|sending|tell|ping|dm|text|msg|bhejo|bhej|pampu|pampinchu|pampandi)\b")
+            && !System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b"))
             return all.Where(t => t.Name is SendMessage or ListPeople).ToList();
         if (!System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b")
             && (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(reminder|reminders|remind)\b")
             || System.Text.RegularExpressions.Regex.IsMatch(lower, @"^(please\s+)?(change|move|reschedule)\s+(it|that)\s+(to|at)\s+\d{1,2}:\d{2}[.!?]*$")))
             return all.Where(t => new[] { ListReminders, CreateReminder, ReviseReminder, UpdateReminder, FindWork, ListPeople }.Contains(t.Name)).ToList();
-        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(create|add|assign|update|change|edit|invite|send|schedule|start|remind|write|yes|please|do)\b")) return all;
+        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(create|add|assign|update|change|edit|invite|send|schedule|start|remind|write|yes|please|do|crete|creat|move|mark|comment|rename|apply|rebalance|turn|draft|email|fix|push|put|raise|make|give|plan|book)\b")
+            || AiExecutionPolicy.Classify(text) is AiRequestIntent.Execute or AiRequestIntent.Combined) return all;
         var selected = new HashSet<string> { FindWork, ListProjects, ProjectReport, MyWorkSummary };
         var matched = false;
         void Include(string pattern, params string[] names)
@@ -105,6 +108,16 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         Include(@"\b(meeting|calendar|scrum|standup|stand-up)\b", ListMeetings);
         Include(@"\b(document|documents|notes|knowledge)\b", SearchDocuments, ReadDocument);
         Include(@"\b(knowledge|evidence|reference|search|find)\b", SearchKnowledge, ReadKnowledge);
+        Include(@"\b(my day|plan my day|today|tomorrow|calendar|free|busy|agenda|due this week|due today)\b", AiWorkdayTools.MySchedule, AiHomeTools.NeedsYou, ListMeetings);
+        Include(@"\b(what should i|first|priorit\w*|pending|waiting|inbox)\b", AiHomeTools.NeedsYou, AiWorkdayTools.MySchedule);
+        Include(@"\b(mail|mails|email|emails|gmail|outlook|inbox)\b", AiWorkdayTools.MailInbox, AiWorkdayTools.MailRead);
+        Include(@"\b(decide|decided|decision|decisions|agreed)\b", AiWorkdayTools.DecisionLog, AiHomeTools.ChatSearch);
+        Include(@"\b(chat|chats|messages|said)\b", AiHomeTools.ChatCatchUp, AiHomeTools.ChatSearch);
+        Include(@"\b(page|pages|doc|docs|wiki|section)\b", SearchDocuments, ReadDocument);
+        Include(@"\b(option|options|decide on|portfolio decision|slipping)\b", AiHomeTools.PortfolioDecisions, PortfolioBrief);
+        Include(@"\b(who should|who can take|who will take|best person|assign)\b", SuggestAssignee, WorkloadBalance);
+        Include(@"\b(handbook|guide|policy|sop|brd|spec|runbook|out of date)\b", SearchDocuments, ReadDocument);
+        Include(@"\b(agent|proposal|proposals|findings?)\b", AiHomeTools.NeedsYou, FindWork);
         return matched ? all.Where(t => selected.Contains(t.Name)).ToList() : all;
     }
 
@@ -164,6 +177,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 """{"type":"object","properties":{"project":{"type":"string","description":"A project key or name."}},"required":["project"]}"""),
         };
         tools.AddRange(home.Definitions(false));
+        tools.AddRange(workday.Definitions(false));
         if (!actionsAllowed) return tools;
         tools.AddRange(
         [
@@ -254,6 +268,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 """),
         ]);
         tools.AddRange(home.Definitions(true).Where(t => AiHomeTools.WriteTools.Contains(t.Name)));
+        tools.AddRange(workday.Definitions(true).Where(t => AiWorkdayTools.WriteTools.Contains(t.Name)));
         if (actionsAllowed) actionCatalog = tools; else readCatalog = tools;
         return tools;
     }
@@ -313,7 +328,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 ListMeetings => await ListMeetingsAsync(a, ct),
                 StartMeeting => await ProposeStartMeetingAsync(a, ct),
                 ScheduleMeeting => await ProposeScheduleMeetingAsync(a, timeZone, ct),
-                _ => await home.ExecuteAsync(name, a, timeZone, HomePersonAsync, ct) ?? throw new AiToolException($"There is no tool called {name}."),
+                _ => await home.ExecuteAsync(name, a, timeZone, HomePersonAsync, ct) ?? await workday.ExecuteAsync(name, a, timeZone, ct)
+                    ?? throw new AiToolException($"There is no tool called {name}."),
             };
         }
         catch (AiToolException ex) { return new AiToolOutcome(ex.Message, "A lookup did not work", IsError: true); }

@@ -35,10 +35,17 @@ public static class AiExecutionPolicy
         return body.Contains('?');
     }
 
+    // Further requests to act, recognised for the intent only (never for auto-running a change), and requests that end in a Hindi or Telugu
+    // verb in Latin letters ("Ravi ko message bhejo", "timesheet submit cheyyi").
+    private const string MoreCommands = @"(?:(?:please|can you|could you|kindly|pls)\s+)?(?:approve|reject|submit|reply|snooze|dismiss|rotate|reassign|forward|book|log|clear|archive|close|reopen|fix|message|text|ping|email|draft|turn|rebalance|push|raise|tell(?!\s+me\b))\b";
+    private const string IndianVerbAtEnd = @"\b(?:karo|kar\s+do|kardo|daalo|daal\s+do|cheyi|chey)\b[\s.!?]*$";
+    private const string IndianVerb = @"\b(?:bhejo|bhej\s+do|banao|bana\s+do|lagao|laga\s+do|dilao|dila\s+do|pampu|pampandi|pampinchu|cheyyi|cheyandi|cheyyandi|pettu|pettandi|marchu|marchandi)\b";
+
     public static AiRequestIntent Classify(string text)
     {
         var query = text.Trim();
-        var action = Matches(query, "^" + Command) || Matches(query, @"(?:[.!?]\s+|\b(?:and|then|also)\s+)" + Command);
+        var action = Matches(query, "^" + Command) || Matches(query, @"(?:[.!?,;:]\s+|\b(?:and|then|also)\s+)" + Command)
+            || Matches(query, "^" + MoreCommands) || Matches(query, @"(?:[.!?,;:]\s+|\b(?:and|then|also)\s+)" + MoreCommands) || Matches(query, IndianVerbAtEnd) || Matches(query, IndianVerb);
         var analysis = Matches(query, @"\b(?:analyse|analyze|explain|why|assess|evaluate|tell me|what changed|on track)\b");
         if (action) return analysis ? AiRequestIntent.Combined : AiRequestIntent.Execute;
         if (Matches(query, @"^(?:please\s+)?(?:recommend|suggest|advise)\b")) return AiRequestIntent.Recommend;
@@ -48,7 +55,7 @@ public static class AiExecutionPolicy
     // A clearly informational request must not acquire write tools merely because it mentions
     // the word "update". Unknown shorthand still permits a proposal; it never grants auto-run.
     public static bool IsReadOnlyRequest(string text) => Classify(text) is not (AiRequestIntent.Execute or AiRequestIntent.Combined)
-        && Matches(text.Trim(), @"^(?:(?:please|can you|could you)\s+)?(?:why|how|what|when|where|who|is|are|does|do we|can we|explain|analyse|analyze|assess|evaluate|recommend|suggest|advise)\b");
+        && Matches(text.Trim(), @"^(?:(?:please|can you|could you)\s+)?(?:why|how|what|when|where|who|which|is|are|does|do we|do i|am i|did|any|can we|explain|analyse|analyze|assess|evaluate|recommend|suggest|advise|give me|show|list|summari[sz]e|find|tell me)\b");
 
     public static bool CanAutoExecute(string text, string tool, string inputJson, AiProposal proposal, bool hasFiles)
     {

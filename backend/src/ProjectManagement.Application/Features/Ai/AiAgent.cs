@@ -616,7 +616,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
             return new("No single matching action is awaiting confirmation in the latest answer. It may already be handled. Use the exact confirmation card; I have not sent another message.", true);
         // What reaches other people (a chat message, an invitation, an emailed report) is only ever sent by approving that exact card:
         // a bare typed "yes" may be meant for something else on the screen.
-        if (!cancel && run.Confirmation is null && pending[0].Kind is "send_message" or "invite_member" or "send_report" or "email" or "chat_reply" or "page_comment" or "vault_share" or "vault_request")
+        if (!cancel && run.Confirmation is null && pending[0].Kind is "send_message" or "invite_member" or "send_report" or "email" or "chat_reply" or "page_comment" or "vault_share" or "vault_request" or "mail_reply")
             return new("This sends something to other people, so it needs the exact card: press Confirm on it. Nothing was sent.", true);
         try
         {
@@ -761,6 +761,11 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         AiHomeTools.ChatSearch => "Searching your chats…",
         AiHomeTools.PortfolioDecisions => "Reading the portfolio's decisions…",
         AiHomeTools.VaultFind => "Looking in the vault (names only)…",
+        AiWorkdayTools.MySchedule => "Reading your calendar…",
+        AiWorkdayTools.MyTime => "Reading your timesheet…",
+        AiWorkdayTools.DecisionLog => "Looking through decisions…",
+        AiWorkdayTools.MailInbox => "Reading your inbox…",
+        AiWorkdayTools.MailRead => "Reading the mail…",
         _ when AiToolbox.WriteTools.Contains(tool) => "Preparing a suggestion…",
         _ => "Working…",
     };
@@ -975,6 +980,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         - Pages: read_document first (it lists the page's sections and whether the person may edit it), then propose_edit_page to add to a section or rewrite it, or propose_page_comment. Write the full text into the proposal. A masked value (••••) can never be written back.
         - Portfolio: portfolio_decisions lists the projects that need a decision and the worked-out options; propose_apply_portfolio_option puts an option's steps in that project's Agent tab for approval - it does not change the project by itself.
         - Vault: vault_find gives names, collections and health, never values. You never see, ask for, guess or repeat a password, key or other secret; the person copies values from the vault themselves. propose_vault_request asks for a window of use (two-person rule), to join a collection for a while, or for a new value (rotation); propose_vault_share gives a member view or use-only access to a shared collection the person manages. Vault access requests from others are decided by the person on the vault page, never by you.
+        - Your day: my_schedule for meetings, clashes and what is due; my_time for logged hours; decision_log for "what did we decide"; mail_inbox and mail_read for the person's own mail, propose_mail_reply to answer one (the card shows the exact text); propose_answer_check_in for a check-in from needs_you.
         - A request with two or more separate parts: call show_plan first with the steps in order, naming each step's tool, then carry them all out in the same turn without asking whether to start. Every change is still a card the person confirms.
 
         Data and safety
@@ -1008,7 +1014,7 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         A requested time without a date means today only if still in the future; otherwise ask which date. Never silently move it to tomorrow.
         Default to acting: when a request is clear, prepare the proposals now and state assumptions briefly; do not ask permission and never say you cannot do something before checking your tools. When the person repeats or insists, act instead of refusing again.
         The timesheet belongs to this app. Use propose_planned_leave to record future planned absence after confirmation; worked time the person spent is proposed with propose_log_time (their own entries, by work item key, never future days) and logged once they confirm. Never claim HR approval or send leave messages without a corresponding request.
-        From Home: needs_you lists what waits on the person with ids; act with propose_decide_agent_proposal, propose_review_timesheet, propose_submit_week, propose_clear_notification. Chat: chat_catch_up, chat_search (cite links), propose_chat_reply (thread). Pages: read_document, then propose_edit_page or propose_page_comment. Portfolio: portfolio_decisions, propose_apply_portfolio_option. Vault: vault_find returns names only; never ask for or reveal a secret; propose_vault_request, propose_vault_share. For several parts call show_plan first, then do every step.
+        From Home: needs_you lists what waits on the person with ids; act with propose_decide_agent_proposal, propose_review_timesheet, propose_submit_week, propose_clear_notification. Chat: chat_catch_up, chat_search (cite links), propose_chat_reply (thread). Pages: read_document, then propose_edit_page or propose_page_comment. Portfolio: portfolio_decisions, propose_apply_portfolio_option. Vault: vault_find returns names only; never ask for or reveal a secret; propose_vault_request, propose_vault_share. For several parts call show_plan first, then do every step. Day: my_schedule, my_time, decision_log, mail_inbox, mail_read, propose_mail_reply, propose_answer_check_in.
         Existing application services enforce permissions, plan limits and tenant boundaries. Do not request SQL or shell access.
         Do not repeat an identical tool call. Tool errors and incomplete work must be reported honestly; do not fabricate success.
         For reports use title, summary, evidence, risks and next steps. Substantial answers may end with
