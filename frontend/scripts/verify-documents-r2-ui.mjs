@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
+import { appCsp } from './lib/csp.mjs';
 
 // Documents release 2 on screen: a toggle and a live task list inside a page, "may be out of date" with what changed and "Still correct",
 // AI on selected text (preview, then replace), a comment on selected text (its highlight saved in the page) and resolving a thread from
@@ -10,7 +11,7 @@ import { fitsPhone } from './lib/phone.mjs';
 // words found inside pages, drafts to approve, team spaces and dragging a page into another. Built frontend, synthetic API only.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/documents-r2-ui');
 await fs.mkdir(out,{recursive:true});
-const csp=(await fs.readFile('nginx.conf','utf8')).match(/set \$sec_csp "([^"]+)";/)[1];
+const csp = await appCsp();
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Asha Rao',email:'asha@example.test',emailVerified:true,timeZone:'Asia/Kolkata',isPlatformAdmin:false};
 const ws={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Preview Workspace',type:'Organization',role:'Owner',planCode:'BUSINESS',memberCount:4};
 const token=`x.${Buffer.from(JSON.stringify({wid:ws.id,exp:4102444800})).toString('base64url')}.x`;

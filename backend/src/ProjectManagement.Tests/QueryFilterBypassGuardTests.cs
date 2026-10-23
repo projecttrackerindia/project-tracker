@@ -16,6 +16,8 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Vault/VaultService.Sealed.cs", // who has access to a sealed collection now: memberships of the whole workspace (named explicitly), so people outside the caller's project view never look like they lost access
         "ProjectManagement.Application/Features/Vault/SecretLinkPublic.cs", // a self-destructing link is opened without signing in: found by the hash of its token (unique across workspaces); its workspace's name and the sender's name only
         "ProjectManagement.Application/Features/Vault/VaultService.Links.cs", // a new link's token hash must be unique across workspaces: existence check only
+        "ProjectManagement.Application/Features/Vault/MachineAccess.cs", // a pipeline reads with GitHub's signed token, no workspace session: the binding is found by id and every claim checked against it; then only that binding's workspace and collection
+        "ProjectManagement.Application/Features/Vault/VaultService.Machines.cs", // values for a verified pipeline: the binding's own workspace and collection, named explicitly
         "ProjectManagement.Application/Features/Vault/VaultJobs.cs", // nightly vault work and offboarding: each query names its workspace (or reads only ids to visit each workspace in turn, as that workspace); key re-wrapping per workspace
         "ProjectManagement.Application/Features/Integrations/OAuthService.cs", // token endpoint: grants found by their secret hash, before any workspace exists
         "ProjectManagement.Api/Realtime/ChatHub.cs",

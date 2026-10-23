@@ -3,13 +3,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { cutOff, fitsPhone } from './lib/phone.mjs';
+import { appCsp } from './lib/csp.mjs';
 
 // The timesheet: the week grid (typing, keyboard, notes, rows, quick add, copy, export), Insights, Entries, bulk approval and the phone
 // day view. Built frontend with synthetic API fixtures only.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/timesheet-ui');
 await fs.mkdir(out,{recursive:true});
 const nginx=await fs.readFile('nginx.conf','utf8');
-const csp=nginx.match(/set \$sec_csp "([^"]+)";/)[1];
+const csp = await appCsp();
 // The live pages' Permissions-Policy, so the voice step fails here if the microphone is ever blocked for the site.
 const permissions=nginx.match(/set \$sec_permissions "([^"]+)";/)[1];
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Asha Rao',email:'asha@example.test',emailVerified:true,timeZone:'Asia/Kolkata',isPlatformAdmin:false};

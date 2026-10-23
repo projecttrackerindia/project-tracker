@@ -453,3 +453,10 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
   .vlt-banner.vlt-shield > span { flex: 1 1 calc(100% - 60px); }
   .vlt-banner.vlt-shield > a { margin-left: 26px; }
 }
+
+/* ---- pipelines */
+.vlt-machines { display: grid; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.vlt-machines-head { display: flex; flex-direction: column; gap: 2px; }
+.vlt-machines-head b { display: inline-flex; align-items: center; gap: 6px; }
+.vlt-machine-form { display: grid; gap: 8px; }
+.vlt-snippet { margin: 6px 0 2px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font: 11.5px/1.5 var(--vlt-mono); white-space: pre; overflow-x: auto; max-width: 100%; }

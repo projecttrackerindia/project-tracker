@@ -2,10 +2,11 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { appCsp } from './lib/csp.mjs';
 
 const origin='https://projecttracker-preview.test';const dist=path.resolve('dist');
 const artifacts=path.resolve(process.env.PM_UI_ARTIFACTS||'test-results/enterprise-ui','conversations');await fs.mkdir(artifacts,{recursive:true});
-const csp=(await fs.readFile('nginx.conf','utf8')).match(/set \$sec_csp "([^"]+)";/)[1];
+const csp = await appCsp();
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Alex Morgan',email:'preview@example.test',emailVerified:true,timeZone:'Asia/Kolkata',isPlatformAdmin:false};
 const colleague={userId:'00000000-0000-0000-0000-000000000003',name:'Sam Rivera',role:'Member',online:true,lastReadAt:'2026-10-12T10:00:00Z'};
 const workspace={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Design Workspace',type:'Organization',role:'Owner',planCode:'BUSINESS',memberCount:2};

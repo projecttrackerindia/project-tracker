@@ -123,6 +123,18 @@ public partial class AppDbContext
             e.Property(x => x.IpAddress).HasMaxLength(64);
             e.Property(x => x.UserAgent).HasMaxLength(300);
         });
+        b.Entity<VaultMachineBinding>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.CollectionId });
+            e.Property(x => x.Provider).HasMaxLength(20);
+            e.Property(x => x.Repository).HasMaxLength(140);
+            e.Property(x => x.RepositoryId).HasMaxLength(40);
+            e.Property(x => x.RefPattern).HasMaxLength(200);
+            e.Property(x => x.Environment).HasMaxLength(60);
+            e.Property(x => x.Label).HasMaxLength(80);
+            e.Property(x => x.LastRun).HasMaxLength(200);
+            e.HasOne<VaultCollection>().WithMany().HasForeignKey(x => x.CollectionId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<VaultSecretLink>(e =>
         {
             e.HasIndex(x => x.TokenHash).IsUnique();

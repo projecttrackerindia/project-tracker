@@ -3,13 +3,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
+import { appCsp } from './lib/csp.mjs';
 
 // Settings as one place: the overview (search, setup health with fixes, the seven groups, latest changes with undo), search that jumps to
 // the switch (from Settings and Ctrl+K), "last changed by" on a setting, the "who this affects" check before a risky switch or a shorter
 // retention is saved, and the notification defaults for members. Synthetic API fixtures only.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/settings-ui');
 await fs.mkdir(out,{recursive:true});
-const csp=(await fs.readFile('nginx.conf','utf8')).match(/set \$sec_csp "([^"]+)";/)[1];
+const csp = await appCsp();
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Asha Rao',email:'asha@example.test',emailVerified:true,timeZone:'Asia/Kolkata',isPlatformAdmin:false,mfaEnabled:true};
 const ws={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Preview Workspace',type:'Organization',role:'Owner',planCode:'BUSINESS',memberCount:4,timeZone:null};
 const token=`x.${Buffer.from(JSON.stringify({wid:ws.id,exp:4102444800})).toString('base64url')}.x`;

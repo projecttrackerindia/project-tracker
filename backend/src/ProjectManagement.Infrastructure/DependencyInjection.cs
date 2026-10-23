@@ -113,6 +113,7 @@ public static class DependencyInjection
         services.AddHttpClient("voice-speech", c => c.Timeout = TimeSpan.FromSeconds(25));
         services.AddHttpClient("support-whatsapp", c => c.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient("pwned-passwords", c => c.Timeout = TimeSpan.FromSeconds(5));
+        services.AddHttpClient("github-oidc", c => c.Timeout = TimeSpan.FromSeconds(5));   // GitHub Actions' published signing keys (vault machine access)
         services.AddHttpClient("github-app", c => c.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient("meetbot", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });

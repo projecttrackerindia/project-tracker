@@ -8,6 +8,7 @@ import { x25519 } from '@noble/curves/ed25519.js';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
+import { appCsp } from './lib/csp.mjs';
 
 // The password vault: values are never drawn outside the edit screen (copy only), the vault covers itself when the window is left, copying clears the clipboard, confidential items ask
 // for a two-step code once, use-only items can be copied but not shown, one-time codes come from the server, the editor's generator and
@@ -19,7 +20,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/vault-ui');
 await fs.mkdir(out, { recursive: true });
 const nginx = await fs.readFile('nginx.conf', 'utf8');
-const csp = nginx.match(/set \$sec_csp "([^"]+)";/)[1];
+const csp = await appCsp();
 const user = { id: '00000000-0000-0000-0000-000000000001', displayName: 'Asha Rao', email: 'asha@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
 const ws = { id: '00000000-0000-0000-0000-000000000002', slug: 'preview-org', name: 'Preview Workspace', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 4 };
 const token = `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`;
@@ -57,7 +58,7 @@ const detail = (id) => {
 const policy = { stepUpAlways: false, clipboardSeconds: 5, revealSeconds: 3, sharedAdminsOnly: false };
 const reqState = { mine: [], toDecide: [
   { id: 'r1', kind: 'Collection', collectionId: 'c9', collectionName: 'Ops break-glass', itemId: null, itemTitle: null, requester: { id: 'u2', name: 'Ravi Kumar' }, reason: 'Firewall change window tonight', access: 'View', minutes: 240, status: 'Pending', decidedBy: null, decidedAt: null, decisionNote: null, grantedUntil: null, createdAt: now, canDecide: true },
-], toHelp: [], recovery: null, links: [], decoys: [], requestable: [{ id: 'c8', name: 'Firewall admin', description: 'Edge firewalls', kind: 'Shared', sealed: false }] };
+], toHelp: [], recovery: null, links: [], machines: [], decoys: [], requestable: [{ id: 'c8', name: 'Firewall admin', description: 'Edge firewalls', kind: 'Shared', sealed: false }] };
 const sealedState = { identity: null, unlocks: [], envelopes: [], items: [], events: [], pendingDevice: null };
 const overview = () => ({ collections, policy, canAdmin: true, canCreateShared: true, health: { total: 4, weak: 1, reused: 0, breached: 1, expired: 0, old: 0, toRotate: 0, score: 75 }, mfaEnabled: true, identity: sealedState.identity, hasPasskeys: true });
 const sha1hex = (s) => createHash('sha1').update(s).digest('hex').toUpperCase();
@@ -117,6 +118,10 @@ try {
         else data = live ? { state: 'ready', note: l.note, from: 'Asha Rao', workspace: 'Preview Workspace', hasPassphrase: l.hasPassphrase, salt: l.salt, params: l.params, expiresAt: l.expiresAt, viewsLeft: l.maxViews - l.views }
           : { state: 'gone', note: null, from: null, workspace: null, hasPassphrase: false, salt: null, params: null, expiresAt: null, viewsLeft: 0 };
       }
+      else if (ep.match(/^\/api\/v1\/vault\/collections\/[^/]+\/machines$/) && method === 'POST') { writes.push({ ep, body }); const repo = body.repository.replace(/^https:\/\/github\.com\//, '');
+        const m = { id: `m${reqState.machines.length + 1}`, provider: 'github', repository: repo, pinned: false, refPattern: body.refPattern.startsWith('refs/') ? body.refPattern : `refs/heads/${body.refPattern}`, environment: body.environment, label: repo, createdAt: now, lastUsedAt: null, lastRun: null,
+          audience: `projecttracker-vault:${ws.id}`, endpoint: `/api/v1/machine/github/m${reqState.machines.length + 1}/secrets`, variables: ['AWS_ROOT_ACCOUNT_PASSWORD', 'PAYMENTS_DB_PASSWORD'] }; reqState.machines.push(m); data = m; }
+      else if (ep.match(/^\/api\/v1\/vault\/collections\/[^/]+\/machines$/)) data = reqState.machines;
       else if (ep === '/api/v1/vault/keys/circle') data = { circle: null };
       else if (ep === '/api/v1/vault/keys/directory') data = [{ userId: 'u2', name: 'Ravi Kumar', access: 'None', identity: null }, { userId: 'u4', name: 'Meera Iyer', access: 'None', identity: null }];
       else if (ep === '/api/v1/vault/recovery/to-help') data = reqState.toHelp;
@@ -190,6 +195,16 @@ try {
   assert.equal(await page.locator('.vlt-item').count(), 4);
   for (const v of Object.values(SECRETS).flatMap((s) => Object.values(s))) assert.ok(!(await html(page)).includes(v), 'no secret in the list page');
   checks.push('list-without-secrets');
+  // The app runs under its strict policy: Trusted Types clean anything put into innerHTML, and code from text is refused.
+  const tt = await page.evaluate(() => {
+    const d = document.createElement('div');
+    d.innerHTML = '<img src="x" onerror="window.__x=1"><b>ok</b><script>window.__y=1<' + '/script><svg><a href="javascript:alert(1)"><text>t</text></a></svg><iframe srcdoc="x"></iframe>';
+    return { html: d.innerHTML, policy: !!(window.trustedTypes && window.trustedTypes.defaultPolicy) };
+  });
+  assert.ok(tt.policy, 'a default Trusted Types policy');
+  assert.ok(/require-trusted-types-for 'script'/.test(csp) && !/unsafe-inline|unsafe-eval/.test(csp.match(/script-src[^;]*/)[0]), 'scripts by hash only, Trusted Types required');
+  assert.match(tt.html, /<b>ok<\/b>/); assert.ok(!/onerror|<script|javascript:|<iframe/i.test(tt.html), `cleaned: ${tt.html}`);
+  checks.push('trusted-types');
   // Tiles drawn here (nothing fetched), health at a glance, and copying straight from the list with the keyboard.
   assert.equal(await page.locator('.vlt-item[data-item="AWS root account"] .vlt-tile-text').innerText(), 'aws');
   assert.equal(await page.locator('.vlt-item[data-item="Bank portal"] .vlt-tile-text').innerText(), 'BP');
@@ -363,7 +378,7 @@ try {
 
   // Sharing a collection.
   await page.locator('.vlt-rail [data-collection="Payments servers"]').click();
-  await page.getByRole('button', { name: 'Access' }).click();
+  await page.getByRole('button', { name: 'Access', exact: true }).click();
   await page.locator('.vlt-share-row').first().waitFor();
   assert.equal(await page.locator('.vlt-share-row').count(), 2);
   await page.getByRole('button', { name: 'Add a person' }).click();
@@ -375,6 +390,21 @@ try {
   assert.deepEqual(shares.at(-1), { principalType: 'User', principalId: 'u4', access: 'UseOnly', expiresAt: null });
   assert.equal(shares.length, 3);
   checks.push('sharing');
+  // A GitHub Actions pipeline may read the collection with its own run token: no secret stored in GitHub.
+  await page.getByRole('button', { name: 'Access', exact: true }).click();
+  await page.getByTestId('machines').waitFor();
+  await page.getByRole('button', { name: 'Allow a GitHub Actions pipeline' }).click();
+  await page.getByLabel('Repository').fill('https://github.com/fivestar/payments-api');
+  await page.getByLabel('Environment').fill('production');
+  await page.getByRole('button', { name: 'Allow this pipeline' }).click();
+  await waitFor(() => writes.some((w) => w.ep.endsWith('/c2/machines') && w.body), 'pipeline allowed');
+  const mBody = writes.find((w) => w.ep.endsWith('/c2/machines')).body;
+  assert.equal(mBody.repository, 'https://github.com/fivestar/payments-api'); assert.equal(mBody.refPattern, 'main'); assert.equal(mBody.environment, 'production');
+  await page.getByTestId('workflow-snippet').waitFor();
+  const snippet = await page.getByTestId('workflow-snippet').innerText();
+  assert.match(snippet, /id-token: write/); assert.match(snippet, new RegExp(`audience=projecttracker-vault:${ws.id}`)); assert.match(snippet, /::add-mask::/); assert.match(snippet, /environment: production/);
+  await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click();
+  checks.push('pipeline-access');
 
   // Health.
   await page.locator('.vlt-rail button', { hasText: 'Health' }).click();

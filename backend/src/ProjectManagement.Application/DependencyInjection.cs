@@ -92,6 +92,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Vault.VaultService>();
         services.AddScoped<ProjectManagement.Application.Features.Vault.VaultOffboarding>();
         services.AddScoped<ProjectManagement.Application.Features.Vault.SecretLinkPublic>();
+        services.AddScoped<ProjectManagement.Application.Features.Vault.MachineAccess>();
         services.AddScoped<ProjectManagement.Application.Features.Vault.VaultJobs>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.GoogleCalendarAuthService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.PersonalEmailService>();

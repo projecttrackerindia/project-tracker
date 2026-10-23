@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
+import { appCsp } from './lib/csp.mjs';
 
 // Chat upgrades on screen: questions waiting for me, a pinned message, a task key as a live card, a voice note with its transcript, a
 // poll (vote, then close with a decision), a thread beside the conversation (reply in it), suggested replies, AI rewrite of the draft,
@@ -10,7 +11,7 @@ import { fitsPhone } from './lib/phone.mjs';
 // Built frontend, synthetic API only.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/chat-upgrades-ui');
 await fs.mkdir(out, { recursive: true });
-const csp = (await fs.readFile('nginx.conf', 'utf8')).match(/set \$sec_csp "([^"]+)";/)[1];
+const csp = await appCsp();
 const user = { id: '00000000-0000-0000-0000-000000000001', displayName: 'Alex Morgan', email: 'alex@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
 const ws = { id: '00000000-0000-0000-0000-000000000002', slug: 'preview-org', name: 'Preview Workspace', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 3 };
 const sam = { userId: '00000000-0000-0000-0000-000000000003', name: 'Sam Rivera', role: 'Member', online: true, lastReadAt: new Date().toISOString(), statusEmoji: '🌴', statusText: 'On leave till Monday', dnd: false };

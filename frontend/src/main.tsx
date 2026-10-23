@@ -1,3 +1,4 @@
+import './lib/trustedTypesInit';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { installStableTabs } from './lib/stableTabs';

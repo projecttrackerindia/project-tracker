@@ -222,6 +222,17 @@ public class VaultController(VaultService vault, StepUpService stepUp, ProjectMa
     [HttpDelete("links/{id:guid}")]
     public async Task<IActionResult> RevokeLink(Guid id, CancellationToken ct) { await vault.RevokeSecretLinkAsync(id, ct); return NoContent(); }
 
+    // ------------------------------------------------------------- machines (GitHub Actions) that may read a guarded collection
+
+    [HttpGet("collections/{id:guid}/machines")]
+    public async Task<IActionResult> Machines(Guid id, CancellationToken ct) { NoStore(); return Ok(await vault.MachinesAsync(id, ct)); }
+
+    [HttpPost("collections/{id:guid}/machines")]
+    public async Task<IActionResult> AddMachine(Guid id, [FromBody] SaveMachineRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.AddMachineAsync(id, req, ct)); }
+
+    [HttpDelete("machines/{id:guid}")]
+    public async Task<IActionResult> RemoveMachine(Guid id, CancellationToken ct) { await vault.RemoveMachineAsync(id, ct); return NoContent(); }
+
     // ------------------------------------------------------------- the recovery circle
 
     [HttpGet("keys/circle")]

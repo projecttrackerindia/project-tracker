@@ -275,6 +275,25 @@ public class VaultSecretLink : TenantEntity, ITenantScoped
     public string? LastOpenedIp { get; set; }
 }
 
+/// <summary>
+/// A machine allowed to read a guarded collection: a GitHub Actions workflow of one repository (pinned by its id on first use, so a renamed
+/// or transferred repository cannot take its place), on matching branches or tags and optionally one deployment environment. It proves
+/// who it is with the short-lived OpenID Connect token GitHub gives each run — there is no stored password to leak.
+/// </summary>
+public class VaultMachineBinding : TenantEntity, ITenantScoped
+{
+    public Guid CollectionId { get; set; }
+    public string Provider { get; set; } = "github";
+    public string Repository { get; set; } = "";
+    public string? RepositoryId { get; set; }
+    public string RefPattern { get; set; } = "refs/heads/main";
+    public string? Environment { get; set; }
+    public string Label { get; set; } = "";
+    public DateTime? LastUsedAt { get; set; }
+    public string? LastRun { get; set; }
+    public DateTime? DisabledAt { get; set; }
+}
+
 public enum VaultRequestKind { Reveal = 0, Collection = 1 }
 public enum VaultRequestStatus { Pending = 0, Approved = 1, Denied = 2, Cancelled = 3, Expired = 4 }
 

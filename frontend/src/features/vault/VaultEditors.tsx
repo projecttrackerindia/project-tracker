@@ -12,6 +12,7 @@ import {
 import { copySecret, generatePassphrase, generatePassword, looksLikeTotp, readExport, strength, STRENGTH_LABEL } from './secure';
 import { keyring } from './e2ee/keyring';
 import { SealedKeysPanel } from './SealedVault';
+import { MachinesPanel } from './VaultMachines';
 import * as sealed from './e2ee/sealed';
 import { useStepUp } from './stepUpContext';
 
@@ -481,6 +482,7 @@ export function ShareEditor({ collection, meId, onClose, onSaved }: { collection
         </div>
         <ul className="vlt-access-legend">{(collection.sealed ? ['View', 'Manage'] as const : ['UseOnly', 'View', 'Manage'] as const).map((a) => <li key={a}><b>{ACCESS_LABEL[a]}</b> {ACCESS_HINT[a].toLowerCase()}</li>)}</ul>
         {collection.sealed && <SealedKeysPanel collection={collection} />}
+        {!collection.sealed && collection.kind !== 'Personal' && <MachinesPanel collection={collection} />}
         {members.error && <p className="vlt-small muted">The member list is not available to you; people already on the list stay.</p>}
         {managers === 0 && <p className="form-error" role="alert">Keep at least one person or group who manages it without an end date.</p>}
         {error && <p className="form-error" role="alert">{error}</p>}

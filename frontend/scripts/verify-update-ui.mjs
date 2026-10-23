@@ -5,12 +5,13 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { appCsp } from './lib/csp.mjs';
 
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/update-banner');
 await fs.mkdir(out, { recursive: true });
 const nginx = await fs.readFile('nginx.conf', 'utf8');
 assert.match(nginx, /location = \/version\.json \{\s*add_header Cache-Control "no-store";/, 'nginx serves /version.json with no-store');
-const csp = nginx.match(/set \$sec_csp "([^"]+)";/)[1];
+const csp = await appCsp();
 const indexHtml = await fs.readFile(path.join(dist, 'index.html'), 'utf8');
 const running = indexHtml.match(/<meta name="app-build" content="([^"]+)"/)?.[1];
 assert.ok(running, 'index.html names its build');

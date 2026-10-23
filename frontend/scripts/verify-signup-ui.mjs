@@ -2,11 +2,12 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cspFor } from './lib/csp.mjs';
 
 // Sign-up asks Personal or Organisation and sends only that choice; an invited person is asked nothing.
 const dist = path.resolve('dist');
 const origin = 'https://projecttracker-preview.test';
-const csp = (await fs.readFile('nginx.conf', 'utf8')).match(/set \$sec_csp "([^"]+)";/)[1];
+const pageCsp = await cspFor(); const csp = pageCsp();
 const artifacts = path.resolve(process.env.PM_UI_ARTIFACTS || 'test-results/enterprise-ui', 'signup');
 await fs.mkdir(artifacts, { recursive: true });
 const sent = [];
@@ -24,7 +25,7 @@ try {
       const type = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png' }[path.extname(file)] || 'application/octet-stream';
       const body = await fs.readFile(file).catch(() => null);
       if (!body) { await route.fulfill({ status: 404, body: '' }); return; }
-      await route.fulfill({ status: 200, contentType: type, body, headers: path.extname(file) === '.html' ? { 'content-security-policy': csp } : {} }); return;
+      await route.fulfill({ status: 200, contentType: type, body, headers: path.extname(file) === '.html' ? { 'content-security-policy': pageCsp(file) } : {} }); return;
     }
     const p = url.pathname;
     if (p.endsWith('/auth/register')) { sent.push(route.request().postDataJSON()); await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ data: { userId: 'u1', requiresEmailVerification: true } }) }); return; }

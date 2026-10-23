@@ -34,7 +34,7 @@ function paint(){
 Object.keys(per).forEach(function(code){var r=quote(units[code],seats);
 d.querySelectorAll('[data-price="'+code+'"]').forEach(function(e){e.textContent=fmt(r.eff)});
 d.querySelectorAll('[data-was="'+code+'"]').forEach(function(e){if(r.t>0){e.hidden=false;e.textContent=fmt(units[code])}else{e.hidden=true}});
-d.querySelectorAll('[data-total="'+code+'"]').forEach(function(e){e.innerHTML='<b>'+fmt(r.charge)+'</b> '+(period==='yearly'?'a year':'a month')+' for '+seats+(seats===1?' person':' people')+(r.saved>0?' &middot; save '+fmt(r.saved):'')})});
+d.querySelectorAll('[data-total="'+code+'"]').forEach(function(e){var b=document.createElement('b');b.textContent=fmt(r.charge);e.replaceChildren(b,document.createTextNode(' '+(period==='yearly'?'a year':'a month')+' for '+seats+(seats===1?' person':' people')+(r.saved>0?' \\u00b7 save '+fmt(r.saved):'')))})});
 d.querySelectorAll('[data-seats-out]').forEach(function(e){e.textContent=seats});
 d.querySelectorAll('[data-calc-note]').forEach(function(e){var v=vol(seats),n=null;POL.tiers.forEach(function(t){if(!n&&seats<t[0])n=t});
 e.textContent=(v?'Your team size earns '+v+'% off. ':'')+(n?'Teams of '+n[0]+'+ get '+n[1]+'% off.':'')+(period==='yearly'?' Paying yearly takes another '+POL.annual+'% off (together at most '+POL.max+'%).':'')})}

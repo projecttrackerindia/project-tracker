@@ -428,11 +428,41 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(name: "IX_VaultSecretLinks_TokenHash", table: "VaultSecretLinks", column: "TokenHash", unique: true);
             migrationBuilder.CreateIndex(name: "IX_VaultSecretLinks_TenantId_CreatedBy_CreatedAt", table: "VaultSecretLinks", columns: new[] { "TenantId", "CreatedBy", "CreatedAt" });
             migrationBuilder.CreateIndex(name: "IX_VaultSecretLinks_ExpiresAt", table: "VaultSecretLinks", column: "ExpiresAt");
+
+            migrationBuilder.CreateTable(
+                name: "VaultMachineBindings",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    CollectionId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Provider = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    Repository = table.Column<string>(type: "character varying(140)", maxLength: 140, nullable: false),
+                    RepositoryId = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: true),
+                    RefPattern = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Environment = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: true),
+                    Label = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
+                    LastUsedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    LastRun = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    DisabledAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VaultMachineBindings", x => x.Id);
+                    table.ForeignKey(name: "FK_VaultMachineBindings_VaultCollections_CollectionId", column: x => x.CollectionId, principalTable: "VaultCollections", principalColumn: "Id", onDelete: ReferentialAction.Cascade);
+                });
+            migrationBuilder.CreateIndex(name: "IX_VaultMachineBindings_CollectionId", table: "VaultMachineBindings", column: "CollectionId");
+            migrationBuilder.CreateIndex(name: "IX_VaultMachineBindings_TenantId_CollectionId", table: "VaultMachineBindings", columns: new[] { "TenantId", "CollectionId" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(name: "VaultMachineBindings");
             migrationBuilder.DropTable(name: "VaultSecretLinks");
             migrationBuilder.DropTable(name: "VaultRecoveryReleases");
             migrationBuilder.DropTable(name: "VaultRecoveryRequests");

@@ -2,12 +2,13 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { appCsp } from './lib/csp.mjs';
 
 // Serve the production bundle with production CSP. Every API is synthetic;
 // unexpected writes and AI/provider calls fail the check.
 const dist = path.resolve('dist');
 const origin = 'https://projecttracker-preview.test';
-const csp = (await fs.readFile('nginx.conf', 'utf8')).match(/set \$sec_csp "([^"]+)";/)[1];
+const csp = await appCsp();
 const artifacts = path.resolve(process.env.PM_UI_ARTIFACTS || 'test-results/enterprise-ui', 'workspace');
 await fs.mkdir(artifacts, { recursive: true });
 const user = { id: '00000000-0000-0000-0000-000000000001', displayName: 'Alex Morgan', email: 'preview@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };

@@ -2,12 +2,13 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { cspFor } from './lib/csp.mjs';
 
 // The public website: the landing page, Features, the new feature pages and Pricing at desktop and phone width. Prices come from the
 // live price list (mocked here with the current catalog), the AI employee scene and the suite tiles render, nothing scrolls sideways.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/site-ui');
 await fs.mkdir(out, { recursive: true });
-const csp = (await fs.readFile('nginx.conf', 'utf8')).match(/set \$sec_csp "([^"]+)";/)[1];
+const pageCsp = await cspFor(); const csp = pageCsp();
 const pricing = { policy: { annualDiscountPercent: 20, maxTotalDiscountPercent: 30, volumeTiers: [{ minSeats: 10, percent: 10 }, { minSeats: 25, percent: 15 }, { minSeats: 100, percent: 20 }] },
   plans: [{ code: 'FREE', priceMonthly: 0, currency: 'INR', perSeat: false }, { code: 'PRO', priceMonthly: 449, currency: 'INR', perSeat: true }, { code: 'BUSINESS', priceMonthly: 999, currency: 'INR', perSeat: true }, { code: 'ENTERPRISE', priceMonthly: null, currency: 'INR', perSeat: false }] };
 const errors = [], checks = [];
@@ -24,7 +25,7 @@ try {
       let file = path.resolve(dist, ep.slice(1));
       if (ep.endsWith('/')) file = path.join(file, 'index.html');
       if (!file.startsWith(dist) || !(await fs.stat(file).catch(() => null))?.isFile()) file = path.join(dist, 'index.html');
-      await route.fulfill({ contentType: types[path.extname(file)] || 'application/octet-stream', body: await fs.readFile(file), headers: file.endsWith('.html') ? { 'content-security-policy': csp } : {} });
+      await route.fulfill({ contentType: types[path.extname(file)] || 'application/octet-stream', body: await fs.readFile(file), headers: file.endsWith('.html') ? { 'content-security-policy': pageCsp(file) } : {} });
     });
     const page = await ctx.newPage();
     page.on('pageerror', (e) => errors.push(`${w}: ${e.message}`));

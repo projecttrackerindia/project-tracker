@@ -108,6 +108,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public FakeConnectorApi Connectors { get; } = new();
     public FakePwnedPasswords Pwned { get; } = new();
     public FakeGitHub GitHub { get; } = new();
+    /// <summary>Stands in for GitHub Actions' OpenID Connect issuer (vault machine access).</summary>
+    public FakeGitHubOidc GitHubOidc { get; } = new();
     /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
     public FakeDns Dns { get; } = new();
     /// <summary>Stands in for Claude (off until a test switches it on).</summary>
@@ -166,6 +168,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddHttpClient("voice-connector").ConfigurePrimaryHttpMessageHandler(() => Connectors);
             services.AddHttpClient("pwned-passwords").ConfigurePrimaryHttpMessageHandler(() => Pwned);
             services.AddHttpClient("github-app").ConfigurePrimaryHttpMessageHandler(() => GitHub);
+            services.AddHttpClient("github-oidc").ConfigurePrimaryHttpMessageHandler(() => GitHubOidc);
             services.RemoveAll<ProjectManagement.Application.Features.Voice.ConnectorCaller>();
             services.AddScoped<ProjectManagement.Application.Features.Voice.ConnectorCaller, TestConnectorCaller>();
             services.RemoveAll<ProjectManagement.Application.Abstractions.IChangeFeed>();
