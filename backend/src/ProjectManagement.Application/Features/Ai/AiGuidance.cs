@@ -148,8 +148,8 @@ public class AiGuidance(IAppDbContext db, ICurrentContext ctx, AppClock clock, W
             var question = await db.AiMessages.AsNoTracking().Where(m => m.ConversationId == d.ConversationId && m.UserId == me && m.Role == "user" && m.CreatedAt <= d.CreatedAt)
                 .OrderByDescending(m => m.CreatedAt).Select(m => m.Content).FirstOrDefaultAsync(ct);
             if (string.IsNullOrWhiteSpace(question)) continue;
-            var tools = string.IsNullOrEmpty(d.ToolsJson) ? [] : (JsonSerializer.Deserialize<List<AiToolUseDto>>(d.ToolsJson, Json) ?? []).Select(t => t.Name).Distinct().ToList();
-            var cards = string.IsNullOrEmpty(d.ActionsJson) ? [] : (JsonSerializer.Deserialize<List<AiProposal>>(d.ActionsJson, Json) ?? []).Select(p => p.Kind).Distinct().ToList();
+            List<string> tools = string.IsNullOrEmpty(d.ToolsJson) ? [] : (JsonSerializer.Deserialize<List<AiToolUseDto>>(d.ToolsJson, Json) ?? []).Select(t => t.Name).Distinct().ToList();
+            List<string> cards = string.IsNullOrEmpty(d.ActionsJson) ? [] : (JsonSerializer.Deserialize<List<AiProposal>>(d.ActionsJson, Json) ?? []).Select(p => p.Kind).Distinct().ToList();
             list.Add(new AiFeedbackCaseDto($"feedback-{d.Id.ToString("N")[..8]}", question.Length > 1000 ? question[..1000] : question, d.FeedbackReason, tools, cards, d.CreatedAt, $"/ai/{d.ConversationId}"));
         }
         return list;
