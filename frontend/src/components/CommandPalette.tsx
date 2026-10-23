@@ -21,13 +21,14 @@ export function searchHitLink(h: Pick<SearchHit, 'type' | 'id' | 'projectId' | '
     case 'action': return `/projects/${h.projectId}?tab=actions&action=${h.id}`;
     case 'work': return `/operations?task=${h.id}`;
     case 'project': return `/projects/${h.id}`;
+    case 'page': return `/documents/${h.id}`;
     case 'team': return '/people/teams';
     case 'member': return '/people';
     case 'label': return '/settings/labels';
     default: return '/projects';
   }
 }
-const HIT_ICON: Record<string, IconName> = { task: 'check', issue: 'bug', action: 'flag', work: 'bolt', project: 'folder', team: 'users', member: 'user', comment: 'message', file: 'paperclip', label: 'tag' };
+const HIT_ICON: Record<string, IconName> = { task: 'check', issue: 'bug', action: 'flag', work: 'bolt', project: 'folder', team: 'users', member: 'user', comment: 'message', file: 'paperclip', label: 'tag', page: 'note' };
 
 interface Command { id: string; group: string; label: string; hint?: string; icon: IconName | 'ai'; keywords?: string; run: () => void }
 

@@ -194,6 +194,18 @@ export async function uploadFile<T>(path: string, file: File, fields?: Record<st
   return data as T;
 }
 
+/** POSTs a whole form (fields and any number of files) as multipart/form-data. */
+export async function postForm<T>(path: string, body: FormData): Promise<T> {
+  const send = async () => fetch(`${BASE}/api/v1${path}`, {
+    method: 'POST', body, credentials: 'include', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+  let res = await send();
+  if (res.status === 401) res = await renewOrLose(res, send);
+  const { data, error } = await parse(res);
+  if (error) throw error;
+  return data as T;
+}
+
 /**
  * POST whose answer is read as it arrives (server-sent events). Returns the open response once the server has accepted the request;
  * a refusal (no plan, no credits, a bad file ...) comes back as an ordinary error response and is thrown as an ApiError.

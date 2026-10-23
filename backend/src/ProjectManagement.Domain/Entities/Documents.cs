@@ -98,6 +98,15 @@ public class Document : TenantEntity, ITenantScoped, ISoftDelete
     public string ApiHash { get; set; } = "";
     /// <summary>Lower-case plain text of what readers see (the published version, or the draft until there is one): the section titles and words, for search. Never holds secret values.</summary>
     public string? SearchText { get; set; }
+    /// <summary>The owner (or an editor) confirmed the page is still right: shown as a verified badge with the date.</summary>
+    public DateTime? VerifiedAt { get; set; }
+    public Guid? VerifiedBy { get; set; }
+    /// <summary>Linked work (tasks, the project, a sprint, mentioned pages) changed after the page was last edited or verified, from this moment.</summary>
+    public DateTime? StaleSince { get; set; }
+    /// <summary>What changed, in a sentence ("PAY-12 moved to Done and 2 more changed").</summary>
+    public string? StaleReason { get; set; }
+    /// <summary>The owner was told once; cleared when the page is edited or verified.</summary>
+    public DateTime? StaleNotifiedAt { get; set; }
     public DateTime? SearchIndexedAt { get; set; }
 
     public bool IsDeleted { get; set; }
@@ -234,6 +243,41 @@ public class DocumentComment : TenantEntity, ITenantScoped
     public Guid UserId { get; set; }
     public string Body { get; set; } = "";
     public DateTime? EditedAt { get; set; }
+    /// <summary>A reply: the first comment of the thread. Null for a thread's first comment (or a page-level comment).</summary>
+    public Guid? ParentId { get; set; }
+    /// <summary>The id of the comment mark on the selected text in the page (threads on text only).</summary>
+    public string? AnchorId { get; set; }
+    /// <summary>The words that were selected when the thread started.</summary>
+    public string? Quote { get; set; }
+    public DateTime? ResolvedAt { get; set; }
+    public Guid? ResolvedBy { get; set; }
+}
+
+/// <summary>
+/// A page that writes itself, waiting for a person to approve it: meeting decisions for the project's decision log, release notes from a
+/// finished sprint, an API reference after its API changed. Accepting adds it to the target page (or creates the page); nothing is written
+/// to a page without a person approving it.
+/// </summary>
+public class DocumentProposal : TenantEntity, ITenantScoped
+{
+    public Guid? ProjectId { get; set; }
+    /// <summary>decision-log, release-notes or api-reference.</summary>
+    public string Kind { get; set; } = "";
+    /// <summary>meeting, sprint or api: what it was written from.</summary>
+    public string SourceType { get; set; } = "";
+    public Guid? SourceId { get; set; }
+    public string Title { get; set; } = "";
+    /// <summary>One line on what it adds ("3 decisions from the 21 Oct review").</summary>
+    public string Summary { get; set; } = "";
+    /// <summary>The text to add, as editor JSON.</summary>
+    public string Body { get; set; } = "";
+    /// <summary>The page it is added to (the project's decision log, an existing reference); null = a new page on accepting.</summary>
+    public Guid? TargetDocumentId { get; set; }
+    /// <summary>Proposed, Accepted or Dismissed.</summary>
+    public string Status { get; set; } = "Proposed";
+    public Guid? DecidedBy { get; set; }
+    public DateTime? DecidedAt { get; set; }
+    public Guid? ResultDocumentId { get; set; }
 }
 
 /// <summary>One entry of a document type's template (what a new document starts with).</summary>

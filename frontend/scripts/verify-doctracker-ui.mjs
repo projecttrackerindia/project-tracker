@@ -108,7 +108,7 @@ try{
  // The old Documents link lands in DocTracker; the Control Center sums up scores.
  await page.goto(origin+'/preview-org/documents');await page.waitForURL(/\/doctracker/);
  await page.locator('.dt-home .dt-hero',{hasText:'API quality'}).waitFor();
- assert.equal(await page.locator('.dl-starter').count(),4,'a blank page and three templates');await page.locator('.dl-rows .dl-row',{hasText:'Payments BRD'}).first().waitFor();
+ assert.equal(await page.locator('.dl-starter').count(),5,'write with AI, a blank page and three templates');await page.locator('.dl-rows .dl-row',{hasText:'Payments BRD'}).first().waitFor();
  assert.equal(await page.locator('.dt-kpis').count(),0,'no wall of counters');
  await page.getByLabel('Search DocTracker').fill('refunds');await page.locator('.dl-section[aria-label="Search results"] .dl-row',{hasText:'/refunds'}).waitFor();await page.getByLabel('Search DocTracker').fill('');
  assert.equal((await page.locator('.dt-hero .dt-ring b').first().textContent()).trim(),'77');   // (90+100+40)/3

@@ -7,7 +7,7 @@ namespace ProjectManagement.Api.Controllers.Documents;
 
 /// <summary>The API reference of a document: the APIs it describes, their endpoints, import and export, and what changed between versions. Who may open a document is decided in the data layer (see <c>DocumentService</c>).</summary>
 [Route("api/v1"), RequireWorkspace, RequireModule(Modules.Documents)]
-public class ApiDocsController(ApiDocService api, ApiTransferService transfer) : ApiControllerBase
+public class ApiDocsController(ApiDocService api, ApiTransferService transfer, ProjectManagement.Application.Features.Documents.DocumentProposalService proposals) : ApiControllerBase
 {
     [HttpGet("documents/{id:guid}/api")]
     public async Task<IActionResult> Overview(Guid id, [FromQuery] Guid? versionId, CancellationToken ct) => Ok(await api.OverviewAsync(id, versionId, ct));
@@ -33,10 +33,10 @@ public class ApiDocsController(ApiDocService api, ApiTransferService transfer) :
     public async Task<IActionResult> RevealEndpoint(Guid id, Guid endpointId, [FromBody] ProjectManagement.Application.Features.Documents.DocumentRevealRequest req, CancellationToken ct) => Ok(await api.RevealAsync(id, endpointId, req, ct));
 
     [HttpPost("documents/{id:guid}/api/endpoints")]
-    public async Task<IActionResult> AddEndpoint(Guid id, [FromBody] SaveEndpointRequest req, CancellationToken ct) => Created(await api.SaveEndpointAsync(id, null, req, ct));
+    public async Task<IActionResult> AddEndpoint(Guid id, [FromBody] SaveEndpointRequest req, CancellationToken ct) { var e = await api.SaveEndpointAsync(id, null, req, ct); await proposals.SuggestAsync("api-reference", id, ct); return Created(e); }
 
     [HttpPut("documents/{id:guid}/api/endpoints/{endpointId:guid}")]
-    public async Task<IActionResult> UpdateEndpoint(Guid id, Guid endpointId, [FromBody] SaveEndpointRequest req, CancellationToken ct) => Ok(await api.SaveEndpointAsync(id, endpointId, req, ct));
+    public async Task<IActionResult> UpdateEndpoint(Guid id, Guid endpointId, [FromBody] SaveEndpointRequest req, CancellationToken ct) { var e = await api.SaveEndpointAsync(id, endpointId, req, ct); await proposals.SuggestAsync("api-reference", id, ct); return Ok(e); }
 
     [HttpDelete("documents/{id:guid}/api/endpoints/{endpointId:guid}")]
     public async Task<IActionResult> DeleteEndpoint(Guid id, Guid endpointId, CancellationToken ct)
@@ -47,7 +47,7 @@ public class ApiDocsController(ApiDocService api, ApiTransferService transfer) :
 
     /// <summary>Import an OpenAPI 3 (JSON or YAML) or Postman 2.1 file. <c>dryRun</c> only says what would happen.</summary>
     [HttpPost("documents/{id:guid}/api/import"), RequestSizeLimit(7_000_000)]
-    public async Task<IActionResult> Import(Guid id, [FromBody] ImportApiRequest req, CancellationToken ct) => Ok(await transfer.ImportAsync(id, req, ct));
+    public async Task<IActionResult> Import(Guid id, [FromBody] ImportApiRequest req, CancellationToken ct) { var r = await transfer.ImportAsync(id, req, ct); await proposals.SuggestAsync("api-reference", id, ct); return Ok(r); }
 
     [HttpGet("documents/{id:guid}/api/export")]
     public async Task<IActionResult> Export(Guid id, [FromQuery] string? format, [FromQuery] Guid? definitionId, [FromQuery] Guid? versionId, CancellationToken ct)

@@ -17,9 +17,11 @@ public record DtEndpoint(Guid Id, Guid DocumentId, Guid DefinitionId, string Def
     int Score, IReadOnlyList<string> Gaps, string Stage, DateTime? UpdatedAt);
 public record DtDefinition(Guid Id, Guid DocumentId, string Name, string? Version, string Stage, string Auth, IReadOnlyList<string> Servers);
 public record DtDocument(Guid Id, string Key, string Title, string TypeCode, string TypeName, string TypeColor, DocumentStatus Status, DocumentClassification Classification, DateTime UpdatedAt, bool IsApi,
-    Guid? ParentId = null, int PageOrder = 0, string? Icon = null);
+    Guid? ParentId = null, int PageOrder = 0, string? Icon = null, Guid? TeamId = null);
+/// <summary>A team's space: the company-wide (no project) pages kept for one team. Mine: the person is in the team (they can add pages to it).</summary>
+public record DtTeam(Guid Id, string Name, bool Mine, int Pages);
 public record DtProject(Guid? Id, string? Key, string Name, IReadOnlyList<DtEndpoint> Endpoints, IReadOnlyList<DtDefinition> Definitions, IReadOnlyList<DtDocument> Documents, int Diagrams);
-public record DtCatalog(IReadOnlyList<DtProject> Projects, bool CanCreate, bool IsAdmin, int Truncated);
+public record DtCatalog(IReadOnlyList<DtProject> Projects, bool CanCreate, bool IsAdmin, int Truncated, IReadOnlyList<DtTeam>? Teams = null);
 public record DtDiagram(string Key, string Title, string Kind, JsonNode Data);
 public record DtArchitecture(Guid? ProjectId, IReadOnlyList<DtDiagram> Diagrams, string? Notes, bool CanEdit, DateTime? UpdatedAt, string? UpdatedBy);
 public record SaveArchitectureRequest(IReadOnlyList<DtDiagram>? Diagrams, string? Notes);
@@ -47,7 +49,7 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var docs = await (from d in db.Documents.AsNoTracking()
                           join t in db.DocumentTypes.AsNoTracking() on d.TypeId equals t.Id
                           where d.Status != DocumentStatus.Archived
-                          select new { d.Id, d.Number, d.Title, d.ProjectId, d.Status, d.Classification, Updated = d.UpdatedAt ?? d.CreatedAt, t.Code, t.Name, t.Color, d.ParentId, d.PageOrder, d.Icon }).Take(5000).ToListAsync(ct);
+                          select new { d.Id, d.Number, d.Title, d.ProjectId, d.Status, d.Classification, Updated = d.UpdatedAt ?? d.CreatedAt, t.Code, t.Name, t.Color, d.ParentId, d.PageOrder, d.Icon, d.TeamId }).Take(5000).ToListAsync(ct);
         var docIds = docs.Select(d => d.Id).ToList();
         var defs = await db.ApiDefinitions.AsNoTracking().Where(x => docIds.Contains(x.DocumentId)).OrderBy(x => x.SortOrder).ToListAsync(ct);
         var apiDocIds = defs.Select(x => x.DocumentId).Distinct().ToList();
@@ -90,12 +92,19 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
             return new DtProject(pid, key, name,
                 endpoints.Where(e => mineIds.Contains(e.Doc)).Select(ToEp).OrderBy(e => e.Tag ?? "~").ThenBy(e => e.Path).ToList(),
                 defs.Where(x => mineIds.Contains(x.DocumentId)).Select(x => new DtDefinition(x.Id, x.DocumentId, x.Name, x.Version, x.Stage.ToString(), x.Auth.ToString(), ApiJson.ReadServers(x.ServersJson))).ToList(),
-                mine.OrderByDescending(d => d.Updated).Select(d => new DtDocument(d.Id, DocumentService.KeyOf(d.Number), d.Title, d.Code, d.Name, d.Color, d.Status, d.Classification, d.Updated, apiDocIds.Contains(d.Id), d.ParentId, d.PageOrder, d.Icon)).ToList(),
+                mine.OrderByDescending(d => d.Updated).Select(d => new DtDocument(d.Id, DocumentService.KeyOf(d.Number), d.Title, d.Code, d.Name, d.Color, d.Status, d.Classification, d.Updated, apiDocIds.Contains(d.Id), d.ParentId, d.PageOrder, d.Icon, d.ProjectId is null ? d.TeamId : null)).ToList(),
                 Diagrams(pid ?? Guid.Empty));
         }
         var list = projects.Select(p => Build(p.Id, p.Key, p.Name)).ToList();
         list.Add(Build(null, null, "General"));
-        return new DtCatalog(list, await permissions.HasAsync(Permissions.DocsCreate, ct), IsAdmin, truncated);
+        // Team spaces: the teams the person is in, and any team whose pages they can read.
+        var uid = ctx.UserId;
+        var myTeams = uid is { } me ? await db.TeamMembers.AsNoTracking().Where(m => m.UserId == me).Select(m => m.TeamId).ToListAsync(ct) : new List<Guid>();
+        var teamPages = docs.Where(d => d.ProjectId is null && d.TeamId is not null).GroupBy(d => d.TeamId!.Value).ToDictionary(g => g.Key, g => g.Count());
+        var teamIds = myTeams.Concat(teamPages.Keys).Distinct().ToList();
+        var teams = await db.Teams.AsNoTracking().Where(t => teamIds.Contains(t.Id)).OrderBy(t => t.Name).Select(t => new { t.Id, t.Name }).ToListAsync(ct);
+        return new DtCatalog(list, await permissions.HasAsync(Permissions.DocsCreate, ct), IsAdmin, truncated,
+            teams.Select(t => new DtTeam(t.Id, t.Name, myTeams.Contains(t.Id), teamPages.GetValueOrDefault(t.Id))).ToList());
     }
 
     /// <summary>How well an endpoint is documented (0-100) and what is missing, the way DocTracker scores it.</summary>

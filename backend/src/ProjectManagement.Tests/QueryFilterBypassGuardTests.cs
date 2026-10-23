@@ -40,6 +40,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Documents/DocumentNotifier.cs",
         "ProjectManagement.Application/Features/Documents/DocumentRetention.cs",
         "ProjectManagement.Application/Features/Documents/DocumentSearch.cs",
+        "ProjectManagement.Application/Features/Documents/DocumentFreshness.cs", // nightly: which pages have links or mentions (ids only), then each workspace is checked with its own context
         "ProjectManagement.Application/Features/Documents/DocumentSecurity.cs",
         "ProjectManagement.Application/Features/Documents/DocumentService.cs",
         "ProjectManagement.Application/Features/Documents/DocumentWorkflowService.cs",

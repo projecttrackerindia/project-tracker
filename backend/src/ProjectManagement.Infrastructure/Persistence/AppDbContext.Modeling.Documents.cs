@@ -37,6 +37,7 @@ public partial class AppDbContext
             e.Property(x => x.Icon).HasMaxLength(16);
             e.Property(x => x.Revision).IsConcurrencyToken();
             e.Property(x => x.ApiHash).HasMaxLength(64);
+            e.Property(x => x.StaleReason).HasMaxLength(500);
             e.HasOne(x => x.Type).WithMany().HasForeignKey(x => x.TypeId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.SetNull);
@@ -210,7 +211,19 @@ public partial class AppDbContext
         {
             e.HasIndex(x => new { x.TenantId, x.DocumentId, x.CreatedAt });
             e.Property(x => x.Body).HasMaxLength(4000);
+            e.Property(x => x.AnchorId).HasMaxLength(40);
+            e.Property(x => x.Quote).HasMaxLength(500);
             e.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DocumentProposal>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.ProjectId, x.Status });
+            e.HasIndex(x => new { x.TenantId, x.Kind, x.SourceType, x.SourceId }).IsUnique();
+            e.Property(x => x.Kind).HasMaxLength(30);
+            e.Property(x => x.SourceType).HasMaxLength(20);
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Summary).HasMaxLength(500);
+            e.Property(x => x.Status).HasMaxLength(16);
         });
     }
 }

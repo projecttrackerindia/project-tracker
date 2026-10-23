@@ -8,6 +8,8 @@ import { timeAgo } from '../../lib/format';
 import { Method } from '../documents/ApiView';
 import { AUTH_LABEL } from '../documents/ApiTools';
 import { DocumentWizard } from '../documents/DocumentWizard';
+import { AiDraftDialog } from '../documents/AiDraft';
+import { useNewPage } from '../documents/pages';
 import { ClassificationBadge, DocStatusBadge, avatarColor } from '../documents/docUi';
 import { pid, useDtNav, type ProjectTab } from './DocTrackerPage';
 import { avg, Kpi, ScoreBar, ScoreRing } from './DtHome';
@@ -22,6 +24,8 @@ export function DtProjectView({ project: p, tab, catalog }: { project: DtProject
   const id = pid(p);
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
+  const [aiNew, setAiNew] = useState(false);
+  const newPage = useNewPage();
   const actions = useApiActions(p, (ep) => nav.go({ p: id, ep }));
   const canWrite = catalog.canCreate || p.definitions.length > 0;
   const docs = p.documents.filter((d) => !d.isApi);
@@ -39,6 +43,7 @@ export function DtProjectView({ project: p, tab, catalog }: { project: DtProject
             { label: 'Endpoint', hint: 'Describe one by hand', icon: 'code', onSelect: actions.newEndpoint },
             { label: 'Import', hint: 'OpenAPI, Postman or cURL', icon: 'upload', onSelect: actions.importFile },
             { label: 'Architecture diagram', hint: 'Open Architecture Studio', icon: 'workflow', onSelect: () => nav.go({ p: id, t: 'architecture' }) },
+            { label: 'Page written by AI', hint: 'From a line, your voice, a meeting, this project’s work or files', icon: 'sparkle', onSelect: () => setAiNew(true), hidden: !catalog.canCreate },
             { label: 'Document', hint: 'Requirements, runbook, test plan…', icon: 'note', onSelect: () => setCreating(true), hidden: !catalog.canCreate },
           ]} />}
           {actions.hasApi && <button className="btn btn-ghost btn-sm" onClick={() => actions.swagger()}><Icon name="code" size={14} /> Open in Swagger</button>}
@@ -70,6 +75,8 @@ export function DtProjectView({ project: p, tab, catalog }: { project: DtProject
         )
       )}
       {actions.modal}
+      {aiNew && <AiDraftDialog projects={catalog.projects.filter((x): x is DtProject & { id: string } => !!x.id).map((x) => ({ id: x.id, name: x.name }))} projectId={p.id} useLabel="Create the page"
+        onClose={() => setAiNew(false)} onUse={async (d, from) => { await newPage.create({ title: d.title, body: d.body, projectId: from.projectId ?? p.id }); setAiNew(false); }} />}
       {creating && <DocumentWizard projectId={p.id ?? undefined} onClose={() => setCreating(false)} onCreated={(doc) => navigate(`/documents/${doc}`)} />}
     </div>
   );

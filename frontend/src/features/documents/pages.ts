@@ -67,13 +67,15 @@ export function useNewPage() {
   const navigate = useNavigate();
   const types = useWsQuery(['document-types'], documentApi.types, { staleTime: 300_000 });
   const pageType = types.data?.find((t) => t.code === PAGE_CODE);
-  const create = async (o: { projectId?: string | null; parentId?: string | null; template?: DocumentType; title?: string } = {}) => {
+  const create = async (o: { projectId?: string | null; parentId?: string | null; template?: DocumentType; title?: string; teamId?: string | null;
+    /** Editor JSON to start with (an AI draft). */ body?: string } = {}) => {
     const t = pageType ?? (await documentApi.types()).find((x) => x.code === PAGE_CODE);
     if (!t) { toast('Pages are not available in this workspace yet.', 'error'); return; }
     try {
       const d = await documentApi.create({
         title: o.title ?? (o.template ? o.template.name : 'Untitled'), typeId: t.id, projectId: o.parentId ? undefined : o.projectId ?? null, parentId: o.parentId ?? null,
-        sections: o.template ? [{ key: PAGE_BODY, content: templateBody(o.template) }] : undefined,
+        ...(o.teamId && !o.parentId && !o.projectId ? { teamId: o.teamId } : {}),
+        sections: o.body ? [{ key: PAGE_BODY, content: o.body }] : o.template ? [{ key: PAGE_BODY, content: templateBody(o.template) }] : undefined,
       });
       invalidateWorkspace(wid, 'documents');
       navigate(`/documents/${d.item.id}`, { state: { fresh: true } });

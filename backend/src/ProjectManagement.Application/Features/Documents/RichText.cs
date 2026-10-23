@@ -15,11 +15,12 @@ public static class SectionContent
     public const int MaxChars = 200_000, MaxNodes = 20_000, MaxDepth = 14, MaxColumns = 12, MaxRows = 500, MaxCell = 2000;
     private const string Empty = """{"type":"doc","content":[{"type":"paragraph"}]}""";
 
-    private static readonly HashSet<string> Blocks = ["doc", "paragraph", "heading", "bulletList", "orderedList", "listItem", "blockquote", "codeBlock", "horizontalRule", "table", "tableRow", "tableCell", "tableHeader", "taskList", "taskItem", "docImage", "archDiagram", "callout"];
+    private static readonly HashSet<string> Blocks = ["doc", "paragraph", "heading", "bulletList", "orderedList", "listItem", "blockquote", "codeBlock", "horizontalRule", "table", "tableRow", "tableCell", "tableHeader", "taskList", "taskItem", "docImage", "archDiagram", "callout", "details", "detailsSummary", "detailsContent", "liveTasks"];
     private static readonly HashSet<string> Inline = ["text", "hardBreak", "mention"];
     private static readonly HashSet<string> MentionKinds = ["person", "task", "page"];
     private static readonly HashSet<string> CalloutTones = ["info", "warning", "success", "danger"];
-    private static readonly HashSet<string> Marks = ["bold", "italic", "underline", "strike", "code", "link", "highlight"];
+    private static readonly HashSet<string> Marks = ["bold", "italic", "underline", "strike", "code", "link", "highlight", "comment"];
+    private static readonly HashSet<string> TaskFilters = ["open", "mine", "overdue", "done", "all"];
     private static readonly string[] SafeLinks = ["http://", "https://", "mailto:", "/", "#"];
 
     /// <param name="images">The files of this document an image may point to; an image that points anywhere else is dropped.</param>
@@ -65,6 +66,13 @@ public static class SectionContent
                         if (!SafeLinks.Any(p => href.StartsWith(p, StringComparison.OrdinalIgnoreCase)) || href.StartsWith("//") || href.Length > 2000) continue;
                         mark["attrs"] = new JsonObject { ["href"] = href };
                     }
+                    if (mt == "comment")
+                    {
+                        // The thread a highlighted passage belongs to, by id only.
+                        var cid = m["attrs"]?["id"] is JsonValue cv && cv.TryGetValue<string>(out var cs) ? cs.Trim() : "";
+                        if (cid.Length is 0 or > 40 || !cid.All(c => char.IsLetterOrDigit(c) || c == '-')) continue;
+                        mark["attrs"] = new JsonObject { ["id"] = cid };
+                    }
                     kept.Add(mark);
                 }
                 if (kept.Count > 0) o["marks"] = kept;
@@ -93,6 +101,16 @@ public static class SectionContent
             return o;
         }
 
+        if (type == "liveTasks")
+        {
+            // A live list of a project's tasks: which project and which tasks, never the tasks themselves (they are read when shown).
+            var pid = node["attrs"]?["projectId"] is JsonValue pv && pv.TryGetValue<string>(out var ps) && Guid.TryParse(ps, out var pg) ? pg.ToString() : "";
+            var filter = node["attrs"]?["filter"] is JsonValue fv2 && fv2.TryGetValue<string>(out var fs2) && TaskFilters.Contains(fs2) ? fs2 : "open";
+            var limit = node["attrs"]?["limit"] is JsonValue lv3 && lv3.TryGetValue<int>(out var li) ? Math.Clamp(li, 1, 50) : 10;
+            o["attrs"] = new JsonObject { ["projectId"] = pid, ["filter"] = filter, ["limit"] = limit };
+            return o;
+        }
+
         if (type == "archDiagram")
         {
             // A diagram from Architecture Studio: rebuilt from known fields with limits (ArchDiagram.Clean).
@@ -108,6 +126,7 @@ public static class SectionContent
             if (type == "heading") attrs["level"] = a["level"] is JsonValue lv && lv.TryGetValue<int>(out var lvl) ? Math.Clamp(lvl, 1, 4) : 2;
             if (type == "orderedList" && a["start"] is JsonValue sv && sv.TryGetValue<int>(out var start)) attrs["start"] = Math.Clamp(start, 1, 100_000);
             if (type == "taskItem") attrs["checked"] = a["checked"] is JsonValue cv && cv.TryGetValue<bool>(out var chk) && chk;
+            if (type == "details") attrs["open"] = a["open"] is JsonValue ov && ov.TryGetValue<bool>(out var open) && open;
             if (type == "codeBlock" && a["language"] is JsonValue gv && gv.TryGetValue<string>(out var lang) && lang.Length <= 20 && lang.All(c => char.IsLetterOrDigit(c) || c is '-' or '+' or '#')) attrs["language"] = lang;
             if (type is "tableCell" or "tableHeader")
                 foreach (var n in new[] { "colspan", "rowspan" })

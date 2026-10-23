@@ -24,7 +24,7 @@ namespace ProjectManagement.Application.Features.Agent;
 /// </summary>
 public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppClock clock, IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions,
     AgentSignalService signals, AgentSettingsService settings, ProjectAccess access, Recorder recorder, NotificationService notifications,
-    IOptions<AgentOptions> agentOptions, ILogger<AgentAnalysisService> log)
+    IOptions<AgentOptions> agentOptions, ILogger<AgentAnalysisService> log, IServiceProvider services)
 {
     private const int MaxPromptSource = 90_000;
     private const int MaxFindings = 25;
@@ -299,6 +299,10 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
                 try { await NotifyAsync(project, run, findings, trigger, ct); await db.SaveChangesAsync(ct); }
                 catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Project agent could not notify about run {Run}", run.Id); }
             }
+            // A meeting's decisions become an entry for the project's decision log, waiting for approval.
+            if (meetingId is { } mid && findings.Any(f => f.Kind == AgentFindingKind.Decision))
+                await Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<ProjectManagement.Application.Features.Documents.DocumentProposalService>(services)
+                    .SuggestAsync("decision-log", mid, ct);
             return new AgentRunDto(run.Id, run.Trigger, run.Status, run.SignalCount, run.FindingCount, run.Credits, run.Summary, run.Error, run.StartedAt, run.FinishedAt);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)

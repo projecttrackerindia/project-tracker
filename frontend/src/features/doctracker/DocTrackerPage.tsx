@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { docTrackerApi } from '../../api/endpoints';
-import type { DtCatalog, DtEndpoint, DtProject } from '../../api/types';
+import { ApiError } from '../../api/client';
+import { docTrackerApi, documentApi } from '../../api/endpoints';
+import type { DtCatalog, DtEndpoint, DtProject, DtTeam } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { ErrorState, PageLoader } from '../../components/ui';
 import { Menu } from '../../components/Menu';
-import { useWsQuery } from '../../lib/hooks';
+import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { useWorkspaceId } from '../../stores/auth';
+import { toast } from '../../stores/ui';
+import { dropZone, planDrop, planStep, type DropPlan, type DropWhere } from './treeDrag';
 import { Method } from '../documents/ApiView';
 import { DocShell } from '../documents/DocumentsSidebar';
 import { avatarColor } from '../documents/docUi';
@@ -171,6 +175,12 @@ function DtTree({ catalog, activeDocId }: { catalog: DtCatalog; activeDocId?: st
           <ul className="ds-rail-list ds-rail-projects ds-tree-projects">
             {catalog.projects.map((p) => <ProjectNode key={pid(p)} p={p} activeDocId={activeDocId} canCreate={catalog.canCreate} />)}
           </ul>
+          {(catalog.teams?.length ?? 0) > 0 && <>
+            <div className="ds-rail-heading">Team spaces</div>
+            <ul className="ds-rail-list ds-rail-projects ds-tree-projects">
+              {catalog.teams!.map((t) => <TeamNode key={t.id} team={t} docs={(catalog.projects.find((p) => p.id === null)?.documents ?? []).filter((d) => d.teamId === t.id)} activeDocId={activeDocId} canCreate={catalog.canCreate && t.mine} />)}
+            </ul>
+          </>}
         </>
       )}
     </nav>
@@ -180,7 +190,9 @@ function DtTree({ catalog, activeDocId }: { catalog: DtCatalog; activeDocId?: st
 function ProjectNode({ p, activeDocId, canCreate }: { p: DtProject; activeDocId?: string; canCreate: boolean }) {
   const nav = useDtNav();
   const id = pid(p);
-  const hasDoc = !!activeDocId && p.documents.some((d) => d.id === activeDocId);
+  // The company's own pages here; a team's pages live in its space below.
+  const docsHere = useMemo(() => (p.id === null ? p.documents.filter((d) => !d.teamId) : p.documents), [p]);
+  const hasDoc = !!activeDocId && docsHere.some((d) => d.id === activeDocId);
   const here = nav.p === id || hasDoc;
   const openKey = `pm_dt_open:${id}`;
   const [open, setOpen] = useState(() => store.get(openKey) === '1');
@@ -211,7 +223,7 @@ function ProjectNode({ p, activeDocId, canCreate }: { p: DtProject; activeDocId?
             {sub('overview', 'Overview', 'dashboard')}
             {sub('architecture', 'Architecture', 'workflow', p.diagrams)}
           </ul></li>
-          {(p.documents.length > 0 || canCreate) && <DocGroup projectId={id} realProjectId={p.id} docs={p.documents} activeDocId={activeDocId} canCreate={canCreate} />}
+          {(docsHere.length > 0 || canCreate) && <DocGroup projectId={id} realProjectId={p.id} docs={docsHere} activeDocId={activeDocId} canCreate={canCreate} />}
           {tags.map(([tag, eps]) => <TagGroup key={tag} projectId={id} tag={tag} eps={eps} />)}
           {p.endpoints.length === 0 && <li className="ds-rail-empty">No endpoints yet.</li>}
         </ul>
@@ -249,12 +261,61 @@ function TagGroup({ projectId, tag, eps }: { projectId: string; tag: string; eps
   );
 }
 
+/** One space's pages being dragged: the pages (for working out where a drop goes) and the page in the hand. */
+const DragCtx = createContext<{ docs: DtProject['documents']; dragging: React.MutableRefObject<string | null>; move: (id: string, plan: DropPlan) => void } | null>(null);
+
+function usePlace() {
+  const wid = useWorkspaceId();
+  return async (id: string, plan: DropPlan) => {
+    try { await documentApi.place(id, plan); invalidateWorkspace(wid, 'documents'); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not move the page.', 'error'); }
+  };
+}
+
+/** A team's space: its pages (visible to the team), with "+" for the team's members. */
+function TeamNode({ team, docs, activeDocId, canCreate }: { team: DtTeam; docs: DtProject['documents']; activeDocId?: string; canCreate: boolean }) {
+  const openKey = `pm_dt_team:${team.id}`;
+  const here = !!activeDocId && docs.some((d) => d.id === activeDocId);
+  const [open, setOpen] = useState(() => store.get(openKey) === '1');
+  useEffect(() => { if (here) setOpen(true); }, [here]);
+  const toggle = () => setOpen((o) => { store.set(openKey, o ? '0' : '1'); return !o; });
+  const newPage = useNewPage();
+  return (
+    <li className={`ds-node${open ? ' open' : ''}${here ? ' has-active' : ''}`}>
+      <div className="ds-rail-row ds-rail-project">
+        <button type="button" className="ds-caret" aria-expanded={open} aria-label={`${open ? 'Close' : 'Open'} ${team.name}`} onClick={toggle}><Icon name="chevronR" size={12} /></button>
+        <button type="button" className="ds-node-main" title={`${team.name}: pages for this team`} onClick={toggle}>
+          <span className="ds-avatar" style={{ '--av': avatarColor(team.id) } as CSSProperties}><Icon name="users" size={11} /></span>
+          <span className="ds-rail-label">{team.name}</span>
+          {team.pages > 0 && <span className="ds-rail-count soft">{team.pages}</span>}
+        </button>
+        {canCreate && <button type="button" className="dt-add" title={`New page for ${team.name}`} aria-label={`New page for ${team.name}`} onClick={() => void newPage.create({ teamId: team.id })}><Icon name="plus" size={12} /></button>}
+      </div>
+      {open && (docs.length === 0
+        ? <ul className="ds-tree-children"><li className="ds-rail-empty">No pages yet.</li></ul>
+        : <ul className="ds-tree-children"><PageList docs={docs} activeDocId={activeDocId} canCreate={canCreate} /></ul>)}
+    </li>
+  );
+}
+
+/** The pages of one space as a tree, with drag to reorder and nest (and Alt+↑/↓ from the keyboard). */
+function PageList({ docs, activeDocId, canCreate }: { docs: DtProject['documents']; activeDocId?: string; canCreate: boolean }) {
+  const tree = useMemo(() => pageTree(docs), [docs]);
+  const dragging = useRef<string | null>(null);
+  const place = usePlace();
+  const ctx = useMemo(() => ({ docs, dragging, move: (id: string, plan: DropPlan) => void place(id, plan) }), [docs]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <DragCtx.Provider value={ctx}>
+      <li><ul className="ds-tree-docs">{tree.roots.map((d) => <PageNode key={d.id} d={d} tree={tree} activeDocId={activeDocId} canCreate={canCreate} depth={0} />)}</ul></li>
+    </DragCtx.Provider>
+  );
+}
+
 function DocGroup({ projectId, realProjectId, docs, activeDocId, canCreate }: { projectId: string; realProjectId: string | null; docs: DtProject['documents']; activeDocId?: string; canCreate: boolean }) {
   const key = `pm_dt_docs:${projectId}`;
   const hasActive = !!activeDocId && docs.some((d) => d.id === activeDocId);
   const [closed, setClosed] = useState(() => store.get(key) !== '1');
   useEffect(() => { if (hasActive) setClosed(false); }, [hasActive]);
-  const tree = useMemo(() => pageTree(docs), [docs]);
   const newPage = useNewPage();
   return (
     <li className={`ds-type${closed ? '' : ' open'}`}>
@@ -264,7 +325,7 @@ function DocGroup({ projectId, realProjectId, docs, activeDocId, canCreate }: { 
         </button>
         {canCreate && <button type="button" className="dt-add" title="New page" aria-label="New page" onClick={() => void newPage.create({ projectId: realProjectId })}><Icon name="plus" size={12} /></button>}
       </div>
-      {!closed && <ul className="ds-tree-docs">{tree.roots.map((d) => <PageNode key={d.id} d={d} tree={tree} activeDocId={activeDocId} canCreate={canCreate} depth={0} />)}</ul>}
+      {!closed && <ul className="ds-tree-docs"><PageList docs={docs} activeDocId={activeDocId} canCreate={canCreate} /></ul>}
     </li>
   );
 }
@@ -283,11 +344,35 @@ function PageNode({ d, tree, activeDocId, canCreate, depth }: { d: DtProject['do
   useEffect(() => { if (holdsActive) setOpen(true); }, [holdsActive]);
   const toggle = () => setOpen((o) => { store.set(`pm_dt_page:${d.id}`, o ? '0' : '1'); return !o; });
   const newPage = useNewPage();
+  const drag = useContext(DragCtx);
+  const [over, setOver] = useState<DropWhere | null>(null);
+  const canDrag = canCreate && !!drag;
+  const zoneOf = (e: DragEvent<HTMLDivElement>) => { const r = e.currentTarget.getBoundingClientRect(); return dropZone(e.clientY - r.top, r.height); };
+  const plan = (e: DragEvent<HTMLDivElement>) => (drag?.dragging.current ? planDrop(drag.docs, drag.dragging.current, d.id, zoneOf(e)) : null);
+  const dragProps = canDrag ? {
+    draggable: true,
+    onDragStart: (e: DragEvent<HTMLDivElement>) => { drag!.dragging.current = d.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', d.title); },
+    onDragEnd: () => { drag!.dragging.current = null; setOver(null); },
+    onDragOver: (e: DragEvent<HTMLDivElement>) => { if (!plan(e)) { setOver(null); return; } e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOver(zoneOf(e)); },
+    onDragLeave: () => setOver(null),
+    onDrop: (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault(); setOver(null);
+      const p = plan(e); const id = drag!.dragging.current; drag!.dragging.current = null;
+      if (p && id) { if (p.parentId === d.id) { store.set(`pm_dt_page:${d.id}`, '1'); setOpen(true); } drag!.move(id, p); }
+    },
+  } : {};
+  const keys = canDrag ? (e: ReactKeyboardEvent) => {
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    const p = planStep(drag!.docs, d.id, e.key === 'ArrowUp' ? -1 : 1);
+    if (p) drag!.move(d.id, p);
+  } : undefined;
   return (
     <li className={`ds-doc dt-page${d.id === activeDocId ? ' active' : ''}`}>
-      <div className="dt-page-row" style={{ paddingLeft: depth * 12 } as CSSProperties}>
+      <div className={`dt-page-row${over ? ` drop-${over}` : ''}`} style={{ paddingLeft: depth * 12 } as CSSProperties} {...dragProps}
+        title={canDrag ? 'Drag to move · Alt+↑/↓ to reorder' : undefined}>
         {kids.length > 0 ? <button type="button" className={`dt-caret${open ? ' open' : ''}`} aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} pages inside ${d.title}`} onClick={toggle}><Icon name="chevronR" size={11} /></button> : <span className="dt-caret-gap" />}
-        <Link to={`/documents/${d.id}`} className="ds-doc-row" aria-current={d.id === activeDocId ? 'page' : undefined} title={`${d.key} · ${d.title}`}>
+        <Link to={`/documents/${d.id}`} className="ds-doc-row" aria-current={d.id === activeDocId ? 'page' : undefined} title={`${d.key} · ${d.title}`} onKeyDown={keys} draggable={false}>
           {d.icon ? <span className="dt-page-icon" aria-hidden="true">{d.icon}</span> : <span className="ds-type-code" style={{ '--dc': d.typeColor } as CSSProperties}>{d.typeCode}</span>}
           <span className="ds-doc-title">{d.title}</span>
         </Link>

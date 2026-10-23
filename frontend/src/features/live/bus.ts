@@ -7,6 +7,16 @@ import type { HubConnection } from '@microsoft/signalr';
 let connection: HubConnection | null = null;
 export const setLiveConnection = (c: HubConnection | null) => { connection = c; reconnectListeners.forEach((l) => l()); };
 
+/** The live connection itself (for screens that keep their own event handlers on it, like co-editing a page); null before it is built. */
+export const liveConnection = () => connection;
+export const isLiveConnected = () => !!connection && String(connection.state) === 'Connected';
+
+/** Calls a hub method and waits for its answer; null when not connected or the call failed. */
+export async function hubCall<T>(method: string, ...args: unknown[]): Promise<T | null> {
+  if (!isLiveConnected()) return null;
+  try { return await connection!.invoke<T>(method, ...args); } catch { return null; }
+}
+
 /** Calls a hub method when connected; quietly does nothing otherwise (live features are best effort). */
 export function hubInvoke(method: string, ...args: unknown[]) {
   // Compared by value: the connection library itself is only loaded once the live connection opens (see ChatRealtime).

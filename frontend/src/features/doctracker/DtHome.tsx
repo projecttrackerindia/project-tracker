@@ -11,6 +11,8 @@ import { avatarColor } from '../documents/docUi';
 import { NeedsAttention } from '../documents/NeedsAttention';
 import { PAGE_CODE, useNewPage } from '../documents/pages';
 import { pid, scoreTone, useDtNav } from './DocTrackerPage';
+import { AiDraftDialog } from '../documents/AiDraft';
+import { AskAnswerCard, DraftsToReview, PageTextHits } from './DtAssist';
 
 export const avg = (eps: DtEndpoint[]) => (eps.length ? Math.round(eps.reduce((a, e) => a + e.score, 0) / eps.length) : 0);
 
@@ -46,6 +48,9 @@ export const ScoreBar = ({ score }: { score: number }) => <span className={`dt-b
 export function DtHome({ catalog, onRequired, onNew }: { catalog: DtCatalog; onRequired: () => void; onNew: (typeId?: string) => void }) {
   const nav = useDtNav();
   const [q, setQ] = useState('');
+  const [asked, setAsked] = useState<string | null>(null);
+  const [aiNew, setAiNew] = useState(false);
+  const ask = () => { const t = q.trim(); if (t.length >= 3) setAsked(t); };
   const types = useWsQuery(['document-types'], documentApi.types, { staleTime: 300_000 });
   const projects = catalog.projects;
   const eps = projects.flatMap((p) => p.endpoints.map((e) => ({ p, e })));
@@ -72,14 +77,20 @@ export function DtHome({ catalog, onRequired, onNew }: { catalog: DtCatalog; onR
 
   return (
     <div className="dt-home dl">
-      <label className="dl-search">
-        <Icon name="search" size={18} />
-        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search documents, APIs and endpoints" aria-label="Search DocTracker" />
-      </label>
+      <div className="dl-search-wrap">
+        <label className="dl-search">
+          <Icon name="search" size={18} />
+          <input type="search" value={q} onChange={(e) => { setQ(e.target.value); if (asked) setAsked(null); }} placeholder="Search, or ask a question about your pages" aria-label="Search DocTracker or ask a question"
+            onKeyDown={(e) => { if (e.key === 'Enter' && q.trim().endsWith('?')) { e.preventDefault(); ask(); } }} />
+          <button type="button" className="dl-ask" onClick={ask} disabled={q.trim().length < 3} title="Answer from the pages you can open, with links to the lines">✨ Ask</button>
+        </label>
+      </div>
+      {asked && <AskAnswerCard question={asked} onClose={() => setAsked(null)} />}
 
       {hits ? (
         <section className="dl-section" aria-label="Search results">
-          {hits.docs.length + hits.eps.length + hits.projects.length === 0 && <p className="dl-empty">Nothing matches “{q.trim()}”.</p>}
+          {hits.docs.length + hits.eps.length + hits.projects.length === 0 && !asked && <p className="dl-empty">No title matches “{q.trim()}”.{q.trim().length >= 3 && <> <button type="button" className="mb-link" onClick={ask}>Ask the pages instead</button></>}</p>}
+          <PageTextHits q={q} />
           {hits.docs.length > 0 && <><h3>Documents</h3><ul className="dl-rows">{hits.docs.map(({ p, d }) => <DocRow key={d.id} p={p} d={d} />)}</ul></>}
           {hits.eps.length > 0 && <><h3>Endpoints</h3><ul className="dl-rows">{hits.eps.map(({ p, e }) => (
             <li key={e.id}><button type="button" className="dl-row" onClick={() => nav.go({ p: pid(p), ep: e.id })}>
@@ -93,6 +104,9 @@ export function DtHome({ catalog, onRequired, onNew }: { catalog: DtCatalog; onR
           <section className="dl-section" aria-label="Start a document">
             <header><h3>Start a document</h3><button type="button" className="mb-link" onClick={() => onNew()}>All templates</button></header>
             <div className="dl-starters">
+              <button type="button" className="dl-starter ai" onClick={() => setAiNew(true)}>
+                <span className="dl-starter-code">✨</span><b>Write with AI</b><small>From a line, your voice, a meeting, project work or files</small>
+              </button>
               <button type="button" className="dl-starter blank" onClick={() => void newPage.create()}>
                 <span className="dl-starter-code">＋</span><b>Blank page</b><small>Write anything; type / for blocks</small>
               </button>
@@ -104,6 +118,8 @@ export function DtHome({ catalog, onRequired, onNew }: { catalog: DtCatalog; onR
             </div>
           </section>
         )}
+
+        <DraftsToReview projects={projects} canCreate={catalog.canCreate} />
 
         <div className="dl-split">
           <section className="dl-section" aria-label="Recent documents">
@@ -163,6 +179,8 @@ export function DtHome({ catalog, onRequired, onNew }: { catalog: DtCatalog; onR
           </section>
         )}
       </>}
+      {aiNew && <AiDraftDialog projects={projects.filter((p): p is DtProject & { id: string } => !!p.id).map((p) => ({ id: p.id, name: p.name }))} useLabel="Create the page"
+        onClose={() => setAiNew(false)} onUse={async (d, from) => { await newPage.create({ title: d.title, body: d.body, projectId: from.projectId }); setAiNew(false); }} />}
     </div>
   );
 }

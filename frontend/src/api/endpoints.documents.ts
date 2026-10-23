@@ -104,7 +104,8 @@ export const documentApi = {
   // activity and audit
   activity: (id: string) => get<DocActivity[]>(`/documents/${id}/activity`),
   comments: (id: string) => get<DocComment[]>(`/documents/${id}/comments`),
-  addComment: (id: string, body: string) => post<DocComment>(`/documents/${id}/comments`, { body }),
+  addComment: (id: string, body: string, thread?: { parentId?: string; anchorId?: string; quote?: string }) => post<DocComment>(`/documents/${id}/comments`, { body, ...thread }),
+  resolveComment: (id: string, commentId: string, resolved: boolean) => post<DocComment>(`/documents/${id}/comments/${commentId}/resolve`, { resolved }),
   audit: (id: string, cursor?: string, action?: string) => get<DocAuditPage>(`/documents/${id}/audit`, { cursor, action }),
   exportAudit: (id: string) => download(`/documents/${id}/audit/export`, `document-audit.csv`),
   // build artifacts (the "Build artifact" document type): one file per version, auto-versioned and auto-dated

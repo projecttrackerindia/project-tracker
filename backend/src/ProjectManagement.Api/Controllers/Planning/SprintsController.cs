@@ -7,7 +7,7 @@ namespace ProjectManagement.Api.Controllers.Planning;
 
 /// <summary>Sprints of a project, and planning tasks into a sprint or back to the backlog.</summary>
 [Route("api/v1"), RequireWorkspace]
-public class SprintsController(SprintService sprints) : ApiControllerBase
+public class SprintsController(SprintService sprints, ProjectManagement.Application.Features.Documents.DocumentProposalService proposals) : ApiControllerBase
 {
     [HttpGet("projects/{projectId:guid}/sprints"), RequireModule(Modules.Projects)]
     public async Task<IActionResult> List(Guid projectId, CancellationToken ct) => Ok(await sprints.ListAsync(projectId, ct));
@@ -35,7 +35,15 @@ public class SprintsController(SprintService sprints) : ApiControllerBase
 
     [HttpPost("projects/{projectId:guid}/sprints/{id:guid}/complete"), RequireModule(Modules.Projects, AccessLevel.Edit)]
     public async Task<IActionResult> Complete(Guid projectId, Guid id, [FromBody] CompleteSprintRequest req, CancellationToken ct) =>
-        Ok(await sprints.CompleteAsync(projectId, id, req, ct));
+        await CompleteAndDraftAsync(projectId, id, req, ct);
+
+    /// <summary>A finished sprint also becomes release notes waiting for approval (never stops the completion).</summary>
+    private async Task<IActionResult> CompleteAndDraftAsync(Guid projectId, Guid id, CompleteSprintRequest req, CancellationToken ct)
+    {
+        var done = await sprints.CompleteAsync(projectId, id, req, ct);
+        await proposals.SuggestAsync("release-notes", id, ct);
+        return Ok(done);
+    }
 
     /// <summary>Plan tasks into a sprint.</summary>
     [HttpPost("projects/{projectId:guid}/sprints/{id:guid}/tasks"), RequireModule(Modules.Tasks, AccessLevel.Edit)]

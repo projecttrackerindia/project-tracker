@@ -14,4 +14,8 @@ public class DocumentCommentsController(DocumentCommentService comments) : ApiCo
 
     [HttpPost("documents/{id:guid}/comments")]
     public async Task<IActionResult> Add(Guid id, [FromBody] AddCommentRequest req, CancellationToken ct) => Created(await comments.AddAsync(id, req, ct));
+
+    /// <summary>Resolves a thread on selected text (or opens it again).</summary>
+    [HttpPost("documents/{id:guid}/comments/{commentId:guid}/resolve")]
+    public async Task<IActionResult> Resolve(Guid id, Guid commentId, [FromBody] ResolveCommentRequest req, CancellationToken ct) => Ok(await comments.ResolveAsync(id, commentId, req, ct));
 }

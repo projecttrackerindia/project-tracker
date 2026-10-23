@@ -128,6 +128,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<IncomingWebhookThread> IncomingWebhookThreads => Set<IncomingWebhookThread>();
     public DbSet<WorkspaceNotificationDefaults> WorkspaceNotificationDefaults => Set<WorkspaceNotificationDefaults>();
     public DbSet<SetupCheckDismissal> SetupCheckDismissals => Set<SetupCheckDismissal>();
+    public DbSet<DocumentProposal> DocumentProposals => Set<DocumentProposal>();
     public DbSet<MicrosoftConnection> MicrosoftConnections => Set<MicrosoftConnection>();
     public DbSet<PersonalCalendarProposal> PersonalCalendarProposals => Set<PersonalCalendarProposal>();
     public DbSet<PersonalEmailDraft> PersonalEmailDrafts => Set<PersonalEmailDraft>();

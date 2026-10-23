@@ -701,6 +701,8 @@ export interface DocumentItem {
   versionLabel: string; sharedCount: number;
   /** Pages: the page this one sits under, its place among siblings, and its emoji. */
   parentId?: string | null; pageOrder?: number; icon?: string | null;
+  /** Confirmed still right on this date (the verified badge); out of date since this moment (its linked work changed). */
+  verifiedAt?: string | null; staleSince?: string | null;
 }
 /** A page that links to another with [[ ]]. */
 export interface Backlink { id: string; key: string; title: string; typeCode: string; typeColor: string; icon: string | null; projectId: string | null }
@@ -790,7 +792,9 @@ export interface CoverageItem { linkId: string; targetType: LinkTarget; targetId
 export interface CoverageRow { requirement: Requirement; state: 'Covered' | 'NoTask' | 'NoTest' | 'Failing'; implementing: CoverageItem[]; verifying: CoverageItem[] }
 export interface Coverage { rows: CoverageRow[]; requirements: number; covered: number; withoutTask: number; withoutTest: number; failingTests: number; workWithoutTest: number; restricted: number }
 export interface DocActivity { id: string; at: string; action: string; summary: string; by: UserRef | null }
-export interface DocComment { id: string; user: UserRef; body: string; createdAt: string; editedAt: string | null; mine: boolean }
+export interface DocComment { id: string; user: UserRef; body: string; createdAt: string; editedAt: string | null; mine: boolean;
+  /** A reply: the thread's first comment. A thread on selected text carries the id of its mark in the page and the words that were selected. */
+  parentId?: string | null; anchorId?: string | null; quote?: string | null; resolvedAt?: string | null; resolvedBy?: string | null; canResolve?: boolean }
 export interface DocAuditEntry { id: string; at: string; action: string; by: UserRef | null; ip: string | null; device: string | null; oldValue: string | null; newValue: string | null }
 export interface DocAuditPage { items: DocAuditEntry[]; nextCursor: string | null }
 
@@ -822,9 +826,12 @@ export interface EndpointDetail { item: EndpointItem; details: EndpointDetails; 
 export interface DtEndpoint { id: string; documentId: string; definitionId: string; definition: string; method: ApiMethod; path: string; summary: string; tag: string | null; deprecated: boolean; score: number; gaps: string[]; stage: ApiStage; updatedAt: string | null }
 export interface DtDefinition { id: string; documentId: string; name: string; version: string | null; stage: ApiStage; auth: ApiAuthScheme; servers: string[] }
 export interface DtDocument { id: string; key: string; title: string; typeCode: string; typeName: string; typeColor: string; status: DocumentStatus; classification: DocumentClassification; updatedAt: string; isApi: boolean;
-  parentId?: string | null; pageOrder?: number; icon?: string | null }
+  parentId?: string | null; pageOrder?: number; icon?: string | null;
+  /** A company page kept in a team's space. */ teamId?: string | null }
+/** A team's space: company pages kept for one team; mine = the person is in it. */
+export interface DtTeam { id: string; name: string; mine: boolean; pages: number }
 export interface DtProject { id: string | null; key: string | null; name: string; endpoints: DtEndpoint[]; definitions: DtDefinition[]; documents: DtDocument[]; diagrams: number }
-export interface DtCatalog { projects: DtProject[]; canCreate: boolean; isAdmin: boolean; truncated: number }
+export interface DtCatalog { projects: DtProject[]; canCreate: boolean; isAdmin: boolean; truncated: number; teams?: DtTeam[] }
 export interface DtDiagram { key: string; title: string; kind: 'architecture' | 'flow'; data: { nodes: unknown[]; edges: unknown[] } }
 export interface DtArchitecture { projectId: string | null; diagrams: DtDiagram[]; notes: string | null; canEdit: boolean; updatedAt: string | null; updatedBy: string | null }
 export interface SaveEndpoint { definitionId: string; method: string; path: string; summary: string; tag: string | null; deprecated: boolean; ownerId: string | null; details: EndpointDetails }

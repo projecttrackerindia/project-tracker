@@ -97,7 +97,7 @@ public class ChatPresence(IHubContext<ChatHub> hub, IPresenceStore store) : ICha
 /// the connection is made), never from anything the browser says afterwards.
 /// </summary>
 [Authorize]
-public class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvider clock, IServiceProvider services) : Hub
+public partial class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvider clock, IServiceProvider services) : Hub
 {
     private const string TenantKey = "tenant", UserKey = "user", NameKey = "name", WatchingKey = "watching";
 
@@ -151,6 +151,7 @@ public class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvider clock
         // Leaving the app closes whatever the person was looking at.
         if (Context.Items[WatchingKey] is HashSet<string> watching && Context.Items[TenantKey] is Guid tenant && Context.Items[UserKey] is Guid user)
             foreach (var key in watching) await Clients.Group(ViewGroup(tenant, key)).SendAsync("viewing", new { key, userId = user, on = false });
+        await LeaveAllDocumentsAsync();
         await base.OnDisconnectedAsync(exception);
     }
 

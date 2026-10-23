@@ -65,7 +65,9 @@ export function mentionExtension(lookups: { current: EditorLookups | null }) {
 export { KIND_ICON };
 
 /** The commands of the "/" menu. `image` and `table` appear only where they can be used. */
-function slashItems(editor: Editor, extra: { onImage?: () => void }): SuggestItem[] {
+export interface SlashExtras { onImage?: () => void; onAiWrite?: () => void; onAiContinue?: () => void; liveTasks?: boolean }
+
+function slashItems(editor: Editor, extra: SlashExtras): SuggestItem[] {
   const c = () => editor.chain().focus();
   const items: SuggestItem[] = [
     { id: 'text', title: 'Text', hint: 'Plain paragraph', icon: '¶', run: () => c().setParagraph().run() },
@@ -77,6 +79,7 @@ function slashItems(editor: Editor, extra: { onImage?: () => void }): SuggestIte
     { id: 'todo', title: 'To-do list', hint: 'Tick items off', icon: '☑', run: () => c().toggleTaskList().run() },
     { id: 'callout', title: 'Callout', hint: 'A note that stands out', icon: '💡', run: () => c().wrapIn('callout', { tone: 'info' }).run() },
     { id: 'warning', title: 'Warning', hint: 'A caution in amber', icon: '⚠️', run: () => c().wrapIn('callout', { tone: 'warning' }).run() },
+    { id: 'toggle', title: 'Toggle', hint: 'A heading that opens to show more', icon: '▸', run: () => c().setDetails().run() },
     { id: 'quote', title: 'Quote', icon: '“', run: () => c().toggleBlockquote().run() },
     { id: 'code', title: 'Code', hint: 'With highlighting', icon: '</>', run: () => c().toggleCodeBlock().run() },
     { id: 'table', title: 'Table', hint: '3 × 3 with a header row', icon: '▦', run: () => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
@@ -86,12 +89,16 @@ function slashItems(editor: Editor, extra: { onImage?: () => void }): SuggestIte
     { id: 'person', title: 'Mention someone', hint: 'Or type @', icon: '@', run: () => c().insertContent('@').run() },
     { id: 'task', title: 'Mention a task', hint: 'Or type #', icon: '#', run: () => c().insertContent('#').run() },
   ];
-  if (extra.onImage) items.splice(13, 0, { id: 'image', title: 'Picture', hint: 'Upload an image', icon: '🖼', run: extra.onImage });
+  if (extra.onImage) items.splice(14, 0, { id: 'image', title: 'Picture', hint: 'Upload an image', icon: '🖼', run: extra.onImage });
+  if (extra.liveTasks) items.push({ id: 'tasks', title: 'Live task list', hint: 'The project’s tasks, always up to date', icon: '☰', run: () => c().insertContent({ type: 'liveTasks', attrs: { projectId: '', filter: 'open', limit: 10 } }).run() });
+  // AI first: most people would rather say what they want than type it out.
+  if (extra.onAiContinue) items.unshift({ id: 'ai-continue', title: 'Continue writing', hint: 'AI writes the next paragraphs', icon: '✨', run: extra.onAiContinue });
+  if (extra.onAiWrite) items.unshift({ id: 'ai', title: 'Write with AI', hint: 'Say what to write', icon: '✨', run: extra.onAiWrite });
   return items;
 }
 
 /** "/" at the start of a line or after a space opens the block menu; typing filters it. */
-export function slashCommands(extra: { current: { onImage?: () => void } }) {
+export function slashCommands(extra: { current: SlashExtras }) {
   return Extension.create({
     name: 'slashCommands',
     addProseMirrorPlugins() {
@@ -107,7 +114,7 @@ export function slashCommands(extra: { current: { onImage?: () => void } }) {
         },
         items: ({ query, editor }) => {
           const q = query.toLowerCase();
-          return slashItems(editor, extra.current).filter((i) => !q || i.title.toLowerCase().includes(q) || i.id.includes(q)).slice(0, 12);
+          return slashItems(editor, extra.current).filter((i) => !q || i.title.toLowerCase().includes(q) || i.id.includes(q) || (q === 'ai' && i.id.startsWith('ai'))).slice(0, 14);
         },
         command: ({ editor, range, props }) => { editor.chain().focus().deleteRange(range).run(); props.run?.(); },
         render: suggestRenderer('No block by that name'),

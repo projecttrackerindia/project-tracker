@@ -290,7 +290,7 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     }
 }
 
-public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess access, PermissionService permissions, WorkItemService workItems)
+public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess access, PermissionService permissions, WorkItemService workItems, ProjectManagement.Application.Features.Documents.DocumentRankedSearch documents)
 {
     private const int PerType = 5;
 
@@ -314,6 +314,11 @@ public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess 
         foreach (var kind in items.GroupBy(i => i.Kind))
             hits.AddRange(kind.Take(PerType).Select(i => new SearchHit(kind.Key switch { WorkItemKind.Issue => "issue", WorkItemKind.ActionItem => "action", _ => "work" },
                 i.Id, i.Title, $"{i.Key} · {i.Status}", i.ProjectId, null)));
+
+        // Pages and documents by the words inside them, best first, with the line that matched (from the search bar and Ctrl+K).
+        if (lv.GetValueOrDefault(Modules.Documents) > 0)
+            hits.AddRange((await documents.SearchAsync(q, null, PerType, ct)).Hits.Select(h => new SearchHit("page", h.Id, $"{(h.Icon is null ? "" : h.Icon + " ")}{h.Title}",
+                h.Line.Length > 0 ? h.Line : h.Key, h.ProjectId, null)));
 
         var projects = lv[Modules.Projects] == 0 ? [] : await access.VisibleProjects().AsNoTracking()
             .Where(p => EF.Functions.Like(p.Name.ToLower(), SearchText.Pattern(q), SearchText.Escape) || EF.Functions.Like(p.Key.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (p.Description != null && EF.Functions.Like(p.Description.ToLower(), SearchText.Pattern(q), SearchText.Escape)))

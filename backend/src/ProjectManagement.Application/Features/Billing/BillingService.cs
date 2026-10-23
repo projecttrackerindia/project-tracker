@@ -355,7 +355,7 @@ public class BillingService(
     }}
 
 /// <summary>Background housekeeping: subscription lifecycle and stale-token cleanup (due-date reminders belong to the reminder engine).</summary>
-public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentSearchIndexer searchIndex, ProjectManagement.Application.Features.Documents.AuditChainService auditChain, ProjectManagement.Application.Features.Documents.KeyRotationService keyRotation, ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, ProjectManagement.Application.Features.Resumes.PersonalFileCleanup personalFiles, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks, ProjectManagement.Application.Features.Integrations.WhatsAppMetadataMaintenance whatsAppMetadata, BillingMailer? mailer = null)
+public class MaintenanceService(ProjectManagement.Application.Features.Documents.DocumentSearchIndexer searchIndex, ProjectManagement.Application.Features.Documents.AuditChainService auditChain, ProjectManagement.Application.Features.Documents.KeyRotationService keyRotation, ProjectManagement.Application.Features.Documents.DocumentRetentionService documentRetention, ProjectManagement.Application.Features.Documents.DocumentWorkflowService documentWorkflows, IAppDbContext db, IPaymentProvider payments, IOptions<PricingOptions> pricing, AppClock clock, ILogger<MaintenanceService> log, NotificationRouter router, ProjectManagement.Application.Features.Resumes.PersonalFileCleanup personalFiles, AttachmentJanitor files, ProjectManagement.Application.Features.Reports.ReportExportService exports, ProjectManagement.Application.Features.Integrations.WebhookProcessor webhooks, ProjectManagement.Application.Features.Integrations.WhatsAppMetadataMaintenance whatsAppMetadata, ProjectManagement.Application.Features.Documents.DocumentFreshnessService freshness, IServiceProvider services, BillingMailer? mailer = null)
 {
     private const int PastDueGraceDays = 7;
 
@@ -378,6 +378,7 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
         await StepAsync("document retention", () => documentRetention.PurgeAsync(ct), ct);   // deleted documents after 30 days; old document versions after the plan's history period
         await StepAsync("search index", () => searchIndex.SweepAsync(ct), ct);   // documents not yet in (or changed since) the search index
         await StepAsync("document reminders", () => documentWorkflows.SendRemindersAsync(ct), ct);   // Business: approvers of overdue review steps are reminded once
+        await StepAsync("document freshness", () => freshness.SweepAsync(services, ct), ct);   // pages whose linked work changed since they were last edited: marked, owner told once
     }
 
     private async Task StepAsync(string name, Func<Task> work, CancellationToken ct)

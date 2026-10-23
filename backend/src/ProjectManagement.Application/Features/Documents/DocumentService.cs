@@ -18,7 +18,7 @@ public record DocumentCan(bool Edit, bool Delete, bool Link, bool Share = false,
 public record DocumentItemDto(Guid Id, string Key, int Number, string Title, Guid TypeId, string TypeCode, string TypeName, string TypeColor, string TypeIcon,
     Guid? ProjectId, string? ProjectKey, string? ProjectName, Guid? TeamId, string? TeamName, UserRefDto Owner, DocumentStatus Status, DocumentVisibility Visibility,
     IReadOnlyList<string> Tags, DateTime UpdatedAt, DateTime CreatedAt, int LinkedCount, DocumentClassification Classification = DocumentClassification.Internal,
-    string VersionLabel = "Draft", int SharedCount = 0, Guid? ParentId = null, int PageOrder = 0, string? Icon = null);
+    string VersionLabel = "Draft", int SharedCount = 0, Guid? ParentId = null, int PageOrder = 0, string? Icon = null, DateTime? VerifiedAt = null, DateTime? StaleSince = null);
 public record DocumentPageDto(IReadOnlyList<DocumentItemDto> Items, string? NextCursor, int? Total);
 public record SectionDto(string Key, string Title, SectionKind Kind, int SortOrder, string Content);
 /// <param name="MaskedCount">How many personal or secret values were masked in what is sent (0 when nothing was, or for a revealed copy).</param>
@@ -264,7 +264,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 r.ProjectId, pr?.Key, pr?.Name, teamId, teamId is { } tid ? teams.GetValueOrDefault(tid) : null,
                 new UserRefDto(r.OwnerId, owners.GetValueOrDefault(r.OwnerId) ?? "Former member"), r.Status, r.Visibility,
                 tags.GetValueOrDefault(r.Id) ?? [], r.UpdatedAt ?? r.CreatedAt, r.CreatedAt, linked.GetValueOrDefault(r.Id), r.Classification,
-                versionLabel, sharedCounts.GetValueOrDefault(r.Id), r.ParentId, r.PageOrder, r.Icon);
+                versionLabel, sharedCounts.GetValueOrDefault(r.Id), r.ParentId, r.PageOrder, r.Icon, r.VerifiedAt, r.StaleSince);
         }).ToList();
     }
 
@@ -468,8 +468,15 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         }
         var version = await db.DocumentVersions.FirstAsync(v => v.Id == vid, ct);
         var hash = Combine(Hash(sections), doc.ApiHash);
-        if (hash != version.ContentHash) await workflows.OnContentChangedAsync(doc, ct);
-        version.ContentHash = hash; version.UpdatedAt = now;
+        if (hash != version.ContentHash)
+        {
+            await workflows.OnContentChangedAsync(doc, ct);
+            // Edited: whatever made it look out of date is now the writer's to judge again. (Saving the same text, as a page opened
+            // for co-editing may do, changes nothing and leaves the warning in place.)
+            doc.StaleSince = null; doc.StaleReason = null; doc.StaleNotifiedAt = null;
+            version.UpdatedAt = now;   // "last edited": when the words changed
+        }
+        version.ContentHash = hash;
         Touch(doc);
         // Autosave saves every few seconds: the activity feed says "edited" once per person per document per 10 minutes, not per save.
         var since = now.AddMinutes(-10);
@@ -521,6 +528,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (pid == doc.Id) throw new ValidationException("parentId", "A page cannot go inside itself.");
             var parent = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == pid, ct) ?? throw new ValidationException("parentId", "The page to move this one into was not found.");
             if (parent.ProjectId != doc.ProjectId) throw new ValidationException("parentId", "A page can only move inside a page of the same project.");
+            if (doc.ProjectId is null && parent.TeamId != doc.TeamId) throw new ValidationException("parentId", "A page can only move inside a page of the same space (the company, or the same team).");
             // Walk up from the new parent: meeting this page means the move would make a loop.
             var up = parent.ParentId;
             for (var depth = 0; up is { } u && depth < 100; depth++)
@@ -529,7 +537,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 up = await db.Documents.AsNoTracking().Where(d => d.Id == u).Select(d => d.ParentId).FirstOrDefaultAsync(ct);
             }
         }
-        var siblings = await db.Documents.Where(d => d.ParentId == req.ParentId && d.ProjectId == doc.ProjectId && d.Id != doc.Id).OrderBy(d => d.PageOrder).ThenBy(d => d.Title).ToListAsync(ct);
+        var siblings = await db.Documents.Where(d => d.ParentId == req.ParentId && d.ProjectId == doc.ProjectId && (doc.ProjectId != null || d.TeamId == doc.TeamId) && d.Id != doc.Id).OrderBy(d => d.PageOrder).ThenBy(d => d.Title).ToListAsync(ct);
         var at = Math.Clamp(req.PageOrder, 0, siblings.Count);
         siblings.Insert(at, doc);
         for (var i = 0; i < siblings.Count; i++) siblings[i].PageOrder = i;
