@@ -104,7 +104,13 @@ try{
    else if(ep.endsWith('/ai/insights'))data={items:[]};
    else if(ep==='/api/v1/ai/conversations/c1')data={id:'c1',title:'Why is CRIF HIGHMARK delayed?',messages:[
      {id:'m1',role:'user',content:'Why is CRIF HIGHMARK delayed?',reasoning:null,tier:null,model:null,routeReason:null,credits:0,status:'complete',tools:[],actions:[],attachments:[],createdAt:new Date(Date.now()-3600e3).toISOString()},
-     {id:'m2',role:'assistant',content:'**CRIF HIGHMARK** is 6 days behind. Two tasks are blocked on the vendor API keys, and the QA estimate grew from 16 to 30 hours.',reasoning:null,tier:'standard',model:'synthetic',routeReason:'Needs project data',credits:2,status:'complete',tools:[],actions:[],attachments:[],createdAt:new Date(Date.now()-3590e3).toISOString()}]};
+     {id:'m2',role:'assistant',content:'**CRIF HIGHMARK** is 6 days behind. Two tasks are blocked on the vendor API keys, and the QA estimate grew from 16 to 30 hours.',reasoning:null,tier:'standard',model:'synthetic',routeReason:'Needs project data',credits:2,status:'complete',tools:[],actions:[],attachments:[],createdAt:new Date(Date.now()-3590e3).toISOString()},
+     {id:'m3',role:'user',content:"Approve Max's timesheet and then submit my week",reasoning:null,tier:null,model:null,routeReason:null,credits:0,status:'complete',tools:[],actions:[],attachments:[],createdAt:new Date(Date.now()-3500e3).toISOString()},
+     {id:'m4',role:'assistant',content:'Both are ready for you to confirm.',reasoning:null,tier:'standard',model:'synthetic',routeReason:'Several parts',credits:2,status:'complete',
+      tools:[{name:'show_plan',label:'Planned the steps',count:3,steps:[{title:"Approve Max's timesheet",tool:'propose_review_timesheet',state:'waiting',actionId:'a1'},{title:'Submit your week',tool:'propose_submit_week',state:'waiting',actionId:'a2'},{title:'Tell you what is left',tool:null,state:'done'}]},{name:'needs_you',label:'Looked at what needs you',count:3}],
+      actions:[{id:'a1',kind:'review_timesheet',title:"Approve Max Manager's timesheet — week of 12 Jan 2030",summary:'38h logged, 30h billable · the week stays locked for payroll and invoices',status:'done',link:'/timesheet/approvals?week=2030-01-12',error:null,preview:null},
+        {id:'a2',kind:'submit_week',title:'Submit your timesheet for the week of 12 Jan 2030',summary:'40h logged (32h billable) · goes to your manager',status:'proposed',link:null,error:null,preview:null}],
+      attachments:[],createdAt:new Date(Date.now()-3490e3).toISOString()}]};
    else if(ep==='/api/v1/ai/conversations')data=[{id:'c1',title:'Why is CRIF HIGHMARK delayed?',lastMessageAt:new Date(Date.now()-3600e3).toISOString(),isPinned:false}];
    else if(ep.endsWith('/workspace/logo'))data={hasLogo:false};
    else if(ep==='/api/v1/chat/projects/unread')data=[];
@@ -232,13 +238,24 @@ try{
  assert.equal(await page.locator('.ai-rail').count(),0,'no conversation list beside the chat');
  assert.ok(await page.locator('.ai-box-bar .ai-attach').isVisible(),'attach is inside the ask box');
  await page.locator('.aih-recent button',{hasText:'CRIF HIGHMARK'}).waitFor();
+ for(const chip of ['What needs me','Catch me up','Plan my day','Submit my week'])assert.ok(await page.locator('.aih-chips button',{hasText:chip}).isVisible(),chip);
  await page.locator('.ai-mode-menu > summary[aria-label="Thinking level: Auto"]').click();await page.waitForTimeout(250);await page.screenshot({path:path.join(out,'ai-first-home-level-1440.png'),animations:'disabled'});await page.getByRole('menuitemradio',{name:/Quick/}).click();
  await page.locator('.ai-mode-menu > summary[aria-label="Thinking level: Quick"]').waitFor();
  await page.locator('.aih-history > summary').click();await page.locator('.aih-history-panel input[aria-label="Search conversations"]').waitFor();await page.waitForTimeout(250);await page.screenshot({path:path.join(out,'ai-first-home-chats-1440.png'),animations:'disabled'});
  await page.locator('.aih-history-panel input[aria-label="Search conversations"]').fill('zzz');await page.locator('.aih-history-panel',{hasText:'Nothing matches.'}).waitFor();
  await page.keyboard.press('Escape');assert.ok(!(await page.locator('.aih-history-panel').isVisible()),'Escape closes the Chats menu');
  await page.locator('.aih-recent button',{hasText:'CRIF HIGHMARK'}).click();await page.locator('.ai-thread .ai-msg').nth(1).waitFor();assert.match(page.url(),/[?&]c=c1/,'the chat stays on Home');
- assert.ok(await page.locator('.ai-main > .ai-composer.stacked').isVisible(),'the ask box moves to the bottom in a chat');await page.locator('.aih-bar-title b',{hasText:'CRIF HIGHMARK'}).waitFor();
+ assert.ok(await page.locator('.ai-main > .ai-composer.stacked').isVisible(),'the ask box moves to the bottom in a chat');
+ // A request with several parts keeps its plan: a step follows the card it prepared (confirmed = done, waiting = waiting for you).
+ const steps=page.getByTestId('ai-plan');await steps.waitFor();
+ assert.equal(await steps.locator('li').count(),3);
+ assert.match(await steps.locator('header').innerText(),/2 of 3 done/);
+ assert.ok(await steps.locator('li').nth(0).evaluate(e=>e.classList.contains('st-done')),'the confirmed card makes its step done');
+ assert.ok(await steps.locator('li').nth(1).evaluate(e=>e.classList.contains('st-waiting')));
+ assert.match(await steps.locator('li').nth(1).innerText(),/Waiting for you/);
+ assert.equal(await page.locator('.ai-tools .ai-tool',{hasText:'Planned the steps'}).count(),0,'the plan is not also a chip');
+ await steps.scrollIntoViewIfNeeded();await page.waitForTimeout(200);await page.screenshot({path:path.join(out,'ai-plan-1440.png'),animations:'disabled'});
+ checks.push('plan-steps');await page.locator('.aih-bar-title b',{hasText:'CRIF HIGHMARK'}).waitFor();
  await page.waitForTimeout(250);await page.screenshot({path:path.join(out,'ai-first-home-chat-1440.png'),animations:'disabled'});
  await page.getByRole('button',{name:'New chat'}).click();await page.locator('.aih-hero h1').waitFor();
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'ai-first-home-phone.png'),animations:'disabled'});await page.setViewportSize({width:1440,height:1000});
