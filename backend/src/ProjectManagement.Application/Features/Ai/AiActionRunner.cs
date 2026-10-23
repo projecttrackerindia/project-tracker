@@ -32,7 +32,7 @@ public sealed record AiActionResult(string? Link, Guid? RecordId = null);
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
     ReminderService reminders, ChatService messages, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email,
     ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
-    ProjectManagement.Application.Features.Time.TimeService time)
+    ProjectManagement.Application.Features.Time.TimeService time, AiHomeActions home)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -182,7 +182,8 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 return new AiActionResult($"/projects/{projectId}?tab=meetings&meeting={m.Id}", m.Id);
             }
             default:
-                throw new ValidationException("action", "This kind of suggestion is not supported.");
+                // Home: the agent's proposals, timesheets, notifications, chat replies, pages, portfolio options and vault requests.
+                return await home.RunAsync(p.Kind, a, executionId, ct) ?? throw new ValidationException("action", "This kind of suggestion is not supported.");
         }
     }
 

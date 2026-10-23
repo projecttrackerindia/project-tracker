@@ -12,7 +12,9 @@ export interface AiUsage {
   requestLimits?: { planCode: string; perMinute: number; perHour: number; perDay: number; concurrent: number; distributed: boolean };
 }
 export interface AiConversation { id: string; title: string; lastMessageAt: string; isPinned: boolean }
-export interface AiToolUse { name: string; label: string; count: number | null }
+/** One step of the plan shown for a request with several parts. `actionId` is the card that step prepared, when it prepared one. */
+export interface AiPlanStep { title: string; tool: string | null; state: 'pending' | 'done' | 'waiting' | 'failed' | 'skipped'; actionId?: string | null }
+export interface AiToolUse { name: string; label: string; count: number | null; steps?: AiPlanStep[] | null }
 export interface AiAttachment { id: string; name: string; contentType: string; sizeBytes: number; isImage: boolean }
 export interface AiAction {
   lifecycle?: { planId: string; version: number; dependsOn: string[]; expiresAt: string } | null; id: string; kind: string; title: string; summary: string; status: 'proposed' | 'running' | 'done' | 'failed' | 'dismissed'; link: string | null; error: string | null; preview: string | null }
@@ -70,6 +72,7 @@ export type AiStreamEvent =
   | { name: 'text'; delta: string }
   | { name: 'tool'; id: string; tool: string; label: string; state: 'running' | 'done' | 'failed'; count: number | null }
   | { name: 'action'; action: AiAction }
+  | { name: 'plan'; steps: AiPlanStep[] }
   | { name: 'done'; message: AiMessage; creditsLeft: number; unlimited: boolean }
   | { name: 'error'; code: string; message: string; retryAfterSeconds?: number | null };
 

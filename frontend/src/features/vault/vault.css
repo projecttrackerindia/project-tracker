@@ -316,6 +316,10 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
 
 /* ---- never drawn, only copied; the edit screen is the one place a value shows */
 .vlt-copy-only { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; }
+.vlt-remark-row { align-items: flex-start; }
+.vlt-remark { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; font-family: inherit; }
+.vlt-rotate-ask { margin: 8px 0 0; }
+.vlt-rotate-ask .link-btn { font-size: inherit; }
 .vlt-input-row-top { align-items: flex-start; }
 .vlt-input-row-top .textarea { flex: 1; }
 .vlt-history-fields { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 4px; }

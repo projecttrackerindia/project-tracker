@@ -18,6 +18,35 @@ const STATUS_LABEL: Record<VaultRequest['status'], string> = { Pending: 'Waiting
  * Asking for access: a use window for one item under the two-person rule, or time on a collection someone may ask to join. The person who
  * decides reads the reason; the window ends by itself.
  */
+/** Asks for a new value (it leaked, someone left, it is shared too widely): the owner and the people who manage it are told. */
+export function RequestRotationModal({ item, onClose, onDone }: { item: { id: string; title: string }; onClose: () => void; onDone?: () => void }) {
+  const wid = useWorkspaceId();
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <Modal title={`Ask for a new value for “${item.title}”`} subtitle="Its owner and the people who manage it are told; it shows as “to change” until someone saves a new value." size="sm"
+      onClose={onClose} className="vlt-scope"
+      onSubmit={async (e) => {
+        e.preventDefault(); setError(null); setBusy(true);
+        try {
+          await vaultApi.requestRotation(item.id, reason.trim());
+          toast('Asked. It shows as “to change” until someone saves a new value.');
+          void invalidateWorkspace(wid, 'vault');
+          onDone?.(); onClose();
+        } catch (err) { setError(errText(err, 'Could not ask.')); setBusy(false); }
+      }}
+      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy || reason.trim().length < 10}>{busy && <span className="spinner" />}Ask for a new value</button></>}>
+      <div className="vlt-req-form">
+        <label className="field"><span>Why (they read this)</span>
+          <textarea className="textarea" rows={3} value={reason} maxLength={500} autoFocus onChange={(e) => setReason(e.target.value)} placeholder="It was pasted into a support ticket by mistake" /></label>
+        <p className="vlt-small muted"><Icon name="shield" size={12} /> Recorded in the audit trail.</p>
+        {error && <p className="form-error" role="alert">{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
 export function RequestAccessModal({ target, onClose, onDone }: {
   target: { kind: 'item'; id: string; title: string } | { kind: 'collection'; collection: VaultRequestable };
   onClose: () => void; onDone?: (r: VaultRequest) => void;

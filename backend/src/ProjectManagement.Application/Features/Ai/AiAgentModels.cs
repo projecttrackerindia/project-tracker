@@ -11,7 +11,8 @@ public record AiTierInfoDto(string Id, string Label, string Model, int Credits, 
 
 public record AiConversationDto(Guid Id, string Title, DateTime LastMessageAt, bool IsPinned);
 
-public record AiToolUseDto(string Name, string Label, int? Count);
+/// <summary>What the assistant looked at. A plan it showed (<see cref="AiHomeTools.ShowPlan"/>) carries its <see cref="Steps"/> with how each ended.</summary>
+public record AiToolUseDto(string Name, string Label, int? Count, IReadOnlyList<AiPlanStepDto>? Steps = null);
 public record AiAttachmentDto(Guid Id, string Name, string ContentType, long SizeBytes, bool IsImage);
 
 /// <summary>
@@ -50,5 +51,7 @@ public sealed record AiStreamText(string Delta) : AiStreamEvent("text");
 /// <summary><paramref name="State"/> is "running" or "done".</summary>
 public sealed record AiStreamTool(string Id, string Tool, string Label, string State, int? Count) : AiStreamEvent("tool");
 public sealed record AiStreamAction(AiActionDto Action) : AiStreamEvent("action");
+/// <summary>The plan for a request with several parts, sent when it is shown and again each time a step moves on.</summary>
+public sealed record AiStreamPlan(IReadOnlyList<AiPlanStepDto> Steps) : AiStreamEvent("plan");
 public sealed record AiStreamDone(AiMessageDto Message, long CreditsLeft, bool Unlimited) : AiStreamEvent("done");
 public sealed record AiStreamError(string Code, string Message, int? RetryAfterSeconds = null) : AiStreamEvent("error");

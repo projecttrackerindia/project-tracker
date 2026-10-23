@@ -7,7 +7,8 @@ export type VaultAccess = 'None' | 'UseOnly' | 'View' | 'Manage';
 export type VaultPrincipal = 'User' | 'Team' | 'Role' | 'Project';
 export type VaultClass = 'Secret' | 'Confidential';
 export type VaultHealthFlag = 'weak' | 'reused' | 'breached' | 'expired' | 'old' | 'rotate';
-export type FieldType = 'text' | 'password' | 'totp' | 'note' | 'key' | 'url';
+/** `remark` is plain, multi-line text anyone with access reads; `url` a link. Neither is ever secret. */
+export type FieldType = 'text' | 'password' | 'totp' | 'note' | 'key' | 'url' | 'remark';
 interface UserRef { id: string; name: string }
 
 export interface VaultField { key: string; label: string; type: FieldType; secret: boolean; value: string | null }
@@ -104,6 +105,8 @@ export const vaultApi = {
   stepUpPasskeyOptions: () => post<PasskeyChallenge>('/vault/step-up/passkey/options', {}),
   stepUpPasskey: (challengeId: string, response: Record<string, unknown>) => post<{ token: string; expiresAt: string }>('/vault/step-up/passkey', { challengeId, response }),
   requestReveal: (itemId: string, reason: string, minutes: number) => post<VaultRequest>(`/vault/items/${itemId}/requests`, { reason, minutes }),
+  /** Asks the owner and managers for a new value: the item is marked to rotate, with who asked and why. */
+  requestRotation: (itemId: string, reason: string) => post<VaultItemSummary>(`/vault/items/${itemId}/rotation-request`, { reason }),
   requestable: () => get<VaultRequestable[]>('/vault/requestable'),
   requestCollection: (id: string, reason: string, minutes: number, access: VaultAccess) => post<VaultRequest>(`/vault/collections/${id}/requests`, { reason, minutes, access }),
   requests: () => get<VaultRequests>('/vault/requests'),
@@ -183,14 +186,19 @@ export const vaultApi = {
 };
 
 /** The fields each kind starts with (the server applies the same list). */
+const REMARKS = { key: 'remarks', label: 'Remarks', type: 'remark', secret: false } as const;
+const ENV = { key: 'environment', label: 'Environment', type: 'text', secret: false } as const;
+/** The fields each kind starts with (the same as the server's). Notes are secret; Remarks are for everyone with access. */
 export const TEMPLATES: Record<VaultItemKind, { key: string; label: string; type: FieldType; secret: boolean }[]> = {
-  Login: [{ key: 'username', label: 'User name', type: 'text', secret: false }, { key: 'password', label: 'Password', type: 'password', secret: true }, { key: 'totp', label: 'One-time code (2FA)', type: 'totp', secret: true }, { key: 'note', label: 'Notes', type: 'note', secret: true }],
-  ApiKey: [{ key: 'key', label: 'API key', type: 'password', secret: true }, { key: 'secret', label: 'Secret', type: 'password', secret: true }, { key: 'note', label: 'Notes', type: 'note', secret: true }],
-  Server: [{ key: 'host', label: 'Host', type: 'text', secret: false }, { key: 'port', label: 'Port', type: 'text', secret: false }, { key: 'username', label: 'User name', type: 'text', secret: false }, { key: 'password', label: 'Password', type: 'password', secret: true }, { key: 'privateKey', label: 'Private key', type: 'key', secret: true }, { key: 'note', label: 'Notes', type: 'note', secret: true }],
-  Database: [{ key: 'host', label: 'Host', type: 'text', secret: false }, { key: 'port', label: 'Port', type: 'text', secret: false }, { key: 'database', label: 'Database', type: 'text', secret: false }, { key: 'username', label: 'User name', type: 'text', secret: false }, { key: 'password', label: 'Password', type: 'password', secret: true }, { key: 'connectionString', label: 'Connection string', type: 'password', secret: true }, { key: 'note', label: 'Notes', type: 'note', secret: true }],
-  Card: [{ key: 'holder', label: 'Name on card', type: 'text', secret: false }, { key: 'number', label: 'Card number', type: 'password', secret: true }, { key: 'expiry', label: 'Expiry (MM/YY)', type: 'text', secret: false }, { key: 'cvv', label: 'CVV', type: 'password', secret: true }, { key: 'pin', label: 'PIN', type: 'password', secret: true }, { key: 'note', label: 'Notes', type: 'note', secret: true }],
-  Note: [{ key: 'note', label: 'Secure note', type: 'note', secret: true }],
-  Other: [],
+  Login: [{ key: 'username', label: 'User name', type: 'text', secret: false }, { key: 'password', label: 'Password', type: 'password', secret: true }, { key: 'totp', label: 'One-time code (2FA)', type: 'totp', secret: true }, { key: 'note', label: 'Notes', type: 'note', secret: true }, REMARKS],
+  ApiKey: [{ key: 'key', label: 'API key', type: 'password', secret: true }, { key: 'secret', label: 'Secret', type: 'password', secret: true }, ENV, { key: 'note', label: 'Notes', type: 'note', secret: true }, REMARKS],
+  Server: [{ key: 'host', label: 'Host or IP address', type: 'text', secret: false }, { key: 'port', label: 'Port', type: 'text', secret: false }, { key: 'username', label: 'User name', type: 'text', secret: false }, { key: 'password', label: 'Password', type: 'password', secret: true }, { key: 'privateKey', label: 'Private key', type: 'key', secret: true },
+    ENV, { key: 'os', label: 'Operating system', type: 'text', secret: false }, { key: 'note', label: 'Notes', type: 'note', secret: true }, REMARKS],
+  Database: [{ key: 'host', label: 'Host', type: 'text', secret: false }, { key: 'port', label: 'Port', type: 'text', secret: false }, { key: 'database', label: 'Database', type: 'text', secret: false }, { key: 'username', label: 'User name', type: 'text', secret: false }, { key: 'password', label: 'Password', type: 'password', secret: true }, { key: 'connectionString', label: 'Connection string', type: 'password', secret: true },
+    ENV, { key: 'note', label: 'Notes', type: 'note', secret: true }, REMARKS],
+  Card: [{ key: 'holder', label: 'Name on card', type: 'text', secret: false }, { key: 'number', label: 'Card number', type: 'password', secret: true }, { key: 'expiry', label: 'Expiry (MM/YY)', type: 'text', secret: false }, { key: 'cvv', label: 'CVV', type: 'password', secret: true }, { key: 'pin', label: 'PIN', type: 'password', secret: true }, { key: 'note', label: 'Notes', type: 'note', secret: true }, REMARKS],
+  Note: [{ key: 'note', label: 'Secure note', type: 'note', secret: true }, REMARKS],
+  Other: [REMARKS],
 };
 
 export const KIND_LABEL: Record<VaultItemKind, string> = { Login: 'Login', ApiKey: 'API key', Server: 'Server', Database: 'Database', Card: 'Card', Note: 'Secure note', Other: 'Other' };

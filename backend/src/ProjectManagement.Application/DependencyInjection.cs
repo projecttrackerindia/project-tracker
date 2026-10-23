@@ -219,6 +219,8 @@ public static class DependencyInjection
         // The AI workspace: conversations, the tools it reads the workspace with, the changes it proposes, and attached files.
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiToolbox>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiActionRunner>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiHomeTools>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiHomeActions>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiFileService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiGuidance>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiAnalysis>();

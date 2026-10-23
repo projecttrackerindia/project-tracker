@@ -42,9 +42,11 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
         <h1><span className="aih-mark" aria-hidden="true"><Icon name="sparkle" size={18} /></span>{greeting()}{first ? `, ${first}` : ''}</h1>
         {composer}
         <div className="aih-chips">
+          <button type="button" onClick={() => ask('What needs me right now? Go through it, most urgent first, and prepare what you can for me to confirm.')}><Icon name="target" size={13} /> What needs me</button>
+          <button type="button" onClick={() => ask('Catch me up on my unread chat: the decisions, questions put to me and actions, with links.')}><Icon name="message" size={13} /> Catch me up</button>
           <button type="button" onClick={() => ask('Plan my day: order my open and late work by what matters most, and say why.')}><Icon name="list" size={13} /> Plan my day</button>
+          <button type="button" onClick={() => ask('Submit my timesheet for the latest week that is ready to submit.')}><Icon name="timer" size={13} /> Submit my week</button>
           <button type="button" onClick={() => ask('Which projects are delayed and why?')}><Icon name="gauge" size={13} /> Delayed projects</button>
-          <button type="button" onClick={() => ask('Create a task')}><Icon name="plus" size={13} /> Create a task</button>
           <button type="button" onClick={() => onTab('decisions')}><Icon name="checks" size={13} /> Approvals</button>
         </div>
         {recent.length > 0 && (

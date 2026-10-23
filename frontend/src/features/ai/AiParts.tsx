@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { fetchBlobUrl } from '../../api/client';
 import { Icon, type IconName } from '../../components/Icon';
 import { formatDateTime } from '../../lib/format';
-import type { AiAction, AiAttachment, AiFeedbackReason, AiInsight, AiMessage, AiMode, AiStarter, AiTier, AiTierInfo, AiToolUse, AiUsage } from './aiApi';
+import type { AiAction, AiAttachment, AiFeedbackReason, AiInsight, AiMessage, AiMode, AiPlanStep, AiStarter, AiTier, AiTierInfo, AiToolUse, AiUsage } from './aiApi';
 import { Markdown } from './Markdown';
 import { useDetailsDismiss } from '../../lib/hooks';
 import { AI_NAME } from './aiBrand';
@@ -172,7 +172,8 @@ export function Reasoning({ text, live }: { text: string; live: boolean }) {
 
 export function ToolChips({ tools }: { tools: (AiToolUse & { state?: 'running' | 'done' | 'failed' })[] }) {
   // A lookup that failed is not shown as a chip: the assistant tells the person in words what it could not read.
-  const shown = tools.filter((t) => t.state !== 'failed');
+  // The plan has its own checklist (PlanSteps), not a chip.
+  const shown = tools.filter((t) => t.state !== 'failed' && t.name !== 'show_plan');
   if (shown.length === 0) return null;
   return (
     <div className="ai-tools">
@@ -185,6 +186,46 @@ export function ToolChips({ tools }: { tools: (AiToolUse & { state?: 'running' |
   );
 }
 
+const STEP_LABEL: Record<AiPlanStep['state'], string> = { pending: 'To do', done: 'Done', waiting: 'Waiting for you', failed: 'Did not work', skipped: 'Not reached' };
+
+/**
+ * The plan for a request with several parts, as a checklist. A step that prepared a card follows that card: it is done once the card is
+ * confirmed, and shows "Waiting for you" until then.
+ */
+export function PlanSteps({ steps, actions, live = false }: { steps: AiPlanStep[]; actions: AiAction[]; live?: boolean }) {
+  const stateOf = (s: AiPlanStep): AiPlanStep['state'] => {
+    const card = s.actionId ? actions.find((a) => a.id === s.actionId) : undefined;
+    if (!card) return s.state;
+    return card.status === 'done' ? 'done' : card.status === 'failed' ? 'failed' : card.status === 'dismissed' ? 'skipped' : 'waiting';
+  };
+  const states = steps.map(stateOf);
+  const current = live ? states.findIndex((x) => x === 'pending') : -1;
+  const finished = states.filter((x) => x === 'done').length;
+  return (
+    <section className="ai-steps" aria-label="Plan" data-testid="ai-plan">
+      <header><Icon name="list" size={13} /><b>Plan</b><span>{finished} of {steps.length} done</span></header>
+      <ol>
+        {steps.map((s, i) => {
+          const st = i === current ? 'running' : states[i];
+          return (
+            <li key={`${i}-${s.title}`} className={`st-${st}`}>
+              <span className="ai-step-mark" aria-hidden>{st === 'running' ? <span className="spinner" /> : st === 'done' ? <Icon name="tick" size={11} /> : st === 'failed' ? <Icon name="close" size={11} /> : st === 'waiting' ? <Icon name="clock" size={11} /> : i + 1}</span>
+              <span className="ai-step-title">{s.title}</span>
+              <span className="ai-step-state">{st === 'running' ? 'Working…' : STEP_LABEL[states[i]]}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+const ACTION_ICON: Record<string, IconName> = {
+  send_report: 'mail', reminder: 'alarm', update_reminder: 'alarm', send_message: 'send', chat_reply: 'message', decide_agent_proposal: 'agent', review_timesheet: 'checks',
+  submit_week: 'timer', log_time: 'timer', planned_leave: 'calendar', clear_notification: 'bell', edit_page: 'edit', page_comment: 'message', apply_portfolio_option: 'gauge',
+  vault_request: 'key', vault_share: 'lock', update_work: 'edit', update_project: 'edit', start_meeting: 'video', schedule_meeting: 'video', invite_member: 'userPlus',
+};
+
 /** A change the assistant proposed. Nothing happens until Confirm. */
 export function ActionCard({ action, onConfirm, onDismiss, onReconcile, busy, blocked = false }: { action: AiAction; onConfirm: () => void; onDismiss: () => void; onReconcile?: () => void; busy: boolean; blocked?: boolean }) {
   const nav = useNavigate();
@@ -195,7 +236,7 @@ export function ActionCard({ action, onConfirm, onDismiss, onReconcile, busy, bl
     const timeout = window.setTimeout(() => setExpired(true), Math.max(0, Date.parse(expiresAt) - Date.now()));
     return () => window.clearTimeout(timeout);
   }, [action.status, expiresAt]);
-  const icon: IconName = action.kind === 'send_report' ? 'mail' : action.kind === 'reminder' ? 'alarm' : 'plus';
+  const icon: IconName = ACTION_ICON[action.kind] ?? 'plus';
   return (
     <div className={`ai-action ${action.status}`}>
       <span className="ai-action-icon"><Icon name={icon} size={16} /></span>
@@ -204,8 +245,8 @@ export function ActionCard({ action, onConfirm, onDismiss, onReconcile, busy, bl
         <span>{action.summary}</span>
         {action.status === 'failed' && <span className="ai-action-error">{action.error}</span>}
         {action.preview && (
-          <details className="ai-action-preview" open={action.kind === 'send_message'}>
-            <summary>{action.kind === 'send_report' ? 'Read the report before it is sent' : 'Details'}</summary>
+          <details className="ai-action-preview" open={action.kind === 'send_message' || action.kind === 'chat_reply'}>
+            <summary>{action.kind === 'send_report' ? 'Read the report before it is sent' : action.kind === 'chat_reply' ? 'The exact message' : action.kind === 'edit_page' ? 'The text that goes on the page' : 'Details'}</summary>
             <Markdown text={action.preview} />
           </details>
         )}
@@ -295,6 +336,7 @@ export function MessageView({ m, onConfirm, onDismiss, onReconcile, onCopy, onDo
           <time>{formatDateTime(m.createdAt)}</time>
         </div>
         {m.reasoning && <Reasoning text={m.reasoning} live={false} />}
+        {m.tools.find((t) => t.name === 'show_plan' && t.steps?.length) && <PlanSteps steps={m.tools.find((t) => t.name === 'show_plan')!.steps!} actions={m.actions} />}
         <ToolChips tools={m.tools} />
         {failed ? <div className="ai-error" role="alert"><Icon name="alert" size={15} /><span>{m.content}</span></div> : <Markdown text={withoutTrailer(m.content)} />}
         {!!m.sources?.length && <details style={{ marginTop: 10 }}><summary>Retrieved sources ({m.sources.length})</summary><ul>{m.sources.map(s => <li key={`${s.kind}:${s.id}:${s.version}`}><Link to={s.link}>{s.key}: {s.title}</Link> · version {s.version} · retrieved {formatDateTime(s.evidenceAt)}</li>)}</ul><p className="muted">These references identify evidence retrieved by the application. They do not verify every claim in the answer.</p></details>}

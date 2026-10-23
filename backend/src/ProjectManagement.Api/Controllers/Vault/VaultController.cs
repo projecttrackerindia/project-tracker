@@ -278,6 +278,10 @@ public class VaultController(VaultService vault, StepUpService stepUp, ProjectMa
     [HttpPost("items/{id:guid}/requests")]
     public async Task<IActionResult> RequestReveal(Guid id, [FromBody] VaultRequestInput req, CancellationToken ct) { NoStore(); return Ok(await vault.RequestRevealAsync(id, req, ct)); }
 
+    /// <summary>Asks the owner and managers for a new value (marks the item "to rotate").</summary>
+    [HttpPost("items/{id:guid}/rotation-request")]
+    public async Task<IActionResult> RequestRotation(Guid id, [FromBody] VaultRotationRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.RequestRotationAsync(id, req, ct)); }
+
     [HttpGet("requestable")]
     public async Task<IActionResult> Requestable(CancellationToken ct) { NoStore(); return Ok(await vault.RequestableAsync(ct)); }
 

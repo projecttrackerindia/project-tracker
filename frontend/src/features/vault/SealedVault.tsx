@@ -16,6 +16,7 @@ import { useStepUp } from './stepUpContext';
 import { AskCircle, CircleCard } from './RecoveryCircle';
 import { SendLinkModal } from './VaultLinks';
 import { BrandTile } from './brand';
+import { PlainValue } from './PlainValue';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError || e instanceof sealed.SealedError || e instanceof Error ? e.message || fallback : fallback);
 import type { Me } from './sealedData';
@@ -299,11 +300,12 @@ export function SealedItemPanel({ c, item, policy, lockEpoch, binned, onEdit, on
             : (
               <div key={f.key} className="vlt-field" data-field={f.key}>
                 <span className="vlt-field-label">{f.label}</span>
-                <div className="vlt-field-row">
-                  {!f.secret ? <span className="vlt-field-value">{f.value}</span>
-                    : <code className="vlt-field-value vlt-secret" data-state="masked" aria-label={`${f.label}, hidden`}>••••••••••••</code>}
-                  <button className="btn-icon" aria-label={`Copy ${f.label}`} onClick={() => void (f.secret ? copy(f.value!, f.label) : navigator.clipboard?.writeText(f.value!).then(() => toast(`${f.label} copied.`)))}><Icon name="copy" size={15} /></button>
-                </div>
+                {!f.secret ? <PlainValue label={f.label} type={f.type} value={f.value!} /> : (
+                  <div className="vlt-field-row">
+                    <code className="vlt-field-value vlt-secret" data-state="masked" aria-label={`${f.label}, hidden`}>••••••••••••</code>
+                    <button className="btn-icon" aria-label={`Copy ${f.label}`} onClick={() => void copy(f.value!, f.label)}><Icon name="copy" size={15} /></button>
+                  </div>
+                )}
                 {f.type === 'password' && <p className="vlt-small muted">Strength: {STRENGTH_LABEL[strength(f.value!)]}</p>}
               </div>
             ))}

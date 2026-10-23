@@ -13,6 +13,7 @@ public record VaultRequestsDto(IReadOnlyList<VaultRequestDto> Mine, IReadOnlyLis
 public record VaultRequestableDto(Guid Id, string Name, string? Description, VaultCollectionKind Kind, bool Sealed);
 public record VaultRequestInput(string? Reason, int Minutes, VaultAccess Access = VaultAccess.View);
 public record VaultDecisionInput(string? Note);
+public record VaultRotationRequest(string? Reason);
 public record VaultDecoyInput(bool Decoy);
 public record VaultDecoyDto(Guid ItemId, string Title, string CollectionName, int Triggered, DateTime? LastTriggeredAt);
 public record VaultRisk(int Score, IReadOnlyList<string> Reasons);
@@ -275,6 +276,56 @@ public partial class VaultService
         }
         recorder.Audit("vault.access_returned", "VaultCollection", r.CollectionId, null, new { request = r.Id });
         await db.SaveChangesAsync(ct);
+    }
+
+    // ------------------------------------------------------------------ asking for a new value
+
+    /// <summary>
+    /// Asks for an item to get a new value (it leaked, someone left, it is shared too widely): anyone who may use it can ask. The item is
+    /// marked "to rotate" with who asked and why, and its owner and the people who manage it are told (once a day per person asking).
+    /// </summary>
+    public async Task<VaultItemSummaryDto> RequestRotationAsync(Guid id, VaultRotationRequest req, CancellationToken ct = default)
+    {
+        await RequireUseAsync(ct);
+        var (tid, me) = Who();
+        var (item, c, access) = await ItemAsync(id, VaultAccess.UseOnly, ct);
+        if (c.LockedAt != null) throw new ConflictException("This collection is locked.", "VAULT_LOCKED");
+        var reason = CleanReason(req.Reason);
+        var who = await NameAsync(me, ct);
+        var name = item.Sealed || string.IsNullOrWhiteSpace(item.Title) ? $"an item in {c.Name}" : $"“{item.Title}”";
+        if (item.RotationReason is null) { item.RotationReason = Clip($"{who} asked for a new value: {reason}", 300); item.UpdatedAt = clock.Now; }
+        recorder.Audit("vault.rotation_requested", "VaultItem", id, null, new { item = item.Sealed ? null : item.Title, collection = c.Name, reason });
+        db.Activities.Add(new Activity { TenantId = tid, ActorId = me, Action = "vault.rotation_requested", EntityType = "VaultItem", EntityId = id,
+            Summary = $"A new value for {name} was asked for", CreatedAt = clock.Now });
+        var tell = (await AccessByUserAsync(c, ct)).Where(x => x.Value == VaultAccess.Manage && x.Key != me).Select(x => x.Key).ToHashSet();
+        if (item.OwnerUserId is { } owner && owner != me) tell.Add(owner);
+        var key = $"vault-rotate:{id}:{me}:{clock.Today:yyyyMMdd}";
+        if (!await db.Notifications.AnyAsync(n => n.DedupeKey == key, ct))
+            foreach (var u in tell)
+                await notifications.AddAsync(u, NotificationType.Security, $"{who} asks for a new value for {name}", $"Reason: {Clip(reason, 200)}", $"/vault?item={id}", dedupeKey: key, ct: ct);
+        await db.SaveChangesAsync(ct);
+        return Summary(item, (c, access), [], null);
+    }
+
+    /// <summary>
+    /// Adds one person to a shared collection (or changes what they have), keeping everyone else as they are. Sealed collections are shared
+    /// from the vault page only, where the manager's own browser hands over the key.
+    /// </summary>
+    public async Task<VaultCollectionDto> SharePersonAsync(Guid collectionId, Guid userId, VaultAccess access, DateTime? until, CancellationToken ct = default)
+    {
+        await RequireUseAsync(ct);
+        var (c, _) = await CollectionAsync(collectionId, VaultAccess.Manage, ct);
+        if (c.Sealed) throw new ConflictException("Share a sealed collection from the vault page: only your browser can hand over its key.", "VAULT_SEALED");
+        if (access is not (VaultAccess.UseOnly or VaultAccess.View)) throw new ValidationException("access", "Give use-only or view access here; managing is given on the vault page.");
+        var current = await db.VaultShares.AsNoTracking().Where(s => s.CollectionId == collectionId).ToListAsync(ct);
+        if (current.Any(s => s.PrincipalType == VaultPrincipal.User && s.PrincipalId == userId && s.Access == VaultAccess.Manage && s.ExpiresAt == null))
+            throw new ConflictException("They already manage this collection.", "VAULT_ALREADY_MANAGES");
+        if (until is { } u && u <= clock.Now) throw new ValidationException("until", "An end date must be in the future.");
+        // Everyone else stays exactly as they are (shares that already ended are dropped, as the page does).
+        var keep = current.Where(s => !(s.PrincipalType == VaultPrincipal.User && s.PrincipalId == userId) && !(s.ExpiresAt is { } e && e <= clock.Now))
+            .Select(s => new VaultShareInput(s.PrincipalType, s.PrincipalId, s.Role, s.Access, s.ExpiresAt)).ToList();
+        keep.Add(new VaultShareInput(VaultPrincipal.User, userId, null, access, until));
+        return await SaveSharesAsync(collectionId, new SaveVaultSharesRequest(keep), ct);
     }
 
     /// <summary>Pending requests older than a week lapse.</summary>

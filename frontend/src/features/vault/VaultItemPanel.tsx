@@ -7,10 +7,11 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { ACTION_LABEL, HEALTH_LABEL, KIND_LABEL, vaultApi, type VaultCollection, type VaultField, type VaultItem, type VaultPolicy, type VaultTotp } from './api';
-import { RequestAccessModal } from './VaultRequests';
+import { RequestAccessModal, RequestRotationModal } from './VaultRequests';
 import { useItemGrant } from './requestsData';
 import { SendLinkModal } from './VaultLinks';
 import { BrandTile } from './brand';
+import { PlainValue } from './PlainValue';
 import { copySecret, STRENGTH_LABEL } from './secure';
 import { useStepUp } from './stepUpContext';
 
@@ -36,6 +37,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
   const { grant, pending, refetch: refetchGrant } = useItemGrant(id, approval);
   const [asking, setAsking] = useState(false);
   const [sending, setSending] = useState(false);
+  const [rotating, setRotating] = useState(false);
   const decoys = useWsQuery(['vault', 'decoys'], vaultApi.decoys, { enabled: canAdmin, staleTime: 30_000 });
   const isDecoy = !!decoys.data?.some((x) => x.itemId === id);
 
@@ -129,12 +131,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
             : (
               <div key={f.key} className="vlt-field" data-field={f.key}>
                 <span className="vlt-field-label">{f.label}</span>
-                {!f.secret ? (
-                  <div className="vlt-field-row">
-                    <span className="vlt-field-value">{f.value}</span>
-                    <button className="btn-icon" aria-label={`Copy ${f.label}`} onClick={() => navigator.clipboard?.writeText(f.value ?? '').then(() => toast(`${f.label} copied.`))}><Icon name="copy" size={15} /></button>
-                  </div>
-                ) : (
+                {!f.secret ? <PlainValue label={f.label} type={f.type} value={f.value ?? ''} /> : (
                   <>
                     <div className="vlt-field-row">
                       <code className="vlt-field-value vlt-secret" data-state="masked" aria-label={`${f.label}, hidden`}>{MASK}</code>
@@ -158,6 +155,10 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
             <dt>Last used</dt><dd>{it.lastUsedAt ? timeAgo(it.lastUsedAt) : 'Never'}</dd>
             <dt>Added</dt><dd>{formatDate(d.createdAt)}{d.createdBy ? ` by ${d.createdBy.name}` : ''}</dd>
           </dl>
+          {!binned && !it.rotationReason && !d.canManage && (
+            <p className="vlt-small muted vlt-rotate-ask">Think this value leaked, or someone who left still knows it?{' '}
+              <button type="button" className="link-btn" onClick={() => setRotating(true)}>Ask for a new value</button></p>
+          )}
           {d.links.length > 0 && <div className="vlt-links"><span className="vlt-field-label">Used by</span>{d.links.map((l) => <span key={l.kind + l.id} className="chip">{l.label}</span>)}</div>}
           {d.canManage && binned && (
             <div className="vlt-danger-zone">
@@ -190,6 +191,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
       {tab === 'history' && d.canManage && <HistoryTab item={d} />}
       {tab === 'activity' && d.canManage && <ActivityTab id={id} />}
       {sending && <SendLinkModal source={{ kind: 'guarded', item: d }} clipboardSeconds={policy.clipboardSeconds} onClose={() => setSending(false)} />}
+      {rotating && <RequestRotationModal item={{ id, title: it.title }} onClose={() => setRotating(false)} onDone={() => { void q.refetch(); onChanged(); }} />}
       {asking && <RequestAccessModal target={{ kind: 'item', id, title: it.title }} onClose={() => setAsking(false)} onDone={() => void refetchGrant()} />}
     </section>
   );

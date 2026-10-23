@@ -47,7 +47,9 @@ const fields = (id) => {
   if (s.kind === 'Database') return [{ key: 'host', label: 'Host', type: 'text', secret: false, value: 'db.payments.internal' }, { key: 'username', label: 'User name', type: 'text', secret: false, value: 'payuser' }, { key: 'password', label: 'Password', type: 'password', secret: true, value: null }];
   const f = [{ key: 'username', label: 'User name', type: 'text', secret: false, value: id === 'i1' ? 'ravi@fivestar.in' : 'admin' }, { key: 'password', label: 'Password', type: 'password', secret: true, value: null }];
   if (id === 'i4') f.push({ key: 'totp', label: 'One-time code (2FA)', type: 'totp', secret: true, value: null });
-  if (id === 'i1') f.push({ key: 'note', label: 'Notes', type: 'note', secret: true, value: null });
+  if (id === 'i1') f.push({ key: 'note', label: 'Notes', type: 'note', secret: true, value: null },
+    { key: 'statements', label: 'Statements portal', type: 'url', secret: false, value: 'https://statements.bank.example/login' },
+    { key: 'remarks', label: 'Remarks', type: 'remark', secret: false, value: 'Shared login for the finance team.\nCall Ravi before changing it.' });
   return f;
 };
 const detail = (id) => {
@@ -237,6 +239,12 @@ try {
   assert.equal(await page.locator('.vlt-panel [data-state="revealed"]').count(), 0);
   assert.equal(writes.filter((w) => w.ep.endsWith('/reveal')).length, 0, 'opening an item fetches no value');
   assert.match(await page.locator('.vlt-copy-only').innerText(), /never shown here/);
+  // Remarks are for reading (line breaks kept) and a second address is a link; neither is masked.
+  const remark = page.locator('[data-field="remarks"] .vlt-remark');
+  assert.equal(await remark.innerText(), 'Shared login for the finance team.\nCall Ravi before changing it.');
+  assert.equal(await page.locator('[data-field="statements"] a').getAttribute('href'), 'https://statements.bank.example/login');
+  assert.equal(await page.locator('[data-field="statements"] a').getAttribute('rel'), 'noopener noreferrer nofollow');
+  await shot(page, 'item-remarks-1440.png');
   assert.match(await page.getByTestId('shield-note').innerText(), /Screen sharing can see a browser tab/);
   checks.push('item-view-copy-only');
 
@@ -330,12 +338,20 @@ try {
   await page.locator('#vf-totp').fill('not a key');
   assert.ok(await page.locator('[data-field="totp"] .field-error').isVisible());
   await page.locator('#vf-totp').fill('JBSW Y3DP EHPK 3PXP');
+  await page.locator('#vf-remarks').fill('Org owner account. Ask in #platform before changing.');
+  await page.getByRole('button', { name: 'Add a field' }).click();
+  await page.getByLabel('New field name').fill('Admin console');
+  await page.getByLabel('New field type').selectOption('url');
+  await page.locator('.vlt-add-field').getByRole('button', { name: 'Add', exact: true }).click();
+  await page.locator('#vf-adminConsole').fill('https://github.com/organizations/fivestar/settings');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items' && w.body), 'create');
   const created = writes.find((w) => w.ep === '/api/v1/vault/items' && w.body).body;
   assert.equal(created.title, 'GitHub'); assert.equal(created.collectionId, 'c1'); assert.equal(created.class, 'Secret');
   assert.deepEqual(created.fields.find((f) => f.key === 'password'), { key: 'password', label: 'Password', type: 'password', secret: true, value: generated });
   assert.equal(created.fields.find((f) => f.key === 'totp').value, 'JBSW Y3DP EHPK 3PXP');
+  assert.deepEqual(created.fields.find((f) => f.key === 'remarks'), { key: 'remarks', label: 'Remarks', type: 'remark', secret: false, value: 'Org owner account. Ask in #platform before changing.' });
+  assert.deepEqual(created.fields.find((f) => f.key === 'adminConsole'), { key: 'adminConsole', label: 'Admin console', type: 'url', secret: false, value: 'https://github.com/organizations/fivestar/settings' });
   checks.push('create-with-generator');
 
   // Edit: the one place a value shows — fetched only when asked for (recorded as for the edit screen), masked again when the window is

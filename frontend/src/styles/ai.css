@@ -331,6 +331,30 @@
 .ai-insight:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .ai-plan { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0 4px; padding: 8px 12px; border-radius: 10px; background: var(--primary-soft); font-size: 13px; font-weight: 600; }
 
+/* ---- the plan for a request with several parts: a checklist on a spine, each step following the card it prepared */
+.ai-steps { margin: 8px 0 10px; padding: 10px 14px 8px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); max-width: 620px; }
+.ai-steps header { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; font-size: 12.5px; color: var(--text-2); }
+.ai-steps header b { color: var(--text); font-weight: 650; }
+.ai-steps header span { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.ai-steps ol { list-style: none; margin: 0; padding: 0; position: relative; }
+.ai-steps li { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 5px 0; font-size: 13.5px; }
+.ai-steps li + li::before { content: ''; position: absolute; left: 10px; top: -6px; height: 12px; width: 2px; border-radius: 2px; background: var(--border); }
+.ai-steps li.st-done + li::before { background: var(--success); }
+.ai-step-mark { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: var(--text-3); background: var(--surface-3); border: 1px solid var(--border); }
+.ai-step-mark .spinner { width: 11px; height: 11px; }
+.ai-step-title { min-width: 0; overflow-wrap: anywhere; color: var(--text); }
+.ai-step-state { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.ai-steps li.st-done .ai-step-mark { color: var(--surface-solid); background: var(--success); border-color: var(--success); }
+.ai-steps li.st-done .ai-step-title { color: var(--text-2); }
+.ai-steps li.st-waiting .ai-step-mark { color: var(--primary); background: var(--primary-soft); border-color: var(--ai-a); }
+.ai-steps li.st-waiting .ai-step-state { color: var(--primary); font-weight: 600; }
+.ai-steps li.st-running .ai-step-mark { border-color: var(--ai-a); background: var(--primary-soft); }
+.ai-steps li.st-running .ai-step-state { color: var(--text-2); }
+.ai-steps li.st-failed .ai-step-mark { color: var(--surface-solid); background: var(--danger); border-color: var(--danger); }
+.ai-steps li.st-failed .ai-step-state { color: var(--danger); }
+.ai-steps li.st-skipped { opacity: .62; }
+@media (max-width: 560px) { .ai-steps li { grid-template-columns: 22px minmax(0, 1fr); } .ai-step-state { grid-column: 2; margin-top: -4px; } }
+
 /* ============================================================
    AI-first Home: the assistant without the side list. A slim top bar (Chats menu, title, usage, Classic view), the thread in one centred
    column, and the stacked ask box: text on top, then attach, the level menu and send in one row.

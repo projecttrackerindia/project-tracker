@@ -91,22 +91,30 @@ public partial class VaultService
     /// <summary>The names a pipeline gets, from what is in the collection now (no values).</summary>
     private async Task<IReadOnlyList<string>> VariableNamesAsync(Guid collectionId, CancellationToken ct)
     {
-        var items = await db.VaultItems.AsNoTracking().Where(i => i.CollectionId == collectionId && i.DeletedAt == null && !i.Sealed && !i.Decoy)
-            .Select(i => new { i.Title, i.Kind, i.FieldsJson }).ToListAsync(ct);
-        return items.SelectMany(i => ReadDefs(i.FieldsJson).Where(d => d.Type != "totp").Select(d => EnvName(i.Title, i.Kind, d.Key))).Distinct().OrderBy(n => n, StringComparer.Ordinal).ToList();
+        // Exactly what a run would receive: the same values, read here only to know which are filled in (none of them leaves the server).
+        var (tid, _) = Who();
+        return (await MachineVariablesAsync(tid, collectionId, ct)).Select(v => v.Name).OrderBy(n => n, StringComparer.Ordinal).ToList();
     }
 
     /// <summary>
     /// An item's field as an environment variable: the item's name in capitals with underscores, then the field (STRIPE_API_KEY,
     /// PAYMENTS_DB_PASSWORD). An API key's own key field is just the item's name, so "Stripe secret key" gives STRIPE_SECRET_KEY.
     /// </summary>
+    private const string Accented = "ÀÁÂÃÄÅĀàáâãäåāÇçČčÈÉÊËĒèéêëēÌÍÎÏĪìíîïīÑñÒÓÔÕÖØŌòóôõöøōŠšÙÚÛÜŪùúûüūÝýÿŽž";
+    private const string Plain    = "AAAAAAAaaaaaaaCcCcEEEEEeeeeeIIIIIiiiiiNnOOOOOOOoooooooSsUUUUUuuuuuYyyZz";
+
     public static string EnvName(string title, VaultItemKind kind, string fieldKey)
     {
         static string Up(string s)
         {
             var sb = new StringBuilder();
-            foreach (var ch in s.Normalize(NormalizationForm.FormKD))
+            string decomposed;
+            try { decomposed = s.Normalize(NormalizationForm.FormKD); } catch (ArgumentException) { decomposed = s; }
+            foreach (var raw in decomposed)
             {
+                // Servers run with invariant globalization, where Normalize may leave accents in place: the common Latin ones are folded by hand.
+                var at = Accented.IndexOf(raw);
+                var ch = at >= 0 ? Plain[at] : raw;
                 if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.NonSpacingMark) continue;   // accents
                 if (char.IsAsciiLetterOrDigit(ch)) sb.Append(char.ToUpperInvariant(ch));
                 else if (char.IsLower(ch) || char.IsUpper(ch)) continue;      // letters outside A-Z (after removing accents): dropped
@@ -133,7 +141,7 @@ public partial class VaultService
             Dictionary<string, string> values;
             try { values = await crypto.OpenAsync(tenant, i.Id, i.Cipher, i.WrappedItemKey, i.KeyVersion, ct); }
             catch (Exception e) when (e is System.Security.Cryptography.CryptographicException or FormatException or InvalidOperationException or System.Text.Json.JsonException) { continue; }
-            foreach (var d in ReadDefs(i.FieldsJson).Where(d => d.Type != "totp"))
+            foreach (var d in ReadDefs(i.FieldsJson).Where(d => d.Type is not ("totp" or "remark")))
                 if (values.TryGetValue(d.Key, out var v) && !string.IsNullOrEmpty(v)) vars.TryAdd(EnvName(i.Title, i.Kind, d.Key), v);
         }
         return vars.Select(kv => (kv.Key, kv.Value)).ToList();

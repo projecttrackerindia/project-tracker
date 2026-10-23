@@ -27,7 +27,8 @@ public sealed record AiProposal(string Id, string Kind, string Title, string Sum
 }
 
 /// <summary>What a tool gave back: the text the model reads, a short label for the page ("Looked through 12 work items"), and any proposal.</summary>
-public sealed record AiToolOutcome(string Content, string Label, int? Count = null, AiProposal? Proposal = null, bool IsError = false, IReadOnlyList<AiKnowledgeReference>? Sources = null, bool VerifiedNoChange = false);
+public sealed record AiToolOutcome(string Content, string Label, int? Count = null, AiProposal? Proposal = null, bool IsError = false, IReadOnlyList<AiKnowledgeReference>? Sources = null, bool VerifiedNoChange = false,
+    IReadOnlyList<AiPlanStepDto>? Plan = null);
 
 /// <summary>A tool could not do what was asked; the message goes back to the model so it can correct itself or tell the person.</summary>
 public sealed class AiToolException(string message) : Exception(message);
@@ -40,7 +41,8 @@ public sealed class AiToolException(string message) : Exception(message);
 /// </summary>
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
     WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, AiPortfolio portfolio, ActionItemService actionItems, TaskService tasks, WorkTaskService workTasks, ProjectService projects, DocumentService documents, ReminderService reminders,
-    ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiToolbox> log, AiKnowledgeService knowledge, ProjectManagement.Application.Features.Time.PlannedLeaveService leave)
+    ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiToolbox> log, AiKnowledgeService knowledge, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
+    AiHomeTools home)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
@@ -58,7 +60,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         CreateDocument = "propose_create_document", ListMeetings = "list_project_meetings", StartMeeting = "propose_start_meeting", ScheduleMeeting = "propose_schedule_meeting";
 
     public const string ScheduleProject = "propose_schedule_project";
-    public static readonly string[] WriteTools = [PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, ScheduleMeeting];
+    public static readonly string[] WriteTools = [PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, ScheduleMeeting,
+        .. AiHomeTools.WriteTools];
 
     /// <summary>
     /// Proposal kinds (<see cref="AiProposal.Kind"/>) that run the instant they are proposed, with no card to click: ordinary, reversible
@@ -82,6 +85,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var all = Definitions(actionsAllowed);
         var lower = text.ToLowerInvariant();
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(leave|timesheet|absence|time off|log|logged|spent|hours)\b")) return all;
+        // Running the day from Home: what needs the person, chat catch-up and threads, pages, portfolio options, the vault.
+        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(needs? (me|you)|waiting (on|for) me|my inbox|catch (me )?up|unread|thread|reply|replied|what did .{1,40} say|what was (said|agreed)|agreed|snooze|mark .{0,30}\bdone|submit (my|the|this|last) week|approve|dismiss|send (it |them )?back|proposals?|portfolio decision|decision option|section|comment on|vault|password|credential|api key|rotate|rotation)\b")) return all;
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(message|dm|chat)\b") && !System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b"))
             return all.Where(t => t.Name is SendMessage or ListPeople).ToList();
         if (!System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b")
@@ -158,6 +163,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             new(ListMeetings, "List a project's Google Meet meetings, upcoming and recent past, with who organized each one and their real RSVP status (accepted, declined, tentative, or awaiting a response) straight from Google Calendar. Use for 'what meetings are scheduled', 'who accepted tomorrow's meeting'.",
                 """{"type":"object","properties":{"project":{"type":"string","description":"A project key or name."}},"required":["project"]}"""),
         };
+        tools.AddRange(home.Definitions(false));
         if (!actionsAllowed) return tools;
         tools.AddRange(
         [
@@ -247,6 +253,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                  "participants":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: every project member."}},"required":["project","title","at"]}
                 """),
         ]);
+        tools.AddRange(home.Definitions(true).Where(t => AiHomeTools.WriteTools.Contains(t.Name)));
         if (actionsAllowed) actionCatalog = tools; else readCatalog = tools;
         return tools;
     }
@@ -306,7 +313,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 ListMeetings => await ListMeetingsAsync(a, ct),
                 StartMeeting => await ProposeStartMeetingAsync(a, ct),
                 ScheduleMeeting => await ProposeScheduleMeetingAsync(a, timeZone, ct),
-                _ => throw new AiToolException($"There is no tool called {name}."),
+                _ => await home.ExecuteAsync(name, a, timeZone, HomePersonAsync, ct) ?? throw new AiToolException($"There is no tool called {name}."),
             };
         }
         catch (AiToolException ex) { return new AiToolOutcome(ex.Message, "A lookup did not work", IsError: true); }
@@ -358,7 +365,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             ? string.Join("\n", DocumentDiff.ReadTable(s.Content).Item2.Select(row => string.Join(" | ", row)))
             : string.Join("\n", DocumentDiff.TextLines(s.Content).Select(line => line.Text)))));
         var chunk = offset >= text.Length ? "" : text.Substring(offset, Math.Min(4000, text.Length - offset));
-        return new AiToolOutcome(JsonSerializer.Serialize(new { doc.Item.Key, doc.Item.Title, doc.Revision, doc.VersionLabel, offset, text = chunk,
+        return new AiToolOutcome(JsonSerializer.Serialize(new { doc.Item.Key, doc.Item.Title, doc.Revision, doc.VersionLabel, can_edit = doc.Can.Edit,
+            sections = offset == 0 ? doc.Sections.Select(s => new { s.Key, s.Title, kind = s.Kind == SectionKind.Table ? "table" : "text" }) : null, offset, text = chunk,
             next_offset = offset + chunk.Length < text.Length ? (int?)(offset + chunk.Length) : null, source = $"/documents/{documentId}" }, Json), "Read document excerpt", chunk.Length, Sources: [knowledge.DocumentReference(doc)]);
     }
 
@@ -1185,7 +1193,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     }
 
     /// <summary>A light markdown reading: blank-line paragraphs, #/##/### headings, and a block of consecutive "- "/"* " lines as a bullet list. Good enough for AI-written text; not a full parser.</summary>
-    private static string MarkdownToDoc(string text)
+    internal static string MarkdownToDoc(string text)
     {
         var blocks = new JsonArray();
         foreach (var raw in text.Replace("\r\n", "\n").Split("\n\n", StringSplitOptions.RemoveEmptyEntries))
@@ -1215,7 +1223,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         return new JsonObject { ["type"] = "doc", ["content"] = blocks }.ToJsonString();
     }
 
-    private static AiToolOutcome Propose(string kind, string title, string summary, object payload, string? preview = null)
+    internal static AiToolOutcome Propose(string kind, string title, string summary, object payload, string? preview = null)
     {
         var p = new AiProposal(Guid.NewGuid().ToString("N")[..8], kind, title, summary, JsonSerializer.Serialize(payload, Json),
             Preview: string.IsNullOrWhiteSpace(preview) ? null : preview.Length > 4000 ? preview[..4000] + "…" : preview);
@@ -1254,6 +1262,13 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             0 => throw new AiToolException($"I could not find “{t}” among the available workspace members. Please provide their full name or email."),
             _ => throw new AiToolException($"“{t}” could be {string.Join(", ", found.Take(6).Select(p => p.Name))}. Please specify the full name or email."),
         };
+    }
+
+    /// <summary>A person by what was said, for the Home tools (<see cref="AiHomeTools"/>).</summary>
+    private async Task<(Guid Id, string Name)> HomePersonAsync(string text, CancellationToken ct)
+    {
+        var p = await PersonAsync(text, ct);
+        return (p.Id, p.Name);
     }
 
     private sealed record ProjectRef(Guid Id, string Key, string Name)

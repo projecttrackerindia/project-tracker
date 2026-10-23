@@ -9,8 +9,8 @@ import { timeAgo } from '../../lib/format';
 import { useAuth, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { useAiStatus } from './Assistant';
-import { aiWorkspaceApi, type AiFeedbackReason, askAi, type AiAction, type AiConversation, type AiMessage, type AiMode, type AiStreamEvent, type AiTier, type AiToolUse } from './aiApi';
-import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, ModeMenu, CreditMeter, Reasoning, RouteChip, ToolChips, ActionCard, hasFiles, tierName, withoutTrailer, type PendingFile, type Suggestion } from './AiParts';
+import { aiWorkspaceApi, type AiFeedbackReason, askAi, type AiAction, type AiConversation, type AiMessage, type AiMode, type AiStreamEvent, type AiTier, type AiToolUse, type AiPlanStep } from './aiApi';
+import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, ModeMenu, CreditMeter, Reasoning, RouteChip, ToolChips, ActionCard, PlanSteps, hasFiles, tierName, withoutTrailer, type PendingFile, type Suggestion } from './AiParts';
 import { AI_NAME } from './aiBrand';
 import { saveFile } from '../../lib/native';
 import { Markdown } from './Markdown';
@@ -18,7 +18,7 @@ import { Markdown } from './Markdown';
 /** What the page shows while an answer is being written. */
 interface Live {
   text: string; reasoning: string; stage: 'routing' | 'queued' | 'thinking' | 'writing'; waitLimitSeconds?: number | null;
-  tools: (AiToolUse & { id: string; state: 'running' | 'done' | 'failed' })[]; actions: AiAction[];
+  tools: (AiToolUse & { id: string; state: 'running' | 'done' | 'failed' })[]; actions: AiAction[]; plan?: AiPlanStep[] | null;
   route?: { tier: AiTier; reason: string; limited: boolean; wanted: AiTier; credits: number };
 }
 
@@ -195,7 +195,7 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
     const flush = () => {
       if (scheduled) return;
       scheduled = true;
-      requestAnimationFrame(() => { scheduled = false; if (!run.finished) setLive({ ...run, tools: [...run.tools], actions: [...run.actions] }); });
+      requestAnimationFrame(() => { scheduled = false; if (!run.finished) setLive({ ...run, tools: [...run.tools], actions: [...run.actions], plan: run.plan ? [...run.plan] : null }); });
     };
     const onEvent = (e: AiStreamEvent) => {
       switch (e.name) {
@@ -214,6 +214,7 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
           flush(); break;
         }
         case 'action': run.actions.push(e.action); flush(); break;
+        case 'plan': run.plan = e.steps; flush(); break;
         case 'done':
           run.finished = true;
           setMessages((m) => [...m, e.message]);
@@ -509,6 +510,7 @@ function LiveAnswer({ live }: { live: Live }) {
           <div className="ai-limit">This looked like it needed <b>{tierName(live.route.wanted)}</b>; your plan or remaining credits allow up to <b>{tierName(live.route.tier)}</b>. <Link to="/settings/billing">See plans</Link></div>
         )}
         {(live.reasoning || (live.route && live.route.tier !== 'quick' && !live.text)) && <Reasoning text={live.reasoning} live={!live.text} />}
+        {live.plan && <PlanSteps steps={live.plan} actions={live.actions} live />}
         <ToolChips tools={live.tools} />
         {live.stage === 'queued' && <p role="status">Waiting for the assistant. This wait is limited to {live.waitLimitSeconds ?? 10} seconds; you can stop at any time.</p>}
         {live.text ? <div className="ai-streaming"><Markdown text={withoutTrailer(live.text)} /><span className="ai-caret" /></div> : !live.reasoning && live.tools.length === 0 && <div className="ai-dots"><i /><i /><i /></div>}

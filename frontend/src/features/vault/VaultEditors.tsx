@@ -198,10 +198,16 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // An item saved before its kind gained a field (Environment, Remarks…) gets that field here too, empty, in the kind's order.
+  const withTemplate = (k: VaultItemKind, have: Row[]): Row[] => {
+    const missing = TEMPLATES[k].filter((t) => !have.some((r) => r.key === t.key)).map((t) => ({ ...t, value: '', existing: false, custom: false }));
+    const order = (r: Row) => { const i = TEMPLATES[k].findIndex((t) => t.key === r.key); return i < 0 ? TEMPLATES[k].length : i; };
+    return [...have, ...missing].sort((a, b) => order(a) - order(b));
+  };
   const initialRows = (k: VaultItemKind): Row[] => sp
-    ? sp.fields.map((f) => ({ key: f.key, label: f.label, type: f.type, secret: f.secret, value: f.value ?? '', existing: false, custom: !TEMPLATES[sealedEdit!.item.row.kind].some((t) => t.key === f.key) }))
+    ? withTemplate(sealedEdit!.item.row.kind, sp.fields.map((f) => ({ key: f.key, label: f.label, type: f.type, secret: f.secret, value: f.value ?? '', existing: false, custom: !TEMPLATES[sealedEdit!.item.row.kind].some((t) => t.key === f.key) })))
     : existing
-    ? existing.fields.map((f) => ({ key: f.key, label: f.label, type: f.type, secret: f.secret, value: f.secret ? '' : f.value ?? '', existing: f.secret, custom: !TEMPLATES[existing.item.kind].some((t) => t.key === f.key) }))
+    ? withTemplate(existing.item.kind, existing.fields.map((f) => ({ key: f.key, label: f.label, type: f.type, secret: f.secret, value: f.secret ? '' : f.value ?? '', existing: f.secret, custom: !TEMPLATES[existing.item.kind].some((t) => t.key === f.key) })))
     : TEMPLATES[k].map((t) => ({ ...t, value: '', existing: false, custom: false }));
   const [rows, setRows] = useState<Row[]>(() => initialRows(kind));
   const [adding, setAdding] = useState<{ label: string; type: FieldType } | null>(null);
@@ -277,14 +283,17 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
             {(sealedEdit ? [sealedEdit.collection] : manageable).map((c) => <option key={c.id} value={c.id}>{`${c.kind === 'Personal' ? `${c.name} (only you)` : c.name}${c.sealed ? ' · sealed' : ''}`}</option>)}
           </select>
         </Field>
-        {kind !== 'Note' && kind !== 'Card' && <Field label="Address" full><input className="input" value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} placeholder="https://console.aws.amazon.com" inputMode="url" /></Field>}
+        {kind !== 'Card' && <Field label="Address" full><input className="input" value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} placeholder="https://console.aws.amazon.com" inputMode="url" /></Field>}
         {rows.map((r) => r.secret
           ? <SecretInput key={r.key} field={r} value={r.value} existing={r.existing} clipboardSeconds={clipboardSeconds} revealSeconds={revealSeconds}
               onLoadCurrent={existing?.canReveal && existing.canManage ? loadCurrent(r) : undefined} onShown={sealedEdit ? shownSealed(r) : undefined} onChange={(v) => setRow(r.key, v)} />
           : (
-            <div key={r.key} className="field" data-field={r.key}>
-              <label htmlFor={`vf-${r.key}`}>{r.label}</label>
-              <input id={`vf-${r.key}`} className="input" value={r.value} maxLength={8000} autoComplete="off" spellCheck={false} onChange={(e) => setRow(r.key, e.target.value)} />
+            <div key={r.key} className={`field${r.type === 'remark' ? ' full' : ''}`} data-field={r.key}>
+              <label htmlFor={`vf-${r.key}`}>{r.label}{r.type === 'remark' && <span className="muted vlt-small"> · everyone with access can read this; put anything secret in Notes</span>}</label>
+              {r.type === 'remark'
+                ? <textarea id={`vf-${r.key}`} className="textarea" rows={3} value={r.value} maxLength={8000} onChange={(e) => setRow(r.key, e.target.value)} placeholder="Restart only in the Sunday window. On-call: platform team." />
+                : <input id={`vf-${r.key}`} className="input" value={r.value} maxLength={8000} autoComplete="off" spellCheck={false} inputMode={r.type === 'url' ? 'url' : undefined}
+                    placeholder={r.type === 'url' ? 'https://grafana.example.com/d/payments' : undefined} onChange={(e) => setRow(r.key, e.target.value)} />}
             </div>
           ))}
         <div className="field full">
@@ -292,12 +301,12 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
             <div className="vlt-add-field">
               <input className="input" value={adding.label} maxLength={60} autoFocus placeholder="Field name, e.g. Recovery email" aria-label="New field name" onChange={(e) => setAdding({ ...adding, label: e.target.value })} />
               <select className="input" value={adding.type} aria-label="New field type" onChange={(e) => setAdding({ ...adding, type: e.target.value as FieldType })}>
-                <option value="text">Text (not secret)</option><option value="password">Secret</option><option value="note">Secret note</option><option value="totp">One-time code</option>
+                <option value="text">Text (not secret)</option><option value="url">Link (another address)</option><option value="remark">Remark (not secret)</option><option value="password">Secret</option><option value="note">Secret note</option><option value="totp">One-time code</option>
               </select>
               <button type="button" className="btn btn-ghost btn-sm" disabled={!adding.label.trim()} onClick={() => {
                 let key = keyOf(adding.label); let n = 2;
                 while (rows.some((r) => r.key === key)) key = `${keyOf(adding.label).slice(0, 28)}${n++}`;
-                setRows([...rows, { key, label: adding.label.trim(), type: adding.type, secret: adding.type !== 'text', value: '', existing: false, custom: true }]); setAdding(null);
+                setRows([...rows, { key, label: adding.label.trim(), type: adding.type, secret: !['text', 'url', 'remark'].includes(adding.type), value: '', existing: false, custom: true }]); setAdding(null);
               }}>Add</button>
               <button type="button" className="btn-icon" aria-label="Cancel" onClick={() => setAdding(null)}><Icon name="close" size={14} /></button>
             </div>

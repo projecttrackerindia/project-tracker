@@ -79,17 +79,25 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
     // ------------------------------------------------------------------ the fields each kind starts with
 
     private sealed record FieldDef(string Key, string Label, string Type, bool Secret);
+    // Declared before the templates that use it (static fields start in the order they are written).
+    /// <summary>
+    /// Remarks anyone with access can read (how to use it, who to call, maintenance windows): never secret, never handed to a pipeline. What
+    /// must stay hidden goes in Notes, which is secret like a password.
+    /// </summary>
+    private static readonly FieldDef Remarks = new("remarks", "Remarks", "remark", false);
     private static readonly Dictionary<VaultItemKind, FieldDef[]> Template = new()
     {
-        [VaultItemKind.Login] = [new("username", "User name", "text", false), new("password", "Password", "password", true), new("totp", "One-time code (2FA)", "totp", true), new("note", "Notes", "note", true)],
-        [VaultItemKind.ApiKey] = [new("key", "API key", "password", true), new("secret", "Secret", "password", true), new("note", "Notes", "note", true)],
-        [VaultItemKind.Server] = [new("host", "Host", "text", false), new("port", "Port", "text", false), new("username", "User name", "text", false), new("password", "Password", "password", true), new("privateKey", "Private key", "key", true), new("note", "Notes", "note", true)],
-        [VaultItemKind.Database] = [new("host", "Host", "text", false), new("port", "Port", "text", false), new("database", "Database", "text", false), new("username", "User name", "text", false), new("password", "Password", "password", true), new("connectionString", "Connection string", "password", true), new("note", "Notes", "note", true)],
-        [VaultItemKind.Card] = [new("holder", "Name on card", "text", false), new("number", "Card number", "password", true), new("expiry", "Expiry (MM/YY)", "text", false), new("cvv", "CVV", "password", true), new("pin", "PIN", "password", true), new("note", "Notes", "note", true)],
-        [VaultItemKind.Note] = [new("note", "Secure note", "note", true)],
-        [VaultItemKind.Other] = [],
+        [VaultItemKind.Login] = [new("username", "User name", "text", false), new("password", "Password", "password", true), new("totp", "One-time code (2FA)", "totp", true), new("note", "Notes", "note", true), Remarks],
+        [VaultItemKind.ApiKey] = [new("key", "API key", "password", true), new("secret", "Secret", "password", true), new("environment", "Environment", "text", false), new("note", "Notes", "note", true), Remarks],
+        [VaultItemKind.Server] = [new("host", "Host or IP address", "text", false), new("port", "Port", "text", false), new("username", "User name", "text", false), new("password", "Password", "password", true), new("privateKey", "Private key", "key", true),
+            new("environment", "Environment", "text", false), new("os", "Operating system", "text", false), new("note", "Notes", "note", true), Remarks],
+        [VaultItemKind.Database] = [new("host", "Host", "text", false), new("port", "Port", "text", false), new("database", "Database", "text", false), new("username", "User name", "text", false), new("password", "Password", "password", true), new("connectionString", "Connection string", "password", true),
+            new("environment", "Environment", "text", false), new("note", "Notes", "note", true), Remarks],
+        [VaultItemKind.Card] = [new("holder", "Name on card", "text", false), new("number", "Card number", "password", true), new("expiry", "Expiry (MM/YY)", "text", false), new("cvv", "CVV", "password", true), new("pin", "PIN", "password", true), new("note", "Notes", "note", true), Remarks],
+        [VaultItemKind.Note] = [new("note", "Secure note", "note", true), Remarks],
+        [VaultItemKind.Other] = [Remarks],
     };
-    private static readonly HashSet<string> Types = ["text", "password", "totp", "note", "key", "url"];
+    private static readonly HashSet<string> Types = ["text", "password", "totp", "note", "key", "url", "remark"];
 
     // ------------------------------------------------------------------ who may do what
 
@@ -544,7 +552,8 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
             if (defs.Any(d => d.Key == key)) continue;
             var type = Types.Contains(f.Type ?? "") ? f.Type! : (f.Secret ? "password" : "text");
             var label = Clip(f.Label, 60) ?? key;
-            defs.Add(new FieldDef(key, label, type, f.Secret || type is "password" or "totp" or "key"));
+            // A remark or a link is plain information, never a secret; a password, code or key always is.
+            defs.Add(new FieldDef(key, label, type, type is not ("remark" or "url") && (f.Secret || type is "password" or "totp" or "key")));
         }
         var values = new Dictionary<string, string>();
         foreach (var d in defs)
