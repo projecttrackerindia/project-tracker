@@ -18,6 +18,23 @@ public static class AiExecutionPolicy
 
     private static bool Matches(string text, string pattern) => Regex.IsMatch(text, pattern, Options, TimeSpan.FromMilliseconds(100));
 
+    /// <summary>Text that says something was created, saved or sent ("I've created the task", "Done: ...", "has been saved").</summary>
+    public static bool ClaimsDone(string text) =>
+        Matches(text, @"\b(?:I(?:'ve| have)?|we(?:'ve| have)?|it(?:'s| has| is)|has been|have been|was|were|is now|are now|successfully)\s+(?:now\s+)?(?:created|added|saved|updated|scheduled|sent|completed|logged|assigned|moved|set|recorded|invited|made)\b")
+        || Matches(text.TrimStart(), @"^(?:done|created|saved|added|completed)\b");
+
+    /// <summary>
+    /// A question back to the person about what to do (which project, what title) rather than a report of something done. Kept as the
+    /// answer when an action request saved nothing: asking is the right move when only the person can supply the missing detail.
+    /// </summary>
+    public static bool IsClarification(string text)
+    {
+        var t = (text ?? "").Trim();
+        if (t.Length is 0 or > 2000 || ClaimsDone(t)) return false;
+        var body = Regex.Replace(t, @"<followups>.*$", "", RegexOptions.Singleline | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
+        return body.Contains('?');
+    }
+
     public static AiRequestIntent Classify(string text)
     {
         var query = text.Trim();

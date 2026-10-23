@@ -88,6 +88,45 @@ public sealed partial class AiMessageSendingTests
     });
 
     [Fact]
+    public Task A_question_back_is_kept_when_an_action_needs_a_detail_only_the_person_has() => Run(async (sender, _) =>
+    {
+        factory.Chat.Script.Enqueue(_ => FakeAiChat.Say("Which project should the task go in, and what should it be called?\n<followups>In Atlas | In Payments Core</followups>"));
+        var reply = await Ask(sender, "Create a task");
+        var content = reply["content"]!.GetValue<string>();
+        Assert.Empty(reply["actions"]!.AsArray());
+        Assert.Contains("Which project should the task go in", content);
+        Assert.DoesNotContain("No action was completed", content);
+        Assert.Equal(["In Atlas", "In Payments Core"], reply["followUps"]!.AsArray().Select(f => f!.GetValue<string>()));
+    });
+
+    [Fact]
+    public Task An_action_with_nothing_to_go_on_asks_for_what_is_missing_with_the_persons_projects() => Run(async (sender, _) =>
+    {
+        await sender.CreateProjectAsync("Loan Desk");
+        factory.Chat.Script.Enqueue(_ => FakeAiChat.Say("Okay."));
+        var reply = await Ask(sender, "Create a task");
+        var content = reply["content"]!.GetValue<string>();
+        Assert.Empty(reply["actions"]!.AsArray());
+        Assert.Contains("What should the task be?", content);
+        Assert.Contains("Loan Desk", content);
+        Assert.DoesNotContain("No action was completed", content);
+        Assert.Contains(reply["followUps"]!.AsArray(), f => f!.GetValue<string>() == "Create a task in Loan Desk");
+    });
+
+    [Theory]
+    [InlineData("I created your project.", true)]
+    [InlineData("I've added the task to Atlas.", true)]
+    [InlineData("Done: the reminder is set.", true)]
+    [InlineData("The task has been saved.", true)]
+    [InlineData("Which project should it go in?", false)]
+    [InlineData("I can create it once I know the title. What should it be called?", false)]
+    public void Claims_of_completion_are_told_apart_from_questions(string text, bool claims)
+    {
+        Assert.Equal(claims, AiExecutionPolicy.ClaimsDone(text));
+        Assert.Equal(!claims && text.Contains('?'), AiExecutionPolicy.IsClarification(text));
+    }
+
+    [Fact]
     public Task Project_completion_without_a_tool_is_never_reported_as_saved() => Run(async (sender, _) =>
     {
         factory.Chat.Script.Enqueue(_ => FakeAiChat.Say("I created your project."));
