@@ -151,6 +151,13 @@ public class AiHomeActions(IAppDbContext db, ICurrentContext ctx, AgentReviewSer
                 if (!sent.Accepted) throw new ConflictException("The mail server did not accept the reply. Check Mailbox before trying again.", "AI_ACTION_UNVERIFIED");
                 return new AiActionResult("/mailbox", null);
             }
+            case "mail_forward":
+            {
+                var sent = await mail.ForwardAsync(new ProjectManagement.Application.Features.Mailbox.MailForwardRequest(Str(a, "account")!, "inbox", Str(a, "messageId") ?? throw new ValidationException("messageId", "Choose the message."),
+                    Str(a, "to") ?? throw new ValidationException("to", "Add a recipient."), Str(a, "cc"), Str(a, "note"), true), ct);
+                if (!sent.Accepted) throw new ConflictException("The mail server did not accept the message. Check Mailbox before trying again.", "AI_ACTION_UNVERIFIED");
+                return new AiActionResult("/mailbox", null);
+            }
             default:
                 return null;
         }

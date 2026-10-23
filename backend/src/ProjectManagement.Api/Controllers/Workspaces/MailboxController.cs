@@ -27,6 +27,7 @@ public class MailboxController(MailboxService mailbox, MailboxAgent agent, Proje
         }
         return Ok(sent);
     }
+    [HttpPost("forward"), ExternalOperation] public async Task<IActionResult> Forward([FromBody] MailForwardRequest req, CancellationToken ct) => Ok(await mailbox.ForwardAsync(req, ct));
     [HttpGet("agent/options")] public async Task<IActionResult> AgentOptions(CancellationToken ct) => Ok(await agent.OptionsAsync(ct));
     [HttpPost("agent/assist"), AiRequestLimit] public async Task<IActionResult> Assist([FromBody] MailAssistRequest req, CancellationToken ct) => Ok(await agent.AssistAsync(req, ct));
     [HttpPost("agent/compose"), AiRequestLimit] public async Task<IActionResult> Compose([FromBody] MailComposeAssistRequest req, CancellationToken ct) => Ok(await agent.ComposeAsync(req, ct));

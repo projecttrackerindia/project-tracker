@@ -56,11 +56,11 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         ListPeople = "list_people", MyWorkSummary = "my_work_summary",
         CreateTask = "propose_create_task", CreateWork = "propose_create_work", CreateActionItem = "propose_create_action_item",
         CreateReminder = "propose_reminder", SendReport = "propose_send_report", CreateProject = "propose_create_project", InviteMember = "propose_invite_member",
-        UpdateProject = "propose_update_project", UpdateStagePlan = "propose_update_stage_dates", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work",
+        UpdateProject = "propose_update_project", UpdateStagePlan = "propose_update_stage_dates", PortfolioBrief = "portfolio_brief", PortfolioScenario = "portfolio_scenario", WorkloadBalance = "workload_balance", SuggestAssignee = "suggest_assignee", HistoryInsights = "history_insights", UpdateWork = "propose_update_work", DeleteWork = "propose_delete_work",
         CreateDocument = "propose_create_document", ListMeetings = "list_project_meetings", StartMeeting = "propose_start_meeting", ScheduleMeeting = "propose_schedule_meeting";
 
     public const string ScheduleProject = "propose_schedule_project";
-    public static readonly string[] WriteTools = [PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, ScheduleMeeting,
+    public static readonly string[] WriteTools = [DeleteWork, PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, ScheduleMeeting,
         .. AiHomeTools.WriteTools, .. AiWorkdayTools.WriteTools];
 
     /// <summary>
@@ -192,6 +192,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                  "title":{"type":"string"},"description":{"type":"string","description":"The full new description (replaces the old one)."},"estimate_hours":{"type":"number"},
                  "priority":{"type":"string","enum":["Low","Medium","High","Critical"]},"comment":{"type":"string"},"reason":{"type":"string","description":"Why the due date moves later."}},"required":["key"]}
                 """),
+            new(DeleteWork, "Propose deleting a task, operational work item or action item by its key (ATL-12, WT-3, AI-4), only when the person asked to delete that item. It goes to the bin (a task takes its subtasks with it) and can be undone for a while. The person confirms first.",
+                """{"type":"object","properties":{"key":{"type":"string"},"reason":{"type":"string","maxLength":300}},"required":["key"]}"""),
             new(UpdateStagePlan, "Change a stage planned start, end or allocated duration. Read project_report for exact IDs and scheduling mode. Automatic schedules recalculate downstream stages; FollowSchedule aligns the project end. Manual mode changes only that stage. Preserve task deadlines, actual dates and dependency locks. Explicit routine edits may execute directly under the backend policy; otherwise return a confirmation card. Later planned ends and project extensions need a reason.",
                 """{"type":"object","properties":{"project":{"type":"string"},"stage":{"type":"string","description":"Exact stage ID or name from project_report."},"planned_start":{"type":"string","description":"yyyy-MM-dd"},"planned_end":{"type":"string","description":"yyyy-MM-dd"},"duration_days":{"type":"integer","minimum":0,"maximum":36500,"description":"Allocated elapsed calendar days; zero is a milestone."},"reason":{"type":"string"}},"required":["project","stage"]}"""),
             new(ScheduleProject, "Schedule every stage using the shared backend engine. Read project_report first. Supply explicit durations for every stage, or omit them to preserve the recorded allocations. Do not invent missing durations. FollowSchedule aligns the project end; FixedDeadline validates the deadline. Completed plans and actual history are protected. Mode/allocation changes require one confirmation; the card previews every stage. If everything already matches, report a verified no-op.",
@@ -313,6 +315,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 SuggestAssignee => await SuggestAssigneeAsync(a, ct),
                 HistoryInsights => await HistoryInsightsAsync(a, ct),
                 UpdateWork => await ProposeUpdateAsync(a, ct),
+                DeleteWork => await ProposeDeleteAsync(a, ct),
                 UpdateProject => await ProposeUpdateProjectAsync(a, ct),
                 UpdateStagePlan => await ProposeUpdateStagePlanAsync(a, ct),
                 ScheduleProject => await ProposeScheduleProjectAsync(a, ct),
@@ -328,7 +331,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 ListMeetings => await ListMeetingsAsync(a, ct),
                 StartMeeting => await ProposeStartMeetingAsync(a, ct),
                 ScheduleMeeting => await ProposeScheduleMeetingAsync(a, timeZone, ct),
-                _ => await home.ExecuteAsync(name, a, timeZone, HomePersonAsync, ct) ?? await workday.ExecuteAsync(name, a, timeZone, ct)
+                _ => await home.ExecuteAsync(name, a, timeZone, HomePersonAsync, ct) ?? await workday.ExecuteAsync(name, a, timeZone, MemberEmailAsync, ct)
                     ?? throw new AiToolException($"There is no tool called {name}."),
             };
         }
@@ -573,6 +576,29 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     // ------------------------------------------------------------------ proposing (nothing is changed here)
 
     private static readonly System.Text.RegularExpressions.Regex ItemKey = new(@"^([A-Z][A-Z0-9]*)-(\d+)$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private async Task<AiToolOutcome> ProposeDeleteAsync(JsonElement a, CancellationToken ct)
+    {
+        var (kind, id, key, title) = await ResolveWorkItemAsync(Str(a, "key") ?? throw new AiToolException("Which item? Give its key, like ATL-12."), ct);
+        Guid? projectId = null; var extra = "";
+        switch (kind)
+        {
+            case "Task":
+                if (!await permissions.HasAsync(Permissions.TasksDelete, ct)) throw new AiToolException("The person's role does not allow deleting tasks. A project manager or admin can delete it.");
+                var subtasks = await db.Tasks.AsNoTracking().CountAsync(t => t.ParentTaskId == id && !t.IsDeleted, ct);
+                if (subtasks > 0) extra = $" and its {subtasks} subtask{(subtasks == 1 ? "" : "s")}";
+                break;
+            case "Operational":
+                if (!(await workTasks.GetAsync(id, ct)).Can.Delete) throw new AiToolException("The person cannot delete this work item (only its reporter or someone allowed to delete work can).");
+                break;
+            default:
+                projectId = (await db.WorkTasks.AsNoTracking().Where(w => w.Id == id).Select(w => w.RelatedProjectId).FirstOrDefaultAsync(ct)) ?? throw new AiToolException($"There is no work item {key}.");
+                break;
+        }
+        var reason = Str(a, "reason");
+        return Propose("delete_work", $"Delete {key} “{Clip(title, 80)}”", $"Moves {key}{extra} to the bin{(reason is null ? "" : $" · {Clip(reason, 120)}")} · can be undone for a while",
+            new { target = kind, id, key, title, projectId, reason });
+    }
 
     private async Task<AiToolOutcome> ProposeUpdateAsync(JsonElement a, CancellationToken ct)
     {
@@ -1287,6 +1313,12 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         return (p.Id, p.Name);
     }
 
+    private async Task<(string Name, string Email)> MemberEmailAsync(string text, CancellationToken ct)
+    {
+        var p = await PersonAsync(text, ct);
+        return (p.Name, p.Email);
+    }
+
     private sealed record ProjectRef(Guid Id, string Key, string Name)
     {
         /// <summary>A project proposed earlier in this same answer: it does not exist until the person confirms it, and the work is attached to it by name then.</summary>
@@ -1373,6 +1405,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     private static string Join(params string?[] parts) => parts.Where(p => !string.IsNullOrEmpty(p)).ToList() is { Count: > 0 } l ? " — " + string.Join(", ", l) : "";
 
     /// <summary>One line of someone else's words: no line breaks (so it cannot pose as a new instruction line), no pipes, at most 140 characters.</summary>
+    private static string Clip(string? s, int max) => s is null ? "" : s.Length <= max ? s : s[..(max - 1)] + "…";
+
     private static string Clean(string s)
     {
         var t = s.Replace("\r", " ").Replace("\n", " ").Replace("|", "/").Trim();

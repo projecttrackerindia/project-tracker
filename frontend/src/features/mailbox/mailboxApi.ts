@@ -12,6 +12,7 @@ export interface MailList { account: string; email: string; folder: MailFolder; 
 export interface MailThread { account: string; email: string; folder: MailFolder; threadId: string; messages: MailMessage[]; truncated: boolean }
 export interface MailSendInput { account: string; replyToId?: string | null; folder?: MailFolder; replyAll?: boolean; to?: string; cc?: string; subject?: string; body: string; confirmed: boolean }
 export interface MailSendResult { accepted: boolean; to: string; cc: string; subject: string }
+export interface MailForwardInput { account: string; folder?: MailFolder; messageId: string; to: string; cc?: string; note?: string; confirmed: boolean }
 export interface MailReplySuggestion { label: string; body: string }
 export interface MailTaskSuggestion { kind: 'create' | 'update'; taskId: string | null; taskKind: 'task' | 'work' | null; taskRef: string | null; projectId: string | null; title: string; detail: string | null; priority: string | null; status: string | null; reason: string; due: string | null }
 export interface MailAssist { summary: string; intent: string; urgency: 'low' | 'medium' | 'high'; actionItems: string[]; replies: MailReplySuggestion[]; tasks: MailTaskSuggestion[]; keyFacts: string[]; model: string | null }
@@ -27,6 +28,7 @@ export const mailboxApi = {
     get<MailList>('/me/mailbox/messages', { account, folder, cursor: cursor || undefined, q: q || undefined }, { signal }),
   thread: (account: string, folder: MailFolder, messageId: string, signal?: AbortSignal) => get<MailThread>('/me/mailbox/thread', { account, folder, messageId }, { signal }),
   send: (b: MailSendInput) => post<MailSendResult>('/me/mailbox/send', b),
+  forward: (b: MailForwardInput) => post<MailSendResult>('/me/mailbox/forward', b),
   agentOptions: () => get<{ available: boolean; credits: number }>('/me/mailbox/agent/options'),
   assist: (b: { account: string; folder: MailFolder; messageId: string }) => post<MailAssist>('/me/mailbox/agent/assist', b),
   compose: (b: { account?: string; folder?: MailFolder; messageId?: string; draft: string; mode: ComposeMode }) => post<{ body: string; model: string | null }>('/me/mailbox/agent/compose', b),

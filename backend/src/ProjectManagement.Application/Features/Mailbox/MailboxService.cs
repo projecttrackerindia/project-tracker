@@ -41,6 +41,8 @@ public record MailListDto(string Account, string Email, string Folder, IReadOnly
 public record MailThreadDto(string Account, string Email, string Folder, string ThreadId, IReadOnlyList<MailMessageDto> Messages, bool Truncated);
 public record MailSendRequest(string Account, string? ReplyToId, string? Folder, bool ReplyAll, string? To, string? Cc, string? Subject, string Body, bool Confirmed);
 public record MailSendResultDto(bool Accepted, string To, string Cc, string Subject);
+/// <summary>Forward one message to new recipients, with the person's own note above it and the original's attachments.</summary>
+public record MailForwardRequest(string Account, string? Folder, string MessageId, string To, string? Cc, string? Note, bool Confirmed);
 
 /// <summary>
 /// The Mailbox: one place to read and answer the person's own mail - Gmail and Outlook through their existing private grants, and
@@ -692,6 +694,146 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         if (to.Count == 0) throw new ValidationException("to", "Add at least one recipient.");
         message.To.AddRange(to); message.Cc.AddRange(cc); message.Subject = subject;
         message.Body = new TextPart("plain") { Text = body };
+        await SmtpSendAsync(row, message, ct);
+        await AuditAsync(req, row.Provider);
+        return new(true, to.ToString(), cc.ToString(), subject);
+    }
+
+    /// <summary>Largest total of attachments forwarded with a message; above it the person forwards from their mail app.</summary>
+    public const long ForwardAttachmentLimit = 20L * 1024 * 1024;
+
+    /// <summary>
+    /// Forwards a message from the person's own mailbox: their note, then the original (who sent it, when, to whom, its subject and text), with
+    /// the original's attachments. Outlook forwards natively; Gmail and company mail rebuild the message from the original.
+    /// </summary>
+    public async Task<MailSendResultDto> ForwardAsync(MailForwardRequest req, CancellationToken ct)
+    {
+        ctx.RequireTenantId();
+        if (!req.Confirmed) throw new ValidationException("confirmed", "Review the message and confirm forwarding.");
+        if (string.IsNullOrWhiteSpace(req.MessageId)) throw new ValidationException("messageId", "Choose the message to forward.");
+        var note = (req.Note ?? "").Trim();
+        if (note.Length > 20000) throw new ValidationException("note", "Keep the note under 20,000 characters.");
+        var to = Addresses(req.To, "to"); var cc = Addresses(req.Cc, "cc");
+        if (to.Count == 0) throw new ValidationException("to", "Add at least one recipient.");
+
+        if (req.Account == "microsoft")
+        {
+            var grant = await microsoft.GetMailGrantAsync(ct);
+            using var client = http.CreateClient("microsoft-productivity");
+            object Recipients(InternetAddressList l) => l.Mailboxes.Select(m => new { emailAddress = new { address = m.Address, name = m.Name } }).ToArray();
+            var id = SafeId(req.MessageId);
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"https://graph.microsoft.com/v1.0/me/messages/{Uri.EscapeDataString(id)}/forward")
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new { comment = note, toRecipients = Recipients(to), ccRecipients = Recipients(cc) }), Encoding.UTF8, "application/json"),
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", grant.AccessToken);
+            using (var response = await client.SendAsync(request, ct))
+                if (!response.IsSuccessStatusCode) throw new AppException(502, "MAILBOX_SEND_FAILED", "Outlook did not forward the message. Reconnect Outlook or try again.");
+            await AuditForwardAsync("microsoft", to.Count + cc.Count);
+            return new(true, to.ToString(), cc.ToString(), "");
+        }
+
+        if (req.Account == "google")
+        {
+            var read = await google.GetAccessGrantAsync(ctx.RequireUserId(), ct, GoogleCalendarAuthService.InboxScope);
+            var send = await google.GetAccessGrantAsync(ctx.RequireUserId(), ct, GoogleCalendarAuthService.MailScope);
+            var id = SafeId(req.MessageId);
+            if (!id.All(Uri.IsHexDigit)) throw new ValidationException("messageId", "Invalid mailbox message reference.");
+            using var client = http.CreateClient("google-calendar");
+            using var get = new HttpRequestMessage(HttpMethod.Get, $"https://gmail.googleapis.com/gmail/v1/users/me/messages/{id}?format=raw");
+            get.Headers.Authorization = new AuthenticationHeaderValue("Bearer", read.AccessToken);
+            MimeMessage original;
+            using (var got = await client.SendAsync(get, ct))
+            {
+                if (!got.IsSuccessStatusCode) throw new AppException(502, "MAILBOX_PROVIDER_ERROR", "The original message could not be read from Gmail.");
+                using var doc = JsonDocument.Parse(await got.Content.ReadAsStringAsync(ct));
+                var raw = doc.RootElement.TryGetProperty("raw", out var r) ? r.GetString() ?? "" : "";
+                original = LoadRaw(raw);
+            }
+            var forward = ForwardMessage(original, MailboxAddress.Parse(send.Account), to, cc, note);
+            using var post = new HttpRequestMessage(HttpMethod.Post, "https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
+            { Content = new StringContent(JsonSerializer.Serialize(new { raw = Raw(forward) }), Encoding.UTF8, "application/json") };
+            post.Headers.Authorization = new AuthenticationHeaderValue("Bearer", send.AccessToken);
+            using (var response = await client.SendAsync(post, ct))
+                if (!response.IsSuccessStatusCode) throw new AppException(502, "MAILBOX_SEND_FAILED", "Gmail did not accept the message. Reconnect Gmail with sending allowed, or try again.");
+            await AuditForwardAsync("google", to.Count + cc.Count);
+            return new(true, to.ToString(), cc.ToString(), forward.Subject ?? "");
+        }
+
+        var row = await ImapAccountAsync(req.Account, ct);
+        MimeMessage source;
+        if (IsPop(row)) source = await PopMessageAsync(row, req.MessageId, ct);
+        else
+        {
+            if (!uint.TryParse(req.MessageId, out var uidValue) || uidValue == 0) throw new ValidationException("messageId", "Invalid mailbox message reference.");
+            source = await RunImapAsync(row, async client => { var box = await OpenAsync(client, Folder(req.Folder), FolderAccess.ReadOnly, ct); return await box.GetMessageAsync(new UniqueId(uidValue), ct); }, ct);
+        }
+        var message = ForwardMessage(source, MailboxAddress.Parse(row.Email), to, cc, note);
+        await SmtpSendAsync(row, message, ct);
+        await AuditForwardAsync(row.Provider, to.Count + cc.Count);
+        return new(true, to.ToString(), cc.ToString(), message.Subject ?? "");
+    }
+
+    private static MimeMessage LoadRaw(string base64Url)
+    {
+        if (string.IsNullOrEmpty(base64Url)) throw new AppException(502, "MAILBOX_PROVIDER_ERROR", "The original message could not be read.");
+        var b = base64Url.Replace('-', '+').Replace('_', '/');
+        b = b.PadRight(b.Length + (4 - b.Length % 4) % 4, '=');
+        using var stream = new MemoryStream(Convert.FromBase64String(b));
+        return MimeMessage.Load(stream);
+    }
+
+    /// <summary>
+    /// The forwarded message: "Fwd:" subject, the note, the usual "Forwarded message" block with the original's sender, date, subject and
+    /// recipients and its text, and the original's attachments (refused above <see cref="ForwardAttachmentLimit"/>).
+    /// </summary>
+    public static MimeMessage ForwardMessage(MimeMessage original, MailboxAddress from, InternetAddressList to, InternetAddressList cc, string? note)
+    {
+        var subject = original.Subject ?? "";
+        var message = new MimeMessage();
+        message.From.Add(from);
+        message.To.AddRange(to); message.Cc.AddRange(cc);
+        message.Subject = (subject.StartsWith("Fwd:", StringComparison.OrdinalIgnoreCase) || subject.StartsWith("Fw:", StringComparison.OrdinalIgnoreCase) ? subject : "Fwd: " + subject).Replace("\r", " ").Replace("\n", " ");
+        var text = original.TextBody ?? (original.HtmlBody is { } html ? HtmlToText(html) : "");
+        var header = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(note)) header.Append(note.Trim()).Append("\n\n");
+        header.Append("---------- Forwarded message ---------\n");
+        header.Append("From: ").Append(original.From.ToString()).Append('\n');
+        if (original.Date != DateTimeOffset.MinValue) header.Append("Date: ").Append(original.Date.ToString("ddd, d MMM yyyy HH:mm zzz", System.Globalization.CultureInfo.InvariantCulture)).Append('\n');
+        header.Append("Subject: ").Append(subject).Append('\n');
+        header.Append("To: ").Append(original.To.ToString()).Append('\n');
+        if (original.Cc.Count > 0) header.Append("Cc: ").Append(original.Cc.ToString()).Append('\n');
+        header.Append('\n').Append(text);
+        var builder = new BodyBuilder { TextBody = header.ToString() };
+        long total = 0;
+        foreach (var part in original.Attachments)
+        {
+            if (part is MimePart mime)
+            {
+                using var buffer = new MemoryStream();
+                mime.Content?.DecodeTo(buffer);
+                total += buffer.Length;
+                if (total > ForwardAttachmentLimit) throw new ValidationException("attachments", "The attachments are too large to forward from here. Forward it from your mail app.");
+                var name = mime.FileName ?? "attachment";
+                builder.Attachments.Add(name, buffer.ToArray(), mime.ContentType);
+            }
+            else if (part is MessagePart inner && inner.Message is { } attached)
+            {
+                using var buffer = new MemoryStream();
+                attached.WriteTo(buffer);
+                total += buffer.Length;
+                if (total > ForwardAttachmentLimit) throw new ValidationException("attachments", "The attachments are too large to forward from here. Forward it from your mail app.");
+                builder.Attachments.Add(new MessagePart { Message = attached });
+            }
+        }
+        message.Body = builder.ToMessageBody();
+        if (!string.IsNullOrWhiteSpace(original.MessageId)) message.References.Add(original.MessageId);
+        return message;
+    }
+
+    /// <summary>Sends through the account's own mail server and keeps a copy in Sent (IMAP), as mail apps do.</summary>
+    private async Task SmtpSendAsync(MailAccount row, MimeMessage message, CancellationToken ct)
+    {
         try
         {
             using var smtp = new SmtpClient { Timeout = 20000 };
@@ -703,12 +845,14 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         catch (AuthenticationException) { throw new ConflictException("The mail provider rejected the sign-in. Reconnect this mailbox.", "MAILBOX_AUTH_FAILED"); }
         catch (Exception e) when (e is IOException or System.Net.Sockets.SocketException or SmtpCommandException or SmtpProtocolException or SslHandshakeException)
         { throw new AppException(502, "MAILBOX_SEND_FAILED", "The mail server did not accept the message. Try again."); }
-        // Keep a copy in Sent, as mail apps do; the message is already on its way if this fails.
-        // POP has no folders: the provider keeps sent mail itself (as it does for Outlook over POP).
         if (!IsPop(row)) try { await RunImapAsync(row, async client => { var box = await OpenAsync(client, "sent", FolderAccess.ReadWrite, ct); await box.AppendAsync(message, MessageFlags.Seen, ct); return true; }, ct); }
         catch (Exception e) when (e is AppException or NotFoundException or ConflictException) { }
-        await AuditAsync(req, row.Provider);
-        return new(true, to.ToString(), cc.ToString(), subject);
+    }
+
+    private async Task AuditForwardAsync(string provider, int recipients)
+    {
+        recorder.Audit("mailbox.forwarded", "Mailbox", null, null, new { provider, recipients });
+        await db.SaveChangesAsync(CancellationToken.None);
     }
 
     private async Task AuditAsync(MailSendRequest req, string provider)

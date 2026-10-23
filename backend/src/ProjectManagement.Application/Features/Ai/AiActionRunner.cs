@@ -86,6 +86,18 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             }
             case "update_work":
                 return await UpdateWorkAsync(a, ct);
+            case "delete_work":
+            {
+                var id = Guid(a, "id") ?? throw new ValidationException("id", "Choose the item to delete.");
+                switch (Str(a, "target"))
+                {
+                    case "Task": await tasks.DeleteAsync(id, ct); break;
+                    case "Operational": await workTasks.DeleteAsync(id, ct); break;
+                    case "ActionItem": await actionItems.DeleteAsync(Guid(a, "projectId") ?? throw new ValidationException("projectId", "The action item's project is missing."), id, ct); break;
+                    default: throw new ValidationException("target", "Unknown kind of work item.");
+                }
+                return new AiActionResult(null, id);
+            }
             case "update_project":
                 return await RunScheduleActionAsync(() => UpdateProjectAsync(a, ct), ct);
             case "update_stage_dates":

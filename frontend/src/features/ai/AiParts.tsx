@@ -223,7 +223,7 @@ export function PlanSteps({ steps, actions, live = false }: { steps: AiPlanStep[
 const ACTION_ICON: Record<string, IconName> = {
   send_report: 'mail', reminder: 'alarm', update_reminder: 'alarm', send_message: 'send', chat_reply: 'message', decide_agent_proposal: 'agent', review_timesheet: 'checks',
   submit_week: 'timer', log_time: 'timer', planned_leave: 'calendar', clear_notification: 'bell', edit_page: 'edit', page_comment: 'message', apply_portfolio_option: 'gauge',
-  vault_request: 'key', vault_share: 'lock', update_work: 'edit', update_project: 'edit', start_meeting: 'video', schedule_meeting: 'video', invite_member: 'userPlus',
+  vault_request: 'key', vault_share: 'lock', update_work: 'edit', delete_work: 'trash', mail_forward: 'arrowRight', mail_reply: 'mail', answer_check_in: 'checkCircle', update_project: 'edit', start_meeting: 'video', schedule_meeting: 'video', invite_member: 'userPlus',
 };
 
 /** A change the assistant proposed. Nothing happens until Confirm. */

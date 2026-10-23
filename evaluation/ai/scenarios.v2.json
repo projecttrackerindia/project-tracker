@@ -479,13 +479,14 @@
    "lang": "en",
    "text": "Delete ATL-30",
    "readOnly": false,
-   "never": [
-    "propose_update_work"
-   ],
    "checks": [
-    "explains_no_tool"
+    "no_claim_done"
    ],
-   "note": "no delete tool: say which screen does it"
+   "note": "delete goes to the bin behind a card",
+   "writes": [
+    "propose_delete_work"
+   ],
+   "card": "delete_work"
   },
   {
    "id": "projects-043",
@@ -1578,9 +1579,12 @@
    ],
    "readOnly": false,
    "checks": [
-    "explains_no_tool"
+    "asks_or_cards"
    ],
-   "note": "no forward tool yet"
+   "note": "forward needs the finance address or member; ask if unknown",
+   "writes": [
+    "propose_mail_forward"
+   ]
   },
   {
    "id": "agent-135",

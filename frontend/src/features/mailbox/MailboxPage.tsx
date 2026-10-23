@@ -219,7 +219,6 @@ export function MailboxPage() {
         {selected && selectedAccount ? (
           <Reader key={`${selected.account}-${selected.id}`} account={selectedAccount} folder={folder} messageId={selected.id} row={selectedRow}
             agent={!!agentOpts.data?.available} onBack={() => setSelected(null)}
-            onForward={(m) => setComposeOpen({ subject: m.subject.startsWith('Fwd:') ? m.subject : `Fwd: ${m.subject}`, body: quote(m) })}
             onSent={refresh} />
         ) : (
           <div className="mb-reader-empty"><Icon name="mail" size={36} /><p>Select a message to read it.</p>
@@ -248,14 +247,15 @@ async function reconnect(kind: Account['kind']) {
 
 /* ---------------- reading pane ---------------- */
 
-function Reader({ account, folder, messageId, row, agent, onBack, onForward, onSent }: {
-  account: Account; folder: MailFolder; messageId: string; row: Row | null; agent: boolean; onBack: () => void; onForward: (m: MailMessage) => void; onSent: () => void;
+function Reader({ account, folder, messageId, row, agent, onBack, onSent }: {
+  account: Account; folder: MailFolder; messageId: string; row: Row | null; agent: boolean; onBack: () => void; onSent: () => void;
 }) {
   const wid = useWorkspaceId();
   const t = useWsQuery(['mailbox', 'thread', account.key, folder, messageId], () => mailboxApi.thread(account.key, folder, messageId), { staleTime: 300_000, retry: 1 });
   const [reply, setReply] = useState<null | { all: boolean; body: string }>(null);
   const [assist, setAssist] = useState<MailAssist | null>(null);
   const [assisting, setAssisting] = useState(false);
+  const [forwarding, setForwarding] = useState<MailMessage | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const replyRef = useRef<HTMLDivElement>(null);
   const thread = t.data;
@@ -284,7 +284,7 @@ function Reader({ account, folder, messageId, row, agent, onBack, onForward, onS
         <div className="mb-read-actions">
           <button className="btn btn-sm" disabled={!account.canSend} onClick={() => startReply(false)}><Icon name="undo" size={14} /> Reply</button>
           <button className="btn btn-sm" disabled={!account.canSend} onClick={() => startReply(true)}><Icon name="users" size={14} /> Reply all</button>
-          <button className="btn btn-sm btn-ghost" onClick={() => last && onForward(last)}><Icon name="arrowRight" size={14} /> Forward</button>
+          <button className="btn btn-sm btn-ghost" disabled={!account.canSend} onClick={() => last && setForwarding(last)}><Icon name="arrowRight" size={14} /> Forward</button>
           {agent && <button className="btn btn-sm mb-agent-btn" disabled={assisting} onClick={() => void runAssist()}>{assisting ? <Spinner /> : <Icon name="sparkle" size={14} />} {assist ? 'Re-read' : 'Ask agent'}</button>}
         </div>
       </header>
@@ -318,9 +318,11 @@ function Reader({ account, folder, messageId, row, agent, onBack, onForward, onS
           <div className="mb-quick">
             <button onClick={() => startReply(false)}><Icon name="undo" size={14} /> Reply</button>
             <button onClick={() => startReply(true)}><Icon name="users" size={14} /> Reply all</button>
+            <button onClick={() => last && setForwarding(last)}><Icon name="arrowRight" size={14} /> Forward</button>
           </div>
         )}
       </div>
+      {forwarding && <ForwardModal account={account} folder={folder} message={forwarding} onClose={() => setForwarding(null)} onSent={onSent} />}
     </div>
   );
 }
@@ -474,6 +476,42 @@ function ReplyBox({ account, folder, message, all, initial, agent, onCancel, onS
         <small>The original message is quoted below your reply. Ctrl+Enter to send.</small>
       </footer>
     </div>
+  );
+}
+
+/** Forwards the message itself, with its attachments, from the account it arrived in. A note goes above it. */
+function ForwardModal({ account, folder, message, onClose, onSent }: { account: Account; folder: MailFolder; message: MailMessage; onClose: () => void; onSent: () => void }) {
+  const [to, setTo] = useState('');
+  const [cc, setCc] = useState('');
+  const [showCc, setShowCc] = useState(false);
+  const [note, setNote] = useState('');
+  const [sending, setSending] = useState(false);
+  const subject = /^(fwd?|fw):/i.test(message.subject) ? message.subject : `Fwd: ${message.subject || '(no subject)'}`;
+  const send = async () => {
+    if (!(await confirmDialog({ title: 'Forward this email?', message: `From ${account.email} to ${to}${cc ? `, cc ${cc}` : ''}${message.hasAttachments ? ', with its attachments' : ''}.`, confirmText: 'Forward' }))) return;
+    setSending(true);
+    try {
+      const r = await mailboxApi.forward({ account: account.key, folder, messageId: message.id, to, cc: cc || undefined, note: note.trim() || undefined, confirmed: true });
+      toast(`Forwarded to ${r.to || to}.`);
+      onSent(); onClose();
+    } catch (e) { toast(errText(e, 'The email could not be forwarded.'), 'error'); }
+    finally { setSending(false); }
+  };
+  return (
+    <Modal title="Forward" onClose={onClose} size="lg" footer={<>
+      <button className="btn btn-ghost" onClick={onClose}>Discard</button>
+      <button className="btn btn-primary" disabled={sending || !to.trim()} onClick={() => void send()}>{sending ? <Spinner /> : <Icon name="arrowRight" size={14} />} Forward</button>
+    </>}>
+      <div className="mb-compose" data-testid="mail-forward">
+        <div className="mb-line"><span>From</span><b>{account.email}</b></div>
+        <label className="mb-line"><span>To</span><input value={to} onChange={e => setTo(e.target.value)} placeholder="name@example.com, …" autoFocus />
+          {!showCc && <button type="button" className="mb-link" onClick={() => setShowCc(true)}>Cc</button>}</label>
+        {showCc && <label className="mb-line"><span>Cc</span><input value={cc} onChange={e => setCc(e.target.value)} /></label>}
+        <div className="mb-line"><span>Subject</span><span>{subject}</span></div>
+        <textarea value={note} onChange={e => setNote(e.target.value)} rows={5} placeholder="Add a note (optional)…" aria-label="Note" />
+        <p className="mb-note"><Icon name={message.hasAttachments ? 'paperclip' : 'mail'} size={13} /> {displayName(message.from)}’s message goes below your note{message.hasAttachments ? ', with its attachments' : ''}.</p>
+      </div>
+    </Modal>
   );
 }
 
