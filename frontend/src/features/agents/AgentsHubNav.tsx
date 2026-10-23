@@ -32,13 +32,26 @@ export function AgentsHubNav({ sub, compact = false }: { sub?: string; compact?:
   ];
   const shown = tabs.filter((t) => t.show);
   const bar = useRef<HTMLElement>(null);
-  // On a phone the tabs scroll sideways: bring the current one into view so the person can see where they are.
+  // On a phone the tabs scroll sideways: bring the current one into view so the person can see where they are - again whenever the
+  // tabs change size (the font arriving, a badge appearing), which would otherwise push the current tab back out of view.
+  const pending = inbox.data?.pending;
   useEffect(() => {
-    const el = bar.current?.querySelector<HTMLElement>('.tab.active');
     const box = bar.current;
-    if (!el || !box || box.scrollWidth <= box.clientWidth) return;
-    box.scrollLeft = Math.max(0, el.offsetLeft - (box.clientWidth - el.offsetWidth) / 2);
-  }, [pathname, shown.length]);
+    if (!box) return;
+    const center = () => {
+      const el = box.querySelector<HTMLElement>('.tab.active');
+      if (!el || box.scrollWidth <= box.clientWidth) return;
+      box.scrollLeft = Math.max(0, el.offsetLeft - (box.clientWidth - el.offsetWidth) / 2);
+    };
+    center();
+    let alive = true;
+    void document.fonts?.ready.then(() => { if (alive) center(); });
+    if (typeof ResizeObserver === 'undefined') return () => { alive = false; };
+    const watch = new ResizeObserver(center);
+    watch.observe(box);
+    box.querySelectorAll('.tab').forEach((t) => watch.observe(t));
+    return () => { alive = false; watch.disconnect(); };
+  }, [pathname, shown.length, pending]);
   if (shown.length < 2) return null;
   if (compact) return (
     // Inside the assistant's own header: the other agent places, without the hub's title.
