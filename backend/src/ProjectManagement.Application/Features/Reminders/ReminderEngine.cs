@@ -148,11 +148,11 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
     /// </summary>
     public async Task<int> FollowUpsAsync(DateTime now, CancellationToken ct = default)
     {
-        var from = now.AddDays(-10); var to = now.AddDays(-2);
+        var oldest = now.AddDays(-10); var newest = now.AddDays(-2);
         var waiting = await (from c in db.Conversations.IgnoreQueryFilters().AsNoTracking()
-                             join m in db.ChatMessages.IgnoreQueryFilters().AsNoTracking() on c.LastMessageId equals m.Id
+                             join m in db.ChatMessages.IgnoreQueryFilters().AsNoTracking() on c.LastMessageId equals (Guid?)m.Id
                              join t in db.Tenants.IgnoreQueryFilters().AsNoTracking() on c.TenantId equals t.Id
-                             where c.Type == ConversationType.Direct && c.LastMessageAt >= from && c.LastMessageAt <= to && m.Kind == ChatMessageKind.User
+                             where c.Type == ConversationType.Direct && c.LastMessageAt >= oldest && c.LastMessageAt <= newest && m.Kind == ChatMessageKind.User
                                  && m.DeletedAt == null && m.SenderId != null && !t.IsDeleted && t.Status == TenantStatus.Active
                              orderby c.LastMessageAt
                              select new { c.TenantId, Conversation = c.Id, Message = m.Id, Sender = m.SenderId!.Value, m.Body, m.CreatedAt }).Take(500).ToListAsync(ct);
