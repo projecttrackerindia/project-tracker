@@ -35,8 +35,23 @@ public class WhatsAppDeliveryService(IAppDbContext db, CurrentContext ctx, AppCl
         Encoding.UTF8.GetBytes(o.AppSecret!), Encoding.UTF8.GetBytes("contact:v1:" + tenant + ":" + phone)));
     public static WhatsAppDeliverySource? Source(Notification n)
     {
-        var category = n.Type switch { NotificationType.TaskAssigned => "task_assignment", NotificationType.Overdue => "overdue", NotificationType.TaskUpdated => "support_update", _ => null };
+        var category = n.Type switch { NotificationType.TaskAssigned => "task_assignment", NotificationType.Overdue => "overdue", NotificationType.TaskUpdated => "support_update",
+            NotificationType.Reminder => "reminder", NotificationType.Approval => "approval", _ => null };
         if (category == null || n.Link is not { Length: > 0 and <= 400 }) return null;
+        if (category == "reminder")
+        {
+            // One person's own reminder that went off (a group of several at once has no single source and is not sent).
+            var own = n.DedupeKey is { } k ? Regex.Match(k, @"^rem:([0-9a-fA-F]{32}):[0-9]{1,9}$", RegexOptions.CultureInvariant) : Match.Empty;
+            return own.Success && Guid.TryParseExact(own.Groups[1].Value, "N", out var reminder) ? new(category, "personal", reminder, null) : null;
+        }
+        if (category == "approval")
+        {
+            var doc = Regex.Match(n.Link, @"^/documents/([0-9a-fA-F-]{36})$", RegexOptions.CultureInvariant);
+            if (doc.Success && Guid.TryParseExact(doc.Groups[1].Value, "D", out var document)) return new(category, "document", document, null);
+            var week = Regex.Match(n.Link, @"^/timesheet/approvals\?week=\d{4}-\d{2}-\d{2}&review=([0-9a-fA-F-]{36})$", RegexOptions.CultureInvariant);
+            if (week.Success && Guid.TryParseExact(week.Groups[1].Value, "D", out var timesheet)) return new(category, "timesheet", timesheet, null);
+            return null;
+        }
         if (category == "overdue" && n.DedupeKey is { } key)
         {
             var m = Regex.Match(key, @"^rem:([0-9a-fA-F]{32}):[0-9]{1,9}$", RegexOptions.CultureInvariant);
@@ -58,7 +73,8 @@ public class WhatsAppDeliveryService(IAppDbContext db, CurrentContext ctx, AppCl
         && r.VerifiedAt > clock.Now.AddDays(-30) && r.VerifiedAt <= clock.Now && r.ConsentVersion == WhatsAppContactService.Consent && r.ConsentAt != null
         && r.NotificationConsentVersion == WhatsAppContactService.NotificationConsent && r.NotificationConsentAt <= clock.Now
         && r.NotificationConsentExpiresAt > clock.Now && r.NotificationConsentExpiresAt <= r.VerifiedAt.Value.AddDays(30)
-        && (category switch { "task_assignment" => r.NotifyTaskAssignments, "overdue" => r.NotifyOverdue, "support_update" => r.NotifySupportUpdates, _ => false });
+        && (category switch { "task_assignment" => r.NotifyTaskAssignments, "overdue" => r.NotifyOverdue, "support_update" => r.NotifySupportUpdates,
+            "reminder" => r.NotifyReminders, "approval" => r.NotifyApprovals, _ => false });
     public async Task<bool> HasIntentAsync(Notification n, CancellationToken ct)
     {
         if (!Enabled(options.Value) || Source(n) is not { } source) return false;
@@ -107,6 +123,26 @@ public class WhatsAppDeliveryService(IAppDbContext db, CurrentContext ctx, AppCl
     {
         var uid=ctx.RequireUserId();var zone=DateTimeZoneProviders.Tzdb.GetZoneOrNull(zoneId??"");if(zone==null)return false;
         var today=DateOnly.FromDateTime(Instant.FromDateTimeUtc(DateTime.SpecifyKind(clock.Now,DateTimeKind.Utc)).InZone(zone).LocalDateTime.ToDateTimeUnspecified());
+        if(kind=="personal")
+        {
+            // Still the person's own reminder, and it is the one that went off (not done, dismissed or moved since).
+            var mine=await db.Reminders.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==id&&x.UserId==uid,ct);
+            return mine is {Source:ReminderSource.Personal,State:ReminderState.Fired};
+        }
+        if(kind=="document")
+        {
+            // Only while the person still has a decision to make on it.
+            var a=await db.DocumentApprovals.AsNoTracking().FirstOrDefaultAsync(x=>x.DocumentId==id&&x.State==ApprovalState.Pending,ct);
+            if(a is null||a.SubmittedBy==uid)return false;
+            var steps=ProjectManagement.Application.Features.Documents.DocumentWorkflowService.Approvers(a);
+            return a.CurrentStep<steps.Count&&steps[a.CurrentStep].Contains(uid)
+                &&!await db.ApprovalDecisions.AnyAsync(x=>x.ApprovalId==a.Id&&x.StepIndex==a.CurrentStep&&x.UserId==uid,ct);
+        }
+        if(kind=="timesheet")
+        {
+            var w=await db.TimesheetApprovals.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==id,ct);
+            return w is {Status:TimesheetStatus.Submitted}&&w.UserId!=uid;
+        }
         if(kind=="reminder")
         {
             var r=await db.Reminders.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==id&&x.UserId==uid,ct);

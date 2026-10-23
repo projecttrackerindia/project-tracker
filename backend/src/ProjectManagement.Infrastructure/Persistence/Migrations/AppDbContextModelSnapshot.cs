@@ -5151,6 +5151,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ReadAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("SnoozedUntil")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -8008,6 +8011,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.Property<TimeOnly>("DefaultTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("DigestTime")
                         .HasColumnType("time without time zone");
 
                     b.Property<string>("DueLeads")
@@ -10905,6 +10911,11 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<string>("ApprovalTemplateState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("BusinessAccountId")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -10975,6 +10986,11 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
+
+                    b.Property<string>("ReminderTemplateState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<DateTime?>("RetentionPolledAt")
                         .HasColumnType("timestamp with time zone");
@@ -11101,7 +11117,13 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<bool>("NotifyApprovals")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("NotifyOverdue")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("NotifyReminders")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("NotifySupportUpdates")

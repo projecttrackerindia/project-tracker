@@ -34,7 +34,7 @@ public record TimeZoneRequest(string? TimeZone);
 
 public record ReminderSettingsDto(int[] WorkDays, string WorkStart, string WorkEnd, string? QuietStart, string? QuietEnd, string DefaultTime,
     bool AutoEnabled, int[] DueLeads, int[] OverdueSteps, int DailyAutoLimit, bool BriefingEnabled, string BriefingTime,
-    bool FollowDeviceTimeZone, bool MuteNudges, string TimeZone);
+    bool FollowDeviceTimeZone, bool MuteNudges, string TimeZone, string? DigestTime = null);
 public record ReminderInsightsDto(int DoneThisWeek, int FiredThisWeek, int OnTimePercent, string? UsualTime, IReadOnlyList<ReminderDto> SnoozedOften);
 public record ReminderPolicyDto(bool Available, bool CanManage, bool EscalationEnabled, string Steps, int SentLast30Days, int DoneLast30Days, int EscalatedLast30Days);
 public record SavePolicyRequest(bool EscalationEnabled, string? Steps);
@@ -350,6 +350,7 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         row.DailyAutoLimit = Math.Clamp(req.DailyAutoLimit, 1, 100);
         row.BriefingEnabled = req.BriefingEnabled;
         row.BriefingTime = T(req.BriefingTime, "briefingTime");
+        row.DigestTime = Opt(req.DigestTime, "digestTime");
         row.FollowDeviceTimeZone = req.FollowDeviceTimeZone;
         row.MuteNudges = req.MuteNudges;
         await db.SaveChangesAsync(ct);
@@ -518,7 +519,7 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         [.. WorkCalendar.ParseDays(s.WorkDays).Select(d => d == DayOfWeek.Sunday ? 7 : (int)d).OrderBy(d => d)],
         s.WorkStart.ToString("HH:mm"), s.WorkEnd.ToString("HH:mm"), s.QuietStart?.ToString("HH:mm"), s.QuietEnd?.ToString("HH:mm"), s.DefaultTime.ToString("HH:mm"),
         s.AutoEnabled, [.. WorkCalendar.ParseNumbers(s.DueLeads, 0, 10).OrderByDescending(n => n)], [.. WorkCalendar.ParseNumbers(s.OverdueSteps, 1, 30)],
-        s.DailyAutoLimit, s.BriefingEnabled, s.BriefingTime.ToString("HH:mm"), s.FollowDeviceTimeZone, s.MuteNudges, zone);
+        s.DailyAutoLimit, s.BriefingEnabled, s.BriefingTime.ToString("HH:mm"), s.FollowDeviceTimeZone, s.MuteNudges, zone, s.DigestTime?.ToString("HH:mm"));
 
     private static string? Clean(string? s, int max)
     {

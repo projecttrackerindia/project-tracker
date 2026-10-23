@@ -13,7 +13,29 @@ public record WhatsAppTemplateDefinition(string Key, string Name, string Languag
 public record WhatsAppTemplateItem(string Key, string Name, string Language, string Category, string Body, string State);
 public record WhatsAppTemplateStatus(bool CheckEnabled, string State, DateTimeOffset? CheckedAt,
     IReadOnlyList<WhatsAppTemplateItem> Templates, string Policy = "approved_utility_templates_only", bool MessagingEnabled = false);
-public record WhatsAppProviderTemplates(string TaskAssignment, string Overdue, string SupportUpdate);
+public record WhatsAppProviderTemplates(string TaskAssignment, string Overdue, string SupportUpdate, string Reminder = "unavailable", string Approval = "unavailable")
+{
+    public static WhatsAppProviderTemplates Unavailable { get; } = new("unavailable", "unavailable", "unavailable", "unavailable", "unavailable");
+    /// <summary>In the order of <see cref="WhatsAppTemplateService.Definitions"/>.</summary>
+    public string[] All => [TaskAssignment, Overdue, SupportUpdate, Reminder, Approval];
+    /// <summary>verified when every template is approved, attention when some are not (the approved ones still deliver), unavailable when Meta could not be asked.</summary>
+    public string Overall => All.Any(x => x == "unavailable") ? "unavailable" : All.All(x => x == "approved") ? "verified" : "attention";
+    public string? Of(string category) => category switch
+    {
+        "task_assignment" => TaskAssignment, "overdue" => Overdue, "support_update" => SupportUpdate, "reminder" => Reminder, "approval" => Approval, _ => null,
+    };
+    /// <summary>What a connection last saw for one category.</summary>
+    public static string? StateOf(ProjectManagement.Domain.Entities.WhatsAppConnection c, string category) => category switch
+    {
+        "task_assignment" => c.TaskAssignmentTemplateState, "overdue" => c.OverdueTemplateState, "support_update" => c.SupportUpdateTemplateState,
+        "reminder" => c.ReminderTemplateState, "approval" => c.ApprovalTemplateState, _ => null,
+    };
+    public void ApplyTo(ProjectManagement.Domain.Entities.WhatsAppConnection c)
+    {
+        c.TaskAssignmentTemplateState = TaskAssignment; c.OverdueTemplateState = Overdue; c.SupportUpdateTemplateState = SupportUpdate;
+        c.ReminderTemplateState = Reminder; c.ApprovalTemplateState = Approval;
+    }
+}
 public interface IWhatsAppTemplateProvider
 {
     Task<WhatsAppProviderTemplates> InspectTemplatesAsync(string token, string businessAccountId, CancellationToken ct);
@@ -29,7 +51,11 @@ public class WhatsAppTemplateService(IAppDbContext db, CurrentContext ctx, AppCl
         new WhatsAppTemplateDefinition("overdue", "project_tracker_overdue_v1", "en_US", "UTILITY",
             "A task assigned to you is overdue in Project Tracker. Open your Project Tracker workspace to review it."),
         new WhatsAppTemplateDefinition("support_update", "project_tracker_support_update_v1", "en_US", "UTILITY",
-            "A support ticket you follow has an update in Project Tracker. Open your Project Tracker workspace to review it.")
+            "A support ticket you follow has an update in Project Tracker. Open your Project Tracker workspace to review it."),
+        new WhatsAppTemplateDefinition("reminder", "project_tracker_reminder_v1", "en_US", "UTILITY",
+            "A reminder you set in Project Tracker is due. Open your Project Tracker workspace to see it."),
+        new WhatsAppTemplateDefinition("approval", "project_tracker_approval_v1", "en_US", "UTILITY",
+            "Something is waiting for your approval in Project Tracker. Open your Project Tracker workspace to review it.")
     });
     private WhatsAppOptions O => options.Value;
     private bool Enabled => O.TemplateChecksEnabled && O.HealthChecksEnabled && O.InstallationConfigured;
@@ -49,6 +75,7 @@ public class WhatsAppTemplateService(IAppDbContext db, CurrentContext ctx, AppCl
         row.TemplatesCheckedAt = null; row.TemplatesLeaseId = null; row.TemplatesLeaseUntil = null;
         row.TemplatesConfigurationHash = null; row.TemplatesState = "unchecked";
         row.TaskAssignmentTemplateState = "unchecked"; row.OverdueTemplateState = "unchecked"; row.SupportUpdateTemplateState = "unchecked";
+        row.ReminderTemplateState = "unchecked"; row.ApprovalTemplateState = "unchecked";
     }
     private WhatsAppTemplateStatus Status(WhatsAppConnection? row, bool eligible)
     {
@@ -57,7 +84,7 @@ public class WhatsAppTemplateService(IAppDbContext db, CurrentContext ctx, AppCl
         else if (row?.TemplatesCheckedAt != null && (!Healthy(row) || row.TemplatesConfigurationHash != ConfigurationHash
             || row.TemplatesCheckedAt <= clock.Now.AddMinutes(-5) || row.TemplatesCheckedAt > clock.Now || !eligible)) state = "stale";
         var show = state is "verified" or "attention";
-        var observations = new[] { row?.TaskAssignmentTemplateState, row?.OverdueTemplateState, row?.SupportUpdateTemplateState };
+        var observations = new[] { row?.TaskAssignmentTemplateState, row?.OverdueTemplateState, row?.SupportUpdateTemplateState, row?.ReminderTemplateState, row?.ApprovalTemplateState };
         return new(Enabled && eligible && Healthy(row), state,
             row?.TemplatesCheckedAt is { } at ? new DateTimeOffset(DateTime.SpecifyKind(at, DateTimeKind.Utc)) : null,
             Definitions.Select((d, i) => new WhatsAppTemplateItem(d.Key, d.Name, d.Language, d.Category, d.Body,
@@ -94,13 +121,14 @@ public class WhatsAppTemplateService(IAppDbContext db, CurrentContext ctx, AppCl
                 .SetProperty(x => x.TemplatesLeaseUntil, clock.Now.AddSeconds(30)).SetProperty(x => x.TemplatesState, "checking")
                 .SetProperty(x => x.TemplatesCheckedAt, (DateTime?)null).SetProperty(x => x.TemplatesConfigurationHash, (string?)null)
                 .SetProperty(x => x.TaskAssignmentTemplateState, "unchecked").SetProperty(x => x.OverdueTemplateState, "unchecked")
-                .SetProperty(x => x.SupportUpdateTemplateState, "unchecked"), ct);
+                .SetProperty(x => x.SupportUpdateTemplateState, "unchecked").SetProperty(x => x.ReminderTemplateState, "unchecked")
+                .SetProperty(x => x.ApprovalTemplateState, "unchecked"), ct);
             await claim.CommitAsync(ct);
         }
         WhatsAppProviderTemplates result;
         try { result = await provider.InspectTemplatesAsync(secrets.Unprotect(before.AccessTokenProtected), before.BusinessAccountId, ct); }
-        catch (ConflictException) { result = new("unavailable", "unavailable", "unavailable"); }
-        catch (CryptographicException) { result = new("unavailable", "unavailable", "unavailable"); }
+        catch (ConflictException) { result = WhatsAppProviderTemplates.Unavailable; }
+        catch (CryptographicException) { result = WhatsAppProviderTemplates.Unavailable; }
         await using var finish = await db.Database.BeginTransactionAsync(ct);
         await db.LockTenantLedgerAsync(tenant, ct); await RequireAccess(ct);
         var row = await db.WhatsAppConnections.SingleOrDefaultAsync(x => x.Id == before.Id && x.TenantId == tenant, ct)
@@ -110,10 +138,8 @@ public class WhatsAppTemplateService(IAppDbContext db, CurrentContext ctx, AppCl
             || row.HealthCheckedAt != before.HealthCheckedAt || row.TemplatesLeaseId != lease || row.TemplatesLeaseUntil <= clock.Now
             || ConfigurationHash != configuration)
             throw new ConflictException("The connection or provider health changed. Review integration status.", "WHATSAPP_TEMPLATES_STALE");
-        row.TaskAssignmentTemplateState = result.TaskAssignment; row.OverdueTemplateState = result.Overdue;
-        row.SupportUpdateTemplateState = result.SupportUpdate; row.TemplatesCheckedAt = clock.Now; row.TemplatesConfigurationHash = configuration;
-        row.TemplatesState = new[] { result.TaskAssignment, result.Overdue, result.SupportUpdate }.Any(x => x == "unavailable") ? "unavailable"
-            : result.TaskAssignment == "approved" && result.Overdue == "approved" && result.SupportUpdate == "approved" ? "verified" : "attention";
+        result.ApplyTo(row); row.TemplatesCheckedAt = clock.Now; row.TemplatesConfigurationHash = configuration;
+        row.TemplatesState = result.Overall;
         row.TemplatesLeaseId = null; row.TemplatesLeaseUntil = null;
         recorder.Audit("whatsapp.templates.checked", "WhatsAppConnection", row.Id);
         await db.SaveChangesAsync(ct); await finish.CommitAsync(ct); return Status(row, true);

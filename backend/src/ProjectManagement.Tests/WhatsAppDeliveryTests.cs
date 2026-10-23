@@ -120,11 +120,53 @@ public class WhatsAppDeliveryTests(ApiFactory factory)
         finally{Reset();}
     }
     [Fact]
+    public void Reminders_and_approvals_map_to_their_own_fixed_categories()
+    {
+        var id=Guid.NewGuid();
+        Assert.Equal(new WhatsAppDeliverySource("reminder","personal",id,null),
+            WhatsAppDeliveryService.Source(new Notification{Type=NotificationType.Reminder,Link="/r/abc",DedupeKey=$"rem:{id:N}:2"}));
+        Assert.Null(WhatsAppDeliveryService.Source(new Notification{Type=NotificationType.Reminder,Link="/r/abc",DedupeKey=$"rems:{id:N}:20261023"}));   // several at once
+        Assert.Equal(new WhatsAppDeliverySource("approval","document",id,null),
+            WhatsAppDeliveryService.Source(new Notification{Type=NotificationType.Approval,Link=$"/documents/{id}"}));
+        Assert.Equal(new WhatsAppDeliverySource("approval","timesheet",id,null),
+            WhatsAppDeliveryService.Source(new Notification{Type=NotificationType.Approval,Link=$"/timesheet/approvals?week=2026-10-19&review={id}"}));
+        Assert.Null(WhatsAppDeliveryService.Source(new Notification{Type=NotificationType.Approval,Link="/timesheet/approvals?week=2026-10-19"}));   // older link, no single week
+        Assert.Equal(5,WhatsAppTemplateService.Definitions.Count);
+        Assert.All(WhatsAppTemplateService.Definitions,d=>{Assert.Equal("UTILITY",d.Category);Assert.DoesNotContain("{{",d.Body);});   // fixed text, nothing private
+    }
+
+    [Fact]
+    public async Task A_fired_reminder_goes_to_WhatsApp_only_when_chosen_and_only_while_it_is_still_due()
+    {
+        try{Configure();var a=await Org();
+            var created=await a.Post("/api/v1/reminders",new{title="Call the bank",when=new{at="2027-10-10T10:00",timeZone="UTC"}});Assert.True(created.Ok,created.ToString());
+            var rid=created.Data!["id"]!.GetValue<Guid>();
+            factory.WithDb(db=>{db.Reminders.IgnoreQueryFilters().Where(x=>x.Id==rid).ExecuteUpdate(x=>x.SetProperty(r=>r.State,ReminderState.Fired));return 0;});
+            Guid Fire()=>factory.WithDb(db=>{var n=new Notification{TenantId=a.WorkspaceId,UserId=a.UserId,Type=NotificationType.Reminder,Title="Call the bank",Link="/r/x",
+                DedupeKey=$"rem:{rid:N}:{Random.Shared.Next(1,999999)}",CreatedAt=DateTime.UtcNow};db.Notifications.Add(n);db.SaveChanges();return n.Id;});
+            // Not chosen yet: nothing is queued.
+            var first=Fire();await Queue(a,first);Assert.DoesNotContain(Rows(a),x=>x.NotificationId==first);
+            var p=(await a.Get("/api/v1/me/whatsapp-contact/notification-preferences")).Data!;Assert.False(p["reminders"]!.GetValue<bool>());
+            var minute=DateTime.UtcNow.Hour*60+DateTime.UtcNow.Minute;
+            var saved=await a.Put("/api/v1/me/whatsapp-contact/notification-preferences",new{version=p["version"]!.GetValue<int>(),optIn=true,acceptedConsentVersion=WhatsAppContactService.NotificationConsent,
+                taskAssignments=true,overdue=true,supportUpdates=true,reminders=true,approvals=true,timeZone="UTC",quietStartMinutes=(minute+60)%1440,quietEndMinutes=(minute+120)%1440});
+            Assert.True(saved.Ok,saved.ToString());Assert.True(saved.Data!["reminders"]!.GetValue<bool>());Assert.True(saved.Data["approvals"]!.GetValue<bool>());
+            var second=Fire();await Queue(a,second);Assert.Equal("reminder",Assert.Single(Rows(a),x=>x.NotificationId==second).Category);
+            await Processor.ProcessAsync();Assert.Equal("accepted",Rows(a).Single(x=>x.NotificationId==second).State);
+            // Marked done before it went out: the next one is not sent.
+            var third=Fire();await Queue(a,third);
+            factory.WithDb(db=>{db.Reminders.IgnoreQueryFilters().Where(x=>x.Id==rid).ExecuteUpdate(x=>x.SetProperty(r=>r.State,ReminderState.Done));return 0;});
+            var sends=factory.WhatsApp.Sends.Count;await Processor.ProcessAsync();
+            Assert.Equal(sends,factory.WhatsApp.Sends.Count);Assert.NotEqual("accepted",Rows(a).Single(x=>x.NotificationId==third).State);
+        }finally{Reset();}
+    }
+
+    [Fact]
     public async Task Persisted_notifications_send_once_through_exact_tenant_token_and_generic_template()
     {
         try{Configure();var a=await Org();var n=await Notify(a);await Queue(a,n);await Queue(a,n);
             Assert.Single(Rows(a));await Processor.ProcessAsync();Assert.Equal("accepted",Assert.Single(Rows(a)).State);Assert.Single(factory.WhatsApp.Sends);
-            Assert.Equal(8,factory.WhatsApp.RequestPaths.Count);await Processor.ProcessAsync();Assert.Single(factory.WhatsApp.Sends);
+            Assert.Equal(5+ProjectManagement.Application.Features.Integrations.WhatsAppTemplateService.Definitions.Count,factory.WhatsApp.RequestPaths.Count);await Processor.ProcessAsync();Assert.Single(factory.WhatsApp.Sends);
             var me=await a.Get("/api/v1/me/whatsapp-contact/deliveries");Assert.True(me.Ok);Assert.Single(me.Data!.AsArray());
             Assert.DoesNotContain(Phone,me.Data.ToJsonString());Assert.DoesNotContain("Private title",me.Data.ToJsonString());Assert.DoesNotContain("fake_meta_",me.Data.ToJsonString());
         }finally{Reset();}

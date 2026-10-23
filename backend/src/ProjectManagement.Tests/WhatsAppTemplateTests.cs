@@ -50,7 +50,7 @@ public class WhatsAppTemplateTests(ApiFactory factory)
             Options.TemplateChecksEnabled=true;var checkedResult=await a.Post(Url+"/check");Assert.True(checkedResult.Ok,checkedResult.ToString());
             Assert.Equal("verified",checkedResult.Data!["state"]!.GetValue<string>());Assert.False(checkedResult.Data["messagingEnabled"]!.GetValue<bool>());
             Assert.Equal("approved_utility_templates_only",checkedResult.Data["policy"]!.GetValue<string>());
-            Assert.Equal(3,factory.WhatsApp.RequestPaths.Count);Assert.All(factory.WhatsApp.RequestPaths,path=>Assert.EndsWith("/message_templates",path));
+            Assert.Equal(ProjectManagement.Application.Features.Integrations.WhatsAppTemplateService.Definitions.Count,factory.WhatsApp.RequestPaths.Count);Assert.All(factory.WhatsApp.RequestPaths,path=>Assert.EndsWith("/message_templates",path));
             Assert.All(checkedResult.Data["templates"]!.AsArray(),x=>Assert.Equal("approved",x!["state"]!.GetValue<string>()));
             Assert.DoesNotContain("accessToken",checkedResult.Data.ToJsonString(),StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("fake_meta_",checkedResult.Data.ToJsonString());
@@ -126,7 +126,7 @@ public class WhatsAppTemplateTests(ApiFactory factory)
             var once=false;factory.WhatsApp.BeforeTemplateResponse=async()=>{if(once)return;once=true;entered.SetResult();await release.Task.WaitAsync(TimeSpan.FromSeconds(5));};
             var first=a.Post(Url+"/check");await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             try {Assert.Equal(HttpStatusCode.Conflict,(await a.Post(Url+"/check")).Status);} finally {release.TrySetResult();}
-            Assert.True((await first).Ok);Assert.Equal(3,factory.WhatsApp.RequestPaths.Count);var attempted=Row(a).TemplatesAttemptedAt;
+            Assert.True((await first).Ok);Assert.Equal(ProjectManagement.Application.Features.Integrations.WhatsAppTemplateService.Definitions.Count,factory.WhatsApp.RequestPaths.Count);var attempted=Row(a).TemplatesAttemptedAt;
             Assert.True((await a.Post("/api/v1/integrations/whatsapp/disconnect")).Ok);Assert.Equal(attempted,Row(a).TemplatesAttemptedAt);Assert.Null(Row(a).TemplatesCheckedAt);
         } finally { Reset(); }
     }

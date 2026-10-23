@@ -15,7 +15,9 @@ public class DocumentNotifier(IAppDbContext db, ICurrentContext ctx, Notificatio
     private readonly HashSet<string> _sent = [];
 
     /// <summary><paramref name="eventKey"/> names the event ("submitted:step0", "published:1.2") so the same person is told once about it.</summary>
-    public async Task SendAsync(IEnumerable<Guid> people, Document doc, string eventKey, string title, string? body = null, bool withLink = true, CancellationToken ct = default)
+    /// <param name="type">Approval for a request to review (it asks something of the person), Document for news about it.</param>
+    public async Task SendAsync(IEnumerable<Guid> people, Document doc, string eventKey, string title, string? body = null, bool withLink = true, CancellationToken ct = default,
+        NotificationType type = NotificationType.Document)
     {
         var tid = ctx.RequireTenantId();
         foreach (var user in people.Distinct())
@@ -25,7 +27,7 @@ public class DocumentNotifier(IAppDbContext db, ICurrentContext ctx, Notificatio
             var key = "doc:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{eventKey}|{doc.Id:N}|{user:N}")))[..40];
             if (!_sent.Add(key)) continue;
             if (await db.Notifications.IgnoreQueryFilters().AnyAsync(n => n.TenantId == tid && n.DedupeKey == key, ct)) continue;
-            await notifications.AddAsync(user, NotificationType.Document, title, body, withLink ? $"/documents/{doc.Id}" : null, key, ct: ct);
+            await notifications.AddAsync(user, type, title, body, withLink ? $"/documents/{doc.Id}" : null, key, ct: ct);
         }
     }
 }

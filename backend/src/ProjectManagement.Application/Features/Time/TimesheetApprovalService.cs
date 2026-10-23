@@ -152,7 +152,7 @@ public class TimesheetApprovalService(IAppDbContext db, ICurrentContext ctx, App
             : await db.TenantMembers.Where(m => m.TenantId == tid && (m.Role == TenantRole.Owner || m.Role == TenantRole.Admin) && m.UserId != me).Select(m => m.UserId).Take(20).ToListAsync(ct);
         foreach (var r in reviewers)
             await notifications.AddAsync(r, NotificationType.Approval, $"{name} submitted a timesheet", $"Week of {week:dd MMM yyyy} · {TimeService.Format(total)} logged",
-                $"/timesheet/approvals?week={week:yyyy-MM-dd}", ct: ct);
+                $"/timesheet/approvals?week={week:yyyy-MM-dd}&review={row.Id}", ct: ct);
         await db.SaveChangesAsync(ct);
         return await WeekAsync(week, me, ct);
     }

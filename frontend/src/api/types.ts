@@ -180,9 +180,13 @@ export interface Comment { id: string; taskId: string; author: UserRef; body: st
 
 export interface Activity { id: string; action: string; entityType: string; entityId: string | null; summary: string; actor: UserRef | null; projectId: string | null; createdAt: string }
 export interface AuditLog { id: string; tenantId: string | null; tenantName: string | null; userId: string | null; userName: string | null; action: string; entityType: string; entityId: string | null; oldValue: string | null; newValue: string | null; ipAddress: string | null; createdAt: string }
-export interface AppNotification { id: string; type: NotificationType; title: string; body: string | null; link: string | null; isRead: boolean; createdAt: string; browser: boolean; needsYou?: boolean; archived?: boolean }
+export interface AppNotification { id: string; type: NotificationType; title: string; body: string | null; link: string | null; isRead: boolean; createdAt: string; browser: boolean; needsYou?: boolean; archived?: boolean;
+  /** Snoozed until (UTC), while it waits to come back. */ snoozedUntil?: string | null;
+  /** When it belongs in the inbox: arrival, or the end of its snooze. */ shownAt?: string | null;
+  /** What can be done from it without opening it. */ actions?: NotificationAction[] }
+export type NotificationAction = 'done' | 'take' | 'reply' | 'approve' | 'reject' | 'snooze';
 /** Unread overall and in each lane of the inbox. */
-export interface NotificationCounts { unread: number; needsYou: number; forInfo: number }
+export interface NotificationCounts { unread: number; needsYou: number; forInfo: number; snoozed?: number }
 export interface NotificationPreference { type: NotificationType; label: string; description: string; inApp: boolean; email: boolean; browser: boolean; locked: boolean }
 export interface TestEmailResult { provider: string; delivered: boolean; message: string }
 

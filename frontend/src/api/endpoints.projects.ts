@@ -106,13 +106,14 @@ export const insightApi = {
 };
 
 export const notificationApi = {
-  list: (page = 1, unreadOnly = false, lane?: 'needs' | 'info', archived = false) =>
+  list: (page = 1, unreadOnly = false, lane?: 'needs' | 'info' | 'snoozed', archived = false) =>
     get<Paged<AppNotification>>('/notifications', { page, pageSize: 20, unreadOnly, lane, archived: archived || undefined }),
   unread: () => get<{ count: number }>('/notifications/unread-count'),
   counts: () => get<NotificationCounts>('/notifications/counts'),
   archive: (id: string) => post(`/notifications/${id}/archive`),
   unarchive: (id: string) => post(`/notifications/${id}/unarchive`),
   archiveRead: () => post<{ archived: number }>('/notifications/archive-read'),
+  act: (id: string, action: string, extra: { text?: string; until?: string } = {}) => post<{ message: string; archived: boolean }>(`/notifications/${id}/act`, { action, ...extra }),
   read: (id: string) => post(`/notifications/${id}/read`),
   readAll: () => post('/notifications/read-all'),
 };

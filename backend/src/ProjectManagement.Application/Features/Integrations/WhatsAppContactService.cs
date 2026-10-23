@@ -17,10 +17,11 @@ public record WhatsAppContactStatus(bool Enabled, bool Eligible, string? Busines
     string? MaskedPhone, DateTimeOffset? ExpiresAt, DateTimeOffset? VerifiedAt, string? ConsentVersion, bool OutboundEnabled = false);
 
 public record UpdateWhatsAppNotifications(int Version, bool OptIn, string? AcceptedConsentVersion,
-    bool TaskAssignments, bool Overdue, bool SupportUpdates, string? TimeZone, int QuietStartMinutes, int QuietEndMinutes);
+    bool TaskAssignments, bool Overdue, bool SupportUpdates, string? TimeZone, int QuietStartMinutes, int QuietEndMinutes,
+    bool Reminders = false, bool Approvals = false);
 public record WhatsAppNotificationPreferences(int Version, bool OptedIn, bool CanEnable, bool TaskAssignments,
     bool Overdue, bool SupportUpdates, string TimeZone, int QuietStartMinutes, int QuietEndMinutes,
-    string RequiredConsentVersion, DateTimeOffset? ConsentAt, DateTimeOffset? ExpiresAt, bool DeliveryEnabled = false);
+    string RequiredConsentVersion, DateTimeOffset? ConsentAt, DateTimeOffset? ExpiresAt, bool DeliveryEnabled = false, bool Reminders = false, bool Approvals = false);
 
 public class WhatsAppContactService(IAppDbContext db, CurrentContext ctx, AppClock clock, Recorder recorder,
     EntitlementService entitlements, ISecretProtector secrets, IOptions<WhatsAppOptions> options)
@@ -44,10 +45,10 @@ public class WhatsAppContactService(IAppDbContext db, CurrentContext ctx, AppClo
     }
     private static void ClearNotifications(WhatsAppContactLink r)
     {
-        if (r.NotificationConsentAt != null || r.NotifyTaskAssignments || r.NotifyOverdue || r.NotifySupportUpdates)
+        if (r.NotificationConsentAt != null || r.NotifyTaskAssignments || r.NotifyOverdue || r.NotifySupportUpdates || r.NotifyReminders || r.NotifyApprovals)
             r.NotificationPreferencesVersion++;
         r.NotificationConsentVersion = null; r.NotificationConsentAt = null; r.NotificationConsentExpiresAt = null;
-        r.NotifyTaskAssignments = false; r.NotifyOverdue = false; r.NotifySupportUpdates = false;
+        r.NotifyTaskAssignments = false; r.NotifyOverdue = false; r.NotifySupportUpdates = false; r.NotifyReminders = false; r.NotifyApprovals = false;
         r.NotificationTimeZone = null; r.NotificationQuietStartMinutes = 1320; r.NotificationQuietEndMinutes = 480;
     }
     private bool CurrentLink(WhatsAppContactLink? r, WhatsAppConnection? c) => r is { VerifiedAt: not null, PhoneHash: not null }
@@ -61,7 +62,8 @@ public class WhatsAppContactService(IAppDbContext db, CurrentContext ctx, AppClo
         r?.NotificationTimeZone ?? "UTC", r?.NotificationQuietStartMinutes ?? 1320, r?.NotificationQuietEndMinutes ?? 480,
         NotificationConsent, r?.NotificationConsentAt is { } at ? Utc(at) : null,
         r?.NotificationConsentExpiresAt is { } expiry ? Utc(expiry) : null,
-        WhatsAppDeliveryService.Enabled(O)&&canEnable&&r?.NotificationConsentVersion==NotificationConsent&&r.NotificationConsentExpiresAt>clock.Now);
+        WhatsAppDeliveryService.Enabled(O)&&canEnable&&r?.NotificationConsentVersion==NotificationConsent&&r.NotificationConsentExpiresAt>clock.Now,
+        r?.NotifyReminders ?? false, r?.NotifyApprovals ?? false);
     public async Task<WhatsAppNotificationPreferences> NotificationPreferencesAsync(CancellationToken ct)
     {
         if (!await db.Tenants.AnyAsync(x => x.Id == ctx.TenantId && x.Type == WorkspaceType.Organization, ct))
@@ -89,7 +91,7 @@ public class WhatsAppContactService(IAppDbContext db, CurrentContext ctx, AppClo
         {
             if (request.AcceptedConsentVersion != NotificationConsent)
                 throw new ValidationException("acceptedConsentVersion", "Review and accept the current notification notice.");
-            if (!request.TaskAssignments && !request.Overdue && !request.SupportUpdates)
+            if (!request.TaskAssignments && !request.Overdue && !request.SupportUpdates && !request.Reminders && !request.Approvals)
                 throw new ValidationException("notifications", "Select at least one notification category.");
             if (request.TimeZone is not { Length: > 0 and <= 100 }
                 || NodaTime.DateTimeZoneProviders.Tzdb.GetZoneOrNull(request.TimeZone) == null)
@@ -105,6 +107,7 @@ public class WhatsAppContactService(IAppDbContext db, CurrentContext ctx, AppClo
             // Updating preferences cannot extend the lifetime of the phone proof.
             r.NotificationConsentExpiresAt = r.VerifiedAt!.Value.AddDays(30);
             r.NotifyTaskAssignments = request.TaskAssignments; r.NotifyOverdue = request.Overdue; r.NotifySupportUpdates = request.SupportUpdates;
+            r.NotifyReminders = request.Reminders; r.NotifyApprovals = request.Approvals;
             r.NotificationTimeZone = request.TimeZone; r.NotificationQuietStartMinutes = request.QuietStartMinutes;
             r.NotificationQuietEndMinutes = request.QuietEndMinutes; r.NotificationPreferencesVersion++;
             recorder.Audit("whatsapp.notifications.consent", "WhatsAppContactLink", r.Id);

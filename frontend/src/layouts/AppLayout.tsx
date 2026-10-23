@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'rea
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { chatApi, insightApi, notificationApi } from '../api/endpoints';
+import { NotificationActions } from '../features/notifications/NotificationActions';
 import { Icon, type IconName } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
 import { PageLoader, ToastRoot, ConfirmRoot } from '../components/ui';
@@ -291,10 +292,13 @@ function NotificationsMenu() {
           : list.isLoading ? <div className="sr-empty">Loading…</div>
             : !list.data?.items.length ? <div className="sr-empty">You're all caught up.</div>
             : list.data.items.slice(0, 8).map((n) => (
-              <button key={n.id} className={`dp-item ${n.isRead ? '' : 'unread'}`} onClick={() => openItem(n)}>
-                <span className="dp-ico">{NOTIF_ICON[n.type] ?? '🔔'}</span>
-                <span className="dp-main"><b>{n.title}</b>{n.body && <span>{n.body}</span>}<span className="muted" style={{ display: 'block', fontSize: 11 }}>{timeAgo(n.createdAt)}</span></span>
-              </button>
+              <div key={n.id} className={`dp-note ${n.isRead ? '' : 'unread'}`}>
+                <button className={`dp-item ${n.isRead ? '' : 'unread'}`} onClick={() => openItem(n)}>
+                  <span className="dp-ico">{NOTIF_ICON[n.type] ?? '🔔'}</span>
+                  <span className="dp-main"><b>{n.title}</b>{n.body && <span>{n.body}</span>}<span className="muted" style={{ display: 'block', fontSize: 11 }}>{timeAgo(n.shownAt ?? n.createdAt)}</span></span>
+                </button>
+                <NotificationActions n={n} />
+              </div>
             ))}
           <div className="dp-sep" />
           <div className="dp-foot-row">

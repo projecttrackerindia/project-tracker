@@ -132,6 +132,8 @@ public class DocumentWorkflowService(IAppDbContext db, ICurrentContext ctx, AppC
 
     private static List<WorkflowStepSpec> ReadSteps(string json) => JsonSerializer.Deserialize<List<WorkflowStepSpec>>(json, Json) ?? [];
     private static List<ApprovalStepSnapshot> ReadSnapshot(string json) => JsonSerializer.Deserialize<List<ApprovalStepSnapshot>>(json, Json) ?? [];
+    /// <summary>Who decides at each step of a review, in order (for checks made outside this service, such as before a WhatsApp message is sent).</summary>
+    public static List<List<Guid>> Approvers(DocumentApproval a) => ReadSnapshot(a.StepsJson).Select(s => s.Approvers.ToList()).ToList();
 
     /// <summary>The workflow in force for documents of this kind, or null (the owner publishes). A kind's own workflow wins over the default one; per-kind workflows are a Business feature.</summary>
     public async Task<WorkflowDefinition?> ResolveAsync(Guid typeId, CancellationToken ct = default)
@@ -274,7 +276,7 @@ public class DocumentWorkflowService(IAppDbContext db, ICurrentContext ctx, AppC
 
         var key = DocumentService.KeyOf(doc.Number);
         var who = await db.Users.Where(u => u.Id == me).Select(u => u.DisplayName).FirstAsync(ct);
-        await notifier.SendAsync(snapshot[0].Approvers, doc, $"submitted:{approval.Id:N}:0", $"{who} asks you to review {key}", $"{doc.Title} · {summary}", ct: ct);
+        await notifier.SendAsync(snapshot[0].Approvers, doc, $"submitted:{approval.Id:N}:0", $"{who} asks you to review {key}", $"{doc.Title} · {summary}", ct: ct, type: NotificationType.Approval);
         recorder.Activity("document.submitted", "Document", doc.Id, $"Submitted {key} \"{doc.Title}\" for review", doc.ProjectId, newValue: summary);
         recorder.Audit("document.submitted", "Document", doc.Id, null, new { approval = approval.Id, workflow = def.Name, steps = snapshot.Select(s => s.Name), summary, reason, hash = draft.ContentHash });
         await SaveAsync(ct);
@@ -346,7 +348,7 @@ public class DocumentWorkflowService(IAppDbContext db, ICurrentContext ctx, AppC
             else if (a.CurrentStep + 1 < steps.Count)
             {
                 a.CurrentStep++; a.StepStartedAt = now; a.ReminderSent = false;
-                await notifier.SendAsync(steps[a.CurrentStep].Approvers, doc, $"submitted:{a.Id:N}:{a.CurrentStep}", $"{key} is waiting for your review", $"{doc.Title} · step \"{steps[a.CurrentStep].Name}\"", ct: ct);
+                await notifier.SendAsync(steps[a.CurrentStep].Approvers, doc, $"submitted:{a.Id:N}:{a.CurrentStep}", $"{key} is waiting for your review", $"{doc.Title} · step \"{steps[a.CurrentStep].Name}\"", ct: ct, type: NotificationType.Approval);
                 recorder.Activity("document.step_approved", "Document", doc.Id, $"{who} approved {key} (step \"{step.Name}\")", doc.ProjectId);
                 recorder.Audit("document.step_approved", "Document", doc.Id, null, new { approval = a.Id, step = step.Name, next = steps[a.CurrentStep].Name, comment });
             }
@@ -481,7 +483,7 @@ public class DocumentWorkflowService(IAppDbContext db, ICurrentContext ctx, AppC
                 var key = "doc:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"remind|{a.Id:N}|{a.CurrentStep}|{user:N}")))[..40];
                 var n = new Notification
                 {
-                    TenantId = a.TenantId, UserId = user, Type = NotificationType.Document, DedupeKey = key, CreatedAt = now, Link = $"/documents/{doc.Id}",
+                    TenantId = a.TenantId, UserId = user, Type = NotificationType.Approval, DedupeKey = key, CreatedAt = now, Link = $"/documents/{doc.Id}",
                     Title = $"{DocumentService.KeyOf(doc.Number)} is waiting for your review", Body = $"{doc.Title} · the step \"{steps[a.CurrentStep].Name}\" was due {days} day(s) after it started.",
                 };
                 if (await router.ApplyAsync(n, ct)) { db.Notifications.Add(n); sent++; }

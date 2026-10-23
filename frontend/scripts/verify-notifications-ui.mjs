@@ -14,19 +14,22 @@ const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Asha Rao',ema
 const ws={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Preview Workspace',type:'Organization',role:'Owner',planCode:'BUSINESS',memberCount:4};
 const token=`x.${Buffer.from(JSON.stringify({wid:ws.id,exp:4102444800})).toString('base64url')}.x`;
 const now=Date.now(),iso=(m)=>new Date(now+m*60000).toISOString();
-const N=(id,type,title,mins,link,isRead,needsYou,body=null)=>({id,type,title,body,link,isRead,createdAt:iso(-mins),browser:false,needsYou,archived:false});
+const N=(id,type,title,mins,link,isRead,needsYou,body=null,actions=['snooze'])=>({id,type,title,body,link,isRead,createdAt:iso(-mins),browser:false,needsYou,archived:false,actions});
 const needs=[
- N('n1','TaskAssigned','You were assigned "Fix portal login"',5,'/tasks/t1',false,true,'Payments Core · due Friday'),
+ N('n1','TaskAssigned','You were assigned "Fix portal login"',5,'/tasks/t1',false,true,'Payments Core · due Friday',['done','reply','snooze']),
  N('n2','Mention','Ravi mentioned you on "Fix portal login"',9,'/tasks/t1',false,true),
- N('n3','Approval','Approve leave for Meena <img src=x onerror="window.ncUnsafe=1">',30,'/approvals/a1',true,true),
+ N('n3','Approval','Approve leave for Meena <img src=x onerror="window.ncUnsafe=1">',30,'/approvals/a1',true,true,null,['approve','reject','snooze']),
 ];
 const info=[N('n4','Comment','New comment on "Release notes"',40,'/tasks/t2',true,false,'Looks good to me')];
+const snoozedList=[{...N('n6','Comment','Comment on "Budget review"',600,'/tasks/t9',false,false),snoozedUntil:iso(240),actions:[]}];
 const archived=[{...N('n5','Comment','Old comment on "Budget"',3000,'/tasks/t3',true,false),archived:true}];
 let prefs=[
  {type:'TaskAssigned',label:'Assigned to me',description:'When work is assigned to you',inApp:true,email:true,browser:true,locked:false},
+ {type:'Reminder',label:'Your reminders',description:'Reminders you set',inApp:true,email:false,browser:true,locked:false},
  {type:'Security',label:'Security alerts',description:'Sign-ins and account changes',inApp:true,email:true,browser:true,locked:true},
 ];
 const writes=[],errors=[],checks=[];
+let remSettings={workDays:[1,2,3,4,5],workStart:'09:00',workEnd:'18:00',quietStart:'21:00',quietEnd:'08:00',defaultTime:'09:00',autoEnabled:true,dueLeads:[1,0],overdueSteps:[1,3,7],dailyAutoLimit:12,briefingEnabled:true,briefingTime:'08:30',followDeviceTimeZone:false,muteNudges:false,timeZone:'Asia/Kolkata',digestTime:null};
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
  const make=async()=>{
@@ -40,22 +43,27 @@ try{
    let data=[];
    const p=url.searchParams;
    if(/^\/api\/v1\/notifications\/n\d\/(archive|unarchive|read)$/.test(ep)&&method==='POST'){writes.push({ep});await route.fulfill({status:204,body:''});return;}
+   else if(/^\/api\/v1\/notifications\/n\d\/act$/.test(ep)&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={message:b.action==='snooze'?'Snoozed.':'Done.',archived:['done','approve','reject'].includes(b.action)};}
    else if(ep==='/api/v1/notifications/archive-read'&&method==='POST'){writes.push({ep});data={archived:2};}
    else if(ep==='/api/v1/notifications/read-all'&&method==='POST'){writes.push({ep});data=null;}
    else if(ep==='/api/v1/me/notification-preferences'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});prefs=prefs.map(x=>{const c=b.items.find(i=>i.type===x.type);return c?{...x,...c}:x;});data=prefs;}
+   else if(ep==='/api/v1/reminders/settings'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});remSettings=b;data=b;}
    else if(ep==='/api/v1/me/ui/sidebar')data={key:'sidebar',value:null,updatedAt:null};
    else{
     assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
     if(ep.endsWith('/auth/refresh'))data={accessToken:token,expiresAt:'2099-01-01T00:00:00Z',user};
     else if(ep==='/api/v1/me')data={user,workspaces:[ws],fingerprint:'preview',pendingConsent:[],current:{...ws,permissions:['projects.view','tasks.view','org.manage','reports.view','work.view'],modules:{projects:3,tasks:3,calendar:3,work:3,ai:3,activity:3,documents:3,people:3,reports:3,billing:3},plan:{code:'BUSINESS',name:'Business',status:'Active'},entitlements:{AI_ASSISTANT:3}}};
     else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
-    else if(ep==='/api/v1/notifications/counts')data={unread:2,needsYou:2,forInfo:0};
+    else if(ep==='/api/v1/notifications/counts')data={unread:2,needsYou:2,forInfo:0,snoozed:1};
     else if(ep==='/api/v1/notifications'){
-     const list=p.get('archived')==='true'?archived:p.get('lane')==='info'?info:p.get('lane')==='needs'?needs:[...needs,...info];
+     const list=p.get('archived')==='true'?archived:p.get('lane')==='snoozed'?snoozedList:p.get('lane')==='info'?info:p.get('lane')==='needs'?needs:[...needs,...info];
      const it=p.get('unreadOnly')==='true'?list.filter(n=>!n.isRead):list;
      data={items:it,page:1,pageSize:20,totalPages:1,totalItems:it.length};
     }
     else if(ep==='/api/v1/me/notification-preferences')data=prefs;
+    else if(ep==='/api/v1/me/whatsapp-contact/notification-preferences')data={version:3,optedIn:true,canEnable:true,taskAssignments:true,overdue:false,supportUpdates:false,reminders:true,approvals:false,timeZone:'Asia/Kolkata',quietStartMinutes:1320,quietEndMinutes:480,requiredConsentVersion:'whatsapp-notifications-v1',consentAt:iso(-60),expiresAt:iso(60*24*20),deliveryEnabled:true};
+    else if(ep==='/api/v1/me/whatsapp-contact')data={status:'verified',phone:'+91 98•••••210'};
+    else if(ep==='/api/v1/reminders/settings')data=remSettings;
     else if(ep.endsWith('/projects')||ep.endsWith('/tasks')||ep.endsWith('/work-tasks'))data={items:[],page:1,totalPages:0,totalItems:0};
     else if(ep==='/api/v1/timer')data=null;
     else if(ep.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
@@ -134,10 +142,54 @@ try{
  assert.ok(await waitWrite(w=>w.ep==='/api/v1/notifications/n5/unarchive'));
  checks.push('archived');
 
+ // Act in place: mark done, reply and approve right from the inbox, with the same requests the server checks.
+ const act=(id,test)=>waitWrite(w=>w.ep===`/api/v1/notifications/${id}/act`&&test(w.b));
+ await tab('Needs you').click();await page.locator('.nc-item',{hasText:'Fix portal login'}).first().waitFor();
+ const head=page.locator('.nc-item',{hasText:'You were assigned'});
+ await head.getByRole('button',{name:'Reply'}).click();await head.getByLabel('Your reply').fill('On it after lunch');
+ await head.getByRole('button',{name:'Send',exact:true}).click();
+ assert.ok(await act('n1',b=>b.action==='reply'&&b.text==='On it after lunch'));
+ await head.getByRole('button',{name:'Mark done'}).click();assert.ok(await act('n1',b=>b.action==='done'));
+ const leave=page.locator('.nc-item',{hasText:'Approve leave'});
+ await leave.getByRole('button',{name:'Approve',exact:true}).click();assert.ok(await act('n3',b=>b.action==='approve'));
+ await leave.getByRole('button',{name:'Send back',exact:true}).first().click();await leave.getByLabel('What should change').fill('Dates clash with the release');
+ await leave.locator('.na-write').getByRole('button',{name:'Send back'}).click();
+ assert.ok(await act('n3',b=>b.action==='reject'&&b.text==='Dates clash with the release'));
+ checks.push('act-in-place');
+ // Snooze from the menu: tomorrow 9:00 in the person's zone (Kolkata) is 03:30 UTC.
+ await leave.hover();await leave.locator('.nc-menu > summary').click();await page.getByRole('menuitem',{name:'Tomorrow 9:00'}).click();
+ const sz=await act('n3',b=>b.action==='snooze');assert.match(sz.b.until,/T03:30:00\.000Z$/);
+ await tab('Snoozed').click();const rest=page.locator('.nc-item',{hasText:'Budget review'});await rest.waitFor();
+ assert.match(await rest.innerText(),/back /);
+ await rest.hover();await rest.getByRole('button',{name:'Bring back now'}).click();assert.ok(await act('n6',b=>b.action==='wake'));
+ checks.push('snooze');
+ // The bell offers the same actions.
+ await page.getByRole('button',{name:/^Notifications/}).first().click();
+ const bell=page.locator('.dp-note',{hasText:'You were assigned'});await bell.waitFor();
+ const before=writes.length;await bell.getByRole('button',{name:'Mark done'}).click();
+ for(let i=0;i<30&&writes.length===before;i++)await page.waitForTimeout(100);
+ assert.equal(writes.at(-1).ep,'/api/v1/notifications/n1/act');checks.push('bell-actions');
+ await page.keyboard.press('Escape');await page.mouse.click(5,700);
+ await shot(page,'inbox-actions.png');
+ // Delivery: a WhatsApp column where WhatsApp is set up, showing what goes there (changed in its own consent section below).
+ await page.goto(origin+'/preview-org/notifications/preferences');await page.locator('.nc-matrix').waitFor();
+ await page.getByRole('columnheader',{name:/WhatsApp/}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Your reminders: WhatsApp on. Change below.'}).count(),1);
+ assert.equal(await page.getByRole('button',{name:'Assigned to me: WhatsApp on. Change below.'}).count(),1);
+ assert.equal(await page.locator('.nc-matrix-row',{hasText:'Security alerts'}).locator('.nc-wa-na').count(),1);
+ checks.push('whatsapp-column');
+ // Schedule: the daily digest.
+ await page.goto(origin+'/preview-org/notifications/schedule');await page.getByRole('switch',{name:'Daily digest of updates'}).click();
+ await page.locator('.nc-savebar-sticky.show').getByRole('button',{name:'Save'}).click();
+ const dig=await waitWrite(w=>w.ep==='/api/v1/reminders/settings');assert.equal(dig.b.digestTime,'18:00');checks.push('digest');
+ await page.goto(origin+'/preview-org/notifications');await page.locator('.nc-item').first().waitFor();
  // Phone.
  await tab('Needs you').click();await page.locator('.nc-item',{hasText:'Fix portal login'}).first().waitFor();
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);
  await fitsPhone(page,'notification inbox',assert);
+ await page.goto(origin+'/preview-org/notifications/preferences');await page.locator('.nc-matrix').waitFor();await page.waitForTimeout(300);
+ await fitsPhone(page,'delivery grid with WhatsApp',assert);
+ await page.goto(origin+'/preview-org/notifications');await page.locator('.nc-item').first().waitFor();await page.waitForTimeout(300);
  // On a phone, reading and archiving are in the row's menu.
  const row=page.locator('.nc-item').first();
  assert.equal(await row.getByRole('button',{name:'Archive'}).isVisible(),false);

@@ -51,6 +51,8 @@ public partial class AppDbContext
             e.Property(x => x.TaskAssignmentTemplateState).HasMaxLength(20);
             e.Property(x => x.OverdueTemplateState).HasMaxLength(20);
             e.Property(x => x.SupportUpdateTemplateState).HasMaxLength(20);
+            e.Property(x => x.ReminderTemplateState).HasMaxLength(20);
+            e.Property(x => x.ApprovalTemplateState).HasMaxLength(20);
             e.Property(x => x.HealthState).HasMaxLength(20);
             e.Property(x => x.HealthConfigurationHash).HasMaxLength(64);
             e.Property(x => x.AppId).HasMaxLength(40);

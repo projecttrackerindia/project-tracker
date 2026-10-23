@@ -26,7 +26,7 @@ export interface SaveReminder {
 }
 export interface ReminderSettings {
   workDays: number[]; workStart: string; workEnd: string; quietStart: string | null; quietEnd: string | null; defaultTime: string;
-  autoEnabled: boolean; dueLeads: number[]; overdueSteps: number[]; dailyAutoLimit: number; briefingEnabled: boolean; briefingTime: string;
+  autoEnabled: boolean; dueLeads: number[]; overdueSteps: number[]; dailyAutoLimit: number; briefingEnabled: boolean; briefingTime: string; /** Daily digest of updates at this local time (HH:mm), or null when off. */ digestTime?: string | null;
   followDeviceTimeZone: boolean; muteNudges: boolean; timeZone: string;
 }
 export interface ReminderInsights { doneThisWeek: number; firedThisWeek: number; onTimePercent: number; usualTime: string | null; snoozedOften: Reminder[] }

@@ -36,6 +36,8 @@ public class WhatsAppConnection : TenantEntity, ITenantScoped
     public string TaskAssignmentTemplateState { get; set; } = "unchecked";
     public string OverdueTemplateState { get; set; } = "unchecked";
     public string SupportUpdateTemplateState { get; set; } = "unchecked";
+    public string ReminderTemplateState { get; set; } = "unchecked";
+    public string ApprovalTemplateState { get; set; } = "unchecked";
 }
 
 /// <summary>Inbound message metadata only. No phone numbers, message text, attachments or authorization claims.</summary>

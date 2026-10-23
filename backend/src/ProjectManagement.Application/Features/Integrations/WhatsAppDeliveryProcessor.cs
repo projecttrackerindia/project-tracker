@@ -27,7 +27,8 @@ public class WhatsAppDeliveryProcessor(IServiceScopeFactory scopes, IOptions<Wha
                     db.WhatsAppDeliveries.IgnoreQueryFilters().Any(d=>d.TenantId==x.TenantId&&
                         ((d.State=="queued"&&d.AvailableAt<=now)||(d.State=="preparing"||d.State=="sending")&&d.LeaseUntil<=now))
                     ||x.Active&&db.Notifications.IgnoreQueryFilters().Any(n=>n.TenantId==x.TenantId&&n.CreatedAt>=now.AddHours(-24)
-                        &&(n.Type==NotificationType.TaskAssigned||n.Type==NotificationType.Overdue||n.Type==NotificationType.TaskUpdated&&n.Link!=null&&n.Link.StartsWith("/support?ticket="))
+                        &&(n.Type==NotificationType.TaskAssigned||n.Type==NotificationType.Overdue||n.Type==NotificationType.TaskUpdated&&n.Link!=null&&n.Link.StartsWith("/support?ticket=")
+                            ||n.Type==NotificationType.Reminder&&n.DedupeKey!=null&&n.DedupeKey.StartsWith("rem:")||n.Type==NotificationType.Approval)
                         &&!db.WhatsAppDeliveries.IgnoreQueryFilters().Any(d=>d.TenantId==n.TenantId&&d.NotificationId==n.Id)
                         &&db.WhatsAppContactLinks.IgnoreQueryFilters().Any(r=>r.TenantId==n.TenantId&&r.UserId==n.UserId
                             &&r.NotificationConsentAt<=n.CreatedAt&&r.NotificationConsentExpiresAt>now))))
@@ -57,7 +58,9 @@ public class WhatsAppDeliveryProcessor(IServiceScopeFactory scopes, IOptions<Wha
             join r in db.WhatsAppContactLinks.AsNoTracking() on new { n.TenantId, n.UserId } equals new { r.TenantId, r.UserId }
             where n.CreatedAt >= now.AddHours(-24) && n.CreatedAt >= r.NotificationConsentAt && r.NotificationConsentExpiresAt > now
                 && (n.Type == NotificationType.TaskAssigned && r.NotifyTaskAssignments || n.Type == NotificationType.Overdue && r.NotifyOverdue
-                    || n.Type == NotificationType.TaskUpdated && r.NotifySupportUpdates && n.Link != null && n.Link.StartsWith("/support?ticket="))
+                    || n.Type == NotificationType.TaskUpdated && r.NotifySupportUpdates && n.Link != null && n.Link.StartsWith("/support?ticket=")
+                    || n.Type == NotificationType.Reminder && r.NotifyReminders && n.DedupeKey != null && n.DedupeKey.StartsWith("rem:")
+                    || n.Type == NotificationType.Approval && r.NotifyApprovals)
                 && !db.WhatsAppDeliveries.Any(x => x.NotificationId == n.Id)
             orderby n.CreatedAt, n.Id select n).Take(25).ToListAsync(ct);
         var service = sp.GetRequiredService<WhatsAppDeliveryService>();
@@ -76,7 +79,7 @@ public class WhatsAppDeliveryProcessor(IServiceScopeFactory scopes, IOptions<Wha
         &&c.HealthTokenValid==true&&c.HealthScopesPresent==true&&c.HealthAssetsVerified==true&&c.HealthAppSubscribed==true&&c.HealthPhoneVerified==true
         &&c.TemplatesCheckedAt>now.AddMinutes(-5)&&c.TemplatesCheckedAt<=now&&c.TemplatesConfigurationHash==WhatsAppTemplateService.ConfigurationFingerprint(o)
         &&(c.TemplatesState is "verified" or "attention")
-        &&(category switch {"task_assignment"=>c.TaskAssignmentTemplateState,"overdue"=>c.OverdueTemplateState,"support_update"=>c.SupportUpdateTemplateState,_=>null})=="approved";
+        &&WhatsAppProviderTemplates.StateOf(c,category)=="approved";
     private async Task<bool> DeferAsync(IAppDbContext db,WhatsAppDelivery row,WhatsAppContactLink contact,CancellationToken ct)
     {
         DateTime? quiet;
@@ -141,7 +144,7 @@ public class WhatsAppDeliveryProcessor(IServiceScopeFactory scopes, IOptions<Wha
                 && health.PhoneVerified == true && (health.TokenExpiresAt == null || health.TokenExpiresAt > Now))
             {
                 var templates = templateResult = await sp.GetRequiredService<IWhatsAppTemplateProvider>().InspectTemplatesAsync(token,before.Connection.BusinessAccountId,ct);
-                ready = (snapshot.Category switch { "task_assignment" => templates.TaskAssignment, "overdue" => templates.Overdue, "support_update" => templates.SupportUpdate, _ => null }) == "approved";
+                ready = templates.Of(snapshot.Category) == "approved";
             }
             }
         }
@@ -183,9 +186,8 @@ public class WhatsAppDeliveryProcessor(IServiceScopeFactory scopes, IOptions<Wha
                 currentConnection.HealthState=healthResult?.TokenValid==null?"unavailable":healthResult.TokenValid==true&&healthResult.ScopesPresent==true
                     &&healthResult.AssetsVerified==true&&healthResult.AppSubscribed==true&&healthResult.PhoneVerified==true?"verified":"attention";
                 currentConnection.TemplatesCheckedAt=Now;currentConnection.TemplatesConfigurationHash=WhatsAppTemplateService.ConfigurationFingerprint(options.Value);
-                currentConnection.TaskAssignmentTemplateState=templateResult?.TaskAssignment??"unavailable";
-                currentConnection.OverdueTemplateState=templateResult?.Overdue??"unavailable";currentConnection.SupportUpdateTemplateState=templateResult?.SupportUpdate??"unavailable";
-                currentConnection.TemplatesState=templateResult==null?"unavailable":templateResult.TaskAssignment=="approved"&&templateResult.Overdue=="approved"&&templateResult.SupportUpdate=="approved"?"verified":"attention";
+                (templateResult??WhatsAppProviderTemplates.Unavailable).ApplyTo(currentConnection);
+                currentConnection.TemplatesState=templateResult==null?"unavailable":templateResult.All.All(x=>x=="approved")?"verified":"attention";
                 currentConnection.HealthLeaseId=null;currentConnection.HealthLeaseUntil=null;currentConnection.TemplatesLeaseId=null;currentConnection.TemplatesLeaseUntil=null;
                 if(healthResult?.TokenValid==true&&healthResult.TokenExpiresAt is {} expiry&&(currentConnection.TokenExpiresAt==null||expiry<currentConnection.TokenExpiresAt))currentConnection.TokenExpiresAt=expiry;
             }

@@ -8,12 +8,16 @@ using ProjectManagement.Domain;
 namespace ProjectManagement.Api.Controllers.Notifications;
 
 [Route("api/v1/notifications")]
-public class NotificationsController(NotificationService notifications) : ApiControllerBase
+public class NotificationsController(NotificationService notifications, NotificationActionService actions) : ApiControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] bool unreadOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] string? lane = null,
         [FromQuery] bool archived = false, CancellationToken ct = default) =>
-        Ok(await notifications.ListAsync(unreadOnly, page, pageSize, ct, lane, archived));
+        Ok(await actions.DecorateAsync(await notifications.ListAsync(unreadOnly, page, pageSize, ct, lane, archived), ct));
+
+    /// <summary>Does what the notification asks without opening it: done, take, reply, approve, reject (send back) or snooze.</summary>
+    [HttpPost("{id:guid}/act")]
+    public async Task<IActionResult> Act(Guid id, [FromBody] NotificationActRequest req, CancellationToken ct) => Ok(await actions.ActAsync(id, req, ct));
 
     /// <summary>Unread overall and in each lane (needs you, for your information).</summary>
     [HttpGet("counts")]

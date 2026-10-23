@@ -22,6 +22,10 @@ public class WhatsAppContactLink : TenantEntity, ITenantScoped
     public bool NotifyTaskAssignments { get; set; }
     public bool NotifyOverdue { get; set; }
     public bool NotifySupportUpdates { get; set; }
+    /// <summary>Your own reminders when they go off.</summary>
+    public bool NotifyReminders { get; set; }
+    /// <summary>A document or timesheet waiting for your approval.</summary>
+    public bool NotifyApprovals { get; set; }
     public string? NotificationTimeZone { get; set; }
     public int NotificationQuietStartMinutes { get; set; } = 1320;
     public int NotificationQuietEndMinutes { get; set; } = 480;

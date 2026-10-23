@@ -203,3 +203,37 @@
   .nc-fields label { min-width: 0; flex: 1 1 140px; }
 }
 .tzp-pop { background: var(--panel-solid); }
+
+/* ---- acting on a notification in place (inbox, bell, phone) ---- */
+.na { display: grid; gap: 6px; padding: 0 12px 10px 58px; min-width: 0; }
+.na-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.na-btn { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
+  color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); cursor: pointer; list-style: none; white-space: nowrap; }
+.na-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.na-btn.primary { color: var(--primary); background: var(--primary-soft); border-color: transparent; }
+.na-btn[aria-pressed="true"] { color: var(--text); border-color: var(--primary); }
+.na-btn:disabled { opacity: .55; cursor: default; }
+.na-snooze { position: relative; }
+.na-snooze > summary::-webkit-details-marker { display: none; }
+.na-pop { position: absolute; left: 0; top: calc(100% + 4px); z-index: 40; min-width: 170px; padding: 5px; border-radius: 12px; background: var(--panel-solid); border: 1px solid var(--border); box-shadow: var(--shadow-lg); display: grid; }
+.na-pop button { text-align: left; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--text); }
+.na-pop button:hover { background: var(--hover-bg); }
+.na-write { display: grid; gap: 6px; }
+.na-write textarea { width: 100%; min-width: 0; resize: vertical; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; }
+.na-write-bar { display: flex; justify-content: flex-end; gap: 6px; }
+.dp-note.unread { background: var(--primary-soft); border-radius: 10px; }
+.dp-note .dp-item.unread { background: none; }
+.dp-note .na { padding: 0 10px 9px 42px; }
+.nc-menu-group { display: grid; padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+.nc-menu-label { display: flex; align-items: center; gap: 6px; padding: 6px 10px 2px; font-size: 11.5px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+.nc-menu-group button { padding-left: 28px !important; }
+.nc-back { color: var(--warning); font-weight: 600; }
+.m-note-acts .na { padding: 0 14px 12px 60px; }
+@media (max-width: 640px) { .na { padding-left: 12px; } .m-note-acts .na { padding-left: 14px; } }
+
+/* the WhatsApp column of the delivery grid (shown where WhatsApp is set up) */
+.nc-matrix.with-wa .nc-matrix-row { grid-template-columns: minmax(0, 1fr) repeat(4, 96px); }
+.nc-wa { min-width: 44px; height: 24px; padding: 0 10px; border-radius: 99px; font-size: 12px; font-weight: 700; color: var(--text-3); background: var(--surface-2); border: 1px solid var(--border); }
+.nc-wa.on { color: var(--success); background: var(--success-soft); border-color: transparent; }
+.nc-wa-na { color: var(--text-3); }
+@media (max-width: 640px) { .nc-matrix.with-wa .nc-matrix-row { grid-template-columns: minmax(0, 1fr) repeat(4, 46px); } }

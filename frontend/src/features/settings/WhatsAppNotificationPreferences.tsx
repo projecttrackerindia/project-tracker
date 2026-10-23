@@ -7,27 +7,31 @@ import { WhatsAppDeliveryHistory } from './WhatsAppDeliveryHistory';
 import { toast } from '../../stores/ui';
 import { formatDateTime } from '../../lib/format';
 import { appZone } from '../../lib/zone';
-interface Preferences {
-  version:number; optedIn:boolean; canEnable:boolean; taskAssignments:boolean; overdue:boolean; supportUpdates:boolean;
+export interface WhatsAppPreferences {
+  version:number; optedIn:boolean; canEnable:boolean; taskAssignments:boolean; overdue:boolean; supportUpdates:boolean; reminders:boolean; approvals:boolean;
   timeZone:string; quietStartMinutes:number; quietEndMinutes:number; requiredConsentVersion:string;
   consentAt:string|null; expiresAt:string|null; deliveryEnabled:boolean;
 }
-const url='/me/whatsapp-contact/notification-preferences';
+export const whatsAppPrefsUrl='/me/whatsapp-contact/notification-preferences';
+const url=whatsAppPrefsUrl;
+/** The kinds of notification WhatsApp can carry (fixed, approved message templates); everything else stays in the app, email and push. */
+export const WHATSAPP_KINDS=[['taskAssignments','Task assignments'],['overdue','Overdue task reminders'],['supportUpdates','Support ticket updates'],
+  ['reminders','Your own reminders when they go off'],['approvals','Approvals waiting for you (documents, timesheets)']] as const;
 const time=(minutes:number)=>`${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`;
 const minutes=(value:string)=>{const [h,m]=value.split(':').map(Number);return h*60+m;};
 export function WhatsAppNotificationPreferences() {
   const wid=useWorkspaceId(); const userId=useAuth(s=>s.ctx?.user.id); const scope=String(wid)+':'+String(userId);
   const current=useRef(scope);
-  const query=useWsQuery(['account','whatsapp-contact','notification-preferences',userId],()=>get<Preferences>(url));
-  const [draft,setDraft]=useState<Preferences|null>(null); const [accepted,setAccepted]=useState(false); const [busy,setBusy]=useState(false);
+  const query=useWsQuery(['account','whatsapp-contact','notification-preferences',userId],()=>get<WhatsAppPreferences>(url));
+  const [draft,setDraft]=useState<WhatsAppPreferences|null>(null); const [accepted,setAccepted]=useState(false); const [busy,setBusy]=useState(false);
   useEffect(()=>{current.current=scope;setDraft(null);setAccepted(false);setBusy(false);},[scope]);
   useEffect(()=>{if(query.data){setDraft(query.data);setAccepted(false);}},[query.data,scope]);
   const save=async(optIn:boolean)=>{
     if(!draft||busy||(optIn&&!accepted))return;
     setBusy(true);
     try {
-      const saved=await put<Preferences>(url,{version:draft.version,optIn,acceptedConsentVersion:optIn&&accepted?draft.requiredConsentVersion:null,
-        taskAssignments:draft.taskAssignments,overdue:draft.overdue,supportUpdates:draft.supportUpdates,
+      const saved=await put<WhatsAppPreferences>(url,{version:draft.version,optIn,acceptedConsentVersion:optIn&&accepted?draft.requiredConsentVersion:null,
+        taskAssignments:draft.taskAssignments,overdue:draft.overdue,supportUpdates:draft.supportUpdates,reminders:draft.reminders,approvals:draft.approvals,
         timeZone:appZone(),quietStartMinutes:draft.quietStartMinutes,quietEndMinutes:draft.quietEndMinutes});
       if(current.current===scope){setAccepted(false);await query.refetch();if(current.current===scope)toast(optIn?(saved.deliveryEnabled?'Notification preferences saved.':'Notification preferences saved. Delivery is awaiting activation.'):'WhatsApp notification consent removed.','success');}
     } catch(e) {
@@ -44,7 +48,7 @@ export function WhatsAppNotificationPreferences() {
       {!draft.canEnable&&<p>Verify your number on an eligible, active organization connection before enabling preferences.</p>}
       <fieldset disabled={busy||!draft.canEnable} style={{border:0,padding:0,margin:0,minWidth:0}}>
         <legend>Message categories</legend>
-        {([['taskAssignments','Task assignments'],['overdue','Overdue task reminders'],['supportUpdates','Support ticket updates']] as const).map(([key,label])=>
+        {WHATSAPP_KINDS.map(([key,label])=>
           <label key={key} style={{display:'flex',gap:8,margin:'8px 0'}}><input type="checkbox" checked={draft[key]} onChange={e=>setDraft({...draft,[key]:e.target.checked})}/>{label}</label>)}
         <p className="muted">Quiet hours use your time zone ({appZone()}), set in Notification Center → Schedule.</p>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12}}>
@@ -53,7 +57,7 @@ export function WhatsAppNotificationPreferences() {
         </div>
         <p className="muted">Quiet hours can cross midnight and use the time zone above.</p>
         <label style={{display:'flex',gap:8,alignItems:'flex-start'}}><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)}/><span>I agree to receive the selected organization notifications at my verified WhatsApp number when delivery is activated. I can revoke consent here. This does not authorize marketing, voice calls, or access to additional projects.</span></label>
-        <button className="btn btn-primary" type="submit" disabled={!accepted||!(draft.taskAssignments||draft.overdue||draft.supportUpdates)}>{busy?'Saving...':'Save WhatsApp preferences'}</button>
+        <button className="btn btn-primary" type="submit" disabled={!accepted||!(draft.taskAssignments||draft.overdue||draft.supportUpdates||draft.reminders||draft.approvals)}>{busy?'Saving...':'Save WhatsApp preferences'}</button>
       </fieldset>
       {draft.optedIn&&<button className="btn" type="button" disabled={busy} onClick={()=>void save(false)}>Revoke WhatsApp notifications</button>}
     </form>}

@@ -68,7 +68,7 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
         c.Post($"/api/v1/documents/{doc}/submit", new { changeSummary = summary, changeReason = (string?)null, major = false, revision });
 
     private static async Task<List<JsonNode>> Notes(TestClient c, string? contains = null) =>
-        (await c.Get("/api/v1/notifications")).Data!["items"]!.AsArray().Select(n => n!).Where(n => S(n["type"]) == "Document" && (contains is null || S(n["title"]).Contains(contains))).ToList();
+        (await c.Get("/api/v1/notifications")).Data!["items"]!.AsArray().Select(n => n!).Where(n => S(n["type"]) is "Document" or "Approval" && (contains is null || S(n["title"]).Contains(contains))).ToList();
 
     // ------------------------------------------------------------------ the state machine
 

@@ -14,9 +14,12 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Notifications;
 
-public record NotificationDto(Guid Id, NotificationType Type, string Title, string? Body, string? Link, bool IsRead, DateTime CreatedAt, bool Browser, bool NeedsYou = false, bool Archived = false);
+/// <param name="ShownAt">When it belongs in the inbox: when it arrived, or when its snooze ended.</param>
+/// <param name="Actions">What can be done straight from it: done, take, reply, approve, reject, snooze (worked out per person when listed).</param>
+public record NotificationDto(Guid Id, NotificationType Type, string Title, string? Body, string? Link, bool IsRead, DateTime CreatedAt, bool Browser, bool NeedsYou = false,
+    bool Archived = false, DateTime? SnoozedUntil = null, DateTime? ShownAt = null, IReadOnlyList<string>? Actions = null);
 /// <summary>The inbox at a glance: unread overall, and unread in each lane.</summary>
-public record NotificationCountsDto(int Unread, int NeedsYou, int ForInfo);
+public record NotificationCountsDto(int Unread, int NeedsYou, int ForInfo, int Snoozed = 0);
 
 /// <summary>
 /// Which notifications ask something of the person (approve, answer, act, sign in safely) and which only tell them something. The inbox shows
@@ -54,6 +57,15 @@ public static class QuietHours
     /// <summary>Security alerts, reminders the person set for a chosen time, service-level breaches and invitations go out at once.</summary>
     public static bool NeverHeld(NotificationType type) =>
         NotificationCatalog.For(type).Locked || type is NotificationType.Security or NotificationType.Reminder or NotificationType.ServiceLevel or NotificationType.Invitation or NotificationType.Briefing;
+
+    /// <summary>The next moment (UTC) the local clock shows <paramref name="at"/>: later today, or tomorrow when that time has passed.</summary>
+    public static DateTime NextAt(TimeOnly at, NodaTime.DateTimeZone tz, DateTime nowUtc)
+    {
+        var local = ZoneTime.ToLocal(nowUtc, tz);
+        var day = DateOnly.FromDateTime(local);
+        var when = ZoneTime.ToUtc(ZoneTime.At(day, at), tz);
+        return when > nowUtc ? when : ZoneTime.ToUtc(ZoneTime.At(day.AddDays(1), at), tz);
+    }
 
     /// <summary>When quiet hours that are on at <paramref name="nowUtc"/> end (UTC); null when it is not quiet time now.</summary>
     public static DateTime? Until(ReminderSettings s, NodaTime.DateTimeZone tz, DateTime nowUtc)
@@ -111,11 +123,28 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
         n.PushPending = n.Browser;        // and is also pushed to the person's devices, for when the app is closed
         if ((n.EmailPending || n.PushPending) && options.Value.HoldNotificationsInQuietHours && !QuietHours.NeverHeld(n.Type))
             n.DeliverAfter = await QuietUntilAsync(n.UserId, n.TenantId, ct);
+        // Digest mode: an update (it asks nothing of the person) is not pushed, and its email waits for the daily digest, sent as one.
+        if ((n.EmailPending || n.PushPending) && !NotificationLanes.IsNeedsYou(n.Type) && !QuietHours.NeverHeld(n.Type))
+        {
+            var (settings, zone) = await SettingsAsync(n.UserId, n.TenantId, ct);
+            if (settings.DigestTime is { } digest)
+            {
+                n.PushPending = false;
+                var at = QuietHours.NextAt(digest, zone, clock.Now);
+                if (n.DeliverAfter is null || n.DeliverAfter < at) n.DeliverAfter = at;
+            }
+        }
         return c.Any;
     }
 
     /// <summary>The recipient's quiet hours and zone (their own zone, else the workspace's, else the platform default), loaded once per person.</summary>
     private async Task<DateTime?> QuietUntilAsync(Guid userId, Guid tenantId, CancellationToken ct)
+    {
+        var q = await SettingsAsync(userId, tenantId, ct);
+        return QuietHours.Until(q.Settings, q.Zone, clock.Now);
+    }
+
+    private async Task<(ReminderSettings Settings, NodaTime.DateTimeZone Zone)> SettingsAsync(Guid userId, Guid tenantId, CancellationToken ct)
     {
         if (!_quiet.TryGetValue(userId, out var q))
         {
@@ -125,7 +154,7 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
             q = (settings, ZoneTime.IsKnown(zone) ? ZoneTime.Find(zone) : clock.DefaultZone);
             _quiet[userId] = q;
         }
-        return QuietHours.Until(q.Settings, q.Zone, clock.Now);
+        return q;
     }
 }
 
@@ -150,39 +179,47 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
     /// <summary>Whether this person wants this kind of notice in the bell (their own choice, or the default).</summary>
     public async Task<bool> WantsInAppAsync(Guid userId, NotificationType type, CancellationToken ct = default) => (await router.ChannelsAsync(userId, type, ct)).InApp;
 
-    /// <param name="lane">needs (asks something of you), info (tells you something), or empty for both.</param>
+    /// <param name="lane">needs (asks something of you), info (tells you something), snoozed (waiting to come back), or empty for both lanes.</param>
     /// <param name="archived">The archive instead of the inbox.</param>
     public async Task<PagedResult<NotificationDto>> ListAsync(bool unreadOnly, int page, int pageSize, CancellationToken ct = default, string? lane = null, bool archived = false)
     {
         var uid = ctx.RequireUserId();
         var q = db.Notifications.AsNoTracking().Where(n => n.UserId == uid && n.InApp);
         q = archived ? q.Where(n => n.ArchivedAt != null) : q.Where(n => n.ArchivedAt == null);
+        var now = clock.Now;
+        var snoozed = string.Equals(lane, "snoozed", StringComparison.OrdinalIgnoreCase);
+        if (!archived) q = snoozed ? q.Where(n => n.SnoozedUntil != null && n.SnoozedUntil > now) : q.Where(n => n.SnoozedUntil == null || n.SnoozedUntil <= now);
         var needs = NotificationLanes.NeedsYou;
         if (string.Equals(lane, "needs", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => needs.Contains(n.Type));
         else if (string.Equals(lane, "info", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => !needs.Contains(n.Type));
         if (unreadOnly) q = q.Where(n => n.ReadAt == null);
         var p = new PageQuery(page, pageSize);
         var total = await q.CountAsync(ct);
-        var rows = await q.OrderByDescending(n => n.CreatedAt).Skip((p.SafePage - 1) * p.SafeSize()).Take(p.SafeSize()).ToListAsync(ct);
+        var ordered = snoozed ? q.OrderBy(n => n.SnoozedUntil) : q.OrderByDescending(n => n.SnoozedUntil ?? n.CreatedAt);
+        var rows = await ordered.Skip((p.SafePage - 1) * p.SafeSize()).Take(p.SafeSize()).ToListAsync(ct);
         return new PagedResult<NotificationDto>(
-            rows.Select(n => new NotificationDto(n.Id, n.Type, n.Title, n.Body, n.Link, n.ReadAt != null, n.CreatedAt, n.Browser, NotificationLanes.IsNeedsYou(n.Type), n.ArchivedAt != null)).ToList(),
+            rows.Select(n => new NotificationDto(n.Id, n.Type, n.Title, n.Body, n.Link, n.ReadAt != null, n.CreatedAt, n.Browser, NotificationLanes.IsNeedsYou(n.Type), n.ArchivedAt != null,
+                n.SnoozedUntil > now ? n.SnoozedUntil : null, n.SnoozedUntil is { } back && back <= now ? back : n.CreatedAt)).ToList(),
             p.SafePage, p.SafeSize(), total);
     }
 
     public async Task<UnreadCountDto> UnreadCountAsync(CancellationToken ct = default)
     {
         var uid = ctx.RequireUserId();
-        return new UnreadCountDto(await db.Notifications.CountAsync(n => n.UserId == uid && n.InApp && n.ReadAt == null && n.ArchivedAt == null, ct));
+        var now = clock.Now;
+        return new UnreadCountDto(await db.Notifications.CountAsync(n => n.UserId == uid && n.InApp && n.ReadAt == null && n.ArchivedAt == null && (n.SnoozedUntil == null || n.SnoozedUntil <= now), ct));
     }
 
     public async Task<NotificationCountsDto> CountsAsync(CancellationToken ct = default)
     {
         var uid = ctx.RequireUserId();
         var needs = NotificationLanes.NeedsYou;
-        var unread = db.Notifications.Where(n => n.UserId == uid && n.InApp && n.ReadAt == null && n.ArchivedAt == null);
+        var now = clock.Now;
+        var unread = db.Notifications.Where(n => n.UserId == uid && n.InApp && n.ReadAt == null && n.ArchivedAt == null && (n.SnoozedUntil == null || n.SnoozedUntil <= now));
         var total = await unread.CountAsync(ct);
         var needing = await unread.CountAsync(n => needs.Contains(n.Type), ct);
-        return new NotificationCountsDto(total, needing, total - needing);
+        var resting = await db.Notifications.CountAsync(n => n.UserId == uid && n.InApp && n.ArchivedAt == null && n.SnoozedUntil != null && n.SnoozedUntil > now, ct);
+        return new NotificationCountsDto(total, needing, total - needing, resting);
     }
 
     /// <summary>Puts a notification away (and marks it read), or brings it back to the inbox.</summary>
@@ -192,6 +229,23 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
         var n = await db.Notifications.FirstOrDefaultAsync(x => x.Id == id && x.UserId == uid, ct) ?? throw new NotFoundException("Notification not found.");
         n.ArchivedAt = archived ? n.ArchivedAt ?? clock.Now : null;
         if (archived) n.ReadAt ??= clock.Now;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Hides a notification until the given moment; then it is back on top of the inbox as unread and pushed to the person's devices again
+    /// (if they get push for it). Null brings it back now.
+    /// </summary>
+    public async Task SnoozeAsync(Guid id, DateTime? until, CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        var n = await db.Notifications.FirstOrDefaultAsync(x => x.Id == id && x.UserId == uid, ct) ?? throw new NotFoundException("Notification not found.");
+        var now = clock.Now;
+        if (until is { } u && (u < now.AddMinutes(4) || u > now.AddDays(60))) throw new ValidationException("until", "Snooze for at least 5 minutes and at most 60 days.");
+        n.SnoozedUntil = until;
+        n.ReadAt = null;
+        n.ArchivedAt = null;
+        if (until is { } at && n.Browser) { n.DeliverAfter = at; n.PushPending = true; }
         await db.SaveChangesAsync(ct);
     }
 

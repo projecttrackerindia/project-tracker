@@ -20,6 +20,9 @@ import { refreshReminders } from '../reminders/store';
 import { addMinutes, iso, wall } from '../reminders/time';
 import { deviceDetail, disableDeviceAlerts, enableDeviceAlerts, lastDeviceError, onDeviceAlerts, systemNotification, type DeviceAlerts, type DeviceDetail } from '../reminders/device';
 import { WhatsAppContactSection } from '../settings/WhatsAppContactSection';
+import { whatsAppPrefsUrl, type WhatsAppPreferences } from '../settings/WhatsAppNotificationPreferences';
+import { get } from '../../api/client';
+import { NotificationActions, snoozeChoices } from './NotificationActions';
 
 export type NotificationSection = 'inbox' | 'preferences' | 'devices' | 'schedule';
 
@@ -127,7 +130,7 @@ const WHY: Record<NotificationType, string> = {
   Support: 'A support conversation you are part of has a reply.',
 };
 
-type Lane = 'needs' | 'info' | 'archived';
+type Lane = 'needs' | 'info' | 'snoozed' | 'archived';
 
 /** Notices about the same thing on the same day are one row: the newest on top, the rest behind "+n". */
 interface Bundle { key: string; head: AppNotification; rest: AppNotification[] }
@@ -158,7 +161,7 @@ function Inbox() {
   // Until the person picks, open the lane that has something in it: what needs them first.
   const lane: Lane = picked ?? (counts.data && counts.data.needsYou === 0 && counts.data.forInfo > 0 ? 'info' : 'needs');
   const q = useWsQuery(['notifications', 'page', lane, page, unreadOnly], () =>
-    notificationApi.list(page, unreadOnly && lane !== 'archived', lane === 'archived' ? undefined : lane, lane === 'archived'), { placeholderData: (p) => p });
+    notificationApi.list(page, unreadOnly && lane !== 'archived' && lane !== 'snoozed', lane === 'archived' ? undefined : lane, lane === 'archived'), { placeholderData: (p) => p });
   const refresh = () => invalidateWorkspace(wid, 'notifications');
   const readAll = useMutation({ mutationFn: notificationApi.readAll, onSuccess: () => { refresh(); toast('All caught up.', 'success'); } });
   const clearRead = useMutation({
@@ -185,6 +188,16 @@ function Inbox() {
     refresh();
     toast('Back in your inbox.', 'success');
   };
+  const snooze = async (ns: AppNotification[], until: Date) => {
+    try {
+      await Promise.all(ns.map((n) => notificationApi.act(n.id, 'snooze', { until: until.toISOString() })));
+      refresh();
+      toast(`Snoozed until ${formatDateTime(until.toISOString())}.`, 'success', {
+        label: 'Undo', onClick: () => void Promise.all(ns.map((n) => notificationApi.act(n.id, 'wake').catch(() => undefined))).then(refresh),
+      });
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not snooze it.', 'error'); }
+  };
+  const wake = async (n: AppNotification) => { await notificationApi.act(n.id, 'wake').catch(() => undefined); refresh(); toast('Back in your inbox.', 'success'); };
   const mute = async (type: NotificationType) => {
     try {
       const prefs = await queryClient.fetchQuery({ queryKey: PREFS_KEY, queryFn: meApi.notificationPrefs });
@@ -204,7 +217,7 @@ function Inbox() {
   const days = useMemo(() => {
     const out: { day: string; items: AppNotification[] }[] = [];
     for (const n of items) {
-      const day = isoDateIn(new Date(n.createdAt));
+      const day = isoDateIn(new Date(n.shownAt ?? n.createdAt));
       const last = out[out.length - 1];
       if (last?.day === day) last.items.push(n); else out.push({ day, items: [n] });
     }
@@ -216,11 +229,13 @@ function Inbox() {
   const LANES: { id: Lane; label: string; count?: number }[] = [
     { id: 'needs', label: 'Needs you', count: c?.needsYou },
     { id: 'info', label: 'Updates', count: c?.forInfo },
+    ...(c?.snoozed || lane === 'snoozed' ? [{ id: 'snoozed' as Lane, label: 'Snoozed', count: c?.snoozed }] : []),
     { id: 'archived', label: 'Archived' },
   ];
   const empty = lane === 'needs'
     ? { title: 'Nothing needs you right now', text: 'Assignments, mentions, approvals, reminders and messages for you land here first.' }
     : lane === 'info' ? { title: 'No updates', text: 'Changes, comments, digests and reports you follow show up here.' }
+      : lane === 'snoozed' ? { title: 'Nothing snoozed', text: 'Snoozed notifications wait here and come back on top when their time comes.' }
       : { title: 'Nothing archived', text: 'Archive a notification to put it away. It stays findable here.' };
 
   return (
@@ -237,10 +252,10 @@ function Inbox() {
           <option value="all">All kinds</option>
           {(Object.keys(CATEGORY) as Category[]).map((k) => <option key={k} value={k}>{CATEGORY[k].label}</option>)}
         </select>
-        {lane !== 'archived' && (
+        {lane !== 'archived' && lane !== 'snoozed' && (
           <label className="nc-unread"><input type="checkbox" checked={unreadOnly} onChange={(e) => { setUnreadOnly(e.target.checked); setPage(1); }} /> Unread only</label>
         )}
-        {lane !== 'archived' && (
+        {lane !== 'archived' && lane !== 'snoozed' && (
           <div className="nc-readall">
             <button className="btn btn-ghost btn-sm" disabled={readAll.isPending} onClick={() => readAll.mutate()}><Icon name="checks" size={14} /> Mark all read</button>
             <button className="btn btn-ghost btn-sm" disabled={clearRead.isPending} onClick={() => clearRead.mutate()} title="Archive everything already read"><Icon name="inbox" size={14} /> Clear read</button>
@@ -270,7 +285,8 @@ function Inbox() {
                           <span className="nc-item-text">
                             <b>{n.title}</b>
                             {n.body && <span className="nc-item-body">{n.body}</span>}
-                            <span className="nc-item-meta"><span>{CATEGORY[k].label}</span> · <time title={formatDateTime(n.createdAt)} dateTime={n.createdAt}>{timeAgo(n.createdAt)}</time></span>
+                            <span className="nc-item-meta"><span>{CATEGORY[k].label}</span> · <time title={formatDateTime(n.createdAt)} dateTime={n.createdAt}>{timeAgo(n.createdAt)}</time>
+                              {n.snoozedUntil && <> · <span className="nc-back">back {formatDateTime(n.snoozedUntil)}</span></>}</span>
                           </span>
                         </button>
                         {b.rest.length > 0 && (
@@ -279,17 +295,20 @@ function Inbox() {
                           </button>
                         )}
                         <span className="nc-item-acts">
-                          {unread && lane !== 'archived' && (
+                          {lane === 'snoozed' && <button className="btn-icon" aria-label="Bring back now" title="Bring back now" onClick={() => void wake(n)}><Icon name="bell" size={14} /></button>}
+                          {unread && lane !== 'archived' && lane !== 'snoozed' && (
                             <button className="btn-icon" aria-label="Mark as read" title="Mark as read" onClick={() => void read(all)}><Icon name="tick" size={14} /></button>
                           )}
                           {lane === 'archived'
                             ? <button className="btn-icon" aria-label="Move to inbox" title="Move to inbox" onClick={() => void unarchive(all)}><Icon name="undo" size={14} /></button>
                             : <button className="btn-icon" aria-label="Archive" title="Archive" onClick={() => void archive(all)}><Icon name="inbox" size={14} /></button>}
                           <ItemMenu label={n.title} onWhy={() => setWhy(why === b.key ? null : b.key)} onMute={() => void mute(n.type)}
+                            onSnooze={lane !== 'archived' && lane !== 'snoozed' ? (until) => void snooze(all, until) : undefined}
                             onRead={unread && lane !== 'archived' ? () => void read(all) : undefined}
                             onArchive={lane === 'archived' ? undefined : () => void archive(all)} onRestore={lane === 'archived' ? () => void unarchive(all) : undefined} />
                         </span>
                       </div>
+                      {lane !== 'archived' && lane !== 'snoozed' && <NotificationActions n={n} withSnooze={false} />}
                       {why === b.key && (
                         <p className="nc-why" role="note"><Icon name="info" size={13} /> {WHY[n.type] ?? 'This reached you because of your delivery settings.'}{' '}
                           <button className="link-btn" onClick={() => nav('/notifications/preferences')}>Change where this reaches you</button></p>
@@ -318,8 +337,8 @@ function Inbox() {
 }
 
 /** The quieter actions of a notification: why it came, and muting its kind. */
-function ItemMenu({ label, onWhy, onMute, onRead, onArchive, onRestore }: {
-  label: string; onWhy: () => void; onMute: () => void; onRead?: () => void; onArchive?: () => void; onRestore?: () => void;
+function ItemMenu({ label, onWhy, onMute, onRead, onArchive, onRestore, onSnooze }: {
+  label: string; onWhy: () => void; onMute: () => void; onRead?: () => void; onArchive?: () => void; onRestore?: () => void; onSnooze?: (until: Date) => void;
 }) {
   const ref = useRef<HTMLDetailsElement>(null);
   useDetailsDismiss(ref);
@@ -332,6 +351,10 @@ function ItemMenu({ label, onWhy, onMute, onRead, onArchive, onRestore }: {
         {onRead && <button role="menuitem" className="nc-phone-only" onClick={() => { close(); onRead(); }}><Icon name="tick" size={13} /> Mark as read</button>}
         {onArchive && <button role="menuitem" className="nc-phone-only" onClick={() => { close(); onArchive(); }}><Icon name="inbox" size={13} /> Archive</button>}
         {onRestore && <button role="menuitem" className="nc-phone-only" onClick={() => { close(); onRestore(); }}><Icon name="undo" size={13} /> Move to inbox</button>}
+        {onSnooze && <div className="nc-menu-group" role="group" aria-label="Snooze">
+          <span className="nc-menu-label"><Icon name="clock" size={12} /> Snooze</span>
+          {snoozeChoices().map((c) => <button key={c.label} role="menuitem" onClick={() => { close(); onSnooze(c.until); }}>{c.label}</button>)}
+        </div>}
         <button role="menuitem" onClick={() => { close(); onWhy(); }}><Icon name="info" size={13} /> Why am I getting this?</button>
         <button role="menuitem" onClick={() => { close(); onMute(); }}><Icon name="eyeOff" size={13} /> Mute this kind</button>
       </div>
@@ -349,9 +372,20 @@ const CHANNELS: { id: Channel; label: string; icon: IconName; hint: string }[] =
   { id: 'browser', label: 'Push', icon: 'monitor', hint: 'Pop-ups on your devices' },
 ];
 
+/** Which notification kinds WhatsApp can carry, and the WhatsApp preference that switches each on. */
+const WHATSAPP_OF: Partial<Record<NotificationType, keyof WhatsAppPreferences>> = {
+  TaskAssigned: 'taskAssignments', Overdue: 'overdue', TaskUpdated: 'supportUpdates', Reminder: 'reminders', Approval: 'approvals',
+};
+
 function Delivery() {
   const nav = useNavigate();
   const q = useQuery({ queryKey: PREFS_KEY, queryFn: meApi.notificationPrefs });
+  const userId = useAuth((st) => st.ctx?.user.id);
+  // The WhatsApp column appears where WhatsApp can be used: an organization with WhatsApp connected and the person's number linked (or already opted in).
+  const wa = useWsQuery(['account', 'whatsapp-contact', 'notification-preferences', userId], () => get<WhatsAppPreferences>(whatsAppPrefsUrl), { retry: false });
+  const showWa = !!wa.data && (wa.data.canEnable || wa.data.optedIn);
+  const toWhatsApp = () => document.getElementById('whatsapp-notifications-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    ?? document.getElementById('whatsapp-contact-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const [draft, setDraft] = useState<NotificationPreference[] | null>(null);
   const [test, setTest] = useState<TestEmailResult | null>(null);
   const device = useDevice();
@@ -396,7 +430,7 @@ function Delivery() {
 
       <Panel title="Where each event reaches you" icon="send" sub="Events you switch off everywhere are not sent at all. Security notices always reach you."
         actions={<button className="btn btn-primary btn-sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>{save.isPending && <span className="spinner" />}Save changes</button>}>
-        <div className="nc-matrix" role="table" aria-label="Notification delivery">
+        <div className={`nc-matrix${showWa ? ' with-wa' : ''}`} role="table" aria-label="Notification delivery">
           <div className="nc-matrix-row nc-matrix-head" role="row">
             <span role="columnheader">Event</span>
             {CHANNELS.map((ch) => {
@@ -409,6 +443,12 @@ function Delivery() {
                 </span>
               );
             })}
+            {showWa && (
+              <span role="columnheader" className="nc-matrix-col">
+                <Icon name="message" size={14} /><span>WhatsApp</span>
+                <button className="nc-col-toggle" onClick={toWhatsApp} title="WhatsApp has its own consent and quiet hours: change it below">Change</button>
+              </span>
+            )}
           </div>
           {grouped.map(({ c, rows }) => (
             <div key={c} className="nc-matrix-group" role="rowgroup">
@@ -421,6 +461,17 @@ function Delivery() {
                       <Switch on={!!r[ch.id]} label={`${r.label}: ${ch.label}`} disabled={r.locked} onChange={(v) => set(r.type, ch.id, v)} />
                     </span>
                   ))}
+                  {showWa && (() => {
+                    const key = WHATSAPP_OF[r.type];
+                    const on = !!key && !!wa.data?.optedIn && !!wa.data[key];
+                    return (
+                      <span role="cell" className="nc-matrix-cell">
+                        {key ? <button type="button" className={`nc-wa ${on ? 'on' : ''}`} onClick={toWhatsApp} aria-label={`${r.label}: WhatsApp ${on ? 'on' : 'off'}. Change below.`}
+                          title={r.type === 'TaskUpdated' ? 'Support tickets only' : undefined}>{on ? 'On' : 'Off'}</button>
+                          : <span className="nc-wa-na" title="WhatsApp only carries a few kinds of notification, with fixed approved messages">—</span>}
+                      </span>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -435,7 +486,7 @@ function Delivery() {
           : <p className="nc-muted">Emails are sent from the address your administrator configured. Unread chat messages and mentions are emailed only if you have not seen them in the app.</p>}
       </Panel>
 
-      <WhatsAppContactSection />
+      <div id="whatsapp-settings"><WhatsAppContactSection /></div>
     </>
   );
 }
@@ -689,6 +740,12 @@ function Schedule() {
         actions={<Switch on={s.briefingEnabled} label="Morning briefing" onChange={(v) => set('briefingEnabled', v)} />}>
         {s.briefingEnabled ? <div className="nc-fields"><label><span>At</span><input className="input" type="time" value={s.briefingTime} onChange={(e) => set('briefingTime', e.target.value)} /></label></div>
           : <p className="nc-muted">Off.</p>}
+      </Panel>
+
+      <Panel title="Daily digest of updates" icon="inbox" sub="Updates (comments, changes, reports you follow) skip push and arrive as one email at a time you choose. Anything that needs you still comes at once."
+        actions={<Switch on={!!s.digestTime} label="Daily digest of updates" onChange={(v) => set('digestTime', v ? s.digestTime ?? '18:00' : null)} />}>
+        {s.digestTime ? <div className="nc-fields"><label><span>Send at</span><input className="input" type="time" value={s.digestTime} onChange={(e) => set('digestTime', e.target.value || '18:00')} /></label></div>
+          : <p className="nc-muted">Off - updates are emailed and pushed as they happen (following your choices in Delivery).</p>}
       </Panel>
 
       <Panel title="Automatic reminders for your work" icon="bolt" sub="Reminders about tasks and work assigned to you, before and after they are due."

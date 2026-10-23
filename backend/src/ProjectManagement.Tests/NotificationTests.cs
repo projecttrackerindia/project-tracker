@@ -205,6 +205,107 @@ public class NotificationTests(ApiFactory factory)
         Assert.Contains(left, n => n!["type"]!.GetValue<string>() == "TaskAssigned");
     }
 
+    private static JsonNode Find(JsonNode list, Func<JsonNode, bool> match) => list["items"]!.AsArray().First(n => match(n!))!;
+    private static string[] ActionsOf(JsonNode n) => n["actions"]!.AsArray().Select(a => a!.GetValue<string>()).ToArray();
+
+    [Fact]
+    public async Task A_notification_can_be_acted_on_in_place_with_the_same_rules_as_the_page()
+    {
+        var (owner, mia, project) = await Setup();
+        var task = await Assign(owner, project, mia, "Act in place");
+        var taskId = task["id"]!.GetValue<string>();
+        var key = task["key"]!.GetValue<string>();
+
+        // Assigned: done, reply and snooze are offered.
+        var assigned = Find((await mia.Get("/api/v1/notifications")).Data!, n => n["type"]!.GetValue<string>() == "TaskAssigned" && n["title"]!.GetValue<string>().Contains(key));
+        Assert.Equal(new[] { "done", "reply", "snooze" }, ActionsOf(assigned));
+        var aid = assigned["id"]!.GetValue<string>();
+
+        // Reply straight from it: a comment on the task, by Mia; the notice stays (read).
+        Assert.Equal(422, (int)(await mia.Post($"/api/v1/notifications/{aid}/act", new { action = "reply", text = "" })).Status);
+        var replied = await mia.Post($"/api/v1/notifications/{aid}/act", new { action = "reply", text = "On it today" });
+        Assert.True(replied.Ok, replied.ToString());
+        Assert.False(replied.Data!["archived"]!.GetValue<bool>());
+        var comments = (await owner.Get($"/api/v1/tasks/{taskId}/comments")).Data!.AsArray();
+        Assert.Contains(comments, c => c!["body"]!.GetValue<string>() == "On it today" && c["author"]!["id"]!.GetValue<string>() == mia.UserId.ToString());
+
+        // Done: the task moves to a Done status through the board's own rules, and the notice is put away.
+        var done = await mia.Post($"/api/v1/notifications/{aid}/act", new { action = "done" });
+        Assert.True(done.Ok, done.ToString());
+        Assert.True(done.Data!["archived"]!.GetValue<bool>());
+        Assert.Equal("Done", (await owner.Get($"/api/v1/tasks/{taskId}")).Data!["task"]!["statusCategory"]!.GetValue<string>());
+        Assert.DoesNotContain((await mia.Get("/api/v1/notifications")).Data!["items"]!.AsArray(), n => n!["id"]!.GetValue<string>() == aid);
+
+        // Someone else's notification cannot be acted on; an action that does not fit is refused.
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.Post($"/api/v1/notifications/{aid}/act", new { action = "done" })).Status);
+        Assert.Equal(422, (int)(await mia.Post($"/api/v1/notifications/{aid}/act", new { action = "approve" })).Status);
+    }
+
+    [Fact]
+    public async Task In_digest_mode_updates_wait_for_the_daily_email_while_what_needs_you_comes_at_once()
+    {
+        var (owner, mia, project) = await Setup();
+        var settings = (await mia.Get("/api/v1/reminders/settings")).Data!.AsObject();
+        settings["digestTime"] = "18:00";
+        settings["quietStart"] = null; settings["quietEnd"] = null;   // so only the digest holds anything back
+        var saved = await mia.Put("/api/v1/reminders/settings", settings);
+        Assert.True(saved.Ok, saved.ToString());
+        Assert.Equal("18:00", saved.Data!["digestTime"]!.GetValue<string>());
+
+        var task = await Assign(owner, project, mia, "Digest check");
+        Assert.True((await owner.Post($"/api/v1/tasks/{task["id"]!.GetValue<string>()}/comments", new { body = "FYI only" })).Ok);
+        factory.WithDb(db =>
+        {
+            var rows = db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == mia.UserId).ToList();
+            var assigned = rows.Single(n => n.Type == NotificationType.TaskAssigned && n.Body == "Digest check");
+            Assert.Null(assigned.DeliverAfter);                          // needs her: now
+            var comment = rows.Single(n => n.Type == NotificationType.Comment);
+            Assert.False(comment.PushPending);                           // an update: no push
+            Assert.NotNull(comment.DeliverAfter);                         // and its email waits for 18:00
+            Assert.True(comment.DeliverAfter > DateTime.UtcNow && comment.DeliverAfter <= DateTime.UtcNow.AddDays(1));
+            Assert.True(comment.InApp);                                   // still in the inbox at once
+            return 0;
+        });
+
+        // Turning it off brings the old behaviour back.
+        settings["digestTime"] = null;
+        Assert.Null((await mia.Put("/api/v1/reminders/settings", settings)).Data!["digestTime"]);
+    }
+
+    [Fact]
+    public async Task A_snoozed_notification_leaves_the_inbox_and_counts_until_it_comes_back()
+    {
+        var (owner, mia, project) = await Setup();
+        var task = await Assign(owner, project, mia, "Snooze me");
+        var key = task["key"]!.GetValue<string>();
+        var n = Find((await mia.Get("/api/v1/notifications")).Data!, x => x["title"]!.GetValue<string>().Contains(key));
+        var id = n["id"]!.GetValue<string>();
+        var before = (await mia.Get("/api/v1/notifications/counts")).Data!;
+
+        Assert.Equal(422, (int)(await mia.Post($"/api/v1/notifications/{id}/act", new { action = "snooze", until = DateTime.UtcNow.AddMinutes(1) })).Status);
+        var snoozed = await mia.Post($"/api/v1/notifications/{id}/act", new { action = "snooze", until = DateTime.UtcNow.AddHours(3) });
+        Assert.True(snoozed.Ok, snoozed.ToString());
+
+        Assert.DoesNotContain((await mia.Get("/api/v1/notifications")).Data!["items"]!.AsArray(), x => x!["id"]!.GetValue<string>() == id);
+        var after = (await mia.Get("/api/v1/notifications/counts")).Data!;
+        Assert.Equal(before["unread"]!.GetValue<int>() - 1, after["unread"]!.GetValue<int>());
+        Assert.Equal(1, after["snoozed"]!.GetValue<int>());
+        var resting = Assert.Single((await mia.Get("/api/v1/notifications?lane=snoozed")).Data!["items"]!.AsArray())!;
+        Assert.NotNull(resting["snoozedUntil"]);
+
+        // When the time comes it is back on top, unread, and waiting to be pushed again.
+        factory.WithDb(db =>
+        {
+            var row = db.Notifications.IgnoreQueryFilters().Single(x => x.Id == Guid.Parse(id));
+            row.SnoozedUntil = DateTime.UtcNow.AddMinutes(-1);
+            db.SaveChanges();
+            return 0;
+        });
+        var back = (await mia.Get("/api/v1/notifications")).Data!["items"]!.AsArray()[0]!;
+        Assert.Equal(id, back["id"]!.GetValue<string>());
+        Assert.False(back["isRead"]!.GetValue<bool>());
+    }
+
     [Fact]
     public async Task Changing_a_task_s_priority_or_due_date_notifies_the_assignee_without_touching_the_assignee_field()
     {

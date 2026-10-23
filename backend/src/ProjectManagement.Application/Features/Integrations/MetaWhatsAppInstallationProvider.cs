@@ -185,7 +185,7 @@ public class MetaWhatsAppInstallationProvider(IHttpClientFactory http, IOptions<
                 // Reject headers, buttons, media and variable bodies. Notifications carry no private project contents.
                 states.Add(compatible ? "approved" : "incompatible");
             }
-            return new(states[0], states[1], states[2]);
+            return new(states[0], states[1], states[2], states[3], states[4]);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw Invalid(); }
         catch (InvalidOperationException) { throw Invalid(); }

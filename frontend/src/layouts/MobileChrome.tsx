@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 're
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { chatApi, notificationApi } from '../api/endpoints';
+import { NotificationActions } from '../features/notifications/NotificationActions';
 import { Icon, type IconName } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
 import { AgentMark } from '../components/AgentMark';
@@ -153,9 +154,10 @@ function NotificationsSheet({ onClose }: { onClose: () => void }) {
           {items.slice(0, 20).map((n) => (
             <li key={n.id}><button type="button" className={`m-row note ${n.isRead ? '' : 'unread'}`} onClick={() => void open(n)}>
               <span className="m-row-ico emoji">{NOTIF_ICON[n.type] ?? '🔔'}</span>
-              <span className="m-row-main"><b>{n.title}</b>{n.body && <small>{n.body}</small>}<em>{timeAgo(n.createdAt)}</em></span>
+              <span className="m-row-main"><b>{n.title}</b>{n.body && <small>{n.body}</small>}<em>{timeAgo(n.shownAt ?? n.createdAt)}</em></span>
               {!n.isRead && <i className="m-dot" aria-label="Unread" />}
-            </button></li>
+            </button>
+            <div className="m-note-acts"><NotificationActions n={n} /></div></li>
           ))}
         </ul>
       )}

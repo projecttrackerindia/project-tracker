@@ -246,6 +246,8 @@ public class Notification : TenantEntity, ITenantScoped
     public DateTime? ReadAt { get; set; }
     /// <summary>Put away by the person: out of the inbox (and read), still findable under Archived until the data policy removes it.</summary>
     public DateTime? ArchivedAt { get; set; }
+    /// <summary>Snoozed: hidden from the inbox until this moment (UTC), then back on top as unread and pushed again.</summary>
+    public DateTime? SnoozedUntil { get; set; }
     public string? DedupeKey { get; set; }
     /// <summary>
     /// E-mail and push for this notification wait until this moment (UTC): it was created during the recipient's quiet hours, so it goes

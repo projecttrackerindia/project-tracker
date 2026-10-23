@@ -113,6 +113,11 @@ namespace ProjectManagement.Domain.Entities
 
         public bool BriefingEnabled { get; set; } = true;
         public TimeOnly BriefingTime { get; set; } = new(8, 30);
+        /// <summary>
+        /// Digest mode: updates (notifications that only tell you something) skip push and wait to be emailed together once a day at this
+        /// local time. Things that need you still arrive at once. Null = off.
+        /// </summary>
+        public TimeOnly? DigestTime { get; set; }
         /// <summary>The local day of the last briefing ("yyyyMMdd"), so one goes out per day.</summary>
         public string? LastBriefingDay { get; set; }
 
