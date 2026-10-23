@@ -72,6 +72,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("WhatsApp__DeliveryEnabled", "false");
         Environment.SetEnvironmentVariable("Automation__WorkerEnabled", "false"); // tests run the automation scheduler explicitly
         Environment.SetEnvironmentVariable("Reminders__WatchesEnabled", "false"); // tests run the watch check explicitly
+        Environment.SetEnvironmentVariable("Ai__Search__WorkerEnabled", "false"); // tests index for meaning search explicitly
         Environment.SetEnvironmentVariable("Ai__Operations__WorkerEnabled", "false");
         Environment.SetEnvironmentVariable("Push__WorkerEnabled", "false"); // tests run the push dispatcher explicitly
         Environment.SetEnvironmentVariable("App__HoldNotificationsInQuietHours", "false"); // e-mail/push timing must not depend on the hour CI runs at; QuietHoursTests cover the rule
@@ -127,6 +128,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     /// <summary>Everything the application logged, so a test can prove a secret never reaches a log line.</summary>
     public LogSink Logs { get; } = new();
     public FakePayments Payments { get; } = new();
+    public FakeEmbedder Embedder { get; } = new();
     public FakeResumePayments ResumePayments {get;}=new();
 
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
@@ -159,6 +161,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient>(Ai);
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiChat>();
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat>(Chat);
+            services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiEmbedder>();
+            services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiEmbedder>(Embedder);
             services.RemoveAll<ProjectManagement.Application.Abstractions.IPaymentProvider>();
             services.AddSingleton<ProjectManagement.Application.Abstractions.IPaymentProvider>(Payments);
             services.RemoveAll<ProjectManagement.Application.Features.Resumes.IResumePaymentGateway>();

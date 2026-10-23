@@ -185,6 +185,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<AiSchedule> AiSchedules => Set<AiSchedule>();
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
     public DbSet<AiWatch> AiWatches => Set<AiWatch>();
+    public DbSet<AiSearchChunk> AiSearchChunks => Set<AiSearchChunk>();
     public DbSet<AiAttachment> AiAttachments => Set<AiAttachment>();
     public DbSet<ChatAttachment> ChatAttachments => Set<ChatAttachment>();
     public DbSet<ChatReaction> ChatReactions => Set<ChatReaction>();

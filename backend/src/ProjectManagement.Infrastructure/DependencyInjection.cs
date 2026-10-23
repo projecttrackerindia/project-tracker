@@ -134,6 +134,8 @@ public static class DependencyInjection
         services.AddHostedService<AiTraceRetentionWorker>();
         services.Configure<AiOperationsOptions>(config.GetSection(AiOperationsOptions.Section));
         services.AddHostedService<AiOperationsWorker>();
+        services.Configure<AiSearchOptions>(config.GetSection(AiSearchOptions.Section));
+        services.AddHostedService<AiSemanticWorker>();
         services.AddSingleton<AiInferenceGate>();
         services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiDiagnostics, AiDiagnostics>();
         services.AddSingleton<OpenAiCompatibleClient>();
@@ -145,6 +147,9 @@ public static class DependencyInjection
         services.AddHttpClient("gcp-metadata", c => c.Timeout = TimeSpan.FromSeconds(5));
         services.AddSingleton<GeminiChat>();
         services.AddHttpClient("ai-gemini", c => c.Timeout = Timeout.InfiniteTimeSpan);
+        // Meaning-based search: vectors from the same Google project and region as Gemini (off when Gemini is off).
+        services.AddHttpClient("ai-embeddings", c => c.Timeout = TimeSpan.FromSeconds(30));
+        services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiEmbedder, GeminiEmbedder>();
         // The AI workspace: streamed, with tools and files. Claude first, the same Ai:Fallback:* provider as backup - a self-hosted
         // Any OpenAI-compatible address, used when Claude cannot answer or
         // there is no Anthropic key at all.

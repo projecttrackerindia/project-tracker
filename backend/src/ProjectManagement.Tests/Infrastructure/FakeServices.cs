@@ -154,3 +154,48 @@ public sealed class FakePayments : ProjectManagement.Application.Abstractions.IP
     public static string CheckoutSignature(string paymentId, string subscriptionId) => ProjectManagement.Infrastructure.Services.RazorpaySignature.Hex(KeySecret, $"{paymentId}|{subscriptionId}");
     public static string WebhookSignature(string body) => ProjectManagement.Infrastructure.Services.RazorpaySignature.Hex(WebhookSecret, body);
 }
+
+/// <summary>
+/// A stand-in embedding model: words that mean the same thing (in English, Hindi and Telugu) land on the same dimension, so "refund rule"
+/// and "returns policy" come out close, while unrelated words land elsewhere. Deterministic, no network.
+/// </summary>
+public sealed class FakeEmbedder : ProjectManagement.Application.Features.Ai.IAiEmbedder
+{
+    private static readonly Dictionary<string, string> Concepts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["refund"] = "money-back", ["refunds"] = "money-back", ["return"] = "money-back", ["returns"] = "money-back", ["money"] = "money-back", ["back"] = "money-back",
+        ["रिफंड"] = "money-back", ["वापसी"] = "money-back", ["vapas"] = "money-back", ["vaapas"] = "money-back", ["tirigi"] = "money-back",
+        ["rule"] = "policy", ["rules"] = "policy", ["policy"] = "policy", ["niyam"] = "policy", ["नियम"] = "policy", ["niyamam"] = "policy", ["policy?"] = "policy",
+        ["laptop"] = "device", ["computer"] = "device", ["printer"] = "device",
+    };
+
+    public bool Configured { get; set; } = true;
+    public string Model => "fake-embedding-1";
+    public int Calls { get; private set; }
+
+    public Task<IReadOnlyList<float[]>> EmbedAsync(IReadOnlyList<string> texts, bool query, CancellationToken ct)
+    {
+        Calls++;
+        return Task.FromResult<IReadOnlyList<float[]>>(texts.Select(Vector).ToList());
+    }
+
+    private static float[] Vector(string text)
+    {
+        var v = new float[64];
+        foreach (var raw in text.Split([' ', '\n', ',', '.', '?', '!', ':', ';', '\'', '"', '(', ')'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var word = raw.Trim().ToLowerInvariant();
+            if (word.Length < 3) continue;
+            if (Concepts.TryGetValue(word, out var concept)) v[Bucket(concept)] += 3;
+            else v[Bucket(word)] += 0.3f;
+        }
+        return v;
+    }
+
+    private static int Bucket(string s)
+    {
+        var h = 17;
+        foreach (var c in s) h = unchecked(h * 31 + c);
+        return Math.Abs(h % 64);
+    }
+}

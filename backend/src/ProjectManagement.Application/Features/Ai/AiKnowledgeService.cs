@@ -19,7 +19,7 @@ public record AiKnowledgeSearch(string Query, IReadOnlyList<AiKnowledgeExcerpt> 
 
 /// <summary>Authorized relational and indexed document evidence. Source text never grants authority or supplies SQL.</summary>
 public class AiKnowledgeService(ICurrentContext ctx, AppClock clock, ProjectAccess access,
-    PermissionService permissions, DocumentService documents, WorkItemService workItems, SupportResolutionService resolutions)
+    PermissionService permissions, DocumentService documents, WorkItemService workItems, SupportResolutionService resolutions, AiSemanticIndex semantic, IAppDbContext db)
 {
     private static string Trim(string? value, int limit) => value is null ? "" : value.Length <= limit ? value : value[..limit];
 
@@ -50,7 +50,42 @@ public class AiKnowledgeService(ICurrentContext ctx, AppClock clock, ProjectAcce
                 items.Add(new(DocumentReference(doc), Trim(DocumentText(doc), 2000)));
             }
         }
-        return new(query, items, truncated, "authorized-keyword-v1; relational records and existing document index; bounded excerpts; not semantic similarity or proof of a claim");
+        // By meaning as well as by words: "refund rule" finds "Returns policy", a Hindi or Telugu question finds an English page. Every hit is
+        // opened through the same services as above, so the reader's own access decides; a hit they may not see is simply left out.
+        var byMeaning = 0;
+        if (semantic.Enabled)
+        {
+            var have = items.Select(i => i.Source.Id).ToHashSet();
+            var docsAllowed = await permissions.LevelAsync(Modules.Documents, ct) >= AccessLevel.View;
+            foreach (var hit in await semantic.SearchAsync(query, 12, ct))
+            {
+                if (byMeaning >= 6) { truncated = true; break; }
+                if (have.Contains(hit.SourceId)) continue;
+                try
+                {
+                    if (hit.SourceKind == "document")
+                    {
+                        if (!docsAllowed) continue;
+                        var doc = await documents.GetAsync(hit.SourceId, ct);
+                        items.Add(new(DocumentReference(doc), Trim(DocumentText(doc), 2000)));
+                    }
+                    else
+                    {
+                        var key = hit.SourceKind == "task" ? hit.Title.Split(' ', 2)[0]
+                            : await db.WorkTasks.AsNoTracking().Where(w => w.Id == hit.SourceId).Select(w => new { w.Kind, w.Number }).FirstOrDefaultAsync(ct) is { } w ? WorkItemService.KeyOf(w.Kind, w.Number) : null;
+                        if (key is null) continue;
+                        var match = (await workItems.ListAsync(new(Q: key, OpenOnly: false, Limit: 20), WorkItemScope.Caller, ct)).FirstOrDefault(x => x.Id == hit.SourceId);
+                        if (match is null) continue;
+                        items.Add(new(WorkReference(match), $"{match.Key}: {match.Title}; status: {match.Status}; due: {match.DueDate?.ToString("yyyy-MM-dd") ?? "not set"}. {Trim(hit.Text, 600)}"));
+                    }
+                    have.Add(hit.SourceId); byMeaning++;
+                }
+                catch (AppException) { /* not the reader's to see */ }
+            }
+        }
+        return new(query, items, truncated, byMeaning > 0
+            ? $"authorized-hybrid-v2; words and meaning ({byMeaning} found by meaning); every source opened with the reader's access; bounded excerpts; not proof of a claim"
+            : "authorized-keyword-v1; relational records and existing document index; bounded excerpts; not semantic similarity or proof of a claim");
     }
 
     public async Task<AiKnowledgeExcerpt> ReadAsync(string kind, Guid id, string? key, string? expectedVersion, int offset, CancellationToken ct)

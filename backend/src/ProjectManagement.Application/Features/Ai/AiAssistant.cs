@@ -58,6 +58,12 @@ public sealed class AiGeminiOptions
     public int RequestsPerDay { get; set; } = 100;
     public int PilotInputTokenAllowance { get; set; } = 2000000;
     public int PilotOutputTokenAllowance { get; set; } = 100000;
+    /// <summary>
+    /// Meaning-based search: pages and work are turned into vectors with this embedding model (multilingual, so a Hindi or Telugu question
+    /// finds an English page) and searched by meaning as well as by words. Off when empty.
+    /// </summary>
+    public string? EmbeddingModel { get; set; } = "text-multilingual-embedding-002";
+    public int EmbeddingDimensions { get; set; } = 256;
 }
 
 /// <summary>
