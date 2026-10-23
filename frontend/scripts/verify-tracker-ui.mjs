@@ -58,6 +58,10 @@ const activeAlerts=[{key:'credits_low',severity:'warning',agent:'credits',title:
  {key:'bot_failures',severity:'critical',agent:'meetings',title:'The meeting bot missed 3 sessions today',detail:'Most often: Nobody let the bot into the meeting. Your alert is 2 or more a day.',link:'/agent-tracker?tab=meetings',value:3,threshold:2}];
 const digest={title:'Agents last week: 142 proposals, 96 approved, 21 meetings',lines:['Project agent: 38 readings, 142 proposals - 96 approved (21 by itself), 27 dismissed, 19 waiting.','Meetings: 21 of 24 attended by the bot, 18 sets of minutes sent.','AI credits: 406 used; at this pace they run out around 14 Jan, before they renew on 1 Feb.'],from:new Date(now-7*day).toISOString(),to:new Date(now).toISOString(),quiet:false};
 const hints=[{projectId:pid,projectKey:'PAY',projectName:'Payments Core',kind:'CreateActionItem',decided:41,rate:98,level:2,message:'x'}];
+const wfJobs=[
+ {id:'j1',kind:'portfolio',title:'Portfolio risks and delivery forecast',status:'succeeded',progress:100,attempts:1,createdAt:new Date(now-2*3600e3).toISOString(),errorCode:null,
+  result:{summary:'**Payments Core** is likely to slip by about a week: the bank certification is waiting on the settlement file spec.',evidenceAt:new Date(now-2*3600e3).toISOString(),methodology:'Open work against the last 8 weeks of throughput.',sources:[{kind:'project',id:pid,label:'Payments Core',link:'/projects/'+pid}]}},
+ {id:'j2',kind:'workload',title:'Workload and capacity review',status:'running',progress:40,attempts:1,createdAt:new Date(now-5*60e3).toISOString(),errorCode:null,result:null}];
 const writes=[],errors=[],checks=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
@@ -79,6 +83,16 @@ try{
    else if(ep==='/api/v1/ai/tracker/digest/send'&&method==='POST'){writes.push({ep});data={sent:1};}
    else if(ep==='/api/v1/ai/tracker/digest')data=digest;
    else if(ep==='/api/v1/ai/tracker/autonomy-hints')data=hints;
+   else if(ep==='/api/v1/ai/usage')data={month:'2030-01',creditsUsed:96,creditsLimit:300,creditsLeft:204,unlimited:false,maxTier:'deep',attachments:true,actions:true,
+     tiers:[{id:'quick',label:'Quick',model:'m',credits:1,allowed:true,description:'Fast answers'},{id:'deep',label:'Deep',model:'m',credits:5,allowed:true,description:'Careful work'}],attachmentTypes:['pdf'],maxFiles:5,maxImageMb:10,maxDocumentMb:20};
+   else if(ep==='/api/v1/ai/starters')data={greeting:'Good morning',starters:[{label:'What is at risk this week?',prompt:'What is at risk this week?',icon:'radar'}]};
+   else if(ep==='/api/v1/ai/profile')data={detailLevel:2,detailLabel:'Balanced',notes:null,learned:[],learnedAt:null};
+   else if(ep==='/api/v1/ai/instructions')data={text:null,canEdit:true};
+   else if(ep==='/api/v1/ai/operations/jobs')data=wfJobs;
+   else if(ep.startsWith('/api/v1/ai/operations/jobs/'))data=wfJobs.find(j=>ep.endsWith(j.id))??null;
+   else if(ep==='/api/v1/ai/operations/schedules')data=[{id:'s1',title:'Workload and capacity review',kind:'workload',intervalMinutes:10080,nextRunAt:new Date(now+3*864e5).toISOString(),enabled:true}];
+   else if(ep==='/api/v1/ai/operations/forecasts')data={forecasts:6,verifiedCompletions:3,comparableProjects:3,meanAbsoluteErrorDays:4.2,methodology:'Each forecast is compared with the recorded completion date.',
+     items:[{id:'f1',project:'Payments Core',link:'/projects/'+pid,projectedFinish:'2030-03-01',recordedCompletedAt:'2030-03-05',errorDays:4,scopeChanged:false,reopened:false}]};
    else if(ep==='/api/v1/ai/tracker/agent'&&method==='PUT'){writes.push({ep,b:req.postDataJSON()});tracker.agent.enabled=req.postDataJSON().enabled;data={enabled:tracker.agent.enabled};}
    else{
     assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
@@ -143,6 +157,19 @@ try{
  await page.getByRole('button',{name:'Switch assistant off'}).click();await page.waitForTimeout(300);
  assert.deepEqual(writes.at(-1).b,{enabled:false});checks.push('switch');
  await page.close();await ctx.close();
+
+ // The hub: every agent place shares one header and tab bar, on a wide screen and on a phone.
+ for(const [w,h] of [[1440,1000],[390,844]]){
+  ctx=await make('light');page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&/Unhandled UI error/.test(m.text()))errors.push(m.text().slice(0,300));});await page.setViewportSize({width:w,height:h});
+  for(const [url,name,ready] of [['/ai/operations','Workflows','.awf-create'],['/agent-tracker','Tracker','.trk-agent']]){
+   await page.goto(origin+'/preview-org'+url);await page.locator(ready).first().waitFor();
+   assert.ok(await page.locator('.agh').isVisible(),`hub header on ${url}`);
+   assert.ok((await page.locator('.agh-tabs .tab.active').innerText()).trim().startsWith(name),url);
+   if(w<400){const seen=await page.locator('.agh-tabs .tab.active').evaluate(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;});assert.ok(seen,`the current hub tab is in view on ${url}`);}
+   await shot(page,`hub-${name.toLowerCase()}-${w}.png`,w>400);if(w<400)await noOverflow(page,`hub ${name} ${w}`);
+  }
+  checks.push(`hub-${w}`);await page.close();await ctx.close();
+ }
 
  for(const theme of ['light','dark']){
   ctx=await make(theme);page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});

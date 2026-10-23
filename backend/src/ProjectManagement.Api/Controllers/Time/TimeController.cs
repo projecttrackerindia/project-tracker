@@ -10,7 +10,8 @@ namespace ProjectManagement.Api.Controllers.Time;
 /// entries and your timesheet are not tied to one module: someone who only does operational work tracks their time the same way.
 /// </summary>
 [Route("api/v1"), RequireWorkspace]
-public class TimeController(TimeService time, TimesheetApprovalService approvals, TimesheetGridService grid, TimesheetInsightsService insights) : ApiControllerBase
+public class TimeController(TimeService time, TimesheetApprovalService approvals, TimesheetGridService grid, TimesheetInsightsService insights,
+    TimesheetWordsService words) : ApiControllerBase
 {
     // ---- on a project task
     [HttpGet("tasks/{taskId:guid}/time"), RequireModule(Modules.Tasks)]
@@ -73,6 +74,23 @@ public class TimeController(TimeService time, TimesheetApprovalService approvals
     /// <summary>Fills my empty cells this week with what I logged on the same weekday last week.</summary>
     [HttpPost("time/grid/copy-previous")]
     public async Task<IActionResult> CopyPrevious([FromBody] CopyWeekRequest req, CancellationToken ct) => Ok(await grid.CopyPreviousAsync(req, ct));
+
+    // ---- time in plain words ("2h on PAY-12 yesterday, 30m standup"), typed or said
+    /// <summary>Reads the words into entries to check, each matched to its work. Nothing is logged.</summary>
+    [HttpPost("time/words")]
+    public async Task<IActionResult> ParseWords([FromBody] ParseTimeWordsRequest req, CancellationToken ct) => Ok(await words.ParseAsync(req, ct));
+
+    /// <summary>The same from a voice note (WAV): what was heard, read into entries to check.</summary>
+    [HttpPost("time/words/voice"), RequestSizeLimit(13 * 1024 * 1024), RequestFormLimits(MultipartBodyLengthLimit = 13 * 1024 * 1024)]
+    public async Task<IActionResult> ParseVoice(IFormFile file, CancellationToken ct)
+    {
+        await using var stream = file.OpenReadStream();
+        return Ok(await words.VoiceAsync(stream, file.Length, ct));
+    }
+
+    /// <summary>Logs the checked entries, each as an entry of its own; the ones that cannot be logged come back as errors.</summary>
+    [HttpPost("time/words/log")]
+    public async Task<IActionResult> LogWords([FromBody] LogTimeWordsRequest req, CancellationToken ct) => Ok(await words.LogAsync(req, ct));
 
     /// <summary>The last weeks of a person's time: against capacity, overtime, leave, where it went and logging habits.</summary>
     [HttpGet("time/insights")]

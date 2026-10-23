@@ -188,7 +188,7 @@ try{
 
  // The Project agent page: review across projects, my inbox, meeting bot.
  page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+'/preview-org/project-agent');await page.locator('.agh').getByText('Assistant',{exact:true}).waitFor();
+ await page.goto(origin+'/preview-org/project-agent');await page.locator('.agh').getByText('Agents',{exact:true}).waitFor();
  await page.locator('.ag-card').first().waitFor();assert.ok(await page.getByRole('link',{name:'PAY · Payments Core'}).first().isVisible());
  await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,'agent-page-review.png'),animations:'disabled'});checks.push('agent-page');
  await page.getByRole('link',{name:/Given to me/}).click();

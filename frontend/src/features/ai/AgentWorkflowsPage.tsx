@@ -7,7 +7,7 @@ import { Select } from '../../components/Select';
 import { Icon, type IconName } from '../../components/Icon';
 import { Markdown } from './Markdown';
 import { AgentsHubNav } from '../agents/AgentsHubNav';
-import { formatDateTime, timeAgo } from '../../lib/format';
+import { formatDate, formatDateTime, timeAgo } from '../../lib/format';
 import './workflows.css';
 
 type Kind = 'portfolio' | 'workload' | 'history';
@@ -36,6 +36,12 @@ export function AgentWorkflowsPage() {
   const [interval, setIntervalMinutes] = useState(1440);
   const [selected, setSelected] = useState<string | null>(() => params.get('job'));
   useEffect(() => { const job = params.get('job'); if (job) setSelected(job); }, [params]);
+  // With nothing picked, open the newest finished review rather than an empty panel.
+  useEffect(() => {
+    if (selected || !jobs.data?.length) return;
+    const done = jobs.data.find((j) => !!j.result);
+    if (done) setSelected(done.id);
+  }, [jobs.data, selected]);
   const selectedJob = useWsQuery(['agent-workflows', 'job', selected], () => get<Job>(`/ai/operations/jobs/${selected}`), { enabled: !!selected });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -161,8 +167,8 @@ export function AgentWorkflowsPage() {
                 <table className="awf-table">
                   <thead><tr><th>Project</th><th>Predicted finish</th><th>Finished</th><th className="num">Off by</th><th>Notes</th></tr></thead>
                   <tbody>{f.items.slice(0, 20).map((x) => (
-                    <tr key={x.id}><td><Link to={x.link}>{x.project}</Link></td><td>{x.projectedFinish ?? 'not enough evidence'}</td>
-                      <td>{x.recordedCompletedAt ? new Date(x.recordedCompletedAt).toLocaleDateString() : 'not yet'}</td>
+                    <tr key={x.id}><td><Link to={x.link}>{x.project}</Link></td><td>{x.projectedFinish ? formatDate(x.projectedFinish) : 'not enough evidence'}</td>
+                      <td>{x.recordedCompletedAt ? formatDate(x.recordedCompletedAt.slice(0, 10)) : 'not yet'}</td>
                       <td className="num">{x.errorDays != null ? `${x.errorDays}d` : '–'}</td>
                       <td className="muted">{[x.scopeChanged && 'scope changed', x.reopened && 'reopened'].filter(Boolean).join(' · ') || '—'}</td></tr>
                   ))}</tbody>

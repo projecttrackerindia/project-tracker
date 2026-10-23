@@ -21,7 +21,7 @@
 .awf-job { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 10px; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; border-radius: 12px; min-height: 44px; }
 .awf-job:hover { background: var(--hover-bg); }
 .awf-job-text { flex: 1; min-width: 0; display: grid; }
-.awf-job-text b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.awf-job-text b { font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
 .awf-job-text small { font-size: 11.5px; color: var(--text-3); }
 .awf-status { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
 .awf-status.succeeded, .awf-status.completed { background: var(--success-soft); color: var(--success); }

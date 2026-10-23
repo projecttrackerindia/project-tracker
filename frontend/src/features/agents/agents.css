@@ -4,7 +4,8 @@
 .agh-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .agh-mark { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border); }
 .agh-title b { display: block; font-size: 15px; letter-spacing: -.01em; }
-.agh-title small { display: block; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46ch; }
+.agh-title small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 12px; line-height: 1.35; color: var(--text-3); overflow: hidden; max-width: 52ch; }
+.agh-title { flex: 1 1 260px; }
 @media (max-width: 640px) {
   .agh { gap: 8px; }
   .agh-title small { display: none; }

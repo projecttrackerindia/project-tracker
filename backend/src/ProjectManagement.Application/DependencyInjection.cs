@@ -197,6 +197,7 @@ public static class DependencyInjection
         services.AddScoped<PlannedLeaveService>();
         services.AddScoped<TimesheetApprovalService>();
         services.AddScoped<TimesheetGridService>();
+        services.AddScoped<TimesheetWordsService>();
         services.AddScoped<TimesheetInsightsService>();
         services.AddScoped<TimesheetNudgeMonitor>();
         services.AddScoped<CapacityService>();

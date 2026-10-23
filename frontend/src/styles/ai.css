@@ -52,6 +52,9 @@
 .ai-head { position: relative; z-index: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 14px 24px; padding: 18px 22px; border-bottom: 1px solid var(--modal-line); background: var(--surface); }
 .ai-head-primary, .ai-head-controls { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ai-head-primary { flex: 1 1 100%; }
+.ai-head-hub { display: none; flex: none; }
+.ai-head-hub .agh-tabs { border: 0; gap: 2px; }
+.ai-head-hub .tab { padding: 6px 8px; min-height: 36px; }
 .ai-head-controls { flex: 1 1 100%; flex-wrap: wrap; }
 .ai-head-controls .ai-modes { min-width: 0; max-width: 100%; }
 .ai-workflows-link { white-space: nowrap; font-size: 12px; border-radius: 12px; height: 42px; padding: 0 12px; margin-left: auto; }

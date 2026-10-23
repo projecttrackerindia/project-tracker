@@ -350,6 +350,16 @@ export interface DraftCell { kind: GridKind; targetId: string; key: string; titl
 export interface DraftDay { date: string; availableMinutes: number; meetingMinutes: number; skipped: string | null }
 export interface WeekDraft { weekStart: string; cells: DraftCell[]; days: DraftDay[] }
 export interface SaveGridResult { grid: TimesheetGrid; saved: number; errors: GridCellError[] }
+/** Something time can go to, as chosen for an entry read from plain words. */
+export interface TimeTarget { kind: GridKind; targetId: string; key: string; title: string; projectName: string | null }
+/** One entry read from "2h on PAY-12 yesterday, 30m standup": how the work was found, other choices, and what still needs fixing. */
+export interface ParsedTimeEntry {
+  text: string; minutes: number; date: string; target: TimeTarget | null; note: string | null; match: 'key' | 'title' | 'ai' | 'none';
+  options: TimeTarget[]; problem: string | null;
+}
+export interface ParsedTime { text: string; entries: ParsedTimeEntry[]; dayMinutes: number; usedAi: boolean; model: string | null; transcript: string | null; language: string | null }
+export interface LogTimeWordsEntry { kind: GridKind; targetId: string; date: string; minutes: number; note: string | null }
+export interface LogTimeWordsResult { saved: number; minutes: number; entries: TimeEntry[]; errors: GridCellError[] }
 export interface InsightWeek { weekStart: string; loggedMinutes: number; billableMinutes: number; targetMinutes: number; overtimeMinutes: number; leaveDays: number; missingDays: number; status: TimesheetStatus }
 export interface TimesheetInsights {
   user: UserRef; from: string; to: string; weeks: InsightWeek[]; byProject: { label: string; projectId: string | null; minutes: number }[]; byWeekday: { day: number; averageMinutes: number }[];

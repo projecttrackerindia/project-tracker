@@ -32,13 +32,69 @@
 /* ---- tools: quick add and buttons */
 .tsg-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .tsg-tool-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
-.tsg-quick { position: relative; flex: 1 1 420px; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 12px;
+.tsg-quick { position: relative; flex: 1 1 640px; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 12px;
   border: 1px solid var(--field-border, var(--border)); background: var(--field-bg, var(--surface)); }
 .tsg-quick:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .14); }
 .tsg-quick > svg { color: var(--warning); flex-shrink: 0; }
 .tsg-quick .input { flex: 1; min-width: 0; border: 0; background: transparent; box-shadow: none; padding: 4px 0; }
 .tsg-quick .input:focus { box-shadow: none; }
 .tsg-quick-hint { position: absolute; left: 12px; top: calc(100% + 4px); font-size: 12px; color: var(--danger-text); z-index: 2; }
+.tsg-quick.rec { border-color: var(--danger, #e11d48); box-shadow: 0 0 0 3px rgba(225, 29, 72, .12); }
+.tsg-mic { flex: none; color: var(--text-2); }
+.tsg-mic:hover:not(:disabled) { color: var(--primary); }
+.tsg-rec { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; padding: 4px 0; }
+.tsg-rec small { font-weight: 400; color: var(--text-3); font-size: 12px; }
+
+/* ---- time in plain words: check what was understood before it is logged */
+.tw { display: grid; gap: 10px; }
+.tw, .tw * { text-transform: none; letter-spacing: normal; }
+.tw-heard { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2, var(--hover-bg)); font-size: 13px; }
+.tw-heard p { margin: 0; display: flex; gap: 8px; align-items: flex-start; color: var(--text-2); min-width: 0; }
+.tw-heard p svg { flex: none; margin-top: 2px; color: var(--primary); }
+.tw-heard q { color: var(--text); font-style: italic; overflow-wrap: anywhere; }
+.tw-ai { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 650; color: var(--primary); }
+.tw-none { margin: 0; color: var(--text-3); font-size: 13px; }
+.tw-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.tw-row.off { opacity: .55; }
+.tw-row.bad { border-color: color-mix(in srgb, var(--warning) 55%, var(--border)); }
+.tw-check { flex: none; padding-top: 2px; margin: 0; cursor: pointer; }
+.tw-check input { width: 16px; height: 16px; }
+.tw-body { flex: 1; min-width: 0; display: grid; gap: 8px; }
+.tw-said { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-2); }
+.tw-said q { overflow-wrap: anywhere; }
+.tw-match { font-size: 11px; font-weight: 650; padding: 1px 7px; border-radius: 999px; background: var(--hover-bg); color: var(--text-2); white-space: nowrap; }
+.tw-match.key { color: var(--success-text, var(--success)); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.tw-match.title { color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
+.tw-match.ai { color: var(--purple, #8b5cf6); background: color-mix(in srgb, var(--purple, #8b5cf6) 14%, transparent); }
+.tw-match.none { color: var(--warning-text, var(--warning)); background: color-mix(in srgb, var(--warning) 16%, transparent); }
+.tw-fields { display: grid; grid-template-columns: minmax(0, 1fr) 84px 168px; gap: 8px; align-items: center; }
+.tw-work { min-width: 0; }
+.tw-work .select { width: 100%; }
+.tw-time .input { width: 100%; text-align: center; font-variant-numeric: tabular-nums; font-weight: 650; }
+.tw-date { position: relative; display: block; }
+.tw-date .input { width: 100%; }
+.tw-date em { display: none; }
+.tw-note { grid-column: 1 / -1; font-size: 13px; }
+.tw-problem { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--warning-text, var(--warning)); }
+.tw-remove { flex: none; }
+.tw-search { display: grid; gap: 6px; }
+.tw-search-box { display: flex; align-items: center; gap: 6px; padding: 2px 4px 2px 10px; border: 1px solid var(--primary); border-radius: 10px; background: var(--field-bg, var(--surface)); }
+.tw-search-box .input { flex: 1; min-width: 0; border: 0; background: transparent; box-shadow: none; padding: 6px 0; }
+.tw-search-box svg { color: var(--text-3); }
+.tw-hits { display: grid; gap: 2px; max-height: 200px; overflow: auto; }
+.tw-hits button { display: flex; gap: 8px; align-items: baseline; text-align: left; padding: 7px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; font-size: 13px; }
+.tw-hits button:hover, .tw-hits button:focus-visible { background: var(--hover-bg); }
+.tw-hits b { flex: none; color: var(--primary); font-weight: 650; }
+.tw-hits span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tw-blocked { margin-right: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--warning-text, var(--warning)); }
+@media (max-width: 640px) {
+  .tw-row { padding: 10px; gap: 8px; }
+  .tw-fields { grid-template-columns: 76px minmax(0, 1fr); }
+  .tw-work { grid-column: 1 / -1; }
+  .tw-time .input, .tw-date .input { min-height: 40px; }
+  .tw-date .input { padding-left: 8px; padding-right: 6px; font-size: 14px; }
+  .tw-blocked { width: 100%; justify-content: center; margin: 0 0 4px; }
+}
 
 /* ---- add rows */
 .tsg-add { padding: 14px 16px; margin-bottom: 14px; }
@@ -221,7 +277,8 @@
   .tsg-tool-btns { margin-left: 0; width: 100%; }
   .tsg-tool-btns .btn { flex: 1 1 auto; }
   .tsg-quick { flex-basis: 100%; flex-wrap: wrap; }
-  .tsg-quick .btn-ghost { width: 100%; justify-content: center; }
+  .tsg-quick .tsg-ask { width: 100%; justify-content: center; }
+  .tsg-quick .input { flex-basis: calc(100% - 120px); }
   .tsi-week-name { width: 110px; }
 }
 

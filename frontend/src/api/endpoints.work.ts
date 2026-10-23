@@ -1,5 +1,5 @@
 import { del, download, fetchBlobUrl, get, patch, post, put, uploadFile, create } from './client';
-import type { WeekDraft,EffectiveAccessList,AutomationInput,AutomationRule,ProjectTime,TaskTime,TimeEntry,Timesheet,AccessMatrix,DependencyType,Milestone,MilestoneInput,TaskDependencies,ActionItem,ActionItemInput,ActionItemStatus,Attachment,AttachmentLimits,ProjectGroup,ProjectStatusReport,StatusGroup,Issue,IssueDetail,IssueInput,DevEmail,OrgRole,OrgStructure,TimesheetWeek,Approvals,BulkReviewResult,TimesheetGrid,GridCellChange,SaveGridResult,TimesheetInsights } from './types';
+import type { WeekDraft,ParsedTime,LogTimeWordsEntry,LogTimeWordsResult,EffectiveAccessList,AutomationInput,AutomationRule,ProjectTime,TaskTime,TimeEntry,Timesheet,AccessMatrix,DependencyType,Milestone,MilestoneInput,TaskDependencies,ActionItem,ActionItemInput,ActionItemStatus,Attachment,AttachmentLimits,ProjectGroup,ProjectStatusReport,StatusGroup,Issue,IssueDetail,IssueInput,DevEmail,OrgRole,OrgStructure,TimesheetWeek,Approvals,BulkReviewResult,TimesheetGrid,GridCellChange,SaveGridResult,TimesheetInsights } from './types';
 
 export const devApi = { emails: () => get<DevEmail[]>('/dev/emails', undefined, { auth: false }) };
 
@@ -106,6 +106,12 @@ export const timeApi = {
   copyPrevious: (weekStart: string) => post<SaveGridResult>('/time/grid/copy-previous', { weekStart }),
   /** A first draft of my empty days from what I changed or commented on, less meetings; nothing is saved. */
   draft: (weekStart: string) => get<WeekDraft>('/time/grid/draft', { weekStart }),
+  /** "2h on PAY-12 yesterday, 30m standup" read into entries to check, each matched to its work; nothing is logged. */
+  parseWords: (text: string) => post<ParsedTime>('/time/words', { text }),
+  /** The same from a voice note (WAV). */
+  parseVoice: (wav: Blob) => uploadFile<ParsedTime>('/time/words/voice', new File([wav], 'time.wav', { type: 'audio/wav' })),
+  /** Logs the checked entries, each as an entry of its own. */
+  logWords: (entries: LogTimeWordsEntry[]) => post<LogTimeWordsResult>('/time/words/log', { entries }),
   insights: (userId?: string, weeks = 8) => get<TimesheetInsights>('/time/insights', { userId, weeks: String(weeks) }),
 };
 

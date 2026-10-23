@@ -457,6 +457,8 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
             <Orb size={30} busy={streaming} animated />
             <div><b>{title}</b><span>{streaming ? (live?.stage === 'queued' ? 'Waiting for the assistant…' : live?.stage === 'writing' ? 'Writing…' : live?.route ? `${tierName(live.route.tier)} · thinking…` : 'Choosing how much thinking this needs…') : 'Ask, analyse, plan and get things done'}</span></div>
           </div>
+          {/* On a phone the hub bar gives way to the conversation; its other places stay one tap away here. */}
+          <div className="ai-head-hub"><AgentsHubNav compact /></div>
           </div>
           <div className="ai-head-controls">
             <ModeSwitch mode={mode} onChange={setMode} usage={usage} disabled={streaming} />

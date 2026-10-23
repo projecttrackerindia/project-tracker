@@ -189,8 +189,14 @@ public partial class ChatService
         var candidates = page.Where(m => m.Kind == ChatMessageKind.User && m.DeletedAt == null && m.SenderId != me && AsksQuestion(m.Body)).ToList();
         if (candidates.Count == 0) return [];
         var type = await db.Conversations.AsNoTracking().Where(c => c.Id == conversationId).Select(c => c.Type).FirstAsync(ct);
-        var token = $"]({me})";
-        candidates = candidates.Where(m => type == ConversationType.Direct || m.Body.Contains(token, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (type != ConversationType.Direct)
+        {
+            // In a group only a question that @mentions the person asks them (mentions are recorded when the message is sent).
+            var ids = candidates.Select(m => m.Id).ToList();
+            var named = await db.ChatMentions.AsNoTracking().Where(x => ids.Contains(x.MessageId) && x.UserId == me).Select(x => x.MessageId).ToListAsync(ct);
+            var token = $"]({me})";
+            candidates = candidates.Where(m => named.Contains(m.Id) || m.Body.Contains(token, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
         if (candidates.Count == 0) return [];
         var since = candidates.Min(m => m.CreatedAt);
         var mine = await db.ChatMessages.AsNoTracking().Where(m => m.ConversationId == conversationId && m.SenderId == me && m.CreatedAt > since)

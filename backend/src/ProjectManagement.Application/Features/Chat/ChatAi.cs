@@ -82,7 +82,7 @@ public partial class ChatAiService(ChatService chat, IAppDbContext db, ICurrentC
         foreach (var (id, name, since) in conversations)
         {
             var msgs = await db.ChatMessages.AsNoTracking().Where(m => m.ConversationId == id && m.CreatedAt > since && m.DeletedAt == null && m.SenderId != me
-                    && (m.Kind == ChatMessageKind.User || m.Kind == ChatMessageKind.Poll || m.Kind == ChatMessageKind.System))
+                    && (m.Kind == ChatMessageKind.User || m.Kind == ChatMessageKind.Poll || (m.Kind == ChatMessageKind.System && m.Body.StartsWith("Decision"))))
                 .OrderByDescending(m => m.CreatedAt).Take(PerConversation).ToListAsync(ct);
             var senders = await db.Users.AsNoTracking().Where(u => msgs.Select(m => m.SenderId).Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
             var voice = await db.ChatAttachments.AsNoTracking().Where(a => a.IsVoice && a.Transcript != null && a.MessageId != null && msgs.Select(m => m.Id).Contains(a.MessageId.Value))

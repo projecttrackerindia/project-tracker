@@ -31,6 +31,17 @@ const suggestions=[
  {kind:'work',targetId:'w2',key:'WT-9',title:'Access requests',projectId:null,projectName:null,reason:'touched'},
 ];
 const known={t2:suggestions[0],t3:suggestions[1],w2:suggestions[2],t9:{kind:'task',targetId:'t9',key:'PAY-21',title:'Refund flow',projectId:pid,projectName:'Payments Core'}};
+// What the server reads from plain words (the real reading is covered by the API tests).
+const T={pay12:{kind:'task',targetId:'t1',key:'PAY-12',title:'Gateway integration',projectName:'Payments Core'},standup:{kind:'work',targetId:'w3',key:'WT-11',title:'Daily standup',projectName:null},
+ wt4:{kind:'work',targetId:'w1',key:'WT-4',title:'Vendor escalations',projectName:null},pay14:{kind:'task',targetId:'t2',key:'PAY-14',title:'Bank certification',projectName:'Payments Core'}};
+const yesterday=add(today,-1);
+function words(text){
+ if(text==='ninna')return {text:'నిన్న 2 గంటలు PAY-12',entries:[{text:'నిన్న 2 గంటలు PAY-12',minutes:120,date:yesterday,target:T.pay12,note:null,match:'ai',options:[T.pay12,T.wt4],problem:null}],dayMinutes:480,usedAi:true,model:'test',transcript:null,language:null};
+ return {text,dayMinutes:480,usedAi:false,model:null,transcript:null,language:null,entries:[
+  {text:'2h on PAY-12 yesterday',minutes:120,date:yesterday,target:T.pay12,note:null,match:'key',options:[T.pay12,T.wt4,T.pay14],problem:null},
+  {text:'30m standup',minutes:30,date:yesterday,target:T.standup,note:'standup',match:'title',options:[T.standup,T.pay12,T.wt4],problem:null},
+  {text:'45m on XYZ-9',minutes:45,date:yesterday,target:null,note:null,match:'none',options:[T.pay12,T.wt4,T.pay14],problem:'There is no XYZ-9 that you can see.'}]};
+}
 const leaveDay=dates[3];
 function grid(){
  const days=dates.map((d,i)=>{const minutes=rows.reduce((n,r)=>n+(r.m[d]??0),0);const weekend=i>=5,leave=d===leaveDay;
@@ -62,10 +73,11 @@ approvals.pending=approvals.week.filter(r=>r.status==='Submitted');
 const entries=rows.flatMap(r=>Object.entries(r.m).map(([d,m],i)=>({id:`${r.targetId}-${i}`,taskId:r.kind==='task'?r.targetId:null,taskKey:r.key,taskTitle:r.title,projectId:r.projectId,user:{id:user.id,name:user.displayName},workDate:d,minutes:m,note:r.notes[d]??null,isRunning:false,startedAt:null,canEdit:true,workTaskId:r.kind==='work'?r.targetId:null,kind:r.kind,billable:r.billable,locked:false})));
 
 const writes=[],errors=[],checks=[];
-const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
+const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true,
+ args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']});
 try{
  const make=async(theme='light')=>{
-  const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block',acceptDownloads:true});
+  const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block',acceptDownloads:true,permissions:['microphone']});
   await ctx.addInitScript((t)=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme',t);},theme);
   await ctx.route('**/*',async route=>{
    const req=route.request(),url=new URL(req.url()),ep=url.pathname,method=req.method();
@@ -79,6 +91,12 @@ try{
      {kind:'task',targetId:'t2',key:'PAY-14',title:'Refund API',projectName:'Payments',date:dates[3],minutes:120,why:'1 change or comment by you that day · 8 h working day'}],
      days:dates.map((d,i)=>({date:d,availableMinutes:i===3?480:0,meetingMinutes:0,skipped:i===3?null:i>4?'Weekend':'Already logged'}))};}
    else if(ep==='/api/v1/time/grid/copy-previous'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});apply([{kind:'task',targetId:'t1',date:dates[2],minutes:180},{kind:'task',targetId:'t1',date:dates[4],minutes:120}]);data={grid:grid(),saved:2,errors:[]};}
+   else if(ep==='/api/v1/time/words'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data=words(b.text);}
+   else if(ep==='/api/v1/time/words/voice'&&method==='POST'){writes.push({ep,b:null});data={...words('ninna'),transcript:'నిన్న 2 గంటలు PAY-12',language:'te',usedAi:true,model:'test'};}
+   else if(ep==='/api/v1/time/words/log'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});
+     // A day in a submitted week cannot take time: the server says so per entry and logs the rest.
+     const bad=b.entries.filter(e=>e.date===dates[0]),ok=b.entries.filter(e=>e.date!==dates[0]);
+     data={saved:ok.length,minutes:ok.reduce((n,e)=>n+e.minutes,0),entries:[],errors:bad.map(e=>({kind:e.kind,targetId:e.targetId,date:e.date,message:'This week is submitted, so its time cannot change.'}))};}
    else if(ep==='/api/v1/time/approvals/approve'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={approved:b.ids.length,failed:[]};}
    else if(ep==='/api/v1/agent/inbox')data={items:[],pending:0,canDecide:true};
    else if(ep==='/api/v1/agent/assigned')data={items:[],pending:0,canDecide:false};
@@ -173,9 +191,52 @@ try{
  await page.locator('.tsg-quick input').fill('45m WT-4 tue standup');await page.getByRole('button',{name:'Add',exact:true}).click();
  w=await lastPut(puts()+1);
  assert.deepEqual(w.b.cells.map(c=>[c.targetId,c.date,c.minutes,c.note]),[['w1',dates[1],tue+45,'standup']]);
+ // Today is not in the week on screen, so the server reads it and it is shown for checking instead.
  await page.locator('.tsg-quick input').fill('2h PAY-12');await page.getByRole('button',{name:'Add',exact:true}).click();
- assert.ok(await page.locator('.tsg-quick-hint').isVisible()||true);
+ await page.getByRole('dialog',{name:'Check your time'}).waitFor();assert.equal(writes.at(-1).ep,'/api/v1/time/words');
+ await page.getByRole('dialog',{name:'Check your time'}).getByRole('button',{name:'Cancel'}).click();await page.getByRole('dialog',{name:'Check your time'}).waitFor({state:'detached'});
  checks.push('quick-add');
+
+ // Plain words: several pieces are read on the server and shown for checking; nothing is logged until "Add".
+ await page.locator('.tsg-quick input').fill('2h on PAY-12 yesterday, 30m standup, 45m on XYZ-9');await page.getByRole('button',{name:'Add',exact:true}).click();
+ const tw=page.getByRole('dialog',{name:'Check your time'});await tw.locator('.tw-row').nth(2).waitFor();
+ assert.equal(writes.at(-1).ep,'/api/v1/time/words');assert.equal(writes.at(-1).b.text,'2h on PAY-12 yesterday, 30m standup, 45m on XYZ-9');
+ assert.equal(await tw.locator('.tw-row').count(),3);
+ assert.ok(await tw.locator('.tw-row').nth(2).evaluate(el=>el.classList.contains('off')),'a piece without its work starts unticked');
+ assert.match(await tw.getByRole('button',{name:/^Add \d/}).innerText(),/Add 2 entries · 2h 30m/);
+ assert.match(await tw.locator('.tw-row').nth(0).innerText(),/By its key/);assert.match(await tw.locator('.tw-row').nth(1).innerText(),/From the words/);
+ await shot(page,'words-review-1440.png');
+ // Choose the work for the third, change its time and day, add a note; then send.
+ await tw.getByRole('combobox',{name:'Work for “45m on XYZ-9”'}).click();await page.getByRole('option',{name:/WT-4 · Vendor escalations/}).click();
+ assert.ok(await tw.locator('.tw-row').nth(2).locator('input[type=checkbox]').isChecked(),'choosing the work ticks it');
+ await tw.getByLabel('How long for “45m on XYZ-9”').fill('1h');await tw.getByLabel('Note for “45m on XYZ-9”').fill('Vendor call');
+ await tw.getByLabel('Day for “45m on XYZ-9”').fill(dates[2]);
+ // A day still to come is caught before sending.
+ await tw.getByLabel('Day for “30m standup”').fill(add(today,2));
+ assert.match(await tw.locator('.tw-row').nth(1).innerText(),/not happened yet/);
+ assert.match(await tw.getByRole('button',{name:/^Add \d/}).innerText(),/Add 2 entries · 3h/);
+ await tw.getByLabel('Day for “30m standup”').fill(yesterday);
+ // Search for other work from the list.
+ await tw.getByRole('combobox',{name:'Work for “2h on PAY-12 yesterday”'}).click();await page.getByRole('option',{name:'Search for other work…'}).click();
+ await tw.getByLabel('Search work').fill('refund');await tw.locator('.tw-hits button',{hasText:'PAY-21'}).click();
+ assert.match(await tw.getByRole('combobox',{name:'Work for “2h on PAY-12 yesterday”'}).innerText(),/PAY-21/);
+ await tw.getByRole('button',{name:/^Add 3 entries · 3h 30m/}).click();await tw.waitFor({state:'detached'});
+ const lw=writes.filter(x=>x.ep==='/api/v1/time/words/log').at(-1).b.entries;
+ assert.deepEqual(lw.map(e=>[e.kind,e.targetId,e.date,e.minutes,e.note]),[['task','t9',yesterday,120,null],['work','w3',yesterday,30,'standup'],['work','w1',dates[2],60,'Vendor call']]);
+ checks.push('plain-words');
+
+ // An entry the server refuses stays in the list with its reason; the rest are logged.
+ await page.locator('.tsg-quick input').fill('2h on PAY-12 yesterday, 30m standup, 45m on XYZ-9');await page.getByRole('button',{name:'Add',exact:true}).click();
+ await tw.locator('.tw-row').nth(2).waitFor();await tw.getByRole('button',{name:'Remove “45m on XYZ-9”'}).click();
+ assert.equal(await tw.locator('.tw-row').count(),2);
+ await tw.getByLabel('Day for “30m standup”').fill(dates[0]);
+ await tw.getByRole('button',{name:/^Add 2 entries/}).click();
+ await tw.locator('.tw-row.bad').waitFor();
+ assert.equal(await tw.locator('.tw-row').count(),1);
+ assert.match(await tw.locator('.tw-row').innerText(),/submitted, so its time cannot change/);
+ await shot(page,'words-refused-1440.png');
+ await tw.getByRole('button',{name:'Cancel'}).click();await tw.waitFor({state:'detached'});
+ checks.push('plain-words-fix');
 
  // Copy last week, and export.
  await page.getByRole('button',{name:'Copy last week'}).click();
@@ -238,6 +299,24 @@ try{
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
  await shot(page,'insights-390.png');
  checks.push('phone-day-view');
+
+ // Phone: plain words and a voice note, checked in a sheet that fits the screen.
+ await page.goto(`${origin}/preview-org/timesheet?week=${week}`);await page.locator('.tsd').waitFor();
+ await page.locator('.tsg-quick input').fill('2h on PAY-12 yesterday, 30m standup, 45m on XYZ-9');await page.getByRole('button',{name:'Add',exact:true}).click();
+ const ptw=page.getByRole('dialog',{name:'Check your time'});await ptw.locator('.tw-row').nth(2).waitFor();
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
+ const box=await ptw.locator('.tw-row').first().boundingBox();assert.ok(box.x>=0&&box.x+box.width<=390,'a row fits the phone');
+ await shot(page,'words-review-390.png');
+ await ptw.getByRole('button',{name:'Cancel'}).click();await ptw.waitFor({state:'detached'});
+ await page.getByRole('button',{name:'Say it instead'}).click();await page.locator('.tsg-rec',{hasText:'Listening'}).waitFor();
+ await shot(page,'words-listening-390.png');
+ await page.waitForTimeout(1300);await page.getByRole('button',{name:'Done'}).click();
+ await ptw.locator('.tw-heard',{hasText:'నిన్న 2 గంటలు PAY-12'}).waitFor();assert.match(await ptw.locator('.tw-heard').innerText(),/Read with AI/);
+ assert.ok(writes.some(x=>x.ep==='/api/v1/time/words/voice'));
+ await shot(page,'words-voice-390.png');
+ await ptw.getByRole('button',{name:/^Add 1 entry · 2h/}).click();await ptw.waitFor({state:'detached'});
+ assert.deepEqual(writes.filter(x=>x.ep==='/api/v1/time/words/log').at(-1).b.entries.map(e=>[e.targetId,e.date,e.minutes]),[['t1',yesterday,120]]);
+ checks.push('phone-plain-words','phone-voice');
  await page.close();await ctx.close();
 
  assert.deepEqual(errors,[]);

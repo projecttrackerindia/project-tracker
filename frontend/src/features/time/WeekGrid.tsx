@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { insightApi, timeApi } from '../../api/endpoints';
-import type { DraftCell, GridCellChange, GridKind, GridRow, GridSuggestion, SearchHit, TimesheetGrid } from '../../api/types';
+import type { DraftCell, GridCellChange, GridKind, GridRow, GridSuggestion, ParsedTime, SearchHit, TimesheetGrid } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { EmptyState, ErrorState, Modal, PageLoader } from '../../components/ui';
 import { formatDate, todayISO } from '../../lib/format';
@@ -16,6 +16,7 @@ import { WeekApprovalBar, addDaysIso, mondayOf, weekLabel } from './Approvals';
 import { PlannedLeavePanel } from './PlannedLeavePanel';
 import { cellKey, dayName, dayNum, dayState, downloadText, gridCsv, hm, parseCell, parseQuickAdd, rowKey } from './grid';
 import { clock, formatMinutes, useNow } from './time';
+import { TimeWordsReview, useWordsRecorder } from './TimeWords';
 
 const REASON: Record<GridSuggestion['reason'], { label: string; icon: 'repeat' | 'user' | 'activity' | 'timer' }> = {
   lastWeek: { label: 'Last week', icon: 'repeat' },
@@ -154,7 +155,7 @@ export function WeekGrid({ week, onWeek, userId }: { week: string; onWeek: (w: s
       {drafting && <DraftWeek week={week} onClose={() => setDrafting(false)} onSaved={(g) => { put(g); setDrafting(false); }} beforeSave={flush} />}
 
       <div className="tsg-tools">
-        {editable && <QuickAdd grid={grid} rows={rows} onAdd={(r, date, minutes, note) => {
+        {editable && <QuickAdd grid={grid} rows={rows} beforeSave={flush} onAdd={(r, date, minutes, note) => {
           const current = r.cells.find((c) => c.date === date)?.minutes ?? 0;
           const k = cellKey(r.kind, r.targetId, date);
           const typed = drafts[k] !== undefined ? parseCell(drafts[k]) ?? current : current;
@@ -176,7 +177,7 @@ export function WeekGrid({ week, onWeek, userId }: { week: string; onWeek: (w: s
       {rows.length === 0 ? (
         <div className="card"><div className="card-body">
           <EmptyState icon="clock" title={grid.mine ? 'Nothing logged this week yet' : `${grid.user.name} logged nothing this week`}
-            text={grid.mine ? (editable ? 'Add a row from the suggestions, or type “2h ATL-12 yesterday” in the quick add.' : 'This week is locked.') : undefined} />
+            text={grid.mine ? (editable ? 'Add a row from the suggestions, or write it in plain words above: “2h on ATL-12 yesterday, 30m standup”.' : 'This week is locked.') : undefined} />
         </div></div>
       ) : mobile ? (
         <DayView grid={grid} rows={rows} drafts={drafts} errors={errors} canLogOn={canLogOn} today={today} onCommit={commit} />
@@ -416,33 +417,67 @@ function AddRows({ suggestions, onAdd, onClose }: { suggestions: GridSuggestion[
   );
 }
 
-/** "2h ATL-12 yesterday": rows it knows are filled at once; anything else goes to the assistant, which can find the work and log it. */
-function QuickAdd({ grid, rows, onAdd }: { grid: TimesheetGrid; rows: GridRow[]; onAdd: (r: GridRow, date: string, minutes: number, note: string) => void }) {
+/**
+ * Time in plain words, typed or said. One piece with a key already on the week ("2h ATL-12 yesterday") goes straight into its cell;
+ * anything else ("2h on PAY-12 yesterday, 30m standup", "kal 2 ghante standup", a voice note) is read on the server - matched to the
+ * work by key, by the words of a title, or by AI - and shown for checking before anything is logged.
+ */
+function QuickAdd({ grid, rows, onAdd, beforeSave }: { grid: TimesheetGrid; rows: GridRow[]; onAdd: (r: GridRow, date: string, minutes: number, note: string) => void; beforeSave: () => Promise<void> }) {
   const [text, setText] = useState('');
   const [hint, setHint] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
+  const [parsed, setParsed] = useState<ParsedTime | null>(null);
   const ask = useAssistant((s) => s.ask);
+  const mic = useWordsRecorder((r) => { setParsed(r); setText(r.transcript ?? ''); setHint(null); });
   const week = grid.days.map((d) => d.date);
   const known = [...rows, ...grid.suggestions.map((s): GridRow => ({ ...s, billable: false, totalMinutes: 0, cells: grid.days.map((d) => ({ date: d.date, minutes: 0, entries: 0, running: false, note: null })) }))];
-  const submit = () => {
-    if (!text.trim()) return;
-    const p = parseQuickAdd(text, week, todayISO());
-    if ('error' in p) { setHint(p.error); return; }
-    const row = known.find((r) => r.key.toUpperCase() === p.key);
-    if (!row) { ask(`Log my time: ${text.trim()}`); setText(''); setHint(null); return; }
-    onAdd(rows.find((r) => rowKey(r) === rowKey(row)) ?? row, p.date, p.minutes, p.note);
-    toast(`Added ${formatMinutes(p.minutes)} to ${p.key} on ${dayName(p.date)} ${dayNum(p.date)}.`);
-    setText(''); setHint(null);
+  const submit = async () => {
+    const t = text.trim();
+    if (!t) return;
+    // One simple piece with a key on this week: straight into the cell.
+    if (!/[,;\n|+]|\s(?:and|then|also|plus)\s/i.test(t)) {
+      const p = parseQuickAdd(t, week, todayISO());
+      const row = 'error' in p ? undefined : known.find((r) => r.key.toUpperCase() === p.key);
+      if (row && !('error' in p)) {
+        onAdd(rows.find((r) => rowKey(r) === rowKey(row)) ?? row, p.date, p.minutes, p.note);
+        toast(`Added ${formatMinutes(p.minutes)} to ${p.key} on ${dayName(p.date)} ${dayNum(p.date)}.`);
+        setText(''); setHint(null);
+        return;
+      }
+    }
+    setReading(true);
+    try { setParsed(await timeApi.parseWords(t)); setHint(null); }
+    catch (e) { setHint(errText(e, 'Could not read that. Try “2h on PAY-12 yesterday, 30m standup”.')); }
+    finally { setReading(false); }
   };
   return (
-    <form className="tsg-quick" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-      <Icon name="bolt" size={14} />
-      <input className="input" value={text} onChange={(e) => { setText(e.target.value); setHint(null); }} placeholder="Quick add: 2h ATL-12 yesterday" aria-label="Quick add time" aria-describedby={hint ? 'tsg-quick-hint' : undefined} />
-      <button type="submit" className="btn btn-sm btn-primary" disabled={!text.trim()}>Add</button>
-      <button type="button" className="btn btn-sm btn-ghost" title="Describe your day and the assistant prepares the entries for you to confirm" onClick={() => ask(text.trim() ? `Log my time: ${text.trim()}` : 'Log my time for today: ')}>
-        <Icon name="sparkle" size={14} />Ask the assistant
-      </button>
-      {hint && <span id="tsg-quick-hint" className="tsg-quick-hint" role="alert">{hint}</span>}
-    </form>
+    <>
+      <form className={`tsg-quick${mic.state === 'recording' ? ' rec' : ''}`} onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+        <Icon name="bolt" size={14} />
+        {mic.state === 'recording'
+          ? <span className="tsg-rec" role="status"><span className="live-dot" />Listening… {Math.floor(mic.secs / 60)}:{String(mic.secs % 60).padStart(2, '0')}<small>Say it like “two hours on PAY-12 yesterday, half an hour standup”</small></span>
+          : <input className="input" value={text} onChange={(e) => { setText(e.target.value); setHint(null); }} disabled={mic.state === 'reading'}
+              placeholder={mic.state === 'reading' ? 'Reading what you said…' : 'Log time in plain words: 2h on PAY-12 yesterday, 30m standup'}
+              aria-label="Log time in plain words" aria-describedby={hint ? 'tsg-quick-hint' : undefined} />}
+        {mic.supported && (mic.state === 'recording'
+          ? <>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={mic.cancel}>Cancel</button>
+              <button type="button" className="btn btn-sm btn-primary" onClick={() => void mic.finish()}><Icon name="check" size={13} />Done</button>
+            </>
+          : <button type="button" className="btn-icon tsg-mic" disabled={mic.state === 'reading' || reading} onClick={() => void mic.start()} aria-label="Say it instead" title="Say it instead (English, Hindi or Telugu)">
+              {mic.state === 'reading' ? <span className="spinner" /> : <Icon name="mic" size={15} />}
+            </button>)}
+        {mic.state !== 'recording' && <button type="submit" className="btn btn-sm btn-primary" disabled={!text.trim() || reading || mic.state === 'reading'}>{reading && <span className="spinner" />}Add</button>}
+        {mic.state === 'idle' && (
+          <button type="button" className="btn btn-sm btn-ghost tsg-ask" title="Describe your day and the assistant prepares the entries for you to confirm" onClick={() => ask(text.trim() ? `Log my time: ${text.trim()}` : 'Log my time for today: ')}>
+            <Icon name="sparkle" size={14} />Ask the assistant
+          </button>
+        )}
+        {hint && <span id="tsg-quick-hint" className="tsg-quick-hint" role="alert">{hint}</span>}
+      </form>
+      {parsed && <TimeWordsReview parsed={parsed} beforeSave={beforeSave} onClose={() => setParsed(null)}
+        onLogged={(dates) => { setParsed(null); setText(''); const away = dates.filter((d) => !week.includes(d)).length; if (away) toast(`${away} of them went to another week.`, 'info'); }} />}
+    </>
   );
 }
 
