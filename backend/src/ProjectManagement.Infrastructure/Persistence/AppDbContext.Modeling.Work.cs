@@ -578,6 +578,17 @@ public partial class AppDbContext
             e.HasIndex(x => x.TenantId).IsUnique();
             e.Property(x => x.Steps).HasMaxLength(120);
         });
+        b.Entity<WorkspaceNotificationDefaults>(e =>
+        {
+            e.HasIndex(x => x.TenantId).IsUnique();
+            e.Property(x => x.Channels).HasMaxLength(2000);
+        });
+        b.Entity<SetupCheckDismissal>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.CheckId }).IsUnique();
+            e.Property(x => x.CheckId).HasMaxLength(40);
+            e.Property(x => x.Reason).HasMaxLength(200);
+        });
         b.Entity<PushSubscription>(e =>
         {
             e.HasIndex(x => x.Endpoint).IsUnique();

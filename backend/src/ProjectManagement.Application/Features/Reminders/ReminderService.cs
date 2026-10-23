@@ -437,10 +437,11 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (req.EscalationEnabled && steps.Count == 0) throw new ValidationException("steps", "Add at least one step, like \"2 days: manager\".");
         var tid = ctx.RequireTenantId();
         var row = await db.ReminderPolicies.FirstOrDefaultAsync(p => p.TenantId == tid, ct);
+        var before = row is null ? new { EscalationEnabled = false, new ReminderPolicy().Steps } : new { row.EscalationEnabled, row.Steps };
         if (row is null) { row = new ReminderPolicy { TenantId = tid, CreatedAt = clock.Now }; db.ReminderPolicies.Add(row); }
         row.EscalationEnabled = req.EscalationEnabled;
         row.Steps = EscalationStep.Write(steps);
-        recorder.Audit("reminder.policy", "ReminderPolicy", row.Id, null, new { row.EscalationEnabled, row.Steps });
+        recorder.Audit("reminder.policy", "ReminderPolicy", row.Id, before, new { row.EscalationEnabled, row.Steps });
         await db.SaveChangesAsync(ct);
         return await GetPolicyAsync(ct);
     }

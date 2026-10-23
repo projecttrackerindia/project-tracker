@@ -147,8 +147,11 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         if (clean is { Length: > 4000 }) throw new ValidationException("text", "Keep it under 4,000 characters.");
         var tid = ctx.RequireTenantId();
         var tenant = await db.Tenants.FirstAsync(t => t.Id == tid, ct);
+        var before = tenant.AiInstructions;
         tenant.AiInstructions = clean;
-        recorder.Audit("ai.instructions_changed", "Tenant", tid, null, new { length = clean?.Length ?? 0 });
+        // The text itself is kept when it is short enough for the audit row, so Settings can offer to undo the change.
+        static object Shot(string? t) => t is { Length: > 1800 } ? new { length = t.Length } : new { length = t?.Length ?? 0, text = t };
+        recorder.Audit("ai.instructions_changed", "Tenant", tid, Shot(before), Shot(clean));
         await db.SaveChangesAsync(ct);
         return new AiInstructionsDto(clean, true);
     }

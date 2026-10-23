@@ -17,7 +17,7 @@ const deviceName = () => {
   return os;
 };
 
-/** Settings → Security: sign in with the device's fingerprint, face or screen lock. No plan needed: it is safety, not a feature to sell. */
+/** My account → Sign-in & security: sign in with the device's fingerprint, face or screen lock. No plan needed: it is safety, not a feature to sell. */
 export function PasskeysRow() {
   const list = useQuery({ queryKey: KEY, queryFn: passkeyApi.list, enabled: passkeysSupported() });
   const [editing, setEditing] = useState<string | null>(null);

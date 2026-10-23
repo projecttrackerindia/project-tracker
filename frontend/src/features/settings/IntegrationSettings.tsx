@@ -3,6 +3,7 @@ import { ApiError } from '../../api/client';
 import { exportApi, integrationsApi, workApi } from '../../api/endpoints';
 import type { DevLink, GitConnection, GitProvider, Priority } from '../../api/types';
 import { Icon } from '../../components/Icon';
+import { LastChanged, useImpactConfirm } from './SettingsCenter';
 import { Select } from '../../components/Select';
 import { Badge, EmptyState, ErrorState, Field, Modal, PageLoader, PriorityOptions } from '../../components/ui';
 import { formatDate, timeAgo } from '../../lib/format';
@@ -245,6 +246,7 @@ export function DataSettings() {
   const [v, setV] = useState({ activity: '', notifications: '', chat: '', audit: '' });
   const [busy, setBusy] = useState(false);
   const [exportKey, setExportKey] = useState(0);
+  const impact = useImpactConfirm();
   useEffect(() => {
     if (q.data) setV({ activity: q.data.activityRetentionDays?.toString() ?? '', notifications: q.data.notificationRetentionDays?.toString() ?? '', chat: q.data.chatRetentionDays?.toString() ?? '', audit: q.data.auditRetentionDays?.toString() ?? '' });
   }, [q.data]);
@@ -254,7 +256,10 @@ export function DataSettings() {
   const save = async () => {
     setBusy(true);
     try {
-      await integrationsApi.saveDataPolicy({ activityRetentionDays: n(v.activity), notificationRetentionDays: n(v.notifications), chatRetentionDays: n(v.chat), auditRetentionDays: n(v.audit) });
+      const policy = { activityRetentionDays: n(v.activity), notificationRetentionDays: n(v.notifications), chatRetentionDays: n(v.chat), auditRetentionDays: n(v.audit) };
+      // Safe changes: a shorter retention first says how many records would be deleted for good.
+      if (!(await impact.confirm({ kind: 'retention', ...policy }, 'Before you shorten retention'))) return;
+      await integrationsApi.saveDataPolicy(policy);
       toast('Retention saved. Older records are removed by the next maintenance run.'); void invalidateWorkspace(wid, 'integrations', 'data-policy');
     } catch (e) { toast(errText(e, 'Could not save.'), 'error'); } finally { setBusy(false); }
   };
@@ -262,11 +267,11 @@ export function DataSettings() {
     try { await exportApi.request({ kind: 'WorkspaceExport', format: 'Zip' }); toast('Export started. You will be notified when the zip is ready.'); setExportKey((k) => k + 1); }
     catch (e) { toast(errText(e, 'Could not start the export.'), 'error'); }
   };
-  const rows: { key: keyof typeof v; label: string; hint: string; min: number }[] = [
-    { key: 'activity', label: 'Activity history', hint: `What happened on projects and tasks.${q.data.planActivityDays > 0 ? ` Your plan shows up to ${q.data.planActivityDays} days.` : ''}`, min: 30 },
-    { key: 'notifications', label: 'Notifications', hint: 'The bell and its history.', min: 7 },
-    { key: 'chat', label: 'Chat messages', hint: 'Project, group and direct chats.', min: 30 },
-    { key: 'audit', label: 'Audit log', hint: 'Sign-ins, permission and security changes. At least a year.', min: 365 },
+  const rows: { key: keyof typeof v; id: string; label: string; hint: string; min: number }[] = [
+    { key: 'activity', id: 'data.activity', label: 'Activity history', hint: `What happened on projects and tasks.${q.data.planActivityDays > 0 ? ` Your plan shows up to ${q.data.planActivityDays} days.` : ''}`, min: 30 },
+    { key: 'notifications', id: 'data.notifications', label: 'Notifications', hint: 'The bell and its history.', min: 7 },
+    { key: 'chat', id: 'data.chat', label: 'Chat messages', hint: 'Project, group and direct chats.', min: 30 },
+    { key: 'audit', id: 'data.audit', label: 'Audit log', hint: 'Sign-ins, permission and security changes. At least a year.', min: 365 },
   ];
   return (
     <>
@@ -275,8 +280,8 @@ export function DataSettings() {
         <div className="card-body">
           <div className="retention-grid">
             {rows.map((r) => (
-              <div className="retention-row" key={r.key}>
-                <div><b>{r.label}</b><span>{r.hint}</span></div>
+              <div className="retention-row" key={r.key} data-setting={r.id}>
+                <div><b>{r.label}</b><span>{r.hint}</span><LastChanged k={r.id} section="data" /></div>
                 <div className="row" style={{ gap: 6 }}>
                   <input className="input" type="number" min={r.min} max={3650} placeholder="Keep all" aria-label={`${r.label} days`} value={v[r.key]} onChange={(e) => setV({ ...v, [r.key]: e.target.value })} />
                   <span className="muted" style={{ fontSize: 12.5 }}>days</span>
@@ -287,7 +292,7 @@ export function DataSettings() {
           <button type="button" className="btn btn-primary" style={{ marginTop: 14 }} disabled={busy} onClick={() => void save()}>Save retention</button>
         </div>
       </div>
-      <div className="card mb-22">
+      <div className="card mb-22" data-setting="data.export">
         <div className="card-head">
           <div><h3>Export all data</h3><p>Everything the workspace holds - members, projects, tasks, comments, operational work, time, files and history - as JSON files in one zip. Secrets and private chats are never included.</p></div>
           {isOwner && <button type="button" className="btn btn-primary btn-sm" onClick={() => void exportAll()}><Icon name="download" size={14} /> Export workspace</button>}
@@ -295,6 +300,7 @@ export function DataSettings() {
         {!isOwner && <div className="card-body"><p className="muted">Only the workspace owner can export all of its data.</p></div>}
       </div>
       {isOwner && <ExportList refreshKey={exportKey} />}
+      {impact.element}
     </>
   );
 }

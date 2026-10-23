@@ -5,7 +5,7 @@ namespace ProjectManagement.Domain.Entities;
 /// <summary>
 /// An organization's own access rules, on top of the platform's: require every member to have two-step verification turned on, and/or
 /// only allow sign-in to this workspace from listed networks. One row per tenant, created the first time either is turned on.
-/// An Enterprise-tier feature (FeatureKeys.AdvancedSecurity): if the plan no longer includes it, the settings stay saved but stop
+/// A Business-plan-and-above feature (FeatureKeys.AdvancedSecurity): if the plan no longer includes it, the settings stay saved but stop
 /// being enforced, so a downgrade never locks a whole workspace out by itself.
 /// </summary>
 public class TenantSecuritySettings : TenantEntity, ITenantScoped

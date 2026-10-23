@@ -349,8 +349,9 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         if (ctx.Role is not (TenantRole.Owner or TenantRole.Admin)) throw new ForbiddenException("Only owners and admins can switch the assistant on or off.", "PERMISSION_DENIED");
         var tid = ctx.RequireTenantId();
         var tenant = await db.Tenants.FirstAsync(t => t.Id == tid, ct);
+        var was = !tenant.AiDisabled;
         tenant.AiDisabled = !allowed;
-        recorder.Audit("ai.workspace_switch", "Tenant", tid, null, new { allowed });
+        recorder.Audit("ai.workspace_switch", "Tenant", tid, new { allowed = was }, new { allowed });
         await db.SaveChangesAsync(ct);
         return await StatusAsync(ct);
     }

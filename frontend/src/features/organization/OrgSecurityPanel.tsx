@@ -7,6 +7,7 @@ import { Select } from '../../components/Select';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan } from '../../stores/auth';
 import { toast } from '../../stores/ui';
+import { LastChanged, useImpactConfirm } from '../settings/SettingsCenter';
 
 interface Draft { requireMfa: boolean; ipAllowlistEnabled: boolean; ipText: string; minPasswordLength: number; sessionHours: number; allowedSignIn: string[] }
 const METHODS: { id: string; label: string }[] = [
@@ -24,6 +25,7 @@ export function OrgSecurityPanel() {
   const q = useWsQuery(['org', 'security'], workspaceApi.security);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
+  const impact = useImpactConfirm();
   if (q.isLoading) return <PageLoader />;
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
 
@@ -41,11 +43,15 @@ export function OrgSecurityPanel() {
   const platformMin = data.platformMinPasswordLength ?? 8;
 
   const save = async () => {
-    if (s.requireMfa && !myMfa) { toast('Turn on two-step verification for your own account first (Settings → Security).', 'error'); return; }
+    if (s.requireMfa && !myMfa) { toast('Turn on two-step verification for your own account first (My account → Sign-in & security).', 'error'); return; }
     if (s.ipAllowlistEnabled && ranges.length === 0) { toast('Add at least one address or range.', 'error'); return; }
+    if (s.allowedSignIn.length === 0) { toast('Allow at least one way to sign in.', 'error'); return; }
     setBusy(true);
     try {
-      if (s.allowedSignIn.length === 0) { toast('Allow at least one way to sign in.', 'error'); setBusy(false); return; }
+      // Safe changes: a stricter rule first shows who it affects, and how, before anything is saved.
+      const go = await impact.confirm({ kind: 'security', requireMfa: s.requireMfa, ipAllowlistEnabled: s.ipAllowlistEnabled, ipRanges: ranges,
+        minPasswordLength: s.minPasswordLength, sessionHours: s.sessionHours, allowedSignIn: s.allowedSignIn }, 'Before you save these sign-in rules');
+      if (!go) return;
       await workspaceApi.setSecurity({ requireMfa: s.requireMfa, ipAllowlistEnabled: s.ipAllowlistEnabled, ipRanges: ranges,
         minPasswordLength: s.minPasswordLength, sessionHours: s.sessionHours, allowedSignIn: s.allowedSignIn });
       toast('Security settings saved.');
@@ -62,7 +68,7 @@ export function OrgSecurityPanel() {
 
   return (
     <div className="card">
-      <div className="card-head"><div><h3>Security</h3><p>Extra access rules for this organization, on top of everyone's own account security.</p></div></div>
+      <div className="card-head"><div><h3>Sign-in rules</h3><p>Extra access rules for this organization, on top of everyone's own account security. A stricter rule shows who it affects before it is saved.</p></div></div>
       <div className="card-body">
         {!data.entitled && (
           <div className="form-warn">
@@ -71,18 +77,19 @@ export function OrgSecurityPanel() {
           </div>
         )}
 
-        <div className="setting-row">
+        <div className="setting-row" data-setting="security.requireMfa">
           <div className="setting-info">
-            <h4>Require two-step verification</h4>
-            <p>Everyone must turn on two-step verification (Settings → Security) to use this workspace.</p>
+            <h4>Require two-step sign-in</h4>
+            <p>Everyone must turn on two-step sign-in for their own account (My account → Sign-in & security) to use this workspace.</p>
             {s.requireMfa && !myMfa && <p style={{ color: 'var(--danger)', fontWeight: 650, marginTop: 4 }}>Turn it on for your own account first, or you would be locked out.</p>}
+            <LastChanged k="security.requireMfa" section="security" />
           </div>
           <label className="switch-line"><input type="checkbox" disabled={!canManage} checked={s.requireMfa} onChange={(e) => set({ requireMfa: e.target.checked })} /> {s.requireMfa ? 'Required' : 'Off'}</label>
         </div>
 
-        <div className="setting-row" style={{ alignItems: 'flex-start' }}>
+        <div className="setting-row" style={{ alignItems: 'flex-start' }} data-setting="security.ipAllowlist">
           <div className="setting-info" style={{ flex: 1 }}>
-            <h4>Restrict by network address</h4>
+            <h4>Allowed networks (IP allow-list)</h4>
             <p>Only allow signing in to this workspace from the addresses or ranges below (one per line — a plain address like 203.0.113.9, or a range like 10.0.0.0/8).</p>
             {s.ipAllowlistEnabled && (
               <>
@@ -96,14 +103,16 @@ export function OrgSecurityPanel() {
                 )}
               </>
             )}
+            <LastChanged k="security.ipAllowlist" section="security" />
           </div>
           <label className="switch-line"><input type="checkbox" disabled={!canManage} checked={s.ipAllowlistEnabled} onChange={(e) => set({ ipAllowlistEnabled: e.target.checked })} /> {s.ipAllowlistEnabled ? 'On' : 'Off'}</label>
         </div>
 
-        <div className="setting-row">
+        <div className="setting-row" data-setting="security.minPasswordLength">
           <div className="setting-info">
-            <h4>Password length</h4>
+            <h4>Minimum password length</h4>
             <p>Stricter than the platform's {platformMin} characters. Members with a shorter password are asked to change it before they continue (single sign-on and passkeys are not affected).</p>
+            <LastChanged k="security.minPasswordLength" section="security" />
           </div>
           <Select className="select" aria-label="Minimum password length" disabled={!canManage} value={s.minPasswordLength}
             onChange={(e) => set({ minPasswordLength: Number(e.target.value) })}>
@@ -112,16 +121,16 @@ export function OrgSecurityPanel() {
           </Select>
         </div>
 
-        <div className="setting-row">
-          <div className="setting-info"><h4>Sign in again</h4><p>How long a sign-in lasts before members must sign in again to use this workspace.</p></div>
+        <div className="setting-row" data-setting="security.sessionHours">
+          <div className="setting-info"><h4>Sign in again after</h4><p>How long a sign-in lasts before members must sign in again to use this workspace.</p><LastChanged k="security.sessionHours" section="security" /></div>
           <Select className="select" aria-label="Session length" disabled={!canManage} value={s.sessionHours} onChange={(e) => set({ sessionHours: Number(e.target.value) })}>
             {SESSION_CHOICES.map((c) => <option key={c.v} value={c.v}>{c.l}</option>)}
           </Select>
         </div>
 
-        <div className="setting-row" style={{ alignItems: 'flex-start' }}>
+        <div className="setting-row" style={{ alignItems: 'flex-start' }} data-setting="security.allowedSignIn">
           <div className="setting-info" style={{ flex: 1 }}>
-            <h4>Ways to sign in</h4><p>Only these open this workspace. Keep the one you use, or you would be locked out.</p>
+            <h4>Allowed ways to sign in</h4><p>Only these open this workspace. Keep the one you use, or you would be locked out.</p>
             <div className="oss-methods" role="group" aria-label="Allowed ways to sign in">
               {METHODS.map((m) => (
                 <label key={m.id} className="oss-method">
@@ -130,16 +139,18 @@ export function OrgSecurityPanel() {
                 </label>
               ))}
             </div>
+            <LastChanged k="security.allowedSignIn" section="security" />
           </div>
         </div>
 
         {canManage && (
           <div className="row" style={{ gap: 8, marginTop: 8 }}>
-            <button className="btn btn-primary" disabled={!isDirty || busy} onClick={() => void save()}>Save security settings</button>
+            <button className="btn btn-primary" disabled={!isDirty || busy} onClick={() => void save()}>Save sign-in rules</button>
             {dirty && <button className="btn btn-ghost" onClick={() => setDraft(null)}>Discard</button>}
           </div>
         )}
       </div>
+      {impact.element}
     </div>
   );
 }

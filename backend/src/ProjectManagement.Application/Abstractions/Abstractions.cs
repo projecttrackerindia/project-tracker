@@ -140,6 +140,8 @@ public interface IAppDbContext
     DbSet<IncomingWebhook> IncomingWebhooks { get; }
     DbSet<IncomingWebhookEvent> IncomingWebhookEvents { get; }
     DbSet<IncomingWebhookThread> IncomingWebhookThreads { get; }
+    DbSet<WorkspaceNotificationDefaults> WorkspaceNotificationDefaults { get; }
+    DbSet<SetupCheckDismissal> SetupCheckDismissals { get; }
     DbSet<MicrosoftConnection> MicrosoftConnections {get;}
     DbSet<PersonalCalendarProposal> PersonalCalendarProposals {get;}
     DbSet<PersonalEmailDraft> PersonalEmailDrafts { get; }

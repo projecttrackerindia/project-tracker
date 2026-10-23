@@ -34,6 +34,8 @@ try{
   let data=[];
   if(/^\/api\/v1\/me\/sign-ins\/s\d\/not-me$/.test(ep)&&method==='POST'){writes.push({ep});const id=ep.split('/')[5];signIns=signIns.map(s=>s.id===id?{...s,active:false,reportedAt:iso(0)}:s);await route.fulfill({status:204,body:''});return;}
   else if(ep==='/api/v1/workspace/security'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});security={...security,...b};data=security;}
+  else if(ep==='/api/v1/settings/impact'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={kind:'security',headline:'Nobody is affected: everyone already meets the new rules.',people:0,affected:[],records:[],includesYou:false,warning:null,enforced:true,changes:['Passwords need at least 12 characters.']};}
+  else if(ep==='/api/v1/settings/changes')data={items:[],canUndo:true};
   else if(ep==='/api/v1/workspace/security/remind'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});members={...members,people:members.people.map(p=>b.userIds.includes(p.userId)?{...p,remindedAt:iso(0)}:p)};data={sent:b.userIds.length};}
   else if(ep==='/api/v1/me/ui/sidebar')data={key:'sidebar',value:null,updatedAt:null};
   else{
@@ -85,7 +87,11 @@ try{
  await page.getByRole('combobox',{name:'Minimum password length'}).click();await page.getByRole('option',{name:'At least 12'}).click();
  await page.getByRole('combobox',{name:'Session length'}).click();await page.getByRole('option',{name:'Every day'}).click();
  await page.getByRole('group',{name:'Allowed ways to sign in'}).getByLabel('Apple').uncheck();
- await page.getByRole('button',{name:'Save security settings'}).click();
+ await page.getByRole('button',{name:'Save sign-in rules'}).click();
+ // A stricter rule first says who it affects (here: nobody), then saves.
+ const preview=await waitWrite(w=>w.ep==='/api/v1/settings/impact');assert.equal(preview.b.kind,'security');assert.equal(preview.b.minPasswordLength,12);
+ const confirm=page.getByRole('dialog');await confirm.getByText('Nobody is affected',{exact:false}).waitFor();
+ await confirm.getByRole('button',{name:'Save',exact:true}).click();
  const saved=await waitWrite(w=>w.ep==='/api/v1/workspace/security');
  assert.equal(saved.b.minPasswordLength,12);assert.equal(saved.b.sessionHours,24);assert.ok(!saved.b.allowedSignIn.includes('apple'));assert.ok(saved.b.allowedSignIn.includes('password'));
  checks.push('rules');

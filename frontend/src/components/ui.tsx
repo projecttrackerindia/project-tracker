@@ -245,7 +245,8 @@ export function RouteTabs({ tabs, label }: { tabs: SectionLink[]; label: string 
 }
 
 /** A settings-style page: a title, a list of sections down the left (grouped), and the chosen section on the right. */
-export function SectionLayout({ title, sub, groups, children, wide = false }: { title: string; sub?: string; wide?: boolean; groups: { title?: string; items: SectionLink[]; collapsed?: boolean }[]; children: ReactNode }) {
+export function SectionLayout({ title, sub, groups, children, wide = false, navTop }: { title: string; sub?: string; wide?: boolean; groups: { title?: string; items: SectionLink[]; collapsed?: boolean }[]; children: ReactNode;
+  /** Above the menu: a search box, for example. */ navTop?: ReactNode }) {
   const { pathname } = useLocation();
   const [opened, setOpened] = useState<Record<string, boolean>>({});
   return (
@@ -253,6 +254,7 @@ export function SectionLayout({ title, sub, groups, children, wide = false }: { 
       <PageHead title={title} sub={sub} />
       <div className={`section-layout ${wide ? 'section-layout-wide' : ''}`}>
         <nav className="section-nav" aria-label={`${title} sections`}>
+          {navTop}
           {groups.filter((g) => g.items.length).map((g, i) => {
             // Advanced groups stay folded until they are needed: opened by a click, or because the page being shown is inside one.
             const holdsCurrent = g.items.some((t) => pathname === t.to || pathname.startsWith(`${t.to}/`));
@@ -264,7 +266,7 @@ export function SectionLayout({ title, sub, groups, children, wide = false }: { 
                 : <div className="section-nav-title">{g.title}</div>)}
               {open && g.items.map((t) => (
                 <NavLink key={t.to} to={t.to} end={t.end ?? true} className={({ isActive }) => `section-nav-item ${isActive ? 'active' : ''}`}>
-                  {t.icon && <Icon name={t.icon} size={16} />}<span>{t.label}</span>
+                  {t.icon && <Icon name={t.icon} size={16} />}<span>{t.label}</span>{!!t.badge && <span className="section-nav-badge" aria-label={`${t.badge} to look at`}>{t.badge}</span>}
                 </NavLink>
               ))}
             </div>

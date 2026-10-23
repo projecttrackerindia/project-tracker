@@ -12,7 +12,7 @@ import { toast } from '../../stores/ui';
 
 type Mode = null | 'setup' | 'disable' | 'regenerate';
 
-/** Settings → Security row for authenticator-app two-step verification. */
+/** My account → Sign-in & security row for authenticator-app two-step verification. */
 export function TwoStepRow() {
   const qc = useQueryClient();
   const reload = useAuth((s) => s.reloadContext);

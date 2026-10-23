@@ -8970,6 +8970,44 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("ScimTokens");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.SetupCheckDismissal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CheckId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CheckId")
+                        .IsUnique();
+
+                    b.ToTable("SetupCheckDismissals");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.SensitiveValue", b =>
                 {
                     b.Property<Guid>("Id")
@@ -12337,6 +12375,55 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Order");
 
                     b.ToTable("WorkTypes");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.WorkspaceNotificationDefaults", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Channels")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("DigestCustom")
+                        .HasColumnType("boolean");
+
+                    b.Property<TimeOnly?>("DigestTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<bool>("QuietCustom")
+                        .HasColumnType("boolean");
+
+                    b.Property<TimeOnly?>("QuietEnd")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("QuietStart")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("WorkspaceNotificationDefaults");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.WorkflowDefinition", b =>

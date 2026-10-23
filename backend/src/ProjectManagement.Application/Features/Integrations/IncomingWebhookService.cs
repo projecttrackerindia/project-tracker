@@ -491,7 +491,14 @@ public class IncomingWebhookService(IAppDbContext db, ICurrentContext ctx, AppCl
                     made = (reminder.Id, "reminder");
                     break;
                 default:
-                    var ticket = await sp.GetRequiredService<WorkTaskService>().CreateAsync(new CreateWorkTaskRequest(title, IncomingTemplates.Cut(details, 8000), hook.WorkTypeId, hook.ProjectId, assignee,
+                    // No work type chosen on the address: the workspace's first active one (the defaults are created on first use).
+                    var typeId = hook.WorkTypeId;
+                    if (typeId is null)
+                    {
+                        await sp.GetRequiredService<WorkTypeService>().EnsureDefaultsAsync(ct);
+                        typeId = await db.WorkTypes.AsNoTracking().Where(t => t.IsActive).OrderBy(t => t.Order).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct);
+                    }
+                    var ticket = await sp.GetRequiredService<WorkTaskService>().CreateAsync(new CreateWorkTaskRequest(title, IncomingTemplates.Cut(details, 8000), typeId, hook.ProjectId, assignee,
                         priority, null, null, null), ct);
                     made = (ticket.Id, ticket.Key);
                     break;

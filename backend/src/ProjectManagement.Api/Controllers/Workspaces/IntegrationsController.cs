@@ -292,9 +292,17 @@ public class InboundController(IServiceProvider services, GoogleCalendarAuthServ
     public async Task<IActionResult> Incoming(string token, CancellationToken ct)
     {
         using var ms = new MemoryStream();
+        if (Request.Body.CanSeek) Request.Body.Position = 0;
         await Request.Body.CopyToAsync(ms, ct);
+        var raw = ms.ToArray();
+        // A form post can reach here already read (the form is parsed once per request): rebuild it from the parsed fields.
+        if (raw.Length == 0 && Request.HasFormContentType)
+        {
+            var form = await Request.ReadFormAsync(ct);
+            raw = Encoding.UTF8.GetBytes(string.Join("&", form.SelectMany(f => f.Value.Select(v => $"{Uri.EscapeDataString(f.Key)}={Uri.EscapeDataString(v ?? "")}"))));
+        }
         var headers = Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString(), StringComparer.OrdinalIgnoreCase);
-        var receipt = await ProjectManagement.Application.Features.Integrations.IncomingWebhookService.ReceiveAsync(services, token, ms.ToArray(), Request.ContentType, headers, ct);
+        var receipt = await ProjectManagement.Application.Features.Integrations.IncomingWebhookService.ReceiveAsync(services, token, raw, Request.ContentType, headers, ct);
         return receipt is null ? NotFound() : StatusCode(StatusCodes.Status202Accepted, receipt);
     }
 

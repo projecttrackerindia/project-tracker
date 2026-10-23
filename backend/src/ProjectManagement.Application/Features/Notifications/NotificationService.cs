@@ -37,7 +37,8 @@ public static class NotificationLanes
 }
 public record UnreadCountDto(int Count);
 
-public record NotificationPreferenceDto(NotificationType Type, string Label, string Description, bool InApp, bool Email, bool Browser, bool Locked);
+/// <param name="Source">Where the shown channels come from: "you" (your own choice), "workspace" (this workspace's default) or "default" (the platform's).</param>
+public record NotificationPreferenceDto(NotificationType Type, string Label, string Description, bool InApp, bool Email, bool Browser, bool Locked, string Source = "default");
 public record PreferenceInput(NotificationType Type, bool InApp, bool Email, bool Browser);
 public record SetPreferencesRequest(IReadOnlyList<PreferenceInput> Items);
 public record TestEmailResultDto(string Provider, bool Delivered, string Message);
@@ -85,7 +86,8 @@ public static class QuietHours
 /// <summary>Turns a recipient's preferences (or the catalog defaults) into channels. Preferences are loaded once per user and cached for the request.</summary>
 public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOptions> options)
 {
-    private readonly Dictionary<Guid, (ReminderSettings Settings, NodaTime.DateTimeZone Zone)> _quiet = new();
+    private readonly Dictionary<(Guid, Guid), (ReminderSettings Settings, NodaTime.DateTimeZone Zone)> _quiet = new();
+    private readonly Dictionary<Guid, WorkspaceNotificationDefaults?> _workspace = new();
 
     private readonly Dictionary<(Guid, NotificationType), Channels> _chosen = new();
     private readonly HashSet<Guid> _loaded = [];
@@ -105,10 +107,28 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
         return new Channels(k.InApp, k.Email, k.Browser);
     }
 
-    public async Task<Channels> ChannelsAsync(Guid userId, NotificationType type, CancellationToken ct = default)
+    /// <summary>A workspace's defaults for its members (null = none saved), loaded once per request. Explicit tenant: background jobs have no current workspace.</summary>
+    public async Task<WorkspaceNotificationDefaults?> WorkspaceAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        if (!_workspace.TryGetValue(tenantId, out var w))
+        {
+            w = await db.WorkspaceNotificationDefaults.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId, ct);
+            _workspace[tenantId] = w;
+        }
+        return w;
+    }
+
+    /// <summary>
+    /// The channels for one person and kind: their own choice; else, inside a workspace, that workspace's default for its members; else the
+    /// platform's. Security alerts always reach the bell and e-mail.
+    /// </summary>
+    public async Task<Channels> ChannelsAsync(Guid userId, NotificationType type, CancellationToken ct = default, Guid? tenantId = null)
     {
         await PreloadAsync([userId], ct);
-        var c = _chosen.TryGetValue((userId, type), out var chosen) ? chosen : Defaults(type);
+        Channels c;
+        if (_chosen.TryGetValue((userId, type), out var chosen)) c = chosen;
+        else if (tenantId is { } t && NotificationDefaultsCodec.Find((await WorkspaceAsync(t, ct))?.Channels, type) is { } fromWorkspace) c = fromWorkspace;
+        else c = Defaults(type);
         if (NotificationCatalog.For(type).Locked) c = c with { InApp = true, Email = true }; // security alerts cannot be switched off
         return c;
     }
@@ -116,7 +136,7 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
     /// <summary>Applies the recipient's channels to a new notification. Returns false when they have switched every channel off.</summary>
     public async Task<bool> ApplyAsync(Notification n, CancellationToken ct = default)
     {
-        var c = await ChannelsAsync(n.UserId, n.Type, ct);
+        var c = await ChannelsAsync(n.UserId, n.Type, ct, n.TenantId);
         n.InApp = c.InApp;
         n.EmailPending = c.Email;
         n.Browser = c.Browser && c.InApp; // a desktop notification needs the in-app item to open
@@ -146,13 +166,15 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
 
     private async Task<(ReminderSettings Settings, NodaTime.DateTimeZone Zone)> SettingsAsync(Guid userId, Guid tenantId, CancellationToken ct)
     {
-        if (!_quiet.TryGetValue(userId, out var q))
+        if (!_quiet.TryGetValue((userId, tenantId), out var q))
         {
-            var settings = await db.ReminderSettings.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId, ct) ?? new ReminderSettings { UserId = userId };
+            // Someone who never opened their schedule follows the workspace's quiet hours and digest, when it set them.
+            var settings = await db.ReminderSettings.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId, ct)
+                ?? NotificationDefaultsCodec.Apply(new ReminderSettings { UserId = userId }, await WorkspaceAsync(tenantId, ct));
             var zone = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.TimeZone).FirstOrDefaultAsync(ct);
             if (!ZoneTime.IsKnown(zone)) zone = await db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.TimeZone).FirstOrDefaultAsync(ct);
             q = (settings, ZoneTime.IsKnown(zone) ? ZoneTime.Find(zone) : clock.DefaultZone);
-            _quiet[userId] = q;
+            _quiet[(userId, tenantId)] = q;
         }
         return q;
     }
@@ -177,7 +199,7 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
     }
 
     /// <summary>Whether this person wants this kind of notice in the bell (their own choice, or the default).</summary>
-    public async Task<bool> WantsInAppAsync(Guid userId, NotificationType type, CancellationToken ct = default) => (await router.ChannelsAsync(userId, type, ct)).InApp;
+    public async Task<bool> WantsInAppAsync(Guid userId, NotificationType type, CancellationToken ct = default) => (await router.ChannelsAsync(userId, type, ct, ctx.TenantId)).InApp;
 
     /// <param name="lane">needs (asks something of you), info (tells you something), snoozed (waiting to come back), or empty for both lanes.</param>
     /// <param name="archived">The archive instead of the inbox.</param>
@@ -285,11 +307,15 @@ public class NotificationPreferenceService(IAppDbContext db, ICurrentContext ctx
     {
         var uid = ctx.RequireUserId();
         var mine = await db.NotificationPreferences.AsNoTracking().Where(p => p.UserId == uid).ToDictionaryAsync(p => p.Type, ct);
+        var workspace = ctx.TenantId is { } tid
+            ? await db.WorkspaceNotificationDefaults.AsNoTracking().Where(x => x.TenantId == tid).Select(x => x.Channels).FirstOrDefaultAsync(ct) : null;
         return NotificationCatalog.All.Select(k =>
         {
-            var has = mine.TryGetValue(k.Type, out var p);
-            return new NotificationPreferenceDto(k.Type, k.Label, k.Description,
-                k.Locked || (has ? p!.InApp : k.InApp), k.Locked || (has ? p!.Email : k.Email), has ? p!.Browser : k.Browser, k.Locked);
+            if (mine.TryGetValue(k.Type, out var p))
+                return new NotificationPreferenceDto(k.Type, k.Label, k.Description, k.Locked || p.InApp, k.Locked || p.Email, p.Browser, k.Locked, "you");
+            var fromWorkspace = k.Locked ? null : NotificationDefaultsCodec.Find(workspace, k.Type);
+            var c = fromWorkspace ?? new Channels(k.InApp, k.Email, k.Browser);
+            return new NotificationPreferenceDto(k.Type, k.Label, k.Description, k.Locked || c.InApp, k.Locked || c.Email, c.Browser, k.Locked, fromWorkspace is null ? "default" : "workspace");
         }).ToList();
     }
 
@@ -407,7 +433,7 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             {
                 await email.SendAsync(new EmailMessage(user.Email, title,
                     EmailTemplates.Digest(title, WebNet($"Hi {user.DisplayName},"), items, "Open in the app", baseUrl + OrgLink(slug, "/"),
-                        "You get this email because of your notification settings. Change them under Settings → Notifications.", string.Join(" · ", list.Select(n => n.Title).Take(3)), links?.PageUrl(links.Token(user.Id, list[0].Type))),
+                        "You get this email because of your notification settings. Change them under Notification Center → Preferences.", string.Join(" · ", list.Select(n => n.Title).Take(3)), links?.PageUrl(links.Token(user.Id, list[0].Type))),
                     string.Join("\n", list.Select(n => $"- {n.Title}")) + "\n" + baseUrl + OrgLink(slug, "/"), Headers: links?.Headers(user.Id, list[0].Type)), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
                 foreach (var n in list) { n.EmailPending = false; n.EmailedAt = clock.Now; handled.Add(n.Id); }
                 sent++;
@@ -432,7 +458,7 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             {
                 await email.SendAsync(new EmailMessage(user.Email, workspace is null ? n.Title : $"{n.Title} · {workspace}",
                     EmailTemplates.Wrap(n.Title, WebNet($"Hi {user.DisplayName},"), body, n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? "Done, snooze or open" : "Open in the app", link,
-                        "You get this email because of your notification settings. Change them under Settings → Notifications.", body.Length > 90 ? body[..90] : body, headers is null ? null : links!.PageUrl(links.Token(n.UserId, n.Type)),
+                        "You get this email because of your notification settings. Change them under Notification Center → Preferences.", body.Length > 90 ? body[..90] : body, headers is null ? null : links!.PageUrl(links.Token(n.UserId, n.Type)),
                         n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? EmailKind.Reminder : n.Type == NotificationType.Subscription ? EmailKind.Billing : EmailKind.Update),
                     $"{n.Title}\n{body}\n{link}", Headers: headers), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
                 n.EmailPending = false;

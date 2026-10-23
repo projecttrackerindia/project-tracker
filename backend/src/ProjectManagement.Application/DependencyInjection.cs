@@ -217,6 +217,10 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiAnalysis>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiPortfolio>();
         services.AddScoped<ProjectManagement.Application.Features.Projects.PortfolioBoardService>();
+        services.AddScoped<ProjectManagement.Application.Features.Workspaces.SettingsHistoryService>();
+        services.AddScoped<ProjectManagement.Application.Features.Workspaces.SettingsImpactService>();
+        services.AddScoped<ProjectManagement.Application.Features.Workspaces.SetupHealthService>();
+        services.AddScoped<ProjectManagement.Application.Features.Notifications.NotificationDefaultsService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiAgent>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiUsageService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiCreditService>();

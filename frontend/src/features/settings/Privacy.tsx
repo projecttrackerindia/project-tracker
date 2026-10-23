@@ -4,7 +4,7 @@ import { consentApi } from '../../api/endpoints';
 import { Modal } from '../../components/ui';
 import type { ConsentDocument } from '../../api/types';
 
-/** Settings → Security row that lets anyone read the Terms of Service / Privacy Policy they're bound by. */
+/** My account → Sign-in & security row that lets anyone read the Terms of Service / Privacy Policy they're bound by. */
 export function PrivacyRow() {
   const q = useQuery({ queryKey: ['consent', 'documents'], queryFn: consentApi.documents });
   const [viewing, setViewing] = useState<ConsentDocument | null>(null);

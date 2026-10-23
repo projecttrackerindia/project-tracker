@@ -93,7 +93,7 @@ function Sidebar() {
 
 // ------------------------------------------------------------------ desktop notifications
 /**
- * Shows a system notification (and plays the alert sound) for new items the user opted into ("Desktop" in Settings → Notifications) while
+ * Shows a system notification (and plays the alert sound) for new items the user opted into ("Desktop" in Notification Center → Preferences) while
  * the app is open - also when they are in another tab, window or app. Looks every 15 seconds, and straight away when the live connection
  * says someone else changed something or a mention arrived. When push is on for this device, the push already brings the notification
  * (and the page plays the sound when it arrives), so this only covers devices without push.

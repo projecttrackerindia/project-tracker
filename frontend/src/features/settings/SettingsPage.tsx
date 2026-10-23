@@ -7,7 +7,7 @@ import { ApiError } from '../../api/client';
 import { authApi, meApi, workspaceApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
 import { Badge, Field, Modal, PageHead, PageLoader, SectionLayout, SubmitButton, type SectionLink } from '../../components/ui';
-import { useWorkspaceSections } from './sections';
+import { SETTINGS_GROUPS, useWorkspaceSections, type WorkspaceSection } from './sections';
 import { timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
@@ -43,6 +43,9 @@ import { SsoSettings } from './SsoSettings';
 import { PROVIDER_ICON } from '../auth/AuthPages';
 import { AiWorkspaceSwitch } from '../ai/Assistant';
 import { AiInstructionsCard, AiProfileCard } from '../ai/AiInstructions';
+import { DirectoryPanel, InvitationsPanel } from '../members/MembersPage';
+import { LastChanged, SectionHistory, SettingsHome, SettingsSearch, useSettingJump, useSetupHealth } from './SettingsCenter';
+import { NotificationDefaultsSection } from './NotificationDefaults';
 import { MobileAppSection } from './MobileAppSection';
 import { GoogleIntegrationSection } from './GoogleIntegration';
 import { AiUsageCard } from '../ai/AiUsageCard';
@@ -71,6 +74,7 @@ export type AccountSection = 'profile' | 'notifications' | 'security' | 'mobile'
 /** My account: everything about me, whatever workspace I am in. Workspace administration lives in Workspace settings. */
 export function AccountPage({ section }: { section: AccountSection }) {
   const isPlatformAdmin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  useSettingJump();
   const groups: { items: SectionLink[] }[] = [{ items: [
     { to: '/account', label: 'Profile', icon: 'user' },
     ...(!isPlatformAdmin ? [{ to: '/notifications/preferences', label: 'Notification Center', icon: 'bell' as const }] : []),
@@ -122,6 +126,7 @@ function ProfileSection() {
           <ThemeSwitch />
         </div></div>
       </div>
+      <div data-setting="account.ai"><AiProfileCard /></div>
       <DeleteAccountCard />
     </>
   );
@@ -302,73 +307,167 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
 // ================================================================== Workspace settings (the gear; administration of this workspace)
 
-/** Workspace settings: one place for everything an administrator maintains about this workspace. */
+/**
+ * Workspace settings: one place for everything an administrator maintains about this workspace, in seven groups, found by typing.
+ * /settings is the overview (search, setup health, latest changes); each section shows who changed its settings, with undo.
+ */
 export function WorkspaceSettingsPage() {
   const { section } = useParams();
   const sections = useWorkspaceSections();
+  const health = useSetupHealth();
+  useSettingJump();
   if (!sections.length) return <Navigate to="/account" replace />;
   const current = sections.find((s) => s.id === section);
-  if (!current) return <Navigate to={sections[0].to} replace />;
-  const groups = (['Workspace', 'Configuration', 'Integrations'] as const).map((g) => ({ title: g, items: sections.filter((s) => s.group === g), collapsed: g !== 'Workspace' }));
+  if (section && !current) return <Navigate to="/settings" replace />;
+  const open = health.data?.open ?? 0;
+  const groups = [
+    { items: [{ to: '/settings', label: 'Overview', icon: 'grid' as const, badge: open || undefined }] },
+    ...SETTINGS_GROUPS.map((g) => ({ title: g, items: sections.filter((s) => s.group === g) })),
+  ];
   return (
-    <SectionLayout title="Workspace settings" sub="How this workspace is set up: access, security, master lists, integrations and billing." groups={groups}>
-      {current.id === 'general' && <GeneralSection />}
-      {current.id === 'access' && <RolesAccessPage />}
-      {current.id === 'security' && <><PageHead title="Security" sub="Rules every member's sign-in must meet." /><OrgSecurityPanel /><MemberSecurityPanel /><ProjectVisibilityPanel /></>}
-      {current.id === 'sso' && <SsoSettings />}
-      {current.id === 'billing' && <BillingPage />}
-      {current.id === 'audit' && <AuditPage />}
-      {current.id === 'project-groups' && <ProjectGroupsPage />}
-      {current.id === 'timeline-templates' && <TimelineTemplatesSettings />}
-      {current.id === 'labels' && <LabelSettings />}
-      {current.id === 'priorities' && <><PageHead title="Priorities" sub="The names and colours of the four priority levels." /><PrioritySettings /></>}
-      {current.id === 'custom-fields' && <><PageHead title="Custom fields" sub="Extra fields every task in this workspace can have." /><CustomFieldSettings /></>}
-      {current.id === 'work-types' && <><PageHead title="Work types" sub="The kinds of operational work people can raise, and how fast each must be answered and resolved." /><WorkTypeSettings /><SlaSettings /></>}
-      {current.id === 'connected-apps' && <><PageHead title="Connected apps" sub="Claude, ChatGPT and other AI assistants working in this workspace." /><ConnectedApps /></>}
-      {current.id === 'api-keys' && <><PageHead title="API keys" sub="Access for scripts and other tools." /><ApiKeySettings /></>}
-      {current.id === 'webhooks' && <><PageHead title="Webhooks, Slack & Teams" sub="Tell channels and other systems when something changes here." /><WebhookSettings /></>}
-      {current.id === 'email' && <><PageHead title="Email to work" sub="Turn emails from your team into operational work." /><InboundEmailSettings /></>}
-      {current.id === 'whatsapp' && <><PageHead title="WhatsApp Business" sub="Prepare a secure organization-owned business connection." /><WhatsAppSettings /></>}
-      {current.id === 'slack' && <><PageHead title="Slack integration" sub="Connect a Slack workspace to this organization." /><SlackSettings /></>}
-      {current.id === 'git' && <><PageHead title="GitHub & Azure DevOps" sub="Link commits and pull requests to the tasks they mention." /><GitHubAppCard /><GitSettings /></>}
-      {current.id === 'automation' && <><PageHead title="Automation" sub="Rules that run on every project's tasks: when something happens - or on a schedule - do something." /><WorkspaceAutomationSettings /></>}
-      {current.id === 'reminders' && <><PageHead title="Reminders" sub="Everyone gets reminders about their own work on every plan. Here: what happens when work stays overdue." /><ReminderPolicySettings /></>}
-      {current.id === 'data' && <><PageHead title="Data & retention" sub="How long history is kept, and a full export of everything." /><DataSettings /></>}
+    <SectionLayout title="Workspace settings" sub="How this workspace is set up: people and access, security, notifications, integrations, AI and billing."
+      groups={groups} navTop={<SettingsSearch compact />}>
+      {!current && <SettingsHome />}
+      {current && <SettingsSection id={current.id} />}
     </SectionLayout>
+  );
+}
+
+function SettingsSection({ id }: { id: WorkspaceSection }) {
+  switch (id) {
+    case 'general': return <GeneralSection />;
+    case 'members': return <MembersSection />;
+    case 'access': return <><RolesAccessPage /><SectionHistory section="access" /></>;
+    case 'visibility': return <><PageHead title="Project visibility" sub="Whether everyone sees every project, or each team sees its own." /><div data-setting="access.projectVisibility"><ProjectVisibilityPanel /><LastChanged k="access.projectVisibility" section="visibility" /></div><SectionHistory section="visibility" /></>;
+    case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><OrgSecurityPanel /><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
+    case 'sso': return <><SsoSettings /><SectionHistory section="sso" /></>;
+    case 'billing': return <><BillingPage /><SectionHistory section="billing" /></>;
+    case 'audit': return <AuditPage />;
+    case 'project-groups': return <><ProjectGroupsPage /><SectionHistory section="project-groups" /></>;
+    case 'timeline-templates': return <><TimelineTemplatesSettings /><SectionHistory section="timeline-templates" /></>;
+    case 'labels': return <LabelSettings />;
+    case 'priorities': return <><PageHead title="Priorities" sub="The names and colours of the four priority levels." /><PrioritySettings /><SectionHistory section="priorities" /></>;
+    case 'custom-fields': return <><PageHead title="Custom fields" sub="Extra fields every task in this workspace can have." /><CustomFieldSettings /><SectionHistory section="custom-fields" /></>;
+    case 'work-types': return <><PageHead title="Work types" sub="The kinds of operational work people can raise, and how fast each must be answered and resolved." /><WorkTypeSettings /><SlaSettings /><SectionHistory section="work-types" /></>;
+    case 'connected-apps': return <><PageHead title="Connected AI apps" sub="Claude, ChatGPT and other AI assistants working in this workspace on someone's behalf." /><ConnectedApps /><SectionHistory section="connected-apps" /></>;
+    case 'api-keys': return <><PageHead title="API keys" sub="Access for scripts and other tools." /><ApiKeySettings /><SectionHistory section="api-keys" /></>;
+    case 'webhooks': return <><PageHead title="Webhooks" sub="Tell your systems, and Slack or Microsoft Teams channels, when something changes here; turn alerts and forms they send into work." /><WebhookSettings /><SectionHistory section="webhooks" /></>;
+    case 'email': return <><PageHead title="Email to work" sub="Turn emails from your team into operational work." /><InboundEmailSettings /><SectionHistory section="email" /></>;
+    case 'whatsapp': return <><PageHead title="WhatsApp Business" sub="Your organization's own business number: the support desk for customers, and notifications for members." /><WhatsAppSettings /><SectionHistory section="whatsapp" /></>;
+    case 'slack': return <SlackSection />;
+    case 'git': return <><PageHead title="GitHub & Azure DevOps" sub="Link commits and pull requests to the tasks they mention." /><GitHubAppCard /><GitSettings /><SectionHistory section="git" /></>;
+    case 'automation': return <><PageHead title="Automation" sub="Rules that run on every project's tasks: when something happens - or on a schedule - do something." /><WorkspaceAutomationSettings /><SectionHistory section="automation" /></>;
+    case 'notifications': return <NotificationDefaultsSection />;
+    case 'reminders': return <><PageHead title="Escalation" sub="Everyone gets reminders about their own work on every plan. Here: what happens when work stays overdue." /><div data-setting="reminders.escalation"><ReminderPolicySettings /><LastChanged k="reminders.escalation" section="reminders" /></div><SectionHistory section="reminders" /></>;
+    case 'data': return <><PageHead title="Data & retention" sub="How long history is kept, and a full export of everything." /><DataSettings /><SectionHistory section="data" /></>;
+    case 'ai': return <AiSection />;
+  }
+}
+
+/** People and access → Members: everyone in the workspace (invite, change access levels, remove), and the invitations still waiting. */
+function MembersSection() {
+  const canInvite = useCan('members.invite');
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') === 'invitations' && canInvite ? 'invitations' : 'members';
+  return (
+    <>
+      {canInvite && (
+        <div className="seg mb-22" role="tablist" aria-label="Members">
+          <button type="button" role="tab" aria-selected={tab === 'members'} className={tab === 'members' ? 'on' : ''} onClick={() => setParams({}, { replace: true })}>Members</button>
+          <button type="button" role="tab" aria-selected={tab === 'invitations'} className={tab === 'invitations' ? 'on' : ''} onClick={() => setParams({ tab: 'invitations' }, { replace: true })}>Invitations</button>
+        </div>
+      )}
+      <div data-setting={tab === 'invitations' ? 'members.invitations' : 'members.invite'}>{tab === 'invitations' ? <InvitationsPanel /> : <DirectoryPanel />}</div>
+      <SectionHistory section="members" />
+    </>
+  );
+}
+
+/** Integrations → Slack: the one Slack page. Posting to a channel without the app is a webhook in Slack format (Integrations → Webhooks). */
+function SlackSection() {
+  return (
+    <>
+      <PageHead title="Slack" sub="Connect a Slack workspace to this organization: people link their accounts, get notifications and act on work from Slack." />
+      <SlackSettings />
+      <div className="explainer" role="note" style={{ marginTop: 18 }}>
+        <Icon name="info" size={16} />
+        <div>Only need messages in one channel? Add a webhook in <b>Slack</b> format instead, no app needed: <Link className="link" to="/settings/webhooks">Integrations → Webhooks</Link>.</div>
+      </div>
+      <SectionHistory section="slack" />
+    </>
+  );
+}
+
+/** AI → Assistant: on or off for the workspace, what it knows about the organization, and its credits. Admins only. */
+function AiSection() {
+  return (
+    <>
+      <PageHead title="Assistant" sub="The AI assistant for everyone in this workspace: whether it is on, what it knows about the organization, and the credits it uses." />
+      <div data-setting="ai.enabled"><AiWorkspaceSwitch /><LastChanged k="ai.enabled" section="ai" /></div>
+      <div data-setting="ai.instructions"><AiInstructionsCard /><LastChanged k="ai.instructions" section="ai" /></div>
+      <div data-setting="ai.budget"><AiUsageCard /></div>
+      <p className="muted" style={{ marginTop: 14, fontSize: 12.5 }}>How the assistant works with you personally (what it learned, your notes) is private to you: <Link className="link" to="/account#s-account.ai">My account → Profile</Link>.</p>
+      <SectionHistory section="ai" />
+    </>
   );
 }
 
 function GeneralSection() {
   const ctx = useAuth((s) => s.ctx)!;
   const reload = useAuth((s) => s.reloadContext);
+  const wid = useWorkspaceId();
   const personal = useIsPersonal();
   const canOrg = useCan('org.manage');
   const seeBilling = useModule('billing') > 0;
   const [wsName, setWsName] = useState(ctx.current?.name ?? '');
   const [wsDesc, setWsDesc] = useState(ctx.current?.description ?? '');
+  const [zone, setZone] = useState<string | null>(ctx.current?.timeZone ?? null);
+  const [zoneBusy, setZoneBusy] = useState(false);
   const workspace = useMutation({
     mutationFn: () => workspaceApi.update({ name: wsName.trim(), description: wsDesc.trim() || undefined }),
-    onSuccess: async () => { toast('Workspace updated.'); await reload(); },
+    onSuccess: async () => { toast('Workspace updated.'); await reload(); void invalidateWorkspace(wid, 'settings'); },
     onError: (e) => toast(e instanceof ApiError ? e.message : 'Could not update the workspace.', 'error'),
   });
+  // An undo elsewhere on the page changes these: follow the saved values when nothing is being typed.
+  const savedName = ctx.current?.name ?? '', savedDesc = ctx.current?.description ?? '', savedZone = ctx.current?.timeZone ?? null;
+  useEffect(() => { setWsName(savedName); setWsDesc(savedDesc); }, [savedName, savedDesc]);
+  useEffect(() => { setZone(savedZone); }, [savedZone]);
   if (!ctx.current) return null;
+  const isAdmin = ctx.current.role === 'Owner' || ctx.current.role === 'Admin';
+  const saveZone = async () => {
+    setZoneBusy(true);
+    try { await workspaceApi.setTimeZone(zone); toast('Workspace time zone saved.'); await reload(); void invalidateWorkspace(wid, 'settings'); }
+    catch (e) { toast(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not save the time zone.', 'error'); }
+    finally { setZoneBusy(false); }
+  };
   return (
     <>
       <PageHead title="General" sub={`${personal ? 'Your personal workspace' : 'Organization'} · your access level: ${ctx.current.role}`} />
-      <div className="card">
+      <div className="card mb-22">
         <div className="card-body">
           <form className="form-grid" onSubmit={(e) => { e.preventDefault(); if (wsName.trim().length >= 2) workspace.mutate(); }}>
-            <Field label="Workspace name"><input className="input" value={wsName} onChange={(e) => setWsName(e.target.value)} disabled={!canOrg} maxLength={80} /></Field>
+            <div data-setting="workspace.name"><Field label="Workspace name"><input className="input" value={wsName} onChange={(e) => setWsName(e.target.value)} disabled={!canOrg} maxLength={80} /></Field><LastChanged k="workspace.name" section="general" /></div>
             <Field label="Plan"><div className="row" style={{ height: 38 }}><Badge tone="purple">{ctx.current.plan.name}</Badge>{seeBilling && <Link className="link" to="/settings/billing">Plan and billing</Link>}</div></Field>
-            <Field label="Description" full><textarea className="textarea" value={wsDesc} onChange={(e) => setWsDesc(e.target.value)} disabled={!canOrg} maxLength={500} /></Field>
+            <div className="full" data-setting="workspace.description"><Field label="Description" full><textarea className="textarea" value={wsDesc} onChange={(e) => setWsDesc(e.target.value)} disabled={!canOrg} maxLength={500} /></Field><LastChanged k="workspace.description" section="general" /></div>
             {canOrg && <div className="full"><SubmitButton busy={workspace.isPending}>Save workspace</SubmitButton></div>}
           </form>
           {personal && <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>Want to collaborate? Use the workspace menu in the top bar to create an organization.</p>}
         </div>
       </div>
-      {!personal && <WorkspaceLogoCard canEdit={ctx.current.role === 'Owner' || ctx.current.role === 'Admin'} />}
-      {(ctx.current.role === 'Owner' || ctx.current.role === 'Admin') && <><AiWorkspaceSwitch /><AiInstructionsCard /><AiUsageCard /></>}
-      <AiProfileCard />
+      {canOrg && (
+        <div className="card mb-22" data-setting="workspace.timeZone">
+          <div className="card-head"><div><h3>Workspace time zone</h3><p>What people without their own zone see, and what workspace-wide digests and service-level clocks follow. Each person's own zone (My account) still wins for everything they see.</p></div></div>
+          <div className="card-body">
+            <div className="row" style={{ gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 260 }}><TimeZonePicker value={zone} onChange={setZone} label="Workspace time zone" allowEmpty emptyLabel="Platform default (Asia/Kolkata)" /></div>
+              <button type="button" className="btn btn-primary" disabled={zoneBusy || zone === savedZone} onClick={() => void saveZone()}>{zoneBusy ? 'Saving…' : 'Save time zone'}</button>
+            </div>
+            <LastChanged k="workspace.timeZone" section="general" />
+          </div>
+        </div>
+      )}
+      {!personal && <div data-setting="workspace.logo"><WorkspaceLogoCard canEdit={isAdmin} /><LastChanged k="workspace.logo" section="general" /></div>}
+      <SectionHistory section="general" />
     </>
   );
 }

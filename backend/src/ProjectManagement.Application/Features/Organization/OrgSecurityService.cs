@@ -67,7 +67,7 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
         if (req.RequireMfa)
         {
             var me = await db.Users.AsNoTracking().Where(u => u.Id == ctx.RequireUserId()).Select(u => u.MfaEnabled).FirstAsync(ct);
-            if (!me) throw new ValidationException("requireMfa", "Turn on two-step verification for your own account first (Settings → Security), or you would be locked out of this workspace.");
+            if (!me) throw new ValidationException("requireMfa", "Turn on two-step verification for your own account first (My account → Sign-in & security), or you would be locked out of this workspace.");
         }
         if (req.IpAllowlistEnabled)
         {
@@ -93,7 +93,7 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
         if (req.MinPasswordLength is > 0 and var min && ctx.UserId is { } meId
             && await db.Users.AsNoTracking().Where(u => u.Id == meId).Select(u => u.PasswordLength).FirstOrDefaultAsync(ct) is { } myLength && myLength < min
             && ctx.SessionId is { } sid && Category(await db.UserSessions.AsNoTracking().Where(s => s.Id == sid).Select(s => s.AuthMethod).FirstOrDefaultAsync(ct)) == "password")
-            throw new ValidationException("minPasswordLength", $"Your own password is shorter than {min} characters. Change it first (My account → Security), or you would be locked out.");
+            throw new ValidationException("minPasswordLength", $"Your own password is shorter than {min} characters. Change it first (My account → Sign-in & security), or you would be locked out.");
 
         var row = await db.TenantSecuritySettings.FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
         var before = row is null ? null : new { row.RequireMfa, row.IpAllowlistEnabled, row.IpRanges, row.MinPasswordLength, row.SessionHours, row.AllowedSignIn };
@@ -185,8 +185,8 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
             var key = $"security-remind:{topic}:{userId:N}:{day}";
             if (await db.Notifications.AnyAsync(n => n.DedupeKey == key, ct)) continue;
             var (title, body) = topic == "two-step"
-                ? ("Please turn on two-step verification", $"{workspace} asks everyone to protect their account with an authenticator app or a passkey. It takes a minute: My account → Security.")
-                : ("Please change your password", $"{workspace} asks you to choose a new, longer password (12 characters or more works well). My account → Security.");
+                ? ("Please turn on two-step verification", $"{workspace} asks everyone to protect their account with an authenticator app or a passkey. It takes a minute: My account → Sign-in & security.")
+                : ("Please change your password", $"{workspace} asks you to choose a new, longer password (12 characters or more works well). My account → Sign-in & security.");
             await notifications.AddAsync(userId, NotificationType.Security, title, body, "/account", key, ct: ct);
             sent++;
         }
@@ -240,7 +240,7 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
         if (entitlementValue <= 0) return null;   // plan lapsed: fail open, not closed
 
         if (row.RequireMfa && !mfaEnabled)
-            return new AccessBlockedDto(tenantId, "ORG_MFA_REQUIRED", "This organization requires two-step verification. Turn it on in Settings → Security to continue.");
+            return new AccessBlockedDto(tenantId, "ORG_MFA_REQUIRED", "This organization requires two-step verification. Turn it on in My account → Sign-in & security to continue.");
         if (row.IpAllowlistEnabled && !IpAllowlist.Matches(IpAllowlist.ParseEntries(row.IpRanges), ip))
             return new AccessBlockedDto(tenantId, "ORG_IP_BLOCKED", "Your network is not on this organization's allowed list. Ask an administrator to add it.");
         // The rules below are about how this person signed in; API keys (no sign-in facts) are not affected by them.
@@ -252,7 +252,7 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
         if (row.SessionHours > 0 && signIn.OpenedAt < clock.Now.AddHours(-row.SessionHours))
             return new AccessBlockedDto(tenantId, "ORG_SESSION_EXPIRED", $"This organization asks you to sign in again every {Hours(row.SessionHours)}. Sign out and sign in again.");
         if (row.MinPasswordLength > 0 && method == "password" && signIn.PasswordLength is { } length && length < row.MinPasswordLength)
-            return new AccessBlockedDto(tenantId, "ORG_PASSWORD_TOO_SHORT", $"This organization needs passwords of at least {row.MinPasswordLength} characters. Change your password in My account → Security to continue.");
+            return new AccessBlockedDto(tenantId, "ORG_PASSWORD_TOO_SHORT", $"This organization needs passwords of at least {row.MinPasswordLength} characters. Change your password in My account → Sign-in & security to continue.");
         return null;
     }
 }

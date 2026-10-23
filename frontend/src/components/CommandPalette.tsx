@@ -6,6 +6,7 @@ import type { SearchHit } from '../api/types';
 import { Icon, type IconName } from './Icon';
 import { useMainNav } from '../layouts/navigation';
 import { useWorkspaceSections } from '../features/settings/sections';
+import { searchSettings, settingHref, visibleSettings } from '../features/settings/settingsIndex';
 import { Sparkle, useAi, useAssistant } from '../features/ai/Assistant';
 import { useAuth, useCan, useModule } from '../stores/auth';
 import { openReminderComposer } from '../features/reminders/store';
@@ -99,6 +100,10 @@ export function CommandPalette() {
     const list: Command[] = [];
     for (const g of groups) for (const i of g.items.filter((x) => x.show !== false)) list.push({ id: `nav:${i.to}`, group: 'Go to', label: i.label, hint: g.title, icon: i.icon, run: go(i.to) });
     for (const s of settings) list.push({ id: `set:${s.to}`, group: 'Settings', label: s.label, hint: s.group, icon: s.icon ?? 'settings', keywords: 'settings workspace', run: go(s.to) });
+    // Every single setting too: "MFA", "logo" or "retention" jumps straight to the switch.
+    if (ctx && !ctx.user.isPlatformAdmin)
+      for (const e of visibleSettings(settings, settings.length > 0))
+        list.push({ id: `setting:${e.id}`, group: 'Settings', label: e.label, hint: e.personal ? e.hint : settings.find((s) => s.id === e.section)?.label ?? e.hint, icon: settings.find((s) => s.id === e.section)?.icon ?? (e.personal ? 'user' : 'settings'), keywords: `${e.keywords} setting`, run: go(settingHref(e)) });
     if (ctx && !ctx.user.isPlatformAdmin) {
       list.push({ id: 'acc:profile', group: 'Settings', label: 'My profile', icon: 'user', keywords: 'account', run: go('/account') });
       list.push({ id: 'acc:notifications', group: 'Settings', label: 'My notifications', icon: 'bell', keywords: 'account email push desktop', run: go('/account/notifications') });
@@ -118,7 +123,9 @@ export function CommandPalette() {
   const visible = useMemo(() => {
     const query = q.trim();
     const recent = readRecent();
-    const ranked = commands.map((c) => ({ c, s: score(c, query) + (query ? 0 : recent.includes(c.id) ? 100 - recent.indexOf(c.id) : 0) }))
+    // The settings search knows which setting a word means best ("mfa" is the two-step switch): its best matches rank first among settings.
+    const best = new Map<string, number>(query.length >= 2 ? searchSettings(query, visibleSettings(settings, settings.length > 0), 6).map((e, i) => [`setting:${e.id}`, i] as const) : []);
+    const ranked = commands.map((c) => ({ c, s: score(c, query) + (best.has(c.id) ? 30 - best.get(c.id)! * 4 : 0) + (query ? 0 : recent.includes(c.id) ? 100 - recent.indexOf(c.id) : 0) }))
       .filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => x.c);
     const shown: Command[] = query ? ranked.slice(0, 12) : [
       ...ranked.filter((c) => recent.includes(c.id)).map((c) => ({ ...c, group: 'Recent' })),
@@ -134,7 +141,7 @@ export function CommandPalette() {
     // A command that matches what was typed wins; asking the assistant is the fallback at the end.
     return [...remind, ...shown, ...hits, ...askAi];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [commands, q, search.data, ai]);
+  }, [commands, q, search.data, ai, settings]);
 
   useEffect(() => { setActive(0); }, [q]);
   useEffect(() => { list.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' }); }, [active]);
