@@ -5659,6 +5659,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ConnectedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ConnectionId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -5695,6 +5698,15 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
+                    b.Property<string>("OtpTemplate")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("OtpTemplateLanguage")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<string>("PhoneNumberId")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -5728,7 +5740,18 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("VerifiedActions")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("VerifiedName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("VerifyConnector")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("VerifyMobilePath")
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
@@ -5741,6 +5764,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ConnectionId");
 
                     b.HasIndex("PhoneNumberId")
                         .IsUnique();
@@ -5816,6 +5841,26 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<bool>("NeedsReply")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("OtpAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("OtpExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OtpForProtected")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("OtpHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("OtpSends")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("OtpWindowAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("RatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -5848,6 +5893,13 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("VerifiedForProtected")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime?>("VerifiedUntil")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("WaitingSince")
                         .HasColumnType("timestamp with time zone");
@@ -10404,6 +10456,11 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AllowedSignIn")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("ChainAnchorHash")
                         .HasColumnType("text");
 
@@ -10439,10 +10496,16 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(6000)
                         .HasColumnType("character varying(6000)");
 
+                    b.Property<int>("MinPasswordLength")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("RequireMfa")
                         .HasColumnType("boolean");
 
                     b.Property<int>("RevealSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SessionHours")
                         .HasColumnType("integer");
 
                     b.Property<Guid>("TenantId")
@@ -10677,9 +10740,15 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)");
 
+                    b.Property<DateTime?>("PasswordChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int?>("PasswordLength")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("PasswordResetExpiresAt")
                         .HasColumnType("timestamp with time zone");
@@ -10812,6 +10881,12 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("text");
 
                     b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("NewDevice")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ReportedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("RevokedAt")

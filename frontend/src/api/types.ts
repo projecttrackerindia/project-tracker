@@ -70,7 +70,13 @@ export interface SsoConnectionInput {
   authority?: string | null; clientId?: string | null; clientSecret?: string | null; samlEntityId?: string | null; samlSsoUrl?: string | null; samlCertificate?: string | null;
 }
 
-export interface OrgSecurity { requireMfa: boolean; ipAllowlistEnabled: boolean; ipRanges: string[]; myIp: string | null; entitled: boolean }
+export interface OrgSecurity { requireMfa: boolean; ipAllowlistEnabled: boolean; ipRanges: string[]; myIp: string | null; entitled: boolean;
+  /** 0 = the platform's rule. */ minPasswordLength?: number; /** 0 = the platform's session length. */ sessionHours?: number; allowedSignIn?: string[] | null; platformMinPasswordLength?: number }
+/** One sign-in of my account: from which browser and network, how, and whether it is still signed in. */
+export interface SignIn { id: string; at: string; lastSeenAt: string; device: string; network: string | null; authMethod: string | null; current: boolean; active: boolean; newDevice: boolean; reportedAt: string | null }
+export type SecurityIssue = 'no-two-step' | 'weak-password' | 'old-password' | 'inactive';
+export interface MemberSecurity { userId: string; name: string; email: string; role: string; twoStep: boolean; passkeys: number; passwordChangedAt: string | null; passwordLength: number | null; lastSignInAt: string | null; issues: SecurityIssue[]; remindedAt: string | null }
+export interface SecurityOverview { members: number; withoutTwoStep: number; weakPasswords: number; oldPasswords: number; people: MemberSecurity[] }
 export interface MyConsent { upToDate: boolean; pending: ConsentDocument[] }
 
 export interface Member { userId: string; displayName: string; email: string; role: Role; joinedAt: string; jobRole: string | null; hasAvatar?: boolean }

@@ -105,6 +105,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public FakeWhatsAppInstallation WhatsApp { get; } = new();
     /// <summary>Stands in for Meta's Graph API for teams' own WhatsApp support numbers.</summary>
     public FakeSupportGraph SupportGraph { get; } = new();
+    public FakeConnectorApi Connectors { get; } = new();
+    public FakePwnedPasswords Pwned { get; } = new();
     /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
     public FakeDns Dns { get; } = new();
     /// <summary>Stands in for Claude (off until a test switches it on).</summary>
@@ -160,6 +162,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddHttpClient("push").ConfigurePrimaryHttpMessageHandler(() => Push);
             services.AddHttpClient("whatsapp-installation").ConfigurePrimaryHttpMessageHandler(() => WhatsApp);
             services.AddHttpClient("support-whatsapp").ConfigurePrimaryHttpMessageHandler(() => SupportGraph);
+            services.AddHttpClient("voice-connector").ConfigurePrimaryHttpMessageHandler(() => Connectors);
+            services.AddHttpClient("pwned-passwords").ConfigurePrimaryHttpMessageHandler(() => Pwned);
+            services.RemoveAll<ProjectManagement.Application.Features.Voice.ConnectorCaller>();
+            services.AddScoped<ProjectManagement.Application.Features.Voice.ConnectorCaller, TestConnectorCaller>();
             services.RemoveAll<ProjectManagement.Application.Abstractions.IChangeFeed>();
             services.AddSingleton<ProjectManagement.Application.Abstractions.IChangeFeed>(Changes);
         });

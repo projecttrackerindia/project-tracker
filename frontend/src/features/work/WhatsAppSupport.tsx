@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, del, download, fetchBlobUrl, get, post, put } from '../../api/client';
 import { teamApi, workspaceApi } from '../../api/endpoints.auth';
 import { workApi } from '../../api/endpoints.platform';
+import { voiceApi } from './voiceApi';
 import { projectApi } from '../../api/endpoints.projects';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
@@ -22,11 +23,14 @@ interface Channel {
   lastError: string | null; openChats: number; connectedAt: string;
   firstReplyMinutes: number; tellCustomer: boolean; askRating: boolean; updateTemplate: string | null; updateTemplateLanguage: string; savedReplies: SavedReply[] | null;
   answerFromDocuments?: boolean; knowledgeProjectId?: string | null;
+  linked?: boolean; verifiedActions?: boolean; verifyConnector?: string | null; verifyMobilePath?: string | null; otpTemplate?: string | null; otpTemplateLanguage?: string;
 }
+interface ConnectionOffer { available: boolean; displayName: string | null; phoneNumberId: string | null; alreadyUsed: boolean }
 export interface ChatItem {
   id: string; channelId: string; channelName: string; contact: string; contactName: string | null; language: string; status: 'open' | 'waiting' | 'closed'; mode: 'ai' | 'human';
   lastMessageAt: string; lastText: string | null; unread: number; workTaskId: string | null; ticketKey: string | null; canReply: boolean;
   assigneeId: string | null; assigneeName: string | null; waitingSince: string | null; replyDueAt: string | null; rating: number | null;
+  /** Verified with a one-time code until this time (account answers allowed). */ verifiedUntil?: string | null;
 }
 interface Media { kind: 'image' | 'voice' | 'video' | 'document' | 'sticker'; id: string; mime: string | null; fileName: string | null; transcript: string | null }
 /** A DocTracker page an AI answer was taken from. */
@@ -38,11 +42,13 @@ interface ChannelForm {
   name: string; teamId: string | null; phoneNumberId: string; businessAccountId: string; accessToken: string; appSecret: string; enabled: boolean; autoReply: boolean; agentName: string; workTypeId: string | null;
   firstReplyMinutes: number; tellCustomer: boolean; askRating: boolean; updateTemplate: string; updateTemplateLanguage: string; savedReplies: SavedReply[];
   answerFromDocuments: boolean; knowledgeProjectId: string | null; allPages: boolean;
+  useConnection: boolean; verifiedActions: boolean; verifyConnector: string; verifyMobilePath: string; otpTemplate: string; otpTemplateLanguage: string;
 }
 type View = 'mine' | 'unassigned' | 'waiting' | 'open' | 'closed';
 
 const api = {
   channels: () => get<Channel[]>('/support/channels'),
+  connection: () => get<ConnectionOffer>('/support/channels/connection'),
   save: (b: ChannelForm, id?: string) => (id ? put<Channel>(`/support/channels/${id}`, b) : post<Channel>('/support/channels', b)),
   check: (id: string) => post<Channel>(`/support/channels/${id}/check`, {}),
   remove: (id: string) => del(`/support/channels/${id}`),
@@ -104,7 +110,7 @@ export function WhatsAppSupportPanel({ canManage }: { canManage: boolean }) {
           </section>
         </Modal>
       )}
-      {editing && <ChannelModal c={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={(c, isNew) => { setEditing(null); void channels.refetch(); if (isNew) setSetup(c); }} />}
+      {editing && <ChannelModal c={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={(c, isNew) => { setEditing(null); void channels.refetch(); if (isNew && !c.linked) setSetup(c); }} />}
       {setup && <SetupModal c={setup} onClose={() => setSetup(null)} />}
     </div>
   );
@@ -136,10 +142,12 @@ function ChannelCard({ c, onEdit, onSetup, onChanged }: { c: Channel; onEdit: ()
         <span><Icon name="agent" size={13} /> {c.agentName}{c.autoReply ? ' answers first' : ' (people answer)'}</span>
         <span><Icon name="inbox" size={13} /> {c.openChats} open</span>
         {c.lastInboundAt && <span><Icon name="clock" size={13} /> last message {timeAgo(c.lastInboundAt)}</span>}
+        {c.linked && <span><Icon name="link" size={13} /> Meta sign-up</span>}
+        {c.verifiedActions && <span><Icon name="shield" size={13} /> Verified actions</span>}
       </p>
       {c.lastError && <p className="wa-error">{c.lastError}</p>}
       <div className="wa-channel-actions">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onSetup}>Webhook setup</button>
+        {!c.linked && <button type="button" className="btn btn-ghost btn-sm" onClick={onSetup}>Webhook setup</button>}
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void check()}>{busy ? <Spinner /> : null} Check connection</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit}>Edit</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => void remove()} aria-label={`Disconnect ${c.name}`}><Icon name="trash" size={14} /></button>
@@ -157,14 +165,24 @@ function ChannelModal({ c, onClose, onSaved }: { c: Channel | null; onClose: () 
     firstReplyMinutes: c?.firstReplyMinutes ?? 15, tellCustomer: c?.tellCustomer ?? true, askRating: c?.askRating ?? true,
     updateTemplate: c?.updateTemplate ?? '', updateTemplateLanguage: c?.updateTemplateLanguage ?? 'en', savedReplies: c?.savedReplies ?? [],
     answerFromDocuments: c?.answerFromDocuments ?? true, knowledgeProjectId: c?.knowledgeProjectId ?? null, allPages: !c?.knowledgeProjectId,
+    useConnection: false, verifiedActions: c?.verifiedActions ?? false, verifyConnector: c?.verifyConnector ?? '', verifyMobilePath: c?.verifyMobilePath ?? '',
+    otpTemplate: c?.otpTemplate ?? '', otpTemplateLanguage: c?.otpTemplateLanguage ?? 'en',
   });
+  const offer = useWsQuery(['support', 'connection-offer'], api.connection, { enabled: !c, staleTime: 60_000, retry: false });
+  const connectors = useWsQuery(['voice', 'connectors'], voiceApi.connectors, { enabled: f.verifiedActions, staleTime: 60_000 });
+  const linked = !!c?.linked || f.useConnection;
+  useEffect(() => { if (!c && offer.data?.available && !offer.data.alreadyUsed) setF((x) => ({ ...x, useConnection: true })); }, [c, offer.data]);
   const projects = useWsQuery(['projects', 'whatsapp-pages'], () => projectApi.list({ pageSize: 200, sort: 'name' }), { staleTime: 300_000, enabled: f.answerFromDocuments });
   const setReply = (i: number, k: keyof SavedReply, v: string) => setF((x) => ({ ...x, savedReplies: x.savedReplies.map((r, j) => (j === i ? { ...r, [k]: v } : r)) }));
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof ChannelForm>(k: K, v: ChannelForm[K]) => setF((x) => ({ ...x, [k]: v }));
   const save = async () => {
     setBusy(true);
-    try { const r = await api.save({ ...f, savedReplies: f.savedReplies.filter((x) => x.title.trim() || x.text.trim()) }, c?.id); toast(c ? 'Saved.' : 'Connected. One last step: add the webhook in Meta.'); onSaved(r, !c); }
+    try {
+      const r = await api.save({ ...f, savedReplies: f.savedReplies.filter((x) => x.title.trim() || x.text.trim()) }, c?.id);
+      toast(c ? 'Saved.' : r.linked ? 'Connected. Messages to this number now reach the desk.' : 'Connected. One last step: add the webhook in Meta.');
+      onSaved(r, !c);
+    }
     catch (e) { toast(errText(e, 'Could not save.'), 'error'); } finally { setBusy(false); }
   };
   return (
@@ -181,6 +199,21 @@ function ChannelModal({ c, onClose, onSaved }: { c: Channel | null; onClose: () 
             <Select className="select" aria-label="Ticket type" value={f.workTypeId ?? ''} onChange={(e) => set('workTypeId', e.target.value || null)}>
               <option value="">First work type</option>{(types.data ?? []).filter((t) => t.isActive).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></label>
         </div>
+        {!c && offer.data?.available && (
+          <div className="wa-source" role="radiogroup" aria-label="Which number">
+            <label className={`wa-source-opt ${f.useConnection ? 'on' : ''}`}>
+              <input type="radio" name="wa-source" checked={f.useConnection} disabled={offer.data.alreadyUsed} onChange={() => set('useConnection', true)} />
+              <span><b>Use {offer.data.displayName ?? 'your connected number'}</b><small>{offer.data.alreadyUsed ? 'Already used by a desk number.' : 'Connected with Meta in Settings › Integrations. Nothing to paste, no webhook to add; notifications keep working on it.'}</small></span>
+            </label>
+            <label className={`wa-source-opt ${!f.useConnection ? 'on' : ''}`}>
+              <input type="radio" name="wa-source" checked={!f.useConnection} onChange={() => set('useConnection', false)} />
+              <span><b>Another number</b><small>Paste its IDs and keys from Meta.</small></span>
+            </label>
+          </div>
+        )}
+        {linked ? (
+          <p className="wa-linked"><Icon name="link" size={14} /> {c ? 'Uses the workspace\'s WhatsApp connection (Meta sign-up): no keys are kept here.' : 'The number, its token and its messages come from the workspace\'s WhatsApp connection.'}</p>
+        ) : (
         <fieldset className="wa-meta">
           <legend>From Meta</legend>
           <details className="wa-help">
@@ -200,6 +233,7 @@ function ChannelModal({ c, onClose, onSaved }: { c: Channel | null; onClose: () 
           </div>
           <small className="wa-muted"><Icon name="lock" size={12} /> The token and secret are stored encrypted and never shown again.</small>
         </fieldset>
+        )}
         <label className="wa-toggle"><input type="checkbox" checked={f.autoReply} onChange={(e) => set('autoReply', e.target.checked)} />
           <span>The AI employee answers first<small>Off: chats wait in the inbox for your team.</small></span></label>
         <label className="wa-toggle"><input type="checkbox" checked={f.answerFromDocuments} onChange={(e) => set('answerFromDocuments', e.target.checked)} />
@@ -244,8 +278,60 @@ function ChannelModal({ c, onClose, onSaved }: { c: Channel | null; onClose: () 
             {f.savedReplies.length < 50 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setF((x) => ({ ...x, savedReplies: [...x.savedReplies, { title: '', text: '' }] }))}><Icon name="plus" size={13} /> Add a saved reply</button>}
           </div>
         </fieldset>
+        <fieldset className="wa-meta">
+          <legend>Verified actions</legend>
+          <label className="wa-toggle"><input type="checkbox" checked={f.verifiedActions} onChange={(e) => set('verifiedActions', e.target.checked)} />
+            <span>Answer account questions after a one-time code<small>EMI due date, statement, payment link, loan status: read from your connected systems and sent exactly as they answer, only after the customer types the code sent to their registered mobile.</small></span></label>
+          {f.verifiedActions && (
+            <>
+              <div className="wa-grid">
+                <label className="wa-field"><span>Find the customer with</span>
+                  <Select className="select" aria-label="Verification connector" value={f.verifyConnector} onChange={(e) => set('verifyConnector', e.target.value)}>
+                    <option value="">Choose a connector</option>
+                    {(connectors.data ?? []).filter((x) => x.enabled).map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}
+                  </Select></label>
+                <label className="wa-field"><span>Registered mobile is at</span>
+                  <input value={f.verifyMobilePath} onChange={(e) => set('verifyMobilePath', e.target.value.trim())} placeholder="main.customer.mobile" /></label>
+                <label className="wa-field"><span>Code template (other numbers)</span>
+                  <input value={f.otpTemplate} onChange={(e) => set('otpTemplate', e.target.value.trim())} placeholder="verify_code" /></label>
+                <label className="wa-field"><span>Template language</span>
+                  <input value={f.otpTemplateLanguage} onChange={(e) => set('otpTemplateLanguage', e.target.value.trim())} placeholder="en" /></label>
+              </div>
+              {connectors.data && connectors.data.length === 0 && <p className="wa-muted">No connectors yet. Add them under Operations › Voice › Connectors (the same ones the phone agent uses).</p>}
+              <small className="wa-muted"><Icon name="lock" size={12} /> The code is never stored or shown to the AI or the team. Five tries, ten minutes; verified for half an hour, for those details only. Only connectors with chosen facts can answer customers.</small>
+            </>
+          )}
+        </fieldset>
+        <TemplateDrafts />
       </form>
     </Modal>
+  );
+}
+
+/** The message templates Meta must approve before they can be used, written out to copy into WhatsApp Manager. */
+const TEMPLATE_DRAFTS: { name: string; category: string; language: string; body: string; note: string }[] = [
+  { name: 'ticket_update', category: 'Utility', language: 'en', body: 'Update on your request: ticket {{1}} is {{2}}. Reply here if you need anything.', note: 'Sample values: WT-12 · being worked on by Ravi. Used for ticket updates more than 24 hours after the customer last wrote.' },
+  { name: 'ticket_update', category: 'Utility', language: 'hi', body: 'आपके अनुरोध पर अपडेट: टिकट {{1}} {{2}}। कुछ भी चाहिए तो यहीं जवाब दें।', note: 'Sample values: WT-12 · पर रवि काम कर रहे हैं.' },
+  { name: 'ticket_update', category: 'Utility', language: 'te', body: 'మీ అభ్యర్థనపై అప్‌డేట్: టికెట్ {{1}} {{2}}. ఏదైనా అవసరమైతే ఇక్కడే రిప్లై చేయండి.', note: 'Sample values: WT-12 · పై రవి పని చేస్తున్నారు.' },
+  { name: 'verify_code', category: 'Authentication', language: 'en', body: '{{1}} is your verification code. For your security, do not share this code.', note: 'Choose "Copy code" as the button, turn on the security recommendation and set the code to expire in 10 minutes. Needed only when the registered mobile is not the number chatting.' },
+];
+
+function TemplateDrafts() {
+  return (
+    <details className="wa-help wa-drafts">
+      <summary>Templates to submit in WhatsApp Manager</summary>
+      <p>Meta approves these once (usually within a day). Create each under WhatsApp Manager › Message templates with the name, category and language shown, then enter its name above.</p>
+      <ul>
+        {TEMPLATE_DRAFTS.map((t) => (
+          <li key={`${t.name}:${t.language}`}>
+            <div className="wa-draft-head"><code>{t.name}</code><span>{t.category} · {t.language}</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => copy(t.body, 'Template text')} aria-label={`Copy ${t.name} (${t.language})`}><Icon name="copy" size={13} /></button></div>
+            <p className="wa-draft-body">{t.body}</p>
+            <small className="wa-muted">{t.note}</small>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -429,7 +515,8 @@ function ChatPane({ id, onClose }: { id: string; onClose: () => void }) {
         <button type="button" className="btn-icon wad-back" aria-label="Back to the chats" onClick={onClose}><Icon name="arrowLeft" size={16} /></button>
         <div className="wad-who">
           <b>{chat.contactName ?? chat.contact}</b>
-          <small>{chat.contact} · {chat.channelName}{chat.rating ? ` · rated ★ ${chat.rating}` : ''}</small>
+          <small>{chat.contact} · {chat.channelName}{chat.rating ? ` · rated ★ ${chat.rating}` : ''}
+            {chat.verifiedUntil && <span className="wa-verified" title={`Verified with a one-time code until ${formatDateTime(chat.verifiedUntil)}`}><Icon name="shield" size={11} /> Verified</span>}</small>
         </div>
         <Select className="select wad-owner" aria-label="Owner" value={chat.assigneeId ?? ''} disabled={busy}
           onChange={(e) => void act(() => api.assign(id, e.target.value || null), e.target.value ? 'Assigned.' : 'Back in the queue.')}>

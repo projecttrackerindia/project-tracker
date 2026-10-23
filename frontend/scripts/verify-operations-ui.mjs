@@ -28,7 +28,7 @@ const insights={days:90,open:4,unassigned:1,breached:1,atRisk:1,compliance:0.86,
 const writes=[],errors=[],checks=[];
 let saved=null;
 let voice={enabled:false,agentName:'Asha',companyName:'FiveStar',languages:['te','hi','en','ta'],knowledge:null,requireVerification:true,verificationRule:'date of birth and the last 4 digits of the loan number',transferNumber:null,workTypeId:null,storageKeyPattern:'{yyyy}/{MM}/{dd}/{callId}',archiveConfigured:false,canManage:true,availableLanguages:{en:'English',hi:'Hindi',te:'Telugu',ta:'Tamil',kn:'Kannada'}};let vcall=null;
-let waChannels=[];const waChat={id:'w1',channelId:'ch1',channelName:'IT helpdesk',contact:'+91 98•••••210',contactName:'Ravi Kumar',language:'te',status:'open',mode:'ai',lastMessageAt:iso(0),lastText:'password reset కావాలి',unread:1,workTaskId:null,ticketKey:null,canReply:true,assigneeId:null,assigneeName:null,waitingSince:iso(-12),replyDueAt:iso(3),rating:null};
+let waChannels=[];const waChat={id:'w1',channelId:'ch1',channelName:'IT helpdesk',contact:'+91 98•••••210',contactName:'Ravi Kumar',language:'te',status:'open',mode:'ai',lastMessageAt:iso(0),lastText:'password reset కావాలి',unread:1,workTaskId:null,ticketKey:null,canReply:true,assigneeId:null,assigneeName:null,waitingSince:iso(-12),replyDueAt:iso(3),rating:null,verifiedUntil:iso(25)};
 let waMessages=[{from:'contact',text:'నా లాగిన్ పని చేయడం లేదు, password reset కావాలి',at:iso(0)},{from:'ai',text:'సరేనండి, మీ employee ID చెప్పగలరా?',at:iso(0),by:'Asha',sources:[{documentId:'d7',key:'DOC-7',title:'Password reset guide'}]},
  {from:'contact',text:'[photo] the error',at:iso(0),media:{kind:'image',id:'5501',mime:'image/png',fileName:null,transcript:null}},
  {from:'contact',text:'[voice note] నా ID 4471',at:iso(0),media:{kind:'voice',id:'5502',mime:'audio/ogg',fileName:null,transcript:'నా ID 4471 <b>bold</b>'}},
@@ -209,6 +209,11 @@ try{
  await page.getByRole('button',{name:'Connect WhatsApp'}).click();
  const dlg=page.getByRole('dialog');await dlg.getByLabel('Name',{exact:true}).fill('IT helpdesk');await dlg.getByLabel('Phone number ID').fill('123456789012345');
  await dlg.getByLabel('WhatsApp Business Account ID').fill('998877665544332');await dlg.getByLabel('Permanent access token').fill('EAAG'+'x'.repeat(40));await dlg.getByLabel('App secret').fill('a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6');
+ // Template texts to submit in WhatsApp Manager, and verified actions behind a one-time code.
+ await dlg.getByText('Templates to submit in WhatsApp Manager').click();assert.equal(await dlg.locator('.wa-drafts li').count(),4);
+ assert.ok(await dlg.getByRole('button',{name:'Copy verify_code (en)'}).isVisible());
+ await dlg.getByText('Answer account questions after a one-time code').click();await dlg.getByLabel('Registered mobile is at').waitFor();
+ await dlg.getByText('Answer account questions after a one-time code').click();checks.push('verified-actions-form');
  await dlg.getByRole('button',{name:'Connect',exact:true}).click();
  await page.getByRole('dialog').getByText('/api/v1/support/whatsapp/ch1').waitFor();await shot(page,'whatsapp-setup-1440.png');
  assert.equal(writes.find(w=>w.ep==='/api/v1/support/channels').b.phoneNumberId,'123456789012345');
@@ -218,6 +223,7 @@ try{
  await page.getByRole('dialog').getByRole('button',{name:'Done'}).click();
  assert.match(await page.locator('.wa-chats button',{hasText:'Ravi Kumar'}).innerText(),/reply in 3m/);
  await page.locator('.wa-chats button',{hasText:'Ravi Kumar'}).click();await page.locator('.wad-pane .wa-msg.ai').waitFor();
+ assert.ok(await page.locator('.wad-pane .wa-verified').isVisible());
  // The photo opens in the chat; the voice note shows what was said, as text.
  await page.locator('.wa-media-img img').waitFor();
  assert.match(await page.locator('.wa-media-voice').innerText(),/నా ID 4471 <b>bold<\/b>/);

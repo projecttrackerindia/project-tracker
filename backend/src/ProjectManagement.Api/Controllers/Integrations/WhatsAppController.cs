@@ -52,7 +52,7 @@ public class WhatsAppController(WhatsAppGatewayService service, WhatsAppInstalla
 }
 
 [Route("api/v1/integrations/whatsapp/webhook"), AllowAnonymous]
-public class WhatsAppWebhookController(WhatsAppGatewayService service) : ApiControllerBase
+public class WhatsAppWebhookController(WhatsAppGatewayService service, ProjectManagement.Application.Features.Support.SupportChannelService support) : ApiControllerBase
 {
     [HttpGet]
     public IActionResult Verify([FromQuery(Name = "hub.mode")] string? mode,
@@ -70,7 +70,11 @@ public class WhatsAppWebhookController(WhatsAppGatewayService service) : ApiCont
             if (stream.Length + read > 64 * 1024) throw new ValidationException("body", "WhatsApp payload is too large.");
             stream.Write(buffer, 0, read);
         }
-        await service.ReceiveAsync(stream.ToArray(), Request.Headers["X-Hub-Signature-256"].ToString(), ct);
+        var body = stream.ToArray();
+        var signature = Request.Headers["X-Hub-Signature-256"].ToString();
+        // Numbers a workspace linked to its support desk: their customers' messages go to the desk (checked against the platform's signature there).
+        await support.ReceiveForConnectionsAsync(body, signature, ct);
+        await service.ReceiveAsync(body, signature, ct);
         return Ok(new { received = true });
     }
 }

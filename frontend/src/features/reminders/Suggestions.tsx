@@ -32,6 +32,7 @@ export function offerReminderAfterSend(text: string, kind: 'chat' | 'email' = 'c
   if (!wid || !LOOKS_LIKE_PROMISE.test(text)) return;
   window.setTimeout(() => {
     void reminderApi.suggestions().then((list) => {
+      if (!Array.isArray(list)) return;
       const fresh = list.filter((s) => s.sourceKind === kind && !offered.has(s.id) && Date.now() - new Date(s.createdAt).getTime() < 90_000)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
       if (!fresh) return;
@@ -51,7 +52,8 @@ export function ReminderSuggestions({ compact = false }: { compact?: boolean }) 
   const zone = deviceZone();
   const q = useWsQuery(['reminders', 'suggestions'], reminderApi.suggestions, { staleTime: 30_000, refetchInterval: compact ? false : 120_000 });
   const [busy, setBusy] = useState<string | null>(null);
-  const items = (q.data ?? []).slice(0, compact ? 3 : 8);
+  const all = Array.isArray(q.data) ? q.data : [];
+  const items = all.slice(0, compact ? 3 : 8);
   if (items.length === 0) return null;
 
   const drop = (id: string) => queryClient.setQueryData<ReminderSuggestion[]>([wid, 'reminders', 'suggestions'], (old) => old?.filter((x) => x.id !== id));
@@ -63,7 +65,7 @@ export function ReminderSuggestions({ compact = false }: { compact?: boolean }) 
 
   return (
     <section className={`rs ${compact ? 'rs-compact' : ''}`} aria-label="Suggested from what you said">
-      <h3><Icon name="sparkle" size={14} /> Suggested from what you said <em>{q.data!.length}</em></h3>
+      <h3><Icon name="sparkle" size={14} /> Suggested from what you said <em>{all.length}</em></h3>
       <ul>
         {items.map((s) => (
           <li key={s.id} className="rs-item">

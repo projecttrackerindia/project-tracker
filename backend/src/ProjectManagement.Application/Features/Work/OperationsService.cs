@@ -417,7 +417,7 @@ public class OperationsService(IAppDbContext db, ICurrentContext ctx, AppClock c
             .Select(c => new OpsLowRatingDto(c.Id, c.ContactName ?? "Customer", c.Rating!.Value, (c.RatedAt ?? c.RatingAskedAt)!.Value, c.WorkTaskId is { } t ? keys.GetValueOrDefault(t) : null,
                 c.AssigneeId is { } u ? names.GetValueOrDefault(u) : null)).ToList();
         var handed = chats.Where(c => c.HandedOverAt >= from).ToList();
-        var reasons = new[] { ("asked", "Customer asked for a person"), ("unsure", "Not in the documents"), ("upset", "Customer upset"), ("off", "AI switched off") }
+        var reasons = new[] { ("asked", "Customer asked for a person"), ("unsure", "Not in the documents"), ("upset", "Customer upset"), ("rule", "A connected system's rule"), ("off", "AI switched off") }
             .Select(r => new OpsCountDto(r.Item2, handed.Count(c => c.HandoverReason == r.Item1))).Where(r => r.Count > 0).ToList();
         return new OpsSatisfactionDto(chats.Count(c => c.RatingAskedAt >= from), rated.Count, Avg(rated.Select(c => c.Rating!.Value)),
             rated.Count == 0 ? null : Math.Round((decimal)rated.Count(c => c.Rating >= 4) / rated.Count, 4),

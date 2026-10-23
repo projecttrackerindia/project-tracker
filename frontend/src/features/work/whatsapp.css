@@ -150,3 +150,16 @@
 .wa-sources a:hover { text-decoration: underline; }
 .wa-pages { max-width: 420px; margin: -4px 0 4px 28px; }
 @media (max-width: 640px) { .wa-pages { margin-left: 0; } }
+/* Which number: the workspace's Meta sign-up connection, or another with pasted keys. */
+.wa-source { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 4px; }
+.wa-source-opt { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; background: var(--surface); }
+.wa-source-opt.on { border-color: var(--primary); background: var(--primary-soft); }
+.wa-source-opt span { display: grid; gap: 2px; }
+.wa-source-opt small { color: var(--text-3); font-size: 12px; }
+.wa-linked { display: flex; gap: 8px; align-items: center; margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); font-size: 13px; }
+.wa-verified { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--success-soft); color: var(--success); font-size: 11px; font-weight: 700; }
+.wa-drafts ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
+.wa-drafts li { padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); display: grid; gap: 4px; }
+.wa-draft-head { display: flex; align-items: center; gap: 8px; }
+.wa-draft-head span { color: var(--text-3); font-size: 12px; flex: 1; }
+.wa-draft-body { margin: 0; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }

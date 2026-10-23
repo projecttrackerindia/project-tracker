@@ -50,6 +50,19 @@ public class SupportChannel : TenantEntity, ITenantScoped
     public bool AnswerFromDocuments { get; set; } = true;
     /// <summary>Only pages of this project's space (null: every public page of the workspace).</summary>
     public Guid? KnowledgeProjectId { get; set; }
+    /// <summary>
+    /// The workspace's WhatsApp connection (set up with Meta's sign-up) this number shares with notifications: its token and the platform's
+    /// app are used, so no keys are pasted and Meta's messages arrive through the platform's webhook. Null: keys pasted for this number.
+    /// </summary>
+    public Guid? ConnectionId { get; set; }
+    /// <summary>Verified actions: account answers (EMI due date, statement, payment link, loan status) from connected systems, only after a one-time code.</summary>
+    public bool VerifiedActions { get; set; }
+    /// <summary>The connector that finds the customer (for example by loan number) and where its answer holds the registered mobile number.</summary>
+    public string? VerifyConnector { get; set; }
+    public string? VerifyMobilePath { get; set; }
+    /// <summary>An approved Authentication template that carries the code, for a registered number other than the one chatting.</summary>
+    public string? OtpTemplate { get; set; }
+    public string OtpTemplateLanguage { get; set; } = "en";
 }
 
 /// <summary>One person's WhatsApp chat with a support number. The number and the messages are stored encrypted.</summary>
@@ -88,4 +101,14 @@ public class SupportConversation : TenantEntity, ITenantScoped
     /// <summary>When the AI employee handed the chat to a person, and why: asked (the customer asked for one), unsure, upset or off (AI unavailable).</summary>
     public DateTime? HandedOverAt { get; set; }
     public string? HandoverReason { get; set; }
+    /// <summary>The one-time code waiting to be typed back (a keyed hash, never the code), until when, how many wrong tries, and for what (encrypted).</summary>
+    public string? OtpHash { get; set; }
+    public DateTime? OtpExpiresAt { get; set; }
+    public int OtpAttempts { get; set; }
+    public int OtpSends { get; set; }
+    public DateTime? OtpWindowAt { get; set; }
+    public string? OtpForProtected { get; set; }
+    /// <summary>Verified by a code until this time, for these details (encrypted, for example the loan number).</summary>
+    public DateTime? VerifiedUntil { get; set; }
+    public string? VerifiedForProtected { get; set; }
 }

@@ -260,7 +260,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
             var session = await (from s in db.UserSessions
                                  join u in db.Users on s.UserId equals u.Id
                                  where s.Id == sessionId && s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now
-                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, u.TimeZone, s.SsoTenantId, s.AuthMethod }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, u.TimeZone, s.SsoTenantId, s.AuthMethod, s.CreatedAt, u.PasswordLength }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
             if (session is null || !session.IsActive)
             {
                 await ErrorWriter.WriteAsync(http, 401, "Your session has ended. Please sign in again.", [new ApiError("SESSION_REVOKED", "Your session has ended. Please sign in again.")]);
@@ -277,7 +277,8 @@ public class CurrentContextMiddleware(RequestDelegate next)
             // A passkey is two factors in one (the device and the person's unlock), and a sign-in approved on the person's own phone is something they have:
             // either satisfies a workspace's two-step rule.
             var secondFactor = session.MfaEnabled || session.AuthMethod is "passkey" or "device";
-            await ApplyMembershipAsync(http, ctx, db, orgSecurity, zone, userId, secondFactor, session.SsoTenantId);
+            await ApplyMembershipAsync(http, ctx, db, orgSecurity, zone, userId, secondFactor, session.SsoTenantId,
+                new ProjectManagement.Application.Features.Organization.SignInFacts(session.AuthMethod, session.CreatedAt, session.PasswordLength));
         }
         await next(http);
     }
@@ -289,7 +290,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
     /// </summary>
     private static async Task ApplyMembershipAsync(HttpContext http, CurrentContext ctx, IAppDbContext db,
         ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, ProjectManagement.Application.Services.RequestZone zone,
-        Guid userId, bool mfaEnabled, Guid? ssoTenantId = null)
+        Guid userId, bool mfaEnabled, Guid? ssoTenantId = null, ProjectManagement.Application.Features.Organization.SignInFacts? signIn = null)
     {
         if (!Guid.TryParse(http.User.FindFirst(JwtClaims.WorkspaceId)?.Value, out var workspaceId)) return;
         // Signed in through this organization's own single sign-on: its identity provider vouched for the person (and applies its MFA).
@@ -301,7 +302,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
         if (membership is null) return;
         zone.WorkspaceZoneId = membership.TimeZone;
 
-        var blocked = await orgSecurity.CheckAccessAsync(workspaceId, mfaEnabled, ctx.IpAddress, http.RequestAborted);
+        var blocked = await orgSecurity.CheckAccessAsync(workspaceId, mfaEnabled, ctx.IpAddress, http.RequestAborted, signIn);
         if (blocked is not null) { ctx.BlockedWorkspace = (workspaceId, blocked.Code, blocked.Message); return; }
 
         ctx.TenantId = workspaceId;

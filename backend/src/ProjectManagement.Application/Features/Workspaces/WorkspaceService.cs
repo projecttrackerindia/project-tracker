@@ -156,7 +156,8 @@ public class WorkspaceService(
         var user = await db.Users.FirstAsync(u => u.Id == userId, ct);
         var session = await db.UserSessions.FirstAsync(s => s.Id == sessionId, ct);
         // A session opened by this organization's own single sign-on meets its two-step rule (the identity provider applies its own).
-        var blocked = await orgSecurity.CheckAccessAsync(workspaceId, user.MfaEnabled || session.SsoTenantId == workspaceId, ctx.IpAddress, ct);
+        var blocked = await orgSecurity.CheckAccessAsync(workspaceId, user.MfaEnabled || session.SsoTenantId == workspaceId || session.AuthMethod is "passkey" or "device", ctx.IpAddress, ct,
+            new ProjectManagement.Application.Features.Organization.SignInFacts(session.AuthMethod, session.CreatedAt, user.PasswordLength));
         if (blocked is not null) throw new ForbiddenException(blocked.Message, blocked.Code);
 
         session.WorkspaceId = workspaceId;
@@ -252,6 +253,7 @@ public class WorkspaceService(
             Email = req.Email.Trim(), NormalizedEmail = normalized, DisplayName = req.DisplayName.Trim(), PasswordHash = hasher.Hash(req.Password),
             EmailVerified = true, MustChangePassword = true, CreatedAt = now, CreatedBy = ctx.UserId,
         };
+        passwordPolicy.Stamp(user, req.Password);
         db.Users.Add(user);
         var member = new TenantMember
         {

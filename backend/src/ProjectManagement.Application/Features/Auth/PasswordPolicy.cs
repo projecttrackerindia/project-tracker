@@ -112,7 +112,7 @@ public static class PasswordRules
 }
 
 /// <summary>Applies the platform's password policy wherever a password is chosen: sign-up, reset and change.</summary>
-public class PasswordPolicyService(IAppDbContext db, IPasswordHasher hasher, PlatformSettingsCache platform, AppClock clock)
+public class PasswordPolicyService(IAppDbContext db, IPasswordHasher hasher, PlatformSettingsCache platform, AppClock clock, PasswordBreachCheck breaches)
 {
     public Task<PasswordPolicyDto> GetAsync(CancellationToken ct = default) => platform.GetPasswordPolicyAsync(ct);
 
@@ -125,7 +125,17 @@ public class PasswordPolicyService(IAppDbContext db, IPasswordHasher hasher, Pla
             problems.Add(policy.HistoryCount == 1
                 ? "Choose a password different from your current one."
                 : $"You used this password recently. Choose one that isn't among your last {policy.HistoryCount} passwords.");
+        // A password in a public breach list is refused for every account: it is the first one attackers try.
+        if (problems.Count == 0 && await breaches.TimesSeenAsync(password, ct) is > 0 and var seen)
+            problems.Add($"This password has appeared in public data breaches ({(seen >= 1000 ? "thousands of times" : seen == 1 ? "once" : $"{seen} times")}), so attackers try it first. Choose a different one.");
         if (problems.Count > 0) throw new ValidationException(field, string.Join(" ", problems));
+    }
+
+    /// <summary>Notes when a password was chosen and its length (capped), never the password: for workspace rules and the security view.</summary>
+    public void Stamp(User user, string password)
+    {
+        user.PasswordChangedAt = clock.Now;
+        user.PasswordLength = Math.Min(password.Length, 20);
     }
 
     /// <summary>The current password counts as the most recent one; the rest come from the history.</summary>

@@ -10,6 +10,8 @@ namespace ProjectManagement.Api.Controllers.Work;
 public class SupportChannelsController(SupportChannelService support) : ApiControllerBase
 {
     [HttpGet("channels")] public async Task<IActionResult> Channels(CancellationToken ct) => Ok(await support.ChannelsAsync(ct));
+    /// <summary>The workspace's WhatsApp connection (Meta sign-up) that support can use without pasted keys.</summary>
+    [HttpGet("channels/connection")] public async Task<IActionResult> Connection(CancellationToken ct) => Ok(await support.ConnectionOfferAsync(ct));
     [HttpPost("channels")] public async Task<IActionResult> Connect([FromBody] SaveSupportChannelRequest req, CancellationToken ct) => Created(await support.SaveChannelAsync(null, req, ct));
     [HttpPut("channels/{id:guid}")] public async Task<IActionResult> Save(Guid id, [FromBody] SaveSupportChannelRequest req, CancellationToken ct) => Ok(await support.SaveChannelAsync(id, req, ct));
     [HttpPost("channels/{id:guid}/check")] public async Task<IActionResult> Check(Guid id, CancellationToken ct) => Ok(await support.CheckChannelAsync(id, ct));

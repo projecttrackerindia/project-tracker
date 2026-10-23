@@ -14,6 +14,12 @@ public class TenantSecuritySettings : TenantEntity, ITenantScoped
     public bool IpAllowlistEnabled { get; set; }
     /// <summary>One IP address or CIDR range per line (e.g. "203.0.113.9" or "10.0.0.0/8"). Empty when the allowlist is off.</summary>
     public string IpRanges { get; set; } = "";
+    /// <summary>Stricter than the platform: passwords shorter than this must be changed before entering the workspace (0 = the platform's rule).</summary>
+    public int MinPasswordLength { get; set; }
+    /// <summary>Sign in again after this many hours (0 = the platform's session length).</summary>
+    public int SessionHours { get; set; }
+    /// <summary>The ways in this workspace accepts, comma separated: password, passkey, google, microsoft, github, apple, sso. Empty = all.</summary>
+    public string AllowedSignIn { get; set; } = "";
 
     /// <summary>How long a revealed secret stays on screen before it is masked again (10, 15, 30, 60 or a custom 5-300). Business plans can change it; others use the default.</summary>
     public int RevealSeconds { get; set; } = 15;

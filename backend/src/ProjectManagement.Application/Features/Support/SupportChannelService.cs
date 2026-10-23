@@ -35,12 +35,16 @@ public class SupportOptions
 public record SupportChannelDto(Guid Id, string Name, Guid? TeamId, string? TeamName, string PhoneNumberId, string BusinessAccountId, string? DisplayPhone, string? VerifiedName,
     bool Enabled, bool AutoReply, string AgentName, Guid? WorkTypeId, string WebhookUrl, string VerifyToken, DateTime? LastInboundAt, DateTime? CheckedAt, string? LastError,
     int OpenChats, DateTime ConnectedAt, int FirstReplyMinutes = 15, bool TellCustomer = true, bool AskRating = true, string? UpdateTemplate = null,
-    string UpdateTemplateLanguage = "en", IReadOnlyList<SupportSavedReplyDto>? SavedReplies = null, bool AnswerFromDocuments = true, Guid? KnowledgeProjectId = null);
+    string UpdateTemplateLanguage = "en", IReadOnlyList<SupportSavedReplyDto>? SavedReplies = null, bool AnswerFromDocuments = true, Guid? KnowledgeProjectId = null,
+    bool Linked = false, bool VerifiedActions = false, string? VerifyConnector = null, string? VerifyMobilePath = null, string? OtpTemplate = null, string OtpTemplateLanguage = "en");
+/// <summary>The workspace's WhatsApp connection (set up with Meta's sign-up), offered for support so no keys are pasted.</summary>
+public record SupportConnectionOfferDto(bool Available, string? DisplayName, string? PhoneNumberId, bool AlreadyUsed);
 /// <summary>The desk settings are optional: left out, they keep their current values.</summary>
 public record SaveSupportChannelRequest(string Name, Guid? TeamId, string PhoneNumberId, string BusinessAccountId, string? AccessToken, string? AppSecret,
     bool Enabled, bool AutoReply, string? AgentName, Guid? WorkTypeId, int? FirstReplyMinutes = null, bool? TellCustomer = null, bool? AskRating = null,
     string? UpdateTemplate = null, string? UpdateTemplateLanguage = null, IReadOnlyList<SupportSavedReplyDto>? SavedReplies = null,
-    bool? AnswerFromDocuments = null, Guid? KnowledgeProjectId = null, bool AllPages = false);
+    bool? AnswerFromDocuments = null, Guid? KnowledgeProjectId = null, bool AllPages = false,
+    bool UseConnection = false, bool? VerifiedActions = null, string? VerifyConnector = null, string? VerifyMobilePath = null, string? OtpTemplate = null, string? OtpTemplateLanguage = null);
 /// <summary>A photo, voice note, video or file the customer sent; fetched from Meta when someone opens it. Voice notes carry what was said.</summary>
 public record SupportMediaDto(string Kind, string Id, string? Mime, string? FileName, string? Transcript = null);
 /// <summary>From: contact (the customer), ai, agent (a person on the team), update (a ticket update sent to the customer) or system (a note only the team sees).</summary>
@@ -50,7 +54,7 @@ public record SupportMessageDto(string From, string Text, DateTime At, string? B
     IReadOnlyList<SupportSourceDto>? Sources = null);
 public record SupportConversationItem(Guid Id, Guid ChannelId, string ChannelName, string Contact, string? ContactName, string Language, string Status, string Mode,
     DateTime LastMessageAt, string? LastText, int Unread, Guid? WorkTaskId, string? TicketKey, bool CanReply, Guid? AssigneeId = null, string? AssigneeName = null,
-    DateTime? WaitingSince = null, DateTime? ReplyDueAt = null, int? Rating = null);
+    DateTime? WaitingSince = null, DateTime? ReplyDueAt = null, int? Rating = null, DateTime? VerifiedUntil = null);
 public record SupportConversationDto(SupportConversationItem Chat, IReadOnlyList<SupportMessageDto> Messages, IReadOnlyList<SupportSavedReplyDto>? SavedReplies = null);
 public record SupportReplyRequest(string Text);
 public record SupportSavedReplyDto(string Title, string Text);
@@ -69,7 +73,8 @@ public record SupportMediaFile(Stream Content, string ContentType, string FileNa
 public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ISecretProtector secrets, PermissionService permissions,
     IAiClient ai, AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions, IOptions<SupportOptions> options,
     IOptions<AppOptions> app, IHttpClientFactory http, WorkTaskService workTasks, WorkTypeService workTypes, NotificationService notifications, Recorder recorder, ILogger<SupportChannelService> log,
-    IChatNotifier live, IFileStorage files, VoiceSpeechService speech, SupportKnowledge knowledge)
+    IChatNotifier live, IFileStorage files, VoiceSpeechService speech, SupportKnowledge knowledge, ConnectorCaller connectors,
+    IOptions<ProjectManagement.Application.Features.Integrations.WhatsAppOptions> whatsApp)
 {
     /// <summary>The live event the inbox listens for: a chat changed, look again.</summary>
     public const string LiveEvent = "support";
@@ -99,7 +104,8 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
 
     private SupportChannelDto Dto(SupportChannel r, string? team, int open) => new(r.Id, r.Name, r.TeamId, team, r.PhoneNumberId, r.BusinessAccountId, r.DisplayPhone,
         r.VerifiedName, r.Enabled, r.AutoReply, r.AgentName, r.WorkTypeId, WebhookUrl(r.Id), r.VerifyToken, r.LastInboundAt, r.CheckedAt, r.LastError, open, r.CreatedAt,
-        r.FirstReplyMinutes, r.TellCustomer, r.AskRating, r.UpdateTemplate, r.UpdateTemplateLanguage, SavedReplies(r), r.AnswerFromDocuments, r.KnowledgeProjectId);
+        r.FirstReplyMinutes, r.TellCustomer, r.AskRating, r.UpdateTemplate, r.UpdateTemplateLanguage, SavedReplies(r), r.AnswerFromDocuments, r.KnowledgeProjectId,
+        r.ConnectionId != null, r.VerifiedActions, r.VerifyConnector, r.VerifyMobilePath, r.OtpTemplate, r.OtpTemplateLanguage);
 
     private static List<SupportSavedReplyDto> SavedReplies(SupportChannel r)
     {
@@ -109,6 +115,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
 
     private static readonly Regex TemplateName = new("^[a-z0-9_]{1,512}$", RegexOptions.Compiled);
     private static readonly Regex LanguageCode = new("^[a-z]{2,3}(_[A-Z]{2})?$", RegexOptions.Compiled);
+    private static readonly Regex MobilePath = new(@"^[A-Za-z_][A-Za-z0-9_]{0,40}(\.[A-Za-z0-9_]{1,40}|\[\d{1,2}\]){1,8}$", RegexOptions.Compiled);
 
     /// <summary>Applies the desk settings that were sent (others stay as they are).</summary>
     private static void ApplyDesk(SupportChannel row, SaveSupportChannelRequest req)
@@ -123,6 +130,27 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         if (req.AnswerFromDocuments is { } docs) row.AnswerFromDocuments = docs;
         if (req.AllPages) row.KnowledgeProjectId = null;
         else if (req.KnowledgeProjectId is { } space) row.KnowledgeProjectId = space;
+        if (req.VerifiedActions is { } verified) row.VerifiedActions = verified;
+        if (req.VerifyConnector is not null) row.VerifyConnector = req.VerifyConnector.Trim() is { Length: > 0 } vc ? vc : null;
+        if (req.VerifyMobilePath is not null)
+        {
+            var path = req.VerifyMobilePath.Trim();
+            if (path.Length > 0 && !MobilePath.IsMatch(path)) throw new ValidationException("verifyMobilePath", "Write where the mobile number is in the answer, like main.customer.mobile.");
+            row.VerifyMobilePath = path.Length == 0 ? null : path;
+        }
+        if (req.OtpTemplate is not null)
+        {
+            var t = req.OtpTemplate.Trim();
+            if (t.Length > 0 && !TemplateName.IsMatch(t)) throw new ValidationException("otpTemplate", "Use the template's name exactly as in WhatsApp Manager (lowercase letters, digits and _).");
+            row.OtpTemplate = t.Length == 0 ? null : t;
+        }
+        if (req.OtpTemplateLanguage is { Length: > 0 } otpLang)
+        {
+            if (!LanguageCode.IsMatch(otpLang.Trim())) throw new ValidationException("otpTemplateLanguage", "Use the template's language code, like en, en_US, hi or te.");
+            row.OtpTemplateLanguage = otpLang.Trim();
+        }
+        if (row.VerifiedActions && (row.VerifyConnector is null || row.VerifyMobilePath is null))
+            throw new ValidationException("verifyConnector", "Choose the connector that finds the customer and where it keeps their registered mobile number.");
         if (req.UpdateTemplate is not null)
         {
             var t = req.UpdateTemplate.Trim();
@@ -156,6 +184,16 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         var name = (req.Name ?? "").Trim();
         if (name.Length is < 2 or > 80) throw new ValidationException("name", "Name the number, like 'IT helpdesk' or 'Branch operations'.");
         var phoneId = (req.PhoneNumberId ?? "").Trim(); var wabaId = (req.BusinessAccountId ?? "").Trim();
+        // The workspace's own WhatsApp connection (Meta sign-up): its number, nothing to paste.
+        var linkedRow = id is { } lid ? await db.SupportChannels.AsNoTracking().Where(c => c.Id == lid).Select(c => c.ConnectionId).FirstOrDefaultAsync(ct) : null;
+        WhatsAppConnection? connection = null;
+        if (req.UseConnection || linkedRow is not null)
+        {
+            connection = await db.WhatsAppConnections.AsNoTracking().Where(x => x.Active && (linkedRow == null || x.Id == linkedRow)).OrderByDescending(x => x.ConnectedAt).FirstOrDefaultAsync(ct)
+                ?? throw new ConflictException("Connect WhatsApp in Settings › Integrations first, then use it here.", "WHATSAPP_NOT_CONNECTED");
+            if (string.IsNullOrEmpty(whatsApp.Value.AppSecret)) throw new ConflictException("WhatsApp sign-up is not set up on this server.", "WHATSAPP_NOT_CONFIGURED");
+            phoneId = connection.PhoneNumberId; wabaId = connection.BusinessAccountId;
+        }
         if (!Digits.IsMatch(phoneId)) throw new ValidationException("phoneNumberId", "Paste the Phone number ID from WhatsApp Manager › API setup (digits only).");
         if (!Digits.IsMatch(wabaId)) throw new ValidationException("businessAccountId", "Paste the WhatsApp Business Account ID (digits only).");
         var agent = (req.AgentName ?? "Asha").Trim();
@@ -166,7 +204,8 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
             throw new ValidationException("knowledgeProjectId", "Choose one of your projects, or every public page.");
         var row = id is { } existing ? await db.SupportChannels.FirstOrDefaultAsync(c => c.Id == existing, ct) ?? throw new NotFoundException("Number not found.") : null;
         var token = req.AccessToken?.Trim(); var secret = req.AppSecret?.Trim();
-        if (row is null && (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(secret)))
+        if (connection is not null) { token = null; secret = null; }
+        if (row is null && connection is null && (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(secret)))
             throw new ValidationException(string.IsNullOrEmpty(token) ? "accessToken" : "appSecret", "Paste the permanent access token and the app secret.");
         if (token is { Length: > 0 } && (token.Length is < 20 or > 2000 || token.Any(char.IsWhiteSpace))) throw new ValidationException("accessToken", "That does not look like an access token.");
         if (secret is { Length: > 0 } && !Regex.IsMatch(secret, "^[A-Za-z0-9]{16,128}$")) throw new ValidationException("appSecret", "That does not look like an app secret (Meta app › Settings › Basic).");
@@ -184,13 +223,40 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         if (row.PhoneNumberId != phoneId) { row.DisplayPhone = null; row.VerifiedName = null; row.CheckedAt = null; }
         row.Name = name; row.TeamId = req.TeamId; row.PhoneNumberId = phoneId; row.BusinessAccountId = wabaId; row.Enabled = req.Enabled; row.AutoReply = req.AutoReply;
         row.AgentName = agent; row.WorkTypeId = req.WorkTypeId;
+        if (connection is not null) { row.ConnectionId = connection.Id; row.AccessTokenProtected = ""; row.AppSecretProtected = ""; }
         ApplyDesk(row, req);
+        if (row.VerifyConnector is { } vcName && !await db.VoiceConnectors.AnyAsync(c => c.Name == vcName, ct))
+            throw new ValidationException("verifyConnector", "Choose one of your connectors (Operations › Voice › Connectors).");
         if (token is { Length: > 0 }) row.AccessTokenProtected = secrets.Protect(token);
         if (secret is { Length: > 0 }) row.AppSecretProtected = secrets.Protect(secret);
         await db.SaveChangesAsync(ct);
         recorder.Audit(id is null ? "support.channel_connected" : "support.channel_updated", "SupportChannel", row.Id, null, new { row.Name, row.PhoneNumberId, row.TeamId });
         await db.SaveChangesAsync(ct);
         return (await ChannelsAsync(ct)).First(c => c.Id == row.Id);
+    }
+
+    /// <summary>Whether the workspace has a WhatsApp connection (Meta sign-up) that support can use instead of pasted keys.</summary>
+    public async Task<SupportConnectionOfferDto> ConnectionOfferAsync(CancellationToken ct)
+    {
+        await permissions.RequireAsync(Permissions.WorkTypesManage, ct);
+        var c = await db.WhatsAppConnections.AsNoTracking().Where(x => x.Active).OrderByDescending(x => x.ConnectedAt).FirstOrDefaultAsync(ct);
+        if (c is null || string.IsNullOrEmpty(whatsApp.Value.AppSecret)) return new(false, null, null, false);
+        return new(true, c.DisplayName, c.PhoneNumberId, await db.SupportChannels.AnyAsync(x => x.PhoneNumberId == c.PhoneNumberId, ct));
+    }
+
+    /// <summary>The app secret that signs this number's messages and keys its contacts: the platform's for a linked number, else the pasted one.</summary>
+    private string AppSecretOf(SupportChannel c) =>
+        c.ConnectionId is null ? secrets.Unprotect(c.AppSecretProtected) : whatsApp.Value.AppSecret ?? throw new ConflictException("WhatsApp sign-up is not set up on this server.");
+
+    /// <summary>The token to send with: the workspace connection's (kept fresh by Meta sign-up) for a linked number, else the pasted one.</summary>
+    private async Task<string> TokenAsync(SupportChannel c, CancellationToken ct)
+    {
+        if (c.ConnectionId is not { } cid) return secrets.Unprotect(c.AccessTokenProtected);
+        // Only the connection this number was linked to, in the same workspace (read across the tenant filter for the background workers).
+        var token = await db.WhatsAppConnections.IgnoreQueryFilters().AsNoTracking().Where(x => x.Id == cid && x.TenantId == c.TenantId && x.Active)
+            .Select(x => x.AccessTokenProtected).FirstOrDefaultAsync(ct);
+        if (string.IsNullOrEmpty(token)) throw new ConflictException("The workspace's WhatsApp connection is no longer active. Reconnect WhatsApp in Settings › Integrations.");
+        return secrets.Unprotect(token);
     }
 
     /// <summary>Asks Meta for the number's name and display number with the saved token: proves the details are right before anyone writes in.</summary>
@@ -202,7 +268,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, $"{Graph()}/{row.PhoneNumberId}?fields=display_phone_number,verified_name");
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", secrets.Unprotect(row.AccessTokenProtected));
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync(row, ct));
             using var res = await http.CreateClient("support-whatsapp").SendAsync(req, ct);
             var body = await res.Content.ReadAsStringAsync(ct);
             if (!res.IsSuccessStatusCode) row.LastError = MetaError(body, (int)res.StatusCode);
@@ -213,6 +279,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
             }
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException) { row.LastError = "Meta could not be reached. Try again in a minute."; }
+        catch (ConflictException e) { row.LastError = e.Message; }
         await db.SaveChangesAsync(ct);
         return (await ChannelsAsync(ct)).First(c => c.Id == row.Id);
     }
@@ -258,7 +325,37 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
     public async Task<bool> ReceiveAsync(Guid channelId, byte[] body, string? signature, CancellationToken ct)
     {
         var channel = await db.SupportChannels.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(c => c.Id == channelId, ct);
-        if (channel is null || !SignatureValid(secrets.Unprotect(channel.AppSecretProtected), body, signature)) return false;
+        // A linked number's messages come through the platform's webhook, never this address.
+        if (channel is null || channel.ConnectionId is not null || !SignatureValid(secrets.Unprotect(channel.AppSecretProtected), body, signature)) return false;
+        return await ProcessAsync(channel, body, ct);
+    }
+
+    /// <summary>
+    /// The platform's WhatsApp webhook (Meta sign-up numbers): when it is signed with the platform's app secret, messages to a number a workspace
+    /// linked to its support desk are handled exactly like a pasted number's. Other numbers are left to the notification gateway.
+    /// </summary>
+    public async Task<int> ReceiveForConnectionsAsync(byte[] body, string? signature, CancellationToken ct)
+    {
+        if (whatsApp.Value.AppSecret is not { Length: >= 16 } appSecret || !SignatureValid(appSecret, body, signature)) return 0;
+        JsonNode? root;
+        try { root = JsonNode.Parse(body); } catch (JsonException) { return 0; }
+        var phones = (root?["entry"] as JsonArray ?? []).SelectMany(e => e?["changes"] as JsonArray ?? []).Select(c => c?["value"]?["metadata"]?["phone_number_id"]?.ToString())
+            .Where(x => x is { Length: > 0 and <= 40 }).Distinct().ToList();
+        if (phones.Count == 0) return 0;
+        // Only routing columns are read across workspaces, after the platform signature was checked.
+        var channels = await db.SupportChannels.IgnoreQueryFilters().AsNoTracking().Where(c => c.ConnectionId != null && phones.Contains(c.PhoneNumberId)).ToListAsync(ct);
+        var handled = 0;
+        foreach (var channel in channels)
+        {
+            var linked = await db.WhatsAppConnections.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(x => x.Id == channel.ConnectionId && x.TenantId == channel.TenantId && x.Active && x.PhoneNumberId == channel.PhoneNumberId, ct);
+            if (linked && await ProcessAsync(channel, body, ct)) handled++;
+        }
+        return handled;
+    }
+
+    private async Task<bool> ProcessAsync(SupportChannel channel, byte[] body, CancellationToken ct)
+    {
         if (!channel.Enabled) return true;
         var original = (ctx as CurrentContext)?.TenantId;
         if (ctx is CurrentContext cc) cc.TenantId = channel.TenantId;
@@ -332,7 +429,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
 
     private async Task AddInboundAsync(SupportChannel channel, string from, string? name, string providerId, string text, SupportMediaDto? media, DateTime now, CancellationToken ct)
     {
-        var key = ContactKey(channel, secrets.Unprotect(channel.AppSecretProtected), from);
+        var key = ContactKey(channel, AppSecretOf(channel), from);
         var chat = await db.SupportConversations.FirstOrDefaultAsync(c => c.ChannelId == channel.Id && c.ContactKey == key, ct);
         if (chat is null)
         {
@@ -342,7 +439,15 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         }
         var messages = Messages(chat);
         if (messages.Any(x => x.ProviderId == providerId)) return;   // Meta delivers again when it is unsure we got it
-        messages.Add(new("contact", text, now, null, providerId, media));
+        var codeNote = media is null ? CheckCode(chat, channel, text, now) : null;
+        if (codeNote is not null)
+        {
+            // The code never reaches the AI, the chat history or the team.
+            messages.Add(new("contact", "[one-time code]", now, null, providerId));
+            messages.Add(new("system", codeNote, now));
+            text = "[one-time code]";
+        }
+        else messages.Add(new("contact", text, now, null, providerId, media));
         if (name is { Length: > 0 }) chat.ContactName = name.Length > 120 ? name[..120] : name;
         chat.LastMessageAt = now; chat.LastInboundAt = now; chat.Unread++;
         chat.UpdatedAt = now;
@@ -407,6 +512,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
             ["resolved"] = "Good news: ticket {0} is resolved. If anything is still not right, just reply here.",
             ["cancelled"] = "Ticket {0} has been closed. If you still need help, just reply here.",
             ["handover"] = "One of my colleagues will help you with this shortly, here in this chat.",
+            ["code"] = "Your verification code is {0}. It works for 10 minutes. Never share it with anyone, not even with us on a call.",
         },
         ["hi"] = new()
         {
@@ -418,6 +524,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
             ["resolved"] = "अच्छी खबर: टिकट {0} हल हो गया है। अगर अब भी कुछ ठीक नहीं है, तो यहीं जवाब दें।",
             ["cancelled"] = "टिकट {0} बंद कर दिया गया है। अगर अब भी मदद चाहिए, तो यहीं जवाब दें।",
             ["handover"] = "हमारी टीम से कोई सहयोगी जल्द ही इसी चैट में आपकी मदद करेंगे।",
+            ["code"] = "आपका वेरिफिकेशन कोड {0} है। यह 10 मिनट तक मान्य है। इसे किसी के साथ साझा न करें।",
         },
         ["te"] = new()
         {
@@ -429,6 +536,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
             ["resolved"] = "శుభవార్త: టికెట్ {0} పరిష్కారమైంది. ఇంకా ఏదైనా సరిగా లేకపోతే, ఇక్కడే రిప్లై చేయండి.",
             ["cancelled"] = "టికెట్ {0} మూసివేశాం. ఇంకా సహాయం కావాలంటే, ఇక్కడే రిప్లై చేయండి.",
             ["handover"] = "మా టీమ్ నుండి ఒక సహోద్యోగి త్వరలో ఇదే చాట్‌లో మీకు సహాయం చేస్తారు.",
+            ["code"] = "మీ వెరిఫికేషన్ కోడ్ {0}. ఇది 10 నిమిషాలు పనిచేస్తుంది. దీన్ని ఎవరితోనూ పంచుకోవద్దు.",
         },
     };
 
@@ -468,7 +576,8 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
             var last = messages.LastOrDefault(m => m.From != "system");
             return new SupportConversationItem(c.Id, c.ChannelId, info.Name, fullNumber ? "+" + number : Mask(number), c.ContactName, c.Language, c.Status, c.Mode,
                 c.LastMessageAt, last?.Text, c.Unread, c.WorkTaskId, c.WorkTaskId is { } w ? keys.GetValueOrDefault(w) : null, c.LastInboundAt is { } at && at > clock.Now.AddHours(-24),
-                c.AssigneeId, c.AssigneeId is { } a ? users.GetValueOrDefault(a) : null, c.WaitingSince, c.WaitingSince?.AddMinutes(info.FirstReplyMinutes), c.Rating);
+                c.AssigneeId, c.AssigneeId is { } a ? users.GetValueOrDefault(a) : null, c.WaitingSince, c.WaitingSince?.AddMinutes(info.FirstReplyMinutes), c.Rating,
+                c.VerifiedUntil > clock.Now ? c.VerifiedUntil : null);
         }).ToList();
     }
 
@@ -640,7 +749,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
     {
         var body = JsonSerializer.Serialize(new { messaging_product = "whatsapp", recipient_type = "individual", to, type = "text", text = new { preview_url = false, body = text } });
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{Graph()}/{channel.PhoneNumberId}/messages") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", secrets.Unprotect(channel.AccessTokenProtected));
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync(channel, ct));
         using var res = await http.CreateClient("support-whatsapp").SendAsync(req, ct);
         if (!res.IsSuccessStatusCode)
         {
@@ -654,7 +763,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         Reply with ONLY one JSON object, no other text:
         {"reply": "your WhatsApp message to the person (short, friendly, in their language)", "language": "en|hi|te|ta|...",
          "action": "none" | "ticket" | "human", "title": "short ticket title when action is ticket or human", "summary": "what they need, for the team", "priority": "Low|Medium|High|Critical",
-         "sources": ["D1"], "confident": true, "reason": "asked|unsure|upset"}
+         "sources": ["D1"], "confident": true, "reason": "asked|unsure|upset", "tool": null}
         - none: you answered from the knowledge or pages below, or you asked for a missing detail.
         - ticket: something must be done by the team (access, a fix, a change, a request) and you have the details you need. Tell them a ticket is raised.
         - human: they ask for a person or a call (reason asked), are upset (reason upset), or the knowledge and pages do not answer it (reason unsure). Say a colleague will help them in their language.
@@ -710,20 +819,40 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
             system.Append("\nThis person's own tickets (they may ask about them; say where each stands in plain words, never invent dates or names):");
             foreach (var t in theirs) system.Append($"\n{t.Key} \"{t.Title}\": {t.Status}{(t.With is null ? "" : $" with {t.With}")}, last update {t.UpdatedAt:d MMM}{(t.Due is { } due ? $", due {due:d MMM}" : "")}.");
         }
+        var tools = channel.VerifiedActions ? await db.VoiceConnectors.AsNoTracking().Where(x => x.Enabled).OrderBy(x => x.Name).ToListAsync(ct) : [];
+        if (tools.Count > 0) system.Append(ToolsPrompt(channel, c, tools));
         system.Append('\n').Append(Protocol);
         var history = string.Join("\n", messages.TakeLast(30).Select(m => $"{(m.From == "contact" ? "Person" : m.From == "ai" ? "You" : m.From == "agent" ? $"Colleague {m.By}" : "Note")}: {m.Text}"));
 
         var cost = Math.Clamp(aiOptions.Value.Chat.Quick.Credits, 1, 10000);
-        AiAnswer answer;
-        await using (var lease = await credits.ReserveAsync(Guid.NewGuid(), cost, "support_whatsapp", ct))
-        {
-            answer = await ai.CompleteAsync(system.ToString(), history + "\nYour JSON:", 500, ct);
-            await lease.SettleAsync(cost, ct);
-        }
         JsonObject? j = null;
-        var a = answer.Text.IndexOf('{'); var b = answer.Text.LastIndexOf('}');
-        if (a >= 0 && b > a) { try { j = JsonNode.Parse(answer.Text[a..(b + 1)]) as JsonObject; } catch (JsonException) { } }
+        // Verified actions: the AI employee may ask the server to send a one-time code or read a connected system (at most three times), and is
+        // then asked again with the result. Account facts go to the customer exactly as the system formatted them, never retyped.
+        var scratch = new List<string>();
+        string? facts = null; var toolAction = "none"; string? toolActionText = null; string? toolPriority = null;
+        for (var step = 0; step < 4; step++)
+        {
+            AiAnswer answer;
+            await using (var lease = await credits.ReserveAsync(Guid.NewGuid(), cost, "support_whatsapp", ct))
+            {
+                answer = await ai.CompleteAsync(system.ToString(), history + (scratch.Count > 0 ? "\n" + string.Join("\n", scratch) : "") + "\nYour JSON:", 500, ct);
+                await lease.SettleAsync(cost, ct);
+            }
+            j = null;
+            var a = answer.Text.IndexOf('{'); var b = answer.Text.LastIndexOf('}');
+            if (a >= 0 && b > a) { try { j = JsonNode.Parse(answer.Text[a..(b + 1)]) as JsonObject; } catch (JsonException) { } }
+            if (j?["tool"] is not JsonObject tool || tools.Count == 0 || step == 3) break;
+            var outcome = await RunToolAsync(tool, channel, c, tools, messages, ct);
+            scratch.Add($"Tool {tool["name"]}: {outcome.Result}");
+            if (outcome.Facts is { Length: > 0 } f) facts = f;
+            if (outcome.Action != "none") { toolAction = outcome.Action; toolActionText = outcome.ActionText; toolPriority = outcome.Priority; }
+        }
         var reply = j?["reply"]?.ToString()?.Trim();
+        if (facts is not null)
+        {
+            // The facts as the connected system gave them; a few words of the AI employee's own only when they carry no figures.
+            reply = string.IsNullOrEmpty(reply) || reply.Any(char.IsDigit) ? facts : facts + "\n\n" + reply;
+        }
         if (string.IsNullOrEmpty(reply))
         {
             c.Mode = "human"; c.Status = "waiting"; c.NeedsReply = false; c.HandedOverAt = clock.Now; c.HandoverReason = "unsure";
@@ -733,8 +862,11 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         if (j?["language"]?.ToString() is { Length: >= 2 and <= 5 } lang && VoiceLanguages.Names.ContainsKey(lang)) c.Language = lang;
         var action = j?["action"]?.ToString();
         var reason = j?["reason"]?.ToString() is ("asked" or "upset" or "unsure") and var said ? said : "unsure";
+        // A connected system's rule asked for a ticket or a person.
+        if (toolAction == "ticket" && action is null or "none") { action = "ticket"; j ??= []; j["title"] ??= toolActionText; j["priority"] ??= toolPriority; }
+        else if (toolAction == "transfer") { action = "human"; reason = "rule"; }
         // Not sure the pages answer it: no guess goes to the customer; a colleague takes it.
-        if (action is null or "none" && j?["confident"] is JsonValue cv && cv.TryGetValue<bool>(out var confident) && !confident)
+        if (facts is null && action is null or "none" && j?["confident"] is JsonValue cv && cv.TryGetValue<bool>(out var confident) && !confident)
         {
             action = "human"; reason = "unsure"; reply = Phrase(c.Language, "handover");
         }
@@ -762,6 +894,171 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         c.NeedsReply = false; c.LastMessageAt = clock.Now; c.UpdatedAt = clock.Now; c.WaitingSince = null;
         await db.SaveChangesAsync(ct);
         await PushAsync(c, ct);
+    }
+
+    // ------------------------------------------------------------------ verified actions (one-time code, connected systems)
+
+    private sealed record ToolOutcome(string Result, string? Facts = null, string Action = "none", string? ActionText = null, string? Priority = null);
+
+    private static readonly Regex OtpCode = new(@"^\s*(\d{6})\s*$", RegexOptions.Compiled);
+    public const int OtpMinutes = 10, VerifiedMinutes = 30, OtpTries = 5, OtpSendsPerHour = 3;
+
+    private string ToolsPrompt(SupportChannel channel, SupportConversation c, List<VoiceConnector> tools)
+    {
+        var sb = new StringBuilder("\nVerified actions: account details (EMI due date, statement of account, payment link, loan status, balances) come ONLY from the connected systems below, " +
+            "and those marked 'needs verification' only after the person types the one-time code sent to their registered mobile number. Never write amounts, dates, " +
+            "account numbers or links yourself: the system sends the exact facts to the person. Use \"tool\" in your JSON to act; you get the result and answer again.\n");
+        var verify = tools.FirstOrDefault(t => t.Name == channel.VerifyConnector);
+        if (verify is not null)
+        {
+            var needs = VoiceFlowRunner.Parse(verify.FlowJson) is { Inputs.Count: > 0 } vf ? string.Join(", ", vf.Inputs.Select(i => $"{i.Name} ({(string.IsNullOrWhiteSpace(i.Label) ? i.Type : i.Label)})"))
+                : string.Join(", ", ConnectorCaller.Placeholder.Matches(verify.UrlTemplate).Select(m => m.Groups[1].Value).Distinct());
+            sb.Append($"- verify: {{\"name\":\"verify\",\"args\":{{...{needs}}}}} sends a one-time code to the registered mobile number for those details. Then ask them to type the 6-digit code here.\n");
+        }
+        sb.Append("- lookup: {\"name\":\"lookup\",\"args\":{\"connector\":\"<name>\", ...its values}}. Connectors:\n");
+        foreach (var t in tools)
+        {
+            if (VoiceFlowRunner.Parse(t.FlowJson) is not { } flow) continue;   // only connectors with chosen, formatted facts can answer customers
+            sb.Append($"  - {t.Name}: {t.Description} (needs: {(flow.Inputs.Count == 0 ? "nothing" : string.Join(", ", flow.Inputs.Select(i => i.Name)))}){(flow.RequiresVerifiedCaller ? " — needs verification" : "")}\n");
+        }
+        var now = clock.Now;
+        sb.Append(c.VerifiedUntil > now ? $"The person IS verified (until {c.VerifiedUntil:HH:mm} UTC) for: {VerifiedText(c)}.\n"
+            : c.OtpHash is not null && c.OtpExpiresAt > now ? "A code has been sent and not typed yet: ask them to type it here.\n"
+            : "The person is NOT verified.\n");
+        return sb.ToString();
+    }
+
+    private Dictionary<string, string> VerifiedFor(SupportConversation c)
+    {
+        if (c.VerifiedForProtected is not { Length: > 0 } p) return [];
+        try { return JsonSerializer.Deserialize<Dictionary<string, string>>(secrets.Unprotect(p)) ?? []; } catch (JsonException) { return []; }
+    }
+
+    private string VerifiedText(SupportConversation c) => string.Join(", ", VerifiedFor(c).Select(x => $"{x.Key} ending {Last4(x.Value)}"));
+
+    private static string Last4(string v) => v.Length <= 4 ? v : v[^4..];
+
+    private string OtpHashOf(SupportConversation c, SupportChannel channel, string code) =>
+        Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(channel.VerifyToken + ":" + c.ContactKey), Encoding.UTF8.GetBytes("otp:v1:" + c.Id + ":" + code))).ToLowerInvariant();
+
+    private static string? Mobile(string? raw)
+    {
+        var digits = new string((raw ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length == 10) return "91" + digits;
+        if (digits.Length == 12 && digits.StartsWith("91", StringComparison.Ordinal)) return digits;
+        if (digits.Length == 11 && digits.StartsWith('0')) return "91" + digits[1..];
+        return digits.Length is >= 11 and <= 15 ? digits : null;
+    }
+
+    private async Task<ToolOutcome> RunToolAsync(JsonObject tool, SupportChannel channel, SupportConversation c, List<VoiceConnector> tools, List<SupportMessageDto> messages, CancellationToken ct)
+    {
+        var name = tool["name"]?.ToString();
+        var args = (tool["args"] as JsonObject ?? []).Where(a => a.Key != "connector" && a.Value is JsonValue).ToDictionary(a => a.Key, a => a.Value!.ToString(), StringComparer.Ordinal);
+        var now = clock.Now;
+        try
+        {
+            switch (name)
+            {
+                case "verify":
+                {
+                    var vc = tools.FirstOrDefault(t => t.Name == channel.VerifyConnector);
+                    if (vc is null || channel.VerifyMobilePath is not { } path) return new("Verification is not set up: hand over to a colleague.");
+                    if (c.OtpWindowAt is null || c.OtpWindowAt < now.AddHours(-1)) { c.OtpWindowAt = now; c.OtpSends = 0; }
+                    if (c.OtpSends >= OtpSendsPerHour) return new("Too many codes were sent in the last hour: do not send another; hand over to a colleague.");
+                    var flow = VoiceFlowRunner.Parse(vc.FlowJson);
+                    var inputs = new Dictionary<string, string>(StringComparer.Ordinal);
+                    foreach (var i in flow?.Inputs ?? [])
+                    {
+                        args.TryGetValue(i.Name, out var raw);
+                        if (VoiceFlowRunner.Clean(i, raw) is { } clean) inputs[i.Name] = clean;
+                        else if (i.Required) return new($"Ask the person for their {(string.IsNullOrWhiteSpace(i.Label) ? i.Name : i.Label)}{(string.IsNullOrWhiteSpace(raw) ? "" : " again (that one is not valid)")}.");
+                    }
+                    if (flow is null) foreach (var a in args) inputs[a.Key] = a.Value;
+                    var body = await connectors.SendAsync(vc, inputs, flow, ct);
+                    JsonNode? node;
+                    try { node = JsonNode.Parse(body); } catch (JsonException) { node = null; }
+                    var to = Mobile(VoiceFlowRunner.Find(new Dictionary<string, JsonNode?> { ["main"] = node }, path)?.ToString());
+                    if (to is null) return new("No registered mobile number was found for those details: ask them to check the details, or hand over to a colleague.");
+                    var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
+                    var chatNumber = secrets.Unprotect(c.ContactProtected);
+                    if (to == chatNumber) await SendAsync(channel, chatNumber, Phrase(c.Language, "code", code), ct);
+                    else if (channel.OtpTemplate is { } template) await SendCodeTemplateAsync(channel, to, template, channel.OtpTemplateLanguage, code, ct);
+                    else return new("The registered number is not the one chatting and no code template is set up: hand over to a colleague.");
+                    c.OtpHash = OtpHashOf(c, channel, code); c.OtpExpiresAt = now.AddMinutes(OtpMinutes); c.OtpAttempts = 0; c.OtpSends++;
+                    c.OtpForProtected = secrets.Protect(JsonSerializer.Serialize(inputs));
+                    messages.Add(new("system", $"A one-time code was sent to the registered number ending {Last4(to)}{(to == chatNumber ? " (this chat)" : "")}.", now));
+                    recorder.Audit("support.code_sent", "SupportConversation", c.Id, null, new { connector = vc.Name, sameNumber = to == chatNumber });
+                    return new($"A 6-digit code was sent to the registered number ending {Last4(to)}. Ask the person to type it here. It works for {OtpMinutes} minutes.");
+                }
+                case "lookup":
+                {
+                    var t = tools.FirstOrDefault(x => x.Name == tool["args"]?["connector"]?.ToString());
+                    if (t is null) return new("No such connector.");
+                    if (VoiceFlowRunner.Parse(t.FlowJson) is not { } flow) return new("That connector cannot answer customers on WhatsApp.");
+                    var verified = c.VerifiedUntil > now;
+                    // Verified for one loan is not verified for another: every value they were verified for must be the same here.
+                    if (verified)
+                        foreach (var (k, v) in VerifiedFor(c))
+                            if (args.TryGetValue(k, out var given) && flow.Inputs.FirstOrDefault(i => i.Name == k) is { } input && VoiceFlowRunner.Clean(input, given) is { } clean && clean != v)
+                                verified = false;
+                    if (flow.RequiresVerifiedCaller && !verified) return new("The person is not verified for these details yet: use verify first.");
+                    var r = await VoiceFlowRunner.RunAsync(flow, args, t.Name, verified, c.Language,
+                        (n, a, tk) => n == t.Name ? connectors.SendAsync(t, a, flow, tk) : connectors.SendOtherAsync(tools, n, a, tk), ct);
+                    recorder.Audit("support.lookup", "SupportConversation", c.Id, null, new { connector = t.Name, verified, ok = r.Ok, facts = r.Facts.Count });
+                    messages.Add(new("system", $"{t.Name}: {(r.Facts.Count > 0 ? $"{r.Facts.Count} fact(s) shared{(verified ? " after verification" : "")}" : r.Ok ? "nothing shared" : "the system did not answer")}.", now));
+                    return new(r.ForAgent(), r.Facts.Count > 0 && r.Say is { Length: > 0 } say ? say : null, r.Action is "ticket" or "transfer" ? r.Action : "none", r.ActionText, r.Priority);
+                }
+                default: return new("Unknown tool.");
+            }
+        }
+        catch (AppException e) { return new($"Could not do that: {e.Message}"); }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Net.Sockets.SocketException)
+        {
+            log.LogInformation("WhatsApp chat {Chat}: a connected system did not answer ({Reason})", c.Id, e.GetType().Name);
+            return new("That system did not answer. Apologise and offer to raise a ticket.");
+        }
+    }
+
+    /// <summary>An Authentication template carrying the code (body value and the copy-code button), for a registered number other than the chat's.</summary>
+    private async Task SendCodeTemplateAsync(SupportChannel channel, string to, string template, string language, string code, CancellationToken ct)
+    {
+        var body = JsonSerializer.Serialize(new
+        {
+            messaging_product = "whatsapp", recipient_type = "individual", to, type = "template",
+            template = new
+            {
+                name = template, language = new { code = language },
+                components = new object[]
+                {
+                    new { type = "body", parameters = new[] { new { type = "text", text = code } } },
+                    new { type = "button", sub_type = "url", index = "0", parameters = new[] { new { type = "text", text = code } } },
+                },
+            },
+        });
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{Graph()}/{channel.PhoneNumberId}/messages") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync(channel, ct));
+        using var res = await http.CreateClient("support-whatsapp").SendAsync(req, ct);
+        if (!res.IsSuccessStatusCode) throw new ConflictException("WhatsApp did not accept the code template. " + MetaError(await res.Content.ReadAsStringAsync(ct), (int)res.StatusCode));
+    }
+
+    /// <summary>
+    /// A 6-digit reply while a code is waiting: checked against the keyed hash (the code itself is never stored, not even in the chat), five
+    /// tries, ten minutes. Right: verified for half an hour for the details the code was sent for. Returns the note for the team and the AI.
+    /// </summary>
+    private string? CheckCode(SupportConversation c, SupportChannel channel, string text, DateTime now)
+    {
+        if (c.OtpHash is null || OtpCode.Match(text) is not { Success: true } m) return null;
+        if (c.OtpExpiresAt < now) { c.OtpHash = null; c.OtpForProtected = null; return "The code they typed had expired. Offer to send a new one."; }
+        if (CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(OtpHashOf(c, channel, m.Groups[1].Value)), Encoding.ASCII.GetBytes(c.OtpHash)))
+        {
+            c.VerifiedUntil = now.AddMinutes(VerifiedMinutes); c.VerifiedForProtected = c.OtpForProtected;
+            c.OtpHash = null; c.OtpForProtected = null; c.OtpAttempts = 0;
+            recorder.Audit("support.verified", "SupportConversation", c.Id, null, new { minutes = VerifiedMinutes });
+            return $"Verified with the one-time code (for {VerifiedMinutes} minutes). Go ahead with what they asked.";
+        }
+        c.OtpAttempts++;
+        if (c.OtpAttempts >= OtpTries) { c.OtpHash = null; c.OtpForProtected = null; return "The code was wrong too many times: do not share account details; hand over to a colleague."; }
+        return $"The code they typed is not right ({c.OtpAttempts} of {OtpTries} tries). Ask them to check it.";
     }
 
     // ------------------------------------------------------------------ the desk: ratings, ticket updates, media, suggestions
@@ -849,7 +1146,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
             template = new { name = template, language = new { code = language }, components = new[] { new { type = "body", parameters = values.Select(v => new { type = "text", text = v }).ToArray() } } },
         });
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{Graph()}/{channel.PhoneNumberId}/messages") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", secrets.Unprotect(channel.AccessTokenProtected));
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync(channel, ct));
         using var res = await http.CreateClient("support-whatsapp").SendAsync(req, ct);
         if (!res.IsSuccessStatusCode) throw new ConflictException("WhatsApp did not accept the template. " + MetaError(await res.Content.ReadAsStringAsync(ct), (int)res.StatusCode));
     }
@@ -870,7 +1167,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
             }
         }
         var channel = await db.SupportChannels.AsNoTracking().FirstAsync(x => x.Id == c.ChannelId, ct);
-        var token = secrets.Unprotect(channel.AccessTokenProtected);
+        var token = await TokenAsync(channel, ct);
         var client = http.CreateClient("support-whatsapp");
         using var infoReq = new HttpRequestMessage(HttpMethod.Get, $"{Graph()}/{media.Id}");
         infoReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);

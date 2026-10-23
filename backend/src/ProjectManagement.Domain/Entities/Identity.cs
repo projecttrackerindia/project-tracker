@@ -25,6 +25,10 @@ public class User : AuditableEntity
     public DateTime? LockoutEnd { get; set; }
     public DateTime? LastLoginAt { get; set; }
     public string TimeZone { get; set; } = "Asia/Kolkata";
+    /// <summary>When the password was last chosen, and how long it was (capped at 20): for workspace rules and the admin's security view.
+    /// Never the password or anything derived from it. Null for passwords chosen before this was kept.</summary>
+    public DateTime? PasswordChangedAt { get; set; }
+    public int? PasswordLength { get; set; }
 
     /// <summary>A photo the person chose for themselves (PNG or JPEG), in file storage. Null = initials are shown instead. Visible to anyone
     /// they share a workspace with; changed only by the person themselves, from My account.</summary>
@@ -69,6 +73,10 @@ public class UserSession : Entity
     /// so its "require two-step verification" rule counts as met for this session (the provider applies its own MFA).
     /// </summary>
     public Guid? SsoTenantId { get; set; }
+    /// <summary>The first sign-in from this browser and network: the person was told about it.</summary>
+    public bool NewDevice { get; set; }
+    /// <summary>The person said "this wasn't me": the session was ended at once.</summary>
+    public DateTime? ReportedAt { get; set; }
 }
 
 public class RefreshToken : Entity

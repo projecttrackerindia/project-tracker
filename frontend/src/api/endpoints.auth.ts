@@ -1,5 +1,5 @@
 import { del, get, post, put, uploadFile, fetchBlobUrl } from './client';
-import type { AppContext,AuthResponse,MfaChallenge,MfaSetup,MfaStatus,PasswordPolicy,NotificationPreference,TestEmailResult,Invitation,InvitationLookup,Member,MemberProfile,PermissionMatrix,OrgSecurity,ProjectVisibility,Session,Team,TeamDetail,User,Workspace,ExternalProvider,SsoDiscovery,UserLogin,SsoSettings,SsoConnectionInput,ScimToken,WorkspaceLogo,GroupMappings } from './types';
+import type { AppContext,AuthResponse,MfaChallenge,MfaSetup,MfaStatus,PasswordPolicy,NotificationPreference,TestEmailResult,Invitation,InvitationLookup,Member,MemberProfile,PermissionMatrix,OrgSecurity,ProjectVisibility,SecurityOverview,Session,SignIn,Team,TeamDetail,User,Workspace,ExternalProvider,SsoDiscovery,UserLogin,SsoSettings,SsoConnectionInput,ScimToken,WorkspaceLogo,GroupMappings } from './types';
 
 export const authApi = {
   passwordPolicy: () => get<PasswordPolicy>('/auth/password-policy', undefined, { auth: false }),
@@ -31,6 +31,10 @@ export const meApi = {
   mfaRecoveryCodes: (password: string, code: string) => post<{ codes: string[] }>('/me/mfa/recovery-codes', { password, code }),
   sessions: () => get<Session[]>('/me/sessions'),
   revokeSession: (id: string) => del(`/me/sessions/${id}`),
+  /** My sign-ins over the last 90 days. */
+  signIns: () => get<SignIn[]>('/me/sign-ins'),
+  /** "This wasn't me": ends that sign-in at once. */
+  notMe: (id: string) => post(`/me/sign-ins/${id}/not-me`),
   notificationPrefs: () => get<NotificationPreference[]>('/me/notification-preferences'),
   setNotificationPrefs: (items: { type: string; inApp: boolean; email: boolean; browser: boolean }[]) => put<NotificationPreference[]>('/me/notification-preferences', { items }),
   testEmail: () => post<TestEmailResult>('/me/notification-preferences/test-email'),
@@ -81,7 +85,9 @@ export const workspaceApi = {
   lookupInvitation: (token: string) => get<InvitationLookup>('/invitations/lookup', { token }, { auth: false }),
   acceptInvitation: (token: string) => post<Workspace>('/invitations/accept', { token }),
   security: () => get<OrgSecurity>('/workspace/security'),
-  setSecurity: (b: { requireMfa: boolean; ipAllowlistEnabled: boolean; ipRanges: string[] }) => put<OrgSecurity>('/workspace/security', b),
+  setSecurity: (b: { requireMfa: boolean; ipAllowlistEnabled: boolean; ipRanges: string[]; minPasswordLength?: number; sessionHours?: number; allowedSignIn?: string[] }) => put<OrgSecurity>('/workspace/security', b),
+  securityMembers: () => get<SecurityOverview>('/workspace/security/members'),
+  securityRemind: (userIds: string[], topic: 'two-step' | 'password') => post<{ sent: number }>('/workspace/security/remind', { userIds, topic }),
   projectVisibility: () => get<ProjectVisibility>('/workspace/project-visibility'),
   setProjectVisibility: (mode: 'organization' | 'teams') => put<ProjectVisibility>('/workspace/project-visibility', { mode }),
   memberProfile: (userId: string) => get<MemberProfile>(`/workspace/members/${userId}/profile`),

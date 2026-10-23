@@ -49,6 +49,14 @@ public class CurrentWorkspaceController(WorkspaceService workspaces, ProjectMana
     public async Task<IActionResult> SetSecurity([FromBody] ProjectManagement.Application.Features.Organization.SetOrgSecurityRequest req, CancellationToken ct) =>
         Ok(await orgSecurity.SetAsync(req, ct));
 
+    /// <summary>Members' account security for owners and admins: two-step, passkeys, password age and length, and what to fix.</summary>
+    [HttpGet("security/members")]
+    public async Task<IActionResult> SecurityMembers(CancellationToken ct) => Ok(await orgSecurity.OverviewAsync(ct));
+
+    [HttpPost("security/remind")]
+    public async Task<IActionResult> SecurityRemind([FromBody] ProjectManagement.Application.Features.Organization.SecurityReminderRequest req, CancellationToken ct) =>
+        Ok(new { sent = await orgSecurity.RemindAsync(req, ct) });
+
     [HttpGet("project-visibility")]
     public async Task<IActionResult> ProjectVisibility(CancellationToken ct) => Ok(await orgSecurity.GetVisibilityAsync(ct));
 

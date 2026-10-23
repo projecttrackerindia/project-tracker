@@ -52,6 +52,7 @@ public static class DependencyInjection
         services.AddScoped<SecurityAlerts>();
         services.AddScoped<MfaService>();
         services.AddScoped<PasswordPolicyService>();
+        services.AddScoped<ProjectManagement.Application.Features.Auth.PasswordBreachCheck>();
         services.AddScoped<ProjectManagement.Application.Features.Organization.OrgSecurityService>();
         services.AddScoped<ProjectManagement.Application.Features.Consent.ConsentService>();
         services.AddScoped<AuthService>();
@@ -129,6 +130,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Agent.MeetingBotIdentityService>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.NotetakerService>();
         services.AddScoped<ProjectManagement.Application.Features.Voice.VoiceAgentService>();
+        services.AddScoped<ProjectManagement.Application.Features.Voice.ConnectorCaller>();
         services.AddScoped<ProjectManagement.Application.Features.Voice.VoiceSpeechService>();
         services.AddScoped<ProjectManagement.Application.Features.Support.SupportChannelService>();
         services.AddScoped<ProjectManagement.Application.Features.Support.SupportKnowledge>();

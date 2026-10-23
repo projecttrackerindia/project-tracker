@@ -75,7 +75,7 @@ public record VoiceFillerDto(string Kind, string Audio);
 /// </summary>
 public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ISecretProtector secrets, PermissionService permissions, IAiClient ai,
     AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions, IOptions<VoiceOptions> voice, IHttpClientFactory http,
-    WorkTaskService workTasks, WorkTypeService workTypes, Recorder recorder, VoiceSpeechService speech, ILogger<VoiceAgentService> log)
+    WorkTaskService workTasks, WorkTypeService workTypes, Recorder recorder, VoiceSpeechService speech, ILogger<VoiceAgentService> log, ConnectorCaller caller)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly Regex Placeholder = new(@"\{([A-Za-z][A-Za-z0-9_]{0,40})\}", RegexOptions.Compiled);
@@ -221,42 +221,7 @@ public class VoiceAgentService(IAppDbContext db, ICurrentContext ctx, AppClock c
     }
 
     /// <summary>Calls a connector with values the caller gave. Only public https hosts: private and local addresses are refused.</summary>
-    private async Task<string> SendAsync(VoiceConnector c, IReadOnlyDictionary<string, string> args, VoiceFlow? flow, CancellationToken ct)
-    {
-        string Value(string key)
-        {
-            var v = args.TryGetValue(key, out var x) ? x : throw new ValidationException(key, $"'{key}' is needed.");
-            if (v.Length > 64 || !Regex.IsMatch(v, @"^[\p{L}\p{N} _\-./@,]+$")) throw new ValidationException(key, "That value cannot be used.");
-            return v.Trim();
-        }
-        var url = Placeholder.Replace(c.UrlTemplate, m => Uri.EscapeDataString(Value(m.Groups[1].Value)));
-        var uri = new Uri(url);
-        foreach (var addr in await Dns.GetHostAddressesAsync(uri.Host, ct))
-            if (IPAddress.IsLoopback(addr) || Private(addr)) throw new ConflictException("This connector points at a private address.");
-        using var req = new HttpRequestMessage(c.Method == "POST" ? HttpMethod.Post : HttpMethod.Get, uri);
-        if (c.HeaderName is { } h && c.SecretProtected is { } sec) req.Headers.TryAddWithoutValidation(h, secrets.Unprotect(sec));
-        foreach (var hd in flow?.Headers ?? [])
-            if (!string.Equals(hd.Name, c.HeaderName, StringComparison.OrdinalIgnoreCase)) req.Headers.TryAddWithoutValidation(hd.Name, Placeholder.Replace(hd.Value ?? "", m => Value(m.Groups[1].Value)));
-        if (c.Method == "POST")
-        {
-            var requestBody = flow?.BodyTemplate is { Length: > 0 } t
-                ? Placeholder.Replace(t, m => JsonEncodedText.Encode(Value(m.Groups[1].Value)).ToString())
-                : new JsonObject(args.Select(a => KeyValuePair.Create(a.Key, (JsonNode?)JsonValue.Create(a.Value)))).ToJsonString();
-            req.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-        }
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(8));
-        using var res = await http.CreateClient("voice-connector").SendAsync(req, timeout.Token);
-        var body = await res.Content.ReadAsStringAsync(timeout.Token);
-        if (body.Length > 6000) body = body[..6000];
-        return res.IsSuccessStatusCode ? body : $"(the API answered {(int)res.StatusCode})";
-    }
-
-    private static bool Private(IPAddress a)
-    {
-        if (a.AddressFamily == AddressFamily.InterNetworkV6) return a.IsIPv6LinkLocal || a.IsIPv6SiteLocal || a.IsIPv6UniqueLocal || a.Equals(IPAddress.IPv6Loopback);
-        var b = a.GetAddressBytes();
-        return b[0] == 10 || b[0] == 127 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168) || (b[0] == 169 && b[1] == 254) || b[0] == 0 || (b[0] == 100 && b[1] >= 64 && b[1] <= 127);
-    }
+    private Task<string> SendAsync(VoiceConnector c, IReadOnlyDictionary<string, string> args, VoiceFlow? flow, CancellationToken ct) => caller.SendAsync(c, args, flow, ct);
 
     // ------------------------------------------------------------------ calls
 

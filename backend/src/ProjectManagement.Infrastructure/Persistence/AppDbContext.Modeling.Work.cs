@@ -120,7 +120,8 @@ public partial class AppDbContext
         });
         b.Entity<SupportChannel>(e =>
         {
-            e.HasIndex(x => x.TenantId); e.HasIndex(x => x.PhoneNumberId).IsUnique();
+            e.Property(x => x.VerifyConnector).HasMaxLength(60); e.Property(x => x.VerifyMobilePath).HasMaxLength(120); e.Property(x => x.OtpTemplate).HasMaxLength(512); e.Property(x => x.OtpTemplateLanguage).HasMaxLength(10);
+            e.HasIndex(x => x.TenantId); e.HasIndex(x => x.PhoneNumberId).IsUnique(); e.HasIndex(x => x.ConnectionId);
             e.Property(x => x.Kind).HasMaxLength(10); e.Property(x => x.Name).HasMaxLength(80); e.Property(x => x.PhoneNumberId).HasMaxLength(40);
             e.Property(x => x.BusinessAccountId).HasMaxLength(40); e.Property(x => x.DisplayPhone).HasMaxLength(40); e.Property(x => x.VerifiedName).HasMaxLength(120);
             e.Property(x => x.AccessTokenProtected).HasMaxLength(4000); e.Property(x => x.AppSecretProtected).HasMaxLength(1000); e.Property(x => x.VerifyToken).HasMaxLength(64);
@@ -129,6 +130,7 @@ public partial class AppDbContext
         });
         b.Entity<SupportConversation>(e =>
         {
+            e.Property(x => x.OtpHash).HasMaxLength(64); e.Property(x => x.OtpForProtected).HasMaxLength(1000); e.Property(x => x.VerifiedForProtected).HasMaxLength(1000);
             e.Property(x => x.HandoverReason).HasMaxLength(20);
             e.HasIndex(x => new { x.TenantId, x.LastMessageAt }); e.HasIndex(x => new { x.ChannelId, x.ContactKey }).IsUnique(); e.HasIndex(x => x.NeedsReply);
             e.Property(x => x.ContactKey).HasMaxLength(64); e.Property(x => x.ContactProtected).HasMaxLength(400); e.Property(x => x.ContactName).HasMaxLength(120);
@@ -564,6 +566,7 @@ public partial class AppDbContext
         {
             e.HasIndex(x => x.TenantId).IsUnique();
             e.Property(x => x.IpRanges).HasMaxLength(6000);
+            e.Property(x => x.AllowedSignIn).HasMaxLength(100);
         });
         b.Entity<OAuthClient>(e => { e.HasIndex(x => x.ClientId).IsUnique(); e.Property(x => x.ClientId).HasMaxLength(40); e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.RedirectUrisJson).HasMaxLength(4000); e.Property(x => x.ClientUri).HasMaxLength(500); e.Property(x => x.LogoUri).HasMaxLength(500); });

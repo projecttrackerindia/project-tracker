@@ -26,6 +26,8 @@ public record RefreshRequest(string? RefreshToken);
 
 public record UserDto(Guid Id, string Email, string DisplayName, bool EmailVerified, bool IsPlatformAdmin, string TimeZone, bool MfaEnabled = false, bool MustChangePassword = false, bool HasAvatar = false);
 public record SessionDto(Guid Id, DateTime CreatedAt, DateTime LastSeenAt, string? IpAddress, string? UserAgent, bool IsCurrent, string? AuthMethod = null);
+/// <summary>One sign-in of the person's account: when, from which browser and network, how, whether it is still signed in, and whether it was new.</summary>
+public record SignInDto(Guid Id, DateTime At, DateTime LastSeenAt, string Device, string? Network, string? AuthMethod, bool Current, bool Active, bool NewDevice, DateTime? ReportedAt);
 
 /// <summary>Result of login / refresh. The refresh token is delivered by the API layer (cookie or body).</summary>
 /// <summary>A signed-in session. RefreshToken is null when the caller keeps the refresh token it already has (see AuthService.RefreshAsync).</summary>
@@ -95,6 +97,7 @@ public class AuthService(
             Email = req.Email.Trim(), NormalizedEmail = normalized, DisplayName = req.DisplayName.Trim(),
             PasswordHash = hasher.Hash(req.Password), EmailVerified = !_opt.RequireEmailVerification, CreatedAt = now,
         };
+        passwordPolicy.Stamp(user, req.Password);
         string? rawToken = null;
         if (_opt.RequireEmailVerification) rawToken = SetVerificationToken(user);
         db.Users.Add(user);
@@ -287,19 +290,78 @@ public class AuthService(
     /// <summary>A short-lived proof that the first step of a sign-in succeeded; the second step (an authenticator code) completes it.</summary>
     public string CreateMfaChallenge(User user) => tokens.CreateChallenge(user.Id, TimeSpan.FromMinutes(5));
 
-    private Task<AuthResult> IssueSessionAsync(User user, Guid? workspaceId, CancellationToken ct, string? method = null, Guid? ssoTenantId = null)
+    private async Task<AuthResult> IssueSessionAsync(User user, Guid? workspaceId, CancellationToken ct, string? method = null, Guid? ssoTenantId = null)
     {
         var now = clock.Now;
+        var agent = Text.Truncate(ctx.UserAgent, 300);
+        var newDevice = await IsNewDeviceAsync(user.Id, agent, ctx.IpAddress, ct);
         var session = new UserSession
         {
             UserId = user.Id, WorkspaceId = workspaceId, CreatedAt = now, LastSeenAt = now,
-            ExpiresAt = now.AddDays(_opt.RefreshTokenDays), IpAddress = ctx.IpAddress, UserAgent = Text.Truncate(ctx.UserAgent, 300),
-            AuthMethod = method, SsoTenantId = ssoTenantId,
+            ExpiresAt = now.AddDays(_opt.RefreshTokenDays), IpAddress = ctx.IpAddress, UserAgent = agent,
+            AuthMethod = method, SsoTenantId = ssoTenantId, NewDevice = newDevice,
         };
         db.UserSessions.Add(session);
         var (raw, refresh) = NewRefreshToken(session, user.Id);
         var access = tokens.CreateAccessToken(user, session.Id, workspaceId);
-        return Task.FromResult(new AuthResult(access.Token, access.ExpiresAt, ToDto(user), raw, refresh.ExpiresAt));
+        if (newDevice)
+            await SecurityAlertAsync(user, "New sign-in to your account",
+                $"{DeviceLoginService.Describe(agent)}{(Network(ctx.IpAddress) is { } net ? $" on network {net}" : "")} signed in at {now:HH:mm} UTC. If this was you, there is nothing to do. " +
+                "If not, open Account → Sign-in history and choose \"This wasn't me\": that sign-in ends at once. Then change your password.", ct);
+        return new AuthResult(access.Token, access.ExpiresAt, ToDto(user), raw, refresh.ExpiresAt);
+    }
+
+    /// <summary>The network a sign-in came from, coarse enough to stay the same at home or the office: the first three parts of the address.</summary>
+    public static string? Network(string? ip)
+    {
+        if (string.IsNullOrWhiteSpace(ip) || !System.Net.IPAddress.TryParse(ip, out var a)) return null;
+        if (a.IsIPv4MappedToIPv6) a = a.MapToIPv4();
+        if (a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) { var b = a.GetAddressBytes(); return $"{b[0]}.{b[1]}.{b[2]}.x"; }
+        var parts = a.ToString().Split(':');
+        return string.Join(':', parts.Take(3)) + ":…";
+    }
+
+    /// <summary>
+    /// The first sign-in from this browser (kind and system) on this network in six months, for someone who has signed in before: worth telling
+    /// them about. A first sign-in ever is not.
+    /// </summary>
+    private async Task<bool> IsNewDeviceAsync(Guid userId, string? agent, string? ip, CancellationToken ct)
+    {
+        var since = clock.Now.AddDays(-180);
+        var earlier = await db.UserSessions.AsNoTracking().Where(s => s.UserId == userId && s.CreatedAt > since).OrderByDescending(s => s.CreatedAt).Take(200)
+            .Select(s => new { s.UserAgent, s.IpAddress }).ToListAsync(ct);
+        if (earlier.Count == 0) return false;
+        var device = DeviceLoginService.Describe(agent); var net = Network(ip);
+        return !earlier.Any(e => DeviceLoginService.Describe(e.UserAgent) == device && Network(e.IpAddress) == net);
+    }
+
+    /// <summary>The person's sign-ins over the last 90 days, newest first, signed-in ones and ended ones.</summary>
+    public async Task<IReadOnlyList<SignInDto>> SignInsAsync(CancellationToken ct = default)
+    {
+        var userId = ctx.RequireUserId();
+        var now = clock.Now; var since = now.AddDays(-90);
+        var rows = await db.UserSessions.AsNoTracking().Where(s => s.UserId == userId && s.CreatedAt > since).OrderByDescending(s => s.CreatedAt).Take(100).ToListAsync(ct);
+        return rows.Select(s => new SignInDto(s.Id, s.CreatedAt, s.LastSeenAt, DeviceLoginService.Describe(s.UserAgent), Network(s.IpAddress), s.AuthMethod, s.Id == ctx.SessionId,
+            s.RevokedAt == null && s.ExpiresAt > now, s.NewDevice, s.ReportedAt)).ToList();
+    }
+
+    /// <summary>
+    /// "This wasn't me": that sign-in ends at once (its refresh tokens with it), it is marked as reported, and the account owner is told what
+    /// to do next. The sign-in being used to report cannot be reported.
+    /// </summary>
+    public async Task ReportSignInAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        var userId = ctx.RequireUserId();
+        if (sessionId == ctx.SessionId) throw new ValidationException("session", "This is the sign-in you are using now.");
+        var session = await db.UserSessions.FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId, ct) ?? throw new NotFoundException("Sign-in not found.");
+        var now = clock.Now;
+        session.RevokedAt ??= now; session.ReportedAt ??= now;
+        await db.RefreshTokens.Where(t => t.SessionId == sessionId && t.UsedAt == null).ExecuteUpdateAsync(u => u.SetProperty(t => t.UsedAt, now), ct);
+        recorder.Audit("session.reported", "UserSession", sessionId, newValue: new { Device = DeviceLoginService.Describe(session.UserAgent), Network = Network(session.IpAddress) }, userId: userId);
+        await db.SaveChangesAsync(ct);
+        var user = await db.Users.FirstAsync(u => u.Id == userId, ct);
+        await SecurityAlertAsync(user, "A sign-in you did not recognise was ended",
+            $"{DeviceLoginService.Describe(session.UserAgent)} is signed out. Change your password now{(user.MfaEnabled ? "" : " and turn on two-step verification")}, so it cannot sign in again.", ct);
     }
 
     private (string Raw, RefreshToken Token) NewRefreshToken(UserSession session, Guid userId)
@@ -462,6 +524,7 @@ public class AuthService(
 
         await passwordPolicy.RememberOutgoingAsync(user, ct);
         user.PasswordHash = hasher.Hash(req.Password);
+        passwordPolicy.Stamp(user, req.Password);
         user.PasswordResetTokenHash = null;
         user.PasswordResetExpiresAt = null;
         user.EmailVerified = true; // receiving the reset email proves mailbox ownership
@@ -492,6 +555,7 @@ public class AuthService(
 
         await passwordPolicy.RememberOutgoingAsync(user, ct);
         user.PasswordHash = hasher.Hash(req.NewPassword);
+        passwordPolicy.Stamp(user, req.NewPassword);
         user.MustChangePassword = false;
         await RevokeSessionsAsync(userId, ctx.SessionId, ct);
         recorder.Audit("user.password_changed", "User", userId);

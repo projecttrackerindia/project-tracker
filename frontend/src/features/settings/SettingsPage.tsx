@@ -18,6 +18,8 @@ import { AuditPage } from '../activity/ActivityPages';
 import { BillingPage } from '../billing/BillingPage';
 import { RolesAccessPage } from '../organization/RolesAccess';
 import { OrgSecurityPanel } from '../organization/OrgSecurityPanel';
+import { MemberSecurityPanel } from '../organization/MemberSecurityPanel';
+import { SignInHistory } from './SignInHistory';
 import { ProjectVisibilityPanel } from '../organization/ProjectVisibilityPanel';
 import { ProjectGroupsPage } from '../projects/ProjectGroupsPage';
 import { TimelineTemplatesSettings } from '../projects/TimelineTemplates';
@@ -159,7 +161,9 @@ function DeleteAccountCard() {
 function SecuritySection() {
   const logout = useAuth((s) => s.logout);
   const wid = useWorkspaceId();
-  const [pwOpen, setPwOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const [pwOpen, setPwOpen] = useState(() => params.get('change-password') === '1');
+  useEffect(() => { if (params.get('change-password') === '1') { setPwOpen(true); params.delete('change-password'); setParams(params, { replace: true }); } }, [params, setParams]);
   const sessions = useWsQuery(['sessions'], meApi.sessions);
   return (
     <>
@@ -188,6 +192,12 @@ function SecuritySection() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+          <div className="setting-row" style={{ alignItems: 'flex-start' }}>
+            <div className="setting-info" style={{ flex: 1 }}>
+              <h4>Sign-in history</h4><p>Every sign-in of the last 90 days. A new browser or network is marked, and you were told about it. Not you? End it here.</p>
+              <SignInHistory />
             </div>
           </div>
           <div className="setting-row">
@@ -303,7 +313,7 @@ export function WorkspaceSettingsPage() {
     <SectionLayout title="Workspace settings" sub="How this workspace is set up: access, security, master lists, integrations and billing." groups={groups}>
       {current.id === 'general' && <GeneralSection />}
       {current.id === 'access' && <RolesAccessPage />}
-      {current.id === 'security' && <><PageHead title="Security" sub="Rules every member's sign-in must meet." /><OrgSecurityPanel /><ProjectVisibilityPanel /></>}
+      {current.id === 'security' && <><PageHead title="Security" sub="Rules every member's sign-in must meet." /><OrgSecurityPanel /><MemberSecurityPanel /><ProjectVisibilityPanel /></>}
       {current.id === 'sso' && <SsoSettings />}
       {current.id === 'billing' && <BillingPage />}
       {current.id === 'audit' && <AuditPage />}

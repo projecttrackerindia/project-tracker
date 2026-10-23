@@ -107,6 +107,18 @@ public class MeController(AuthService auth, WorkspaceService workspaces, Notific
     [HttpGet("sessions")]
     public async Task<IActionResult> Sessions(CancellationToken ct) => Ok(await auth.GetSessionsAsync(ct));
 
+    /// <summary>My sign-ins over the last 90 days (signed in and ended), each new browser or network marked.</summary>
+    [HttpGet("sign-ins")]
+    public async Task<IActionResult> SignIns(CancellationToken ct) => Ok(await auth.SignInsAsync(ct));
+
+    /// <summary>"This wasn't me": ends that sign-in at once and records the report.</summary>
+    [HttpPost("sign-ins/{id:guid}/not-me")]
+    public async Task<IActionResult> NotMe(Guid id, CancellationToken ct)
+    {
+        await auth.ReportSignInAsync(id, ct);
+        return NoContent();
+    }
+
     [HttpDelete("sessions/{id:guid}")]
     public async Task<IActionResult> RevokeSession(Guid id, CancellationToken ct)
     {
