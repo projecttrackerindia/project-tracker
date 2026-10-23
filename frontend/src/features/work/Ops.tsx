@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, KeyboardSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { Bar, BarChart, CartesianGrid, Line, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ApiError } from '../../api/client';
 import { opsApi, workApi, workspaceApi, type WorkFilters } from '../../api/endpoints';
-import type { OpsSettings, Priority, RoutingRule, Triage, WorkTask, WorkTaskStatus } from '../../api/types';
+import type { OpsSatisfaction, OpsSettings, Priority, RoutingRule, Triage, WorkTask, WorkTaskStatus } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Avatar, ErrorState, PageLoader, PriorityBadge } from '../../components/ui';
 import { Select } from '../../components/Select';
-import { formatDate } from '../../lib/format';
+import { formatDate, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { WORK_STATUSES } from '../../lib/workLabels';
 import { useWorkspaceId } from '../../stores/auth';
@@ -230,7 +231,75 @@ export function OpsInsights() {
         <Breakdown title="By work type" rows={d.byType} />
         <Breakdown title="By person" rows={d.byPerson} />
       </div>
+      {d.satisfaction && d.satisfaction.chats > 0 && <Satisfaction s={d.satisfaction} />}
     </div>
+  );
+}
+
+const STARS = ['#fb7185', '#f97316', '#f59e0b', '#84cc16', '#22c55e'];
+
+/** WhatsApp customers' ratings (1-5 after a chat or its ticket closes), the AI employee's share, and the low ratings worth a call back. */
+function Satisfaction({ s }: { s: OpsSatisfaction }) {
+  const max = Math.max(1, ...s.distribution);
+  const weeks = s.weeks.map((w) => ({ label: new Date(`${w.weekStart}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }), Average: w.average, Ratings: w.rated }));
+  return (
+    <section className="ops-csat" aria-label="Customer satisfaction">
+      <h3 className="ops-csat-title"><Icon name="message" size={15} /> WhatsApp customers</h3>
+      <div className="ops-csat-kpis">
+        <Kpi tone="green" label="Rating" value={s.average === null ? '–' : `${s.average.toFixed(1)} / 5`} foot={`${s.rated} rated of ${s.asked} asked`} />
+        <Kpi tone="teal" label="Happy" value={pct(s.satisfied)} foot="rated 4 or 5" />
+        <Kpi tone="purple" label="AI answered alone" value={s.chats === 0 ? '–' : `${Math.round((s.aiOnly / s.chats) * 100)}%`} foot={`${s.aiOnly} of ${s.chats} chats`} />
+        <Kpi tone="amber" label="Handed to a person" value={String(s.handedOver)} foot={s.handoverReasons.length ? s.handoverReasons.map((r) => `${r.count} ${r.label.toLowerCase()}`).join(' · ') : 'none in this period'} />
+      </div>
+      <div className="ops-ins-grid">
+        <div className="card">
+          <div className="card-head"><div><h3>Ratings</h3><p>How many gave each score</p></div></div>
+          <div className="card-body ops-stars" role="list" aria-label="Ratings by score">
+            {[5, 4, 3, 2, 1].map((n) => (
+              <div key={n} role="listitem"><span>{'★'.repeat(n)}</span><i><b style={{ width: `${(s.distribution[n - 1] / max) * 100}%`, background: STARS[n - 1] }} /></i><em>{s.distribution[n - 1]}</em></div>
+            ))}
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-head"><div><h3>Week by week</h3><p>Average rating</p></div></div>
+          <div className="card-body" style={{ height: 200 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={weeks} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--text-3)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
+                <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} width={24} />
+                <Tooltip contentStyle={{ background: 'var(--modal-bg)', border: '1px solid var(--modal-border)', borderRadius: 10, fontSize: 12 }} />
+                <Line dataKey="Average" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} connectNulls isAnimationActive={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-head"><div><h3>By person</h3><p>Who had the chat when it closed</p></div></div>
+          <div className="table-wrap">
+            <table className="ops-table ops-table-narrow">
+              <thead><tr><th>Name</th><th className="num">Rated</th><th className="num">Average</th></tr></thead>
+              <tbody>{s.byPerson.length === 0 ? <tr><td colSpan={3} className="muted">No ratings yet.</td></tr> : s.byPerson.map((p) => (
+                <tr key={`${p.name}:${p.id}`}><td>{p.name}</td><td className="num">{p.rated}</td>
+                  <td className="num"><span className={`ops-pct ${p.average === null ? '' : p.average >= 4 ? 'good' : p.average >= 3 ? 'ok' : 'bad'}`}>{p.average === null ? '–' : p.average.toFixed(1)}</span></td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-head"><div><h3>Low ratings</h3><p>1 or 2: worth a call back</p></div></div>
+          <ul className="ops-low">
+            {s.low.length === 0 ? <li className="muted">None in this period.</li> : s.low.map((l) => (
+              <li key={l.chatId}>
+                <span className="ops-low-score" style={{ background: STARS[l.rating - 1] }}>{l.rating}</span>
+                <span className="ops-low-main"><b>{l.contact}</b><small>{timeAgo(l.at)}{l.ticketKey ? ` · ${l.ticketKey}` : ''}{l.with ? ` · with ${l.with}` : ''}</small></span>
+                <Link to={`/operations?view=whatsapp&chat=${l.chatId}`} className="btn btn-ghost btn-sm">Open chat</Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
   );
 }
 

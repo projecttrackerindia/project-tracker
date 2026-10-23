@@ -131,6 +131,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Voice.VoiceAgentService>();
         services.AddScoped<ProjectManagement.Application.Features.Voice.VoiceSpeechService>();
         services.AddScoped<ProjectManagement.Application.Features.Support.SupportChannelService>();
+        services.AddScoped<ProjectManagement.Application.Features.Support.SupportKnowledge>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentMaskingService>();
         services.AddSingleton<ProjectManagement.Application.Features.Support.SupportReplyProcessor>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.AgentSlackReader>();

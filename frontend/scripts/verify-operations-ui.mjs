@@ -21,12 +21,15 @@ let settings={canManage:true,businessHoursOnly:false,dayStartMinutes:540,dayEndM
 const weeks=Array.from({length:13},(_,i)=>({weekStart:new Date(now-(12-i)*7*864e5).toISOString().slice(0,10),created:5+(i*7)%9,completed:4+(i*5)%8,breached:i%4===0?2:i%3===0?1:0,compliance:0.72+((i*13)%25)/100}));
 const B=(name,open,completed,breached,compliance,h)=>({name,id:null,open,completed,breached,compliance,medianResolutionHours:h});
 const insights={days:90,open:4,unassigned:1,breached:1,atRisk:1,compliance:0.86,medianResolutionHours:9.5,medianResponseMinutes:38,createdInPeriod:94,completedInPeriod:81,weeks,aging:[{label:'Under 2 days',count:2},{label:'2–7 days',count:1},{label:'1–4 weeks',count:1},{label:'Over 4 weeks',count:0}],
- byType:[B('Production Support',3,52,1,0.84,7.2),B('Analysis',1,18,0,0.94,30),B('Bug Fix',0,11,0,0.73,14)],byPriority:[B('Critical',1,6,0,1,2.1),B('High',1,22,1,0.8,6),B('Medium',1,40,0,0.88,12),B('Low',1,13,0,0.92,40)],byPerson:[B('Upendra Rao',2,40,1,0.83,8),B('Jyothsna Reddy',1,35,0,0.9,9),B('Unassigned',1,0,0,null,null)],businessHours:false};
+ byType:[B('Production Support',3,52,1,0.84,7.2),B('Analysis',1,18,0,0.94,30),B('Bug Fix',0,11,0,0.73,14)],byPriority:[B('Critical',1,6,0,1,2.1),B('High',1,22,1,0.8,6),B('Medium',1,40,0,0.88,12),B('Low',1,13,0,0.92,40)],byPerson:[B('Upendra Rao',2,40,1,0.83,8),B('Jyothsna Reddy',1,35,0,0.9,9),B('Unassigned',1,0,0,null,null)],businessHours:false,
+ satisfaction:{asked:40,rated:31,average:4.3,satisfied:0.84,distribution:[2,1,2,9,17],weeks:weeks.map((w,i)=>({weekStart:w.weekStart,rated:i%3,average:i%3?3.8+(i%4)/5:null})),
+  byPerson:[{name:'AI employee',id:null,rated:14,average:4.5},{name:'Upendra Rao',id:'u1',rated:11,average:4.1},{name:'Jyothsna Reddy',id:'u2',rated:6,average:3.9}],
+  low:[{chatId:'w1',contact:'Ravi Kumar <b>bold</b>',rating:1,at:iso(-60*5),ticketKey:'WT-12',with:'Upendra'}],chats:120,aiOnly:78,handedOver:42,handoverReasons:[{label:'Customer asked for a person',count:25},{label:'Not in the documents',count:17}]}};
 const writes=[],errors=[],checks=[];
 let saved=null;
 let voice={enabled:false,agentName:'Asha',companyName:'FiveStar',languages:['te','hi','en','ta'],knowledge:null,requireVerification:true,verificationRule:'date of birth and the last 4 digits of the loan number',transferNumber:null,workTypeId:null,storageKeyPattern:'{yyyy}/{MM}/{dd}/{callId}',archiveConfigured:false,canManage:true,availableLanguages:{en:'English',hi:'Hindi',te:'Telugu',ta:'Tamil',kn:'Kannada'}};let vcall=null;
 let waChannels=[];const waChat={id:'w1',channelId:'ch1',channelName:'IT helpdesk',contact:'+91 98•••••210',contactName:'Ravi Kumar',language:'te',status:'open',mode:'ai',lastMessageAt:iso(0),lastText:'password reset కావాలి',unread:1,workTaskId:null,ticketKey:null,canReply:true,assigneeId:null,assigneeName:null,waitingSince:iso(-12),replyDueAt:iso(3),rating:null};
-let waMessages=[{from:'contact',text:'నా లాగిన్ పని చేయడం లేదు, password reset కావాలి',at:iso(0)},{from:'ai',text:'సరేనండి, మీ employee ID చెప్పగలరా?',at:iso(0),by:'Asha'},
+let waMessages=[{from:'contact',text:'నా లాగిన్ పని చేయడం లేదు, password reset కావాలి',at:iso(0)},{from:'ai',text:'సరేనండి, మీ employee ID చెప్పగలరా?',at:iso(0),by:'Asha',sources:[{documentId:'d7',key:'DOC-7',title:'Password reset guide'}]},
  {from:'contact',text:'[photo] the error',at:iso(0),media:{kind:'image',id:'5501',mime:'image/png',fileName:null,transcript:null}},
  {from:'contact',text:'[voice note] నా ID 4471',at:iso(0),media:{kind:'voice',id:'5502',mime:'audio/ogg',fileName:null,transcript:'నా ID 4471 <b>bold</b>'}},
  {from:'system',text:'Asha Rao took the chat.',at:iso(0)}];
@@ -129,6 +132,10 @@ try{
  // Insights.
  await page.locator('.ops-tabs .tab',{hasText:'Insights'}).click();await page.locator('.ops-kpis').waitFor();await page.waitForTimeout(700);
  assert.ok((await page.locator('.ops-kpis').innerText()).includes('86%'));assert.equal(await page.locator('.ops-aging > div').count(),4);
+ const csat=page.getByRole('region',{name:'Customer satisfaction'});await csat.scrollIntoViewIfNeeded();
+ assert.ok((await csat.innerText()).includes('4.3 / 5'));assert.ok((await csat.innerText()).includes('65%'));assert.equal(await csat.getByRole('list',{name:'Ratings by score'}).getByRole('listitem').count(),5);
+ assert.ok(await csat.getByText('Ravi Kumar <b>bold</b>').isVisible());assert.equal(await csat.getByRole('link',{name:'Open chat'}).getAttribute('href'),'/preview-org/operations?view=whatsapp&chat=w1');
+ checks.push('csat');
  await shot(page,'insights-1440.png');checks.push('insights');
  // Settings: business hours on.
  await page.getByRole('button',{name:'Settings'}).click();await page.locator('.ops-settings').waitFor();
@@ -227,6 +234,7 @@ try{
  assert.match(await page.getByLabel('Reply').inputValue(),/password reset link/);
  await page.getByLabel('Reply').fill('Reset link sent to your mail.');await page.getByLabel('Reply').press('Enter');
  await page.locator('.wa-msg.agent',{hasText:'Reset link'}).waitFor();await shot(page,'whatsapp-chat-1440.png');checks.push('whatsapp');
+ assert.equal(await page.locator('.wa-sources').getByRole('link',{name:'DOC-7 Password reset guide'}).getAttribute('href'),'/preview-org/documents/d7');checks.push('answer-sources');
  await page.close();await ctx.close();
  // Phone.
  ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});

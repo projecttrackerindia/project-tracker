@@ -129,6 +129,7 @@ public partial class AppDbContext
         });
         b.Entity<SupportConversation>(e =>
         {
+            e.Property(x => x.HandoverReason).HasMaxLength(20);
             e.HasIndex(x => new { x.TenantId, x.LastMessageAt }); e.HasIndex(x => new { x.ChannelId, x.ContactKey }).IsUnique(); e.HasIndex(x => x.NeedsReply);
             e.Property(x => x.ContactKey).HasMaxLength(64); e.Property(x => x.ContactProtected).HasMaxLength(400); e.Property(x => x.ContactName).HasMaxLength(120);
             e.Property(x => x.Language).HasMaxLength(10); e.Property(x => x.Status).HasMaxLength(20); e.Property(x => x.Mode).HasMaxLength(10);

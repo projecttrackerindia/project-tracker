@@ -35,7 +35,15 @@ public record OpsBreakdownDto(string Name, Guid? Id, int Open, int Completed, in
 public record OpsAgingDto(string Label, int Count);
 public record OperationsInsightsDto(int Days, int Open, int Unassigned, int Breached, int AtRisk, decimal? Compliance, decimal? MedianResolutionHours, decimal? MedianResponseMinutes,
     int CreatedInPeriod, int CompletedInPeriod, IReadOnlyList<OpsWeekDto> Weeks, IReadOnlyList<OpsAgingDto> Aging, IReadOnlyList<OpsBreakdownDto> ByType,
-    IReadOnlyList<OpsBreakdownDto> ByPriority, IReadOnlyList<OpsBreakdownDto> ByPerson, bool BusinessHours);
+    IReadOnlyList<OpsBreakdownDto> ByPriority, IReadOnlyList<OpsBreakdownDto> ByPerson, bool BusinessHours, OpsSatisfactionDto? Satisfaction = null);
+
+/// <summary>How customers rated WhatsApp support (1-5 after a chat or its ticket closed), and how often the AI employee answered on its own.</summary>
+public record OpsSatisfactionDto(int Asked, int Rated, decimal? Average, decimal? Satisfied, IReadOnlyList<int> Distribution, IReadOnlyList<OpsRatingWeekDto> Weeks,
+    IReadOnlyList<OpsRatingPersonDto> ByPerson, IReadOnlyList<OpsLowRatingDto> Low, int Chats, int AiOnly, int HandedOver, IReadOnlyList<OpsCountDto> HandoverReasons);
+public record OpsRatingWeekDto(DateOnly WeekStart, int Rated, decimal? Average);
+public record OpsRatingPersonDto(string Name, Guid? Id, int Rated, decimal? Average);
+public record OpsLowRatingDto(Guid ChatId, string Contact, int Rating, DateTime At, string? TicketKey, string? With);
+public record OpsCountDto(string Label, int Count);
 
 /// <summary>
 /// Routing for new operational work: picks the assignee from the rule for its work type (or the catch-all rule), taking turns or choosing
@@ -382,6 +390,38 @@ public class OperationsService(IAppDbContext db, ICurrentContext ctx, AppClock c
         return new OperationsInsightsDto(days, open.Count, open.Count(r => r.AssigneeId == null), open.Count(Breached),
             open.Count(r => r.SlaPausedAt == null && r.ResolutionRiskAt <= now && r.ResolutionDueAt > now),
             Compliance(measured.Count(Met), measured.Count), Hours(closedInPeriod), Median(responded),
-            rows.Count(r => r.CreatedAt >= from), closedInPeriod.Count, weeks, aging, byType, byPriority, byPerson, business);
+            rows.Count(r => r.CreatedAt >= from), closedInPeriod.Count, weeks, aging, byType, byPriority, byPerson, business, await SatisfactionAsync(from, firstWeek, now, ct));
+    }
+
+    /// <summary>Ratings in the period: average, share of 4s and 5s, the spread, by week and by the person who had the chat, the latest low ones, and AI handovers.</summary>
+    private async Task<OpsSatisfactionDto?> SatisfactionAsync(DateTime from, DateOnly firstWeek, DateTime now, CancellationToken ct)
+    {
+        var chats = await db.SupportConversations.AsNoTracking().Where(c => c.CreatedAt >= from || c.LastMessageAt >= from)
+            .Select(c => new { c.Id, c.ContactName, c.Rating, c.RatedAt, c.RatingAskedAt, c.AssigneeId, c.WorkTaskId, c.HandedOverAt, c.HandoverReason }).Take(20000).ToListAsync(ct);
+        if (chats.Count == 0) return null;
+        var rated = chats.Where(c => c.Rating is >= 1 and <= 5 && (c.RatedAt ?? c.RatingAskedAt) >= from).ToList();
+        decimal? Avg(IEnumerable<int> xs) { var l = xs.ToList(); return l.Count == 0 ? null : Math.Round((decimal)l.Average(), 2); }
+        var weeks = new List<OpsRatingWeekDto>();
+        for (var w = firstWeek; w <= DateOnly.FromDateTime(now); w = w.AddDays(7))
+        {
+            var a = w.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc); var b = a.AddDays(7);
+            var inWeek = rated.Where(c => (c.RatedAt ?? c.RatingAskedAt) >= a && (c.RatedAt ?? c.RatingAskedAt) < b).Select(c => c.Rating!.Value).ToList();
+            weeks.Add(new OpsRatingWeekDto(w, inWeek.Count, Avg(inWeek)));
+        }
+        var names = await NamesAsync(rated.Select(c => c.AssigneeId).Concat(chats.Select(c => c.AssigneeId)), ct);
+        var byPerson = rated.GroupBy(c => c.AssigneeId).Select(g => new OpsRatingPersonDto(g.Key is { } u ? names.GetValueOrDefault(u) ?? "Former member" : "AI employee", g.Key, g.Count(), Avg(g.Select(c => c.Rating!.Value))))
+            .OrderByDescending(p => p.Rated).Take(12).ToList();
+        var ticketIds = rated.Where(c => c.Rating <= 2 && c.WorkTaskId != null).Select(c => c.WorkTaskId!.Value).ToList();
+        var keys = await db.WorkTasks.AsNoTracking().Where(t => ticketIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => ProjectManagement.Application.Features.WorkItems.WorkItemService.KeyOf(t.Kind, t.Number), ct);
+        var low = rated.Where(c => c.Rating <= 2).OrderByDescending(c => c.RatedAt ?? c.RatingAskedAt).Take(8)
+            .Select(c => new OpsLowRatingDto(c.Id, c.ContactName ?? "Customer", c.Rating!.Value, (c.RatedAt ?? c.RatingAskedAt)!.Value, c.WorkTaskId is { } t ? keys.GetValueOrDefault(t) : null,
+                c.AssigneeId is { } u ? names.GetValueOrDefault(u) : null)).ToList();
+        var handed = chats.Where(c => c.HandedOverAt >= from).ToList();
+        var reasons = new[] { ("asked", "Customer asked for a person"), ("unsure", "Not in the documents"), ("upset", "Customer upset"), ("off", "AI switched off") }
+            .Select(r => new OpsCountDto(r.Item2, handed.Count(c => c.HandoverReason == r.Item1))).Where(r => r.Count > 0).ToList();
+        return new OpsSatisfactionDto(chats.Count(c => c.RatingAskedAt >= from), rated.Count, Avg(rated.Select(c => c.Rating!.Value)),
+            rated.Count == 0 ? null : Math.Round((decimal)rated.Count(c => c.Rating >= 4) / rated.Count, 4),
+            [.. Enumerable.Range(1, 5).Select(n => rated.Count(c => c.Rating == n))], weeks, byPerson, low,
+            chats.Count, chats.Count(c => c.HandedOverAt == null && c.AssigneeId == null), handed.Count, reasons);
     }
 }

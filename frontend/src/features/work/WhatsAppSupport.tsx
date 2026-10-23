@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, del, download, fetchBlobUrl, get, post, put } from '../../api/client';
 import { teamApi, workspaceApi } from '../../api/endpoints.auth';
 import { workApi } from '../../api/endpoints.platform';
+import { projectApi } from '../../api/endpoints.projects';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { ErrorState, Modal, PageLoader, Spinner } from '../../components/ui';
@@ -20,6 +21,7 @@ interface Channel {
   enabled: boolean; autoReply: boolean; agentName: string; workTypeId: string | null; webhookUrl: string; verifyToken: string; lastInboundAt: string | null; checkedAt: string | null;
   lastError: string | null; openChats: number; connectedAt: string;
   firstReplyMinutes: number; tellCustomer: boolean; askRating: boolean; updateTemplate: string | null; updateTemplateLanguage: string; savedReplies: SavedReply[] | null;
+  answerFromDocuments?: boolean; knowledgeProjectId?: string | null;
 }
 export interface ChatItem {
   id: string; channelId: string; channelName: string; contact: string; contactName: string | null; language: string; status: 'open' | 'waiting' | 'closed'; mode: 'ai' | 'human';
@@ -27,12 +29,15 @@ export interface ChatItem {
   assigneeId: string | null; assigneeName: string | null; waitingSince: string | null; replyDueAt: string | null; rating: number | null;
 }
 interface Media { kind: 'image' | 'voice' | 'video' | 'document' | 'sticker'; id: string; mime: string | null; fileName: string | null; transcript: string | null }
-interface Message { from: 'contact' | 'ai' | 'agent' | 'update' | 'system'; text: string; at: string; by?: string | null; media?: Media | null }
+/** A DocTracker page an AI answer was taken from. */
+interface Source { documentId: string; key: string; title: string }
+interface Message { from: 'contact' | 'ai' | 'agent' | 'update' | 'system'; text: string; at: string; by?: string | null; media?: Media | null; sources?: Source[] | null }
 interface Chat { chat: ChatItem; messages: Message[]; savedReplies: SavedReply[] | null }
 interface Queues { mine: number; unassigned: number; waiting: number; open: number; late: number }
 interface ChannelForm {
   name: string; teamId: string | null; phoneNumberId: string; businessAccountId: string; accessToken: string; appSecret: string; enabled: boolean; autoReply: boolean; agentName: string; workTypeId: string | null;
   firstReplyMinutes: number; tellCustomer: boolean; askRating: boolean; updateTemplate: string; updateTemplateLanguage: string; savedReplies: SavedReply[];
+  answerFromDocuments: boolean; knowledgeProjectId: string | null; allPages: boolean;
 }
 type View = 'mine' | 'unassigned' | 'waiting' | 'open' | 'closed';
 
@@ -151,7 +156,9 @@ function ChannelModal({ c, onClose, onSaved }: { c: Channel | null; onClose: () 
     enabled: c?.enabled ?? true, autoReply: c?.autoReply ?? true, agentName: c?.agentName ?? 'Asha', workTypeId: c?.workTypeId ?? null,
     firstReplyMinutes: c?.firstReplyMinutes ?? 15, tellCustomer: c?.tellCustomer ?? true, askRating: c?.askRating ?? true,
     updateTemplate: c?.updateTemplate ?? '', updateTemplateLanguage: c?.updateTemplateLanguage ?? 'en', savedReplies: c?.savedReplies ?? [],
+    answerFromDocuments: c?.answerFromDocuments ?? true, knowledgeProjectId: c?.knowledgeProjectId ?? null, allPages: !c?.knowledgeProjectId,
   });
+  const projects = useWsQuery(['projects', 'whatsapp-pages'], () => projectApi.list({ pageSize: 200, sort: 'name' }), { staleTime: 300_000, enabled: f.answerFromDocuments });
   const setReply = (i: number, k: keyof SavedReply, v: string) => setF((x) => ({ ...x, savedReplies: x.savedReplies.map((r, j) => (j === i ? { ...r, [k]: v } : r)) }));
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof ChannelForm>(k: K, v: ChannelForm[K]) => setF((x) => ({ ...x, [k]: v }));
@@ -195,6 +202,16 @@ function ChannelModal({ c, onClose, onSaved }: { c: Channel | null; onClose: () 
         </fieldset>
         <label className="wa-toggle"><input type="checkbox" checked={f.autoReply} onChange={(e) => set('autoReply', e.target.checked)} />
           <span>The AI employee answers first<small>Off: chats wait in the inbox for your team.</small></span></label>
+        <label className="wa-toggle"><input type="checkbox" checked={f.answerFromDocuments} onChange={(e) => set('answerFromDocuments', e.target.checked)} />
+          <span>Answer from DocTracker pages<small>Only approved or published pages marked Public. Personal data in them stays masked, and each answer names the page it used.</small></span></label>
+        {f.answerFromDocuments && (
+          <label className="wa-field wa-pages"><span>Pages from</span>
+            <Select className="select" aria-label="Pages from" value={f.allPages ? '' : f.knowledgeProjectId ?? ''}
+              onChange={(e) => setF((x) => ({ ...x, knowledgeProjectId: e.target.value || null, allPages: !e.target.value }))}>
+              <option value="">Every public page in the workspace</option>
+              {(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.name} space</option>)}
+            </Select></label>
+        )}
         <label className="wa-toggle"><input type="checkbox" checked={f.enabled} onChange={(e) => set('enabled', e.target.checked)} />
           <span>Active<small>Paused numbers ignore new messages.</small></span></label>
         <fieldset className="wa-meta">
@@ -437,6 +454,11 @@ function ChatPane({ id, onClose }: { id: string; onClose: () => void }) {
             {m.from !== 'contact' && <small className="wa-msg-by">{m.from === 'ai' ? `${m.by ?? 'AI'} · AI` : m.from === 'update' ? 'Sent automatically' : m.by ?? 'Team'}</small>}
             {m.media && <MediaView chatId={id} media={m.media} />}
             {!(m.media && /^\[(photo|voice note|video|sticker|document)\]$/.test(m.text)) && !(m.media?.kind === 'voice') && <p>{m.text.replace(/^\[(photo|video|document)\] /, '')}</p>}
+            {m.sources && m.sources.length > 0 && (
+              <span className="wa-sources" aria-label="Answered from">
+                <Icon name="note" size={11} /> From {m.sources.map((src, j) => <span key={src.documentId}>{j > 0 && ', '}<Link to={`/documents/${src.documentId}`}>{src.key} {src.title}</Link></span>)}
+              </span>
+            )}
             <time dateTime={m.at} title={formatDateTime(m.at)}>{timeAgo(m.at)}</time>
           </div>
         ))}

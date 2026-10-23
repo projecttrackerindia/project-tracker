@@ -43,6 +43,13 @@ public class SupportChannel : TenantEntity, ITenantScoped
     public string UpdateTemplateLanguage { get; set; } = "en";
     /// <summary>Saved replies the team inserts with "/" (JSON list of title and text).</summary>
     public string? SavedReplies { get; set; }
+    /// <summary>
+    /// The AI employee answers from the workspace's DocTracker pages that are approved or published and classified Public (never internal or
+    /// confidential ones), and names the page it used.
+    /// </summary>
+    public bool AnswerFromDocuments { get; set; } = true;
+    /// <summary>Only pages of this project's space (null: every public page of the workspace).</summary>
+    public Guid? KnowledgeProjectId { get; set; }
 }
 
 /// <summary>One person's WhatsApp chat with a support number. The number and the messages are stored encrypted.</summary>
@@ -77,4 +84,8 @@ public class SupportConversation : TenantEntity, ITenantScoped
     public DateTime? RatingAskedAt { get; set; }
     /// <summary>1 (poor) to 5 (great), the customer's answer to the question after closing.</summary>
     public int? Rating { get; set; }
+    public DateTime? RatedAt { get; set; }
+    /// <summary>When the AI employee handed the chat to a person, and why: asked (the customer asked for one), unsure, upset or off (AI unavailable).</summary>
+    public DateTime? HandedOverAt { get; set; }
+    public string? HandoverReason { get; set; }
 }

@@ -945,7 +945,14 @@ export interface Triage { workTypeId: string | null; workType: string | null; ty
 export interface OpsBreakdown { name: string; id: string | null; open: number; completed: number; breached: number; compliance: number | null; medianResolutionHours: number | null }
 export interface OpsInsights { days: number; open: number; unassigned: number; breached: number; atRisk: number; compliance: number | null; medianResolutionHours: number | null; medianResponseMinutes: number | null;
   createdInPeriod: number; completedInPeriod: number; weeks: { weekStart: string; created: number; completed: number; breached: number; compliance: number | null }[]; aging: { label: string; count: number }[];
-  byType: OpsBreakdown[]; byPriority: OpsBreakdown[]; byPerson: OpsBreakdown[]; businessHours: boolean }
+  byType: OpsBreakdown[]; byPriority: OpsBreakdown[]; byPerson: OpsBreakdown[]; businessHours: boolean; satisfaction?: OpsSatisfaction | null }
+/** How customers rated WhatsApp support (1-5), and how often the AI employee answered on its own. */
+export interface OpsSatisfaction {
+  asked: number; rated: number; average: number | null; satisfied: number | null; distribution: number[];
+  weeks: { weekStart: string; rated: number; average: number | null }[]; byPerson: { name: string; id: string | null; rated: number; average: number | null }[];
+  low: { chatId: string; contact: string; rating: number; at: string; ticketKey: string | null; with: string | null }[];
+  chats: number; aiOnly: number; handedOver: number; handoverReasons: { label: string; count: number }[];
+}
 
 /** Suggestions for a new task, from finished work in the workspace; each carries the facts behind it. */
 export interface TaskSuggestions {

@@ -5634,6 +5634,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
 
+                    b.Property<bool>("AnswerFromDocuments")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("AppSecretProtected")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -5676,6 +5679,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
+
+                    b.Property<Guid?>("KnowledgeProjectId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(500)
@@ -5776,6 +5782,13 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("HandedOverAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("HandoverReason")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("Language")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -5802,6 +5815,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("NeedsReply")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("RatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("Rating")
                         .HasColumnType("integer");
