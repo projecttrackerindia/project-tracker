@@ -160,6 +160,10 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysi
     [HttpPost("messages/{id:guid}/feedback")]
     public async Task<IActionResult> Feedback(Guid id, [FromBody] AiFeedbackRequest req, CancellationToken ct) { await guidance.FeedbackAsync(id, req.Rating, req.Reason, ct); return NoContent(); }
 
+    /// <summary>The caller's own answers marked "not helpful", shaped as scenarios for the evaluation set.</summary>
+    [HttpGet("feedback/missed")]
+    public async Task<IActionResult> Missed(CancellationToken ct) => Ok(await guidance.MissedAsync(ct));
+
     [HttpGet("profile")]
     public async Task<IActionResult> Profile(CancellationToken ct) => Ok(await guidance.ProfileAsync(ct));
 

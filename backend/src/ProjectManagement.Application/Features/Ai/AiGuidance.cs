@@ -13,6 +13,8 @@ public record AiStarterDto(string Label, string Prompt, string? Hint);
 public record AiStartersDto(string Greeting, IReadOnlyList<AiStarterDto> Starters);
 public record AiProfileDto(int DetailLevel, string DetailLabel, string? Notes, IReadOnlyList<string> Learned, DateTime? LearnedAt);
 public record AiFeedbackRequest(string Rating, string? Reason);
+/// <summary>An answer the person marked not helpful, as a candidate scenario: what they asked, why it missed, what the assistant used.</summary>
+public record AiFeedbackCaseDto(string Id, string Text, string? Reason, IReadOnlyList<string> ToolsUsed, IReadOnlyList<string> CardsMade, DateTime At, string Link);
 public record SetAiProfileRequest(string? Notes);
 
 /// <summary>
@@ -128,6 +130,29 @@ public class AiGuidance(IAppDbContext db, ICurrentContext ctx, AppClock clock, W
         row.CountersJson = JsonSerializer.Serialize(counters, Json);
         row.LearnedAt = clock.Now;
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// The person's own answers they marked "not helpful" (last 90 days), each with the question that led to it, in the scenario library's
+    /// shape so it can be added to the evaluation set. Only ever their own conversations: nobody else's questions are shown.
+    /// </summary>
+    public async Task<IReadOnlyList<AiFeedbackCaseDto>> MissedAsync(CancellationToken ct = default)
+    {
+        var me = ctx.RequireUserId();
+        var since = clock.Now.AddDays(-90);
+        var down = await db.AiMessages.AsNoTracking().Where(m => m.UserId == me && m.Role == "assistant" && m.Feedback == "down" && m.CreatedAt >= since)
+            .OrderByDescending(m => m.CreatedAt).Take(100).Select(m => new { m.Id, m.ConversationId, m.CreatedAt, m.FeedbackReason, m.ToolsJson, m.ActionsJson }).ToListAsync(ct);
+        var list = new List<AiFeedbackCaseDto>();
+        foreach (var d in down)
+        {
+            var question = await db.AiMessages.AsNoTracking().Where(m => m.ConversationId == d.ConversationId && m.UserId == me && m.Role == "user" && m.CreatedAt <= d.CreatedAt)
+                .OrderByDescending(m => m.CreatedAt).Select(m => m.Content).FirstOrDefaultAsync(ct);
+            if (string.IsNullOrWhiteSpace(question)) continue;
+            var tools = string.IsNullOrEmpty(d.ToolsJson) ? [] : (JsonSerializer.Deserialize<List<AiToolUseDto>>(d.ToolsJson, Json) ?? []).Select(t => t.Name).Distinct().ToList();
+            var cards = string.IsNullOrEmpty(d.ActionsJson) ? [] : (JsonSerializer.Deserialize<List<AiProposal>>(d.ActionsJson, Json) ?? []).Select(p => p.Kind).Distinct().ToList();
+            list.Add(new AiFeedbackCaseDto($"feedback-{d.Id.ToString("N")[..8]}", question.Length > 1000 ? question[..1000] : question, d.FeedbackReason, tools, cards, d.CreatedAt, $"/ai/{d.ConversationId}"));
+        }
+        return list;
     }
 
     /// <summary>Called when the person confirms or dismisses something the assistant proposed.</summary>

@@ -17,6 +17,8 @@ data/files/
 
 # Generated browser previews and synthetic regression results
 frontend/test-results/
+# Live assistant grading: answers can quote a test workspace's data
+evaluation/ai/results/
 
 # Local regression reports (CI stores these as workflow artifacts)
 **/TestResults/

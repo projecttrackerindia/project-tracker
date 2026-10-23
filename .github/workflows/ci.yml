@@ -147,6 +147,8 @@ jobs:
         run: npm run test
       - name: Type-check
         run: npm run typecheck
+      - name: Assistant scenario grader (self-test, no model)
+        run: node ../tools/ai-evaluation/run-scenarios.mjs --self-test
       - name: Build
         run: npm run build
       - name: Install browser for synthetic UI regression checks

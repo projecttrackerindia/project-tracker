@@ -809,6 +809,32 @@ public partial class AiWorkspaceTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Answers_a_person_marked_not_helpful_come_back_to_them_as_test_scenarios_and_nobody_else_sees_them()
+    {
+        var o = await Setup();
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("find_work", new { project = "Atlas" }));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Atlas has nothing late."));
+        var res = await Ask(o.Owner, "Which Atlas tasks slipped this sprint?");
+        var id = S(res.Done["id"]);
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Fine."));
+        var liked = S((await Ask(o.Owner, "Thanks, and Orion?", conversation: res.Conversation)).Done["id"]);
+        Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{id}/feedback", new { rating = "down", reason = "wrong" })).Ok);
+        Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{liked}/feedback", new { rating = "up" })).Ok);
+
+        var mine = (await o.Owner.Get("/api/v1/ai/feedback/missed")).Data!.AsArray();
+        var miss = Assert.Single(mine);
+        Assert.Equal("Which Atlas tasks slipped this sprint?", S(miss!["text"]));   // the question that led to it, not a later one
+        Assert.Equal("wrong", S(miss["reason"]));
+        Assert.Contains("find_work", miss["toolsUsed"]!.ToJsonString());
+        Assert.StartsWith("feedback-", S(miss["id"]));
+        Assert.Empty((await o.Manager.Get("/api/v1/ai/feedback/missed")).Data!.AsArray());   // private to the person
+
+        // Taking the 👎 back removes it.
+        Assert.True((await o.Owner.Post($"/api/v1/ai/messages/{id}/feedback", new { rating = "none" })).Ok);
+        Assert.Empty((await o.Owner.Get("/api/v1/ai/feedback/missed")).Data!.AsArray());
+    }
+
+    [Fact]
     public async Task Three_declined_suggestions_of_one_kind_stop_the_assistant_offering_it_unasked()
     {
         var o = await Setup();
