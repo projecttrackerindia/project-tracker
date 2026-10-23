@@ -221,3 +221,95 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
   .vlt-add-field { flex-wrap: wrap; }
 }
 .vlt-scope .btn-xs { height: 26px; padding: 0 9px; font-size: 12px; gap: 5px; border-radius: 7px; }
+
+/* ===================================================================== sealed (end-to-end encrypted) */
+.vlt-scope { --vlt-e2ee: var(--success); --vlt-e2ee-soft: var(--success-soft); --vlt-glow: color-mix(in srgb, var(--primary-fill) 35%, transparent); }
+.vlt-warn { color: var(--warning); background: var(--warning-soft); padding: 8px 10px; border-radius: 8px; }
+
+/* the lock status at the top of the rail */
+.vlt-rail .vlt-lockstate { margin-bottom: 6px; border: 1px solid var(--border); background: var(--surface-2); font-weight: 650; }
+.vlt-rail .vlt-lockstate.open { border-color: color-mix(in srgb, var(--vlt-e2ee) 35%, transparent); background: var(--vlt-e2ee-soft); color: var(--vlt-e2ee); }
+.vlt-rail .vlt-lockstate.locked { color: var(--text); }
+.vlt-rail .vlt-lockstate.none { color: var(--primary); border-style: dashed; }
+.vlt-rail .vlt-lockdot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.vlt-lockstate.open .vlt-lockdot { background: var(--vlt-e2ee); box-shadow: 0 0 0 0 color-mix(in srgb, var(--vlt-e2ee) 60%, transparent); animation: vlt-pulse 2.4s ease-out infinite; }
+.vlt-lockstate.none .vlt-lockdot { background: var(--primary-fill); }
+@keyframes vlt-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--vlt-e2ee) 55%, transparent); } 80%, 100% { box-shadow: 0 0 0 8px transparent; } }
+.vlt-rail button.sealed > svg:first-child { color: var(--vlt-e2ee); }
+
+.vlt-e2ee-tag { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; vertical-align: middle;
+  color: var(--vlt-e2ee); background: var(--vlt-e2ee-soft); border: 1px solid color-mix(in srgb, var(--vlt-e2ee) 25%, transparent); }
+.badge.vlt-e2ee { display: inline-flex; gap: 4px; align-items: center; color: var(--vlt-e2ee); background: var(--vlt-e2ee-soft); border-color: color-mix(in srgb, var(--vlt-e2ee) 25%, transparent); }
+.vlt-e2ee-dot { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; color: var(--vlt-e2ee); background: var(--vlt-e2ee-soft); }
+.vlt-locked-note { display: flex; align-items: center; gap: 8px; width: 100%; margin-bottom: 8px; padding: 9px 12px; border-radius: 10px; border: 1px dashed var(--border-strong);
+  background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.vlt-locked-note:hover { border-color: var(--primary); color: var(--primary); }
+.vlt-panel-sealed { border-color: color-mix(in srgb, var(--vlt-e2ee) 30%, var(--border)); }
+
+/* setup, unlock and the recovery kit */
+.vlt-setup, .vlt-unlock { max-width: 520px; margin: 18px auto; display: flex; flex-direction: column; align-items: stretch; gap: 14px; text-align: left; }
+.vlt-unlock { align-items: center; text-align: center; }
+.vlt-setup h3, .vlt-unlock h3 { margin: 0; font-size: 19px; }
+.vlt-setup-glyph { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; color: var(--primary-text); background: linear-gradient(135deg, var(--primary-fill), var(--primary-hover));
+  box-shadow: 0 14px 30px -14px var(--vlt-glow); }
+.vlt-setup-glyph.ok { background: linear-gradient(135deg, var(--success), color-mix(in srgb, var(--success) 70%, #000)); }
+.vlt-setup-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.vlt-setup-points li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; }
+.vlt-setup-points li > svg { color: var(--primary); margin-top: 2px; flex-shrink: 0; }
+.vlt-check-row.off { opacity: .6; }
+.vlt-recovery, .vlt-safety, .vlt-link-code { display: block; padding: 14px 16px; border-radius: 12px; font-family: var(--vlt-mono); font-size: 15px; letter-spacing: .06em; line-height: 1.7;
+  text-align: center; color: var(--text); background: var(--surface-2); border: 1px solid var(--border-strong); user-select: all; overflow-wrap: anywhere; }
+.vlt-recovery { font-size: 16px; font-weight: 700; border-style: dashed; border-color: color-mix(in srgb, var(--primary) 45%, transparent); }
+.vlt-link-code { font-size: 30px; font-weight: 750; letter-spacing: .16em; padding: 12px 20px; }
+.vlt-kit-actions, .vlt-unlock-ways { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.vlt-unlock-form { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.vlt-unlock-form .input { text-align: center; letter-spacing: .04em; }
+.vlt-link-wait { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+
+/* the unlock orb: a slowly turning ring around the lock */
+.vlt-unlock-orb { position: relative; display: grid; place-items: center; width: 92px; height: 92px; border-radius: 50%; color: var(--primary);
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--primary-fill) 18%, var(--surface)) 0%, var(--surface) 70%); box-shadow: 0 18px 40px -22px var(--vlt-glow); }
+.vlt-unlock-orb > span { position: absolute; inset: -3px; border-radius: 50%; padding: 3px;
+  background: conic-gradient(from 0deg, transparent 0 20%, var(--primary-fill) 45%, var(--brand-sky, var(--info)) 60%, transparent 80%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: vlt-spin 6s linear infinite; }
+.vlt-unlock-orb.small { width: 54px; height: 54px; flex-shrink: 0; }
+.vlt-unlock-orb.open { color: var(--vlt-e2ee); }
+.vlt-unlock-orb.open > span { background: conic-gradient(from 0deg, var(--vlt-e2ee), color-mix(in srgb, var(--vlt-e2ee) 30%, transparent), var(--vlt-e2ee)); }
+.vlt-unlock-orb > svg { position: relative; }
+@keyframes vlt-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .vlt-unlock-orb > span, .vlt-lockstate.open .vlt-lockdot { animation: none; } }
+
+/* my keys */
+.vlt-keys { display: flex; flex-direction: column; gap: 14px; }
+.vlt-keys-hero { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 14px; background: linear-gradient(120deg, var(--primary-soft), var(--vlt-e2ee-soft)); border: 1px solid var(--border); }
+.vlt-keys-hero > div:nth-child(2) { flex: 1; }
+.vlt-keys-hero h3 { margin: 0; font-size: 15px; }
+.vlt-keys-hero p { margin: 2px 0 0; font-size: 12.5px; }
+.vlt-unlocks { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.vlt-unlocks li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13px; }
+.vlt-unlocks li > span { flex: 1; display: flex; flex-direction: column; }
+.vlt-unlocks li > svg { color: var(--primary); }
+.vlt-danger-card { border-color: color-mix(in srgb, var(--danger) 25%, var(--border)); }
+.vlt-link-approve { display: flex; flex-direction: column; gap: 10px; }
+
+/* new collection: choosing how it is protected */
+.vlt-mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.vlt-mode-cards button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--surface-2);
+  color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.vlt-mode-cards button span { font-size: 12px; color: var(--text-3); }
+.vlt-mode-cards button svg { color: var(--primary); }
+.vlt-mode-cards button.on { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); background: var(--surface); }
+.vlt-mode-cards button:disabled { opacity: .55; cursor: not-allowed; }
+.vlt-keys-panel { padding: 10px 12px; border-radius: 10px; background: var(--vlt-e2ee-soft); }
+.vlt-keys-panel ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.vlt-keys-panel li { display: flex; align-items: center; gap: 8px; justify-content: space-between; font-size: 12.5px; }
+
+/* a revealed note carries the viewer's name faintly (a photo of the screen says who looked) */
+.vlt-watermark { position: relative; }
+.vlt-watermark::after { content: attr(data-mark); position: absolute; right: 8px; bottom: 4px; font-size: 10px; opacity: .25; pointer-events: none; }
+
+@media (max-width: 760px) {
+  .vlt-mode-cards { grid-template-columns: 1fr; }
+  .vlt-link-code { font-size: 24px; }
+  .vlt-keys-hero { flex-wrap: wrap; }
+}

@@ -3,10 +3,18 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
+import { webcrypto, createHash } from 'node:crypto';
+import { x25519 } from '@noble/curves/ed25519.js';
+import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
+import { hkdf } from '@noble/hashes/hkdf.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 
 // The password vault: values stay masked until asked for and hide again by themselves, copying clears the clipboard, confidential items ask
 // for a two-step code once, use-only items can be copied but not shown, one-time codes come from the server, the editor's generator and
-// strength meter, import from a CSV export, sharing, health, administration, and the phone layout in both themes.
+// strength meter, import from a CSV export, sharing, health, administration, and the phone layout in both themes. Then the sealed vault:
+// keys made in the browser with a passkey (a virtual authenticator with PRF), the recovery kit, a sealed collection and item whose
+// contents never reach the server readable, locking and unlocking (passkey and recovery key), and approving a new device — whose
+// envelope is opened here with the new device's one-time keys and must give exactly the identity on record.
 // Built frontend with a synthetic vault API only.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/vault-ui');
 await fs.mkdir(out, { recursive: true });
@@ -20,8 +28,8 @@ const now = new Date().toISOString();
 // ---- a tiny vault server
 const SECRETS = { i1: { password: 'Tq7#vLm2!pZx9@Rk', note: 'Branch code 0042' }, i2: { password: 'Root!Acc3ss#2026zz' }, i3: { password: 'Use0nly!Secret#9q' }, i4: { password: 'Summer@2024', totp: 'JBSWY3DPEHPK3PXP' } };
 const collections = [
-  { id: 'c1', name: 'My vault', description: null, kind: 'Personal', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 2, atRisk: 1, requireStepUp: false, rotateEveryDays: null, locked: false, shares: null },
-  { id: 'c2', name: 'Payments servers', description: 'Production and UAT', kind: 'Shared', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 2, atRisk: 0, requireStepUp: false, rotateEveryDays: 90, locked: false,
+  { id: 'c1', name: 'My vault', description: null, kind: 'Personal', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 2, atRisk: 1, requireStepUp: false, rotateEveryDays: null, locked: false, shares: null, sealed: false, rekeyNeeded: false, keyVersion: 0 },
+  { id: 'c2', name: 'Payments servers', description: 'Production and UAT', kind: 'Shared', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 2, atRisk: 0, requireStepUp: false, rotateEveryDays: 90, locked: false, sealed: false, rekeyNeeded: false, keyVersion: 0,
     shares: [{ id: 's1', principalType: 'User', principalId: user.id, role: null, name: 'Asha Rao', access: 'Manage', expiresAt: null }, { id: 's2', principalType: 'User', principalId: 'u2', role: null, name: 'Ravi Kumar', access: 'View', expiresAt: null }] },
 ];
 const summary = (o) => ({ id: o.id, collectionId: o.c, collectionName: collections.find((c) => c.id === o.c).name, kind: o.kind ?? 'Login', title: o.title, url: o.url ?? null, usernameHint: o.hint ?? null, tags: o.tags ?? [],
@@ -47,7 +55,11 @@ const detail = (id) => {
     canReveal: !s.useOnly && s.myAccess !== 'UseOnly', canCopy: true, canManage: s.myAccess === 'Manage', needsStepUp: s.class === 'Confidential', rotateEveryDays: null, createdAt: now, createdBy: { id: user.id, name: user.displayName } };
 };
 const policy = { stepUpAlways: false, clipboardSeconds: 5, revealSeconds: 3, sharedAdminsOnly: false };
-const overview = () => ({ collections, policy, canAdmin: true, canCreateShared: true, health: { total: 4, weak: 1, reused: 0, breached: 1, expired: 0, old: 0, toRotate: 0, score: 75 }, mfaEnabled: true });
+const sealedState = { identity: null, unlocks: [], envelopes: [], items: [], events: [], pendingDevice: null };
+const overview = () => ({ collections, policy, canAdmin: true, canCreateShared: true, health: { total: 4, weak: 1, reused: 0, breached: 1, expired: 0, old: 0, toRotate: 0, score: 75 }, mfaEnabled: true, identity: sealedState.identity });
+const sha1hex = (s) => createHash('sha1').update(s).digest('hex').toUpperCase();
+const collectionKeys = (id) => ({ collectionId: id, sealed: true, keyVersion: 1, rekeyNeeded: false, myAccess: 'Manage', pending: [],
+  mine: sealedState.envelopes.filter((e) => e.collectionId === id).map((e) => ({ ...e, senderUserId: user.id, senderEd25519Public: sealedState.identity.ed25519Public })) });
 const STEP = 'step-token-1';
 const writes = [], errors = [], checks = [];
 const err = (status, code, message) => ({ status, body: { errors: [{ code, message }], message } });
@@ -90,10 +102,21 @@ try {
       else if (m && m[2] === 'activity') data = [{ at: now, action: 'vault.revealed', by: { id: 'u2', name: 'Ravi Kumar' }, field: 'Password', ipAddress: '203.0.113.x' }, { at: now, action: 'vault.reveal_denied', by: { id: 'u3', name: 'Uma' }, field: 'password', ipAddress: null }];
       else if (m && m[3]) { writes.push({ ep, body }); data = body.stepUp === STEP ? { value: 'Old!Value#2025', revealSeconds: 3, clipboardSeconds: 5 } : null; if (!data) fail = err(403, 'STEP_UP_REQUIRED', 'Earlier values need a fresh two-step check.'); }
       else if (ep === '/api/v1/vault/check') { writes.push({ ep, body }); data = { strength: 4, breachCount: body.password === 'Summer@2024' ? 4321 : 0 }; }
+      else if (ep.startsWith('/api/v1/vault/breach-range/')) { const prefix = ep.split('/').pop(); writes.push({ ep }); const h = sha1hex('Summer@2024'); data = { body: `0000000000000000000000000000000000A:0\r\n${h.startsWith(prefix) ? `${h.slice(5)}:4321` : ''}` }; }
+      else if (ep === '/api/v1/vault/keys/me') data = { identity: sealedState.identity, unlocks: sealedState.unlocks };
+      else if (ep === '/api/v1/vault/keys/setup') { writes.push({ ep, body }); sealedState.identity = { userId: user.id, ...Object.fromEntries(['x25519Public', 'mlKemPublic', 'ed25519Public', 'selfSignature', 'fingerprint'].map((k) => [k, body[k]])), generation: 1 };
+        sealedState.unlocks = body.unlocks.map((u, i) => ({ ...u, id: `u${i}`, credentialId: u.credentialId ?? null, createdAt: now, lastUsedAt: null })); data = { identity: sealedState.identity, unlocks: sealedState.unlocks }; }
+      else if (ep.match(/^\/api\/v1\/vault\/keys\/unlocks\/[^/]+\/used$/)) { writes.push({ ep }); data = null; }
+      else if (ep.match(/^\/api\/v1\/vault\/collections\/[^/]+\/keys$/)) { const id = ep.split('/')[5]; if (method === 'POST') { writes.push({ ep, body }); for (const e of body.envelopes) sealedState.envelopes.push({ ...e, collectionId: id }); } data = collectionKeys(id); }
+      else if (ep.match(/^\/api\/v1\/vault\/collections\/[^/]+\/sealed-items$/)) { const id = ep.split('/')[5]; data = url.searchParams.get('bin') ? [] : sealedState.items.filter((i) => i.collectionId === id); }
+      else if (ep === '/api/v1/vault/sealed-items' && method === 'POST') { writes.push({ ep, body }); const row = { ...body, rotationReason: null, createdAt: now, updatedAt: null, valueChangedAt: now, deletedAt: null, myAccess: 'Manage', files: [], versions: 0, rotateEveryDays: body.rotateEveryDays ?? null, expiresAt: body.expiresAt ?? null }; sealedState.items.push(row); data = row; }
+      else if (ep.match(/^\/api\/v1\/vault\/sealed-items\/[^/]+\/events$/)) { sealedState.events.push(body); data = null; }
+      else if (ep === '/api/v1/vault/devices/pending') data = sealedState.pendingDevice ? [sealedState.pendingDevice.link] : [];
+      else if (ep.match(/^\/api\/v1\/vault\/devices\/[^/]+\/approve$/)) { writes.push({ ep, body }); sealedState.pendingDevice.approved = body; sealedState.pendingDevice = { ...sealedState.pendingDevice, link: null }; data = null; }
       else if (ep === '/api/v1/vault/import') { writes.push({ ep, body }); data = { imported: body.rows.length, skipped: 0, weak: 1 }; }
       else if (ep.match(/^\/api\/v1\/vault\/collections\/[^/]+$/) && method === 'GET') data = collections.find((c) => c.id === ep.split('/').pop());
       else if (ep.endsWith('/shares') && method === 'PUT') { writes.push({ ep, body }); data = collections[1]; }
-      else if (ep === '/api/v1/vault/collections' && method === 'POST') { writes.push({ ep, body }); data = { ...collections[1], id: 'c3', name: body.name }; }
+      else if (ep === '/api/v1/vault/collections' && method === 'POST') { writes.push({ ep, body }); data = { ...collections[1], id: `c${collections.length + 1}`, name: body.name, sealed: !!body.sealed, keyVersion: body.sealed ? 1 : 0, rekeyNeeded: false, items: 0, atRisk: 0, shares: [collections[1].shares[0]] }; collections.push(data); }
       else if (ep === '/api/v1/vault/policy') { writes.push({ ep, body }); Object.assign(policy, body); data = policy; }
       else if (ep.startsWith('/api/v1/vault/access-review/')) data = { person: { id: 'u2', name: 'Ravi Kumar' }, collections: [{ id: 'c9', name: 'Ops break-glass', access: 'View', items: 3 }], used: [{ itemId: 'i2', title: 'AWS root account', collection: 'Payments servers', times: 4, last: now }] };
       else if (ep.endsWith('/admin-access')) { writes.push({ ep, body }); data = collections[1]; if (body.stepUp !== STEP) fail = err(403, 'STEP_UP_REQUIRED', 'Confirm with your authenticator first.'); }
@@ -310,6 +333,109 @@ try {
   await waitFor(() => writes.some((w) => w.ep.endsWith('/admin-access')), 'admin access');
   assert.deepEqual(writes.find((w) => w.ep.endsWith('/admin-access')).body, { reason: 'Kavya is on leave and the firewall is down', stepUp: STEP });
   checks.push('admin');
+
+  // ---- the sealed vault, with a passkey from a virtual authenticator that supports PRF
+  const cdp = await ctx.newCDPSession(page);
+  await cdp.send('WebAuthn.enable');
+  await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, hasPrf: true, automaticPresenceSimulation: true } });
+  assert.match(await page.getByTestId('lock-state').innerText(), /Set up sealed vault/);
+  await page.getByTestId('lock-state').click();
+  await page.getByRole('button', { name: 'Create my vault keys' }).click();
+  await page.getByTestId('recovery-kit').waitFor();
+  const kit = (await page.getByLabel('Recovery key').innerText()).trim();
+  assert.match(kit, /^PTV1(-[A-Z2-9]{4}){8}$/);
+  const setup = writes.find((w) => w.ep === '/api/v1/vault/keys/setup').body;
+  assert.deepEqual(setup.unlocks.map((u) => u.kind), ['RecoveryKey', 'Passkey'], 'a recovery key and a passkey');
+  assert.equal(Buffer.from(setup.mlKemPublic, 'base64').length, 1184, 'an ML-KEM-768 public key');
+  assert.ok(!JSON.stringify(setup).includes(kit) && !JSON.stringify(setup).includes(kit.replace(/-/g, '')), 'the recovery key never leaves the page');
+  assert.match(setup.fingerprint, /^\d{5}( \d{5}){11}$/);
+  await page.getByText('I have saved it somewhere safe and offline.').click();
+  await page.getByLabel('Last four characters').fill(kit.slice(-4));
+  await page.getByRole('button', { name: 'Done — open my vault' }).click();
+  await page.getByTestId('safety-code').waitFor();
+  assert.equal(await page.getByTestId('safety-code').innerText(), setup.fingerprint);
+  assert.match(await page.getByTestId('lock-state').innerText(), /Sealed vault open/);
+  checks.push('sealed-keys-with-passkey');
+  await shot(page, 'sealed-keys-1440.png');
+
+  // A sealed collection: its key is made here and wrapped to me (hybrid X25519 + ML-KEM-768 envelope).
+  await page.getByRole('button', { name: 'New collection' }).click();
+  await page.locator('.modal').getByRole('radio', { name: /Sealed/ }).waitFor();
+  assert.equal(await page.locator('.modal').getByRole('radio', { name: /Sealed/ }).getAttribute('aria-checked'), 'true', 'sealed is the default once keys are open');
+  await page.locator('.modal').getByLabel('Name', { exact: false }).first().fill('Root secrets');
+  await page.locator('.modal').getByRole('button', { name: 'Save', exact: true }).click();
+  await waitFor(() => writes.some((w) => w.ep.match(/collections\/c\d+\/keys$/) && w.body), 'first key');
+  const madeCol = writes.find((w) => w.ep === '/api/v1/vault/collections' && w.body?.sealed);
+  assert.ok(madeCol, 'collection made sealed');
+  const env = writes.find((w) => w.ep.match(/collections\/c\d+\/keys$/) && w.body).body.envelopes[0];
+  assert.equal(Buffer.from(env.envelope, 'base64').length, 1 + 32 + 1088 + 1 + 12 + 32 + 16, 'version, ephemeral X25519, ML-KEM ciphertext, wrapped key');
+  await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click();   // the access list that opens next
+  await page.locator('.vlt-rail [data-collection="Root secrets"]').click();
+  await page.getByRole('button', { name: 'New item' }).first().click();
+  await page.locator('#vi-title').fill('Cloud root');
+  await page.locator('#vf-username').fill('root@fivestar.in');
+  await page.locator('#vf-password').fill('Se@led!Root#2026x');
+  assert.match(await page.locator('.modal-head p').innerText(), /encrypted on this device/);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/sealed-items'), 'sealed item');
+  const sent = writes.find((w) => w.ep === '/api/v1/vault/sealed-items').body;
+  for (const secret of ['Cloud root', 'Se@led!Root#2026x', 'root@fivestar.in']) assert.ok(!JSON.stringify(sent).includes(secret), `"${secret}" never reaches the server`);
+  assert.match(sent.id, /^[0-9a-f-]{36}$/, 'the id is made in the browser (it is bound into the encryption)');
+  await page.locator('.vlt-panel-sealed[data-item="Cloud root"]').waitFor();
+  const revealsBefore = writes.filter((w) => w.ep.endsWith('/reveal')).length;
+  await page.getByRole('button', { name: 'Reveal Password' }).click();
+  assert.equal(await page.locator('.vlt-panel-sealed [data-field="password"] [data-state="revealed"]').innerText(), 'Se@led!Root#2026x');
+  assert.equal(writes.filter((w) => w.ep.endsWith('/reveal')).length, revealsBefore, 'decrypted here, not asked of the server');
+  await waitFor(() => sealedState.events.some((e) => e.action === 'revealed'), 'the reveal is recorded');
+  assert.ok(await page.locator('.vlt-panel-sealed .vlt-e2ee').isVisible());
+  checks.push('sealed-item-never-readable-on-server');
+  await shot(page, 'sealed-item-1440.png');
+
+  // Lock: keys wiped from memory. Unlock with the passkey, then with the recovery key; a waiting device is approved after its code is checked.
+  await page.getByTestId('lock-state').click();
+  await page.getByRole('button', { name: 'Lock now' }).click();
+  assert.match(await page.getByTestId('lock-state').innerText(), /locked/);
+  await page.locator('.vlt-rail [data-collection="Root secrets"]').click();
+  await page.getByTestId('unlock').waitFor();
+  assert.ok(!(await html(page)).includes('Se@led!Root#2026x'));
+  await page.getByRole('button', { name: 'Unlock with passkey' }).click();
+  await page.locator('.vlt-item[data-item="Cloud root"]').waitFor();
+  checks.push('unlock-with-passkey');
+
+  const eph = { xPriv: x25519.utils.randomSecretKey(), kem: ml_kem768.keygen() };
+  const ephPub = { x25519Public: Buffer.from(x25519.getPublicKey(eph.xPriv)).toString('base64'), mlKemPublic: Buffer.from(eph.kem.publicKey).toString('base64') };
+  sealedState.pendingDevice = { link: { id: 'd1', label: 'A phone', ...ephPub, createdAt: now, expiresAt: new Date(Date.now() + 600e3).toISOString(), ipAddress: '203.0.113.20', userAgent: 'Mobile Safari', approved: false, denied: false, envelope: null, signature: null } };
+  await page.getByTestId('lock-state').click();
+  await page.getByRole('button', { name: 'Lock now' }).click();
+  await page.locator('.vlt-rail [data-collection="Root secrets"]').click();
+  await page.getByRole('button', { name: 'Use my recovery key' }).click();
+  await page.getByLabel('Recovery key').fill(kit.toLowerCase());
+  await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+  await page.getByTestId('device-approval').waitFor();
+  const h = sha256(Buffer.concat([Buffer.from('pt-vault/link/v1'), x25519.getPublicKey(eph.xPriv), eph.kem.publicKey]));
+  const n = ((h[0] << 24) >>> 0) + (h[1] << 16) + (h[2] << 8) + h[3], code = String(n % 100000000).padStart(8, '0');
+  assert.equal(await page.locator('[data-testid="device-approval"] .vlt-link-code').innerText(), `${code.slice(0, 4)} ${code.slice(4)}`, 'the same code as the new device');
+  await page.getByRole('button', { name: 'The codes match — approve' }).click();
+  await waitFor(() => sealedState.pendingDevice.approved, 'approval');
+  // Open the envelope as the new device would: it must hold the identity secret that gives exactly the keys on record.
+  const ctxStr = `device|${ws.id}|${user.id}|d1`;
+  const raw = Buffer.from(sealedState.pendingDevice.approved.envelope, 'base64');
+  const ePub = raw.subarray(1, 33), kemCt = raw.subarray(33, 33 + 1088);
+  const key = hkdf(sha256, Buffer.concat([x25519.getSharedSecret(eph.xPriv, ePub), ml_kem768.decapsulate(kemCt, eph.kem.secretKey)]), Buffer.concat([ePub, sha256(kemCt)]), Buffer.from(`pt-vault/wrap/v1|${ctxStr}`), 32);
+  const aes = raw.subarray(33 + 1088);
+  const k = await webcrypto.subtle.importKey('raw', key, 'AES-GCM', false, ['decrypt']);
+  const seed = new Uint8Array(await webcrypto.subtle.decrypt({ name: 'AES-GCM', iv: aes.subarray(1, 13), additionalData: Buffer.from(ctxStr) }, k, aes.subarray(13)));
+  const xPub = x25519.getPublicKey(hkdf(sha256, seed, undefined, Buffer.from('pt-vault/x25519/v1'), 32));
+  assert.equal(Buffer.from(xPub).toString('base64'), sealedState.identity.x25519Public, 'the linked device gets the real identity');
+  checks.push('recovery-unlock-and-device-link');
+
+  // A reload starts locked: nothing of the keys survives in storage.
+  await page.reload();
+  await page.locator('.vlt-rail').waitFor();
+  assert.match(await page.getByTestId('lock-state').innerText(), /locked/);
+  const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
+  assert.ok(!stored.includes(kit) && !stored.includes('Se@led!Root#2026x'));
+  checks.push('reload-starts-locked');
   await shot(page, 'admin-1440.png');
   assert.deepEqual(errors, []);
   await ctx.close();

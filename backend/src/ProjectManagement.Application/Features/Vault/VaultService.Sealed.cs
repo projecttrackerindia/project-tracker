@@ -21,7 +21,8 @@ public record VaultEnvelopeInput(Guid RecipientUserId, int KeyVersion, int Recip
 public record VaultSealedFileDto(Guid Id, int KeyVersion, string Wrapped, long SizeBytes, DateTime At);
 public record VaultSealedItemDto(Guid Id, Guid CollectionId, VaultItemKind Kind, int KeyVersion, string Blob, DateTime? ExpiresAt, int? RotateEveryDays, string? RotationReason,
     DateTime CreatedAt, DateTime? UpdatedAt, DateTime? ValueChangedAt, DateTime? DeletedAt, VaultAccess MyAccess, IReadOnlyList<VaultSealedFileDto> Files, int Versions);
-public record SaveSealedItemRequest(Guid CollectionId, VaultItemKind Kind, int KeyVersion, string? Blob, DateTime? ExpiresAt, int? RotateEveryDays, bool ValueChanged = false, string? Reason = null);
+/// <summary><paramref name="Id"/>: made in the browser for a new item, because the item's id is bound into its encryption.</summary>
+public record SaveSealedItemRequest(Guid CollectionId, VaultItemKind Kind, int KeyVersion, string? Blob, DateTime? ExpiresAt, int? RotateEveryDays, bool ValueChanged = false, string? Reason = null, Guid? Id = null);
 public record VaultSealedVersionDto(Guid Id, int KeyVersion, string Blob, DateTime At, UserRefDto? By, string? Reason);
 public record VaultBlobInput(Guid Id, string? Blob);
 public record VaultRekeyRequest(int NewVersion, IReadOnlyList<VaultEnvelopeInput>? Envelopes, IReadOnlyList<VaultBlobInput>? Items, IReadOnlyList<VaultBlobInput>? Versions, IReadOnlyList<VaultBlobInput>? Files);
@@ -451,9 +452,11 @@ public partial class VaultService
         if (!Enum.IsDefined(req.Kind)) throw new ValidationException("kind", "Choose what kind of item this is.");
         if (await db.VaultItems.CountAsync(i => i.CollectionId == c.Id && i.DeletedAt == null, ct) >= MaxItemsPerCollection) throw new ValidationException("collectionId", $"A collection holds at most {MaxItemsPerCollection:N0} items.");
         var days = CleanDays(req.RotateEveryDays) ?? c.RotateEveryDays;
+        var newId = req.Id is { } given && given != Guid.Empty ? given : throw new ValidationException("id", "A sealed item's id is made in the browser (it is part of its encryption).");
+        if (await db.VaultItems.IgnoreQueryFilters().AnyAsync(i => i.Id == newId, ct)) throw new ConflictException("That id is taken. Try again.", "VAULT_ID_TAKEN");
         var item = new VaultItem
         {
-            TenantId = tid, CollectionId = c.Id, Kind = req.Kind, Sealed = true, Title = "", Cipher = B64(req.Blob, "blob", MaxSealedBlobChars, 20), KeyVersion = c.SealedKeyVersion,
+            Id = newId, TenantId = tid, CollectionId = c.Id, Kind = req.Kind, Sealed = true, Title = "", Cipher = B64(req.Blob, "blob", MaxSealedBlobChars, 20), KeyVersion = c.SealedKeyVersion,
             OwnerUserId = me, RotateEveryDays = days, ValueChangedAt = clock.Now, CreatedAt = clock.Now, CreatedBy = me,
         };
         item.ExpiresAt = req.ExpiresAt is { } e ? DateTime.SpecifyKind(e, DateTimeKind.Utc) : days is { } d ? clock.Now.AddDays(d) : null;

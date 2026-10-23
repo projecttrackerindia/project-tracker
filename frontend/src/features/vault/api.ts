@@ -1,4 +1,4 @@
-import { del, downloadPost, get, post, put, uploadFile } from '../../api/client';
+import { del, downloadPost, get, post, postBytes, postForm, put, uploadFile } from '../../api/client';
 
 export type VaultCollectionKind = 'Personal' | 'Shared' | 'Project' | 'Team';
 export type VaultItemKind = 'Login' | 'ApiKey' | 'Server' | 'Database' | 'Card' | 'Note' | 'Other';
@@ -27,10 +27,28 @@ export interface VaultShare { id: string; principalType: VaultPrincipal; princip
 export interface VaultCollection {
   id: string; name: string; description: string | null; kind: VaultCollectionKind; projectId: string | null; projectName: string | null; teamId: string | null; teamName: string | null;
   myAccess: VaultAccess; items: number; atRisk: number; requireStepUp: boolean; rotateEveryDays: number | null; locked: boolean; shares: VaultShare[] | null;
+  sealed: boolean; rekeyNeeded: boolean; keyVersion: number;
 }
 export interface VaultPolicy { stepUpAlways: boolean; clipboardSeconds: number; revealSeconds: number; sharedAdminsOnly: boolean }
 export interface VaultHealth { total: number; weak: number; reused: number; breached: number; expired: number; old: number; toRotate: number; score: number }
-export interface VaultOverview { collections: VaultCollection[]; policy: VaultPolicy; canAdmin: boolean; canCreateShared: boolean; health: VaultHealth; mfaEnabled: boolean }
+export interface VaultIdentity { userId: string; x25519Public: string; mlKemPublic: string; ed25519Public: string; selfSignature: string; fingerprint: string; generation: number }
+export interface VaultOverview { collections: VaultCollection[]; policy: VaultPolicy; canAdmin: boolean; canCreateShared: boolean; health: VaultHealth; mfaEnabled: boolean; identity: VaultIdentity | null }
+export type UnlockKind = 'Passkey' | 'RecoveryKey';
+export interface VaultUnlock { id: string; kind: UnlockKind; label: string; credentialId: string | null; salt: string; params: string; wrappedSeed: string; createdAt: string; lastUsedAt: string | null }
+export interface VaultKeysMe { identity: VaultIdentity | null; unlocks: VaultUnlock[] }
+export interface UnlockInput { kind: UnlockKind; label?: string; credentialId?: string | null; salt: string; params: string; wrappedSeed: string }
+export interface VaultEnvelope { keyVersion: number; envelope: string; signature: string; senderUserId: string; senderEd25519Public: string | null; recipientGeneration: number }
+export interface VaultRecipient { userId: string; name: string; access: VaultAccess; identity: VaultIdentity | null }
+export interface CollectionKeys { collectionId: string; sealed: boolean; keyVersion: number; rekeyNeeded: boolean; myAccess: VaultAccess; mine: VaultEnvelope[]; pending: VaultRecipient[] | null }
+export interface EnvelopeInput { recipientUserId: string; keyVersion: number; recipientGeneration: number; envelope: string; signature: string }
+export interface SealedFile { id: string; keyVersion: number; wrapped: string; sizeBytes: number; at: string }
+export interface SealedItemRow {
+  id: string; collectionId: string; kind: VaultItemKind; keyVersion: number; blob: string; expiresAt: string | null; rotateEveryDays: number | null; rotationReason: string | null;
+  createdAt: string; updatedAt: string | null; valueChangedAt: string | null; deletedAt: string | null; myAccess: VaultAccess; files: SealedFile[]; versions: number;
+}
+export interface SealedVersionRow { id: string; keyVersion: number; blob: string; at: string; by: UserRef | null; reason: string | null }
+export interface ExportItem { id: string; kind: VaultItemKind; title: string; url: string | null; tags: string[]; class: VaultClass; fields: VaultField[]; expiresAt: string | null; rotateEveryDays: number | null; files: { id: string; fileName: string; contentType: string; data: string }[] }
+export interface DeviceLink { id: string; label: string; x25519Public: string; mlKemPublic: string; createdAt: string; expiresAt: string; ipAddress: string | null; userAgent: string | null; approved: boolean; denied: boolean; envelope: string | null; signature: string | null }
 export interface VaultReveal { value: string; revealSeconds: number; clipboardSeconds: number }
 export interface VaultTotp { code: string; secondsLeft: number; period: number; digits: number }
 export interface VaultActivity { at: string; action: string; by: UserRef | null; field: string | null; ipAddress: string | null }
@@ -46,7 +64,7 @@ export interface SaveItem {
 }
 export interface SaveCollection {
   name: string; description?: string | null; kind: VaultCollectionKind; projectId?: string | null; teamId?: string | null; requireStepUp?: boolean;
-  rotateEveryDays?: number | null; shareWithMembers?: VaultAccess | null;
+  rotateEveryDays?: number | null; shareWithMembers?: VaultAccess | null; sealed?: boolean;
 }
 export interface ShareInput { principalType: VaultPrincipal; principalId?: string | null; role?: string | null; access: VaultAccess; expiresAt?: string | null }
 export interface ImportRow { title?: string | null; url?: string | null; username?: string | null; password?: string | null; totp?: string | null; notes?: string | null }
@@ -79,6 +97,32 @@ export const vaultApi = {
   check: (password: string) => post<{ strength: number; breachCount: number }>('/vault/check', { password }),
   savePolicy: (b: { stepUpAlways: boolean; clipboardSeconds: number; sharedAdminsOnly: boolean }) => put<VaultPolicy>('/vault/policy', b),
   accessReview: (userId: string) => get<VaultAccessReview>(`/vault/access-review/${userId}`),
+
+  // ---- sealed (zero-knowledge): the server only ever sees public keys, wrapped keys and ciphertext
+  keysMe: () => get<VaultKeysMe>('/vault/keys/me'),
+  setupKeys: (b: { x25519Public: string; mlKemPublic: string; ed25519Public: string; selfSignature: string; fingerprint: string; unlocks: UnlockInput[]; reset?: boolean; stepUp?: string }) => post<VaultKeysMe>('/vault/keys/setup', b),
+  addUnlock: (b: UnlockInput) => post<VaultKeysMe>('/vault/keys/unlocks', b),
+  removeUnlock: (id: string) => del<VaultKeysMe>(`/vault/keys/unlocks/${id}`),
+  unlocked: (id: string) => post(`/vault/keys/unlocks/${id}/used`, {}),
+  directory: (userIds: string[]) => post<VaultRecipient[]>('/vault/keys/directory', { userIds }),
+  collectionKeys: (id: string) => get<CollectionKeys>(`/vault/collections/${id}/keys`),
+  saveEnvelopes: (id: string, envelopes: EnvelopeInput[]) => post<CollectionKeys>(`/vault/collections/${id}/keys`, { envelopes }),
+  rekey: (id: string, b: { newVersion: number; envelopes: EnvelopeInput[]; items: { id: string; blob: string }[]; versions: { id: string; blob: string }[]; files: { id: string; blob: string }[] }) => post<CollectionKeys>(`/vault/collections/${id}/rekey`, b),
+  exportForSealing: (id: string, stepUp?: string) => post<ExportItem[]>(`/vault/collections/${id}/export-for-sealing`, { stepUp }),
+  seal: (id: string, b: { stepUp?: string; envelope: EnvelopeInput; items: { id: string; blob: string }[]; files: { id: string; wrapped: string; cipher: string }[] }) => post<CollectionKeys>(`/vault/collections/${id}/seal`, b),
+  sealedItems: (id: string, bin = false) => get<SealedItemRow[]>(`/vault/collections/${id}/sealed-items`, { bin: bin || undefined }),
+  createSealed: (b: { id: string; collectionId: string; kind: VaultItemKind; keyVersion: number; blob: string; expiresAt?: string | null; rotateEveryDays?: number | null }) => post<SealedItemRow>('/vault/sealed-items', b),
+  updateSealed: (id: string, b: { collectionId: string; kind: VaultItemKind; keyVersion: number; blob: string; expiresAt?: string | null; rotateEveryDays?: number | null; valueChanged: boolean; reason?: string | null }) => put<SealedItemRow>(`/vault/sealed-items/${id}`, b),
+  sealedVersions: (id: string) => get<SealedVersionRow[]>(`/vault/sealed-items/${id}/versions`),
+  sealedEvent: (id: string, action: 'revealed' | 'copied' | 'totp_used', field?: string) => post(`/vault/sealed-items/${id}/events`, { action, field }),
+  addSealedFile: (id: string, cipher: Blob, wrapped: string) => postForm<SealedFile>(`/vault/sealed-items/${id}/files`, (() => { const f = new FormData(); f.append('file', cipher, 'sealed.bin'); f.append('wrapped', wrapped); return f; })()),
+  sealedFile: (id: string) => postBytes(`/vault/sealed-files/${id}`),
+  breachRange: (prefix: string) => get<{ body: string }>(`/vault/breach-range/${prefix}`),
+  requestDevice: (b: { label: string; x25519Public: string; mlKemPublic: string }) => post<DeviceLink>('/vault/devices', b),
+  pendingDevices: () => get<DeviceLink[]>('/vault/devices/pending'),
+  approveDevice: (id: string, envelope: string, signature: string) => post(`/vault/devices/${id}/approve`, { envelope, signature }),
+  refuseDevice: (id: string) => post(`/vault/devices/${id}/refuse`, {}),
+  deviceStatus: (id: string) => get<DeviceLink>(`/vault/devices/${id}`),
 };
 
 /** The fields each kind starts with (the server applies the same list). */

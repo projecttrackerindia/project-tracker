@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ApiError } from '../../api/client';
 import { workspaceApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
@@ -12,7 +12,7 @@ import { useStepUp } from './stepUpContext';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 /** The vault's health: one score and what is pulling it down, each a click away from the items concerned. */
-export function HealthView({ health, onFilter }: { health: VaultHealth; onFilter: (flag: VaultHealthFlag | 'any') => void }) {
+export function HealthView({ health, onFilter, extra }: { health: VaultHealth; onFilter: (flag: VaultHealthFlag | 'any') => void; extra?: ReactNode }) {
   const rows: [VaultHealthFlag, number, string][] = [
     ['breached', health.breached, 'Change these first: the password is on lists attackers use.'],
     ['rotate', health.toRotate, 'Someone who could read them left, or they were flagged.'],
@@ -30,6 +30,7 @@ export function HealthView({ health, onFilter }: { health: VaultHealth; onFilter
       <div className="vlt-health-text">
         <h3>{health.total === 0 ? 'Nothing stored yet' : health.score >= 85 ? 'In good shape' : health.score >= 60 ? 'Some things to fix' : 'Needs attention'}</h3>
         <p className="muted">{health.total} item{health.total === 1 ? '' : 's'} you can open. Breach checks run when a password is saved and again every month (only the first five characters of its hash are sent).</p>
+        {extra}
       </div>
       <ul className="vlt-health-list">
         {rows.map(([flag, n, hint]) => (

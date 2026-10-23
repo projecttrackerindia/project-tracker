@@ -239,6 +239,18 @@ export async function fetchText(path: string, signal?: AbortSignal): Promise<str
   return res.text();
 }
 
+/** A POST whose answer is raw bytes (an encrypted file the browser decrypts itself). */
+export async function postBytes(path: string, body?: unknown): Promise<Uint8Array<ArrayBuffer>> {
+  const send = () => fetch(`${BASE}/api/v1${path}`, {
+    method: 'POST', credentials: 'include', body: JSON.stringify(body ?? {}),
+    headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+  });
+  let res = await send();
+  if (res.status === 401) res = await renewOrLose(res, send);
+  if (!res.ok) throw (await parse(res)).error ?? new ApiError(res.status, 'Download failed', []);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
 /** A download asked for with a POST (the body can carry a short-lived two-step token, which must never travel in an address). */
 export async function downloadPost(path: string, body: unknown, filename: string, signal?: AbortSignal) {
   const send = () => fetch(`${BASE}/api/v1${path}`, {

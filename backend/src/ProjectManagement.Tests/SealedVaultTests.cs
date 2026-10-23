@@ -67,7 +67,7 @@ public class SealedVaultTests(ApiFactory factory)
 
     private static async Task<Guid> AddSealedItem(TestClient c, Guid collection, int version, string blob)
     {
-        var res = await c.Post("/api/v1/vault/sealed-items", new { collectionId = collection, kind = "Login", keyVersion = version, blob });
+        var res = await c.Post("/api/v1/vault/sealed-items", new { id = Guid.NewGuid(), collectionId = collection, kind = "Login", keyVersion = version, blob });
         Assert.True(res.Ok, res.ToString());
         return G(res.Data!["id"]);
     }
@@ -144,7 +144,7 @@ public class SealedVaultTests(ApiFactory factory)
         Assert.True(factory.WithDb(db => db.AuditLogs.Any(a => a.UserId == viewer.UserId && a.Action == "vault.sealed_listed" && a.EntityId == id)));
 
         // View is not manage; use-only cannot exist here; a key only goes to someone with access; guarded calls refuse sealed items.
-        Assert.Equal(HttpStatusCode.Forbidden, (await viewer.Post("/api/v1/vault/sealed-items", new { collectionId = id, kind = "Login", keyVersion = 1, blob = Rand(200) })).Status);
+        Assert.Equal(HttpStatusCode.Forbidden, (await viewer.Post("/api/v1/vault/sealed-items", new { id = Guid.NewGuid(), collectionId = id, kind = "Login", keyVersion = 1, blob = Rand(200) })).Status);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put($"/api/v1/vault/collections/{id}/shares", new { shares = new object[]
             { new { principalType = "User", principalId = owner.UserId, access = "Manage" }, new { principalType = "User", principalId = viewer.UserId, access = "UseOnly" } } })).Status);
         var outsiderGen = await SetupKeys(outsider);
@@ -177,7 +177,7 @@ public class SealedVaultTests(ApiFactory factory)
         Assert.True((await owner.Put($"/api/v1/vault/collections/{id}/shares", new { shares = new[] { new { principalType = "User", principalId = owner.UserId, access = "Manage" } } })).Ok);
         Assert.False(factory.WithDb(db => db.VaultKeyEnvelopes.IgnoreQueryFilters().Any(v => v.CollectionId == id && v.RecipientUserId == leaver.UserId)));
         Assert.True((await owner.Get($"/api/v1/vault/collections/{id}/keys")).Data!["rekeyNeeded"]!.GetValue<bool>());
-        Assert.Equal("VAULT_REKEY_NEEDED", (await owner.Post("/api/v1/vault/sealed-items", new { collectionId = id, kind = "Login", keyVersion = 1, blob = Rand(200) })).ErrorCode);
+        Assert.Equal("VAULT_REKEY_NEEDED", (await owner.Post("/api/v1/vault/sealed-items", new { id = Guid.NewGuid(), collectionId = id, kind = "Login", keyVersion = 1, blob = Rand(200) })).ErrorCode);
         Assert.Equal(HttpStatusCode.NotFound, (await leaver.Get($"/api/v1/vault/collections/{id}/sealed-items")).Status);
 
         var version = factory.WithDb(db => db.VaultItemVersions.IgnoreQueryFilters().Single(v => v.ItemId == a).Id);
