@@ -4,6 +4,7 @@ import { projectApi, teamApi, workspaceApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
 import { Field, Modal, Spinner } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
+import { useAuth } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import {
   ACCESS_HINT, ACCESS_LABEL, KIND_LABEL, TEMPLATES, vaultApi,
@@ -93,6 +94,7 @@ function SecretInput({ field, value, onChange, existing, clipboardSeconds, revea
   onLoadCurrent?: () => Promise<boolean>; onShown?: () => void;
 }) {
   const [visible, setVisibleRaw] = useState(false);
+  const viewerName = useAuth((st) => st.ctx?.user.displayName ?? '');
   const [loading, setLoading] = useState(false);
   const told = useRef(false);
   const setVisible = useCallback((v: boolean) => {
@@ -128,8 +130,10 @@ function SecretInput({ field, value, onChange, existing, clipboardSeconds, revea
       {loading ? <Spinner /> : <Icon name={visible ? 'eyeOff' : 'eye'} size={15} />}
     </button>
   );
+  // While a value shows, the person's name and the time sit over it: a photo or a shared screen shows whose screen it was.
+  const mark = visible ? `${viewerName} · ${new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : undefined;
   return (
-    <div className={`field full vlt-secret-input${totpBad ? ' invalid' : ''}`} data-field={field.key}>
+    <div className={`field full vlt-secret-input${totpBad ? ' invalid' : ''}${visible ? ' vlt-marked' : ''}`} data-field={field.key} data-mark={mark}>
       <label htmlFor={`vf-${field.key}`}>{field.label}</label>
       {multi ? (
         <div className="vlt-input-row vlt-input-row-top">

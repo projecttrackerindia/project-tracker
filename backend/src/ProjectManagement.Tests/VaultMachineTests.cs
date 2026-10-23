@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Features.Vault;
+using ProjectManagement.Domain.Entities;
 using ProjectManagement.Domain.Enums;
 using ProjectManagement.Tests.Infrastructure;
 

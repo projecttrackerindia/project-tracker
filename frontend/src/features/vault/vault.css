@@ -460,3 +460,5 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
 .vlt-machines-head b { display: inline-flex; align-items: center; gap: 6px; }
 .vlt-machine-form { display: grid; gap: 8px; }
 .vlt-snippet { margin: 6px 0 2px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font: 11.5px/1.5 var(--vlt-mono); white-space: pre; overflow-x: auto; max-width: 100%; }
+.vlt-secret-input.vlt-marked { position: relative; }
+.vlt-secret-input.vlt-marked::after { content: attr(data-mark); position: absolute; right: 52px; top: 30px; font-size: 10.5px; color: var(--text-3); opacity: .7; pointer-events: none; white-space: nowrap; }
