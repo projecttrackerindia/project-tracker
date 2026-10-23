@@ -43,7 +43,7 @@ try {
       if (ep.endsWith('/avatar')) { await route.fulfill({ status: 404, body: '' }); return; }
       if (ep.endsWith('/auth/refresh')) {
         if (!signedIn) { await route.fulfill({ status: 401, contentType: 'application/json', body: '{"message":"Not signed in"}' }); return; }
-        await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { accessToken: 'synthetic-token', expiresAt: '2099-01-01T00:00:00Z', user } }) });
+        await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { accessToken: `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`, expiresAt: '2099-01-01T00:00:00Z', user } }) });
         return;
       }
       assert.equal(route.request().method(), 'GET', `Unexpected write ${ep}`);

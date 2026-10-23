@@ -54,7 +54,7 @@ try {
    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({data:{account:'preview@outlook.example.test',accessContext:calendarContext,calendarIds:b.calendarIds,startUtc:b.start,endUtc:b.end,busy:[{startUtc:b.start,endUtc:new Date(new Date(b.start).getTime()+1800000).toISOString()}],checkedAt:'2026-10-12T08:00:00Z',scope:'Selected own Outlook calendars only. Other calendars and attendees are not checked. Availability can change after this read.'}})});return;
   }
   if(!url.pathname.endsWith('/auth/refresh'))assert.equal(route.request().method(),'GET', 'Unexpected mutation in synthetic UI check');
-  if(url.pathname.endsWith('/auth/refresh'))data={accessToken:'synthetic-preview-token',expiresAt:'2099-01-01T00:00:00Z',user,refreshToken:null};
+  if(url.pathname.endsWith('/auth/refresh'))data={accessToken:`x.${Buffer.from(JSON.stringify({wid:workspace.id,exp:4102444800})).toString('base64url')}.x`,expiresAt:'2099-01-01T00:00:00Z',user,refreshToken:null};
   else if(url.pathname==='/api/v1/me')data=context;
   else if(url.pathname.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
   else if(url.pathname.endsWith('/integrations/google/status'))data={connected:true,googleEmail:'preview@gmail.example.test',connectedAt:'2026-10-11T08:00:00Z',lastError:null,calendarAccess:true,mailEnabled:false,mailSendAccess:false,inboxEnabled,inboxAccess:true};

@@ -332,7 +332,7 @@ public partial class AiWorkspaceTests
         Assert.Equal(S(actions[1]!["id"]), S(plan[1]!["actionId"]));
         // Saved with the answer, so the plan is there when the conversation is opened again.
         var reopened = await o.Owner.Get($"/api/v1/ai/conversations/{s.Conversation}");
-        Assert.Contains("Approve Max's timesheet", reopened.ToString());
+        Assert.Contains("Submit your week", reopened.ToString());
 
         // One step is not a plan.
         Chat.Script.Enqueue(_ => FakeAiChat.UseTool(AiHomeTools.ShowPlan, new { steps = new[] { new { title = "Do it" } } }));

@@ -30,7 +30,7 @@ try {
    await route.fulfill({status:200,contentType:type,body:await fs.readFile(file),headers:path.extname(file)==='.html'?{'content-security-policy':csp}:{}});return;
   }
   let data=[];
-  if(endpoint.endsWith('/auth/refresh'))data={accessToken:'synthetic-preview-token',expiresAt:'2099-01-01T00:00:00Z',user};
+  if(endpoint.endsWith('/auth/refresh'))data={accessToken:`x.${Buffer.from(JSON.stringify({wid:workspace.id,exp:4102444800})).toString('base64url')}.x`,expiresAt:'2099-01-01T00:00:00Z',user};
   else if(endpoint==='/api/v1/me')data={user,workspaces:[workspace],fingerprint:'preview',pendingConsent:[],current:{...workspace,permissions:['org.manage','work.view','reports.view','chat.view'],modules:{projects:3,work:3,ai:3,chat:3,people:3,documents:3},plan:{code:'BUSINESS',name:'Business',status:'Active'},entitlements:{AI_ASSISTANT:3}}};
   else if(endpoint.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
   else if(endpoint.endsWith('/ai/status'))data={enabled:true,configured:true,entitled:true,allowedHere:true,model:'synthetic',provider:'Gemini'};

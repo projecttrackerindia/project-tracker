@@ -43,7 +43,7 @@ try {
     const endpoint = url.pathname;
     assert.ok(endpoint.endsWith('/auth/refresh') || route.request().method() === 'GET', `Unexpected write: ${endpoint}`);
     let data = [];
-    if (endpoint.endsWith('/auth/refresh')) data = { accessToken: 'synthetic-preview-token', expiresAt: '2099-01-01T00:00:00Z', user };
+    if (endpoint.endsWith('/auth/refresh')) data = { accessToken: `x.${Buffer.from(JSON.stringify({wid:workspace.id,exp:4102444800})).toString('base64url')}.x`, expiresAt: '2099-01-01T00:00:00Z', user };
     else if (endpoint === '/api/v1/me') data = { user, workspaces: [{ ...workspace, role }], fingerprint: 'preview', pendingConsent: [], current: { ...workspace, role, permissions: ['org.manage', 'work.view', 'work.create', 'reports.view'], modules: { projects: projectsLevel, work: 3, ai: 3, activity: 3, reports: 3, documents: 3, people: 3, billing: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { API_ACCESS: included ? 1 : 0, AI_ASSISTANT: 3 } } };
     else if (endpoint.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
     else if (endpoint.endsWith('/webhooks/events')) data = ['task.created', 'task.updated', 'audit.logged'];

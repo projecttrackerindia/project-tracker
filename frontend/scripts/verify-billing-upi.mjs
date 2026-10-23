@@ -45,7 +45,7 @@ try{
   else if(ep.match(/\/admin\/upi-payments\/u\d\/confirm$/)){const b=body();writes.push({ep,b});planCode='BUSINESS';upi={...upi,status:'confirmed'};data={};}
   else{
    assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
-   if(ep.endsWith('/auth/refresh'))data={accessToken:'synthetic-token',expiresAt:'2099-01-01T00:00:00Z',user};
+   if(ep.endsWith('/auth/refresh'))data={accessToken:`x.${Buffer.from(JSON.stringify({wid:ws.id,exp:4102444800})).toString('base64url')}.x`,expiresAt:'2099-01-01T00:00:00Z',user};
    else if(ep==='/api/v1/me')data={user,workspaces:[ws],fingerprint:'preview',pendingConsent:[],current:{...ws,permissions:['projects.view','org.manage','billing.manage','billing.view'],modules:{projects:3,billing:3},plan:{code:planCode,name:'Free',status:'Active'},entitlements:{}}};
    else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
    else if(ep.endsWith('/projects')||ep.endsWith('/tasks'))data={items:[],page:1,totalPages:0,totalItems:0};

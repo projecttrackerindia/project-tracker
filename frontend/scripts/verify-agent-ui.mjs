@@ -72,7 +72,7 @@ try{
   else if(ep==='/api/v1/agent/workspace')data=workspace;
   else{
    assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
-   if(ep.endsWith('/auth/refresh'))data={accessToken:'synthetic-token',expiresAt:'2099-01-01T00:00:00Z',user};
+   if(ep.endsWith('/auth/refresh'))data={accessToken:`x.${Buffer.from(JSON.stringify({wid:ws.id,exp:4102444800})).toString('base64url')}.x`,expiresAt:'2099-01-01T00:00:00Z',user};
    else if(ep==='/api/v1/me')data={user,workspaces:[ws],fingerprint:'preview',pendingConsent:[],current:{...ws,permissions:['projects.view','projects.edit','tasks.view','tasks.edit','tasks.create','org.manage','work.view','reports.view'],modules:{projects:3,tasks:3,calendar:3,work:3,ai:3,activity:3,documents:3,people:3,reports:3,billing:3},plan:{code:'BUSINESS',name:'Business',status:'Active'},entitlements:{AI_ASSISTANT:3}}};
    else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
    else if(ep===`/api/v1/projects/${pid}`)data=detail;
@@ -93,6 +93,7 @@ try{
 
  // Desktop: switch the agent on, review, approve, edit and approve, dismiss, add a transcript.
  let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1100});
+ if(process.env.VERIFY_DEBUG){page.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.error('[console]',m.text().slice(0,300));});page.on('framenavigated',f=>{if(f===page.mainFrame())console.error('[nav]',f.url());});}
  await page.goto(origin+`/preview-org/projects/${pid}?tab=agent`);
  await page.getByRole('heading',{name:'Let an agent keep this project up to date'}).waitFor();
  await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,'agent-off-1440.png'),animations:'disabled'});
@@ -174,7 +175,7 @@ try{
  await page.getByText('Hindi',{exact:true}).waitFor();checks.push('notes-and-names');
 
  // The MOM (minutes with the transcript) is e-mailed from a meeting reading.
- assert.ok(await page.getByRole('button',{name:'Use my Google account'}).isVisible());
+ await page.getByRole('button',{name:'Use my Google account'}).waitFor();   // the settings refetch after saving can re-render the panel: wait, do not sample
  await page.getByRole('button',{name:'E-mail MOM'}).click();
  const mom=page.getByRole('dialog');await mom.getByRole('button',{name:'Send',exact:true}).click();await mom.waitFor({state:'detached'});
  assert.ok(writes.at(-1).ep.endsWith('/agent/runs/run-1/minutes'));await page.getByText('Minutes e-mailed to 3 people.').waitFor();checks.push('email-mom');

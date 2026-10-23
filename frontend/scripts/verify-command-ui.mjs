@@ -85,7 +85,7 @@ try{
   else if(ep===`/api/v1/projects/${pid}/tasks`&&method==='POST'){const b=body();writes.push({ep,b});data={id:'t9',key:'PAY-9',title:b.title};}
   else{
    assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
-   if(ep.endsWith('/auth/refresh'))data={accessToken:'synthetic-token',expiresAt:'2099-01-01T00:00:00Z',user};
+   if(ep.endsWith('/auth/refresh'))data={accessToken:`x.${Buffer.from(JSON.stringify({wid:ws.id,exp:4102444800})).toString('base64url')}.x`,expiresAt:'2099-01-01T00:00:00Z',user};
    else if(ep==='/api/v1/me')data={user,workspaces:[ws],fingerprint:'preview',pendingConsent:[],current:{...ws,permissions:['projects.view','projects.edit','tasks.view','tasks.edit','tasks.create','org.manage','work.view','reports.view'],modules:{projects:3,tasks:3,calendar:3,work:3,ai:3,activity:3,documents:3,people:3,reports:3,billing:3},plan:{code:'BUSINESS',name:'Business',status:'Active'},entitlements:{AI_ASSISTANT:3}}};
    else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
    else if(ep===`/api/v1/projects/${pid}/tasks/suggest`)data={assignees:[{userId:user.id,name:user.displayName,why:'1 open, 0 overdue, 0 due this week; 3 similar tasks done before'}],estimateLow:5,estimateHigh:9,estimate:7,estimateWhy:'3 similar finished tasks took 5, 7, 9 h.',dueDate:'2030-01-17',dueWhy:'About 2 working days from today at 6 h a day.',priority:'High',priorityWhy:'3 of 3 similar tasks were High.',similar:[{id:'s1',key:'PAY-3',title:'Bank statement API integration',hours:5,assignee:null},{id:'s2',key:'PAY-5',title:'UPI refund API integration',hours:9,assignee:null}]};
