@@ -118,7 +118,7 @@ try{
  // Desktop: what needs me, with the evidence; answer a check-in; send the agent; what if; meetings, brief, settings; decisions; audit.
  let ctx=await make('light');
  let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+'/preview-org/command-center');await page.locator('.cmd-tabs .tab.active',{hasText:'Dashboard'}).waitFor();await page.locator('.cmd-dashboard').waitFor();checks.push('dashboard-first');await page.goto(origin+'/preview-org/command-center?tab=today');
+ await page.goto(origin+'/preview-org/command-center?tab=dashboard');await page.locator('.cmd-tabs .tab.active',{hasText:'Dashboard'}).waitFor();await page.locator('.cmd-dashboard').waitFor();checks.push('dashboard-first');await page.goto(origin+'/preview-org/command-center?tab=today');
  await page.getByRole('heading',{name:'Good morning, Asha'}).waitFor();
  assert.equal(await page.locator('[data-attention]').count(),5);
  assert.ok(await page.getByText('moves 3 dependent tasks',{exact:false}).isVisible());checks.push('attention-with-evidence');
@@ -245,7 +245,10 @@ try{
  await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'ai-first-home-1440.png'),animations:'disabled'});
  await page.goto(origin+'/preview-org/ai');await page.locator('.aih-hero').waitFor();assert.ok(!new URL(page.url()).pathname.endsWith('/ai'),'the Assistant page leads to Home');
  await page.reload();await page.locator('.aih-hero').waitFor();
- await page.getByRole('button',{name:'Classic view'}).click();await page.locator('.cmd-tabs').waitFor();await page.getByRole('link',{name:'Assistant',exact:true}).first().waitFor();
+ // There is no classic Home any more: the full views open from Home, with a Home tab back.
+ assert.equal(await page.getByRole('button',{name:'Classic view'}).count(),0,'no classic view');
+ await page.getByRole('button',{name:'Dashboard'}).click();await page.locator('.cmd-tabs').waitFor();assert.match(page.url(),/[?&]tab=dashboard/);
+ await page.locator('.cmd-tabs .cmd-home-tab').click();await page.locator('.aih-hero').waitFor();assert.ok(!/[?&]tab=/.test(page.url()));
  checks.push('ai-first-home');await page.close();await ctx.close();
  assert.deepEqual(errors,[]);
  await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,writes:writes.length,errors,scope:'Built frontend with synthetic fixtures; no live meetings, mail or AI.'},null,2));

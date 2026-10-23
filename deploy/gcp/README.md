@@ -90,6 +90,21 @@ It waits until the API reports healthy, then prints the server address.
 - **Backups:** Cloud SQL › `pt-db` › Backups (daily, 14 days, point-in-time restore). Files are in the bucket.
 - **Grow later:** `DB_TIER=db-g1-small` (database) or a bigger server (`gcloud compute instances set-machine-type`). Both need a short restart.
 
+## Releases from GitHub (no Cloud Shell needed)
+
+Once, in Cloud Shell:
+
+```bash
+cd ~/project-tracker/deploy/gcp && ./github-deploy-setup.sh
+```
+
+It creates a deploy account that GitHub's main branch, and nothing else, may act as (Workload Identity Federation: no key exists to leak),
+turns on OS Login for the server, and prints three values. Add them in GitHub › Settings › Secrets and variables › Actions › **Variables**:
+`GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA` (and the website's verification tags it prints, if any).
+
+From then on every green CI run on main is released by the **Deploy** workflow (Actions › Deploy shows each release; it can also be run by
+hand). `./update.sh` in Cloud Shell keeps working as before.
+
 ## What changes for connected apps
 
 Claude and ChatGPT connectors keep using `https://projecttracker.in/api/v1/mcp`. Nothing to change in the directory listings.

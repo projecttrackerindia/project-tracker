@@ -56,9 +56,9 @@ try{
  await page.goto(origin+'/preview-org/project-agent');await page.locator('.agh').waitFor();
  // Hubs: one Agents place; My work, Project agent and Agent Tracker are not listed twice.
  const first=await labels(page);
- assert.ok(first.includes('Assistant'));assert.ok(first.includes('Home'));
+ assert.ok(first.includes('Agents'));assert.ok(first.includes('Home'));
  for(const gone of ['My work','Project agent','Agent Tracker'])assert.ok(!first.includes(gone),`${gone} is inside a hub`);
- assert.ok(await page.locator('.sidebar .nav-item.active',{hasText:'Assistant'}).isVisible(),'Assistant is the open place on a proposals page');
+ assert.ok(await page.locator('.sidebar .nav-item.active',{hasText:'Agents'}).isVisible(),'Agents is the open place on a proposals page');
  assert.deepEqual(await titles(page),['Home','Work','Insights']);
  const hub=await page.locator('.agh-tabs a').allInnerTexts();
  assert.ok(hub.some(t=>t.startsWith('Proposals'))&&hub.some(t=>t.startsWith('Tracker'))&&hub.some(t=>t.startsWith('Workflows')));

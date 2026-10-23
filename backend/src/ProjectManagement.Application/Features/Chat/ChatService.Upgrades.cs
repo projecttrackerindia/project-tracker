@@ -199,9 +199,10 @@ public partial class ChatService
         }
         if (candidates.Count == 0) return [];
         var since = candidates.Min(m => m.CreatedAt);
-        var mine = await db.ChatMessages.AsNoTracking().Where(m => m.ConversationId == conversationId && m.SenderId == me && m.CreatedAt > since)
+        var mine = await db.ChatMessages.AsNoTracking().Where(m => m.ConversationId == conversationId && m.SenderId == me && m.CreatedAt >= since)
             .Select(m => new { m.CreatedAt, m.ThreadRootId }).ToListAsync(ct);
-        return candidates.Where(q => !mine.Any(a => a.CreatedAt > q.CreatedAt && (a.ThreadRootId == q.ThreadRootId || q.ThreadRootId is null && a.ThreadRootId == q.Id))).Select(q => q.Id).ToHashSet();
+        // A reply in the same instant as the question still answers it (it cannot have come first).
+        return candidates.Where(q => !mine.Any(a => a.CreatedAt >= q.CreatedAt && (a.ThreadRootId == q.ThreadRootId || q.ThreadRootId is null && a.ThreadRootId == q.Id))).Select(q => q.Id).ToHashSet();
     }
 
     /// <summary>Questions put to the person in the last two weeks that they have not answered yet, newest first.</summary>

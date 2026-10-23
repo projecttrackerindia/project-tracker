@@ -136,7 +136,7 @@ try{
  // AI on selected text: preview first, then replace; the page saves the new words.
  await select(page,editor,'Customers get refunds in five working days after approval.');
  await page.locator('.rte-bubble .rte-ai').click();
- await page.locator('.ai-menu').getByRole('menuitem',{name:'Shorter'}).click();
+ await page.locator('.pg-ai-menu').getByRole('menuitem',{name:'Shorter'}).click();
  await page.locator('.ai-sel-out',{hasText:'Refunds take five working days.'}).waitFor();
  await shot(page,'ai-selection-1440.png');
  await page.locator('.ai-sel').getByRole('button',{name:'Replace'}).click();

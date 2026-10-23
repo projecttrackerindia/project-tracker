@@ -1,24 +1,24 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import type { CommandCenter } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
-import { formatTime, timeAgo } from '../../lib/format';
+import { formatDate, formatTime, timeAgo } from '../../lib/format';
 import { useAuth } from '../../stores/auth';
 import { AiPage } from '../ai/AiPage';
+import { ReviewQueueCard } from '../github/GitHubApp';
 import type { AiConversation } from '../ai/aiApi';
-import { useHomeMode } from '../../stores/homeMode';
 
-type Tab = 'today' | 'work' | 'meetings' | 'decisions';
+type Tab = 'dashboard' | 'today' | 'work' | 'meetings' | 'decisions';
 
 /**
- * The AI-first Home (opt-in): Home is the assistant, laid out like a modern chat app. A greeting, the ask box in the middle (attach and the
+ * Home is the assistant, laid out like a modern chat app. A greeting, the ask box in the middle (attach and the
  * thinking level inside it), a few one-click asks, the latest chats as small tabs, then today's cards. Past chats are the "Chats" menu in the
- * top bar. The cards come from rules (no model call, no credits). "Classic view" returns to the tabs.
+ * top bar. The cards come from rules (no model call, no credits) and open the full views (Today, My work, Meetings, Decisions, Dashboard).
  */
 export function AiFirstHome({ c, onTab }: { c: CommandCenter | undefined; onTab: (t: Tab) => void }) {
-  const setAiFirst = useHomeMode((s) => s.setAiFirst);
   const actions = (
-    <button type="button" className="ai-chip-btn" onClick={() => setAiFirst(false)} title="Back to the classic Home with tabs">
-      <Icon name="dashboard" size={14} /><span>Classic view</span>
+    <button type="button" className="ai-chip-btn" onClick={() => onTab('dashboard')} title="Charts of your projects and tasks">
+      <Icon name="dashboard" size={14} /><span>Dashboard</span>
     </button>
   );
   return <AiPage home={{ actions, start: (p) => <HomeStart c={c} onTab={onTab} {...p} /> }} />;
@@ -42,7 +42,7 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
         <h1><span className="aih-mark" aria-hidden="true"><Icon name="sparkle" size={18} /></span>{greeting()}{first ? `, ${first}` : ''}</h1>
         {composer}
         <div className="aih-chips">
-          <button type="button" onClick={() => onTab('work')}><Icon name="list" size={13} /> My work today</button>
+          <button type="button" onClick={() => ask('Plan my day: order my open and late work by what matters most, and say why.')}><Icon name="list" size={13} /> Plan my day</button>
           <button type="button" onClick={() => ask('Which projects are delayed and why?')}><Icon name="gauge" size={13} /> Delayed projects</button>
           <button type="button" onClick={() => ask('Create a task')}><Icon name="plus" size={13} /> Create a task</button>
           <button type="button" onClick={() => onTab('decisions')}><Icon name="checks" size={13} /> Approvals</button>
@@ -69,6 +69,47 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
               </button>
             ))}
           </div>
+          <div className="aih-lists">
+            <section className="aih-list" aria-labelledby="aih-need">
+              <header><h3 id="aih-need"><Icon name="target" size={14} /> Needs you</h3><button type="button" className="mb-link" onClick={() => onTab('today')}>All</button></header>
+              {c.attention.length === 0 ? <p className="aih-empty">Nothing needs you right now.</p> : (
+                <ul>
+                  {c.attention.slice(0, 5).map((a) => (
+                    <li key={a.id} className={`sev-${a.severity}`}>
+                      <span className="aih-dot" aria-hidden />
+                      <div className="aih-item">
+                        {a.link ? <Link to={a.link}>{a.title}</Link> : <button type="button" className="aih-item-btn" onClick={() => onTab('today')}>{a.title}</button>}
+                        <small>{[a.projectKey, a.why[0] ?? a.detail].filter(Boolean).join(' · ')}</small>
+                      </div>
+                      <button type="button" className="aih-ask" onClick={() => ask(`Help me deal with this: ${a.title}${a.projectKey ? ` (${a.projectKey})` : ''}. What should I do, and can you prepare it?`)} title="Ask the assistant to handle it">
+                        <Icon name="sparkle" size={12} /><span>Ask</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            <section className="aih-list" aria-labelledby="aih-work">
+              <header><h3 id="aih-work"><Icon name="list" size={14} /> My work</h3><button type="button" className="mb-link" onClick={() => onTab('work')}>All my work</button></header>
+              {c.owe.length === 0 ? <p className="aih-empty">Nothing open on you. <button type="button" className="mb-link" onClick={() => ask('Create a task')}>Create a task</button></p> : (
+                <ul>
+                  {c.owe.slice(0, 6).map((w) => (
+                    <li key={w.id} className={`st-${w.state}`}>
+                      <span className="aih-dot" aria-hidden />
+                      <div className="aih-item">
+                        <Link to={`/projects/${w.projectId}?task=${w.id}`}><span className="aih-key">{w.key}</span> {w.title}</Link>
+                        <small>{w.state === 'overdue' ? `Late${w.daysLate ? ` by ${w.daysLate} day${w.daysLate === 1 ? '' : 's'}` : ''}` : w.state === 'due_today' ? 'Due today' : w.due ? `Due ${formatDate(w.due)}` : 'No due date'}{w.waiting.length ? ` · ${w.waiting.length} waiting on it` : ''}</small>
+                      </div>
+                      <button type="button" className="aih-ask" onClick={() => ask(`Help me finish ${w.key} "${w.title}": what is left, what is blocking it, and what should I do next?`)} title="Ask the assistant about it">
+                        <Icon name="sparkle" size={12} /><span>Ask</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+          <ReviewQueueCard compact />
           {next && (
             <div className="aih-card">
               <header><span><Icon name="video" size={14} /> Next meeting</span><button type="button" className="mb-link" onClick={() => onTab('meetings')}>Open</button></header>

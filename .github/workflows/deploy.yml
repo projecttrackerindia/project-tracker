@@ -1,0 +1,88 @@
+name: Deploy
+
+# Puts main live on the Google Cloud server, the same steps as deploy/gcp/update.sh in Cloud Shell: build the images in Cloud Build,
+# then pull and restart on the server. It runs by itself after CI passes on main, and can be started by hand (Actions › Deploy).
+# GitHub signs in to Google Cloud with Workload Identity Federation: no key is stored anywhere. Until deploy/gcp/github-deploy-setup.sh
+# has been run once and its three repository variables added, this workflow does nothing.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# One release at a time, in order; a release that has started is never cut off.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Release to the server
+    if: >-
+      vars.GCP_WIF_PROVIDER != '' && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event.workflow_run.conclusion == 'success' && contains(fromJSON('["push","workflow_dispatch"]'), github.event.workflow_run.event))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      # Only the commit CI passed goes live. If main has moved on since, the newer commit's own CI run deploys it.
+      - name: Check this is the commit that passed
+        id: same
+        run: |
+          passed="${{ github.event.workflow_run.head_sha }}"
+          if [ -n "$passed" ] && [ "$(git rev-parse HEAD)" != "$passed" ]; then
+            echo "main is now $(git rev-parse --short HEAD), not the commit that passed (${passed:0:7}); its own run will deploy it."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: google-github-actions/auth@v2
+        if: steps.same.outputs.go == 'true'
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.same.outputs.go == 'true'
+
+      - name: Build and restart
+        if: steps.same.outputs.go == 'true'
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
+          BING_SITE_VERIFICATION: ${{ vars.BING_SITE_VERIFICATION }}
+          INDEXNOW_KEY: ${{ vars.INDEXNOW_KEY }}
+        run: |
+          # The build reads the website's search-engine tags from the same file Cloud Shell keeps them in.
+          mkdir -p "$HOME/.pt-gcp" && chmod 700 "$HOME/.pt-gcp"
+          {
+            [ -n "$GOOGLE_SITE_VERIFICATION" ] && echo "GOOGLE_SITE_VERIFICATION=$GOOGLE_SITE_VERIFICATION"
+            [ -n "$BING_SITE_VERIFICATION" ] && echo "BING_SITE_VERIFICATION=$BING_SITE_VERIFICATION"
+            [ -n "$INDEXNOW_KEY" ] && echo "INDEXNOW_KEY=$INDEXNOW_KEY"
+            true
+          } > "$HOME/.pt-gcp/railway-web.env"
+          ./deploy/gcp/update.sh
+
+      - name: Check the site answers
+        if: steps.same.outputs.go == 'true'
+        run: |
+          for i in $(seq 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://projecttracker.in/health/ready || true)
+            if [ "$code" = "200" ]; then echo "Live: $(git rev-parse --short HEAD)"; exit 0; fi
+            sleep 10
+          done
+          echo "The site did not answer ready within 5 minutes after the restart." >&2
+          exit 1

@@ -33,6 +33,11 @@ try {
   else if(endpoint.endsWith('/ai/status'))data={enabled:true,configured:true,entitled:true,allowedHere:true,model:'synthetic',provider:'Gemini'};
   else if(endpoint.endsWith('/ai/usage'))data={month:'2026-10',creditsUsed:223,creditsLimit:1000,creditsLeft:777,unlimited:false,maxTier:'deep',attachments:true,actions:true,tiers:['quick','standard','deep'].map((id,i)=>({id,label:id,model:'synthetic',credits:i+1,allowed:true,description:'Preview mode'})),attachmentTypes:[],maxFiles:3,maxImageMb:2,maxDocumentMb:2,requestLimits:{perMinute:20,perHour:300,perDay:1500}};
   else if(endpoint.endsWith('/ai/starters'))data={greeting:'Welcome back',starters:[]};
+  else if(endpoint==='/api/v1/ai/conversations/c1')data={id:'c1',title:'Delivery check',messages:[
+    {id:'m1',role:'user',content:'How is delivery going?',reasoning:null,tier:null,model:null,routeReason:null,credits:0,status:'complete',tools:[],actions:[],attachments:[],createdAt:new Date(Date.now()-3600e3).toISOString()},
+    {id:'m2',role:'assistant',content:'Delivery is on track: two tasks are waiting on vendor keys.',reasoning:null,tier:'standard',model:'synthetic',routeReason:'Needs project data',credits:2,status:'complete',tools:[],actions:[],attachments:[],createdAt:new Date(Date.now()-3590e3).toISOString()}]};
+  else if(endpoint==='/api/v1/agent/command-center')data={greeting:'Good morning',headline:'Nothing urgent.',since:new Date().toISOString(),counts:{attention:0,toDecide:0,dueToday:0,overdue:0,blocking:0,checkIns:0,meetingsToday:0,atRisk:0},
+    attention:[],today:[],changes:[],health:[],reliability:{kept:0,missed:0,open:0,moved:0},checkIns:[],owe:[],delegations:[]};
   else if(endpoint==='/api/v1/chat/conversations')data=[conversation];
   else if(endpoint.endsWith('/messages'))data={items:[{id:'00000000-0000-0000-0000-000000000011',conversationId:conversation.id,senderId:colleague.userId,senderName:colleague.name,kind:'User',replyTo:null,editedAt:null,body:'The project review is ready. We can discuss the next milestone here.',createdAt:'2026-10-12T10:05:00Z',attachments:[],reactions:[],isDeleted:false}],hasMore:false};
   else if(endpoint.includes('/unread')||endpoint.includes('/counts'))data={count:0,total:0};
@@ -44,7 +49,7 @@ try {
   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({data})});
  });
  for(const [width,height] of [[320,740],[390,844],[768,1024],[740,390]]){
-  for(const [kind,url,composer] of [['agent','/preview-org/ai','.ai-composer'],['chat','/preview-org/chat/'+conversation.id,'.composer']]){
+  for(const [kind,url,composer] of [['agent','/preview-org/?c=c1','.ai-composer.stacked'],['chat','/preview-org/chat/'+conversation.id,'.composer']]){
    const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height});
    await page.goto(origin+url);await page.locator(composer).waitFor({state:'visible'});await page.evaluate(()=>document.fonts.ready);
    await page.waitForFunction(s=>!!document.querySelector(s)&&!!document.querySelector('.m-tabs'),composer);await page.waitForTimeout(150);

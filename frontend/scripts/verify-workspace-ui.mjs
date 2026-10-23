@@ -14,6 +14,8 @@ const user = { id: '00000000-0000-0000-0000-000000000001', displayName: 'Alex Mo
 const workspace = { id: '00000000-0000-0000-0000-000000000002', slug: 'preview-org', name: 'Design Workspace', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 2 };
 let included = true;
 let role = 'Owner';
+// The full-page assistant (/ai) is for people whose Home is not the Command Center (no projects); everyone else asks on Home.
+let projectsLevel = 3;
 let slackError = false;
 let slack = { configured: false, eligible: true, connected: false, teamId: null, teamName: null, connectedAt: null, lastError: null, interactiveEnabled: false };
 let usage = { month: '2026-10', creditsUsed: 223, creditsLimit: 1000, creditsLeft: 777, unlimited: false, maxTier: 'deep', attachments: true, actions: true, tiers: ['quick', 'standard', 'deep'].map((id, i) => ({ id, label: id, model: 'synthetic', credits: i + 1, allowed: true, description: 'Preview response mode' })), attachmentTypes: [], maxFiles: 3, maxImageMb: 2, maxDocumentMb: 2, requestLimits: { perMinute: 20, perHour: 300, perDay: 1500 } };
@@ -41,7 +43,7 @@ try {
     assert.ok(endpoint.endsWith('/auth/refresh') || route.request().method() === 'GET', `Unexpected write: ${endpoint}`);
     let data = [];
     if (endpoint.endsWith('/auth/refresh')) data = { accessToken: 'synthetic-preview-token', expiresAt: '2099-01-01T00:00:00Z', user };
-    else if (endpoint === '/api/v1/me') data = { user, workspaces: [{ ...workspace, role }], fingerprint: 'preview', pendingConsent: [], current: { ...workspace, role, permissions: ['org.manage', 'work.view', 'work.create', 'reports.view'], modules: { projects: 3, work: 3, ai: 3, activity: 3, reports: 3, documents: 3, people: 3, billing: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { API_ACCESS: included ? 1 : 0, AI_ASSISTANT: 3 } } };
+    else if (endpoint === '/api/v1/me') data = { user, workspaces: [{ ...workspace, role }], fingerprint: 'preview', pendingConsent: [], current: { ...workspace, role, permissions: ['org.manage', 'work.view', 'work.create', 'reports.view'], modules: { projects: projectsLevel, work: 3, ai: 3, activity: 3, reports: 3, documents: 3, people: 3, billing: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { API_ACCESS: included ? 1 : 0, AI_ASSISTANT: 3 } } };
     else if (endpoint.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
     else if (endpoint.endsWith('/webhooks/events')) data = ['task.created', 'task.updated', 'audit.logged'];
     else if (endpoint.endsWith('/webhooks')) {
@@ -124,6 +126,7 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Disconnect workspace', exact: true }).count(), 0);
   slackError = false; await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await page.getByText('Connected', { exact: true }).waitFor(); checks.push('slack-gates-status-error-recovery');
+  projectsLevel = 0;
   await open('/preview-org/ai', '.ai-credit-button'); await capture('orbit-light-desktop');
   const modes = page.getByRole('radiogroup', { name: 'How much thinking' });
   await modes.getByRole('radio', { name: 'Auto', exact: true }).focus(); await page.keyboard.press('ArrowRight');
@@ -161,6 +164,7 @@ try {
   checks.push('reduced-motion');
   usage = { ...usage, unlimited: false, creditsLeft: 777 };
   await open('/preview-org/ai', '.ai-credit-button'); await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; }); await capture('orbit-dark-desktop');
+  projectsLevel = 3;
   role = 'Member'; const readsBefore = hookReads;
   await open('/preview-org/settings/webhooks', '.sidebar');
   assert.equal(await page.locator('.integration-studio').count(), 0); assert.equal(hookReads, readsBefore); checks.push('member-no-administration');

@@ -346,7 +346,9 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   const main = useRef<HTMLElement>(null);
   const phone = useIsMobile();
   const shell = useRef<HTMLDivElement>(null);
-  const conversation = /(?:^|\/)(?:ai|chat)(?:\/[^/]+)?\/?$/.test(loc.pathname) && !loc.pathname.endsWith('/ai/operations');
+  // A chat open on Home (?c=…) is a conversation too: Home is where the assistant lives.
+  const homeChat = (loc.pathname === '/' || loc.pathname === '') && new URLSearchParams(loc.search).has('c');   // paths are inside the workspace's basename
+  const conversation = homeChat || (/(?:^|\/)(?:ai|chat)(?:\/[^/]+)?\/?$/.test(loc.pathname) && !loc.pathname.endsWith('/ai/operations'));
   useConversationViewport(phone && conversation, shell);
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);

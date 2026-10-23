@@ -4,7 +4,6 @@ import { useVisibleKinds } from '../features/workitems/workItems';
 import { usePeopleSections } from '../features/people/sections';
 import { useAi } from '../features/ai/Assistant';
 import { AI_NAME } from '../features/ai/aiBrand';
-import { useHomeMode } from '../stores/homeMode';
 
 /** `match`: the item is active for these addresses instead of just its own (for items that lead into a section with tabs). */
 export interface NavDef {
@@ -36,7 +35,6 @@ export function useMainNav(): NavGroup[] {
   const people = usePeopleSections();
   const hasReports = (ctx?.current?.reportCount ?? 0) > 0;
   const ai = useAi();
-  const aiFirstPref = useHomeMode((s) => s.aiFirst);
 
   if (ctx?.user.isPlatformAdmin) return [
     { title: 'Platform', items: [
@@ -62,7 +60,7 @@ export function useMainNav(): NavGroup[] {
   const proposals = lv('projects') > 0 && !personal && ai && !isGuest;
   const notes = lv('projects') > 0 && !isGuest;
   // With the AI-first Home, asking happens on Home itself: the sidebar entry becomes Agents (meetings, proposals, workflows, tracker).
-  const aiFirst = aiFirstPref && ai;
+  const aiFirst = ai && command;
   const agentsTo = ai && !aiFirst ? '/ai' : notes ? '/notetaker' : proposals ? '/project-agent' : ai ? '/ai/operations' : '/agent-tracker';
   const agentsPath = (p: string) => p === '/ai' || p.startsWith('/ai/') || p === '/project-agent' || p.startsWith('/project-agent/') || p === '/agent-tracker' || p === '/notetaker';
   return [

@@ -1,13 +1,12 @@
 import { AgentsHubNav } from '../agents/AgentsHubNav';
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode, type RefObject } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useHomeMode } from '../../stores/homeMode';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
 import { PageLoader } from '../../components/ui';
 import { invalidateWorkspace, useDetailsDismiss, useWsQuery } from '../../lib/hooks';
 import { timeAgo } from '../../lib/format';
-import { useAuth, useWorkspaceId } from '../../stores/auth';
+import { useAuth, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { useAiStatus } from './Assistant';
 import { aiWorkspaceApi, type AiFeedbackReason, askAi, type AiAction, type AiConversation, type AiMessage, type AiMode, type AiStreamEvent, type AiTier, type AiToolUse } from './aiApi';
@@ -54,7 +53,10 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
   const id = home ? search.get('c') ?? undefined : routeId;
   const navigate = useNavigate();
   const loc = useLocation();
-  const aiFirst = useHomeMode((s) => s.aiFirst);
+  // Home is the assistant for everyone whose Home is the Command Center (the projects module, not a guest).
+  const projectsLevel = useModule('projects');
+  const role = useAuth((s) => s.ctx?.current?.role);
+  const aiFirst = projectsLevel > 0 && role !== 'Guest';
   // Where a conversation lives: /ai/{id} on the Assistant page, ?c={id} on the AI-first Home. "/ai" means a new conversation.
   // Stable on purpose (effects depend on it): it reads the current address from a ref instead of re-creating itself on every change.
   const here = useRef(loc); here.current = loc;

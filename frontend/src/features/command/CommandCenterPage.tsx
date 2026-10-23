@@ -18,7 +18,6 @@ import { BriefModal, DecisionsView, AuditView, WhatIfModal, SettingsCard } from 
 import { MyWorkPage } from '../workitems/MyWorkPage';
 import { errText } from './shared';
 import { AiFirstHome } from './AiFirstHome';
-import { useHomeMode } from '../../stores/homeMode';
 import { useAiStatus } from '../ai/Assistant';
 import '../agent/agent.css';
 
@@ -71,13 +70,16 @@ export function CommandCenterPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const setTab = (t: Tab) => { const next = new URLSearchParams(params); if (t === 'dashboard') next.delete('tab'); else next.set('tab', t); setParams(next, { replace: true }); };
-  // The AI-first Home is opt-in and remembered in this browser; Classic (the tabs) stays the default.
+  // Home is the assistant whenever AI is available here; the full views (Today, My work, Meetings…) open from it as ?tab=…, with a Home
+  // tab back. Without AI (switched off, not in the plan) Home is those views, starting with the dashboard.
   const ai = useAiStatus();
-  const aiFirst = useHomeMode((s) => s.aiFirst);
-  const chooseHome = useHomeMode((s) => s.setAiFirst);
-  // A tab in the address (Today, My work…) still opens the classic tab; Home itself is the assistant.
-  const showAiFirst = aiFirst && !!ai?.enabled && !params.get('tab');
+  const aiHome = !!ai?.enabled;
+  const setTab = (t: Tab | 'home') => {
+    const next = new URLSearchParams(params);
+    if (t === 'home' || (t === 'dashboard' && !aiHome)) next.delete('tab'); else next.set('tab', t);
+    setParams(next, { replace: true });
+  };
+  const showAiFirst = aiHome && !params.get('tab');
 
   if (showAiFirst) return (
     <div className="cmd-page">
@@ -88,6 +90,7 @@ export function CommandCenterPage() {
     <div className="cmd-page">
       <div className="cmd-tabbar">
       <nav className="tabs cmd-tabs" aria-label="Home">
+        {aiHome && <button type="button" className="tab cmd-home-tab" onClick={() => { haptic(4); setTab('home'); }}><AgentMark size={15} /><span>Home</span></button>}
         {TABS.map((t) => (
           <button key={t.id} type="button" className={`tab${tab === t.id ? ' active' : ''}`} aria-pressed={tab === t.id} onClick={() => { haptic(4); setTab(t.id); }}>
             <Icon name={t.icon} size={15} /><span>{t.label}</span>
@@ -95,7 +98,6 @@ export function CommandCenterPage() {
           </button>
         ))}
       </nav>
-      {!!ai?.enabled && <button type="button" className="btn btn-sm cmd-aifirst" onClick={() => { chooseHome(true); setTab('dashboard'); }}><Icon name="sparkle" size={14} /> {aiFirst ? 'Back to Home' : 'AI-first home'}</button>}
       </div>
       {tab === 'dashboard' ? <div className="cmd-dashboard"><Suspense fallback={<PageLoader />}><DashboardPage /></Suspense></div>
         : q.isLoading ? <PageLoader /> : q.isError || !q.data ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (

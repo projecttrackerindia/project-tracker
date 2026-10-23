@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { agentApi } from '../../api/endpoints';
-import { useHomeMode } from '../../stores/homeMode';
 import { AgentMark } from '../../components/AgentMark';
 import { Icon, type IconName } from '../../components/Icon';
 import { useWsQuery } from '../../lib/hooks';
@@ -16,10 +15,10 @@ import './agents.css';
 export function AgentsHubNav({ sub, compact = false }: { sub?: string; compact?: boolean }) {
   const { pathname } = useLocation();
   const ai = useAi();
-  const aiFirst = useHomeMode((s) => s.aiFirst);
   const personal = useIsPersonal();
   const role = useAuth((s) => s.ctx?.current?.role);
   const projects = useModule('projects') > 0;
+  const aiFirst = projects && role !== 'Guest';   // Home is the assistant
   const proposals = projects && !personal && ai && role !== 'Guest';
   const admin = role === 'Owner' || role === 'Admin';
   const inbox = useWsQuery(['agent', 'inbox'], agentApi.inbox, { enabled: proposals, staleTime: 60_000 });

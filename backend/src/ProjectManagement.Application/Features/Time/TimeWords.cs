@@ -119,13 +119,14 @@ public static class TimeWords
     private static Read ReadPiece(string piece, DateOnly today)
     {
         var rest = " " + piece + " ";
+        // The key first, so its number is never read as a time or a day ("PAY-1 oct 12" is not 1 October).
+        string? key = null;
+        var k = Key.Match(rest);
+        if (k.Success) { key = $"{k.Groups[1].Value.ToUpperInvariant()}-{int.Parse(k.Groups[2].Value, CultureInfo.InvariantCulture)}"; rest = rest.Remove(k.Index, k.Length).Insert(k.Index, " "); }
         int? minutes = null;
         if (FindDuration(rest) is { } d) { minutes = d.Minutes; rest = rest.Remove(d.Index, d.Length).Insert(d.Index, " "); }
         DateOnly? date = null;
         if (FindDate(rest, today) is { } dt) { date = dt.Date; rest = rest.Remove(dt.Index, dt.Length).Insert(dt.Index, " "); }
-        string? key = null;
-        var k = Key.Match(rest);
-        if (k.Success) { key = $"{k.Groups[1].Value.ToUpperInvariant()}-{int.Parse(k.Groups[2].Value, CultureInfo.InvariantCulture)}"; rest = rest.Remove(k.Index, k.Length).Insert(k.Index, " "); }
         return new Read(piece.Trim(), minutes, date, key, Tidy(rest));
     }
 

@@ -8,7 +8,10 @@ import { cutOff, fitsPhone } from './lib/phone.mjs';
 // day view. Built frontend with synthetic API fixtures only.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/timesheet-ui');
 await fs.mkdir(out,{recursive:true});
-const csp=(await fs.readFile('nginx.conf','utf8')).match(/set \$sec_csp "([^"]+)";/)[1];
+const nginx=await fs.readFile('nginx.conf','utf8');
+const csp=nginx.match(/set \$sec_csp "([^"]+)";/)[1];
+// The live pages' Permissions-Policy, so the voice step fails here if the microphone is ever blocked for the site.
+const permissions=nginx.match(/set \$sec_permissions "([^"]+)";/)[1];
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Asha Rao',email:'asha@example.test',emailVerified:true,timeZone:'Asia/Kolkata',isPlatformAdmin:false};
 const ws={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Preview Workspace',type:'Organization',role:'Owner',planCode:'BUSINESS',memberCount:4};
 const token=`x.${Buffer.from(JSON.stringify({wid:ws.id,exp:4102444800})).toString('base64url')}.x`;
@@ -83,7 +86,7 @@ try{
    const req=route.request(),url=new URL(req.url()),ep=url.pathname,method=req.method();
    if(url.origin!==origin){await route.abort();return;}
    if(ep.endsWith('/avatar')){await route.fulfill({status:404,body:''});return;}
-   if(!ep.startsWith('/api/')){const file=path.resolve(dist,ep.startsWith('/assets/')?ep.slice(1):'index.html');assert.ok(file.startsWith(dist+path.sep));await route.fulfill({contentType:{'.html':'text/html','.js':'application/javascript','.css':'text/css','.woff2':'font/woff2'}[path.extname(file)]||'application/octet-stream',body:await fs.readFile(file),headers:ep.startsWith('/assets/')?{}:{'content-security-policy':csp}});return;}
+   if(!ep.startsWith('/api/')){const file=path.resolve(dist,ep.startsWith('/assets/')?ep.slice(1):'index.html');assert.ok(file.startsWith(dist+path.sep));await route.fulfill({contentType:{'.html':'text/html','.js':'application/javascript','.css':'text/css','.woff2':'font/woff2'}[path.extname(file)]||'application/octet-stream',body:await fs.readFile(file),headers:ep.startsWith('/assets/')?{}:{'content-security-policy':csp,'permissions-policy':permissions}});return;}
    let data=[];
    if(ep==='/api/v1/time/grid'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});apply(b.cells);data={grid:grid(),saved:b.cells.length,errors:[]};}
    else if(ep==='/api/v1/time/grid/draft'){data={weekStart:week,cells:[

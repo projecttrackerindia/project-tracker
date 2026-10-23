@@ -96,7 +96,7 @@ export function SelectionAiPanel({ editor, documentId, state, setState }: { edit
     <span className="ai-sel-wrap">
       <button type="button" className={`rte-btn rte-ai${menu ? ' on' : ''}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((m) => !m)} title="Ask AI to change the selected text">✨ AI</button>
       {menu && (
-        <div className="ai-menu" role="menu" onMouseDown={(e) => e.preventDefault()}>
+        <div className="pg-ai-menu" role="menu" onMouseDown={(e) => e.preventDefault()}>
           {AI_ACTIONS.map((a) => <button key={a.id} type="button" role="menuitem" onClick={() => void run(a.id)}><span aria-hidden="true">{a.icon}</span>{a.label}</button>)}
           <div className="ai-menu-sep">Translate to</div>
           {LANGUAGES.map((l) => <button key={l.id} type="button" role="menuitem" onClick={() => void run('translate', l.id)}><span aria-hidden="true">🌐</span>{l.label}</button>)}

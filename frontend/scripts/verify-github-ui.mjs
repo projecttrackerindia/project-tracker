@@ -81,6 +81,10 @@ try{
    else if(ep==='/api/v1/timer')data=null;
    else if(ep.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
    else if(ep.endsWith('/ai/status'))data={enabled:true,configured:true,entitled:true,allowedHere:true};
+   else if(ep.endsWith('/ai/usage'))data={month:'2030-01',creditsUsed:20,creditsLimit:200,creditsLeft:180,unlimited:false,maxTier:'deep',attachments:true,actions:true,tiers:['quick','standard','deep'].map((id,i)=>({id,label:id,model:'synthetic',credits:i+1,allowed:true,description:'Preview mode'})),attachmentTypes:[],maxFiles:3,maxImageMb:2,maxDocumentMb:2};
+   else if(ep.endsWith('/ai/starters'))data={greeting:'Welcome back',starters:[]};
+   else if(ep.endsWith('/ai/insights'))data=[];
+   else if(ep.endsWith('/ai/conversations'))data=[];
    else if(ep.endsWith('/workspace/logo'))data={hasLogo:false};
    else if(ep==='/api/v1/chat/projects/unread')data=[];
    else if(ep.includes('/counts')||ep.includes('/unread'))data={count:0,total:0};
@@ -160,7 +164,7 @@ try{
  assert.ok(page.url().includes('/documents/00000000-0000-0000-0000-0000000000d1'));
  checks.push('code-tab');
 
- // Home (a fresh tab: the draft page stub above has no document to show): the review queue, mine first, then mine waiting on others.
+ // Home (a fresh tab: the draft page stub above has no document to show): the assistant's Home shows the review queue, mine first, then mine waiting on others.
  await page.close();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:960});
  await page.goto(origin+'/preview-org/');
  const rq=page.getByTestId('review-queue');await rq.waitFor();
