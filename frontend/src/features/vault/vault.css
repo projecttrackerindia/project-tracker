@@ -373,3 +373,16 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
 .vlt-circle-dots { display: flex; gap: 8px; }
 .vlt-circle-dots span { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--primary-fill); transition: background .3s; }
 .vlt-circle-dots span.on { background: var(--primary-fill); box-shadow: 0 0 0 4px var(--vlt-glow); }
+
+/* ---- one-time links */
+.vlt-link-made { display: grid; gap: 12px; }
+.vlt-link-url { display: block; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font-family: var(--vlt-mono); font-size: 12px; overflow-wrap: anywhere; user-select: all; }
+.vlt-link-fields { display: grid; gap: 6px; }
+.vlt-secret-page { text-align: left; }
+.vlt-secret-page .ra-page-brand, .vlt-secret-page .ra-page-ico, .vlt-secret-page .auth-title, .vlt-secret-page .auth-sub, .vlt-secret-page .ra-page-state { text-align: center; }
+.vlt-secret-page .ra-page-ico { margin-left: auto; margin-right: auto; }
+.vlt-secret-page .ra-page-actions { justify-content: center; }
+.vlt-secret-fields { list-style: none; margin: 16px 0 8px; padding: 0; display: grid; gap: 12px; }
+.vlt-secret-fields .vlt-field-row { display: flex; align-items: center; gap: 4px; }
+.vlt-secret-fields .vlt-field-value { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.vlt-secret-pass { margin: 14px 0 4px; text-align: left; }

@@ -211,6 +211,17 @@ public class VaultController(VaultService vault, StepUpService stepUp, ProjectMa
     [HttpGet("devices/{id:guid}")]
     public async Task<IActionResult> DeviceStatus(Guid id, CancellationToken ct) { NoStore(); return Ok(await vault.DeviceLinkStatusAsync(id, ct)); }
 
+    // ------------------------------------------------------------- self-destructing links
+
+    [HttpPost("links")]
+    public async Task<IActionResult> CreateLink([FromBody] CreateSecretLinkRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.CreateSecretLinkAsync(req, ct)); }
+
+    [HttpGet("links")]
+    public async Task<IActionResult> Links(CancellationToken ct) { NoStore(); return Ok(await vault.MySecretLinksAsync(ct)); }
+
+    [HttpDelete("links/{id:guid}")]
+    public async Task<IActionResult> RevokeLink(Guid id, CancellationToken ct) { await vault.RevokeSecretLinkAsync(id, ct); return NoContent(); }
+
     // ------------------------------------------------------------- the recovery circle
 
     [HttpGet("keys/circle")]

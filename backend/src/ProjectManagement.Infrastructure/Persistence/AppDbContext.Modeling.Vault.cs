@@ -123,6 +123,19 @@ public partial class AppDbContext
             e.Property(x => x.IpAddress).HasMaxLength(64);
             e.Property(x => x.UserAgent).HasMaxLength(300);
         });
+        b.Entity<VaultSecretLink>(e =>
+        {
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.CreatedBy, x.CreatedAt });
+            e.HasIndex(x => x.ExpiresAt);
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.Property(x => x.Note).HasMaxLength(200);
+            e.Property(x => x.Cipher).HasMaxLength(140000);
+            e.Property(x => x.Salt).HasMaxLength(64);
+            e.Property(x => x.Params).HasMaxLength(64);
+            e.Property(x => x.LastOpenedIp).HasMaxLength(64);
+            e.Property(x => x.Views).IsConcurrencyToken();   // two openings at once: only one gets the last view
+        });
         b.Entity<VaultRecoveryRelease>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.RequestId });

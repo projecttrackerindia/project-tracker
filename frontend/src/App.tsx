@@ -66,6 +66,7 @@ const RemindersPage = page(() => import('./features/reminders/RemindersPage'), '
 const UnsubscribePage = page(() => import('./features/auth/UnsubscribePage'), 'UnsubscribePage');
 const ApprovePage = page(() => import('./features/auth/ApprovePage'), 'ApprovePage');
 const ReminderActionPage = page(() => import('./features/reminders/ActionPage'), 'ReminderActionPage');
+const SecretLinkPage = page(() => import('./features/vault/SecretLinkPage'), 'SecretLinkPage');
 const WorkloadPage = page(() => import('./features/workitems/WorkloadPage'), 'WorkloadPage');
 const ActivityPage = page(() => import('./features/activity/ActivityPages'), 'ActivityPage');
 const NotificationCenterPage = page(() => import('./features/notifications/NotificationCenter'), 'NotificationCenterPage');
@@ -310,7 +311,7 @@ function OrgRedirect() {
 
 const OrgGateContext = createContext<() => void>(() => undefined);
 
-const PUBLIC_PAGES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'unsubscribe', 'auth', 'security', 'download', 'r', 'dev']);
+const PUBLIC_PAGES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'unsubscribe', 'auth', 'security', 'download', 'r', 's', 'dev']);
 
 function AppRoutes({ scoped }: { scoped: boolean }) {
   const loc = useLocation();
@@ -344,6 +345,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
       <Route path="/privacy" element={<LegalPage type="privacy" />} />
       {/* Done / snooze from a reminder e-mail or push notification: the link's one-time key stands in for signing in. */}
       <Route path="/r/:token" element={<Suspense fallback={<PageLoader />}><ReminderActionPage /></Suspense>} />
+      {/* A one-time secret from the vault: opened without signing in; the key is in the link's #fragment and never reaches a server. */}
+      <Route path="/s/:token" element={<Suspense fallback={<PageLoader />}><SecretLinkPage /></Suspense>} />
       {import.meta.env.DEV && <Route path="/dev/mailbox" element={<MailboxPage />} />}
 
       {redirecting ? <Route path="*" element={<OrgRedirect />} /> : <Route element={<RequireAuth />}>

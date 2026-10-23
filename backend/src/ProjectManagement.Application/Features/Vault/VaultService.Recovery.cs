@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Projects;
+using ProjectManagement.Domain;
 using ProjectManagement.Domain.Entities;
 using ProjectManagement.Domain.Enums;
 

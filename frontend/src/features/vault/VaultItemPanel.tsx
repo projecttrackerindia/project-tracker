@@ -9,6 +9,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { ACTION_LABEL, HEALTH_LABEL, KIND_ICON, KIND_LABEL, vaultApi, type VaultCollection, type VaultField, type VaultItem, type VaultPolicy, type VaultTotp } from './api';
 import { RequestAccessModal } from './VaultRequests';
 import { useItemGrant } from './requestsData';
+import { SendLinkModal } from './VaultLinks';
 import { copySecret, STRENGTH_LABEL } from './secure';
 import { useStepUp } from './stepUpContext';
 
@@ -33,6 +34,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
   const approval = !!collections.find((c) => c.id === q.data?.item.collectionId)?.requireApproval;
   const { grant, pending, refetch: refetchGrant } = useItemGrant(id, approval);
   const [asking, setAsking] = useState(false);
+  const [sending, setSending] = useState(false);
   const decoys = useWsQuery(['vault', 'decoys'], vaultApi.decoys, { enabled: canAdmin, staleTime: 30_000 });
   const isDecoy = !!decoys.data?.some((x) => x.itemId === id);
 
@@ -66,6 +68,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
           <p className="muted">{KIND_LABEL[it.kind]} · {it.collectionName}{it.usernameHint ? ` · ${it.usernameHint}` : ''}</p>
         </div>
         <div className="vlt-panel-actions">
+          {d.canCopy && d.canReveal && !binned && <button className="btn btn-ghost btn-sm" onClick={() => setSending(true)} title="A link that opens once, then the secret is destroyed"><Icon name="send" size={15} /> Send once</button>}
           {d.canManage && !binned && <button className="btn btn-ghost btn-sm" onClick={() => onEdit(d)}><Icon name="edit" size={15} /> Edit</button>}
           <button className="btn-icon" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
         </div>
@@ -185,6 +188,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
       {tab === 'files' && <FilesTab item={d} onChanged={() => void q.refetch()} />}
       {tab === 'history' && d.canManage && <HistoryTab item={d} />}
       {tab === 'activity' && d.canManage && <ActivityTab id={id} />}
+      {sending && <SendLinkModal source={{ kind: 'guarded', item: d }} clipboardSeconds={policy.clipboardSeconds} onClose={() => setSending(false)} />}
       {asking && <RequestAccessModal target={{ kind: 'item', id, title: it.title }} onClose={() => setAsking(false)} onDone={() => void refetchGrant()} />}
     </section>
   );

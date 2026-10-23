@@ -92,6 +92,7 @@ public interface IAppDbContext
     DbSet<VaultRecoveryShare> VaultRecoveryShares { get; }
     DbSet<VaultRecoveryRequest> VaultRecoveryRequests { get; }
     DbSet<VaultRecoveryRelease> VaultRecoveryReleases { get; }
+    DbSet<VaultSecretLink> VaultSecretLinks { get; }
     DbSet<VaultAccessRequest> VaultAccessRequests { get; }
     DbSet<DocumentKey> DocumentKeys { get; }
     DbSet<DocumentView> DocumentViews { get; }

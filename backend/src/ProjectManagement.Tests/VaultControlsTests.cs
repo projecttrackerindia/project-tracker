@@ -294,4 +294,112 @@ public class VaultControlsTests(ApiFactory factory)
         Assert.False(bogus.Ok);
         Assert.Equal(HttpStatusCode.Unauthorized, (await new TestClient(factory).Post("/api/v1/vault/step-up/passkey/options")).Status);
     }
+
+    // ------------------------------------------------------------------ self-destructing links
+
+    private static (string Token, string Hash) NewToken()
+    {
+        var token = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        return (token, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token))).ToLowerInvariant());
+    }
+    private static string Cipher() => Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(300));
+
+    [Fact]
+    public async Task A_one_time_link_keeps_only_ciphertext_opens_the_allowed_number_of_times_without_sign_in_and_then_destroys_it()
+    {
+        var owner = await Owner("Lina Linker");
+        var mine = await MyVault(owner);
+        var id = await AddItem(owner, Login(mine, "Office Wi-Fi"));
+        var (token, hash) = NewToken();
+        var cipher = Cipher();
+        object Body(string h, int views = 1, int hours = 24, Guid? item = null, string? c = null) => new { tokenHash = h, itemId = item, note = "For the auditor", cipher = c ?? cipher, maxViews = views, hours, hasPassphrase = false };
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Post("/api/v1/vault/links", Body("not-a-hash", item: id))).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Post("/api/v1/vault/links", Body(hash, hours: 5, item: id))).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Post("/api/v1/vault/links", Body(hash, views: 9, item: id))).Status);
+        var made = await owner.Post("/api/v1/vault/links", Body(hash, item: id));
+        Assert.True(made.Ok, made.ToString());
+        Assert.Equal("open", S(made.Data!["state"]));
+        Assert.Equal("VAULT_LINK_EXISTS", (await owner.Post("/api/v1/vault/links", Body(hash, item: id))).ErrorCode);
+        var row = factory.WithDb(db => db.VaultSecretLinks.IgnoreQueryFilters().Single(l => l.TokenHash == hash));
+        Assert.Equal(cipher, row.Cipher);
+        Assert.DoesNotContain(token, row.TokenHash);
+        Assert.Single(factory.WithDb(db => db.AuditLogs.Where(a => a.TenantId == owner.WorkspaceId && a.Action == "vault.link_created" && a.EntityId == id).ToList()));
+
+        // Without signing in: describing it does not use it up.
+        var stranger = new TestClient(factory);
+        for (var i = 0; i < 2; i++)
+        {
+            var info = await stranger.Get($"/api/v1/secret-links/{token}");
+            Assert.True(info.Ok, info.ToString());
+            Assert.Equal("ready", S(info.Data!["state"]));
+            Assert.Equal("Lina Linker", S(info.Data["from"]));
+            Assert.Equal("For the auditor", S(info.Data["note"]));
+            Assert.Equal(1, info.Data["viewsLeft"]!.GetValue<int>());
+            Assert.DoesNotContain(cipher, info.ToString());
+            Assert.Contains("no-store", info.Header("Cache-Control") ?? "");
+        }
+        var opened = await stranger.Post($"/api/v1/secret-links/{token}/open");
+        Assert.True(opened.Ok, opened.ToString());
+        Assert.Equal(cipher, S(opened.Data!["cipher"]));
+        Assert.Equal(0, opened.Data["viewsLeft"]!.GetValue<int>());
+        Assert.Equal("LINK_GONE", (await stranger.Post($"/api/v1/secret-links/{token}/open")).ErrorCode);
+        Assert.Equal("gone", S((await stranger.Get($"/api/v1/secret-links/{token}")).Data!["state"]));
+        var burned = factory.WithDb(db => db.VaultSecretLinks.IgnoreQueryFilters().Single(l => l.TokenHash == hash));
+        Assert.Equal("", burned.Cipher);
+        Assert.NotNull(burned.BurnedAt);
+        Assert.True(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == owner.UserId && n.Title == "Your one-time link was opened and destroyed")));
+        Assert.Single(factory.WithDb(db => db.AuditLogs.Where(a => a.TenantId == owner.WorkspaceId && a.Action == "vault.link_opened").ToList()));
+        Assert.Equal("used", S((await owner.Get("/api/v1/vault/links")).Data!.AsArray().Single(l => G(l!["id"]) == G(made.Data["id"]))!["state"]));
+
+        // Several openings, then gone; a revoked link and an expired one never open; nonsense tokens look the same as gone ones.
+        var (t2, h2) = NewToken();
+        Assert.True((await owner.Post("/api/v1/vault/links", Body(h2, views: 2))).Ok);
+        Assert.True((await stranger.Post($"/api/v1/secret-links/{t2}/open")).Ok);
+        Assert.Equal(1, (await stranger.Get($"/api/v1/secret-links/{t2}")).Data!["viewsLeft"]!.GetValue<int>());
+        Assert.True((await stranger.Post($"/api/v1/secret-links/{t2}/open")).Ok);
+        Assert.Equal("LINK_GONE", (await stranger.Post($"/api/v1/secret-links/{t2}/open")).ErrorCode);
+        var (t3, h3) = NewToken();
+        var third = await owner.Post("/api/v1/vault/links", Body(h3));
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.Delete($"/api/v1/vault/links/{G(third.Data!["id"])}")).Status);
+        Assert.Equal("gone", S((await stranger.Get($"/api/v1/secret-links/{t3}")).Data!["state"]));
+        Assert.Equal("", factory.WithDb(db => db.VaultSecretLinks.IgnoreQueryFilters().Single(l => l.TokenHash == h3)).Cipher);
+        var (t4, h4) = NewToken();
+        Assert.True((await owner.Post("/api/v1/vault/links", Body(h4))).Ok);
+        factory.WithDb(db => db.VaultSecretLinks.IgnoreQueryFilters().Where(l => l.TokenHash == h4).ExecuteUpdate(u => u.SetProperty(l => l.ExpiresAt, DateTime.UtcNow.AddMinutes(-1))));
+        Assert.Equal("LINK_GONE", (await stranger.Post($"/api/v1/secret-links/{t4}/open")).ErrorCode);
+        Assert.Equal("gone", S((await stranger.Get("/api/v1/secret-links/nonsense-token-that-is-long-enough")).Data!["state"]));
+        Assert.Equal("gone", S((await stranger.Get("/api/v1/secret-links/x")).Data!["state"]));
+    }
+
+    [Fact]
+    public async Task A_link_follows_the_items_rules_and_a_passphrase_link_carries_only_its_salt()
+    {
+        var owner = await Owner("Pia Passphrase");
+        var member = await owner.AddMemberAsync(factory, TenantRole.Member, "Uma User");
+        var mine = await MyVault(owner);
+        var useOnly = await AddItem(owner, new
+        {
+            collectionId = mine, kind = "Login", title = "Use only", url = (string?)null, tags = Array.Empty<string>(), @class = "Secret", useOnly = true,
+            fields = new object[] { new { key = "password", value = Password, secret = true } },
+        });
+        var (_, h1) = NewToken();
+        Assert.Equal("VAULT_USE_ONLY", (await owner.Post("/api/v1/vault/links", new { tokenHash = h1, itemId = useOnly, cipher = Cipher(), maxViews = 1, hours = 1, hasPassphrase = false })).ErrorCode);
+        var gated = await Collection(owner, "Two-person", requireApproval: true, people: (member, "View"));
+        var gatedItem = await AddItem(owner, Login(gated, "Gated"));
+        Assert.Equal("VAULT_APPROVAL_REQUIRED", (await member.Post("/api/v1/vault/links", new { tokenHash = h1, itemId = gatedItem, cipher = Cipher(), maxViews = 1, hours = 1, hasPassphrase = false })).ErrorCode);
+        var other = await AddItem(owner, Login(mine, "Not theirs"));
+        Assert.Equal(HttpStatusCode.NotFound, (await member.Post("/api/v1/vault/links", new { tokenHash = h1, itemId = other, cipher = Cipher(), maxViews = 1, hours = 1, hasPassphrase = false })).Status);
+
+        var (token, hash) = NewToken();
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Post("/api/v1/vault/links", new { tokenHash = hash, cipher = Cipher(), maxViews = 1, hours = 1, hasPassphrase = true, salt = "c2FsdHNhbHRzYWx0c2FsdA==", @params = "pbkdf2;i=1" })).Status);
+        var made = await owner.Post("/api/v1/vault/links", new { tokenHash = hash, cipher = Cipher(), maxViews = 1, hours = 168, hasPassphrase = true, salt = "c2FsdHNhbHRzYWx0c2FsdA==", @params = "argon2id;m=19456;t=2;p=1" });
+        Assert.True(made.Ok, made.ToString());
+        var info = await new TestClient(factory).Get($"/api/v1/secret-links/{token}");
+        Assert.True(info.Data!["hasPassphrase"]!.GetValue<bool>());
+        Assert.Equal("c2FsdHNhbHRzYWx0c2FsdA==", S(info.Data["salt"]));
+        Assert.Equal("argon2id;m=19456;t=2;p=1", S(info.Data["params"]));
+        Assert.Empty((await member.Get("/api/v1/vault/links")).Data!.AsArray());   // each person sees only their own
+        Assert.Equal(HttpStatusCode.NotFound, (await member.Delete($"/api/v1/vault/links/{G(made.Data!["id"])}")).Status);
+    }
 }

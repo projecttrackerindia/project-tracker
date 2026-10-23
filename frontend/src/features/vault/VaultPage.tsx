@@ -17,13 +17,14 @@ import { AdminView, HealthView } from './VaultAdmin';
 import { CollectionEditor, Generator, ImportModal, ItemEditor, ShareEditor, type SealedEdit } from './VaultEditors';
 import { VaultItemPanel } from './VaultItemPanel';
 import { CircleHelpRequests } from './RecoveryCircle';
+import { LinksView } from './VaultLinks';
 import { RequestsView } from './VaultRequests';
 import { useVaultRequests } from './requestsData';
 import { StepUpProvider } from './stepUp';
 import { useStepUp } from './stepUpContext';
 import './vault.css';
 
-type View = 'items' | 'health' | 'bin' | 'admin' | 'keys' | 'requests';
+type View = 'items' | 'health' | 'bin' | 'admin' | 'keys' | 'requests' | 'links';
 type Row = VaultItemSummary & { sealed?: boolean };
 const IDLE_MS = 5 * 60_000;
 const COLLECTION_ICON: Record<VaultCollection['kind'], IconName> = { Personal: 'user', Shared: 'users', Project: 'folder', Team: 'users' };
@@ -53,7 +54,7 @@ function Vault() {
   const [params, setParams] = useSearchParams();
   const view = ((): View => {
     const v = params.get('view') ?? (params.get('tab') === 'access' ? 'admin' : null);
-    return v === 'health' || v === 'bin' || v === 'keys' || v === 'requests' || (v === 'admin' && o.canAdmin) ? v : 'items';
+    return v === 'health' || v === 'bin' || v === 'keys' || v === 'requests' || v === 'links' || (v === 'admin' && o.canAdmin) ? v : 'items';
   })();
   const collectionId = params.get('c');
   const itemId = params.get('item');
@@ -129,7 +130,7 @@ function Vault() {
   const list: Row[] = view === 'bin' ? [...(items.data ?? []), ...sealedBin.map((r) => r.sum)]
     : sealedOnly ? sealedRows.map((r) => r.sum) : [...(items.data ?? []), ...sealedRows.map((r) => r.sum)].sort((a, b) => (b.health.length > 0 ? 1 : 0) - (a.health.length > 0 ? 1 : 0) || a.title.localeCompare(b.title));
   const selectedSealed = (view === 'bin' ? sealedBin : sealedRows).find((r) => r.s.row.id === itemId) ?? null;
-  const title = view === 'bin' ? 'Bin' : view === 'health' ? 'Health' : view === 'admin' ? 'Administration' : view === 'keys' ? 'My keys' : view === 'requests' ? 'Requests' : collection?.name ?? 'All items';
+  const title = view === 'bin' ? 'Bin' : view === 'health' ? 'Health' : view === 'admin' ? 'Administration' : view === 'keys' ? 'My keys' : view === 'requests' ? 'Requests' : view === 'links' ? 'One-time links' : collection?.name ?? 'All items';
   const hasKeys = !!keysMe.data?.identity;
   const canSeal = hasKeys && unlocked;
 
@@ -168,6 +169,7 @@ function Vault() {
       <p className="vlt-rail-title">Tools</p>
       <button className={view === 'health' ? 'on' : ''} onClick={() => set({ view: 'health', item: null })}><Icon name="gauge" size={16} /><span>Health</span>{health2.score < 100 && health2.total > 0 && <em className={health2.score < 60 ? 'bad' : ''}>{health2.score}</em>}</button>
       <button className={view === 'requests' ? 'on' : ''} onClick={() => set({ view: 'requests', item: null })} data-testid="rail-requests"><Icon name="inbox" size={16} /><span>Requests</span>{waiting > 0 && <em className="bad" title={`${waiting} waiting for you`}>{waiting}</em>}</button>
+      <button className={view === 'links' ? 'on' : ''} onClick={() => set({ view: 'links', item: null })}><Icon name="send" size={16} /><span>One-time links</span></button>
       <button className={view === 'bin' ? 'on' : ''} onClick={() => set({ view: 'bin', c: null, item: null, health: null })}><Icon name="trash" size={16} /><span>Bin</span></button>
       {o.canAdmin && <button className={view === 'admin' ? 'on' : ''} onClick={() => set({ view: 'admin', item: null })}><Icon name="shield" size={16} /><span>Administration</span></button>}
     </nav>
@@ -209,6 +211,7 @@ function Vault() {
                 }}><Icon name="shield" size={14} /> Check sealed items for breaches</button> : null} />
             : view === 'admin' ? <AdminView policy={o.policy} onPolicy={refresh} />
             : view === 'requests' ? <RequestsView />
+            : view === 'links' ? <LinksView clipboardSeconds={o.policy.clipboardSeconds} />
             : (
               <>
                 <div className="vlt-list-head">

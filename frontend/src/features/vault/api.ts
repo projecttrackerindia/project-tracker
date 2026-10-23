@@ -57,6 +57,9 @@ export interface VaultRecoveryToHelp {
   requestId: string; person: UserRef; x25519Public: string; mlKemPublic: string; createdAt: string; expiresAt: string; ipAddress: string | null; userAgent: string | null;
   shareEnvelope: string; shareSignature: string; ownerEd25519Public: string; ownerGeneration: number; threshold: number;
 }
+export interface SecretLink { id: string; note: string | null; itemId: string | null; itemTitle: string | null; createdAt: string; expiresAt: string; views: number; maxViews: number; hasPassphrase: boolean; state: 'open' | 'used' | 'expired' | 'revoked'; lastOpenedAt: string | null }
+export interface SecretLinkInfo { state: 'ready' | 'gone'; note: string | null; from: string | null; workspace: string | null; hasPassphrase: boolean; salt: string | null; params: string | null; expiresAt: string | null; viewsLeft: number }
+export const LINK_HOURS = [1, 24, 72, 168] as const;
 export interface VaultReveal { value: string; revealSeconds: number; clipboardSeconds: number }
 export interface VaultTotp { code: string; secondsLeft: number; period: number; digits: number }
 export interface VaultActivity { at: string; action: string; by: UserRef | null; field: string | null; ipAddress: string | null }
@@ -158,6 +161,12 @@ export const vaultApi = {
   approveDevice: (id: string, envelope: string, signature: string) => post(`/vault/devices/${id}/approve`, { envelope, signature }),
   refuseDevice: (id: string) => post(`/vault/devices/${id}/refuse`, {}),
   deviceStatus: (id: string) => get<DeviceLink>(`/vault/devices/${id}`),
+  createLink: (b: { tokenHash: string; itemId: string | null; note: string | null; cipher: string; maxViews: number; hours: number; hasPassphrase: boolean; salt: string | null; params: string | null; stepUp?: string }) =>
+    post<SecretLink>('/vault/links', b),
+  links: () => get<SecretLink[]>('/vault/links'),
+  revokeLink: (id: string) => del(`/vault/links/${id}`),
+  linkInfo: (token: string) => get<SecretLinkInfo>(`/secret-links/${encodeURIComponent(token)}`, undefined, { auth: false }),
+  openSecretLink: (token: string) => post<{ cipher: string; viewsLeft: number }>(`/secret-links/${encodeURIComponent(token)}/open`, {}, { auth: false, retry: false }),
   circle: () => get<{ circle: VaultCircle | null }>('/vault/keys/circle'),
   setCircle: (b: { threshold: number; shares: { trusteeUserId: string; trusteeGeneration: number; envelope: string; signature: string }[]; stepUp?: string }) => put<VaultCircle>('/vault/keys/circle', b),
   clearCircle: () => del('/vault/keys/circle'),
@@ -190,7 +199,7 @@ export const HEALTH_LABEL: Record<VaultHealthFlag, string> = {
   weak: 'Weak password', reused: 'Used on another item', breached: 'In a public breach', expired: 'Past its change date', old: 'Not changed in a year', rotate: 'Should be changed',
 };
 export const ACTION_LABEL: Record<string, string> = {
-  'vault.revealed': 'Revealed', 'vault.copied': 'Copied', 'vault.totp_used': 'Took a one-time code', 'vault.version_revealed': 'Revealed an earlier value', 'vault.version_copied': 'Copied an earlier value', 'vault.decoy_triggered': 'Touched a decoy', 'vault.access_requested': 'Asked for access', 'vault.access_approved': 'Approved access', 'vault.access_denied': 'Refused access', 'vault.access_returned': 'Gave access back', 'vault.decoy_set': 'Made it a decoy', 'vault.decoy_cleared': 'Stopped it being a decoy', 'vault.recovery_share_released': 'Helped unlock a vault',
+  'vault.revealed': 'Revealed', 'vault.copied': 'Copied', 'vault.totp_used': 'Took a one-time code', 'vault.version_revealed': 'Revealed an earlier value', 'vault.version_copied': 'Copied an earlier value', 'vault.decoy_triggered': 'Touched a decoy', 'vault.access_requested': 'Asked for access', 'vault.access_approved': 'Approved access', 'vault.access_denied': 'Refused access', 'vault.access_returned': 'Gave access back', 'vault.decoy_set': 'Made it a decoy', 'vault.decoy_cleared': 'Stopped it being a decoy', 'vault.recovery_share_released': 'Helped unlock a vault', 'vault.link_created': 'Sent a one-time link', 'vault.link_opened': 'One-time link opened',
   'vault.reveal_denied': 'Refused', 'vault.unusual_activity': 'Paused for unusual use', 'vault.item_created': 'Created', 'vault.item_changed': 'Changed',
   'vault.item_moved': 'Moved', 'vault.item_deleted': 'Moved to the bin', 'vault.item_restored': 'Restored', 'vault.file_added': 'Added a file', 'vault.file_removed': 'Removed a file',
   'vault.unreadable': 'Could not be read',

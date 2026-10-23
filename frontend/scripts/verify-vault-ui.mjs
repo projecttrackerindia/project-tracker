@@ -57,7 +57,7 @@ const detail = (id) => {
 const policy = { stepUpAlways: false, clipboardSeconds: 5, revealSeconds: 3, sharedAdminsOnly: false };
 const reqState = { mine: [], toDecide: [
   { id: 'r1', kind: 'Collection', collectionId: 'c9', collectionName: 'Ops break-glass', itemId: null, itemTitle: null, requester: { id: 'u2', name: 'Ravi Kumar' }, reason: 'Firewall change window tonight', access: 'View', minutes: 240, status: 'Pending', decidedBy: null, decidedAt: null, decisionNote: null, grantedUntil: null, createdAt: now, canDecide: true },
-], toHelp: [], recovery: null, decoys: [], requestable: [{ id: 'c8', name: 'Firewall admin', description: 'Edge firewalls', kind: 'Shared', sealed: false }] };
+], toHelp: [], recovery: null, links: [], decoys: [], requestable: [{ id: 'c8', name: 'Firewall admin', description: 'Edge firewalls', kind: 'Shared', sealed: false }] };
 const sealedState = { identity: null, unlocks: [], envelopes: [], items: [], events: [], pendingDevice: null };
 const overview = () => ({ collections, policy, canAdmin: true, canCreateShared: true, health: { total: 4, weak: 1, reused: 0, breached: 1, expired: 0, old: 0, toRotate: 0, score: 75 }, mfaEnabled: true, identity: sealedState.identity, hasPasskeys: true });
 const sha1hex = (s) => createHash('sha1').update(s).digest('hex').toUpperCase();
@@ -106,6 +106,17 @@ try {
       else if (m && m[2] === 'totp') { writes.push({ ep, body }); data = { code: '492039', secondsLeft: 21, period: 30, digits: 6 }; }
       else if (m && m[2] === 'activity') data = [{ at: now, action: 'vault.revealed', by: { id: 'u2', name: 'Ravi Kumar' }, field: 'Password', ipAddress: '203.0.113.x' }, { at: now, action: 'vault.reveal_denied', by: { id: 'u3', name: 'Uma' }, field: 'password', ipAddress: null }];
       else if (m && m[3]) { writes.push({ ep, body }); data = body.stepUp === STEP ? { value: 'Old!Value#2025', revealSeconds: 3, clipboardSeconds: 5 } : null; if (!data) fail = err(403, 'STEP_UP_REQUIRED', 'Earlier values need a fresh two-step check.'); }
+      else if (ep === '/api/v1/vault/links' && method === 'POST') { writes.push({ ep, body }); const l = { ...body, id: `l${reqState.links.length + 1}`, views: 0, createdAt: now, expiresAt: new Date(Date.now() + body.hours * 3600e3).toISOString() }; reqState.links.push(l);
+        data = { id: l.id, note: l.note, itemId: l.itemId, itemTitle: items.find((i) => i.id === l.itemId)?.title ?? null, createdAt: now, expiresAt: l.expiresAt, views: 0, maxViews: l.maxViews, hasPassphrase: l.hasPassphrase, state: 'open', lastOpenedAt: null }; }
+      else if (ep === '/api/v1/vault/links') data = reqState.links.map((l) => ({ id: l.id, note: l.note, itemId: l.itemId, itemTitle: items.find((i) => i.id === l.itemId)?.title ?? null, createdAt: now, expiresAt: l.expiresAt, views: l.views, maxViews: l.maxViews, hasPassphrase: l.hasPassphrase, state: l.views >= l.maxViews ? 'used' : 'open', lastOpenedAt: l.views ? now : null }));
+      else if (ep.startsWith('/api/v1/secret-links/')) {
+        const [token, act] = ep.slice('/api/v1/secret-links/'.length).split('/');
+        const l = reqState.links.find((x) => x.tokenHash === createHash('sha256').update(decodeURIComponent(token)).digest('hex'));
+        const live = l && l.views < l.maxViews;
+        if (act === 'open') { writes.push({ ep }); if (live) { l.views++; data = { cipher: l.cipher, viewsLeft: l.maxViews - l.views }; } else fail = err(404, 'LINK_GONE', 'This link was already opened, was revoked, or has expired.'); }
+        else data = live ? { state: 'ready', note: l.note, from: 'Asha Rao', workspace: 'Preview Workspace', hasPassphrase: l.hasPassphrase, salt: l.salt, params: l.params, expiresAt: l.expiresAt, viewsLeft: l.maxViews - l.views }
+          : { state: 'gone', note: null, from: null, workspace: null, hasPassphrase: false, salt: null, params: null, expiresAt: null, viewsLeft: 0 };
+      }
       else if (ep === '/api/v1/vault/keys/circle') data = { circle: null };
       else if (ep === '/api/v1/vault/keys/directory') data = [{ userId: 'u2', name: 'Ravi Kumar', access: 'None', identity: null }, { userId: 'u4', name: 'Meera Iyer', access: 'None', identity: null }];
       else if (ep === '/api/v1/vault/recovery/to-help') data = reqState.toHelp;
@@ -440,6 +451,49 @@ try {
   await waitFor(async () => (await clip(page)) === SECRETS.i2.password, 'approved copy');
   collections[1].requireApproval = false;
   checks.push('requests');
+
+  // Send once: encrypted here; the link carries the key after #; it opens once, without signing in, then it is gone.
+  await page.goto(`${origin}/preview-org/vault?item=i1`); await page.locator('.vlt-panel[data-item^="Bank portal"]').waitFor();
+  await page.getByRole('button', { name: 'Send once' }).click();
+  await page.locator('.modal').getByText('Notes').click();   // not the notes
+  await page.locator('.modal').getByText('Also ask for a passphrase').click();
+  await page.getByRole('textbox', { name: 'Passphrase' }).fill('blue elephant');
+  await page.locator('.modal').getByPlaceholder('For the vendor audit on Friday').fill('For the bank audit');
+  await page.locator('.modal').getByRole('button', { name: 'Make the link' }).click();
+  await page.getByTestId('link-made').waitFor();
+  const linkUrl = await page.locator('.vlt-link-url').innerText();
+  assert.match(linkUrl, new RegExp(`^${origin}/s/[A-Za-z0-9_-]{43}#[A-Za-z0-9_-]{43}$`));
+  const madeLink = writes.find((w) => w.ep === '/api/v1/vault/links').body;
+  const fragKey = linkUrl.split('#')[1];
+  for (const x of [SECRETS.i1.password, 'blue elephant', fragKey, linkUrl.split('/s/')[1].split('#')[0]]) assert.ok(!JSON.stringify(madeLink).includes(x), 'the server gets no secret, passphrase, key or token');
+  assert.equal(madeLink.itemId, 'i1'); assert.equal(madeLink.maxViews, 1); assert.equal(madeLink.hasPassphrase, true); assert.equal(madeLink.note, 'For the bank audit');
+  assert.ok(writes.some((w) => w.ep.endsWith('/i1/reveal') && w.body.copy && w.body.field === 'password'), 'a guarded value is fetched like a copy');
+  await page.locator('.modal').getByRole('button', { name: 'Done' }).click();
+  // The recipient: no sign-in, the key leaves the address bar, a wrong passphrase can be retried without using the link again.
+  const rpage = await ctx.newPage(); rpage.on('pageerror', (e) => errors.push(e.message));
+  await rpage.goto(linkUrl); await rpage.getByTestId('secret-page').getByText('Asha Rao sent you a secret').waitFor();
+  assert.ok(!rpage.url().includes('#'), 'the key is taken out of the address bar');
+  assert.match(await rpage.getByTestId('secret-page').innerText(), /For the bank audit/);
+  assert.equal(writes.filter((w) => w.ep.startsWith('/api/v1/secret-links/') && w.ep.endsWith('/open')).length, 0, 'looking does not use it up');
+  await rpage.getByLabel('Passphrase').fill('blue elefant');
+  await rpage.getByRole('button', { name: 'Open the secret' }).click();
+  await rpage.getByText(/That passphrase does not open it/).waitFor();
+  await rpage.getByLabel('Passphrase').fill('blue elephant');
+  await rpage.getByRole('button', { name: 'Try again' }).click();
+  await rpage.getByRole('heading', { name: 'Bank portal' }).waitFor();
+  assert.equal(writes.filter((w) => w.ep.endsWith('/open')).length, 1, 'opened once');
+  assert.ok(!(await rpage.evaluate(() => document.body.innerText)).includes(SECRETS.i1.password), 'masked until asked');
+  assert.ok(!(await rpage.evaluate(() => document.body.innerText)).includes(SECRETS.i1.note), 'only what was chosen');
+  await rpage.getByRole('button', { name: 'Copy Password' }).click();
+  await waitFor(async () => (await rpage.evaluate(() => navigator.clipboard.readText())) === SECRETS.i1.password, 'copied on the recipient page');
+  await shot(rpage, 'secret-link-1440.png');
+  await rpage.close();
+  const again = await ctx.newPage(); again.on('pageerror', (e) => errors.push(e.message));
+  await again.goto(linkUrl); await again.getByText('This link no longer works').waitFor();
+  await again.close();
+  await page.locator('.vlt-rail button', { hasText: 'One-time links' }).click();
+  await page.getByTestId('links').getByText('Opened and destroyed').waitFor();
+  checks.push('one-time-link');
 
   // ---- the sealed vault, with a passkey from a virtual authenticator that supports PRF
   const cdp = await ctx.newCDPSession(page);

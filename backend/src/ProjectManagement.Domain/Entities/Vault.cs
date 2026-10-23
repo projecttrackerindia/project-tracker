@@ -249,6 +249,32 @@ public class VaultRecoveryRelease : TenantEntity, ITenantScoped
     public bool Refused { get; set; }
 }
 
+/// <summary>
+/// A self-destructing link to a secret. The browser encrypts the secret with a key that lives only in the link's #fragment (never sent to a
+/// server), optionally mixed with a passphrase told separately; the server keeps ciphertext under the hash of the link's token, hands it out
+/// a set number of times (once, by default) before a deadline, then destroys it.
+/// </summary>
+public class VaultSecretLink : TenantEntity, ITenantScoped
+{
+    /// <summary>SHA-256 of the token in the link (hex). The token itself is never stored.</summary>
+    public string TokenHash { get; set; } = "";
+    public Guid? ItemId { get; set; }
+    /// <summary>A note for the recipient, shown before opening (not secret: the sender writes it for anyone who has the link).</summary>
+    public string? Note { get; set; }
+    /// <summary>The encrypted secret; emptied when the link is used up, revoked or past its deadline.</summary>
+    public string Cipher { get; set; } = "";
+    public bool HasPassphrase { get; set; }
+    public string? Salt { get; set; }
+    public string? Params { get; set; }
+    public int MaxViews { get; set; } = 1;
+    public int Views { get; set; }
+    public DateTime ExpiresAt { get; set; }
+    public DateTime? BurnedAt { get; set; }
+    public DateTime? RevokedAt { get; set; }
+    public DateTime? LastOpenedAt { get; set; }
+    public string? LastOpenedIp { get; set; }
+}
+
 public enum VaultRequestKind { Reveal = 0, Collection = 1 }
 public enum VaultRequestStatus { Pending = 0, Approved = 1, Denied = 2, Cancelled = 3, Expired = 4 }
 

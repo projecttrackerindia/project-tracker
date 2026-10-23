@@ -152,7 +152,7 @@ export function AskCircle({ tenant, me, keys, onUnlocked, onBack }: { tenant: st
 
 /** While unlocked: colleagues asking me to help them back into their vault. Help only after hearing the same code from them. */
 export function CircleHelpRequests({ unlocked }: { unlocked: boolean }) {
-  const q = useWsQuery(['vault', 'circle-help'], vaultApi.recoveryToHelp, { enabled: unlocked, refetchInterval: unlocked ? 30_000 : false });
+  const q = useWsQuery(['vault', 'circle-help'], vaultApi.recoveryToHelp, { enabled: unlocked, staleTime: 0, refetchInterval: unlocked ? 30_000 : false });
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState<string[]>([]);
   const r: VaultRecoveryToHelp | undefined = (q.data ?? []).find((x) => !dismissed.includes(x.requestId));

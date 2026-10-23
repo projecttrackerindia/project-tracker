@@ -19,7 +19,7 @@ namespace ProjectManagement.Application.Features.Vault;
 /// </summary>
 public class VaultOffboarding(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, NotificationService notifications)
 {
-    private static readonly string[] UseActions = ["vault.revealed", "vault.copied", "vault.totp_used", "vault.version_revealed", "vault.version_copied"];
+    private static readonly string[] UseActions = ["vault.revealed", "vault.copied", "vault.totp_used", "vault.version_revealed", "vault.version_copied", "vault.link_created"];
     /// <summary>Fetching a sealed collection's ciphertext: with the key, everything in it can be read, so it counts as using every item.</summary>
     private const string SealedListed = "vault.sealed_listed";
 
@@ -202,6 +202,11 @@ public class VaultJobs(IAppDbContext db, AppClock clock, VaultCrypto crypto, Pas
 
     public async Task<int> PurgeAsync(CancellationToken ct = default)
     {
+        // Self-destructing links: the ciphertext goes at the deadline even if nobody opened it; the record (no secret) after 90 days.
+        var now0 = clock.Now;
+        await db.VaultSecretLinks.IgnoreQueryFilters().Where(l => l.Cipher != "" && l.ExpiresAt <= now0).ExecuteUpdateAsync(u => u.SetProperty(l => l.Cipher, ""), ct);
+        var old = now0.AddDays(-90);
+        await db.VaultSecretLinks.IgnoreQueryFilters().Where(l => l.CreatedAt < old).ExecuteDeleteAsync(ct);
         var cutoff = clock.Now.AddDays(-VaultService.BinDays);
         var binned = await db.VaultItems.IgnoreQueryFilters().Where(i => i.DeletedAt != null && i.DeletedAt < cutoff).Select(i => i.Id).Take(1000).ToListAsync(ct);
         var locked = await db.VaultCollections.IgnoreQueryFilters().Where(c => c.LockedAt != null && c.LockedAt < cutoff).ToListAsync(ct);

@@ -73,7 +73,7 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
     public const int MaxItemsPerCollection = 2000, MaxFields = 30, MaxValueChars = 8000, MaxVersions = 10, MaxImport = 500, MaxAttachments = 5;
     public const long MaxAttachmentBytes = 2 * 1024 * 1024;
     public const int RevealsPerMinute = 60, UnusualDistinctItems = 15, UnusualWindowMinutes = 10, BinDays = 30;
-    private static readonly string[] UseActions = ["vault.revealed", "vault.copied", "vault.totp_used", "vault.version_revealed", "vault.version_copied"];
+    private static readonly string[] UseActions = ["vault.revealed", "vault.copied", "vault.totp_used", "vault.version_revealed", "vault.version_copied", "vault.link_created"];
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     // ------------------------------------------------------------------ the fields each kind starts with

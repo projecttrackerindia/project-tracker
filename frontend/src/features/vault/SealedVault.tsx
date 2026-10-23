@@ -14,6 +14,7 @@ import * as sealed from './e2ee/sealed';
 import { copySecret, strength, STRENGTH_LABEL } from './secure';
 import { useStepUp } from './stepUpContext';
 import { AskCircle, CircleCard } from './RecoveryCircle';
+import { SendLinkModal } from './VaultLinks';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError || e instanceof sealed.SealedError || e instanceof Error ? e.message || fallback : fallback);
 import type { Me } from './sealedData';
@@ -253,8 +254,9 @@ export function SealedItemPanel({ c, item, policy, lockEpoch, binned, onEdit, on
 }) {
   const p = item.payload;
   const [tab, setTab] = useState<'details' | 'files' | 'history' | 'activity'>('details');
+  const [sending, setSending] = useState(false);
   const manage = item.row.myAccess === 'Manage';
-  useEffect(() => { setTab('details'); }, [item.row.id, lockEpoch]);
+  useEffect(() => { setTab('details'); setSending(false); }, [item.row.id, lockEpoch]);
   if (!p) return <section className="vlt-panel"><ErrorState error={new Error(item.error ?? 'This item cannot be read on this device.')} /></section>;
   const copy = async (value: string, label: string) => {
     const ok = await copySecret(value, policy.clipboardSeconds);
@@ -268,6 +270,7 @@ export function SealedItemPanel({ c, item, policy, lockEpoch, binned, onEdit, on
         <span className={`vlt-kind-icon kind-${item.row.kind.toLowerCase()}`} aria-hidden="true"><Icon name={KIND_ICON[item.row.kind]} size={18} /></span>
         <div className="vlt-panel-title"><h2>{p.title}</h2><p className="muted">{KIND_LABEL[item.row.kind]} · {c.name}</p></div>
         <div className="vlt-panel-actions">
+          {!binned && <button className="btn btn-ghost btn-sm" onClick={() => setSending(true)} title="A link that opens once, then the secret is destroyed"><Icon name="send" size={15} /> Send once</button>}
           {manage && !binned && <button className="btn btn-ghost btn-sm" onClick={onEdit}><Icon name="edit" size={15} /> Edit</button>}
           <button className="btn-icon" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
         </div>
@@ -325,6 +328,7 @@ export function SealedItemPanel({ c, item, policy, lockEpoch, binned, onEdit, on
       {tab === 'files' && <SealedFiles c={c} item={item} manage={manage && !binned} onChanged={onChanged} />}
       {tab === 'history' && <SealedHistory c={c} itemId={item.row.id} policy={policy} />}
       {tab === 'activity' && <SealedActivity id={item.row.id} />}
+      {sending && <SendLinkModal source={{ kind: 'sealed', item }} clipboardSeconds={policy.clipboardSeconds} onClose={() => setSending(false)} />}
     </section>
   );
 }
