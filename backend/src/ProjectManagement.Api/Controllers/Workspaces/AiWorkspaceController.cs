@@ -15,7 +15,7 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 [Route("api/v1/ai"), RequireWorkspace]
 public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysis analysis, AiPortfolio portfolio, AiFileService files, AiUsageService usage,
     ProjectManagement.Application.Features.Reminders.PortfolioDigestService digest, ProjectManagement.Application.Abstractions.ICurrentContext current, ProjectManagement.Application.Services.AppClock clock,
-    ILogger<AiWorkspaceController> log, AiWatchService watches) : ApiControllerBase
+    ILogger<AiWorkspaceController> log, AiWatchService watches, AiVoiceInput voice) : ApiControllerBase
 {
     private static readonly JsonSerializerOptions StreamJson = Make();
     private static JsonSerializerOptions Make() { var o = new JsonSerializerOptions(); Json.Configure(o); return o; }
@@ -102,6 +102,21 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysi
     public async Task<IActionResult> Reconcile(Guid messageId, string actionId, CancellationToken ct) => Ok(await agent.ReconcileAsync(messageId, actionId, ct));
 
     // ---- files
+
+    // ---- speaking to the assistant (the recording becomes text in the ask box; nothing is kept)
+
+    [HttpGet("speech")]
+    public IActionResult SpeechStatus() => Ok(voice.Status());
+
+    [HttpPost("speech"), AiRequestLimit]
+    [RequestSizeLimit(AiVoiceInput.MaxBytes + 8192), RequestFormLimits(MultipartBodyLengthLimit = AiVoiceInput.MaxBytes + 8192)]
+    public async Task<IActionResult> Speech(IFormFile file, CancellationToken ct)
+    {
+        await using var stream = file.OpenReadStream();
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer, ct);
+        return Ok(await voice.TranscribeAsync(buffer.ToArray(), file.ContentType ?? "audio/wav", ct));
+    }
 
     [HttpPost("files")]
     [RequestSizeLimit(FileCeiling), RequestFormLimits(MultipartBodyLengthLimit = FileCeiling)]

@@ -225,6 +225,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiWatchService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiSemanticIndex>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiQualityService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiVoiceInput>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiHomeActions>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiFileService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiGuidance>();

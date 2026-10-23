@@ -212,6 +212,18 @@ public partial class AiWorkspaceTests
         Assert.DoesNotContain("bad name", latest.ToJsonString());
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await o.Owner.Post("/api/v1/ai/tracker/evaluations", new { total = 5, passed = 9, credits = 0 })).Status);
     }
+
+    [Fact]
+    public async Task Speaking_to_the_assistant_says_plainly_when_it_is_not_set_up()
+    {
+        var o = await Setup();
+        var status = await o.Owner.Get("/api/v1/ai/speech");
+        Assert.True(status.Ok, status.ToString());
+        Assert.False(status.Data!["available"]!.GetValue<bool>());   // no speech service key in tests
+        Assert.Equal(60, status.Data["maxSeconds"]!.GetValue<int>());
+        var wav = new byte[4000];
+        Assert.Equal(HttpStatusCode.Conflict, (await o.Owner.Upload("/api/v1/ai/speech", "speech.wav", wav)).Status);
+    }
 }
 
 /// <summary>When a watch's condition holds.</summary>

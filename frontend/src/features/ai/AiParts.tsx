@@ -1,3 +1,4 @@
+import { VoiceInput } from './VoiceInput';
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { fetchBlobUrl } from '../../api/client';
@@ -498,6 +499,7 @@ export function Composer({ value, onChange, onSend, onStop, onFiles, onRemoveFil
             {picked}
             {tools}
             <span className="ai-box-gap" />
+            <VoiceInput disabled={streaming || !!disabledReason} onText={(t) => { onChange(value.trim() ? `${value.trimEnd()} ${t}` : t); area.current?.focus(); }} />
             {sendButton}
           </div>
         </div>
@@ -517,6 +519,7 @@ export function Composer({ value, onChange, onSend, onStop, onFiles, onRemoveFil
         {picked}
         <textarea ref={area} rows={1} value={value} maxLength={8000} placeholder={disabledReason ?? 'Ask about your work, or paste a screenshot…'} aria-label="Message the assistant"
           onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} onPaste={onPaste} disabled={!!disabledReason} />
+        <VoiceInput disabled={streaming || !!disabledReason} onText={(t) => { onChange(value.trim() ? `${value.trimEnd()} ${t}` : t); area.current?.focus(); }} />
         {sendButton}
       </div>
       <div className="ai-fineprint">
