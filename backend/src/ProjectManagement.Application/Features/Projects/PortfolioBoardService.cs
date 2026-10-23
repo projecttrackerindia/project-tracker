@@ -366,7 +366,7 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
                 for (var d = from; d <= to && d <= end; d = d.AddDays(1)) if (Working(d) && !off.Contains(d)) days.Add(d);
                 if (days.Count == 0) days.Add(weeks[0]);
                 foreach (var d in days) { var w = weeks.Last(x => x <= d); demand[w] += minutes / days.Count; }
-                var cur = perProject.GetValueOrDefault(t.ProjectId, (t.Key, t.Project, 0, 0));
+                (string Key, string Name, int Minutes, int Tasks) cur = perProject.TryGetValue(t.ProjectId, out var had) ? had : (t.Key, t.Project, 0, 0);
                 perProject[t.ProjectId] = (cur.Key, cur.Name, cur.Minutes + minutes, cur.Tasks + 1);
             }
             var weekRows = weeks.Select(w =>

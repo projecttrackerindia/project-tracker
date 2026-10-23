@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon } from '../../components/Icon';
 import { toast } from '../../stores/ui';
 import { Modal, PageLoader } from '../../components/ui';
@@ -10,6 +10,8 @@ import { useTeamLens } from '../../lib/teamLens';
 import { aiWorkspaceApi, type PortfolioRisk, type ScenarioOutcome } from '../ai/aiApi';
 import { PortfolioActionItems } from './PortfolioActionItems';
 import { Sparkle, useAi } from '../ai/Assistant';
+import { CapacitySection, DecisionsSection, MoneySection, PortfolioFilters, SummaryCard, TimelineView } from './PortfolioBoard';
+import { portfolioApi, type PortfolioFilter } from './portfolioApi';
 
 /** The portfolio worked out by rules over the projects the person may open: no model, no credits, every plan. Shared by the page and each project. */
 export function usePortfolioBrief() {
@@ -48,11 +50,20 @@ function RiskCard({ r, onPick }: { r: PortfolioRisk; onPick: (id: string) => voi
 
 /** The Portfolio page's front: where the projects stand, which need attention and why, what moved, and who is stretched. */
 export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }) {
-  const q = usePortfolioBrief();
   const ai = useAi();
   const ask = useAsk();
   const [itemsOpen, setItemsOpen] = useState(false);
   const { teamId } = useTeamLens();
+  const [params, setParams] = useSearchParams();
+  const filter: PortfolioFilter = { teamId, ownerId: params.get('owner'), groupId: params.get('group'), health: params.get('health'), dueFrom: params.get('from'), dueTo: params.get('to') };
+  const view = params.get('view') === 'timeline' ? 'timeline' : 'board';
+  const setFilter = (f: PortfolioFilter) => {
+    const n = new URLSearchParams(params);
+    for (const [k, v] of [['owner', f.ownerId], ['group', f.groupId], ['health', f.health], ['from', f.dueFrom], ['to', f.dueTo]] as const) { if (v) n.set(k, v); else n.delete(k); }
+    setParams(n, { replace: true });
+  };
+  const setView = (v: 'board' | 'timeline') => { const n = new URLSearchParams(params); if (v === 'board') n.delete('view'); else n.set('view', v); setParams(n, { replace: true }); };
+  const q = useWsQuery(['portfolio', 'board', filter], () => portfolioApi.board(filter), { refetchInterval: 120_000, staleTime: 60_000, placeholderData: (prev) => prev });
   const [sending, setSending] = useState(false);
   const sendBrief = async () => {
     setSending(true);
@@ -60,9 +71,13 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
     catch { toast('Could not send the brief.', 'error'); }
     finally { setSending(false); }
   };
+  const exportAs = async (format: 'xlsx' | 'pdf') => {
+    try { await portfolioApi.export(filter, format); } catch { toast('The export could not be made.', 'error'); }
+  };
   if (q.isLoading) return <PageLoader />;
-  const b = q.data;
-  if (!b || b.projects === 0) {
+  const board = q.data;
+  const b = board?.brief;
+  if (!board || !b || (b.projects === 0 && !filter.ownerId && !filter.groupId && !filter.health && !filter.dueFrom && !filter.dueTo)) {
     return (
       <div className="ps-placeholder"><Icon name="monitor" size={40} /><h2>Portfolio</h2><p>Open a group on the left and choose a project to see where it stands. Once there are active projects, this page also shows which need attention, and why.</p></div>
     );
@@ -76,12 +91,18 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
           <button type="button" className="btn btn-soft btn-sm" onClick={() => setItemsOpen(true)}><Icon name="checkCircle" size={14} /> Action items{b.openActionItems > 0 && <span className="ps-count">{b.openActionItems}</span>}</button>
           <button type="button" className="btn btn-ghost btn-sm" disabled={sending} onClick={() => void sendBrief()} title="Send this brief to you as a notice, in the app and by e-mail"><Icon name="mail" size={14} /> Send me this</button>
           {ai && <>
-            <button type="button" className="btn btn-soft btn-sm" onClick={() => ask('Give me an executive summary of the portfolio: what is going well, what is at risk and why, how late the worst projects are likely to land, and what I should escalate this week.')}><Sparkle size={14} /> Executive summary</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => ask('Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.')}>Risk review</button>
           </>}
         </div>
       </header>
 
+      <PortfolioFilters board={board} filter={filter} onChange={setFilter} onExport={(f) => void exportAs(f)} />
+      <nav className="seg pb-views" aria-label="Portfolio view">
+        <button type="button" className={view === 'board' ? 'on' : ''} aria-pressed={view === 'board'} onClick={() => setView('board')}>Board</button>
+        <button type="button" className={view === 'timeline' ? 'on' : ''} aria-pressed={view === 'timeline'} onClick={() => setView('timeline')}>Timeline</button>
+      </nav>
+      {view === 'timeline' ? <TimelineView filter={filter} onPick={onPick} /> : <>
+      <SummaryCard board={board} filter={filter} ai={!!ai} />
       <div className="pi-kpis">
         <div className="pi-kpi"><label>On track</label><b className="ok">{b.onTrack}</b></div>
         <div className="pi-kpi"><label>At risk</label><b className={b.atRisk ? 'warn' : ''}>{b.atRisk}</b></div>
@@ -90,6 +111,10 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
         <div className="pi-kpi"><label>Blocked tasks</label><b className={b.blockedTasks ? 'warn' : ''}>{b.blockedTasks}</b></div>
         <div className="pi-kpi"><label>Action items overdue</label><b className={b.overdueActionItems ? 'bad' : ''}>{b.overdueActionItems}</b><small>of {b.openActionItems} open</small></div>
       </div>
+
+      <DecisionsSection decisions={board.decisions} filter={filter} />
+      <MoneySection m={board.money} />
+      <CapacitySection c={board.capacity} />
 
       {b.headlines.length > 0 && <ul className="pi-headlines">{b.headlines.map((h) => <li key={h}>{h}</li>)}</ul>}
 
@@ -120,6 +145,7 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
           <p className="pi-people">{b.stretched.map((p) => `${p.name}: ${p.projects} projects, ${p.openTasks} open tasks, ${p.overdueTasks} overdue`).join('  ·  ')}</p>
         </section>
       )}
+      </>}
       {itemsOpen && <PortfolioActionItems onClose={() => setItemsOpen(false)} />}
     </div>
   );
