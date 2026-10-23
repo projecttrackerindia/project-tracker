@@ -190,6 +190,26 @@ try {
   assert.equal(await page.locator('.vlt-item').count(), 4);
   for (const v of Object.values(SECRETS).flatMap((s) => Object.values(s))) assert.ok(!(await html(page)).includes(v), 'no secret in the list page');
   checks.push('list-without-secrets');
+  // Tiles drawn here (nothing fetched), health at a glance, and copying straight from the list with the keyboard.
+  assert.equal(await page.locator('.vlt-item[data-item="AWS root account"] .vlt-tile-text').innerText(), 'aws');
+  assert.equal(await page.locator('.vlt-item[data-item="Bank portal"] .vlt-tile-text').innerText(), 'BP');
+  assert.match(await page.getByTestId('posture').innerText(), /75/);
+  await page.getByTestId('posture').getByRole('button', { name: /in a public breach/i }).click();
+  await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items' && w.q?.health === 'breached'), 'posture filter');
+  await page.locator('.vlt-chip-on').click();
+  await page.locator('.vlt-item[data-item="Bank portal"]').waitFor();
+  await page.locator('.vlt-item[data-item="Bank portal"]').focus();
+  await page.keyboard.press('c');
+  await waitFor(() => writes.some((w) => w.ep.endsWith('/i1/reveal') && w.body.copy && w.body.field === 'password'), 'quick copy');
+  await waitFor(async () => (await clip(page)) === SECRETS.i1.password, 'copied from the list');
+  await page.getByTestId('clipboard-countdown').waitFor();
+  assert.match(await page.getByTestId('clipboard-countdown').innerText(), /Clipboard clears in \d+s/);
+  await page.getByTestId('clipboard-countdown').getByRole('button', { name: 'Clear now' }).click();
+  await waitFor(async () => (await clip(page)) === '', 'cleared on request');
+  await page.getByTestId('clipboard-countdown').waitFor({ state: 'detached' });
+  assert.ok(!(await html(page)).includes(SECRETS.i1.password), 'a copy from the list is never shown');
+  writes.length = 0;
+  checks.push('tiles-health-quick-copy');
   await shot(page, 'list-1440.png');
 
   // The item view never draws a secret: masked, copy only (the edit screen is the one place a value shows).
@@ -202,7 +222,7 @@ try {
   assert.equal(await page.locator('.vlt-panel [data-state="revealed"]').count(), 0);
   assert.equal(writes.filter((w) => w.ep.endsWith('/reveal')).length, 0, 'opening an item fetches no value');
   assert.match(await page.locator('.vlt-copy-only').innerText(), /never shown here/);
-  assert.match(await page.getByTestId('shield-note').innerText(), /browser tab cannot hide itself from screen sharing/);
+  assert.match(await page.getByTestId('shield-note').innerText(), /Screen sharing can see a browser tab/);
   checks.push('item-view-copy-only');
 
   // Copy: on the clipboard, then cleared.

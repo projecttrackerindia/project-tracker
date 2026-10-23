@@ -6,7 +6,7 @@ import { formatBytes, formatDate, formatDateTime, timeAgo } from '../../lib/form
 import { useWsQuery } from '../../lib/hooks';
 import { saveFile } from '../../lib/native';
 import { confirmDialog, toast } from '../../stores/ui';
-import { ACTION_LABEL, HEALTH_LABEL, KIND_ICON, KIND_LABEL, vaultApi, type DeviceLink, type VaultCollection, type VaultKeysMe, type VaultPolicy } from './api';
+import { ACTION_LABEL, HEALTH_LABEL, KIND_LABEL, vaultApi, type DeviceLink, type VaultCollection, type VaultKeysMe, type VaultPolicy } from './api';
 import { linkCode, totpNow } from './e2ee/crypto';
 import { keyring, pins, useKeyring } from './e2ee/keyring';
 import { prfSupported } from './e2ee/passkey';
@@ -15,6 +15,7 @@ import { copySecret, strength, STRENGTH_LABEL } from './secure';
 import { useStepUp } from './stepUpContext';
 import { AskCircle, CircleCard } from './RecoveryCircle';
 import { SendLinkModal } from './VaultLinks';
+import { BrandTile } from './brand';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError || e instanceof sealed.SealedError || e instanceof Error ? e.message || fallback : fallback);
 import type { Me } from './sealedData';
@@ -267,7 +268,7 @@ export function SealedItemPanel({ c, item, policy, lockEpoch, binned, onEdit, on
     <section className="vlt-panel vlt-panel-sealed" aria-label={p.title} data-item={p.title}>
       <header className="vlt-panel-head">
         <button className="btn-icon vlt-back" aria-label="Back to the list" onClick={onClose}><Icon name="arrowLeft" /></button>
-        <span className={`vlt-kind-icon kind-${item.row.kind.toLowerCase()}`} aria-hidden="true"><Icon name={KIND_ICON[item.row.kind]} size={18} /></span>
+        <BrandTile title={p.title} url={p.url} kind={item.row.kind} size="lg" />
         <div className="vlt-panel-title"><h2>{p.title}</h2><p className="muted">{KIND_LABEL[item.row.kind]} · {c.name}</p></div>
         <div className="vlt-panel-actions">
           {!binned && <button className="btn btn-ghost btn-sm" onClick={() => setSending(true)} title="A link that opens once, then the secret is destroyed"><Icon name="send" size={15} /> Send once</button>}

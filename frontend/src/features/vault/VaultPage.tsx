@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { ApiError } from '../../api/client';
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Icon, type IconName } from '../../components/Icon';
@@ -8,7 +9,7 @@ import { holdScreenShield, screenShieldInfo, type ShieldInfo } from '../../lib/s
 import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { HEALTH_LABEL, KIND_ICON, KIND_LABEL, vaultApi, type VaultCollection, type VaultHealth, type VaultHealthFlag, type VaultItem, type VaultItemKind, type VaultItemSummary } from './api';
+import { HEALTH_LABEL, KIND_LABEL, vaultApi, type VaultCollection, type VaultHealth, type VaultHealthFlag, type VaultItem, type VaultItemKind, type VaultItemSummary } from './api';
 import { keyring, useKeyring } from './e2ee/keyring';
 import * as sealed from './e2ee/sealed';
 import { DeviceApprovals, KeysView, SealedItemPanel, SetupKeys, UnlockPanel } from './SealedVault';
@@ -18,6 +19,9 @@ import { CollectionEditor, Generator, ImportModal, ItemEditor, ShareEditor, type
 import { VaultItemPanel } from './VaultItemPanel';
 import { CircleHelpRequests } from './RecoveryCircle';
 import { LinksView } from './VaultLinks';
+import { BrandTile } from './brand';
+import { AccessFaces, ClipboardCountdown, PostureStrip } from './VaultChrome';
+import { copySecret } from './secure';
 import { RequestsView } from './VaultRequests';
 import { useVaultRequests } from './requestsData';
 import { StepUpProvider } from './stepUp';
@@ -27,6 +31,11 @@ import './vault.css';
 type View = 'items' | 'health' | 'bin' | 'admin' | 'keys' | 'requests' | 'links';
 type Row = VaultItemSummary & { sealed?: boolean };
 const IDLE_MS = 5 * 60_000;
+/** The field a row's quick copy takes, by kind (the one people reach for). */
+const QUICK: Partial<Record<VaultItemKind, { key: string; label: string }>> = {
+  Login: { key: 'password', label: 'password' }, Server: { key: 'password', label: 'password' }, Database: { key: 'password', label: 'password' },
+  ApiKey: { key: 'key', label: 'API key' }, Card: { key: 'number', label: 'card number' },
+};
 const COLLECTION_ICON: Record<VaultCollection['kind'], IconName> = { Personal: 'user', Shared: 'users', Project: 'folder', Team: 'users' };
 
 /**
@@ -143,6 +152,30 @@ function Vault() {
       toRotate: o.health.toRotate + c('rotate'), score: total === 0 ? 100 : Math.round((100 * healthy) / total) };
   }, [o.health, sealedRows]);
 
+  // Copy straight from the list: the same checks as copying from the item (two-step, approval, risk, decoys), and recorded the same way.
+  const quickCopy = useCallback(async (row: Row) => {
+    const q = QUICK[row.kind];
+    if (!q) return;
+    try {
+      if (row.sealed) {
+        const s = sealedRows.find((r) => r.s.row.id === row.id)?.s;
+        const f = s?.payload?.fields.find((x) => x.key === q.key && x.value);
+        if (!f?.value) { toast(`“${row.title}” has no ${q.label}.`, 'warning'); return; }
+        const ok = await copySecret(f.value, o.policy.clipboardSeconds);
+        toast(ok ? `${f.label} of “${row.title}” copied.` : 'The browser did not allow copying.', ok ? 'success' : 'error');
+        if (ok) void vaultApi.sealedEvent(row.id, 'copied', f.label).catch(() => undefined);
+        return;
+      }
+      const res = await step.run((t) => vaultApi.reveal(row.id, q.key, true, t), row.class === 'Confidential' || o.policy.stepUpAlways);
+      if (!res) return;
+      const ok = await copySecret(res.value, res.clipboardSeconds);
+      toast(ok ? `The ${q.label} of “${row.title}” is copied.` : 'The browser did not allow copying.', ok ? 'success' : 'error');
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'VAULT_APPROVAL_REQUIRED') { set({ item: row.id }); toast('This needs someone’s approval first. Ask from the item.', 'warning'); return; }
+      toast(e instanceof ApiError ? e.message : 'Could not copy it.', 'error');
+    }
+  }, [sealedRows, o.policy.clipboardSeconds, o.policy.stepUpAlways, step, set]);
+
   const sealIt = async (c: VaultCollection) => {
     setCollectionEdit(null);
     if (!canSeal) { toast('Set up and unlock your vault keys first (My keys).', 'warning'); set({ view: 'keys' }); return; }
@@ -222,6 +255,7 @@ function Vault() {
                   </div>
                   {collection && collection.myAccess === 'Manage' && (
                     <div className="vlt-list-actions">
+                      {collection.kind !== 'Personal' && <AccessFaces collection={collection} onOpen={async () => { try { setSharing(await vaultApi.collection(collection.id)); } catch { toast('Could not open the access list.', 'error'); } }} />}
                       {collection.kind !== 'Personal' && <button className="btn btn-ghost btn-sm" onClick={async () => { try { setSharing(await vaultApi.collection(collection.id)); } catch { toast('Could not open the access list.', 'error'); } }}><Icon name="users" size={14} /> Access</button>}
                       {collection.kind === 'Personal' && !collection.sealed && <button className="btn btn-ghost btn-sm" onClick={() => void sealIt(collection)}><Icon name="lock" size={14} /> Seal my vault</button>}
                       {collection.kind !== 'Personal' && <button className="btn-icon" aria-label="Collection settings" onClick={() => setCollectionEdit(collection)}><Icon name="settings" size={15} /></button>}
@@ -230,6 +264,7 @@ function Vault() {
                 </div>
                 {gate ?? (
                   <>
+                    {view === 'items' && !collectionId && !q && !kind && <PostureStrip health={health2} active={health} onFilter={(f) => set({ health: f })} />}
                     {view === 'items' && (
                       <div className="vlt-filters">
                         <label className="vlt-search"><Icon name="search" size={15} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search names, addresses, tags" aria-label="Search the vault" /></label>
@@ -248,9 +283,7 @@ function Vault() {
                         : <EmptyState icon="lock" title={collection?.kind === 'Personal' ? 'Your vault is empty' : 'No items yet'} text="Save a password, an API key, a server or a secure note. Or import from another password manager."
                             action={<button className="btn btn-primary" onClick={() => setEditing('new')}><Icon name="plus" size={15} /> New item</button>} />
                     ) : (
-                      <ul className="vlt-items" aria-label="Items">
-                        {list.map((it) => <ItemRow key={it.id} it={it} showCollection={!collectionId} active={it.id === itemId} onOpen={() => set({ item: it.id })} />)}
-                      </ul>
+                      <ItemList list={list} showCollection={!collectionId} active={itemId} binned={view === 'bin'} onOpen={(id) => set({ item: id })} onCopy={(r) => void quickCopy(r)} />
                     )}
                   </>
                 )}
@@ -278,6 +311,7 @@ function Vault() {
         </Modal>
       )}
       <span hidden data-ring={ring.version} />
+      <ClipboardCountdown />
       {away && createPortal(<div className="vlt-cover" role="status" aria-live="polite" data-testid="vault-cover"><Icon name="lock" size={28} /><b>Vault hidden</b><span>It shows again when you come back to this window.</span></div>, document.body)}
     </div>
   );
@@ -310,7 +344,7 @@ function ShieldNote({ info }: { info: ShieldInfo }) {
       <Icon name="eye" size={16} />
       <span>{info.level === 'partial'
         ? 'On a Mac, most screenshots and shares show this window black, but some newer recording apps can still see it. Values are never shown outside the edit screen, and the vault hides itself when you switch windows.'
-        : 'A browser tab cannot hide itself from screen sharing. Values are never shown here (copy only), and the vault hides itself when you switch to another window. For a fully black share, use the Windows or Android app.'}</span>
+        : 'Screen sharing can see a browser tab. The vault never shows a value here and hides when you switch windows; the Windows and Android apps go fully black in shares.'}</span>
       {info.where === 'browser' && <a className="btn btn-ghost btn-xs" href="/download/" target="_blank" rel="noopener noreferrer">Get the app</a>}
       <button className="btn-icon" aria-label="Dismiss" onClick={dismiss}><Icon name="close" size={14} /></button>
     </div>
@@ -329,25 +363,54 @@ function CollectionButton({ c, active, onClick }: { c: VaultCollection; active: 
   );
 }
 
-function ItemRow({ it, showCollection, active, onOpen }: { it: Row; showCollection: boolean; active: boolean; onOpen: () => void }) {
-  const flags = useMemo(() => it.health.map((h) => HEALTH_LABEL[h]).join(', '), [it.health]);
+/**
+ * The list. Arrow keys move between items, Enter opens one, C copies its password (or key, or card number) without opening it.
+ */
+function ItemList({ list, showCollection, active, binned, onOpen, onCopy }: { list: Row[]; showCollection: boolean; active: string | null; binned: boolean; onOpen: (id: string) => void; onCopy: (r: Row) => void }) {
+  const ref = useRef<HTMLUListElement>(null);
+  const onKey = (e: KeyboardEvent<HTMLUListElement>) => {
+    const rows = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('.vlt-item') ?? []);
+    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      rows[Math.min(rows.length - 1, Math.max(0, at + (e.key === 'ArrowDown' ? 1 : -1)))]?.focus();
+    } else if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && at >= 0 && !binned) {
+      e.preventDefault();
+      onCopy(list[at]);
+    }
+  };
   return (
-    <li>
+    <>
+      <ul className="vlt-items" aria-label="Items" ref={ref} onKeyDown={onKey}>
+        {list.map((it) => <ItemRow key={it.id} it={it} showCollection={showCollection} active={it.id === active} binned={binned} onOpen={() => onOpen(it.id)} onCopy={() => onCopy(it)} />)}
+      </ul>
+      {list.length > 1 && <p className="vlt-keys-hint muted" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd> move <kbd>Enter</kbd> open <kbd>C</kbd> copy</p>}
+    </>
+  );
+}
+
+function ItemRow({ it, showCollection, active, binned, onOpen, onCopy }: { it: Row; showCollection: boolean; active: boolean; binned: boolean; onOpen: () => void; onCopy: () => void }) {
+  const flags = useMemo(() => it.health.map((h) => HEALTH_LABEL[h]).join(', '), [it.health]);
+  const quick = !binned ? QUICK[it.kind] : undefined;
+  const host = it.url?.replace(/^https?:\/\//, '').split('/')[0];
+  return (
+    <li className="vlt-row">
       <button className={`vlt-item${active ? ' on' : ''}`} onClick={onOpen} data-item={it.title} aria-current={active || undefined}>
-        <span className={`vlt-kind-icon kind-${it.kind.toLowerCase()}`} aria-hidden="true"><Icon name={KIND_ICON[it.kind]} size={16} /></span>
+        <BrandTile title={it.title} url={it.url} kind={it.kind} />
         <span className="vlt-item-main">
           <b>{it.title}</b>
-          <span className="muted">{[it.usernameHint, showCollection ? it.collectionName : null, it.url?.replace(/^https?:\/\//, '').split('/')[0]].filter(Boolean).join(' · ') || KIND_LABEL[it.kind]}</span>
+          <span className="muted">{[it.usernameHint, showCollection ? it.collectionName : null, host].filter(Boolean).join(' · ') || KIND_LABEL[it.kind]}</span>
         </span>
         <span className="vlt-item-tags">
           {it.sealed && <span className="vlt-e2ee-dot" title="End-to-end encrypted"><Icon name="lock" size={12} /></span>}
-          {it.class === 'Confidential' && <Icon name="shield" size={13} />}
+          {it.class === 'Confidential' && <span title="Confidential: a fresh check every time"><Icon name="shield" size={13} /></span>}
           {it.useOnly && <span className="badge badge-info">Use only</span>}
-          {it.hasTotp && <Icon name="timer" size={13} />}
+          {it.hasTotp && <span title="Has a one-time code"><Icon name="timer" size={13} /></span>}
           {it.health.length > 0 && <span className={`vlt-risk ${it.health.includes('breached') || it.health.includes('rotate') ? 'bad' : ''}`} title={flags} aria-label={flags} />}
           {it.lastUsedAt && <span className="muted vlt-used">{timeAgo(it.lastUsedAt)}</span>}
         </span>
       </button>
+      {quick && <button type="button" className="vlt-quick" tabIndex={-1} onClick={onCopy} aria-label={`Copy the ${quick.label} of ${it.title}`} title={`Copy the ${quick.label}`}><Icon name="copy" size={14} /></button>}
     </li>
   );
 }

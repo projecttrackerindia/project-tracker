@@ -6,10 +6,11 @@ import { formatBytes, formatDate, formatDateTime, timeAgo } from '../../lib/form
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { ACTION_LABEL, HEALTH_LABEL, KIND_ICON, KIND_LABEL, vaultApi, type VaultCollection, type VaultField, type VaultItem, type VaultPolicy, type VaultTotp } from './api';
+import { ACTION_LABEL, HEALTH_LABEL, KIND_LABEL, vaultApi, type VaultCollection, type VaultField, type VaultItem, type VaultPolicy, type VaultTotp } from './api';
 import { RequestAccessModal } from './VaultRequests';
 import { useItemGrant } from './requestsData';
 import { SendLinkModal } from './VaultLinks';
+import { BrandTile } from './brand';
 import { copySecret, STRENGTH_LABEL } from './secure';
 import { useStepUp } from './stepUpContext';
 
@@ -62,7 +63,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
     <section className="vlt-panel" aria-label={it.title} data-item={it.title}>
       <header className="vlt-panel-head">
         <button className="btn-icon vlt-back" aria-label="Back to the list" onClick={onClose}><Icon name="arrowLeft" /></button>
-        <span className={`vlt-kind-icon kind-${it.kind.toLowerCase()}`} aria-hidden="true"><Icon name={KIND_ICON[it.kind]} size={18} /></span>
+        <BrandTile title={it.title} url={it.url} kind={it.kind} size="lg" />
         <div className="vlt-panel-title">
           <h2>{it.title}</h2>
           <p className="muted">{KIND_LABEL[it.kind]} · {it.collectionName}{it.usernameHint ? ` · ${it.usernameHint}` : ''}</p>

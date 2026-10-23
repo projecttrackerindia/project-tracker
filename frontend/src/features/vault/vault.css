@@ -211,7 +211,7 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
   .vlt-search { min-width: 0; }
   .vlt-filters select.input { min-width: 0; width: 118px; flex-shrink: 0; }
   .vlt-panel-head { gap: 8px; }
-  .vlt-panel-head > .vlt-kind-icon, .vlt-panel-actions .btn-icon[aria-label="Close"] { display: none; }
+  .vlt-panel-head > .vlt-kind-icon, .vlt-panel-head > .vlt-tile, .vlt-panel-actions .btn-icon[aria-label="Close"] { display: none; }
   .vlt-panel-title h2 { font-size: 16px; }
   .vlt-share-row { grid-template-columns: 1fr 1fr; }
   .vlt-share-row .btn-icon { justify-self: end; }
@@ -386,3 +386,70 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
 .vlt-secret-fields .vlt-field-row { display: flex; align-items: center; gap: 4px; }
 .vlt-secret-fields .vlt-field-value { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .vlt-secret-pass { margin: 14px 0 4px; text-align: left; }
+
+/* ---- item tiles: a keycap in the item's colour, drawn here (nothing fetched) */
+.vlt-tile { position: relative; display: inline-grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(165deg, color-mix(in srgb, var(--tile) 82%, #fff) 0%, var(--tile) 55%, color-mix(in srgb, var(--tile) 80%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .32), inset 0 -2px 0 rgba(0, 0, 0, .2), 0 1px 2px rgba(15, 23, 42, .18);
+  color: #fff; font-weight: 750; font-size: 13px; letter-spacing: -.02em; text-shadow: 0 1px 0 rgba(0, 0, 0, .18); user-select: none; }
+.vlt-tile.wide .vlt-tile-text { font-size: 11px; letter-spacing: -.03em; }
+.vlt-tile.lg { width: 44px; height: 44px; border-radius: 12px; font-size: 16px; }
+.vlt-tile.lg.wide .vlt-tile-text { font-size: 13px; }
+.vlt-tile-badge { position: absolute; right: -4px; bottom: -4px; width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--surface-solid); color: var(--text-2); box-shadow: 0 0 0 2px var(--surface-solid), 0 1px 2px rgba(15, 23, 42, .2); }
+
+/* ---- list rows: copy without opening */
+.vlt-row { position: relative; }
+.vlt-row .vlt-item { padding-right: 46px; }
+.vlt-quick { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface-solid); color: var(--text-2); display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity .12s; }
+.vlt-row:hover .vlt-quick, .vlt-row:focus-within .vlt-quick { opacity: 1; }
+.vlt-quick:hover { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
+@media (hover: none) { .vlt-quick { opacity: 1; } }
+.vlt-keys-hint { display: flex; align-items: center; gap: 5px; margin: 10px 4px 0; font-size: 11.5px; }
+.vlt-keys-hint kbd { font: 600 10.5px/1 var(--font); padding: 3px 5px; border-radius: 5px; border: 1px solid var(--border); border-bottom-width: 2px; background: var(--surface-solid); color: var(--text-2); }
+.vlt-keys-hint kbd + kbd { margin-left: -2px; }
+@media (max-width: 640px) { .vlt-keys-hint { display: none; } }
+
+/* ---- health at a glance */
+.vlt-posture { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 14px; margin-bottom: 12px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }
+.vlt-posture-ring { width: 44px; height: 44px; flex-shrink: 0; }
+.vlt-posture-ring circle { fill: none; stroke-width: 4; }
+.vlt-posture-ring .track { stroke: var(--border); }
+.vlt-posture-ring .value { stroke: var(--success); stroke-linecap: round; transition: stroke-dasharray .6s ease; }
+.vlt-posture.fair .vlt-posture-ring .value { stroke: var(--warning); }
+.vlt-posture.poor .vlt-posture-ring .value { stroke: var(--danger); }
+.vlt-posture-text { display: flex; flex-direction: column; line-height: 1.15; }
+.vlt-posture-text b { font-size: 22px; font-weight: 750; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.vlt-posture-text span { font-size: 12px; color: var(--text-2); }
+.vlt-posture-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.vlt-flag { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-solid); color: var(--text); font: 500 12.5px/1.2 var(--font); cursor: pointer; }
+.vlt-flag b { font-variant-numeric: tabular-nums; }
+.vlt-flag.f-breached b, .vlt-flag.f-rotate b { color: var(--danger); }
+.vlt-flag.f-weak b, .vlt-flag.f-reused b, .vlt-flag.f-expired b { color: var(--warning); }
+.vlt-flag.on { border-color: var(--primary-fill); background: var(--primary-soft); }
+@media (max-width: 640px) { .vlt-posture-flags { margin-left: 0; width: 100%; } }
+
+/* ---- who has access */
+.vlt-faces { display: inline-flex; align-items: center; padding: 2px; border: 0; background: none; cursor: pointer; border-radius: 999px; }
+.vlt-face { width: 26px; height: 26px; margin-left: -6px; border-radius: 50%; display: grid; place-items: center; font: 700 10.5px/1 var(--font);
+  background: var(--surface-3); color: var(--text-2); box-shadow: 0 0 0 2px var(--surface-solid); }
+.vlt-face:first-child { margin-left: 0; }
+.vlt-face.a-manage { background: var(--primary-soft); color: var(--primary); }
+.vlt-face.more { background: var(--surface-2); font-weight: 600; }
+.vlt-faces:hover .vlt-face { box-shadow: 0 0 0 2px var(--surface-solid), 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent); }
+
+/* ---- the clipboard countdown */
+.vlt-clip { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 250; display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 12px;
+  border-radius: 999px; background: var(--surface-solid); border: 1px solid var(--border); box-shadow: var(--shadow-lg); font-size: 13px; color: var(--text); }
+.vlt-clip svg { width: 22px; height: 22px; }
+.vlt-clip circle { fill: none; stroke-width: 3; }
+.vlt-clip .track { stroke: var(--border); }
+.vlt-clip .value { stroke: var(--primary-fill); stroke-linecap: round; transition: stroke-dasharray .25s linear; }
+.vlt-clip b { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .vlt-posture-ring .value, .vlt-clip .value, .vlt-quick { transition: none; } }
+@media (max-width: 640px) {
+  .vlt-banner.vlt-shield { flex-wrap: wrap; }
+  .vlt-banner.vlt-shield > span { flex: 1 1 calc(100% - 60px); }
+  .vlt-banner.vlt-shield > a { margin-left: 26px; }
+}

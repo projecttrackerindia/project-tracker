@@ -152,6 +152,24 @@ export function readExport(text: string): { rows: { title: string | null; url: s
 // ------------------------------------------------------------------ clipboard
 
 let clearTimer: number | undefined;
+let pending: { value: string; until: number; seconds: number } | null = null;
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((l) => l());
+/** What is on the clipboard from the vault right now, and until when (for the countdown on screen). Never the value itself. */
+export const clipboardWatch = {
+  subscribe(l: () => void) { listeners.add(l); return () => { listeners.delete(l); }; },
+  get: (): { until: number; seconds: number } | null => (pending ? { until: pending.until, seconds: pending.seconds } : null),
+};
+let snapshot: { until: number; seconds: number } | null = null;
+export const clipboardSnapshot = () => { const p = clipboardWatch.get(); if (p?.until !== snapshot?.until) snapshot = p; return snapshot; };
+
+async function clearIfOurs(value: string) {
+  try {
+    const now = await navigator.clipboard.readText().catch(() => value);
+    if (now === value) await navigator.clipboard.writeText('');
+  } catch { /* the page lost focus: nothing more can be done from here */ }
+}
+
 /**
  * Puts a value on the clipboard and clears it again after `seconds`, if it is still what we put there (when the browser lets us read it back;
  * otherwise it is cleared anyway, which is the safer mistake).
@@ -159,13 +177,19 @@ let clearTimer: number | undefined;
 export async function copySecret(value: string, seconds: number): Promise<boolean> {
   try { await navigator.clipboard.writeText(value); } catch { return false; }
   window.clearTimeout(clearTimer);
-  clearTimer = window.setTimeout(async () => {
-    try {
-      const now = await navigator.clipboard.readText().catch(() => value);
-      if (now === value) await navigator.clipboard.writeText('');
-    } catch { /* the page lost focus: nothing more can be done from here */ }
-  }, Math.max(5, seconds) * 1000);
+  const wait = Math.max(5, seconds);
+  pending = { value, until: Date.now() + wait * 1000, seconds: wait };
+  notify();
+  clearTimer = window.setTimeout(async () => { const v = pending?.value ?? value; pending = null; notify(); await clearIfOurs(v); }, wait * 1000);
   return true;
+}
+
+/** Clears the clipboard now (the person is done with the value). */
+export async function clearClipboardNow() {
+  window.clearTimeout(clearTimer);
+  const v = pending?.value;
+  pending = null; notify();
+  if (v !== undefined) await clearIfOurs(v);
 }
 
 /** A base32 setup key (letters A-Z and 2-7, spaces allowed) or an otpauth://totp address with a secret. */
