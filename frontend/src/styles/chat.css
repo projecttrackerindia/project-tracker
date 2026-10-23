@@ -353,6 +353,11 @@
   .composer-pill .composer-editable { font-size: 16px; }   /* no zoom-on-focus on iOS */
   .pill-meet { display: none; }
 }
+/* A phone's composer: the text gets the whole first line, the tools sit under it (four buttons beside it left room for one word). */
+@media (max-width: 560px) {
+  .composer-pill { flex-wrap: wrap; border-radius: 20px; row-gap: 0; }
+  .composer-pill .composer-editable { order: -1; flex: 1 0 100%; padding: 8px 10px 4px; }
+}
 
 /* ---- Chat upgrades: threads, pins, saved, polls, voice notes, AI, live cards, status ---- */
 .chat-head-action.ai { color: var(--primary); }

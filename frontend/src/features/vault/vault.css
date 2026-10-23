@@ -213,6 +213,9 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
   .vlt-panel-head { gap: 8px; }
   .vlt-panel-head > .vlt-kind-icon, .vlt-panel-head > .vlt-tile, .vlt-panel-actions .btn-icon[aria-label="Close"] { display: none; }
   .vlt-panel-title h2 { font-size: 16px; }
+  /* The name gets the width; Send once and Edit go on their own line under it. */
+  .vlt-panel-head { flex-wrap: wrap; }
+  .vlt-panel-actions { order: 3; flex: 1 0 100%; }
   .vlt-share-row { grid-template-columns: 1fr 1fr; }
   .vlt-share-row .btn-icon { justify-self: end; }
   .vlt-health { grid-template-columns: 1fr; justify-items: center; text-align: center; }
