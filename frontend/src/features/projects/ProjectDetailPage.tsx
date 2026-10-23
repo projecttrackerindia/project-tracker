@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { ProjectCodeTab } from '../github/GitHubApp';
+import { useGitHubApp } from '../github/github';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { projectApi } from '../../api/endpoints';
@@ -33,7 +35,7 @@ import { MeetingsTab } from '../meetings/MeetingsTab';
 import { ProjectAgentTab } from '../agent/ProjectAgentTab';
 import { agentApi } from '../../api/endpoints';
 
-type Tab = 'board' | 'list' | 'plan' | 'issues' | 'actions' | 'documents' | 'files' | 'time' | 'meetings' | 'agent' | 'activity';
+type Tab = 'board' | 'list' | 'plan' | 'issues' | 'actions' | 'documents' | 'files' | 'time' | 'code' | 'meetings' | 'agent' | 'activity';
 /** Addresses from before the tabs were regrouped: planning tabs open Plan, configuration tabs open Project settings. */
 const LEGACY_TAB: Record<string, { tab?: Tab; settings?: ProjectSettingsTab }> = {
   milestones: { tab: 'plan' }, sprints: { tab: 'plan' }, team: { settings: 'members' }, workflow: { settings: 'workflow' }, automation: { settings: 'automation' },
@@ -77,8 +79,8 @@ export function ProjectDetailPage() {
   const [newDoc, setNewDoc] = useState(false);
   const canReportIssue = useCan('tasks.comment');
   const isGuest = useAuth((s) => s.ctx?.current?.role === 'Guest');
-  const allowedTabs: Tab[] = (['board', 'list', 'plan', 'issues', 'actions', 'documents', 'files', 'time', 'meetings', 'agent', 'activity'] as Tab[]).filter((t) =>
-    t === 'board' || t === 'list' || t === 'issues' || t === 'plan' ? seeTasks : t === 'activity' ? seeActivity : t === 'time' ? canReports && seeTasks : t === 'documents' ? seeDocuments : t === 'agent' ? !isGuest : true);
+  const allowedTabs: Tab[] = (['board', 'list', 'plan', 'issues', 'actions', 'documents', 'files', 'time', 'code', 'meetings', 'agent', 'activity'] as Tab[]).filter((t) =>
+    t === 'board' || t === 'list' || t === 'issues' || t === 'plan' || t === 'code' ? seeTasks : t === 'activity' ? seeActivity : t === 'time' ? canReports && seeTasks : t === 'documents' ? seeDocuments : t === 'agent' ? !isGuest : true);
   const rawTab = params.get('tab') ?? 'board';
   const legacy = LEGACY_TAB[rawTab];
   const wanted = (legacy?.tab ?? (legacy ? 'board' : rawTab)) as Tab;
@@ -92,6 +94,7 @@ export function ProjectDetailPage() {
   const [reporting, setReporting] = useState<{ stageId?: string } | null>(null);
 
   const q = useWsQuery(['project', id], () => projectApi.get(id));
+  const gitHub = useGitHubApp();
   // The Agent tab shows how many proposals wait for a decision.
   const agent = useWsQuery(['agent', 'project', id], () => agentApi.get(id), { enabled: !isGuest, retry: false, staleTime: 60_000 });
   const openTaskId = params.get('task');
@@ -208,6 +211,7 @@ export function ProjectDetailPage() {
           { id: 'documents' as Tab, label: 'Documents', icon: 'note' as const },
           { id: 'files' as Tab, label: 'Files', icon: 'paperclip' as const },
           { id: 'time' as Tab, label: 'Time', icon: 'clock' as const },
+          ...(gitHub.data?.installed || tab === 'code' ? [{ id: 'code' as Tab, label: 'Code', icon: 'git' as const }] : []),
           { id: 'meetings' as Tab, label: 'Meetings', icon: 'video' as const },
           { id: 'agent' as Tab, label: 'Agent', icon: 'sparkle' as const, badge: agent.data?.enabled ? agent.data.pending || undefined : undefined },
           { id: 'activity' as Tab, label: 'Activity', icon: 'activity' as const },
@@ -227,6 +231,7 @@ export function ProjectDetailPage() {
         </>
       )}
       {tab === 'time' && <ProjectTime projectId={p.id} />}
+      {tab === 'code' && <ProjectCodeTab projectId={p.id} canWriteDocs={canWriteDocs && !archived} />}
       {tab === 'files' && <Attachments projectId={p.id} canEdit={canEdit && !archived} />}
       {tab === 'meetings' && <MeetingsTab projectId={p.id} />}
       {tab === 'agent' && <ProjectAgentTab projectId={p.id} archived={archived} />}

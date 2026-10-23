@@ -73,7 +73,7 @@ public class GitHubAppTests(ApiFactory factory)
             gh[$"GET /app/installations/{installation}"] = """{"account":{"login":"acme","type":"Organization"},"repository_selection":"selected"}""";
             gh["GET /installation/repositories"] = """{"repositories":[{"full_name":"acme/payments"},{"full_name":"acme/web"}]}""";
             gh["POST /login/oauth/access_token"] = """{"access_token":"gho_user"}""";
-            gh["GET /user/installations"] = $$"""{"installations":[{"id":{{installation}}}]}""";
+            gh["GET /user/installations"] = "{\"installations\":[{\"id\":" + installation + "}]}";
 
             // Install: the state seals this workspace and person; the code proves the installer can reach the installation.
             var start = await owner.Post("/api/v1/integrations/github-app/install");
@@ -106,7 +106,7 @@ public class GitHubAppTests(ApiFactory factory)
             // A pull request opens: linked, moved to review, scored for risk with its reasons.
             gh["GET /repos/acme/payments/pulls/42/files"] = """[{"filename":"src/payments/refund.cs","additions":1200,"deletions":30}]""";
             Assert.Equal(HttpStatusCode.Unauthorized, (await Hook("pull_request", Pr(installation, 42, $"{taskKey} Fix refund rounding", "", "opened", reviewers: [9002]), "wrong-secret")).StatusCode);
-            Assert.Equal(HttpStatusCode.OK, (await Hook("pull_request", Pr(installation, 42, $"{taskKey} Fix refund rounding", "", "opened", reviewers: [9002])).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await Hook("pull_request", Pr(installation, 42, $"{taskKey} Fix refund rounding", "", "opened", reviewers: [9002]))).StatusCode);
             Assert.Equal("Review", await StatusOf(owner, taskId));
             var links = (await owner.Get($"/api/v1/tasks/{taskId}/dev-links")).Data!.AsArray();
             var pr = links.First(l => S(l!["kind"]) == "pull_request")!;
@@ -135,7 +135,7 @@ public class GitHubAppTests(ApiFactory factory)
             pr = (await owner.Get($"/api/v1/tasks/{taskId}/dev-links")).Data!.AsArray().First(l => S(l!["kind"]) == "pull_request")!;
             Assert.Equal("success", S(pr["checksState"]));
             Assert.Equal("approved", S(pr["reviewState"]));
-            gh["GET /repos/acme/payments/pulls/42/commits"] = $$"""[{"commit":{"author":{"date":"{{DateTime.UtcNow.AddHours(-30):o}}"}}}]""";
+            gh["GET /repos/acme/payments/pulls/42/commits"] = new JsonArray(new JsonObject { ["commit"] = new JsonObject { ["author"] = new JsonObject { ["date"] = DateTime.UtcNow.AddHours(-30).ToString("o") } } }).ToJsonString();
             Assert.Equal(HttpStatusCode.OK, (await Hook("pull_request", Pr(installation, 42, $"{taskKey} Fix refund rounding", $"Fixes {taskKey}", "closed", merged: true, mergedAt: DateTime.UtcNow.AddHours(-2).ToString("o")))).StatusCode);
             Assert.Equal("Done", await StatusOf(owner, taskId));
             Assert.Equal(HttpStatusCode.OK, (await Hook("deployment_status", new { action = "created", installation = new { id = installation }, repository = new { full_name = "acme/payments" },

@@ -12,6 +12,7 @@ import { GettingStarted } from './GettingStarted';
 import { useAuth, useCan, useIsPersonal, useModule } from '../../stores/auth';
 import { formatMinutes } from '../time/time';
 import { MobileHome } from './MobileHome';
+import { ReviewQueueCard } from '../github/GitHubApp';
 import { useIsMobile } from '../../lib/mobile';
 import { WorkItemRow, useVisibleKinds, workItemLink, type WorkRowItem } from '../workitems/workItems';
 
@@ -141,6 +142,8 @@ export function DashboardPage() {
             : <div className="wi-list">{myWork.slice(0, 6).map((w) => <WorkItemRow key={`${w.kind}:${w.id}`} item={w} onOpen={openItem} />)}</div>}
         </div>
       )}
+
+      {showTasks && <ReviewQueueCard />}
 
       {canReports && (trend.length > 0 || statusDist.length > 0) && <div className="dash-charts mb-22">
         {trend.length > 0 && <div className="card">

@@ -35,6 +35,7 @@ import { ApiKeySettings } from './ApiKeySettings';
 import { ConnectedApps } from '../integrations/ConnectedApps';
 import { WebhookSettings } from './WebhookSettings';
 import { DataSettings, GitSettings, InboundEmailSettings } from './IntegrationSettings';
+import { GitHubAppCard } from '../github/GitHubApp';
 import { WorkspaceAutomationSettings } from '../automation/AutomationPanel';
 import { ReminderPolicySettings } from '../reminders/Policy';
 import { LabelSettings } from './LabelSettings';
@@ -329,7 +330,7 @@ export function WorkspaceSettingsPage() {
       {current.id === 'email' && <><PageHead title="Email to work" sub="Turn emails from your team into operational work." /><InboundEmailSettings /></>}
       {current.id === 'whatsapp' && <><PageHead title="WhatsApp Business" sub="Prepare a secure organization-owned business connection." /><WhatsAppSettings /></>}
       {current.id === 'slack' && <><PageHead title="Slack integration" sub="Connect a Slack workspace to this organization." /><SlackSettings /></>}
-      {current.id === 'git' && <><PageHead title="GitHub & Azure DevOps" sub="Link commits and pull requests to the tasks they mention." /><GitSettings /></>}
+      {current.id === 'git' && <><PageHead title="GitHub & Azure DevOps" sub="Link commits and pull requests to the tasks they mention." /><GitHubAppCard /><GitSettings /></>}
       {current.id === 'automation' && <><PageHead title="Automation" sub="Rules that run on every project's tasks: when something happens - or on a schedule - do something." /><WorkspaceAutomationSettings /></>}
       {current.id === 'reminders' && <><PageHead title="Reminders" sub="Everyone gets reminders about their own work on every plan. Here: what happens when work stays overdue." /><ReminderPolicySettings /></>}
       {current.id === 'data' && <><PageHead title="Data & retention" sub="How long history is kept, and a full export of everything." /><DataSettings /></>}

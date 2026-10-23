@@ -1,6 +1,6 @@
 import { providerConnectionUrl } from './providerConnection';
-import { del, download, fetchBlobUrl, get, post, put, uploadFile, create } from './client';
-import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
+import { del, download, fetchBlobUrl, get, post, put, uploadFile, create, qs } from './client';
+import type { ChatAttachment,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,GitHubAppStatus,GitHubStatusRules,GitHubBranch,ReviewQueue,ReleaseNotes,DeliveryMetrics,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
 export const platformApi = {
   billing: () => get<PlatformBilling>('/admin/billing'),
   usage: (p: { q?: string; sort?: string; warningsOnly?: boolean; page?: number }) => get<Paged<AdminUsage>>('/admin/usage', { pageSize: 25, ...p }),
@@ -95,6 +95,17 @@ export const integrationsApi = {
   removeGit: (id: string) => del(`/integrations/git/${id}`),
   taskLinks: (taskId: string) => get<DevLink[]>(`/tasks/${taskId}/dev-links`),
   workTaskLinks: (workTaskId: string) => get<DevLink[]>(`/work-tasks/${workTaskId}/dev-links`),
+  /** The ProjectTracker GitHub App: install with one click, then branches, checks, reviews, risk, release notes and delivery metrics. */
+  gitHubApp: () => get<GitHubAppStatus>('/integrations/github-app'),
+  gitHubInstall: () => post<{ url: string }>('/integrations/github-app/install'),
+  gitHubComplete: (b: { installationId: number; setupAction: string | null; code: string | null; state: string }) => post<GitHubAppStatus>('/integrations/github-app/complete', b),
+  gitHubSave: (b: { rules?: GitHubStatusRules; riskyPaths?: string[]; closeOnKeyword?: boolean }) => put<GitHubAppStatus>('/integrations/github-app', b),
+  gitHubDisconnect: () => del('/integrations/github-app'),
+  createBranch: (taskId: string, b: { repository: string; base?: string | null }) => post<GitHubBranch>(`/tasks/${taskId}/github-branch`, b),
+  reviewQueue: () => get<ReviewQueue>('/me/review-queue'),
+  releaseNotes: (projectId: string, from?: string, to?: string) => get<ReleaseNotes>(`/projects/${projectId}/release-notes${qs({ from, to })}`),
+  releaseNotesPage: (projectId: string, from?: string, to?: string) => post<{ documentId: string }>(`/projects/${projectId}/release-notes/page${qs({ from, to })}`),
+  delivery: (projectId?: string, days = 90) => get<DeliveryMetrics>(`/integrations/github-app/delivery${qs({ projectId, days: String(days) })}`),
   dataPolicy: () => get<DataPolicy>('/workspace/data-policy'),
   saveDataPolicy: (b: { activityRetentionDays: number | null; notificationRetentionDays: number | null; chatRetentionDays: number | null; auditRetentionDays: number | null }) => put<DataPolicy>('/workspace/data-policy', b),
   /** Google Workspace: one Calendar/Meet grant per person (never a shared workspace credential - see GoogleCalendarAuthService). */

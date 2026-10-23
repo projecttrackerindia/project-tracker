@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { ReviewQueueCard } from '../github/GitHubApp';
 import { GetStarted } from './GetStarted';
 import { Link, useSearchParams } from 'react-router-dom';
 import { delegateApi } from '../../api/endpoints';
@@ -187,6 +188,7 @@ function TodayView({ c, onCheckIn, onDelegate, onBrief, onReport }: {
 
       <aside className="cmd-side">
         <ComingUp meetings={c.today} onDelegate={onDelegate} onBrief={onBrief} />
+        <ReviewQueueCard compact />
         {c.delegations.length > 0 && <DelegationsCard items={c.delegations} onReport={onReport} />}
         <Changes changes={c.changes} since={c.since} />
         <Reliability r={c.reliability} />

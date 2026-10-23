@@ -241,3 +241,63 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .rule-action { position: relative; }
 .rule-action.more { margin-top: 6px; padding: 10px 12px 2px; border-radius: 12px; border: 1px dashed var(--border); background: var(--surface-2); }
 .rule-action .row > .field { flex: 1; margin-bottom: 0; }
+
+/* ---- GitHub App: settings, the task's Development panel, review queue, project Code tab */
+.gh-app h3 { display: flex; align-items: center; gap: 8px; }
+.gh-install { display: grid; gap: 12px; justify-items: start; }
+.gh-points { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.gh-points li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text-2); }
+.gh-points li svg { margin-top: 2px; color: var(--primary); flex: none; }
+.gh-repos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; align-items: center; }
+.gh-repos code { font-size: 11.5px; padding: 3px 7px; border-radius: 6px; background: var(--surface-3); color: var(--text-2); }
+.gh-rules { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); display: grid; gap: 10px; }
+.gh-rules > h4 { margin: 0; font-size: 13.5px; }
+.gh-rules > p { margin: 0; font-size: 12.5px; }
+.gh-rules > .btn { justify-self: start; }
+.gh-rules textarea.input { height: auto; min-height: 76px; padding-top: 8px; resize: vertical; }
+.code-tab .card-head > .gh-period { flex: none; min-width: 150px; }
+.gh-rule-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) { .gh-rule-grid { grid-template-columns: 1fr; } }
+.gh-command { display: flex; gap: 8px; align-items: center; margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: var(--surface-3); }
+.gh-command code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font-size: 12px; }
+.dev-links-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.dev-links-head h4 { margin: 0; }
+.dev-kind.branch { background: var(--surface-3); color: var(--text-2); }
+.dev-kind.draft { background: var(--surface-3); color: var(--text-3); }
+.dev-link-wrap + .dev-link-wrap { margin-top: 2px; }
+.pr-facts { padding: 0 10px 8px 10px; }
+.pr-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+.pr-pill { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
+.pr-pill.success { background: var(--success-soft); color: var(--success); }
+.pr-pill.warning { background: var(--warning-soft); color: var(--warning); }
+.pr-pill.danger { background: var(--danger-soft); color: var(--danger-text); }
+.pr-reasons { margin: 6px 0 0; padding-left: 18px; font-size: 11.5px; color: var(--text-3); }
+.review-queue .card-head h3 { display: flex; align-items: center; gap: 7px; }
+.rq-list { list-style: none; margin: 0; padding: 0 0 6px; }
+.rq-list li { display: flex; align-items: center; gap: 10px; padding: 8px 18px; border-top: 1px solid var(--border); }
+.rq-main { flex: 1; min-width: 0; display: flex; gap: 8px; align-items: baseline; color: inherit; text-decoration: none; }
+.rq-main b { font-size: 12px; white-space: nowrap; color: var(--text-2); }
+.rq-main span { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rq-main:hover span { text-decoration: underline; }
+.rq-meta { display: flex; gap: 6px; align-items: center; flex: none; }
+.rq-key { font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-3); }
+.rq-sub { padding: 8px 18px 2px; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-3); }
+.dora { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 760px) { .dora { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.dora-tile { display: grid; gap: 2px; padding: 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); }
+.dora-tile span { font-size: 12px; color: var(--text-3); }
+.dora-tile b { font-size: 22px; }
+.dora-tile small { font-size: 11px; color: var(--text-3); }
+.dora-weeks { display: flex; align-items: flex-end; gap: 4px; height: 90px; margin-top: 16px; padding-bottom: 2px; border-bottom: 1px solid var(--border); }
+.dora-week { flex: 1; min-width: 6px; height: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 1px; }
+.dora-week i, .dora-legend i { display: block; width: 30%; min-height: 0; border-radius: 3px 3px 0 0; }
+.dora-week i.m, .dora-legend i.m { background: var(--text-3); opacity: .45; }
+.dora-week i.d, .dora-legend i.d { background: var(--success); }
+.dora-week i.f, .dora-legend i.f { background: var(--danger-text); }
+.dora-legend { display: flex; gap: 14px; margin-top: 8px; font-size: 11.5px; color: var(--text-3); }
+.dora-legend span { display: flex; gap: 5px; align-items: center; }
+.dora-legend i { width: 10px; height: 10px; border-radius: 3px; }
+.rn-date { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--text-3); }
+.rn-date .input { width: auto; }
+.rn-list { margin: 0; padding-left: 18px; display: grid; gap: 10px; font-size: 13.5px; }
+.rn-list ul { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--text-2); }

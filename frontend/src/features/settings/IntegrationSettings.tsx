@@ -11,6 +11,8 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { ExportList } from '../reports/Exports';
 import { CopyRow, copy } from './SsoSettings';
+import { CreateBranchButton, PullRequestFacts } from '../github/GitHubApp';
+import { safeHref, useGitHubApp } from '../github/github';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 
@@ -122,7 +124,7 @@ export function GitSettings() {
     <>
       <div className="card mb-22">
         <div className="card-head">
-          <div><h3>Repositories</h3><p>Commits and pull requests that mention a task key (WEB-12, WT-5, AI-7) are linked to that task. “Fixes WEB-12” on the default branch, or a merged pull request, completes it.</p></div>
+          <div><h3>Webhook connections</h3><p>For Azure DevOps, or GitHub without the app. Commits and pull requests that mention a task key (WEB-12, WT-5, AI-7) are linked to that task. “Fixes WEB-12” on the default branch, or a merged pull request, completes it.</p></div>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={14} /> Connect</button>
         </div>
         <div className="card-body">
@@ -200,20 +202,34 @@ function GitSecretModal({ created, onClose }: { created: { connection: GitConnec
   );
 }
 
-/** Commits and pull requests linked to a task or work task (nothing is shown when there are none). */
+/** Branches, commits and pull requests linked to a task or work task, with each pull request's checks, review and risk; "Create branch" when the GitHub App is installed. */
 export function DevLinks({ taskId, workTaskId }: { taskId?: string; workTaskId?: string }) {
   const q = useWsQuery(['dev-links', taskId ?? workTaskId], () => (taskId ? integrationsApi.taskLinks(taskId) : integrationsApi.workTaskLinks(workTaskId!)));
+  const gh = useGitHubApp();
   const links: DevLink[] = q.data ?? [];
-  if (links.length === 0) return null;
+  const canBranch = !!taskId && !!gh.data?.installed && gh.data.repositories.length > 0;
+  if (links.length === 0 && !canBranch) return null;
+  // Pull requests first (open before merged), then branches, then commits.
+  const order = (l: DevLink) => (l.kind === 'pull_request' ? (l.state === 'open' ? 0 : 1) : l.kind === 'branch' ? 2 : 3);
+  const sorted = [...links].sort((a, b) => order(a) - order(b) || b.occurredAt.localeCompare(a.occurredAt));
   return (
-    <div className="dev-links">
-      <h4><Icon name="git" size={14} /> Development</h4>
-      {links.map((l) => (
-        <a key={l.id} className="dev-link" href={safeHref(l.url)} target="_blank" rel="noreferrer noopener">
-          <span className={`dev-kind ${l.kind === 'commit' ? 'commit' : l.state ?? 'open'}`}>{l.kind === 'commit' ? l.externalId.slice(0, 7) : `#${l.externalId}`}</span>
-          <span className="dev-title">{l.title}</span>
-          <span className="dev-meta">{l.kind === 'pull_request' && l.state ? `${l.state} · ` : ''}{l.repository ? `${l.repository} · ` : ''}{l.author ? `${l.author} · ` : ''}{timeAgo(l.occurredAt)}</span>
-        </a>
+    <div className="dev-links" data-testid="dev-links">
+      <div className="dev-links-head">
+        <h4><Icon name="git" size={14} /> Development</h4>
+        {canBranch && <CreateBranchButton taskId={taskId!} />}
+      </div>
+      {sorted.length === 0 && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>No branch or pull request yet. Create one here, or mention the task key in a branch, commit or pull request.</p>}
+      {sorted.map((l) => (
+        <div key={l.id} className="dev-link-wrap">
+          <a className="dev-link" href={safeHref(l.url)} target="_blank" rel="noreferrer noopener">
+            <span className={`dev-kind ${l.kind === 'commit' ? 'commit' : l.kind === 'branch' ? 'branch' : l.draft ? 'draft' : l.state ?? 'open'}`}>
+              {l.kind === 'commit' ? l.externalId.slice(0, 7) : l.kind === 'branch' ? 'branch' : `#${l.externalId}`}
+            </span>
+            <span className="dev-title">{l.title}</span>
+            <span className="dev-meta">{l.kind === 'pull_request' && l.state ? `${l.draft && l.state === 'open' ? 'draft' : l.state} · ` : ''}{l.repository ? `${l.repository} · ` : ''}{l.author ? `${l.author} · ` : ''}{timeAgo(l.occurredAt)}</span>
+          </a>
+          <PullRequestFacts l={l} />
+        </div>
       ))}
     </div>
   );
@@ -333,4 +349,3 @@ export function CalendarSubscribe() {
 }
 
 /** Only web links from webhook payloads become clickable: anything else (javascript:, data:) is neutralised. */
-const safeHref = (url: string) => { try { const u = new URL(url); return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : '#'; } catch { return '#'; } };

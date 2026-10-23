@@ -415,7 +415,25 @@ export interface InboundMailbox {
 }
 export type GitProvider = 'GitHub' | 'AzureDevOps';
 export interface GitConnection { id: string; provider: GitProvider; name: string; webhookUrl: string; closeOnKeyword: boolean; received: number; lastReceivedAt: string | null; lastError: string | null; createdAt: string }
-export interface DevLink { id: string; provider: GitProvider; kind: 'commit' | 'pull_request'; externalId: string; title: string; url: string; repository: string | null; author: string | null; state: string | null; occurredAt: string }
+export interface DevLink {
+  id: string; provider: GitProvider; kind: 'commit' | 'pull_request' | 'branch'; externalId: string; title: string; url: string; repository: string | null; author: string | null; state: string | null; occurredAt: string;
+  /** Pull requests seen by the GitHub App: the branch, checks, review, size and risk. */
+  branch?: string | null; checksState?: 'success' | 'failure' | 'pending' | null; reviewState?: 'approved' | 'changes_requested' | null; draft?: boolean;
+  additions?: number | null; deletions?: number | null; changedFiles?: number | null; riskScore?: number | null; riskReasons?: string[] | null; mergedAt?: string | null; awaitingReview?: boolean;
+}
+/** The ProjectTracker GitHub App in this workspace. */
+export interface GitHubStatusRules { opened: string | null; approved: string | null; merged: string | null; reopenOnRevert: boolean }
+export interface GitHubAppStatus {
+  configured: boolean; installed: boolean; account: string | null; accountType: string | null; selection: string | null; repositories: string[];
+  rules: GitHubStatusRules; riskyPaths: string[]; closeOnKeyword: boolean; received: number; lastEventAt: string | null; lastError: string | null; manageUrl: string | null; suspended: boolean;
+}
+export interface GitHubBranch { name: string; url: string; repository: string }
+export interface PullReviewItem { linkId: string; repository: string; number: string; title: string; url: string; author: string | null; waitingSince: string; days: number; taskKey: string | null; checksState: string | null; riskScore: number | null; role: 'reviewer' | 'author' }
+export interface ReviewQueue { waitingOnMe: number; oldestDays: number | null; items: PullReviewItem[]; gitHubLinked: boolean }
+export interface ReleaseNotePr { repository: string; number: string; title: string; url: string; author: string | null; mergedAt: string }
+export interface ReleaseNotes { from: string; to: string; tasks: { key: string; title: string; pullRequests: ReleaseNotePr[] }[]; unlinked: ReleaseNotePr[]; markdown: string }
+export interface DeliveryWeek { weekStart: string; deploys: number; failed: number; leadTimeHours: number | null; merged: number }
+export interface DeliveryMetrics { days: number; leadTimeHours: number | null; leadTimeBasis: string; deploysPerWeek: number; changeFailureRate: number | null; restoreHours: number | null; weeks: DeliveryWeek[]; notes: string[]; repositories: string[] }
 export interface GoogleConnectionStatus { transcriptAccess?: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; mailEnabled?: boolean; mailSendAccess?: boolean; calendarAccess?: boolean; connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
 export interface MeetingParticipant { userId: string | null; name: string; email: string; role: 'Organizer' | 'Attendee'; rsvpStatus: 'NeedsAction' | 'Accepted' | 'Declined' | 'Tentative' }
 export interface Meeting {
