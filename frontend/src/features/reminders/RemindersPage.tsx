@@ -8,6 +8,7 @@ import { queryClient, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { reminderApi, SNOOZE_CHOICES, type Reminder, type ReminderList, type SnoozePreset } from './api';
 import { openReminderComposer, refreshReminders } from './store';
+import { ReminderSuggestions } from './Suggestions';
 import { addDays, atTime, dayFirst, describeInstant, deviceZone, iso, parseReminder, relative, sameDay, toRRule, wall } from './time';
 
 type Filter = 'all' | 'mine' | 'others' | 'auto' | 'sent';
@@ -156,6 +157,8 @@ export function RemindersPage() {
 
       <QuickAdd defaultTime={settings.data?.defaultTime ?? '09:00'} onAdded={() => refreshReminders(wid)} />
 
+      <ReminderSuggestions />
+
       <div className="rp-stats">
         <Stat icon="alarm" tone="primary" value={counts.now} label="Need attention" />
         <Stat icon="clock" tone="info" value={counts.today} label="Still today" />
@@ -247,7 +250,8 @@ function QuickAdd({ defaultTime, onAdded }: { defaultTime: string; onAdded: () =
     if (!ready) { openReminderComposer({ text }); setText(''); return; }
     setBusy(true);
     try {
-      await reminderApi.create({ title: parsed.title, when: { at: iso(parsed.local), timeZone: zone, recurrence: parsed.kind === 'repeat' ? toRRule(parsed.rule) : null } });
+      await reminderApi.create({ title: parsed.title, when: parsed.kind === 'free' ? { free: true, timeZone: zone }
+        : { at: iso(parsed.local), timeZone: zone, recurrence: parsed.kind === 'repeat' ? toRRule(parsed.rule) : null } });
       setText('');
       onAdded();
       toast(`Reminder set · ${parsed.label}`, 'success');

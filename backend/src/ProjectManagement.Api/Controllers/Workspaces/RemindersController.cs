@@ -8,8 +8,22 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 
 /// <summary>The signed-in person's reminders in the current workspace, their settings, and the workspace's escalation policy.</summary>
 [Route("api/v1/reminders"), RequireWorkspace]
-public class RemindersController(ReminderService reminders) : ApiControllerBase
+public class RemindersController(ReminderService reminders, ReminderSuggestionService suggestions) : ApiControllerBase
 {
+    /// <summary>Reminders offered from what the person said (a promise in chat or email, a meeting's action item), waiting for one tap.</summary>
+    [HttpGet("suggestions")]
+    public async Task<IActionResult> Suggestions(CancellationToken ct) => Ok(await suggestions.PendingAsync(ct));
+
+    [HttpPost("suggestions/{id:guid}/accept")]
+    public async Task<IActionResult> AcceptSuggestion(Guid id, CancellationToken ct) => Ok(await suggestions.AcceptAsync(id, ct));
+
+    [HttpPost("suggestions/{id:guid}/dismiss")]
+    public async Task<IActionResult> DismissSuggestion(Guid id, CancellationToken ct)
+    {
+        await suggestions.DismissAsync(id, ct);
+        return NoContent();
+    }
+
     /// <summary>Open (waiting and needing attention), finished in the last 30 days, and sent to others; with counts and plan allowances.</summary>
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct) => Ok(await reminders.ListAsync(ct));

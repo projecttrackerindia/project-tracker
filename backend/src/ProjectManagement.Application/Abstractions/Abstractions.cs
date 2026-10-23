@@ -180,6 +180,7 @@ public interface IAppDbContext
     DbSet<ChatReaction> ChatReactions { get; }
     DbSet<AiUserProfile> AiUserProfiles { get; }
     DbSet<ReminderSettings> ReminderSettings { get; }
+    DbSet<ReminderSuggestion> ReminderSuggestions { get; }
     DbSet<ReminderPolicy> ReminderPolicies { get; }
     DbSet<AutomationRule> AutomationRules { get; }
     DbSet<TaskComment> TaskComments { get; }

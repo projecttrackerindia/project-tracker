@@ -27,7 +27,8 @@ public record ReminderListDto(IReadOnlyList<ReminderDto> Open, IReadOnlyList<Rem
 
 /// <summary>When: <see cref="At"/> ("yyyy-MM-ddTHH:mm") in <see cref="TimeZone"/>; or <see cref="AnchorDays"/> from the work's due date at <see cref="AnchorTime"/>;
 /// a <see cref="Recurrence"/> repeats from <see cref="At"/>.</summary>
-public record ReminderWhen(string? At, string? TimeZone, int? AnchorDays, string? AnchorTime, string? Recurrence);
+/// <param name="Free">"When I'm free": the next 15 minutes inside working hours with no meeting (from the calendar), and if a meeting gets in the way it waits for it to end.</param>
+public record ReminderWhen(string? At, string? TimeZone, int? AnchorDays, string? AnchorTime, string? Recurrence, bool? Free = null);
 public record SaveReminderRequest(string? Title, string? Note, ReminderTarget TargetType, Guid? TargetId, Guid? ForUserId, ReminderWhen? When, bool? OnlyIfOpen, bool? Exact);
 public record SnoozeRequest(string? Preset, string? Until, string? TimeZone);
 public record TimeZoneRequest(string? TimeZone);
@@ -271,6 +272,17 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         r.TimeZone = zoneId;
         r.LocalAt = null; r.AnchorDays = null; r.AnchorTime = null; r.Recurrence = null;
         var now = clock.Now;
+
+        if (when.Free == true)
+        {
+            var settings = await SettingsRowAsync(r.UserId, ct);
+            var free = await Busy.NextFreeAsync(db, r.TenantId, r.UserId, settings, ZoneTime.Find(zoneId), now, ct)
+                ?? throw new ConflictException("No free 15 minutes in your working hours this week. Pick a time instead.", "REMINDER_NO_FREE_TIME");
+            r.NextFireAt = free;
+            r.LocalAt = ZoneTime.Write(ZoneTime.ToLocal(free, ZoneTime.Find(zoneId)));
+            r.Exact = false;   // it keeps out of meetings and outside working hours if the calendar changes
+            return;
+        }
 
         if (when.AnchorDays is { } days)
         {

@@ -38,6 +38,7 @@ import { firstTime, getAttention, kindForType } from '../lib/attention';
 import { pushCoversThisDevice, systemNotification } from '../features/reminders/device';
 import { openReminderComposer, useReminderComposer, useReminderCounts } from '../features/reminders/store';
 import { reminderApi } from '../features/reminders/api';
+import { ReminderSuggestions } from '../features/reminders/Suggestions';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -280,6 +281,7 @@ function NotificationsMenu() {
             {pane === 'notifications' && count > 0 && <button className="link" style={{ fontSize: 12 }} onClick={() => readAll.mutate()}>Mark all read</button>}
             {pane === 'reminders' && <button className="link" style={{ fontSize: 12 }} onClick={() => { setOpen(false); openReminderComposer(); }}>+ New reminder</button>}
           </div>
+          {pane === 'reminders' && <ReminderSuggestions compact />}
           {pane === 'reminders' ? (reminders.isLoading ? <div className="sr-empty">Loading…</div>
             : upcoming.length === 0 ? <div className="sr-empty">No reminders coming up. Add one from here, or "Remind me" on any task or ticket.</div>
             : upcoming.map((r) => (

@@ -28,6 +28,10 @@ let prefs=[
  {type:'Reminder',label:'Your reminders',description:'Reminders you set',inApp:true,email:false,browser:true,locked:false},
  {type:'Security',label:'Security alerts',description:'Sign-ins and account changes',inApp:true,email:true,browser:true,locked:true},
 ];
+// Added later in the run: a follow-up reminder for an unanswered question (with its drafted nudge) and reminders offered from what was said.
+let extra=[],suggestions=[];
+const followUp=N('n7','Reminder',"Ravi Kumar hasn't replied to your question",5,'/chat/c1',false,true,'You asked on Wed 21 Oct: “Can you share the deck?”\nSuggested nudge: Hi Ravi, just following up on my question above. Could you take a look when you get a moment?',['reply','snooze']);
+const offer={id:'s1',title:'Send the estimate',fireAt:iso(60*20),sourceKind:'chat',link:'/chat/c1',quote:"Sure, I'll send the estimate tomorrow.",createdAt:iso(-1)};
 const writes=[],errors=[],checks=[];
 let remSettings={workDays:[1,2,3,4,5],workStart:'09:00',workEnd:'18:00',quietStart:'21:00',quietEnd:'08:00',defaultTime:'09:00',autoEnabled:true,dueLeads:[1,0],overdueSteps:[1,3,7],dailyAutoLimit:12,briefingEnabled:true,briefingTime:'08:30',followDeviceTimeZone:false,muteNudges:false,timeZone:'Asia/Kolkata',digestTime:null};
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
@@ -47,6 +51,7 @@ try{
    else if(ep==='/api/v1/notifications/archive-read'&&method==='POST'){writes.push({ep});data={archived:2};}
    else if(ep==='/api/v1/notifications/read-all'&&method==='POST'){writes.push({ep});data=null;}
    else if(ep==='/api/v1/me/notification-preferences'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});prefs=prefs.map(x=>{const c=b.items.find(i=>i.type===x.type);return c?{...x,...c}:x;});data=prefs;}
+   else if(/^\/api\/v1\/reminders\/suggestions\/s\d\/(accept|dismiss)$/.test(ep)&&method==='POST'){writes.push({ep});suggestions=[];data={id:'r1',title:offer.title,state:'Scheduled',nextFireAt:offer.fireAt};}
    else if(ep==='/api/v1/reminders/settings'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});remSettings=b;data=b;}
    else if(ep==='/api/v1/me/ui/sidebar')data={key:'sidebar',value:null,updatedAt:null};
    else{
@@ -56,7 +61,7 @@ try{
     else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
     else if(ep==='/api/v1/notifications/counts')data={unread:2,needsYou:2,forInfo:0,snoozed:1};
     else if(ep==='/api/v1/notifications'){
-     const list=p.get('archived')==='true'?archived:p.get('lane')==='snoozed'?snoozedList:p.get('lane')==='info'?info:p.get('lane')==='needs'?needs:[...needs,...info];
+     const list=p.get('archived')==='true'?archived:p.get('lane')==='snoozed'?snoozedList:p.get('lane')==='info'?info:p.get('lane')==='needs'?[...extra,...needs]:[...extra,...needs,...info];
      const it=p.get('unreadOnly')==='true'?list.filter(n=>!n.isRead):list;
      data={items:it,page:1,pageSize:20,totalPages:1,totalItems:it.length};
     }
@@ -64,6 +69,10 @@ try{
     else if(ep==='/api/v1/me/whatsapp-contact/notification-preferences')data={version:3,optedIn:true,canEnable:true,taskAssignments:true,overdue:false,supportUpdates:false,reminders:true,approvals:false,timeZone:'Asia/Kolkata',quietStartMinutes:1320,quietEndMinutes:480,requiredConsentVersion:'whatsapp-notifications-v1',consentAt:iso(-60),expiresAt:iso(60*24*20),deliveryEnabled:true};
     else if(ep==='/api/v1/me/whatsapp-contact')data={status:'verified',phone:'+91 98•••••210'};
     else if(ep==='/api/v1/reminders/settings')data=remSettings;
+    else if(ep==='/api/v1/reminders/suggestions')data=suggestions;
+    else if(ep==='/api/v1/reminders')data={open:[],completed:[],sent:[],counts:{now:0,today:0,upcoming:0,completed:0},limits:{open:500,recurring:100,openUsed:0,recurringUsed:0}};
+    else if(ep==='/api/v1/reminders/insights')data={doneThisWeek:0,firedThisWeek:0,onTimePercent:0,usualTime:null,snoozedOften:[]};
+    else if(ep==='/api/v1/reminders/counts')data={now:0,today:0,upcoming:0,completed:0};
     else if(ep.endsWith('/projects')||ep.endsWith('/tasks')||ep.endsWith('/work-tasks'))data={items:[],page:1,totalPages:0,totalItems:0};
     else if(ep==='/api/v1/timer')data=null;
     else if(ep.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
@@ -182,6 +191,26 @@ try{
  await page.goto(origin+'/preview-org/notifications/schedule');await page.getByRole('switch',{name:'Daily digest of updates'}).click();
  await page.locator('.nc-savebar-sticky.show').getByRole('button',{name:'Save'}).click();
  const dig=await waitWrite(w=>w.ep==='/api/v1/reminders/settings');assert.equal(dig.b.digestTime,'18:00');checks.push('digest');
+ // A question nobody answered: Reply starts from the drafted nudge and sends it from the inbox.
+ extra=[followUp];
+ await page.goto(origin+'/preview-org/notifications');
+ const owed=page.locator('.nc-item',{hasText:"hasn't replied"});await owed.waitFor();
+ await owed.getByRole('button',{name:'Reply'}).click();
+ assert.match(await owed.getByRole('textbox',{name:'Your reply'}).inputValue(),/^Hi Ravi, just following up/);
+ await owed.getByRole('button',{name:'Send',exact:true}).click();
+ const nudge=await waitWrite(w=>w.ep==='/api/v1/notifications/n7/act');assert.equal(nudge.b.action,'reply');assert.match(nudge.b.text,/^Hi Ravi/);
+ checks.push('follow-up-nudge');
+ extra=[];
+ // Reminders offered from what was said: one tap on the Reminders page sets it.
+ suggestions=[offer];
+ await page.goto(origin+'/preview-org/reminders');
+ const sug=page.getByRole('region',{name:'Suggested from what you said'});await sug.waitFor();
+ assert.ok(await sug.getByText("You said in chat: “Sure, I'll send the estimate tomorrow.”").isVisible());
+ await shot(page,'reminders-suggested.png');
+ await sug.getByRole('button',{name:'Remind me'}).click();
+ assert.ok(await waitWrite(w=>w.ep==='/api/v1/reminders/suggestions/s1/accept'));
+ await sug.waitFor({state:'detached'});
+ checks.push('suggested-reminders');
  await page.goto(origin+'/preview-org/notifications');await page.locator('.nc-item').first().waitFor();
  // Phone.
  await tab('Needs you').click();await page.locator('.nc-item',{hasText:'Fix portal login'}).first().waitFor();

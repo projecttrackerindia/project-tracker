@@ -16,11 +16,12 @@ import {
 
 type Mode = 'at' | 'repeat' | 'anchor';
 const DAYS = [{ d: 1, l: 'Mon' }, { d: 2, l: 'Tue' }, { d: 3, l: 'Wed' }, { d: 4, l: 'Thu' }, { d: 5, l: 'Fri' }, { d: 6, l: 'Sat' }, { d: 0, l: 'Sun' }];
-type RepeatKind = 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'lastworking';
+type RepeatKind = 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'lastworking' | 'yearly';
 const HIT_TYPES: Record<string, ReminderTarget> = { task: 'Task', issue: 'Issue', action: 'ActionItem', work: 'Operational' };
 
 function kindOf(r: Rule): RepeatKind {
   if (r.freq === 'DAILY') return 'daily';
+  if (r.freq === 'YEARLY') return 'yearly';
   if (r.freq === 'MONTHLY') return r.lastWorkingDay ? 'lastworking' : 'monthly';
   if (r.interval === 2) return 'biweekly';
   return r.byDay.length === 5 && [1, 2, 3, 4, 5].every((d) => r.byDay.includes(d)) ? 'weekdays' : 'weekly';
@@ -33,6 +34,7 @@ function ruleOf(kind: RepeatKind, days: number[], monthDay: number): Rule {
     case 'weekly': return { freq: 'WEEKLY', interval: 1, byDay: days.length ? days : [1], byMonthDay: null, lastWorkingDay: false };
     case 'biweekly': return { freq: 'WEEKLY', interval: 2, byDay: days.length ? days : [1], byMonthDay: null, lastWorkingDay: false };
     case 'monthly': return { freq: 'MONTHLY', interval: 1, byDay: [], byMonthDay: monthDay, lastWorkingDay: false };
+    case 'yearly': return { freq: 'YEARLY', interval: 1, byDay: [], byMonthDay: null, lastWorkingDay: false };
     default: return { freq: 'MONTHLY', interval: 1, byDay: [], byMonthDay: null, lastWorkingDay: true };
   }
 }
@@ -73,6 +75,7 @@ function Composer({ draft, onClose }: { draft: ComposerDraft; onClose: () => voi
   const [monthDay, setMonthDay] = useState(now.getUTCDate());
   const [anchorDays, setAnchorDays] = useState(-1);
   const [touched, setTouched] = useState(!!editing);
+  const [free, setFree] = useState(false);
 
   // ---- who and how
   const [forUser, setForUser] = useState(draft.forUserId ?? (editing?.for?.id ?? ''));
@@ -111,15 +114,24 @@ function Composer({ draft, onClose }: { draft: ComposerDraft; onClose: () => voi
       setDays(p.rule.byDay.length ? p.rule.byDay : [p.local.getUTCDay()]);
       if (p.rule.byMonthDay && p.rule.byMonthDay > 0) setMonthDay(p.rule.byMonthDay);
     }
+    else if (p.kind === 'free') { setMode('at'); setFree(true); }
     else { setMode('anchor'); setAnchorDays(p.days); setTime(p.time ?? defaultTime); }
     titleRef.current?.focus();
   }
 
   const [h, m] = parseHm(time);
   const rule = ruleOf(repeat, days, monthDay);
+  // A yearly reminder comes round on the chosen date (this year if it is still ahead, else next year; 29 Feb on the 28th in other years).
+  const firstOf = (): Date => {
+    if (rule.freq !== 'YEARLY') return firstOccurrence(rule, now, h, m);
+    const picked = fromIso(`${date}T00:00`) ?? now;
+    const on = (y: number) => { const last = new Date(Date.UTC(y, picked.getUTCMonth() + 1, 0)).getUTCDate(); return atTime(new Date(Date.UTC(y, picked.getUTCMonth(), Math.min(picked.getUTCDate(), last))), h, m); };
+    const thisYear = on(now.getUTCFullYear());
+    return thisYear > now ? thisYear : on(now.getUTCFullYear() + 1);
+  };
   const preview = (() => {
     if (mode === 'at') { const at = fromIso(`${date}T${time}`); return at ? { at, text: `${describeLocal(at, now)} · ${relative(new Date(Date.now() + (at.getTime() - now.getTime())))}` } : null; }
-    if (mode === 'repeat') { const at = firstOccurrence(rule, now, h, m); return { at, text: `${ruleText(rule)} at ${time} · first ${describeLocal(at, now)}` }; }
+    if (mode === 'repeat') { const at = firstOf(); return { at, text: `${ruleText(rule)}${rule.freq === 'YEARLY' ? ` on ${at.getUTCDate()} ${at.toLocaleString('en', { month: 'long', timeZone: 'UTC' })}` : ''} at ${time} · first ${describeLocal(at, now)}` }; }
     if (!subject?.due) return null;
     const due = fromIso(subject.due)!;
     const at = atTime(addDays(due, anchorDays), h, m);
@@ -143,11 +155,13 @@ function Composer({ draft, onClose }: { draft: ComposerDraft; onClose: () => voi
       t = typed.title;
       if (typed.kind === 'at') when = { at: iso(typed.local), timeZone: zone };
       else if (typed.kind === 'repeat') when = { at: iso(typed.local), timeZone: zone, recurrence: toRRule(typed.rule) };
+      else if (typed.kind === 'free') when = { free: true, timeZone: zone };
       else when = { anchorDays: typed.days, anchorTime: typed.time ?? defaultTime, timeZone: zone };
-      md = typed.kind;
+      md = typed.kind === 'free' ? 'at' : typed.kind;
     }
+    else if (mode === 'at' && free) when = { free: true, timeZone: zone };
     else if (mode === 'at') when = { at: `${date}T${time}`, timeZone: zone };
-    else if (mode === 'repeat') when = { at: iso(firstOccurrence(rule, now, h, m)), timeZone: zone, recurrence: toRRule(rule) };
+    else if (mode === 'repeat') when = { at: iso(firstOf()), timeZone: zone, recurrence: toRRule(rule) };
     else when = { anchorDays, anchorTime: time, timeZone: zone };
     if (!t.trim() && !subject) { setError('Say what to remind you about.'); return; }
     if (md === 'at' && when.at && fromIso(when.at)! <= now) { setError('Pick a time in the future.'); return; }
@@ -206,8 +220,10 @@ function Composer({ draft, onClose }: { draft: ComposerDraft; onClose: () => voi
               </div>
               <div className="rc-chips">
                 {quick.map((q) => (
-                  <button key={q.label} type="button" className={`rc-chip ${iso(q.at) === `${date}T${time}` ? 'on' : ''}`} onClick={() => { setDate(isoDate(q.at)); setTime(hhmm(q.at)); setTouched(true); }}>{q.label}</button>
+                  <button key={q.label} type="button" className={`rc-chip ${!free && iso(q.at) === `${date}T${time}` ? 'on' : ''}`} onClick={() => { setFree(false); setDate(isoDate(q.at)); setTime(hhmm(q.at)); setTouched(true); }}>{q.label}</button>
                 ))}
+                <button type="button" className={`rc-chip ${free ? 'on' : ''}`} aria-pressed={free} title="The next free 15 minutes in your working hours, and never inside a meeting"
+                  onClick={() => { setFree((f) => !f); setTouched(true); }}><Icon name="calendar" size={13} /> When I'm free</button>
               </div>
             </>
           )}
@@ -223,6 +239,7 @@ function Composer({ draft, onClose }: { draft: ComposerDraft; onClose: () => voi
                     <option value="biweekly">Every 2 weeks</option>
                     <option value="monthly">Every month on a date</option>
                     <option value="lastworking">Last working day of the month</option>
+                    <option value="yearly">Every year (birthday, renewal)</option>
                   </Select>
                 </label>
                 <label className="rc-field"><span>Time</span><input className="input" type="time" value={time} onChange={(e) => { setTime(e.target.value); setTouched(true); }} /></label>
@@ -234,6 +251,11 @@ function Composer({ draft, onClose }: { draft: ComposerDraft; onClose: () => voi
                       onClick={() => setDays((xs) => xs.includes(d.d) ? (xs.length > 1 ? xs.filter((x) => x !== d.d) : xs) : [...xs, d.d])}>{d.l}</button>
                   ))}
                 </div>
+              )}
+              {repeat === 'yearly' && (
+                <label className="rc-field rc-narrow"><span>On</span>
+                  <input className="input" type="date" value={date} onChange={(e) => { if (e.target.value) setDate(e.target.value); setTouched(true); }} aria-label="Date each year" />
+                </label>
               )}
               {repeat === 'monthly' && (
                 <label className="rc-field rc-narrow"><span>Day of the month</span>

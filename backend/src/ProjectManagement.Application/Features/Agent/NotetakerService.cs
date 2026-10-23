@@ -37,7 +37,8 @@ public record SendMinutesRequest(string Account, string To, string? Cc, string S
 public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetingService meetings, ProjectAccess access, MeetingBotClient botService,
     ISecretProtector secrets, AppClock clock, IAiClient ai, AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions,
     MailboxService mailbox, GoogleMeetingClient google, NotificationService notifications, Recorder recorder, ILogger<NotetakerService> log, AgentSignalService signals,
-    ProjectManagement.Application.Features.Tasks.TaskService tasks, IEmailSender email, AgentSettingsService agentSettings, IOptions<ProjectManagement.Application.Common.AppOptions> app)
+    ProjectManagement.Application.Features.Tasks.TaskService tasks, IEmailSender email, AgentSettingsService agentSettings, IOptions<ProjectManagement.Application.Common.AppOptions> app,
+    ProjectManagement.Application.Features.Reminders.ReminderSuggestionService promises)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -239,7 +240,37 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
             db.MeetingMinutes.Entry(row).State = EntityState.Detached;
             return ToDto(await db.MeetingMinutes.AsNoTracking().FirstAsync(m => m.BotRowId == bot.Id, ct));
         }
+        await OfferRemindersAsync(bot, content, ct);
         return ToDto(row);
+    }
+
+    /// <summary>
+    /// Each action item with a named owner who is in the project and a due date is offered to that person as a reminder for the morning it is
+    /// due ("Suggested from what you said" on their Reminders page). One tap sets it; nothing is set for anyone without it.
+    /// </summary>
+    private async Task OfferRemindersAsync(AgentMeetingBot bot, MinutesContent content, CancellationToken ct)
+    {
+        if (!content.ActionItems.Any(a => a.Owner is not null && a.Due is not null)) return;
+        var members = await db.ProjectMembers.AsNoTracking().Where(m => m.ProjectId == bot.ProjectId).Join(db.Users.Where(u => u.IsActive), m => m.UserId, u => u.Id, (m, u) => new { u.Id, u.DisplayName, u.TimeZone }).ToListAsync(ct);
+        Guid? Match(string name)
+        {
+            var n = name.Trim();
+            var exact = members.Where(m => m.DisplayName.Equals(n, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (exact.Count == 1) return exact[0].Id;
+            var first = members.Where(m => m.DisplayName.Split(' ')[0].Equals(n.Split(' ')[0], StringComparison.OrdinalIgnoreCase)).ToList();
+            return first.Count == 1 ? first[0].Id : null;
+        }
+        foreach (var a in content.ActionItems.Take(15))
+        {
+            if (a.Owner is null || a.Due is null || Match(a.Owner) is not { } owner) continue;
+            var zone = ProjectManagement.Application.Features.Reminders.ZoneTime.Find(members.First(m => m.Id == owner).TimeZone);
+            var settings = await db.ReminderSettings.AsNoTracking().Where(x => x.UserId == owner).Select(x => (TimeOnly?)x.DefaultTime).FirstOrDefaultAsync(ct) ?? new TimeOnly(9, 0);
+            var nowLocal = ProjectManagement.Application.Features.Reminders.ZoneTime.ToLocal(clock.Now, zone);
+            if (ProjectManagement.Application.Features.Reminders.PromiseDetector.DueFrom(a.Due, nowLocal, settings) is not { } at) continue;
+            var key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(a.Task.Trim().ToLowerInvariant())))[..16];
+            await promises.OfferAtAsync(bot.TenantId, owner, a.Task, at, "meeting", $"minutes:{bot.Id:N}:{key}", $"/notetaker?session={bot.Id}",
+                $"{a.Task} — {a.Owner}, by {a.Due} ({content.Title})", ct);
+        }
     }
 
     public async Task<MinutesDto> SendMinutesAsync(Guid id, SendMinutesRequest req, CancellationToken ct)

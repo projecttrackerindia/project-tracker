@@ -105,7 +105,7 @@ public class NotificationActionService(IAppDbContext db, ICurrentContext ctx, No
                 case Target.Timesheet when waitingWeeks.Contains(t.Id):
                     acts.Add("approve"); acts.Add("reject");
                     break;
-                case Target.ProjectChat or Target.Chat when n.Type is NotificationType.Mention or NotificationType.Message:
+                case Target.ProjectChat or Target.Chat when n.Type is NotificationType.Mention or NotificationType.Message or NotificationType.Reminder:
                     acts.Add("reply");
                     break;
                 case Target.Support when supportChats.TryGetValue(t.Id, out var chatOwner) && chatOwner != me:

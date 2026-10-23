@@ -166,6 +166,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<ChatReaction> ChatReactions => Set<ChatReaction>();
     public DbSet<AiUserProfile> AiUserProfiles => Set<AiUserProfile>();
     public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();
+    public DbSet<ReminderSuggestion> ReminderSuggestions => Set<ReminderSuggestion>();
     public DbSet<ReminderPolicy> ReminderPolicies => Set<ReminderPolicy>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();

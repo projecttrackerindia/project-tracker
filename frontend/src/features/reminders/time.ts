@@ -72,13 +72,14 @@ export function relative(utc: string | Date, from = new Date()): string {
 
 // ------------------------------------------------------------------ repeat rules (same subset as the server)
 
-export interface Rule { freq: 'DAILY' | 'WEEKLY' | 'MONTHLY'; interval: number; byDay: number[]; byMonthDay: number | null; lastWorkingDay: boolean }
+export interface Rule { freq: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'; interval: number; byDay: number[]; byMonthDay: number | null; lastWorkingDay: boolean }
 const CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 const WEEKDAYS = [1, 2, 3, 4, 5];
 
 export function ruleText(r: Rule): string {
   const every = (unit: string) => (r.interval === 1 ? `every ${unit}` : `every ${r.interval} ${unit}s`);
   if (r.freq === 'DAILY') return r.interval === 1 ? 'every day' : `every ${r.interval} days`;
+  if (r.freq === 'YEARLY') return every('year');
   if (r.freq === 'WEEKLY') {
     if (r.interval === 1 && r.byDay.length === 5 && WEEKDAYS.every((d) => r.byDay.includes(d))) return 'every weekday';
     const names = r.byDay.map((d) => DAY_LONG[d]).join(', ');
@@ -100,7 +101,7 @@ export function toRRule(r: Rule): string {
 export function fromRRule(s: string | null | undefined): Rule | null {
   if (!s) return null;
   const p = Object.fromEntries(s.split(';').map((x) => x.split('=')).filter((x) => x.length === 2).map(([k, v]) => [k.toUpperCase(), v.toUpperCase()]));
-  if (!['DAILY', 'WEEKLY', 'MONTHLY'].includes(p.FREQ)) return null;
+  if (!['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(p.FREQ)) return null;
   const byDay = (p.BYDAY ?? '').split(',').map((c: string) => CODES.indexOf(c)).filter((i: number) => i >= 0);
   const last = p.FREQ === 'MONTHLY' && p.BYSETPOS === '-1';
   return { freq: p.FREQ as Rule['freq'], interval: Math.max(1, Number(p.INTERVAL ?? 1)), byDay: last ? [] : byDay, byMonthDay: p.BYMONTHDAY ? Number(p.BYMONTHDAY) : null, lastWorkingDay: last };
@@ -111,6 +112,10 @@ const daysIn = (y: number, m: number) => new Date(Date.UTC(y, m + 1, 0)).getUTCD
 
 function matches(r: Rule, d: Date, start: Date): boolean {
   if (r.freq === 'DAILY') return Math.round((atTime(d, 0).getTime() - atTime(start, 0).getTime()) / 86_400_000) % r.interval === 0;
+  if (r.freq === 'YEARLY') {
+    if ((d.getUTCFullYear() - start.getUTCFullYear()) % r.interval !== 0 || d.getUTCMonth() !== start.getUTCMonth()) return false;
+    return d.getUTCDate() === Math.min(start.getUTCDate(), daysIn(d.getUTCFullYear(), d.getUTCMonth()));   // 29 Feb falls on the 28th
+  }
   if (r.freq === 'WEEKLY') {
     const days = r.byDay.length ? r.byDay : [start.getUTCDay()];
     if (!days.includes(d.getUTCDay())) return false;
@@ -145,7 +150,8 @@ export function firstOccurrence(r: Rule, now: Date, h: number, mi: number): Date
 export type Parsed =
   | { title: string; kind: 'at'; local: Date; label: string }
   | { title: string; kind: 'repeat'; local: Date; rule: Rule; label: string }
-  | { title: string; kind: 'anchor'; days: number; time: string | null; label: string };
+  | { title: string; kind: 'anchor'; days: number; time: string | null; label: string }
+  | { title: string; kind: 'free'; label: string };
 
 const NUM: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twelve: 12, fifteen: 15, twenty: 20, thirty: 30 };
 const DAY_RE = '(sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)(?:day|sday|nesday|rsday|urday)?';
@@ -161,6 +167,12 @@ const num = (w: string) => (/^\d+$/.test(w) ? Number(w) : NUM[w.toLowerCase()] ?
  */
 export function parseReminder(text: string, now: Date, opts: { defaultTime?: string; dayFirst?: boolean } = {}): Parsed | null {
   let rest = ` ${text.trim()} `;
+  // "when I'm free" / "between meetings": the server finds the next free moment from the calendar.
+  const free = /\s(?:when\s+i'?\s*a?m\s+free|when\s+i\s+have\s+(?:a\s+)?(?:minute|moment|time)|between\s+meetings|after\s+my\s+meetings?)(?=\W|$)/i.exec(rest);
+  if (free) {
+    const title = clean(rest.slice(0, free.index) + ' ' + rest.slice(free.index + free[0].length));
+    return { title, kind: 'free', label: 'When you are free (no meeting, in working hours)' };
+  }
   const [dh, dm] = parseHm(opts.defaultTime ?? '09:00');
   const take = (re: RegExp): RegExpExecArray | null => {
     const m = re.exec(rest);
@@ -187,7 +199,9 @@ export function parseReminder(text: string, now: Date, opts: { defaultTime?: str
   // ---- repeating
   let rule: Rule | null = null;
   let m: RegExpExecArray | null;
-  if ((m = take(/\s(?:on\s+)?(?:the\s+)?last\s+(?:working|business|week)\s*day\s+of\s+(?:every|each|the)\s+month(?=\W|$)/i)) || (m = take(/\s(?:every|each)\s+month\s+on\s+the\s+last\s+(?:working|business)\s+day(?=\W|$)/i)))
+  if ((m = take(/\s(?:(?:every|each)\s+(?:(\d+|two|three|four|five|ten)\s+)?years?|yearly|annually|every\s+anniversary)(?=\W|$)/i)))
+    rule = { freq: 'YEARLY', interval: m[1] ? num(m[1]) || 1 : 1, byDay: [], byMonthDay: null, lastWorkingDay: false };
+  else if ((m = take(/\s(?:on\s+)?(?:the\s+)?last\s+(?:working|business|week)\s*day\s+of\s+(?:every|each|the)\s+month(?=\W|$)/i)) || (m = take(/\s(?:every|each)\s+month\s+on\s+the\s+last\s+(?:working|business)\s+day(?=\W|$)/i)))
     rule = { freq: 'MONTHLY', interval: 1, byDay: [], byMonthDay: null, lastWorkingDay: true };
   else if ((m = take(/\s(?:every|each)\s+(?:(\d+|two|three|four|six)\s+)?months?(?:\s+on\s+the\s+(\d{1,2})(?:st|nd|rd|th)?|\s+on\s+the\s+last\s+day)?(?=\W|$)/i)) || (m = take(/\s(monthly)(?=\W|$)/i))) {
     const interval = m[1] && m[1].toLowerCase() !== 'monthly' ? num(m[1]) : 1;
@@ -275,7 +289,8 @@ export function parseReminder(text: string, now: Date, opts: { defaultTime?: str
   const h = hour ?? partHour;
   if (rule) {
     const [rh, rm] = h !== null ? [h, hour !== null ? minute : 0] : [dh, dm];
-    const local = firstOccurrence(rule, now, rh, rm);
+    // A yearly reminder starts on the date given ("every year on 5 March"), else today's date.
+    const local = rule.freq === 'YEARLY' && day ? atTime(day, rh, rm) : firstOccurrence(rule, now, rh, rm);
     const first = describeLocal(local, now);
     return { title, kind: 'repeat', local, rule, label: `${ruleText(rule)} at ${pad(rh)}:${pad(rm)} · starts ${/^(Today|Tomorrow)/.test(first) ? first[0].toLowerCase() + first.slice(1) : first}` };
   }

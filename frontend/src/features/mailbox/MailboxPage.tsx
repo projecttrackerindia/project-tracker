@@ -15,6 +15,7 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { addressOf, displayName, mailboxApi } from './mailboxApi';
 import type { CompanyMailInput, ComposeMode, MailAccounts, MailAssist, MailFolder, MailMessage, MailTaskSuggestion } from './mailboxApi';
+import { offerReminderAfterSend } from '../reminders/Suggestions';
 import './mailbox.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -452,6 +453,7 @@ function ReplyBox({ account, folder, message, all, initial, agent, onCancel, onS
     try {
       const r = await mailboxApi.send({ account: account.key, folder, replyToId: message.id, replyAll, body: body.trimEnd() + quote(message), confirmed: true });
       toast(r.to ? `Reply sent to ${r.to}.` : 'Reply sent.');
+      offerReminderAfterSend(body, 'email');
       onSent();
     } catch (e) { toast(errText(e, 'The reply could not be sent.'), 'error'); }
     finally { setSending(false); }
@@ -488,7 +490,7 @@ function ComposeModal({ accounts, initial, agent, onClose, onSent }: { accounts:
     if (!account) return;
     if (!(await confirmDialog({ title: 'Send this email?', message: `From ${account.email} to ${to}${cc ? `, cc ${cc}` : ''}.`, confirmText: 'Send' }))) return;
     setSending(true);
-    try { await mailboxApi.send({ account: account.key, to, cc, subject, body, confirmed: true }); toast('Email sent.'); onSent(); onClose(); }
+    try { await mailboxApi.send({ account: account.key, to, cc, subject, body, confirmed: true }); toast('Email sent.'); offerReminderAfterSend(body, 'email'); onSent(); onClose(); }
     catch (e) { toast(errText(e, 'The email could not be sent.'), 'error'); }
     finally { setSending(false); }
   };

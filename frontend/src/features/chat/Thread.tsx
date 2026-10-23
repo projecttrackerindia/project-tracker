@@ -16,6 +16,7 @@ import type { PresenceStatus } from '../../api/types';
 import { fallbackStatus, PresenceDot } from './Presence';
 import { sendTyping } from './ChatRealtime';
 import { openReminderComposer } from '../reminders/store';
+import { offerReminderAfterSend } from '../reminders/Suggestions';
 import { GoogleMeetButton } from '../meetings/GoogleMeetButton';
 import { haptic } from '../../lib/mobile';
 
@@ -599,7 +600,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
 
   const send = useMutation({
     mutationFn: (v: { body: string; ids: string[] }) => (editing ? chatApi.edit(editing.id, v.body) : chatApi.send(id, v.body, replyTo?.id, v.ids)),
-    onSuccess: (m) => { drafts.delete(id); setPending([]); onSent(m); },
+    onSuccess: (m, v) => { drafts.delete(id); setPending([]); onSent(m); if (!editing) offerReminderAfterSend(v.body); },
     onError: (e, v) => {
       setText(v.body);
       if (box.current) { box.current.innerHTML = markdownToHtml(v.body); setIsEmpty(!v.body); }

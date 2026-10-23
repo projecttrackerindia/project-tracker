@@ -1,13 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
 using ProjectManagement.Api.Filters;
 using ProjectManagement.Application.Features.Chat;
+using ProjectManagement.Application.Features.Reminders;
 using ProjectManagement.Domain;
 
 namespace ProjectManagement.Api.Controllers.Chat;
 
 /// <summary>Chat between people of the workspace: private chats and groups. Live delivery is through the hub at /hubs/chat.</summary>
 [Route("api/v1/chat"), RequireWorkspace]
-public class ChatController(ChatService chat) : ApiControllerBase
+public class ChatController(ChatService chat, ReminderSuggestionService promises) : ApiControllerBase
 {
     [HttpGet("people")]
     public async Task<IActionResult> People(CancellationToken ct) => Ok(await chat.PeopleAsync(ct));
@@ -57,7 +58,13 @@ public class ChatController(ChatService chat) : ApiControllerBase
         Ok(await chat.MessagesAsync(id, before, limit, ct));
 
     [HttpPost("conversations/{id:guid}/messages")]
-    public async Task<IActionResult> Send(Guid id, [FromBody] SendMessageRequest req, CancellationToken ct) => Created(await chat.SendAsync(id, req, ct));
+    public async Task<IActionResult> Send(Guid id, [FromBody] SendMessageRequest req, CancellationToken ct)
+    {
+        var sent = await chat.SendAsync(id, req, ct);
+        // "I'll send the estimate by Friday": offered as a reminder for the writer (never set without their tap).
+        await promises.OfferFromTextAsync(req.Body, "chat", $"chat:{sent.Id}", $"/chat/{id}", ct);
+        return Created(sent);
+    }
 
     [HttpPost("conversations/{id:guid}/read")]
     public async Task<IActionResult> MarkRead(Guid id, CancellationToken ct)

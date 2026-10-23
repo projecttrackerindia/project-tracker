@@ -102,7 +102,7 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
     PortfolioDigestService digest, ILogger<ReminderEngine> log)
 {
     private const int Batch = 200;
-    private static long _lastPlan, _lastBriefing;
+    private static long _lastPlan, _lastBriefing, _lastFollowUps;
     private static readonly ReminderSource[] Automatic = [ReminderSource.DueDate, ReminderSource.Overdue, ReminderSource.Escalation];
 
     /// <summary>One pass. With <paramref name="at"/> (tests, catch-up) planning and briefings run every time; otherwise every five minutes.</summary>
@@ -124,8 +124,83 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
             try { await digest.SendAsync(now, force: true, ct); }
             catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "The weekly portfolio brief failed; the reminders carry on"); }
         }
+        // Hourly on the live loop only (a catch-up pass with a given time leaves real conversations alone).
+        if (at is null && now.Ticks - Interlocked.Read(ref _lastFollowUps) >= TimeSpan.FromHours(1).Ticks)
+        {
+            Interlocked.Exchange(ref _lastFollowUps, now.Ticks);
+            try { await FollowUpsAsync(now, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "Owed follow-ups could not be checked; the reminders carry on"); }
+        }
         metrics.Ran(now);
         return fired;
+    }
+
+    // ------------------------------------------------------------------ owed follow-ups
+
+    private static readonly System.Text.RegularExpressions.Regex Asks = new(
+        @"\?|^\s*(?:can|could|would|will|did|do|does|is|are|have|has|when|what|where|who|how|why)\b|\b(?:any\s+update|please\s+(?:confirm|let\s+me\s+know|share|send|check|revert)|kindly\s+(?:confirm|share|send|revert)|let\s+me\s+know)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+
+    /// <summary>
+    /// Questions nobody answered: in a private chat, when the last message is the person's own question (or request) and two of their working
+    /// days have gone by with no reply or reaction, they get one reminder ("Ravi hasn't replied") with a nudge drafted for them; Reply on the
+    /// reminder sends it there and then. Older than ten days is let go. Once per question.
+    /// </summary>
+    public async Task<int> FollowUpsAsync(DateTime now, CancellationToken ct = default)
+    {
+        var from = now.AddDays(-10); var to = now.AddDays(-2);
+        var waiting = await (from c in db.Conversations.IgnoreQueryFilters().AsNoTracking()
+                             join m in db.ChatMessages.IgnoreQueryFilters().AsNoTracking() on c.LastMessageId equals m.Id
+                             join t in db.Tenants.IgnoreQueryFilters().AsNoTracking() on c.TenantId equals t.Id
+                             where c.Type == ConversationType.Direct && c.LastMessageAt >= from && c.LastMessageAt <= to && m.Kind == ChatMessageKind.User
+                                 && m.DeletedAt == null && m.SenderId != null && !t.IsDeleted && t.Status == TenantStatus.Active
+                             orderby c.LastMessageAt
+                             select new { c.TenantId, Conversation = c.Id, Message = m.Id, Sender = m.SenderId!.Value, m.Body, m.CreatedAt }).Take(500).ToListAsync(ct);
+        waiting = waiting.Where(w => { try { return Asks.IsMatch(w.Body); } catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { return false; } }).ToList();
+        if (waiting.Count == 0) return 0;
+        var keys = waiting.Select(w => $"owed:{w.Message:N}").ToList();
+        var done = (await db.Notifications.IgnoreQueryFilters().AsNoTracking().Where(n => n.DedupeKey != null && keys.Contains(n.DedupeKey)).Select(n => n.DedupeKey!).ToListAsync(ct)).ToHashSet();
+        waiting = waiting.Where(w => !done.Contains($"owed:{w.Message:N}")).ToList();
+        if (waiting.Count == 0) return 0;
+        var convIds = waiting.Select(w => w.Conversation).ToList();
+        var msgIds = waiting.Select(w => w.Message).ToList();
+        var others = await (from cm in db.ConversationMembers.IgnoreQueryFilters().AsNoTracking()
+                            join u in db.Users.AsNoTracking() on cm.UserId equals u.Id
+                            where convIds.Contains(cm.ConversationId) && u.IsActive
+                            select new { cm.ConversationId, cm.UserId, u.DisplayName }).ToListAsync(ct);
+        var reacted = (await db.ChatReactions.IgnoreQueryFilters().AsNoTracking().Where(r => msgIds.Contains(r.MessageId)).Select(r => new { r.MessageId, r.UserId }).ToListAsync(ct))
+            .Select(r => (r.MessageId, r.UserId)).ToHashSet();
+        var senders = waiting.Select(w => w.Sender).Distinct().ToList();
+        var zones = await db.Users.AsNoTracking().Where(u => senders.Contains(u.Id) && u.IsActive).ToDictionaryAsync(u => u.Id, u => u.TimeZone, ct);
+        var settings = await db.ReminderSettings.AsNoTracking().Where(x => senders.Contains(x.UserId)).ToDictionaryAsync(x => x.UserId, ct);
+        var sent = 0;
+        foreach (var w in waiting)
+        {
+            if (!zones.TryGetValue(w.Sender, out var zone)) continue;
+            var other = others.Where(o => o.ConversationId == w.Conversation && o.UserId != w.Sender).ToList();
+            if (other.Count != 1 || reacted.Contains((w.Message, other[0].UserId))) continue;
+            var tz = ZoneTime.Find(zone);
+            var cal = new WorkCalendar(settings.GetValueOrDefault(w.Sender) ?? new ReminderSettings());
+            var askedOn = DateOnly.FromDateTime(ZoneTime.ToLocal(w.CreatedAt, tz));
+            var local = ZoneTime.ToLocal(now, tz);
+            var today = DateOnly.FromDateTime(local);
+            var workingDays = 0;
+            for (var d = askedOn.AddDays(1); d <= today; d = d.AddDays(1)) if (cal.IsWorkingDay(d)) workingDays++;
+            // Two working days have passed, and it is a working day, in working hours, for the person asking.
+            if (workingDays < 2 || !cal.IsWorkingDay(today) || !cal.IsGoodTime(local)) continue;
+            var name = other[0].DisplayName;
+            var first = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+            var asked = Text(System.Text.RegularExpressions.Regex.Replace(w.Body, @"\s+", " ").Trim(), 160);
+            var n = new Notification
+            {
+                TenantId = w.TenantId, UserId = w.Sender, Type = NotificationType.Reminder, CreatedAt = now, Link = $"/chat/{w.Conversation}",
+                Title = $"{name} hasn't replied to your question", DedupeKey = $"owed:{w.Message:N}",
+                Body = $"You asked on {ZoneTime.ToLocal(w.CreatedAt, tz):ddd d MMM}: “{asked}”\nSuggested nudge: Hi {first}, just following up on my question above. Could you take a look when you get a moment?",
+            };
+            if (await router.ApplyAsync(n, ct)) { db.Notifications.Add(n); sent++; }
+        }
+        if (sent > 0) await db.SaveChangesAsync(ct);
+        return sent;
     }
 
     // ------------------------------------------------------------------ firing
@@ -189,6 +264,9 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
             {
                 var local = ZoneTime.ToLocal(now, tz);
                 if (!cal.IsGoodTime(local)) { r.NextFireAt = ZoneTime.ToUtc(cal.NextGoodTime(local), tz); continue; }   // waits for working hours
+                // A reminder that may move never interrupts a meeting: it goes off a couple of minutes after the meeting ends.
+                if (await Busy.MeetingEndAsync(db, r.TenantId, r.UserId, now, ct) is { } end && end < now.AddHours(8))
+                { r.NextFireAt = end.AddMinutes(2); continue; }
             }
 
             var quiet = false;
@@ -646,3 +724,66 @@ public class ReminderActionService(IAppDbContext db, AppClock clock)
         return await InfoAsync(r, ct);
     }
 }
+
+/// <summary>
+/// When a person is in a meeting, from the meetings the workspace knows (project meetings they organise or attend, and workspace meetings),
+/// including each session of a recurring meeting. Used to keep reminders that may move out of meetings and to find "when I'm free".
+/// </summary>
+public static class Busy
+{
+    public static async Task<List<(DateTime Start, DateTime End)>> SessionsAsync(IAppDbContext db, Guid tenantId, Guid userId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+    {
+        var floor = fromUtc - ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.LongestSeries;
+        // Read in the person's own workspace only; the engine runs across workspaces, so the workspace is named explicitly.
+        var project = await db.ProjectMeetings.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.Status == MeetingStatus.Scheduled && m.CancelledAt == null && m.StartTimeUtc < toUtc
+                && (m.RecurrenceRule != null ? m.StartTimeUtc >= floor : m.EndTimeUtc > fromUtc)
+                && (m.OrganizerUserId == userId || db.MeetingParticipants.IgnoreQueryFilters().Any(p => p.TenantId == tenantId && p.MeetingId == m.Id && p.UserId == userId)))
+            .Select(m => new { m.RecurrenceRule, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone }).Take(200).ToListAsync(ct);
+        var workspace = await db.WorkspaceMeetings.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.Status == MeetingStatus.Scheduled && m.CancelledAt == null && m.StartTimeUtc < toUtc
+                && (m.RecurrenceRule != null ? m.StartTimeUtc >= floor : m.EndTimeUtc > fromUtc)
+                && (m.OrganizerUserId == userId || db.WorkspaceMeetingAttendees.IgnoreQueryFilters().Any(a => a.TenantId == tenantId && a.MeetingId == m.Id && a.UserId == userId)))
+            .Select(m => new { m.RecurrenceRule, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone }).Take(200).ToListAsync(ct);
+        var sessions = new List<(DateTime, DateTime)>();
+        foreach (var m in project.Concat(workspace))
+        {
+            var length = m.EndTimeUtc - m.StartTimeUtc;
+            if (length <= TimeSpan.Zero || length > TimeSpan.FromHours(12)) continue;
+            foreach (var at in ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.Occurrences(m.RecurrenceRule, m.StartTimeUtc, m.TimeZone, fromUtc - length, toUtc))
+                if (at + length > fromUtc && at < toUtc) sessions.Add((at, at + length));
+        }
+        return sessions.OrderBy(x => x.Item1).ToList();
+    }
+
+    /// <summary>When the meeting (or back-to-back meetings) the person is in right now ends; null when they are not in one.</summary>
+    public static async Task<DateTime?> MeetingEndAsync(IAppDbContext db, Guid tenantId, Guid userId, DateTime nowUtc, CancellationToken ct)
+    {
+        var sessions = await SessionsAsync(db, tenantId, userId, nowUtc, nowUtc.AddHours(10), ct);
+        DateTime? end = null;
+        foreach (var (start, stop) in sessions)
+        {
+            if (start <= (end ?? nowUtc) && stop > (end ?? nowUtc)) end = stop;
+        }
+        return end;
+    }
+
+    /// <summary>The start of the next free 15 minutes in the person's working hours (not quiet hours, no meeting), within a week.</summary>
+    public static async Task<DateTime?> NextFreeAsync(IAppDbContext db, Guid tenantId, Guid userId, ReminderSettings settings, NodaTime.DateTimeZone tz, DateTime nowUtc, CancellationToken ct)
+    {
+        var cal = new WorkCalendar(settings);
+        var sessions = await SessionsAsync(db, tenantId, userId, nowUtc, nowUtc.AddDays(7), ct);
+        // Start on the next quarter hour, at least 10 minutes from now.
+        var start = nowUtc.AddMinutes(10);
+        start = new DateTime(start.Year, start.Month, start.Day, start.Hour, start.Minute / 15 * 15, 0, DateTimeKind.Utc).AddMinutes(start.Minute % 15 == 0 ? 0 : 15);
+        for (var slot = start; slot < nowUtc.AddDays(7); slot = slot.AddMinutes(15))
+        {
+            var local = ZoneTime.ToLocal(slot, tz);
+            if (!cal.IsGoodTime(local) || !cal.IsGoodTime(local.AddMinutes(14))) continue;
+            if (sessions.Any(s => s.Start < slot.AddMinutes(15) && s.End > slot)) continue;
+            return slot;
+        }
+        return null;
+    }
+}
+

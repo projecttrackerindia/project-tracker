@@ -90,6 +90,30 @@ namespace ProjectManagement.Domain.Entities
     }
 
     /// <summary>How reminders behave for one person (in every workspace). No row = the defaults.</summary>
+    /// <summary>
+    /// A reminder the app offers because of something the person said ("I'll send the estimate by Friday" in chat, an action item given to them
+    /// in a meeting, a promise in an email they sent): one tap makes it a real reminder, otherwise it fades once its time has passed.
+    /// </summary>
+    public class ReminderSuggestion : TenantEntity, ITenantScoped
+    {
+        public Guid UserId { get; set; }
+        public string Title { get; set; } = "";
+        public DateTime FireAtUtc { get; set; }
+        public string TimeZone { get; set; } = "UTC";
+        /// <summary>The same moment as wall-clock time in <see cref="TimeZone"/> (yyyy-MM-ddTHH:mm), as a reminder stores it.</summary>
+        public string LocalAt { get; set; } = "";
+        /// <summary>chat, meeting or email.</summary>
+        public string SourceKind { get; set; } = "chat";
+        /// <summary>Identifies where it came from (one suggestion per promise per message).</summary>
+        public string SourceKey { get; set; } = "";
+        public string? Link { get; set; }
+        /// <summary>What they said, shown with the suggestion.</summary>
+        public string? Quote { get; set; }
+        /// <summary>pending, accepted or dismissed.</summary>
+        public string State { get; set; } = "pending";
+        public Guid? ReminderId { get; set; }
+    }
+
     public class ReminderSettings : Entity
     {
         public Guid UserId { get; set; }

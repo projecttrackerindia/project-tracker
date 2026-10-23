@@ -267,3 +267,23 @@
 .rs-dot.is-tab-only { background: var(--warning); }
 .rs-dot.is-blocked, .rs-dot.is-unsupported { background: var(--danger); }
 @media (max-width: 560px) { .rp-device { flex-wrap: wrap; } .rp-device .btn-primary { width: 100%; } }
+
+/* "Suggested from what you said": reminders offered from promises in chat and email, and meeting action items. */
+.rs { border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border)); background: color-mix(in srgb, var(--primary) 5%, var(--surface)); border-radius: var(--radius); padding: 12px 14px; }
+.rs h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--text); }
+.rs h3 svg { color: var(--primary); }
+.rs h3 em { font-style: normal; font-size: 11px; padding: 0 6px; border-radius: 999px; background: var(--surface-3); color: var(--text-3); }
+.rs ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rs-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); }
+.rs-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.rs-main b { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.rs-when { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-2); }
+.rs-quote { font-size: 12px; color: var(--text-3); overflow-wrap: anywhere; }
+.rs-acts { display: flex; align-items: center; gap: 4px; flex: none; }
+.rs-compact { margin: 8px 10px; padding: 10px; }
+.rs-compact .rs-item { padding: 6px 8px; }
+.rs-compact .rs-main b { font-size: 13px; }
+@media (max-width: 560px) {
+  .rs-item { flex-wrap: wrap; }
+  .rs-acts { width: 100%; justify-content: flex-end; }
+}

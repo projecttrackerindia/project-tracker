@@ -498,6 +498,14 @@ public partial class AppDbContext
             e.Property(x => x.ContentType).HasMaxLength(120);
             e.Property(x => x.StorageKey).HasMaxLength(200);
         });
+        b.Entity<ReminderSuggestion>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.SourceKey }).IsUnique();
+            e.HasIndex(x => new { x.UserId, x.State });
+            e.Property(x => x.Title).HasMaxLength(200); e.Property(x => x.TimeZone).HasMaxLength(60); e.Property(x => x.LocalAt).HasMaxLength(16);
+            e.Property(x => x.SourceKind).HasMaxLength(10); e.Property(x => x.SourceKey).HasMaxLength(120); e.Property(x => x.Link).HasMaxLength(300);
+            e.Property(x => x.Quote).HasMaxLength(300); e.Property(x => x.State).HasMaxLength(12);
+        });
         b.Entity<Reminder>(e =>
         {
             e.HasIndex(x => new { x.State, x.NextFireAt });                 // the scheduler's question: what is due

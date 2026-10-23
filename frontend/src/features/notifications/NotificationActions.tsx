@@ -66,7 +66,14 @@ export function NotificationActions({ n, withSnooze = true, onActed }: { n: AppN
     finally { setBusy(false); }
   };
   const tap = (a: Exclude<NotificationAction, 'snooze'>) => {
-    if (a === 'reply' || a === 'reject') { setWriting(writing === a ? null : a); return; }
+    if (a === 'reply' || a === 'reject') {
+      const opening = writing !== a;
+      setWriting(opening ? a : null);
+      // A follow-up reminder carries a drafted nudge: start the reply from it, ready to send or change.
+      const drafted = a === 'reply' && opening && !text ? /Suggested nudge:\s*(.+)$/m.exec(n.body ?? '')?.[1]?.trim() : undefined;
+      if (drafted) setText(drafted);
+      return;
+    }
     void act(a);
   };
   const isDoc = n.link?.startsWith('/documents/');

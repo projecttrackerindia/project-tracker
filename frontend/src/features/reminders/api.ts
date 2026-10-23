@@ -19,7 +19,8 @@ export interface ReminderList {
   open: Reminder[]; completed: Reminder[]; sent: Reminder[]; counts: ReminderCounts;
   limits: { open: number; recurring: number; openUsed: number; recurringUsed: number };
 }
-export interface ReminderWhen { at?: string | null; timeZone?: string | null; anchorDays?: number | null; anchorTime?: string | null; recurrence?: string | null }
+export interface ReminderWhen { at?: string | null; timeZone?: string | null; anchorDays?: number | null; anchorTime?: string | null; recurrence?: string | null;
+  /** "When I'm free": the next free 15 minutes in working hours, and never inside a meeting. */ free?: boolean }
 export interface SaveReminder {
   title?: string | null; note?: string | null; targetType?: ReminderTarget; targetId?: string | null; forUserId?: string | null;
   when: ReminderWhen; onlyIfOpen?: boolean; exact?: boolean;
@@ -37,6 +38,9 @@ export interface ReminderActionInfo {
 }
 /** What a reminder can be about, as the screens that offer "Remind me" know it. */
 export interface ReminderSubject { type: ReminderTarget; id: string; title: string; key?: string | null; due?: string | null; assigneeId?: string | null; assigneeName?: string | null }
+
+/** A reminder offered from what the person said (a promise in chat or email, a meeting's action item), waiting for one tap. */
+export interface ReminderSuggestion { id: string; title: string; fireAt: string; sourceKind: 'chat' | 'email' | 'meeting' | string; link: string | null; quote: string | null; createdAt: string }
 
 export type SnoozePreset = '10m' | '30m' | '1h' | '3h' | 'evening' | 'tomorrow' | 'nextweek' | 'workday';
 
@@ -57,6 +61,9 @@ export const reminderApi = {
   insights: () => get<ReminderInsights>('/reminders/insights'),
   policy: () => get<ReminderPolicy>('/reminders/policy'),
   savePolicy: (body: { escalationEnabled: boolean; steps: string }) => put<ReminderPolicy>('/reminders/policy', body),
+  suggestions: () => get<ReminderSuggestion[]>('/reminders/suggestions'),
+  acceptSuggestion: (id: string) => post<Reminder>(`/reminders/suggestions/${id}/accept`),
+  dismissSuggestion: (id: string) => post<void>(`/reminders/suggestions/${id}/dismiss`),
   actionInfo: (token: string) => get<ReminderActionInfo>(`/reminder-actions/${encodeURIComponent(token)}`),
   act: (token: string, action: 'done' | 'snooze', preset?: SnoozePreset) => post<ReminderActionInfo>(`/reminder-actions/${encodeURIComponent(token)}`, { action, preset }),
 };

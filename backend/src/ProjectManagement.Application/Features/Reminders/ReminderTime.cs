@@ -44,7 +44,8 @@ public static class ZoneTime
 
 /// <summary>
 /// A repeating rule: the subset of RFC 5545 RRULE that people actually use for reminders - every N days; every N weeks on some weekdays;
-/// every N months on a day of the month, on its last day, or on its last working day. Kept as standard RRULE text so calendars can read it.
+/// every N months on a day of the month, on its last day, or on its last working day; every N years on the start's date (birthdays,
+/// renewals, licences). Kept as standard RRULE text so calendars can read it.
 /// </summary>
 public sealed record RecurrenceRule(string Freq, int Interval, IReadOnlyList<DayOfWeek> ByDay, int? ByMonthDay, bool LastWorkingDay)
 {
@@ -56,7 +57,7 @@ public sealed record RecurrenceRule(string Freq, int Interval, IReadOnlyList<Day
         if (string.IsNullOrWhiteSpace(text) || text.Length > 120) return null;
         var parts = text.Trim().TrimStart().Replace("RRULE:", "", StringComparison.OrdinalIgnoreCase).Split(';', StringSplitOptions.RemoveEmptyEntries)
             .Select(p => p.Split('=', 2)).Where(p => p.Length == 2).ToDictionary(p => p[0].Trim().ToUpperInvariant(), p => p[1].Trim().ToUpperInvariant());
-        if (!parts.TryGetValue("FREQ", out var freq) || freq is not ("DAILY" or "WEEKLY" or "MONTHLY")) return null;
+        if (!parts.TryGetValue("FREQ", out var freq) || freq is not ("DAILY" or "WEEKLY" or "MONTHLY" or "YEARLY")) return null;
         var interval = parts.TryGetValue("INTERVAL", out var iv) ? int.TryParse(iv, out var n) && n is >= 1 and <= 52 ? n : 0 : 1;
         if (interval == 0) return null;
         var days = new List<DayOfWeek>();
@@ -75,6 +76,7 @@ public sealed record RecurrenceRule(string Freq, int Interval, IReadOnlyList<Day
         }
         var lastWorking = freq == "MONTHLY" && parts.TryGetValue("BYSETPOS", out var pos) && pos == "-1" && Weekdays.All(days.Contains) && days.Count == 5;
         if (freq == "MONTHLY" && days.Count > 0 && !lastWorking) return null;   // "the first Monday" and such are not offered
+        if (freq == "YEARLY" && (days.Count > 0 || monthDay != null)) return null;   // yearly repeats on the start's own date
         return new RecurrenceRule(freq, interval, lastWorking ? [] : days.OrderBy(d => ((int)d + 6) % 7).ToList(), monthDay, lastWorking);
     }
 
@@ -96,6 +98,7 @@ public sealed record RecurrenceRule(string Freq, int Interval, IReadOnlyList<Day
         switch (Freq)
         {
             case "DAILY": return Interval == 1 ? "every day" : $"every {Interval} days";
+            case "YEARLY": return $"{Every("year")} on {start.Day} {CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(start.Month)}";
             case "WEEKLY":
                 var days = ByDay.Count > 0 ? ByDay : [start.DayOfWeek];
                 if (Interval == 1 && days.Count == 5 && Weekdays.All(days.Contains)) return "every weekday";
@@ -112,7 +115,8 @@ public sealed record RecurrenceRule(string Freq, int Interval, IReadOnlyList<Day
     {
         var d = inclusive ? after : after.AddDays(1);
         if (d < start) d = start;
-        for (var i = 0; i < 800; i++, d = d.AddDays(1))
+        var horizon = Freq == "YEARLY" ? 366 * Interval + 400 : 800;   // a yearly series can be several years between dates
+        for (var i = 0; i < horizon; i++, d = d.AddDays(1))
             if (Matches(d, start)) return d;
         return null;
     }
@@ -122,6 +126,10 @@ public sealed record RecurrenceRule(string Freq, int Interval, IReadOnlyList<Day
         switch (Freq)
         {
             case "DAILY": return (d.DayNumber - start.DayNumber) % Interval == 0;
+            case "YEARLY":
+                if ((d.Year - start.Year) % Interval != 0 || d.Month != start.Month) return false;
+                // 29 February falls on the 28th in other years.
+                return d.Day == Math.Min(start.Day, DateTime.DaysInMonth(d.Year, d.Month));
             case "WEEKLY":
                 var days = ByDay.Count > 0 ? ByDay : [start.DayOfWeek];
                 if (!days.Contains(d.DayOfWeek)) return false;

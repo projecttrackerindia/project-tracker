@@ -68,6 +68,16 @@ public class ReminderTests(ApiFactory factory)
         Assert.Equal("every 2 weeks on Monday", RecurrenceRule.Parse("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO")!.Describe(new DateOnly(2026, 10, 5)));
         Assert.Null(RecurrenceRule.Parse("FREQ=HOURLY"));
 
+        // Yearly: on the start's date, a 29 February birthday on the 28th in other years, and every N years.
+        var yearly = RecurrenceRule.Parse("FREQ=YEARLY")!;
+        Assert.Equal("every year on 23 October", yearly.Describe(new DateOnly(2026, 10, 23)));
+        Assert.Equal(new DateOnly(2027, 10, 23), yearly.NextDate(new DateOnly(2026, 10, 23), new DateOnly(2026, 10, 23), false));
+        Assert.Equal(new DateOnly(2025, 2, 28), yearly.NextDate(new DateOnly(2024, 3, 1), new DateOnly(2024, 2, 29), true));
+        Assert.Equal(new DateOnly(2029, 4, 1), RecurrenceRule.Parse("FREQ=YEARLY;INTERVAL=3")!.NextDate(new DateOnly(2026, 4, 2), new DateOnly(2026, 4, 1), true));
+        Assert.Null(RecurrenceRule.Parse("FREQ=YEARLY;BYMONTHDAY=5"));
+        var renewal = new Reminder { TimeZone = "Asia/Kolkata", LocalAt = "2026-10-23T10:00", Recurrence = "FREQ=YEARLY" };
+        Assert.Equal(new DateTime(2027, 10, 23, 4, 30, 0, DateTimeKind.Utc), ReminderService.NextOccurrence(renewal, new DateTime(2026, 10, 23, 5, 0, 0, DateTimeKind.Utc)));
+
         var cal = new WorkCalendar(new ReminderSettings());
         Assert.Equal(new DateOnly(2026, 10, 2), cal.WorkingDaysBefore(new DateOnly(2026, 10, 5), 1));   // the working day before Monday is Friday
         Assert.Equal(new DateOnly(2026, 10, 2), cal.WorkingDaysBefore(new DateOnly(2026, 10, 4), 0));   // due on a Sunday: Friday
@@ -349,6 +359,41 @@ public class ReminderTests(ApiFactory factory)
         settings["muteNudges"] = true;
         Assert.True((await o.Dev.Put("/api/v1/reminders/settings", settings)).Ok);
         Assert.Equal("NUDGES_MUTED", (await Remind(o.Owner, new { title = "One more thing", forUserId = o.Dev.UserId, when })).ErrorCode);
+    }
+
+    [Fact]
+    public async Task Reminders_that_may_move_keep_out_of_meetings_and_when_I_am_free_finds_the_next_gap()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Free Finder");
+        await owner.CreateOrgAsync();
+        var tenant = owner.WorkspaceId; var me = owner.UserId;
+        // Monday 7 January 2030 (UTC): meetings 10:00-11:00 and, back to back, 11:00-11:30.
+        DateTime At(int h, int m = 0) => new(2030, 1, 7, h, m, 0, DateTimeKind.Utc);
+        factory.WithDb(db =>
+        {
+            db.WorkspaceMeetings.Add(new WorkspaceMeeting { TenantId = tenant, OrganizerUserId = me, Title = "Planning", StartTimeUtc = At(10), EndTimeUtc = At(11), TimeZone = "UTC", CreatedAt = DateTime.UtcNow });
+            db.WorkspaceMeetings.Add(new WorkspaceMeeting { TenantId = tenant, OrganizerUserId = me, Title = "Review", StartTimeUtc = At(11), EndTimeUtc = At(11, 30), TimeZone = "UTC", CreatedAt = DateTime.UtcNow });
+            db.SaveChanges();
+            return 0;
+        });
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Abstractions.IAppDbContext>();
+            var tz = ZoneTime.Find("UTC");
+            Assert.Equal(At(11, 30), await Busy.MeetingEndAsync(db, tenant, me, At(10, 20), CancellationToken.None));   // back-to-back meetings count as one
+            Assert.Null(await Busy.MeetingEndAsync(db, tenant, me, At(12), CancellationToken.None));
+            Assert.Null(await Busy.MeetingEndAsync(db, tenant, Guid.NewGuid(), At(10, 20), CancellationToken.None));   // someone else is free
+            Assert.Equal(At(9, 30), await Busy.NextFreeAsync(db, tenant, me, new ReminderSettings(), tz, At(9, 15), CancellationToken.None));
+            Assert.Equal(At(11, 30), await Busy.NextFreeAsync(db, tenant, me, new ReminderSettings(), tz, At(9, 50), CancellationToken.None));   // 10:00-11:30 is taken
+            // Saturday: no working hours until Monday 09:00.
+            Assert.Equal(new DateTime(2030, 1, 14, 9, 0, 0, DateTimeKind.Utc),
+                await Busy.NextFreeAsync(db, tenant, me, new ReminderSettings(), tz, new DateTime(2030, 1, 12, 10, 0, 0, DateTimeKind.Utc), CancellationToken.None));
+        }
+
+        // Through the API: "when I'm free" makes a reminder that may move.
+        var free = await owner.Post("/api/v1/reminders", new { title = "Call the bank", when = new { free = true, timeZone = "UTC" } });
+        Assert.True(free.Ok || free.ErrorCode == "REMINDER_NO_FREE_TIME", free.ToString());
+        if (free.Ok) Assert.False(factory.WithDb(db => db.Reminders.IgnoreQueryFilters().Single(r => r.Id == Guid.Parse(free.Data!["id"]!.GetValue<string>())).Exact));
     }
 
     [Fact]
