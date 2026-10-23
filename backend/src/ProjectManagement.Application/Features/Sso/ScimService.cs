@@ -27,7 +27,7 @@ public class ScimException(int status, string detail, string? scimType = null) :
 /// accounts the organization does not own. Implements what Microsoft Entra ID, Okta and OneLogin use: eq filters, paging, PATCH.
 /// </summary>
 public partial class ScimService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, EntitlementService entitlements,
-    WorkspaceProvisioner provisioner, IOptions<AppOptions> options)
+    WorkspaceProvisioner provisioner, IOptions<AppOptions> options, ProjectManagement.Application.Features.Vault.VaultOffboarding vaultOffboarding)
 {
     public const string UserSchema = "urn:ietf:params:scim:schemas:core:2.0:User";
     public const string GroupSchema = "urn:ietf:params:scim:schemas:core:2.0:Group";
@@ -245,6 +245,8 @@ public partial class ScimService(IAppDbContext db, ICurrentContext ctx, AppClock
         db.ProjectMembers.RemoveRange(await db.ProjectMembers.Where(p => p.UserId == userId).ToListAsync(ct));
         db.TeamMembers.RemoveRange(await db.TeamMembers.Where(p => p.UserId == userId).ToListAsync(ct));
         db.TenantMembers.Remove(member);
+        var who = await db.Users.Where(u => u.Id == userId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Someone";
+        await vaultOffboarding.OnLeavingAsync(tid, userId, who, null, ct);
         // Sessions signed in through this organization lose it at once (their next request no longer finds the membership).
         recorder.Audit("member.deprovisioned", "TenantMember", userId, newValue: new { Via = "scim" }, tenantId: tid);
     }

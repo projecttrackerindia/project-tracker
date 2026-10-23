@@ -54,6 +54,7 @@ public static class WebhookEvents
         "meeting.scheduled", "meeting.rescheduled", "meeting.cancelled",
         "reminder.fired", "reminder.completed",
         "whatsapp.chat_started", "whatsapp.handed_over", "whatsapp.ticket_created", "whatsapp.rated",
+        "vault.rotation_due",
         Audit,
     ];
 
@@ -67,7 +68,7 @@ public static class WebhookEvents
         ["task"] = "Project tasks", ["project"] = "Projects", ["milestone"] = "Milestones", ["sprint"] = "Sprints", ["attachment"] = "Files",
         ["member"] = "People", ["team"] = "Teams", ["worktask"] = "Operations tickets", ["timesheet"] = "Timesheets", ["document"] = "DocTracker pages",
         ["issue"] = "Issues", ["actionitem"] = "Action items", ["meeting"] = "Meetings", ["reminder"] = "Reminders about work",
-        ["whatsapp"] = "WhatsApp chats", ["audit"] = "Audit log (for a SIEM)",
+        ["whatsapp"] = "WhatsApp chats", ["vault"] = "Password vault (which credential is due to change, never its value)", ["audit"] = "Audit log (for a SIEM)",
     };
 
     private static readonly Dictionary<string, (string Entity, string Summary, string? Old, string? New)> SampleText = new()
@@ -87,6 +88,7 @@ public static class WebhookEvents
         ["issue.status"] = ("Issue", "Issue PAY-I3: Observed \u2192 Fixed", "Observed", "Fixed"),
         ["meeting.scheduled"] = ("Meeting", "Scheduled \u201cRefunds stand-up\u201d for 24 Oct 10:00", null, null),
         ["actionitem.created"] = ("ActionItem", "Created AI-9 \u201cShare the UAT sign-off\u201d", null, null),
+        ["vault.rotation_due"] = ("VaultItem", "\u201cAWS root account\u201d should be changed by 30 Nov 2026", null, null),
     };
 
     /// <summary>A realistic example of an event's data (the same shape a real delivery has), for the explorer and "send me a test of this event".</summary>

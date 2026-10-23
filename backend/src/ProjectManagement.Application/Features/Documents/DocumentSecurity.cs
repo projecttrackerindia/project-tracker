@@ -108,7 +108,7 @@ public class AuditChainService(IAppDbContext db, AppClock clock, ILogger<AuditCh
 }
 
 /// <summary>Moving every value to a new data key, in batches, so a rotation never blocks reads: old keys keep working until the last value has moved.</summary>
-public class KeyRotationService(IAppDbContext db, AppClock clock, EnvelopeCrypto crypto, ILogger<KeyRotationService> log)
+public class KeyRotationService(IAppDbContext db, AppClock clock, EnvelopeCrypto crypto, ILogger<KeyRotationService> log, ProjectManagement.Application.Features.Vault.VaultJobs vault)
 {
     public const int Batch = 500;
 
@@ -132,7 +132,16 @@ public class KeyRotationService(IAppDbContext db, AppClock clock, EnvelopeCrypto
             moved += rows.Count;
         }
         if (moved > 0) log.LogInformation("Moved {Count} sensitive value(s) of workspace {Tenant} to data key {Version}", moved, tenantId, active.Version);
-        return moved;
+        // The password vault: only the per-item keys are re-wrapped (values, earlier values and files stay encrypted under their item key).
+        var rewrapped = 0;
+        while (moved + rewrapped < max)
+        {
+            var n = await vault.RewrapAsync(tenantId, active.Version, Math.Min(Batch, max - moved - rewrapped), ct);
+            if (n == 0) break;
+            rewrapped += n;
+        }
+        if (rewrapped > 0) log.LogInformation("Re-wrapped {Count} vault key(s) of workspace {Tenant} with data key {Version}", rewrapped, tenantId, active.Version);
+        return moved + rewrapped;
     }
 
     /// <summary>For the nightly job: finish rotations that were cut short, in every workspace that still has values on an old key.</summary>
@@ -140,6 +149,12 @@ public class KeyRotationService(IAppDbContext db, AppClock clock, EnvelopeCrypto
     {
         var tenants = await db.SensitiveValues.IgnoreQueryFilters().Join(db.DocumentKeys.IgnoreQueryFilters().Where(k => k.Active), v => v.TenantId, k => k.TenantId, (v, k) => new { v.TenantId, v.KeyVersion, Active = k.Version })
             .Where(x => x.KeyVersion != x.Active).Select(x => x.TenantId).Distinct().Take(50).ToListAsync(ct);
+        var active = db.DocumentKeys.IgnoreQueryFilters().Where(k => k.Active);
+        var vaultTenants = await db.VaultItems.IgnoreQueryFilters().Join(active, v => v.TenantId, k => k.TenantId, (v, k) => new { v.TenantId, v.KeyVersion, Active = k.Version }).Where(x => x.KeyVersion != x.Active).Select(x => x.TenantId)
+            .Union(db.VaultItemVersions.IgnoreQueryFilters().Join(active, v => v.TenantId, k => k.TenantId, (v, k) => new { v.TenantId, v.KeyVersion, Active = k.Version }).Where(x => x.KeyVersion != x.Active).Select(x => x.TenantId))
+            .Union(db.VaultAttachments.IgnoreQueryFilters().Join(active, v => v.TenantId, k => k.TenantId, (v, k) => new { v.TenantId, v.KeyVersion, Active = k.Version }).Where(x => x.KeyVersion != x.Active).Select(x => x.TenantId))
+            .Distinct().Take(50).ToListAsync(ct);
+        tenants = tenants.Union(vaultTenants).ToList();
         var total = 0;
         foreach (var t in tenants) total += await ReencryptAsync(t, 5000, ct);
         return total;

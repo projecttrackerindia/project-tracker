@@ -49,7 +49,8 @@ public class WorkspaceService(
     IAppDbContext db, ICurrentContext ctx, ITokenService tokens, IEmailSender email, IOptions<AppOptions> options,
     AppClock clock, Recorder recorder, WorkspaceProvisioner provisioner, PermissionService permissions, EntitlementService entitlements,
     ProjectManagement.Application.Features.Organization.ReportingLineService reporting, ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity,
-    ProjectManagement.Application.Features.Consent.ConsentService consent, IPasswordHasher hasher, PasswordPolicyService passwordPolicy, ILogger<WorkspaceService> log)
+    ProjectManagement.Application.Features.Consent.ConsentService consent, IPasswordHasher hasher, PasswordPolicyService passwordPolicy, ILogger<WorkspaceService> log,
+    ProjectManagement.Application.Features.Vault.VaultOffboarding vaultOffboarding)
 {
     private readonly AppOptions _opt = options.Value;
     private const int MaxOwnedOrganizations = 10;
@@ -331,6 +332,8 @@ public class WorkspaceService(
         db.ProjectMembers.RemoveRange(await db.ProjectMembers.Where(p => p.UserId == userId).ToListAsync(ct));
         db.TeamMembers.RemoveRange(await db.TeamMembers.Where(p => p.UserId == userId).ToListAsync(ct));
         db.TenantMembers.Remove(member);
+        // Their own vault locks, their shares go, and anything they read in the last 90 days is marked to be changed.
+        await vaultOffboarding.OnLeavingAsync(tid, userId, member.User!.DisplayName, leaving ? null : ctx.UserId, ct);
         recorder.Audit(leaving ? "member.left" : "member.removed", "TenantMember", member.Id, member.Role.ToString());
         recorder.Activity(leaving ? "member.left" : "member.removed", "Member", userId,
             leaving ? $"{member.User!.DisplayName} left the workspace" : $"{member.User!.DisplayName} was removed from the workspace");

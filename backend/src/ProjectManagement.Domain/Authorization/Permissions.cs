@@ -43,13 +43,17 @@ public static class Permissions
     public const string DocsWorkflow = "docs.workflow";
     /// <summary>Documents: reveal a protected value (a secret) once; every reveal is recorded.</summary>
     public const string DocsSecrets = "docs.secrets.reveal";
+    /// <summary>Password vault: a personal vault, and the collections shared with you (what each allows is set by its access list).</summary>
+    public const string VaultUse = "vault.use";
+    /// <summary>Password vault: the workspace's vault rules, access reviews of people, and 24-hour break-glass access to a shared collection (always announced).</summary>
+    public const string VaultAdmin = "vault.admin";
 
     public static readonly string[] All =
     [
         OrgManage, OrgStructure, AccessManage, BillingManage, MembersInvite, MembersManage, TeamsManage,
         ProjectsCreate, ProjectsEdit, ProjectsDelete, ProjectsViewAll, WorkflowManage, ProjectGroupsManage, LabelsManage,
         WorkCreate, WorkEdit, WorkDelete, WorkTypesManage, TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, AuditView, PermissionsManage,
-        DocsCreate, DocsEdit, DocsDelete, DocsWorkflow, DocsSecrets,
+        DocsCreate, DocsEdit, DocsDelete, DocsWorkflow, DocsSecrets, VaultUse, VaultAdmin,
     ];
 
     /// <summary>Permissions that can never be changed from their defaults.</summary>
@@ -62,16 +66,16 @@ public static class Permissions
         [
             OrgManage, OrgStructure, AccessManage, MembersInvite, MembersManage, TeamsManage, ProjectsCreate, ProjectsEdit, ProjectsDelete, ProjectsViewAll,
             WorkflowManage, ProjectGroupsManage, LabelsManage, WorkCreate, WorkEdit, WorkDelete, WorkTypesManage, TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, AuditView,
-            DocsCreate, DocsEdit, DocsDelete, DocsWorkflow, DocsSecrets,
+            DocsCreate, DocsEdit, DocsDelete, DocsWorkflow, DocsSecrets, VaultUse, VaultAdmin,
         ],
         [TenantRole.Manager] =
         [
             TeamsManage, ProjectsCreate, ProjectsEdit, WorkflowManage, LabelsManage, WorkCreate, WorkEdit, WorkDelete,
-            TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, DocsCreate, DocsEdit, DocsDelete, DocsSecrets,
+            TasksCreate, TasksEdit, TasksDelete, TasksComment, ReportsView, DocsCreate, DocsEdit, DocsDelete, DocsSecrets, VaultUse,
         ],
         // Members can create tasks and comment on any of them, but edit only tasks assigned to them
         // (PermissionService.RequireTaskEditAsync) - TasksEdit here would grant editing everyone's tasks.
-        [TenantRole.Member] = [ProjectsCreate, LabelsManage, WorkCreate, TasksCreate, TasksComment, DocsCreate],
+        [TenantRole.Member] = [ProjectsCreate, LabelsManage, WorkCreate, TasksCreate, TasksComment, DocsCreate, VaultUse],
         [TenantRole.Guest] = [TasksComment],
     };
 

@@ -76,7 +76,11 @@ public static class Modules
         new(Permissions.MembersManage, "Manage members", "Change access levels and remove people.", true),
         new(Permissions.OrgStructure, "Edit the organization chart", "Add and remap roles, place people, set who reports to whom.", true),
         new(Permissions.AccessManage, "Manage job-role access", "Edit this page: decide what each job role can see and do.", true),
+        new(Permissions.VaultUse, "Use the password vault", "A personal vault and the collections shared with them. On unless switched off here (guests never).", false),
     ];
+
+    /// <summary>What every job role can do unless its profile switches it off (not tied to a module's level).</summary>
+    public static readonly string[] Baseline = [Permissions.VaultUse];
 
     public static bool IsDelegable(string permission) => Actions.Any(a => a.Key == permission && a.Delegable);
 
@@ -128,6 +132,7 @@ public sealed class AccessProfile
     {
         var set = new HashSet<string>();
         foreach (var m in Modules.All) foreach (var p in Modules.PermissionsAt(m.Id, Level(m.Id))) set.Add(p);
+        set.UnionWith(Modules.Baseline);
         foreach (var (key, allowed) in Overrides) { if (allowed) set.Add(key); else set.Remove(key); }
         foreach (var locked in Domain.Permissions.Locked) set.Remove(locked);
         return set;
@@ -138,7 +143,7 @@ public sealed class AccessProfile
     {
         var p = new AccessProfile();
         foreach (var m in Modules.All) p.Levels[m.Id] = m.Snap(levels.TryGetValue(m.Id, out var l) ? l : m.DefaultLevel);
-        var implied = new HashSet<string>(Modules.All.SelectMany(m => Modules.PermissionsAt(m.Id, p.Levels[m.Id])));
+        var implied = new HashSet<string>(Modules.All.SelectMany(m => Modules.PermissionsAt(m.Id, p.Levels[m.Id])).Concat(Modules.Baseline));
         foreach (var a in Modules.Actions)
             if (wanted.TryGetValue(a.Key, out var allowed) && allowed != implied.Contains(a.Key)) p.Overrides[a.Key] = allowed;
         return p;

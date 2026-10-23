@@ -48,6 +48,11 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<ApiEndpoint> ApiEndpoints => Set<ApiEndpoint>();
     public DbSet<ApiSnapshot> ApiSnapshots => Set<ApiSnapshot>();
     public DbSet<SensitiveValue> SensitiveValues => Set<SensitiveValue>();
+    public DbSet<VaultCollection> VaultCollections => Set<VaultCollection>();
+    public DbSet<VaultShare> VaultShares => Set<VaultShare>();
+    public DbSet<VaultItem> VaultItems => Set<VaultItem>();
+    public DbSet<VaultItemVersion> VaultItemVersions => Set<VaultItemVersion>();
+    public DbSet<VaultAttachment> VaultAttachments => Set<VaultAttachment>();
     public DbSet<DocumentKey> DocumentKeys => Set<DocumentKey>();
     public DbSet<DocumentView> DocumentViews => Set<DocumentView>();
     public DbSet<DocumentComment> DocumentComments => Set<DocumentComment>();
@@ -271,6 +276,10 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         builder.Properties<AgentSourceKind>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<AgentFindingKind>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<AgentFindingStatus>().HaveConversion<string>().HaveMaxLength(32);
+        builder.Properties<VaultCollectionKind>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<VaultItemKind>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<VaultAccess>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<VaultPrincipal>().HaveConversion<string>().HaveMaxLength(16);
 
         // Everything is UTC. SQLite hands back "unspecified" kinds, which would serialise without a 'Z'.
         builder.Properties<DateTime>().HaveConversion<UtcConverter>();
@@ -304,6 +313,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureSupportWorkflows(b);
         ConfigureAgent(b);
         ConfigureUpi(b);
+        ConfigureVault(b);
         ApplyQueryFilters(b);
     }
 }

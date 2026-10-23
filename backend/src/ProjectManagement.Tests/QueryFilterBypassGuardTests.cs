@@ -13,6 +13,7 @@ public class QueryFilterBypassGuardTests
     [
         "ProjectManagement.Application/Features/Time/PlannedLeaveService.cs", // exact tenant/request tombstone check after person authorization; no cross-tenant read
         "ProjectManagement.Api/Middleware/Middleware.cs",
+        "ProjectManagement.Application/Features/Vault/VaultJobs.cs", // nightly vault work and offboarding: each query names its workspace (or reads only ids to visit each workspace in turn, as that workspace); key re-wrapping per workspace
         "ProjectManagement.Application/Features/Integrations/OAuthService.cs", // token endpoint: grants found by their secret hash, before any workspace exists
         "ProjectManagement.Api/Realtime/ChatHub.cs",
         "ProjectManagement.Application/Features/Admin/AdminService.cs",

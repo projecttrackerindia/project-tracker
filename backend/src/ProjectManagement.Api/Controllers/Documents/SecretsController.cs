@@ -28,23 +28,23 @@ public class SecretsController(SecretService secrets, StepUpService stepUp, Docu
     [HttpGet("documents/{id:guid}/secrets")]
     public async Task<IActionResult> List(Guid id, CancellationToken ct) => Ok(await secrets.ListAsync(id, ct));
 
-    [HttpPost("documents/{id:guid}/secrets")]
+    [HttpPost("documents/{id:guid}/secrets"), SecretResponse]
     public async Task<IActionResult> Add(Guid id, [FromBody] SaveSecretRequest req, CancellationToken ct) => Created(await secrets.SaveAsync(id, null, req, ct));
 
-    [HttpPut("documents/{id:guid}/secrets/{secretId:guid}")]
+    [HttpPut("documents/{id:guid}/secrets/{secretId:guid}"), SecretResponse]
     public async Task<IActionResult> Update(Guid id, Guid secretId, [FromBody] SaveSecretRequest req, CancellationToken ct) => Ok(await secrets.SaveAsync(id, secretId, req, ct));
 
     [HttpDelete("documents/{id:guid}/secrets/{secretId:guid}")]
     public async Task<IActionResult> Delete(Guid id, Guid secretId, CancellationToken ct) => Ok(await secrets.DeleteAsync(id, secretId, ct));
 
-    [HttpPost("documents/{id:guid}/secrets/{secretId:guid}/reveal")]
+    [HttpPost("documents/{id:guid}/secrets/{secretId:guid}/reveal"), SecretResponse]
     public async Task<IActionResult> Reveal(Guid id, Guid secretId, [FromBody] RevealRequest req, CancellationToken ct)
     {
         Response.Headers.CacheControl = "no-store";
         return Ok(await secrets.RevealAsync(id, secretId, req, ct));
     }
 
-    [HttpPost("documents/step-up")]
+    [HttpPost("documents/step-up"), SecretResponse]
     public async Task<IActionResult> StepUp([FromBody] StepUpRequest req, CancellationToken ct)
     {
         Response.Headers.CacheControl = "no-store";

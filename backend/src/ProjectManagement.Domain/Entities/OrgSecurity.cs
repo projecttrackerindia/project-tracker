@@ -24,6 +24,14 @@ public class TenantSecuritySettings : TenantEntity, ITenantScoped
     /// <summary>How long a revealed secret stays on screen before it is masked again (10, 15, 30, 60 or a custom 5-300). Business plans can change it; others use the default.</summary>
     public int RevealSeconds { get; set; } = 15;
 
+    // The password vault's workspace rules.
+    /// <summary>Every reveal, copy or one-time code from the vault needs a two-step check made in the last few minutes.</summary>
+    public bool VaultStepUpAlways { get; set; }
+    /// <summary>A copied value is cleared from the clipboard after this many seconds (10-300).</summary>
+    public int VaultClipboardSeconds { get; set; } = 30;
+    /// <summary>Only vault admins make shared collections.</summary>
+    public bool VaultSharedAdminsOnly { get; set; }
+
     // The tamper-evident audit trail (see AuditChainService): where the verified chain starts after old rows were purged, and how far it was last checked.
     public long? ChainAnchorSeq { get; set; }
     public string? ChainAnchorHash { get; set; }

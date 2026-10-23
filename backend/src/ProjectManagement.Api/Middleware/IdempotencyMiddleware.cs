@@ -32,6 +32,8 @@ public partial class IdempotencyMiddleware(RequestDelegate next)
         var write = HttpMethods.IsPost(method) || HttpMethods.IsPut(method) || HttpMethods.IsPatch(method) || HttpMethods.IsDelete(method);
         var key = http.Request.Headers[Header].ToString();
         if (!write || key.Length == 0 || ctx.UserId is not { } userId) { await next(http); return; }
+        // Secret-bearing endpoints are never stored or replayed (see SecretResponseAttribute): the request runs as if no key had been sent.
+        if (http.GetEndpoint()?.Metadata.GetMetadata<ProjectManagement.Api.Filters.SecretResponseAttribute>() is not null) { await next(http); return; }
         if (!Valid().IsMatch(key))
         {
             await ErrorWriter.WriteAsync(http, 400, "The Idempotency-Key must be 8 to 100 letters, digits or - _ : . characters.",

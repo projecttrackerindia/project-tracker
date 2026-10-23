@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
@@ -379,6 +380,7 @@ public class MaintenanceService(ProjectManagement.Application.Features.Documents
         await StepAsync("search index", () => searchIndex.SweepAsync(ct), ct);   // documents not yet in (or changed since) the search index
         await StepAsync("document reminders", () => documentWorkflows.SendRemindersAsync(ct), ct);   // Business: approvers of overdue review steps are reminded once
         await StepAsync("document freshness", () => freshness.SweepAsync(services, ct), ct);   // pages whose linked work changed since they were last edited: marked, owner told once
+        await StepAsync("password vault", () => services.GetRequiredService<ProjectManagement.Application.Features.Vault.VaultJobs>().RunAsync(services, ct), ct);   // expiry reminders, breach re-checks, bin and locked vaults destroyed after 30 days
     }
 
     private async Task StepAsync(string name, Func<Task> work, CancellationToken ct)

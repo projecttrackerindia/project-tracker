@@ -80,6 +80,11 @@ public interface IAppDbContext
     DbSet<ApiSnapshot> ApiSnapshots { get; }
     DbSet<EndpointRevision> EndpointRevisions { get; }
     DbSet<SensitiveValue> SensitiveValues { get; }
+    DbSet<VaultCollection> VaultCollections { get; }
+    DbSet<VaultShare> VaultShares { get; }
+    DbSet<VaultItem> VaultItems { get; }
+    DbSet<VaultItemVersion> VaultItemVersions { get; }
+    DbSet<VaultAttachment> VaultAttachments { get; }
     DbSet<DocumentKey> DocumentKeys { get; }
     DbSet<DocumentView> DocumentViews { get; }
     DbSet<DocumentComment> DocumentComments { get; }
