@@ -406,7 +406,7 @@ public class AiHomeTools(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             throw new AiToolException(status is null ? "There is no such proposal." : status == AgentFindingStatus.Proposed
                 ? "Only people who may edit that project decide on its proposals." : $"That proposal was already {status.ToString()!.ToLowerInvariant()}.");
         }
-        var what = $"{f.ProjectKey}{(f.TaskKey ?? f.IssueKey) is { } key ? $" · {key}" : ""}";
+        var what = $"{f.ProjectKey}{((f.TaskKey ?? f.IssueKey) is { } key ? $" · {key}" : "")}";
         var summary = approve
             ? $"{what} · carried out with your own rights{(f.NewStatus is { } s ? $"; status → {s}" : "")}{(f.Assignee is { } p ? $"; owner {p.Name}" : "")}{(f.DueDate is { } d ? $"; due {Day(d)}" : "")}"
             : $"{what} · dismissed{(reason is null ? "" : $" ({reason.Replace('_', ' ')})")}; the agent learns from it";
