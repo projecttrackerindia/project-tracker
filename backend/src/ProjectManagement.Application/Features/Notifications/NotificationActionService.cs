@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
+using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Chat;
 using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Features.Support;
@@ -160,7 +161,7 @@ public class NotificationActionService(IAppDbContext db, ICurrentContext ctx, No
             {
                 var d = (await tasks.GetAsync(target, ct)).Task;
                 var t = await tasks.UpdateAsync(target, new UpdateTaskRequest(d.Title, d.Description, d.StatusId, d.Priority, me, d.StartDate, d.DueDate, d.EstimatedHours, d.ActualHours,
-                    d.Labels.Select(l => l.Id).ToList(), d.Version), ct);
+                    d.Labels.Select(l => l.Id).ToList(), d.Version, d.MilestoneId, d.StageId), ct);   // only the assignee changes
                 message = $"{t.Key} is yours now.";
                 break;
             }
