@@ -13,7 +13,7 @@ import { Checklist } from './Checklist';
 import { TargetDocuments } from '../documents/LinkedWork';
 import { CustomFieldsSection } from '../customfields/CustomFieldsSection';
 import { customFieldApi, sprintApi } from '../../api/endpoints';
-import { Avatar, Field, Modal, PageLoader, SubmitButton, PriorityOptions } from '../../components/ui';
+import { Avatar, Field, Modal, PageLoader, SubmitButton, PriorityOptions, PriorityBadge, TaskStatusBadge } from '../../components/ui';
 import { formatDate, formatDateTime, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useCan, useModule, useWorkspaceId , queryClient } from '../../stores/auth';
@@ -23,6 +23,7 @@ import { Select } from '../../components/Select';
 import { DueChangeFields, dueChange } from '../projects/DueChangeFields';
 import { RemindMeButton } from '../reminders/RemindMe';
 import { TaskSuggestionsStrip } from './TaskSuggestionsStrip';
+import './tasks.css';
 
 interface Form {
   title: string; description: string; statusId: string; priority: Priority; assigneeId: string;
@@ -155,9 +156,9 @@ export function TaskModal({ taskId, projectId, statusId, initial, onClose }: { t
   if (isEdit && detail.isError) return <Modal title="Task" onClose={onClose}><div className="form-error">This task could not be loaded. It may have been deleted.</div></Modal>;
 
   return (
-    <Modal size="lg" onClose={onClose}
-      title={isEdit ? `${task?.key} · Edit task` : 'Add new task'}
-      subtitle={isEdit ? (readOnly ? 'You have read-only access to this task.' : 'Update the details of this task.') : 'Create a task and assign it to a project.'}
+    <Modal size="lg" onClose={onClose} className="task-sheet"
+      title={isEdit ? (task?.title ?? 'Task') : 'New task'}
+      subtitle={isEdit ? (readOnly ? 'You have read-only access to this task.' : undefined) : 'Write what needs doing; the rest is optional.'}
       onSubmit={(e) => { e.preventDefault(); setFormError(null); if (!readOnly && validate()) save.mutate(); }}
       footer={<>
         {isEdit && canDelete && <button type="button" className="btn btn-danger" onClick={remove} style={{ marginRight: 'auto' }}><Icon name="trash" /> Delete</button>}
@@ -166,8 +167,17 @@ export function TaskModal({ taskId, projectId, statusId, initial, onClose }: { t
       </>}>
       {task?.parentTaskId && <button type="button" className="link" style={{ marginBottom: 12, fontSize: 12.5 }} onClick={() => setCurrentId(task.parentTaskId!)}>← Back to parent task</button>}
       {isEdit && task && (
-        <div className="rm-bar"><Viewers kind="task" id={task.id} />
-          <RemindMeButton subject={{ type: 'Task', id: task.id, title: task.title, key: task.key, due: task.dueDate, assigneeId: task.assignee?.id, assigneeName: task.assignee?.name }} /></div>
+        // The task at a glance, above its fields: the key, where it stands, how urgent, when it is due.
+        <div className="ts-meta" data-testid="task-sheet-meta">
+          <span className="ts-key">{task.key}</span>
+          <TaskStatusBadge name={task.statusName} category={task.statusCategory} />
+          <PriorityBadge priority={task.priority} />
+          {task.dueDate && <span className={`ds-pill ${task.isOverdue ? 'danger' : ''}`}><Icon name="calendar" size={13} />Due {formatDate(task.dueDate)}</span>}
+          {task.isBlocked && <span className="ds-pill warning">Blocked</span>}
+          <span className="ts-project">{task.projectName}</span>
+          <span className="rm-bar ts-tools"><Viewers kind="task" id={task.id} />
+            <RemindMeButton subject={{ type: 'Task', id: task.id, title: task.title, key: task.key, due: task.dueDate, assigneeId: task.assignee?.id, assigneeName: task.assignee?.name }} /></span>
+        </div>
       )}
       {formError && <div className="form-error" role="alert">{formError}</div>}
 
@@ -328,11 +338,11 @@ function Subtasks({ parent, subtasks, statuses, canCreate, onOpen }: {
   };
 
   return (
-    <section style={{ marginTop: 24 }}>
+    <section className="ts-section">
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-        <h4 style={{ fontSize: 13.5 }}>Subtasks {subtasks.length > 0 && <span className="muted" style={{ fontWeight: 500 }}>· {done} / {subtasks.length} · {pct}%</span>}</h4>
+        <h4 className="ts-h">Subtasks {subtasks.length > 0 && <span className="muted" style={{ fontWeight: 500 }}>· {done} / {subtasks.length} · {pct}%</span>}</h4>
       </div>
-      <div className="member-list" style={{ gap: 6 }}>
+      <div className="member-list ts-subtasks" style={{ gap: 6 }}>
         {subtasks.map((s) => (
           <div className="member-item" key={s.id} style={{ padding: '7px 10px' }}>
             <button type="button" className={`check ${s.statusCategory === 'Done' ? 'checked' : ''}`} disabled={!s.canEdit} onClick={() => toggle(s)} aria-label="Toggle subtask"><Icon name="tick" /></button>
@@ -376,10 +386,10 @@ function Comments({ taskId, canComment, members }: { taskId: string; canComment:
   };
 
   return (
-    <section style={{ marginTop: 24 }}>
-      <h4 style={{ fontSize: 13.5, marginBottom: 10 }}>Comments {q.data && q.data.length > 0 && <span className="muted" style={{ fontWeight: 500 }}>· {q.data.length}</span>}</h4>
+    <section className="ts-section">
+      <h4 className="ts-h">Comments {q.data && q.data.length > 0 && <span className="muted" style={{ fontWeight: 500 }}>· {q.data.length}</span>}</h4>
       <div className="comments">
-        {q.data?.length === 0 && <p className="muted" style={{ fontSize: 12.5 }}>No comments yet.</p>}
+        {q.data?.length === 0 && <p className="muted ts-empty">No comments yet.</p>}
         {q.data?.map((c) => (
           <div className="comment" key={c.id}>
             <Avatar name={c.author.name} size="lg" userId={c.author.id} />

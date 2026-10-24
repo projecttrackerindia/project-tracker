@@ -28,3 +28,91 @@
 .qa-chip button:hover { opacity: 1; background: color-mix(in srgb, var(--primary) 14%, transparent); }
 .qa-keys { margin-left: auto; color: var(--text-3); font-size: 11.5px; }
 @media (max-width: 640px) { .qa-keys { display: none; } }
+
+/* ===================================================================================================== design system pass */
+/* Suggestions: a soft tile, chips as white pills. */
+.tsg-strip { gap: 10px; padding: 12px 14px; border: 0; border-radius: 16px; background: var(--ds-fill); }
+.tsg-strip-head { font-size: 12.5px; color: var(--ds-text-3); }
+.tsg-strip-head svg { color: var(--ds-accent); }
+.tsg-chip { height: 32px; padding: 0 12px; border: 0; border-radius: var(--ds-r-pill); background: var(--ds-surface); color: var(--ds-text); font-size: 13px; box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.tsg-chip:hover { background: var(--ds-surface); box-shadow: var(--ds-e2), 0 0 0 1px var(--ds-line); }
+.tsg-chip b { font-weight: 600; }
+.tsg-chip em { color: var(--ds-accent); font-weight: 600; }
+
+/* Quick add: the floating command input of the design system, what was understood as soft pills under it. */
+.qa { gap: 10px; margin: 0 0 18px; }
+.qa-box { height: 56px; padding: 0 10px 0 22px; border: 0; border-radius: 24px; background: var(--ds-surface); color: var(--ds-text-3); box-shadow: var(--ds-e3); }
+.qa-box:focus-within { border: 0; box-shadow: var(--ds-e3), 0 0 0 4px rgba(0, 113, 227, .14); }
+.qa-box input { font-size: 16px; color: var(--ds-text); }
+.qa-box input::placeholder { color: var(--ds-text-3); }
+.qa-preview { padding: 0 10px; font-size: 13px; }
+.qa-chip { height: 28px; padding: 0 6px 0 10px; border-radius: var(--ds-r-pill); background: var(--ds-accent-soft); color: var(--ds-accent-text); font-weight: 500; }
+.qa-keys { font-size: 12px; color: var(--ds-text-4); }
+
+/* The task as a calm sheet: the key and where it stands in pills above, the big title in the sheet's head, the facts as
+   label-left / value-right rows with hairlines between them, then checklist, subtasks and comments as soft sections. */
+.task-sheet .modal { max-width: 820px; }
+.task-sheet .modal-head h3 { font-size: clamp(22px, 2.4vw, 28px); font-weight: 700; letter-spacing: -.025em; line-height: 1.15; overflow-wrap: anywhere; }
+.ts-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -4px 0 18px; }
+.ts-key { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: var(--ds-r-pill); background: var(--ds-fill); color: var(--ds-text-2); font-family: var(--mono); font-size: 12px; font-weight: 500; }
+.ts-meta .ds-pill { height: 26px; padding: 0 11px; font-size: 12px; }
+.ts-meta .ds-pill svg { width: 13px; height: 13px; }
+.ts-project { margin-left: auto; font-size: 13px; color: var(--ds-text-3); max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-sheet .ts-tools { margin: 0; gap: 8px; }
+.task-sheet .ts-tools > :first-child:not(.rm-wrap) { margin-right: 0; }
+.task-sheet .ts-tools .btn { min-height: 32px; padding: 0 12px; font-size: 13px; }
+
+.task-sheet .form-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.task-sheet .form-grid > .field.full { padding: 6px 0 16px; }
+.task-sheet .form-grid > .field.full + .field:not(.full) { border-top: 1px solid var(--ds-line); }
+.task-sheet .form-grid > .field:not(.full) {
+  display: grid; grid-template-columns: 160px minmax(0, 1fr); align-items: center; column-gap: 16px; min-height: 56px; padding: 8px 0;
+  border-bottom: 1px solid var(--ds-line);
+}
+.task-sheet .form-grid > .field:not(.full) > label { margin: 0; font-size: 14px; font-weight: 500; color: var(--ds-text-2); }
+.task-sheet .form-grid > .field:not(.full) > :is(.field-hint, .field-error) { grid-column: 2; margin-top: 4px; }
+.task-sheet .form-grid > .field:not(.full) :is(.input, .select, .ss-trigger) { min-height: 40px; height: 40px; border-color: transparent; background-color: var(--ds-fill); border-radius: 10px; font-size: 14.5px; }
+.task-sheet .form-grid > .field:not(.full) :is(.input, .select, .ss-trigger):hover { border-color: transparent; background-color: var(--ds-fill-strong); }
+.task-sheet .form-grid > .field:not(.full) :is(.input, .select, .ss-trigger):focus { background-color: var(--ds-surface); border-color: var(--ds-accent); }
+html[data-theme='dark'] .task-sheet .form-grid > .field:not(.full) :is(.input, .select, .ss-trigger) { background-color: var(--ds-fill); border-color: transparent; }
+.task-sheet .more-toggle { margin-top: 14px; border: 0; border-radius: 14px; background: var(--ds-fill); color: var(--ds-text); font-weight: 500; padding: 10px 14px; }
+.task-sheet .more-toggle:hover { background: var(--ds-fill-strong); }
+.task-sheet .more-toggle svg { color: var(--ds-accent); }
+.task-sheet .more-toggle span { color: var(--ds-text-3); }
+
+.ts-section { margin-top: 28px; }
+.ts-h, .task-sheet .checklist-head h4 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; color: var(--ds-text); margin: 0 0 10px; }
+.ts-h .muted { font-size: 14px; }
+.ts-empty { font-size: 14px; color: var(--ds-text-3); }
+
+/* checklist: a soft tile, round checks that fill blue */
+.task-sheet .checklist { margin-top: 24px; padding: 16px 18px; border: 0; border-radius: 18px; background: var(--ds-fill); }
+.task-sheet .checklist-head h4 svg { color: var(--ds-text-3); }
+.task-sheet .checklist-item { gap: 12px; min-height: 44px; padding: 6px 2px; border-top-color: var(--ds-line); }
+.task-sheet .checklist-text { font-size: 14.5px; }
+.task-sheet .checklist-item input[type=checkbox], .task-sheet .ts-subtasks .check {
+  appearance: none; -webkit-appearance: none; width: 22px; height: 22px; margin: 0; flex: none; border-radius: 50%; border: 1.5px solid var(--ds-outline);
+  background: var(--ds-surface); display: grid; place-items: center; cursor: pointer; box-shadow: none; transition: background-color .16s var(--ds-ease), border-color .16s var(--ds-ease);
+}
+.task-sheet .checklist-item input[type=checkbox]:checked { background: var(--primary-fill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center / 14px no-repeat; border-color: transparent; }
+.task-sheet .ts-subtasks .check svg { width: 13px; height: 13px; opacity: 0; }
+.task-sheet .ts-subtasks .check.checked { background: var(--primary-fill); border-color: transparent; box-shadow: none; color: #fff; }
+.task-sheet .ts-subtasks .check.checked svg { opacity: 1; }
+.task-sheet .checklist-add .input { background: var(--ds-surface); }
+.task-sheet .ts-subtasks .member-item { min-height: 48px; border: 0; border-radius: 14px; background: var(--ds-fill); }
+.task-sheet .ts-subtasks .member-name { font-size: 14.5px; font-weight: 500; }
+
+/* comments: soft tiles */
+.task-sheet .comments { display: grid; gap: 12px; }
+.task-sheet .comment { gap: 12px; }
+.task-sheet .comment-bubble { padding: 12px 16px; border: 0; border-radius: 18px 18px 18px 6px; background: var(--ds-fill); }
+.task-sheet .comment-head { font-size: 12.5px; margin-bottom: 4px; }
+.task-sheet .comment-head b { font-size: 13.5px; font-weight: 600; }
+.task-sheet .comment-body { font-size: 14.5px; color: var(--ds-text); line-height: 1.5; }
+
+@media (max-width: 640px) {
+  .task-sheet .form-grid > .field:not(.full) { grid-template-columns: minmax(0, 1fr); row-gap: 6px; padding: 10px 0; }
+  .task-sheet .form-grid > .field:not(.full) > :is(.field-hint, .field-error) { grid-column: 1; }
+  .ts-project { margin-left: 0; max-width: 100%; flex-basis: 100%; }
+  .qa-box { height: 52px; border-radius: 20px; padding-left: 18px; }
+}

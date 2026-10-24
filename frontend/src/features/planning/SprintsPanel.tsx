@@ -11,6 +11,7 @@ import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { Burndown } from './Burndown';
 import { Select } from '../../components/Select';
+import './planning.css';
 
 const tone = (s: Sprint['status']) => (s === 'Active' ? 'success' : s === 'Completed' ? 'neutral' : 'info');
 

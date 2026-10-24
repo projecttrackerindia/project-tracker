@@ -166,3 +166,96 @@
 .ag-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin: 0 3px 0 6px; vertical-align: middle; }
 .ag-dot:first-child { margin-left: 0; }
 .ag-credits-head svg { display: inline-block; vertical-align: -2px; color: var(--primary); }
+
+/* ===================================================================================================== design system pass
+   Findings read as decision cards: a coloured eyebrow says what kind of proposal it is, a confident title, one grey line, the
+   quoted evidence in a soft tile, facts as quiet pills, then the actions. No side stripes; colour is only the eyebrow. */
+.ag-main, .ag-list { gap: 16px; }
+.ag-side { gap: 16px; }
+.ag-summary { padding: 14px 18px; border-radius: 16px; background: var(--ds-surface); color: var(--ds-text-2); font-size: 14.5px; box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.ag-summary svg { color: var(--ds-accent); }
+.ag-count, html .seg em.ag-count, html .ds-seg em.ag-count { background: var(--primary-fill); color: #fff; font-weight: 600; }
+
+.ag-card { padding: 22px 24px 18px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.ag-card::before { content: none; }
+.ag-info { --ag: var(--ds-info); --ag-soft: var(--ds-info-bg); }
+.ag-purple { --ag: var(--ds-progress); --ag-soft: var(--ds-progress-bg); }
+.ag-danger { --ag: var(--ds-danger); --ag-soft: var(--ds-danger-bg); }
+.ag-warning { --ag: var(--ds-warning); --ag-soft: var(--ds-warning-bg); }
+.ag-success { --ag: var(--ds-success); --ag-soft: var(--ds-success-bg); }
+.ag-neutral { --ag: var(--ds-text-3); --ag-soft: var(--ds-fill); }
+.ag-closed { opacity: 1; box-shadow: 0 0 0 1px var(--ds-line); background: var(--ds-surface-2); }
+.ag-card-head { gap: 10px; }
+.ag-kind { height: auto; padding: 0; border-radius: 0; background: none; color: var(--ag); font-size: 13.5px; font-weight: 600; letter-spacing: 0; gap: 6px; }
+.ag-project { font-size: 13px; font-weight: 500; color: var(--ds-text-3); }
+.ag-conf { font-size: 12px; font-weight: 600; color: var(--ds-text-3); background: var(--ds-fill); padding: 3px 9px; border-radius: var(--ds-r-pill); }
+.ag-auto { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: var(--ds-r-pill); background: var(--ds-fill); color: var(--ds-text-2); font-size: 12px; font-weight: 500; }
+.ag-unchecked { height: auto; padding: 3px 10px; border-radius: var(--ds-r-pill); background: var(--ds-warning-bg); color: var(--ds-warning); font-size: 12px; font-weight: 600; }
+.ag-title { margin-top: 6px; font-size: 19px; font-weight: 700; letter-spacing: -.015em; line-height: 1.3; color: var(--ds-text); }
+.ag-detail { margin-top: 6px; font-size: 14.5px; line-height: 1.5; color: var(--ds-text-3); }
+.ag-quote { margin-top: 14px; padding: 12px 16px; border-left: 0; border-radius: 14px; background: var(--ds-fill); }
+.ag-quote p { font-size: 14px; font-style: normal; color: var(--ds-text); }
+.ag-quote footer { margin-top: 6px; font-size: 12.5px; color: var(--ds-text-3); }
+.ag-chips { gap: 8px; margin-top: 14px; }
+.ag-chip { height: 28px; padding: 0 11px; border: 0; border-radius: var(--ds-r-pill); background: var(--ds-fill); color: var(--ds-text-2); font-size: 12.5px; font-weight: 500; }
+.ag-chip-link { color: var(--ds-accent); }
+.ag-chip-link:hover { background: var(--ds-accent-soft); color: var(--ds-accent); border: 0; }
+.ag-comment { margin-top: 10px; font-size: 14px; color: var(--ds-text-2); }
+.ag-edit { border-top: 1px solid var(--ds-line); margin-top: 16px; padding-top: 16px; }
+.ag-card-foot { gap: 8px; margin-top: 18px; }
+.ag-when { font-size: 12.5px; color: var(--ds-text-3); }
+.ag-reasons { padding: 12px 14px; border-radius: 16px; background: var(--ds-fill); }
+.ag-reasons > span { font-size: 13px; font-weight: 500; color: var(--ds-text-3); }
+.ag-reason { height: 32px; padding: 0 14px; border: 0; border-radius: var(--ds-r-pill); background: var(--ds-surface); color: var(--ds-text); font-weight: 500; box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.ag-reason:hover:not(:disabled) { background: var(--ds-danger-bg); color: var(--ds-danger); box-shadow: none; }
+.ag-reason-skip { color: var(--ds-text-3); box-shadow: none; background: transparent; }
+.ag-link { color: var(--ds-accent); font-weight: 500; font-size: 13px; }
+
+/* the side panels: quiet headings, soft tiles, toggles in rows */
+.ag-panel { padding: 20px 22px; gap: 12px; }
+.ag-panel-head h3 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.ag-panel-head h3 svg, .ag-panel-title svg, .ag-settings-title svg, .ag-credits-head svg { color: var(--ds-text-3); }
+.ag-panel-title { font-size: 15px; font-weight: 600; }
+.ag-meta { font-size: 12.5px; color: var(--ds-text-3); }
+.ag-hint { font-size: 13.5px; color: var(--ds-text-2); }
+.ag-hint a { color: var(--ds-accent); font-weight: 500; }
+.ag-address { border: 0; border-radius: 12px; background: var(--ds-fill); padding: 6px 6px 6px 14px; }
+.ag-sources li { border-bottom-color: var(--ds-line); padding: 10px 0; }
+.ag-sources b { font-size: 14px; font-weight: 500; }
+.ag-sources small { font-size: 12.5px; }
+.ag-runs li span { font-weight: 500; }
+.ag-credits { border-top: 1px solid var(--ds-line); }
+.ag-credits-bar { height: 6px; border-radius: 3px; background: var(--ds-fill); }
+.ag-credits-bar i { background: var(--ds-accent); border-radius: 3px; }
+.ag-credits-bar.warn i { background: #E8A33D; }
+.ag-credits-bar.bad i { background: var(--ds-danger); }
+.ag-hint-bad { color: var(--ds-danger); }
+.ag-earned { border: 0; border-radius: 16px; background: var(--ds-accent-soft); padding: 14px 16px; }
+.ag-earned-mark { background: var(--primary-fill); border-radius: 9px; }
+.ag-earned p { font-size: 13.5px; }
+.ag-trust-bar { height: 6px; border-radius: 3px; background: var(--ds-fill); }
+.ag-trust-bar .ok, .ag-dot.ok { background: var(--ds-success); }
+.ag-trust-bar .edit, .ag-dot.edit { background: #E8A33D; }
+.ag-trust-bar .no, .ag-dot.no { background: var(--ds-danger); }
+.ag-trust-list li > div:first-child span { font-weight: 500; }
+
+/* switched off: an invitation */
+.ag-intro { gap: 22px; padding: 32px; }
+.ag-intro-mark { width: 64px; height: 64px; border-radius: 18px; background: linear-gradient(180deg, color-mix(in srgb, var(--ds-accent-soft) 70%, var(--ds-surface)), var(--ds-accent-soft)); color: var(--ds-accent); }
+.ag-intro-text h3 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.ag-intro-text > p { font-size: 15px; color: var(--ds-text-3); line-height: 1.5; }
+.ag-intro-list li { font-size: 14px; }
+.ag-intro-list svg { color: var(--ds-success); }
+
+/* settings page: provider choices as choice cards, callouts as soft tiles */
+.ag-settings-title { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.ag-callout { border-radius: 14px; padding: 12px 14px; background: var(--ds-info-bg); font-size: 14px; }
+.ag-callout svg { color: var(--ds-info); }
+.ag-callout.ok { background: var(--ds-success-bg); }
+.ag-callout.ok svg { color: var(--ds-success); }
+.ag-provider { border: 0; border-radius: 16px; background: var(--ds-fill); padding: 14px 16px; transition: box-shadow .2s var(--ds-ease), background-color .16s var(--ds-ease); }
+.ag-provider.on { background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+.ag-provider b { font-weight: 600; font-size: 14.5px; }
+.ag-provider small { font-size: 12.5px; color: var(--ds-text-3); }
+.ag-bot-notes svg { color: var(--ds-text-3); }
+@media (max-width: 640px) { .ag-card { padding: 18px 18px 16px; border-radius: 20px; } .ag-title { font-size: 17px; } .ag-intro { padding: 22px 18px; } }

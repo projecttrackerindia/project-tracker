@@ -7,7 +7,7 @@ import { ApiError } from '../../api/client';
 import { adminApi } from '../../api/endpoints';
 import type { AdminPlan, AdminUser, SubscriptionStatus } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Badge, EmptyState, ErrorState, Field, Modal, PageHead, PageLoader, Pager, RoleBadge, StatCard, SubmitButton } from '../../components/ui';
+import { Badge, EmptyState, ErrorState, Field, Kpi, Modal, PageHead, PageLoader, Pager, RoleBadge, SubmitButton } from '../../components/ui';
 import { FEATURE_LABELS, currencySymbol, formatDate, formatMoney, limitLabel, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
@@ -65,15 +65,16 @@ function Overview() {
   return (
     <>
       <GoLiveNotice />
-      <div className="stat-grid">
-        <StatCard icon="users" tone="blue" value={s.users} label="Users" foot={`${s.activeUsers} active`} />
-        <StatCard icon="building" tone="purple" value={s.organizations} label="Organizations" foot={`${s.personalWorkspaces} personal workspaces`} />
-        <StatCard icon="monitor" tone="green" value={s.activeSessions} label="Active sessions" />
-        <StatCard icon="alert" tone="amber" value={s.suspendedTenants} label="Suspended workspaces" />
-        <StatCard icon="trash" tone="red" value={s.deletedTenants} label="Deleted organizations" foot="Retained — can be restored" />
+      {/* The platform at a glance: big numbers, coloured only where the colour means something. */}
+      <div className="ds-kpis mb-22">
+        <Kpi label="Users" value={s.users} caption={`${s.activeUsers} active`} />
+        <Kpi label="Organizations" value={s.organizations} caption={`${s.personalWorkspaces} personal workspaces`} />
+        <Kpi label="Active sessions" value={s.activeSessions} />
+        <Kpi label="Suspended workspaces" value={s.suspendedTenants} tone={s.suspendedTenants ? 'warning' : undefined} caption={s.suspendedTenants ? 'Members cannot sign in' : 'None suspended'} />
+        <Kpi label="Deleted organizations" value={s.deletedTenants} tone={s.deletedTenants ? 'danger' : undefined} caption="Retained and can be restored" />
       </div>
       <div className="card"><div className="card-head"><h3>Subscriptions by plan</h3></div><div className="card-body">
-        <div className="grid-3">{s.subscriptions.map((p) => <StatCard key={p.planCode} value={p.count} label={p.planCode} />)}</div>
+        <div className="ds-kpis">{s.subscriptions.map((p) => <Kpi key={p.planCode} tile label={p.planCode} value={p.count} />)}</div>
       </div></div>
     </>
   );

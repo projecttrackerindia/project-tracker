@@ -8,6 +8,7 @@ import { useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { Select } from '../../components/Select';
+import './planning.css';
 
 export const DEPENDENCY_TYPES: { id: DependencyType; label: string; hint: string }[] = [
   { id: 'FinishToStart', label: 'Finish → Start', hint: 'This task cannot start until the other one is finished.' },

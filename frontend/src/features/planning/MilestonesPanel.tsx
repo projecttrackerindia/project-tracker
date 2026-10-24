@@ -10,6 +10,7 @@ import { useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { Select } from '../../components/Select';
+import './planning.css';
 
 /** Dated checkpoints of a project, each optionally marking one of its timeline stages, with progress from the tasks that count towards it. */
 export function MilestonesPanel({ projectId, canEdit, stages = [] }: { projectId: string; canEdit: boolean; stages?: Stage[] }) {
