@@ -603,7 +603,7 @@ html .account-dock:hover, html .account-dock[aria-expanded='true'] { background:
 html[data-theme='dark'] .account-dock { background: var(--ds-surface-2); }
 
 /* the top bar: one search pill, then teams, theme and bell as quiet circles */
-html .topbar { background: color-mix(in srgb, var(--ds-bg) 92%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 0; box-shadow: none; padding-inline: 28px; gap: 14px; }
+html .topbar { background: var(--ds-bg); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 0; box-shadow: none; padding-inline: 28px; gap: 14px; }
 html .topbar > .icon-btn:first-child { background: transparent; box-shadow: none; }
 html .topbar > .icon-btn:first-child:hover { background: var(--ds-fill); }
 html .global-search { max-width: 440px; }
@@ -667,7 +667,7 @@ html .toast.success .toast-ico { color: var(--ds-success); } html .toast.error .
 
 /* phone chrome: a glass top bar, a floating glass tab bar, one blue create button */
 @media (max-width: 768px) {
-  html .m-top, html[data-theme='dark'] .m-top { background: color-mix(in srgb, var(--ds-bg) 92%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid transparent; }
+  html .m-top, html[data-theme='dark'] .m-top { background: var(--ds-bg); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid transparent; }
   html .m-top.scrolled { border-bottom-color: var(--ds-line); box-shadow: none; }
   html .m-pill, html[data-theme='dark'] .m-pill { background: var(--ds-glass); backdrop-filter: saturate(180%) blur(24px); -webkit-backdrop-filter: saturate(180%) blur(24px); border: 0; box-shadow: var(--ds-e3); border-radius: 26px; }
   html .m-tab { color: var(--ds-text-3); border-radius: 18px; }
