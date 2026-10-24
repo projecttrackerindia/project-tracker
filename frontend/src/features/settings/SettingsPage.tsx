@@ -48,7 +48,7 @@ import { DirectoryPanel, InvitationsPanel } from '../members/MembersPage';
 import { LastChanged, SectionHistory, SettingsHome, SettingsSearch, useSettingJump, useSetupHealth } from './SettingsCenter';
 import { NotificationDefaultsSection } from './NotificationDefaults';
 import { MobileAppSection } from './MobileAppSection';
-import { GoogleIntegrationSection } from './GoogleIntegration';
+import { ConnectedAccountsSection } from './ConnectedAccounts';
 import { AiUsageCard } from '../ai/AiUsageCard';
 import { SlackSettings } from './SlackSettings';
 import { WhatsAppSettings } from './WhatsAppSettings';
@@ -89,7 +89,7 @@ export function AccountPage({ section }: { section: AccountSection }) {
       {section === 'profile' && <ProfileSection />}
       {section === 'security' && <SecuritySection />}
       {section === 'mobile' && <MobileAppSection />}
-      {section === 'integrations' && <GoogleIntegrationSection />}
+      {section === 'integrations' && <ConnectedAccountsSection />}
       {section === 'resumes' && <Suspense fallback={<PageLoader />}><ResumeBuilderSection /></Suspense>}
     </SectionLayout>
   );

@@ -11,6 +11,13 @@ namespace ProjectManagement.Domain.Enums
     public enum AttendeeRsvpStatus { NeedsAction, Accepted, Declined, Tentative }
 
     public enum MeetingParticipantRole { Organizer, Attendee }
+
+    /// <summary>
+    /// Where a meeting lives. Google: an event on the organizer's Google Calendar with a Meet link. Microsoft: an event on their Outlook
+    /// calendar with a Teams meeting. ProjectTracker: our own call (our media server, the project agent joins without any lobby) with no
+    /// outside calendar. The event id and join address fields hold that service's values.
+    /// </summary>
+    public enum MeetingProvider { Google = 0, Microsoft = 1, ProjectTracker = 2 }
 }
 
 namespace ProjectManagement.Domain.Entities
@@ -34,6 +41,8 @@ namespace ProjectManagement.Domain.Entities
         public string? RecurrenceRule { get; set; }
         public string? CalendarUrl { get; set; }
         public MeetingStatus Status { get; set; } = MeetingStatus.Scheduled;
+        /// <summary>Which service holds the meeting; <see cref="GoogleCalendarEventId"/> and <see cref="GoogleMeetUri"/> are that service's event id and join address.</summary>
+        public MeetingProvider Provider { get; set; } = MeetingProvider.Google;
         public string GoogleCalendarEventId { get; set; } = "";
         /// <summary>The Meet space's resource name ("spaces/{id}"), when created through the Meet API rather than only Calendar conferenceData.</summary>
         public string? GoogleMeetSpaceName { get; set; }
@@ -65,6 +74,8 @@ namespace ProjectManagement.Domain.Entities
         public string? RecurrenceRule { get; set; }
         public string? CalendarUrl { get; set; }
         public MeetingStatus Status { get; set; } = MeetingStatus.Scheduled;
+        /// <summary>Which service holds the meeting (see <see cref="ProjectMeeting.Provider"/>).</summary>
+        public MeetingProvider Provider { get; set; } = MeetingProvider.Google;
         public string GoogleCalendarEventId { get; set; } = "";
         public string GoogleMeetUri { get; set; } = "";
         public bool IsScrum { get; set; }

@@ -175,7 +175,9 @@ public class ProjectAgentAccuracyTests(ApiFactory factory)
         try
         {
             var (owner, project, ravi, _) = await SetupAsync("Auto Desk");
-            // One consent with the organizer's own Google account: read Meet transcripts and switch them on. No account or mailbox for a bot.
+            // Calendar and Meet first, then one consent with the organizer's own Google account: read Meet transcripts and switch them on.
+            // No account or mailbox for a bot.
+            await ConnectGoogleAsync(owner);
             var start = await owner.Get("/api/v1/integrations/google/connect?autoTranscripts=true");
             Assert.True(start.Ok, start.ToString());
             Assert.Contains("meetings.space.settings", Uri.UnescapeDataString(start.Data!["url"]!.GetValue<string>()));

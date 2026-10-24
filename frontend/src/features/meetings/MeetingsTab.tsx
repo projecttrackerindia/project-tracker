@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { ApiError } from '../../api/client';
 import { meetingApi } from '../../api/endpoints';
@@ -142,17 +143,20 @@ function MeetingCard({ m, projectId, canManage, onCancelled }: { m: Meeting; pro
   return (
     <article className="card gm-card">
       <div className="gm-card-head">
-        <h4>{m.title}</h4>{m.isScrum && <Badge tone="neutral">Stand-up</Badge>}{m.recurrenceRule && <Badge tone="info">Recurring</Badge>}
+        <h4>{m.title}</h4>{m.providerName && <Badge tone="neutral">{m.providerName}</Badge>}{m.isScrum && <Badge tone="neutral">Stand-up</Badge>}{m.recurrenceRule && <Badge tone="info">Recurring</Badge>}
         {m.status === 'Cancelled' ? <Badge tone="danger">Cancelled</Badge> : <LiveStatus m={m} />}
       </div>
       <p className="muted" style={{ fontSize: 13.5 }}>{m.recurrenceRule && 'First session: '}{formatDateTime(m.startTime)} – {formatDateTime(m.endTime)}</p>
       <p className="muted" style={{ fontSize: 13 }}>Organizer: {m.organizerName} · {m.participants.length} participant{m.participants.length === 1 ? '' : 's'}</p>
-      {m.recurrenceRule && <p className="gm-invite-note">{m.recurrenceRule.includes('BYDAY') ? 'Weekdays' : m.recurrenceRule.includes('DAILY') ? 'Daily' : 'Weekly'} · {m.recurrenceRule.split('COUNT=')[1]} sessions. View upcoming dates and exceptions in Google Calendar.</p>}
-      <RsvpSummary participants={m.participants} />
+      {m.recurrenceRule && <p className="gm-invite-note">{m.recurrenceRule.includes('BYDAY') ? 'Weekdays' : m.recurrenceRule.includes('DAILY') ? 'Daily' : 'Weekly'} · {m.recurrenceRule.split('COUNT=')[1]} sessions.{m.provider === 'ours' ? '' : ` View upcoming dates and exceptions in ${m.provider === 'microsoft' ? 'Outlook' : 'Google Calendar'}.`}</p>}
+      {m.provider !== 'ours' && <RsvpSummary participants={m.participants} />}
       {m.description && <p style={{ fontSize: 13.5, marginTop: 8 }}>{m.description}</p>}
       <div className="gm-card-actions">
-        {(m.calendarUrl?.startsWith('https://calendar.google.com/') || m.calendarUrl?.startsWith('https://www.google.com/calendar/')) && <a className="btn btn-ghost btn-sm" href={m.calendarUrl} target="_blank" rel="noopener noreferrer"><Icon name="calendar" size={14} /> Open calendar</a>}
-        {m.status === 'Scheduled' && <a className="btn btn-primary btn-sm" href={m.meetUri} target="_blank" rel="noopener noreferrer"><Icon name="video" size={14} /> Join</a>}
+        {(m.calendarUrl?.startsWith('https://calendar.google.com/') || m.calendarUrl?.startsWith('https://www.google.com/calendar/') || m.calendarUrl?.startsWith('https://outlook.office365.com/') || m.calendarUrl?.startsWith('https://outlook.live.com/')) && <a className="btn btn-ghost btn-sm" href={m.calendarUrl} target="_blank" rel="noopener noreferrer"><Icon name="calendar" size={14} /> Open calendar</a>}
+        {m.status === 'Scheduled' && (m.provider === 'ours'
+          // A Project Tracker call opens here; Google Meet and Teams open in a new tab.
+          ? <Link className="btn btn-primary btn-sm" to={m.meetUri}><Icon name="video" size={14} /> Join call</Link>
+          : <a className="btn btn-primary btn-sm" href={m.meetUri} target="_blank" rel="noopener noreferrer" title={m.providerName}><Icon name="video" size={14} /> Join</a>)}
         {m.status === 'Scheduled' && canManage && m.isScrum && <button type="button" className="btn btn-ghost btn-sm" disabled={posting} onClick={() => void postSummary()} title="Post what got done, what is in progress and what is overdue to the project chat">{posting && <span className="spinner" />}<Icon name="message" size={14} /> Post summary</button>}
         {m.status === 'Scheduled' && canManage && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setManaging(true)}>Manage</button>}
         {m.status === 'Scheduled' && canManage && <button type="button" className="btn btn-ghost btn-sm" onClick={() => void cancel()}>{m.recurrenceRule ? 'Cancel series' : 'Cancel'}</button>}
@@ -162,7 +166,7 @@ function MeetingCard({ m, projectId, canManage, onCancelled }: { m: Meeting; pro
   );
 }
 
-/** Project > Meetings (spec section 9): every Google Meet organized from this project, upcoming first. */
+/** Project > Meetings (spec section 9): every meeting organized from this project (Google Meet, Teams or Project Tracker call), upcoming first. */
 export function MeetingsTab({ projectId }: { projectId: string }) {
   const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx!.user.id);
@@ -177,7 +181,7 @@ export function MeetingsTab({ projectId }: { projectId: string }) {
   const past = meetings.filter((m) => m.status !== 'Scheduled' || (!m.recurrenceRule && new Date(m.endTime).getTime() < now)).sort((a, b) => b.startTime.localeCompare(a.startTime));
   const refresh = () => invalidateWorkspace(wid, 'meetings', projectId);
 
-  if (meetings.length === 0) return <EmptyState icon="video" title="No meetings yet" text='Start or schedule a Google Meet from the "Google Meet" button above.' />;
+  if (meetings.length === 0) return <EmptyState icon="video" title="No meetings yet" text='Start or schedule one from the "Meeting" button above.' />;
 
   return (
     <div className="gm-tab">

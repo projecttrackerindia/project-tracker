@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { integrationsApi, meetingApi, projectApi } from '../../api/endpoints';
-import type { MeetingParticipant } from '../../api/types';
+import { connectedAccountsApi, meetingApi, projectApi, type MeetingServiceKey } from '../../api/endpoints';
+import type { MeetingParticipant, MeetingProvider } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { ErrorState, Field, Modal, PageLoader } from '../../components/ui';
 import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
@@ -18,25 +18,43 @@ const copy = async (text: string, what: string) => {
   catch { toast('Could not copy. Select the text and copy it by hand.', 'warning'); }
 };
 
-/** Shown inside a Meet modal in place of the form, when this person has not connected a Google account yet (spec section 24). */
-function ConnectGooglePrompt({ onClose }: { onClose: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const connect = async () => {
-    setBusy(true);
-    // Always lands on My account > Google Workspace (not back here): that page is the one that shows the connected toast and
-    // cleans up the ?google=... marker, and there is nothing to resume on this page after a full-page round trip to Google anyway.
-    try { const { url } = await integrationsApi.googleConnectUrl('/account/integrations'); window.location.assign(url); }
-    catch (e) { toast(errText(e, 'Could not start the Google connection.'), 'error'); setBusy(false); }
-  };
+/** In place of the form when the chosen service is not connected (or no service can hold a meeting): where to connect one. */
+function ConnectPrompt({ message, onClose }: { message: string; onClose: () => void }) {
   return (
     <div className="gm-connect">
       <Icon name="video" size={34} />
-      <p>Connect your Google account to schedule Google Meet meetings.</p>
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+      <p>{message}</p>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void connect()}>{busy && <span className="spinner" />}Connect Google account</button>
+        <Link className="btn btn-primary" to="/account/integrations" onClick={onClose}>Open connected accounts</Link>
       </div>
     </div>
+  );
+}
+
+const NOT_CONNECTED = ['GOOGLE_NOT_CONNECTED', 'MICROSOFT_NOT_CONNECTED', 'CALLS_UNAVAILABLE'];
+
+/**
+ * Which service holds this meeting: automatic (the organizer's own choice, else Google, Teams, our own call) or one they connected. Says
+ * where automatic will put it, so nobody is surprised by the link they get.
+ */
+function ServicePicker({ value, onChange }: { value: MeetingServiceKey; onChange: (v: MeetingServiceKey) => void }) {
+  const q = useWsQuery(['account', 'connected'], connectedAccountsApi.get, { staleTime: 60_000 });
+  const c = q.data?.meetings;
+  const saved = q.data?.meetingService;
+  const autoName = c?.name ?? 'the best connected service';
+  const options: { key: MeetingServiceKey; label: string; ok: boolean }[] = [
+    { key: 'auto', label: `Automatic (${saved && saved !== 'auto' ? 'your choice: ' : ''}${autoName})`, ok: true },
+    { key: 'google', label: 'Google Meet', ok: !!c?.googleReady },
+    { key: 'microsoft', label: 'Microsoft Teams', ok: !!c?.microsoftReady },
+    { key: 'ours', label: 'Project Tracker call (the agent can join)', ok: !!c?.ownCallsReady },
+  ];
+  return (
+    <Field label="Meeting service" hint={value === 'auto' ? c?.reason ?? q.data?.meetingProblem ?? undefined : value === 'ours' ? 'Held in Project Tracker. People join from the invitation in the app; the project agent comes along when it is on.' : 'Sent from your own calendar, which delivers the invitations and keeps the replies.'}>
+      <select className="select" aria-label="Meeting service" value={value} onChange={(e) => onChange(e.target.value as MeetingServiceKey)}>
+        {options.filter((o) => o.ok || o.key === value).map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+      </select>
+    </Field>
   );
 }
 
@@ -84,17 +102,26 @@ function ParticipantPicker({ projectId, organizerUserId, selected, onChange }: {
   );
 }
 
-/** Once the meeting exists: the link, front and center, so the organizer can get into it (or send it) in one click. */
-function MeetReady({ title, meetUri, onClose }: { title: string; meetUri: string; onClose: () => void }) {
+type Ready = { title: string; meetUri: string; provider?: MeetingProvider; providerName?: string };
+
+/**
+ * Once the meeting exists: the link, front and center, so the organizer can get into it (or send it) in one click. A Project Tracker call
+ * opens here in the app; Google Meet and Teams open in a new tab.
+ */
+function MeetReady({ ready, onClose }: { ready: Ready; onClose: () => void }) {
+  const ours = ready.provider === 'ours';
+  const shareable = ours ? `${window.location.origin}${window.location.pathname.split('/').filter(Boolean)[0] ? `/${window.location.pathname.split('/').filter(Boolean)[0]}` : ''}${ready.meetUri}` : ready.meetUri;
   return (
-    <div className="gm-ready">
+    <div className="gm-ready" data-testid="meeting-ready">
       <Icon name="checkCircle" size={34} />
-      <h4>Google Meet ready</h4>
-      <p className="muted">{title}</p>
-      <a className="btn btn-primary btn-lg" href={meetUri} target="_blank" rel="noopener noreferrer"><Icon name="video" size={16} /> Join Meeting</a>
+      <h4>{ready.providerName ?? 'Google Meet'} ready</h4>
+      <p className="muted">{ready.title}</p>
+      {ours
+        ? <Link className="btn btn-primary btn-lg" to={ready.meetUri} onClick={onClose}><Icon name="video" size={16} /> Join Meeting</Link>
+        : <a className="btn btn-primary btn-lg" href={ready.meetUri} target="_blank" rel="noopener noreferrer"><Icon name="video" size={16} /> Join Meeting</a>}
       <div className="gm-link-row">
-        <code>{meetUri}</code>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void copy(meetUri, 'Meeting link')}><Icon name="copy" size={14} /> Copy link</button>
+        <code>{shareable}</code>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void copy(shareable, 'Meeting link')}><Icon name="copy" size={14} /> Copy link</button>
       </div>
       <button type="button" className="btn btn-ghost" style={{ marginTop: 14 }} onClick={onClose}>Done</button>
     </div>
@@ -106,31 +133,33 @@ function StartMeetingModal({ projectId, projectName, organizerUserId, onClose }:
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [needsGoogle, setNeedsGoogle] = useState(false);
-  const [ready, setReady] = useState<{ title: string; meetUri: string } | null>(null);
+  const [needsConnect, setNeedsConnect] = useState<string | null>(null);
+  const [ready, setReady] = useState<Ready | null>(null);
+  const [service, setService] = useState<MeetingServiceKey>('auto');
 
   const start = async () => {
     setBusy(true); setError(null);
     try {
-      const m = await meetingApi.start(projectId, { title: title.trim() || undefined, participantUserIds: Array.from(selected) });
-      toast('Google Meet ready.');
-      setReady({ title: m.title, meetUri: m.meetUri });
+      const m = await meetingApi.start(projectId, { title: title.trim() || undefined, participantUserIds: Array.from(selected), service });
+      toast(`${m.providerName ?? 'Meeting'} ready.`);
+      setReady({ title: m.title, meetUri: m.meetUri, provider: m.provider, providerName: m.providerName });
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'GOOGLE_NOT_CONNECTED') setNeedsGoogle(true);
-      else setError(errText(e, "We couldn't create the Google Meet right now. Please try again."));
+      if (e instanceof ApiError && NOT_CONNECTED.includes(e.code)) setNeedsConnect(e.message);
+      else setError(errText(e, "We couldn't create the meeting right now. Please try again."));
     } finally { setBusy(false); }
   };
 
-  if (ready) return <Modal title="Start Google Meet" onClose={onClose}><MeetReady title={ready.title} meetUri={ready.meetUri} onClose={onClose} /></Modal>;
-  if (needsGoogle) return <Modal title="Start Google Meet" onClose={onClose}><ConnectGooglePrompt onClose={onClose} /></Modal>;
+  if (ready) return <Modal title="Start a meeting" onClose={onClose}><MeetReady ready={ready} onClose={onClose} /></Modal>;
+  if (needsConnect) return <Modal title="Start a meeting" onClose={onClose}><ConnectPrompt message={needsConnect} onClose={onClose} /></Modal>;
   return (
-    <Modal title="Start Google Meet" subtitle={projectName} onClose={onClose}
+    <Modal title="Start a meeting" subtitle={projectName} onClose={onClose}
       footer={<>
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void start()}>{busy && <span className="spinner" />}Start Meeting</button>
       </>}>
       {error && <div className="form-error" role="alert">{error}</div>}
       <Field label="Meeting title"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} /></Field>
+      <ServicePicker value={service} onChange={setService} />
       <ParticipantPicker projectId={projectId} organizerUserId={organizerUserId} selected={selected} onChange={setSelected} />
     </Modal>
   );
@@ -140,7 +169,7 @@ function StartMeetingModal({ projectId, projectName, organizerUserId, onClose }:
 const NO_PROJECT = '';
 
 /**
- * Schedule a Google Meet (one call or a series). From a project, the project is fixed. From the Calendar's "Scrum call" (`pickProject`),
+ * Schedule a meeting (one call or a series) in Google Meet, Teams or a Project Tracker call. From a project, the project is fixed. From the Calendar's "Scrum call" (`pickProject`),
  * the project is a choice whose default is "No project" - a team stand-up does not have to belong to any one project - and the title and
  * invitee list follow whichever project is picked until the organizer edits the title themselves.
  */
@@ -179,8 +208,11 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [needsGoogle, setNeedsGoogle] = useState(false);
-  const [ready, setReady] = useState<{ title: string; meetUri: string } | null>(null);
+  const [needsConnect, setNeedsConnect] = useState<string | null>(null);
+  const [ready, setReady] = useState<Ready | null>(null);
+  const [service, setService] = useState<MeetingServiceKey>('auto');
+  const settingsQ = useWsQuery(['account', 'connected'], connectedAccountsApi.get, { staleTime: 60_000 });
+  const willBe = service === 'auto' ? settingsQ.data?.meetings?.provider : service;
 
   const chooseProject = (id: string) => {
     const p = id === NO_PROJECT ? null : projectOptions.find((x) => x.id === id);
@@ -203,32 +235,33 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
     const end = new Date(start.getTime() + duration * 60_000);
     const body = {
       title: title.trim(), description: agenda.trim() || undefined, startTime: start.toISOString(), endTime: end.toISOString(), timeZone: tz,
-      participantUserIds: Array.from(selected), repeat: frequency === 'Once' ? undefined : { frequency, occurrences }, scrum: scrum || undefined,
+      participantUserIds: Array.from(selected), repeat: frequency === 'Once' ? undefined : { frequency, occurrences }, scrum: scrum || undefined, service,
     };
     setBusy(true); setError(null);
     try {
       const m = project ? await meetingApi.schedule(project.id, body) : await meetingApi.scheduleForWorkspace(body);
       invalidateWorkspace(wid, 'meetings'); invalidateWorkspace(wid, 'calendar');
       toast(frequency === 'Once' ? 'Meeting scheduled.' : 'Recurring series scheduled.');
-      setReady({ title: m.title, meetUri: m.meetUri });
+      setReady({ title: m.title, meetUri: m.meetUri, provider: m.provider, providerName: m.providerName });
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'GOOGLE_NOT_CONNECTED') setNeedsGoogle(true);
-      else setError(errText(e, "We couldn't schedule the Google Meet right now. Please try again."));
+      if (e instanceof ApiError && NOT_CONNECTED.includes(e.code)) setNeedsConnect(e.message);
+      else setError(errText(e, "We couldn't schedule the meeting right now. Please try again."));
     } finally { setBusy(false); }
   };
 
   const heading = scrum ? 'Schedule scrum call' : 'Schedule meeting';
-  if (ready) return <Modal title={heading} onClose={onClose}><MeetReady title={ready.title} meetUri={ready.meetUri} onClose={onClose} /></Modal>;
-  if (needsGoogle) return <Modal title={heading} onClose={onClose}><ConnectGooglePrompt onClose={onClose} /></Modal>;
+  const calendarName = willBe === 'microsoft' ? 'Outlook' : willBe === 'ours' ? null : 'Google Calendar';
+  if (ready) return <Modal title={heading} onClose={onClose}><MeetReady ready={ready} onClose={onClose} /></Modal>;
+  if (needsConnect) return <Modal title={heading} onClose={onClose}><ConnectPrompt message={needsConnect} onClose={onClose} /></Modal>;
   return (
-    <Modal title={heading} subtitle={pickProject ? 'A Google Meet invitation for your team - with or without a project.' : projectName ?? undefined} onClose={onClose}
+    <Modal title={heading} subtitle={pickProject ? 'An invitation for your team - with or without a project.' : projectName ?? undefined} onClose={onClose}
       footer={<>
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void schedule()}>{busy && <span className="spinner" />}{frequency === 'Once' ? 'Send invitation' : 'Create series & invite'}</button>
       </>}>
       {error && <div className="form-error" role="alert">{error}</div>}
       {pickProject && (
-        <Field label="Project" hint={project ? 'Invitees come from this project, and the call is posted to its chat and Meetings tab.' : isGuest ? 'Choose one of the projects you were invited to.' : 'No project: invite anyone in the workspace. The call lives in Google Calendar.'}>
+        <Field label="Project" hint={project ? 'Invitees come from this project, and the call is posted to its chat and Meetings tab.' : isGuest ? 'Choose one of the projects you were invited to.' : `No project: invite anyone in the workspace.${calendarName ? ` The call lives in ${calendarName}.` : ''}`}>
           <div className="gm-project-pick">
             <input className="input" type="search" aria-label="Search projects" placeholder="Search projects" value={projectQuery} onChange={(e) => setProjectQuery(e.target.value)} />
             <select className="select" aria-label="Project" value={project?.id ?? NO_PROJECT} onChange={(e) => chooseProject(e.target.value)}>
@@ -251,7 +284,10 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
       <div className="gm-repeat-panel"><div className="gm-repeat-heading"><Icon name="repeat" size={18} /><div><strong>Meeting rhythm</strong><p>One call or a connected series for your team.</p></div></div><div className="gm-repeat-grid">
         <Field label="Repeat"><select className="select" aria-label="Repeat" value={frequency} onChange={e => setFrequency(e.target.value as typeof frequency)}><option value="Once">Does not repeat</option><option value="Daily">Every day</option><option value="Weekdays">Every weekday (Mon-Fri)</option><option value="Weekly">Every week</option></select></Field>
         {frequency !== 'Once' && <Field label="Total sessions" hint="Including the first; maximum 120"><input className="input" aria-label="Total sessions" type="number" min={2} max={120} value={occurrences} onChange={e => setOccurrences(Number(e.target.value))} /></Field>}
-      </div><p className="gm-invite-note">{frequency === 'Once' ? 'One Google Calendar invitation.' : `${occurrences} sessions in ${tz}. Google Calendar handles repeat invitations and reminders. Individual occurrences can be changed in Google Calendar.`}</p></div>
+      </div><p className="gm-invite-note">{calendarName
+        ? (frequency === 'Once' ? `One ${calendarName} invitation.` : `${occurrences} sessions in ${tz}. ${calendarName} handles repeat invitations and reminders. Individual occurrences can be changed in ${calendarName}.`)
+        : (frequency === 'Once' ? 'One Project Tracker call. Everyone invited is notified and joins from the app.' : `${occurrences} Project Tracker calls in ${tz}. Everyone invited is notified and joins from the app.`)}</p></div>
+      <ServicePicker value={service} onChange={setService} />
       <Field label="Agenda" hint="Optional"><textarea className="input" rows={3} value={agenda} onChange={(e) => setAgenda(e.target.value)} maxLength={4000} /></Field>
       {(project || !isGuest) && <ParticipantPicker key={project?.id ?? 'workspace'} projectId={project?.id ?? null} organizerUserId={organizerUserId} selected={selected} onChange={setSelected} />}
       <Field label="Time zone" hint="The date and time above are read in this zone - change it if it is not the one you meant.">
@@ -265,7 +301,7 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
 }
 
 /**
- * The project header's "Google Meet" entry point (spec section 1): a fast "Start Meeting" plus "Schedule Meeting" and a link to the
+ * The project header's meeting entry point (spec section 1): a fast "Start Meeting" plus "Schedule Meeting" and a link to the
  * project's Meetings tab, in a small menu next to the project's other quick actions.
  */
 export function GoogleMeetButton({ projectId, projectName, organizerUserId, compact, toolbar }: { projectId: string; projectName: string; organizerUserId?: string; compact?: boolean; toolbar?: boolean }) {
@@ -284,16 +320,16 @@ export function GoogleMeetButton({ projectId, projectName, organizerUserId, comp
     <>
       <div className="menu-wrap" ref={ref}>
         {toolbar ? (
-          <button type="button" className="btn-icon sm" aria-haspopup="menu" aria-expanded={open} aria-label="Google Meet" title="Google Meet" onClick={() => setOpen((o) => !o)}>
+          <button type="button" className="btn-icon sm" aria-haspopup="menu" aria-expanded={open} aria-label="Meetings" title="Meetings" onClick={() => setOpen((o) => !o)}>
             <Icon name="video" size={15} />
           </button>
         ) : compact ? (
-          <button type="button" className="btn-icon chat-head-action" aria-haspopup="menu" aria-expanded={open} aria-label="Google Meet" title="Google Meet" onClick={() => setOpen((o) => !o)}>
+          <button type="button" className="btn-icon chat-head-action" aria-haspopup="menu" aria-expanded={open} aria-label="Meetings" title="Meetings" onClick={() => setOpen((o) => !o)}>
             <Icon name="video" size={17} />
           </button>
         ) : (
-          <button type="button" className="btn btn-ghost" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)} title="Google Meet">
-            <Icon name="video" /> Google Meet
+          <button type="button" className="btn btn-ghost" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)} title="Meetings">
+            <Icon name="video" /> Meeting
           </button>
         )}
         {open && (

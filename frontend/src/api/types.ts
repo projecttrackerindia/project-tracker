@@ -444,7 +444,7 @@ export interface ReleaseNotePr { repository: string; number: string; title: stri
 export interface ReleaseNotes { from: string; to: string; tasks: { key: string; title: string; pullRequests: ReleaseNotePr[] }[]; unlinked: ReleaseNotePr[]; markdown: string }
 export interface DeliveryWeek { weekStart: string; deploys: number; failed: number; leadTimeHours: number | null; merged: number }
 export interface DeliveryMetrics { days: number; leadTimeHours: number | null; leadTimeBasis: string; deploysPerWeek: number; changeFailureRate: number | null; restoreHours: number | null; weeks: DeliveryWeek[]; notes: string[]; repositories: string[] }
-export interface GoogleConnectionStatus { transcriptAccess?: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; mailEnabled?: boolean; mailSendAccess?: boolean; calendarAccess?: boolean; connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
+export interface GoogleConnectionStatus { configured?: boolean; transcriptAccess?: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; mailEnabled?: boolean; mailSendAccess?: boolean; calendarAccess?: boolean; connected: boolean; googleEmail: string | null; connectedAt: string | null; lastError: string | null }
 export interface MeetingParticipant { userId: string | null; name: string; email: string; role: 'Organizer' | 'Attendee'; rsvpStatus: 'NeedsAction' | 'Accepted' | 'Declined' | 'Tentative' }
 export interface Meeting {
   id: string; projectId: string; title: string; description: string | null; startTime: string; endTime: string; timeZone: string;
@@ -452,12 +452,16 @@ export interface Meeting {
   status: 'Scheduled' | 'Cancelled' | 'Completed'; meetUri: string; organizerUserId: string; organizerName: string; participants: MeetingParticipant[];
   /** A stand-up: a summary of the project's work is posted to its chat after each session. */
   isScrum?: boolean;
+  /** Where it lives: Google Meet, a Teams meeting in Outlook, or a Project Tracker call (joined at meetUri, a path in this app). */
+  provider?: MeetingProvider; providerName?: string;
 }
+export type MeetingProvider = 'google' | 'microsoft' | 'ours';
 /** A meeting for the workspace as a whole (no project), as the people invited see it. */
 export interface WorkspaceMeetingDetail {
   id: string; title: string; description: string | null; startTime: string; endTime: string; timeZone: string; status: 'Scheduled' | 'Cancelled' | 'Completed';
   meetUri: string; calendarUrl: string | null; recurrenceRule: string | null; isScrum: boolean; organizerUserId: string; organizerName: string; canManage: boolean;
   attendees: MeetingParticipant[];
+  provider?: MeetingProvider; providerName?: string;
 }
 export interface StandupItem { key: string; taskId: string; title: string; who: string | null; due: string | null }
 /** The stand-up summary card posted to a project chat (a 'Meeting' message whose JSON has kind "standup"). */
@@ -894,7 +898,7 @@ export interface WorkspaceLogo { hasLogo: boolean; width: number | null; height:
 export interface PersonalEmailDraft { reconciledAt?: string | null; canReconcile?: boolean; confirmedSenderEmail?: string | null; provider?: 'google' | 'microsoft'; providerRequestId?: string | null; id: string; recipient: string; subject: string; body: string; status: string; version: number; providerMessageId: string | null; acceptedAt: string | null }
 export interface EmailRewriteReceipt { operationId: string; draftId: string; sourceVersion: number; style: string; status: string; credits: number; model: string | null; createdAt: string; expiresAt: string; draft?: PersonalEmailDraft | null; draftChanged?: boolean }
 
-export interface MicrosoftConnectionStatus { enabled: boolean; configured: boolean; connected: boolean; email: string | null; mailSendAccess: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; calendarsEnabled?: boolean; calendarAccess?: boolean; connectedAt?: string | null }
+export interface MicrosoftConnectionStatus { enabled: boolean; configured: boolean; connected: boolean; email: string | null; mailSendAccess: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; calendarsEnabled?: boolean; calendarAccess?: boolean; connectedAt?: string | null; meetingsEnabled?: boolean; meetingsAccess?: boolean }
 export interface InboxMessage { id: string; threadId: string; subject: string; sender: string; receivedAt: string | null; unread: boolean; hasAttachments: boolean; body: string | null; bodyTruncated: boolean }
 export interface InboxPage { provider: string; account: string; messages: InboxMessage[]; cursor: string | null }
 export interface InboxThread { provider: string; account: string; threadId: string; messages: InboxMessage[]; truncated: boolean; sourceHash: string; accessContext: string }

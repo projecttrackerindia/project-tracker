@@ -261,6 +261,8 @@ public class ProjectAgentTests(ApiFactory factory)
         try
         {
             var (owner, project, _, _, _) = await SetupAsync("Meet Reader");
+            // Calendar and Meet first, then meeting transcripts: each is its own consent step, and both stay on.
+            await ConnectGoogleAsync(owner, transcripts: false);
             await ConnectGoogleAsync(owner, transcripts: true);
             var start = DateTime.UtcNow.AddMinutes(-60); var end = DateTime.UtcNow.AddMinutes(-30);
             var meeting = await MeetingAsync(owner, project, start, end);

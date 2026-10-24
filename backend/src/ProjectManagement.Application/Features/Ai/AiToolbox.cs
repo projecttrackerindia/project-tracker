@@ -174,7 +174,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 """),
             new(HistoryInsights, "What past data says: on-time delivery rate, cycle time, estimate accuracy, weekly pace, projects with the most overdue work, who delivers on time (where the person may see it). Use to forecast, find causes and ground recommendations.",
                 """{"type":"object","properties":{"project":{"type":"string","description":"Optional project key or name; default all the person can see."},"days":{"type":"integer","description":"Look-back window, 14 to 365. Default 90."}},"required":[]}"""),
-            new(ListMeetings, "List a project's Google Meet meetings, upcoming and recent past, with who organized each one and their real RSVP status (accepted, declined, tentative, or awaiting a response) straight from Google Calendar. Use for 'what meetings are scheduled', 'who accepted tomorrow's meeting'.",
+            new(ListMeetings, "List a project's meetings (Google Meet, Teams or Project Tracker calls), upcoming and recent past, with who organized each one and their real RSVP status (accepted, declined, tentative, or awaiting a response) straight from Google Calendar. Use for 'what meetings are scheduled', 'who accepted tomorrow's meeting'.",
                 """{"type":"object","properties":{"project":{"type":"string","description":"A project key or name."}},"required":["project"]}"""),
             new(ListWatches, "The person's own \"tell me when\" watches: what they are waiting to hear about (a task done, a status, overdue, a project slipping past a date), with ids, and the ones that fired recently.",
                 """{"type":"object","properties":{},"required":[]}"""),
@@ -269,12 +269,12 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                  "participants":{"type":"array","items":{"type":"string"},"description":"Names to notify. Default: every project member."},
                  "with_agent":{"type":"boolean","description":"Bring the project agent to take notes (default true when the person asks for notes, minutes or the agent)."}},"required":["project"]}
                 """),
-            new(StartMeeting, "Propose starting a Google Meet right now on a project (an hour long by default). Every project member is invited unless specific people are named. The person confirms first, and needs their own Google account connected (Settings > Google Workspace) - if they have not connected it, say so rather than guessing why it failed.",
+            new(StartMeeting, "Propose starting a meeting right now on a project (it goes to the organizer's Google Meet, Teams or a Project Tracker call, by their connected accounts) (an hour long by default). Every project member is invited unless specific people are named. The person confirms first, and needs their own Google account connected (Settings > Google Workspace) - if they have not connected it, say so rather than guessing why it failed.",
                 """
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string","description":"Default: \"<project name> Discussion\"."},
                  "participants":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: every project member."}},"required":["project"]}
                 """),
-            new(ScheduleMeeting, "Propose scheduling a Google Meet or scrum call on a project for a specific time. For repeats, supply repeat_frequency and an explicitly requested total session count; ask when either is missing. The person confirms first, and needs their own Google account connected (Settings > Google Workspace).",
+            new(ScheduleMeeting, "Propose scheduling a meeting or scrum call on a project (Google Meet, Teams or a Project Tracker call, by the organizer's connected accounts) for a specific time. For repeats, supply repeat_frequency and an explicitly requested total session count; ask when either is missing. The person confirms first, and needs their own Google account connected (Settings > Google Workspace).",
                 """
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string"},"agenda":{"type":"string","description":"Optional description/agenda."},
                  "at":{"type":"string","description":"Local date and time, yyyy-mm-ddTHH:mm"},"duration_minutes":{"type":"integer","description":"Default 30."},
@@ -1159,7 +1159,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var project = await ProjectAsync(Str(a, "project") ?? throw new AiToolException("Say which project."), ct);
         if (project.IsPending) return new AiToolOutcome($"{project.Label} does not exist yet.", "Looked for meetings", 0);
         var list = await meetings.ListAsync(project.Id, ct);
-        if (list.Count == 0) return new AiToolOutcome($"No Google Meet meetings on {project.Label}.", "Looked for meetings", 0);
+        if (list.Count == 0) return new AiToolOutcome($"No meetings on {project.Label}.", "Looked for meetings", 0);
         var shown = list.Take(ListCap).Select(m =>
             $"{m.Title} | {m.Status} | {m.StartTime:yyyy-MM-dd HH:mm}–{m.EndTime:HH:mm} UTC | organizer {m.OrganizerName} | " +
             (m.RecurrenceRule is null ? "" : $"series {m.RecurrenceRule}; first session shown; consult Google Calendar for exceptions | ") +
@@ -1186,7 +1186,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var participantIds = await ParticipantIdsAsync(a, ct);
         var payload = new { projectId = project.Id, title, participantUserIds = participantIds };
         var summary = $"In {project.Label}{(participantIds is null ? ", every project member invited" : $", {participantIds.Count} invited")}";
-        return Propose("start_meeting", $"Start a Google Meet{(title is null ? "" : $" “{title}”")}", summary, payload);
+        return Propose("start_meeting", $"Start a meeting{(title is null ? "" : $" “{title}”")}", summary, payload);
     }
 
     private async Task<AiToolOutcome> ProposeStartCallAsync(JsonElement a, CancellationToken ct)
@@ -1223,7 +1223,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var payload = new { repeat, projectId = project.Id, title, description = Str(a, "agenda"), startTime = new DateTimeOffset(startUtc, TimeSpan.Zero), endTime = new DateTimeOffset(startUtc.AddMinutes(minutes), TimeSpan.Zero), timeZone = zone, participantUserIds = participantIds };
         var summary = $"In {project.Label} — {local:ddd d MMM yyyy, HH:mm} ({zone}), {minutes} minutes{(participantIds is null ? ", every project member invited" : $", {participantIds.Count} invited")}";
         if (repeat is not null) summary += $"; {repeat.Frequency}, {repeat.Occurrences} sessions including the first; Google Calendar invitations will be sent";
-        return Propose("schedule_meeting", $"Schedule a Google Meet “{title}”", summary, payload, Str(a, "agenda"));
+        return Propose("schedule_meeting", $"Schedule a meeting “{title}”", summary, payload, Str(a, "agenda"));
     }
 
     /// <summary>An action item by its number (AI-4), as the person may open it: it belongs to a project and is visible with it.</summary>

@@ -49,6 +49,8 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         foreach (var session in await SessionsAsync(s.ProjectId, now.AddMinutes(-5), now.AddMinutes(10), ct))
         {
             if (session.Start < now.AddMinutes(-5) || session.Start > now.AddMinutes(10)) continue;
+            // A Project Tracker call: the agent is let into the call itself when it opens (no bot, no link to visit).
+            if (session.Meeting.Provider == MeetingProvider.ProjectTracker) continue;
             var delegations = await db.AgentDelegations.Where(d => d.MeetingId == session.Meeting.Id && d.SessionStartUtc == session.Start
                 && (d.Status == "requested" || d.Status == "attending")).OrderBy(d => d.CreatedAt).ToListAsync(ct);
             if (!s.LiveBot && delegations.Count == 0) continue;
@@ -566,8 +568,9 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     {
         if (!s.Enabled || !s.ReadMeetings) return 0;
         var now = clock.Now;
+        // Meet's own automatic transcripts: Google meetings only.
         var meetings = await db.ProjectMeetings.AsNoTracking().Where(m => m.ProjectId == s.ProjectId && m.Status == MeetingStatus.Scheduled && m.GoogleMeetUri != ""
-                && (m.RecurrenceRule != null || m.EndTimeUtc > now))
+                && m.Provider == MeetingProvider.Google && (m.RecurrenceRule != null || m.EndTimeUtc > now))
             .OrderBy(m => m.StartTimeUtc).Take(20).ToListAsync(ct);
         var switched = 0;
         foreach (var m in meetings)
@@ -612,6 +615,8 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         foreach (var session in await SessionsAsync(s.ProjectId, now.AddHours(-24), now.AddMinutes(-10), ct))
         {
             if (session.End > now.AddMinutes(-10)) continue;
+            // Reading the finished meeting from Google Meet: only Google meetings have one there.
+            if (session.Meeting.Provider != MeetingProvider.Google) continue;
             var rows = await db.AgentMeetingBots.Where(b => b.MeetingId == session.Meeting.Id && b.SessionStartUtc == session.Start).ToListAsync(ct);
             if (rows.Any(b => b.Kind == "bot" && b.Status != "failed")) continue;   // the bot has it
             var row = rows.FirstOrDefault(b => b.Kind == "meet");

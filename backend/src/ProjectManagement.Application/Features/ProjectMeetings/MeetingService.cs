@@ -14,33 +14,38 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.ProjectMeetings;
 
 public record MeetingParticipantDto(Guid? UserId, string Name, string Email, string Role, string RsvpStatus);
+/// <param name="Provider">Where it lives: "google" (Google Meet), "microsoft" (Teams) or "ours" (a Project Tracker call); <paramref name="ProviderName"/> says it in words.</param>
 public record MeetingDto(Guid Id, Guid ProjectId, string Title, string? Description, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone,
     string Status, string MeetUri, Guid OrganizerUserId, string OrganizerName, IReadOnlyList<MeetingParticipantDto> Participants, string? RecurrenceRule = null, string? CalendarUrl = null,
-    bool IsScrum = false);
+    bool IsScrum = false, string Provider = "google", string ProviderName = "Google Meet");
 
 /// <summary>Start Meeting: participants default to everyone who can see the project (spec section 2) unless the organizer names a specific list.</summary>
-public record StartMeetingRequest(string? Title, IReadOnlyList<Guid>? ParticipantUserIds);
+/// <param name="Service">"auto" (default: the organizer's choice, else Google, Microsoft, our own call), "google", "microsoft" or "ours".</param>
+public record StartMeetingRequest(string? Title, IReadOnlyList<Guid>? ParticipantUserIds, string? Service = null);
 /// <summary>Schedule Meeting: the organizer always names start/end explicitly, in a real instant (not a bare local time) so no timezone is guessed.</summary>
 public record ScheduleMeetingRequest(string Title, string? Description, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, IReadOnlyList<Guid>? ParticipantUserIds, MeetingRepeat? Repeat = null,
-    bool Scrum = false);
+    bool Scrum = false, string? Service = null);
 public record RescheduleMeetingRequest(DateTimeOffset StartTime, DateTimeOffset EndTime);
 public record AddMeetingParticipantRequest(Guid UserId);
 /// <summary>A meeting scheduled for the workspace as a whole (a team stand-up that belongs to no one project). Google Calendar holds it;
 /// Project Tracker keeps no project row for it, so this is just what the organizer needs right after creating it.</summary>
-public record WorkspaceMeetingDto(Guid Id, string Title, string MeetUri, string? CalendarUrl, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, string? RecurrenceRule, int ParticipantCount);
+public record WorkspaceMeetingDto(Guid Id, string Title, string MeetUri, string? CalendarUrl, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, string? RecurrenceRule, int ParticipantCount,
+    string Provider = "google", string ProviderName = "Google Meet");
 /// <summary>One workspace meeting as its attendees see it on the Calendar; <c>CanManage</c> = the organizer, or an Owner/Admin of the workspace.</summary>
 public record WorkspaceMeetingDetailDto(Guid Id, string Title, string? Description, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, string Status,
-    string MeetUri, string? CalendarUrl, string? RecurrenceRule, bool IsScrum, Guid OrganizerUserId, string OrganizerName, bool CanManage, IReadOnlyList<MeetingParticipantDto> Attendees);
+    string MeetUri, string? CalendarUrl, string? RecurrenceRule, bool IsScrum, Guid OrganizerUserId, string OrganizerName, bool CanManage, IReadOnlyList<MeetingParticipantDto> Attendees,
+    string Provider = "google", string ProviderName = "Google Meet");
 
 /// <summary>
-/// Google Meet/Calendar meetings, scoped to a project. Project Tracker never implements its own conferencing, invitation e-mail or RSVP
-/// mechanism (spec section 27): every write here is really a write to the organizer's own Google Calendar event
-/// (<see cref="GoogleMeetingClient"/>), and what is stored locally is a reflection of that event for the project's own UI, chat and reports.
+/// Meetings scoped to a project. Each lives in one service (<see cref="MeetingCalendar"/>): the organizer's Google Calendar with a Meet link,
+/// their Outlook calendar with a Teams meeting, or - with no calendar connected, or by choice - our own call, which the project agent joins.
+/// For Google and Outlook, every write here is really a write to the organizer's own calendar event (they send the invitations and keep the
+/// RSVPs); what is stored locally is a reflection of that event for the project's own UI, chat and reports.
 /// Participants are always restricted to people who can already see the project - never the whole tenant - the same rule
 /// <see cref="ProjectAccess"/> already enforces for everything else project-scoped (spec section 6).
 /// </summary>
 public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, ProjectAccess access,
-    PermissionService permissions, NotificationService notifications, GoogleMeetingClient google, ChatService chat, ILogger<MeetingService> log)
+    PermissionService permissions, NotificationService notifications, MeetingCalendar calendar, ChatService chat, ILogger<MeetingService> log)
 {
     private const int DefaultStartNowMinutes = 60;
     private record MeetingCard(Guid MeetingId, string Title, DateTime StartTimeUtc, DateTime EndTimeUtc, string TimeZone, string MeetUri, int ParticipantCount, string Status);
@@ -75,7 +80,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     public Task<MeetingDto> StartNowAsync(Guid projectId, StartMeetingRequest req, CancellationToken ct = default)
     {
         var start = DateTimeOffset.UtcNow;
-        return CreateAsync(projectId, req.Title, null, start, start.AddMinutes(DefaultStartNowMinutes), "UTC", req.ParticipantUserIds, ct);
+        return CreateAsync(projectId, req.Title, null, start, start.AddMinutes(DefaultStartNowMinutes), "UTC", req.ParticipantUserIds, ct, service: req.Service);
     }
 
     /// <summary>"Schedule Google Meet": the organizer's own title, time and attendee list.</summary>
@@ -83,11 +88,11 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     {
         if (req.EndTime <= req.StartTime) throw new ValidationException("endTime", "The meeting must end after it starts.");
         if (req.StartTime < DateTimeOffset.UtcNow.AddMinutes(-5)) throw new ValidationException("startTime", "Choose a time that has not already passed.");
-        return CreateAsync(projectId, req.Title, req.Description, req.StartTime, req.EndTime, req.TimeZone, req.ParticipantUserIds, ct, MeetingRecurrence.Rule(req.Repeat, req.StartTime, req.TimeZone), req.Scrum);
+        return CreateAsync(projectId, req.Title, req.Description, req.StartTime, req.EndTime, req.TimeZone, req.ParticipantUserIds, ct, MeetingRecurrence.Rule(req.Repeat, req.StartTime, req.TimeZone), req.Scrum, req.Service);
     }
 
     private async Task<MeetingDto> CreateAsync(Guid projectId, string? title, string? description, DateTimeOffset start, DateTimeOffset end, string timeZone,
-        IReadOnlyList<Guid>? requestedParticipants, CancellationToken ct, string? recurrenceRule = null, bool scrum = false)
+        IReadOnlyList<Guid>? requestedParticipants, CancellationToken ct, string? recurrenceRule = null, bool scrum = false, string? service = null)
     {
         var project = await access.GetProjectAsync(projectId, ct);
         var organizerId = ctx.RequireUserId();
@@ -103,12 +108,17 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var attendees = users.Where(u => u.Id != organizerId).Select(u => new GoogleMeetingAttendee(u.Email)).ToList();
 
         var meetingTitle = string.IsNullOrWhiteSpace(title) ? $"{project.Name} Discussion" : title.Trim();
+        var choice = await calendar.ChooseAsync(organizerId, service, ct);
+        var provider = MeetingCalendar.ToProvider(choice.Provider);
+        var meetingId = Guid.CreateVersion7();
         CreatedGoogleMeeting created;
-        try { created = await google.CreateEventAsync(organizerId, meetingTitle, description, start.UtcDateTime, end.UtcDateTime, timeZone, attendees, ct, recurrenceRule); }
-        catch (GoogleApiException) { throw new ConflictException("We couldn't create the Google Meet right now. Please try again.", "GOOGLE_MEET_CREATE_FAILED"); }
+        try { created = await calendar.CreateAsync(provider, meetingId, false, organizerId, meetingTitle, description, start.UtcDateTime, end.UtcDateTime, timeZone, attendees, ct, recurrenceRule); }
+        catch (MeetingCalendarException ex) { throw MeetingCalendar.Failed(ex); }
+        var what = MeetingCalendar.Name(provider);
 
         var meeting = new ProjectMeeting
         {
+            Id = meetingId, Provider = provider,
             TenantId = project.TenantId, ProjectId = projectId, OrganizerUserId = organizerId, Title = meetingTitle, Description = description,
             StartTimeUtc = start.UtcDateTime, EndTimeUtc = end.UtcDateTime, TimeZone = timeZone, Status = MeetingStatus.Scheduled,
             GoogleCalendarEventId = created.EventId, GoogleMeetSpaceName = created.MeetSpaceName, GoogleMeetUri = created.MeetUri, RecurrenceRule = recurrenceRule, CalendarUrl = created.HtmlLink,
@@ -122,12 +132,12 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         recorder.Activity("meeting.scheduled", "ProjectMeeting", meeting.Id, $"Scheduled \"{meetingTitle}\" on \"{project.Name}\"", projectId);
         recorder.Audit("meeting.scheduled", "ProjectMeeting", meeting.Id, newValue: new { meeting.Title, meeting.StartTimeUtc, meeting.EndTimeUtc, Participants = invitedIds.Count });
         foreach (var u in users.Where(u => u.Id != organizerId))
-            await notifications.AddAsync(u.Id, NotificationType.Meeting, $"{organizer.DisplayName} scheduled a Google Meet", $"{meetingTitle} · {start:dd MMM} at {start:h:mm tt}", $"/projects/{projectId}?tab=meetings&meeting={meeting.Id}", ct: ct);
+            await notifications.AddAsync(u.Id, NotificationType.Meeting, $"{organizer.DisplayName} scheduled a {what}", $"{meetingTitle} · {start:dd MMM} at {start:h:mm tt}", $"/projects/{projectId}?tab=meetings&meeting={meeting.Id}", ct: ct);
 
         await db.SaveChangesAsync(ct);
 
         var card = new MeetingCard(meeting.Id, meetingTitle, meeting.StartTimeUtc, meeting.EndTimeUtc, timeZone, created.MeetUri, meeting.Participants.Count, "Scheduled");
-        await chat.PostMeetingCardAsync(projectId, card, $"📹 {organizer.DisplayName} scheduled a Google Meet: {meetingTitle}", ct);
+        await chat.PostMeetingCardAsync(projectId, card, $"📹 {organizer.DisplayName} scheduled a {what}: {meetingTitle}", ct);
 
         return ToDto(meeting, organizer.DisplayName);
     }
@@ -173,12 +183,17 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
 
         var title = req.Title.Trim();
         var rule = MeetingRecurrence.Rule(req.Repeat, req.StartTime, req.TimeZone);
+        var choice = await calendar.ChooseAsync(organizerId, req.Service, ct);
+        var provider = MeetingCalendar.ToProvider(choice.Provider);
+        var meetingId = Guid.CreateVersion7();
         CreatedGoogleMeeting created;
-        try { created = await google.CreateEventAsync(organizerId, title, req.Description, req.StartTime.UtcDateTime, req.EndTime.UtcDateTime, req.TimeZone, attendees.Select(a => new GoogleMeetingAttendee(a.Email)).ToList(), ct, rule); }
-        catch (GoogleApiException) { throw new ConflictException("We couldn't create the Google Meet right now. Please try again.", "GOOGLE_MEET_CREATE_FAILED"); }
+        try { created = await calendar.CreateAsync(provider, meetingId, true, organizerId, title, req.Description, req.StartTime.UtcDateTime, req.EndTime.UtcDateTime, req.TimeZone, attendees.Select(a => new GoogleMeetingAttendee(a.Email)).ToList(), ct, rule); }
+        catch (MeetingCalendarException ex) { throw MeetingCalendar.Failed(ex); }
+        var what = MeetingCalendar.Name(provider);
 
         var meeting = new WorkspaceMeeting
         {
+            Id = meetingId, Provider = provider,
             TenantId = tid, OrganizerUserId = organizerId, Title = title, Description = req.Description, StartTimeUtc = req.StartTime.UtcDateTime, EndTimeUtc = req.EndTime.UtcDateTime,
             TimeZone = req.TimeZone, RecurrenceRule = rule, CalendarUrl = string.IsNullOrEmpty(created.HtmlLink) ? null : created.HtmlLink, Status = MeetingStatus.Scheduled,
             GoogleCalendarEventId = created.EventId, GoogleMeetUri = created.MeetUri, IsScrum = req.Scrum, CreatedAt = clock.Now, CreatedBy = organizerId,
@@ -189,9 +204,9 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         recorder.Audit("meeting.scheduled", "WorkspaceMeeting", meeting.Id, newValue: new { Title = title, StartTimeUtc = req.StartTime.UtcDateTime, EndTimeUtc = req.EndTime.UtcDateTime, Participants = attendees.Count, Recurrence = rule, created.EventId });
         var when = InZone(req.StartTime, req.TimeZone);
         foreach (var a in attendees)
-            await notifications.AddAsync(a.UserId, NotificationType.Meeting, $"{organizer.DisplayName} scheduled a Google Meet", $"{title} · {when} — the invitation is in your Google Calendar", $"/calendar?meeting={meeting.Id}", ct: ct);
+            await notifications.AddAsync(a.UserId, NotificationType.Meeting, $"{organizer.DisplayName} scheduled a {what}", $"{title} · {when}{InvitationHint(provider)}", $"/calendar?meeting={meeting.Id}", ct: ct);
         await db.SaveChangesAsync(ct);
-        return new WorkspaceMeetingDto(meeting.Id, title, created.MeetUri, meeting.CalendarUrl, req.StartTime, req.EndTime, req.TimeZone, rule, attendees.Count + 1);
+        return new WorkspaceMeetingDto(meeting.Id, title, created.MeetUri, meeting.CalendarUrl, req.StartTime, req.EndTime, req.TimeZone, rule, attendees.Count + 1, MeetingCalendar.Key(provider), what);
     }
 
     /// <summary>A workspace meeting, for someone invited to it (or an Owner/Admin of the workspace); anyone else gets "not found".</summary>
@@ -204,7 +219,8 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var hideEmail = ctx.Role == TenantRole.Guest;
         return new WorkspaceMeetingDetailDto(meeting.Id, meeting.Title, meeting.Description, new DateTimeOffset(meeting.StartTimeUtc, TimeSpan.Zero), new DateTimeOffset(meeting.EndTimeUtc, TimeSpan.Zero),
             meeting.TimeZone, meeting.Status.ToString(), meeting.GoogleMeetUri, meeting.CalendarUrl, meeting.RecurrenceRule, meeting.IsScrum, meeting.OrganizerUserId, organizer, CanManage(meeting),
-            people.Select(p => new MeetingParticipantDto(p.UserId, p.DisplayName, hideEmail ? "" : p.Email, p.IsOrganizer ? "Organizer" : "Attendee", p.IsOrganizer ? "Accepted" : "NeedsAction")).ToList());
+            people.Select(p => new MeetingParticipantDto(p.UserId, p.DisplayName, hideEmail ? "" : p.Email, p.IsOrganizer ? "Organizer" : "Attendee", p.IsOrganizer ? "Accepted" : "NeedsAction")).ToList(),
+            MeetingCalendar.Key(meeting.Provider), MeetingCalendar.Name(meeting.Provider));
     }
 
     /// <summary>Cancels the real Calendar event (Google tells the invitees) and marks it cancelled here; the organizer or an Owner/Admin only.</summary>
@@ -213,13 +229,13 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var meeting = await LoadWorkspaceMeetingAsync(id, ct);
         if (!CanManage(meeting)) throw new ForbiddenException("Only the organizer can change this meeting.", "PERMISSION_DENIED");
         if (meeting.Status == MeetingStatus.Cancelled) return;
-        try { await google.CancelEventAsync(meeting.OrganizerUserId, meeting.GoogleCalendarEventId, ct); }
-        catch (GoogleApiException) { throw new ConflictException("We couldn't cancel the Google Meet right now. Please try again.", "GOOGLE_MEET_CANCEL_FAILED"); }
+        try { await calendar.CancelAsync(meeting.Provider, meeting.OrganizerUserId, meeting.GoogleCalendarEventId, ct); }
+        catch (MeetingCalendarException ex) { throw MeetingCalendar.Failed(ex); }
         meeting.Status = MeetingStatus.Cancelled;
         meeting.CancelledAt = clock.Now;
         recorder.Audit("meeting.cancelled", "WorkspaceMeeting", meeting.Id);
         foreach (var userId in await db.WorkspaceMeetingAttendees.AsNoTracking().Where(a => a.MeetingId == id && !a.IsOrganizer).Select(a => a.UserId).ToListAsync(ct))
-            await notifications.AddAsync(userId, NotificationType.Meeting, "A Google Meet was cancelled", meeting.Title, "/calendar", ct: ct);
+            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {MeetingCalendar.Name(meeting.Provider)} was cancelled", meeting.Title, "/calendar", ct: ct);
         await db.SaveChangesAsync(ct);
     }
 
@@ -231,21 +247,33 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var meeting = await LoadWorkspaceMeetingAsync(id, ct);
         if (!CanManage(meeting)) throw new ForbiddenException("Only the organizer can change this meeting.", "PERMISSION_DENIED");
         if (meeting.Status != MeetingStatus.Scheduled) throw new ConflictException("Only a scheduled meeting can be rescheduled.", "MEETING_NOT_SCHEDULED");
-        if (meeting.RecurrenceRule is not null) throw new ConflictException("Open this series in Google Calendar to move one occurrence or change the series schedule.", "RECURRING_MEETING_EDIT_IN_CALENDAR");
-        try { await google.RescheduleEventAsync(meeting.OrganizerUserId, meeting.GoogleCalendarEventId, req.StartTime.UtcDateTime, req.EndTime.UtcDateTime, meeting.TimeZone, ct); }
-        catch (GoogleApiException) { throw new ConflictException("We couldn't reschedule the Google Meet right now. Please try again.", "GOOGLE_MEET_RESCHEDULE_FAILED"); }
+        if (meeting.RecurrenceRule is not null && meeting.Provider != MeetingProvider.ProjectTracker) throw SeriesInCalendar(meeting.Provider);
+        try { await calendar.RescheduleAsync(meeting.Provider, meeting.OrganizerUserId, meeting.GoogleCalendarEventId, req.StartTime.UtcDateTime, req.EndTime.UtcDateTime, meeting.TimeZone, ct); }
+        catch (MeetingCalendarException ex) { throw MeetingCalendar.Failed(ex); }
         var oldStart = meeting.StartTimeUtc;
         meeting.StartTimeUtc = req.StartTime.UtcDateTime;
         meeting.EndTimeUtc = req.EndTime.UtcDateTime;
         recorder.Audit("meeting.rescheduled", "WorkspaceMeeting", meeting.Id, oldValue: new { StartTimeUtc = oldStart }, newValue: new { meeting.StartTimeUtc, meeting.EndTimeUtc });
         var when = InZone(req.StartTime, meeting.TimeZone);
         foreach (var userId in await db.WorkspaceMeetingAttendees.AsNoTracking().Where(a => a.MeetingId == id && !a.IsOrganizer).Select(a => a.UserId).ToListAsync(ct))
-            await notifications.AddAsync(userId, NotificationType.Meeting, "A Google Meet was moved", $"{meeting.Title} · now {when}", $"/calendar?meeting={meeting.Id}", ct: ct);
+            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {MeetingCalendar.Name(meeting.Provider)} was moved", $"{meeting.Title} · now {when}", $"/calendar?meeting={meeting.Id}", ct: ct);
         await db.SaveChangesAsync(ct);
         return await GetWorkspaceMeetingAsync(id, ct);
     }
 
     private bool CanManage(WorkspaceMeeting m) => m.OrganizerUserId == ctx.UserId || ctx.Role is TenantRole.Owner or TenantRole.Admin;
+
+    /// <summary>A series in Google or Outlook is changed there (one occurrence or the whole series), never half here.</summary>
+    private static ConflictException SeriesInCalendar(MeetingProvider p) =>
+        new($"Open this series in {(p == MeetingProvider.Microsoft ? "Outlook" : "Google Calendar")} to move one occurrence or change the series schedule.", "RECURRING_MEETING_EDIT_IN_CALENDAR");
+
+    /// <summary>Where the invitation is, for the notification: the calendar it was sent from, or nowhere (our own calls are joined here).</summary>
+    private static string InvitationHint(MeetingProvider p) => p switch
+    {
+        MeetingProvider.Microsoft => " — the invitation is in your Outlook calendar",
+        MeetingProvider.ProjectTracker => " — join it from Project Tracker",
+        _ => " — the invitation is in your Google Calendar",
+    };
 
     private async Task<WorkspaceMeeting> LoadWorkspaceMeetingAsync(Guid id, CancellationToken ct)
     {
@@ -278,10 +306,11 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         await RequireOrganizerOrEditAsync(meeting, ct);
         if (meeting.Status != MeetingStatus.Scheduled) throw new ConflictException("Only a scheduled meeting can be rescheduled.", "MEETING_NOT_SCHEDULED");
 
-        if (meeting.RecurrenceRule is not null) throw new ConflictException("Open this series in Google Calendar to move one occurrence or change the series schedule.", "RECURRING_MEETING_EDIT_IN_CALENDAR");
+        if (meeting.RecurrenceRule is not null && meeting.Provider != MeetingProvider.ProjectTracker) throw SeriesInCalendar(meeting.Provider);
         var oldStart = meeting.StartTimeUtc;
-        try { await google.RescheduleEventAsync(meeting.OrganizerUserId, meeting.GoogleCalendarEventId, req.StartTime.UtcDateTime, req.EndTime.UtcDateTime, meeting.TimeZone, ct); }
-        catch (GoogleApiException) { throw new ConflictException("We couldn't reschedule the Google Meet right now. Please try again.", "GOOGLE_MEET_RESCHEDULE_FAILED"); }
+        try { await calendar.RescheduleAsync(meeting.Provider, meeting.OrganizerUserId, meeting.GoogleCalendarEventId, req.StartTime.UtcDateTime, req.EndTime.UtcDateTime, meeting.TimeZone, ct); }
+        catch (MeetingCalendarException ex) { throw MeetingCalendar.Failed(ex); }
+        var what = MeetingCalendar.Name(meeting.Provider);
 
         meeting.StartTimeUtc = req.StartTime.UtcDateTime;
         meeting.EndTimeUtc = req.EndTime.UtcDateTime;
@@ -289,11 +318,11 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         recorder.Audit("meeting.rescheduled", "ProjectMeeting", meeting.Id, oldValue: new { StartTimeUtc = oldStart }, newValue: new { meeting.StartTimeUtc, meeting.EndTimeUtc });
         var actorName = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Someone";
         foreach (var p in meeting.Participants.Where(p => p.UserId != null && p.UserId != ctx.UserId))
-            await notifications.AddAsync(p.UserId!.Value, NotificationType.Meeting, $"{actorName} rescheduled a Google Meet", $"{meeting.Title} · now {meeting.StartTimeUtc:dd MMM} at {meeting.StartTimeUtc:t} UTC", $"/projects/{meeting.ProjectId}?tab=meetings&meeting={meeting.Id}", ct: ct);
+            await notifications.AddAsync(p.UserId!.Value, NotificationType.Meeting, $"{actorName} rescheduled a {what}", $"{meeting.Title} · now {meeting.StartTimeUtc:dd MMM} at {meeting.StartTimeUtc:t} UTC", $"/projects/{meeting.ProjectId}?tab=meetings&meeting={meeting.Id}", ct: ct);
         await db.SaveChangesAsync(ct);
 
         var card = new MeetingCard(meeting.Id, meeting.Title, meeting.StartTimeUtc, meeting.EndTimeUtc, meeting.TimeZone, meeting.GoogleMeetUri, meeting.Participants.Count, "Scheduled");
-        await chat.PostMeetingCardAsync(meeting.ProjectId, card, $"📹 {actorName} rescheduled the Google Meet: {meeting.Title}", ct);
+        await chat.PostMeetingCardAsync(meeting.ProjectId, card, $"📹 {actorName} rescheduled the {what}: {meeting.Title}", ct);
         return ToDto(meeting, meeting.Organizer?.DisplayName ?? "");
     }
 
@@ -314,8 +343,8 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             ?? throw new NotFoundException("That person was not found.");
 
         var attendees = meeting.Participants.Where(p => p.UserId != meeting.OrganizerUserId).Select(p => new GoogleMeetingAttendee(p.Email)).Append(new GoogleMeetingAttendee(user.Email)).ToList();
-        try { await google.UpdateAttendeesAsync(meeting.OrganizerUserId, meeting.GoogleCalendarEventId, attendees, ct); }
-        catch (GoogleApiException) { throw new ConflictException("We couldn't update the Google Meet's attendees right now. Please try again.", "GOOGLE_MEET_UPDATE_FAILED"); }
+        try { await calendar.UpdateAttendeesAsync(meeting.Provider, meeting.OrganizerUserId, meeting.GoogleCalendarEventId, attendees, ct); }
+        catch (MeetingCalendarException ex) { throw MeetingCalendar.Failed(ex); }
 
         // db.MeetingParticipants.Add (not meeting.Participants.Add): the meeting here was loaded from the database, not newly created, so it is
         // already tracked as Unchanged. Its Id (set by a property initializer, not the database) is never the CLR default, so EF cannot tell
@@ -329,7 +358,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         db.MeetingParticipants.Add(participant);
         recorder.Activity("meeting.participant_added", "ProjectMeeting", meeting.Id, $"Added {user.DisplayName} to \"{meeting.Title}\"", meeting.ProjectId);
         recorder.Audit("meeting.participant_added", "ProjectMeeting", meeting.Id, newValue: new { user.Id, user.Email });
-        await notifications.AddAsync(user.Id, NotificationType.Meeting, "You were added to a Google Meet", $"{meeting.Title} · {meeting.StartTimeUtc:dd MMM} at {meeting.StartTimeUtc:t} UTC", $"/projects/{meeting.ProjectId}?tab=meetings&meeting={meeting.Id}", ct: ct);
+        await notifications.AddAsync(user.Id, NotificationType.Meeting, $"You were added to a {MeetingCalendar.Name(meeting.Provider)}", $"{meeting.Title} · {meeting.StartTimeUtc:dd MMM} at {meeting.StartTimeUtc:t} UTC", $"/projects/{meeting.ProjectId}?tab=meetings&meeting={meeting.Id}", ct: ct);
         await db.SaveChangesAsync(ct);
         return ToDto(meeting, meeting.Organizer?.DisplayName ?? "");
     }
@@ -345,15 +374,15 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var row = meeting.Participants.FirstOrDefault(p => p.UserId == userId) ?? throw new NotFoundException("That person is not on this meeting.");
 
         var attendees = meeting.Participants.Where(p => p.UserId != meeting.OrganizerUserId && p.UserId != userId).Select(p => new GoogleMeetingAttendee(p.Email)).ToList();
-        try { await google.UpdateAttendeesAsync(meeting.OrganizerUserId, meeting.GoogleCalendarEventId, attendees, ct); }
-        catch (GoogleApiException) { throw new ConflictException("We couldn't update the Google Meet's attendees right now. Please try again.", "GOOGLE_MEET_UPDATE_FAILED"); }
+        try { await calendar.UpdateAttendeesAsync(meeting.Provider, meeting.OrganizerUserId, meeting.GoogleCalendarEventId, attendees, ct); }
+        catch (MeetingCalendarException ex) { throw MeetingCalendar.Failed(ex); }
 
         db.MeetingParticipants.Remove(row);
         meeting.Participants.Remove(row);   // also drop it from the in-memory collection, so the DTO returned below does not still list them
         recorder.Activity("meeting.participant_removed", "ProjectMeeting", meeting.Id, $"Removed {row.User?.DisplayName ?? row.Email} from \"{meeting.Title}\"", meeting.ProjectId);
         recorder.Audit("meeting.participant_removed", "ProjectMeeting", meeting.Id, oldValue: new { UserId = userId, row.Email });
         if (row.UserId is { } removedId)
-            await notifications.AddAsync(removedId, NotificationType.Meeting, "You are no longer invited to a Google Meet", meeting.Title, $"/projects/{meeting.ProjectId}?tab=meetings", ct: ct);
+            await notifications.AddAsync(removedId, NotificationType.Meeting, $"You are no longer invited to a {MeetingCalendar.Name(meeting.Provider)}", meeting.Title, $"/projects/{meeting.ProjectId}?tab=meetings", ct: ct);
         await db.SaveChangesAsync(ct);
         return ToDto(meeting, meeting.Organizer?.DisplayName ?? "");
     }
@@ -392,7 +421,8 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     private async Task SyncRsvpAsync(ProjectMeeting meeting, CancellationToken ct)
     {
         IReadOnlyList<GoogleAttendeeStatus> statuses;
-        try { statuses = await google.GetAttendeeStatusAsync(meeting.OrganizerUserId, meeting.GoogleCalendarEventId, ct); }
+        if (meeting.Provider == MeetingProvider.ProjectTracker) return;
+        try { statuses = await calendar.AttendeeStatusAsync(meeting.Provider, meeting.OrganizerUserId, meeting.GoogleCalendarEventId, ct); }
         catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "RSVP sync failed for meeting {MeetingId}", meeting.Id); return; }
         if (statuses.Count == 0) return;
         var byEmail = statuses.ToDictionary(s => s.Email, s => s.ResponseStatus, StringComparer.OrdinalIgnoreCase);
@@ -416,8 +446,9 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         await RequireOrganizerOrEditAsync(meeting, ct);
         if (meeting.Status == MeetingStatus.Cancelled) return;
 
-        try { await google.CancelEventAsync(meeting.OrganizerUserId, meeting.GoogleCalendarEventId, ct); }
-        catch (GoogleApiException) { throw new ConflictException("We couldn't cancel the Google Meet right now. Please try again.", "GOOGLE_MEET_CANCEL_FAILED"); }
+        try { await calendar.CancelAsync(meeting.Provider, meeting.OrganizerUserId, meeting.GoogleCalendarEventId, ct); }
+        catch (MeetingCalendarException ex) { throw MeetingCalendar.Failed(ex); }
+        var what = MeetingCalendar.Name(meeting.Provider);
 
         meeting.Status = MeetingStatus.Cancelled;
         meeting.CancelledAt = clock.Now;
@@ -426,15 +457,16 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var participantCount = await db.MeetingParticipants.AsNoTracking().CountAsync(p => p.MeetingId == meeting.Id, ct);
         var participants = await db.MeetingParticipants.AsNoTracking().Where(p => p.MeetingId == meeting.Id && p.UserId != null && p.UserId != meeting.OrganizerUserId).Select(p => p.UserId!.Value).ToListAsync(ct);
         foreach (var userId in participants)
-            await notifications.AddAsync(userId, NotificationType.Meeting, "A Google Meet was cancelled", meeting.Title, $"/projects/{meeting.ProjectId}?tab=meetings", ct: ct);
+            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {what} was cancelled", meeting.Title, $"/projects/{meeting.ProjectId}?tab=meetings", ct: ct);
         await db.SaveChangesAsync(ct);
 
         var byName = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Someone";
         var card = new MeetingCard(meeting.Id, meeting.Title, meeting.StartTimeUtc, meeting.EndTimeUtc, meeting.TimeZone, meeting.GoogleMeetUri, participantCount, "Cancelled");
-        await chat.PostMeetingCardAsync(meeting.ProjectId, card, $"📹 {byName} cancelled the Google Meet: {meeting.Title}", ct);
+        await chat.PostMeetingCardAsync(meeting.ProjectId, card, $"📹 {byName} cancelled the {what}: {meeting.Title}", ct);
     }
 
     private static MeetingDto ToDto(ProjectMeeting m, string organizerName) => new(m.Id, m.ProjectId, m.Title, m.Description,
         new DateTimeOffset(m.StartTimeUtc, TimeSpan.Zero), new DateTimeOffset(m.EndTimeUtc, TimeSpan.Zero), m.TimeZone, m.Status.ToString(), m.GoogleMeetUri,
-        m.OrganizerUserId, organizerName, m.Participants.Select(p => new MeetingParticipantDto(p.UserId, p.User?.DisplayName ?? p.Email, p.Email, p.Role.ToString(), p.RsvpStatus.ToString())).ToList(), m.RecurrenceRule, m.CalendarUrl, m.IsScrum);
+        m.OrganizerUserId, organizerName, m.Participants.Select(p => new MeetingParticipantDto(p.UserId, p.User?.DisplayName ?? p.Email, p.Email, p.Role.ToString(), p.RsvpStatus.ToString())).ToList(), m.RecurrenceRule, m.CalendarUrl, m.IsScrum,
+        MeetingCalendar.Key(m.Provider), MeetingCalendar.Name(m.Provider));
 }

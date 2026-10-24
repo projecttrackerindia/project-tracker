@@ -266,6 +266,9 @@ public class Notification : TenantEntity, ITenantScoped
     public int EmailAttempts { get; set; }
     /// <summary>Waiting to be pushed to the person's devices (installed app or browser), even when the app is closed.</summary>
     public bool PushPending { get; set; }
+    /// <summary>Waiting to be sent to the person as a Slack direct message (they linked Slack and chose to get these there).</summary>
+    public bool SlackPending { get; set; }
+    public DateTime? SlackSentAt { get; set; }
 }
 
 public class AuditLog : Entity

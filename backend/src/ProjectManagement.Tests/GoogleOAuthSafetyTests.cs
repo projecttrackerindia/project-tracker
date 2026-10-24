@@ -101,6 +101,9 @@ public class GoogleOAuthSafetyTests(ApiFactory factory)
         var status=await owner.Get("/api/v1/integrations/google/status");Assert.True(status.Ok,status.ToString());
         Assert.True(status.Data!["connected"]!.GetValue<bool>());Assert.False(status.Data["calendarAccess"]!.GetValue<bool>());
         var project=await owner.CreateProjectAsync("Partial grant project");
-        var meeting=await owner.Post($"/api/v1/projects/{project}/meetings/start",new{});
+        // Asked for Google Meet: refused with what to reconnect. Left automatic: it becomes a Project Tracker call instead of failing.
+        var meeting=await owner.Post($"/api/v1/projects/{project}/meetings/start",new{service="google"});
         Assert.Equal(HttpStatusCode.Conflict,meeting.Status);Assert.Equal("GOOGLE_SCOPE_REQUIRED",meeting.ErrorCode);
+        var fallback=await owner.Post($"/api/v1/projects/{project}/meetings/start",new{});
+        Assert.Equal(HttpStatusCode.Created,fallback.Status);Assert.Equal("ours",fallback.Data!["provider"]!.GetValue<string>());
     }}

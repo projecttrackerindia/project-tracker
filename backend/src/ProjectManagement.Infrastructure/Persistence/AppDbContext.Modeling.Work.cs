@@ -830,6 +830,7 @@ public partial class AppDbContext
             e.HasIndex(x => x.DedupeKey);
             e.HasIndex(x => x.EmailPending);
             e.HasIndex(x => x.PushPending);
+            e.HasIndex(x => x.SlackPending);
             e.Property(x => x.DedupeKey).HasMaxLength(100);
         });
         b.Entity<Attachment>(e =>

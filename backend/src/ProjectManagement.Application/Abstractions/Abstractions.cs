@@ -203,6 +203,8 @@ public interface IAppDbContext
     DbSet<AiEvaluationRun> AiEvaluationRuns { get; }
     DbSet<AiWorkspaceProvider> AiWorkspaceProviders { get; }
     DbSet<AiProviderConsent> AiProviderConsents { get; }
+    DbSet<PersonalConnectionSettings> PersonalConnectionSettings { get; }
+    DbSet<SlackUserLink> SlackUserLinks { get; }
     DbSet<CallRoom> CallRooms { get; }
     DbSet<CallParticipant> CallParticipants { get; }
     DbSet<AiAttachment> AiAttachments { get; }

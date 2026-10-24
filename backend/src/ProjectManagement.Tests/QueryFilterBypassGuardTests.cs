@@ -57,6 +57,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Import/TaskImportService.cs",
         "ProjectManagement.Application/Features/Integrations/ApiKeyService.cs",
         "ProjectManagement.Application/Features/Integrations/CalendarFeedService.cs",
+        "ProjectManagement.Application/Features/Integrations/ConnectedAccountsService.cs", // Slack messages: the dispatcher claims waiting notifications across workspaces, then reads only that notification's workspace bot and that person's link
         "ProjectManagement.Application/Features/Integrations/GitLinkService.cs",
         "ProjectManagement.Application/Features/Integrations/GitHubAppService.cs", // an installation id may belong to one workspace only: uniqueness check across workspaces, nothing else read
         "ProjectManagement.Application/Features/Integrations/GitHubAppWebhook.cs", // signed GitHub App webhook: the installation id picks the workspace (routing row and tenant status only); everything after runs in that workspace

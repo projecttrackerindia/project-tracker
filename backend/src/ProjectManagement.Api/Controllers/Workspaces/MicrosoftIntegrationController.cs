@@ -9,8 +9,8 @@ public class MicrosoftIntegrationController(MicrosoftProductivityAuthService ser
     public const string ProofCookie="__Secure-pt-microsoft-connect";
     public const string CallbackPath="/api/v1/integrations/microsoft/callback";
     [HttpGet("status")] public async Task<IActionResult> Status(CancellationToken ct)=>Ok(await service.StatusAsync(ct));
-    [HttpGet("connect")] public async Task<IActionResult> Connect(CancellationToken ct,[FromQuery]bool inbox=false,[FromQuery]bool calendars=false){
-        var result=await service.StartAsync(ct,inbox,calendars);
+    [HttpGet("connect")] public async Task<IActionResult> Connect(CancellationToken ct,[FromQuery]bool inbox=false,[FromQuery]bool calendars=false,[FromQuery]bool meetings=false,[FromQuery]string? returnUrl=null){
+        var result=await service.StartAsync(ct,inbox,calendars,meetings,returnUrl);
         Response.Cookies.Append(ProviderConnectionBrowser.CookieName("microsoft",Request,environment),result.BrowserProof,ProviderConnectionBrowser.CookieOptions(CallbackPath,Request,environment));
         return Ok(new{url=result.Url});
     }
@@ -18,6 +18,8 @@ public class MicrosoftIntegrationController(MicrosoftProductivityAuthService ser
         ProviderConnectionBrowser.Verify("microsoft",Request,environment);return NoContent();
     }
     [HttpPost("disconnect")] public async Task<IActionResult> Disconnect(CancellationToken ct){await service.DisconnectAsync(ct);return NoContent();}
+    /// <summary>Stops one feature (mail, inbox, calendar, meetings) and keeps the rest connected.</summary>
+    [HttpPost("features/{feature}/off")] public async Task<IActionResult> TurnOff(string feature,CancellationToken ct)=>Ok(await service.TurnOffAsync(feature,ct));
 }
 [Route(MicrosoftIntegrationController.CallbackPath),AllowAnonymous]
 public class MicrosoftIntegrationCallbackController(MicrosoftProductivityAuthService service,IWebHostEnvironment environment):ApiControllerBase

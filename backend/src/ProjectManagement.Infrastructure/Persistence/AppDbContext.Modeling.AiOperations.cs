@@ -18,6 +18,26 @@ public partial class AppDbContext
             e.Property(x => x.RoomName).HasMaxLength(80);
             e.Property(x => x.Kind).HasMaxLength(16);
             e.Property(x => x.Status).HasMaxLength(16);
+            e.HasIndex(x => new { x.TenantId, x.MeetingId });
+            e.HasIndex(x => new { x.TenantId, x.WorkspaceMeetingId });
+        });
+        b.Entity<PersonalConnectionSettings>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            e.Property(x => x.MeetingService).HasMaxLength(16);
+            e.Property(x => x.SlackMessages).HasMaxLength(8);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<SlackUserLink>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.SlackUserId }).IsUnique();
+            e.Property(x => x.SlackTeamId).HasMaxLength(32);
+            e.Property(x => x.SlackUserId).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Email).HasMaxLength(254);
+            e.Property(x => x.LastError).HasMaxLength(300);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<CallParticipant>(e =>
         {

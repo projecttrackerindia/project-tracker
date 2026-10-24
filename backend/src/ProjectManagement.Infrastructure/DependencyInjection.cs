@@ -215,6 +215,7 @@ public static class DependencyInjection
         services.AddSingleton<ProjectManagement.Application.Features.Notifications.IWebPushSender, DevicePushSender>();
         services.AddSingleton<ProjectManagement.Application.Features.Notifications.PushDispatcher>();
         services.AddHostedService<PushWorker>();
+        services.AddHostedService<SlackMessageWorker>();
         return services;
     }
 }

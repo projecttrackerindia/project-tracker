@@ -16,6 +16,8 @@ public class CallRoom : TenantEntity, ITenantScoped
     public string Kind { get; set; } = "adhoc";
     public Guid? ProjectId { get; set; }
     public Guid? MeetingId { get; set; }
+    /// <summary>The workspace meeting (no project) this call is held for, when it is one of ours rather than Google Meet or Teams.</summary>
+    public Guid? WorkspaceMeetingId { get; set; }
     public Guid? ConversationId { get; set; }
     public Guid StartedBy { get; set; }
     public DateTime StartedAt { get; set; }

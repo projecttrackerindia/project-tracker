@@ -189,6 +189,8 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<AiEvaluationRun> AiEvaluationRuns => Set<AiEvaluationRun>();
     public DbSet<AiWorkspaceProvider> AiWorkspaceProviders => Set<AiWorkspaceProvider>();
     public DbSet<AiProviderConsent> AiProviderConsents => Set<AiProviderConsent>();
+    public DbSet<PersonalConnectionSettings> PersonalConnectionSettings => Set<PersonalConnectionSettings>();
+    public DbSet<SlackUserLink> SlackUserLinks => Set<SlackUserLink>();
     public DbSet<CallRoom> CallRooms => Set<CallRoom>();
     public DbSet<CallParticipant> CallParticipants => Set<CallParticipant>();
     public DbSet<AiAttachment> AiAttachments => Set<AiAttachment>();

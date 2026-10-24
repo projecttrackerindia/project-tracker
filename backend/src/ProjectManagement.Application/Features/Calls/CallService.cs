@@ -15,7 +15,7 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Calls;
 
 public record CallsStatusDto(bool Available, int MaxParticipants);
-public record StartCallRequest(string? Title, Guid? ProjectId, Guid? MeetingId, Guid? ConversationId, IReadOnlyList<Guid>? Invite, bool Agent = false);
+public record StartCallRequest(string? Title, Guid? ProjectId, Guid? MeetingId, Guid? ConversationId, IReadOnlyList<Guid>? Invite, bool Agent = false, Guid? WorkspaceMeetingId = null);
 public record CallPersonDto(Guid UserId, string Name, string Role, bool InCall, DateTime? JoinedAt);
 public record CallDto(Guid Id, string Title, string Kind, Guid? ProjectId, string? ProjectKey, Guid? ConversationId, string Status, DateTime StartedAt, DateTime? EndedAt,
     Guid StartedBy, string StartedByName, bool AgentEnabled, string? AgentStatus, bool CanEnd, IReadOnlyList<CallPersonDto> People);
@@ -83,7 +83,7 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         try { await rooms.CreateAsync(room, O.MaxParticipants, 600, ct); }
         catch (HttpRequestException ex) { log.LogWarning(ex, "The media server did not open a room"); throw new AppException(502, "CALLS_SERVER_UNREACHABLE", "The call server could not be reached. Try again in a moment."); }
 
-        var call = new CallRoom { TenantId = tenant, Title = title, RoomName = room, Kind = kind, ProjectId = projectId, MeetingId = meetingId, ConversationId = conversationId,
+        var call = new CallRoom { TenantId = tenant, Title = title, RoomName = room, Kind = kind, ProjectId = projectId, MeetingId = meetingId, ConversationId = conversationId, WorkspaceMeetingId = req.WorkspaceMeetingId,
             StartedBy = me, StartedAt = now, Status = "live", CreatedAt = now };
         db.CallRooms.Add(call);
         db.CallParticipants.Add(new CallParticipant { TenantId = tenant, CallId = call.Id, UserId = me, Role = "host", CreatedAt = now });
@@ -112,6 +112,55 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         }
         return await GetAsync(call.Id, ct);
     }
+
+    /// <summary>
+    /// The call for a meeting held as a Project Tracker call (no Google Meet or Teams): whoever opens it first starts it - the meeting's people
+    /// are invited, and in a project with its agent on, the agent comes along - and everyone after joins that same call.
+    /// </summary>
+    public async Task<CallDto> OpenMeetingAsync(Guid meetingId, bool workspaceMeeting, CancellationToken ct = default)
+    {
+        RequireConfigured();
+        var me = ctx.RequireUserId();
+        string title; List<Guid> invite; Guid? projectId = null; bool agent = false;
+        if (workspaceMeeting)
+        {
+            var m = await db.WorkspaceMeetings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == meetingId, ct) ?? throw new NotFoundException("Meeting not found.");
+            var people = await db.WorkspaceMeetingAttendees.AsNoTracking().Where(a => a.MeetingId == meetingId).Select(a => a.UserId).ToListAsync(ct);
+            if (!people.Contains(me) && ctx.Role is not (TenantRole.Owner or TenantRole.Admin)) throw new NotFoundException("Meeting not found.");
+            if (m.Status == MeetingStatus.Cancelled) throw new ConflictException("This meeting was cancelled.", "MEETING_CANCELLED");
+            if (m.Provider != MeetingProvider.ProjectTracker) throw new ConflictException("This meeting is held in another service. Use its own join link.", "MEETING_NOT_OURS");
+            title = m.Title; invite = people;
+        }
+        else
+        {
+            var m = await db.ProjectMeetings.AsNoTracking().Include(x => x.Participants).FirstOrDefaultAsync(x => x.Id == meetingId, ct) ?? throw new NotFoundException("Meeting not found.");
+            var invited = m.Participants.Any(p => p.UserId == me);
+            if (!invited && !(ctx.Role != TenantRole.Guest && await access.VisibleProjects().AnyAsync(p => p.Id == m.ProjectId, ct))) throw new NotFoundException("Meeting not found.");
+            if (m.Status == MeetingStatus.Cancelled) throw new ConflictException("This meeting was cancelled.", "MEETING_CANCELLED");
+            if (m.Provider != MeetingProvider.ProjectTracker) throw new ConflictException("This meeting is held in another service. Use its own join link.", "MEETING_NOT_OURS");
+            title = m.Title; projectId = m.ProjectId;
+            invite = m.Participants.Where(p => p.UserId != null).Select(p => p.UserId!.Value).ToList();
+            agent = await db.ProjectAgentSettings.AsNoTracking().AnyAsync(x => x.ProjectId == m.ProjectId && x.Enabled && x.ReadMeetings, ct);
+        }
+        var live = await LiveForMeetingAsync(meetingId, workspaceMeeting, ct);
+        if (live is not null) return await GetAsync(live.Id, ct);
+        var started = await StartAsync(new StartCallRequest(title, null, workspaceMeeting ? null : meetingId, null, invite, agent, workspaceMeeting ? meetingId : null), ct);
+        // Two people opening it at the same moment: everyone ends up in the earliest call, the other one is closed again.
+        var first = await LiveForMeetingAsync(meetingId, workspaceMeeting, ct);
+        if (first is not null && first.Id != started.Id)
+        {
+            var mine = await db.CallRooms.FirstAsync(c => c.Id == started.Id, ct);
+            try { await rooms.DeleteAsync(mine.RoomName, ct); } catch (HttpRequestException ex) { log.LogInformation(ex, "Could not close a duplicate meeting call"); }
+            await MarkEndedAsync(mine, clock.Now, ct);
+            await db.SaveChangesAsync(ct);
+            return await GetAsync(first.Id, ct);
+        }
+        return started;
+    }
+
+    private Task<CallRoom?> LiveForMeetingAsync(Guid meetingId, bool workspaceMeeting, CancellationToken ct) =>
+        db.CallRooms.AsNoTracking().Where(c => c.Status == "live" && (workspaceMeeting ? c.WorkspaceMeetingId == meetingId : c.MeetingId == meetingId))
+            .OrderBy(c => c.StartedAt).ThenBy(c => c.Id).FirstOrDefaultAsync(ct);
 
     /// <summary>A call the person may see: one they are invited to or started, or one in a project or chat they belong to.</summary>
     private async Task<CallRoom> VisibleAsync(Guid id, CancellationToken ct)

@@ -20,4 +20,6 @@ export const callsApi = {
   get: (id: string) => get<Call>(`/calls/${id}`),
   join: (id: string) => post<CallJoin>(`/calls/${id}/join`),
   end: (id: string) => post<Call>(`/calls/${id}/end`),
+  /** A meeting held as a Project Tracker call: joins its live call, or starts it (inviting the meeting's people, with the agent if it is on). */
+  openMeeting: (meetingId: string, workspace = false) => post<Call>(`/calls/meeting/${workspace ? 'w/' : ''}${meetingId}`),
 };

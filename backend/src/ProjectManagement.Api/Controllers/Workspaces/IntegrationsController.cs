@@ -54,6 +54,10 @@ public class IntegrationsController(InboundEmailService inbound, GitLinkService 
         return NoContent();
     }
 
+    /// <summary>Stops one Google feature (calendar, mail, inbox, transcripts) and keeps the rest connected.</summary>
+    [HttpPost("integrations/google/features/{feature}/off")]
+    public async Task<IActionResult> GoogleFeatureOff(string feature, CancellationToken ct) => Ok(await google.TurnOffAsync(feature, ct));
+
     // ---- email to work task
     [HttpGet("integrations/inbound-email"), RequireModule(Modules.Work)]
     public async Task<IActionResult> Mailbox(CancellationToken ct) => Ok(await inbound.GetAsync(ct));

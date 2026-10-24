@@ -34,6 +34,7 @@ let items = [
 ];
 const replies = [M(31, sam, 'I looked at it already, looks fine', 15, { threadRootId: id(2) }), M(32, priya, 'Thanks Sam', 10, { threadRootId: id(2) })];
 const wav = (() => { const b = Buffer.alloc(44 + 1600); b.write('RIFF', 0); b.writeUInt32LE(36 + 1600, 4); b.write('WAVE', 8); b.write('fmt ', 12); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(16000, 24); b.writeUInt32LE(32000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(1600, 40); return b; })();
+let myStatus = { emoji: null, text: null, clearAt: null, dndUntil: null, dnd: false };
 const writes = [], errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 try {
@@ -67,7 +68,8 @@ try {
       if (ep === `/api/v1/chat/conversations/${conv.id}/scheduled` && method === 'POST') { await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ data: { id: 's1', conversationId: conv.id, conversationName: conv.name, body: b.body, sendAt: b.sendAt, status: 'Scheduled', threadRootId: null, error: null } }) }); return; }
       if (ep === '/api/v1/chat/ai/catch-up') { await json({ summary: 'The EMI reminder moves to 9 am, and Priya needs your approval of the template.', decisions: [{ text: 'EMI reminder at 9 am', messageId: id(1), conversationId: conv.id, conversationName: 'Collections' }], questions: [{ text: 'Approve the template by Friday', messageId: id(2), conversationId: conv.id, conversationName: 'Collections' }], actions: [], conversations: 1, messages: 4, model: 'test' }); return; }
       if (ep === '/api/v1/chat/ai/ask') { await json({ answer: 'The EMI reminder is sent at 9 am [1].', citations: [{ n: 1, messageId: id(1), conversationId: conv.id, conversationName: 'Collections', senderName: 'Sam Rivera', at: at(60), snippet: 'We agreed to move the EMI reminder to 9 am', threadRootId: null }], searched: 3, found: true, model: 'test' }); return; }
-      if (ep === '/api/v1/chat/status' && method === 'PUT') { await json({ emoji: b.emoji, text: b.text, clearAt: b.clearAt, dndUntil: b.dndUntil, dnd: !!b.dndUntil }); return; }
+      // Remembered, like the server: the app refetches the status right after saving it.
+      if (ep === '/api/v1/chat/status' && method === 'PUT') { myStatus = { emoji: b.emoji ?? null, text: b.text ?? null, clearAt: b.clearAt ?? null, dndUntil: b.dndUntil ?? null, dnd: !!b.dndUntil }; await json(myStatus); return; }
       if (method !== 'GET' && !ep.endsWith('/auth/refresh') && !ep.endsWith('/read')) assert.fail(`Unexpected write: ${method} ${ep}`);
       let data = [];
       if (ep.endsWith('/auth/refresh')) data = { accessToken: `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`, expiresAt: '2099-01-01T00:00:00Z', user };
@@ -79,7 +81,7 @@ try {
       else if (ep === `/api/v1/chat/messages/${id(2)}/thread`) data = { root: msg(2), replies: [...replies] };
       else if (ep === '/api/v1/chat/unfurl') data = url.searchParams.get('keys').includes('PAY-12') ? [{ key: 'PAY-12', kind: 'task', id: 't12', title: 'New reminder template', status: 'In review', statusColor: '#d97706', assignee: 'Priya Rao', due: '2026-10-30', done: false, link: `/projects/${pid}?task=t12` }] : [];
       else if (ep === '/api/v1/chat/questions') data = [{ messageId: id(2), conversationId: conv.id, conversationName: 'Collections', senderName: 'Priya Rao', snippet: '@Alex Morgan can you approve the template by Friday?', at: at(40), threadRootId: null }];
-      else if (ep === '/api/v1/chat/status') data = { emoji: null, text: null, clearAt: null, dndUntil: null, dnd: false };
+      else if (ep === '/api/v1/chat/status') data = myStatus;
       else if (ep === '/api/v1/projects') data = { items: [{ id: pid, key: 'PAY', name: 'Payments Core', status: 'Active' }], page: 1, totalPages: 1, totalItems: 1 };
       else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
       else if (ep.endsWith('/ai/status')) data = { enabled: true, configured: true, entitled: true, allowedHere: true };

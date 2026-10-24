@@ -57,6 +57,10 @@ try {
   if(url.pathname.endsWith('/auth/refresh'))data={accessToken:`x.${Buffer.from(JSON.stringify({wid:workspace.id,exp:4102444800})).toString('base64url')}.x`,expiresAt:'2099-01-01T00:00:00Z',user,refreshToken:null};
   else if(url.pathname==='/api/v1/me')data=context;
   else if(url.pathname.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
+  else if(url.pathname.endsWith('/me/connected-accounts'))data={google:{connected:true,configured:true,googleEmail:'preview@gmail.example.test',connectedAt:'2026-10-11T08:00:00Z',lastError:null,calendarAccess:true,mailEnabled:false,mailSendAccess:false,inboxEnabled,inboxAccess:true,transcriptAccess:false},
+   microsoft:{enabled:true,configured:true,connected:true,email:'preview@outlook.example.test',mailSendAccess:true,inboxEnabled,inboxAccess:true,calendarsEnabled,calendarAccess:true,connectedAt:'2026-10-11T08:00:00Z',meetingsEnabled:true,meetingsAccess:false},
+   slack:{available:true,workspaceConnected:true,teamName:'Preview',linked:false,name:null,messages:'off',problem:null},gitHub:{available:true,linked:false,email:null,appInstalled:false},
+   meetingService:'auto',meetings:{preference:'auto',provider:'google',name:'Google Meet',reason:'Your Google account is connected, so meetings go to Google Calendar with a Meet link.',googleReady:true,microsoftReady:false,ownCallsReady:true},meetingProblem:null};
   else if(url.pathname.endsWith('/integrations/google/status'))data={connected:true,googleEmail:'preview@gmail.example.test',connectedAt:'2026-10-11T08:00:00Z',lastError:null,calendarAccess:true,mailEnabled:false,mailSendAccess:false,inboxEnabled,inboxAccess:true};
   else if(url.pathname.endsWith('/integrations/microsoft/status'))data={enabled:true,configured:true,connected:true,email:'preview@outlook.example.test',mailSendAccess:true,inboxEnabled,inboxAccess:true,calendarsEnabled,calendarAccess:true,connectedAt:'2026-10-11T08:00:00Z'};
   else if(url.pathname==='/api/v1/me/microsoft-calendars'){calendarReads++;data={account:'preview@outlook.example.test',accessContext:calendarContext,calendars:[{id:'own1',name:'Primary schedule',isDefault:true},{id:'own2',name:'Focus time',isDefault:false}],truncated:false};}
@@ -185,10 +189,12 @@ try {
   }
   checks.push({name:`resume-full-size-edit-preview-${width}`,overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)});
  }
- await capture('connected-accounts-desktop','/account/integrations','.personal-account-grid',1440,1000);
- assert.equal(await page.locator('.connection-capabilities li').count(),2);
+ await capture('connected-accounts-desktop','/account/integrations','.ca-grid',1440,1000);
+ // Each use of an account is its own switch: Google Calendar and inbox on, transcripts off; Outlook mail, inbox and availability on, Teams off.
+ assert.equal(await page.locator('.ca-toggle.on').count(),5);
+ assert.equal(await page.getByRole('radio',{name:/Automatic/}).getAttribute('aria-checked'),'true');
  assert.equal(await page.locator('.personal-inbox').count(),0,'Mail lives in Mailbox, not in settings');
- await capture('connected-accounts-mobile','/account/integrations','.personal-account-grid',390,844);
+ await capture('connected-accounts-mobile','/account/integrations','.ca-grid',390,844);
  await page.close();page=await ctx.newPage();attachErrors();
  await page.addInitScript(()=>{
   Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 ProjectTrackerDesktop/1.0.0'});
@@ -196,8 +202,8 @@ try {
   window.ptDesktop={openConnectedAccounts:(slug)=>{window.browserConnectionOpens++;window.browserConnectionSlugs.push(slug);}};
  });
  await page.goto(origin+'/account/integrations');
- await page.getByRole('button',{name:'Reconnect',exact:true}).click();
- await page.getByRole('button',{name:'Reconnect Microsoft',exact:true}).click();
+ await page.getByRole('button',{name:'Turn on Meeting transcripts',exact:true}).click();
+ await page.getByRole('button',{name:'Turn on Outlook calendar and Teams meetings',exact:true}).click();
  assert.equal(await page.evaluate(()=>window.browserConnectionOpens),2);
  assert.deepEqual(await page.evaluate(()=>window.browserConnectionSlugs),['preview-org','preview-org']);
  checks.push({name:'electron-starts-google-and-microsoft-in-system-browser',passed:true});

@@ -1,6 +1,6 @@
 import { providerConnectionUrl } from './providerConnection';
 import { del, download, fetchBlobUrl, get, post, put, uploadFile, create, qs } from './client';
-import type { ChatAttachment,ChatThreadView,ChatSavedItem,ChatSeenBy,ChatQuestion,ChatStatus,ChatScheduled,ChatLink,ChatUnfurl,ChatCatchUp,ChatAskAnswer,ChatExtract,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,GitHubAppStatus,GitHubStatusRules,GitHubBranch,ReviewQueue,ReleaseNotes,DeliveryMetrics,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
+import type { ChatAttachment,ChatThreadView,ChatSavedItem,ChatSeenBy,ChatQuestion,ChatStatus,ChatScheduled,ChatLink,ChatUnfurl,ChatCatchUp,ChatAskAnswer,ChatExtract,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,GitHubAppStatus,GitHubStatusRules,GitHubBranch,ReviewQueue,ReleaseNotes,DeliveryMetrics,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,MeetingProvider,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
 export const platformApi = {
   billing: () => get<PlatformBilling>('/admin/billing'),
   usage: (p: { q?: string; sort?: string; warningsOnly?: boolean; page?: number }) => get<Paged<AdminUsage>>('/admin/usage', { pageSize: 25, ...p }),
@@ -140,12 +140,16 @@ export const integrationsApi = {
   googleConnectUrl: (returnUrl?: string, mail = false, inbox = false, transcripts = false, autoTranscripts = false) =>
     providerConnectionUrl('google', { returnUrl, mail: mail || undefined, inbox: inbox || undefined, transcripts: transcripts || undefined, autoTranscripts: autoTranscripts || undefined }),
   googleDisconnect: () => post('/integrations/google/disconnect'),
+  /** Stops one Google feature and keeps the rest (stopping Gmail never stops Calendar and Meet). */
+  googleFeatureOff: (feature: 'calendar' | 'mail' | 'inbox' | 'transcripts') => post<GoogleConnectionStatus>(`/integrations/google/features/${feature}/off`),
 };
 
 export const microsoftApi = {
   status: () => get<MicrosoftConnectionStatus>('/integrations/microsoft/status'),
-  connect: (inbox = false, calendars = false) => providerConnectionUrl('microsoft', { inbox: inbox || undefined, calendars: calendars || undefined }),
+  connect: (inbox = false, calendars = false, meetings = false, returnUrl?: string) => providerConnectionUrl('microsoft', { inbox: inbox || undefined, calendars: calendars || undefined, meetings: meetings || undefined, returnUrl }),
   disconnect: () => post('/integrations/microsoft/disconnect'),
+  /** Stops one Microsoft feature and keeps the rest. */
+  featureOff: (feature: 'mail' | 'inbox' | 'calendar' | 'meetings') => post<MicrosoftConnectionStatus>(`/integrations/microsoft/features/${feature}/off`),
 };
 
 export const personalInboxApi = {
@@ -178,18 +182,18 @@ export const personalEmailApi = {
 export const meetingApi = {
   list: (projectId: string) => get<Meeting[]>(`/projects/${projectId}/meetings`),
   participants: (projectId: string) => get<MeetingParticipant[]>(`/projects/${projectId}/meetings/participants`),
-  start: (projectId: string, b: { title?: string; participantUserIds?: string[] }) => post<Meeting>(`/projects/${projectId}/meetings/start`, b),
-  schedule: (projectId: string, b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean }) =>
+  start: (projectId: string, b: { title?: string; participantUserIds?: string[]; service?: MeetingServiceKey }) => post<Meeting>(`/projects/${projectId}/meetings/start`, b),
+  schedule: (projectId: string, b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean; service?: MeetingServiceKey }) =>
     post<Meeting>(`/projects/${projectId}/meetings/schedule`, b),
   get: (id: string) => get<Meeting>(`/meetings/${id}`),
   cancel: (id: string) => post(`/meetings/${id}/cancel`, {}),
   reschedule: (id: string, b: { startTime: string; endTime: string }) => post<Meeting>(`/meetings/${id}/reschedule`, b),
   addParticipant: (id: string, userId: string) => post<Meeting>(`/meetings/${id}/participants`, { userId }),
   removeParticipant: (id: string, userId: string) => del<Meeting>(`/meetings/${id}/participants/${userId}`),
-  /** A meeting for the workspace as a whole (no project): its own invitee list and endpoint; Google Calendar holds the event. */
+  /** A meeting for the workspace as a whole (no project): its own invitee list and endpoint; Google, Outlook or our own calls hold it. */
   workspaceParticipants: () => get<MeetingParticipant[]>('/meetings/participants'),
-  scheduleForWorkspace: (b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean }) =>
-    post<{ id: string; title: string; meetUri: string; calendarUrl: string | null; participantCount: number }>('/meetings/schedule', b),
+  scheduleForWorkspace: (b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean; service?: MeetingServiceKey }) =>
+    post<{ id: string; title: string; meetUri: string; calendarUrl: string | null; participantCount: number; provider?: MeetingProvider; providerName?: string }>('/meetings/schedule', b),
   workspaceGet: (id: string) => get<WorkspaceMeetingDetail>(`/meetings/workspace/${id}`),
   workspaceCancel: (id: string) => post(`/meetings/workspace/${id}/cancel`, {}),
   workspaceReschedule: (id: string, b: { startTime: string; endTime: string }) => post<WorkspaceMeetingDetail>(`/meetings/workspace/${id}/reschedule`, b),
@@ -274,4 +278,29 @@ export const personalCalendarApi = {
 export const microsoftCalendarApi = {
   list: (signal?: AbortSignal) => get<import('./types').MicrosoftCalendarInventory>('/me/microsoft-calendars', undefined, { signal }),
   availability: (body: {calendarIds: string[]; accessContext: string; start: string; end: string}, signal?: AbortSignal) => post<import('./types').MicrosoftCalendarAvailability>('/me/microsoft-calendars/availability', body, { signal }),
+};
+
+export type MeetingServiceKey = 'auto' | 'google' | 'microsoft' | 'ours';
+export type SlackMessagesChoice = 'off' | 'needs' | 'all';
+export interface MeetingServiceChoice { preference: MeetingServiceKey; provider: Exclude<MeetingServiceKey, 'auto'>; name: string; reason: string; googleReady: boolean; microsoftReady: boolean; ownCallsReady: boolean }
+export interface ConnectedAccounts {
+  google: GoogleConnectionStatus;
+  microsoft: MicrosoftConnectionStatus;
+  slack: { available: boolean; workspaceConnected: boolean; teamName: string | null; linked: boolean; name: string | null; messages: SlackMessagesChoice; problem: string | null };
+  gitHub: { available: boolean; linked: boolean; email: string | null; appInstalled: boolean };
+  meetingService: MeetingServiceKey;
+  meetings: MeetingServiceChoice | null;
+  meetingProblem: string | null;
+}
+
+/** My account > Connected accounts: every connected account in one answer, the meeting service and Slack choices, and the person's Slack link. */
+export const connectedAccountsApi = {
+  get: () => get<ConnectedAccounts>('/me/connected-accounts'),
+  save: (b: { meetingService?: MeetingServiceKey; slackMessages?: SlackMessagesChoice }) => put<ConnectedAccounts>('/me/connected-accounts', b),
+  slackConnect: async () => {
+    const r = await get<{ url: string }>('/integrations/slack/me/connect');
+    await get('/integrations/slack/me/callback/browser-check');
+    return r;
+  },
+  slackUnlink: () => del('/integrations/slack/me'),
 };

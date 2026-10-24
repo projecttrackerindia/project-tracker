@@ -16,7 +16,7 @@ namespace ProjectManagement.Application.Features.ProjectMeetings;
 /// starts-soon notice is urgent enough to justify polling Google harder, and reusing this one worker rather than adding a second
 /// scheduler is itself part of the point.
 /// </summary>
-public class MeetingSyncEngine(IAppDbContext db, AppClock clock, GoogleMeetingClient google, Recorder recorder, NotificationRouter router, ILogger<MeetingSyncEngine> log)
+public class MeetingSyncEngine(IAppDbContext db, AppClock clock, MeetingCalendar calendar, Recorder recorder, NotificationRouter router, ILogger<MeetingSyncEngine> log)
 {
     private const int Batch = 200;
     /// <summary>How far ahead "starts soon" looks. Wider than the worker's own interval on purpose, so the notice still lands once even if
@@ -33,7 +33,8 @@ public class MeetingSyncEngine(IAppDbContext db, AppClock clock, GoogleMeetingCl
                         && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == m.TenantId && t.Status == TenantStatus.Active))
             .Include(m => m.Participants)
             .OrderBy(m => m.StartTimeUtc).Take(Batch).ToListAsync(ct);
-        if (meetings.Count == 0) return 0;
+        await NotifyWorkspaceCallsAsync(now, ct);
+        if (meetings.Count == 0) { await db.SaveChangesAsync(ct); return 0; }
 
         var changed = 0;
         foreach (var m in meetings)
@@ -47,8 +48,10 @@ public class MeetingSyncEngine(IAppDbContext db, AppClock clock, GoogleMeetingCl
 
     private async Task<int> SyncRsvpAsync(ProjectMeeting m, CancellationToken ct)
     {
+        // Our own calls have no outside calendar to ask: people just join.
+        if (m.Provider == MeetingProvider.ProjectTracker) return 0;
         IReadOnlyList<GoogleAttendeeStatus> statuses;
-        try { statuses = await google.GetAttendeeStatusAsync(m.OrganizerUserId, m.GoogleCalendarEventId, ct); }
+        try { statuses = await calendar.AttendeeStatusAsync(m.Provider, m.OrganizerUserId, m.GoogleCalendarEventId, ct); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // One organizer's expired connection, or one flaky call, must never stop the rest of the batch from syncing.
@@ -73,6 +76,33 @@ public class MeetingSyncEngine(IAppDbContext db, AppClock clock, GoogleMeetingCl
         return changed;
     }
 
+    /// <summary>
+    /// Workspace meetings held as Project Tracker calls have no calendar to remind people, so the app does: shortly before, each person
+    /// invited gets a notice that opens the call. (Google and Outlook remind their own invitees.)
+    /// </summary>
+    private async Task NotifyWorkspaceCallsAsync(DateTime now, CancellationToken ct)
+    {
+        var soon = await db.WorkspaceMeetings.IgnoreQueryFilters()
+            .Where(m => m.Provider == MeetingProvider.ProjectTracker && m.Status == MeetingStatus.Scheduled && m.StartTimeUtc > now && m.StartTimeUtc <= now.Add(StartsSoonWindow)
+                        && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == m.TenantId && t.Status == TenantStatus.Active))
+            .Take(Batch).ToListAsync(ct);
+        foreach (var m in soon)
+        {
+            var key = $"meeting-soon:{m.Id:N}";
+            if (await db.Notifications.IgnoreQueryFilters().AnyAsync(n => n.DedupeKey == key, ct)) continue;
+            var minutes = Math.Max(1, (int)Math.Round((m.StartTimeUtc - now).TotalMinutes));
+            foreach (var uid in await db.WorkspaceMeetingAttendees.IgnoreQueryFilters().Where(a => a.MeetingId == m.Id).Select(a => a.UserId).ToListAsync(ct))
+            {
+                var n = new Notification
+                {
+                    TenantId = m.TenantId, UserId = uid, Type = NotificationType.Meeting, CreatedAt = clock.Now,
+                    Title = $"Meeting starts in {minutes} minute{(minutes == 1 ? "" : "s")}", Body = m.Title, DedupeKey = key, Link = MeetingCalendar.JoinPath(m.Id, true),
+                };
+                if (await router.ApplyAsync(n, ct)) db.Notifications.Add(n);
+            }
+        }
+    }
+
     private async Task NotifyStartsSoonAsync(ProjectMeeting m, CancellationToken ct)
     {
         var key = $"meeting-soon:{m.Id:N}";
@@ -84,7 +114,9 @@ public class MeetingSyncEngine(IAppDbContext db, AppClock clock, GoogleMeetingCl
             var n = new Notification
             {
                 TenantId = m.TenantId, UserId = uid, Type = NotificationType.Meeting, CreatedAt = clock.Now,
-                Title = $"Meeting starts in {minutes} minute{(minutes == 1 ? "" : "s")}", Body = m.Title, Link = $"/projects/{m.ProjectId}?tab=meetings&meeting={m.Id}", DedupeKey = key,
+                Title = $"Meeting starts in {minutes} minute{(minutes == 1 ? "" : "s")}", Body = m.Title, DedupeKey = key,
+                // A Project Tracker call: the notice opens the call itself. Google Meet and Teams: the meeting, with its join link.
+                Link = m.Provider == MeetingProvider.ProjectTracker ? MeetingCalendar.JoinPath(m.Id, false) : $"/projects/{m.ProjectId}?tab=meetings&meeting={m.Id}",
             };
             if (await router.ApplyAsync(n, ct)) db.Notifications.Add(n);
         }

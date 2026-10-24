@@ -88,7 +88,7 @@ try{
   assert.deepEqual(saves.at(-1).repeat,{frequency:'Weekdays',occurrences:10});assert.equal(saves.at(-1).startTime,'2030-01-07T04:00:00.000Z');
   assert.equal(new Date(saves.at(-1).endTime)-new Date(saves.at(-1).startTime),900000);
   checks.push(`scrum-series-${width}`);await dialog.getByRole('button',{name:'Done',exact:true}).click();
-  await page.goto(origin+`/preview-org/projects/${pid}`);await page.getByRole('button',{name:'Google Meet',exact:true}).click();await page.getByRole('menuitem',{name:'Schedule scrum call'}).click();
+  await page.goto(origin+`/preview-org/projects/${pid}`);await page.getByRole('button',{name:'Meeting',exact:true}).click();await page.getByRole('menuitem',{name:'Schedule scrum call'}).click();
   await page.getByRole('dialog').getByRole('heading',{name:'Schedule scrum call'}).waitFor();checks.push(`project-scrum-${width}`);
   await page.close();
  }

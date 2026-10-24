@@ -39,15 +39,18 @@ public class ProjectMeetingTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Starting_a_meeting_without_connecting_google_fails_with_a_plain_language_error()
+    public async Task Without_google_a_meeting_is_a_Project_Tracker_call_and_asking_for_google_says_to_connect_it()
     {
         var owner = await TestClient.RegisterAsync(factory);
         await owner.CreateOrgAsync();
         var project = await owner.CreateProjectAsync("Payment Engine");
-
-        var res = await owner.Post($"/api/v1/projects/{project}/meetings/start", new { });
+        var res = await owner.Post($"/api/v1/projects/{project}/meetings/start", new { service = "google" });
         Assert.False(res.Ok, res.ToString());
         Assert.Equal("GOOGLE_NOT_CONNECTED", res.ErrorCode);
+        var ours = await owner.Post($"/api/v1/projects/{project}/meetings/start", new { });
+        Assert.Equal(HttpStatusCode.Created, ours.Status);
+        Assert.Equal("ours", ours.Data!["provider"]!.GetValue<string>());
+        Assert.StartsWith("/calls/meeting/", ours.Data["meetUri"]!.GetValue<string>());
     }
 
     [Fact]

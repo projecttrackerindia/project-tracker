@@ -30,7 +30,7 @@ public class GoogleCalendarOptions
     public bool Configured => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret) && !string.IsNullOrWhiteSpace(RedirectUri);
 }
 
-public record GoogleConnectionStatusDto(bool Connected, string? GoogleEmail, DateTime? ConnectedAt, string? LastError, bool CalendarAccess=false,bool MailEnabled=false,bool MailSendAccess=false,bool InboxEnabled=false,bool InboxAccess=false,bool TranscriptAccess=false);
+public record GoogleConnectionStatusDto(bool Connected, string? GoogleEmail, DateTime? ConnectedAt, string? LastError, bool CalendarAccess=false,bool MailEnabled=false,bool MailSendAccess=false,bool InboxEnabled=false,bool InboxAccess=false,bool TranscriptAccess=false,bool Configured=false);
 public record GoogleAccessGrant(Guid ConnectionId,string RefreshFingerprint,string Account,string AccessToken,Guid ConsentEpoch=default);
 
 /// <summary>
@@ -68,7 +68,7 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
     {
         var uid = ctx.RequireUserId();
         var c = await db.GoogleConnections.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == uid, ct);
-        return c is null ? new GoogleConnectionStatusDto(false, null, null, null,false,_o.MailEnabled&&Configured,false,_o.InboxEnabled&&Configured,false) : new GoogleConnectionStatusDto(true, c.GoogleEmail, c.ConnectedAt, c.LastError, HasCalendarScope(c.Scopes),_o.MailEnabled&&Configured,c.Scopes.Split((char)32).Contains(MailScope),_o.InboxEnabled&&Configured,c.Scopes.Split((char)32).Contains(InboxScope),c.Scopes.Split((char)32).Contains(TranscriptScope));
+        return c is null ? new GoogleConnectionStatusDto(false, null, null, null,false,_o.MailEnabled&&Configured,false,_o.InboxEnabled&&Configured,false,false,Configured) : new GoogleConnectionStatusDto(true, c.GoogleEmail, c.ConnectedAt, c.LastError, HasCalendarScope(c.Scopes),_o.MailEnabled&&Configured,c.Scopes.Split((char)32).Contains(MailScope),_o.InboxEnabled&&Configured,c.Scopes.Split((char)32).Contains(InboxScope),c.Scopes.Split((char)32).Contains(TranscriptScope),Configured);
     }
 
     /// <summary>Where to send the browser so the person can grant Project Tracker Calendar/Meet access.</summary>
@@ -148,6 +148,10 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         // A broad provider token is not evidence that this connection requested inbox consent.
         var inboxConsented=p.RequestedScopes.Split(' ').Contains(InboxScope)||existing!=null&&existing.GoogleEmail==email&&existing.Scopes.Split(' ').Contains(InboxScope);
         if(!inboxConsented)grantedScopes=string.Join(' ',grantedScopes.Split(' ',StringSplitOptions.RemoveEmptyEntries).Where(s=>s!=InboxScope));
+        // Google hands back every permission the person ever granted (include_granted_scopes). Keep only what was asked for now and what was
+        // already on: a feature switched off here stays off until the person turns it on again.
+        var wanted=p.RequestedScopes.Split(' ',StringSplitOptions.RemoveEmptyEntries).Concat(existing?.Scopes.Split(' ',StringSplitOptions.RemoveEmptyEntries)??[]).ToHashSet();
+        grantedScopes=string.Join(' ',grantedScopes.Split(' ',StringSplitOptions.RemoveEmptyEntries).Where(s=>wanted.Contains(s)||s.EndsWith("/userinfo.email")||s=="openid"||s=="email"));
         if (existing is null)
         {
             if (refreshToken is null)
@@ -170,6 +174,32 @@ public class GoogleCalendarAuthService(IAppDbContext db, ICurrentContext ctx, Ap
         await db.SaveChangesAsync(ct);
         await connectionTx.CommitIfOwnedAsync(ct);
         return Landing(p.ReturnPath,"connected");
+    }
+
+    /// <summary>The features a person can switch off one at a time, and the Google permissions each one uses.</summary>
+    public static readonly IReadOnlyDictionary<string,string[]> FeatureScopes=new Dictionary<string,string[]>{
+        ["calendar"]=["https://www.googleapis.com/auth/calendar.events","https://www.googleapis.com/auth/meetings.space.created"],
+        ["mail"]=[MailScope],["inbox"]=[InboxScope],["transcripts"]=[TranscriptScope,MeetSettingsScope]};
+
+    /// <summary>
+    /// Stops one feature (calendar and Meet, sending mail, reading the inbox, meeting transcripts) and keeps the others: stopping Gmail must
+    /// never take Calendar and Meet with it. The permission is dropped here so nothing uses it; Google keeps the grant itself until the whole
+    /// account is disconnected (that revokes it with Google too). Nothing left: the connection is removed and revoked.
+    /// </summary>
+    public async Task<GoogleConnectionStatusDto> TurnOffAsync(string feature,CancellationToken ct=default)
+    {
+        var uid=ctx.RequireUserId();
+        if(!FeatureScopes.TryGetValue(feature,out var drop))throw new ValidationException("feature","Choose calendar, mail, inbox or transcripts.");
+        var c=await db.GoogleConnections.FirstOrDefaultAsync(x=>x.UserId==uid,ct);
+        if(c is null)return await StatusAsync(ct);
+        var left=c.Scopes.Split(' ',StringSplitOptions.RemoveEmptyEntries).Where(x=>!drop.Contains(x)).ToList();
+        if(!left.Any(x=>FeatureScopes.Values.Any(f=>f.Contains(x)))){await DisconnectAsync(ct);return await StatusAsync(ct);}
+        c.Scopes=string.Join(' ',left);c.ConsentEpoch=Guid.NewGuid();
+        // The cached token still carries the dropped permission; make the next use fetch a fresh one limited to what is left.
+        c.AccessTokenProtected=null;c.AccessTokenExpiresAt=null;
+        recorder.Audit("google_connection.feature_off","GoogleConnection",c.Id,newValue:new{Feature=feature});
+        await db.SaveChangesAsync(ct);
+        return await StatusAsync(ct);
     }
 
     public async Task DisconnectAsync(CancellationToken ct = default)

@@ -141,16 +141,19 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
         n.EmailPending = c.Email;
         n.Browser = c.Browser && c.InApp; // a desktop notification needs the in-app item to open
         n.PushPending = n.Browser;        // and is also pushed to the person's devices, for when the app is closed
-        if ((n.EmailPending || n.PushPending) && options.Value.HoldNotificationsInQuietHours && !QuietHours.NeverHeld(n.Type))
+        // Slack direct messages, for people who linked Slack: what needs them, or everything, as they chose (Connected accounts).
+        var slack = c.Any ? await SlackChoiceAsync(n.UserId, n.TenantId, ct) : "off";
+        n.SlackPending = slack == "all" || slack == "needs" && (NotificationLanes.IsNeedsYou(n.Type) || NotificationCatalog.For(n.Type).Locked);
+        if ((n.EmailPending || n.PushPending || n.SlackPending) && options.Value.HoldNotificationsInQuietHours && !QuietHours.NeverHeld(n.Type))
             n.DeliverAfter = await QuietUntilAsync(n.UserId, n.TenantId, ct);
         // Do not disturb (set in chat): nothing pops up on the screen, and e-mail and push wait until it ends. Security alerts still go out.
         if (!QuietHours.NeverHeld(n.Type) && !NotificationCatalog.For(n.Type).Locked && await DndUntilAsync(n.UserId, n.TenantId, ct) is { } dnd)
         {
             n.Browser = false;
-            if ((n.EmailPending || n.PushPending) && (n.DeliverAfter is null || n.DeliverAfter < dnd)) n.DeliverAfter = dnd;
+            if ((n.EmailPending || n.PushPending || n.SlackPending) && (n.DeliverAfter is null || n.DeliverAfter < dnd)) n.DeliverAfter = dnd;
         }
         // Digest mode: an update (it asks nothing of the person) is not pushed, and its email waits for the daily digest, sent as one.
-        if ((n.EmailPending || n.PushPending) && !NotificationLanes.IsNeedsYou(n.Type) && !QuietHours.NeverHeld(n.Type))
+        if ((n.EmailPending || n.PushPending || n.SlackPending) && !NotificationLanes.IsNeedsYou(n.Type) && !QuietHours.NeverHeld(n.Type))
         {
             var (settings, zone) = await SettingsAsync(n.UserId, n.TenantId, ct);
             if (settings.DigestTime is { } digest)
@@ -161,6 +164,17 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
             }
         }
         return c.Any;
+    }
+
+    private readonly Dictionary<(Guid, Guid), string> _slack = new();
+
+    /// <summary>"off", "needs" or "all": whether this person gets notifications in Slack here (they linked Slack and chose so). Once per request.</summary>
+    private async Task<string> SlackChoiceAsync(Guid userId, Guid tenantId, CancellationToken ct)
+    {
+        if (_slack.TryGetValue((userId, tenantId), out var known)) return known;
+        var choice = await db.PersonalConnectionSettings.IgnoreQueryFilters().Where(s => s.UserId == userId && s.TenantId == tenantId).Select(s => s.SlackMessages).FirstOrDefaultAsync(ct) ?? "off";
+        if (choice != "off" && !await db.SlackUserLinks.IgnoreQueryFilters().AnyAsync(l => l.UserId == userId && l.TenantId == tenantId, ct)) choice = "off";
+        return _slack[(userId, tenantId)] = choice;
     }
 
     private readonly Dictionary<(Guid, Guid), DateTime?> _dnd = new();

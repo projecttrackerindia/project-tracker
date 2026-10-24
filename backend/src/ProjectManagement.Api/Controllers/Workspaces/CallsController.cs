@@ -18,6 +18,14 @@ public sealed class CallsController(CallService calls) : ApiControllerBase
     [HttpPost]
     public async Task<IActionResult> Start([FromBody] StartCallRequest req, CancellationToken ct) => Created(await calls.StartAsync(req, ct));
 
+    /// <summary>The call for a project meeting held as a Project Tracker call: joins it, or starts it when nobody has yet.</summary>
+    [HttpPost("meeting/{meetingId:guid}")]
+    public async Task<IActionResult> OpenMeeting(Guid meetingId, CancellationToken ct) => Ok(await calls.OpenMeetingAsync(meetingId, false, ct));
+
+    /// <summary>The same, for a workspace meeting (no project).</summary>
+    [HttpPost("meeting/w/{meetingId:guid}")]
+    public async Task<IActionResult> OpenWorkspaceMeeting(Guid meetingId, CancellationToken ct) => Ok(await calls.OpenMeetingAsync(meetingId, true, ct));
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct) => Ok(await calls.GetAsync(id, ct));
 

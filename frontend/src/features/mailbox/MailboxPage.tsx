@@ -556,8 +556,8 @@ function ComposeModal({ accounts, initial, agent, onClose, onSent }: { accounts:
 
 function ConnectModal({ accountsData, presets, google, microsoft, imapAccounts, onClose, onConnected, guide: initialGuide = null }: {
   accountsData?: MailAccounts; presets: { id: string; name: string; domain: string }[];
-  google?: { connected: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; mailSendAccess?: boolean } | undefined;
-  microsoft?: { enabled: boolean; configured: boolean; connected: boolean; inboxEnabled?: boolean; inboxAccess?: boolean } | undefined;
+  google?: { connected: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; mailSendAccess?: boolean; googleEmail?: string | null } | undefined;
+  microsoft?: { enabled: boolean; configured: boolean; connected: boolean; inboxEnabled?: boolean; inboxAccess?: boolean; mailSendAccess?: boolean; email?: string | null } | undefined;
   imapAccounts: { id: string; name: string; email: string }[]; onClose: () => void; onConnected: () => void; guide?: 'gmail' | 'outlook' | null;
 }) {
   const wid = useWorkspaceId();
@@ -584,10 +584,16 @@ function ConnectModal({ accountsData, presets, google, microsoft, imapAccounts, 
     try { await mailboxApi.disconnectImap(id); void invalidateWorkspace(wid, 'mailbox'); toast('Mailbox disconnected.'); }
     catch (e) { toast(errText(e, 'Could not disconnect.'), 'error'); }
   };
+  // Mail only: Calendar, Meet and Teams on the same account keep working. The whole account is disconnected in My account > Connected accounts.
   const disconnectProvider = async (kind: 'gmail' | 'outlook') => {
-    if (!(await confirmDialog({ title: `Disconnect ${kind === 'gmail' ? 'Google' : 'Microsoft'}?`, message: kind === 'gmail' ? 'This also stops Google Calendar and Meet scheduling from your account.' : 'This also stops Outlook calendar availability.', confirmText: 'Disconnect', danger: true }))) return;
-    try { if (kind === 'gmail') await integrationsApi.googleDisconnect(); else await microsoftApi.disconnect(); void invalidateWorkspace(wid, 'account'); toast('Disconnected.'); }
-    catch (e) { toast(errText(e, 'Could not disconnect.'), 'error'); }
+    const name = kind === 'gmail' ? 'Gmail' : 'Outlook mail';
+    if (!(await confirmDialog({ title: `Stop ${name} here?`, message: `Project Tracker stops reading and sending your ${kind === 'gmail' ? 'Gmail' : 'Outlook'} mail. Your calendar and meetings on the same account keep working. To remove the account completely, use My account › Connected accounts.`, confirmText: `Stop ${name}`, danger: true }))) return;
+    try {
+      if (kind === 'gmail') { await integrationsApi.googleFeatureOff('inbox'); await integrationsApi.googleFeatureOff('mail'); }
+      else { await microsoftApi.featureOff('inbox'); await microsoftApi.featureOff('mail'); }
+      void invalidateWorkspace(wid, 'account'); void invalidateWorkspace(wid, 'mailbox'); toast(`${name} stopped. Calendar and meetings still work.`);
+    }
+    catch (e) { toast(errText(e, 'Could not stop it.'), 'error'); }
   };
 
   return (
@@ -612,8 +618,8 @@ function ConnectModal({ accountsData, presets, google, microsoft, imapAccounts, 
           {accountsData?.canManageCompany && <CompanyMailSetup accounts={accountsData} onSaved={() => { onConnected(); onClose(); }} />}
           {(google?.connected || microsoft?.connected || imapAccounts.length > 0) && <div className="mb-connected">
             <h4>Connected</h4>
-            {google?.connected && <div><span>Google</span><button className="mb-link" onClick={() => void disconnectProvider('gmail')}>Disconnect</button></div>}
-            {microsoft?.connected && <div><span>Microsoft</span><button className="mb-link" onClick={() => void disconnectProvider('outlook')}>Disconnect</button></div>}
+            {google?.connected && (google.inboxAccess || google.mailSendAccess) && <div><span>Gmail · {google.googleEmail}</span><button className="mb-link" onClick={() => void disconnectProvider('gmail')}>Stop mail</button></div>}
+            {microsoft?.connected && (microsoft.inboxAccess || microsoft.mailSendAccess) && <div><span>Outlook · {microsoft.email}</span><button className="mb-link" onClick={() => void disconnectProvider('outlook')}>Stop mail</button></div>}
             {imapAccounts.map(a => <div key={a.id}><span>{a.name} · {a.email}</span><button className="mb-link" onClick={() => void remove(a.id, a.name)}>Disconnect</button></div>)}
           </div>}
         </div>

@@ -25,6 +25,12 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
     public bool CalendarTransportFailure {get;set;}
     public Func<DateTimeOffset,DateTimeOffset,object[]>? CalendarEvents {get;set;}
     public ConcurrentBag<string> CalendarReads {get;}=new();
+    /// <summary>Outlook events created as people (Teams meetings): id -> the event as last written.</summary>
+    public ConcurrentDictionary<string,System.Text.Json.Nodes.JsonObject> Events {get;}=new();
+    public ConcurrentBag<string> CancelledEvents {get;}=new();
+    /// <summary>Attendee answers Outlook reports (email -> accepted, declined, tentativelyAccepted, none).</summary>
+    public ConcurrentDictionary<string,string> Responses {get;}=new(StringComparer.OrdinalIgnoreCase);
+    public bool EventsFail {get;set;}
     public string IssueCode(string email="outlook@example.com",string scopes="User.Read Mail.Send"){
         var id=Convert.ToHexString(RandomNumberGenerator.GetBytes(12));
         codes[id]=new(email,scopes);return id;
@@ -71,6 +77,27 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
             if(uri.AbsolutePath.Contains("/mailFolders/sentitems/messages"))return Sent.Read(request,known.Email,false);
             return Inbox.Read(request,known.Email,false);
         }
+        if(uri.Host=="graph.microsoft.com"&&uri.AbsolutePath.StartsWith("/v1.0/me/events")){
+            if(!known.Scopes.Split(' ').Any(x=>x.Split('/').Last()=="Calendars.ReadWrite"))return Json(new{error="permission"},HttpStatusCode.Forbidden);
+            if(EventsFail)return Json(new{error="busy"},HttpStatusCode.ServiceUnavailable);
+            var parts=uri.AbsolutePath.Split('/',StringSplitOptions.RemoveEmptyEntries);   // v1.0, me, events, {id}, cancel
+            var body=request.Content is null?null:System.Text.Json.Nodes.JsonNode.Parse(await request.Content.ReadAsStringAsync(ct)) as System.Text.Json.Nodes.JsonObject;
+            if(parts.Length==3&&request.Method==HttpMethod.Post){
+                var id="evt_"+Guid.NewGuid().ToString("N")[..12];
+                body!["id"]=id;body["webLink"]="https://outlook.office365.com/owa/?itemid="+id;
+                body["onlineMeeting"]=new System.Text.Json.Nodes.JsonObject{["joinUrl"]="https://teams.microsoft.com/l/meetup-join/"+id};
+                body["organizer"]=known.Email;
+                Events[id]=body;return Json(body,HttpStatusCode.Created);
+            }
+            if(parts.Length<4||!Events.TryGetValue(Uri.UnescapeDataString(parts[3]),out var ev))return Json(new{error="not found"},HttpStatusCode.NotFound);
+            if(parts.Length==5&&parts[4]=="cancel"&&request.Method==HttpMethod.Post){CancelledEvents.Add(parts[3]);Events.TryRemove(parts[3],out _);return new HttpResponseMessage(HttpStatusCode.Accepted);}
+            if(request.Method==HttpMethod.Patch){foreach(var kv in body!.ToList()){body.Remove(kv.Key);ev[kv.Key]=kv.Value;}return Json(ev);}
+            if(request.Method==HttpMethod.Get){
+                var attendees=(ev["attendees"] as System.Text.Json.Nodes.JsonArray??[]).Select(a=>a!["emailAddress"]!["address"]!.GetValue<string>())
+                    .Select(email=>new{emailAddress=new{address=email},status=new{response=Responses.TryGetValue(email,out var r)?r:"none"}});
+                return Json(new{attendees});
+            }
+        }
         if(uri.Host=="graph.microsoft.com"&&uri.AbsolutePath=="/v1.0/me"){
             return Json(new{id="provider_"+known.Email,mail=InvalidProfile?"invalid\r\nsender":known.Email,userPrincipalName=known.Email});
         }
@@ -83,5 +110,5 @@ public sealed class FakeMicrosoftProductivity : HttpMessageHandler
         }
         return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
-    public void Reset(){MissingScope=false;ResponseLost=false;MissingRefresh=false;InvalidProfile=false;RefreshFails=false;BeforeRefresh=null;BeforeMailSendResponse=null;BeforeCalendarRead=null;CalendarEvents=null;CalendarPaged=false;CalendarOversized=false;CalendarTransportFailure=false;Inbox.Reset();}
+    public void Reset(){MissingScope=false;ResponseLost=false;MissingRefresh=false;InvalidProfile=false;RefreshFails=false;BeforeRefresh=null;BeforeMailSendResponse=null;BeforeCalendarRead=null;CalendarEvents=null;CalendarPaged=false;CalendarOversized=false;CalendarTransportFailure=false;Inbox.Reset();Events.Clear();Responses.Clear();EventsFail=false;}
 }
