@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
-import { meApi, notificationApi, pushApi, workspaceApi } from '../../api/endpoints';
+import { meApi, notificationApi, pushApi } from '../../api/endpoints';
 import type { AppNotification, NotificationPreference, NotificationType, TestEmailResult } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, PageLoader, Pager, SectionLayout, type SectionLink } from '../../components/ui';
@@ -651,7 +651,6 @@ function Schedule() {
   const settings = useQuery({ queryKey: ['reminder-settings', 'nc'], queryFn: reminderApi.settings });
   const [s, setS] = useState<ReminderSettings | null>(null);
   const [zone, setZone] = useState<string>(ctx.user.timeZone);
-  const [wsZone, setWsZone] = useState<string | null>(ctx.current?.timeZone ?? null);
   const [busy, setBusy] = useState(false);
   const device = deviceZone();
   useEffect(() => { if (settings.data && !s) setS(settings.data); }, [settings.data, s]);
@@ -664,7 +663,6 @@ function Schedule() {
 
   const zoneDirty = zone !== ctx.user.timeZone;
   const settingsDirty = JSON.stringify(s) !== JSON.stringify(settings.data);
-  const wsDirty = (wsZone ?? null) !== (ctx.current?.timeZone ?? null);
 
   const pickZone = (z: string | null) => {
     if (!z) return;
@@ -683,7 +681,6 @@ function Schedule() {
       }
       if (zoneDirty) await meApi.updateProfile({ displayName: ctx.user.displayName, timeZone: zone });
       else if (s.followDeviceTimeZone && ctx.user.timeZone !== device) await reminderApi.followDevice();
-      if (wsDirty && canWorkspace) await workspaceApi.setTimeZone(wsZone);
       await reload();
       await refreshReminders(wid);
       invalidateWorkspace(wid);
@@ -692,7 +689,7 @@ function Schedule() {
     finally { setBusy(false); }
   };
 
-  const dirty = zoneDirty || settingsDirty || wsDirty;
+  const dirty = zoneDirty || settingsDirty;
   return (
     <>
       <Panel title="Your time zone" icon="clock" className="nc-tz"
@@ -711,9 +708,7 @@ function Schedule() {
       </Panel>
 
       {canWorkspace && (
-        <Panel title="Workspace default time zone" icon="building" sub={`For ${ctx.current?.name}: used for people who have not set their own, and for workspace-wide schedules such as digests and service-level clocks.`}>
-          <div className="nc-narrow"><TimeZonePicker value={wsZone} onChange={setWsZone} label="Workspace default time zone" allowEmpty emptyLabel="Platform default (Asia/Kolkata)" /></div>
-        </Panel>
+        <p className="nc-note"><Icon name="building" size={13} /> The workspace's default time zone, for people who have not set their own, is set in <Link className="link" to="/settings/general#s-workspace.timeZone">Workspace settings › General</Link>.</p>
       )}
 
       <Panel title="Working hours" icon="calendar" sub="Automatic reminders and nudges from others only arrive on working days, inside these hours.">
@@ -772,7 +767,7 @@ function Schedule() {
 
       <div className={`nc-savebar nc-savebar-sticky ${dirty ? 'show' : ''}`} aria-hidden={!dirty}>
         <span>Unsaved schedule changes</span>
-        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setS(settings.data!); setZone(ctx.user.timeZone); setWsZone(ctx.current?.timeZone ?? null); }}>Discard</button>
+        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setS(settings.data!); setZone(ctx.user.timeZone); }}>Discard</button>
         <button className="btn btn-primary btn-sm" disabled={busy || !dirty} onClick={() => void save()}>{busy && <span className="spinner" />}Save</button>
       </div>
     </>

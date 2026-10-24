@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { prefetchPages } from '../lib/prefetchPages';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { chatApi, insightApi, notificationApi } from '../api/endpoints';
@@ -362,6 +363,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);
   useEffect(() => { window.scrollTo({ top: 0 }); }, [loc.pathname]);
+  // Every page's code, fetched quietly once the app is idle, so a click shows the next page at once instead of a blank pause.
+  useEffect(() => { prefetchPages(); }, []);
   const page = <><LiveCallsBar /><Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense></>;
   return (
     <div ref={shell} className={`app-shell ${phone ? 'm-shell' : ''} ${phone && conversation ? 'm-conversation' : ''}`}>
@@ -371,7 +374,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
         <div className="main m-main">
           <PlatformBanner />
           <MobileTopBar />
-          <main id="main-content" className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}>{page}</main>
+          <main id="main-content" className="content" ref={main} tabIndex={-1}>{page}</main>
           <TabBar />
           {!conversation && <PullToRefresh />}
         </div>
@@ -381,7 +384,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           <div className={`main ${collapsed ? 'expanded' : ''}`}>
             <PlatformBanner />
             <Topbar />
-            <main id="main-content" className="content" ref={main} tabIndex={-1} key={loc.pathname.split('/')[1]}>{page}</main>
+            <main id="main-content" className="content" ref={main} tabIndex={-1}>{page}</main>
           </div>
         </>
       )}

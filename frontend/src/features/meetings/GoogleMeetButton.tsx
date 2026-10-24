@@ -9,8 +9,9 @@ import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import './meetings.css';
 import { toast } from '../../stores/ui';
-import { allTimeZones, zonedTimeToUtc } from './timezone';
-import { appZone, zonedParts, zoneOffsetLabel } from '../../lib/zone';
+import { zonedTimeToUtc } from './timezone';
+import { TimeZonePicker } from '../../components/TimeZonePicker';
+import { appZone, zonedParts } from '../../lib/zone';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const copy = async (text: string, what: string) => {
@@ -192,8 +193,6 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
   // The organizer's own choice, not just a silent guess: the app's zone (profile, else workspace, else this device) is only the starting
   // suggestion, and the typed wall-clock time is always read in this explicit, visible value - never in the browser's own clock setting.
   const [tz, setTz] = useState(appZone());
-  const zones = useState(allTimeZones)[0];
-  const zoneLabels = useMemo(() => zones.map((z) => ({ z, label: `${z} (${zoneOffsetLabel(z)})` })), [zones]);
   // Default: the next whole hour, as a wall-clock time in that zone (not in this machine's zone, which may differ).
   const [defaults] = useState(() => { const p = zonedParts(new Date(Date.now() + 60 * 60 * 1000), tz); return { date: `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`, time: `${String(p.hour).padStart(2, '0')}:00` }; });
   const autoTitle = (name: string | null) => (scrum ? `${name ?? workspaceName} Scrum` : '');
@@ -290,12 +289,10 @@ export function ScheduleMeetingModal({ projectId, projectName, organizerUserId, 
       <ServicePicker value={service} onChange={setService} />
       <Field label="Agenda" hint="Optional"><textarea className="input" rows={3} value={agenda} onChange={(e) => setAgenda(e.target.value)} maxLength={4000} /></Field>
       {(project || !isGuest) && <ParticipantPicker key={project?.id ?? 'workspace'} projectId={project?.id ?? null} organizerUserId={organizerUserId} selected={selected} onChange={setSelected} />}
-      <Field label="Time zone" hint="The date and time above are read in this zone - change it if it is not the one you meant.">
-        <select className="select" aria-label="Time zone" value={tz} onChange={(e) => setTz(e.target.value)}>
-          {!zones.includes(tz) && <option value={tz}>{tz}</option>}
-          {zoneLabels.map(({ z, label }) => <option key={z} value={z}>{label}</option>)}
-        </select>
-      </Field>
+      <div className="field">
+        <TimeZonePicker value={tz} onChange={(z) => z && setTz(z)} label="Time zone" />
+        <p className="field-hint">The date and time above are read in this zone. Change it if it is not the one you meant.</p>
+      </div>
     </Modal>
   );
 }

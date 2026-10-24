@@ -61,7 +61,7 @@ export function PersonalCalendarProposals(){
   return <section className="card" style={{padding:22,marginTop:18,minWidth:0}}>
     <h3>Private calendar proposals</h3>
     <p className="muted">Save and review a personal time block before adding it to your calendar. Other members cannot read your proposals. Manual editing uses no AI credits.</p>
-    <p className="muted">{options.data?.enabled?'Connected calendar: '+(options.data.account||'Connect Google Calendar above.'):'Calendar creation is awaiting administrator setup. You can save private proposals.'}</p>
+    <p className="muted">{options.data?.enabled?'Connected calendar: '+(options.data.account||'Connect Google Calendar in My account › Connected accounts.'):'Calendar creation is awaiting administrator setup. You can save private proposals.'}</p>
     <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
       <button className="btn" disabled={busy} onClick={()=>void choose()}>New calendar proposal</button>
       <button className="btn btn-ghost" disabled={busy} onClick={()=>void refresh()}>Reload calendar proposals</button>

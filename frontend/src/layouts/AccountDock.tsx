@@ -123,10 +123,8 @@ export function AccountDock() {
           )}
 
           <div className="ad-items">
+            {/* One home for each thing: notifications live behind the bell, security, the phone app and connections in My account. */}
             <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/account')}><Icon name="user" /> My account</button>
-            {!isAdmin && <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/notifications/preferences')}><Icon name="bell" /> Notification Center</button>}
-            {!isAdmin && <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/account/mobile')}><Icon name="bell" /> Mobile app</button>}
-            <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/account/security')}><Icon name="lock" /> Sign-in &amp; security</button>
             {sections.length > 0 && <button type="button" role="menuitem" className="dp-menu-item" onClick={() => go('/settings')}><Icon name="settings" /> Workspace settings</button>}
             <a role="menuitem" className="dp-menu-item" href={supportMailto('Help with Project Tracker')} onClick={() => close(false)}><Icon name="mail" /> Help &amp; support</a>
           </div>

@@ -10,8 +10,6 @@ import { continueConnectionInBrowser } from '../../lib/personalConnection';
 import { isDesktopApp } from '../../lib/desktop';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { OutlookAvailability } from './OutlookAvailability';
-import { PersonalCalendarProposals } from './PersonalCalendarProposals';
 import './PersonalProductivity.css';
 import './connectedAccounts.css';
 
@@ -168,8 +166,6 @@ export function ConnectedAccountsSection() {
       </div>
 
       <div className="connection-mailbox-note"><Icon name="mail" size={16} /><p>Mail from Gmail, Outlook and Rediffmail is read and answered in <b>Mailbox</b>.</p><Link className="btn btn-sm" to="/mailbox">Open Mailbox</Link></div>
-      <OutlookAvailability key={`outlook-availability-${wid}-${uid}`} />
-      <PersonalCalendarProposals key={`calendar-${wid}-${uid}`} />
     </div>
   );
 }

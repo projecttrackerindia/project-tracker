@@ -5,26 +5,6 @@
  * (see ZoneTime.ToUtc in Reminders/ReminderTime.cs) using only what the browser provides: Intl's per-zone offset.
  */
 
-const CURRENT_NAMES: Record<string, string> = {
-  'Asia/Calcutta': 'Asia/Kolkata', 'Asia/Katmandu': 'Asia/Kathmandu', 'Asia/Saigon': 'Asia/Ho_Chi_Minh', 'Asia/Rangoon': 'Asia/Yangon',
-  'Europe/Kiev': 'Europe/Kyiv', 'America/Buenos_Aires': 'America/Argentina/Buenos_Aires', 'Atlantic/Faeroe': 'Atlantic/Faroe', 'Pacific/Truk': 'Pacific/Chuuk',
-};
-
-/** This device's time zone, by its current IANA name - only ever used as a *starting suggestion*; the organizer can change it. */
-export const deviceZone = (): string => {
-  try { const z = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; return CURRENT_NAMES[z] ?? z; } catch { return 'UTC'; }
-};
-
-/** Every IANA zone this browser knows, for the picker; a short, always-available fallback when the browser is too old for the API. */
-export function allTimeZones(): string[] {
-  try {
-    const sv = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf;
-    if (sv) return sv('timeZone');
-  } catch { /* fall through */ }
-  return ['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Sao_Paulo', 'Europe/London',
-    'Europe/Paris', 'Europe/Berlin', 'Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Shanghai', 'Asia/Tokyo', 'Australia/Sydney'];
-}
-
 const offsetMs = (atUtcMs: number, zone: string): number => {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: zone, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',

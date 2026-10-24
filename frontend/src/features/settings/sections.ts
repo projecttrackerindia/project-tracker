@@ -40,7 +40,7 @@ export function useWorkspaceSections(): SectionDef[] {
     { id: 'work-types', group: 'Workspace', to: '/settings/work-types', label: 'Work types', icon: 'bolt', blurb: 'Kinds of operational work and their service levels.', show: has('work.types.manage') && mWork > 0 },
     { id: 'automation', group: 'Workspace', to: '/settings/automation', label: 'Automation', icon: 'refresh', blurb: 'When something happens, do something.', show: has('workflow.manage') && mProjects > 0 },
 
-    { id: 'members', group: 'People and access', to: '/settings/members', label: 'Members', icon: 'users', blurb: 'Invite people, change access levels, remove members.', show: !personal && mMembers > 0 && (has('members.invite') || has('members.manage')) },
+    { id: 'members', group: 'People and access', to: '/people', label: 'Members', icon: 'users', blurb: 'Invite people, change access levels, remove members.', show: !personal && mMembers > 0 && (has('members.invite') || has('members.manage')) },
     { id: 'access', group: 'People and access', to: '/settings/access', label: 'Roles & access', icon: 'shield', blurb: 'What each job role and access level can do.', show: !personal && (has('org.manage') || has('access.manage') || has('permissions.manage')) },
     { id: 'visibility', group: 'People and access', to: '/settings/visibility', label: 'Project visibility', icon: 'eye', blurb: 'Everyone sees every project, or teams see their own.', show: !personal && isAdmin },
 

@@ -16,7 +16,7 @@ let attachmentReads=0;let attachmentDownloads=0;let inboxReads=0;let inboxEnable
 let inboxBody='Please review the delivery milestones. <script>window.inboxUnsafe=true</script>';
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Preview User',email:'preview@example.test',emailVerified:true,isPlatformAdmin:false,timeZone:'Asia/Kolkata'};
 const workspace={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Preview Organization',type:'Organization',role:'Owner',planCode:'BUSINESS',description:null,memberCount:2};
-const context={user,workspaces:[workspace],fingerprint:'preview',pendingConsent:[],current:{...workspace,permissions:['work.view','work.create','work.edit','workflow.manage','reports.view'],modules:{work:3,projects:3,reports:3,ai:0,chat:0,time:0,people:3,documents:3},plan:{code:'BUSINESS',name:'Business',status:'Active',trialEnd:null,periodEnd:null,cancelAtPeriodEnd:false,downgraded:false},entitlements:{AUTOMATION:1,RESUME_TEMPLATES:8}}};
+const context={user,workspaces:[workspace],fingerprint:'preview',pendingConsent:[],current:{...workspace,permissions:['work.view','work.create','work.edit','workflow.manage','reports.view'],modules:{work:3,projects:3,reports:3,ai:0,chat:0,time:0,people:3,documents:3,calendar:3},plan:{code:'BUSINESS',name:'Business',status:'Active',trialEnd:null,periodEnd:null,cancelAtPeriodEnd:false,downgraded:false},entitlements:{AUTOMATION:1,RESUME_TEMPLATES:8}}};
 const catalog=JSON.parse(await fs.readFile(new URL('./fixtures/resume-designs.json',import.meta.url),'utf8'));const templates=catalog.slice(0,2);
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 const errors=[];const checks=[];
@@ -104,7 +104,7 @@ try {
  assert.equal(await page.getByRole('navigation',{name:'Notification Center sections'}).getByRole('link').count(),4);
  for(const section of ['','/security','/mobile','/integrations','/resumes']) {
   await capture('account-navigation-'+(section.slice(1)||'profile'),'/account'+section,'.section-layout-wide',1440,1000);
-  const nav=page.getByRole('navigation',{name:'My account sections'});assert.equal(await nav.getByRole('link').count(),6);
+  const nav=page.getByRole('navigation',{name:'My account sections'});assert.equal(await nav.getByRole('link').count(),5);   // Profile, Sign-in, Mobile app, Connected accounts, Resume studio (notifications live behind the bell)
   const rows=await nav.getByRole('link').evaluateAll(links=>links.map(link=>Math.round(link.getBoundingClientRect().top)));
   assert.ok(rows.every(top=>Math.abs(top-rows[0])<=1),'All account sections use the same horizontal navigation');
  }
@@ -139,7 +139,7 @@ try {
  assert.equal(await page.locator('.studio-hero-mark>span').evaluate(el=>getComputedStyle(el).animationName),'none');
  await page.screenshot({path:artifact('resume-final-dark-desktop.png'),fullPage:true,animations:'disabled'});
  checks.push({name:'dark-theme-and-reduced-motion',passed:true});
- await page.goto(origin+'/account/integrations');await page.locator('.outlook-availability').waitFor({state:'visible'});
+ await page.goto(origin+'/calendar');await page.locator('.outlook-availability').waitFor({state:'visible'});
  assert.equal(calendarReads,0,'Outlook calendar inventory must not load automatically');assert.equal(calendarChecks,0);
  await page.getByRole('button',{name:'Load my Outlook calendars',exact:true}).click();
  await page.getByRole('checkbox',{name:'Focus time',exact:true}).waitFor({state:'visible'});assert.equal(calendarReads,1);assert.equal(calendarChecks,0);
@@ -150,7 +150,7 @@ try {
  assert.match(await page.locator('.outlook-result').textContent(),/10:00/);assert.equal(calendarReads,1);
  await page.setViewportSize({width:390,height:1200});await page.locator('.outlook-availability').screenshot({path:artifact('outlook-availability-light-mobile.png'),animations:'disabled',style:'.m-tabs{visibility:hidden}'});
  checks.push({name:'outlook-calendar-explicit-load-multiple-selection-local-time-read-only-check-mobile',passed:true,overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)});
- await page.setViewportSize({width:1440,height:1400});await page.goto(origin+'/account/integrations');await page.locator('.outlook-availability').waitFor({state:'visible'});
+ await page.setViewportSize({width:1440,height:1400});await page.goto(origin+'/calendar');await page.locator('.outlook-availability').waitFor({state:'visible'});
  await page.getByRole('button',{name:'Load my Outlook calendars',exact:true}).click();await page.getByRole('checkbox',{name:'Focus time',exact:true}).waitFor({state:'visible'});await page.getByRole('checkbox',{name:'Focus time',exact:true}).check();
  await page.getByLabel('Outlook window start').fill('2026-10-14T10:00');await page.getByLabel('Outlook window end').fill('2026-10-14T12:00');await page.getByRole('button',{name:'Check selected calendars',exact:true}).click();await page.locator('.outlook-result').waitFor({state:'visible'});
  await page.locator('.outlook-availability').screenshot({path:artifact('outlook-availability-light-desktop.png'),animations:'disabled'});
@@ -158,7 +158,9 @@ try {
  calendarDenied=true;await page.getByRole('button',{name:'Check selected calendars',exact:true}).click();await page.locator('.outlook-error').waitFor({state:'visible'});
  assert.equal(await page.locator('.outlook-planning-grid').count(),0);assert.equal(await page.locator('.outlook-result').count(),0);
  checks.push({name:'outlook-revoked-access-clears-calendar-names-and-busy-results',passed:true});
- const beforeCalendarDisabled=calendarReads;calendarsEnabled=false;await page.reload();await page.locator('.outlook-status').waitFor({state:'visible'});
+ const beforeCalendarDisabled=calendarReads;calendarsEnabled=false;await page.reload();await page.locator('.cal-filters').waitFor({state:'visible'});await page.waitForTimeout(400);
+ // Switched off by the administrator: the calendar shows no Outlook panel at all (no "awaiting setup" box).
+ assert.equal(await page.locator('.outlook-availability').count(),0);
  assert.equal(await page.locator('.outlook-result').count(),0);assert.equal(await page.locator('.outlook-planning-grid').count(),0);assert.equal(calendarReads,beforeCalendarDisabled);
  checks.push({name:'outlook-calendar-disabled-gate-clears-private-state-without-reads',passed:true});
  // Regression checks for spacious writing, adaptive layout and same-browser native connection starts.

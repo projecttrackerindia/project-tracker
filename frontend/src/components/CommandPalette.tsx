@@ -107,9 +107,10 @@ export function CommandPalette() {
         list.push({ id: `setting:${e.id}`, group: 'Settings', label: e.label, hint: e.personal ? e.hint : settings.find((s) => s.id === e.section)?.label ?? e.hint, icon: settings.find((s) => s.id === e.section)?.icon ?? (e.personal ? 'user' : 'settings'), keywords: `${e.keywords} setting`, run: go(settingHref(e)) });
     if (ctx && !ctx.user.isPlatformAdmin) {
       list.push({ id: 'acc:profile', group: 'Settings', label: 'My profile', icon: 'user', keywords: 'account', run: go('/account') });
-      list.push({ id: 'acc:notifications', group: 'Settings', label: 'My notifications', icon: 'bell', keywords: 'account email push desktop', run: go('/account/notifications') });
-      list.push({ id: 'acc:mobile', group: 'Settings', label: 'Mobile app & phone sign-in', icon: 'bell', keywords: 'android install push phone approve login', run: go('/account/mobile') });
+      list.push({ id: 'acc:notifications', group: 'Settings', label: 'Notification Center', icon: 'bell', keywords: 'account email push desktop my notifications delivery', run: go('/notifications/preferences') });
+      list.push({ id: 'acc:mobile', group: 'Settings', label: 'Mobile app & phone sign-in', icon: 'phone', keywords: 'android install push phone approve login', run: go('/account/mobile') });
       list.push({ id: 'acc:security', group: 'Settings', label: 'Sign-in & security', icon: 'lock', keywords: 'account password two-step mfa', run: go('/account/security') });
+      list.push({ id: 'acc:connected', group: 'Settings', label: 'Connected accounts', icon: 'link', keywords: 'google microsoft outlook teams slack github gmail calendar meet connect', run: go('/account/integrations') });
     }
     if (canProject) list.push({ id: 'new:project', group: 'Create', label: 'New project', icon: 'folder', keywords: 'create add', run: go('/projects?new=1') });
     if (canWork) list.push({ id: 'new:work', group: 'Create', label: 'New support ticket / work task', icon: 'bolt', keywords: 'create add operational ticket bug support helpdesk incident request', run: go('/operations?new=1') });

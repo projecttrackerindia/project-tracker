@@ -17,7 +17,6 @@ import { toast } from '../stores/ui';
 import { chatKeys } from '../features/chat/chatStore';
 import { openReminderComposer, useReminderCounts } from '../features/reminders/store';
 import { useWorkspaceSections } from '../features/settings/sections';
-import { useAi, useAssistant } from '../features/ai/Assistant';
 import { inSidebar, useMainNav } from './navigation';
 import { usePinned } from './navPrefs';
 import { CreateOrganizationModal, NOTIF_ICON } from './parts';
@@ -247,9 +246,6 @@ function MoreSheet({ onClose, badgeOf }: { onClose: () => void; badgeOf: (to: st
   const logout = useAuth((s) => s.logout);
   const groups = useMainNav();
   const sections = useWorkspaceSections();
-  const seeBilling = useModule('billing') > 0;
-  const ai = useAi();
-  const askAi = useAssistant((s) => s.ask);
   const nav = useNavigate();
   const { user, current } = ctx;
   const admin = user.isPlatformAdmin;
@@ -291,13 +287,8 @@ function MoreSheet({ onClose, badgeOf }: { onClose: () => void; badgeOf: (to: st
       <section className="m-group">
         <h4>Account</h4>
         <ul className="m-list flat">
-          {ai && !admin && <li><button type="button" className="m-row" onClick={() => { onClose(); askAi(); }}><span className="m-row-ico"><Icon name="sparkle" size={18} /></span><span className="m-row-main"><b>Ask the assistant</b></span><Icon name="chevronR" size={16} /></button></li>}
           <li><div className="m-row static"><span className="m-row-ico"><Icon name="moon" size={18} /></span><span className="m-row-main"><b>Appearance</b><small>Light or dark</small></span><ThemeSwitch className="theme-toggle" /></div></li>
-          {!admin && <li><button type="button" className="m-row" onClick={go('/notifications/preferences')}><span className="m-row-ico"><Icon name="bell" size={18} /></span><span className="m-row-main"><b>Notification Center</b></span><Icon name="chevronR" size={16} /></button></li>}
-          {!admin && <li><button type="button" className="m-row" onClick={go('/account/mobile')}><span className="m-row-ico"><Icon name="bell" size={18} /></span><span className="m-row-main"><b>Mobile app &amp; phone sign-in</b></span><Icon name="chevronR" size={16} /></button></li>}
-          <li><button type="button" className="m-row" onClick={go('/account/security')}><span className="m-row-ico"><Icon name="lock" size={18} /></span><span className="m-row-main"><b>Sign-in &amp; security</b></span><Icon name="chevronR" size={16} /></button></li>
           {sections.length > 0 && <li><button type="button" className="m-row" onClick={go('/settings')}><span className="m-row-ico"><Icon name="settings" size={18} /></span><span className="m-row-main"><b>Workspace settings</b></span><Icon name="chevronR" size={16} /></button></li>}
-          {seeBilling && plan && <li><button type="button" className="m-row" onClick={go('/settings/billing')}><span className="m-row-ico"><Icon name="card" size={18} /></span><span className="m-row-main"><b>Plan and billing</b><small>{plan.name}{status ? ` · ${status.long}` : ''}</small></span><Icon name="chevronR" size={16} /></button></li>}
           <li><a className="m-row" href={supportMailto('Help with Project Tracker')} onClick={onClose}><span className="m-row-ico"><Icon name="mail" size={18} /></span><span className="m-row-main"><b>Help &amp; support</b><small>{SUPPORT_EMAIL}</small></span><Icon name="chevronR" size={16} /></a></li>
         </ul>
       </section>

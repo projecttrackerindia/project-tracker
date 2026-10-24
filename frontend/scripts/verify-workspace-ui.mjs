@@ -96,9 +96,9 @@ try {
   checks.push('provider-keyboard-selection-modal-format-back-reload');
   await open('/preview-org/settings/webhooks?guide=slack', '.integration-studio', 390, 844);
   await capture('integrations-light-mobile');
-  await page.locator('.integration-slack-install > summary').click();
-  assert.match(await page.locator('.integration-slack-install').innerText(), /not yet enabled/);
-  await capture('slack-installation-mobile');
+  // Installing the Slack app has one home (Settings › Slack); the webhook guide links there instead of repeating its steps.
+  assert.equal(await page.locator('.integration-studio a[href$="/settings/slack"]').count(), 1);
+  assert.equal(await page.locator('.integration-slack-install').count(), 0);
   await open('/preview-org/settings/webhooks?guide=teams', '.integration-studio');
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; }); await capture('integrations-dark-desktop');
   included = false; const priorReads = hookReads;

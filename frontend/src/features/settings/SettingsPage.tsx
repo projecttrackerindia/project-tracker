@@ -12,7 +12,6 @@ import { timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { ThemeSwitch } from '../../components/ThemeSwitch';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from '../auth/passwordPolicy';
 import { AuditPage } from '../activity/ActivityPages';
 import { BillingPage } from '../billing/BillingPage';
@@ -44,7 +43,6 @@ import { PROVIDER_ICON } from '../auth/AuthPages';
 import { AiWorkspaceSwitch } from '../ai/Assistant';
 import { AiInstructionsCard, AiProfileCard } from '../ai/AiInstructions';
 import { AiOwnKeyCard, MyAiProviderCard } from '../ai/OwnAiKey';
-import { DirectoryPanel, InvitationsPanel } from '../members/MembersPage';
 import { LastChanged, SectionHistory, SettingsHome, SettingsSearch, useSettingJump, useSetupHealth } from './SettingsCenter';
 import { NotificationDefaultsSection } from './NotificationDefaults';
 import { MobileAppSection } from './MobileAppSection';
@@ -78,14 +76,13 @@ export function AccountPage({ section }: { section: AccountSection }) {
   useSettingJump();
   const groups: { items: SectionLink[] }[] = [{ items: [
     { to: '/account', label: 'Profile', icon: 'user' },
-    ...(!isPlatformAdmin ? [{ to: '/notifications/preferences', label: 'Notification Center', icon: 'bell' as const }] : []),
     { to: '/account/security', label: 'Sign-in & security', icon: 'lock' },
-    ...(!isPlatformAdmin ? [{ to: '/account/mobile', label: 'Mobile app', icon: 'bell' as const }] : []),
+    ...(!isPlatformAdmin ? [{ to: '/account/mobile', label: 'Mobile app', icon: 'phone' as const }] : []),
     ...(!isPlatformAdmin ? [{ to: '/account/integrations', label: 'Connected accounts', icon: 'video' as const }] : []),
     { to: '/account/resumes', label: 'Resume studio', icon: 'note' },
   ] }];
   return (
-    <SectionLayout wide title="My account" sub="Your profile, notifications and how you sign in. These follow you to every workspace." groups={groups}>
+    <SectionLayout wide title="My account" sub="Your profile, sign-in, connected accounts and phone app. These follow you to every workspace." groups={groups}>
       {section === 'profile' && <ProfileSection />}
       {section === 'security' && <SecuritySection />}
       {section === 'mobile' && <MobileAppSection />}
@@ -99,9 +96,8 @@ function ProfileSection() {
   const ctx = useAuth((s) => s.ctx)!;
   const reload = useAuth((s) => s.reloadContext);
   const [name, setName] = useState(ctx.user.displayName);
-  const [tz, setTz] = useState(ctx.user.timeZone);
   const profile = useMutation({
-    mutationFn: () => meApi.updateProfile({ displayName: name.trim(), timeZone: tz }),
+    mutationFn: () => meApi.updateProfile({ displayName: name.trim(), timeZone: ctx.user.timeZone }),
     onSuccess: async () => { toast('Profile saved.'); await reload(); },
     onError: (e) => toast(e instanceof ApiError ? e.message : 'Could not save your profile.', 'error'),
   });
@@ -115,17 +111,10 @@ function ProfileSection() {
           <form className="form-grid" onSubmit={(e) => { e.preventDefault(); if (name.trim()) profile.mutate(); }}>
             <Field label="Full name" required><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} /></Field>
             <Field label="Email" hint={ctx.user.emailVerified ? 'Verified' : 'Not verified'}><input className="input" value={ctx.user.email} disabled /></Field>
-            <Field label="Time zone" hint="Every date, due date, reminder and chart follows it. More options in Notification Center → Schedule."><TimeZonePicker value={tz} onChange={(z) => z && setTz(z)} /></Field>
+            <Field label="Time zone" hint="Every date, due date, reminder and chart follows it."><div className="input input-static">{ctx.user.timeZone} <Link className="link" to="/notifications/schedule">Change</Link></div></Field>
             <div className="full"><SubmitButton busy={profile.isPending}>Save profile</SubmitButton></div>
           </form>
         </div>
-      </div>
-      <div className="card mb-22">
-        <div className="card-head"><h3>Appearance</h3></div>
-        <div className="card-body"><div className="setting-row">
-          <div className="setting-info"><h4>Dark mode</h4><p>Switch between light and dark themes. Your preference is remembered on this device.</p></div>
-          <ThemeSwitch />
-        </div></div>
       </div>
       <div data-setting="account.ai"><AiProfileCard /><MyAiProviderCard /></div>
       <DeleteAccountCard />
@@ -183,7 +172,7 @@ function SecuritySection() {
           </div>
           <PasskeysRow />
           <TwoStepRow />
-          <ConnectedAccounts />
+          <SignInMethods />
           <PrivacyRow />
           <div className="setting-row" style={{ alignItems: 'flex-start' }}>
             <div className="setting-info" style={{ flex: 1 }}>
@@ -219,7 +208,7 @@ function SecuritySection() {
 }
 
 /** Outside accounts that can sign in to this one: connect Google / Microsoft / GitHub / Apple, or disconnect them. */
-function ConnectedAccounts() {
+function SignInMethods() {
   const wid = useWorkspaceId();
   const [params, setParams] = useSearchParams();
   const logins = useWsQuery(['me', 'logins'], meApi.logins);
@@ -248,7 +237,7 @@ function ConnectedAccounts() {
   return (
     <div className="setting-row" style={{ alignItems: 'flex-start' }}>
       <div className="setting-info" style={{ flex: 1 }}>
-        <h4>Connected accounts</h4><p>Other ways to sign in to this account. Two-step verification still applies.</p>
+        <h4>Sign-in methods</h4><p>Other ways to sign in to this account. Two-step verification still applies.</p>
         {rows.length > 0 && (
           <div className="linked-list">
             {rows.map((r) => (
@@ -337,7 +326,7 @@ export function WorkspaceSettingsPage() {
 function SettingsSection({ id }: { id: WorkspaceSection }) {
   switch (id) {
     case 'general': return <GeneralSection />;
-    case 'members': return <MembersSection />;
+    case 'members': return <MembersRedirect />;
     case 'access': return <><RolesAccessPage /><SectionHistory section="access" /></>;
     case 'visibility': return <><PageHead title="Project visibility" sub="Whether everyone sees every project, or each team sees its own." /><div data-setting="access.projectVisibility"><ProjectVisibilityPanel /><LastChanged k="access.projectVisibility" section="visibility" /></div><SectionHistory section="visibility" /></>;
     case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><OrgSecurityPanel /><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
@@ -366,22 +355,10 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
 }
 
 /** People and access → Members: everyone in the workspace (invite, change access levels, remove), and the invitations still waiting. */
-function MembersSection() {
-  const canInvite = useCan('members.invite');
-  const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') === 'invitations' && canInvite ? 'invitations' : 'members';
-  return (
-    <>
-      {canInvite && (
-        <div className="seg mb-22" role="tablist" aria-label="Members">
-          <button type="button" role="tab" aria-selected={tab === 'members'} className={tab === 'members' ? 'on' : ''} onClick={() => setParams({}, { replace: true })}>Members</button>
-          <button type="button" role="tab" aria-selected={tab === 'invitations'} className={tab === 'invitations' ? 'on' : ''} onClick={() => setParams({ tab: 'invitations' }, { replace: true })}>Invitations</button>
-        </div>
-      )}
-      <div data-setting={tab === 'invitations' ? 'members.invitations' : 'members.invite'}>{tab === 'invitations' ? <InvitationsPanel /> : <DirectoryPanel />}</div>
-      <SectionHistory section="members" />
-    </>
-  );
+/** Members live on the People page (one home); this address and settings search still lead there. */
+function MembersRedirect() {
+  const [params] = useSearchParams();
+  return <Navigate to={params.get('tab') === 'invitations' ? '/people/invitations' : '/people'} replace />;
 }
 
 /** Integrations → Slack: the one Slack page. Posting to a channel without the app is a webhook in Slack format (Integrations → Webhooks). */
