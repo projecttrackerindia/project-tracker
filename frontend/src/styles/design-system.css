@@ -320,6 +320,7 @@ html .badge-info, html .badge-medium { background: var(--ds-info-bg); color: var
 html .badge-purple, html .badge.in-progress { background: var(--ds-progress-bg); color: var(--ds-progress); }
 html .badge-neutral, html .badge-low { background: var(--ds-fill); color: var(--ds-text-2); }
 html .badge-custom { border: 0; }
+html .badge-role-owner { background: var(--ds-dark); color: var(--ds-on-dark); }
 html .chip, html .label-chip { border-radius: var(--ds-r-pill); border: 0; padding: 4px 11px; font-size: 12px; font-weight: 600; }
 html .chip { background: var(--ds-fill); color: var(--ds-text-2); }
 .ds-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: var(--ds-r-pill); background: var(--ds-fill); color: var(--ds-text-2); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
@@ -602,7 +603,7 @@ html .account-dock:hover, html .account-dock[aria-expanded='true'] { background:
 html[data-theme='dark'] .account-dock { background: var(--ds-surface-2); }
 
 /* the top bar: one search pill, then teams, theme and bell as quiet circles */
-html .topbar { background: color-mix(in srgb, var(--ds-bg) 80%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 0; box-shadow: none; padding-inline: 28px; gap: 14px; }
+html .topbar { background: color-mix(in srgb, var(--ds-bg) 92%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 0; box-shadow: none; padding-inline: 28px; gap: 14px; }
 html .topbar > .icon-btn:first-child { background: transparent; box-shadow: none; }
 html .topbar > .icon-btn:first-child:hover { background: var(--ds-fill); }
 html .global-search { max-width: 440px; }
@@ -659,9 +660,14 @@ html .content { padding: 32px 40px 64px; }
   .ds-command input, .ds-command textarea { font-size: 16px; }
 }
 
+/* toasts: a floating white pill with a toned icon; no coloured side bar */
+html .toast { border: 0; border-left: 0; border-radius: 18px; background: var(--ds-surface); box-shadow: var(--ds-e4); padding: 14px 18px; font-size: 14px; font-weight: 500; color: var(--ds-text); animation: ds-enter .24s var(--ds-ease) both; }
+html[data-theme='dark'] .toast { background: var(--ds-surface-2); }
+html .toast.success .toast-ico { color: var(--ds-success); } html .toast.error .toast-ico { color: var(--ds-danger); } html .toast.warning .toast-ico { color: var(--ds-warning); } html .toast.info .toast-ico { color: var(--ds-accent); }
+
 /* phone chrome: a glass top bar, a floating glass tab bar, one blue create button */
 @media (max-width: 768px) {
-  html .m-top, html[data-theme='dark'] .m-top { background: color-mix(in srgb, var(--ds-bg) 78%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid transparent; }
+  html .m-top, html[data-theme='dark'] .m-top { background: color-mix(in srgb, var(--ds-bg) 92%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid transparent; }
   html .m-top.scrolled { border-bottom-color: var(--ds-line); box-shadow: none; }
   html .m-pill, html[data-theme='dark'] .m-pill { background: var(--ds-glass); backdrop-filter: saturate(180%) blur(24px); -webkit-backdrop-filter: saturate(180%) blur(24px); border: 0; box-shadow: var(--ds-e3); border-radius: 26px; }
   html .m-tab { color: var(--ds-text-3); border-radius: 18px; }

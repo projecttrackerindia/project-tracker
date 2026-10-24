@@ -66,7 +66,8 @@ export const StageBadge = ({ status }: { status: StageDisplayStatus }) => (
   <span className={`badge ${STAGE_CLASS[status]}`}>{status === 'Locked' ? <Icon name="lock" size={11} /> : <span className="dot" />}{labelize(status)}</span>
 );
 
-const ROLE_CLASS: Record<Role, string> = { Owner: 'badge-purple', Admin: 'badge-info', Manager: 'badge-success', Member: 'badge-neutral', Guest: 'badge-warning' };
+/** Role pills as on the People page: owner dark, admin blue, manager violet, member grey, guest amber. */
+const ROLE_CLASS: Record<Role, string> = { Owner: 'badge-role-owner', Admin: 'badge-info', Manager: 'badge-purple', Member: 'badge-neutral', Guest: 'badge-warning' };
 export const RoleBadge = ({ role }: { role: Role }) => <span className={`badge ${ROLE_CLASS[role]}`}>{role}</span>;
 
 export const Badge = ({ tone = 'neutral', children }: { tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'purple'; children: ReactNode }) => (
