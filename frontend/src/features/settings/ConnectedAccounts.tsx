@@ -127,7 +127,7 @@ export function ConnectedAccountsSection() {
 
   return (
     <div className="ca">
-      <StudioHero title="Connected accounts" eyebrow="My account" icon="link"
+      <StudioHero title="Connected accounts"
         description="Sign in to your own accounts. Project Tracker uses only what you turn on here, and you can turn each part off on its own.">
         <span className="studio-chip"><Icon name="lock" />Private to you</span>
       </StudioHero>

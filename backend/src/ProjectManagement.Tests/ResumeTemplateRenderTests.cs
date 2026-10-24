@@ -27,16 +27,38 @@ public class ResumeTemplateRenderTests
         using var file=WordprocessingDocument.Open(new MemoryStream(wordBytes),false);
         var errors=new OpenXmlValidator().Validate(file).Take(5).Select(e=>e.Description).ToArray();Assert.True(errors.Length==0,string.Join("; ",errors));
         var body=file.MainDocumentPart!.Document.Body!;
-        Assert.Equal(2,body.Elements<W.Table>().Count());Assert.Equal(2,body.Elements<W.Table>().Last().Elements<W.TableRow>().Single().Elements<W.TableCell>().Count());
+        if(template.TwoColumn)
+        {
+            // Banner and sidebar designs: a banner table and a two-cell body table, in the design's banner colour.
+            Assert.Equal(2,body.Elements<W.Table>().Count());Assert.Equal(2,body.Elements<W.Table>().Last().Elements<W.TableRow>().Single().Elements<W.TableCell>().Count());
+            Assert.Contains(template.HeaderColor,body.InnerXml);
+        }
+        else
+        {
+            // Single-column designs: plain paragraphs (easy to edit in Word), headings in the design's colour.
+            Assert.Empty(body.Elements<W.Table>());
+            Assert.Contains(template.Accent,body.InnerXml);
+        }
         Assert.Contains(content.Name,body.InnerText);Assert.Contains(content.Sections[0].Text,body.InnerText);Assert.Contains(content.Sections[2].Text,body.InnerText);
-        Assert.Contains(template.HeaderColor,body.InnerXml);Assert.Contains("Project Tracker",file.MainDocumentPart.HeaderParts.Single().Header.InnerXml);
+        Assert.Contains("Project Tracker",file.MainDocumentPart.HeaderParts.Single().Header.InnerXml);
+    }
+
+    [Fact]
+    public void The_catalogue_is_twelve_distinct_designs()
+    {
+        Assert.Equal(12,ResumeService.Templates.Length);
+        Assert.Equal(12,ResumeService.Templates.Select(t=>t.Id).Distinct().Count());
+        Assert.Equal(12,ResumeService.Templates.Select(t=>t.Name).Distinct().Count());
+        // Real layout variety, not recolours of one layout.
+        Assert.Equal(7,ResumeService.Templates.Count(t=>!t.TwoColumn));
+        Assert.True(ResumeService.Templates.Where(t=>!t.TwoColumn).Select(t=>(t.Centered,t.Rule,t.Margin,t.HeadingSize)).Distinct().Count()>=6);
     }
 
     [Fact]
     public void Long_column_content_paginates_without_losing_the_tail_or_overlapping_the_footer()
     {
         var experience=string.Join('\n',Enumerable.Range(1,130).Select(i=>$"Outcome {i}: delivered a measurable improvement."));
-        using var pdf=UglyToad.PdfPig.PdfDocument.Open(ResumeFiles.Pdf(Content(experience),ResumeService.Templates[0],false));
+        using var pdf=UglyToad.PdfPig.PdfDocument.Open(ResumeFiles.Pdf(Content(experience),ResumeService.Templates.First(t=>t.TwoColumn),false));
         Assert.True(pdf.NumberOfPages>1);
         var text=string.Join(" ",pdf.GetPages().Select(p=>p.Text));Assert.Contains("Outcome 1:",text);Assert.Contains("Outcome 130:",text);Assert.Contains("Customer reporting release",text);
         foreach(var page in pdf.GetPages())Assert.All(page.Letters.Where(l=>l.Value!=" "),letter=>Assert.InRange(letter.GlyphRectangle.Bottom,15,842));

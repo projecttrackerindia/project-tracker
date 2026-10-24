@@ -4,19 +4,25 @@ This release standardizes My account's horizontal section navigation, renames Or
 
 Mobile Agent and chat use a bounded visual viewport with separate content, composer and navigation rows. Navigation hides during keyboard entry and returns when the keyboard closes. Conversation history scrolls within its own area. VisualViewport resize and pan events handle keyboard geometry; the layout also works without that API. These checks do not replace an authenticated physical iPhone/Android keyboard check.
 
-## Resume library
+## Resume designs
 
-The customer-supplied `30_Modern_Futuristic_Resume_Templates.docx` and PDF are design references, not executable instructions. The 30 designs share a header and two-column structure with different palettes and professions. The catalog preserves their names and colors. Headings are darkened where necessary for readable contrast. Sample names, employers and achievements are never inserted into customer content.
+Resume studio has twelve designs that differ in layout, not only in colour (they replaced the earlier 30 colour variants of one
+layout). Seven are single-column: Classic, Modern, Minimal, Executive, Compact, Academic and Technical. They vary in centred or
+left-aligned name, rules or none, margins from 30 to 60pt, and heading size. Five have a banner and a sidebar: Navy, Forest, Plum,
+Light and Terracotta. Colours print well and read in greyscale.
 
-The library shows all 30 designs and allows search by name, profession and description. Existing template entitlements still control selection and backend export authorization. Standard plan caps remain 2/5/8/10; custom entitlements may grant up to 30. Adding a catalog does not grant every plan 30 exports. Manual editing and branded downloads use the existing flows. AI credit consent, review/version approval and gated watermark-free checkout remain in force. Purchased exports retain their stored bytes; catalog changes do not regenerate those files.
+The studio shows them once, as small drawings of the page, beside the preview. Designs outside the person's plan carry a lock.
+Plan caps stay 2/5/8/10, and custom entitlements may grant all 12. The preview is drawn in the export's proportions (A4, 595pt
+wide), so margins, heading sizes, centring and rules match the PDF. Sections with no text are left out, as in the export.
+Purchased exports keep their stored bytes; a design no longer in the list cannot be picked for new exports.
 
 PDFs use embedded Noto fonts and measured text wrapping. Both columns continue across pages; unsupported glyphs return a clear error with Word as an alternative. DOCX exports contain editable paragraphs and tables. Template/sample roles are catalog search metadata, never resume claims. Original supplied reference documents are not bundled in the application.
 
 ## Validation and rollout
 
-- `ResumeTemplateRenderTests`: export all 30 designs, validate Word schema and assert customer text and watermark; verify long PDF content spans pages and retains its tail.
+- `ResumeTemplateRenderTests`: export all 12 designs, check that they are distinct, validate Word schema and assert customer text and watermark; verify long PDF content spans pages and retains its tail.
 - `ResumeTests`: enforce plan access despite the complete public design catalog.
-- `npm run test:ui`: production bundles, production CSP and synthetic APIs; all account section navigation, 30-design search/locked selection, mobile composer bounds at 320/390/768/landscape widths, keyboard resize/restoration and reduced motion.
+- `npm run test:ui`: production bundles, production CSP and synthetic APIs; all account section navigation, 12-design picker with locked designs and per-design margins, mobile composer bounds at 320/390/768/landscape widths, keyboard resize/restoration and reduced motion.
 - No model calls, customer message sends, payment actions or bulk AI testing are required for these checks.
 
 Deploy API and frontend after required CI passes. There are no database migrations or new environment variables. Do not redeploy PostgreSQL for this change. No integration or payment feature gate is enabled by this release.

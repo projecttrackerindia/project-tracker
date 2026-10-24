@@ -41,11 +41,11 @@ public class ResumeTests(ApiFactory factory)
         var owner=await TestClient.RegisterAsync(factory);await owner.CreateOrgAsync();
         foreach(var (plan,count) in new[]{("FREE",2),("PRO",5),("BUSINESS",8)}){
             if(plan!="FREE")await owner.UpgradeAsync(plan);
-            var opts=await owner.Get("/api/v1/me/resumes/options");Assert.True(opts.Ok,opts.ToString());Assert.Equal(count,opts.Data!["templates"]!.AsArray().Count);Assert.Equal(30,opts.Data["catalog"]!.AsArray().Count);Assert.False(opts.Data["cleanCheckoutEnabled"]!.GetValue<bool>());
+            var opts=await owner.Get("/api/v1/me/resumes/options");Assert.True(opts.Ok,opts.ToString());Assert.Equal(count,opts.Data!["templates"]!.AsArray().Count);Assert.Equal(12,opts.Data["catalog"]!.AsArray().Count);Assert.False(opts.Data["cleanCheckoutEnabled"]!.GetValue<bool>());
         }
         var created=await owner.Post("/api/v1/me/resumes",new{title="Plan guard",content=Content(),expectedVersion=0});var id=created.Data!["id"]!.GetValue<string>();
         Assert.True((await owner.Post($"/api/v1/me/resumes/{id}/versions/1/approve")).Ok);
-        Assert.Equal(HttpStatusCode.Forbidden,(await owner.Get($"/api/v1/me/resumes/{id}/versions/1/export?template=30&format=pdf")).Status);
+        Assert.Equal(HttpStatusCode.Forbidden,(await owner.Get($"/api/v1/me/resumes/{id}/versions/1/export?template=12&format=pdf")).Status);
     }
     [Fact]
     public async Task Fake_or_compressed_uploads_are_rejected_and_docx_import_has_separate_sources()

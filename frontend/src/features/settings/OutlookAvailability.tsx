@@ -54,7 +54,7 @@ export function OutlookAvailability() {
   });
   const date = (value: string) => new Date(value).toLocaleString(undefined, { timeZone: zone, dateStyle: 'medium', timeStyle: 'short' });
   return <section className="outlook-availability" aria-labelledby="outlook-availability-title">
-    <header><span className="outlook-calendar-symbol" aria-hidden="true"><Icon name="calendar" size={21} /></span><div><span className="studio-eyebrow">PERSONAL PLANNING</span><h3 id="outlook-availability-title">Outlook availability</h3><p>Check your calendars before choosing a time.</p></div><span className="outlook-privacy"><Icon name="lock" size={13} /> Only you</span></header>
+    <header><span className="outlook-calendar-symbol" aria-hidden="true"><Icon name="calendar" size={21} /></span><div><h3 id="outlook-availability-title">Outlook availability</h3><p>Check your calendars before choosing a time.</p></div><span className="outlook-privacy"><Icon name="lock" size={13} /> Only you</span></header>
     <p className="muted">Checks are read only and use no AI credits. Event titles and notes stay in Outlook.</p>
     {status.isError ? <p role="alert">Microsoft connection status could not be loaded.</p> : !status.data?.calendarsEnabled ? <p className="outlook-status">Awaiting administrator setup</p> : !status.data.calendarAccess ? <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void allow()}>Allow basic calendar reading</button> : <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void load()}>{busy ? 'Checking calendars...' : 'Load my Outlook calendars'}</button>}
     {error && <p role="alert" className="outlook-error">{error}</p>}

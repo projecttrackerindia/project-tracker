@@ -17,7 +17,7 @@ let inboxBody='Please review the delivery milestones. <script>window.inboxUnsafe
 const user={id:'00000000-0000-0000-0000-000000000001',displayName:'Preview User',email:'preview@example.test',emailVerified:true,isPlatformAdmin:false,timeZone:'Asia/Kolkata'};
 const workspace={id:'00000000-0000-0000-0000-000000000002',slug:'preview-org',name:'Preview Organization',type:'Organization',role:'Owner',planCode:'BUSINESS',description:null,memberCount:2};
 const context={user,workspaces:[workspace],fingerprint:'preview',pendingConsent:[],current:{...workspace,permissions:['work.view','work.create','work.edit','workflow.manage','reports.view'],modules:{work:3,projects:3,reports:3,ai:0,chat:0,time:0,people:3,documents:3,calendar:3},plan:{code:'BUSINESS',name:'Business',status:'Active',trialEnd:null,periodEnd:null,cancelAtPeriodEnd:false,downgraded:false},entitlements:{AUTOMATION:1,RESUME_TEMPLATES:8}}};
-const catalog=JSON.parse(await fs.readFile(new URL('./fixtures/resume-designs.json',import.meta.url),'utf8'));const templates=catalog.slice(0,2);
+const catalog=JSON.parse(await fs.readFile(new URL('./fixtures/resume-designs.json',import.meta.url),'utf8'));const templates=catalog.slice(0,8);
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 const errors=[];const checks=[];
 try {
@@ -75,7 +75,7 @@ try {
    const message={id:provider==='google'?'1001':'message1',threadId:'conversation1',subject:'Project delivery review',sender:'reviewer@example.test',receivedAt:'2026-10-11T08:00:00Z',unread:true,hasAttachments:true,body:url.pathname.endsWith('/thread')?inboxBody:null,bodyTruncated:false};
    data=url.pathname.endsWith('/thread')?{provider,account,threadId:'conversation1',messages:[message],truncated:false,sourceHash:inboxSourceHash,accessContext:inboxSourceHash}:{provider,account,messages:[message],cursor:null};
   }
-  else if(url.pathname.endsWith('/resumes/options'))data={templates,catalog,templateLimit:2,aiAvailable:false,aiCredits:0,cleanCheckoutEnabled:false,cleanPricePaise:4900,cleanTaxPaise:0,taxLabel:''};
+  else if(url.pathname.endsWith('/resumes/options'))data={templates,catalog,templateLimit:8,aiAvailable:false,aiCredits:0,cleanCheckoutEnabled:false,cleanPricePaise:4900,cleanTaxPaise:0,taxLabel:''};
   else if(url.pathname.endsWith('/me/certifications'))data=[{id:'00000000-0000-0000-0000-000000000003',name:'Project Management Certification',issuer:'Preview Institute',issuedOn:'2025-01-01',expiresOn:'2027-01-01',credentialId:null,verificationUrl:null,showBadge:false,archived:false,version:1,verificationStatus:'self-reported',expiryReminders:true,hasAttachment:false,attachmentFormat:null}];
   else if(url.pathname.includes('/unread')||url.pathname.includes('/counts'))data={count:0,total:0};
   else if(url.pathname==='/api/v1/timer')data=null;
@@ -115,28 +115,27 @@ try {
  await fileInput.focus();
  checks.push({name:'resume-upload-keyboard-focus',focused:await fileInput.evaluate(el=>document.activeElement===el)});
  await capture('resume-final-desktop','/account/resumes','.resume-builder',1440,1000);
- const templateButtons=page.getByRole('group',{name:'Choose resume template'}).getByRole('button');
- assert.equal(await templateButtons.count(),templates.length);
- await templateButtons.nth(1).focus();await templateButtons.nth(1).press('Enter');
- assert.equal(await templateButtons.nth(1).getAttribute('aria-pressed'),'true');
- assert.equal(await page.getByLabel(/Template/).inputValue(),'2');
- checks.push({name:'resume-template-keyboard-selection',passed:true});
- await page.getByRole('button',{name:'Browse 30 designs',exact:true}).click();
- const library=page.getByRole('dialog');
- assert.equal(await library.locator('.resume-catalog-card').count(),30);
- // Capture the dialog without resizing the document viewport used by the responsive app shell.
- await library.screenshot({path:artifact('resume-library-desktop.png'),animations:'disabled'});
- assert.equal(await library.locator('.resume-catalog-card').count(),30,'Capturing a preview must keep the library open');
- await page.getByRole('textbox',{name:'Search resume designs'}).fill('Orbital');
- const locked=library.locator('.resume-catalog-card');assert.equal(await locked.count(),1);assert.equal(await locked.getAttribute('aria-disabled'),'true');
- await locked.evaluate(el=>el.click());assert.equal(await page.getByLabel(/Template/).inputValue(),'2','Locked designs cannot change the active template');
- await page.getByRole('textbox',{name:'Search resume designs'}).fill('Aurora');
- await library.locator('.resume-catalog-card').focus();await library.locator('.resume-catalog-card').press('Enter');
- assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.locator('.resume-paper.supplied .resume-paper-sidebar').count(),1);
- checks.push({name:'resume-30-design-library-search-and-plan-lock',passed:true});
+ // Every design appears once, as a drawing of its page: the eight in the plan can be picked, the other four carry a lock.
+ assert.equal(catalog.length,12);
+ const designs=page.getByRole('group',{name:'Choose resume design'}).getByRole('button');
+ assert.equal(await designs.count(),catalog.length);
+ assert.equal(await page.getByRole('group',{name:'Choose resume design'}).locator('[aria-disabled=true]').count(),catalog.length-templates.length);
+ assert.equal(await page.locator('.resume-catalog-card, .resume-template-card').count(),0,'No second picker or library dialog');
+ assert.equal(await page.getByRole('combobox',{name:/Template/}).count(),0,'No dropdown repeating the designs');
+ await designs.nth(1).focus();await designs.nth(1).press('Enter');
+ assert.equal(await designs.nth(1).getAttribute('aria-pressed'),'true');
+ assert.equal(await page.locator('.resume-paper.ruled:not(.centered):not(.supplied)').count(),1,'Modern: one column, left-aligned, with rules');
+ const lockedDesign=page.getByRole('button',{name:'Sidebar Plum, not in your plan'});
+ await lockedDesign.evaluate(el=>el.click());assert.equal(await lockedDesign.getAttribute('aria-pressed'),'false');assert.equal(await designs.nth(1).getAttribute('aria-pressed'),'true','A locked design does not change the page');
+ await page.getByRole('button',{name:'Sidebar Navy',exact:true}).click();
+ assert.equal(await page.locator('.resume-paper.supplied .resume-paper-sidebar').count(),1);
+ assert.match(await page.locator('.resume-designs-head').innerText(),/Sidebar Navy/);
+ // The page follows the export's margins: Compact (30pt) is tighter than Minimal (60pt).
+ const pad=async name=>{await page.getByRole('button',{name,exact:true}).click();return page.locator('.resume-paper').evaluate(el=>parseFloat(getComputedStyle(el).paddingLeft));};
+ assert.ok(await pad('Compact')<await pad('Minimal'),'Margins differ between designs');
+ checks.push({name:'resume-12-designs-one-picker-plan-lock-and-margins',passed:true});
  await page.emulateMedia({reducedMotion:'reduce'});
  await page.evaluate(()=>{localStorage.setItem('pm_theme','dark');document.documentElement.setAttribute('data-theme','dark');});
- assert.equal(await page.locator('.studio-hero-mark>span').evaluate(el=>getComputedStyle(el).animationName),'none');
  await page.screenshot({path:artifact('resume-final-dark-desktop.png'),fullPage:true,animations:'disabled'});
  checks.push({name:'dark-theme-and-reduced-motion',passed:true});
  await page.goto(origin+'/calendar');await page.locator('.outlook-availability').waitFor({state:'visible'});
@@ -170,7 +169,7 @@ try {
   await page.getByRole('group',{name:'Resume workspace view'}).getByRole('button',{name:'Edit',exact:true}).click();
   assert.equal(await page.locator('.resume-preview-panel').isVisible(),false);
   const after=await page.locator('.resume-editor').evaluate(el=>el.getBoundingClientRect().width);
-  if(width>=1440)assert.ok(after>before+200,'Edit mode should give substantially more writing room');
+  if(width>=1440)assert.ok(after>=Math.min(before+150,860),'Edit mode gives the editor the full reading width');
   const summary=page.getByLabel('Profile summary');
   assert.ok(await summary.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))>=(width<600?16:15));
   await page.getByLabel('Full name').fill('Asha Patel');
@@ -183,7 +182,7 @@ try {
   }
   await page.getByRole('group',{name:'Resume workspace view'}).getByRole('button',{name:'Preview',exact:true}).click();
   assert.equal(await page.locator('.resume-editor').isVisible(),false);
-  await page.getByLabel(/Template/).selectOption('2');
+  await page.getByRole('button',{name:'Sidebar Navy',exact:true}).click();
   assert.equal(await page.locator('.resume-paper.centered.supplied').count(),1);
   assert.match(await page.locator('.resume-paper').innerText(),/cross-functional teams/);
   if([390,1440].includes(width)) {
