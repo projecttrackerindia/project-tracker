@@ -3,6 +3,8 @@ name: NuGet cache (dev)
 on:
   push:
     branches: [nuget-cache]
+permissions:
+  contents: write
 jobs:
   restore:
     runs-on: ubuntu-24.04
@@ -13,8 +15,10 @@ jobs:
           dotnet-version: 10.0.1xx
       - run: dotnet restore backend/ProjectManagement.sln
       - run: tar -C ~/.nuget -czf nuget-packages.tgz packages
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nuget-packages
-          path: nuget-packages.tgz
-          retention-days: 3
+      # A draft release (never public), replaced on each run; deleted when no longer needed.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nuget-cache-dev --yes --cleanup-tag -R "$GITHUB_REPOSITORY" || true
+          split -b 1900m nuget-packages.tgz nuget-packages.tgz.part-
+          gh release create nuget-cache-dev --draft --title "NuGet cache (dev, temporary)" --notes "Temporary dev helper; safe to delete." -R "$GITHUB_REPOSITORY" nuget-packages.tgz.part-*
