@@ -392,6 +392,8 @@ html .input, html .select, html .textarea {
   font-size: 15px; padding-inline: 14px; box-shadow: none; transition: border-color .16s var(--ds-ease), box-shadow .16s var(--ds-ease);
 }
 html .select { padding-right: 36px; }
+html .select { background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2386868B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); }
+html[data-theme='dark'] .select { background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A1A1A6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); }
 html .textarea { padding-block: 11px; line-height: 1.5; }
 html .input:hover, html .select:hover, html .textarea:hover { border-color: color-mix(in srgb, var(--ds-outline) 60%, var(--ds-text-4)); }
 html .input:focus, html .select:focus, html .textarea:focus, html .modal .input:focus, html .modal .select:focus, html .modal .textarea:focus {

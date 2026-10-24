@@ -195,6 +195,7 @@ html[data-theme='dark'] .resume-builder .resume-view-switch button[aria-pressed=
 .resume-builder .resume-certifications > summary span { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
 .resume-builder .resume-certifications li { border-bottom-color: var(--ds-line); }
 @media (max-width: 768px) {
+  .resume-builder .resume-field :is(input, textarea), .resume-builder .resume-bar select { font-size: 16px; }
   .resume-builder .resume-editor, .resume-builder .resume-preview-panel { padding: 18px 16px; border-radius: 20px; }
   .resume-builder .resume-certifications { padding: 6px 16px 16px; }
   .resume-builder .resume-bar { top: calc(var(--topbar-h, 56px) + 4px); border-radius: 16px; }
