@@ -1,0 +1,20 @@
+# Dev helper on its own branch: restores the backend with the .NET 10 SDK and keeps the package folder as an artifact.
+name: NuGet cache (dev)
+on:
+  push:
+    branches: [nuget-cache]
+jobs:
+  restore:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.1xx
+      - run: dotnet restore backend/ProjectManagement.sln
+      - run: tar -C ~/.nuget -czf nuget-packages.tgz packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: nuget-packages.tgz
+          retention-days: 3
