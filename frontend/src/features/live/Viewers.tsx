@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Avatar } from '../../components/ui';
 import { useAuth } from '../../stores/auth';
 import { hubInvoke, onLiveConnected, onViewing } from './bus';
+import './live.css';
 
 const ANNOUNCE_MS = 30_000;
 const FORGET_MS = 75_000;

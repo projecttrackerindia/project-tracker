@@ -125,6 +125,16 @@ try{
  await page.goto(origin+`/preview-org/projects/${pid}?task=${tid}`);
  const dialog=page.getByRole('dialog');await dialog.waitFor();
  await dialog.getByRole('heading').first().waitFor();
+ // The task as a calm sheet: key and status in pills, the big title, fields as rows. Light, dark and a phone.
+ await dialog.getByTestId('task-sheet-meta').waitFor();
+ assert.ok(await dialog.getByTestId('task-sheet-meta').getByText('PAY-12').isVisible());
+ await page.waitForTimeout(500);await page.screenshot({path:path.join(out,'task-sheet-1440.png')});
+ await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(200);
+ await page.screenshot({path:path.join(out,'task-sheet-dark-1440.png')});
+ await page.evaluate(()=>document.documentElement.setAttribute('data-theme','light'));
+ await page.setViewportSize({width:390,height:844});await page.waitForTimeout(400);
+ await page.screenshot({path:path.join(out,'task-sheet-390.png')});
+ await page.setViewportSize({width:1440,height:960});await page.waitForTimeout(300);
  const dev=dialog.getByTestId('dev-links');
  for(let i=0;i<30&&!(await dev.count());i++){await page.evaluate(()=>document.querySelectorAll('[role=dialog] *').forEach(e=>{if(e.scrollHeight>e.clientHeight+4)e.scrollTop=e.scrollHeight;}));await page.waitForTimeout(150);}
  await dev.waitFor();await dev.scrollIntoViewIfNeeded();

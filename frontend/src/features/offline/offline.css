@@ -1,0 +1,15 @@
+/* Offline: the saved list in the calm language - a white header card, items as white rows with a status-coloured kind mark. */
+.offline-shell { padding: 24px 16px 40px; max-width: 760px; background: var(--ds-bg); }
+.offline-head { gap: 14px; padding: 18px 20px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); margin: 8px 0 20px; }
+.offline-head .brand-mark { background: var(--ds-dark); color: var(--ds-on-dark); }
+.offline-head b { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.offline-head span { font-size: 13px; color: var(--ds-text-3); }
+.offline-list { gap: 8px; }
+.offline-list li { gap: 14px; min-height: 60px; padding: 12px 16px; border: 0; border-radius: 16px; background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.offline-list li.late { border: 0; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ds-danger) 45%, transparent); }
+.offline-kind { width: 6px; height: 32px; border-radius: 3px; }
+.offline-main b { font-size: 14.5px; font-weight: 500; }
+.offline-main i { font-size: 12.5px; color: var(--ds-text-3); }
+.offline-due { font-size: 12.5px; color: var(--ds-text-3); }
+.offline-list li.late .offline-due { color: var(--ds-danger); }
+.offline-empty, .offline-foot { color: var(--ds-text-3); font-size: 13.5px; }

@@ -193,3 +193,118 @@
   .cs .cs-reactions { left: 8px; }
   .cs .cs-react-bar { left: auto; right: -96px; transform: none; flex-wrap: wrap; width: 236px; border-radius: 22px; justify-content: center; animation: none; }
 }
+
+/* ===================================================================================================== design system pass
+   The call is the dark stage of the design system: true black, #161618 tiles with 20px corners, controls as 48px glass circles,
+   one red leave button, the brighter blue (#2997FF) for whoever speaks and for what is switched on. */
+.call-shell, .call-shell.in-call { background: #000; color: #F5F5F7; }
+.call-head { min-height: 60px; padding: 10px 18px; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.call-shell.in-call .call-head { border-bottom: 0; }
+.call-head-title b { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.call-head-title small { font-size: 12.5px; color: #A1A1A6; }
+.call-head-title a { text-decoration: none; color: #2997FF; }
+.call-icon-btn { width: 40px; height: 40px; border-radius: 50%; background: rgba(255, 255, 255, .08); }
+.call-icon-btn:hover { background: rgba(255, 255, 255, .14); }
+.call-icon-btn:focus-visible, .call-end:focus-visible, .cs .cs-btn:focus-visible, .cs .cs-leave:focus-visible, .cs .cs-menu:focus-visible { outline: 2px solid #2997FF; outline-offset: 2px; }
+.call-badge { padding: 5px 12px; font-size: 12.5px; font-weight: 500; background: rgba(255, 255, 255, .08); color: #D2D2D7; }
+.call-badge.agent { background: rgba(41, 151, 255, .16); color: #64A8FF; }
+.call-end { padding: 0 16px; min-height: 40px; border-radius: 980px; background: #FF453A; font-weight: 500; }
+.call-end:hover { background: #E0352B; }
+
+/* before joining: a display title on the left, the camera and controls in one dark card */
+.call-prejoin { gap: 40px; padding: 32px clamp(16px, 6vw, 80px); }
+.call-prejoin-intro h2 { font-size: clamp(30px, 3.4vw, 48px); font-weight: 700; letter-spacing: -.035em; line-height: 1.05; margin-bottom: 12px; }
+.call-prejoin-intro p { font-size: 17px; color: #A1A1A6; line-height: 1.5; }
+.call-agent-note { padding: 12px 16px; border-radius: 14px; background: rgba(41, 151, 255, .12); color: #D2D2D7 !important; font-size: 14px; line-height: 1.5; }
+.call-agent-note svg { color: #64A8FF; }
+.call-prejoin .lk-prejoin { padding: 16px; border-radius: 28px; background: #161618; box-shadow: 0 0 0 1px rgba(255, 255, 255, .06), 0 30px 80px -20px rgba(0, 0, 0, .9); gap: 12px; }
+.call-prejoin .lk-prejoin .lk-video-container { border-radius: 20px; overflow: hidden; background: #1C1C1E; }
+.call-prejoin .lk-prejoin .lk-button-group { border-radius: 980px; overflow: hidden; background: #2C2C2E; }
+.call-prejoin .lk-prejoin .lk-button, .call-prejoin .lk-prejoin .lk-button-group > .lk-button { background: #2C2C2E; color: #F5F5F7; border-radius: 0; font-weight: 500; }
+.call-prejoin .lk-prejoin .lk-button-group-menu .lk-button { background: #2C2C2E; border-left: 1px solid rgba(255, 255, 255, .08); }
+.call-prejoin .lk-prejoin .lk-username-container input, .call-prejoin .lk-prejoin .lk-form-control { min-height: 46px; border-radius: 12px; border: 1px solid #3A3A3C; background: #1C1C1E; color: #F5F5F7; padding: 0 14px; font-size: 15px; }
+.call-prejoin .lk-prejoin .lk-join-button { min-height: 48px; border-radius: 980px; background: #0071E3; color: #fff; font-size: 16px; font-weight: 500; }
+.call-prejoin .lk-prejoin .lk-join-button:hover { background: #0A7CF0; }
+
+/* after the call: the app's calm page */
+.call-over { gap: 14px; }
+.call-over h2 { font-size: clamp(28px, 3vw, 40px); font-weight: 700; letter-spacing: -.03em; }
+.call-over p { color: var(--ds-text-3); font-size: 15px; }
+.call-over .call-agent-note { color: var(--ds-text) !important; background: var(--ds-accent-soft); }
+.call-over .call-agent-note svg { color: var(--ds-accent); }
+.call-over-actions { gap: 10px; margin-top: 10px; }
+
+/* the start-a-call dialog: invite list as soft rows, the agent as a choice card */
+.call-invite { border: 0; border-radius: 16px; padding: 12px 14px 14px; background: var(--ds-fill); }
+.call-invite legend { font-size: 13px; font-weight: 500; color: var(--ds-text-3); padding: 0; float: left; width: 100%; margin-bottom: 8px; }
+.call-invite-item { min-height: 36px; padding: 0 8px; border-radius: 10px; font-size: 14px; }
+.call-invite-item:hover { background: var(--ds-surface); }
+.call-agent { padding: 14px 16px; border-radius: 16px; background: var(--ds-fill); transition: box-shadow .2s var(--ds-ease), background-color .16s var(--ds-ease); }
+.call-agent:has(input:checked) { background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+.call-agent b { font-weight: 600; }
+.call-agent small { color: var(--ds-text-3); }
+
+/* live calls to join: a quiet green line under the top bar */
+.call-live-bar { gap: 12px; padding: 10px 28px; background: var(--ds-success-bg); border-bottom: 0; font-size: 14px; color: var(--ds-text); }
+.call-live-bar .dot { background: var(--ds-success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ds-success) 22%, transparent); }
+
+/* in the call */
+.cs .cs-main { gap: 14px; padding: 10px 18px 0; }
+.cs .cs-grid { gap: 12px; }
+.cs .lk-participant-tile { background: #161618; border-radius: 20px; }
+.cs .lk-participant-tile::after { box-shadow: inset 0 0 0 0 #2997FF; }
+.cs .lk-participant-tile[data-lk-speaking="true"]:not([data-lk-source="screen_share"])::after { box-shadow: inset 0 0 0 3px #2997FF; }
+.cs .cs-avatar { background: hsl(var(--h) 32% 36%); font-weight: 600; letter-spacing: 0; }
+.cs .cs-avatar.agent { background: #2C2C2E; color: #64A8FF; }
+.cs .lk-participant-tile[data-lk-speaking="true"] .cs-avatar { box-shadow: 0 0 0 6px rgba(41, 151, 255, .28), 0 0 0 12px rgba(41, 151, 255, .12); }
+.cs .cs-name { left: 12px; bottom: 10px; font-weight: 500; text-shadow: none; }
+.cs .cs-name > span { padding: 4px 10px; border-radius: 980px; background: rgba(0, 0, 0, .55); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.cs .cs-name small { background: rgba(41, 151, 255, .22); color: #64A8FF; padding: 3px 9px; }
+.cs .cs-muted { background: rgba(0, 0, 0, .55); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.cs .cs-strip { gap: 12px; }
+.cs .cs-chat { border-radius: 20px; --lk-bg: #F5F5F7; --lk-bg5: #E8F2FF; --lk-fg: #1D1D1F; --lk-fg5: #6E6E73; --lk-border-color: rgba(0, 0, 0, .06); --lk-control-bg: #F0F0F3; --lk-control-hover-bg: #E8E8ED; color: #1D1D1F; }
+.cs .cs-chat .lk-chat-header { font-size: 17px; font-weight: 600; letter-spacing: -.01em; border-bottom-color: rgba(0, 0, 0, .06); }
+.cs .cs-chat .lk-chat-entry .lk-meta-data { color: #6E6E73; }
+.cs .cs-chat .lk-chat-entry .lk-participant-name { color: #1D1D1F; }
+.cs .cs-chat .lk-chat-form-input { background: #F0F0F3; color: #1D1D1F; padding: 11px 16px; }
+.cs .cs-chat .lk-chat-form .lk-button { color: #0066CC; }
+
+/* controls: glass circles; on = white, off (muted) = red, leave = red pill */
+.cs .cs-bar { padding: 16px 24px 22px; }
+.cs .cs-bar-side { font-size: 14.5px; color: #D2D2D7; }
+.cs .cs-bar-left b { font-weight: 600; color: #F5F5F7; }
+.cs .cs-bar-left i { background: #3A3A3C; }
+.cs .cs-bar-mid { gap: 12px; }
+.cs .cs-btn { background-color: rgba(255, 255, 255, .12); color: #F5F5F7; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); transition: background-color .16s var(--ds-ease), transform .12s var(--ds-ease); }
+.cs .cs-btn:not(:disabled):hover { background-color: rgba(255, 255, 255, .2); }
+.cs .cs-btn:not(:disabled):active { transform: scale(.94); }
+.cs .cs-pair { background-color: rgba(255, 255, 255, .12); }
+.cs .cs-pair:hover { background-color: rgba(255, 255, 255, .2); }
+.cs .cs-pair:has(> .cs-btn[data-lk-enabled="false"]) { background-color: #FF453A; }
+.cs .cs-pair:has(> .cs-btn[data-lk-enabled="false"]):hover { background-color: #E0352B; }
+.cs .cs-btn.share[data-lk-enabled="true"], .cs .cs-btn.chat[aria-pressed="true"], .cs .cs-btn.react.on { background-color: #F5F5F7; color: #000; }
+.cs .cs-btn.chat[data-lk-unread-msgs]:not([data-lk-unread-msgs="0"])::after { background: #2997FF; box-shadow: 0 0 0 2px #2C2C2E; }
+.cs .cs-btn.hand.on { background-color: #FFB340; color: #000; }
+.cs .cs-leave { width: 68px; background-color: #FF453A; }
+.cs .cs-leave:not(:disabled):hover { background-color: #E0352B; }
+.cs .cs-start-audio { background-color: #0071E3; color: #fff; font-weight: 500; padding: 10px 18px; }
+.cs .cs-hand { background: #FFB340; color: #000; height: 30px; box-shadow: none; }
+.cs .lk-participant-tile:has(.cs-hand)::after { box-shadow: inset 0 0 0 3px #FFB340; }
+.cs .cs-hands { border-radius: 20px; background: #F5F5F7; color: #1D1D1F; box-shadow: 0 16px 48px rgba(0, 0, 0, .5); }
+.cs .cs-hands-icon { background: #FFB340; }
+.cs .cs-hands li button, .cs .cs-hands-all { color: #0066CC; font-weight: 500; }
+.cs .cs-hands li button:hover, .cs .cs-hands-all:hover { background: #E8F2FF; }
+.cs .cs-hands-all { border-top-color: rgba(0, 0, 0, .06); }
+.cs .cs-react-bar { background: rgba(44, 44, 46, .9); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 16px 48px rgba(0, 0, 0, .5); }
+.cs .cs-float small { background: rgba(0, 0, 0, .7); }
+.cs .cs-you-present { background: #161618; }
+.cs .cs-you-present b { font-size: 22px; font-weight: 600; letter-spacing: -.015em; }
+.cs .cs-stop-present { background: #F5F5F7; color: #000; font-weight: 500; }
+.cs .cs-stop-present:hover { background: #fff; }
+@media (max-width: 860px) {
+  .cs .cs-main { padding: 6px 8px 0; }
+  .cs .lk-participant-tile { border-radius: 16px; }
+  .call-prejoin { padding: 20px 16px; gap: 22px; }
+  .call-prejoin .lk-prejoin { border-radius: 24px; padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .cs .cs-btn:not(:disabled):active { transform: none; } }

@@ -71,3 +71,52 @@
 .nt-actions .nt-item-due { width: 150px; height: 32px; }
 .nt-all { justify-self: end; }
 @media (max-width: 640px) { .nt-actions .nt-item-who, .nt-actions .nt-item-due { flex: 1 1 140px; width: auto; } }
+
+/* ===================================================================================================== design system pass
+   White cards with soft depth, readiness as soft tiles with a coloured tick, the three ways of working as choice cards,
+   calls as 56px hairline rows with a status word, minutes headings in sentence case. */
+.nt { gap: 20px; }
+.nt-hero, .nt-card { border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.nt-hero { padding: 24px 26px; gap: 28px; }
+.nt-card { padding: 24px 26px; gap: 14px; }
+.nt-hero h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 8px; }
+.nt-hero p { font-size: 15px; color: var(--ds-text-3); line-height: 1.5; }
+.nt-card h2 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.nt-card h2 svg { color: var(--ds-text-3); }
+.nt-checks { gap: 8px; }
+.nt-checks li { border: 0; border-radius: 14px; background: var(--ds-fill); padding: 11px 14px; font-size: 14px; color: var(--ds-text); }
+.nt-checks li.ok svg { color: var(--ds-success); } .nt-checks li.warn svg { color: var(--ds-warning); } .nt-checks li.bad svg { color: var(--ds-danger); }
+.nt-field { font-size: 13px; font-weight: 500; color: var(--ds-text-3); gap: 7px; }
+.nt-field input, .nt-field textarea { min-height: 44px; border: 1px solid var(--ds-outline); border-radius: 12px; background: var(--ds-surface); font-size: 15px; padding: 10px 14px; color: var(--ds-text); }
+.nt-field input:focus, .nt-field textarea:focus { border-color: var(--ds-accent); box-shadow: 0 0 0 4px rgba(0, 113, 227, .16); outline: none; }
+html[data-theme='dark'] .nt-field input, html[data-theme='dark'] .nt-field textarea { background: var(--ds-surface-2); }
+.nt-warn { color: var(--ds-warning); font-size: 13px; }
+.nt-toggle { border: 0; border-radius: 16px; background: var(--ds-fill); padding: 14px 16px; }
+.nt-toggle small { color: var(--ds-text-3); font-size: 13px; }
+.nt-presets { gap: 10px; }
+.nt-presets button { border: 0; border-radius: 16px; background: var(--ds-fill); padding: 14px 16px; transition: box-shadow .2s var(--ds-ease), background-color .16s var(--ds-ease); }
+.nt-presets button:hover:not(:disabled) { background: var(--ds-fill-strong); }
+.nt-presets button b, .nt-presets button > span:first-child { font-weight: 600; }
+.nt-presets button small { color: var(--ds-text-3); font-size: 13px; }
+.nt-presets button.on { background: var(--ds-surface); border: 0; box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+.nt-advanced summary { font-size: 14px; font-weight: 500; color: var(--ds-text-2); }
+.nt-after { border-left: 0; padding-left: 0; }
+.nt-session { min-height: 64px; gap: 14px; padding: 12px 2px; border-bottom-color: var(--ds-line); }
+.nt-session-main b, .nt-session-main > span:first-child { font-size: 15px; font-weight: 600; letter-spacing: -.005em; }
+.nt-session-main small { font-size: 13px; color: var(--ds-text-3); }
+.nt-dot { width: 9px; height: 9px; background: var(--ds-text-4); }
+.nt-dot.ok { background: var(--ds-success); } .nt-dot.wait { background: #E8A33D; } .nt-dot.bad { background: var(--ds-danger); }
+.nt-dot.live { background: var(--ds-danger); box-shadow: 0 0 0 4px var(--ds-danger-bg); }
+.nt-status { font-size: 13px; font-weight: 500; color: var(--ds-text-2); }
+.nt-status.live, .nt-status.bad { color: var(--ds-danger); } .nt-status.ok { color: var(--ds-success); } .nt-status.wait { color: var(--ds-warning); }
+.nt-error { color: var(--ds-danger) !important; }
+.nt-empty { padding: 32px 24px; color: var(--ds-text-3); }
+.nt-minutes h3 { margin: 22px 0 8px; font-size: 17px; font-weight: 600; letter-spacing: -.01em; text-transform: none; color: var(--ds-text); }
+.nt-minutes p, .nt-minutes ul { font-size: 15px; color: var(--ds-text-2); line-height: 1.6; }
+.nt-actions li { border: 0; border-radius: 14px; background: var(--ds-fill); padding: 10px 14px; min-height: 52px; }
+.nt-actions li.done { background: var(--ds-success-bg); }
+.nt-actions small { font-size: 12.5px; color: var(--ds-text-3); }
+.nt-done, .nt-sent { color: var(--ds-success); font-weight: 600; }
+.nt-steps { color: var(--ds-text-2); font-size: 14.5px; }
+.nt-foot { color: var(--ds-text-3); font-size: 13px; }
+@media (max-width: 900px) { .nt-hero, .nt-card { padding: 20px 18px; border-radius: 20px; } }

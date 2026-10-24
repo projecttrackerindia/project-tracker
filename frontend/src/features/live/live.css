@@ -1,0 +1,5 @@
+/* "Also viewing": a quiet pill with a green dot; no ping loop (motion only draws attention when something changes). */
+.viewers { margin: 0; padding: 4px 12px 4px 8px; border: 0; border-radius: var(--ds-r-pill); background: var(--ds-success-bg); color: var(--ds-success); font-size: 12.5px; font-weight: 500; }
+.viewers-dot { width: 7px; height: 7px; background: var(--ds-success); animation: none; box-shadow: none; }
+.viewers-faces > * { border-color: var(--ds-surface); }
+.viewers-text { color: var(--ds-text-2); }

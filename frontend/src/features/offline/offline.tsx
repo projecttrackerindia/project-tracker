@@ -4,6 +4,7 @@ import { Icon } from '../../components/Icon';
 import { formatDate, formatDateTime } from '../../lib/format';
 import { KIND_META } from '../workitems/workItems';
 import { readOfflineSnapshot } from './storage';
+import './offline.css';
 
 export { clearOfflineData, readOfflineSnapshot, saveOfflineSnapshot } from './storage';
 

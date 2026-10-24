@@ -1,0 +1,57 @@
+/* =====================================================================================================================
+   Planning in the design-system language: sprints and milestones as calm white cards (the running sprint ringed in blue),
+   tasks inside as hairline rows, dependencies as soft tiles with a status word, the burndown per the chart rules
+   (accent line, dashed grey ideal, light grid, 11px axis labels).
+   ===================================================================================================================== */
+.sprint-list, .milestone-list { gap: 14px; }
+.sprint {
+  border: 0; border-radius: var(--ds-r-card); padding: 18px 22px; background: var(--ds-surface);
+  box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow .2s var(--ds-ease);
+}
+.sprint.active { box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+.sprint.completed { opacity: 1; background: var(--ds-surface-2); box-shadow: 0 0 0 1px var(--ds-line); }
+.sprint-head { gap: 12px; margin-bottom: 4px; }
+.sprint-title { font-size: 17px; font-weight: 600; letter-spacing: -.01em; color: var(--ds-text); gap: 10px; }
+.sprint-title svg { color: var(--ds-text-3); }
+.sprint-dates { font-size: 13px; color: var(--ds-text-3); }
+.sprint-body { margin: 14px 0 0; padding-top: 6px; border-top: 1px solid var(--ds-line); }
+.sprint-task { gap: 12px; min-height: 52px; padding: 8px 2px; border-bottom-color: var(--ds-line); font-size: 14.5px; }
+.sprint-task .link { color: var(--ds-text); font-weight: 500; }
+.sprint-task .link:hover { color: var(--ds-accent); }
+.sprint-task .task-key { margin-right: 6px; }
+.sprint-task-meta { gap: 8px; }
+.sprint .progress { margin-top: 10px; }
+
+.milestone { gap: 16px; align-items: center; padding: 18px 22px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.milestone.done { opacity: 1; background: var(--ds-surface-2); }
+.milestone.late { border: 0; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ds-danger) 55%, transparent); }
+.milestone-flag { width: 40px; height: 40px; border-radius: 12px; background: var(--ds-progress-bg); color: var(--ds-progress); }
+.milestone.done .milestone-flag { background: var(--ds-success-bg); color: var(--ds-success); }
+.milestone.late .milestone-flag { background: var(--ds-danger-bg); color: var(--ds-danger); }
+.milestone-name { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.milestone-meta { gap: 6px 18px; margin-top: 6px; font-size: 13px; color: var(--ds-text-3); }
+.milestone-meta svg { color: var(--ds-text-4); }
+
+/* dependencies (task sheet and plan): soft tiles, the state as a word with its colour */
+.dep-group { gap: 8px; margin-bottom: 14px; }
+.dep-label { font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--ds-text-3); }
+.dep-row { gap: 12px; min-height: 48px; padding: 10px 14px; border: 0; border-radius: 14px; background: var(--ds-fill); font-size: 14px; }
+.dep-row.wait { border: 0; background: var(--ds-warning-bg); }
+.dep-row.ok .dep-state { color: var(--ds-success); }
+.dep-row.wait .dep-state { color: var(--ds-warning); }
+.dep-main b { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--ds-text-3); }
+.dep-meta { font-size: 12.5px; color: var(--ds-text-3); }
+.dep-add .select { border-radius: 12px; }
+.dep-warn { padding: 12px 14px; border-radius: 14px; background: var(--ds-warning-bg); color: var(--ds-warning); }
+
+/* the burndown */
+.burndown { max-width: 720px; }
+svg .bd-grid { stroke: var(--ds-fill); stroke-width: 1; }
+.bd-text { fill: var(--ds-text-4); font-size: 11px; font-family: var(--font); }
+.bd-ideal { stroke: var(--ds-text-4); stroke-width: 1.5; stroke-dasharray: 5 5; }
+.bd-actual { stroke: var(--ds-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.bd-dot { fill: var(--ds-accent); }
+
+.section-title { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.form-section { border-top-color: var(--ds-line); }
+@media (max-width: 640px) { .sprint, .milestone { padding: 16px; border-radius: 20px; } .sprint-dates { margin-left: 0; flex-basis: 100%; } }
