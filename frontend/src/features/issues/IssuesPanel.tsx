@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { issueApi } from '../../api/endpoints';
 import type { Issue, IssueStatus, Stage } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Avatar, EmptyState, ErrorState, PageLoader, PriorityBadge } from '../../components/ui';
+import { Avatar, EmptyState, ErrorState, PageLoader, PriorityBadge, Segmented } from '../../components/ui';
+import '../workitems/insights.css';
 import { timeAgo } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { ISSUE_STATUS_LABEL, IssueStatusBadge } from './issueMeta';
@@ -31,7 +32,7 @@ export function IssuesPanel({ projectId, stages, canReport, stageFilter, onStage
   if (q.isError) return <ErrorState error={q.error} retry={() => q.refetch()} />;
 
   return (
-    <div className="card">
+    <div className="card issue-card">
       <div className="card-head">
         <div>
           <h3>Issues</h3>
@@ -40,15 +41,13 @@ export function IssuesPanel({ projectId, stages, canReport, stageFilter, onStage
         {canReport && <button className="btn btn-primary btn-sm" onClick={() => onReport(stageFilter || undefined)}><Icon name="plus" /> Report issue</button>}
       </div>
       <div className="toolbar">
-        <div className="seg" role="group" aria-label="Show issues">
-          {VIEWS.map((v) => <button key={v.id} type="button" className={view === v.id ? 'active' : ''} aria-pressed={view === v.id} onClick={() => setView(v.id)}><span>{v.label}</span></button>)}
-        </div>
+        <Segmented label="Show issues" value={view} onChange={setView} options={VIEWS} />
         <Select className="select" style={{ maxWidth: 220 }} value={stageFilter} onChange={(e) => onStageFilter(e.target.value)} aria-label="Stage">
           <option value="">All stages</option>
           {stages.map((s) => <option key={s.id} value={s.id}>{s.name}{s.openIssues ? ` (${s.openIssues} open)` : ''}</option>)}
         </Select>
         <div className="issue-counts" aria-label="Issues by status">
-          {ORDER.map((s) => <span key={s} className={`issue-count ${count(s) ? '' : 'zero'}`}><b>{count(s)}</b> {ISSUE_STATUS_LABEL[s]}</span>)}
+          {ORDER.map((s) => <span key={s} className={`issue-count is-${s} ${count(s) ? '' : 'zero'}`}><b>{count(s)}</b> {ISSUE_STATUS_LABEL[s]}</span>)}
         </div>
       </div>
       {shown.length === 0 ? (

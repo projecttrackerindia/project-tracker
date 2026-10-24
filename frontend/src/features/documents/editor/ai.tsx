@@ -2,20 +2,21 @@ import { createContext, useState } from 'react';
 import type { Editor, JSONContent } from '@tiptap/core';
 import { ApiError } from '../../../api/client';
 import { Modal } from '../../../components/ui';
+import { Icon, type IconName } from '../../../components/Icon';
 import { toast } from '../../../stores/ui';
 import { docAiApi, LANGUAGES, type AiAction, type AiLanguage, type DocTransform } from '../docAi';
 
 /** The page the editor writes into, so AI can read its title and the credits are counted for the right workspace. Absent: no AI in the editor. */
 export const EditorAiContext = createContext<{ documentId: string } | null>(null);
 
-export const AI_ACTIONS: { id: AiAction; label: string; icon: string }[] = [
-  { id: 'rewrite', label: 'Rewrite', icon: '✍️' },
-  { id: 'shorten', label: 'Shorter', icon: '➖' },
-  { id: 'expand', label: 'Longer', icon: '➕' },
-  { id: 'fix', label: 'Fix spelling & grammar', icon: '✔️' },
-  { id: 'simpler', label: 'Simpler words', icon: '🙂' },
-  { id: 'formal', label: 'More formal', icon: '👔' },
-  { id: 'friendly', label: 'More friendly', icon: '🤝' },
+export const AI_ACTIONS: { id: AiAction; label: string; icon: IconName }[] = [
+  { id: 'rewrite', label: 'Rewrite', icon: 'edit' },
+  { id: 'shorten', label: 'Shorter', icon: 'chevronL' },
+  { id: 'expand', label: 'Longer', icon: 'chevronR' },
+  { id: 'fix', label: 'Fix spelling & grammar', icon: 'check' },
+  { id: 'simpler', label: 'Simpler words', icon: 'smile' },
+  { id: 'formal', label: 'More formal', icon: 'building' },
+  { id: 'friendly', label: 'More friendly', icon: 'hand' },
 ];
 
 const parseBlocks = (json: string | null | undefined): JSONContent[] => {
@@ -79,7 +80,7 @@ export function SelectionAiPanel({ editor, documentId, state, setState }: { edit
     const label = state.action === 'translate' ? `Translate to ${LANGUAGES.find((l) => l.id === state.language)?.label ?? ''}` : AI_ACTIONS.find((a) => a.id === state.action)?.label;
     return (
       <div className="ai-sel" role="dialog" aria-label="AI suggestion" onMouseDown={(e) => { if ((e.target as HTMLElement).tagName !== 'TEXTAREA') e.preventDefault(); }}>
-        <div className="ai-sel-head"><span>✨ {label}</span><button type="button" className="ai-x" aria-label="Discard" onClick={() => setState(null)}>×</button></div>
+        <div className="ai-sel-head"><span><Icon name="sparkle" size={14} /> {label}</span><button type="button" className="ai-x" aria-label="Discard" onClick={() => setState(null)}>×</button></div>
         {state.busy ? <p className="ai-sel-wait"><span className="spinner" /> Writing…</p>
           : state.error ? <p className="ai-sel-err" role="alert">{state.error}</p>
             : <div className="ai-sel-out" aria-live="polite">{state.result?.text}</div>}
@@ -94,12 +95,12 @@ export function SelectionAiPanel({ editor, documentId, state, setState }: { edit
   }
   return (
     <span className="ai-sel-wrap">
-      <button type="button" className={`rte-btn rte-ai${menu ? ' on' : ''}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((m) => !m)} title="Ask AI to change the selected text">✨ AI</button>
+      <button type="button" className={`rte-btn rte-ai${menu ? ' on' : ''}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((m) => !m)} title="Ask AI to change the selected text"><Icon name="sparkle" size={14} /> AI</button>
       {menu && (
         <div className="pg-ai-menu" role="menu" onMouseDown={(e) => e.preventDefault()}>
-          {AI_ACTIONS.map((a) => <button key={a.id} type="button" role="menuitem" onClick={() => void run(a.id)}><span aria-hidden="true">{a.icon}</span>{a.label}</button>)}
+          {AI_ACTIONS.map((a) => <button key={a.id} type="button" role="menuitem" onClick={() => void run(a.id)}><Icon name={a.icon} size={15} />{a.label}</button>)}
           <div className="ai-menu-sep">Translate to</div>
-          {LANGUAGES.map((l) => <button key={l.id} type="button" role="menuitem" onClick={() => void run('translate', l.id)}><span aria-hidden="true">🌐</span>{l.label}</button>)}
+          {LANGUAGES.map((l) => <button key={l.id} type="button" role="menuitem" onClick={() => void run('translate', l.id)}><Icon name="message" size={15} />{l.label}</button>)}
         </div>
       )}
     </span>

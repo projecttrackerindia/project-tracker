@@ -4,7 +4,8 @@ import { projectApi, workItemApi } from '../../api/endpoints';
 import type { WorkItem, WorkItemKind } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
-import { EmptyState, ErrorState, PageHead, PageLoader, StatCard } from '../../components/ui';
+import { EmptyState, ErrorState, Kpi, PageHead, PageLoader, Segmented } from '../../components/ui';
+import './insights.css';
 import { todayISO, dateOffset } from '../../lib/format';
 import { useDebounced, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useModule } from '../../stores/auth';
@@ -65,6 +66,8 @@ export function MyWorkPage({ embedded = false }: { embedded?: boolean } = {}) {
   }, [items, view, today, weekEnd]);
 
   const openTasks = all.filter((w) => w.category !== 'Done' && w.category !== 'Cancelled');
+  const late = openTasks.filter((w) => w.isOverdue).length;
+  const dueToday = openTasks.filter((w) => w.dueDate === today).length;
   const [openTask, setOpenTask] = useState<string | null>(null);
   const [openWork, setOpenWork] = useState<string | null>(null);
   const open = (i: WorkRowItem) => {
@@ -84,21 +87,21 @@ export function MyWorkPage({ embedded = false }: { embedded?: boolean } = {}) {
       {embedded ? (
         canCreateWork && <div className="mywork-embedded-actions"><button type="button" className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New ticket</button></div>
       ) : (
-        <PageHead title="My work" sub="Everything assigned to you, whatever kind of work it is, in the order it is due.">
+        <PageHead title="My work" eyebrow={new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} sub="Everything assigned to you, whatever kind of work it is, in the order it is due.">
           {canCreateWork && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" /> New ticket</button>}
         </PageHead>
       )}
 
       {view === 'open' && !list.isLoading && (
-        <div className="stat-grid">
-          <StatCard icon="inbox" tone="blue" value={openTasks.length} label="Open" foot="Assigned to you" />
-          <StatCard icon="alert" tone="red" value={openTasks.filter((w) => w.isOverdue).length} label="Overdue" foot="Past the due date" />
-          <StatCard icon="calendar" tone="amber" value={openTasks.filter((w) => w.dueDate === today).length} label="Due today" />
-          <StatCard icon="clock" tone="purple" value={openTasks.filter((w) => w.dueDate && w.dueDate > today && w.dueDate <= weekEnd).length} label="Next 7 days" />
+        <div className="ds-kpis wl-kpis">
+          <Kpi label="Open" value={openTasks.length} caption="Assigned to you" />
+          <Kpi label="Overdue" value={late} tone={late ? 'danger' : 'success'} caption={late ? 'Past the due date' : 'Nothing late'} />
+          <Kpi label="Due today" value={dueToday} tone={dueToday ? 'warning' : undefined} caption={dueToday ? 'Finish before the day ends' : 'Nothing due today'} />
+          <Kpi label="Next 7 days" value={openTasks.filter((w) => w.dueDate && w.dueDate > today && w.dueDate <= weekEnd).length} caption="Coming up this week" />
         </div>
       )}
 
-      <div className="card">
+      <div className="card mw-card">
         <div className="toolbar" style={{ flexWrap: 'wrap' }}>
           <div className="kind-chips" role="group" aria-label="Kinds of work">
             {visible.map((k) => (
@@ -108,11 +111,7 @@ export function MyWorkPage({ embedded = false }: { embedded?: boolean } = {}) {
             ))}
           </div>
           <div className="toolbar-spacer" />
-          <div className="seg" role="group" aria-label="Show">
-            {([['open', 'Open'], ['all', 'All, including done']] as const).map(([id, label]) => (
-              <button key={id} type="button" className={view === id ? 'active' : ''} aria-pressed={view === id} onClick={() => setView(id)}>{label}</button>
-            ))}
-          </div>
+          <Segmented label="Show" value={view} onChange={setView} options={[{ id: 'open', label: 'Open' }, { id: 'all', label: 'All, including done' }]} />
         </div>
         <div className="toolbar" style={{ paddingTop: 0, flexWrap: 'wrap' }}>
           <div className="search-field"><Icon name="search" /><input className="input" placeholder="Search by title or key…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search my work" /></div>
@@ -121,8 +120,8 @@ export function MyWorkPage({ embedded = false }: { embedded?: boolean } = {}) {
               <option value="">All projects</option>{projects.data!.items.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
             </Select>
           )}
-          <button type="button" className={`btn btn-sm ${overdue ? 'btn-soft' : 'btn-ghost'}`} aria-pressed={overdue} onClick={() => setOverdue((v) => !v)}><Icon name="alert" /> Overdue only</button>
-          {filtered && <button type="button" className="btn btn-ghost btn-sm" onClick={reset}>Clear filters</button>}
+          <button type="button" className={`ds-chip ${overdue ? 'on' : ''}`} aria-pressed={overdue} onClick={() => setOverdue((v) => !v)}><Icon name="alert" size={15} /> Overdue only</button>
+          {filtered && <button type="button" className="btn btn-link btn-sm" onClick={reset}>Clear filters</button>}
         </div>
 
         {list.isLoading ? <PageLoader /> : list.isError ? <ErrorState error={list.error} retry={() => void list.refetch()} /> : items.length === 0 ? (

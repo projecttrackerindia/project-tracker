@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { Icon, type IconName } from '../../components/Icon';
 import type { DocumentClassification, DocumentItem, DocumentStatus, DocumentVisibility, LinkRelation, LinkTarget } from '../../api/types';
 import { labelize } from '../../lib/format';
+import './documents-ds.css';
 
 /** The icon names the server's built-in types use, mapped onto the app's own icon set. */
 const TYPE_ICONS: Record<string, IconName> = {

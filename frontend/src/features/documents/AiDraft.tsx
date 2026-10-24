@@ -1,3 +1,4 @@
+import { Icon, type IconName } from '../../components/Icon';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { documentApi, meetingApi } from '../../api/endpoints';
@@ -8,13 +9,13 @@ import { audioSupported, startRecording, unlockAudio, type Recording } from '../
 import { docAiApi, LANGUAGES, type AiLanguage, type DocDraft, type DraftSource } from './docAi';
 import { RichEditor } from './RichEditor';
 
-const SOURCES: { id: DraftSource; label: string; icon: string; hint: string }[] = [
-  { id: 'prompt', label: 'Describe it', icon: '✍️', hint: 'One line is enough' },
-  { id: 'voice', label: 'Say it', icon: '🎙️', hint: 'Talk in Telugu, Hindi or English' },
-  { id: 'meeting', label: 'From a meeting', icon: '📅', hint: 'Its decisions, actions and transcript' },
-  { id: 'tasks', label: 'From project work', icon: '✅', hint: 'Status, what is done and what is late' },
-  { id: 'files', label: 'From files', icon: '📎', hint: 'PDF, Word, text or Markdown' },
-  { id: 'template', label: 'Fill a template', icon: '🧩', hint: 'Its sections, written for you' },
+const SOURCES: { id: DraftSource; label: string; icon: IconName; hint: string }[] = [
+  { id: 'prompt', label: 'Describe it', icon: 'edit', hint: 'One line is enough' },
+  { id: 'voice', label: 'Say it', icon: 'mic', hint: 'Talk in Telugu, Hindi or English' },
+  { id: 'meeting', label: 'From a meeting', icon: 'calendar', hint: 'Its decisions, actions and transcript' },
+  { id: 'tasks', label: 'From project work', icon: 'checkCircle', hint: 'Status, what is done and what is late' },
+  { id: 'files', label: 'From files', icon: 'paperclip', hint: 'PDF, Word, text or Markdown' },
+  { id: 'template', label: 'Fill a template', icon: 'layers', hint: 'Its sections, written for you' },
 ];
 const ACCEPT = '.pdf,.docx,.txt,.md,.markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown';
 const MAX_VOICE_S = 600;
@@ -58,7 +59,7 @@ function VoiceNote({ value, onChange }: { value: Blob | null; onChange: (b: Blob
       {rec ? (
         <button type="button" className="aid-rec on" onClick={stop} aria-label="Stop recording"><span className="aid-dot" aria-hidden="true" /> Stop · {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, '0')}</button>
       ) : (
-        <button type="button" className="aid-rec" onClick={() => void start()}>🎙️ {value ? 'Record again' : 'Start recording'}</button>
+        <button type="button" className="aid-rec" onClick={() => void start()}><Icon name="mic" size={15} /> {value ? 'Record again' : 'Start recording'}</button>
       )}
       {!rec && value && src && <audio controls src={src} aria-label="Your voice note" />}
       <p className="muted small">Say what the page should cover, the way you would explain it to a colleague. Up to 10 minutes.</p>
@@ -126,7 +127,7 @@ export function AiDraftDialog({ projects, projectId: initialProject, onUse, onCl
         <button type="button" className="btn btn-primary" onClick={() => void use()} disabled={using}>{using && <span className="spinner" />}{useLabel}</button>
       </> : <>
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button type="button" className="btn btn-primary" onClick={() => void write()} disabled={!ready || busy}>{busy && <span className="spinner" />}{busy ? 'Writing…' : '✨ Write the page'}</button>
+        <button type="button" className="btn btn-primary" onClick={() => void write()} disabled={!ready || busy}>{busy && <span className="spinner" />}{busy ? 'Writing…' : <><Icon name="sparkle" size={15} /> Write the page</>}</button>
       </>}>
       {error && <div className="doc-alert" role="alert"><div>{error}</div></div>}
       {draft ? (
@@ -138,7 +139,7 @@ export function AiDraftDialog({ projects, projectId: initialProject, onUse, onCl
           <div className="aid-sources" role="radiogroup" aria-label="Write from">
             {SOURCES.map((s) => (
               <button key={s.id} type="button" role="radio" aria-checked={source === s.id} className={`aid-src${source === s.id ? ' on' : ''}`} onClick={() => { setSource(s.id); setError(null); }}>
-                <span className="aid-src-icon" aria-hidden="true">{s.icon}</span><b>{s.label}</b><small>{s.hint}</small>
+                <span className="aid-src-icon ds-tile-ico" aria-hidden="true"><Icon name={s.icon} size={18} /></span><b>{s.label}</b><small>{s.hint}</small>
               </button>
             ))}
           </div>
@@ -167,7 +168,7 @@ export function AiDraftDialog({ projects, projectId: initialProject, onUse, onCl
           {source === 'files' && (
             <div className="field"><span>Files (up to 5)</span>
               <input type="file" multiple accept={ACCEPT} aria-label="Files to write from" onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 5))} />
-              {files.length > 0 && <ul className="aid-files">{files.map((f) => <li key={f.name}>📎 {f.name} <small>{Math.max(1, Math.round(f.size / 1024))} KB</small></li>)}</ul>}
+              {files.length > 0 && <ul className="aid-files">{files.map((f) => <li key={f.name}><Icon name="paperclip" size={14} /> {f.name} <small>{Math.max(1, Math.round(f.size / 1024))} KB</small></li>)}</ul>}
             </div>
           )}
           {source === 'voice' && <VoiceNote value={voice} onChange={setVoice} />}

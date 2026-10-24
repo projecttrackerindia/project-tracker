@@ -32,6 +32,7 @@ import { EditorLookupsContext, pageSchema, removeCommentMark, RichEditor, type C
 import type { EditorLookups } from './editor/extensions';
 import { ancestors, PAGE_BODY, pageTree, useNewPage } from './pages';
 import { useExportPdf } from './ExportPdf';
+import './documents-ds.css';
 
 const ICONS = ['📄', '📘', '📗', '📕', '📒', '📝', '📌', '📎', '📊', '📈', '🗂️', '🗒️', '✅', '⚠️', '💡', '🔒', '🔑', '🧭', '🚀', '🛠️', '⚙️', '🧪', '🐞', '💬', '📣', '🎯', '🏦', '💸', '🧾', '👥', '🤝', '📅', '⏱️', '🌐', '📦', '🔌', '🧩', '⭐', '🔥', '🌱'];
 type Tab = 'page' | 'related' | 'activity';
@@ -229,7 +230,7 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
     tasks: async (q) => ((await insightApi.search(q)).hits ?? []).filter((h) => h.type === 'task' && h.taskId).slice(0, 8)
       .map((h) => ({ id: h.taskId!, title: h.title, hint: h.subtitle ?? undefined, icon: '#' })),
     pages: async (q) => allDocs.filter((x) => x.id !== id && `${x.title} ${x.key}`.toLowerCase().includes(q.toLowerCase())).slice(0, 8)
-      .map((x) => ({ id: x.id, title: x.title, hint: x.key, icon: x.icon ?? '📄' })),
+      .map((x) => ({ id: x.id, title: x.title, hint: x.key, icon: x.icon ?? '▤' })),
   }), [members.data, allDocs, id]);
 
   const projectsCtx = useMemo(() => ({ projectId: d.projectId, projects: (catalog.data?.projects ?? []).filter((p): p is typeof p & { id: string } => !!p.id).map((p) => ({ id: p.id, name: p.name })) }), [d.projectId, catalog.data]);
@@ -378,7 +379,7 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
         <>
           {canEdit && empty && mode !== 'joining' && (
             <div className="pg-start-ai">
-              <span>✨ Start with AI</span>
+              <span className="pg-start-ai-label"><Icon name="sparkle" size={15} /> Start with AI</span>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPanel('ai')}>Write this page</button>
               <span className="muted">or type <kbd>/</kbd> for blocks</span>
             </div>
@@ -401,13 +402,13 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
           <section className="pg-under" aria-label="Pages inside">
             <header><h3>Pages inside</h3>{canEdit && <button type="button" className="mb-link" onClick={() => void newPage.create({ parentId: id })}><Icon name="plus" size={13} /> Add a page</button>}</header>
             {inside.length === 0 ? <p className="pg-none">None yet.</p> : (
-              <ul className="pg-list">{inside.map((c) => <li key={c.id}><Link to={`/documents/${c.id}`}><span className="pg-list-icon">{c.icon ?? '📄'}</span>{c.title}<time>{timeAgo(c.updatedAt)}</time></Link></li>)}</ul>
+              <ul className="pg-list">{inside.map((c) => <li key={c.id}><Link to={`/documents/${c.id}`}><span className="pg-list-icon">{c.icon ?? <Icon name="note" size={16} />}</span>{c.title}<time>{timeAgo(c.updatedAt)}</time></Link></li>)}</ul>
             )}
           </section>
           {(backlinks.data?.length ?? 0) > 0 && (
             <section className="pg-under" aria-label="Linked from">
               <header><h3>Linked from</h3></header>
-              <ul className="pg-list">{backlinks.data!.map((b) => <li key={b.id}><Link to={`/documents/${b.id}`}><span className="pg-list-icon">{b.icon ?? '📄'}</span>{b.title}<small>{b.key}</small></Link></li>)}</ul>
+              <ul className="pg-list">{backlinks.data!.map((b) => <li key={b.id}><Link to={`/documents/${b.id}`}><span className="pg-list-icon">{b.icon ?? <Icon name="note" size={16} />}</span>{b.title}<small>{b.key}</small></Link></li>)}</ul>
             </section>
           )}
         </>

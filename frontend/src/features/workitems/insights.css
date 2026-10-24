@@ -1,0 +1,125 @@
+/* =====================================================================================================================
+   Insights pages in the design-system language: Workload, Capacity & cost, Reports, My work, a project's Issues and Files.
+   Big numbers with short captions, one calm card per idea, charts in the guide's colours (single series blue; then violet, green,
+   orange), soft rows instead of boxed tiles, sentence case everywhere.
+   ===================================================================================================================== */
+:root {
+  --chart-open: #0071E3; --chart-late: #E5484D; --chart-done: #1A9F4B; --chart-violet: #5E5CE6; --chart-orange: #F08A00;
+  --chart-grid: #F0F0F3;
+}
+[data-theme='dark'] { --chart-open: #2997FF; --chart-late: #FF6961; --chart-done: #30D158; --chart-violet: #8E8CF5; --chart-orange: #FFB340; --chart-grid: #2C2C2E; }
+
+.wl-kpis { margin-bottom: 22px; }
+
+/* chart legends sit under the chart: small swatches, 12px words */
+.chart-key.ds-legend { justify-content: flex-start; gap: 6px 20px; margin: 14px 0 0; padding: 0; }
+.chart-key.ds-legend i { width: 10px; height: 10px; border-radius: 3px; }
+.chart-key.ds-legend b { font-size: 12px; font-weight: 500; color: var(--ds-text-3); }
+.chart-key .util-key.cap, .chart-key.ds-legend .util-key.cap { width: 2px; height: 12px; border-radius: 1px; background: var(--ds-text); opacity: .6; }
+.wl-chart .recharts-cartesian-grid line { stroke: var(--chart-grid); }
+
+/* ------------------------------------------------------------------------------------------ workload: people */
+.wl-people-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; margin: 30px 0 14px; }
+.team-list { gap: 16px; }
+html .card.team-card { padding: 22px 24px; }
+.team-head { gap: 14px; align-items: center; }
+.team-who b { font-size: 16px; font-weight: 600; letter-spacing: -.01em; margin-right: 4px; }
+.team-who .muted { margin-top: 2px; }
+.team-nums { gap: 26px; }
+.team-nums span { gap: 4px; align-items: flex-end; text-align: right; min-width: 48px; }
+.team-nums b { font-size: 22px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.team-nums i { font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--ds-text-3); white-space: nowrap; }
+.team-card .kind-bar { height: 6px; }
+.team-card .wi-list { margin: 12px -8px 0; }
+.team-card .wi-row { border-radius: 14px; border-bottom: 0; }
+.team-card .wi-row + .wi-row { margin-top: 2px; }
+@media (max-width: 720px) {
+  html .card.team-card { padding: 18px 16px; }
+  .team-nums { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 10px; }
+  .team-nums span { align-items: flex-start; text-align: left; min-width: 0; }
+  .team-nums b { font-size: 19px; }
+}
+
+/* ------------------------------------------------------------------------------------------ capacity & cost */
+.cap-toolbar { padding: 0; margin: 4px 0 22px; gap: 12px; }
+.cap-toolbar .cap-scope { margin-left: auto; }
+@media (max-width: 720px) { .cap-toolbar .cap-scope { margin-left: 0; } }
+.util-list { padding: 0 8px 8px; }
+.util-row { border-top: 1px solid var(--ds-line); padding: 16px; gap: 18px; }
+.util-who > div b { font-size: 14px; font-weight: 600; }
+.util-who > div span { font-size: 12.5px; }
+.util-bar { height: 10px; border-radius: 5px; background: var(--ds-fill); }
+.util-bar .util-logged { border-radius: 5px; background: var(--chart-open); opacity: .9; }
+.util-bar.over .util-logged { background: linear-gradient(90deg, var(--chart-open) 70%, var(--chart-late)); }
+.util-bar .util-billable { height: 4px; top: 3px; left: 3px; border-radius: 2px; background: var(--chart-done); }
+.util-bar .util-cap { width: 2px; top: -5px; bottom: -5px; background: var(--ds-text); opacity: .5; }
+.util-pct { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.util-pct.healthy { color: var(--ds-success); } .util-pct.light { color: var(--ds-warning); } .util-pct.over { color: var(--ds-danger); }
+.util-meta { font-size: 12.5px; color: var(--ds-text-3); gap: 3px; }
+.rates-table .rate-input { max-width: 120px; min-height: 38px; }
+
+/* ------------------------------------------------------------------------------------------------- reports */
+.rp-kinds { margin: 4px 0 22px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.rp-kinds .ds-choice { min-height: 132px; }
+.rp-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--ds-line); }
+.rp-foot .muted { font-size: 13px; }
+.export-list { gap: 8px; }
+.export-row { gap: 14px; padding: 14px 16px; border: 0; border-radius: 16px; background: var(--ds-surface-2); flex-wrap: nowrap; justify-content: flex-start; }
+html[data-theme='dark'] .export-row { background: rgba(255, 255, 255, .03); }
+.export-row .export-main { flex: 1; min-width: 0; }
+.export-title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+.export-title b { font-size: 14.5px; font-weight: 600; }
+.export-sub { font-size: 12.5px; margin-top: 3px; overflow-wrap: anywhere; }
+.export-row .td-actions { flex: none; align-items: center; }
+@media (max-width: 560px) { .export-row { flex-wrap: wrap; } .export-row .td-actions { width: 100%; justify-content: flex-end; } }
+
+/* --------------------------------------------------------------------------------------------------- my work */
+.mw-card > .toolbar:first-child { padding-top: 20px; }
+.mw-card .search-field { flex: 1 1 260px; max-width: 420px; }
+.mw-card .search-field .input { border-radius: var(--ds-r-pill); background: var(--ds-surface-2); border-color: transparent; }
+html[data-theme='dark'] .mw-card .search-field .input { background: var(--ds-fill); }
+.mw-card .wi-list { padding: 0 8px 10px; }
+.mw-card .wi-row { border-radius: 14px; border-bottom: 0; }
+
+/* ---------------------------------------------------------------------------------------------------- issues */
+.issue-card .toolbar { gap: 12px; }
+.issue-card .issue-counts { gap: 8px; }
+.issue-count { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 980px; background: var(--ds-fill); color: var(--ds-text-2); font-size: 12.5px; font-weight: 500; }
+.issue-count b { font-weight: 700; color: inherit; }
+.issue-count.is-Observed:not(.zero) { background: var(--ds-danger-bg); color: var(--ds-danger); }
+.issue-count.is-InProgress:not(.zero) { background: var(--ds-info-bg); color: var(--ds-info); }
+.issue-count.is-Fixed:not(.zero) { background: var(--ds-warning-bg); color: var(--ds-warning); }
+.issue-count.is-Resolved:not(.zero) { background: var(--ds-success-bg); color: var(--ds-success); }
+.issue-count.zero { opacity: .6; }
+.issue-table .badge-high, .issue-card .badge-high { background: var(--ds-high-bg); color: var(--ds-high); }
+.issue-table .issue-title b { font-weight: 500; }
+.issue-row { cursor: pointer; }
+.issue-row:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
+
+/* ----------------------------------------------------------------------------------------------------- files */
+.file-list { gap: 8px; }
+.file-list.drag-over { background: var(--ds-accent-soft); box-shadow: none; outline: 2px dashed var(--ds-accent); outline-offset: 4px; }
+.file-item { gap: 14px; padding: 12px 14px; border: 0; border-radius: 16px; background: var(--ds-surface-2); }
+html[data-theme='dark'] .file-item { background: rgba(255, 255, 255, .03); }
+.file-item:hover { border: 0; background: var(--ds-fill); }
+.file-ico { width: 40px; height: 40px; border-radius: 12px; background: var(--ds-accent-soft); color: var(--ds-accent); }
+.file-thumb { width: 44px; height: 44px; border-radius: 12px; border: 0; box-shadow: 0 0 0 1px var(--ds-line); }
+.file-name { font-size: 14.5px; font-weight: 500; color: var(--ds-text); }
+.file-meta { font-size: 12.5px; color: var(--ds-text-3); margin-top: 2px; }
+.file-task { font-family: var(--mono); font-size: 12px; }
+
+/* the choice card's icon tile keeps its own colour (the card's grey caption rule would otherwise reach it) */
+.rp-kinds .ds-choice .ds-tile-ico { color: var(--ds-accent); font-size: inherit; }
+.rp-kinds .ds-choice.on .ds-tile-ico, .rp-kinds .ds-choice[aria-pressed='true'] .ds-tile-ico { background: var(--ds-accent-fill, #0071E3); color: #fff; }
+@media (max-width: 640px) {
+  .rp-kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .rp-kinds .ds-choice { min-height: 0; padding: 14px; }
+  .rp-kinds .ds-choice .ds-tile-ico { margin-bottom: 10px; width: 32px; height: 32px; }
+  .rp-kinds .ds-choice b { font-size: 14.5px; }
+  .rp-kinds .ds-choice > span:last-child { display: none; }
+}
+
+@media (max-width: 720px) {
+  .mw-card .kind-chips { flex-wrap: wrap; overflow: visible; width: 100%; }
+  .mw-card .search-field { max-width: none; }
+}

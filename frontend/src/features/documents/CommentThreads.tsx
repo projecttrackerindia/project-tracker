@@ -104,7 +104,7 @@ export function CommentThreads({ id, focus, pending, onPendingDone, onJump, onRe
       )}
 
       {q.isLoading ? <p className="ct-none">Loading…</p> : list.length === 0 ? (
-        <p className="ct-none">{show === 'open' ? 'No open threads. Select text in the page and press 💬 to comment on it.' : 'Nothing resolved yet.'}</p>
+        <p className="ct-none">{show === 'open' ? 'No open threads. Select text in the page and choose Comment to start a thread.' : 'Nothing resolved yet.'}</p>
       ) : (
         <ul className="ct-list">
           {list.map((t) => {

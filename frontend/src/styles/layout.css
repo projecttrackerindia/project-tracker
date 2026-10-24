@@ -51,57 +51,56 @@
 .explainer ul { list-style: disc; }
 
 /* ---------------- work items (every kind in one list) ---------------- */
+/* ---- Work of every kind, listed together (My work, Workload, Command center): calm rows - a tinted kind tile, the mono key and title,
+   one grey line, then priority and status pills and the due date (red when late). Kinds keep one colour each, in the chart order
+   blue, violet, green, orange. ---- */
+:root { --kind-Task: #0071E3; --kind-Issue: #5E5CE6; --kind-ActionItem: #1A9F4B; --kind-Operational: #F08A00; }
+[data-theme='dark'] { --kind-Task: #2997FF; --kind-Issue: #8E8CF5; --kind-ActionItem: #30D158; --kind-Operational: #FFB340; }
 .wi-list { display: flex; flex-direction: column; }
 .wi-row {
-  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 12px; align-items: center;
-  padding: 11px 14px; border-bottom: 1px solid var(--border); text-align: left; width: 100%;
-  transition: background .14s;
+  display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-height: 60px;
+  padding: 10px 16px; border: 0; border-bottom: 1px solid var(--ds-line, var(--border)); background: transparent; text-align: left; width: 100%; font: inherit; color: inherit;
+  transition: background-color .16s var(--ds-ease, ease);
 }
 .wi-row:last-child { border-bottom: 0; }
-button.wi-row:hover, a.wi-row:hover { background: var(--hover-bg); }
-.wi-kind { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; }
-.wi-kind svg { width: 14px; height: 14px; }
-.wi-kind.Task { background: rgba(var(--accent-rgb), .14); color: var(--primary-fill); }
-.wi-kind.Issue { background: rgba(225, 29, 72, .12); color: #e11d48; }
-.wi-kind.ActionItem { background: rgba(14, 165, 233, .14); color: #0284c7; }
-.wi-kind.Operational { background: rgba(245, 158, 11, .16); color: #b45309; }
+button.wi-row:hover, a.wi-row:hover { background: var(--ds-surface-2, var(--hover-bg)); }
+[data-theme='dark'] button.wi-row:hover, [data-theme='dark'] a.wi-row:hover { background: rgba(255, 255, 255, .03); }
+.wi-row:focus-visible { outline: 2px solid var(--ds-accent, var(--primary)); outline-offset: -2px; border-radius: 12px; }
+.wi-kind { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: var(--kc); background: color-mix(in srgb, var(--kc) 12%, transparent); }
+.wi-kind svg { width: 16px; height: 16px; }
+.wi-kind.Task { --kc: var(--kind-Task); } .wi-kind.Issue { --kc: var(--kind-Issue); } .wi-kind.ActionItem { --kc: var(--kind-ActionItem); } .wi-kind.Operational { --kc: var(--kind-Operational); }
 .wi-main { min-width: 0; }
-.wi-title { display: block; font-size: 13.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wi-title .task-key { margin-right: 6px; }
-.wi-sub { display: block; font-size: 12px; color: var(--text-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wi-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; font-size: 12px; }
-.wi-due { color: var(--text-3); white-space: nowrap; }
-.wi-due.late { color: var(--danger); font-weight: 650; }
+.wi-title { display: block; font-size: 14.5px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: -.005em; }
+.wi-title .task-key { margin-right: 8px; font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--ds-text-3, var(--text-3)); }
+.wi-sub { display: block; font-size: 12.5px; color: var(--ds-text-3, var(--text-3)); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wi-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; font-size: 12.5px; }
+.wi-meta .badge-high { background: var(--ds-high-bg); color: var(--ds-high); }
+.wi-due { color: var(--ds-text-3, var(--text-3)); white-space: nowrap; min-width: 92px; text-align: right; font-variant-numeric: tabular-nums; }
+.wi-due.late { color: var(--ds-danger, var(--danger)); font-weight: 600; }
 @media (max-width: 720px) {
-  .wi-row { grid-template-columns: 26px minmax(0, 1fr); }
+  .wi-row { grid-template-columns: 32px minmax(0, 1fr); padding: 12px 14px; }
   .wi-meta { grid-column: 2; justify-content: flex-start; }
+  .wi-due { min-width: 0; text-align: left; }
 }
 
-/* Kind filter chips (My work). */
-.kind-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.kind-chip {
-  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 99px;
-  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); font-size: 12.5px; font-weight: 600;
-  transition: background .14s, border-color .14s, color .14s;
-}
-.kind-chip svg { width: 14px; height: 14px; }
-.kind-chip b { font-size: 11px; font-weight: 700; background: rgba(var(--accent-rgb), .14); color: var(--text-2); border-radius: 99px; padding: 0 7px; line-height: 18px; }
-.kind-chip:hover { border-color: var(--border-strong); color: var(--text); }
-.kind-chip.on { background: linear-gradient(135deg, rgba(var(--accent-rgb), .22), rgba(var(--accent-rgb), .14)); color: var(--primary); border-color: rgba(var(--accent-rgb), .35); }
+/* Kind filter chips (My work): the foundation's white pills; the count is a quiet number inside. */
+.kind-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.kind-chip { display: inline-flex; align-items: center; gap: 7px; }
+.kind-chip svg { width: 15px; height: 15px; color: var(--ds-text-3, var(--text-3)); }
+.kind-chip.on svg { color: inherit; }
+.kind-chip b { font-size: 12px; font-weight: 600; background: transparent; color: var(--ds-text-3, var(--text-3)); padding: 0; line-height: 1; }
+.kind-chip.on b { color: inherit; opacity: .75; }
 
-/* Day groups in My work. */
-.wi-group-title { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); border-bottom: 1px solid var(--border); background: var(--surface-2); }
-.wi-group-title.late { color: var(--danger); }
+/* Groups in My work: a sentence-case heading with a count (red when late). */
+.wi-group-title { display: flex; align-items: baseline; gap: 8px; padding: 18px 16px 6px; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); border: 0; background: transparent; }
+.wi-group-title span:last-child { color: var(--ds-text-4, var(--text-3)); font-weight: 500; }
+.wi-group-title.late, .wi-group-title.late span:last-child { color: var(--ds-danger, var(--danger)); }
 
 /* Open work by kind: one stacked bar per person (workload). */
-:root { --kind-Task: var(--primary-fill); --kind-Issue: #fb7185; --kind-ActionItem: #38bdf8; --kind-Operational: #f59e0b; }
-.kind-bar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--surface-2); min-width: 120px; }
+.kind-bar { display: flex; gap: 2px; height: 6px; border-radius: 3px; overflow: hidden; background: var(--ds-fill, var(--surface-2)); min-width: 120px; }
 .kind-bar span { height: 100%; }
-.kind-bar .Task { background: var(--primary-fill); }
-.kind-bar .Issue { background: #fb7185; }
-.kind-bar .ActionItem { background: #38bdf8; }
-.kind-bar .Operational { background: #f59e0b; }
-.kind-key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+.kind-bar .Task { background: var(--kind-Task); } .kind-bar .Issue { background: var(--kind-Issue); } .kind-bar .ActionItem { background: var(--kind-ActionItem); } .kind-bar .Operational { background: var(--kind-Operational); }
+.kind-key { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--ds-text-3, var(--text-2)); }
 .kind-key i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 
 /* Effective access table. */

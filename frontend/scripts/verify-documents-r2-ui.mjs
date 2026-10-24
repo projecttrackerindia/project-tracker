@@ -273,6 +273,12 @@ try{
  await page.getByRole('button',{name:'Browse DocTracker'}).click();await page.waitForTimeout(400);
  await fitsPhone(page,'DocTracker tree on a phone (dark)',assert);
  await shot(page,'doctracker-tree-390-dark.png');checks.push('phone-tree-dark');
+ // The page itself in dark mode, with its comments open.
+ await page.setViewportSize({width:1440,height:1000});
+ await page.goto(origin+'/preview-org/documents/pg');await page.locator('.pg-title').waitFor();
+ await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));
+ await page.locator('.pg-body .ProseMirror').waitFor();
+ await shot(page,'page-dark-1440.png');checks.push('page-dark');
  await page.close();await ctx.close();
  assert.deepEqual(errors,[]);
  console.log(JSON.stringify({checks,errors}));

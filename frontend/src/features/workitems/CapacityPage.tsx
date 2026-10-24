@@ -5,7 +5,8 @@ import { resourcesApi } from '../../api/endpoints';
 import type { MemberRate, UtilisationPerson, WorkloadScope } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
-import { Avatar, EmptyState, ErrorState, PageLoader, RoleBadge, StatCard } from '../../components/ui';
+import { Avatar, EmptyState, ErrorState, Kpi, PageLoader, RoleBadge, Segmented } from '../../components/ui';
+import './insights.css';
 import { currencySymbol, formatMoney, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
@@ -76,9 +77,7 @@ export function CapacityPage() {
   return (
     <>
       <div className="toolbar cap-toolbar">
-        <div className="seg" role="group" aria-label="Period">
-          {PRESETS.map((p) => <button key={p.id} type="button" className={preset === p.id ? 'active' : ''} aria-pressed={preset === p.id} onClick={() => setPreset(p.id)}>{p.label}</button>)}
-        </div>
+        <Segmented label="Period" value={preset} onChange={setPreset} options={PRESETS} />
         {preset === 'custom' && (
           <>
             <input className="input filter-input" type="date" aria-label="From" value={custom.from} onChange={(e) => setCustom({ ...custom, from: e.target.value })} />
@@ -86,25 +85,23 @@ export function CapacityPage() {
           </>
         )}
         {u.available.length > 1 && (
-          <div className="seg" role="group" aria-label="Whose capacity" style={{ marginLeft: 'auto' }}>
-            {u.available.map((s) => <button key={s} type="button" className={u.scope === s ? 'active' : ''} aria-pressed={u.scope === s} onClick={() => setScope(s)}>{SCOPE_LABEL[s]}</button>)}
-          </div>
+          <Segmented className="cap-scope" label="Whose capacity" value={u.scope} onChange={setScope} options={u.available.map((s) => ({ id: s, label: SCOPE_LABEL[s] }))} />
         )}
       </div>
 
-      <div className="stat-grid">
-        <StatCard icon="gauge" tone="blue" value={formatMinutes(t.capacityMinutes)} label="Capacity" foot={`${u.workingDays} working day${u.workingDays === 1 ? '' : 's'} · ${u.people.length} ${u.people.length === 1 ? 'person' : 'people'}`} />
-        <StatCard icon="clock" tone="purple" value={pct(t.utilisation)} label="Utilisation" foot={`${formatMinutes(t.loggedMinutes)} logged`} />
-        <StatCard icon="coin" tone="green" value={pct(t.billableShare)} label="Billable" foot={`${formatMinutes(t.billableMinutes)} of capacity`} />
-        {u.showMoney && <StatCard icon="card" tone="amber" value={money(t.cost)} label="Cost" foot="At each person's cost rate" />}
-        {u.showMoney && <StatCard icon="chart" tone="green" value={money(t.billableValue)} label="Billable value" foot="At project or personal bill rates" />}
+      <div className="ds-kpis wl-kpis">
+        <Kpi label="Capacity" value={formatMinutes(t.capacityMinutes)} caption={`${u.workingDays} working day${u.workingDays === 1 ? '' : 's'} · ${u.people.length} ${u.people.length === 1 ? 'person' : 'people'}`} />
+        <Kpi label="Utilisation" value={pct(t.utilisation)} tone={t.utilisation === null ? undefined : t.utilisation > 1 ? 'danger' : t.utilisation >= 0.7 ? 'success' : 'warning'} caption={`${formatMinutes(t.loggedMinutes)} logged`} />
+        <Kpi label="Billable" value={pct(t.billableShare)} caption={`${formatMinutes(t.billableMinutes)} of capacity`} />
+        {u.showMoney && <Kpi label="Cost" value={money(t.cost)} small caption="At each person's cost rate" />}
+        {u.showMoney && <Kpi label="Billable value" value={money(t.billableValue)} small caption="At project or personal bill rates" />}
       </div>
 
       <div className="card mb-22">
         <div className="card-head">
           <div><h3>Utilisation per person</h3><p>Logged time against capacity (Monday to Friday). Under 70% is light, over 100% is overtime.</p></div>
-          <ul className="chart-key" aria-label="Bar colours">
-            <li><i style={{ background: '#a78bfa' }} /><b>Logged</b></li><li><i style={{ background: '#10b981' }} /><b>Billable</b></li><li><i className="util-key cap" style={{ background: 'var(--text)' }} /><b>Capacity</b></li>
+          <ul className="chart-key ds-legend" aria-label="Bar colours">
+            <li><i style={{ background: 'var(--chart-open)' }} /><b>Logged</b></li><li><i style={{ background: 'var(--chart-done)' }} /><b>Billable</b></li><li><i className="util-key cap" /><b>Capacity</b></li>
           </ul>
         </div>
         {u.people.length === 0 ? <div className="card-body"><EmptyState icon="users" title="Nobody to show" /></div> : (
