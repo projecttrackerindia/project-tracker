@@ -1,3 +1,4 @@
+import '../settings/settings-ds.css';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -104,7 +105,7 @@ function PlanCard({ plan, current, canManage, trialAvailable, busy, quote: q, se
         {sameAsNow ? <button className="btn btn-ghost" disabled>Your plan</button>
           : price === null ? <a className="btn btn-ghost" href={supportMailto('Enterprise plan')}>Contact us</a>
           : (<>
-            <button className="btn btn-primary" disabled={!canManage || busy} onClick={() => onChoose(plan, false)}>
+            <button className={`btn ${price === 0 ? 'btn-ghost' : 'btn-primary'}`} disabled={!canManage || busy} onClick={() => onChoose(plan, false)}>
               {price === 0 ? 'Switch to Free' : current ? `Update to ${seats} ${seats === 1 ? 'seat' : 'seats'}${period !== purchasedPeriod ? `, billed ${period}` : ''}` : `Choose ${plan.name}`}
             </button>
             {trialAvailable && price > 0 && !current && <button className="btn btn-ghost" disabled={!canManage || busy} onClick={() => onChoose(plan, true)}>Start 14-day free trial ({policy.trialSeats} people)</button>}

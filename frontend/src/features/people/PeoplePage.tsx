@@ -1,3 +1,4 @@
+import '../settings/settings-ds.css';
 import { Navigate } from 'react-router-dom';
 import { Embedded, PageHead, RouteTabs } from '../../components/ui';
 import { usePeopleSections, type PeopleSection } from './sections';

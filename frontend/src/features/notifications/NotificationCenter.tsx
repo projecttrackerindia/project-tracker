@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client';
 import { meApi, notificationApi, pushApi } from '../../api/endpoints';
 import type { AppNotification, NotificationPreference, NotificationType, TestEmailResult } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
-import { EmptyState, ErrorState, PageLoader, Pager, SectionLayout, type SectionLink } from '../../components/ui';
+import { EmptyState, ErrorState, PageHead, PageLoader, Pager, RouteTabs, Segmented, type SectionLink } from '../../components/ui';
 import { TimeZonePicker } from '../../components/TimeZonePicker';
 import { formatDateTime, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useDetailsDismiss, useWsQuery } from '../../lib/hooks';
@@ -36,6 +36,8 @@ const CATEGORY: Record<Category, { label: string; icon: IconName; types: Notific
   messages: { label: 'Messages & mentions', icon: 'message', types: ['Message', 'Mention'] },
   account: { label: 'Account & workspace', icon: 'shield', types: ['Invitation', 'Subscription', 'Security'] },
 };
+/** The tone of each kind's icon tile: the colour says what kind of thing it is, the words say the rest. */
+const CATEGORY_TONE: Record<Category, string> = { work: '', operations: 'violet', reminders: 'warning', messages: 'neutral', account: 'success' };
 const categoryOf = (t: NotificationType): Category =>
   (Object.keys(CATEGORY) as Category[]).find((c) => CATEGORY[c].types.includes(t)) ?? 'work';
 
@@ -56,21 +58,24 @@ const TYPE_ICON: Partial<Record<NotificationType, IconName>> = {
 export function NotificationCenterPage({ section }: { section: NotificationSection }) {
   const unread = useWsQuery(['notifications', 'unread-count'], notificationApi.unread, { refetchInterval: 60_000 });
   const zone = useAppZone();
-  const groups: { title?: string; items: SectionLink[] }[] = [
-    { items: [{ to: '/notifications', label: 'Inbox', icon: 'inbox', end: true, badge: unread.data?.count || undefined }] },
-    { title: 'Settings', items: [
-      { to: '/notifications/preferences', label: 'Delivery', icon: 'send' },
-      { to: '/notifications/devices', label: 'This device', icon: 'monitor' },
-      { to: '/notifications/schedule', label: 'Schedule & time zone', icon: 'clock' },
-    ] },
+  const n = unread.data?.count ?? 0;
+  const tabs: SectionLink[] = [
+    { to: '/notifications', label: 'Inbox', icon: 'inbox', end: true, badge: n || undefined },
+    { to: '/notifications/preferences', label: 'Delivery', icon: 'send' },
+    { to: '/notifications/devices', label: 'This device', icon: 'monitor' },
+    { to: '/notifications/schedule', label: 'Schedule & time zone', icon: 'clock' },
   ];
+  // The blue line above the title says where things stand: how many are unread, or that nothing is left to read.
+  const eyebrow = unread.isLoading ? undefined : n ? `${n > 99 ? '99+' : n} unread` : "You're all caught up";
   return (
-    <SectionLayout wide title="Notification Center" sub={`Everything that reaches you, and when - all times in ${zoneCity(zone)} (${zoneOffsetLabel(zone)}).`} groups={groups}>
+    <div className="nc-page">
+      <PageHead eyebrow={eyebrow} title="Notification Center" sub={`Everything that reaches you, and when. All times in ${zoneCity(zone)} (${zoneOffsetLabel(zone)}).`} />
+      <RouteTabs label="Notification Center sections" tabs={tabs} />
       {section === 'inbox' && <Inbox />}
       {section === 'preferences' && <Delivery />}
       {section === 'devices' && <ThisDevice />}
       {section === 'schedule' && <Schedule />}
-    </SectionLayout>
+    </div>
   );
 }
 
@@ -241,25 +246,24 @@ function Inbox() {
   return (
     <>
       <div className="nc-toolbar">
-        <div className="nc-seg nc-lanes" role="tablist" aria-label="Inbox">
-          {LANES.map((l) => (
-            <button key={l.id} role="tab" aria-selected={lane === l.id} className={lane === l.id ? 'on' : ''} onClick={() => pick(l.id)}>
-              {l.label}{!!l.count && <span className={`nc-count ${l.id === 'needs' ? 'hot' : ''}`}>{l.count}</span>}
-            </button>
-          ))}
-        </div>
-        <select className="input nc-kind" aria-label="Kind" value={cat} onChange={(e) => setCat(e.target.value as Category | 'all')}>
-          <option value="all">All kinds</option>
-          {(Object.keys(CATEGORY) as Category[]).map((k) => <option key={k} value={k}>{CATEGORY[k].label}</option>)}
-        </select>
-        {lane !== 'archived' && lane !== 'snoozed' && (
-          <label className="nc-unread"><input type="checkbox" checked={unreadOnly} onChange={(e) => { setUnreadOnly(e.target.checked); setPage(1); }} /> Unread only</label>
-        )}
+        <Segmented label="Inbox" value={lane} onChange={pick} className="nc-lanes"
+          options={LANES.map((l) => ({ id: l.id, label: l.label, count: l.count || undefined }))} />
         {lane !== 'archived' && lane !== 'snoozed' && (
           <div className="nc-readall">
             <button className="btn btn-ghost btn-sm" disabled={readAll.isPending} onClick={() => readAll.mutate()}><Icon name="checks" size={14} /> Mark all read</button>
             <button className="btn btn-ghost btn-sm" disabled={clearRead.isPending} onClick={() => clearRead.mutate()} title="Archive everything already read"><Icon name="inbox" size={14} /> Clear read</button>
           </div>
+        )}
+      </div>
+      <div className="nc-filters ds-chips" role="group" aria-label="Kind">
+        <button type="button" className={`ds-chip ${cat === 'all' ? 'on' : ''}`} aria-pressed={cat === 'all'} onClick={() => setCat('all')}>All kinds</button>
+        {(Object.keys(CATEGORY) as Category[]).map((k) => (
+          <button key={k} type="button" className={`ds-chip ${cat === k ? 'on' : ''}`} aria-pressed={cat === k} onClick={() => setCat(k)}>{CATEGORY[k].label}</button>
+        ))}
+        {lane !== 'archived' && lane !== 'snoozed' && (
+          <button type="button" className={`ds-chip nc-unread ${unreadOnly ? 'on' : ''}`} aria-pressed={unreadOnly} onClick={() => { setUnreadOnly(!unreadOnly); setPage(1); }}>
+            <span className="nc-unread-dot" aria-hidden="true" />Unread only
+          </button>
         )}
       </div>
 
@@ -281,11 +285,11 @@ function Inbox() {
                     <li key={b.key} className={`nc-item cat-${k} ${unread ? 'unread' : ''} ${n.needsYou ? 'needs' : ''}`}>
                       <div className="nc-item-row">
                         <button className="nc-item-main" onClick={() => void go(n, all)}>
-                          <span className="nc-item-ico"><Icon name={TYPE_ICON[n.type] ?? 'bell'} size={16} /></span>
+                          <span className={`nc-item-ico ds-tile-ico ${CATEGORY_TONE[k]}`}>{unread && <i className="nc-dot" aria-label="Unread" />}<Icon name={TYPE_ICON[n.type] ?? 'bell'} size={16} /></span>
                           <span className="nc-item-text">
                             <b>{n.title}</b>
                             {n.body && <span className="nc-item-body">{n.body}</span>}
-                            <span className="nc-item-meta"><span>{CATEGORY[k].label}</span> · <time title={formatDateTime(n.createdAt)} dateTime={n.createdAt}>{timeAgo(n.createdAt)}</time>
+                            <span className="nc-item-meta"><span>{CATEGORY[k].label}</span>
                               {n.snoozedUntil && <> · <span className="nc-back">back {formatDateTime(n.snoozedUntil)}</span></>}</span>
                           </span>
                         </button>
@@ -294,6 +298,9 @@ function Inbox() {
                             +{b.rest.length}
                           </button>
                         )}
+                        {/* The end of the row: the time, and in its place (on hover or focus) the row's own actions. */}
+                        <span className="nc-item-end">
+                        <time className="nc-item-time" title={formatDateTime(n.createdAt)} dateTime={n.createdAt}>{timeAgo(n.createdAt)}</time>
                         <span className="nc-item-acts">
                           {lane === 'snoozed' && <button className="btn-icon" aria-label="Bring back now" title="Bring back now" onClick={() => void wake(n)}><Icon name="bell" size={14} /></button>}
                           {unread && lane !== 'archived' && lane !== 'snoozed' && (
@@ -306,6 +313,7 @@ function Inbox() {
                             onSnooze={lane !== 'archived' && lane !== 'snoozed' ? (until) => void snooze(all, until) : undefined}
                             onRead={unread && lane !== 'archived' ? () => void read(all) : undefined}
                             onArchive={lane === 'archived' ? undefined : () => void archive(all)} onRestore={lane === 'archived' ? () => void unarchive(all) : undefined} />
+                        </span>
                         </span>
                       </div>
                       {lane !== 'archived' && lane !== 'snoozed' && <NotificationActions n={n} withSnooze={false} />}

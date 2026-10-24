@@ -35,3 +35,20 @@
 .cn-li-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .cn-li-main small { font-size: 12.5px; }
 @media (max-width: 520px) { .cn-card { padding: 20px; } .cn-actions { flex-direction: column-reverse; } .cn-actions .btn { width: 100%; } }
+
+/* design system pass: the consent card as a calm hero card, scopes as choice tiles (the chosen one white with a blue ring) */
+html .cn-card { border: 0; border-radius: var(--ds-r-hero); background: var(--ds-surface); box-shadow: var(--ds-e4); padding: 36px 32px 28px; }
+html .cn-card h1 { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+html .cn-sub { color: var(--ds-text-3); font-size: 15px; line-height: 1.5; }
+html .cn-field { font-size: 13px; font-weight: 500; color: var(--ds-text-3); }
+html .cn-app, html .cn-us { border-radius: 16px; }
+html .cn-scopes { gap: 10px; }
+html .cn-scopes button { border: 0; border-radius: 18px; background: var(--ds-fill); padding: 16px 18px; transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+html .cn-scopes button:hover:not(.on) { background: var(--ds-fill-strong); }
+html .cn-scopes button b, html .cn-scopes button strong { font-size: 15px; font-weight: 600; }
+html .cn-scopes button small { font-size: 13px; color: var(--ds-text-3); }
+html .cn-scopes button.on { border: 0; background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+html .cn-scopes button.on svg { color: var(--ds-accent); }
+html .cn-foot { color: var(--ds-text-3); font-size: 12.5px; }
+html .cn-url { border: 0; border-radius: 14px; background: var(--ds-fill); }
+html .cn-list li { border-top-color: var(--ds-line); padding: 14px 24px; }
