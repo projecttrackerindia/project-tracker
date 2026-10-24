@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client';
 import { orgApi, workspaceApi } from '../../api/endpoints';
 import type { Member, Role } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Avatar, EmptyState, ErrorState, Field, Modal, PageHead, PageLoader, RoleBadge, SubmitButton } from '../../components/ui';
+import { Avatar, EmptyState, ErrorState, Field, Kpi, Modal, PageHead, PageLoader, SubmitButton } from '../../components/ui';
 import { PERMISSION_LABELS, ROLES, formatDate, limitLabel, timeAgo } from '../../lib/format';
 import { PasswordChecklist, generatePassword, passwordProblem, usePasswordPolicy } from '../auth/passwordPolicy';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
@@ -32,12 +32,33 @@ export function DirectoryPanel() {
         {canCreate && <button className="btn btn-ghost" onClick={() => setCreating(true)}><Icon name="userPlus" /> Create user</button>}
         {canInvite && <button className="btn btn-primary" onClick={() => setInviting(true)}><Icon name="plus" /> Invite member</button>}
       </PageHead>
+      {members.data && <PeopleKpis members={members.data} seats={limit} canInvite={canInvite} />}
       <MembersTable />
       {inviting && <InviteModal onClose={() => setInviting(false)} />}
       {creating && <CreateUserModal onClose={() => setCreating(false)} onInviteInstead={() => { setCreating(false); setInviting(true); }} />}
     </>
   );
 }
+
+/** The directory at a glance: people against seats, who can change settings, guests, and invitations still waiting. */
+function PeopleKpis({ members, seats, canInvite }: { members: Member[]; seats: number; canInvite: boolean }) {
+  const invites = useWsQuery(['invitations'], workspaceApi.invitations, { enabled: canInvite });
+  const admins = members.filter((m) => m.role === 'Owner' || m.role === 'Admin').length;
+  const guests = members.filter((m) => m.role === 'Guest').length;
+  const waiting = invites.data?.length ?? 0;
+  return (
+    <div className="ds-kpis people-kpis" data-testid="people-kpis">
+      <Kpi label="Members" value={members.length} caption={seats === -1 ? 'No seat limit' : `of ${limitLabel(seats)} seats`} />
+      <Kpi label="Owners and admins" value={admins} caption="Can change workspace settings" />
+      <Kpi label="Guests" value={guests} caption="See only projects they are added to" />
+      {canInvite && <Kpi label="Invitations waiting" value={invites.data ? waiting : '—'} tone={waiting ? 'warning' : undefined}
+        caption={!invites.data ? 'Loading' : waiting ? 'Not accepted yet' : 'None waiting'} to={waiting ? '/people/invitations' : undefined} />}
+    </div>
+  );
+}
+
+/** An access level as a pill: owners dark, admins blue, managers violet, members grey, guests amber. */
+const RolePill = ({ role }: { role: Role }) => <span className={`ds-pill role-pill role-${role.toLowerCase()}`}>{role}</span>;
 
 /** People → Invitations: the ones still waiting to be accepted. */
 export function InvitationsPanel() {
@@ -91,7 +112,7 @@ function MembersTable() {
                 <td><button type="button" className="row member-name-btn" onClick={() => setViewProfile(m.userId)} aria-label={`${m.displayName}'s profile`}><Avatar name={m.displayName} size="lg" userId={m.userId} hasAvatar={m.hasAvatar} /><div><div className="td-title">{m.displayName}{m.userId === meId && <span className="muted" style={{ fontWeight: 500 }}> (you)</span>}</div><div className="td-sub">{m.email}</div></div></button></td>
                 <td>{editable
                   ? <Select className="select" style={{ width: 130, height: 32 }} value={m.role} onChange={(e) => setRole(m, e.target.value)} aria-label={`Role for ${m.displayName}`}>{options.map((r) => <option key={r}>{r}</option>)}</Select>
-                  : <RoleBadge role={m.role} />}</td>
+                  : <RolePill role={m.role} />}</td>
                 <td className="cell-muted">{m.jobRole ?? <span title="Not placed on the organization chart yet">—</span>}</td>
                 <td className="cell-muted">{formatDate(m.joinedAt)}</td>
                 <td><div className="td-actions">
@@ -119,7 +140,7 @@ function Invitations({ onInvite }: { onInvite: () => void }) {
       <thead><tr><th>Email</th><th>Role</th><th>Job role</th><th>Invited by</th><th>Sent</th><th>Expires</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
       <tbody>{q.data.map((i) => (
         <tr key={i.id}>
-          <td className="td-title">{i.email}</td><td><RoleBadge role={i.role} /></td><td className="cell-muted">{i.jobRole ? <>{i.jobRole}{i.reportsTo && <span className="td-sub"> reports to {i.reportsTo}</span>}</> : '—'}</td><td className="cell-muted">{i.invitedBy ?? '—'}</td><td className="cell-muted">{timeAgo(i.createdAt)}</td><td className="cell-muted">{formatDate(i.expiresAt)}</td>
+          <td className="td-title">{i.email}</td><td><RolePill role={i.role} /></td><td className="cell-muted">{i.jobRole ? <>{i.jobRole}{i.reportsTo && <span className="td-sub"> reports to {i.reportsTo}</span>}</> : '—'}</td><td className="cell-muted">{i.invitedBy ?? '—'}</td><td className="cell-muted">{timeAgo(i.createdAt)}</td><td className="cell-muted">{formatDate(i.expiresAt)}</td>
           <td><div className="td-actions"><button className="btn btn-ghost btn-sm" onClick={async () => {
             try { await workspaceApi.revokeInvitation(i.id); toast('Invitation revoked.', 'warning'); invalidateWorkspace(wid); } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not revoke.', 'error'); }
           }}>Revoke</button></div></td>

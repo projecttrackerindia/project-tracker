@@ -8,6 +8,7 @@ import { vaultApi, type SecretLinkInfo } from './api';
 import { LinkKeyError, openLink, type LinkPayload } from './e2ee/links';
 import { copySecret } from './secure';
 import './vault.css';
+import './vault-ds.css';
 
 /**
  * Where a one-time link leads, without signing in. Looking at the page does not use the link (chat apps fetch links to preview them);

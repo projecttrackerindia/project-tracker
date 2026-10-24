@@ -63,7 +63,12 @@ export function Generator({ onUse, clipboardSeconds }: { onUse?: (v: string) => 
       <StrengthMeter value={value} />
       {mode === 'password' ? (
         <>
-          <label className="vlt-range"><span>Length <b>{length}</b></span>
+          <div className="vlt-lengths" role="group" aria-label="Common lengths">
+            {[16, 24, 32, 48].map((n) => (
+              <button key={n} type="button" className={length === n ? 'on' : ''} aria-pressed={length === n} onClick={() => { setLength(n); again({ length: n }); }}>{n}</button>
+            ))}
+          </div>
+          <label className="vlt-range"><span>Length <b>{length}</b> characters</span>
             <input type="range" min={8} max={64} value={length} onChange={(e) => { const l = Number(e.target.value); setLength(l); again({ length: l }); }} aria-label="Length" /></label>
           <div className="vlt-checks">
             {([['upper', 'A-Z'], ['digits', '0-9'], ['symbols', '!@#'], ['avoidAmbiguous', 'No look-alikes (l, 1, O, 0)']] as const).map(([k, label]) => (
@@ -322,6 +327,14 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
             : <label className="vlt-useonly"><input type="checkbox" checked={useOnly} onChange={(e) => setUseOnly(e.target.checked)} /> <b>Use only</b> <span className="muted">Nobody sees the value; it can only be copied into a sign-in form.</span></label>}
           {target?.requireStepUp && <p className="vlt-small muted"><Icon name="shield" size={12} /> {target.name} asks for a two-step check on everything in it.</p>}
         </fieldset>
+        <div className="field full vlt-crypto-card" aria-label="How it is encrypted">
+          <b>Encryption</b>
+          {target?.sealed ? (
+            <pre>{'Item:     AES-256-GCM, on this device\nWrapped:  X25519 + ML-KEM-768 per member\nSigned:   Ed25519\nServer:   cannot read it'}</pre>
+          ) : (
+            <pre>{'Item key: AES-256-GCM, its own key\nWrapped:  workspace data key\nBound to: this workspace and item\nUse:      every copy recorded'}</pre>
+          )}
+        </div>
 
         <Field label="Owner" hint="Told before it expires and when it should be changed.">
           <select className="input" value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Owner">

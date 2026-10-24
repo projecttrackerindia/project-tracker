@@ -22,6 +22,7 @@ import { RequiredDocumentsModal } from '../documents/NeedsAttention';
 import { DocumentWizard } from '../documents/DocumentWizard';
 import { pageTree, useNewPage } from '../documents/pages';
 import './doctracker.css';
+import './doctracker-ds.css';
 
 export const GENERAL = 'general';
 export const pid = (p: DtProject) => p.id ?? GENERAL;

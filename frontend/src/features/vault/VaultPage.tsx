@@ -27,6 +27,7 @@ import { useVaultRequests } from './requestsData';
 import { StepUpProvider } from './stepUp';
 import { useStepUp } from './stepUpContext';
 import './vault.css';
+import './vault-ds.css';
 
 type View = 'items' | 'health' | 'bin' | 'admin' | 'keys' | 'requests' | 'links';
 type Row = VaultItemSummary & { sealed?: boolean };
@@ -223,7 +224,9 @@ function Vault() {
 
   return (
     <div className={`page vlt vlt-scope${itemId ? ' has-item' : ''}`}>
-      <PageHead title="Vault" sub="Passwords, keys and secrets: end-to-end encrypted or server-guarded, shared on purpose, every use recorded.">
+      <PageHead title="Vault" eyebrow={lockState === 'open' ? 'Sealed vault open' : `${health2.total} item${health2.total === 1 ? '' : 's'} · health ${health2.score}`}
+        eyebrowTone={lockState === 'open' ? 'success' : undefined}
+        sub="Passwords, keys and secrets. End-to-end encrypted or server-guarded, shared on purpose, every use recorded.">
         <button className="btn btn-ghost" onClick={() => setGenerator(true)}><Icon name="sparkle" size={15} /> Generator</button>
         <button className="btn btn-ghost" onClick={() => setImporting(true)}><Icon name="upload" size={15} /> Import</button>
         <button className="btn btn-primary" onClick={() => setEditing('new')}><Icon name="plus" size={15} /> New item</button>
@@ -293,7 +296,8 @@ function Vault() {
         {itemId && (view === 'items' || view === 'bin') && (selectedSealed
           ? <SealedItemPanel c={selectedSealed.c} item={selectedSealed.s} policy={o.policy} lockEpoch={lockEpoch} binned={view === 'bin'}
               onEdit={() => setEditing({ item: selectedSealed.s, collection: selectedSealed.c })} onClose={() => set({ item: null })} onChanged={refresh} />
-          : (!collection?.sealed || view === 'bin') && <VaultItemPanel id={itemId} policy={o.policy} lockEpoch={lockEpoch} binned={view === 'bin'} collections={o.collections} canAdmin={o.canAdmin} onEdit={(d) => setEditing(d)} onClose={() => set({ item: null })} onChanged={refresh} />)}
+          : (!collection?.sealed || view === 'bin') && <VaultItemPanel id={itemId} policy={o.policy} lockEpoch={lockEpoch} binned={view === 'bin'} collections={o.collections} canAdmin={o.canAdmin} onEdit={(d) => setEditing(d)} onClose={() => set({ item: null })} onChanged={refresh}
+              onShare={async (cid) => { try { setSharing(await vaultApi.collection(cid)); } catch { toast('Could not open the access list.', 'error'); } }} />)}
       </div>
 
       <DeviceApprovals unlocked={unlocked} />
