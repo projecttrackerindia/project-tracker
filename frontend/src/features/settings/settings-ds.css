@@ -1,0 +1,190 @@
+/* =====================================================================================================================
+   Workspace settings, My account, People and the integration pages in the design-system language.
+   Settings are calm rows in white cards (the setting and one grey line on the left, its control on the right); choices are soft tiles
+   whose chosen one turns white with a blue ring; on/off settings are switches; notes and warnings are quiet tinted panels.
+   ===================================================================================================================== */
+
+/* ---------------------------------------------------------------------------------------------- overview */
+html .set-home-search { max-width: 680px; margin-bottom: 24px; }
+html .set-search > .input { height: 48px; border-radius: var(--ds-r-pill); border: 0; padding-left: 42px; font-size: 15px; background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+html .set-search > .input:focus { box-shadow: 0 0 0 4px rgba(0, 113, 227, .16), 0 0 0 1px var(--ds-accent); }
+html .set-search > svg { left: 16px; color: var(--ds-text-3); }
+html .set-search.compact { margin: 0 0 14px; }
+html .set-search.compact > .input { height: 40px; padding-left: 38px; font-size: 14px; }
+html .set-search.compact > svg { left: 14px; }
+html .set-search-results { border: 0; border-radius: 18px; background: var(--ds-surface); box-shadow: var(--ds-e4); padding: 6px; }
+html[data-theme='dark'] .set-search-results { background: var(--ds-surface-2); }
+html .set-search-item { border-radius: 12px; padding: 10px 12px; }
+html .set-search-item.active { background: var(--ds-fill); }
+html .set-search-item.active > svg { color: var(--ds-accent); }
+html .set-search-main b { font-size: 14.5px; font-weight: 500; }
+html .set-search-main small { font-size: 12.5px; color: var(--ds-text-3); }
+
+/* setup health: the score as a ring-like disc, open items as rows with their fix on the right */
+html .health .card-head { padding-bottom: 10px; }
+html .health-score { width: 60px; height: 60px; font-size: 20px; font-weight: 700; letter-spacing: -.02em; border: 0; box-shadow: inset 0 0 0 6px currentColor; background: transparent; }
+html .health-score.good { color: var(--ds-success); background: transparent; }
+html .health-score.fair { color: #E8A33D; background: transparent; }
+html .health-score.poor { color: var(--ds-danger); background: transparent; }
+html .health-list { padding: 0 24px; }
+html .health-item { gap: 14px; padding: 16px 0; border-top: 1px solid var(--ds-line); }
+html .health-item:first-child { border-top: 0; }
+html .health-mark { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--ds-danger-bg); color: var(--ds-danger); flex: none; }
+html .health-item.medium .health-mark { background: var(--ds-warning-bg); color: var(--ds-warning); }
+html .health-item.low .health-mark, html .health-item.dismissed .health-mark { background: var(--ds-fill); color: var(--ds-text-3); }
+html .health-item.ok .health-mark { background: var(--ds-success-bg); color: var(--ds-success); }
+html .health-main b { font-size: 15px; font-weight: 600; }
+html .health-main span, html .health-main small, html .health-main p { font-size: 13.5px; color: var(--ds-text-3); }
+html .health-toggle { margin: 4px 24px 20px; }
+
+/* the seven groups: cards that flow in two columns without gaps between uneven heights */
+html .set-groups { display: block; columns: 2 340px; column-gap: 20px; }
+html .set-group, html .section-body .set-groups .set-group + .set-group { break-inside: avoid; margin: 0 0 20px; padding: 22px 24px 10px; display: inline-block; width: 100%; }
+html .set-group-head { gap: 14px; margin-bottom: 10px; }
+html .set-group-head h3 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+html .set-group-head p { font-size: 13.5px; color: var(--ds-text-3); line-height: 1.45; margin-top: 3px; }
+html .set-group-ico { width: 36px; height: 36px; border-radius: 11px; background: var(--ds-accent-soft); color: var(--ds-accent); border: 0; box-shadow: none; }
+html .set-group li + li a { border-top: 1px solid var(--ds-line); }
+html .set-group li a { padding: 13px 4px; margin: 0 -4px; border-radius: 0; color: var(--ds-text); }
+html .set-group li a:hover { color: var(--ds-text); background: transparent; }
+html .set-group li a:hover b { color: var(--ds-accent); }
+html .set-group li a b { font-size: 15px; font-weight: 500; }
+html .set-group li a small { font-size: 13px; color: var(--ds-text-3); }
+html .set-group li a > svg { color: var(--ds-text-4); }
+
+/* latest changes */
+html .set-history { margin-top: 4px; }
+html .set-history .card-head h3 svg { color: var(--ds-text-3); }
+html .set-history-list { padding: 0 24px 8px; }
+html .set-change { gap: 14px; padding: 16px 0; border-top: 1px solid var(--ds-line); }
+html .set-change-main b { font-size: 15px; font-weight: 500; }
+html .set-change-main span { font-size: 14px; color: var(--ds-text-2); }
+html .set-change-main small { font-size: 12.5px; color: var(--ds-text-3); }
+html .set-history-more { margin: 0 24px 20px; }
+html .last-changed { font-size: 12.5px; color: var(--ds-text-3); gap: 6px; }
+html .last-changed .link-btn { font-size: 12.5px; font-weight: 500; }
+
+/* ------------------------------------------------------------------------------------------ section bodies */
+html .section-body .card + .card, html .section-body .card + section.card { margin-top: 20px; }
+html .section-body .card-head h3 { display: flex; align-items: center; gap: 8px; }
+html .section-body .card-head h3 > svg { color: var(--ds-accent); }
+
+/* choices: soft tiles; the chosen one white with a blue ring and a soft glow */
+html .method-picker { gap: 12px; }
+html .method-option, html .vis-option, html .own-key-provider {
+  border: 0; border-radius: 18px; background: var(--ds-fill); padding: 18px 20px; gap: 4px; box-shadow: none; transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+html .method-option:hover:not(.on):not(:disabled), html .vis-option:hover:not(.on):not(:disabled), html .own-key-provider:hover:not(.on) { background: var(--ds-fill-strong); }
+html .method-option b, html .vis-option b, html .own-key-provider b { font-size: 15px; font-weight: 600; color: var(--ds-text); }
+html .method-option span, html .vis-option span, html .own-key-provider small { font-size: 13px; color: var(--ds-text-3); line-height: 1.45; }
+html .method-option.on, html .vis-option.on, html .own-key-provider.on { background: var(--ds-surface); border: 0; box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+html .method-option.on b { color: var(--ds-text); }
+html .own-key-providers { gap: 12px; }
+html .own-key-provider input[type='radio'] { accent-color: var(--ds-accent-fill); }
+html .vis-options { gap: 14px; }
+
+/* members' account security: the four counts as KPI tiles that filter the table below */
+html .mss-kpis { gap: 14px; }
+html .mss-kpi { border: 0; border-radius: 18px; background: var(--ds-fill); padding: 16px 18px; gap: 4px; box-shadow: none; transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+html .mss-kpi:hover:not(.on) { background: var(--ds-fill-strong); }
+html .mss-kpi b { font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1.05; }
+html .mss-kpi span { font-size: 13px; color: var(--ds-text-3); }
+html .mss-kpi.bad b { color: var(--ds-danger); }
+html .mss-kpi.warn b { color: var(--ds-warning); }
+html .mss-kpi.on { background: var(--ds-surface); border: 0; box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+
+/* checkboxes and radios in the system colour; on/off "own key" settings as switches */
+html .section-body input[type='checkbox'], html .section-body input[type='radio'], html .nc-page input[type='checkbox'] { accent-color: var(--ds-accent-fill); }
+html .own-key-toggle { gap: 14px; padding: 12px 0; align-items: center; }
+html .own-key-toggle b { font-size: 15px; font-weight: 500; }
+html .own-key-toggle small { font-size: 13px; color: var(--ds-text-3); }
+html .own-key-toggle input[type='checkbox'] {
+  appearance: none; -webkit-appearance: none; position: relative; flex: none; order: 2; margin: 0 0 0 auto; width: 46px; height: 28px; border-radius: 999px;
+  background: var(--ds-fill-strong); cursor: pointer; transition: background-color .2s var(--ds-ease); }
+html .own-key-toggle input[type='checkbox']::after { content: ''; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, .18); transition: transform .26s var(--ds-spring); }
+html .own-key-toggle input[type='checkbox']:checked { background: #34C759; }
+html[data-theme='dark'] .own-key-toggle input[type='checkbox'] { background: #39393D; }
+html[data-theme='dark'] .own-key-toggle input[type='checkbox']:checked { background: #30D158; }
+html .own-key-toggle input[type='checkbox']:checked::after { transform: translateX(18px); }
+html .own-key-toggle input[type='checkbox']:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+html .own-key-state, html .own-key-ok { border: 0; border-radius: 14px; }
+
+/* notification defaults for members: the channel grid uses switches like the person's own delivery grid */
+html .nd-table input[type='checkbox'] {
+  appearance: none; -webkit-appearance: none; position: relative; width: 46px; height: 28px; margin: 0; border-radius: 999px; vertical-align: middle;
+  background: var(--ds-fill-strong); cursor: pointer; transition: background-color .2s var(--ds-ease); }
+html .nd-table input[type='checkbox']::after { content: ''; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, .18); transition: transform .26s var(--ds-spring); }
+html .nd-table input[type='checkbox']:checked { background: #34C759; }
+html[data-theme='dark'] .nd-table input[type='checkbox'] { background: #39393D; }
+html[data-theme='dark'] .nd-table input[type='checkbox']:checked { background: #30D158; }
+html .nd-table input[type='checkbox']:checked::after { transform: translateX(18px); }
+html .nd-table input[type='checkbox']:disabled { opacity: .45; cursor: not-allowed; }
+html .nd-table input[type='checkbox']:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+html .nd-table td { vertical-align: middle; }
+html .nd-following { font-size: 13px; color: var(--ds-text-3); }
+html .nd-time { width: 150px; min-height: 40px; height: 40px; }
+html .nd-choices { display: grid; gap: 10px; }
+html .nd-choices label { display: flex; align-items: center; gap: 10px; font-size: 14.5px; }
+
+/* notes, warnings and explainers: quiet tinted panels, no side bars */
+html .form-warn, html .notice, html .sso-note, html .integration-guide-note, html .explainer {
+  border: 0; border-left: 0; border-radius: 16px; padding: 14px 16px; font-size: 14px; line-height: 1.5; box-shadow: none; }
+html .form-warn { background: var(--ds-warning-bg); color: var(--ds-text); }
+html .notice, html .sso-note, html .integration-guide-note { background: var(--ds-fill); color: var(--ds-text-2); }
+html .explainer { background: var(--ds-accent-soft); color: var(--ds-text); }
+html .explainer > svg { color: var(--ds-accent); }
+html .secret-box { border: 0; border-radius: 14px; background: var(--ds-fill); font-family: var(--mono); font-size: 13px; padding: 12px 14px; }
+
+/* integration guides: numbered steps in quiet tiles, the eyebrow in blue sentence case */
+html .integration-eyebrow { font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ds-accent); }
+html .integration-studio { border: 0; border-radius: var(--ds-r-card); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); background: var(--ds-surface); }
+html .integration-studio-head { border-bottom: 1px solid var(--ds-line); }
+html .integration-studio-head h2, html .integration-studio-head h3 { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+
+/* custom fields, labels, priorities: list rows */
+html .cf-list { border: 0; }
+html .cf-row { border-radius: 0; border: 0; border-bottom: 1px solid var(--ds-line); padding: 14px 4px; background: transparent; }
+html .cf-row:last-child { border-bottom: 0; }
+
+/* org chart side panels and rows */
+html .org-section { border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+html .org-label { font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
+html .org-node { border-radius: 18px; box-shadow: var(--ds-e2), 0 0 0 1px var(--ds-line); border: 0; }
+
+/* plans: calm cards, the current one ringed in blue; what a plan does not include is simply quieter (no strike-through) */
+html .plan-card { border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); padding: 24px; }
+html .plan-card.current { box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+html .plan-features li { font-size: 13.5px; color: var(--ds-text-2); }
+html .plan-features li svg { color: var(--ds-success); }
+html .plan-features li.off { color: var(--ds-text-4); text-decoration: none; }
+html .plan-features li.off svg { color: var(--ds-text-4); }
+html .pc-label { font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
+html .pc-note { font-size: 13px; color: var(--ds-text-3); }
+html .usage-top { font-size: 13.5px; }
+
+/* the plan and payment cards */
+html .upi-card { border: 0; border-radius: var(--ds-r-card); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+html .plan-price { font-size: 34px; font-weight: 700; letter-spacing: -.03em; }
+
+/* connected accounts: where meetings go as choice tiles; service cards calm */
+html .ca-meetings { border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+html .ca-meetings-head { font-size: 14px; color: var(--ds-text-3); }
+html .ca-services { gap: 12px; }
+html .ca-service { border: 0; border-radius: 18px; background: var(--ds-fill); box-shadow: none; transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+html .ca-service:hover:not(:disabled):not(.on):not([aria-pressed='true']):not([aria-checked='true']) { background: var(--ds-fill-strong); }
+html .ca-service.on, html .ca-service[aria-pressed='true'], html .ca-service[aria-checked='true'] { background: var(--ds-surface); border: 0; box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+html .ca-service:disabled, html .ca-service[aria-disabled='true'] { opacity: .55; }
+html .ca-card { border: 0; border-radius: var(--ds-r-card); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+html .ca-segment { border: 0; background: var(--ds-fill-strong); border-radius: 12px; }
+
+/* webhooks: status pickers and pager as pills */
+html .hook-status-pick button, html .hook-formats button { border-radius: var(--ds-r-pill); }
+html .hook-check { accent-color: var(--ds-accent-fill); }
+
+@media (max-width: 760px) {
+  html .set-groups { columns: 1; }
+  html .health-list, html .set-history-list { padding: 0 18px; }
+  html .health-toggle, html .set-history-more { margin-inline: 18px; }
+  html .set-group { padding: 18px 18px 8px; }
+  html .method-option, html .vis-option, html .own-key-provider { padding: 16px; }
+  html .mss-kpi b { font-size: 26px; }
+}

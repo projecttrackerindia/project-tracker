@@ -240,3 +240,195 @@
 .nc-wa.on { color: var(--success); background: var(--success-soft); border-color: transparent; }
 .nc-wa-na { color: var(--text-3); }
 @media (max-width: 640px) { .nc-matrix.with-wa .nc-matrix-row { grid-template-columns: minmax(0, 1fr) repeat(4, 46px); } }
+
+/* =====================================================================================================================
+   Design system pass. The Notification Center reads like the rest of the app: a big title with a blue line saying how many are
+   unread, underline tabs, a segmented control for the lanes and white chips for the kinds; the inbox is one white card of calm rows
+   (icon tile, title, one grey line, the time on the right, unread = bold with a small blue dot); settings are white cards of rows with
+   switches. No capitals, no coloured side bars.
+   ===================================================================================================================== */
+.nc-page .route-tabs { margin-bottom: 24px; }
+
+/* panels: white cards, the title in 17px, one grey line under it */
+html .nc-panel { border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); margin-bottom: 20px; }
+html .nc-panel-head { gap: 14px; padding: 22px 24px 0; align-items: center; }
+html .nc-panel-ico { width: 36px; height: 36px; border-radius: 11px; background: var(--ds-accent-soft); color: var(--ds-accent); }
+html .nc-panel-titles h3 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+html .nc-panel-titles p { font-size: 13.5px; color: var(--ds-text-3); margin-top: 3px; line-height: 1.5; }
+html .nc-panel-body { padding: 18px 24px 24px; }
+html .nc-muted { font-size: 13.5px; color: var(--ds-text-3); line-height: 1.5; }
+html .nc-note { font-size: 13px; color: var(--ds-text-3); margin: 0 0 20px; }
+html .nc-label { font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ds-text-2); margin: 18px 0 10px; }
+
+/* inbox toolbar: lanes on the left, the two bulk actions on the right; kinds as chips below */
+html .nc-toolbar { gap: 12px 16px; margin-bottom: 14px; justify-content: space-between; }
+html .nc-readall { margin-left: auto; gap: 8px; }
+.nc-filters { margin-bottom: 18px; }
+.nc-filters .ds-chip { min-height: 34px; font-size: 13.5px; }
+.nc-unread-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ds-accent-fill); }
+.ds-chip.on .nc-unread-dot { background: currentColor; }
+
+/* the inbox: one white card, days as quiet sentence-case headings, rows separated by hairlines */
+html .nc-inbox { border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); padding: 6px 10px; }
+html .nc-day + .nc-day { margin-top: 6px; }
+html .nc-day-head { position: static; padding: 16px 12px 6px; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); background: none; }
+html .nc-item { border-radius: 14px; }
+html .nc-item + .nc-item::after { content: ''; position: absolute; left: 64px; right: 12px; top: 0; height: 1px; background: var(--ds-line); }
+html .nc-item:hover { background: var(--ds-surface-2); }
+html[data-theme='dark'] .nc-item:hover { background: rgba(255, 255, 255, .03); }
+html .nc-item:hover + .nc-item::after, html .nc-item:hover::after { opacity: 0; }
+html .nc-item.unread::before { content: none; }
+html .nc-item-main { gap: 14px; align-items: center; padding: 14px 12px; }
+html .nc-item .nc-item-ico { position: relative; width: 38px; height: 38px; border-radius: 12px; background: var(--ds-accent-soft); color: var(--ds-accent); }
+html .nc-item .nc-item-ico.warning { background: var(--ds-warning-bg); color: var(--ds-warning); }
+html .nc-item .nc-item-ico.neutral { background: var(--ds-fill); color: var(--ds-text-2); }
+html .nc-item .nc-item-ico.success { background: var(--ds-success-bg); color: var(--ds-success); }
+html .nc-item .nc-item-ico.violet { background: var(--ds-progress-bg); color: var(--ds-progress); }
+html .nc-item.needs:not(.unread) .nc-item-ico { opacity: 1; }
+/* unread: a small blue dot on the tile's corner, and the title in bold */
+.nc-dot { position: absolute; top: -3px; right: -3px; width: 11px; height: 11px; border-radius: 50%; background: var(--ds-accent-fill); box-shadow: 0 0 0 2px var(--ds-surface); }
+html .nc-item-text { flex: 1; gap: 3px; }
+html .nc-item-text b { font-size: 15px; font-weight: 600; color: var(--ds-text); letter-spacing: -.005em; }
+html .nc-item:not(.unread) .nc-item-text b { font-weight: 500; color: var(--ds-text); }
+html .nc-item-body { font-size: 14px; color: var(--ds-text-3); line-height: 1.45; }
+html .nc-item-meta { font-size: 12.5px; color: var(--ds-text-4); }
+/* the end of a row: a fixed slot that shows the time, and the row's own actions in its place while the pointer is on the row (or focus
+   is inside it); the slot keeps its width, so nothing moves and the "+n" beside it is never covered */
+html .nc-item-row { align-items: flex-start; }
+.nc-item-end { position: relative; flex: none; width: 152px; min-height: 40px; margin: 12px 8px 0 0; display: flex; justify-content: flex-end; }
+.nc-item-time { margin-top: 2px; font-size: 13px; color: var(--ds-text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+html .nc-item.unread .nc-item-time { color: var(--ds-accent); font-weight: 600; }
+html .nc-item-acts { position: absolute; right: 0; top: -4px; margin: 0; gap: 2px; padding: 2px; border-radius: 980px; background: var(--ds-surface); box-shadow: var(--ds-e2), 0 0 0 1px var(--ds-line); }
+html[data-theme='dark'] .nc-item-acts { background: var(--ds-surface-2); }
+html .nc-item:hover .nc-item-time, html .nc-item:has(.nc-item-acts:focus-within) .nc-item-time, html .nc-item:has(details[open]) .nc-item-time { visibility: hidden; }
+@media (hover: none) {
+  .nc-item-end { width: auto; flex-direction: column; align-items: flex-end; gap: 6px; }
+  html .nc-item-acts { position: static; background: transparent; box-shadow: none; }
+}
+@media (max-width: 640px) { .nc-item-end { width: auto; margin-right: 4px; } }
+html .nc-item-acts .btn-icon, html .nc-menu > summary.btn-icon { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
+html .nc-more { margin-top: 18px; height: 24px; min-width: 32px; border: 0; background: var(--ds-fill); color: var(--ds-text-2); font-weight: 600; border-radius: 980px; }
+html .nc-more[aria-expanded='true'] { background: var(--ds-dark); color: var(--ds-on-dark); }
+html .nc-why { margin: -2px 12px 12px 64px; font-size: 13px; color: var(--ds-text-3); }
+html .nc-sub { margin: -2px 12px 12px 64px; border-left: 0; padding-left: 0; }
+html .nc-sub button { border-radius: 10px; font-size: 13.5px; padding: 7px 10px; background: var(--ds-surface-2); }
+html .nc-sub li + li { margin-top: 4px; }
+html .nc-menu-pop { border: 0; border-radius: 16px; background: var(--ds-surface); box-shadow: var(--ds-e4); padding: 6px; }
+html[data-theme='dark'] .nc-menu-pop { background: var(--ds-surface-2); }
+html .nc-menu-pop button { border-radius: 10px; font-size: 14px; min-height: 38px; }
+html .nc-menu-pop button:hover { background: var(--ds-fill); }
+html .nc-menu-label { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 600; color: var(--ds-text-3); }
+html .nc-menu-group { border-bottom-color: var(--ds-line); }
+html .nc-back { color: var(--ds-warning); }
+
+/* actions on a notification: pills, the main one soft blue */
+html .na { padding: 0 12px 14px 64px; gap: 8px; }
+html .na-row { gap: 8px; }
+html .na-btn { height: 32px; padding: 0 14px; border-radius: 980px; font-size: 13px; font-weight: 500; color: var(--ds-text); background: var(--ds-surface); border: 1px solid var(--ds-outline); }
+html .na-btn:hover { color: var(--ds-text); background: var(--ds-surface-2); border-color: var(--ds-outline); }
+html .na-btn.primary { color: var(--ds-accent); background: var(--ds-fill); border-color: transparent; }
+html .na-btn.primary:hover { background: var(--ds-fill-strong); }
+html .na-btn[aria-pressed='true'] { background: var(--ds-dark); color: var(--ds-on-dark); border-color: transparent; }
+html .na-pop { border: 0; border-radius: 14px; background: var(--ds-surface); box-shadow: var(--ds-e4); }
+html .na-write textarea { border-radius: 14px; border-color: var(--ds-outline); padding: 10px 14px; font-size: 14.5px; }
+html .na-write textarea:focus { outline: none; border-color: var(--ds-accent); box-shadow: 0 0 0 4px rgba(0, 113, 227, .16); }
+
+/* the bell's panel: same rows, smaller; unread is a blue dot after the title, not a tinted band */
+html .dp-note.unread { background: transparent; }
+html .dp-note.unread .dp-main b::after { content: ''; display: inline-block; width: 8px; height: 8px; margin-left: 8px; border-radius: 50%; background: var(--ds-accent-fill); vertical-align: middle; }
+html .dp-note .na { padding: 0 10px 10px 54px; }
+html .dp-foot-row .dp-menu-item { border-radius: 10px; }
+
+/* the phone's notification sheet: soft tiles, unread told by the bold title and a blue dot (not a tinted band) */
+@media (max-width: 768px) {
+  html .m-row.note, html .m-row.note.unread { background: var(--ds-surface-2); border-radius: 18px; }
+  html[data-theme='dark'] .m-row.note, html[data-theme='dark'] .m-row.note.unread { background: var(--ds-surface-2); }
+  html .m-row.note .m-row-ico.ds-tile-ico { width: 38px; height: 38px; border-radius: 12px; flex: none; }
+  html .m-row.note .m-row-main b { font-weight: 500; }
+  html .m-row.note.unread .m-row-main b { font-weight: 600; }
+  html .m-row.note .m-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ds-accent-fill); box-shadow: none; flex: none; margin-top: 6px; }
+  html .m-note-acts .na { padding-left: 64px; }
+}
+
+/* delivery: a calm grid of switches in one card */
+html .nc-callout { gap: 14px; padding: 16px 20px; border: 0; border-radius: var(--ds-r-card); background: linear-gradient(100deg, var(--ds-warning-bg), color-mix(in srgb, var(--ds-warning-bg) 35%, var(--ds-surface))); font-size: 14px; margin-bottom: 20px; }
+html .nc-callout > svg { color: var(--ds-warning); flex: none; }
+html .nc-callout.is-blocked, html .nc-callout.is-unsupported { background: linear-gradient(100deg, var(--ds-danger-bg), color-mix(in srgb, var(--ds-danger-bg) 35%, var(--ds-surface))); }
+html .nc-matrix-row { padding: 14px 4px; border-bottom: 1px solid var(--ds-line); gap: 12px; }
+html .nc-matrix-head { position: static; border-radius: 0; background: transparent; font-size: 13px; font-weight: 500; color: var(--ds-text-3); padding-bottom: 12px; }
+html .nc-matrix-col { gap: 4px; color: var(--ds-text-2); }
+html .nc-matrix-col svg { color: var(--ds-text-3); }
+html .nc-col-toggle { font-size: 12px; font-weight: 500; color: var(--ds-accent); background: none; padding: 0; }
+html .nc-col-toggle:hover { text-decoration: underline; text-underline-offset: 3px; }
+html .nc-matrix-groupname { padding: 22px 4px 6px; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ds-text-2); gap: 8px; }
+html .nc-matrix-groupname svg { color: var(--ds-text-3); }
+html .nc-matrix-event b { font-size: 15px; font-weight: 500; }
+html .nc-matrix-event small { font-size: 13px; color: var(--ds-text-3); }
+html .nc-matrix .switch { transform: none; }
+html .nc-matrix-row.locked { opacity: 1; }
+html .nc-matrix-row.locked .switch { opacity: .45; }
+html .nc-wa { height: 26px; border: 0; border-radius: 980px; background: var(--ds-fill); color: var(--ds-text-3); font-weight: 600; }
+html .nc-wa.on { background: var(--ds-success-bg); color: var(--ds-success); }
+html .nc-savebar { gap: 12px; padding: 12px 14px 12px 20px; border: 0; border-radius: 18px; background: var(--ds-surface); box-shadow: var(--ds-e3); font-size: 14px; }
+html .nc-savebar > span { font-weight: 500; }
+html .nc-result { border-radius: 14px; font-size: 14px; padding: 12px 14px; }
+
+/* this device: a hero card with a large icon tile */
+html .nc-device { gap: 22px; padding: 28px; border: 0; border-radius: var(--ds-r-hero); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); margin-bottom: 20px; }
+html .nc-device-visual { width: 64px; height: 64px; border-radius: 18px; background: var(--ds-fill); color: var(--ds-text-2); }
+html .nc-kicker { font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ds-accent); }
+html .nc-device-main h3 { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin: 4px 0 8px; }
+html .nc-device-main p { font-size: 15px; color: var(--ds-text-3); }
+html .nc-device-actions { gap: 10px; margin-top: 18px; }
+html .nc-sounds { gap: 12px; }
+html .nc-sound { padding: 14px 16px; border: 0; border-radius: 16px; background: var(--ds-fill); }
+html .nc-sound:hover:not(:disabled) { background: var(--ds-fill-strong); border: 0; }
+html .nc-sound svg { color: var(--ds-accent); }
+html .nc-sound b { font-size: 14px; font-weight: 600; }
+html .nc-sound small { font-size: 12.5px; color: var(--ds-text-3); }
+html .nc-steps, html .nc-checklist { font-size: 14px; color: var(--ds-text-2); gap: 10px; }
+html .nc-checklist li::before { background: var(--ds-text-4); }
+
+/* schedule: the clock as a soft tile, working days as pills */
+html .nc-clock { border: 0; border-radius: 20px; background: var(--ds-fill); padding: 18px 20px; }
+html .nc-clock-time { font-size: 40px; font-weight: 700; letter-spacing: -.03em; }
+html .nc-clock-date { font-size: 14px; font-weight: 500; color: var(--ds-text-2); }
+html .nc-clock-zone { font-size: 13px; color: var(--ds-text-3); }
+html .nc-check b { font-size: 15px; font-weight: 500; }
+html .nc-check small { font-size: 13px; color: var(--ds-text-3); }
+html .nc-check-top { border-top-color: var(--ds-line); margin-top: 20px; padding-top: 18px; }
+html .nc-days { gap: 8px; margin-bottom: 18px; }
+html .nc-day-btn { width: auto; min-width: 56px; height: 38px; padding: 0 16px; border: 0; border-radius: 980px; background: var(--ds-surface); color: var(--ds-text); font-size: 14px; font-weight: 500; box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+html .nc-day-btn.on { background: var(--ds-dark); color: var(--ds-on-dark); box-shadow: none; }
+html .nc-fields { gap: 14px; }
+html .nc-fields label { font-size: 13px; font-weight: 500; color: var(--ds-text-3); gap: 7px; }
+html .nc-chips { gap: 8px; }
+html .nc-chip { min-height: 36px; padding: 0 15px; border: 0; border-radius: 980px; background: var(--ds-surface); color: var(--ds-text); font-size: 14px; font-weight: 500; box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+html .nc-chip:hover { border: 0; box-shadow: var(--ds-e2), 0 0 0 1px var(--ds-line); color: var(--ds-text); }
+html .nc-chip.on { background: var(--ds-dark); color: var(--ds-on-dark); box-shadow: none; }
+
+/* the time zone picker */
+html .tzp-pop { border: 0; border-radius: 18px; box-shadow: var(--ds-e4); background: var(--ds-surface); }
+html[data-theme='dark'] .tzp-pop { background: var(--ds-surface-2); }
+html .tzp-search { border-bottom-color: var(--ds-line); }
+html .tzp-row { border-radius: 12px; }
+html .tzp-row.selected { background: var(--ds-accent-soft); }
+html .tzp-city em { background: var(--ds-success-bg); color: var(--ds-success); }
+
+@media (max-width: 640px) {
+  html .nc-toolbar { flex-direction: column; align-items: stretch; }
+  html .nc-lanes { width: 100%; display: flex; }
+  html .nc-lanes > button { flex: 1; padding-inline: 8px; }
+  html .nc-readall { margin-left: 0; }
+  html .nc-filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 2px; margin-inline: -2px; }
+  .nc-filters::-webkit-scrollbar { display: none; }
+  .nc-filters .ds-chip { flex: none; }
+  html .nc-inbox { padding: 4px; border-radius: 20px; }
+  html .nc-item-main { gap: 12px; padding: 12px 8px; }
+  html .nc-item + .nc-item::after { left: 58px; }
+  html .nc-why, html .nc-sub { margin-left: 58px; margin-right: 8px; }
+  html .na { padding-left: 58px; padding-right: 8px; }
+  html .nc-panel-head { padding: 18px 18px 0; }
+  html .nc-panel-body { padding: 14px 18px 18px; }
+  html .nc-device { padding: 20px; border-radius: 22px; }
+}

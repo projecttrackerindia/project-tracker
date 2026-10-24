@@ -10,6 +10,7 @@ import { Badge, Field, Modal, PageHead, PageLoader, SectionLayout, SubmitButton,
 import { SETTINGS_GROUPS, useWorkspaceSections, type WorkspaceSection } from './sections';
 import { timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import './settings-ds.css';
 import { useAuth, useCan, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from '../auth/passwordPolicy';
@@ -316,7 +317,7 @@ export function WorkspaceSettingsPage() {
   ];
   return (
     <SectionLayout title="Workspace settings" sub="How this workspace is set up: people and access, security, notifications, integrations, AI and billing."
-      groups={groups} navTop={<SettingsSearch compact />}>
+      groups={groups} navTop={current ? <SettingsSearch compact /> : undefined}>
       {!current && <SettingsHome />}
       {current && <SettingsSection id={current.id} />}
     </SectionLayout>
