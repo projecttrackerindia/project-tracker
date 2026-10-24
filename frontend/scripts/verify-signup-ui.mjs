@@ -54,6 +54,7 @@ try {
     await page.getByRole('radio', { name: /Organisation/ }).click();
     await page.getByLabel('Organisation name').waitFor();
     await page.waitForTimeout(700);   // the form's entrance animation
+    await page.waitForTimeout(900);
     await page.screenshot({ path: path.join(artifacts, `signup-organisation-${name}.png`), fullPage: true });
     if (name === 'desktop') {
       await fill(page, 'asha@example.test');

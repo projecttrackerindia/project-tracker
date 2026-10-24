@@ -313,13 +313,11 @@ export function AuthVisual() {
       </div>
       <div className="av-body" ref={bodyRef}>
         <div className="av-copy" ref={copyRef}>
+          <span className="av-eyebrow">Project tracking. Reimagined.</span>
           <h2>
-            Plan the work.<br />
-            Track it <span className="av-rotator">
-              <span style={{ '--d': '0s' } as CSSProperties}>in real time.</span>
-              <span style={{ '--d': '3s' } as CSSProperties}>sprint by sprint.</span>
-              <span style={{ '--d': '6s' } as CSSProperties}>across every team.</span>
-            </span>
+            <span>Every project.</span>
+            <span>Every deadline.</span>
+            <span className="av-quiet">Delivered on time.</span>
           </h2>
           <p>Projects, tasks, timesheets and reporting in one workspace your whole team actually uses.</p>
           <ul className="av-features">

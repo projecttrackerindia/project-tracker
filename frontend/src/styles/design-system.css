@@ -652,6 +652,19 @@ html .content { padding: 32px 40px 64px; }
   .ds-command input, .ds-command textarea { font-size: 16px; }
 }
 
+/* phone chrome: a glass top bar, a floating glass tab bar, one blue create button */
+@media (max-width: 768px) {
+  html .m-top, html[data-theme='dark'] .m-top { background: color-mix(in srgb, var(--ds-bg) 78%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid transparent; }
+  html .m-top.scrolled { border-bottom-color: var(--ds-line); box-shadow: none; }
+  html .m-pill, html[data-theme='dark'] .m-pill { background: var(--ds-glass); backdrop-filter: saturate(180%) blur(24px); -webkit-backdrop-filter: saturate(180%) blur(24px); border: 0; box-shadow: var(--ds-e3); border-radius: 26px; }
+  html .m-tab { color: var(--ds-text-3); border-radius: 18px; }
+  html .m-tab.on { color: var(--ds-accent); background: var(--ds-surface); box-shadow: var(--ds-e2); }
+  html[data-theme='dark'] .m-tab.on { background: var(--ds-fill); }
+  html .m-tab .m-tab-label { font-weight: 500; }
+  html .m-fab, html .m-create-fab { background: var(--primary-fill); color: #fff; box-shadow: 0 10px 28px rgba(0, 113, 227, .35); }
+  html .m-shell .ws-avatar, html .m-top .ws-avatar { background: var(--ds-dark); color: var(--ds-on-dark); border-radius: 10px; }
+}
+
 /* reduced motion: no lifts, no glides, no count-ups */
 @media (prefers-reduced-motion: reduce) {
   .ds-enter { animation: none; }
