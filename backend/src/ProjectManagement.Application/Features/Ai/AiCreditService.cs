@@ -43,7 +43,7 @@ public class AiCreditService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             throw new ArgumentOutOfRangeException(nameof(amount));
         var tid = ctx.RequireTenantId(); var uid = ctx.RequireUserId();
         // Answered on the organization's own Claude or ChatGPT account (the person agreed to it): their provider bills them; no credits.
-        if (workspaceAi is not null && await workspaceAi.ActiveAsync(ct) is not null) return AiCreditLease.Free(amount);
+        if (workspaceAi is not null && await workspaceAi.ActiveAsync(ct) is not null) return AiCreditLease.Free(amount, async c => await db.SaveChangesAsync(c));
         await using var tx = await db.Database.BeginOwnedTransactionAsync(ct);
         await LockAsync(ct);
         var existing = await db.AiCreditReservations.AsNoTracking().FirstOrDefaultAsync(r => r.OperationId == operationId, ct);
@@ -135,18 +135,26 @@ public class AiCreditService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     }
 }
 
-public sealed class AiCreditLease(AiCreditService? service, Guid id, int amount) : IAsyncDisposable
+public sealed class AiCreditLease(AiCreditService? service, Guid id, int amount, Func<CancellationToken, Task>? saveOnly = null) : IAsyncDisposable
 {
     private bool complete;
     private bool settling;
     public int Amount => amount;
     /// <summary>Nothing held and nothing charged: the answer is on the organization's own AI account.</summary>
     public bool IsFree => service is null;
-    public static AiCreditLease Free(int amount) => new(null, Guid.Empty, amount);
+    /// <summary>
+    /// A lease that holds and charges nothing. Settling it still saves what the caller added to the unit of work (the assistant's answer, its
+    /// suggestions, the audit), exactly as a charged settlement does - callers rely on the settlement to persist their result.
+    /// </summary>
+    public static AiCreditLease Free(int amount, Func<CancellationToken, Task>? save = null) => new(null, Guid.Empty, amount, save);
     public async Task SettleAsync(int charged, CancellationToken ct = default)
     {
         if (complete) return;
-        if (service is null) { complete = true; return; }
+        if (service is null)
+        {
+            if (saveOnly is not null) await saveOnly(ct);
+            complete = true; return;
+        }
         settling = true;
         // A settlement that fails must not leave the reservation held forever: once it has failed, disposing releases it.
         try { await service.CompleteAsync(id, charged, ct); complete = true; }

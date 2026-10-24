@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Tests.Infrastructure;
 
@@ -89,5 +90,41 @@ public partial class AiWorkspaceTests
         {
             provider = "anthropic", apiKey = key, quickModel = "claude-haiku-5-5", standardModel = "claude-sonnet-5-5", deepModel = deep, enabled = true, fallbackToPlatform = false,
         };
+    }
+
+    [Fact]
+    public async Task An_answer_on_the_organization_s_own_key_is_saved_and_each_of_its_suggestions_can_be_confirmed()
+    {
+        // Answers on the organization's own key hold no AI credits. The answer (and its cards) must still be saved, or Confirm cannot find them.
+        var o = await Setup();
+        var own = factory.OwnAi; own.Reset();
+        try
+        {
+            Assert.True((await o.Owner.Put("/api/v1/workspace/ai-provider", new { provider = "anthropic", apiKey = GoodKey, quickModel = "claude-haiku-5-5",
+                standardModel = "claude-sonnet-5-5", deepModel = "claude-opus-5-5", enabled = true, fallbackToPlatform = false })).Ok);
+            Assert.True((await o.Owner.Post("/api/v1/ai/provider-consent")).Ok);
+            own.Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_action_item", new { project = "Atlas", title = "Share the server logs", assignee = "me", due_date = Iso(3) }, id: "toolu_a"));
+            own.Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_action_item", new { project = "Atlas", title = "Check why no alert was sent", assignee = "me", due_date = Iso(4) }, id: "toolu_b"));
+            own.Chat.Script.Enqueue(_ => FakeAiChat.Say("Both are ready for you to confirm."));
+            var res = await Ask(o.Owner, "Prepare two action items in Atlas for me to confirm: share the server logs, and check why no alert was sent");
+            Assert.Equal(HttpStatusCode.OK, res.Status);
+            var cards = res.All("action").Select(e => e["action"]!).ToList();
+            Assert.Equal(2, cards.Count);
+
+            // The answer is in the history with its real time, and both cards are on it.
+            var messageId = S(res.Done["id"]);
+            Assert.True(DateTime.Parse(S(res.Done["createdAt"])).Year >= 2020, "the saved answer carries its real time");
+            Assert.NotNull(factory.WithDb(db => db.AiMessages.IgnoreQueryFilters().Where(m => m.Id == Guid.Parse(messageId)).Select(m => m.ActionsJson).Single()));
+
+            foreach (var card in cards)
+            {
+                var confirm = await o.Owner.Post($"/api/v1/ai/messages/{messageId}/actions/{S(card["id"])}/confirm");
+                Assert.True(confirm.Ok, confirm.ToString());
+                Assert.Equal("done", S(confirm.Data!["status"]));
+            }
+            Assert.Equal(2, factory.WithDb(db => db.WorkTasks.IgnoreQueryFilters().Count(a => a.RelatedProjectId == o.Project
+                && (a.Title == "Share the server logs" || a.Title == "Check why no alert was sent"))));
+        }
+        finally { own.Reset(); }
     }
 }

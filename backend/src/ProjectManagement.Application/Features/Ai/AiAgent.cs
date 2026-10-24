@@ -547,7 +547,8 @@ public class AiAgent(IAppDbContext db, ICurrentContext ctx, AppClock clock, Reco
         // A failed run that still produced model output (text, or tool turns that consumed tokens) used the provider; it is charged. A run that
         // failed before the model answered anything stays free.
         var producedOutput = modelWrote || outTokens > 0;
-        var credits = applicationReply || (status == "failed" && !producedOutput) ? 0 : cfg.Credits;
+        // An answer on the organization's own Claude or ChatGPT account is billed by that provider: it uses no AI credits here.
+        var credits = applicationReply || creditReservation?.IsFree == true || (status == "failed" && !producedOutput) ? 0 : cfg.Credits;
         if (planSteps is not null)
         {
             // Steps nothing filled: one with no tool (a summary, an answer) is done when the answer finished; one whose tool failed failed; the rest were not reached.
