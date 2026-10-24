@@ -155,3 +155,47 @@
   .resume-finish .btn { flex: 1; justify-content: center; min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) { .resume-builder * { animation: none; transition: none; } }
+
+/* ===================================================================================================== design system pass
+   The studio in the calm language: a glass action bar, the writing in one white card, the designs and the page in another,
+   the page itself floating on soft depth; optional extras as soft tiles; Edit / Preview / Both as a segmented control. */
+.resume-builder .resume-bar {
+  top: calc(var(--topbar-h, 64px) + 8px); margin: 0 0 20px; padding: 10px 12px 10px 16px; border: 0; border-radius: 18px;
+  background: color-mix(in srgb, var(--ds-surface) 82%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line);
+}
+.resume-builder .resume-bar select { min-height: 38px; border-radius: 980px; border-color: var(--ds-outline); background-color: var(--ds-surface); font-size: 13.5px; padding-left: 14px; }
+.resume-builder .resume-status { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 980px; font-size: 12px; font-weight: 600; background: var(--ds-fill); color: var(--ds-text-2); }
+.resume-builder .resume-status.dirty { background: var(--ds-warning-bg); color: var(--ds-warning); }
+.resume-builder .resume-status.ok { background: var(--ds-success-bg); color: var(--ds-success); }
+.resume-builder .resume-view-switch { padding: 4px; gap: 2px; border: 0; border-radius: 12px; background: var(--ds-fill-strong); }
+.resume-builder .resume-view-switch button { min-height: 32px; padding: 0 14px; border-radius: 9px; font-size: 13px; font-weight: 500; color: var(--ds-text-2); background: transparent; border: 0; transition: background-color .2s var(--ds-ease), color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+.resume-builder .resume-view-switch button[aria-pressed=true] { background: var(--ds-surface); color: var(--ds-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .1), 0 1px 1px rgba(0, 0, 0, .04); }
+html[data-theme='dark'] .resume-builder .resume-view-switch button[aria-pressed=true] { background: #636366; color: #fff; }
+
+.resume-builder .resume-editor, .resume-builder .resume-preview-panel { background: var(--ds-surface); border-radius: var(--ds-r-card); padding: 26px 28px; box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.resume-builder .resume-field { font-size: 13px; font-weight: 500; color: var(--ds-text-3); }
+.resume-builder .resume-field :is(input, textarea) { border-radius: 12px; border-color: var(--ds-outline); font-size: 15px; }
+.resume-builder .resume-field :is(input, textarea):focus { border-color: var(--ds-accent); box-shadow: 0 0 0 4px rgba(0, 113, 227, .16); outline: none; }
+.resume-builder .resume-section-editor { border-top: 1px solid var(--ds-line); }
+.resume-builder .resume-section-editor > summary { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.resume-builder .resume-extra { border: 0; border-radius: 16px; background: var(--ds-fill); padding: 0 18px; }
+.resume-builder .resume-extra[open] { padding-bottom: 18px; }
+.resume-builder .resume-extra > summary { font-weight: 600; }
+
+.resume-builder .resume-designs-head b { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.resume-builder .resume-designs-head span { font-size: 13px; color: var(--ds-text-3); }
+.resume-builder .resume-design { border: 0; border-radius: 12px; background: var(--ds-fill); transition: box-shadow .2s var(--ds-ease), background-color .16s var(--ds-ease); }
+.resume-builder .resume-design:hover:not([aria-disabled=true]) { background: var(--ds-fill-strong); }
+.resume-builder .resume-design[aria-pressed=true] { background: var(--ds-surface); border: 0; box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+.resume-builder .resume-document-frame { border-radius: 6px; box-shadow: var(--ds-e3); }
+.resume-builder .resume-finish .btn:not(.btn-primary) { min-width: 96px; }
+
+.resume-builder .resume-certifications { margin-top: 28px; border-top: 0; padding: 8px 28px 20px; background: var(--ds-surface); border-radius: var(--ds-r-card); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.resume-builder .resume-certifications > summary span { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.resume-builder .resume-certifications li { border-bottom-color: var(--ds-line); }
+@media (max-width: 768px) {
+  .resume-builder .resume-editor, .resume-builder .resume-preview-panel { padding: 18px 16px; border-radius: 20px; }
+  .resume-builder .resume-certifications { padding: 6px 16px 16px; }
+  .resume-builder .resume-bar { top: calc(var(--topbar-h, 56px) + 4px); border-radius: 16px; }
+}
