@@ -124,7 +124,7 @@ try {
     await page.locator('[data-testid="call-mic"]').click();
     assert.equal(await page.locator('[data-testid="call-mic"]').getAttribute('data-lk-enabled'), 'false');
     await page.mouse.move(5, 5);
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-testid="call-mic"]').closest('.cs-pair')).backgroundColor === 'rgb(234, 67, 53)', null, { timeout: 3000 });   // a muted microphone is red
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-testid="call-mic"]').closest('.cs-pair')).backgroundColor === 'rgb(255, 69, 58)', null, { timeout: 3000 });   // a muted microphone is red
     await agent.locator('.cs .lk-participant-tile .cs-muted').first().waitFor({ timeout: 10_000 });   // the other side sees Asha muted
     await shot(page, 'in-call-camera-off-1440.png'); checks.push('camera-and-mic-off');
     // Messages in the call: the panel opens beside the people, and what Asha writes reaches the agent.
