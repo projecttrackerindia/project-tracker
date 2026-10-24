@@ -323,7 +323,7 @@ html .nc-back { color: var(--ds-warning); }
 
 /* actions on a notification: pills, the main one soft blue */
 html .na { padding: 0 12px 14px 64px; gap: 8px; }
-html .na-row { gap: 8px; }
+html .na > .na-row { display: flex; flex-wrap: wrap; grid-template-columns: none; gap: 8px; padding: 0; border-top: 0; }
 html .na-btn { height: 32px; padding: 0 14px; border-radius: 980px; font-size: 13px; font-weight: 500; color: var(--ds-text); background: var(--ds-surface); border: 1px solid var(--ds-outline); }
 html .na-btn:hover { color: var(--ds-text); background: var(--ds-surface-2); border-color: var(--ds-outline); }
 html .na-btn.primary { color: var(--ds-accent); background: var(--ds-fill); border-color: transparent; }
