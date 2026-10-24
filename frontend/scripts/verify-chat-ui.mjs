@@ -16,6 +16,8 @@ const conversation={id:'00000000-0000-0000-0000-000000000010',type:'Direct',name
 const M=(id,mine,body,mins,extra={})=>({id:'00000000-0000-0000-0000-0000000001'+String(id).padStart(2,'0'),conversationId:conversation.id,senderId:mine?user.id:colleague.userId,senderName:mine?user.displayName:colleague.name,kind:'User',replyTo:null,editedAt:null,body,createdAt:at(mins),attachments:[],reactions:[],isDeleted:false,...extra});
 const items=[M(1,false,'I will start the RAML today',1500),M(2,false,'Hi Alex',9),M(3,false,'Can you review the **payments** spec when you get a minute?',8,{reactions:[{emoji:'👍',count:1,mine:true,names:['Alex Morgan']}]}),M(4,true,'Hey Sam',5),M(5,true,'Sure, looking now. Will share comments by lunch.',4,{editedAt:at(3)})];
 const errors=[];const checks=[];let writes=0;let started=null;
+// A question waiting for Alex (desktop part): it leaves "Waiting for your answer" as soon as Alex replies, without a reload.
+let questionOn=false,answered=false;const question=M(6,false,'Can we ship the payments fix today?',1,{asksMe:true});
 // Our own video calls: one is on in another chat (the bar at the top offers to join), and this chat can start its own.
 const liveCall={id:'c-live',title:'Payments sync',kind:'chat',projectId:null,projectKey:null,conversationId:'00000000-0000-0000-0000-000000000011',status:'live',startedAt:at(6),endedAt:null,startedBy:colleague.userId,startedByName:colleague.name,agentEnabled:false,agentStatus:null,canEnd:false,people:[{userId:colleague.userId,name:colleague.name,role:'host',inCall:true,joinedAt:at(6)}]};
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
@@ -39,7 +41,9 @@ try {
   else if(endpoint.endsWith('/ai/usage'))data={month:'2026-10',creditsUsed:223,creditsLimit:1000,creditsLeft:777,unlimited:false,maxTier:'deep',attachments:true,actions:true,tiers:['quick','standard','deep'].map((id,i)=>({id,label:id,model:'synthetic',credits:i+1,allowed:true,description:'Preview mode'})),attachmentTypes:[],maxFiles:3,maxImageMb:2,maxDocumentMb:2,requestLimits:{perMinute:20,perHour:300,perDay:1500}};
   else if(endpoint.endsWith('/ai/starters'))data={greeting:'Welcome back',starters:[]};
   else if(endpoint==='/api/v1/chat/conversations')data=[conversation];
-  else if(endpoint.endsWith('/messages'))data={items,hasMore:false};
+  else if(endpoint==='/api/v1/chat/questions')data=questionOn&&!answered?[{messageId:question.id,conversationId:conversation.id,conversationName:'Sam Rivera',senderName:'Sam Rivera',snippet:question.body,at:question.createdAt,threadRootId:null}]:[];
+  else if(endpoint.endsWith('/messages')&&route.request().method()==='POST'){const b=route.request().postDataJSON();answered=true;data=M(7,true,b.body??'',0);}
+  else if(endpoint.endsWith('/messages'))data={items:questionOn?[...items,{...question,asksMe:!answered}]:items,hasMore:false};
   else if(endpoint.includes('/unread')||endpoint.includes('/counts'))data={count:0,total:0};
   else if(endpoint==='/api/v1/timer')data=null;
   else if(endpoint.endsWith('/workspace/logo'))data={hasLogo:false};
@@ -85,6 +89,14 @@ try {
  await page.locator('[data-msg$="103"] .bubble').hover();assert.ok(await page.locator('[data-msg$="103"] .msg-actions').isVisible());
  await page.getByRole('button',{name:'Formatting'}).click();assert.ok(await page.locator('.composer-tools').isVisible());
  await page.screenshot({path:path.join(artifacts,'desktop.png')});checks.push('desktop-hover-and-format');
+ // A question to Alex waits in the list and on the message; replying clears both at once, with no reload.
+ questionOn=true;await page.goto(origin+'/preview-org/chat/'+conversation.id);await page.locator('.composer').waitFor();
+ await page.locator('.q-box').waitFor();assert.match(await page.locator('.q-box').innerText(),/Waiting for your answer[\s\S]*ship the payments fix today/);
+ assert.equal(await page.locator('[data-msg$="106"] .asks-flag').count(),1);
+ await page.locator('.composer-editable').click();await page.keyboard.type('Yes, shipping at 4.');await page.keyboard.press('Enter');
+ await page.locator('.q-box').waitFor({state:'detached',timeout:5000});
+ assert.equal(await page.locator('[data-msg$="106"] .asks-flag').count(),0,'the question on the message is no longer marked');
+ checks.push('reply-clears-waiting-question');
  // A call on elsewhere shows as a bar with Join; starting one here notifies everyone in the chat and opens the camera check.
  assert.match(await page.locator('[data-testid="call-live-bar"]').innerText(),/Sam Rivera.*is in “Payments sync”/s);
  assert.equal(await page.locator('[data-testid="call-live-bar"] a').getAttribute('href'),'/preview-org/calls/c-live');

@@ -255,8 +255,12 @@ function NotificationsMenu() {
   const list = useQuery({ queryKey: [wid, 'notifications', 'recent'], queryFn: () => notificationApi.list(1, true), enabled: open && !!wid });
   const [pane, setPane] = useState<'notifications' | 'reminders'>('notifications');
   // Reminders live in the same place as notifications: what is coming up, and one tap to add one from any page.
-  const reminders = useQuery({ queryKey: [wid, 'reminders', 'bell'], queryFn: reminderApi.list, enabled: open && pane === 'reminders' && !!wid });
-  const upcoming = (reminders.data?.open ?? []).filter((r) => r.nextFireAt).sort((a, b) => (a.nextFireAt! < b.nextFireAt! ? -1 : 1)).slice(0, 6);
+  const reminders = useQuery({ queryKey: [wid, 'reminders', 'bell'], queryFn: reminderApi.list, enabled: open && !!wid });
+  // Reminders that have gone off and wait for the person (fired, not done) come first; then what is coming up.
+  const openReminders = reminders.data?.open ?? [];
+  const waiting = openReminders.filter((r) => r.state === 'Fired' && !r.completedAt).sort((a, b) => ((a.lastFiredAt ?? '') > (b.lastFiredAt ?? '') ? -1 : 1));
+  const upcoming = openReminders.filter((r) => r.state !== 'Fired' && r.nextFireAt).sort((a, b) => (a.nextFireAt! < b.nextFireAt! ? -1 : 1));
+  const shownReminders = [...waiting.map((r) => ({ r, due: true })), ...upcoming.map((r) => ({ r, due: false }))].slice(0, 8);
   const refresh = () => queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] });
   const readAll = useMutation({ mutationFn: notificationApi.readAll, onSuccess: refresh });
   const count = unread.data?.count ?? 0;
@@ -274,23 +278,26 @@ function NotificationsMenu() {
         {count > 0 && <span className="notif-dot">{count > 9 ? '9+' : count}</span>}
       </button>
       {open && (
-        <div className="dropdown-panel">
+        // Anchored to the window, not the bell: next to the screen's edge it would otherwise run off it and cut off its buttons.
+        <div className="dropdown-panel notif-panel" data-testid="bell-panel">
           <div className="dp-head">
             <div className="dp-tabs" role="tablist" aria-label="Show">
               <button type="button" role="tab" aria-selected={pane === 'notifications'} className={pane === 'notifications' ? 'on' : ''} onClick={() => setPane('notifications')}>Notifications{count > 0 ? ` (${count > 99 ? '99+' : count})` : ''}</button>
-              <button type="button" role="tab" aria-selected={pane === 'reminders'} className={pane === 'reminders' ? 'on' : ''} onClick={() => setPane('reminders')}>Reminders</button>
+              <button type="button" role="tab" aria-selected={pane === 'reminders'} className={pane === 'reminders' ? 'on' : ''} onClick={() => setPane('reminders')}>Reminders{waiting.length > 0 ? ` (${waiting.length})` : ''}</button>
             </div>
             {pane === 'notifications' && count > 0 && <button className="link" style={{ fontSize: 12 }} onClick={() => readAll.mutate()}>Mark all read</button>}
             {pane === 'reminders' && <button className="link" style={{ fontSize: 12 }} onClick={() => { setOpen(false); openReminderComposer(); }}>+ New reminder</button>}
           </div>
           {pane === 'reminders' && <ReminderSuggestions compact />}
           {pane === 'reminders' ? (reminders.isLoading ? <div className="sr-empty">Loading…</div>
-            : upcoming.length === 0 ? <div className="sr-empty">No reminders coming up. Add one from here, or "Remind me" on any task or ticket.</div>
-            : upcoming.map((r) => (
-              <button key={r.id} className="dp-item" onClick={() => { setOpen(false); nav(r.link ?? '/reminders'); }}>
-                <span className="dp-ico">⏰</span>
+            : shownReminders.length === 0 ? <div className="sr-empty">No reminders waiting or coming up. Add one from here, or "Remind me" on any task or ticket.</div>
+            : shownReminders.map(({ r, due }) => (
+              <button key={r.id} className={`dp-item ${due ? 'unread' : ''}`} onClick={() => { setOpen(false); nav(r.link ?? '/reminders'); }} data-testid={due ? 'bell-reminder-due' : 'bell-reminder'}>
+                <span className="dp-ico">{due ? '🔔' : '⏰'}</span>
                 <span className="dp-main"><b>{r.title}</b>{r.targetKey && <span>{r.targetKey}{r.targetTitle ? ` · ${r.targetTitle}` : ''}</span>}
-                  <span className="muted" style={{ display: 'block', fontSize: 11 }}>{new Date(r.nextFireAt!).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}{r.recurrenceText ? ` · ${r.recurrenceText}` : ''}</span></span>
+                  <span className="muted" style={{ display: 'block', fontSize: 11 }}>{due
+                    ? `Due ${r.lastFiredAt ? timeAgo(r.lastFiredAt) : 'now'} · waiting for you`
+                    : `${new Date(r.nextFireAt!).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}${r.recurrenceText ? ` · ${r.recurrenceText}` : ''}`}</span></span>
               </button>
             )))
           : list.isLoading ? <div className="sr-empty">Loading…</div>

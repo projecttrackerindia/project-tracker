@@ -112,7 +112,8 @@ export function AskChatDialog({ conversationId, onClose }: { conversationId?: st
 export function QuestionsBox() {
   const wid = useWorkspaceId() ?? '';
   const navigate = useNavigate();
-  const q = useWsQuery([...chatKeys.questions(wid)].slice(1), () => chatApi.questions(), { staleTime: 30_000 });
+  // Also checked again when the person comes back to the app (a phone switching back) and every minute, in case a live update was missed.
+  const q = useWsQuery([...chatKeys.questions(wid)].slice(1), () => chatApi.questions(), { staleTime: 30_000, refetchOnWindowFocus: true, refetchInterval: 60_000 });
   const [open, setOpen] = useState(true);
   const items = q.data ?? [];
   if (!items.length) return null;

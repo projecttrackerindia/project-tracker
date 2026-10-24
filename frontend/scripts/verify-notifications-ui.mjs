@@ -55,6 +55,11 @@ try{
    else if(/^\/api\/v1\/reminders\/suggestions\/s\d\/(accept|dismiss)$/.test(ep)&&method==='POST'){writes.push({ep});suggestions=[];data={id:'r1',title:offer.title,state:'Scheduled',nextFireAt:offer.fireAt};}
    else if(ep==='/api/v1/reminders/settings'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});remSettings=b;data=b;}
    else if(ep==='/api/v1/me/ui/sidebar')data={key:'sidebar',value:null,updatedAt:null};
+   else if(ep==='/api/v1/reminders'&&method==='GET'){
+    // One reminder that went off and waits for the person, one coming up.
+    const R=(id,title,state,extra)=>({id,source:'Personal',state,title,note:null,targetType:'None',targetId:null,targetKey:null,targetTitle:null,link:null,timeZone:'Asia/Kolkata',localAt:null,anchorDays:null,anchorTime:null,recurrence:null,recurrenceText:null,onlyIfOpen:false,exact:false,nextFireAt:null,isSnoozed:false,snoozeCount:0,fireCount:0,lastFiredAt:null,quiet:false,completedAt:null,seriesId:null,from:null,for:null,canEdit:true,createdAt:iso(-600),...extra});
+    data={open:[R('rm1','Call the bank about the EMI file','Fired',{lastFiredAt:iso(-20),fireCount:1}),R('rm2','Submit my timesheet','Scheduled',{nextFireAt:iso(60*30)})],completed:[],sent:[],counts:{},limits:{open:100,recurring:20,openUsed:2,recurringUsed:0}};
+   }
    else{
     assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
     if(ep.endsWith('/auth/refresh'))data={accessToken:token,expiresAt:'2099-01-01T00:00:00Z',user};
@@ -179,6 +184,18 @@ try{
  const before=writes.length;await bell.getByRole('button',{name:'Mark done'}).click();
  for(let i=0;i<30&&writes.length===before;i++)await page.waitForTimeout(100);
  assert.equal(writes.at(-1).ep,'/api/v1/notifications/n1/act');checks.push('bell-actions');
+ // The panel sits wholly on screen (it used to run off the right edge and cut off Snooze), and its Reminders tab shows a reminder that
+ // went off and still waits, before what is coming up.
+ const panel=await page.locator('[data-testid="bell-panel"]').boundingBox();const vw=page.viewportSize().width;
+ assert.ok(panel&&panel.x>=0&&panel.x+panel.width<=vw,'the bell panel is on screen');
+ for(const b of await page.locator('[data-testid="bell-panel"] .na-btn').all()){const r=await b.boundingBox();if(r)assert.ok(r.x+r.width<=vw,'no action cut off');}
+ await page.locator('[data-testid="bell-panel"]').getByRole('tab',{name:/Reminders/}).click();
+ await page.locator('[data-testid="bell-reminder-due"]').waitFor();
+ assert.match(await page.locator('[data-testid="bell-reminder-due"]').innerText(),/Call the bank about the EMI file[\s\S]*waiting for you/);
+ assert.match(await page.locator('[data-testid="bell-reminder"]').innerText(),/Submit my timesheet/);
+ assert.match(await page.locator('[data-testid="bell-panel"]').getByRole('tab',{name:/Reminders/}).innerText(),/Reminders \(1\)/);
+ await shot(page,'bell-reminders.png');checks.push('bell-on-screen-and-reminders');
+ await page.locator('[data-testid="bell-panel"]').getByRole('tab',{name:/Notifications/}).click();
  await page.keyboard.press('Escape');await page.mouse.click(5,700);
  await shot(page,'inbox-actions.png');
  // Delivery: a WhatsApp column where WhatsApp is set up, showing what goes there (changed in its own consent section below).
@@ -229,6 +246,12 @@ try{
  assert.ok(await waitWrite(w=>w.ep==='/api/v1/notifications/n1/archive'&&writes.filter(x=>x.ep===w.ep).length>1));
  await page.waitForTimeout(5500);   // toasts gone before the picture
  await shot(page,'inbox-phone.png');
+ // The phone's bell opens the list of notifications.
+ await page.locator('.m-top').getByRole('button',{name:/^Notifications/}).click();
+ await page.locator('.sheet .m-row.note').first().waitFor();
+ assert.ok((await page.locator('.sheet .m-row.note').count())>=1);
+ const sheet=await page.locator('.sheet').boundingBox();assert.ok(sheet&&sheet.height>200,'the sheet is open and readable');
+ await shot(page,'bell-phone.png');await page.keyboard.press('Escape');
  checks.push('phone');
 
  assert.deepEqual(errors,[]);

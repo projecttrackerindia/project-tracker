@@ -13,7 +13,7 @@ import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { plainText } from './chatFormat';
 import { chatKeys, useChat } from './chatStore';
-import { putMessage } from './chatCache';
+import { markAnswered, putMessage } from './chatCache';
 import { useProjectChat } from './projectChatStore';
 import { emitReminders, emitViewing, notifyLiveConnected, setLiveConnection, type ReminderEvent, type ViewingEvent } from '../live/bus';
 
@@ -173,11 +173,14 @@ export function ChatRealtime() {
       if (e.message.threadRootId) {
         putMessage(wid, e.message);
         if (e.message.senderId) useChat.getState().clearTyping(e.conversationId, e.message.senderId);
-        void queryClient.invalidateQueries({ queryKey: chatKeys.questions(wid) });
+        if (e.message.senderId === me) markAnswered(wid, e.message);   // my reply (from here or another device) answers what came before it
+        else void queryClient.invalidateQueries({ queryKey: chatKeys.questions(wid) });
         return;
       }
       putInThread(e.conversationId, e.message, false);
-      if (e.message.senderId !== me) void queryClient.invalidateQueries({ queryKey: chatKeys.questions(wid) });
+      // A question to me adds to "Waiting for your answer"; my own message (sent here or on another device) answers what came before it.
+      if (e.message.senderId === me) markAnswered(wid, e.message);
+      else void queryClient.invalidateQueries({ queryKey: chatKeys.questions(wid) });
       if (e.message.senderId) useChat.getState().clearTyping(e.conversationId, e.message.senderId);
       refreshLists();
       const viewing = useChat.getState().openConversation === e.conversationId && !away();

@@ -146,6 +146,8 @@ svg { display: block; flex-shrink: 0; }
 .search-results { left: 0; right: 0; max-height: 420px; }
 .dropdown-panel { right: 0; width: 340px; max-height: 440px; padding: 8px; }
 .dropdown-panel.left { right: auto; left: 0; }
+/* The bell's panel: held to the window's right edge (the bell sits near it) so it never runs off screen; tall enough to read a few items. */
+.dropdown-panel.notif-panel { position: fixed; top: calc(var(--topbar-h, 60px) + 6px); right: 12px; width: min(400px, calc(100vw - 24px)); max-height: min(600px, calc(100vh - var(--topbar-h, 60px) - 24px)); }
 .sr-group-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); padding: 9px 10px 5px; }
 .sr-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; width: 100%; text-align: left; transition: background .14s; }
 .sr-item:hover, .sr-item.active { background: rgba(var(--accent-rgb), .12); }

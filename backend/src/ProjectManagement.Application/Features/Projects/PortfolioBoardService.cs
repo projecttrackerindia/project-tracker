@@ -346,7 +346,6 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         var members = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && people.Contains(m.UserId)).Select(m => new { m.UserId, m.User!.DisplayName, m.WeeklyCapacityMinutes }).ToListAsync(ct);
         var leave = await db.PlannedLeaves.AsNoTracking().Where(l => people.Contains(l.UserId) && l.WorkDate >= start && l.WorkDate <= end).Select(l => new { l.UserId, l.WorkDate }).ToListAsync(ct);
         var weeks = Enumerable.Range(0, CapacityWeeks).Select(i => start.AddDays(i * 7)).ToList();
-        static bool Working(DateOnly d) => d.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday);
 
         var result = new List<CapacityPersonDto>();
         foreach (var m in members)
@@ -360,28 +359,26 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
             {
                 var minutes = Remaining(t.EstimatedHours, t.ActualHours);
                 if (t.EstimatedHours is not > 0) unestimated++;
-                var from = new[] { today, t.StartDate ?? today, start }.Max();
-                var to = t.DueDate!.Value < from ? from : t.DueDate.Value;
-                var days = new List<DateOnly>();
-                for (var d = from; d <= to && d <= end; d = d.AddDays(1)) if (Working(d) && !off.Contains(d)) days.Add(d);
-                if (days.Count == 0) days.Add(weeks[0]);
+                var days = CapacityPlan.Days(today, start, end, t.StartDate, t.DueDate!.Value, off);
                 foreach (var d in days) { var w = weeks.Last(x => x <= d); demand[w] += minutes / days.Count; }
                 (string Key, string Name, int Minutes, int Tasks) cur = perProject.TryGetValue(t.ProjectId, out var had) ? had : (t.Key, t.Project, 0, 0);
                 perProject[t.ProjectId] = (cur.Key, cur.Name, cur.Minutes + minutes, cur.Tasks + 1);
             }
             var weekRows = weeks.Select(w =>
             {
-                var workingDays = Enumerable.Range(0, 7).Select(i => w.AddDays(i)).Count(d => Working(d) && !off.Contains(d) && d >= today);
+                var workingDays = Enumerable.Range(0, 7).Select(i => w.AddDays(i)).Count(d => CapacityPlan.Open(d, today, off));
                 var capMin = weekly * workingDays / 5;
-                return new CapacityWeekDto(w, capMin, demand[w], capMin > 0 ? (int)Math.Round(demand[w] * 100.0 / capMin) : demand[w] > 0 ? 999 : null);
+                return new CapacityWeekDto(w, capMin, demand[w], CapacityPlan.Load(demand[w], capMin));
             }).ToList();
             var totalCap = weekRows.Sum(x => x.CapacityMinutes); var totalDemand = weekRows.Sum(x => x.DemandMinutes);
-            int? load = totalCap > 0 ? (int)Math.Round(totalDemand * 100.0 / totalCap) : totalDemand > 0 ? 999 : null;
+            var load = CapacityPlan.Load(totalDemand, totalCap);
             result.Add(new CapacityPersonDto(m.UserId, m.DisplayName, load, weekRows,
                 perProject.Select(p => new CapacityProjectDto(p.Key, p.Value.Key, p.Value.Name, p.Value.Minutes, p.Value.Tasks)).OrderByDescending(p => p.Minutes).ToList(),
                 off.Count, unestimated));
         }
-        var over = result.Where(p => p.Weeks.Any(w => w.Load > 100)).OrderByDescending(p => p.Weeks.Max(w => w.Load ?? 0)).ToList();
+        // Over: more work than time in some week - including work in a week with no time at all (all of it on leave).
+        var over = result.Where(p => p.Weeks.Any(w => w.Load > 100 || (w.CapacityMinutes == 0 && w.DemandMinutes > 0)))
+            .OrderByDescending(p => p.Weeks.Max(w => w.Load ?? (w.DemandMinutes > 0 ? int.MaxValue : 0))).ToList();
         var atRisk = over.SelectMany(p => p.Projects).GroupBy(p => p.ProjectId)
             .Select(g => new CapacityProjectDto(g.Key, g.First().Key, g.First().Name, g.Sum(x => x.Minutes), g.Sum(x => x.Tasks))).OrderByDescending(p => p.Minutes).ToList();
         var notes = new List<string>();
@@ -476,3 +473,36 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         return ReportWriter.Write(doc, format);
     }
 }
+
+/// <summary>
+/// How the portfolio capacity spreads work over days. Work is spread over the working days a person still has (not weekends, not their
+/// planned leave, not days already past) from when it can start to when it is due. Work that is overdue, or due on a day that is gone or
+/// off, lands on the next day the person can actually work - so on a Saturday the week that is ending shows no time and no work, rather
+/// than a percentage of nothing.
+/// </summary>
+public static class CapacityPlan
+{
+    public static bool Working(DateOnly d) => d.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday);
+
+    /// <summary>A day the person can still work: a weekday, not on leave, today or later.</summary>
+    public static bool Open(DateOnly d, DateOnly today, IReadOnlySet<DateOnly> off) => Working(d) && !off.Contains(d) && d >= today;
+
+    /// <summary>The days a piece of work is spread over, within [windowStart, windowEnd]. Never empty.</summary>
+    public static List<DateOnly> Days(DateOnly today, DateOnly windowStart, DateOnly windowEnd, DateOnly? taskStart, DateOnly due, IReadOnlySet<DateOnly> off)
+    {
+        var from = new[] { today, taskStart ?? today, windowStart }.Max();
+        var to = due < from ? from : due;
+        var days = new List<DateOnly>();
+        for (var d = from; d <= to && d <= windowEnd; d = d.AddDays(1)) if (Open(d, today, off)) days.Add(d);
+        if (days.Count > 0) return days;
+        // Overdue, or due on a day off: the next day the person can work.
+        for (var d = from; d <= windowEnd; d = d.AddDays(1)) if (Open(d, today, off)) return [d];
+        // No working day left in the whole window (on leave throughout): its last day, where it shows as work with no time.
+        return [windowEnd];
+    }
+
+    /// <summary>Work as a share of the time available; none when there is no time (the screen then says so, rather than 999%).</summary>
+    public static int? Load(int demandMinutes, int capacityMinutes) =>
+        capacityMinutes > 0 ? (int)Math.Round(demandMinutes * 100.0 / capacityMinutes) : null;
+}
+

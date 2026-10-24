@@ -11,6 +11,7 @@ import { formatDate, formatDateTime } from '../../lib/format';
 import { queryClient, useAuth, useEntitlement, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { COMMON_EMOJI, dayKey, dayLabel, domToBody, markdownToHtml, mentionChipHtml, mentionsUser, plainText, renderBody, timeOf } from './chatFormat';
+import { markAnswered } from './chatCache';
 import { chatKeys, PRESENCE_LABEL, useChat, useTypingNames } from './chatStore';
 import type { PresenceStatus } from '../../api/types';
 import { fallbackStatus, PresenceDot } from './Presence';
@@ -320,6 +321,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
             return old.items.some((x) => x.id === m.id) ? { ...old, items: old.items.map((x) => (x.id === m.id ? m : x)) } : { ...old, items: [...old.items, m] };
           });
           void queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid) });
+          if (!editing) markAnswered(wid, m);   // also when the live connection is down (a phone just woke up)
         }} />
 
       {openThread && <ThreadPanel key={openThread} conversation={conversation} rootId={openThread} focus={params.get('thread') ? params.get('m') : null} onClose={closeThread} unfurls={unfurls} />}
@@ -378,7 +380,7 @@ function ThreadPanel({ conversation, rootId, focus, onClose, unfurls }: { conver
         <Composer key={`${rootId}:${editing?.id ?? ''}`} conversation={conversation} replyTo={replyTo} editing={editing} threadRootId={rootId}
           mentionable={conversation.type === 'Project' ? conversation.members.filter((m) => m.userId !== me).map((m) => ({ userId: m.userId, name: m.name })) : []}
           onCancel={() => { setReplyTo(null); setEditing(null); }}
-          onSent={(m) => { setReplyTo(null); setEditing(null); putMessage(wid, m); }} />
+          onSent={(m) => { const edit = !!editing; setReplyTo(null); setEditing(null); putMessage(wid, m); if (!edit) markAnswered(wid, m); }} />
       )}
     </aside>
   );

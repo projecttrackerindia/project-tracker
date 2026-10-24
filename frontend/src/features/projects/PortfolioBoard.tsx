@@ -154,7 +154,11 @@ export function CapacitySection({ c }: { c: PortfolioCapacity }) {
           {c.over.map((p) => (
             <div key={p.userId} className="pb-cap-row" role="row">
               <span role="cell"><b>{p.name}</b>{p.leaveDays > 0 && <small> · {p.leaveDays} day{p.leaveDays === 1 ? '' : 's'} leave</small>}</span>
-              {p.weeks.map((w) => <span key={w.weekStart} role="cell" className={`pb-load ${loadClass(w.load)}`} title={`${hours(w.demandMinutes)} of work, ${hours(w.capacityMinutes)} available`}>{w.load == null ? '—' : `${w.load}%`}</span>)}
+              {p.weeks.map((w) => {
+                // No time that week (on leave, or the week is over) but work landing in it: say so, not a percentage of nothing.
+                const noTime = w.capacityMinutes === 0 && w.demandMinutes > 0;
+                return <span key={w.weekStart} role="cell" className={`pb-load ${noTime ? 'bad' : loadClass(w.load)}`} title={`${hours(w.demandMinutes)} of work, ${hours(w.capacityMinutes)} available`}>{noTime ? `${hours(w.demandMinutes)}, no time` : w.load == null ? '—' : `${w.load}%`}</span>;
+              })}
               <span role="cell" className="pb-cap-projects">{p.projects.map((x) => x.key).join(', ')}</span>
             </div>
           ))}

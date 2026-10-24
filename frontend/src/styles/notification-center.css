@@ -229,6 +229,9 @@
 .nc-menu-group button { padding-left: 28px !important; }
 .nc-back { color: var(--warning); font-weight: 600; }
 .m-note-acts .na { padding: 0 14px 12px 60px; }
+/* In the phone's bell sheet the action buttons sit side by side, as on the inbox page (the sheet's own buttons stretch full width). */
+.m-note-acts .na-row { display: flex; flex-wrap: wrap; flex-direction: row; }
+.m-note-acts .na-btn { width: auto; flex: 0 0 auto; }
 @media (max-width: 640px) { .na { padding-left: 12px; } .m-note-acts .na { padding-left: 14px; } }
 
 /* the WhatsApp column of the delivery grid (shown where WhatsApp is set up) */

@@ -14,3 +14,20 @@ export function putMessage(wid: string, m: ChatMessage) {
   }
   void queryClient.invalidateQueries({ queryKey: chatKeys.pins(wid, m.conversationId) });
 }
+
+/**
+ * The person just wrote something: any question to them before it, at the same level (the conversation, or that thread), is answered -
+ * the server's rule. Clears the ❓ marks at once and has the "Waiting for your answer" list fetched again.
+ */
+export function markAnswered(wid: string, mine: ChatMessage) {
+  const answers = (x: ChatMessage) => !!x.asksMe && x.createdAt <= mine.createdAt
+    && ((x.threadRootId ?? null) === (mine.threadRootId ?? null) || (!x.threadRootId && mine.threadRootId === x.id));
+  queryClient.setQueryData<ChatThread>(chatKeys.thread(wid, mine.conversationId), (old) => old && { ...old, items: old.items.map((x) => (answers(x) ? { ...x, asksMe: false } : x)) });
+  if (mine.threadRootId) {
+    queryClient.setQueryData<{ root: ChatMessage; replies: ChatMessage[] }>(chatKeys.threadView(wid, mine.threadRootId), (old) => old && {
+      ...old, root: answers(old.root) ? { ...old.root, asksMe: false } : old.root, replies: old.replies.map((x) => (answers(x) ? { ...x, asksMe: false } : x)),
+    });
+  }
+  void queryClient.invalidateQueries({ queryKey: chatKeys.questions(wid) });
+}
+
