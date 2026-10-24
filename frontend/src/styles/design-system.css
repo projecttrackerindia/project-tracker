@@ -313,7 +313,8 @@ html .badge {
 }
 html .badge .dot { width: 6px; height: 6px; box-shadow: none; }
 html .badge-success, html .badge.on-track { background: var(--ds-success-bg); color: var(--ds-success); }
-html .badge-warning, html .badge-high, html .badge.at-risk { background: var(--ds-warning-bg); color: var(--ds-warning); }
+html .badge-warning, html .badge.at-risk { background: var(--ds-warning-bg); color: var(--ds-warning); }
+html .badge-high { background: var(--ds-high-bg); color: var(--ds-high); }
 html .badge-danger, html .badge-critical, html .badge.delayed { background: var(--ds-danger-bg); color: var(--ds-danger); }
 html .badge-info, html .badge-medium { background: var(--ds-info-bg); color: var(--ds-info); }
 html .badge-purple, html .badge.in-progress { background: var(--ds-progress-bg); color: var(--ds-progress); }
@@ -507,7 +508,7 @@ html .btn.btn-risk:not(#_):hover:not(:disabled) { background: color-mix(in srgb,
   transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
 .ds-choice .ds-tile-ico { margin-bottom: 14px; }
 .ds-choice b { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
-.ds-choice span { font-size: 13px; color: var(--ds-text-3); line-height: 1.4; }
+.ds-choice > span:not(.ds-tile-ico) { font-size: 13px; color: var(--ds-text-3); line-height: 1.4; }
 .ds-choice:hover { background: var(--ds-fill-strong); }
 .ds-choice.on, .ds-choice[aria-pressed='true'], .ds-choice[aria-checked='true'] { background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
 
