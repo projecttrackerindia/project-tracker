@@ -1,3 +1,5 @@
+using ProjectManagement.Domain.Common;
+
 namespace ProjectManagement.Domain.Entities;
 
 /// <summary>
