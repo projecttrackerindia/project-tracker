@@ -6,9 +6,9 @@
 export function BrandMark({ size = 20 }: { size?: number }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden="true">
-      <path d="M5.5 12.5l4 4L14 10" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M14 10l3.2-3.6" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="18.3" cy="5.7" r="2.1" fill="#fff" />
+      <path d="M5.5 12.5l4 4L14 10" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 10l3.2-3.6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="18.3" cy="5.7" r="2.1" fill="currentColor" />
     </svg>
   );
 }
