@@ -129,22 +129,23 @@ function Hero({ c, onWhatIf }: { c: CommandCenter; onWhatIf: () => void }) {
     { label: 'Others waiting', value: c.counts.blocking, tone: c.counts.blocking > 0 ? 'warning' : undefined, icon: 'layers' },
     { label: 'Meetings', value: c.counts.meetingsToday, icon: 'video' },
   ];
+  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  // The greeting leads; the headline is the one line under it; six numbers follow, coloured only when the colour means something.
   return (
     <header className="cmd-hero">
       <div className="cmd-hero-top">
-        <span className="cmd-hero-mark"><AgentMark size={30} animated={c.counts.attention > 0} /></span>
         <div className="cmd-hero-text">
+          <span className="eyebrow">{today}</span>
           <h1>{c.greeting}</h1>
           <p>{c.headline}</p>
         </div>
-        <button type="button" className="btn btn-ghost btn-sm cmd-whatif-btn" onClick={onWhatIf}><Icon name="git" size={14} />What if…</button>
+        <button type="button" className="btn btn-ghost cmd-whatif-btn" onClick={onWhatIf}><Icon name="git" size={14} />What if…</button>
       </div>
       <div className="cmd-stats" role="list">
         {stats.map((s) => (
           <div key={s.label} role="listitem" className={`cmd-stat ${s.tone ? `cmd-stat-${s.tone}` : ''} ${s.value === 0 ? 'zero' : ''}`}>
-            <Icon name={s.icon} size={14} />
-            <b>{s.value}</b>
             <span>{s.label}</span>
+            <b>{s.value}</b>
           </div>
         ))}
       </div>

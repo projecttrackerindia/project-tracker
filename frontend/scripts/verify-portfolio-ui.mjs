@@ -81,7 +81,11 @@ try{
 
  // Decisions: the headline with its causes and options with their effect; proposing one.
  const decisions=page.getByRole('region',{name:'Decisions this week'});
- await decisions.getByText('PAY finishes 6 days late',{exact:false}).waitFor();
+ // The decision card: how late as the eyebrow, the project, why in one line, and the date change (due struck → forecast) as its hero.
+ await decisions.getByText('6 days late',{exact:true}).waitFor();
+ assert.ok(await decisions.getByRole('heading',{name:/Payments/}).isVisible());
+ assert.ok(await decisions.getByText('Ravi Kumar is on leave from 3 Nov',{exact:false}).first().isVisible());
+ assert.ok(await decisions.locator('.ds-shift s').isVisible()&&await decisions.locator('.ds-shift b').isVisible(),'due and forecast dates');
  const move=decisions.getByRole('listitem').filter({hasText:'Move Jyothsna Reddy onto PAY for a week'});
  assert.ok(await move.getByText('1 day late').isVisible());
  await move.getByRole('button',{name:'What changes'}).click();
@@ -112,13 +116,16 @@ try{
  assert.ok(await summary.getByText('Written by the AI',{exact:false}).isVisible());
  checks.push('ai-summary');
 
- // Filters go into the address and the query.
+ // Filters (behind the "Filters · n" pill) go into the address and the query.
+ await page.getByRole('button',{name:'Filters · 0'}).click();
  await page.getByRole('group',{name:'Filters'}).getByRole('combobox',{name:'Owner'}).click();await page.getByRole('option',{name:'Ravi Kumar'}).click();
  for(let i=0;i<100&&!page.url().includes(`owner=${ravi}`);i++)await page.waitForTimeout(100);
  assert.ok(page.url().includes(`owner=${ravi}`),page.url());
  for(let i=0;i<30&&!boardQueries.some(qs=>qs.includes(`ownerId=${ravi}`));i++)await page.waitForTimeout(100);
  assert.ok(boardQueries.some(qs=>qs.includes(`ownerId=${ravi}`)));
- const [dl]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'Excel'}).click()]);
+ assert.ok(await page.getByRole('button',{name:'Filters · 1'}).isVisible(),'the pill counts the filters set');
+ await page.getByRole('button',{name:'Export'}).click();
+ const [dl]=await Promise.all([page.waitForEvent('download'),page.getByRole('menuitem',{name:'Excel'}).click()]);
  assert.match(dl.suggestedFilename(),/portfolio-.*\.xlsx/);
  const exp=await waitWrite(w=>w.ep==='/api/v1/portfolio/export');
  assert.match(exp.q,/format=xlsx/);assert.match(exp.q,new RegExp(`ownerId=${ravi}`));
@@ -136,10 +143,14 @@ try{
  await shot(page,'timeline-1440.png');
  checks.push('timeline');
 
- await page.setViewportSize({width:390,height:844});
  await page.getByRole('navigation',{name:'Portfolio view'}).getByRole('button',{name:'Board'}).click();
+ await page.getByRole('region',{name:'Summary'}).waitFor();
+ await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await shot(page,'board-dark-1440.png');
+ await page.evaluate(()=>document.documentElement.setAttribute('data-theme','light'));
+ await page.setViewportSize({width:820,height:1000});await shot(page,'board-820.png');
+ await page.setViewportSize({width:390,height:844});
  await page.getByRole('region',{name:'Summary'}).waitFor();await page.waitForTimeout(300);
- await fitsPhone(page,'portfolio board',assert);
+ await fitsPhone(page,'portfolio board',assert);await shot(page,'board-390.png');
  checks.push('phone');
  assert.deepEqual(errors,[]);
  }catch(e){await page.screenshot({path:path.join(out,'failure.png'),fullPage:true}).catch(()=>{});console.log('URL:',page.url());console.log('errors:',errors);throw e;}

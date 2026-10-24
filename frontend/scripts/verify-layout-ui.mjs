@@ -45,7 +45,7 @@ try{
    else if(ep.includes('/project-status/projects/'))data={project,tasks,changes:[],delayedTasks:0,blockedTasks:0};
    else if(ep==='/api/v1/calendar')data=['Requirements and Planning','Code Review','User Acceptance Testing','Production Deployment'].map((title,i)=>({id:`20000000-0000-0000-0000-00000000000${i}`,type:'stage',title,date:today,status:'Pending',category:'Todo',overdue:false,projectId:pid,projectName:'Long integration project name with a descriptive delivery title',priority:'Medium'}));
    else if(ep==='/api/v1/ai/status')data={enabled:true,configured:true,entitled:true,allowedHere:true,model:'synthetic',provider:'Gemini'};
-   else if(ep==='/api/v1/ai/portfolio/brief')data={ranked:[],projects:0,totals:{}};
+   else if(ep==='/api/v1/ai/portfolio/brief')data={ranked:[{projectId:pid,key:'DEMO',name:project.name,group:'Delivery',health:'AtRisk',progress:33,owner:null,startDate:'2026-10-01',dueDate:'2027-07-09',delayedDays:0,openTasks:2,overdueTasks:0,blockedTasks:0,openActionItems:0,overdueActionItems:1,finishedLast28Days:0,inProgressTasks:2,projectedFinish:null,projectedSlipDays:null,confidence:'none',score:5,level:'High',reasons:['Nothing has finished in the last 4 weeks, and 2 tasks are still open.','1 action item is overdue.']}],projects:1,totals:{}};
    else if(ep==='/api/v1/ai/usage')data=usage;
    else if(ep==='/api/v1/ai/usage/report')data={month:'2026-10',creditsUsed:240,creditsLimit:1000,unlimited:false,answers:80,failed:0,byTier:[{tier:'quick',answers:40,credits:40},{tier:'standard',answers:40,credits:200}],people:[{userId:user.id,name:user.displayName,answers:80,credits:240,byTier:[{tier:'quick',answers:40},{tier:'standard',answers:40}]}]};
    else if(ep==='/api/v1/ai/credits/balance')data={spent:240,reserved:20,available:740,unlimited:false};
@@ -67,6 +67,8 @@ try{
  async function capture(name){assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,name+' viewport overflow');assert.deepEqual(await cutOff(page),[],'cut off at the right edge');await page.screenshot({path:path.join(out,name+'.png'),animations:'disabled'});checks.push(name);}
  for(const width of [1440,1080,820,390]){
   await open('/preview-org/portfolio?project='+pid,'.ps-table',width);
+  // The risk banner: the level and forecast in one line, the first reason under it, Why? and What if…
+  await page.locator('.pi-project.ds-banner.risk').waitFor();assert.match(await page.locator('.pi-project .txt b').innerText(),/High risk — no forecast possible/);
   assert.equal(await page.locator('.ps-head').evaluate(el=>[...el.children].every(c=>c.getBoundingClientRect().right<=el.getBoundingClientRect().right+1)),true,'Project heading stays inside the panel');
   if(width===1080)await page.getByRole('tab',{name:'Side by side'}).click();
   const overlap=await page.locator('.ps-table tbody tr').evaluateAll(rows=>rows.some(row=>{const cells=[...row.cells];return cells.slice(0,-1).some((c,i)=>{const box=c.getBoundingClientRect(),next=cells[i+1].getBoundingClientRect();if(Math.abs(box.top-next.top)>2)return false;return [...c.querySelectorAll('.ps-assignee span:not(.avatar),.ps-date>span,.ps-status')].some(el=>el.getBoundingClientRect().right>box.right+1);});}));
@@ -94,10 +96,17 @@ try{
  await ctx.addInitScript(()=>{try{localStorage.setItem('pm_projects_view','cards');}catch{}});
  await open('/preview-org/projects','.project-grid',1440);await page.locator('.project-card').nth(3).waitFor();
  for(const width of [1440,1100]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(200);
-  const cards=await page.evaluate(()=>[...document.querySelectorAll('.project-card')].map(c=>({row:Math.round(c.getBoundingClientRect().top),parts:['.pc-stats','.progress','.task-meta','.pc-foot'].map(s=>Math.round(c.querySelector(s)?.getBoundingClientRect().top??-1))})));
+  // Five facts per card: name and key, status, description, tasks done with one bar, owner and date (no boxed numbers, no tag row).
+  const cards=await page.evaluate(()=>[...document.querySelectorAll('.project-card')].map(c=>({row:Math.round(c.getBoundingClientRect().top),parts:['.pc-desc','.pc-progress','.progress','.pc-foot'].map(s=>Math.round(c.querySelector(s)?.getBoundingClientRect().top??-1))})));
+  assert.equal(await page.locator('.project-card .pc-stats, .project-card .task-meta').count(),0,'the boxed numbers and tag row are gone');
   for(const row of new Set(cards.map(c=>c.row))){const same=cards.filter(c=>c.row===row);if(same.length<2)continue;
-   for(const part of [0,1,2,3]){const tops=same.map(c=>c.parts[part]);assert.ok(Math.max(...tops)-Math.min(...tops)<=1,`project cards misaligned at ${width}px (${['numbers','progress','badges','owner'][part]}): ${tops.join(', ')}`);}}}
+   for(const part of [0,1,2,3]){const tops=same.map(c=>c.parts[part]);assert.ok(Math.max(...tops)-Math.min(...tops)<=1,`project cards misaligned at ${width}px (${['description','tasks','progress','owner'][part]}): ${tops.join(', ')}`);}}}
  await page.setViewportSize({width:1440,height:1000});
- await capture('project-cards-1440');cardProjects=null;
+ await capture('project-cards-1440');
+ await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'project-cards-dark-1440.png'),animations:'disabled'});
+ await page.evaluate(()=>document.documentElement.setAttribute('data-theme','light'));
+ for(const width of [820,390]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(200);await capture('project-cards-'+width);}
+ cardProjects=null;
+ await open('/preview-org/portfolio?project='+pid,'.ps-table',1440);await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'portfolio-dark-1440.png'),animations:'disabled'});
  assert.deepEqual(errors,[]);await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,writes:writes.length,errors,scope:'Production bundle with synthetic APIs only; no customer or paid AI actions.'},null,2));console.log(JSON.stringify({checks,writes:writes.length,errors}));
 }finally{await browser.close();}

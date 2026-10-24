@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
+import { StatusBar } from '../../components/ui';
+import './portfolio.css';
 import { formatDate } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
@@ -14,10 +16,13 @@ const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.err
 const money = (v: number | null | undefined, currency: string) => v == null ? '—' : `${Math.round(v).toLocaleString('en-IN')} ${currency}`;
 const hours = (minutes: number) => `${Math.round(minutes / 60)} h`;
 
-/** Owner, group, health and due-date filters for the board (kept in the address so a filtered board can be shared). */
-export function PortfolioFilters({ board, filter, onChange, onExport }: { board: PortfolioBoard; filter: PortfolioFilter; onChange: (f: PortfolioFilter) => void; onExport: (format: 'xlsx' | 'pdf') => void }) {
+/** How many board filters are set (the "Filters · n" pill). */
+export const filterCount = (f: PortfolioFilter) => [f.ownerId, f.groupId, f.health, f.dueFrom || f.dueTo].filter(Boolean).length;
+
+/** Owner, group, health and due-date filters for the board (kept in the address so a filtered board can be shared). Opened from "Filters · n". */
+export function PortfolioFilters({ board, filter, onChange }: { board: PortfolioBoard; filter: PortfolioFilter; onChange: (f: PortfolioFilter) => void }) {
   const set = (k: keyof PortfolioFilter, v: string) => onChange({ ...filter, [k]: v || null });
-  const any = !!(filter.ownerId || filter.groupId || filter.health || filter.dueFrom || filter.dueTo);
+  const any = filterCount(filter) > 0;
   return (
     <div className="pb-filters" role="group" aria-label="Filters">
       <span className="pb-pick"><Select className="select" value={filter.ownerId ?? ''} aria-label="Owner" onChange={(e) => set('ownerId', e.target.value)}>
@@ -31,15 +36,31 @@ export function PortfolioFilters({ board, filter, onChange, onExport }: { board:
       </Select></span>
       <label className="pb-date">Due from <input className="input" type="date" value={filter.dueFrom ?? ''} onChange={(e) => set('dueFrom', e.target.value)} /></label>
       <label className="pb-date">to <input className="input" type="date" value={filter.dueTo ?? ''} onChange={(e) => set('dueTo', e.target.value)} /></label>
-      {any && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange({ teamId: filter.teamId })}>Clear</button>}
-      <span className="pb-spacer" />
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => onExport('xlsx')}><Icon name="download" size={14} /> Excel</button>
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => onExport('pdf')}><Icon name="download" size={14} /> PDF</button>
+      {any && <button type="button" className="link-btn" onClick={() => onChange({ teamId: filter.teamId })}>Clear filters</button>}
     </div>
   );
 }
 
-/** The summary in plain words from the numbers, and one written by the AI for the meeting. */
+/** Export the board as it is filtered: a small menu with the two formats. */
+export function ExportMenu({ onExport }: { onExport: (format: 'xlsx' | 'pdf') => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="pb-export" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false); }}>
+      <button type="button" className="btn btn-ghost" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>Export</button>
+      {open && (
+        <div className="menu-pop pb-export-menu" role="menu">
+          <button type="button" role="menuitem" onClick={() => { setOpen(false); onExport('xlsx'); }}><Icon name="download" size={15} /> Excel</button>
+          <button type="button" role="menuitem" onClick={() => { setOpen(false); onExport('pdf'); }}><Icon name="download" size={15} /> PDF</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The summary in one card: the status bar (on track, at risk, delayed) beside the summary in plain words from the numbers, or the one the
+ * AI wrote for the meeting.
+ */
 export function SummaryCard({ board, filter, ai }: { board: PortfolioBoard; filter: PortfolioFilter; ai: boolean }) {
   const [written, setWritten] = useState<PortfolioAiSummary | null>(null);
   const [busy, setBusy] = useState(false);
@@ -47,17 +68,25 @@ export function SummaryCard({ board, filter, ai }: { board: PortfolioBoard; filt
     setBusy(true);
     try { setWritten(await portfolioApi.summary(filter, fresh)); } catch (e) { toast(errText(e, 'The summary could not be written.'), 'error'); } finally { setBusy(false); }
   };
+  const b = board.brief;
   return (
     <section className="pb-summary" aria-label="Summary">
-      <p>{written ? written.text : board.summary}</p>
-      <div className="pb-summary-foot">
-        {written ? <span className="muted">Written by the AI from these numbers {written.cached ? '(earlier today)' : 'just now'} · {written.model}</span>
-          : <span className="muted">From the numbers below. The same summary goes to owners and admins every Monday, by e-mail or WhatsApp as each person chose.</span>}
-        {ai && <button type="button" className="btn btn-soft btn-sm" disabled={busy} onClick={() => void write(!!written)}><Sparkle size={13} /> {written ? 'Write again' : 'Write it for the meeting'}</button>}
+      <div className="pb-summary-bar">
+        <StatusBar label={`${b.onTrack} on track, ${b.atRisk} at risk, ${b.delayed} delayed`}
+          parts={[{ tone: 'ok', value: b.onTrack }, { tone: 'risk', value: b.atRisk }, { tone: 'late', value: b.delayed }]} />
       </div>
+      <div className="pb-summary-text">
+        <p>{written ? written.text : board.summary}</p>
+        <small className="muted">{written ? `Written by the AI from these numbers ${written.cached ? '(earlier today)' : 'just now'} · ${written.model}`
+          : 'From the numbers on this page. The same summary goes to owners and admins every Monday, by e-mail or WhatsApp as each person chose.'}</small>
+      </div>
+      {ai && <button type="button" className="btn btn-soft pb-summary-write" disabled={busy} onClick={() => void write(!!written)}><Sparkle size={13} /> {written ? 'Write again' : 'Write it for the meeting'}</button>}
     </section>
   );
 }
+
+const dayCount = (n: number) => `${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'}`;
+const shortDate = (d: string | null) => (d ? new Date(`${d.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : '—');
 
 /** Decisions, not tiles: each late project, why, and options with their effect; one click turns an option into proposals to approve. */
 export function DecisionsSection({ decisions, filter }: { decisions: PortfolioDecision[]; filter: PortfolioFilter }) {
@@ -71,14 +100,24 @@ export function DecisionsSection({ decisions, filter }: { decisions: PortfolioDe
   };
   return (
     <section aria-label="Decisions this week" className="pb-decisions">
-      <h3>Decisions this week <em>{decisions.length}</em></h3>
+      <h3 className="ds-section-title">Decisions this week <em>{decisions.length}</em></h3>
       {decisions.length === 0 ? <p className="ps-ok"><Icon name="checkCircle" size={14} /> No project is forecast to miss its date.</p> : decisions.map((d) => (
+        // The decision card: how late, the project, why in one line, and the date change as the hero; then the ways to recover.
         <article key={d.projectId} className="pb-decision">
-          <header>
-            <b>{d.headline}</b>
-            {d.waitingProposals > 0 && <Link className="pb-waiting" to={`/projects/${d.projectId}?tab=agent`}>{d.waitingProposals} proposal{d.waitingProposals === 1 ? '' : 's'} waiting in {d.key}</Link>}
+          <header className="pb-dec-head">
+            <div className="pb-dec-text">
+              <span className={`eyebrow ${d.slipDays > 14 ? 'danger' : 'warning'}`}>{d.slipDays > 0 ? `${dayCount(d.slipDays)} late` : 'On the edge'}</span>
+              <h4>{d.name} <span className="pb-dec-key">{d.key}</span></h4>
+              <p>{d.causes.length ? `${d.causes.slice(0, 2).join('. ')}.` : d.headline}</p>
+              {d.causes.length > 2 && <p className="pb-causes">Also: {d.causes.slice(2).join('; ')}.</p>}
+            </div>
+            <div className="ds-shift" aria-label={`Due ${shortDate(d.dueDate)}, forecast ${shortDate(d.finish)}`}>
+              <div><small>Due</small><s>{shortDate(d.dueDate)}</s></div>
+              <span className="arrow" aria-hidden="true">→</span>
+              <div><small>Forecast</small><b>{shortDate(d.finish)}</b></div>
+            </div>
           </header>
-          {d.causes.length > 2 && <p className="pb-causes">Also: {d.causes.slice(2).join('; ')}.</p>}
+          {d.waitingProposals > 0 && <Link className="pb-waiting" to={`/projects/${d.projectId}?tab=agent`}>{d.waitingProposals} proposal{d.waitingProposals === 1 ? '' : 's'} waiting in {d.key}</Link>}
           {d.options.length === 0 ? <p className="muted">No option changes the date: the work left needs the time.</p> : (
             <ul className="pb-options">
               {d.options.map((o) => (
@@ -86,7 +125,7 @@ export function DecisionsSection({ decisions, filter }: { decisions: PortfolioDe
                   <div className="pb-option-main">
                     <b>{o.title}</b>
                     <span className={`pb-effect ${o.slipDays != null && o.slipDays <= 0 ? 'ok' : 'late'}`}>{o.effect}</span>
-                    <button type="button" className="btn-link" aria-expanded={open === `${d.projectId}:${o.id}`} onClick={() => setOpen(open === `${d.projectId}:${o.id}` ? null : `${d.projectId}:${o.id}`)}>What changes</button>
+                    <button type="button" className="btn btn-ghost btn-sm" aria-expanded={open === `${d.projectId}:${o.id}`} onClick={() => setOpen(open === `${d.projectId}:${o.id}` ? null : `${d.projectId}:${o.id}`)}>What changes</button>
                   </div>
                   {open === `${d.projectId}:${o.id}` && (
                     <div className="pb-option-detail">
@@ -94,7 +133,7 @@ export function DecisionsSection({ decisions, filter }: { decisions: PortfolioDe
                       <p className="muted">{o.why}</p>
                     </div>
                   )}
-                  <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null || d.waitingProposals > 0} onClick={() => void apply(d, o.id)}>
+                  <button type="button" className="btn btn-soft btn-sm" disabled={busy !== null || d.waitingProposals > 0} onClick={() => void apply(d, o.id)}>
                     {busy === `${d.projectId}:${o.id}` ? 'Proposing…' : 'Propose this'}
                   </button>
                 </li>

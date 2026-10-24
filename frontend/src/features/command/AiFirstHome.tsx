@@ -46,30 +46,38 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
   }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
   const atRisk = c?.health.filter((h) => h.level === 'high' || h.level === 'medium') ?? [];
   const next = c?.today.filter((m) => new Date(m.endUtc).getTime() > Date.now()).sort((a, b) => a.startUtc.localeCompare(b.startUtc))[0];
-  const tiles: { icon: IconName; value: number; label: string; sub: string; tone?: 'danger' | 'warning'; go: () => void }[] = c ? [
-    { icon: 'gauge', value: atRisk.length, label: atRisk.length === 1 ? 'Project at risk' : 'Projects at risk', sub: atRisk.slice(0, 2).map((h) => h.key).join(', ') || 'All on track', tone: atRisk.length ? 'danger' : undefined, go: () => onTab('today') },
-    { icon: 'alert', value: c.counts.overdue, label: 'Late work', sub: c.counts.overdue ? 'Past its due date' : 'Nothing late', tone: c.counts.overdue ? 'warning' : undefined, go: () => onTab('work') },
-    { icon: 'calendar', value: c.counts.dueToday, label: 'Due today', sub: c.counts.dueToday ? 'Yours, every kind' : 'Nothing due today', go: () => onTab('work') },
-    { icon: 'checks', value: c.counts.toDecide, label: 'To decide', sub: c.counts.toDecide ? 'Proposals waiting on you' : 'Nothing waiting', go: () => onTab('decisions') },
+  // Today at a glance: four numbers found by rules. A number is coloured only when the colour means something (late is red, at risk amber);
+  // an all-clear caption is green.
+  const tiles: { icon: IconName; tone: '' | 'warning' | 'progress' | 'success'; value: number; label: string; sub: string; numTone?: 'danger' | 'warning'; clear: boolean; go: () => void }[] = c ? [
+    { icon: 'target', tone: '', value: atRisk.length, label: atRisk.length === 1 ? 'Project at risk' : 'Projects at risk', sub: atRisk.slice(0, 2).map((h) => h.key).join(', ') || 'All on track', numTone: atRisk.length ? 'warning' : undefined, clear: !atRisk.length, go: () => onTab('today') },
+    { icon: 'alert', tone: 'warning', value: c.counts.overdue, label: 'Late work', sub: c.counts.overdue ? 'Past its due date' : 'Nothing late', numTone: c.counts.overdue ? 'danger' : undefined, clear: !c.counts.overdue, go: () => onTab('work') },
+    { icon: 'calendar', tone: 'progress', value: c.counts.dueToday, label: 'Due today', sub: c.counts.dueToday ? 'Yours, every kind' : 'Nothing due today', clear: !c.counts.dueToday, go: () => onTab('work') },
+    { icon: 'check', tone: 'success', value: c.counts.toDecide, label: 'To decide', sub: c.counts.toDecide ? 'Proposals waiting on you' : 'Nothing waiting', clear: !c.counts.toDecide, go: () => onTab('decisions') },
   ] : [];
+  const asks: { label: string; run: () => void }[] = [
+    { label: 'What needs me', run: () => ask('What needs me right now? Go through it, most urgent first, and prepare what you can for me to confirm.') },
+    { label: 'Catch me up', run: () => ask('Catch me up on my unread chat: the decisions, questions put to me and actions, with links.') },
+    { label: 'Plan my day', run: () => ask('Plan my day: order my open and late work by what matters most, and say why.') },
+    { label: 'Submit my week', run: () => ask('Submit my timesheet for the latest week that is ready to submit.') },
+    { label: 'Delayed projects', run: () => ask('Which projects are delayed and why?') },
+    { label: 'Approvals', run: () => onTab('decisions') },
+  ];
+  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
   return (
     <div className="aih">
       <section className="aih-hero">
-        <h1><span className="aih-mark" aria-hidden="true"><Icon name="sparkle" size={18} /></span>{greeting()}{first ? `, ${first}` : ''}</h1>
+        <span className="eyebrow aih-date">{today}</span>
+        <h1>{greeting()}{first ? `, ${first}` : ''}.</h1>
         {composer}
-        <div className="aih-chips">
-          <button type="button" onClick={() => ask('What needs me right now? Go through it, most urgent first, and prepare what you can for me to confirm.')}><Icon name="target" size={13} /> What needs me</button>
-          <button type="button" onClick={() => ask('Catch me up on my unread chat: the decisions, questions put to me and actions, with links.')}><Icon name="message" size={13} /> Catch me up</button>
-          <button type="button" onClick={() => ask('Plan my day: order my open and late work by what matters most, and say why.')}><Icon name="list" size={13} /> Plan my day</button>
-          <button type="button" onClick={() => ask('Submit my timesheet for the latest week that is ready to submit.')}><Icon name="timer" size={13} /> Submit my week</button>
-          <button type="button" onClick={() => ask('Which projects are delayed and why?')}><Icon name="gauge" size={13} /> Delayed projects</button>
-          <button type="button" onClick={() => onTab('decisions')}><Icon name="checks" size={13} /> Approvals</button>
+        <div className="aih-chips" aria-label="Quick asks">
+          {asks.map((a) => <button key={a.label} type="button" onClick={a.run}>{a.label}</button>)}
         </div>
         {recent.length > 0 && (
           <nav className="aih-recent" aria-label="Recent chats">
+            <span className="aih-recent-label">Recent:</span>
             {recent.map((r) => (
               <button key={r.id} type="button" onClick={() => open(r.id)} title={r.title}>
-                <Icon name="message" size={12} /><span>{r.title}</span><time>{timeAgo(r.lastMessageAt)}</time>
+                <span>{r.title}</span><time>· {timeAgo(r.lastMessageAt)}</time>
               </button>
             ))}
             <button type="button" className="aih-recent-all" onClick={showAll}>All chats <Icon name="chevronR" size={12} /></button>
@@ -81,16 +89,16 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
           <header><h2>Today at a glance</h2><span>Found by rules · no AI call</span></header>
           <div className="aih-tiles">
             {tiles.map((t) => (
-              <button key={t.label} type="button" className={`aih-tile${t.tone ? ` ${t.tone}` : ''}`} onClick={t.go}>
-                <span className="aih-tile-icon"><Icon name={t.icon} size={16} /></span>
-                <b>{t.value}</b><span>{t.label}</span><small>{t.sub}</small>
+              <button key={t.label} type="button" className={`aih-tile${t.numTone ? ` ${t.numTone}` : ''}`} onClick={t.go}>
+                <span className={`ds-tile-ico aih-tile-icon ${t.tone === 'progress' ? 'violet' : t.tone}`}><Icon name={t.icon} size={16} /></span>
+                <b>{t.value}</b><span>{t.label}</span><small className={t.clear ? 'clear' : ''}>{t.sub}</small>
               </button>
             ))}
           </div>
           <div className="aih-lists">
             <section className="aih-list" aria-labelledby="aih-need">
-              <header><h3 id="aih-need"><Icon name="target" size={14} /> Needs you</h3><button type="button" className="mb-link" onClick={() => onTab('today')}>All</button></header>
-              {c.attention.length === 0 ? <p className="aih-empty">Nothing needs you right now.</p> : (
+              <header><h3 id="aih-need">Needs you</h3><button type="button" className="mb-link" onClick={() => onTab('today')}>All</button></header>
+              {c.attention.length === 0 ? <p className="aih-empty">You&apos;re all caught up. Nothing needs you right now.</p> : (
                 <ul>
                   {c.attention.slice(0, 5).map((a) => (
                     <li key={a.id} className={`sev-${a.severity}`}>
@@ -108,7 +116,7 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
               )}
             </section>
             <section className="aih-list" aria-labelledby="aih-work">
-              <header><h3 id="aih-work"><Icon name="list" size={14} /> My work</h3><button type="button" className="mb-link" onClick={() => onTab('work')}>All my work</button></header>
+              <header><h3 id="aih-work">My work</h3><button type="button" className="mb-link" onClick={() => onTab('work')}>All my work</button></header>
               {c.owe.length === 0 ? <p className="aih-empty">Nothing open on you. <button type="button" className="mb-link" onClick={() => ask('Create a task')}>Create a task</button></p> : (
                 <ul>
                   {c.owe.slice(0, 6).map((w) => (
@@ -130,7 +138,7 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
           <ReviewQueueCard compact />
           {next && (
             <div className="aih-card">
-              <header><span><Icon name="video" size={14} /> Next meeting</span><Link className="mb-link" to="/meet">Open</Link></header>
+              <header><span>Next meeting</span><Link className="mb-link" to="/meet">Open</Link></header>
               <b>{next.title}</b>
               <small>{formatTime(next.startUtc)}{next.projectKey ? ` · ${next.projectKey}` : ''}{next.agentAttending ? ' · the agent is attending' : ''}</small>
             </div>

@@ -4,7 +4,8 @@ import { ApiError } from '../../api/client';
 import { actionItemApi, projectApi, statusApi } from '../../api/endpoints';
 import type { ProjectHealth, ProjectStatusReport, StatusGroup, StatusTask, TimelineChange } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { activeShare, Avatar, ErrorState, HealthBadge, PageLoader, Progress, ProjectStatusBadge, ProjectTypeBadge } from '../../components/ui';
+import { activeShare, Avatar, ErrorState, HealthBadge, PageLoader, Progress, ProjectStatusBadge, ProjectTypeBadge, Segmented } from '../../components/ui';
+import './portfolio.css';
 import { formatDate, formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useTeamLens } from '../../lib/teamLens';
@@ -16,6 +17,8 @@ import { PortfolioBriefPanel, ProjectInsight } from './PortfolioInsights';
 
 const HEALTH_LABEL: Record<ProjectHealth, string> = { OnTrack: 'On track', AtRisk: 'At risk', Delayed: 'Delayed', Completed: 'Completed', Cancelled: 'Cancelled', Archived: 'Archived' };
 const days = (n: number) => `${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'}`;
+/** One progress bar, coloured by the project's status (colour means status, never how far along it is). */
+const HEALTH_TONE: Record<ProjectHealth, '' | 'green' | 'amber' | 'red'> = { OnTrack: 'green', AtRisk: 'amber', Delayed: 'red', Completed: '', Cancelled: '', Archived: '' };
 
 /**
  * Portfolio (formerly Project Status), the presentation page: the projects organized by group on the left (collapsed accordions), and for the selected project a clear
@@ -87,7 +90,7 @@ function GroupSection({ group, open, selected, onToggle, onPick }: { group: Stat
     <div className={`ps-group ${open ? 'open' : ''}`}>
       <button type="button" className={`ps-group-head ${holdsSelected ? 'holds' : ''}`} aria-expanded={open} onClick={onToggle}>
         <Icon name="chevronR" size={15} />
-        <span className="ps-group-label"><span className="ps-group-name">{group.name}</span><em>{' '}({group.count})</em></span>
+        <span className="ps-group-label"><span className="ps-group-name">{group.name}</span><em>{' '}· {group.count}</em></span>
       </button>
       <div className="ps-group-body" aria-hidden={!open}>
         <div className="ps-group-inner">
@@ -121,6 +124,7 @@ function Report({ r, onOpenTask, onActionItems }: { r: ProjectStatusReport; onOp
   const revised = p.originalDueDate && p.dueDate && p.dueDate !== p.originalDueDate;
   const blocked = r.blockedTasks, overdue = r.tasks.filter((t) => t.overdueDays > 0).length;
   const done = p.stats.done, tasksTotal = p.stats.total - p.stats.cancelled;
+  const overdueProject = !!p.dueDate && p.progress < 100 && p.dueDate.slice(0, 10) < new Date().toISOString().slice(0, 10);
   const [view, setView] = useState<PsView>(() => { try { const v = localStorage.getItem('pm_ps_view'); return v === 'changes' || v === 'both' ? v : 'tasks'; } catch { return 'tasks'; } });
   const chooseView = (v: PsView) => { setView(v); try { localStorage.setItem('pm_ps_view', v); } catch { /* storage unavailable */ } };
   const [focus, setFocus] = useState(false);
@@ -138,17 +142,19 @@ function Report({ r, onOpenTask, onActionItems }: { r: ProjectStatusReport; onOp
     <div className="ps-panel">
       <header className="ps-head">
         <div className="ps-title">
-          {p.groupName && <span className="ps-tag">{p.groupName}</span>}
+          <div className="ps-badges">
+            {p.groupName && <span className="ps-tag">{p.groupName}</span>}
+            <ProjectTypeBadge type={p.projectType} />{!['Active', 'Planning'].includes(p.status) && <ProjectStatusBadge status={p.status} />}<HealthBadge health={p.health} />
+          </div>
           <h1>{p.name}</h1>
           {p.description && <p title={p.description}>{p.description}</p>}
         </div>
         <div className="ps-head-right">
-          <div className="ps-badges"><ProjectTypeBadge type={p.projectType} />{!['Active', 'Planning'].includes(p.status) && <ProjectStatusBadge status={p.status} />}<HealthBadge health={p.health} /></div>
           <div className="ps-buttons">
-            <Link className="btn btn-ghost btn-sm ps-go" to={`/projects/${p.id}`} title="Open the project's details page"><Icon name="arrowRight" size={14} /> Go To Project</Link>
-            <button type="button" className="btn btn-soft btn-sm" onClick={onActionItems} title="Follow-ups for this project">
-              <Icon name="checkCircle" size={14} /> Action Items{openItems > 0 && <span className="ps-count" aria-label={`${openItems} open`}>{openItems}</span>}
+            <button type="button" className="btn btn-ghost" onClick={onActionItems} title="Follow-ups for this project">
+              Action items{openItems > 0 && <span className="ps-count" aria-label={`${openItems} open`}>{openItems}</span>}
             </button>
+            <Link className="btn btn-dark ps-go" to={`/projects/${p.id}`} title="Open the project's details page">Open project</Link>
           </div>
         </div>
       </header>
@@ -168,11 +174,12 @@ function Report({ r, onOpenTask, onActionItems }: { r: ProjectStatusReport; onOp
       ) : <>
       <ProjectInsight projectId={p.id} onActionItems={onActionItems} />
 
+      {/* Four facts as tiles: start, due (red when it has slipped), progress with its bar, and tasks done. */}
       <div className="ps-kpis">
-        <div className="ps-kpi"><label>Start date</label><b>{formatDate(p.startDate)}</b></div>
-        <div className={`ps-kpi ${p.delayedDays > 0 ? 'late' : ''}`}>
-          <label>Current due date</label>
-          <b>{formatDate(p.dueDate)}</b>
+        <div className="ps-kpi ds-kpi"><span className="l">Start</span><b className="v sm">{formatDate(p.startDate)}</b></div>
+        <div className={`ps-kpi ds-kpi ${p.delayedDays > 0 || overdueProject ? 'late' : ''}`}>
+          <span className="l">{revised ? 'Current due date' : 'Due'}</span>
+          <b className="v sm">{formatDate(p.dueDate)}</b>
           {revised && (
             <span className="ps-kpi-note">
               <s title="Original due date">{formatDate(p.originalDueDate)}</s>
@@ -181,26 +188,25 @@ function Report({ r, onOpenTask, onActionItems }: { r: ProjectStatusReport; onOp
             </span>
           )}
         </div>
-        <div className="ps-kpi"><label>Progress</label><b>{p.progress}%</b><Progress value={p.progress} active={activeShare(p.stats)} />{p.stats.inProgress > 0 && <small className="ps-kpi-note">{p.stats.inProgress} in progress</small>}</div>
-        <div className="ps-kpi">
-          <label>Tasks</label><b>{done} <small>of {tasksTotal} done</small></b>
+        <div className="ps-kpi ds-kpi"><span className="l">Progress</span><b className="v sm">{p.progress}%</b><Progress value={p.progress} active={activeShare(p.stats)} tone={HEALTH_TONE[p.health]} />{p.stats.inProgress > 0 && <small className="ps-kpi-note">{p.stats.inProgress} in progress</small>}</div>
+        <div className="ps-kpi ds-kpi">
+          <span className="l">Tasks</span><b className="v sm">{done} of {tasksTotal} done</b>
           <span className="ps-kpi-note">
             {overdue > 0 && <em className="ps-pill late">{overdue} overdue</em>}
             {blocked > 0 && <em className="ps-pill wait">{blocked} blocked</em>}
-            {overdue === 0 && blocked === 0 && <span className="ps-ok"><Icon name="checkCircle" size={13} /> Nothing overdue or blocked</span>}
+            {overdue === 0 && blocked === 0 && <span className="ps-ok">Nothing overdue or blocked</span>}
           </span>
         </div>
       </div>
       </>}
 
+      <div className="ps-work">
       <div className="ps-viewbar">
-        <div className="seg ps-seg" role="tablist" aria-label="What to look at">
-          <button type="button" role="tab" aria-selected={view === 'tasks'} className={view === 'tasks' ? 'on' : ''} onClick={() => chooseView('tasks')}>Tasks <em>{r.tasks.length}</em></button>
-          <button type="button" role="tab" aria-selected={view === 'changes'} className={view === 'changes' ? 'on' : ''} onClick={() => chooseView('changes')}>
-            Delivery changes <em>{r.changes.length}</em>{(blocked > 0 || p.delayedDays > 0) && <i className="ps-alert" title={blocked > 0 ? 'Something is waiting on a dependency' : 'The delivery date has moved'} />}
-          </button>
-          <button type="button" role="tab" aria-selected={view === 'both'} className={view === 'both' ? 'on' : ''} onClick={() => chooseView('both')}>Side by side</button>
-        </div>
+        <Segmented<PsView> label="What to look at" className="ps-seg" value={view} onChange={chooseView} options={[
+          { id: 'tasks', label: 'Tasks', count: r.tasks.length },
+          { id: 'changes', label: <>Delivery changes{(blocked > 0 || p.delayedDays > 0) && <i className="ps-alert" title={blocked > 0 ? 'Something is waiting on a dependency' : 'The delivery date has moved'} />}</>, count: r.changes.length },
+          { id: 'both', label: 'Side by side' },
+        ]} />
         {view !== 'changes' && (
           <div className="ps-chips" role="group" aria-label="Filter the tasks">
             {FILTERS.map((f) => {
@@ -241,6 +247,7 @@ function Report({ r, onOpenTask, onActionItems }: { r: ProjectStatusReport; onOp
             </div>
           </section>
         )}
+      </div>
       </div>
     </div>
   );
