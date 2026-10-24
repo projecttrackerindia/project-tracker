@@ -16,6 +16,7 @@ import { useStepUp } from './stepUpContext';
 import { AskCircle, CircleCard } from './RecoveryCircle';
 import { SendLinkModal } from './VaultLinks';
 import { BrandTile } from './brand';
+import { ItemHead } from './VaultChrome';
 import { PlainValue } from './PlainValue';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError || e instanceof sealed.SealedError || e instanceof Error ? e.message || fallback : fallback);
@@ -267,16 +268,13 @@ export function SealedItemPanel({ c, item, policy, lockEpoch, binned, onEdit, on
   };
   return (
     <section className="vlt-panel vlt-panel-sealed" aria-label={p.title} data-item={p.title}>
-      <header className="vlt-panel-head">
-        <button className="btn-icon vlt-back" aria-label="Back to the list" onClick={onClose}><Icon name="arrowLeft" /></button>
-        <BrandTile title={p.title} url={p.url} kind={item.row.kind} size="lg" />
-        <div className="vlt-panel-title"><h2>{p.title}</h2><p className="muted">{KIND_LABEL[item.row.kind]} · {c.name}</p></div>
-        <div className="vlt-panel-actions">
+      <div className="vlt-card vlt-hero">
+      <ItemHead title={p.title} context={`${KIND_LABEL[item.row.kind]} · ${c.name}`} sealed onClose={onClose}
+        tile={<BrandTile title={p.title} url={p.url} kind={item.row.kind} size="lg" />}
+        actions={<>
           {!binned && <button className="btn btn-ghost btn-sm" onClick={() => setSending(true)} title="A link that opens once, then the secret is destroyed"><Icon name="send" size={15} /> Send once</button>}
           {manage && !binned && <button className="btn btn-ghost btn-sm" onClick={onEdit}><Icon name="edit" size={15} /> Edit</button>}
-          <button className="btn-icon" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
-        </div>
-      </header>
+        </>} />
       <div className="vlt-badges">
         <span className="badge vlt-e2ee" title="Encrypted and decrypted only on this device"><Icon name="lock" size={12} /> End-to-end encrypted</span>
         {p.class === 'Confidential' && <span className="badge badge-warning"><Icon name="shield" size={12} /> Confidential</span>}
@@ -301,9 +299,9 @@ export function SealedItemPanel({ c, item, policy, lockEpoch, binned, onEdit, on
               <div key={f.key} className="vlt-field" data-field={f.key}>
                 <span className="vlt-field-label">{f.label}</span>
                 {!f.secret ? <PlainValue label={f.label} type={f.type} value={f.value!} /> : (
-                  <div className="vlt-field-row">
+                  <div className="vlt-field-row vlt-well">
                     <code className="vlt-field-value vlt-secret" data-state="masked" aria-label={`${f.label}, hidden`}>••••••••••••</code>
-                    <button className="btn-icon" aria-label={`Copy ${f.label}`} onClick={() => void copy(f.value!, f.label)}><Icon name="copy" size={15} /></button>
+                    <button className="btn btn-ghost btn-sm vlt-copy" aria-label={`Copy ${f.label}`} onClick={() => void copy(f.value!, f.label)}><Icon name="copy" size={15} /><span aria-hidden="true">Copy</span></button>
                   </div>
                 )}
                 {f.type === 'password' && <p className="vlt-small muted">Strength: {STRENGTH_LABEL[strength(f.value!)]}</p>}
@@ -331,6 +329,7 @@ export function SealedItemPanel({ c, item, policy, lockEpoch, binned, onEdit, on
       {tab === 'files' && <SealedFiles c={c} item={item} manage={manage && !binned} onChanged={onChanged} />}
       {tab === 'history' && <SealedHistory c={c} itemId={item.row.id} policy={policy} />}
       {tab === 'activity' && <SealedActivity id={item.row.id} />}
+      </div>
       {sending && <SendLinkModal source={{ kind: 'sealed', item }} clipboardSeconds={policy.clipboardSeconds} onClose={() => setSending(false)} />}
     </section>
   );

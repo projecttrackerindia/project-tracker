@@ -1,0 +1,218 @@
+/* =====================================================================================================================
+   Vault, design system pass (design guide v1.0 + the vault screens): calm white cards on the grey canvas, soft list rows with mono
+   tiles, a big item name with its protection pill, secrets in grey wells, sharing and access as their own cards.
+   Loaded after vault.css; colours come only from the --ds-* tokens, so both themes work.
+   ===================================================================================================================== */
+.vlt-scope { --vlt-r: var(--ds-r-card); --vlt-mono: var(--mono); }
+.vlt .page-head { margin-bottom: 22px; }
+.vlt-banner { padding: 14px 18px; gap: 12px; border: 0; border-radius: var(--ds-r-tile); background: var(--ds-warning-bg); color: var(--ds-warning); font-size: 13.5px; }
+.vlt-banner .btn-icon { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
+.vlt-shield.ok { color: var(--ds-success); }
+
+.vlt-layout { gap: 20px; grid-template-columns: 236px minmax(0, 1fr); }
+.vlt.has-item .vlt-layout { grid-template-columns: 236px minmax(300px, 380px) minmax(0, 1fr); }
+
+/* ---- rail: a soft list, the current collection a white tile */
+.vlt-rail { top: calc(var(--topbar-h) + 16px); padding: 0; gap: 2px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.vlt-rail button { position: relative; min-height: 40px; padding: 0 12px; gap: 11px; border-radius: 12px; font-size: 14.5px; font-weight: 500; color: var(--ds-text); }
+.vlt-rail button svg { color: var(--ds-text-3); }
+.vlt-rail button:hover { background: rgba(0, 0, 0, .04); color: var(--ds-text); }
+[data-theme='dark'] .vlt-rail button:hover { background: rgba(255, 255, 255, .05); }
+.vlt-rail button.on { background: var(--ds-surface); color: var(--ds-accent); font-weight: 600; box-shadow: var(--ds-e2); }
+.vlt-rail button.on svg { color: var(--ds-accent); }
+.vlt-rail button i { font-size: 12.5px; color: var(--ds-text-4); }
+.vlt-rail button em { min-width: 22px; padding: 1px 7px; font-size: 11.5px; font-weight: 600; background: var(--ds-warning-bg); color: var(--ds-warning); }
+.vlt-rail button em.bad { background: var(--ds-danger-bg); color: var(--ds-danger); }
+.vlt-rail-title { margin: 18px 12px 6px; font-size: 11px; font-weight: 600; letter-spacing: .05em; color: var(--ds-text-4); }
+.vlt-rail .vlt-rail-add, .vlt-rail .vlt-rail-add svg { color: var(--ds-accent); }
+.vlt-rail .vlt-lockstate { margin-bottom: 12px; min-height: 44px; border: 0; border-radius: 14px; background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); font-weight: 600; font-size: 13.5px; }
+.vlt-rail .vlt-lockstate.open { background: var(--ds-success-bg); color: var(--ds-success); box-shadow: none; border: 0; }
+.vlt-rail .vlt-lockstate.open svg { color: var(--ds-success); }
+.vlt-rail .vlt-lockstate.none { color: var(--ds-accent); border: 0; }
+.vlt-rail .vlt-lockstate.none svg { color: var(--ds-accent); }
+.vlt-rail .vlt-lockstate.on { box-shadow: 0 0 0 2px var(--ds-accent); }
+
+/* item mode: the rail steps back to icons so the list and the item get the room (labels stay for screen readers) */
+@media (min-width: 1101px) {
+  .vlt.has-item .vlt-layout { grid-template-columns: 52px minmax(290px, 360px) minmax(0, 1fr); }
+  .vlt.has-item .vlt-rail { align-items: center; }
+  .vlt.has-item .vlt-rail button { justify-content: center; padding: 0; width: 48px; min-height: 44px; }
+  .vlt.has-item .vlt-rail button > span:not(.vlt-lockdot), .vlt.has-item .vlt-rail button > i, .vlt.has-item .vlt-rail-title {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; margin: 0; }
+  .vlt.has-item .vlt-rail button > em { position: absolute; top: 2px; right: 0; min-width: 18px; padding: 0 5px; font-size: 10.5px; line-height: 18px; }
+  .vlt.has-item .vlt-rail button > svg:not(:first-child) { display: none; }
+  .vlt.has-item .vlt-rail .vlt-lockstate { width: 48px; }
+  .vlt.has-item .vlt-rail .vlt-lockstate > span:not(.vlt-lockdot) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .vlt.has-item .vlt-rail .vlt-lockstate > svg { display: none; }
+  .vlt.has-item .vlt-rail .vlt-lockdot { width: 10px; height: 10px; flex: 0 0 10px; }
+  .vlt.has-item .vlt-rail-title + button, .vlt.has-item .vlt-rail button + .vlt-rail-title + button { margin-top: 10px; }
+}
+
+/* ---- the list: one white card, soft rows */
+.vlt-main { padding: 22px 18px 18px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); min-height: 440px; }
+.vlt-list-head { margin-bottom: 14px; padding: 0 6px; }
+.vlt-list-title h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.vlt-list-title .muted { display: block; margin-top: 3px; font-size: 13px; }
+.vlt-filters { gap: 10px; margin-bottom: 12px; }
+.vlt-search { min-height: 42px; padding: 0 14px; border: 0; border-radius: var(--ds-r-pill); background: var(--ds-fill); color: var(--ds-text-3); }
+.vlt-search:focus-within { box-shadow: 0 0 0 4px rgba(0, 113, 227, .16), 0 0 0 1px var(--ds-accent); background: var(--ds-surface); }
+.vlt-search input { font-size: 14.5px; }
+.vlt-filters select.input { height: 42px; min-height: 42px; border-radius: var(--ds-r-pill); font-size: 14px; }
+.vlt-chip-on { background: var(--ds-dark); color: var(--ds-on-dark); }
+.vlt-items { gap: 4px; }
+.vlt-item { gap: 14px; min-height: 64px; padding: 10px 12px; border: 0; border-radius: 16px; }
+.vlt-item:hover { background: var(--ds-surface-2); }
+[data-theme='dark'] .vlt-item:hover { background: rgba(255, 255, 255, .04); }
+.vlt-item.on, [data-theme='dark'] .vlt-item.on { background: var(--ds-accent-soft); border: 0; }
+.vlt-item-main b { font-size: 15px; font-weight: 500; letter-spacing: -.005em; }
+.vlt-item-main .muted { font-size: 13px; margin-top: 1px; }
+.vlt-item.on .vlt-item-main b { font-weight: 600; }
+.vlt-used { font-size: 12px; color: var(--ds-text-4); }
+.vlt-quick { right: 12px; width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); color: var(--ds-text-2); }
+.vlt-quick:hover { color: var(--ds-accent); box-shadow: var(--ds-e2), 0 0 0 1px var(--ds-line); }
+.vlt-keys-hint { margin: 14px 8px 0; color: var(--ds-text-4); }
+.vlt-keys-hint kbd { border: 0; border-radius: 6px; background: var(--ds-fill); color: var(--ds-text-2); font-weight: 500; padding: 3px 6px; }
+.vlt-locked-note { border: 0; border-radius: 14px; background: var(--ds-fill); color: var(--ds-text-2); padding: 12px 14px; }
+.vlt-locked-note:hover { color: var(--ds-accent); }
+
+/* ---- tiles: soft, tinted by the item's own colour, letters in mono */
+.vlt-tile { width: 40px; height: 40px; border-radius: 12px; box-shadow: none; text-shadow: none;
+  background: color-mix(in srgb, var(--tile) 13%, var(--ds-surface)); color: color-mix(in srgb, var(--tile) 70%, var(--ds-text));
+  font: 600 12.5px/1 var(--mono); letter-spacing: 0; }
+[data-theme='dark'] .vlt-tile { background: color-mix(in srgb, var(--tile) 22%, var(--ds-surface)); color: color-mix(in srgb, var(--tile) 50%, #fff); }
+.vlt-tile.wide .vlt-tile-text { font-size: 10.5px; letter-spacing: -.02em; }
+.vlt-tile.lg { width: 52px; height: 52px; border-radius: 14px; font-size: 15px; }
+.vlt-tile-badge { width: 18px; height: 18px; background: var(--ds-surface); color: var(--ds-text-3); box-shadow: 0 0 0 2px var(--ds-surface), var(--ds-e1); }
+
+/* ---- posture: a quiet tile with the score and the problems as chips */
+.vlt-posture { padding: 16px 18px; gap: 16px; border: 0; border-radius: 18px; background: var(--ds-surface-2); box-shadow: 0 0 0 1px var(--ds-line); }
+.vlt-posture-ring { width: 48px; height: 48px; }
+.vlt-posture-ring .track { stroke: var(--ds-fill); }
+.vlt-posture-text b { font-size: 28px; font-weight: 700; letter-spacing: -.03em; }
+.vlt-posture-text span { font-size: 13px; color: var(--ds-text-3); }
+.vlt-flag { min-height: 34px; padding: 0 13px; border: 0; background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); font-size: 13px; cursor: pointer; }
+.vlt-flag.on { background: var(--ds-dark); color: var(--ds-on-dark); box-shadow: none; }
+.vlt-flag.on b { color: inherit; }
+
+/* ---- the item: cards on the canvas */
+.vlt-panel { top: calc(var(--topbar-h) + 16px); max-height: calc(100vh - var(--topbar-h) - 32px); display: flex; flex-direction: column; gap: 16px; padding: 0 2px 2px; border: 0; border-radius: 0; background: transparent; box-shadow: none; overscroll-behavior: contain; }
+.vlt-panel-sealed { border: 0; }
+.vlt-panel-loading, .vlt-panel > .empty { min-height: 320px; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.vlt-card { padding: 26px 28px; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.vlt-card > h3 { margin: 0 0 16px; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.vlt-panel-head { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
+/* the back arrow is only for the narrow layouts, where the item replaces the list (out-ranks the global .btn-icon display) */
+.vlt-scope .vlt-panel-head .vlt-back { display: none; }
+.vlt-head-top { display: flex; align-items: flex-start; gap: 16px; min-width: 0; }
+.vlt-panel-title { flex: 1; min-width: 0; }
+.vlt-context { margin: 2px 0 4px; font-size: 13.5px; color: var(--ds-text-3); }
+.vlt-panel-title h2 { font-size: clamp(24px, 2.2vw, 30px); font-weight: 700; letter-spacing: -.025em; line-height: 1.12; overflow-wrap: anywhere; }
+.vlt-crypto { flex: none; margin-top: 2px; font-size: 12px; font-weight: 500; }
+.vlt-panel-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vlt-panel-actions .vlt-close { margin-left: auto; }
+.vlt-badges { margin: 16px 0 4px; gap: 8px; }
+.vlt-badges:empty { display: none; }
+.vlt-approval { margin: 14px 0 0; padding: 12px 14px; border: 0; border-radius: 14px; background: var(--ds-fill); font-size: 13.5px; }
+.vlt-approval.live { background: var(--ds-success-bg); color: var(--ds-success); }
+.vlt-health-callout { margin: 16px 0 0; padding: 14px 16px; border-radius: 16px; background: linear-gradient(100deg, var(--ds-danger-bg), color-mix(in srgb, var(--ds-danger-bg) 40%, var(--ds-surface))); color: var(--ds-danger); font-size: 14px; }
+.vlt-health-callout b { color: var(--ds-danger); font-weight: 700; }
+.vlt-tabs { gap: 24px; margin: 20px 0 18px; border-bottom: 1px solid var(--ds-line); }
+.vlt-tabs button { padding: 0 0 12px; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--ds-text-3); font-size: 14px; font-weight: 500; }
+.vlt-tabs button:hover { color: var(--ds-text); }
+.vlt-tabs button.on { color: var(--ds-text); font-weight: 600; border-bottom-color: var(--ds-text); }
+
+/* ---- fields: labels small and grey, secrets in a grey well with an outlined Copy pill */
+.vlt-fields { gap: 16px; }
+.vlt-field { gap: 7px; }
+.vlt-field-label { font-size: 13px; font-weight: 500; color: var(--ds-text-3); text-transform: none; letter-spacing: 0; }
+.vlt-field-row { min-height: 48px; padding: 6px 8px 6px 16px; gap: 8px; border: 0; border-radius: 14px; background: var(--ds-fill); }
+[data-theme='dark'] .vlt-field-row { background: var(--ds-surface-2); }
+.vlt-field-value { font-size: 15px; }
+.vlt-well { min-height: 64px; padding: 10px 12px 10px 20px; border-radius: 18px; }
+.vlt-well .vlt-secret { font-size: 18px; letter-spacing: .28em; color: var(--ds-text-3); }
+.vlt-copy { min-height: 40px; padding: 0 18px; }
+.vlt-copy svg { display: none; }
+.vlt-copy .spinner { width: 14px; height: 14px; }
+.vlt-totp { font-size: 22px; font-weight: 600; letter-spacing: .14em; }
+.vlt-copy-only { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13px; color: var(--ds-text-3); }
+.vlt-policy-line { flex-basis: 100%; padding-left: 19px; font: 500 12px/1.6 var(--mono); color: var(--ds-text-4); }
+.vlt-meta { gap: 10px 20px; margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--ds-line); font-size: 14px; }
+.vlt-meta dt { color: var(--ds-text-3); }
+.vlt-danger-zone { border-top: 1px solid var(--ds-line); padding-top: 14px; }
+.vlt-small { font-size: 13px; }
+.vlt-files li, .vlt-history li { border-radius: 14px; background: var(--ds-fill); padding: 12px 14px; }
+.vlt-history li .vlt-secret { border: 0; border-radius: 10px; background: var(--ds-surface); }
+.vlt-activity li { padding: 12px 0; border-bottom: 1px solid var(--ds-line); font-size: 14px; }
+
+/* ---- sharing */
+.vlt-share .ds-seg { margin-bottom: 18px; }
+.vlt-share-body p { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--ds-text-2); max-width: 62ch; }
+.vlt-share-acts { display: flex; justify-content: flex-end; margin-top: 18px; }
+.vlt-who ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 18px; }
+.vlt-who-line { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 9px; font-size: 15px; }
+.vlt-who-line span:last-child { color: var(--ds-text-3); white-space: nowrap; }
+.vlt-who-line .urgent { color: var(--ds-danger) !important; font-weight: 500; }
+.vlt-who .ds-bar.standing > i { background: var(--ds-outline); }
+.vlt-audit-line { margin: 20px 0 0; font: 500 12.5px/1.6 var(--mono); color: var(--ds-text-3); }
+
+/* ---- the clipboard pill and the people faces */
+.vlt-clip { border: 0; box-shadow: var(--ds-e4); padding: 8px 8px 8px 14px; font-size: 13.5px; }
+.vlt-clip .track { stroke: var(--ds-fill); }
+.vlt-face { box-shadow: 0 0 0 2px var(--ds-surface); background: var(--ds-fill); }
+.vlt-face.a-manage { background: var(--ds-accent-soft); color: var(--ds-accent-text); }
+
+/* ---- editors: kind pills like the design's type picker; the generator like its card */
+.vlt-kinds { gap: 8px; }
+.vlt-kinds button { min-height: 40px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--ds-fill); color: var(--ds-text); font-size: 14px; font-weight: 500; transition: background-color .16s var(--ds-ease), box-shadow .16s var(--ds-ease); }
+.vlt-kinds button:hover { background: var(--ds-fill-strong); }
+.vlt-kinds button.on { background: var(--ds-accent-soft); color: var(--ds-accent-text); box-shadow: 0 0 0 1.5px var(--ds-accent); }
+.vlt-gen { gap: 14px; padding: 18px; border: 0; border-radius: 18px; background: var(--ds-surface-2); box-shadow: 0 0 0 1px var(--ds-line); }
+.vlt-gen-out { min-height: 52px; padding: 8px 8px 8px 16px; border: 0; border-radius: 14px; background: var(--ds-fill); }
+.vlt-gen-out code { font-size: 16px; font-weight: 500; }
+.vlt-range { font-size: 13px; color: var(--ds-text-3); }
+.vlt-range input { accent-color: var(--ds-dark); }
+.vlt-checks { gap: 8px 18px; font-size: 14px; }
+.vlt-checks input, .vlt-check-row input, .vlt-protect input { accent-color: var(--ds-accent); width: 16px; height: 16px; }
+.vlt-meter-bar { gap: 4px; }
+.vlt-meter-bar i { width: 34px; height: 6px; border-radius: 3px; background: var(--ds-fill); }
+.vlt-meter.s0 .on, .vlt-meter.s1 .on { background: var(--ds-danger); }
+.vlt-meter.s2 .on { background: #E8A33D; }
+.vlt-meter.s3 .on, .vlt-meter.s4 .on { background: var(--ds-success); }
+.vlt-meter span { font-weight: 600; }
+.vlt-protect legend { font-size: 13px; font-weight: 500; color: var(--ds-text-3); }
+.vlt-scope .btn-xs { height: auto; min-height: 30px; padding: 0 12px; border-radius: var(--ds-r-pill); font-size: 12.5px; }
+/* the editor's encryption card: dark, in mono (what the design calls Protection) */
+.vlt-crypto-card { padding: 18px 20px; border-radius: 18px; background: #1C1C1E; color: #F5F5F7; }
+.vlt-crypto-card b { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+.vlt-crypto-card pre { margin: 0; white-space: pre-wrap; font: 500 12.5px/1.75 var(--mono); color: #D2D2D7; background: transparent; }
+
+/* the generator's length presets: dark when chosen */
+.vlt-lengths { display: flex; gap: 8px; flex-wrap: wrap; }
+.vlt-lengths button { min-width: 52px; min-height: 36px; padding: 0 14px; border: 0; border-radius: var(--ds-r-pill); background: var(--ds-fill); color: var(--ds-text); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; }
+.vlt-lengths button:hover { background: var(--ds-fill-strong); }
+.vlt-lengths button.on { background: var(--ds-dark); color: var(--ds-on-dark); }
+
+/* ---- narrower screens */
+@media (max-width: 1100px) {
+  .vlt.has-item .vlt-layout { grid-template-columns: 236px minmax(0, 1fr); }
+  .vlt.has-item .vlt-main { display: none; }
+  .vlt-scope .vlt-panel-head .vlt-back { display: inline-grid; flex: none; margin: 6px -4px 0 -8px; }
+}
+@media (max-width: 760px) {
+  .vlt-layout, .vlt.has-item .vlt-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .vlt-rail { flex-direction: row; overflow-x: auto; gap: 6px; padding: 2px; }
+  .vlt-rail button { min-height: 38px; border-radius: var(--ds-r-pill); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+  .vlt-rail button.on { background: var(--ds-dark); color: var(--ds-on-dark); box-shadow: none; }
+  .vlt-rail button.on svg { color: inherit; }
+  .vlt-rail .vlt-lockstate { margin-bottom: 0; }
+  .vlt-main { padding: 14px 10px; }
+  .vlt-panel { max-height: none; }
+  .vlt-card { padding: 20px 18px; }
+  .vlt-head-top { flex-wrap: wrap; gap: 10px 12px; }
+  .vlt-head-top .vlt-panel-title { flex: 1 1 calc(100% - 60px); }
+  .vlt-crypto { order: 3; }
+  .vlt-panel-title h2 { font-size: 24px; }
+  .vlt-head-top > .vlt-tile { display: none; }
+  .vlt-well { padding-left: 14px; }
+  .vlt-well .vlt-secret { letter-spacing: .18em; font-size: 16px; }
+}

@@ -11,6 +11,7 @@ import { RequestAccessModal, RequestRotationModal } from './VaultRequests';
 import { useItemGrant } from './requestsData';
 import { SendLinkModal } from './VaultLinks';
 import { BrandTile } from './brand';
+import { ItemHead, ItemSharing } from './VaultChrome';
 import { PlainValue } from './PlainValue';
 import { copySecret, STRENGTH_LABEL } from './secure';
 import { useStepUp } from './stepUpContext';
@@ -23,8 +24,9 @@ const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.mes
  * One item. Secret values are never drawn here: they stay masked, and a value is fetched only to be copied (one field at a time, straight to
  * the clipboard, which clears itself). The only place a value can be shown is the edit screen, for people who can manage the item.
  */
-export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collections = [], canAdmin = false, onEdit, onClose, onChanged }: {
+export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collections = [], canAdmin = false, onEdit, onClose, onChanged, onShare }: {
   id: string; policy: VaultPolicy; lockEpoch: number; binned?: boolean; collections?: VaultCollection[]; canAdmin?: boolean; onEdit: (item: VaultItem) => void; onClose: () => void; onChanged: () => void;
+  /** Opens this collection's access list (time-bound sharing). */ onShare?: (collectionId: string) => void;
 }) {
   const wid = useWorkspaceId();
   const q = useWsQuery(['vault', 'item', id], () => vaultApi.item(id), { staleTime: 0 });
@@ -61,21 +63,17 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
   };
 
   const health = it.health;
+  const collection = collections.find((c) => c.id === it.collectionId) ?? null;
+  const context = [KIND_LABEL[it.kind], it.collectionName, it.valueChangedAt ? `changed ${timeAgo(it.valueChangedAt)}` : null].filter(Boolean).join(' · ');
   return (
     <section className="vlt-panel" aria-label={it.title} data-item={it.title}>
-      <header className="vlt-panel-head">
-        <button className="btn-icon vlt-back" aria-label="Back to the list" onClick={onClose}><Icon name="arrowLeft" /></button>
-        <BrandTile title={it.title} url={it.url} kind={it.kind} size="lg" />
-        <div className="vlt-panel-title">
-          <h2>{it.title}</h2>
-          <p className="muted">{KIND_LABEL[it.kind]} · {it.collectionName}{it.usernameHint ? ` · ${it.usernameHint}` : ''}</p>
-        </div>
-        <div className="vlt-panel-actions">
+      <div className="vlt-card vlt-hero">
+      <ItemHead title={it.title} context={context} sealed={false} onClose={onClose}
+        tile={<BrandTile title={it.title} url={it.url} kind={it.kind} size="lg" />}
+        actions={<>
           {d.canCopy && d.canReveal && !binned && <button className="btn btn-ghost btn-sm" onClick={() => setSending(true)} title="A link that opens once, then the secret is destroyed"><Icon name="send" size={15} /> Send once</button>}
           {d.canManage && !binned && <button className="btn btn-ghost btn-sm" onClick={() => onEdit(d)}><Icon name="edit" size={15} /> Edit</button>}
-          <button className="btn-icon" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
-        </div>
-      </header>
+        </>} />
 
       <div className="vlt-badges">
         {it.class === 'Confidential' && <span className="badge badge-warning" title="Every copy needs a fresh two-step check"><Icon name="shield" size={12} /> Confidential</span>}
@@ -133,9 +131,9 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
                 <span className="vlt-field-label">{f.label}</span>
                 {!f.secret ? <PlainValue label={f.label} type={f.type} value={f.value ?? ''} /> : (
                   <>
-                    <div className="vlt-field-row">
+                    <div className="vlt-field-row vlt-well">
                       <code className="vlt-field-value vlt-secret" data-state="masked" aria-label={`${f.label}, hidden`}>{MASK}</code>
-                      {d.canCopy && !binned && <button className="btn-icon" aria-label={`Copy ${f.label}`} disabled={busy !== null} onClick={() => void copy(f)}>{busy === `copy:${f.key}` ? <Spinner /> : <Icon name="copy" size={15} />}</button>}
+                      {d.canCopy && !binned && <button className="btn btn-ghost btn-sm vlt-copy" aria-label={`Copy ${f.label}`} disabled={busy !== null} onClick={() => void copy(f)}>{busy === `copy:${f.key}` ? <Spinner /> : <Icon name="copy" size={15} />}<span aria-hidden="true">Copy</span></button>}
                     </div>
                   </>
                 )}
@@ -144,7 +142,8 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
           {d.fields.some((f) => f.secret && f.type !== 'totp') && d.canCopy && !binned && (
             <p className="vlt-small muted vlt-copy-only"><Icon name="lock" size={13} /> {d.canManage && d.canReveal
               ? 'Values are never shown here. Copy them, or open Edit to see one.'
-              : 'Values are never shown. Copy one into a sign-in form; the clipboard clears itself.'}</p>
+              : 'Values are never shown. Copy one into a sign-in form; the clipboard clears itself.'}
+              <span className="vlt-policy-line">{[d.needsStepUp ? 'copy needs a two-step check' : null, `clipboard clears after ${policy.clipboardSeconds}s`].filter(Boolean).join(' · ')}</span></p>
           )}
           <dl className="vlt-meta">
             {it.owner && <><dt>Owner</dt><dd>{it.owner.name}</dd></>}
@@ -190,7 +189,10 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
       {tab === 'files' && <FilesTab item={d} onChanged={() => void q.refetch()} />}
       {tab === 'history' && d.canManage && <HistoryTab item={d} />}
       {tab === 'activity' && d.canManage && <ActivityTab id={id} />}
-      {sending && <SendLinkModal source={{ kind: 'guarded', item: d }} clipboardSeconds={policy.clipboardSeconds} onClose={() => setSending(false)} />}
+      </div>
+      {!binned && <ItemSharing collection={collection} canManage={d.canManage} canSend={d.canCopy && d.canReveal} approval={approval}
+        onShare={onShare ? () => onShare(it.collectionId) : undefined} onSend={() => setSending(true)} onAsk={() => setAsking(true)} />}
+      {sending &&<SendLinkModal source={{ kind: 'guarded', item: d }} clipboardSeconds={policy.clipboardSeconds} onClose={() => setSending(false)} />}
       {rotating && <RequestRotationModal item={{ id, title: it.title }} onClose={() => setRotating(false)} onDone={() => { void q.refetch(); onChanged(); }} />}
       {asking && <RequestAccessModal target={{ kind: 'item', id, title: it.title }} onClose={() => setAsking(false)} onDone={() => void refetchGrant()} />}
     </section>

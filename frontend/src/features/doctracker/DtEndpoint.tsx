@@ -3,9 +3,9 @@ import { useMutation } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { apiDocApi } from '../../api/endpoints';
-import type { DtCatalog, DtEndpoint, DtProject, EndpointDetail } from '../../api/types';
+import { API_STAGES, type DtCatalog, type DtEndpoint, type DtProject, type EndpointDetail } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { ErrorState, Field, Modal, PageLoader } from '../../components/ui';
+import { ErrorState, Field, Kpi, Modal, PageLoader } from '../../components/ui';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
@@ -13,6 +13,9 @@ import { EndpointEditor } from '../documents/ApiEndpointEditor';
 import { EndpointArticle } from '../documents/ApiView';
 import { pid, useDtNav } from './DocTrackerPage';
 import { ScoreRing } from './DtHome';
+
+/** A documentation score as a letter: A from 90, B from 75, C from 60, D below. */
+const grade = (score: number) => (score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : 'D');
 
 /** Ask why, then show the masked values for a few seconds (audited). */
 export function RevealModal({ onClose, onReveal }: { onClose: () => void; onReveal: (reason: string) => Promise<void> }) {
@@ -75,6 +78,14 @@ export function DtEndpointView({ project, endpoint: e }: { project: DtProject; e
         <button className="link-btn" onClick={() => nav.go({ p: pid(project), t: 'apis' })}>{e.definition}</button><Icon name="chevronR" size={11} />
         <span>{e.tag ?? 'Ungrouped'}</span>
       </nav>
+      <h2 className="dt-ep-title">{q.data.item.summary || `${e.method} ${e.path}`}</h2>
+      {q.data.details.description && <p className="dt-ep-desc">{q.data.details.description}</p>}
+      <div className="dt-ep-kpis" data-testid="endpoint-kpis">
+        <Kpi tile label="Documentation grade" value={`${grade(e.score)} · ${e.score}`} tone={e.score >= 75 ? 'success' : e.score >= 60 ? 'warning' : 'danger'} />
+        <Kpi tile label="Things to add" value={e.gaps.length} tone={e.gaps.length ? 'warning' : undefined} />
+        <Kpi tile label="Stage" value={API_STAGES.find((s) => s.id === e.stage)?.label ?? e.stage} small />
+        <Kpi tile label="Masked values" value={masked} />
+      </div>
       {masked > 0 && (
         <div className={`dt-mask${shown ? ' open' : ''}`} role="status">
           <Icon name={shown ? 'eye' : 'lock'} size={15} />
@@ -111,7 +122,7 @@ export function DtEndpointView({ project, endpoint: e }: { project: DtProject; e
           <section className="dt-card dt-facts">
             <dl>
               <div><dt>API</dt><dd>{e.definition}</dd></div>
-              <div><dt>Stage</dt><dd>{e.stage}</dd></div>
+              <div><dt>Stage</dt><dd>{API_STAGES.find((s) => s.id === e.stage)?.label ?? e.stage}</dd></div>
               {q.data.item.owner && <div><dt>Owner</dt><dd>{q.data.item.owner.name}</dd></div>}
               <div><dt>Project</dt><dd>{project.name}</dd></div>
             </dl>
