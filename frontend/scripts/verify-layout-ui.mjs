@@ -74,6 +74,10 @@ try{
  }
  for(const width of [1440,390]){
   await open('/preview-org/calendar','.cal-agenda',width);
+  // The month as a calm card: the kinds of things to show sit behind one "Show" pill.
+  await page.evaluate(()=>scrollTo(0,0));await capture('calendar-top-'+width);
+  await page.locator('.cal-show > summary').click();assert.equal(await page.locator('.cal-show-pop input[type=checkbox]').count(),7);
+  await page.locator('.cal-show').evaluate(d=>{d.open=false;});
   const rows=await page.locator('.cal-agenda .member-item').evaluateAll(items=>items.map(el=>{const badge=el.children[0].getBoundingClientRect(),text=el.children[1].getBoundingClientRect(),row=el.getBoundingClientRect();return badge.right<=text.left+1&&text.right<=row.right+1;}));assert.ok(rows.length===4&&rows.every(Boolean),'Calendar type badges and titles stay in separate lanes');await page.locator('.cal-agenda').scrollIntoViewIfNeeded();await capture('calendar-'+width);
  }
  await open('/preview-org/settings/ai','.ai-budgets',1440);

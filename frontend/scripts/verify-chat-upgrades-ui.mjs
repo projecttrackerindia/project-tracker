@@ -206,6 +206,22 @@ try {
   await shot(page, 'list-1440.png');
   await page.close(); await ctx.close();
 
+  // Nothing open: "While you were away" - decisions on request, the first question waiting for me, the latest file; in light and dark.
+  ctx = await make(); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 1440, height: 940 });
+  await page.goto(`${origin}/preview-org/chat`);
+  await page.locator('[data-testid="chat-away"] .chat-away-tile', { hasText: 'Priya needs an answer from you' }).waitFor();
+  assert.equal(await page.locator('.chat-away-title').innerText(), 'While you were away');
+  assert.deepEqual(await page.locator('.chat-away-tile small').allInnerTexts(), ['Decisions', 'Questions for you', 'Files']);
+  await shot(page, 'away-1440.png');
+  await page.locator('.topbar .theme-switch').click(); await page.waitForTimeout(1200);
+  await page.locator('[data-testid="chat-away"]').waitFor();
+  await shot(page, 'away-dark-1440.png');
+  await page.locator('[data-testid="chat-away"] .chat-away-tile', { hasText: 'Priya needs an answer from you' }).click();
+  await page.locator('.composer').waitFor(); await page.waitForTimeout(500);
+  await shot(page, 'conversation-dark-1440.png'); checks.push('while-away');
+  await page.close(); await ctx.close();
+
   // Phone: the conversation and a thread fit the screen.
   ctx = await make({ hasTouch: true, isMobile: true }); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 390, height: 844 });

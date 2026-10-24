@@ -21,6 +21,7 @@ const gmail=[M('a1','Ravi Kumar <ravi@client.test>','Portal login fix — can yo
  M('a2','Payroll <noreply@pay.test>','Your payslip for October',300,false,'Your payslip is ready.')];
 const rediff=[M('101','Kiran <kiran@rediffmail.com>','Invoice 4471 approved',90,true,'Asha, the invoice 4471 is approved. Please close the billing task.')];
 const writes=[],errors=[],checks=[];
+let noMail=false;   // nothing connected yet: the page is the invitation
 let imap=[{id:'00000000-0000-0000-0000-0000000000aa',provider:'rediff',name:'Rediffmail',email:'asha@rediffmail.com',connectedAt:iso(-9000),lastSyncedAt:iso(-5),lastError:null}];
 const presets=[{id:'rediff',name:'Rediffmail',imapHost:'imap.rediffmail.com',imapPort:993,smtpHost:'smtp.rediffmail.com',smtpPort:465,domain:'rediffmail.com'},{id:'rediffpro',name:'Rediffmail Pro',imapHost:'imap.rediffmailpro.com',imapPort:993,smtpHost:'smtp.rediffmailpro.com',smtpPort:465,domain:''}];
 const assist={summary:'Ravi needs confirmation that the customer portal login fix ships by Friday 23 October; his team is blocked.',intent:'action_required',urgency:'high',keyFacts:['Deadline: Friday 23 October'],actionItems:['Confirm the release date to Ravi'],
@@ -55,9 +56,10 @@ try{
     if(ep.endsWith('/auth/refresh'))data={accessToken:token,expiresAt:'2099-01-01T00:00:00Z',user};
     else if(ep==='/api/v1/me')data={user,workspaces:[ws],fingerprint:'preview',pendingConsent:[],current:{...ws,permissions:['projects.view','projects.edit','tasks.view','tasks.edit','org.manage','reports.view','work.view','work.create','work.edit'],modules:{projects:3,tasks:3,calendar:3,work:3,ai:3,activity:3,documents:3,people:3,reports:3,billing:3},plan:{code:'BUSINESS',name:'Business',status:'Active'},entitlements:{AI_ASSISTANT:3}}};
     else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
+    else if(ep==='/api/v1/integrations/google/status'&&noMail)data={connected:false,googleEmail:null,lastError:null,calendarAccess:false,mailEnabled:true,mailSendAccess:false,inboxEnabled:true,inboxAccess:false};
     else if(ep==='/api/v1/integrations/google/status')data={connected:true,googleEmail:'asha@example.test',connectedAt:iso(-9000),lastError:null,calendarAccess:true,mailEnabled:true,mailSendAccess:true,inboxEnabled:true,inboxAccess:true};
     else if(ep==='/api/v1/integrations/microsoft/status')data={enabled:false,configured:false,connected:false,email:null,mailSendAccess:false,inboxEnabled:false,inboxAccess:false,calendarsEnabled:true,calendarAccess:false};
-    else if(ep==='/api/v1/me/mailbox/accounts')data={imap,presets,company:{provider:'rediffpro',name:'Rediffmail Pro',domains:['fivestar.test'],incoming:'imap',incomingHost:'imap.rediffmailpro.com',incomingPort:993,smtpHost:'smtp.rediffmailpro.com',smtpPort:465,custom:false},canManageCompany:true,myEmail:'asha@fivestar.test'};
+    else if(ep==='/api/v1/me/mailbox/accounts')data={imap:noMail?[]:imap,presets,company:{provider:'rediffpro',name:'Rediffmail Pro',domains:['fivestar.test'],incoming:'imap',incomingHost:'imap.rediffmailpro.com',incomingPort:993,smtpHost:'smtp.rediffmailpro.com',smtpPort:465,custom:false},canManageCompany:true,myEmail:'asha@fivestar.test'};
     else if(ep==='/api/v1/me/mailbox/agent/options')data={available:true,credits:1};
     else if(ep==='/api/v1/me/mailbox/messages'){const acc=p.get('account');const list=p.get('folder')==='sent'?[]:acc==='google'?gmail:acc.startsWith('imap:')?rediff:[];data={account:acc,email:acc==='google'?'asha@example.test':'asha@rediffmail.com',folder:p.get('folder'),messages:list.map(({body,...m})=>m),cursor:null};}
     else if(ep==='/api/v1/me/mailbox/thread'){const acc=p.get('account');const m=[...gmail,...rediff].find(x=>x.id===p.get('messageId'));data={account:acc,email:'asha@example.test',folder:'inbox',threadId:m.id,messages:[m],truncated:false};}
@@ -156,5 +158,25 @@ try{
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');await shot(page,'read-390.png');
  await page.getByRole('button',{name:'Back to messages'}).click();await page.locator('.mb-row').first().waitFor();checks.push('phone');
  await page.close();await ctx.close();
+ // Nothing connected: "Your mail, with an assistant built in." - company mail needs only the password; provider chips; three feature cards.
+ noMail=true;
+ for(const [theme,w,h] of [['light',1440,1000],['dark',1440,1000],['light',390,844]]){
+  ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:w,height:h});
+  await page.goto(origin+'/preview-org/mailbox');await page.locator('[data-testid="mail-hero"]').waitFor();
+  assert.equal(await page.locator('.mb-hero h1').innerText(),'Your mail, with an assistant built in.');
+  assert.match(await page.locator('.mb-hero-card .mb-company').innerText(),/Company mail[\s\S]*asha@fivestar.test/);
+  assert.deepEqual(await page.locator('.mb-hero-chips .ds-chip').allInnerTexts(),['Gmail','Outlook','Other IMAP']);
+  assert.equal(await page.locator('.mb-hero-features > div').count(),3);
+  if(theme==='dark'){await page.locator('.topbar .theme-switch').click();await page.waitForTimeout(1200);}
+  if(w<500)await fitsPhone(page,'mail invitation on a phone',assert);
+  await shot(page,`hero-${theme}-${w}.png`);
+  if(theme==='light'&&w>500){
+   await page.locator('.mb-hero-card input[type=password]').fill('company-pass-for-test');await page.locator('.mb-hero-card').getByRole('button',{name:'Connect'}).click();
+   await waitWrite(w=>w.ep==='/api/v1/me/mailbox/accounts/imap'&&w.b.email==='asha@fivestar.test');
+   await page.locator('.mb-hero-chips').getByRole('button',{name:'Other IMAP'}).click();await page.getByRole('dialog').locator('.mb-provider',{hasText:'Rediffmail Pro'}).waitFor();
+  }
+  await page.close();await ctx.close();
+ }
+ noMail=false;checks.push('invitation');
  assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,writes:writes.length,errors}));
 }finally{await browser.close();}

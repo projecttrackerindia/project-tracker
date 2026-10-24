@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { chatApi, documentApi, projectApi, taskApi, workApi } from '../../api/endpoints';
 import type { ChatAttachment, ChatExtract, ChatLink, ChatMessage, ChatPoll, ChatUnfurl, Conversation } from '../../api/types';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconName } from '../../components/Icon';
 import { Modal, Spinner } from '../../components/ui';
 import { formatDate, formatDateTime } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
@@ -43,7 +43,7 @@ export function UnfurlCards({ body }: { body: string }) {
     <div className="unfurls">
       {cards.map((c) => (
         <Link key={c.key} to={c.link} className={`unfurl ${c.done ? 'done' : ''}`}>
-          <span className="unfurl-kind" aria-hidden="true">{c.kind === 'page' ? '📄' : '✅'}</span>
+          <span className="unfurl-kind" aria-hidden="true"><Icon name={c.kind === 'page' ? 'note' : 'checkCircle'} size={16} /></span>
           <span className="unfurl-main"><b><code>{c.key}</code> {c.title}</b>
             <small>
               {c.status && <span className="unfurl-status" style={c.statusColor ? { color: c.statusColor } : undefined}>{c.status}</span>}
@@ -58,14 +58,14 @@ export function UnfurlCards({ body }: { body: string }) {
 
 // ------------------------------------------------------------------ what was made from a message
 
-const LINK_ICON: Record<ChatLink['kind'], string> = { task: '✅', ticket: '🎫', reminder: '⏰', page: '📄' };
+const LINK_ICON: Record<ChatLink['kind'], IconName> = { task: 'checkCircle', ticket: 'tag', reminder: 'alarm', page: 'note' };
 const linkTo = (l: ChatLink) => l.kind === 'task' ? `/tasks/${l.id}` : l.kind === 'ticket' ? `/operations?task=${l.id}` : l.kind === 'page' ? `/documents/${l.id}` : '/reminders';
 
 export function LinkedChips({ links }: { links: ChatLink[] | null | undefined }) {
   if (!links?.length) return null;
   return (
     <div className="msg-links">
-      {links.map((l) => <Link key={`${l.kind}-${l.id}`} to={linkTo(l)} className="msg-link"><span aria-hidden="true">{LINK_ICON[l.kind]}</span>{l.key && <code>{l.key}</code>}<span>{l.title}</span></Link>)}
+      {links.map((l) => <Link key={`${l.kind}-${l.id}`} to={linkTo(l)} className="msg-link"><Icon name={LINK_ICON[l.kind]} size={13} />{l.key && <code>{l.key}</code>}<span>{l.title}</span></Link>)}
     </div>
   );
 }
@@ -136,7 +136,7 @@ export function PollCard({ poll, onChanged }: { poll: ChatPoll; onChanged: (m: C
   };
   return (
     <div className={`poll ${closed ? 'closed' : ''}`} role="group" aria-label={`Poll: ${poll.question}`}>
-      <div className="poll-q"><span aria-hidden="true">📊</span><b>{poll.question}</b></div>
+      <div className="poll-q"><Icon name="chart" size={15} /><b>{poll.question}</b></div>
       <ul className="poll-options">
         {poll.options.map((o) => (
           <li key={o.index}>

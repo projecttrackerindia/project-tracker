@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
-import { PageLoader } from '../../components/ui';
+import { Kpi, PageLoader } from '../../components/ui';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -35,10 +35,10 @@ export function ReminderPolicySettings() {
 
   return (
     <div className="rs-policy">
-      <div className="rp-stats">
-        <div className="rp-stat tone-primary"><span className="rp-stat-ico"><Icon name="alarm" size={17} /></span><div><b>{p.sentLast30Days}</b><span>Reminders sent</span><em>last 30 days</em></div></div>
-        <div className="rp-stat tone-success"><span className="rp-stat-ico"><Icon name="checkCircle" size={17} /></span><div><b>{p.doneLast30Days}</b><span>Finished</span><em>last 30 days</em></div></div>
-        <div className="rp-stat tone-warning"><span className="rp-stat-ico"><Icon name="alert" size={17} /></span><div><b>{p.escalatedLast30Days}</b><span>Escalated</span><em>last 30 days</em></div></div>
+      <div className="ds-kpis">
+        <Kpi label="Reminders sent" value={p.sentLast30Days} caption="Last 30 days" />
+        <Kpi label="Finished" value={p.doneLast30Days} tone="success" caption="Last 30 days" />
+        <Kpi label="Escalated" value={p.escalatedLast30Days} tone={p.escalatedLast30Days > 0 ? 'warning' : undefined} caption="Last 30 days" />
       </div>
       <div className="card"><div className="card-body">
         <div className="setting-row">

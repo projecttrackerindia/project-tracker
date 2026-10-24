@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
-import { EmptyState, ErrorState, PageHead, PageLoader } from '../../components/ui';
+import { EmptyState, ErrorState, Kpi, PageHead, PageLoader, Segmented } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { queryClient, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -62,7 +62,8 @@ export function RemindersPage() {
   const watching = (watches.data ?? []).filter((w) => w.state === 'active').length;
   const [filter, setFilter] = useState<Filter>('all');
   const [bump, setBump] = useState(0);
-  const completedTab = useRef<HTMLButtonElement>(null);
+  const segBox = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = useState('');
   const key = [wid, 'reminders', 'list'];
 
   const data = list.data;
@@ -100,7 +101,7 @@ export function RemindersPage() {
 
   const complete = async (r: Reminder, card: HTMLElement) => {
     card.classList.add('is-completing');
-    flyTo(card, completedTab.current);
+    flyTo(card, segBox.current?.querySelectorAll<HTMLElement>('[role="tab"]')[1] ?? null);
     const series = !!r.recurrence;
     if (!series) await collapse(card);
     const before = queryClient.getQueryData<ReminderList>(key);
@@ -151,22 +152,31 @@ export function RemindersPage() {
     ...(data!.sent.length ? [{ id: 'sent' as Filter, label: 'Sent', n: data!.sent.length }] : []),
   ];
 
+  const tabs = [
+    { id: 'upcoming' as const, label: 'Upcoming' },
+    { id: 'completed' as const, label: data!.completed.length > 0 ? `Completed · ${data!.completed.length}` : 'Completed' },
+    ...(watches.isSuccess ? [{ id: 'watching' as const, label: watching > 0 ? `Watching · ${watching}` : 'Watching' }] : []),
+  ];
+
   return (
     <div className="rp">
-      <PageHead title="Reminders" sub={<>Everything you asked to be reminded about — times in <b>{zone}</b>.</>}>
-        <button type="button" className="btn btn-ghost" onClick={() => nav('/notifications/schedule')}><Icon name="settings" size={15} /> Settings</button>
-        <button type="button" className="btn btn-primary" onClick={() => openReminderComposer()}><Icon name="plus" size={15} /> New reminder</button>
+      <PageHead title="Reminders" sub={<>Times in {zone}.</>}>
+        <button type="button" className="btn btn-ghost" onClick={() => nav('/notifications/schedule')}>Settings</button>
       </PageHead>
 
-      <QuickAdd defaultTime={settings.data?.defaultTime ?? '09:00'} onAdded={() => refreshReminders(wid)} />
+      <QuickAdd text={draft} setText={setDraft} defaultTime={settings.data?.defaultTime ?? '09:00'} onAdded={() => refreshReminders(wid)} />
+      <div className="ds-chips rp-examples" aria-label="Try one">
+        {EXAMPLES.slice(0, 3).map((x) => <button key={x} type="button" className="ds-chip" onClick={() => { setDraft(x); requestAnimationFrame(() => document.getElementById('rp-quick-input')?.focus()); }}>{x}</button>)}
+      </div>
 
       <ReminderSuggestions />
 
-      <div className="rp-stats">
-        <Stat icon="alarm" tone="primary" value={counts.now} label="Need attention" />
-        <Stat icon="clock" tone="info" value={counts.today} label="Still today" />
-        <Stat icon="checkCircle" tone="success" value={insights.data?.doneThisWeek ?? 0} label="Done this week" foot={insights.data && insights.data.doneThisWeek > 0 ? `${insights.data.onTimePercent}% on time` : undefined} />
-        <Stat icon="timer" tone="purple" value={insights.data?.usualTime ?? '—'} label="Your usual time" foot="when you usually get things done" />
+      <div className="ds-kpis rp-kpis">
+        <Kpi className="rp-kpi" value={counts.now} label="Need attention" tone={counts.now > 0 ? 'danger' : undefined} />
+        <Kpi className="rp-kpi" value={counts.today} label="Still today" />
+        <Kpi className="rp-kpi" value={data!.completed.length} label="Completed" tone="success"
+          caption={insights.data && insights.data.doneThisWeek > 0 ? `${insights.data.doneThisWeek} this week · ${insights.data.onTimePercent}% on time` : undefined} />
+        <Kpi className="rp-kpi" value={insights.data?.usualTime ?? '—'} label="Your usual time" />
       </div>
 
       {(insights.data?.snoozedOften.length ?? 0) > 0 && (
@@ -177,22 +187,12 @@ export function RemindersPage() {
       )}
 
       <div className="rp-bar">
-        <div className="tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'upcoming'} className={`tab ${tab === 'upcoming' ? 'active' : ''}`} onClick={() => setTab('upcoming')}>
-            <Icon name="alarm" size={15} /> Upcoming {data!.open.length > 0 && <span className="tab-badge">{data!.open.length}</span>}
-          </button>
-          <button type="button" role="tab" ref={completedTab} key={bump} aria-selected={tab === 'completed'} className={`tab ${tab === 'completed' ? 'active' : ''} ${bump ? 'rp-bump' : ''}`} onClick={() => setTab('completed')}>
-            <Icon name="checkCircle" size={15} /> Completed {data!.completed.length > 0 && <span className="tab-badge">{data!.completed.length}</span>}
-          </button>
-          {watches.isSuccess && (
-            <button type="button" role="tab" aria-selected={tab === 'watching'} className={`tab ${tab === 'watching' ? 'active' : ''}`} onClick={() => setTab('watching')} data-testid="tab-watching">
-              <Icon name="eye" size={15} /> Watching {watching > 0 && <span className="tab-badge">{watching}</span>}
-            </button>
-          )}
+        <div ref={segBox} key={bump} className={bump ? 'rp-bump' : ''} data-testid="rp-views">
+          <Segmented label="Reminders" options={tabs} value={tab} onChange={setTab} />
         </div>
         {tab === 'upcoming' && (
-          <div className="rp-filters" role="group" aria-label="Show">
-            {filters.map((f) => <button key={f.id} type="button" aria-pressed={filter === f.id} className={`rp-filter ${filter === f.id ? 'on' : ''}`} onClick={() => setFilter(f.id)}>{f.label}{f.n > 0 && <em>{f.n}</em>}</button>)}
+          <div className="ds-chips rp-filters" role="group" aria-label="Show">
+            {filters.map((f) => <button key={f.id} type="button" aria-pressed={filter === f.id} className={`ds-chip rp-filter ${filter === f.id ? 'on' : ''}`} onClick={() => setFilter(f.id)} title={`${f.n} ${f.n === 1 ? 'reminder' : 'reminders'}`}>{f.label}</button>)}
           </div>
         )}
       </div>
@@ -201,7 +201,7 @@ export function RemindersPage() {
         ? <EmptyReminders filter={filter} />
         : groups.map((g) => (
           <section key={g.id} className={`rp-group rp-group-${g.id}`} aria-label={g.title}>
-            <h3>{g.id === 'now' && <span className="rp-pulse" aria-hidden />}{g.title}<em>{g.items.length}</em></h3>
+            <h3>{g.title}<em>{g.items.length}</em></h3>
             <ul className="rp-list">
               {g.items.map((r) => <ReminderCard key={r.id} r={r} zone={zone} sent={filter === 'sent'} onDone={complete} onSnooze={snooze} onRemove={remove} />)}
             </ul>
@@ -209,7 +209,7 @@ export function RemindersPage() {
         )))}
 
       {tab === 'completed' && (completedGroups.length === 0
-        ? <EmptyState icon="checkCircle" title="Nothing finished yet" text="Tick a reminder off and it lands here. The last 30 days are kept." />
+        ? <div className="rp-empty-card"><EmptyState icon="checkCircle" title="Nothing finished yet" text="Tick a reminder off and it lands here. The last 30 days are kept." /></div>
         : completedGroups.map((g) => (
           <section key={g.title} className="rp-group" aria-label={g.title}>
             <h3>{g.title}<em>{g.items.length}</em></h3>
@@ -277,30 +277,18 @@ function WatchList({ items, onStopped }: { items: Watch[]; onStopped: () => void
   );
 }
 
-function Stat({ icon, tone, value, label, foot }: { icon: 'alarm' | 'clock' | 'checkCircle' | 'timer'; tone: string; value: number | string; label: string; foot?: string }) {
-  return (
-    <div className={`rp-stat tone-${tone}`}>
-      <span className="rp-stat-ico"><Icon name={icon} size={17} /></span>
-      <div><b>{value}</b><span>{label}</span>{foot && <em>{foot}</em>}</div>
-    </div>
-  );
-}
-
 function EmptyReminders({ filter }: { filter: Filter }) {
-  if (filter !== 'all') return <EmptyState icon="alarm" title="Nothing here" text="Nothing matches this view right now." />;
   return (
-    <div className="rp-empty">
-      <div className="rp-empty-art"><Icon name="alarm" size={34} /></div>
-      <h3>No reminders yet</h3>
-      <p>Type one above in your own words, use “Remind me” on any task, or try one of these:</p>
-      <div className="rp-chips">{EXAMPLES.slice(0, 3).map((x) => <button key={x} type="button" className="rc-chip" onClick={() => openReminderComposer({ text: x })}>{x}</button>)}</div>
+    <div className="rp-empty-card">
+      {filter !== 'all'
+        ? <EmptyState icon="alarm" title="Nothing here" text="Nothing matches this view right now." />
+        : <EmptyState icon="alarm" title="Nothing coming up" text="Type one above in your own words, or use “Remind me” on any task." />}
     </div>
   );
 }
 
-/** One line, plain words: "call Priya tomorrow 3pm". Enter adds it; without a time it opens the full form. */
-function QuickAdd({ defaultTime, onAdded }: { defaultTime: string; onAdded: () => void }) {
-  const [text, setText] = useState('');
+/** One line, plain words: "call Priya tomorrow 3pm". Enter adds it; without a time (or empty) it opens the full form. */
+function QuickAdd({ text, setText, defaultTime, onAdded }: { text: string; setText: (t: string) => void; defaultTime: string; onAdded: () => void }) {
   const [busy, setBusy] = useState(false);
   const [example, setExample] = useState(0);
   useEffect(() => { const t = setInterval(() => setExample((i) => (i + 1) % EXAMPLES.length), 4000); return () => clearInterval(t); }, []);
@@ -310,8 +298,7 @@ function QuickAdd({ defaultTime, onAdded }: { defaultTime: string; onAdded: () =
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
-    if (!ready) { openReminderComposer({ text }); setText(''); return; }
+    if (!ready) { openReminderComposer(text.trim() ? { text } : undefined); setText(''); return; }
     setBusy(true);
     try {
       await reminderApi.create({ title: parsed.title, when: parsed.kind === 'free' ? { free: true, timeZone: zone }
@@ -325,15 +312,16 @@ function QuickAdd({ defaultTime, onAdded }: { defaultTime: string; onAdded: () =
 
   return (
     <form className={`rp-quick ${ready ? 'ready' : ''}`} onSubmit={submit}>
-      <Icon name="plus" size={18} />
-      <div className="rp-quick-main">
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Remind me… e.g. “${EXAMPLES[example]}”`} aria-label="Add a reminder in plain words" maxLength={240} />
-        <div className="rp-quick-parse" aria-live="polite">
-          {ready ? <><Icon name={parsed.kind === 'repeat' ? 'repeat' : 'alarm'} size={13} /> <b>{parsed.title}</b> · {parsed.label}</>
-            : text.trim().length > 2 ? <span className="muted">Add when — “tomorrow 9am”, “in 2 hours”, “every Friday” — or press Enter for more options</span> : null}
-        </div>
+      <div className="ds-command">
+        <input id="rp-quick-input" value={text} onChange={(e) => setText(e.target.value)} placeholder={`Remind me… ${EXAMPLES[example].replace(/^./, (c) => c.toLowerCase())}`} aria-label="Add a reminder in plain words" maxLength={240} />
+        <button type="submit" className="btn btn-primary" disabled={busy} title={ready ? 'Add this reminder' : text.trim() ? 'Add when it should go off' : 'Write a new reminder'}>
+          {busy && <span className="spinner" />}{ready || !text.trim() ? 'Add' : 'More…'}
+        </button>
       </div>
-      <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !text.trim()}>{busy && <span className="spinner" />}{ready ? 'Add' : 'More…'}</button>
+      <div className="rp-quick-parse" aria-live="polite">
+        {ready ? <><Icon name={parsed.kind === 'repeat' ? 'repeat' : 'alarm'} size={13} /> <b>{parsed.title}</b> · {parsed.label}</>
+          : text.trim().length > 2 ? <span>Add when — “tomorrow 9am”, “in 2 hours”, “every Friday” — or press Enter for more options</span> : null}
+      </div>
     </form>
   );
 }

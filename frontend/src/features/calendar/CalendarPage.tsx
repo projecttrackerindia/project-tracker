@@ -25,7 +25,7 @@ export function CalendarPage() {
 
   return (
     <>
-      <PageHead title="Calendar" sub="Tasks, action items, operational work, deadlines, stages and meetings by date">
+      <PageHead title="Calendar" eyebrow={new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} sub="Tasks, deadlines, stages and meetings by date.">
         <div className="cal-filters">
           {canPick && (
             <Select className="select" value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="Person">

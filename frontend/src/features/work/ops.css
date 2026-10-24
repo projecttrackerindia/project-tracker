@@ -54,7 +54,7 @@
 .ops-kpi:before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--primary); }
 .ops-kpi.green:before { background: #34d399; } .ops-kpi.blue:before { background: #38bdf8; } .ops-kpi.purple:before { background: #8b5cf6; }
 .ops-kpi.amber:before { background: #f59e0b; } .ops-kpi.red:before { background: #fb7185; } .ops-kpi.teal:before { background: #14b8a6; }
-.ops-kpi span { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+.ops-kpi span { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: none; letter-spacing: 0; }
 .ops-kpi b { font-size: 22px; letter-spacing: -.01em; }
 .ops-kpi small { font-size: 11.5px; color: var(--text-3); }
 .ops-ins-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
@@ -153,7 +153,7 @@
 .ops-dd-x:hover { background: var(--danger-soft); color: var(--danger); }
 .ops-dd-item.add { color: var(--primary); }
 .ops-dd-item.add > svg:first-child { color: var(--primary); }
-.ops-dd-label { padding: 8px 10px 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); }
+.ops-dd-label { padding: 8px 10px 2px; font-size: 10.5px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--text-3); }
 .ops-table .ops-ticket { min-width: 280px; }
 .ops-table .td-sub { margin-top: 2px; font-size: 12px; color: var(--text-3); }
 .ops-table tr.picked { background: var(--primary-soft); }
@@ -179,3 +179,31 @@
 .ops-low-main b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ops-low-main small { color: var(--text-3); font-size: 12px; }
 .ops-table-narrow { min-width: 0; }
+
+/* =====================================================================================================================
+   Calm design: the queue at a glance as KPI cards (big number over a short label, the number in its status colour), the chosen view
+   ringed in blue; insights as white KPI cards without stripes; suggestions as soft pills.
+   ===================================================================================================================== */
+.ops-strip { gap: 14px; }
+.ops-stat { flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 20px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); color: var(--ds-text); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow .16s var(--ds-ease), transform .16s var(--ds-ease); }
+.ops-stat b { font-size: clamp(28px, 2.4vw, 36px); letter-spacing: -.03em; }
+.ops-stat span { font-size: 14px; font-weight: 500; color: var(--ds-text-2); }
+@media (hover: hover) { .ops-stat:hover { border-color: transparent; transform: translateY(-2px); box-shadow: var(--ds-hover-lift); } }
+.ops-stat.on, .ops-stat.on:hover { background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+.ops-stat.on span { color: var(--ds-text); }
+.ops-stat.danger b { color: var(--ds-danger); }
+.ops-stat.warning b { color: var(--ds-warning); }
+
+.ops-kpis, .ops-csat-kpis { gap: 14px; }
+.ops-kpi { gap: 6px; padding: 18px 20px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.ops-kpi:before { content: none; }
+.ops-kpi span { font-size: 13px; font-weight: 500; }
+.ops-kpi b { font-size: clamp(26px, 2.2vw, 34px); font-weight: 700; letter-spacing: -.03em; }
+.ops-kpi small { font-size: 12.5px; }
+.ops-kpi.green b { color: var(--ds-success); } .ops-kpi.red b { color: var(--ds-danger); } .ops-kpi.amber b { color: var(--ds-warning); }
+.ops-aging i, .ops-stars i { height: 6px; border-radius: 3px; background: var(--ds-fill); }
+.ops-sug { border: 0; background: var(--ds-fill); color: var(--ds-accent-text); font-weight: 500; }
+.ops-sug:hover { background: var(--ds-fill-strong); }
+.ops-dupes { border-radius: 14px; }
+.ops-dupe { border: 0; background: var(--ds-surface); box-shadow: 0 0 0 1px var(--ds-line); }
+.ops-dd-label { font-size: 12px; font-weight: 600; color: var(--ds-text-3); }

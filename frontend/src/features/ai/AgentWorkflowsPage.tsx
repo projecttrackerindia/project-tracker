@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { del, get, post } from '../../api/client';
 import { useWsQuery } from '../../lib/hooks';
-import { EmptyState, PageLoader } from '../../components/ui';
+import { EmptyState, Kpi, PageLoader } from '../../components/ui';
 import { Select } from '../../components/Select';
 import { Icon, type IconName } from '../../components/Icon';
 import { Markdown } from './Markdown';
@@ -17,10 +17,10 @@ interface Job { id: string; kind: Kind; title: string; status: string; progress:
 interface Schedule { id: string; title: string; kind: Kind; intervalMinutes: number; nextRunAt: string; enabled: boolean }
 interface ForecastEvaluation { forecasts: number; verifiedCompletions: number; comparableProjects: number; meanAbsoluteErrorDays: number | null; methodology: string; items: { id: string; project: string; link: string; projectedFinish: string | null; recordedCompletedAt: string | null; errorDays: number | null; scopeChanged: boolean; reopened: boolean }[] }
 
-const KINDS: { id: Kind; label: string; hint: string; icon: IconName; tone: string }[] = [
-  { id: 'portfolio', label: 'Portfolio risks and delivery forecast', hint: 'Which projects will slip, and why', icon: 'radar', tone: 'purple' },
-  { id: 'workload', label: 'Workload and capacity review', hint: 'Who is overloaded, who has room', icon: 'users', tone: 'blue' },
-  { id: 'history', label: 'Delivery history and recurring blockers', hint: 'What keeps slowing delivery down', icon: 'activity', tone: 'amber' },
+const KINDS: { id: Kind; label: string; short: string; hint: string; icon: IconName; tone: 'awf-violet' | '' | 'warning' }[] = [
+  { id: 'portfolio', label: 'Portfolio risks and delivery forecast', short: 'Portfolio risks & delivery forecast', hint: 'Which projects will slip, and why', icon: 'radar', tone: 'awf-violet' },
+  { id: 'workload', label: 'Workload and capacity review', short: 'Workload & capacity', hint: 'Who is overloaded, who has room', icon: 'users', tone: '' },
+  { id: 'history', label: 'Delivery history and recurring blockers', short: 'Delivery history & blockers', hint: 'What keeps slowing delivery down', icon: 'activity', tone: 'warning' },
 ];
 const label = (k: Kind) => KINDS.find((x) => x.id === k)?.label ?? k;
 const every = (m: number) => (m === 60 ? 'every hour' : m === 1440 ? 'every day' : m === 10080 ? 'every week' : `every ${Math.round(m / 60)} hours`);
@@ -62,15 +62,15 @@ export function AgentWorkflowsPage() {
 
       <section className="card awf-create" aria-labelledby="awf-create-title">
         <div className="card-head">
-          <div><h3 id="awf-create-title">Start a review</h3><p>Uses only the project data you can see. No AI credits, and nothing is changed: no assignments, dates or permissions.</p></div>
-          <Link to="/ai" className="btn btn-ghost btn-sm"><Icon name="sparkle" size={14} />Open the assistant</Link>
+          <div><h3 id="awf-create-title">Start a review</h3><p>Uses only project data you can see. No AI credits. Nothing is changed.</p></div>
+          <Link to="/ai" className="btn btn-soft btn-sm">Open the assistant</Link>
         </div>
         <div className="card-body">
-          <div className="awf-kinds" role="radiogroup" aria-label="Review">
+          <div className="ds-choices awf-kinds" role="radiogroup" aria-label="Review">
             {KINDS.map((k) => (
-              <button key={k.id} type="button" role="radio" aria-checked={kind === k.id} className={`awf-kind ${k.tone} ${kind === k.id ? 'on' : ''}`} onClick={() => setKind(k.id)}>
-                <span className="awf-kind-icon"><Icon name={k.icon} size={18} /></span>
-                <span><b>{k.label}</b><small>{k.hint}</small></span>
+              <button key={k.id} type="button" role="radio" aria-checked={kind === k.id} title={k.label} className={`ds-choice awf-kind ${kind === k.id ? 'on' : ''}`} onClick={() => setKind(k.id)}>
+                <span className={`ds-tile-ico ${k.tone}`}><Icon name={k.icon} size={18} /></span>
+                <b>{k.short}</b><span>{k.hint}</span>
               </button>
             ))}
           </div>
@@ -83,7 +83,7 @@ export function AgentWorkflowsPage() {
               <option value="60">Hourly</option><option value="1440">Daily</option><option value="10080">Weekly</option>
             </Select>
             <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void perform(() => post('/ai/operations/schedules', { kind, title: label(kind), intervalMinutes: interval }))}>
-              <Icon name="repeat" size={14} />Schedule review
+              Schedule review
             </button>
           </div>
         </div>
@@ -91,7 +91,7 @@ export function AgentWorkflowsPage() {
 
       <div className="awf-grid">
         <section className="card" aria-labelledby="awf-history">
-          <div className="card-head"><div><h3 id="awf-history">Reviews</h3><p>Newest first. Pick one to read it.</p></div></div>
+          <div className="card-head"><div><h3 id="awf-history">Reviews</h3><p>Newest first</p></div></div>
           {!jobs.data?.length ? <div className="card-body"><EmptyState icon="radar" title="No reviews yet" text="Run one above; the result is saved here." /></div> : (
             <ul className="awf-jobs">
               {jobs.data.map((j) => {
@@ -100,7 +100,7 @@ export function AgentWorkflowsPage() {
                 return (
                   <li key={j.id} className={selected === j.id ? 'on' : ''}>
                     <button type="button" className="awf-job" onClick={() => setSelected(j.id)} aria-current={selected === j.id}>
-                      <span className={`awf-dot ${k?.tone ?? ''}`}><Icon name={k?.icon ?? 'radar'} size={14} /></span>
+                      <span className={`ds-tile-ico awf-dot ${k?.tone ?? ''}`}><Icon name={k?.icon ?? 'radar'} size={14} /></span>
                       <span className="awf-job-text"><b>{j.title}</b><small>{timeAgo(j.createdAt)}</small></span>
                       <span className={`awf-status ${j.status}`}>{live ? `${STATUS[j.status] ?? j.status} · ${j.progress}%` : STATUS[j.status] ?? j.status}</span>
                     </button>
@@ -126,7 +126,7 @@ export function AgentWorkflowsPage() {
                     <Markdown text={picked.result.summary} />
                     <details className="awf-method"><summary>How this was worked out</summary><p>{picked.result.methodology}</p></details>
                     {picked.result.sources.length > 0 && <><h4>Sources</h4><ul className="awf-sources">{picked.result.sources.map((s) => <li key={`${s.kind}:${s.id}`}><Link to={s.link}>{s.label}</Link>{s.version && <span> · {s.version}</span>}</li>)}</ul></>}
-                    <Link className="btn btn-primary btn-sm" to="/ai" state={{ ask: `Review this ${picked.kind} analysis and recommend actions. Retrieve current evidence first.`, ts: Date.now() }}><Icon name="sparkle" size={14} />Ask the agent for actions</Link>
+                    <Link className="btn btn-soft btn-sm awf-ask" to="/ai" state={{ ask: `Review this ${picked.kind} analysis and recommend actions. Retrieve current evidence first.`, ts: Date.now() }}><Icon name="sparkle" size={14} />Ask the agent for actions</Link>
                   </>
                 ) : !picked.errorCode && <p className="muted">{picked.status === 'cancelled' ? 'This review was cancelled.' : 'The result appears here when the review finishes.'}</p>}
               </div>
@@ -138,7 +138,7 @@ export function AgentWorkflowsPage() {
       <section className="card" aria-labelledby="awf-schedules">
         <div className="card-head"><div><h3 id="awf-schedules">Scheduled reviews</h3><p>They run in the background and land in Reviews.</p></div></div>
         <div className="card-body">
-          {!schedules.data?.length ? <p className="muted">No scheduled reviews. The first one runs shortly after you schedule it.</p> : (
+          {!schedules.data?.length ? <p className="muted">No scheduled reviews yet. The first one runs shortly after you schedule it.</p> : (
             <ul className="awf-schedules">
               {schedules.data.map((s) => (
                 <li key={s.id}>
@@ -156,11 +156,11 @@ export function AgentWorkflowsPage() {
         <section className="card" aria-labelledby="awf-forecasts">
           <div className="card-head"><div><h3 id="awf-forecasts">How forecasts turned out</h3><p>{f.methodology}</p></div></div>
           <div className="card-body">
-            <div className="awf-stats">
-              <div><b>{f.forecasts}</b><span>forecasts recorded</span></div>
-              <div><b>{f.verifiedCompletions}</b><span>completions checked</span></div>
-              <div><b>{f.comparableProjects}</b><span>comparable projects</span></div>
-              <div><b>{f.meanAbsoluteErrorDays == null ? '–' : `${f.meanAbsoluteErrorDays.toFixed(1)}d`}</b><span>average miss</span></div>
+            <div className="ds-kpis awf-stats">
+              <Kpi tile label="Forecasts recorded" value={f.forecasts} />
+              <Kpi tile label="Completions checked" value={f.verifiedCompletions} />
+              <Kpi tile label="Comparable projects" value={f.comparableProjects} />
+              <Kpi tile label="Average miss" value={f.meanAbsoluteErrorDays == null ? '–' : `${f.meanAbsoluteErrorDays.toFixed(1)}d`} />
             </div>
             {f.items.length > 0 && (
               <div className="table-wrap">

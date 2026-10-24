@@ -3,7 +3,7 @@
   background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 9%, var(--surface)), color-mix(in srgb, var(--purple) 7%, var(--surface))); }
 .va-hero h2 { margin: 6px 0; font-size: 21px; }
 .va-hero p { margin: 0; color: var(--text-2); max-width: 620px; line-height: 1.5; }
-.va-eyebrow { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--primary); }
+.va-eyebrow { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--primary); }
 .va-hero-actions { display: flex; gap: 10px; align-items: center; }
 .va-state { padding: 4px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 700; background: var(--surface-2); color: var(--text-3); }
 .va-state.on { background: var(--success-soft); color: var(--success); }
@@ -21,7 +21,7 @@
 .va-short { max-width: 140px; }
 .va-langs { display: flex; flex-wrap: wrap; gap: 6px; }
 .va-langs button { display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); cursor: pointer; font: inherit; font-size: 13px; }
-.va-langs button.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.va-langs button.on { border-color: transparent; background: var(--ds-dark); color: var(--ds-on-dark); font-weight: 600; }
 .va-order { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--primary-fill); color: #fff; font-size: 11px; }
 .va-toggle { display: flex; gap: 10px; align-items: flex-start; }
 .va-toggle > input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--primary); }
