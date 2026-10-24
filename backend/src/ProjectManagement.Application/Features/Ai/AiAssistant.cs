@@ -89,6 +89,9 @@ public class AiFallbackOptions
     /// <summary>Conservative character guard, not a tokenizer. Overflow is rejected, never silently truncated.</summary>
     public int MaxPromptChars { get; set; } = 48000;
     public bool SupportsImages { get; set; }
+    /// <summary>OpenAI's own API: newer models take max_completion_tokens (max_tokens is refused) and report usage only when asked for it.
+    /// Set for a workspace's own OpenAI key; other compatible providers keep the older field.</summary>
+    public bool OpenAiNative { get; set; }
 }
 
 /// <summary>A language model behind one call: a system prompt and a user message in, the answer and the model that gave it out.</summary>

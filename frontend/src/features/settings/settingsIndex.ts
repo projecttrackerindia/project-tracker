@@ -86,6 +86,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   { id: 'ai.enabled', section: 'ai', label: 'AI assistant on or off', keywords: 'ai gemini assistant disable enable turn off artificial intelligence', hint: 'For everyone in this workspace' },
   { id: 'ai.instructions', section: 'ai', label: 'What the assistant knows about the organization', keywords: 'ai instructions context prompt company about knowledge', hint: 'Facts it uses in every answer' },
   { id: 'ai.budget', section: 'ai', label: 'AI credits and budget', keywords: 'ai credits usage limit cost budget tokens', hint: 'How many credits are used and by whom' },
+  { id: 'ai.ownKey', section: 'ai', label: 'Use your own Claude or ChatGPT key', keywords: 'ai own key api key byok anthropic claude openai chatgpt gpt provider model bring your own', hint: 'Answers on your organization\'s account, no AI credits' },
   { id: 'apps.connected', section: 'connected-apps', label: 'Connected AI apps (Claude, ChatGPT)', keywords: 'mcp claude chatgpt openai oauth connected apps assistants', hint: 'AI assistants working in this workspace', find: 'Connected' },
 
   // Billing

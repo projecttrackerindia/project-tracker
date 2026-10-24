@@ -26,6 +26,22 @@ public partial class AppDbContext
             e.Property(x => x.Role).HasMaxLength(16);
             e.HasOne<CallRoom>().WithMany().HasForeignKey(x => x.CallId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<AiWorkspaceProvider>(e =>
+        {
+            e.HasIndex(x => x.TenantId).IsUnique();
+            e.Property(x => x.Provider).HasMaxLength(16);
+            e.Property(x => x.KeyProtected).HasMaxLength(2000);
+            e.Property(x => x.KeyHint).HasMaxLength(8);
+            e.Property(x => x.QuickModel).HasMaxLength(100);
+            e.Property(x => x.StandardModel).HasMaxLength(100);
+            e.Property(x => x.DeepModel).HasMaxLength(100);
+            e.Property(x => x.LastError).HasMaxLength(300);
+        });
+        b.Entity<AiProviderConsent>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            e.Property(x => x.Provider).HasMaxLength(16);
+        });
         b.Entity<AiEvaluationRun>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.RanAt });

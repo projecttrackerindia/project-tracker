@@ -59,7 +59,7 @@ export function useWorkspaceSections(): SectionDef[] {
     { id: 'webhooks', group: 'Integrations', to: '/settings/webhooks', label: 'Webhooks', icon: 'send', blurb: 'Tell other systems (and Teams channels) when something changes; receive alerts as work.', show: isAdmin },
     { id: 'api-keys', group: 'Integrations', to: '/settings/api-keys', label: 'API keys', icon: 'key', blurb: 'Access for scripts and other tools.', show: isAdmin },
 
-    { id: 'ai', group: 'AI', to: '/settings/ai', label: 'Assistant', icon: 'sparkle', blurb: 'On or off, what it knows about the organization, credits.', show: isAdmin },
+    { id: 'ai', group: 'AI', to: '/settings/ai', label: 'Assistant', icon: 'sparkle', blurb: 'On or off, what it knows about the organization, credits, your own Claude or ChatGPT key.', show: isAdmin },
     { id: 'connected-apps', group: 'AI', to: '/settings/connected-apps', label: 'Connected AI apps', icon: 'bolt', blurb: 'Claude, ChatGPT and other assistants working here.', show: true },
 
     { id: 'billing', group: 'Billing', to: '/settings/billing', label: 'Plan & billing', icon: 'card', blurb: 'Plan, seats, invoices, payment.', show: mBilling > 0 },

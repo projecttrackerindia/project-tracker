@@ -121,6 +121,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public FakeAiClient Ai { get; } = new();
     /// <summary>Stands in for Claude in the AI workspace (streamed, with tools and files).</summary>
     public FakeAiChat Chat { get; } = new();
+    /// <summary>A workspace's own Claude or ChatGPT account (scripted).</summary>
+    public FakeWorkspaceAiClients OwnAi { get; } = new();
     /// <summary>Stands in for the Web Push services.</summary>
     public RecordingPushHandler Push { get; } = new();
     /// <summary>What would be broadcast to open screens.</summary>
@@ -162,10 +164,15 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddHttpClient("mcp-self").ConfigurePrimaryHttpMessageHandler(() => Server.CreateHandler());   // the MCP server calls the app's own endpoints
             services.RemoveAll<ProjectManagement.Application.Features.Sso.IDomainVerifier>();
             services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier>(Dns);
+            // The scripted models, behind the same layer production has: a workspace's own key answers the people who agreed to it.
+            services.RemoveAll<ProjectManagement.Application.Features.Ai.IWorkspaceAiClients>();
+            services.AddSingleton<ProjectManagement.Application.Features.Ai.IWorkspaceAiClients>(OwnAi);
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiClient>();
-            services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient>(Ai);
+            services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient>(sp => new ProjectManagement.Infrastructure.Services.WorkspaceAwareClient(Ai,
+                sp.GetRequiredService<ProjectManagement.Infrastructure.Services.WorkspaceAiResolver>(), Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectManagement.Infrastructure.Services.WorkspaceAwareClient>.Instance));
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiChat>();
-            services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat>(Chat);
+            services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat>(sp => new ProjectManagement.Infrastructure.Services.WorkspaceAwareChat(Chat,
+                sp.GetRequiredService<ProjectManagement.Infrastructure.Services.WorkspaceAiResolver>(), Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectManagement.Infrastructure.Services.WorkspaceAwareChat>.Instance));
             services.RemoveAll<ProjectManagement.Application.Features.Calls.ILiveKitRooms>();
             services.AddSingleton<ProjectManagement.Application.Features.Calls.ILiveKitRooms>(LiveKit);
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IAiEmbedder>();

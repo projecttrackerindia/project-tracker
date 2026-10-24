@@ -90,7 +90,7 @@ public class OpenAiCompatibleClient(IHttpClientFactory http, IOptions<AiOptions>
         var body = new JsonObject
         {
             ["model"] = Model,
-            ["max_tokens"] = tokens,
+            [F.OpenAiNative ? "max_completion_tokens" : "max_tokens"] = tokens,
             ["messages"] = new JsonArray(
                 new JsonObject { ["role"] = "system", ["content"] = system },
                 new JsonObject { ["role"] = "user", ["content"] = user }),

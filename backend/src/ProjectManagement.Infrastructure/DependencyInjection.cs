@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Infrastructure.Persistence;
@@ -139,7 +140,12 @@ public static class DependencyInjection
         services.AddSingleton<AiInferenceGate>();
         services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiDiagnostics, AiDiagnostics>();
         services.AddSingleton<OpenAiCompatibleClient>();
-        services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient, AiRouter>();
+        // A workspace's own Claude or ChatGPT key, used for the people who agreed to it (read per request).
+        services.AddHttpContextAccessor();
+        services.AddSingleton<ProjectManagement.Application.Features.Ai.IWorkspaceAiClients, WorkspaceAiClients>();
+        services.AddSingleton<WorkspaceAiResolver>();
+        services.AddSingleton<AiRouter>();
+        services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiClient>(sp => new WorkspaceAwareClient(sp.GetRequiredService<AiRouter>(), sp.GetRequiredService<WorkspaceAiResolver>(), sp.GetRequiredService<ILogger<WorkspaceAwareClient>>()));
         services.AddSingleton<AnthropicChat>();
         services.AddSingleton<OpenAiCompatibleChat>();
         services.AddSingleton<GeminiAdmission>();
@@ -153,7 +159,8 @@ public static class DependencyInjection
         // The AI workspace: streamed, with tools and files. Claude first, the same Ai:Fallback:* provider as backup - a self-hosted
         // Any OpenAI-compatible address, used when Claude cannot answer or
         // there is no Anthropic key at all.
-        services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat, AiChatRouter>();
+        services.AddSingleton<AiChatRouter>();
+        services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiChat>(sp => new WorkspaceAwareChat(sp.GetRequiredService<AiChatRouter>(), sp.GetRequiredService<WorkspaceAiResolver>(), sp.GetRequiredService<ILogger<WorkspaceAwareChat>>()));
         if ((config["Storage:Provider"] ?? "Local").Equals("S3", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IFileStorage, S3FileStorage>();

@@ -14,6 +14,8 @@ import { Composer, DropOverlay, Hero, MessageView, Orb, PlanNotice, ModeSwitch, 
 import { AI_NAME } from './aiBrand';
 import { saveFile } from '../../lib/native';
 import { Markdown } from './Markdown';
+import { ProviderConsentDialog, ProviderNotice } from './OwnAiKey';
+import { aiProviderApi, type AiProviderStatus } from './providerApi';
 
 /** What the page shows while an answer is being written. */
 interface Live {
@@ -86,6 +88,8 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // The organization answers on its own Claude or ChatGPT account and this person has not agreed yet (retry: the question to send after).
+  const [consent, setConsent] = useState<{ status: AiProviderStatus; retry: string | null } | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState(0);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   useEffect(() => {
@@ -245,7 +249,10 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
           // refused before anything was written: nothing was spent, so the question goes back into the box
           setMessages((m) => m.filter((x) => x.id !== localId));
           setText(raw); setFiles(snapshot);
-          setError(e.message);
+          if (e.code === 'AI_PROVIDER_CONSENT') {
+            // The organization answers on its own Claude or ChatGPT account: agree once, then the same question is sent.
+            void aiProviderApi.status().then((st) => setConsent({ status: st, retry: raw })).catch(() => setError(e.message));
+          } else setError(e.message);
           if (e.status === 429 && e.retryAfterSeconds) {
             setCooldownSeconds(e.retryAfterSeconds);
             setCooldownUntil(Date.now() + e.retryAfterSeconds * 1000);
@@ -400,12 +407,20 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
 
   const disabledReason = cooldownSeconds > 0 ? `Please wait ${cooldownSeconds} seconds before asking again.` : outOfCredits ? 'This month\'s AI credits are used up. They renew on the 1st.' : null;
   const empty = messages.length === 0 && !live;
+  const consentDialog = consent && (
+    <ProviderConsentDialog status={consent.status} onClose={() => setConsent(null)}
+      onAgreed={() => { const again = consent.retry; setConsent(null); if (again) { setText(''); void send(again); } else toast('Thanks. Ask away.'); }} />
+  );
+  const providerNotice = <ProviderNotice onAgree={(st) => setConsent({ status: st, retry: null })} />;
 
   if (home) {
     const composer = (
-      <Composer value={text} onChange={setText} onSend={sendFromBox} onStop={stop} onFiles={addFiles} onRemoveFile={removeFile} files={files} streaming={streaming}
-        canAttach={canAttach} usage={usage} mode={mode} disabledReason={disabledReason} autoFocus={empty && finePointer()}
-        tools={<ModeMenu mode={mode} onChange={setMode} usage={usage} disabled={streaming} />} />
+      <>
+        {providerNotice}
+        <Composer value={text} onChange={setText} onSend={sendFromBox} onStop={stop} onFiles={addFiles} onRemoveFile={removeFile} files={files} streaming={streaming}
+          canAttach={canAttach} usage={usage} mode={mode} disabledReason={disabledReason} autoFocus={empty && finePointer()}
+          tools={<ModeMenu mode={mode} onChange={setMode} usage={usage} disabled={streaming} />} />
+      </>
     );
     const thinking = streaming ? (live?.stage === 'queued' ? 'Waiting for the assistant…' : live?.stage === 'writing' ? 'Writing…' : 'Thinking…') : null;
     return (
@@ -440,6 +455,7 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
             {error && <div className="ai-banner" role="alert"><Icon name="alert" size={15} /><span>{error}</span><button type="button" aria-label="Dismiss" onClick={() => setError(null)}><Icon name="close" size={13} /></button></div>}
             {!empty && composer}
             {dragging && <DropOverlay />}
+            {consentDialog}
           </section>
         </div>
       </div>
@@ -489,9 +505,11 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
         </div>
 
         {error && <div className="ai-banner" role="alert"><Icon name="alert" size={15} /><span>{error}</span><button type="button" aria-label="Dismiss" onClick={() => setError(null)}><Icon name="close" size={13} /></button></div>}
+        {providerNotice}
         <Composer value={text} onChange={setText} onSend={sendFromBox} onStop={stop} onFiles={addFiles} onRemoveFile={removeFile} files={files} streaming={streaming}
           canAttach={canAttach} usage={usage} mode={mode} disabledReason={disabledReason} />
         {dragging && <DropOverlay />}
+        {consentDialog}
       </section>
     </div>
     </div>

@@ -1,0 +1,30 @@
+/* The workspace's own Claude or ChatGPT key, and each person's one-time agreement to it. */
+.own-key .setting-info h4 { display: flex; align-items: center; gap: 7px; }
+.own-key .setting-info h4 svg { flex: none; color: var(--primary); }
+.own-key .setting-info p { max-width: 72ch; }
+.own-key-state { padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13px; color: var(--text-2); margin-bottom: 14px; }
+.own-key-state.on { background: var(--success-soft); }
+.own-key-state b { color: var(--text); }
+.own-key-state code { font-size: 12px; }
+.own-key-providers { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.own-key-provider { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.own-key-provider.on { border-color: var(--primary); background: var(--primary-soft); }
+.own-key-provider span { display: grid; gap: 2px; }
+.own-key-provider small { color: var(--text-2); font-size: 12px; }
+.own-key-provider input { margin-top: 3px; }
+.own-key .field { margin-bottom: 12px; }
+.own-key-models { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0 12px; }
+.own-key-error { display: flex; gap: 6px; align-items: flex-start; color: var(--danger-text, var(--danger)); font-size: 12.5px; margin: 6px 0 0; }
+.own-key-ok { display: flex; gap: 6px; align-items: center; color: var(--success); font-size: 12.5px; margin: 6px 0 0; }
+.own-key-toggle { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; cursor: pointer; }
+.own-key-toggle span { display: grid; gap: 2px; }
+.own-key-toggle small { color: var(--text-2); font-size: 12px; }
+.own-key-toggle input { margin-top: 3px; }
+.provider-consent p { margin: 0 0 12px; line-height: 1.55; }
+.provider-consent ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; color: var(--text-2); }
+.provider-consent li { display: flex; gap: 8px; align-items: flex-start; }
+.provider-consent li svg { flex: none; margin-top: 2px; color: var(--success); }
+.provider-notice { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; margin: 0 auto 10px; max-width: 760px; border-radius: 10px;
+  background: var(--primary-soft); color: var(--text); font-size: 13px; }
+.provider-notice svg { flex: none; color: var(--primary); }
+.provider-notice span { flex: 1; min-width: 200px; }

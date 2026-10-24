@@ -179,7 +179,8 @@ public sealed class OpenAiCompatibleChat(IHttpClientFactory http, IOptions<AiOpt
         // r.Model is whichever Claude model the tier router picked (e.g. "claude-haiku-4-5") - meaningless to this provider, which has
         // its own configured model regardless of which Claude tier the person's question was routed to.
         // stream_options is left out: some compatible providers reject it; token accounting defaults to 0 without it.
-        var body = new JsonObject { ["model"] = oneShot.Model, ["stream"] = true, ["max_tokens"] = tokens, ["messages"] = messages };
+        var body = new JsonObject { ["model"] = oneShot.Model, ["stream"] = true, [F.OpenAiNative ? "max_completion_tokens" : "max_tokens"] = tokens, ["messages"] = messages };
+        if (F.OpenAiNative) body["stream_options"] = new JsonObject { ["include_usage"] = true };
         // An administrator's own explicit choice is still sent if set; nothing is added by default any more (see note above).
         if (!string.IsNullOrWhiteSpace(F.ReasoningEffort)) body["reasoning_effort"] = F.ReasoningEffort.Trim();
         if (r.Tools.Count > 0) body["tools"] = new JsonArray(r.Tools.Select(ToTool).ToArray());

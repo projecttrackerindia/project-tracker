@@ -11,7 +11,7 @@ namespace ProjectManagement.Application.Features.Ai;
 public record AiCreditBalance(string Month, long Limit, long Spent, long Reserved, long Available, bool Unlimited);
 
 /// <summary>Short tenant-row locks serialize ledger changes across replicas. Model calls never hold this lock.</summary>
-public class AiCreditService(IAppDbContext db, ICurrentContext ctx, AppClock clock, EntitlementService entitlements)
+public class AiCreditService(IAppDbContext db, ICurrentContext ctx, AppClock clock, EntitlementService entitlements, WorkspaceAiService? workspaceAi = null)
 {
     private DateTime Period => new(clock.Now.Year, clock.Now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -42,6 +42,8 @@ public class AiCreditService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (amount <= 0 || amount > 10000 || string.IsNullOrWhiteSpace(feature) || feature.Length > 64)
             throw new ArgumentOutOfRangeException(nameof(amount));
         var tid = ctx.RequireTenantId(); var uid = ctx.RequireUserId();
+        // Answered on the organization's own Claude or ChatGPT account (the person agreed to it): their provider bills them; no credits.
+        if (workspaceAi is not null && await workspaceAi.ActiveAsync(ct) is not null) return AiCreditLease.Free(amount);
         await using var tx = await db.Database.BeginOwnedTransactionAsync(ct);
         await LockAsync(ct);
         var existing = await db.AiCreditReservations.AsNoTracking().FirstOrDefaultAsync(r => r.OperationId == operationId, ct);
@@ -133,14 +135,18 @@ public class AiCreditService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     }
 }
 
-public sealed class AiCreditLease(AiCreditService service, Guid id, int amount) : IAsyncDisposable
+public sealed class AiCreditLease(AiCreditService? service, Guid id, int amount) : IAsyncDisposable
 {
     private bool complete;
     private bool settling;
     public int Amount => amount;
+    /// <summary>Nothing held and nothing charged: the answer is on the organization's own AI account.</summary>
+    public bool IsFree => service is null;
+    public static AiCreditLease Free(int amount) => new(null, Guid.Empty, amount);
     public async Task SettleAsync(int charged, CancellationToken ct = default)
     {
         if (complete) return;
+        if (service is null) { complete = true; return; }
         settling = true;
         // A settlement that fails must not leave the reservation held forever: once it has failed, disposing releases it.
         try { await service.CompleteAsync(id, charged, ct); complete = true; }

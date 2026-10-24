@@ -43,6 +43,7 @@ import { SsoSettings } from './SsoSettings';
 import { PROVIDER_ICON } from '../auth/AuthPages';
 import { AiWorkspaceSwitch } from '../ai/Assistant';
 import { AiInstructionsCard, AiProfileCard } from '../ai/AiInstructions';
+import { AiOwnKeyCard, MyAiProviderCard } from '../ai/OwnAiKey';
 import { DirectoryPanel, InvitationsPanel } from '../members/MembersPage';
 import { LastChanged, SectionHistory, SettingsHome, SettingsSearch, useSettingJump, useSetupHealth } from './SettingsCenter';
 import { NotificationDefaultsSection } from './NotificationDefaults';
@@ -126,7 +127,7 @@ function ProfileSection() {
           <ThemeSwitch />
         </div></div>
       </div>
-      <div data-setting="account.ai"><AiProfileCard /></div>
+      <div data-setting="account.ai"><AiProfileCard /><MyAiProviderCard /></div>
       <DeleteAccountCard />
     </>
   );
@@ -406,6 +407,7 @@ function AiSection() {
       <div data-setting="ai.enabled"><AiWorkspaceSwitch /><LastChanged k="ai.enabled" section="ai" /></div>
       <div data-setting="ai.instructions"><AiInstructionsCard /><LastChanged k="ai.instructions" section="ai" /></div>
       <div data-setting="ai.budget"><AiUsageCard /></div>
+      <div data-setting="ai.ownKey"><AiOwnKeyCard /></div>
       <p className="muted" style={{ marginTop: 14, fontSize: 12.5 }}>How the assistant works with you personally (what it learned, your notes) is private to you: <Link className="link" to="/account#s-account.ai">My account → Profile</Link>.</p>
       <SectionHistory section="ai" />
     </>

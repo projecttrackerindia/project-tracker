@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Runtime.CompilerServices;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Ai;
 
 namespace ProjectManagement.Tests.Infrastructure;
@@ -216,4 +217,43 @@ public sealed class FakeLiveKitRooms : ProjectManagement.Application.Features.Ca
     public Task DeleteAsync(string room, CancellationToken ct) { Open.TryRemove(room, out _); Closed.Add(room); return Task.CompletedTask; }
     public Task<IReadOnlyList<string>> ParticipantsAsync(string room, CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>([]);
     public Task RemoveAsync(string room, string identity, CancellationToken ct) => Task.CompletedTask;
+}
+
+/// <summary>
+/// The provider side of a workspace's own AI key, without the internet: keys starting "sk-ant-good" or "sk-good" are accepted and may use
+/// <see cref="Models"/>; any other key is refused the way the provider would. Answers come from <see cref="Chat"/>, a separate scripted model,
+/// so a test can tell which account answered.
+/// </summary>
+public sealed class FakeWorkspaceAiClients : IWorkspaceAiClients
+{
+    public string[] Models { get; set; } = ["claude-haiku-5-5", "claude-opus-5-5", "claude-sonnet-5-5", "gpt-5", "gpt-5-mini"];
+    public FakeAiChat Chat { get; } = new() { Configured = true };
+    public ConcurrentQueue<WorkspaceAiKey> Used { get; } = new();
+    public ConcurrentQueue<string> OneShots { get; } = new();
+
+    public void Reset() { Chat.Fail = null; while (Chat.Script.TryDequeue(out _)) { } while (Chat.Requests.TryDequeue(out _)) { } Used.Clear(); OneShots.Clear(); }
+
+    private IAiChat UseChat(WorkspaceAiKey key) { Used.Enqueue(key); return Chat; }
+    IAiChat IWorkspaceAiClients.Chat(WorkspaceAiKey key) => UseChat(key);
+
+    public IAiClient OneShot(WorkspaceAiKey key) { Used.Enqueue(key); return new OneShotOn(this, key); }
+
+    private sealed class OneShotOn(FakeWorkspaceAiClients owner, WorkspaceAiKey key) : IAiClient
+    {
+        public bool Configured => true;
+        public string Model => key.StandardModel;
+        public string? Provider => key.ProviderName;
+        public string? Backup => null;
+        public Task<AiAnswer> CompleteAsync(string system, string user, int maxTokens, CancellationToken ct)
+        {
+            if (owner.Chat.Fail is { } f) throw f;
+            owner.OneShots.Enqueue(user);
+            return Task.FromResult(new AiAnswer("Answered on the organization's own key.", key.StandardModel));
+        }
+    }
+
+    public Task<IReadOnlyList<string>> ListModelsAsync(string provider, string apiKey, CancellationToken ct) =>
+        apiKey.StartsWith("sk-ant-good", StringComparison.Ordinal) || apiKey.StartsWith("sk-good", StringComparison.Ordinal)
+            ? Task.FromResult<IReadOnlyList<string>>(Models)
+            : throw new AppException(422, "AI_KEY_REFUSED", $"{WorkspaceAiService.NameOf(provider)} refused this key. Check it is copied completely and still active.");
 }
