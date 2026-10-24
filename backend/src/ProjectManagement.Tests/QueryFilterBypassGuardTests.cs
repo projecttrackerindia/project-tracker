@@ -78,6 +78,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Organization/AccessService.cs",
         "ProjectManagement.Application/Features/Organization/OrgSecurityService.cs",
         "ProjectManagement.Application/Features/Organization/OrgService.cs",
+        "ProjectManagement.Application/Features/ProjectMeetings/MeetingReminders.cs", // background and after each change: finds upcoming sessions of scheduled meetings in active tenants (live projects only); each reminder carries its meeting's own tenant and goes to that meeting's own people
         "ProjectManagement.Application/Features/ProjectMeetings/MeetingSyncEngine.cs",
         "ProjectManagement.Application/Features/ProjectMeetings/StandupSummaryService.cs", // background: finds stand-up meetings across active tenants (ids and times only); each summary is built in that tenant's own scope
         "ProjectManagement.Application/Features/Agent/AgentEngine.cs", // background: finds projects with the agent on and inbox opt-ins across active tenants (ids only); each is handled in that tenant's own scope as its acting person
