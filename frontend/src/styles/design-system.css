@@ -184,8 +184,9 @@ a { color: inherit; }
 h1, h2, h3 { letter-spacing: -.015em; }
 
 /* -------------------------------------------------------------------------------------------------- buttons */
+/* no display here: single-class "display: none" rules elsewhere must still hide a button */
 html .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; height: auto; padding: 0 18px;
+  align-items: center; justify-content: center; gap: 7px; min-height: 40px; height: auto; padding: 0 18px;
   border-radius: var(--ds-r-pill); font-size: 14px; font-weight: 500; letter-spacing: -.005em; line-height: 1; white-space: nowrap;
   transition: background-color .16s var(--ds-ease), color .16s var(--ds-ease), box-shadow .16s var(--ds-ease), transform .12s var(--ds-ease), border-color .16s var(--ds-ease);
   box-shadow: none; filter: none;
@@ -236,7 +237,7 @@ html .btn-block, html .btn.full { width: 100%; }
 
 /* icon buttons: circles with a label for screen readers */
 html .btn-icon, html .icon-btn {
-  display: inline-grid; place-items: center; min-width: 36px; width: 36px; height: 36px; min-height: 36px; padding: 0; border-radius: 50%;
+  place-items: center; min-width: 36px; width: 36px; height: 36px; min-height: 36px; padding: 0; border-radius: 50%;
   background: transparent; color: var(--ds-text-2); border: 0; box-shadow: none; transition: background-color .16s var(--ds-ease), color .16s var(--ds-ease);
 }
 html .btn-icon:hover:not(:disabled), html .icon-btn:hover, html[data-theme='dark'] .btn-icon:hover:not(:disabled), html[data-theme='dark'] .icon-btn:hover { background: var(--ds-fill); color: var(--ds-text); }
@@ -430,9 +431,9 @@ html .progress-bar.amber { background: #E8A33D; box-shadow: none; }
 html .progress-bar.red { background: var(--ds-danger); box-shadow: none; }
 html .progress-lg { height: 8px; border-radius: 4px; }
 html .progress-active { background: color-mix(in srgb, var(--ds-accent) 35%, transparent); }
-.ds-bar { height: 6px; border-radius: 3px; background: var(--ds-fill); overflow: hidden; }
-.ds-bar > i { display: block; height: 100%; border-radius: 3px; background: var(--ds-accent); transition: width .5s var(--ds-ease); }
-.ds-bar.success > i { background: var(--ds-success); } .ds-bar.warning > i { background: #E8A33D; } .ds-bar.danger > i { background: var(--ds-danger); }
+.ds-meter { height: 6px; border-radius: 3px; background: var(--ds-fill); overflow: hidden; }
+.ds-meter > i { display: block; height: 100%; border-radius: 3px; background: var(--ds-accent); transition: width .5s var(--ds-ease); }
+.ds-meter.success > i { background: var(--ds-success); } .ds-meter.warning > i { background: #E8A33D; } .ds-meter.danger > i { background: var(--ds-danger); }
 
 /* ---------------------------------------------------------------------------------------------- empty states */
 html .empty { padding: 56px 24px; color: var(--ds-text-3); }
@@ -536,10 +537,10 @@ html .btn.btn-risk:hover:not(:disabled) { background: color-mix(in srgb, var(--d
 
 /* ---------------------------------------------------------------------------------------------------- lists */
 .ds-list { display: flex; flex-direction: column; }
-.ds-row { display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 10px 4px; border-bottom: 1px solid var(--ds-line); }
-.ds-row:last-child { border-bottom: 0; }
-.ds-rows-tiles .ds-row { padding: 14px 18px; border: 0; border-radius: 16px; background: var(--ds-surface-2); }
-.ds-rows-tiles .ds-row + .ds-row { margin-top: 8px; }
+.ds-lrow { display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 10px 4px; border-bottom: 1px solid var(--ds-line); }
+.ds-lrow:last-child { border-bottom: 0; }
+.ds-lrows-tiles .ds-lrow { padding: 14px 18px; border: 0; border-radius: 16px; background: var(--ds-surface-2); }
+.ds-lrows-tiles .ds-lrow + .ds-lrow { margin-top: 8px; }
 
 /* ------------------------------------------------------------------------------------------------- code panels */
 .ds-code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #F5F5F7; background: #000; border-radius: 16px; padding: 16px 18px; overflow-x: auto; white-space: pre; }
@@ -668,7 +669,7 @@ html .content { padding: 32px 40px 64px; }
 /* reduced motion: no lifts, no glides, no count-ups */
 @media (prefers-reduced-motion: reduce) {
   .ds-enter { animation: none; }
-  .ds-seg-thumb, .ds-ring .val, .ds-bar > i { transition: none; }
+  .ds-seg-thumb, .ds-ring .val, .ds-meter > i { transition: none; }
   .ds-lift:hover, a.ds-kpi:hover, button.ds-kpi:hover, html a.project-card:hover { transform: none; }
   html .btn:active:not(:disabled) { transform: none; }
 }
