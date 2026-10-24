@@ -24,7 +24,7 @@ export const Callout = Node.create({
   renderHTML({ HTMLAttributes }) { return ['div', mergeAttributes(HTMLAttributes, { 'data-callout': '', class: 'rte-callout' }), 0]; },
 });
 
-const KIND_ICON: Record<string, string> = { person: '@', task: '#', page: '📄' };
+const KIND_ICON: Record<string, string> = { person: '@', task: '#', page: '▤' };
 
 /**
  * One mention node for three kinds: @person, #task and [[page]]. It is stored as data (kind, id, label: the server keeps nothing else) and shown
@@ -53,7 +53,7 @@ export function mentionExtension(lookups: { current: EditorLookups | null }) {
       const label = String(node.attrs.label ?? '');
       const href = kind === 'page' ? `/documents/${node.attrs.id}` : kind === 'task' ? `/tasks/${node.attrs.id}` : undefined;
       return [href ? 'a' : 'span', { class: `mention mention-${kind}`, 'data-kind': kind, 'data-id': node.attrs.id, ...(href ? { href, 'data-href': href } : {}) },
-        `${kind === 'page' ? '📄 ' : kind === 'task' ? '#' : '@'}${label}`];
+        `${kind === 'page' ? '' : kind === 'task' ? '#' : '@'}${label}`];
     },
     suggestions: [
       { char: '@', pluginKey: new PluginKey('mention-person'), items: async ({ query }) => (await lookups.current?.people(query)) ?? [], command: pick('person'), render: suggestRenderer('Nobody by that name') },
@@ -77,23 +77,23 @@ function slashItems(editor: Editor, extra: SlashExtras): SuggestItem[] {
     { id: 'bullets', title: 'Bulleted list', icon: '•', run: () => c().toggleBulletList().run() },
     { id: 'numbers', title: 'Numbered list', icon: '1.', run: () => c().toggleOrderedList().run() },
     { id: 'todo', title: 'To-do list', hint: 'Tick items off', icon: '☑', run: () => c().toggleTaskList().run() },
-    { id: 'callout', title: 'Callout', hint: 'A note that stands out', icon: '💡', run: () => c().wrapIn('callout', { tone: 'info' }).run() },
-    { id: 'warning', title: 'Warning', hint: 'A caution in amber', icon: '⚠️', run: () => c().wrapIn('callout', { tone: 'warning' }).run() },
+    { id: 'callout', title: 'Callout', hint: 'A note that stands out', icon: 'i', run: () => c().wrapIn('callout', { tone: 'info' }).run() },
+    { id: 'warning', title: 'Warning', hint: 'A caution in amber', icon: '!', run: () => c().wrapIn('callout', { tone: 'warning' }).run() },
     { id: 'toggle', title: 'Toggle', hint: 'A heading that opens to show more', icon: '▸', run: () => c().setDetails().run() },
     { id: 'quote', title: 'Quote', icon: '“', run: () => c().toggleBlockquote().run() },
     { id: 'code', title: 'Code', hint: 'With highlighting', icon: '</>', run: () => c().toggleCodeBlock().run() },
     { id: 'table', title: 'Table', hint: '3 × 3 with a header row', icon: '▦', run: () => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
     { id: 'divider', title: 'Divider', icon: '—', run: () => c().setHorizontalRule().run() },
     { id: 'diagram', title: 'Diagram', hint: 'A flowchart from text', icon: '⬡', run: () => c().insertContent({ type: 'codeBlock', attrs: { language: 'mermaid' }, content: [{ type: 'text', text: 'flowchart LR\n  A[Start] --> B{Check}\n  B -->|yes| C[Done]\n  B -->|no| A' }] }).run() },
-    { id: 'page', title: 'Link to a page', hint: 'Or type [[', icon: '📄', run: () => c().insertContent('[[').run() },
+    { id: 'page', title: 'Link to a page', hint: 'Or type [[', icon: '▤', run: () => c().insertContent('[[').run() },
     { id: 'person', title: 'Mention someone', hint: 'Or type @', icon: '@', run: () => c().insertContent('@').run() },
     { id: 'task', title: 'Mention a task', hint: 'Or type #', icon: '#', run: () => c().insertContent('#').run() },
   ];
-  if (extra.onImage) items.splice(14, 0, { id: 'image', title: 'Picture', hint: 'Upload an image', icon: '🖼', run: extra.onImage });
+  if (extra.onImage) items.splice(14, 0, { id: 'image', title: 'Picture', hint: 'Upload an image', icon: '▣', run: extra.onImage });
   if (extra.liveTasks) items.push({ id: 'tasks', title: 'Live task list', hint: 'The project’s tasks, always up to date', icon: '☰', run: () => c().insertContent({ type: 'liveTasks', attrs: { projectId: '', filter: 'open', limit: 10 } }).run() });
   // AI first: most people would rather say what they want than type it out.
-  if (extra.onAiContinue) items.unshift({ id: 'ai-continue', title: 'Continue writing', hint: 'AI writes the next paragraphs', icon: '✨', run: extra.onAiContinue });
-  if (extra.onAiWrite) items.unshift({ id: 'ai', title: 'Write with AI', hint: 'Say what to write', icon: '✨', run: extra.onAiWrite });
+  if (extra.onAiContinue) items.unshift({ id: 'ai-continue', title: 'Continue writing', hint: 'AI writes the next paragraphs', icon: '✦', run: extra.onAiContinue });
+  if (extra.onAiWrite) items.unshift({ id: 'ai', title: 'Write with AI', hint: 'Say what to write', icon: '✦', run: extra.onAiWrite });
   return items;
 }
 

@@ -4,10 +4,15 @@ import type { ReportKind } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { Embedded, PageHead, RouteTabs } from '../../components/ui';
 import { useCan, useModule } from '../../stores/auth';
+import '../workitems/insights.css';
 import { WorkReportsPage } from '../work/WorkReportsPage';
 import { ExportList, KIND_INFO, ReportGenerator } from './Exports';
 
 const TABS: [ReportKind, IconName][] = [['Project', 'folder'], ['Workload', 'users'], ['Timesheet', 'clock'], ['WorkTasks', 'bolt']];
+/** One line under each report type's name: what it is for. */
+const SHORT: Partial<Record<ReportKind, string>> = {
+  Project: 'Tasks, status and progress', Workload: 'Open and overdue work per person', Timesheet: 'Logged time by person and day', WorkTasks: 'Operational work and its time',
+};
 
 /**
  * Every downloadable report in one place: pick a type, set filters, generate, then download once it is ready below. The files are built
@@ -24,10 +29,12 @@ export function ReportGenerateSection() {
   return (
     <>
       <PageHead title="Generate a report" sub="CSV, Excel or PDF, built in the background and kept for 7 days." />
-      <div className="seg mb-18" role="group" aria-label="Report type">
+      <div className="ds-choices rp-kinds" role="group" aria-label="Report type">
         {kinds.map(([k, icon]) => (
-          <button key={k} type="button" className={kind === k ? 'active' : ''} aria-pressed={kind === k} title={KIND_INFO[k].label} onClick={() => setKind(k)}>
-            <Icon name={icon} size={14} /><span>{KIND_INFO[k].label}</span>
+          <button key={k} type="button" className={`ds-choice ${kind === k ? 'on' : ''}`} aria-pressed={kind === k} onClick={() => setKind(k)}>
+            <span className="ds-tile-ico"><Icon name={icon} /></span>
+            <b>{KIND_INFO[k].label}</b>
+            <span>{SHORT[k]}</span>
           </button>
         ))}
       </div>
@@ -49,7 +56,7 @@ export function ReportsPage({ section }: { section: 'generate' | 'operations' })
   if (section === 'generate' && !canReports && seeWork) return <Navigate to="/reports/operations" replace />;
   return (
     <>
-      <PageHead title="Reports" sub="Every export in one place, and the analytics that go with them." />
+      <PageHead title="Reports" eyebrow="Insights" sub="Every export in one place, and the analytics that go with them." />
       {tabs.length > 1 && <RouteTabs label="Reports" tabs={tabs} />}
       <Embedded>{section === 'operations' ? <WorkReportsPage /> : <ReportGenerateSection />}</Embedded>
     </>

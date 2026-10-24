@@ -87,8 +87,10 @@ export function ReportGenerator({ kind, onRequested }: { kind: ReportKind; onReq
             </Field>
           )}
         </div>
-        {!advanced && <div className="notice" style={{ marginTop: 14 }}>Want Excel and PDF? <Link className="link" to="/settings/billing">See plans</Link></div>}
-        <div style={{ marginTop: 16 }}><SubmitButton busy={busy}><Icon name="download" size={14} /> Generate report</SubmitButton></div>
+        <div className="rp-foot">
+          {!advanced ? <span className="muted">Want Excel and PDF? <Link className="link" to="/settings/billing">See plans</Link></span> : <span className="muted">You can keep working; the file appears below when it is ready.</span>}
+          <SubmitButton busy={busy}><Icon name="download" size={14} /> Generate report</SubmitButton>
+        </div>
       </form>
     </div>
   );
@@ -121,10 +123,11 @@ export function ExportList({ refreshKey }: { refreshKey: number }) {
           <div className="export-list">
             {items.map((e) => (
               <div className="export-row" key={e.id}>
+                <span className={`ds-tile-ico ${e.status === 'Ready' ? 'success' : e.status === 'Failed' ? 'danger' : ''}`} aria-hidden="true"><Icon name={e.status === 'Failed' ? 'alert' : e.status === 'Ready' ? 'download' : 'clock'} size={16} /></span>
                 <div className="export-main">
-                  <b>{KIND_INFO[e.kind].label}</b> <span className="muted">· {e.format === 'Xlsx' ? 'Excel' : e.format.toUpperCase()}</span>{' '}
-                  <Badge tone={tone(e.status)}>{e.status === 'Queued' ? 'Waiting' : e.status === 'Running' ? 'Preparing…' : e.status === 'Ready' ? 'Ready' : 'Failed'}</Badge>
-                  <div className="muted" style={{ fontSize: 12 }}>
+                  <div className="export-title"><b>{KIND_INFO[e.kind].label}</b> <span className="muted">· {e.format === 'Xlsx' ? 'Excel' : e.format.toUpperCase()}</span>{' '}
+                  <Badge tone={tone(e.status)}>{e.status === 'Queued' ? 'Waiting' : e.status === 'Running' ? 'Preparing…' : e.status === 'Ready' ? 'Ready' : 'Failed'}</Badge></div>
+                  <div className="muted export-sub">
                     Asked {timeAgo(e.createdAt)}{e.status === 'Ready' && e.fileName ? ` · ${e.fileName} · ${formatBytes(e.sizeBytes)}` : ''}{e.status === 'Failed' && e.error ? ` · ${e.error}` : ''}
                   </div>
                 </div>

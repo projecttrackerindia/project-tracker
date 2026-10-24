@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconName } from '../../components/Icon';
 import { formatDate, formatDateTime, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { queryClient, useWorkspaceId } from '../../stores/auth';
@@ -11,7 +11,7 @@ import { docAiApi, type DocFreshness } from './docAi';
 export const freshnessKey = (id: string) => ['documents', id, 'freshness'];
 export const useFreshness = (id: string) => useWsQuery(freshnessKey(id), () => docAiApi.freshness(id), { staleTime: 60_000 });
 
-const KIND_ICON: Record<string, string> = { task: '✅', project: '📁', sprint: '🏃', page: '📄', work: '🧩' };
+const KIND_ICON: Record<string, IconName> = { task: 'checkCircle', project: 'folder', sprint: 'repeat', page: 'note', work: 'bolt' };
 
 /** "Verified 12 Oct" next to the page's details, while nothing it describes has changed since. */
 export function VerifiedBadge({ f }: { f: DocFreshness | undefined }) {
@@ -43,7 +43,7 @@ export function FreshnessBanner({ id }: { id: string }) {
   return (
     <div className="pg-stale" role="status">
       <div className="pg-stale-main">
-        <span className="pg-stale-icon" aria-hidden="true">⏳</span>
+        <span className="pg-stale-icon ds-tile-ico warning" aria-hidden="true"><Icon name="clock" size={17} /></span>
         <div>
           <b>This page may be out of date</b>
           <p>{f.summary || `${f.reasons.length} thing${f.reasons.length === 1 ? '' : 's'} it describes changed after it was last edited${f.since ? ` (${timeAgo(f.since)})` : ''}.`}</p>
@@ -57,7 +57,7 @@ export function FreshnessBanner({ id }: { id: string }) {
         <ul className="pg-stale-list">
           {f.reasons.map((r, i) => (
             <li key={`${r.kind}-${r.key}-${i}`}>
-              <span aria-hidden="true">{KIND_ICON[r.kind] ?? '•'}</span>
+              <Icon name={KIND_ICON[r.kind] ?? 'note'} size={14} />
               <Link to={r.link}>{r.key && r.key !== r.title ? `${r.key} · ` : ''}{r.title}</Link>
               <span className="muted">{r.detail} · {timeAgo(r.at)}</span>
             </li>

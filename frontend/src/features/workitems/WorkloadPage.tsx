@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { useChartColors } from './chartColors';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { workItemApi } from '../../api/endpoints';
 import type { WorkItemKind, WorkloadPerson, WorkloadScope } from '../../api/types';
 import { ChartTip } from '../../components/ChartTip';
-import { Avatar, Badge, EmptyState, ErrorState, Modal, PageHead, PageLoader, RouteTabs, StatCard } from '../../components/ui';
+import { Avatar, Badge, EmptyState, ErrorState, Kpi, Modal, PageHead, PageLoader, RouteTabs, Segmented } from '../../components/ui';
+import './insights.css';
 import { CapacityPage } from './CapacityPage';
 import { useWsQuery } from '../../lib/hooks';
 import { formatMinutes } from '../time/time';
@@ -12,9 +14,9 @@ import { KIND_META, WorkItemRow, fromPersonItem, useVisibleKinds, workItemLink }
 
 /** The three bars per person in the workload chart: what each colour counts. The bars and the key below the title are both drawn from this. */
 const SERIES = [
-  { key: 'open', name: 'Open', color: '#8b5cf6', meaning: 'Work of every kind that is not finished yet.' },
-  { key: 'overdue', name: 'Overdue', color: '#fb7185', meaning: 'Open work that is past its due date (it is also counted in Open).' },
-  { key: 'done', name: 'Done (30d)', color: '#34d399', meaning: 'Work finished in the last 30 days.' },
+  { key: 'open', name: 'Open', color: 'var(--chart-open)', meaning: 'Work of every kind that is not finished yet.' },
+  { key: 'overdue', name: 'Overdue', color: 'var(--chart-late)', meaning: 'Open work that is past its due date (it is also counted in Open).' },
+  { key: 'done', name: 'Done (30 days)', color: 'var(--chart-done)', meaning: 'Work finished in the last 30 days.' },
 ] as const;
 
 const SCOPES: Record<WorkloadScope, { label: string; sub: string }> = {
@@ -27,7 +29,7 @@ const NAME_WIDTH = 132;
 function NameTick({ x, y, payload }: { x?: number; y?: number; payload?: { value: string } }) {
   const name = payload?.value ?? '';
   return (
-    <text x={(x ?? 0) - NAME_WIDTH + 8} y={y} dy={4} textAnchor="start" fill="var(--text-2)" fontSize={12} fontWeight={600}>
+    <text x={(x ?? 0) - NAME_WIDTH + 8} y={y} dy={4} textAnchor="start" fill={useChartColors().name} fontSize={12.5} fontWeight={500}>
       <title>{name}</title>{name.length > 19 ? `${name.slice(0, 18)}…` : name}
     </text>
   );
@@ -62,6 +64,8 @@ function CapacityTab() {
  */
 function OpenWork() {
   const [params, setParams] = useSearchParams();
+  const colors = useChartColors();
+  const fillOf = { open: colors.open, overdue: colors.late, done: colors.done } as const;
   const wanted = (params.get('scope') as WorkloadScope | null) ?? undefined;
   const q = useWsQuery(['workload', wanted ?? ''], () => workItemApi.workload(wanted), { refetchInterval: 60_000 });
   const [open, setOpen] = useState<WorkloadPerson | null>(null);
@@ -76,14 +80,15 @@ function OpenWork() {
   const chart = t.members.map((m) => ({ name: m.name, open: m.open, overdue: m.overdue, done: m.doneLast30Days }));
   const maxWorkload = Math.max(1, ...chart.map((w) => Math.max(w.open, w.overdue, w.done)));
   const dueThisWeek = t.members.reduce((n, m) => n + m.dueThisWeek, 0);
+  const busiest = [...t.members].sort((a, b) => b.open - a.open)[0];
+  const takeaway = `${busiest?.name ?? 'Nobody'} has the most open work (${busiest?.open ?? 0}); ${t.totals.overdue} item${t.totals.overdue === 1 ? ' is' : 's are'} overdue across ${t.totals.people} people.`;
+  const asOf = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 
   return (
     <>
-      <PageHead title="Workload" sub={SCOPES[t.scope].sub}>
+      <PageHead title="Workload" eyebrow={`As of ${asOf} · ${t.totals.people} ${t.totals.people === 1 ? 'person' : 'people'}`} sub={SCOPES[t.scope].sub}>
         {t.available.length > 1 && (
-          <div className="seg" role="group" aria-label="Whose workload">
-            {t.available.map((s) => <button key={s} type="button" className={t.scope === s ? 'active' : ''} aria-pressed={t.scope === s} onClick={() => setScope(s)}>{SCOPES[s].label}</button>)}
-          </div>
+          <Segmented label="Whose workload" value={t.scope} onChange={setScope} options={t.available.map((s) => ({ id: s, label: SCOPES[s].label }))} />
         )}
       </PageHead>
       <WorkloadTabs />
@@ -92,39 +97,42 @@ function OpenWork() {
         <div className="card"><div className="card-body"><EmptyState icon="users" title={t.scope === 'Reports' ? 'Nobody reports to you yet' : 'Nobody to show'} text={t.scope === 'Reports' ? 'When the org chart shows people below you, their work appears here.' : undefined} /></div></div>
       ) : (
         <>
-          <div className="stat-grid">
-            <StatCard icon="users" tone="blue" value={t.totals.people} label="People" />
-            <StatCard icon="inbox" tone="purple" value={t.totals.open} label="Open work" foot="Every kind" />
-            <StatCard icon="alert" tone="red" value={t.totals.overdue} label="Overdue" />
-            <StatCard icon="calendar" tone="amber" value={dueThisWeek} label="Due in the next 7 days" />
+          <div className="ds-kpis wl-kpis">
+            <Kpi label="People" value={t.totals.people} caption={SCOPES[t.scope].label} />
+            <Kpi label="Open work" value={t.totals.open} caption="Every kind" />
+            <Kpi label="Overdue" value={t.totals.overdue} tone={t.totals.overdue > 0 ? 'danger' : 'success'} caption={t.totals.overdue > 0 ? 'Past the due date' : 'Nothing late'} />
+            <Kpi label="Due in the next 7 days" value={dueThisWeek} tone={dueThisWeek > 0 ? 'warning' : undefined} caption="Across everyone shown" />
           </div>
           {t.members.length > 1 && (
-            <div className="card mb-22">
+            <div className="card mb-22 wl-chart">
               <div className="card-head">
-                <div><h3>Open work per person</h3><p>A planning aid, not a performance score</p></div>
-                <ul className="chart-key" aria-label="Chart colours">
-                  {SERIES.map((s) => <li key={s.key} title={s.meaning}><i style={{ background: s.color }} aria-hidden="true" /><b>{s.name}</b><span className="sr-only">: {s.meaning}</span></li>)}
-                </ul>
+                <div><h3>Open work per person</h3><p>A planning aid, not a performance score.</p></div>
               </div>
               <div className="card-body">
-                <div style={{ height: Math.max(160, chart.length * 76) }}>
+                <div style={{ height: Math.max(160, chart.length * 76) }} role="img" aria-label={takeaway}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chart} layout="vertical" margin={{ top: 0, right: 30, left: 2, bottom: 0 }} barGap={3}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
-                      <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} domain={[0, maxWorkload]} />
+                      <CartesianGrid horizontal={false} stroke={colors.grid} />
+                      <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: colors.axis }} axisLine={false} tickLine={false} domain={[0, maxWorkload]} />
                       <YAxis type="category" dataKey="name" tick={<NameTick />} axisLine={false} tickLine={false} width={NAME_WIDTH} interval={0} />
                       <Tooltip content={<ChartTip />} cursor={{ fill: 'var(--hover-bg)' }} />
-                      {SERIES.map((s) => <Bar key={s.key} dataKey={s.key} name={s.name} fill={s.color} radius={[0, 6, 6, 0]} barSize={16} animationDuration={600} animationEasing="ease-out">
-                        <LabelList dataKey={s.key} position="right" offset={6} style={{ fontSize: 11, fontWeight: 700, fill: 'var(--text-2)' }} formatter={(v: unknown) => (Number(v) > 0 ? String(v) : '')} />
+                      {SERIES.map((s) => <Bar key={s.key} dataKey={s.key} name={s.name} fill={fillOf[s.key]} radius={[0, 6, 6, 0]} barSize={16} animationDuration={600} animationEasing="ease-out">
+                        <LabelList dataKey={s.key} position="right" offset={6} style={{ fontSize: 11, fontWeight: 600, fill: colors.label }} formatter={(v: unknown) => (Number(v) > 0 ? String(v) : '')} />
                       </Bar>)}
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+                <ul className="chart-key ds-legend" aria-label="Chart colours">
+                  {SERIES.map((s) => <li key={s.key} title={s.meaning}><i style={{ background: s.color }} aria-hidden="true" /><b>{s.name}</b><span className="sr-only">: {s.meaning}</span></li>)}
+                </ul>
               </div>
             </div>
           )}
-          <div className="kind-key" style={{ marginBottom: 12 }} aria-label="Kinds of work">
-            {KIND_KEYS.filter((k) => kinds.includes(k.kind)).map((k) => <span key={k.kind}><i style={{ background: `var(--kind-${k.kind})` }} />{KIND_META[k.kind].plural}</span>)}
+          <div className="wl-people-head">
+            <h2 className="ds-section-title">People <small>{t.members.length}</small></h2>
+            <div className="kind-key" aria-label="Kinds of work">
+              {KIND_KEYS.filter((k) => kinds.includes(k.kind)).map((k) => <span key={k.kind}><i style={{ background: `var(--kind-${k.kind})` }} />{KIND_META[k.kind].plural}</span>)}
+            </div>
           </div>
           <div className="team-list">
             {t.members.map((m) => <PersonCard key={m.userId} m={m} scope={t.scope} onAll={() => setOpen(m)} />)}
@@ -152,8 +160,8 @@ function PersonCard({ m, scope, onAll }: { m: WorkloadPerson; scope: WorkloadSco
           <span title="Open work of every kind"><b>{m.open}</b><i>Open</i></span>
           <span className={m.overdue > 0 ? 'bad' : ''} title="Overdue"><b>{m.overdue}</b><i>Overdue</i></span>
           <span title="Due in the next 7 days"><b>{m.dueThisWeek}</b><i>This week</i></span>
-          <span title="Finished in the last 30 days"><b>{m.doneLast30Days}</b><i>Done (30d)</i></span>
-          <span title="Time logged in the last 7 days"><b>{formatMinutes(m.loggedMinutesLast7Days)}</b><i>Logged (7d)</i></span>
+          <span title="Finished in the last 30 days"><b>{m.doneLast30Days}</b><i>Done, 30 days</i></span>
+          <span title="Time logged in the last 7 days"><b>{formatMinutes(m.loggedMinutesLast7Days)}</b><i>Logged, 7 days</i></span>
         </div>
       </div>
       {by && by.total > 0 && (

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import '../workitems/insights.css';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError, uploadFile } from '../../api/client';
 import { attachmentApi } from '../../api/endpoints';

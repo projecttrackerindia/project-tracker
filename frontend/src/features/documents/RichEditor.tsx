@@ -1,3 +1,4 @@
+import { Icon } from '../../components/Icon';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getSchema } from '@tiptap/core';
@@ -21,6 +22,7 @@ import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { TableKit } from '@tiptap/extension-table';
 import { emptyDoc } from './docUi';
 import { DocImage } from './DocImage';
+import './documents-ds.css';
 
 const lowlight = createLowlight(common);
 
@@ -97,7 +99,7 @@ function SelectionBar({ editor, onComment }: { editor: Editor; onComment?: (r: C
       shouldShow={({ editor: e, from, to }) => !!aiState || (from !== to && (e.isEditable || !!onComment) && !e.isActive('codeBlock') && !e.isActive('mention'))}>
       {aiState && ai ? <SelectionAiPanel editor={editor} documentId={ai.documentId} state={aiState} setState={setAiState} /> : <>
       {ai && editor.isEditable && <><SelectionAiPanel editor={editor} documentId={ai.documentId} state={null} setState={setAiState} /><span className="rte-sep" /></>}
-      {onComment && <><Btn label="Comment on this" on={comment}>💬</Btn>{editor.isEditable && <span className="rte-sep" />}</>}
+      {onComment && <><Btn label="Comment on this" on={comment}><Icon name="message" size={15} /></Btn>{editor.isEditable && <span className="rte-sep" />}</>}
       {editor.isEditable && <>
       <Btn label="Bold" active={editor.isActive('bold')} on={() => c().toggleBold().run()}><b>B</b></Btn>
       <Btn label="Italic" active={editor.isActive('italic')} on={() => c().toggleItalic().run()}><i>I</i></Btn>
@@ -107,7 +109,7 @@ function SelectionBar({ editor, onComment }: { editor: Editor; onComment?: (r: C
       <Btn label="Highlight" active={editor.isActive('highlight')} on={() => c().toggleHighlight().run()}><mark>H</mark></Btn>
       <span className="rte-sep" />
       <Btn label="Heading" active={editor.isActive('heading', { level: 2 })} on={() => c().toggleHeading({ level: 2 }).run()}>H2</Btn>
-      <Btn label="Link" active={editor.isActive('link')} on={() => askLink(editor)}>🔗</Btn>
+      <Btn label="Link" active={editor.isActive('link')} on={() => askLink(editor)}><Icon name="link" size={15} /></Btn>
       </>}
       </>}
     </BubbleMenu>
@@ -141,8 +143,8 @@ function Toolbar({ editor, onImage }: { editor: Editor; onImage?: () => void }) 
       <Btn label="Code" active={editor.isActive('codeBlock')} on={() => c().toggleCodeBlock().run()}>{'</>'}</Btn>
       <span className="rte-sep" />
       <Btn label="Insert diagram" on={() => c().insertContent({ type: 'codeBlock', attrs: { language: 'mermaid' }, content: [{ type: 'text', text: 'flowchart LR\n  A[Start] --> B{Check}\n  B -->|yes| C[Done]\n  B -->|no| A' }] }).run()}>⬡</Btn>
-      <Btn label="Link" active={editor.isActive('link')} on={link}>🔗</Btn>
-      {onImage && <Btn label="Insert picture" on={onImage}>🖼</Btn>}
+      <Btn label="Link" active={editor.isActive('link')} on={link}><Icon name="link" size={15} /></Btn>
+      {onImage && <Btn label="Insert picture" on={onImage}><Icon name="image" size={15} /></Btn>}
       <Btn label="Insert table" on={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>▦</Btn>
       {editor.isActive('table') && <>
         <Btn label="Add row below" on={() => c().addRowAfter().run()}>＋row</Btn>
@@ -259,7 +261,7 @@ export function RichEditor({ value, onChange, readOnly, placeholder, label, onPi
         </DragHandle>
       )}
       <EditorContent editor={editor} />
-      {aiBusy && <div className="rte-ai-busy" role="status"><span className="spinner" /> ✨ Writing the next part…</div>}
+      {aiBusy && <div className="rte-ai-busy" role="status"><span className="spinner" /> Writing the next part…</div>}
       {aiWrite && <AiWriteDialog editor={editor} onClose={() => setAiWrite(false)} />}
     </div>
   );
