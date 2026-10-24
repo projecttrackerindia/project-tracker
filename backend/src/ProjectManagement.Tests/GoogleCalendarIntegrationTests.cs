@@ -119,10 +119,11 @@ public class GoogleCalendarIntegrationTests(ApiFactory factory)
         var c = await TestClient.RegisterAsync(factory);
         await c.CreateOrgAsync();
         await ConnectAsync(c);
+        var revokedBefore = factory.GoogleCalendar.RevokedTokens.Count;   // the fake is shared with other tests that disconnect too
 
         var disconnect = await c.Post("/api/v1/integrations/google/disconnect");
         Assert.Equal(HttpStatusCode.NoContent, disconnect.Status);
-        Assert.Single(factory.GoogleCalendar.RevokedTokens);
+        Assert.Equal(revokedBefore + 1, factory.GoogleCalendar.RevokedTokens.Count);
 
         var status = await c.Get("/api/v1/integrations/google/status");
         Assert.False(status.Data!["connected"]!.GetValue<bool>());
