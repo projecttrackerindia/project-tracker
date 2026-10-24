@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon } from '../../components/Icon';
 import { toast } from '../../stores/ui';
-import { Modal, PageLoader } from '../../components/ui';
+import { Kpi, Modal, PageLoader } from '../../components/ui';
 import { useQuery } from '@tanstack/react-query';
 import { formatDate } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
@@ -10,7 +10,7 @@ import { useTeamLens } from '../../lib/teamLens';
 import { aiWorkspaceApi, type PortfolioRisk, type ScenarioOutcome } from '../ai/aiApi';
 import { PortfolioActionItems } from './PortfolioActionItems';
 import { Sparkle, useAi } from '../ai/Assistant';
-import { CapacitySection, DecisionsSection, MoneySection, PortfolioFilters, SummaryCard, TimelineView } from './PortfolioBoard';
+import { CapacitySection, DecisionsSection, ExportMenu, filterCount, MoneySection, PortfolioFilters, SummaryCard, TimelineView } from './PortfolioBoard';
 import { portfolioApi, type PortfolioFilter } from './portfolioApi';
 
 /** The portfolio worked out by rules over the projects the person may open: no model, no credits, every plan. Shared by the page and each project. */
@@ -53,6 +53,7 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
   const ai = useAi();
   const ask = useAsk();
   const [itemsOpen, setItemsOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const { teamId } = useTeamLens();
   const [params, setParams] = useSearchParams();
   const filter: PortfolioFilter = { teamId, ownerId: params.get('owner'), groupId: params.get('group'), health: params.get('health'), dueFrom: params.get('from'), dueTo: params.get('to') };
@@ -83,34 +84,39 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
     );
   }
   const attention = b.ranked.filter((r) => r.score >= 2).slice(0, 6);
+  const nFilters = filterCount(filter);
+  const showFilters = filtersOpen || nFilters > 0;
   return (
     <div className="pi">
       <header className="pi-head">
-        <div><h2>Portfolio today</h2><span>As of {formatDate(b.asOf)} · {b.projects} active project{b.projects === 1 ? '' : 's'} you can open</span></div>
+        <div>
+          <span className="eyebrow">As of {formatDate(b.asOf)} · {b.projects} active project{b.projects === 1 ? '' : 's'}</span>
+          <h1 className="pi-title">Portfolio today</h1>
+        </div>
         <div className="pi-ask">
-          <button type="button" className="btn btn-soft btn-sm" onClick={() => setItemsOpen(true)}><Icon name="checkCircle" size={14} /> Action items{b.openActionItems > 0 && <span className="ps-count">{b.openActionItems}</span>}</button>
-          <button type="button" className="btn btn-ghost btn-sm" disabled={sending} onClick={() => void sendBrief()} title="Send this brief to you as a notice, in the app and by e-mail"><Icon name="mail" size={14} /> Send me this</button>
-          {ai && <>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => ask('Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.')}>Risk review</button>
-          </>}
+          <nav className="seg pb-views" aria-label="Portfolio view">
+            <button type="button" className={view === 'board' ? 'on' : ''} aria-pressed={view === 'board'} onClick={() => setView('board')}>Board</button>
+            <button type="button" className={view === 'timeline' ? 'on' : ''} aria-pressed={view === 'timeline'} onClick={() => setView('timeline')}>Timeline</button>
+          </nav>
+          <button type="button" className="btn btn-ghost" aria-expanded={showFilters} aria-controls="pb-filters" onClick={() => setFiltersOpen((v) => !v)}>Filters · {nFilters}</button>
+          <ExportMenu onExport={(f) => void exportAs(f)} />
+          <button type="button" className="btn btn-ghost" onClick={() => setItemsOpen(true)}>Action items{b.openActionItems > 0 && <span className="ps-count">{b.openActionItems}</span>}</button>
+          <button type="button" className="btn btn-ghost" disabled={sending} onClick={() => void sendBrief()} title="Send this brief to you as a notice, in the app and by e-mail">Send me this</button>
+          {ai && <button type="button" className="btn btn-dark" onClick={() => ask('Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.')}>Risk review</button>}
         </div>
       </header>
 
-      <PortfolioFilters board={board} filter={filter} onChange={setFilter} onExport={(f) => void exportAs(f)} />
-      <nav className="seg pb-views" aria-label="Portfolio view">
-        <button type="button" className={view === 'board' ? 'on' : ''} aria-pressed={view === 'board'} onClick={() => setView('board')}>Board</button>
-        <button type="button" className={view === 'timeline' ? 'on' : ''} aria-pressed={view === 'timeline'} onClick={() => setView('timeline')}>Timeline</button>
-      </nav>
+      {showFilters && <div id="pb-filters"><PortfolioFilters board={board} filter={filter} onChange={setFilter} /></div>}
       {view === 'timeline' ? <TimelineView filter={filter} onPick={onPick} /> : <>
-      <SummaryCard board={board} filter={filter} ai={!!ai} />
-      <div className="pi-kpis">
-        <div className="pi-kpi"><label>On track</label><b className="ok">{b.onTrack}</b></div>
-        <div className="pi-kpi"><label>At risk</label><b className={b.atRisk ? 'warn' : ''}>{b.atRisk}</b></div>
-        <div className="pi-kpi"><label>Delayed</label><b className={b.delayed ? 'bad' : ''}>{b.delayed}</b></div>
-        <div className="pi-kpi"><label>Overdue tasks</label><b className={b.overdueTasks ? 'bad' : ''}>{b.overdueTasks}</b></div>
-        <div className="pi-kpi"><label>Blocked tasks</label><b className={b.blockedTasks ? 'warn' : ''}>{b.blockedTasks}</b></div>
-        <div className="pi-kpi"><label>Action items overdue</label><b className={b.overdueActionItems ? 'bad' : ''}>{b.overdueActionItems}</b><small>of {b.openActionItems} open</small></div>
+      <div className="ds-kpis pi-kpis-row">
+        <Kpi label="On track" value={b.onTrack} tone={b.onTrack ? 'success' : undefined} />
+        <Kpi label="At risk" value={b.atRisk} tone={b.atRisk ? 'warning' : undefined} />
+        <Kpi label="Delayed" value={b.delayed} tone={b.delayed ? 'danger' : undefined} />
+        <Kpi label="Overdue tasks" value={b.overdueTasks} tone={b.overdueTasks ? 'danger' : undefined} />
+        <Kpi label="Blocked tasks" value={b.blockedTasks} tone={b.blockedTasks ? 'warning' : undefined} />
+        <Kpi label="Action items overdue" value={b.overdueActionItems} tone={b.overdueActionItems ? 'danger' : undefined} caption={`of ${b.openActionItems} open`} />
       </div>
+      <SummaryCard board={board} filter={filter} ai={!!ai} />
 
       <DecisionsSection decisions={board.decisions} filter={filter} />
       <MoneySection m={board.money} />
@@ -161,16 +167,24 @@ export function ProjectInsight({ projectId, onActionItems }: { projectId: string
   const r = q.data?.ranked.find((x) => x.projectId === projectId);
   if (!r) return null;
   const more = r.reasons.length > 0 || ai;
+  // The risk banner (design p18): an icon tile, the level and the forecast in one bold line, the first reason under it, and Why? / What if…
+  const tone = r.level === 'Critical' || r.level === 'High' ? 'risk' : r.level === 'Medium' ? 'warn' : 'ok';
+  const late = r.projectedSlipDays ?? 0;
+  const forecast = r.projectedFinish === null ? (r.openTasks === 0 ? 'nothing left to do' : 'no forecast possible')
+    : `likely ${formatDate(r.projectedFinish)}${r.projectedSlipDays !== null ? (late > 0 ? `, ${days(late)} late` : late < 0 ? `, ${days(-late)} early` : ', on time') : ''}`;
   return (
-    <section className={`pi-project ${r.level.toLowerCase()} ${open ? 'open' : ''}`} aria-label="Risk and forecast">
-      <div className="pi-project-head">
-        <span className={`pi-level ${r.level.toLowerCase()}`}>{r.level} risk</span>
-        <Forecast r={r} />
-        {r.overdueActionItems > 0 && <button type="button" className="pi-chip" onClick={onActionItems}>{r.overdueActionItems} overdue action item{r.overdueActionItems === 1 ? '' : 's'}</button>}
-        <button type="button" className="pi-why pi-whatif-btn" onClick={() => setWhatIf(true)} title="See when it would finish if the work slipped, people joined or scope was cut">What if…</button>
-        {more && <button type="button" className="pi-why" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'Why?'} <span style={{ display: 'inline-flex', transform: open ? 'rotate(180deg)' : undefined }}><Icon name="chevronD" size={13} /></span></button>}
+    <section className={`pi-project ds-banner ${tone} ${r.level.toLowerCase()} ${open ? 'open' : ''}`} aria-label="Risk and forecast">
+      <span className="ico" aria-hidden="true">{tone === 'ok' ? <Icon name="check" size={22} /> : '!'}</span>
+      <div className="txt">
+        <b><span className={`pi-level ${r.level.toLowerCase()}`}>{r.level} risk</span> — {forecast}</b>
+        <span>{r.reasons[0] ?? (r.projectedFinish ? `At the pace of the last 4 weeks · ${r.confidence} confidence.` : 'Nothing has finished in the last 4 weeks.')}</span>
       </div>
-      {open && r.reasons.length > 0 && <ul>{r.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
+      <div className="acts">
+        {r.overdueActionItems > 0 && <button type="button" className="btn btn-ghost pi-chip" onClick={onActionItems}>{r.overdueActionItems} overdue action item{r.overdueActionItems === 1 ? '' : 's'}</button>}
+        {more && <button type="button" className="btn btn-ghost pi-why" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'Why?'}</button>}
+        <button type="button" className={`btn ${tone === 'risk' ? 'btn-risk' : 'btn-dark'} pi-whatif-btn`} onClick={() => setWhatIf(true)} title="See when it would finish if the work slipped, people joined or scope was cut">What if…</button>
+      </div>
+      {open && r.reasons.length > 0 && <ul className="pi-reasons">{r.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
       {open && ai && (
         <div className="pi-ask">
           <button type="button" className="btn btn-soft btn-sm" onClick={() => ask(`Analyse ${r.name} (${r.key}): why is it ${r.health === 'OnTrack' ? 'where it is' : r.health === 'Delayed' ? 'delayed' : 'at risk'}, when will it really finish, and what should I do about it? Include its action items.`)}><Sparkle size={14} /> Analyse with AI</button>

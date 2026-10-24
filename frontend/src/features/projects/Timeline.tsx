@@ -21,12 +21,12 @@ const CLASS: Record<StageDisplayStatus, string> = { Completed: 'done', InProgres
 /** Locked while the stage before it is unfinished; otherwise whatever the stage itself says. */
 const displayOf = (s: Stage): StageDisplayStatus => (s.locked ? 'Locked' : s.effectiveStatus);
 
-function Dot({ status }: { status: StageDisplayStatus }) {
-  if (status === 'Locked') return <Icon name="lock" size={15} />;
-  if (status === 'Completed') return <Icon name="tick" />;
-  if (status === 'InProgress') return <span style={{ fontSize: 16 }}>●</span>;
-  if (status === 'Pending') return <span style={{ fontSize: 16 }}>○</span>;
-  return <span>!</span>;
+/** The stage's numbered dot: a green tick once signed off, a lock while it waits on the stage before, "!" when late, else its number. */
+function Dot({ status, n }: { status: StageDisplayStatus; n: number }) {
+  if (status === 'Locked') return <Icon name="lock" size={12} />;
+  if (status === 'Completed') return <Icon name="tick" size={13} />;
+  if (status === 'Delayed') return <span>!</span>;
+  return <span>{n}</span>;
 }
 
 /** Remembers, per browser, that the "all tasks are done" nudge was dismissed for a project - so it does not reappear every visit. */
@@ -89,19 +89,20 @@ export function Timeline({ projectId, projectName, project, stages, canEdit, can
   // All the work is done, the project itself is still open, and at least one stage was never walked through to Completed.
   const showNudge = canEdit && !finished && !nudgeDismissed && taskProgress >= 100 && done < stages.length;
   const open = stages.length - done;
+  const nextUp = ordered.find((s) => displayOf(s) !== 'Completed');
 
   return (
     <div className="card tl-card">
       <div className="card-head tl-head">
         <div className="tl-head-main">
           <h3>Project timeline</h3>
-          <p>Phase sign-off, tracked separately from task completion{canReorder ? ' · drag a stage to reorder' : ''}</p>
+          <p>{stages.length ? <>{done} of {stages.length} stages signed off{nextUp ? <> · next up: <b className="tl-next">{nextUp.name}</b></> : ''}</> : 'Phase sign-off, tracked separately from task completion'}{canReorder ? ' · drag a stage to reorder' : ''}</p>
         </div>
         {canEdit && (
           <div className="tl-actions">
             {project && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setScheduling(true)}><Icon name="calendar" size={14} /> Schedule studio</button>}
-            <button type="button" className="btn btn-ghost btn-sm" title="Timeline templates" onClick={() => setManager(true)}><Icon name="layers" size={14} /><span className="tl-hide-sm">Templates</span></button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => setModal({})}><Icon name="plus" size={14} /> Add stage</button>
+            <button type="button" className="btn btn-soft btn-sm" title="Timeline templates" onClick={() => setManager(true)}><Icon name="layers" size={14} /><span className="tl-hide-sm">Templates</span></button>
+            <button type="button" className="btn btn-soft btn-sm" onClick={() => setModal({})}><Icon name="plus" size={14} /> Add stage</button>
           </div>
         )}
       </div>
@@ -136,7 +137,7 @@ export function Timeline({ projectId, projectName, project, stages, canEdit, can
         )}
         {stages.length === 0 ? <EmptyState icon="flag" title="No stages yet" text="Add lifecycle stages such as Planning, Development and UAT." /> : (
           <div className="htl">
-            {ordered.map((s) => {
+            {ordered.map((s, index) => {
               const effective = displayOf(s);
               const marker = over?.id === s.id && dragId !== s.id ? (over.after ? 'drop-after' : 'drop-before') : '';
               return (
@@ -157,7 +158,7 @@ export function Timeline({ projectId, projectName, project, stages, canEdit, can
                   }}
                   onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver((o) => (o?.id === s.id ? null : o)); }}
                   onDrop={(e) => { e.preventDefault(); if (dragId && over) moveTo(dragId, over.id, over.after); endDrag(); }}>
-                  <div className="htl-dot"><Dot status={effective} /></div>
+                  <div className="htl-dot"><Dot status={effective} n={index + 1} /></div>
                   <div className="htl-body">
                     <div className="htl-top">
                       <span className="htl-title">{s.name}</span>

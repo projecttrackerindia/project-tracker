@@ -15,6 +15,7 @@ import { MobileHome } from './MobileHome';
 import { ReviewQueueCard } from '../github/GitHubApp';
 import { useIsMobile } from '../../lib/mobile';
 import { WorkItemRow, useVisibleKinds, workItemLink, type WorkRowItem } from '../workitems/workItems';
+import './dashboard.css';
 
 // The charts (and the charting library) and the editing dialogs are fetched when they are first shown, so home opens without them.
 const TrendChart = lazy(() => import('./DashboardCharts').then((m) => ({ default: m.TrendChart })));
@@ -91,7 +92,7 @@ export function DashboardPage() {
   return (
     <>
       {phone && kinds.length > 0 ? <MobileHome name={user.displayName.split(' ')[0]} data={q.data} showProjects={showProjects} onOpen={openItem} /> : (
-      <PageHead title={`${firstRun ? 'Welcome' : 'Welcome back'}, ${user.displayName.split(' ')[0]}`} sub={`Here's an overview of your ${personal ? 'personal workspace' : 'workspace'} — ${formatDate(new Date().toISOString())}`}>
+      <PageHead eyebrow={new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} title={`${firstRun ? 'Welcome' : 'Welcome back'}, ${user.displayName.split(' ')[0]}.`} sub={`Here's an overview of your ${personal ? 'personal workspace' : 'workspace'}.`}>
         {canCreateProject && <button className="btn btn-ghost" onClick={() => setProjectModal(true)}><Icon name="folder" /> New project</button>}
         {canCreateTask && showTasks && showProjects && <button className="btn btn-primary" onClick={() => setTaskModal({})}><Icon name="plus" /> Add task</button>}
       </PageHead>
@@ -99,7 +100,7 @@ export function DashboardPage() {
 
       {team && <div className="lens-note"><Icon name="users" size={14} /> <span>Showing <b>{team.name}</b>: projects, tasks, progress, charts and activity below are this team's. "My" figures stay yours.</span></div>}
 
-      <div className="stat-grid">
+      <div className="stat-grid dash-stats">
         {kinds.length > 0 && <>
           <StatCard icon="calendar" tone="blue" value={c.myDueToday} label="Due today" foot="Assigned to you, every kind" />
           <StatCard icon="checkCircle" tone="green" value={c.myCompletedToday} label="Completed today" foot="Keep the streak going" />

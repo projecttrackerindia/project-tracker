@@ -1,0 +1,4 @@
+/* Dashboard in the design language: the numbers as KPI cards, four to a row so a number like "1h 30m" never breaks. */
+.dash-stats { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.dash-stats .stat-value { white-space: nowrap; font-size: clamp(28px, 2.4vw, 38px); }
+.dash-stats .stat-top { margin-bottom: 18px; }

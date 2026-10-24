@@ -5,8 +5,9 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../../api/client';
 import { projectApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
-import { Badge, activeShare, ErrorState, HealthBadge, PageLoader, PriorityBadge, Progress, ProjectStatusBadge, ProjectTypeBadge, Tabs } from '../../components/ui';
-import { daysUntil, formatDate } from '../../lib/format';
+import { Badge, ErrorState, HealthBadge, PageLoader, PriorityBadge, ProjectStatusBadge, ProjectTypeBadge, Ring, Tabs } from '../../components/ui';
+import { daysUntil, formatDate, labelize } from '../../lib/format';
+import './projects.css';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
@@ -33,7 +34,7 @@ import { RiskButton } from '../ai/Assistant';
 import { ProjectAgentTab } from '../agent/ProjectAgentTab';
 import { agentApi } from '../../api/endpoints';
 
-type Tab = 'board' | 'list' | 'plan' | 'issues' | 'actions' | 'documents' | 'files' | 'time' | 'code' | 'agent' | 'activity';
+type Tab = 'overview' | 'board' | 'list' | 'plan' | 'issues' | 'actions' | 'documents' | 'files' | 'time' | 'code' | 'agent' | 'activity';
 /** Addresses from before the tabs were regrouped: planning tabs open Plan, configuration tabs open Project settings. */
 const LEGACY_TAB: Record<string, { tab?: Tab; settings?: ProjectSettingsTab }> = {
   milestones: { tab: 'plan' }, sprints: { tab: 'plan' }, team: { settings: 'members' }, workflow: { settings: 'workflow' }, automation: { settings: 'automation' },
@@ -77,9 +78,10 @@ export function ProjectDetailPage() {
   const [newDoc, setNewDoc] = useState(false);
   const canReportIssue = useCan('tasks.comment');
   const isGuest = useAuth((s) => s.ctx?.current?.role === 'Guest');
-  const allowedTabs: Tab[] = (['board', 'list', 'plan', 'issues', 'actions', 'documents', 'files', 'time', 'code', 'agent', 'activity'] as Tab[]).filter((t) =>
+  const allowedTabs: Tab[] = (['overview', 'board', 'list', 'plan', 'issues', 'actions', 'documents', 'files', 'time', 'code', 'agent', 'activity'] as Tab[]).filter((t) =>
     t === 'board' || t === 'list' || t === 'issues' || t === 'plan' || t === 'code' ? seeTasks : t === 'activity' ? seeActivity : t === 'time' ? canReports && seeTasks : t === 'documents' ? seeDocuments : t === 'agent' ? !isGuest : true);
-  const rawTab = params.get('tab') ?? 'board';
+  // The project opens on its Overview (summary, progress, timeline and quick add); the board is one tab away.
+  const rawTab = params.get('tab') ?? 'overview';
   // The project's meetings live in Meet now: old links (?tab=meetings&meeting=…) open them there.
   useEffect(() => {
     if (rawTab !== 'meetings') return;
@@ -87,7 +89,7 @@ export function ProjectDetailPage() {
     nav(`/meet?project=${id}${m ? `&open=p:${m}` : ''}`, { replace: true });
   }, [rawTab, params, id, nav]);
   const legacy = LEGACY_TAB[rawTab];
-  const wanted = (legacy?.tab ?? (legacy ? 'board' : rawTab)) as Tab;
+  const wanted = (legacy?.tab ?? (legacy ? 'overview' : rawTab)) as Tab;
   const [tab, setTab] = useState<Tab>(allowedTabs.includes(wanted) ? wanted : allowedTabs[0]);
   const [settings, setSettings] = useState<ProjectSettingsTab | null>(legacy?.settings ?? null);
   const [editing, setEditing] = useState(false);
@@ -148,13 +150,24 @@ export function ProjectDetailPage() {
     catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete the project.', 'error'); }
   };
 
+  const doneTasks = p.stats.done, liveTasks = p.stats.total - p.stats.cancelled;
+  const late = !finished && days !== null && days < 0 && p.progress < 100;
+  const ringTone = p.health === 'Delayed' ? 'danger' : p.health === 'AtRisk' ? 'warning' : p.health === 'OnTrack' ? 'success' : undefined;
+  const ringTitle = finished ? labelize(p.status) : days === null ? 'No due date' : days < 0 ? `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} overdue` : days === 0 ? 'Due today' : `${days} day${days === 1 ? '' : 's'} left`;
+
   return (
-    <>
-      <div className="page-head">
-        <div>
-          <Link className="btn btn-ghost btn-sm" to="/projects" style={{ marginBottom: 12 }}><Icon name="arrowLeft" /> Back to projects</Link>
+    <div className="pd">
+      {/* The head (design p21): a back link, the name, its key with a few pills, the actions on the right, and the tabs right under it. */}
+      <header className="pd-head">
+        <div className="pd-head-main">
+          <Link className="pd-back" to="/projects"><Icon name="chevronL" size={14} /> Projects</Link>
           <h1 className="page-title">{p.name}</h1>
-          <p className="page-sub">{p.key}{p.teamName ? ` · ${p.teamName}` : ''}</p>
+          <div className="pd-meta">
+            <span className="pd-key">{p.key}{p.teamName ? ` · ${p.teamName}` : ''}</span>
+            {!(['Active', 'Planning'] as string[]).includes(p.status) && <ProjectStatusBadge status={p.status} />}
+            <HealthBadge health={p.health} /><PriorityBadge priority={p.priority} /><ProjectTypeBadge type={p.projectType} />
+            <span title="Delivery method: decides which planning views the project shows"><Badge tone="neutral">{deliveryLabel(method)} delivery</Badge></span>
+          </div>
         </div>
         <div className="page-actions">
           <RiskButton projectId={p.id} />
@@ -173,54 +186,58 @@ export function ProjectDetailPage() {
           </>}</MoreMenu>
           {canCreate && seeTasks && !archived && <button className="btn btn-primary" onClick={() => setNewTask({})}><Icon name="plus" /> Add task</button>}
         </div>
-      </div>
+      </header>
+
+      <Tabs<Tab> value={tab} onChange={setTabAndUrl} tabs={[
+        { id: 'overview' as Tab, label: 'Overview', icon: 'dashboard' as const },
+        { id: 'board' as Tab, label: 'Board', icon: 'kanban' as const }, { id: 'list' as Tab, label: 'List', icon: 'list' as const },
+        { id: 'plan' as Tab, label: method === 'Agile' ? 'Sprints' : method === 'Phased' ? 'Milestones' : 'Plan', icon: 'target' as const },
+        { id: 'issues' as Tab, label: 'Issues', icon: 'bug' as const, badge: openIssues },
+        { id: 'actions' as Tab, label: 'Action items', icon: 'flag' as const },
+        { id: 'documents' as Tab, label: 'Documents', icon: 'note' as const },
+        { id: 'files' as Tab, label: 'Files', icon: 'paperclip' as const },
+        { id: 'time' as Tab, label: 'Time', icon: 'clock' as const },
+        ...(gitHub.data?.installed || tab === 'code' ? [{ id: 'code' as Tab, label: 'Code', icon: 'git' as const }] : []),
+        { id: 'agent' as Tab, label: 'Agent', icon: 'sparkle' as const, badge: agent.data?.enabled ? agent.data.pending || undefined : undefined },
+        { id: 'activity' as Tab, label: 'Activity', icon: 'activity' as const },
+      ].filter((t) => allowedTabs.includes(t.id))} />
 
       {archived && <div className="form-warn"><Icon name="alert" size={14} /> This project is archived and read-only. Edit it and change the status to restore it.</div>}
 
-      <div className="detail-hero">
-        <div className="dh-top">
-          <div style={{ minWidth: 0 }}>
-            <div className="dh-sub">{!(['Active', 'Planning'] as string[]).includes(p.status) && <ProjectStatusBadge status={p.status} />}<PriorityBadge priority={p.priority} /><HealthBadge health={p.health} /><ProjectTypeBadge type={p.projectType} /><span title="Delivery method: decides which planning views the project shows"><Badge tone="neutral">{deliveryLabel(method)} delivery</Badge></span></div>
-            {p.description && <p style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 12, maxWidth: 640, lineHeight: 1.6 }}>{p.description}</p>}
+      {tab === 'overview' && (
+        <div className="pd-overview">
+          <div className="pd-cards">
+            <section className="card pd-summary" aria-label="About this project">
+              {p.description ? <p className="pd-desc">{p.description}</p> : <p className="pd-desc muted">No description yet.{canEdit && <> <button type="button" className="link-btn" onClick={() => setEditing(true)}>Add one</button></>}</p>}
+              <div className="pd-links">
+                <button type="button" className="ds-pill accent" onClick={() => setSettings('members')}>{p.memberCount != null ? `${p.memberCount} ${p.memberCount === 1 ? 'member' : 'members'}` : 'Members'}</button>
+                {seeTasks && <button type="button" className={`ds-pill ${openIssues ? 'danger' : ''}`} onClick={() => setTabAndUrl('issues')}>{openIssues ? `${openIssues} open issue${openIssues === 1 ? '' : 's'}` : 'No open issues'}</button>}
+                <button type="button" className="ds-pill" onClick={() => setTabAndUrl('actions')}>Action items</button>
+                <Link className="ds-pill" to={`/portfolio?project=${p.id}`}>Show in Portfolio</Link>
+              </div>
+            </section>
+            <section className="card pd-ringcard" aria-label="Progress and dates">
+              <div className="pd-ringrow">
+                <Ring value={p.progress} tone={ringTone} label={`${p.progress}% of the tasks done`} />
+                <div className="pd-ringtext">
+                  <b className={late ? 'late' : ''}>{ringTitle}</b>
+                  <span>{doneTasks} of {liveTasks} task{liveTasks === 1 ? '' : 's'} done{p.stats.inProgress > 0 ? ` · ${p.stats.inProgress} in progress` : ''}</span>
+                </div>
+              </div>
+              <dl className="pd-facts">
+                <div><dt>Owner</dt><dd>{p.owner?.name ?? 'Unassigned'}</dd></div>
+                <div><dt>Members</dt><dd><button type="button" className="link" onClick={() => setSettings('members')} title="See who is on this project">{p.memberCount != null ? `${p.memberCount} ${p.memberCount === 1 ? 'person' : 'people'}` : 'See members'}</button></dd></div>
+                <div><dt>Start</dt><dd>{formatDate(p.startDate)}</dd></div>
+                <div><dt>Due</dt><dd className={late ? 'late' : ''}>{formatDate(p.dueDate)}</dd></div>
+              </dl>
+            </section>
           </div>
-          {/* Once a project is finished, a red "N overdue" count reads as a problem that needs fixing - there is nothing left to be late for. */}
-          <div style={{ textAlign: 'right' }}>
-            <div className="dh-cell"><label>{finished ? 'Status' : 'Days remaining'}</label></div>
-            <div style={{ fontSize: finished ? 22 : 28, fontWeight: 750, letterSpacing: '-.03em', color: finished ? undefined : days !== null && days < 0 && p.progress < 100 ? 'var(--danger)' : days !== null && days <= 7 ? 'var(--warning)' : undefined }}>
-              {finished ? p.status : days === null ? '—' : days < 0 ? `${Math.abs(days)} overdue` : days}
-            </div>
-          </div>
+          {method !== 'Agile' && <Timeline projectId={p.id} projectName={p.name} project={p} stages={detail.stages} canEdit={canEdit && !archived} canReportIssue={reportable}
+            taskProgress={p.progress} finished={finished}
+            onShowIssues={showIssues} onReportIssue={(stageId) => setReporting({ stageId })} />}
+          {seeTasks && canCreate && !archived && <QuickAdd projectId={p.id} />}
         </div>
-        <div className="big-progress">
-          <div className="big-progress-top"><b>{p.progress}%</b><span>{p.stats.done} of {p.stats.total - p.stats.cancelled} tasks completed{p.stats.inProgress > 0 ? ` · ${p.stats.inProgress} in progress` : ''}</span></div>
-          <Progress value={p.progress} active={activeShare(p.stats)} large />
-        </div>
-        <div className="dh-grid">
-          <div className="dh-cell"><label>Owner</label><b>{p.owner?.name ?? 'Unassigned'}</b></div>
-          <div className="dh-cell"><label>Members</label><b><button type="button" className="link" onClick={() => setSettings('members')} title="See who is on this project">{p.memberCount} {p.memberCount === 1 ? 'person' : 'people'}</button></b></div>
-          <div className="dh-cell"><label>Start date</label><b>{formatDate(p.startDate)}</b></div>
-          <div className="dh-cell"><label>Due date</label><b>{formatDate(p.dueDate)}</b></div>
-        </div>
-      </div>
-
-      {method !== 'Agile' && <div style={{ marginBottom: 18 }}><Timeline projectId={p.id} projectName={p.name} project={p} stages={detail.stages} canEdit={canEdit && !archived} canReportIssue={reportable}
-          taskProgress={p.progress} finished={finished}
-          onShowIssues={showIssues} onReportIssue={(stageId) => setReporting({ stageId })} /></div>}
-
-      <div style={{ marginBottom: 18 }}>
-        <Tabs<Tab> value={tab} onChange={setTabAndUrl} tabs={[
-          { id: 'board' as Tab, label: 'Board', icon: 'kanban' as const }, { id: 'list' as Tab, label: 'List', icon: 'list' as const },
-          { id: 'plan' as Tab, label: method === 'Agile' ? 'Sprints' : method === 'Phased' ? 'Milestones' : 'Plan', icon: 'target' as const },
-          { id: 'issues' as Tab, label: 'Issues', icon: 'bug' as const, badge: openIssues },
-          { id: 'actions' as Tab, label: 'Action items', icon: 'flag' as const },
-          { id: 'documents' as Tab, label: 'Documents', icon: 'note' as const },
-          { id: 'files' as Tab, label: 'Files', icon: 'paperclip' as const },
-          { id: 'time' as Tab, label: 'Time', icon: 'clock' as const },
-          ...(gitHub.data?.installed || tab === 'code' ? [{ id: 'code' as Tab, label: 'Code', icon: 'git' as const }] : []),
-          { id: 'agent' as Tab, label: 'Agent', icon: 'sparkle' as const, badge: agent.data?.enabled ? agent.data.pending || undefined : undefined },
-          { id: 'activity' as Tab, label: 'Activity', icon: 'activity' as const },
-        ].filter((t) => allowedTabs.includes(t.id))} />
-      </div>
+      )}
 
       {(tab === 'board' || tab === 'list') && canCreate && !archived && <QuickAdd projectId={p.id} />}
       {tab === 'board' && <Board projectId={p.id} statuses={detail.statuses} stages={detail.stages} archived={archived} canCreate={canCreate && !archived} onOpenTask={openTask} onAddTask={(statusId) => setNewTask({ statusId })} />}
@@ -252,6 +269,6 @@ export function ProjectDetailPage() {
       {openTaskId && <TaskModal taskId={openTaskId} onClose={closeTask} />}
       {reporting && <ReportIssueModal projectId={p.id} stages={detail.stages} members={detail.members} defaultStageId={reporting.stageId} onClose={() => setReporting(null)} onCreated={(id) => { setReporting(null); openIssue(id); }} />}
       {openIssueId && <IssueDetailModal projectId={p.id} issueId={openIssueId} stages={detail.stages} members={detail.members} onClose={closeIssue} />}
-    </>
+    </div>
   );
 }

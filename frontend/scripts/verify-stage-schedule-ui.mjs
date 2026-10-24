@@ -53,7 +53,7 @@ try{
   await route.fulfill({contentType:'application/json',body:JSON.stringify({data})});
  });
  for(const width of [1440,390]){
-  const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',e=>{if(e.type()==='error'&&!e.text().startsWith('Failed to load resource'))errors.push(e.text());});await page.setViewportSize({width,height:1000});await page.goto(origin+`/preview-org/projects/${pid}?tab=list`);
+  const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',e=>{if(e.type()==='error'&&!e.text().startsWith('Failed to load resource'))errors.push(e.text());});await page.setViewportSize({width,height:1000});await page.goto(origin+`/preview-org/projects/${pid}`);
   // The timeline card: nothing in its header, summary or stages overlaps anything else, at any width.
   await page.locator('.tl-card').waitFor({timeout:15000});await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(300);
   const clash=await page.evaluate(()=>{const card=document.querySelector('.tl-card');const els=[...card.querySelectorAll('.tl-actions > *, .tl-progress-top > *, .tl-legend li, .tl-segments, .htl-dot, .htl-body, h3')].filter(e=>e.getClientRects().length);
@@ -61,6 +61,10 @@ try{
     if(a.left<b.right-1&&b.left<a.right-1&&a.top<b.bottom-1&&b.top<a.bottom-1)out.push(`${els[i].className||els[i].tagName} x ${els[j].className||els[j].tagName}`);}
    return {out,overflow:card.scrollWidth>card.clientWidth+1};});
   assert.deepEqual(clash.out,[],`timeline overlaps at ${width}`);await page.locator('.tl-card').screenshot({path:path.join(out,`timeline-${width}.png`)});checks.push(`timeline-layout-${width}`);
+  // The project opens on its Overview: summary, the ring card, the timeline stepper and the quick-add line, under the title and tabs.
+  assert.equal(await page.getByRole('tab',{name:'Overview'}).getAttribute('aria-selected'),'true','the project opens on Overview');
+  await page.screenshot({path:path.join(out,`overview-${width}.png`),fullPage:true,animations:'disabled'});
+  if(width===1440){await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'overview-dark-1440.png'),fullPage:true,animations:'disabled'});await page.evaluate(()=>document.documentElement.setAttribute('data-theme','light'));}
   try{await page.getByRole('button',{name:'Schedule studio',exact:true}).click({timeout:15000});}catch(e){await fs.writeFile(path.join(out,'failure.json'),JSON.stringify({errors,body:await page.locator('body').innerText()}));throw e;}
   const dialog=page.getByRole('dialog');await dialog.waitFor();await page.evaluate(()=>document.fonts.ready);
   assert.equal(await dialog.getByLabel('Created duration in calendar days').isDisabled(),true,'Completed allocation is protected');
