@@ -5,7 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { chatApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
 import type { ChatAttachment, ChatMessage, ChatThread, Conversation, MeetingCard, StandupCard, StandupItem } from '../../api/types';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconName } from '../../components/Icon';
 import { Avatar, Badge, PageLoader, Spinner } from '../../components/ui';
 import { formatDate, formatDateTime } from '../../lib/format';
 import { queryClient, useAuth, useEntitlement, useWorkspaceId } from '../../stores/auth';
@@ -241,7 +241,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
     ? <span className="typing-text">{conversation.type === 'Direct' ? 'typing' : typingNames.length === 1 ? `${typingNames[0].split(' ')[0]} is typing` : `${typingNames.slice(0, 2).map((n) => n.split(' ')[0]).join(' and ')} are typing`}<i className="dots"><b /><b /><b /></i></span>
     : conversation.type === 'Direct'
       ? <>{otherStatus === 'active' ? <span className="status-on">{PRESENCE_LABEL.active}</span> : otherStatus === 'away' ? <span className="status-away">{PRESENCE_LABEL.away}</span> : PRESENCE_LABEL.offline}
-          {other?.statusText && <span className="status-line"> · {other.statusEmoji} {other.statusText}</span>}{other?.dnd && <span className="status-line" title="Do not disturb"> · 🔕 do not disturb</span>}</>
+          {other?.statusText && <span className="status-line"> · {other.statusEmoji} {other.statusText}</span>}{other?.dnd && <span className="status-line" title="Do not disturb"> · do not disturb</span>}</>
       : `${conversation.members.length} members${onlineCount ? ` · ${onlineCount} online` : ''}`;
 
   // A message I sent counts as read once everyone else in the conversation has read past it (the recipient in a direct
@@ -261,7 +261,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
         <button className="btn-icon chat-head-action ai" onClick={() => setDialog('catchup')} aria-label="Catch me up on this conversation" title="Catch me up"><Icon name="sparkle" size={16} /></button>
         <button className="btn-icon chat-head-action" onClick={() => setDialog('ask')} aria-label="Ask this conversation" title="Ask this conversation"><Icon name="search" size={16} /></button>
         <button className={`btn-icon chat-head-action ${side === 'pins' ? 'on' : ''}`} onClick={() => setSide((v) => (v === 'pins' ? null : 'pins'))} aria-label={`Pinned messages${pinCount ? ` (${pinCount})` : ''}`} aria-pressed={side === 'pins'} title="Pinned">
-          <span aria-hidden="true">📌</span>{pinCount > 0 && <span className="head-count">{pinCount}</span>}
+          <Icon name="flag" size={16} />{pinCount > 0 && <span className="head-count">{pinCount}</span>}
         </button>
         {variant === 'page' && (
           <>
@@ -394,7 +394,7 @@ function PinsPanel({ conversation, onClose, onJump }: { conversation: Conversati
   const q = useQuery({ queryKey: chatKeys.pins(wid, conversation.id), queryFn: () => chatApi.pins(conversation.id), staleTime: 15_000 });
   return (
     <aside className="thread-side" aria-label="Pinned messages">
-      <div className="thread-side-head"><div><h3>📌 Pinned</h3><span className="muted">{q.data?.length ?? 0} pinned</span></div><button className="btn-icon" onClick={onClose} aria-label="Close pinned messages"><Icon name="close" /></button></div>
+      <div className="thread-side-head"><div><h3>Pinned</h3><span className="muted">{q.data?.length ?? 0} pinned</span></div><button className="btn-icon" onClick={onClose} aria-label="Close pinned messages"><Icon name="close" /></button></div>
       <div className="thread-side-list">
         {q.data?.length === 0 && <p className="chat-note">Nothing pinned yet. Pin a message to keep it at hand for everyone here.</p>}
         <ul className="pin-list">{(q.data ?? []).map((m) => (
@@ -498,14 +498,14 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
   const pin = () => chatApi.pin(m.id, !m.pinnedAt).then(update).catch((e) => toast(e instanceof ApiError ? e.message : 'Could not pin it.', 'error'));
   const save = () => chatApi.save(m.id, !m.saved).then((u) => { update(u); toast(u.saved ? 'Saved. Find it under Saved in the chat list.' : 'Removed from saved.', 'success'); })
     .catch((e) => toast(e instanceof ApiError ? e.message : 'Could not save it.', 'error'));
-  const moreItems: { label: string; icon: string; run: () => void; hidden?: boolean }[] = [
-    { label: 'Make a task', icon: '✅', run: () => setMaking('task') },
-    { label: 'Make a ticket', icon: '🎫', run: () => setMaking('ticket') },
-    { label: 'Make a reminder', icon: '⏰', run: () => setMaking('reminder') },
-    { label: 'Make a page', icon: '📄', run: () => setMaking('page') },
-    { label: 'Translate', icon: '🌐', run: () => setExtra('translate'), hidden: !m.body || isPoll },
-    { label: 'Suggest replies', icon: '✨', run: () => setExtra('replies'), hidden: mine || isPoll || !m.body },
-    { label: 'Seen by', icon: '👁', run: () => setSeen(true), hidden: !mine || conversation.type === 'Project' },
+  const moreItems: { label: string; icon: IconName; run: () => void; hidden?: boolean }[] = [
+    { label: 'Make a task', icon: 'checkCircle', run: () => setMaking('task') },
+    { label: 'Make a ticket', icon: 'tag', run: () => setMaking('ticket') },
+    { label: 'Make a reminder', icon: 'alarm', run: () => setMaking('reminder') },
+    { label: 'Make a page', icon: 'note', run: () => setMaking('page') },
+    { label: 'Translate', icon: 'message', run: () => setExtra('translate'), hidden: !m.body || isPoll },
+    { label: 'Suggest replies', icon: 'sparkle', run: () => setExtra('replies'), hidden: mine || isPoll || !m.body },
+    { label: 'Seen by', icon: 'eye', run: () => setSeen(true), hidden: !mine || conversation.type === 'Project' },
   ];
   const [sheet, setSheetState] = useState(false);
   const sheetAt = useRef(0);
@@ -564,8 +564,8 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
           <div className="msg-meta">
             {!mine && showName && !grouped && <strong>{m.senderName ?? 'Former member'}</strong>}
             {aboutMe && !m.isDeleted && <span className="mention-flag" title="You were mentioned">@ you</span>}
-            {m.asksMe && !m.isDeleted && <span className="asks-flag" title="A question for you that you have not answered yet">❓ Waiting for your answer</span>}
-            {m.pinnedAt && <span className="pin-flag" title={m.pinnedBy ? `Pinned by ${m.pinnedBy}` : 'Pinned'}>📌 Pinned</span>}
+            {m.asksMe && !m.isDeleted && <span className="asks-flag" title="A question for you that you have not answered yet"><Icon name="message" size={12} /> Waiting for your answer</span>}
+            {m.pinnedAt && <span className="pin-flag" title={m.pinnedBy ? `Pinned by ${m.pinnedBy}` : 'Pinned'}><Icon name="flag" size={12} /> Pinned</span>}
           </div>
         )}
         <div className="bubble-wrap" style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}
@@ -629,8 +629,8 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
               <button className="btn-icon" onClick={() => setMore((v) => !v)} aria-label="More actions" aria-expanded={more} title="More"><Icon name="more" size={14} /></button>
               {more && (
                 <div className="more-pop" role="menu" aria-label="More actions">
-                  <button type="button" role="menuitem" onClick={() => { setMore(false); void pin(); }}><span aria-hidden="true">📌</span>{m.pinnedAt ? 'Unpin' : 'Pin to the conversation'}</button>
-                  {moreItems.filter((x) => !x.hidden).map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { setMore(false); x.run(); }}><span aria-hidden="true">{x.icon}</span>{x.label}</button>)}
+                  <button type="button" role="menuitem" onClick={() => { setMore(false); void pin(); }}><Icon name="flag" size={15} />{m.pinnedAt ? 'Unpin' : 'Pin to the conversation'}</button>
+                  {moreItems.filter((x) => !x.hidden).map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { setMore(false); x.run(); }}><Icon name={x.icon} size={15} />{x.label}</button>)}
                 </div>
               )}
             </div>
@@ -655,8 +655,8 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
               {m.body && <button type="button" onClick={() => { setSheet(false); copy(); }}><Icon name="copy" size={17} />Copy text</button>}
               <button type="button" onClick={() => { setSheet(false); remindAbout(m); }}><Icon name="alarm" size={17} />Remind me</button>
               <button type="button" onClick={() => { setSheet(false); void save(); }}><Icon name="star" size={17} />{m.saved ? 'Remove from saved' : 'Save for later'}</button>
-              <button type="button" onClick={() => { setSheet(false); void pin(); }}><span className="sheet-emoji" aria-hidden="true">📌</span>{m.pinnedAt ? 'Unpin' : 'Pin'}</button>
-              {moreItems.filter((x) => !x.hidden).map((x) => <button key={x.label} type="button" onClick={() => { setSheet(false); x.run(); }}><span className="sheet-emoji" aria-hidden="true">{x.icon}</span>{x.label}</button>)}
+              <button type="button" onClick={() => { setSheet(false); void pin(); }}><span className="sheet-emoji" aria-hidden="true"><Icon name="flag" size={18} /></span>{m.pinnedAt ? 'Unpin' : 'Pin'}</button>
+              {moreItems.filter((x) => !x.hidden).map((x) => <button key={x.label} type="button" onClick={() => { setSheet(false); x.run(); }}><span className="sheet-emoji" aria-hidden="true"><Icon name={x.icon} size={18} /></span>{x.label}</button>)}
               {mine && !isPoll && <button type="button" onClick={() => { setSheet(false); onEdit(); }}><Icon name="edit" size={17} />Edit</button>}
               {(mine || canModerate) && <button type="button" className="danger" onClick={() => { setSheet(false); onDelete(); }}><Icon name="trash" size={17} />Delete</button>}
             </div>
@@ -954,7 +954,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
               <button type="button" className={`btn-icon pill-btn ${plusOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setPlusOpen((v) => !v)} aria-label="More: poll, send later" aria-expanded={plusOpen} title="Poll, send later"><Icon name="plus" size={17} /></button>
               {plusOpen && (
                 <div className="more-pop up" role="menu" aria-label="More">
-                  {onPoll && <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); onPoll(); }}><span aria-hidden="true">📊</span>Poll</button>}
+                  {onPoll && <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); onPoll(); }}><Icon name="chart" size={15} />Poll</button>}
                   <button type="button" role="menuitem" disabled={!text.trim()} onClick={() => { setPlusOpen(false); setLater(true); }}><span aria-hidden="true">⏰</span>Send later{!text.trim() ? ' (write first)' : ''}</button>
                 </div>
               )}

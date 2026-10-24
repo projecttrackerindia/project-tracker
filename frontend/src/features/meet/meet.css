@@ -108,3 +108,71 @@ button.mt-item-main:focus-visible { outline: 2px solid var(--primary); outline-o
   .mt-time { width: 70px; }
 }
 .gm-repeat-grid { margin-top: 12px; }
+
+/* =====================================================================================================================
+   Calm design: a blue date eyebrow over "Meet", underlined views, each day a white card of rows with hairlines between them, the time in
+   a quiet column, status as pills with words, and Join as the one blue button when it is time.
+   ===================================================================================================================== */
+.mt-page { gap: 4px; }
+.mt-lists { gap: 26px; }
+.mt-day { display: flex; align-items: baseline; gap: 8px; margin: 0 4px 10px; font-size: 17px; font-weight: 600; letter-spacing: -.01em; color: var(--ds-text); }
+.mt-day em { font-style: normal; font-weight: 500; color: var(--ds-text-4); }
+.mt-day.now { align-items: center; color: var(--ds-success); }
+.mt-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ds-success); box-shadow: 0 0 0 4px var(--ds-success-bg); }
+.mt-list { border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); padding: 4px 0; }
+.mt-item { position: relative; gap: 12px; padding: 0 18px 0 0; border-top: 0; }
+.mt-item + .mt-item::before { content: ''; position: absolute; top: 0; left: 120px; right: 18px; height: 1px; background: var(--ds-line); }
+.mt-item.live { box-shadow: none; }
+.mt-item.live .mt-time b { color: var(--ds-success); }
+.mt-item-main { gap: 18px; padding: 16px 8px 16px 22px; border-radius: 16px; }
+@media (hover: hover) { .mt-item-main:hover:not(.mt-static) { background: var(--ds-surface-2); } }
+html[data-theme='dark'] .mt-item-main:hover:not(.mt-static) { background: rgba(255, 255, 255, .03); }
+.mt-time { width: 80px; gap: 2px; }
+.mt-time b { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.mt-time small { font-size: 12.5px; color: var(--ds-text-3); }
+.mt-what { gap: 3px; }
+.mt-what b { font-size: 15.5px; font-weight: 600; letter-spacing: -.01em; }
+.mt-what small { font-size: 13px; color: var(--ds-text-3); }
+.mt-tags { gap: 8px; }
+.mt-rsvp.ds-pill { font-size: 12px; font-weight: 600; padding: 4px 10px; }
+.mt-rsvp.rsvp-Accepted { background: var(--ds-success-bg); color: var(--ds-success); }
+.mt-rsvp.rsvp-Declined { background: var(--ds-danger-bg); color: var(--ds-danger); }
+.mt-rsvp.rsvp-NeedsAction { background: var(--ds-warning-bg); color: var(--ds-warning); }
+.mt-rsvp.rsvp-Tentative { background: var(--ds-fill); color: var(--ds-text-2); }
+.mt-rsvp.rsvp-Organizer { background: none; padding: 0; }
+.mt-actions { gap: 8px; }
+.mt-hint { font-size: 13.5px; color: var(--ds-text-3); }
+.mt-danger, html .btn.mt-danger { color: var(--ds-danger); }
+
+/* the schedule form: the notetaker choice as soft tiles, the chosen one ringed in blue */
+.mt-kind { gap: 2px; padding: 4px; border: 0; border-radius: 12px; background: var(--ds-fill-strong); margin-bottom: 18px; }
+.mt-kind button { min-height: 32px; padding: 0 16px; border-radius: 9px; font-size: 13.5px; font-weight: 500; color: var(--ds-text-2); }
+.mt-kind button[aria-pressed=true] { background: var(--ds-surface); color: var(--ds-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .1); }
+html[data-theme='dark'] .mt-kind button[aria-pressed=true] { background: #636366; color: #fff; }
+.mt-notetaker { border: 0; padding: 0; margin: 0 0 16px; }
+.mt-notetaker legend { padding: 0; margin-bottom: 8px; font-size: 13px; font-weight: 500; color: var(--ds-text-3); }
+.mt-choices { gap: 8px; }
+.mt-choice { gap: 12px; padding: 14px 16px; border: 0; border-radius: 16px; background: var(--ds-fill); transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+.mt-choice:hover:not(.off) { background: var(--ds-fill-strong); }
+.mt-choice.on, .mt-choice.on:hover { background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
+.mt-choice input { accent-color: var(--ds-accent); }
+.mt-choice b { font-size: 15px; font-weight: 600; }
+.mt-choice small { font-size: 13px; color: var(--ds-text-3); }
+
+/* the meeting's detail */
+.mt-detail { gap: 18px; }
+.mt-props { gap: 10px 20px; font-size: 14.5px; }
+.mt-reply { padding: 12px 14px; border-radius: 16px; background: var(--ds-fill); }
+.mt-h { font-size: 15px; font-weight: 600; color: var(--ds-text); }
+.mt-agenda { padding: 14px 16px; border-radius: 14px; background: var(--ds-fill); font-size: 14.5px; color: var(--ds-text-2); }
+.mt-people li { padding: 10px 4px; font-size: 14.5px; border-bottom: 1px solid var(--ds-line); }
+.mt-detail-actions { gap: 8px; padding-top: 16px; border-top: 1px solid var(--ds-line); }
+.mt-move { padding: 16px; border: 0; border-radius: 16px; background: var(--ds-fill); }
+
+@media (max-width: 760px) {
+  .mt-item + .mt-item::before { left: 18px; }
+  .mt-item-main { padding: 14px 8px 14px 18px; gap: 12px; }
+  .mt-time { width: 64px; }
+}
+@media (max-width: 640px) { .mt-item { padding: 0 14px 12px 0; } .mt-item-main { padding: 14px 8px 6px 18px; } .mt-actions { margin-left: 94px; } }
+@media (max-width: 640px) { .mt-time { width: 74px; } .mt-time b { font-size: 14px; } .mt-actions { margin-left: 104px; } }

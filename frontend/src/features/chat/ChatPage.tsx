@@ -7,11 +7,12 @@ import { Icon } from '../../components/Icon';
 import { EmptyState, ErrorState, PageLoader } from '../../components/ui';
 import { useDebounced } from '../../lib/hooks';
 import { useAuth, useIsPersonal, useWorkspaceId } from '../../stores/auth';
+import { useWsQuery } from '../../lib/hooks';
 import { listTime } from './chatFormat';
 import { chatKeys, useChat, useTypingNames } from './chatStore';
 import { fallbackStatus } from './Presence';
 import { FilesPanel, InfoPanel, NewChatModal } from './Panels';
-import { AskChatDialog, CatchUpDialog, QuestionsBox, SavedPanel, ScheduledPanel, StatusButton } from './ChatTools';
+import { AskChatDialog, CatchUpDialog, messageLink, QuestionsBox, SavedPanel, ScheduledPanel, StatusButton } from './ChatTools';
 import { Menu } from '../../components/Menu';
 import { ConversationAvatar, Thread } from './Thread';
 
@@ -83,15 +84,13 @@ export function ChatPage() {
           <h2>Chat</h2>
           <StatusButton />
           <Menu label="" icon="more" items={[
+            { label: 'Catch me up', hint: 'What you missed: decisions, questions for you, actions', icon: 'sparkle', onSelect: () => setDialog('catchup') },
             { label: 'Saved messages', hint: 'Messages you kept for later', icon: 'star', onSelect: () => setPanel('saved') },
             { label: 'Scheduled messages', hint: 'Written now, sent later', icon: 'clock', onSelect: () => setPanel('scheduled') },
             { label: 'Ask the chat', hint: 'Answers from your conversations, with links', icon: 'search', onSelect: () => setDialog('ask') },
           ]} />
-          <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New</button>
+          <button className="btn btn-primary btn-sm chat-new" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New</button>
         </div>
-        <button type="button" className="catchup-btn" onClick={() => setDialog('catchup')}>
-          <Icon name="sparkle" size={15} /><span><b>Catch me up</b><small>What you missed: decisions, questions for you, actions</small></span>
-        </button>
         <div className="search-box"><Icon name="search" size={15} />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search people and messages" aria-label="Search conversations" />
           {search && <button className="btn-icon" onClick={() => setSearch('')} aria-label="Clear search"><Icon name="close" size={13} /></button>}
@@ -129,9 +128,7 @@ export function ChatPage() {
               filesOpen={panel === 'files'} onFiles={() => setPanel((p) => (p === 'files' ? null : 'files'))} onBack={() => navigate('/chat')} />
           : id && !missing
             ? <PageLoader />   // the list is still catching up with a conversation that was just opened
-            : <div className="chat-placeholder"><Icon name="message" size={40} /><h3>{missing ? 'Conversation not found' : 'Select a conversation'}</h3>
-              <p>{missing ? 'It may have been removed, or you may no longer be in it.' : 'Choose someone from the list, or start a new chat.'}</p>
-              <button className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New conversation</button></div>}
+            : <WhileAway missing={missing} list={list} onCatchUp={() => setDialog('catchup')} onNew={() => setCreating(true)} />}
       </section>
 
       {current && panel === 'info' && <InfoPanel key={current.id} conversation={current} onClose={() => setPanel(null)} />}
@@ -157,12 +154,57 @@ function ConversationRow({ c, me, active, onOpen }: { c: Conversation; me: strin
   return (
     <li>
       <button className={`conv-row ${active ? 'active' : ''} ${c.unread > 0 ? 'unread' : ''}`} onClick={onOpen} aria-current={active ? 'true' : undefined}>
-        <ConversationAvatar conversation={c} status={presence} />
+        <span className={`conv-av av-c${hue(c.name)}`}><ConversationAvatar conversation={c} status={presence} /></span>
         <span className="conv-text">
-          <span className="conv-top"><b>{c.name}</b>{other?.dnd && <span title="Do not disturb" aria-label="Do not disturb">🔕</span>}{other?.statusEmoji && <span title={other.statusText ?? undefined}>{other.statusEmoji}</span>}{c.isMuted && <Icon name="bell" size={12} style={{ opacity: 0.5 }} />}<time>{last ? listTime(last.at) : ''}</time></span>
+          <span className="conv-top"><b>{c.name}</b>{other?.dnd && <span className="conv-dnd" title="Do not disturb" aria-label="Do not disturb"><Icon name="moon" size={12} /></span>}{other?.statusEmoji && <span title={other.statusText ?? undefined}>{other.statusEmoji}</span>}{c.isMuted && <Icon name="bell" size={12} style={{ opacity: 0.5 }} />}<time>{last ? listTime(last.at) : ''}</time></span>
           <span className="conv-bottom"><span className="conv-preview">{preview}</span>{c.unread > 0 && <span className="unread-badge" aria-label={`${c.unread} unread`}>{c.unread > 99 ? '99+' : c.unread}</span>}</span>
         </span>
       </button>
     </li>
+  );
+}
+
+/** A steady colour for a person's initials (six calm hues), so the same colleague always looks the same in the list. */
+function hue(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return h % 6;
+}
+
+/**
+ * Nothing open yet: "While you were away" - the decisions (read for you on request, one click), the first question waiting for an answer,
+ * and the latest file someone shared; or pick a conversation on the left.
+ */
+function WhileAway({ missing, list, onCatchUp, onNew }: { missing: boolean; list: Conversation[]; onCatchUp: () => void; onNew: () => void }) {
+  const navigate = useNavigate();
+  const wid = useWorkspaceId() ?? '';
+  const questions = useWsQuery([...chatKeys.questions(wid)].slice(1), () => chatApi.questions(), { staleTime: 30_000 });
+  const q = questions.data?.[0];
+  const file = list.find((c) => c.lastMessage && !c.lastMessage.isSystem && /^Sent (a file|an image|a voice note)/.test(c.lastMessage.snippet));
+  const who = (c: Conversation) => (c.lastMessage!.isMine ? 'You' : (c.lastMessage!.senderName ?? c.name).split(' ')[0]);
+  const fileText = file ? `${who(file)} ${file.lastMessage!.snippet.replace(/^Sent a file: /, 'sent ').replace(/^Sent /, 'sent ')}` : null;
+  if (missing) return (
+    <div className="chat-away">
+      <h2 className="chat-away-title">Conversation not found</h2>
+      <p className="chat-away-foot">It may have been removed, or you may no longer be in it. Pick a conversation on the left, or <button type="button" className="link-btn" onClick={onNew}>start a new one</button>.</p>
+    </div>
+  );
+  return (
+    <div className="chat-away" data-testid="chat-away">
+      <span className="eyebrow">Catch me up</span>
+      <h2 className="chat-away-title">While you were away</h2>
+      <div className="chat-away-tiles">
+        <button type="button" className="chat-away-tile" onClick={onCatchUp}>
+          <small>Decisions</small><b>See what was decided in your chats</b>
+        </button>
+        <button type="button" className="chat-away-tile" disabled={!q} onClick={() => q && navigate(messageLink(q.conversationId, q.messageId, q.threadRootId))}>
+          <small>Questions for you</small><b>{q ? `${(q.senderName ?? 'Someone').split(' ')[0]} needs an answer from you` : 'Nobody is waiting on you'}</b>
+        </button>
+        <button type="button" className="chat-away-tile" disabled={!file} onClick={() => file && navigate(`/chat/${file.id}`)}>
+          <small>Files</small><b>{fileText ?? 'No new files'}</b>
+        </button>
+      </div>
+      <p className="chat-away-foot">{list.length ? 'Or pick a conversation on the left.' : <>No conversations yet. <button type="button" className="link-btn" onClick={onNew}>Message a colleague or start a group</button>.</>}</p>
+    </div>
   );
 }

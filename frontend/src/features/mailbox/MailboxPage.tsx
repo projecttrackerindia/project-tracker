@@ -136,6 +136,48 @@ export function MailboxPage() {
   const selectedRow = rows.find(r => selected && r.account === selected.account && r.id === selected.id) ?? null;
   const selectedAccount = accounts.find(a => a.key === selected?.account);
 
+  const modals = <>
+    {connectOpen && <ConnectModal accountsData={imap.data} presets={imap.data?.presets ?? []} google={google.data} microsoft={ms.data} imapAccounts={imap.data?.imap ?? []}
+      guide={guide} onClose={() => { setConnectOpen(false); setGuide(null); }} onConnected={() => { void invalidateWorkspace(wid, 'mailbox', 'accounts'); }} />}
+    {composeOpen && <ComposeModal accounts={accounts.filter(a => a.canSend)} initial={composeOpen} agent={!!agentOpts.data?.available}
+      onClose={() => setComposeOpen(null)} onSent={refresh} />}
+  </>;
+
+  // Nothing connected yet: the whole page is the invitation (design: "Your mail, with an assistant built in.").
+  if (!loadingAccounts && accounts.length === 0) {
+    const gmailAvailable = google.data?.inboxEnabled !== false;
+    const outlookAvailable = !!(ms.data?.enabled && ms.data.configured && ms.data.inboxEnabled !== false);
+    const open = (g: 'gmail' | 'outlook' | null) => { setGuide(g); setConnectOpen(true); };
+    return (
+      <div className="mb-hero" key={`${wid}-${uid}`} data-testid="mail-hero">
+        <span className="mb-hero-ico" aria-hidden="true"><Icon name="mail" size={26} /></span>
+        <h1>Your mail, with an assistant built in.</h1>
+        <p className="mb-hero-sub">Summaries of every thread, drafted replies and task updates — read live from your provider, never shared with the workspace.</p>
+        <div className="mb-hero-card">
+          {imap.data?.company
+            ? <CompanyConnect accounts={imap.data} onConnected={() => void invalidateWorkspace(wid, 'mailbox', 'accounts')} />
+            : <div className="mb-hero-plain">
+                <b>Connect your mail</b>
+                <small>Gmail, Outlook, Rediffmail and other mail you can read over IMAP.</small>
+                <button type="button" className="btn btn-primary btn-block" onClick={() => open(null)}>Connect mail</button>
+              </div>}
+          <p className="mb-hero-private">Private to you. Stored encrypted.</p>
+        </div>
+        <div className="ds-chips mb-hero-chips" aria-label={imap.data?.company ? 'Other mail accounts' : 'Mail providers'}>
+          <button type="button" className="ds-chip" onClick={() => (gmailAvailable ? void reconnect('gmail') : open('gmail'))}>Gmail</button>
+          <button type="button" className="ds-chip" onClick={() => (outlookAvailable ? void reconnect('outlook') : open('outlook'))}>Outlook</button>
+          <button type="button" className="ds-chip" onClick={() => open(null)}>Other IMAP</button>
+        </div>
+        <div className="mb-hero-features">
+          <div><b>Summaries</b><span>Long threads in three lines.</span></div>
+          <div><b>Draft replies</b><span>You review, you send.</span></div>
+          <div><b>Task updates</b><span>Mail becomes project progress.</span></div>
+        </div>
+        {modals}
+      </div>
+    );
+  }
+
   return (
     <div className={`mailbox ${selected ? 'has-selection' : ''}`} key={`${wid}-${uid}`}>
       <h1 className="sr-only">Mailbox</h1>
@@ -226,10 +268,7 @@ export function MailboxPage() {
         )}
       </section>
 
-      {connectOpen && <ConnectModal accountsData={imap.data} presets={imap.data?.presets ?? []} google={google.data} microsoft={ms.data} imapAccounts={imap.data?.imap ?? []}
-        guide={guide} onClose={() => { setConnectOpen(false); setGuide(null); }} onConnected={() => { void invalidateWorkspace(wid, 'mailbox', 'accounts'); }} />}
-      {composeOpen && <ComposeModal accounts={accounts.filter(a => a.canSend)} initial={composeOpen} agent={!!agentOpts.data?.available}
-        onClose={() => setComposeOpen(null)} onSent={refresh} />}
+      {modals}
     </div>
   );
 }
@@ -689,12 +728,15 @@ function CompanyConnect({ accounts, onConnected }: { accounts: MailAccounts; onC
   };
   return (
     <form className="mb-company" onSubmit={e => { e.preventDefault(); void connect(); }}>
-      <b>Connect your company mail</b>
-      <small>{company.name} · {company.domains.join(', ')}. Enter the password you use for webmail or Outlook; your administrator has already set up the servers.</small>
-      {!mine && <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={`you@${company.domains[0]}`} aria-label="Company email" autoComplete="username" />}
+      <div className="mb-company-head">
+        <span className="ds-tile-ico" aria-hidden="true">{company.name[0]}</span>
+        <span><b>Company mail</b><small>{company.name} · {company.domains.join(', ')} · servers already set up</small></span>
+      </div>
+      {!mine && <input type="email" className="input" value={email} onChange={e => setEmail(e.target.value)} placeholder={`you@${company.domains[0]}`} aria-label="Company email" autoComplete="username" />}
       {mine && <span className="mb-company-email">{mine}</span>}
-      <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="Mail password" aria-label="Mail password" autoComplete="current-password" />
-      <button className="btn btn-primary" disabled={busy || !password || !domainOk}>{busy ? <Spinner /> : <Icon name="mail" size={14} />} Connect</button>
+      <label className="mb-company-label" htmlFor="mb-company-pass">Mail password</label>
+      <PasswordInput id="mb-company-pass" value={password} onChange={e => setPassword(e.target.value)} placeholder="Same as webmail or Outlook" aria-label="Mail password" autoComplete="current-password" />
+      <button className="btn btn-primary btn-block" disabled={busy || !password || !domainOk}>{busy && <Spinner />} Connect</button>
     </form>
   );
 }

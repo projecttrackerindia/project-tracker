@@ -227,3 +227,93 @@ div.mb-guide { padding-left: 0; }
 .mbc-checks li.bad { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
 .mbc-checks li span { color: var(--text-2); }
 @media (max-width: 560px) { .mbc-field.port { flex: 1 1 100%; } }
+
+/* =====================================================================================================================
+   Calm design (PDF p9). Nothing connected: the page is the invitation - an icon tile under a soft blue glow, a display title, one grey
+   line, a centred white card to connect, provider chips and three small feature cards. Connected: the three panes are white cards.
+   ===================================================================================================================== */
+.mb-hero { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 860px; margin: 0 auto; padding: 8px 0 40px; isolation: isolate; }
+.mb-hero::before { content: ''; position: absolute; z-index: -1; left: 50%; top: -40px; width: 120%; height: 360px; transform: translateX(-50%); background: var(--ds-hero-glow); pointer-events: none; }
+.mb-hero-ico { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 18px; background: var(--ds-surface); color: var(--ds-accent); box-shadow: var(--ds-e3); }
+.mb-hero h1 { margin: 28px 0 0; font-size: clamp(34px, 4.4vw, 54px); font-weight: 700; letter-spacing: -.035em; line-height: 1.04; color: var(--ds-text); max-width: 15ch; }
+.mb-hero-sub { margin: 18px 0 0; max-width: 46ch; font-size: 17px; line-height: 1.5; color: var(--ds-text-3); }
+.mb-hero-card { width: min(100%, 480px); margin-top: 32px; padding: 26px; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e4); text-align: left; }
+.mb-hero-card .mb-company, .mb-hero-plain { display: grid; gap: 12px; width: 100%; max-width: none; margin: 0; padding: 0; border: 0; background: transparent; }
+.mb-company input { height: 44px; border-radius: var(--ds-r-input); border-color: var(--ds-outline); font-size: 15px; }
+.mb-hero-plain b { font-size: 17px; font-weight: 600; }
+.mb-hero-plain small { font-size: 14px; color: var(--ds-text-3); margin-top: -6px; }
+.mb-hero-private { margin: 16px 0 0; text-align: center; font-size: 13px; color: var(--ds-text-3); }
+.mb-hero-chips { justify-content: center; margin-top: 22px; }
+.mb-hero-features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; width: 100%; margin-top: 44px; text-align: left; }
+.mb-hero-features > div { display: grid; gap: 4px; padding: 20px 22px; border-radius: 18px; background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.mb-hero-features b { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.mb-hero-features span { font-size: 14px; color: var(--ds-text-3); }
+
+/* company mail: the address is known, just the password */
+.mb-company { display: grid; gap: 12px; }
+.mb-company-head { display: flex; align-items: center; gap: 12px; }
+.mb-company-head .ds-tile-ico { font-weight: 700; font-size: 15px; }
+.mb-company-head > span:last-child { display: grid; gap: 1px; min-width: 0; }
+.mb-company-head b { font-size: 16px; font-weight: 600; }
+.mb-company-head small { font-size: 12.5px; color: var(--ds-text-3); }
+.mb-company-email { display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: var(--ds-r-input); background: var(--ds-fill); font-size: 15px; color: var(--ds-text); overflow-wrap: anywhere; }
+.mb-company-label { margin: 2px 0 -6px; font-size: 13px; font-weight: 500; color: var(--ds-text-3); }
+.mb-company .btn-block { min-height: 46px; font-size: 15px; }
+
+/* connected: three white cards */
+@media (min-width: 1281px) { .mailbox { grid-template-columns: 248px 380px minmax(0, 1fr); } }
+.mailbox { gap: 16px; height: calc(100vh - var(--topbar-h) - 64px); background: transparent; border: 0; border-radius: 0; overflow: visible; }
+.mb-rail, .mb-list, .mb-reader { border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.mb-list, .mb-reader { overflow: hidden; }
+@media (min-width: 981px) { .mb-rail { padding: 18px 12px; gap: 12px; } }
+html .mb-new { min-height: 42px; }
+.mb-folders > button, .mb-account > button { min-height: 40px; border-radius: 12px; font-size: 14.5px; color: var(--ds-text); }
+.mb-folders button:hover { background: var(--ds-surface-2); }
+.mb-folders button.active { background: var(--ds-accent-soft); color: var(--ds-accent-text); font-weight: 600; }
+.mb-folders button.active::before { content: none; }
+.mb-folders em { color: var(--ds-accent); font-weight: 600; }
+.mb-account-name b { font-size: 11px; font-weight: 600; letter-spacing: .05em; color: var(--ds-text-4); }
+html .mb-connect { border-style: solid; }
+.mb-private { font-size: 12.5px; color: var(--ds-text-3); }
+.mb-list { border-right: 0; }
+.mb-list-head { padding: 16px 14px 10px; }
+.mb-search { height: 42px; padding: 0 14px; border-radius: 12px; background: var(--ds-fill); border: 0; }
+.mb-search:focus-within { background: var(--ds-surface); box-shadow: 0 0 0 1px var(--ds-accent), 0 0 0 4px rgba(0, 113, 227, .14); }
+.mb-search input { font-size: 15px; }
+.mb-filters { padding: 0 14px 12px; gap: 6px; border-bottom: 1px solid var(--ds-line); }
+.mb-filters button { min-height: 32px; padding: 0 13px; font-size: 13px; font-weight: 500; color: var(--ds-text-2); background: var(--ds-fill); }
+.mb-filters button.active { background: var(--ds-dark); color: var(--ds-on-dark); }
+.mb-row { gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--ds-line); }
+.mb-row:hover { background: var(--ds-surface-2); }
+html[data-theme='dark'] .mb-row:hover { background: rgba(255, 255, 255, .03); }
+.mb-row.active { background: var(--ds-accent-soft); }
+.mb-row.unread::before { top: 50%; bottom: auto; left: 5px; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: var(--ds-accent); }
+.mb-avatar { width: 40px; height: 40px; font-size: 13.5px; font-weight: 600; }
+.mb-row-top b { font-size: 15px; }
+.mb-row-subject { font-size: 14px; color: var(--ds-text-2); }
+.mb-row.unread .mb-row-top b, .mb-row.unread .mb-row-subject { font-weight: 600; }
+.mb-reader { border-left: 0; }
+.mb-read-head { padding: 20px 26px 16px; border-bottom: 1px solid var(--ds-line); }
+.mb-read-head h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.mb-read-body { padding: 18px 26px 32px; gap: 14px; }
+.mb-msg { border: 0; border-radius: 18px; background: var(--ds-surface-2); }
+html[data-theme='dark'] .mb-msg { background: var(--ds-surface-2); }
+.mb-msg-body { font-size: 15px; }
+.mb-quick button { border: 0; background: var(--ds-fill); color: var(--ds-text); font-weight: 500; }
+.mb-quick button:hover { background: var(--ds-fill-strong); color: var(--ds-text); }
+html .mb-agent-btn { color: var(--ds-progress); }
+.mb-agent { border: 0; border-radius: 20px; background: var(--ds-progress-bg); }
+.mb-agent header { color: var(--ds-progress); }
+.mb-agent h4 { font-size: 13px; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--ds-text-2); }
+.mb-chip { border: 0; background: var(--ds-surface); font-weight: 500; }
+.mb-task { border: 0; border-radius: 14px; background: var(--ds-surface); }
+.mb-banner { border-radius: 12px; }
+.mb-empty-art { border-radius: 18px; }
+@media (min-width: 1181px) and (max-width: 1280px) { .mailbox { grid-template-columns: 220px 340px minmax(0, 1fr); gap: 14px; } }
+@media (max-width: 760px) {
+  .mb-hero { padding-top: 0; }
+  .mb-hero-sub { font-size: 16px; }
+  .mb-hero-card { padding: 20px; }
+  .mb-hero-features { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 28px; }
+  .mailbox { gap: 0; }
+}

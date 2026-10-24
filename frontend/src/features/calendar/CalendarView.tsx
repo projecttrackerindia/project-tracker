@@ -9,6 +9,7 @@ import { type SelectMode, activeDates as datesOf, dayClasses, monthCells, nextSe
 import { useWsQuery } from '../../lib/hooks';
 import { Sheet } from '../../components/Sheet';
 import { haptic, useIsMobile } from '../../lib/mobile';
+import './calendar.css';
 
 const cls = (e: CalendarEvent) =>
   e.type === 'project' || e.type === 'milestone' ? 'purple' : e.type === 'stage' ? 'amber' : e.type === 'meeting' ? 'teal' : e.category === 'Done' ? 'green' : e.overdue ? 'red' : e.type === 'action' ? 'cyan' : e.type === 'work' ? 'orange' : 'blue';
@@ -75,28 +76,32 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
 
   return (
     <>
-      <div className="card mb-22">
-        <div className="card-head">
-          <div className="row" style={{ gap: 12 }}>
+      <div className="card mb-22 cal-card">
+        <div className="card-head cal-head">
+          <div className="cal-month">
+            <h2>{MONTHS_FULL[month]} <em>{year}</em></h2>
             <button className="btn-icon" onClick={() => shift(-1)} aria-label="Previous month"><Icon name="chevronL" /></button>
-            <h3 style={{ minWidth: 170, textAlign: 'center' }}>{MONTHS_FULL[month]} {year}</h3>
             <button className="btn-icon" onClick={() => shift(1)} aria-label="Next month"><Icon name="chevronR" /></button>
             <button className="btn btn-ghost btn-sm" onClick={() => { setMonth(now.getMonth()); setYear(now.getFullYear()); changeMode('single'); }}>Today</button>
           </div>
-          <div className="row" style={{ gap: 14, flexWrap: 'wrap' }}>
+          <div className="cal-tools">
             <div className="seg" role="group" aria-label="Date selection mode">
-              {([['single', 'calendar', 'Date'], ['range', 'arrowRight', 'Range'], ['multiple', 'grid', 'Dates']] as const).map(([m, icon, label]) => (
-                <button key={m} type="button" className={mode === m ? 'active' : ''} aria-pressed={mode === m} title={label} onClick={() => changeMode(m)}><Icon name={icon} size={14} /><span>{label}</span></button>
+              {([['single', 'Date'], ['range', 'Range'], ['multiple', 'Dates']] as const).map(([m, label]) => (
+                <button key={m} type="button" className={mode === m ? 'active' : ''} aria-pressed={mode === m} title={label} onClick={() => changeMode(m)}><span>{label}</span></button>
               ))}
             </div>
-            <div className="legend">
-              {([['task', 'var(--primary)', 'Tasks'], ['action', '#0ea5e9', 'Action items'], ['work', '#f97316', 'Operational work'], ['project', 'var(--purple)', 'Project deadlines'], ['stage', 'var(--warning)', 'Stage ends'], ['milestone', 'var(--purple)', 'Milestones'], ['meeting', '#0d9488', 'Meetings']] as const).map(([k, c, label]) => (
-                <label key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={show[k]} onChange={(e) => setShow((s) => ({ ...s, [k]: e.target.checked }))} /><i style={{ background: c }} />{label}
-                </label>
-              ))}
-              <span><i style={{ background: 'var(--danger)' }} />Overdue</span><span><i style={{ background: 'var(--success)' }} />Completed</span>
-            </div>
+            {/* Seven kinds of things: folded into one "Show" pill, so the calendar itself stays calm. */}
+            <details className="cal-show">
+              <summary className="btn btn-ghost btn-sm">Show · {Object.values(show).filter(Boolean).length}</summary>
+              <div className="cal-show-pop">
+                {([['task', 'var(--primary)', 'Tasks'], ['action', '#0ea5e9', 'Action items'], ['work', '#f97316', 'Operational work'], ['project', 'var(--purple)', 'Project deadlines'], ['stage', 'var(--warning)', 'Stage ends'], ['milestone', 'var(--purple)', 'Milestones'], ['meeting', '#0d9488', 'Meetings']] as const).map(([k, c, label]) => (
+                  <label key={k}>
+                    <input type="checkbox" checked={show[k]} onChange={(e) => setShow((s) => ({ ...s, [k]: e.target.checked }))} /><i style={{ background: c }} />{label}
+                  </label>
+                ))}
+                <p><span><i style={{ background: 'var(--danger)' }} />Overdue</span><span><i style={{ background: 'var(--success)' }} />Completed</span></p>
+              </div>
+            </details>
           </div>
         </div>
         <div className="card-body tight">

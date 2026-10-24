@@ -18,9 +18,9 @@
   background: conic-gradient(var(--primary) calc(var(--p) * 1%), rgba(var(--accent-rgb), .14) 0); transition: background .4s ease; }
 .tsg-ring > span { width: 66px; height: 66px; border-radius: 50%; background: var(--surface-solid, var(--surface)); display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .tsg-ring b { font-size: 16px; line-height: 1; }
-.tsg-ring small { font-size: 9px; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; margin-top: 3px; }
+.tsg-ring small { font-size: 9px; color: var(--text-3); text-transform: none; letter-spacing: 0; margin-top: 3px; }
 .tsg-stat { display: flex; flex-direction: column; gap: 1px; min-width: 108px; padding: 9px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); }
-.tsg-stat span { font-size: 11px; color: var(--text-3); font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
+.tsg-stat span { font-size: 11px; color: var(--text-3); font-weight: 650; text-transform: none; letter-spacing: 0; }
 .tsg-stat b { font-size: 17px; letter-spacing: -.01em; }
 .tsg-stat small { font-size: 11.5px; color: var(--text-3); }
 .tsg-stat.green b { color: var(--success); }
@@ -126,9 +126,9 @@
 .tsg-table th, .tsg-table td { border-bottom: 1px solid var(--border); padding: 0; }
 .tsg-table thead th { position: sticky; top: 0; z-index: 2; background: var(--surface-2); font-weight: 600; }
 .tsg-what { text-align: left; width: 34%; min-width: 260px; padding: 10px 14px !important; position: sticky; left: 0; z-index: 1; background: var(--surface); }
-.tsg-table thead .tsg-what { z-index: 3; background: var(--surface-2); font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; }
+.tsg-table thead .tsg-what { z-index: 3; background: var(--surface-2); font-size: 12px; color: var(--text-3); text-transform: none; letter-spacing: 0; }
 .tsg-day { text-align: center; padding: 8px 4px !important; min-width: 78px; }
-.tsg-dow { display: block; font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; }
+.tsg-dow { display: block; font-size: 11px; color: var(--text-3); text-transform: none; letter-spacing: 0; }
 .tsg-dnum { display: block; font-size: 17px; font-weight: 700; line-height: 1.2; }
 .tsg-day.today .tsg-dnum { color: var(--primary); }
 .tsg-day.weekend { color: var(--text-3); }
@@ -197,7 +197,7 @@
 .tsd { display: grid; gap: 12px; }
 .tsd-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .tsd-day { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 7px 2px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
-.tsd-day span { font-size: 10px; color: var(--text-3); text-transform: uppercase; }
+.tsd-day span { font-size: 10px; color: var(--text-3); text-transform: none; }
 .tsd-day b { font-size: 15px; }
 .tsd-day small { font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .tsd-day.met small { color: var(--success); }
@@ -261,7 +261,7 @@
 .tsi-ot { font-style: normal; font-size: 11px; font-weight: 650; color: var(--warning); }
 .tsi-missing { display: flex; flex-wrap: wrap; gap: 8px; }
 .tsi-miss { display: flex; flex-direction: column; align-items: center; width: 54px; padding: 8px 0; border-radius: 12px; border: 1px dashed var(--danger); background: var(--danger-soft); color: var(--danger-text); cursor: pointer; }
-.tsi-miss b { font-size: 11px; text-transform: uppercase; }
+.tsi-miss b { font-size: 11px; text-transform: none; }
 .tsi-miss span { font-size: 16px; font-weight: 700; }
 .tsi-allgood { display: flex; align-items: center; gap: 8px; color: var(--success); margin: 0; font-size: 13.5px; }
 
@@ -301,3 +301,46 @@
 /* Insights fit a phone: the page column never grows past the screen, and the paired cards stack. */
 .tsi, .tsi-weeks, .tsi-shares { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 760px) { .tsi-grid { grid-template-columns: minmax(0, 1fr); } .tsi-week-name { width: 96px; } }
+
+/* =====================================================================================================================
+   Calm design: the week as a white card with a completion ring and soft tiles (label, big number, one caption), the week's approval as a
+   plain card with a status pill, "log time in plain words" as the floating command input, and the grid with quiet headers.
+   ===================================================================================================================== */
+.tsg-hero { gap: 18px; padding: 22px 24px; margin-bottom: 18px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.tsg-hero-week b { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+.tsg-hero-week span { font-size: 13px; }
+.tsg-ring { width: 88px; height: 88px; background: conic-gradient(var(--ds-accent) calc(var(--p) * 1%), var(--ds-fill) 0); }
+.tsg-ring > span { width: 72px; height: 72px; background: var(--ds-surface); }
+.tsg-ring b { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+.tsg-ring small { font-size: 11px; font-weight: 500; }
+.tsg-hero-stats { gap: 12px; }
+.tsg-stat { gap: 3px; min-width: 120px; padding: 14px 16px; border: 0; border-radius: 16px; background: var(--ds-fill); }
+.tsg-stat span { font-size: 12.5px; font-weight: 500; color: var(--ds-text-3); }
+.tsg-stat b { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.tsg-stat small { font-size: 12px; }
+.tsg-stat.red b { color: var(--ds-danger); }
+.tsg-stat.blue b { color: var(--ds-info); }
+.tsg-stat.purple b { color: var(--ds-progress); }
+
+.tsg-tools { gap: 12px; margin-bottom: 16px; }
+.tsg-quick { padding: 8px 8px 8px 20px; border: 0; border-radius: 22px; background: var(--ds-surface); box-shadow: var(--ds-e3); }
+.tsg-quick:focus-within { box-shadow: var(--ds-e3), 0 0 0 4px rgba(0, 113, 227, .14); border-color: transparent; }
+.tsg-quick > svg { color: var(--ds-accent); }
+html .tsg-quick .input { font-size: 16px; min-height: 40px; }
+.tsg-quick.rec { box-shadow: var(--ds-e3), 0 0 0 2px var(--ds-danger); }
+
+.tw-heard { border-radius: 14px; background: var(--ds-fill); }
+.tw-row { border: 0; border-radius: 14px; background: var(--ds-surface-2); box-shadow: 0 0 0 1px var(--ds-line); }
+
+.tsg-table thead .tsg-what { background: var(--ds-surface); font-size: 12.5px; font-weight: 500; }
+.tsg-dow { font-size: 12px; font-weight: 500; }
+
+/* the week's approval: a plain card, the status as a pill with words */
+html .ts-week { padding: 18px 20px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+html .ts-week::before { content: none; }
+html .ts-week-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--ds-accent-soft); color: var(--ds-accent); }
+html .ts-week.pending .ts-week-icon { background: var(--ds-warning-bg); color: var(--ds-warning); }
+html .ts-week.approved .ts-week-icon { background: var(--ds-success-bg); color: var(--ds-success); }
+html .ts-week.returned .ts-week-icon { background: var(--ds-danger-bg); color: var(--ds-danger); }
+.ts-week-title b { font-size: 16px; font-weight: 600; }
+.ts-week-sub { font-size: 13px; color: var(--ds-text-3); }

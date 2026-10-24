@@ -29,8 +29,8 @@ const RSVP_LABEL: Record<Rsvp, string> = { Organizer: 'You organize', Accepted: 
 function JoinButton({ m, small = true }: { m: Pick<MeetItem, 'provider' | 'joinUrl' | 'providerName'>; small?: boolean }) {
   const cls = `btn btn-primary${small ? ' btn-sm' : ''}`;
   return m.provider === 'ours'
-    ? <Link className={cls} to={m.joinUrl}><Icon name="video" size={14} /> Join</Link>
-    : <a className={cls} href={m.joinUrl} target="_blank" rel="noopener noreferrer" title={`Opens ${m.providerName}`}><Icon name="video" size={14} /> Join</a>;
+    ? <Link className={cls} to={m.joinUrl}>Join</Link>
+    : <a className={cls} href={m.joinUrl} target="_blank" rel="noopener noreferrer" title={`Opens ${m.providerName}`}>Join</a>;
 }
 
 /** Joining makes sense from shortly before the start until the end (or whenever the call is already going). */
@@ -57,10 +57,11 @@ export function MeetPage({ section }: { section: Section }) {
 
   return (
     <div className="mt-page">
-      <PageHead title="Meet" sub={project ? `Meetings and calls of ${project.name}` : 'Meetings and calls: Google Meet, Teams or Project Tracker calls, in one place'}>
-        {projectId && <button type="button" className="btn btn-ghost" onClick={() => setParam('project', null)}><Icon name="close" size={14} /> All meetings</button>}
-        <button type="button" className="btn btn-ghost" onClick={() => setForm('now')}><Icon name="bolt" size={15} /> Start now</button>
-        <button type="button" className="btn btn-primary" onClick={() => setForm('schedule')}><Icon name="calendar" size={15} /> Schedule</button>
+      <PageHead title="Meet" eyebrow={project ? project.name : new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+        sub={project ? 'This project\'s meetings and calls.' : 'Google Meet, Teams and Project Tracker calls, in one place.'}>
+        {projectId && <button type="button" className="btn btn-ghost" onClick={() => setParam('project', null)}>All meetings</button>}
+        <button type="button" className="btn btn-ghost" onClick={() => setForm('now')}>Start now</button>
+        <button type="button" className="btn btn-primary" onClick={() => setForm('schedule')}>Schedule</button>
       </PageHead>
       <RouteTabs label="Meet" tabs={[
         { to: `/meet${keep}`, label: 'Upcoming', icon: 'calendar' },
@@ -103,9 +104,9 @@ function Upcoming({ projectId, onOpen }: { projectId: string | null; onOpen: (m:
   return (
     <div className="mt-lists">
       {items.length === 0 && outside.length === 0 && <EmptyState icon="video" title="Nothing coming up" text="Meetings you organize or are invited to show here, with their join link, your reply and a reminder before each one. Schedule one, or start a call now." />}
-      {live.length > 0 && <section aria-label="Happening now"><h2 className="mt-day now">Now</h2><ul className="mt-list">{live.map((m) => <Row key={m.ref + m.start} m={m} onOpen={onOpen} />)}</ul></section>}
+      {live.length > 0 && <section aria-label="Happening now"><h2 className="mt-day now"><span className="mt-live-dot" aria-hidden="true" />Now</h2><ul className="mt-list">{live.map((m) => <Row key={m.ref + m.start} m={m} onOpen={onOpen} />)}</ul></section>}
       {days.map(([day, list]) => (
-        <section key={day} aria-label={day}><h2 className="mt-day">{day}</h2><ul className="mt-list">{list.map((m) => <Row key={m.ref + m.start} m={m} onOpen={onOpen} />)}</ul></section>
+        <section key={day} aria-label={day}><DayTitle day={day} /><ul className="mt-list">{list.map((m) => <Row key={m.ref + m.start} m={m} onOpen={onOpen} />)}</ul></section>
       ))}
       {outside.length > 0 && (
         <section aria-label="Also on your calendar">
@@ -126,7 +127,7 @@ function Past({ projectId, onOpen }: { projectId: string | null; onOpen: (m: Mee
   if (q.isLoading) return <PageLoader />;
   if (q.isError) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   if (items.length === 0) return <EmptyState icon="clock" title="No meetings in the last 30 days" text="Past meetings show here with the notetaker's notes when it came." />;
-  return <div className="mt-lists">{days.map(([day, list]) => <section key={day} aria-label={day}><h2 className="mt-day">{day}</h2><ul className="mt-list">{list.map((m) => <Row key={m.ref + m.start} m={m} onOpen={onOpen} past />)}</ul></section>)}</div>;
+  return <div className="mt-lists">{days.map(([day, list]) => <section key={day} aria-label={day}><DayTitle day={day} /><ul className="mt-list">{list.map((m) => <Row key={m.ref + m.start} m={m} onOpen={onOpen} past />)}</ul></section>)}</div>;
 }
 
 function Series({ projectId, onOpen }: { projectId: string | null; onOpen: (m: MeetItem) => void }) {
@@ -135,6 +136,12 @@ function Series({ projectId, onOpen }: { projectId: string | null; onOpen: (m: M
   if (q.isError) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   if (!q.data?.length) return <EmptyState icon="repeat" title="No repeating meetings" text="Stand-ups and other series show here with their next session. Schedule one and choose how often it repeats." />;
   return <ul className="mt-list mt-lists">{q.data.map((m) => <Row key={m.ref} m={m} onOpen={onOpen} series />)}</ul>;
+}
+
+/** A day's heading: "Today" in bold with the date in grey beside it. */
+function DayTitle({ day }: { day: string }) {
+  const [name, date] = day.includes(' · ') ? day.split(' · ') : [day, null];
+  return <h2 className="mt-day">{name}{date && <em>{date}</em>}</h2>;
 }
 
 /** Sessions grouped by day: "Today", "Tomorrow", then the date. */
@@ -177,7 +184,7 @@ function Row({ m, onOpen, past = false, series = false }: { m: MeetItem; onOpen:
           {m.recurring && !series && <Badge tone="neutral">Repeats</Badge>}
           {nt && <Badge tone="purple">{nt}</Badge>}
           {past && m.notes === 'done' && <Badge tone="info">Notes</Badge>}
-          {!m.isOrganizer && !past && <span className={`mt-rsvp rsvp-${m.myRsvp}`}>{RSVP_LABEL[m.myRsvp]}</span>}
+          {!m.isOrganizer && !past && <span className={`mt-rsvp ds-pill rsvp-${m.myRsvp}`}>{RSVP_LABEL[m.myRsvp]}</span>}
         </span>
       </button>
       {!past && m.status === 'Scheduled' && (

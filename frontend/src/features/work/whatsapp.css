@@ -3,7 +3,7 @@
   background: linear-gradient(135deg, color-mix(in srgb, #25d366 10%, var(--surface)), color-mix(in srgb, var(--primary) 6%, var(--surface))); }
 .wa-hero h2 { margin: 6px 0; font-size: 21px; }
 .wa-hero p { margin: 0; color: var(--text-2); max-width: 640px; line-height: 1.5; }
-.wa-eyebrow { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: color-mix(in srgb, #128c4b 80%, var(--text)); }
+.wa-eyebrow { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 700; text-transform: none; letter-spacing: 0; color: color-mix(in srgb, #128c4b 80%, var(--text)); }
 .wa-channels { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .wa-channel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .wa-channel-top { display: flex; gap: 10px; align-items: center; min-width: 0; }
@@ -23,7 +23,7 @@
 .wa-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-2); min-width: 0; }
 .wa-field input, .wa-reply textarea { padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; font-weight: 400; min-width: 0; }
 .wa-meta { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px 14px; margin: 0; display: flex; flex-direction: column; gap: 12px; }
-.wa-meta legend { font-size: 12px; font-weight: 700; color: var(--text-3); padding: 0 6px; text-transform: uppercase; letter-spacing: .05em; }
+.wa-meta legend { font-size: 12px; font-weight: 700; color: var(--text-3); padding: 0 6px; text-transform: none; letter-spacing: 0; }
 .wa-help { font-size: 13px; color: var(--text-2); }
 .wa-help summary { cursor: pointer; color: var(--primary); font-weight: 600; }
 .wa-help ol { margin: 8px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }

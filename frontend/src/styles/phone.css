@@ -129,8 +129,6 @@
   .kanban > * { scroll-snap-align: center; }
 }
 @media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
-  .rp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .rp-stat { min-width: 0; padding: 12px; gap: 10px; } .rp-stat > div { min-width: 0; } .rp-stat > div > * { overflow-wrap: anywhere; }
 }
 /* grids whose minimum column is wider than a small phone's content area */
 @media (max-width: 480px) {

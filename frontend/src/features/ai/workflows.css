@@ -50,3 +50,51 @@
 .callout-error > svg { color: var(--danger-text); }
 .callout-warning { background: var(--warning-soft); }
 .callout-warning > svg { color: var(--warning); }
+
+/* =====================================================================================================================
+   Calm design (Agents › Workflows, PDF p17): "Start a review" with three choice cards (the chosen one white, ringed in blue, with a soft
+   glow), Run now as the one primary, then Reviews beside the chosen review, and Scheduled reviews.
+   ===================================================================================================================== */
+.awf { gap: 20px; }
+.awf .card-head > div > p { font-size: 13.5px; }
+.awf-kinds.ds-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.ds-choice.awf-kind { min-height: 132px; padding: 18px 20px; border: 0; background: var(--ds-fill); }
+.ds-choice.awf-kind:hover { background: var(--ds-fill-strong); }
+.ds-choice.awf-kind.on { background: var(--ds-surface); }
+.ds-tile-ico.awf-violet { background: var(--ds-progress-bg); color: var(--ds-progress); }
+.ds-choice.awf-kind b { font-size: 16px; display: block; }
+.ds-choice.awf-kind > span:not(.ds-tile-ico) { display: block; font-size: 13px; color: var(--ds-text-3); margin-top: 0; }
+@media (hover: hover) { .ds-choice.awf-kind:hover { transform: none; box-shadow: none; } .ds-choice.awf-kind.on:hover { box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); } }
+.awf-actions { gap: 12px; margin-top: 18px; }
+.awf-or { font-size: 13.5px; color: var(--ds-text-3); }
+html .awf-repeat { width: 128px; min-height: 40px; border-radius: var(--ds-r-pill); }
+.awf-grid { grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); gap: 20px; }
+.awf-jobs { padding: 6px 12px 14px; gap: 4px; }
+.awf-jobs li { border-radius: 14px; }
+.awf-jobs li.on { background: var(--ds-accent-soft); }
+.awf-job { padding: 12px; border-radius: 14px; gap: 12px; }
+.awf-job:hover { background: var(--ds-surface-2); }
+.awf-jobs li.on .awf-job:hover { background: transparent; }
+.ds-tile-ico.awf-dot { width: 32px; height: 32px; border-radius: 10px; }
+.awf-job-text b { font-size: 14.5px; font-weight: 500; }
+.awf-job-text small { font-size: 12.5px; color: var(--ds-text-3); }
+.awf-status { font-size: 12px; font-weight: 600; padding: 4px 10px; background: var(--ds-fill); color: var(--ds-text-2); }
+.awf-status.succeeded, .awf-status.completed { background: var(--ds-success-bg); color: var(--ds-success); }
+.awf-status.failed { background: var(--ds-danger-bg); color: var(--ds-danger); }
+.awf-status.running, .awf-status.queued { background: var(--ds-progress-bg); color: var(--ds-progress); }
+.awf-progress { left: 56px; right: 14px; height: 4px; background: var(--ds-fill); }
+.awf-progress i { background: var(--ds-accent); }
+.awf-detail .empty { padding: 72px 24px; }
+.awf-body { gap: 14px; font-size: 15px; line-height: 1.6; }
+.awf-body h4 { font-size: 15px; font-weight: 600; }
+.awf-method summary { font-size: 13.5px; color: var(--ds-accent); font-weight: 500; }
+.awf-method p { font-size: 13.5px; color: var(--ds-text-2); }
+.awf-ask { justify-self: start; }
+.awf-schedules li { gap: 14px; padding: 14px 16px; border: 0; border-radius: 16px; background: var(--ds-surface-2); }
+html[data-theme='dark'] .awf-schedules li { background: var(--ds-surface-2); }
+.awf-schedules li > svg { color: var(--ds-accent); }
+.awf-schedules b { font-size: 15px; font-weight: 500; }
+.awf-schedules small { font-size: 13px; }
+.ds-kpis.awf-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.ds-kpis.awf-stats .ds-kpi { padding: 18px 20px; }
+@media (max-width: 900px) { .awf-kinds.ds-choices, .awf-grid { grid-template-columns: 1fr; } .ds-kpis.awf-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ds-choice.awf-kind { min-height: 0; } }

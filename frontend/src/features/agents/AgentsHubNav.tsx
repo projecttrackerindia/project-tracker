@@ -63,16 +63,17 @@ export function AgentsHubNav({ sub, compact = false }: { sub?: string; compact?:
     </nav>
   );
   return (
-    <div className="agh">
-      <div className="agh-title"><span className="agh-mark"><AgentMark size={20} animated /></span><div><b>Agents</b>{sub && <small>{sub}</small>}</div></div>
-      <nav ref={bar} className="tabs agh-tabs" aria-label="Agents">
+    // The page's own title ("Agents", one line under it) with the agent places as a segmented control on the right (design: Agents).
+    <header className="agh">
+      <div className="agh-title"><h1 className="page-title">Agents</h1>{sub && <p className="page-sub">{sub}</p>}</div>
+      <nav ref={bar} className="ds-seg agh-tabs" aria-label="Agents">
         {shown.map((t) => (
-          <NavLink key={t.to} to={t.to} end className={`tab${t.on ? ' active' : ''}`} aria-current={t.on ? 'page' : undefined}>
-            {t.icon === 'mark' ? <AgentMark size={16} /> : <Icon name={t.icon} size={15} />}<span>{t.label}</span>
-            {!!t.badge && <em>{t.badge > 99 ? '99+' : t.badge}</em>}
+          <NavLink key={t.to} to={t.to} end className={`tab ${t.on ? 'active' : ''}`} aria-current={t.on ? 'page' : undefined}>
+            <span>{t.label}</span>
+            {!!t.badge && <em aria-label={`${t.badge} waiting`}>{t.badge > 99 ? '99+' : t.badge}</em>}
           </NavLink>
         ))}
       </nav>
-    </div>
+    </header>
   );
 }

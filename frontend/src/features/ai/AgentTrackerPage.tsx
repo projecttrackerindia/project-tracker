@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient , keepPreviousData } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { AgentMark } from '../../components/AgentMark';
 import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, PageLoader } from '../../components/ui';
 import { formatDateTime , plural } from '../../lib/format';
@@ -64,13 +63,13 @@ export function AgentTrackerPage() {
   return (
     <div className={`trk ${q.isPlaceholderData || fleet.isPlaceholderData ? 'trk-refreshing' : ''}`}>
       <AgentsHubNav sub="How every agent in the workspace is doing" />
-      <header className="trk-hero">
-        <div className="trk-hero-glow" aria-hidden />
+      {/* The black, glowing hero (design: Agent Tracker): what this page answers in one line, the period, and the assistant's state. */}
+      <header className="trk-hero ds-hero-dark">
         <div className="trk-hero-row">
-          <span className="trk-hero-mark"><AgentMark size={34} animated={!!d?.agent.enabled} /></span>
           <div className="trk-hero-text">
-            <h1>Agent Tracker</h1>
-            <p>Every agent in this workspace - how often it works, how fast, what it costs and where it struggles. Private conversations stay private.</p>
+            <h2 className="eyebrow">Agent Tracker</h2>
+            <p className="trk-hero-title">Every agent. How often, how fast, what it costs.</p>
+            <p className="trk-hero-sub">Private conversations stay private.</p>
           </div>
           <div className="trk-hero-actions">
             <div className="trk-seg" role="group" aria-label="Period">
@@ -82,12 +81,12 @@ export function AgentTrackerPage() {
         {d && (
           <div className="trk-status-row">
             <span className={`trk-chip ${d.agent.enabled ? 'on' : 'off'}`}><i />{d.agent.enabled ? 'Assistant on' : 'Assistant off'}</span>
-            <span className="trk-chip"><Icon name="layers" size={12} />{d.agent.provider}</span>
-            <span className="trk-chip"><Icon name="code" size={12} />{d.agent.model || 'No model configured'}</span>
-            <span className="trk-chip"><Icon name="bolt" size={12} />{d.agent.maxToolCalls} tools per run · {d.agent.timeoutSeconds}s per call</span>
+            <span className="trk-chip">{d.agent.provider}</span>
+            <span className="trk-chip mono">{d.agent.model || 'No model configured'}</span>
+            <span className="trk-chip">{d.agent.maxToolCalls} tools per run · {d.agent.timeoutSeconds}s per call</span>
             <span className="trk-spacer" />
-            <button type="button" className="trk-ghost" disabled={health.isPending} onClick={() => health.mutate()}>{health.isPending ? <span className="spinner" /> : <Icon name="activity" size={14} />}Check model health</button>
-            <button type="button" className="trk-ghost" disabled={toggle.isPending} onClick={() => toggle.mutate(!d.agent.enabled)}><Icon name={d.agent.enabled ? 'pause' : 'play'} size={14} />{d.agent.enabled ? 'Switch assistant off' : 'Switch assistant on'}</button>
+            <button type="button" className="trk-ghost" disabled={health.isPending} onClick={() => health.mutate()}>{health.isPending && <span className="spinner" />}Check model health</button>
+            <button type="button" className="trk-ghost light" disabled={toggle.isPending} onClick={() => toggle.mutate(!d.agent.enabled)}>{d.agent.enabled ? 'Switch assistant off' : 'Switch assistant on'}</button>
           </div>
         )}
         {health.data && (
@@ -177,10 +176,12 @@ function Overview({ d, fleet, alerts, onFilter, goTo }: { d: Tracker; fleet?: Fl
       <div className="trk-agents">
         {cards.map((c) => (
           <button key={c.name} type="button" className={`trk-agent trk-accent-${c.accent}`} onClick={() => goTo(c.id)}>
-            <span className="trk-agent-top"><span className="trk-agent-icon"><Icon name={c.icon} size={18} /></span><b>{c.name}</b><Icon name="arrowRight" size={14} /></span>
-            <span className="trk-agent-big"><strong>{c.big}</strong><span>{c.bigLabel}</span></span>
-            <Spark values={c.spark} color={`var(--trk-accent)`} />
-            <span className="trk-agent-facts">{c.facts.map((x) => <em key={x}>{x}</em>)}</span>
+            <span className="trk-agent-top"><b>{c.name}</b><Icon name="chevronR" size={15} /></span>
+            <span className="trk-agent-mid">
+              <span className="trk-agent-big"><strong>{c.big}</strong><span>{c.bigLabel}</span></span>
+              <Spark values={c.spark} color={`var(--trk-accent)`} />
+            </span>
+            <span className="trk-agent-facts">{c.facts.join(' · ')}</span>
           </button>
         ))}
       </div>

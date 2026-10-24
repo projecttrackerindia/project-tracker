@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { chatApi } from '../../api/endpoints';
 import type { ChatCatchUp, ChatCatchUpItem, ChatAskAnswer, ChatStatus, Conversation } from '../../api/types';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, Modal, Spinner } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
@@ -19,11 +19,11 @@ export const messageLink = (conversationId: string, messageId: string | null, th
 
 // ------------------------------------------------------------------ catch me up
 
-function ItemList({ title, icon, items, onOpen }: { title: string; icon: string; items: ChatCatchUpItem[]; onOpen: (i: ChatCatchUpItem) => void }) {
+function ItemList({ title, icon, items, onOpen }: { title: string; icon: IconName; items: ChatCatchUpItem[]; onOpen: (i: ChatCatchUpItem) => void }) {
   if (!items.length) return null;
   return (
     <section className="cu-sec">
-      <h4><span aria-hidden="true">{icon}</span> {title}</h4>
+      <h4><span className="ds-tile-ico" aria-hidden="true"><Icon name={icon} size={15} /></span> {title}</h4>
       <ul>
         {items.map((i, n) => (
           <li key={n}>
@@ -49,7 +49,7 @@ export function CatchUpDialog({ conversationId, onClose }: { conversationId?: st
   const open = (i: ChatCatchUpItem) => { onClose(); navigate(messageLink(i.conversationId!, i.messageId)); };
   const d = state.data;
   return (
-    <Modal title="✨ Catch me up" subtitle={conversationId ? 'What you missed in this conversation' : 'What you missed in your chats'} onClose={onClose}
+    <Modal title="Catch me up" subtitle={conversationId ? 'What you missed in this conversation' : 'What you missed in your chats'} onClose={onClose}
       footer={<button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>}>
       {state.busy ? <p className="muted"><Spinner /> Reading what you missed…</p>
         : state.error ? <div className="doc-alert" role="alert"><div>{state.error}</div></div>
@@ -57,9 +57,9 @@ export function CatchUpDialog({ conversationId, onClose }: { conversationId?: st
             <div className="catch-up" aria-live="polite">
               <p className="cu-summary">{d.summary}</p>
               {d.messages > 0 && <p className="muted small">{d.messages} message{d.messages === 1 ? '' : 's'} in {d.conversations} conversation{d.conversations === 1 ? '' : 's'}</p>}
-              <ItemList title="Questions for you" icon="❓" items={d.questions} onOpen={open} />
-              <ItemList title="Decisions" icon="🧭" items={d.decisions} onOpen={open} />
-              <ItemList title="Actions" icon="✅" items={d.actions} onOpen={open} />
+              <ItemList title="Questions for you" icon="message" items={d.questions} onOpen={open} />
+              <ItemList title="Decisions" icon="flag" items={d.decisions} onOpen={open} />
+              <ItemList title="Actions" icon="checkCircle" items={d.actions} onOpen={open} />
             </div>
           )}
     </Modal>
@@ -82,7 +82,7 @@ export function AskChatDialog({ conversationId, onClose }: { conversationId?: st
   };
   const parts = answer ? answer.answer.split(/(\[\d+\])/g) : [];
   return (
-    <Modal title="✨ Ask the chat" subtitle={conversationId ? 'Answers from this conversation, with links to the messages' : 'Answers from your conversations, with links to the messages'}
+    <Modal title="Ask the chat" subtitle={conversationId ? 'Answers from this conversation, with links to the messages' : 'Answers from your conversations, with links to the messages'}
       onClose={onClose} onSubmit={(e) => { e.preventDefault(); void ask(); }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Close</button><button type="submit" className="btn btn-primary" disabled={busy || q.trim().length < 3}>{busy && <Spinner />}Ask</button></>}>
       <label className="field"><span>Question</span>
@@ -120,7 +120,7 @@ export function QuestionsBox() {
   return (
     <section className="q-box" aria-label="Questions waiting for you">
       <button type="button" className="q-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <span aria-hidden="true">❓</span><b>Waiting for your answer</b><span className="unread-badge">{items.length}</span><Icon name="chevronD" size={13} />
+        <Icon name="message" size={15} /><b>Waiting for your answer</b><span className="unread-badge">{items.length}</span><Icon name="chevronD" size={13} />
       </button>
       {open && (
         <ul>{items.slice(0, 6).map((x) => (
@@ -206,7 +206,7 @@ export function StatusButton() {
   return (
     <>
       <button type="button" className={`btn btn-ghost btn-sm status-btn ${s?.dnd ? 'dnd' : ''}`} onClick={() => setOpen(true)} title="Your status and do not disturb">
-        {s?.dnd ? '🔕' : s?.emoji ?? '🙂'}<span className="sr-only">Your status</span>
+        {s?.dnd ? <Icon name="moon" size={15} /> : s?.emoji ? <span className="status-emoji-mark">{s.emoji}</span> : <Icon name="smile" size={16} />}<span className="sr-only">Your status</span>
       </button>
       {open && <StatusDialog current={s ?? null} onClose={() => setOpen(false)} onSaved={(n) => { queryClient.setQueryData(chatKeys.myStatus(wid), n); invalidateWorkspace(wid, 'chat'); }} />}
     </>
@@ -245,7 +245,7 @@ function StatusDialog({ current, onClose, onSaved }: { current: ChatStatus | nul
         <label className="field"><span>Status</span><input className="input" value={text} maxLength={100} onChange={(e) => setText(e.target.value)} placeholder="e.g. On leave till Monday" /></label>
       </div>
       <fieldset className="dnd-set">
-        <legend>🔕 Do not disturb</legend>
+        <legend>Do not disturb</legend>
         <p className="muted small">No pop-ups for new messages; e-mail and phone push wait until it ends. Security alerts still reach you.</p>
         <div className="status-presets">
           <button type="button" className={dndHours === null ? 'on' : ''} onClick={() => setDndHours(null)}>Off</button>
@@ -277,7 +277,7 @@ export function PollDialog({ conversation, onClose }: { conversation: Conversati
     setBusy(false);
   };
   return (
-    <Modal title="📊 Quick poll" subtitle="Ask the group and record what was decided" size="sm" onClose={onClose} onSubmit={(e) => { e.preventDefault(); void create(); }}
+    <Modal title="Quick poll" subtitle="Ask the group and record what was decided" size="sm" onClose={onClose} onSubmit={(e) => { e.preventDefault(); void create(); }}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button type="submit" className="btn btn-primary" disabled={!ready || busy}>{busy && <Spinner />}Post poll</button></>}>
       <label className="field"><span>Question</span><input className="input" value={question} maxLength={300} autoFocus onChange={(e) => setQuestion(e.target.value)} placeholder="e.g. Which date works for the release?" /></label>
       <div className="field"><span>Options</span>

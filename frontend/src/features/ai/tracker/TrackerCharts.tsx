@@ -21,20 +21,20 @@ export function VizTip({ active, payload, label, format }: { active?: boolean; p
   );
 }
 
-const axis = { tick: { fontSize: 11, fill: 'var(--text-3)' }, tickLine: false } as const;
+const axis = { tick: { fontSize: 11, fill: 'var(--ds-text-4)' }, tickLine: false } as const;
 
 /** Runs over time, stacked by outcome. */
 export function ActivityChart({ data, unit }: { data: { label: string; succeeded: number; partial: number; awaiting: number; failed: number }[]; unit: 'hour' | 'day' }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 8, right: 4, left: -18, bottom: 0 }} barCategoryGap={unit === 'hour' ? 2 : '18%'}>
-        <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+        <CartesianGrid vertical={false} stroke="var(--ds-fill)" />
         <XAxis dataKey="label" {...axis} axisLine={{ stroke: 'var(--border)' }} minTickGap={18} />
         <YAxis allowDecimals={false} {...axis} axisLine={false} width={40} />
         <Tooltip content={<VizTip />} cursor={{ fill: 'var(--hover-bg)' }} />
         {STATUS.map((s, i) => (
           <Bar key={s.key} dataKey={s.key} name={s.label} stackId="o" fill={s.color} stroke="var(--surface)" strokeWidth={1}
-            radius={i === STATUS.length - 1 ? [4, 4, 0, 0] : 0} animationDuration={600} />
+            radius={i === STATUS.length - 1 ? [6, 6, 0, 0] : 0} animationDuration={600} />
         ))}
       </BarChart>
     </ResponsiveContainer>
@@ -46,13 +46,13 @@ export function CostChart({ data }: { data: { label: string; assistant: number; 
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 8, right: 4, left: -18, bottom: 0 }} barCategoryGap="20%">
-        <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+        <CartesianGrid vertical={false} stroke="var(--ds-fill)" />
         <XAxis dataKey="label" {...axis} axisLine={{ stroke: 'var(--border)' }} minTickGap={14} />
         <YAxis allowDecimals={false} {...axis} axisLine={false} width={40} />
         <Tooltip content={<VizTip format={(v) => `${v} credit${v === 1 ? '' : 's'}`} />} cursor={{ fill: 'var(--hover-bg)' }} />
         {COST_GROUPS.map((g, i) => (
           <Bar key={g.key} dataKey={g.key} name={g.label} stackId="c" fill={series(i)} stroke="var(--surface)" strokeWidth={1}
-            radius={i === COST_GROUPS.length - 1 ? [4, 4, 0, 0] : 0} animationDuration={600} />
+            radius={i === COST_GROUPS.length - 1 ? [6, 6, 0, 0] : 0} animationDuration={600} />
         ))}
       </BarChart>
     </ResponsiveContainer>
@@ -64,7 +64,7 @@ export function LatencyTrend({ data }: { data: { label: string; p50: number; p95
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={data} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-        <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+        <CartesianGrid vertical={false} stroke="var(--ds-fill)" />
         <XAxis dataKey="label" {...axis} axisLine={{ stroke: 'var(--border)' }} minTickGap={18} />
         <YAxis {...axis} axisLine={false} width={44} tickFormatter={(v: number) => `${(v / 1000).toFixed(v < 10_000 ? 1 : 0)}s`} />
         <Tooltip content={<VizTip format={(v) => `${(v / 1000).toFixed(1)}s`} />} cursor={{ stroke: 'var(--border-strong)' }} />
@@ -80,7 +80,7 @@ export function FleetTrend({ data, lines }: { data: Record<string, string | numb
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-        <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+        <CartesianGrid vertical={false} stroke="var(--ds-fill)" />
         <XAxis dataKey="label" {...axis} axisLine={{ stroke: 'var(--border)' }} minTickGap={18} />
         <YAxis allowDecimals={false} {...axis} axisLine={false} width={40} />
         <Tooltip content={<VizTip />} cursor={{ stroke: 'var(--border-strong)' }} />
@@ -98,11 +98,11 @@ export function Histogram({ data }: { data: { label: string; count: number }[] }
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 8, right: 4, left: -18, bottom: 0 }} barCategoryGap="16%">
-        <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+        <CartesianGrid vertical={false} stroke="var(--ds-fill)" />
         <XAxis dataKey="label" {...axis} axisLine={{ stroke: 'var(--border)' }} interval={0} />
         <YAxis allowDecimals={false} {...axis} axisLine={false} width={40} />
         <Tooltip content={<VizTip format={(v) => `${v} run${v === 1 ? '' : 's'}`} />} cursor={{ fill: 'var(--hover-bg)' }} />
-        <Bar dataKey="count" name="Runs" fill={series(6)} radius={[4, 4, 0, 0]} animationDuration={600} />
+        <Bar dataKey="count" name="Runs" fill={series(0)} radius={[6, 6, 0, 0]} animationDuration={600} />
       </BarChart>
     </ResponsiveContainer>
   );

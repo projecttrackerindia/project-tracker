@@ -106,9 +106,9 @@ export const SOURCE_LABEL: Record<string, string> = {
 
 /** Outcome colours: the status colours, always shown with their names. */
 export const STATUS = [
-  { key: 'succeeded', label: 'Succeeded', color: 'var(--trk-good)' },
-  { key: 'partial', label: 'Partial', color: 'var(--trk-warn)' },
-  { key: 'awaiting', label: 'Awaiting approval', color: 'var(--trk-info)' },
+  { key: 'succeeded', label: 'Succeeded', color: 'var(--trk-s1)' },
+  { key: 'partial', label: 'Partial', color: 'var(--trk-partial)' },
+  { key: 'awaiting', label: 'Awaiting approval', color: 'var(--trk-warn)' },
   { key: 'failed', label: 'Failed or timed out', color: 'var(--trk-bad)' },
 ] as const;
 

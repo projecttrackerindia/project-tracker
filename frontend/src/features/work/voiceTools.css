@@ -52,7 +52,7 @@
 .va-flag { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 99px; background: var(--surface-2); color: var(--text-2); }
 .va-flag.ok { background: var(--success-soft); color: var(--success); }
 .va-flag.warn { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning); }
-.va-summary b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); margin-bottom: 4px; }
+.va-summary b { display: block; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--text-3); margin-bottom: 4px; }
 .va-tool.rich { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .va-tool-name { font-weight: 700; display: inline-flex; gap: 4px; align-items: center; }
 .va-tool-tag { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 99px; }
@@ -84,7 +84,7 @@
 .vt-pill.warn { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning); }
 .vt-mini { display: flex; gap: 0; flex-wrap: wrap; margin-top: 2px; }
 .vt-mini-node { position: relative; display: flex; flex-direction: column; font-size: 12.5px; padding: 6px 22px 6px 10px; margin: 2px 0; background: var(--surface-2); border-radius: 8px; margin-right: 18px; max-width: 260px; }
-.vt-mini-node small { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--primary); }
+.vt-mini-node small { font-size: 10.5px; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--primary); }
 .vt-mini-arrow { position: absolute; right: -16px; top: 50%; width: 14px; height: 2px; background: var(--border); }
 .vt-mini-arrow::after { content: ''; position: absolute; right: -1px; top: -3px; border: 4px solid transparent; border-left-color: var(--border); border-right: 0; }
 .vt-card-actions { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 4px; padding: 10px 12px; }
@@ -154,7 +154,7 @@
 .vb-tr.facts .f-del { grid-column: 3; grid-row: 1; }
 .vb-tr.facts .select { width: 100%; }
 .vb-th.facts { display: none; }
-.vb-th { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); }
+.vb-th { font-size: 11.5px; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--text-3); }
 .vb-check { display: flex; justify-content: center; }
 .vb-path { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 200px; }
 .vb-path small { font-size: 11.5px; color: var(--success); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -201,7 +201,7 @@
 .vb-trace li > span:nth-child(2) { display: flex; flex-direction: column; min-width: 0; }
 .vb-trace b { font-size: 13px; }
 .vb-trace small { color: var(--text-3); font-size: 12px; word-break: break-word; }
-.vb-trace em { font-style: normal; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
+.vb-trace em { font-style: normal; font-size: 11px; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--text-3); }
 .vb-trace .t-ok .vb-trace-dot, .vb-trace .t-passed .vb-trace-dot, .vb-trace .t-matched .vb-trace-dot { background: var(--success); }
 .vb-trace .t-ok em, .vb-trace .t-passed em { color: var(--success); }
 .vb-trace .t-matched em { color: var(--warning); }
