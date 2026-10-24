@@ -125,6 +125,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Integrations.SlackUserLinkService>();
         services.AddSingleton<ProjectManagement.Application.Features.Integrations.SlackMessageDispatcher>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetingService>();
+        services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetNotetaker>();
+        services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetFeedService>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetingSyncEngine>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.StandupSummaryService>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.AgentSettingsService>();

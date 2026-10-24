@@ -28,6 +28,19 @@ browser in a Meet or Teams call.
 
 `npm test` includes a real call against `livekit-server --dev` when `LIVEKIT_TEST_URL` is set (CI downloads the server).
 
+## Speaking (voice suggestions)
+
+A meeting scheduled with "Transcription + voice suggestions" sends the bot short lines to say out loud ("Before we wrap up: nobody owns the
+release date yet."), each with its voice already made by the API's speech service (a WAV file). They come with the worker's poll
+(`bots[].say: [{ text, audio }]`, at most four waiting); the written line is posted in the chat as well.
+
+- **Our own calls:** the agent publishes its own microphone track the first time it speaks (a quiet notetaker never shows one) and plays
+  the voice into it.
+- **Google Meet and Teams:** with `voice` on the job, the page is given a microphone fed by a sound mixer (`VOICE_HOOK` in `src/voice.mjs`).
+  The bot stays muted; to speak it turns the microphone on, plays the line and turns it off again. If the microphone cannot be switched
+  on, the line stays in the chat only.
+- A bot whose meeting chose "Transcription" refuses lines to say. `POST /bots/{id}/say { text, audio }` does the same outside worker mode.
+
 ## Run
 
 | Variable | Meaning |

@@ -345,3 +345,4 @@
 .aih-empty { margin: 4px 0 0; font-size: 12.5px; color: var(--text-3); }
 @media (max-width: 860px) { .aih-lists { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 420px) { .aih-ask span { display: none; } }
+.cmd-panel-more { margin-left: auto; font-size: 12px; font-weight: 500; }

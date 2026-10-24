@@ -17,16 +17,19 @@ public record MeetingParticipantDto(Guid? UserId, string Name, string Email, str
 /// <param name="Provider">Where it lives: "google" (Google Meet), "microsoft" (Teams) or "ours" (a Project Tracker call); <paramref name="ProviderName"/> says it in words.</param>
 public record MeetingDto(Guid Id, Guid ProjectId, string Title, string? Description, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone,
     string Status, string MeetUri, Guid OrganizerUserId, string OrganizerName, IReadOnlyList<MeetingParticipantDto> Participants, string? RecurrenceRule = null, string? CalendarUrl = null,
-    bool IsScrum = false, string Provider = "google", string ProviderName = "Google Meet");
+    bool IsScrum = false, string Provider = "google", string ProviderName = "Google Meet", string Notetaker = "off");
 
 /// <summary>Start Meeting: participants default to everyone who can see the project (spec section 2) unless the organizer names a specific list.</summary>
 /// <param name="Service">"auto" (default: the organizer's choice, else Google, Microsoft, our own call), "google", "microsoft" or "ours".</param>
-public record StartMeetingRequest(string? Title, IReadOnlyList<Guid>? ParticipantUserIds, string? Service = null);
+/// <param name="Notetaker">"off", "transcript", "voice" (transcript, and it speaks up when something is being missed), or empty (the project agent's settings decide).</param>
+public record StartMeetingRequest(string? Title, IReadOnlyList<Guid>? ParticipantUserIds, string? Service = null, string? Notetaker = null);
 /// <summary>Schedule Meeting: the organizer always names start/end explicitly, in a real instant (not a bare local time) so no timezone is guessed.</summary>
 public record ScheduleMeetingRequest(string Title, string? Description, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, IReadOnlyList<Guid>? ParticipantUserIds, MeetingRepeat? Repeat = null,
-    bool Scrum = false, string? Service = null);
+    bool Scrum = false, string? Service = null, string? Notetaker = null);
 public record RescheduleMeetingRequest(DateTimeOffset StartTime, DateTimeOffset EndTime);
 public record AddMeetingParticipantRequest(Guid UserId);
+/// <summary>A reply to an invitation to a Project Tracker call: "accepted", "tentative" or "declined".</summary>
+public record MeetingRsvpRequest(string Response);
 /// <summary>A meeting scheduled for the workspace as a whole (a team stand-up that belongs to no one project). Google Calendar holds it;
 /// Project Tracker keeps no project row for it, so this is just what the organizer needs right after creating it.</summary>
 public record WorkspaceMeetingDto(Guid Id, string Title, string MeetUri, string? CalendarUrl, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, string? RecurrenceRule, int ParticipantCount,
@@ -45,7 +48,7 @@ public record WorkspaceMeetingDetailDto(Guid Id, string Title, string? Descripti
 /// <see cref="ProjectAccess"/> already enforces for everything else project-scoped (spec section 6).
 /// </summary>
 public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, ProjectAccess access,
-    PermissionService permissions, NotificationService notifications, MeetingCalendar calendar, ChatService chat, ILogger<MeetingService> log)
+    PermissionService permissions, NotificationService notifications, MeetingCalendar calendar, ChatService chat, MeetNotetaker notetaker, ILogger<MeetingService> log)
 {
     private const int DefaultStartNowMinutes = 60;
     private record MeetingCard(Guid MeetingId, string Title, DateTime StartTimeUtc, DateTime EndTimeUtc, string TimeZone, string MeetUri, int ParticipantCount, string Status);
@@ -80,7 +83,8 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     public Task<MeetingDto> StartNowAsync(Guid projectId, StartMeetingRequest req, CancellationToken ct = default)
     {
         var start = DateTimeOffset.UtcNow;
-        return CreateAsync(projectId, req.Title, null, start, start.AddMinutes(DefaultStartNowMinutes), "UTC", req.ParticipantUserIds, ct, service: req.Service);
+        return CreateAsync(projectId, req.Title, null, start, start.AddMinutes(DefaultStartNowMinutes), "UTC", req.ParticipantUserIds, ct, service: req.Service,
+            notetakerChoice: MeetNotetaker.Parse(req.Notetaker));
     }
 
     /// <summary>"Schedule Google Meet": the organizer's own title, time and attendee list.</summary>
@@ -88,13 +92,17 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     {
         if (req.EndTime <= req.StartTime) throw new ValidationException("endTime", "The meeting must end after it starts.");
         if (req.StartTime < DateTimeOffset.UtcNow.AddMinutes(-5)) throw new ValidationException("startTime", "Choose a time that has not already passed.");
-        return CreateAsync(projectId, req.Title, req.Description, req.StartTime, req.EndTime, req.TimeZone, req.ParticipantUserIds, ct, MeetingRecurrence.Rule(req.Repeat, req.StartTime, req.TimeZone), req.Scrum, req.Service);
+        return CreateAsync(projectId, req.Title, req.Description, req.StartTime, req.EndTime, req.TimeZone, req.ParticipantUserIds, ct, MeetingRecurrence.Rule(req.Repeat, req.StartTime, req.TimeZone), req.Scrum, req.Service,
+            MeetNotetaker.Parse(req.Notetaker));
     }
 
     private async Task<MeetingDto> CreateAsync(Guid projectId, string? title, string? description, DateTimeOffset start, DateTimeOffset end, string timeZone,
-        IReadOnlyList<Guid>? requestedParticipants, CancellationToken ct, string? recurrenceRule = null, bool scrum = false, string? service = null)
+        IReadOnlyList<Guid>? requestedParticipants, CancellationToken ct, string? recurrenceRule = null, bool scrum = false, string? service = null,
+        MeetingNotetaker notetakerChoice = MeetingNotetaker.ProjectDefault)
     {
         var project = await access.GetProjectAsync(projectId, ct);
+        // Checked before anything reaches a calendar: a notetaker that cannot come must not leave an invitation behind that promises one.
+        await notetaker.RequireAsync(projectId, notetakerChoice, ct);
         var organizerId = ctx.RequireUserId();
         var eligible = await EligibleUserIdsAsync(project, ct);
         // The organizer does not have to add themselves (they are always there), but anyone they *do* name must already be able to see the project.
@@ -122,7 +130,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             TenantId = project.TenantId, ProjectId = projectId, OrganizerUserId = organizerId, Title = meetingTitle, Description = description,
             StartTimeUtc = start.UtcDateTime, EndTimeUtc = end.UtcDateTime, TimeZone = timeZone, Status = MeetingStatus.Scheduled,
             GoogleCalendarEventId = created.EventId, GoogleMeetSpaceName = created.MeetSpaceName, GoogleMeetUri = created.MeetUri, RecurrenceRule = recurrenceRule, CalendarUrl = created.HtmlLink,
-            IsScrum = scrum, CreatedAt = clock.Now, CreatedBy = organizerId,
+            IsScrum = scrum, Notetaker = notetakerChoice, CreatedAt = clock.Now, CreatedBy = organizerId,
         };
         db.ProjectMeetings.Add(meeting);
         meeting.Participants.Add(new MeetingParticipant { TenantId = project.TenantId, ProjectId = projectId, Meeting = meeting, UserId = organizerId, Email = organizer.Email, Role = MeetingParticipantRole.Organizer, RsvpStatus = AttendeeRsvpStatus.Accepted, CreatedAt = clock.Now });
@@ -130,11 +138,13 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             meeting.Participants.Add(new MeetingParticipant { TenantId = project.TenantId, ProjectId = projectId, Meeting = meeting, UserId = u.Id, Email = u.Email, Role = MeetingParticipantRole.Attendee, RsvpStatus = AttendeeRsvpStatus.NeedsAction, CreatedAt = clock.Now });
 
         recorder.Activity("meeting.scheduled", "ProjectMeeting", meeting.Id, $"Scheduled \"{meetingTitle}\" on \"{project.Name}\"", projectId);
-        recorder.Audit("meeting.scheduled", "ProjectMeeting", meeting.Id, newValue: new { meeting.Title, meeting.StartTimeUtc, meeting.EndTimeUtc, Participants = invitedIds.Count });
+        recorder.Audit("meeting.scheduled", "ProjectMeeting", meeting.Id, newValue: new { meeting.Title, meeting.StartTimeUtc, meeting.EndTimeUtc, Participants = invitedIds.Count, Notetaker = MeetNotetaker.Key(notetakerChoice) });
+        var whenText = InZone(start, ProjectManagement.Application.Features.Reminders.ZoneTime.IsKnown(timeZone) ? timeZone : "UTC");
         foreach (var u in users.Where(u => u.Id != organizerId))
-            await notifications.AddAsync(u.Id, NotificationType.Meeting, $"{organizer.DisplayName} scheduled a {what}", $"{meetingTitle} · {start:dd MMM} at {start:h:mm tt}", $"/projects/{projectId}?tab=meetings&meeting={meeting.Id}", ct: ct);
+            await notifications.AddAsync(u.Id, NotificationType.Meeting, $"{organizer.DisplayName} invited you to a {what}", $"{meetingTitle} · {whenText}{InvitationHint(provider)}", MeetingReminders.MeetLink(meeting.Id, false), ct: ct);
 
         await db.SaveChangesAsync(ct);
+        await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
 
         var card = new MeetingCard(meeting.Id, meetingTitle, meeting.StartTimeUtc, meeting.EndTimeUtc, timeZone, created.MeetUri, meeting.Participants.Count, "Scheduled");
         await chat.PostMeetingCardAsync(projectId, card, $"📹 {organizer.DisplayName} scheduled a {what}: {meetingTitle}", ct);
@@ -170,6 +180,8 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         if (req.StartTime < DateTimeOffset.UtcNow.AddMinutes(-5)) throw new ValidationException("startTime", "Choose a time that has not already passed.");
         // Checked before anything reaches Google: an unknown or missing zone must never leave an invitation sent with nothing recorded here.
         if (!ProjectManagement.Application.Features.Reminders.ZoneTime.IsKnown(req.TimeZone)) throw new ValidationException("timeZone", "Choose a valid time zone for the meeting.");
+        if (MeetNotetaker.Wanted(MeetNotetaker.Parse(req.Notetaker)))
+            throw new ValidationException("notetaker", "Choose a project to bring the notetaker: it keeps the notes and follow-ups in that project.");
         var tid = ctx.RequireTenantId();
         var organizerId = ctx.RequireUserId();
         var invitedIds = (req.ParticipantUserIds ?? []).Where(id => id != organizerId).Distinct().ToList();
@@ -200,12 +212,14 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         };
         db.WorkspaceMeetings.Add(meeting);
         foreach (var m in members)
-            db.WorkspaceMeetingAttendees.Add(new WorkspaceMeetingAttendee { TenantId = tid, MeetingId = meeting.Id, UserId = m.UserId, Email = m.Email, IsOrganizer = m.UserId == organizerId, CreatedAt = clock.Now });
+            db.WorkspaceMeetingAttendees.Add(new WorkspaceMeetingAttendee { TenantId = tid, MeetingId = meeting.Id, UserId = m.UserId, Email = m.Email, IsOrganizer = m.UserId == organizerId,
+                RsvpStatus = m.UserId == organizerId ? AttendeeRsvpStatus.Accepted : AttendeeRsvpStatus.NeedsAction, CreatedAt = clock.Now });
         recorder.Audit("meeting.scheduled", "WorkspaceMeeting", meeting.Id, newValue: new { Title = title, StartTimeUtc = req.StartTime.UtcDateTime, EndTimeUtc = req.EndTime.UtcDateTime, Participants = attendees.Count, Recurrence = rule, created.EventId });
         var when = InZone(req.StartTime, req.TimeZone);
         foreach (var a in attendees)
-            await notifications.AddAsync(a.UserId, NotificationType.Meeting, $"{organizer.DisplayName} scheduled a {what}", $"{title} · {when}{InvitationHint(provider)}", $"/calendar?meeting={meeting.Id}", ct: ct);
+            await notifications.AddAsync(a.UserId, NotificationType.Meeting, $"{organizer.DisplayName} invited you to a {what}", $"{title} · {when}{InvitationHint(provider)}", MeetingReminders.MeetLink(meeting.Id, true), ct: ct);
         await db.SaveChangesAsync(ct);
+        await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
         return new WorkspaceMeetingDto(meeting.Id, title, created.MeetUri, meeting.CalendarUrl, req.StartTime, req.EndTime, req.TimeZone, rule, attendees.Count + 1, MeetingCalendar.Key(provider), what);
     }
 
@@ -215,11 +229,11 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var meeting = await LoadWorkspaceMeetingAsync(id, ct);
         var organizer = await db.Users.AsNoTracking().Where(u => u.Id == meeting.OrganizerUserId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "";
         var people = await db.WorkspaceMeetingAttendees.AsNoTracking().Where(a => a.MeetingId == id).OrderByDescending(a => a.IsOrganizer)
-            .Select(a => new { a.UserId, a.User!.DisplayName, a.Email, a.IsOrganizer }).ToListAsync(ct);
+            .Select(a => new { a.UserId, a.User!.DisplayName, a.Email, a.IsOrganizer, a.RsvpStatus }).ToListAsync(ct);
         var hideEmail = ctx.Role == TenantRole.Guest;
         return new WorkspaceMeetingDetailDto(meeting.Id, meeting.Title, meeting.Description, new DateTimeOffset(meeting.StartTimeUtc, TimeSpan.Zero), new DateTimeOffset(meeting.EndTimeUtc, TimeSpan.Zero),
             meeting.TimeZone, meeting.Status.ToString(), meeting.GoogleMeetUri, meeting.CalendarUrl, meeting.RecurrenceRule, meeting.IsScrum, meeting.OrganizerUserId, organizer, CanManage(meeting),
-            people.Select(p => new MeetingParticipantDto(p.UserId, p.DisplayName, hideEmail ? "" : p.Email, p.IsOrganizer ? "Organizer" : "Attendee", p.IsOrganizer ? "Accepted" : "NeedsAction")).ToList(),
+            people.Select(p => new MeetingParticipantDto(p.UserId, p.DisplayName, hideEmail ? "" : p.Email, p.IsOrganizer ? "Organizer" : "Attendee", p.IsOrganizer ? "Accepted" : p.RsvpStatus.ToString())).ToList(),
             MeetingCalendar.Key(meeting.Provider), MeetingCalendar.Name(meeting.Provider));
     }
 
@@ -235,8 +249,9 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         meeting.CancelledAt = clock.Now;
         recorder.Audit("meeting.cancelled", "WorkspaceMeeting", meeting.Id);
         foreach (var userId in await db.WorkspaceMeetingAttendees.AsNoTracking().Where(a => a.MeetingId == id && !a.IsOrganizer).Select(a => a.UserId).ToListAsync(ct))
-            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {MeetingCalendar.Name(meeting.Provider)} was cancelled", meeting.Title, "/calendar", ct: ct);
+            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {MeetingCalendar.Name(meeting.Provider)} was cancelled", meeting.Title, "/meet", ct: ct);
         await db.SaveChangesAsync(ct);
+        await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
     }
 
     /// <summary>Moves a one-off workspace meeting (a series is changed in Google Calendar, same rule as project meetings).</summary>
@@ -256,8 +271,9 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         recorder.Audit("meeting.rescheduled", "WorkspaceMeeting", meeting.Id, oldValue: new { StartTimeUtc = oldStart }, newValue: new { meeting.StartTimeUtc, meeting.EndTimeUtc });
         var when = InZone(req.StartTime, meeting.TimeZone);
         foreach (var userId in await db.WorkspaceMeetingAttendees.AsNoTracking().Where(a => a.MeetingId == id && !a.IsOrganizer).Select(a => a.UserId).ToListAsync(ct))
-            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {MeetingCalendar.Name(meeting.Provider)} was moved", $"{meeting.Title} · now {when}", $"/calendar?meeting={meeting.Id}", ct: ct);
+            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {MeetingCalendar.Name(meeting.Provider)} was moved", $"{meeting.Title} · now {when}", MeetingReminders.MeetLink(meeting.Id, true), ct: ct);
         await db.SaveChangesAsync(ct);
+        await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
         return await GetWorkspaceMeetingAsync(id, ct);
     }
 
@@ -318,8 +334,9 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         recorder.Audit("meeting.rescheduled", "ProjectMeeting", meeting.Id, oldValue: new { StartTimeUtc = oldStart }, newValue: new { meeting.StartTimeUtc, meeting.EndTimeUtc });
         var actorName = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Someone";
         foreach (var p in meeting.Participants.Where(p => p.UserId != null && p.UserId != ctx.UserId))
-            await notifications.AddAsync(p.UserId!.Value, NotificationType.Meeting, $"{actorName} rescheduled a {what}", $"{meeting.Title} · now {meeting.StartTimeUtc:dd MMM} at {meeting.StartTimeUtc:t} UTC", $"/projects/{meeting.ProjectId}?tab=meetings&meeting={meeting.Id}", ct: ct);
+            await notifications.AddAsync(p.UserId!.Value, NotificationType.Meeting, $"{actorName} rescheduled a {what}", $"{meeting.Title} · now {InZone(req.StartTime, ZoneOf(meeting.TimeZone))}", MeetingReminders.MeetLink(meeting.Id, false), ct: ct);
         await db.SaveChangesAsync(ct);
+        await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
 
         var card = new MeetingCard(meeting.Id, meeting.Title, meeting.StartTimeUtc, meeting.EndTimeUtc, meeting.TimeZone, meeting.GoogleMeetUri, meeting.Participants.Count, "Scheduled");
         await chat.PostMeetingCardAsync(meeting.ProjectId, card, $"📹 {actorName} rescheduled the {what}: {meeting.Title}", ct);
@@ -358,8 +375,9 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         db.MeetingParticipants.Add(participant);
         recorder.Activity("meeting.participant_added", "ProjectMeeting", meeting.Id, $"Added {user.DisplayName} to \"{meeting.Title}\"", meeting.ProjectId);
         recorder.Audit("meeting.participant_added", "ProjectMeeting", meeting.Id, newValue: new { user.Id, user.Email });
-        await notifications.AddAsync(user.Id, NotificationType.Meeting, $"You were added to a {MeetingCalendar.Name(meeting.Provider)}", $"{meeting.Title} · {meeting.StartTimeUtc:dd MMM} at {meeting.StartTimeUtc:t} UTC", $"/projects/{meeting.ProjectId}?tab=meetings&meeting={meeting.Id}", ct: ct);
+        await notifications.AddAsync(user.Id, NotificationType.Meeting, $"You were invited to a {MeetingCalendar.Name(meeting.Provider)}", $"{meeting.Title} · {InZone(new DateTimeOffset(meeting.StartTimeUtc, TimeSpan.Zero), ZoneOf(meeting.TimeZone))}{InvitationHint(meeting.Provider)}", MeetingReminders.MeetLink(meeting.Id, false), ct: ct);
         await db.SaveChangesAsync(ct);
+        await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
         return ToDto(meeting, meeting.Organizer?.DisplayName ?? "");
     }
 
@@ -382,8 +400,9 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         recorder.Activity("meeting.participant_removed", "ProjectMeeting", meeting.Id, $"Removed {row.User?.DisplayName ?? row.Email} from \"{meeting.Title}\"", meeting.ProjectId);
         recorder.Audit("meeting.participant_removed", "ProjectMeeting", meeting.Id, oldValue: new { UserId = userId, row.Email });
         if (row.UserId is { } removedId)
-            await notifications.AddAsync(removedId, NotificationType.Meeting, $"You are no longer invited to a {MeetingCalendar.Name(meeting.Provider)}", meeting.Title, $"/projects/{meeting.ProjectId}?tab=meetings", ct: ct);
+            await notifications.AddAsync(removedId, NotificationType.Meeting, $"You are no longer invited to a {MeetingCalendar.Name(meeting.Provider)}", meeting.Title, "/meet", ct: ct);
         await db.SaveChangesAsync(ct);
+        await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
         return ToDto(meeting, meeting.Organizer?.DisplayName ?? "");
     }
 
@@ -457,8 +476,9 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var participantCount = await db.MeetingParticipants.AsNoTracking().CountAsync(p => p.MeetingId == meeting.Id, ct);
         var participants = await db.MeetingParticipants.AsNoTracking().Where(p => p.MeetingId == meeting.Id && p.UserId != null && p.UserId != meeting.OrganizerUserId).Select(p => p.UserId!.Value).ToListAsync(ct);
         foreach (var userId in participants)
-            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {what} was cancelled", meeting.Title, $"/projects/{meeting.ProjectId}?tab=meetings", ct: ct);
+            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {what} was cancelled", meeting.Title, "/meet", ct: ct);
         await db.SaveChangesAsync(ct);
+        await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
 
         var byName = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Someone";
         var card = new MeetingCard(meeting.Id, meeting.Title, meeting.StartTimeUtc, meeting.EndTimeUtc, meeting.TimeZone, meeting.GoogleMeetUri, participantCount, "Cancelled");
@@ -468,5 +488,75 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     private static MeetingDto ToDto(ProjectMeeting m, string organizerName) => new(m.Id, m.ProjectId, m.Title, m.Description,
         new DateTimeOffset(m.StartTimeUtc, TimeSpan.Zero), new DateTimeOffset(m.EndTimeUtc, TimeSpan.Zero), m.TimeZone, m.Status.ToString(), m.GoogleMeetUri,
         m.OrganizerUserId, organizerName, m.Participants.Select(p => new MeetingParticipantDto(p.UserId, p.User?.DisplayName ?? p.Email, p.Email, p.Role.ToString(), p.RsvpStatus.ToString())).ToList(), m.RecurrenceRule, m.CalendarUrl, m.IsScrum,
-        MeetingCalendar.Key(m.Provider), MeetingCalendar.Name(m.Provider));
+        MeetingCalendar.Key(m.Provider), MeetingCalendar.Name(m.Provider), MeetNotetaker.Key(m.Notetaker));
+
+    private static string ZoneOf(string zone) => ProjectManagement.Application.Features.Reminders.ZoneTime.IsKnown(zone) ? zone : "UTC";
+
+    // ---------------------------------------------------------------- replies (Project Tracker calls)
+
+    /// <summary>
+    /// The invited person's reply to a Project Tracker call. Google and Outlook keep their own invitations and replies (Project Tracker reads
+    /// them back), so for those the reply is given in that calendar. Declining takes back the meeting's reminder; accepting brings it back.
+    /// </summary>
+    public async Task<string> RespondAsync(Guid meetingId, MeetingRsvpRequest req, CancellationToken ct = default)
+    {
+        var status = ParseRsvp(req.Response);
+        var me = ctx.RequireUserId();
+        var meeting = await db.ProjectMeetings.FirstOrDefaultAsync(m => m.Id == meetingId, ct) ?? throw new NotFoundException("Meeting not found.");
+        if (meeting.Provider != MeetingProvider.ProjectTracker) throw ReplyInCalendar(meeting.Provider);
+        if (meeting.Status != MeetingStatus.Scheduled) throw new ConflictException("This meeting is no longer scheduled.", "MEETING_NOT_SCHEDULED");
+        var row = await db.MeetingParticipants.FirstOrDefaultAsync(p => p.MeetingId == meetingId && p.UserId == me, ct) ?? throw new NotFoundException("You are not invited to this meeting.");
+        if (row.Role == MeetingParticipantRole.Organizer) throw new ConflictException("You organize this meeting. Cancel it if it should not happen.", "ORGANIZER_REQUIRED");
+        if (row.RsvpStatus != status)
+        {
+            var old = row.RsvpStatus;
+            row.RsvpStatus = status;
+            recorder.Audit("meeting.rsvp_updated", "ProjectMeeting", meeting.Id, oldValue: new { Rsvp = old.ToString() }, newValue: new { Rsvp = status.ToString() });
+            await TellOrganizerAsync(meeting.OrganizerUserId, meeting.Title, status, MeetingReminders.MeetLink(meeting.Id, false), ct);
+            await db.SaveChangesAsync(ct);
+            await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
+        }
+        return status.ToString();
+    }
+
+    public async Task<string> RespondWorkspaceAsync(Guid meetingId, MeetingRsvpRequest req, CancellationToken ct = default)
+    {
+        var status = ParseRsvp(req.Response);
+        var me = ctx.RequireUserId();
+        var meeting = await db.WorkspaceMeetings.FirstOrDefaultAsync(m => m.Id == meetingId, ct) ?? throw new NotFoundException("Meeting not found.");
+        var row = await db.WorkspaceMeetingAttendees.FirstOrDefaultAsync(a => a.MeetingId == meetingId && a.UserId == me, ct) ?? throw new NotFoundException("Meeting not found.");
+        if (meeting.Provider != MeetingProvider.ProjectTracker) throw ReplyInCalendar(meeting.Provider);
+        if (meeting.Status != MeetingStatus.Scheduled) throw new ConflictException("This meeting is no longer scheduled.", "MEETING_NOT_SCHEDULED");
+        if (row.IsOrganizer) throw new ConflictException("You organize this meeting. Cancel it if it should not happen.", "ORGANIZER_REQUIRED");
+        if (row.RsvpStatus != status)
+        {
+            var old = row.RsvpStatus;
+            row.RsvpStatus = status;
+            recorder.Audit("meeting.rsvp_updated", "WorkspaceMeeting", meeting.Id, oldValue: new { Rsvp = old.ToString() }, newValue: new { Rsvp = status.ToString() });
+            await TellOrganizerAsync(meeting.OrganizerUserId, meeting.Title, status, MeetingReminders.MeetLink(meeting.Id, true), ct);
+            await db.SaveChangesAsync(ct);
+            await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
+        }
+        return status.ToString();
+    }
+
+    private static AttendeeRsvpStatus ParseRsvp(string? response) => (response ?? "").Trim().ToLowerInvariant() switch
+    {
+        "accepted" or "accept" or "yes" => AttendeeRsvpStatus.Accepted,
+        "tentative" or "maybe" => AttendeeRsvpStatus.Tentative,
+        "declined" or "decline" or "no" => AttendeeRsvpStatus.Declined,
+        _ => throw new ValidationException("response", "Reply accepted, tentative or declined."),
+    };
+
+    private static ConflictException ReplyInCalendar(MeetingProvider p) =>
+        new($"Reply from the invitation in your {(p == MeetingProvider.Microsoft ? "Outlook calendar" : "Google Calendar")}: it keeps the replies for this meeting.", "RSVP_IN_CALENDAR");
+
+    private async Task TellOrganizerAsync(Guid organizerId, string title, AttendeeRsvpStatus status, string link, CancellationToken ct)
+    {
+        var me = ctx.RequireUserId();
+        if (organizerId == me) return;
+        var name = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Someone";
+        var verb = status switch { AttendeeRsvpStatus.Accepted => "accepted", AttendeeRsvpStatus.Declined => "declined", _ => "may join" };
+        await notifications.AddAsync(organizerId, NotificationType.Meeting, $"{name} {verb}", title, link, ct: ct);
+    }
 }

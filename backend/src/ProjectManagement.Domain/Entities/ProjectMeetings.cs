@@ -7,7 +7,7 @@ namespace ProjectManagement.Domain.Enums
     /// workflow; this is only how Project Tracker reflects it.</summary>
     public enum MeetingStatus { Scheduled, Cancelled, Completed }
 
-    /// <summary>A Calendar attendee's response, mirrored from Google (never invented locally).</summary>
+    /// <summary>An attendee's reply: mirrored from Google or Outlook for their meetings, given in Project Tracker for its own calls.</summary>
     public enum AttendeeRsvpStatus { NeedsAction, Accepted, Declined, Tentative }
 
     public enum MeetingParticipantRole { Organizer, Attendee }
@@ -18,6 +18,14 @@ namespace ProjectManagement.Domain.Enums
     /// outside calendar. The event id and join address fields hold that service's values.
     /// </summary>
     public enum MeetingProvider { Google = 0, Microsoft = 1, ProjectTracker = 2 }
+
+    /// <summary>
+    /// Whether the notetaker comes to a meeting, chosen when it is scheduled. ProjectDefault: no choice was made (meetings from before the
+    /// choice, or made by the assistant), so the project agent's own settings decide. Transcript: it listens, writes the transcript and the
+    /// minutes, and stays quiet. TranscriptAndVoice: as Transcript, and it also speaks up (and writes in the meeting chat) when an agenda point,
+    /// an owner or a date is being missed. Off: nobody listens, whatever the project's settings.
+    /// </summary>
+    public enum MeetingNotetaker { ProjectDefault = 0, Transcript = 1, TranscriptAndVoice = 2, Off = 3 }
 }
 
 namespace ProjectManagement.Domain.Entities
@@ -52,6 +60,8 @@ namespace ProjectManagement.Domain.Entities
         public bool IsScrum { get; set; }
         /// <summary>The meeting-zone day ("yyyyMMdd") whose stand-up summary was last posted, so each session gets exactly one.</summary>
         public string? LastSummaryDay { get; set; }
+        /// <summary>Whether the notetaker comes, and whether it may speak (chosen on the schedule form).</summary>
+        public MeetingNotetaker Notetaker { get; set; }
 
         public Project? Project { get; set; }
         public User? Organizer { get; set; }
@@ -80,6 +90,8 @@ namespace ProjectManagement.Domain.Entities
         public string GoogleMeetUri { get; set; } = "";
         public bool IsScrum { get; set; }
         public DateTime? CancelledAt { get; set; }
+        /// <summary>Never Transcript or TranscriptAndVoice: a notetaker files its notes under a project, so a meeting with one is a project meeting.</summary>
+        public MeetingNotetaker Notetaker { get; set; }
 
         public User? Organizer { get; set; }
         public ICollection<WorkspaceMeetingAttendee> Attendees { get; set; } = new List<WorkspaceMeetingAttendee>();
@@ -92,6 +104,11 @@ namespace ProjectManagement.Domain.Entities
         public Guid UserId { get; set; }
         public string Email { get; set; } = "";
         public bool IsOrganizer { get; set; }
+        /// <summary>
+        /// Their reply. For a Project Tracker call it is given here (Meet › the meeting); for Google and Outlook the calendar invitation is
+        /// where people reply, and this stays NeedsAction.
+        /// </summary>
+        public AttendeeRsvpStatus RsvpStatus { get; set; } = AttendeeRsvpStatus.NeedsAction;
 
         public WorkspaceMeeting? Meeting { get; set; }
         public User? User { get; set; }

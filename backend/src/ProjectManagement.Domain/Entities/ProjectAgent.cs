@@ -314,6 +314,15 @@ namespace ProjectManagement.Domain.Entities
         public string? WorkerStatus { get; set; }
         /// <summary>Messages waiting to be posted in the meeting chat (one per line), collected by the worker on its next report.</summary>
         public string? PendingChat { get; set; }
+        /// <summary>
+        /// The notetaker mode the meeting asked for: "transcript" (listen and write, never interrupt), "voice" (also speak up when something is
+        /// being missed), or null (a session from before meetings chose, or a call found on the calendar: the project's own settings decide).
+        /// </summary>
+        public string? Mode { get; set; }
+        /// <summary>What the bot should say aloud next, JSON [{text, audio}] (audio: base64 WAV), collected by its worker like the chat.</summary>
+        public string? PendingSay { get; set; }
+        /// <summary>When the end-of-meeting check (agenda points not covered, owners and dates missing) was done, so it is done once.</summary>
+        public DateTime? WrapUpAt { get; set; }
         /// <summary>What a worker needs to join (JSON: Meet address, bot name, hello, agenda, caption language), set when the session is queued.</summary>
         public string? JoinPayload { get; set; }
     }

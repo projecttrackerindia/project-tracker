@@ -113,6 +113,8 @@ public partial class AppDbContext
             e.Property(x => x.WorkerId).HasMaxLength(100);
             e.Property(x => x.WorkerStatus).HasMaxLength(32);
             e.Property(x => x.PendingChat).HasColumnType("text");
+            e.Property(x => x.Mode).HasMaxLength(16);
+            e.Property(x => x.PendingSay).HasColumnType("text");
             e.Property(x => x.JoinPayload).HasColumnType("text");
             e.HasIndex(x => new { x.Kind, x.Status, x.SessionStartUtc });
         });

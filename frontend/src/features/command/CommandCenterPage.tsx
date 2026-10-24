@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { ReviewQueueCard } from '../github/GitHubApp';
 import { GetStarted } from './GetStarted';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -14,7 +14,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { haptic } from '../../lib/mobile';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { BriefModal, DecisionsView, AuditView, WhatIfModal, SettingsCard } from './CommandParts';
+import { BriefModal, DecisionsView, AuditView, WhatIfModal, DelegateModal, ReportModal } from './CommandParts';
 import { MyWorkPage } from '../workitems/MyWorkPage';
 import { errText } from './shared';
 import { AiFirstHome } from './AiFirstHome';
@@ -39,9 +39,9 @@ const KIND: Record<AttentionKind, { icon: IconName; label: string }> = {
   unresolved: { icon: 'repeat', label: 'Keeps coming up' },
 };
 
-type Tab = 'dashboard' | 'today' | 'work' | 'meetings' | 'decisions' | 'audit';
+type Tab = 'dashboard' | 'today' | 'work' | 'decisions' | 'audit';
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' }, { id: 'today', label: 'Today', icon: 'target' }, { id: 'work', label: 'My work', icon: 'inbox' }, { id: 'meetings', label: 'Meetings', icon: 'video' },
+  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' }, { id: 'today', label: 'Today', icon: 'target' }, { id: 'work', label: 'My work', icon: 'inbox' },
   { id: 'decisions', label: 'Decisions', icon: 'checks' }, { id: 'audit', label: 'Audit trail', icon: 'shield' },
 ];
 
@@ -94,7 +94,6 @@ export function CommandCenterPage() {
         {TABS.map((t) => (
           <button key={t.id} type="button" className={`tab${tab === t.id ? ' active' : ''}`} aria-pressed={tab === t.id} onClick={() => { haptic(4); setTab(t.id); }}>
             <Icon name={t.icon} size={15} /><span>{t.label}</span>
-            {t.id === 'meetings' && (q.data?.counts.meetingsToday ?? 0) > 0 && <em>{q.data!.counts.meetingsToday}</em>}
           </button>
         ))}
       </nav>
@@ -106,7 +105,6 @@ export function CommandCenterPage() {
           <GetStarted />
           {tab === 'today' && <TodayView c={q.data} onCheckIn={setCheckIn} onDelegate={setDelegate} onBrief={setBrief} onReport={setReport} />}
           {tab === 'work' && <div className="cmd-mywork"><MyWorkPage embedded /></div>}
-          {tab === 'meetings' && <MeetingsView onDelegate={setDelegate} onBrief={setBrief} onReport={setReport} />}
           {tab === 'decisions' && <DecisionsView />}
           {tab === 'audit' && <AuditView />}
         </>
@@ -232,7 +230,7 @@ function AttentionCard({ a, onCheckIn, onDelegate }: { a: AttentionItem; onCheck
 function ComingUp({ meetings, onDelegate, onBrief }: { meetings: MyMeeting[]; onDelegate: (d: { meetingId: string; at: string; title?: string }) => void; onBrief: (b: { meetingId: string; at?: string | null }) => void }) {
   return (
     <div className="card cmd-panel">
-      <h3 className="cmd-panel-title"><Icon name="video" size={14} />Coming up</h3>
+      <h3 className="cmd-panel-title"><Icon name="video" size={14} />Coming up<Link className="ag-link cmd-panel-more" to="/meet">All in Meet</Link></h3>
       {meetings.length === 0 ? <p className="cmd-muted">No meetings in the next day.</p> : (
         <ol className="cmd-timeline">
           {meetings.map((m) => {
@@ -362,57 +360,6 @@ function Promises({ items, onCheckIn }: { items: AgentCommitment[]; onCheckIn: (
   );
 }
 
-// ------------------------------------------------------------------ meetings
-
-function MeetingsView({ onDelegate, onBrief, onReport }: { onDelegate: (d: { meetingId: string; at: string; title?: string }) => void; onBrief: (b: { meetingId: string; at?: string | null }) => void; onReport: (id: string) => void }) {
-  const q = useWsQuery(['agent', 'meetings'], () => delegateApi.meetings());
-  const d = useWsQuery(['agent', 'delegations'], () => delegateApi.delegations());
-  const days = useMemo(() => {
-    const map = new Map<string, MyMeeting[]>();
-    for (const m of q.data ?? []) { const k = new Date(m.startUtc).toDateString(); map.set(k, [...(map.get(k) ?? []), m]); }
-    return [...map.entries()];
-  }, [q.data]);
-  return (
-    <div className="cmd-grid">
-      <section className="cmd-main" aria-label="My meetings">
-        {q.isLoading ? <PageLoader /> : q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : days.length === 0
-          ? <EmptyState icon="video" title="No meetings this week" text="Project meetings you organize or are invited to appear here - and your other Google Calendar calls once Google is connected, so double-bookings show up." />
-          : days.map(([day, list]) => (
-            <div key={day} className="cmd-day">
-              <h2 className="cmd-section-title"><Icon name="calendar" size={15} />{formatDate(list[0].startUtc)}<span>{list.length}</span></h2>
-              <div className="cmd-meetings">
-                {list.map((m) => (
-                  <article key={m.id} className={`card cmd-meeting ${m.overlapsWith.length ? 'clash' : ''}`}>
-                    <div className="cmd-meeting-time"><b>{formatTime(m.startUtc)}</b><small>{formatTime(m.endUtc)}</small></div>
-                    <div className="cmd-meeting-body">
-                      <h3>{m.title}</h3>
-                      <p>{m.projectName ? `${m.projectKey} · ${m.projectName}` : 'On your calendar'}{m.organizer ? ' · you organize' : ''}</p>
-                      {m.overlapsWith.length > 0 && <p className="cmd-clash"><Icon name="alert" size={12} />Overlaps {m.overlapsWith.join(', ')}</p>}
-                      <div className="cmd-meeting-actions">
-                        {m.delegationId && m.delegationStatus !== 'cancelled'
-                          ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => onReport(m.delegationId!)}><Icon name="agent" size={14} />{m.delegationStatus === 'reported' ? 'Report' : 'Agent going'}</button>
-                          : m.project && m.meetingId ? (
-                            <button type="button" className="btn btn-ghost btn-sm" disabled={!m.agentEnabled} title={m.agentEnabled ? undefined : 'Switch on the project agent first (project › Agent)'}
-                              onClick={() => onDelegate({ meetingId: m.meetingId!, at: m.startUtc, title: m.title })}><Icon name="agent" size={14} />Send the agent</button>
-                          ) : null}
-                        {m.project && m.meetingId && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onBrief({ meetingId: m.meetingId!, at: m.startUtc })}><Icon name="note" size={14} />Brief</button>}
-                        {m.meetUrl && <a className="btn btn-ghost btn-sm" href={m.meetUrl} target="_blank" rel="noreferrer"><Icon name="video" size={14} />Join</a>}
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          ))}
-      </section>
-      <aside className="cmd-side">
-        <SettingsCard />
-        {(d.data?.length ?? 0) > 0 && <DelegationsCard items={d.data!} onReport={onReport} />}
-      </aside>
-    </div>
-  );
-}
-
 // ------------------------------------------------------------------ dialogs
 
 const ANSWERS: { id: CheckInAnswer; label: string; icon: IconName; text: string }[] = [
@@ -466,66 +413,6 @@ function CheckInModal({ id, onClose, onDone }: { id: string; onClose: () => void
             </Field>
           )}
           {needsNote && <p className="cmd-muted"><Icon name="info" size={12} /> Nothing changes until the project lead approves - they see what a new date would move.</p>}
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-function DelegateModal({ target, onClose, onDone }: { target: { meetingId: string; at: string; title?: string }; onClose: () => void; onDone: () => void }) {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const send = async () => {
-    setBusy(true);
-    try {
-      await delegateApi.delegate({ meetingId: target.meetingId, sessionStartUtc: target.at, instructions: text.trim() || undefined });
-      haptic(12);
-      toast('The agent will attend for you and report back afterwards.');
-      onDone();
-    } catch (e) { toast(errText(e, 'Could not send the agent.'), 'error'); }
-    finally { setBusy(false); }
-  };
-  return (
-    <Modal title="Send the agent in my place" subtitle={`${target.title ?? 'Meeting'} · ${formatDate(target.at)} ${formatTime(target.at)}`} onClose={onClose}
-      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void send()}>{busy && <span className="spinner" />}<Icon name="agent" size={14} />Send the agent</button></>}>
-      <div className="cmd-delegate">
-        <ul className="cmd-steps">
-          <li><Icon name="user" size={14} /><span>It joins as <b>your assistant</b> - never as you - and says you couldn't make it.</span></li>
-          <li><Icon name="message" size={14} /><span>It raises what you write below, answers questions about the project's tasks, and notes anything people ask of you.</span></li>
-          <li><Icon name="checks" size={14} /><span>Afterwards you get the summary and what came out of it. Nothing changes in the project without approval.</span></li>
-        </ul>
-        <Field label="What should it raise? (optional)" hint="Posted in the meeting chat after its hello, in your name.">
-          <textarea className="input" rows={4} maxLength={1000} value={text} aria-label="What should it raise" placeholder="e.g. Ask whether refunds can ship on Friday, and who reviews the API spec." onChange={(e) => setText(e.target.value)} />
-        </Field>
-      </div>
-    </Modal>
-  );
-}
-
-function ReportModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const wid = useWorkspaceId();
-  const q = useWsQuery(['agent', 'delegation', id], () => delegateApi.delegation(id));
-  const d = q.data;
-  const cancel = async () => {
-    try { await delegateApi.cancelDelegation(id); toast('Cancelled - the agent will not go.'); void invalidateWorkspace(wid, 'agent'); onClose(); }
-    catch (e) { toast(errText(e, 'Could not cancel.'), 'error'); }
-  };
-  return (
-    <Modal title={d ? d.title : 'Agent report'} subtitle={d ? `${d.projectName} · ${formatDate(d.startUtc)} ${formatTime(d.startUtc)}` : undefined} onClose={onClose}
-      footer={d && d.status !== 'reported' && d.status !== 'cancelled'
-        ? <><button type="button" className="btn btn-ghost" onClick={() => void cancel()}>I'll go myself</button><button type="button" className="btn btn-primary" onClick={onClose}>OK</button></>
-        : <>{d?.canDecide && d.toDecide > 0 && <Link className="btn btn-primary" to={`/projects/${d.projectId}?tab=agent`} onClick={onClose}>Decide {d.toDecide}</Link>}<button type="button" className="btn btn-ghost" onClick={onClose}>Close</button></>}>
-      {q.isLoading ? <PageLoader /> : !d ? <ErrorState error={q.error} /> : (
-        <div className="cmd-report">
-          <div className={`cmd-report-status st-${d.status}`}>
-            <Icon name={d.status === 'reported' ? 'checkCircle' : 'agent'} size={16} />
-            <span>{d.status === 'reported' ? (d.summary ? 'The agent attended and reported back' : 'The agent could not report') : d.status === 'attending' ? `The agent is attending${d.botStatus ? ` (${d.botStatus.replace(/_/g, ' ')})` : ''}` : 'The agent will join shortly before it starts'}</span>
-          </div>
-          {d.summary && <p className="cmd-report-summary">{d.summary}</p>}
-          {d.botError && !d.summary && <p className="form-error">{d.botError}</p>}
-          {d.outcomes.length > 0 && <><h4>What came out of it</h4><ul className="cmd-why">{d.outcomes.map((o) => <li key={o}>{o}</li>)}</ul></>}
-          {d.note && <><h4>For you</h4><ul className="cmd-why">{d.note.split('\n').map((n) => <li key={n}>{n}</li>)}</ul></>}
-          {d.instructions && <><h4>You asked it to raise</h4><p className="cmd-muted">{d.instructions}</p></>}
         </div>
       )}
     </Modal>

@@ -179,11 +179,13 @@ export const personalEmailApi = {
   remove: (id: string) => del('/me/email-drafts/' + id),
   send: (id: string, b: { version: number; confirmed: boolean; senderEmail: string }) => post<PersonalEmailDraft>('/me/email-drafts/' + id + '/send', b),
 };
+/** Whether the notetaker comes to a meeting: no, to listen and write (transcript), or also to speak up when something is missed (voice). */
+export type NotetakerChoice = 'off' | 'transcript' | 'voice';
 export const meetingApi = {
   list: (projectId: string) => get<Meeting[]>(`/projects/${projectId}/meetings`),
   participants: (projectId: string) => get<MeetingParticipant[]>(`/projects/${projectId}/meetings/participants`),
-  start: (projectId: string, b: { title?: string; participantUserIds?: string[]; service?: MeetingServiceKey }) => post<Meeting>(`/projects/${projectId}/meetings/start`, b),
-  schedule: (projectId: string, b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean; service?: MeetingServiceKey }) =>
+  start: (projectId: string, b: { title?: string; participantUserIds?: string[]; service?: MeetingServiceKey; notetaker?: NotetakerChoice }) => post<Meeting>(`/projects/${projectId}/meetings/start`, b),
+  schedule: (projectId: string, b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean; service?: MeetingServiceKey; notetaker?: NotetakerChoice }) =>
     post<Meeting>(`/projects/${projectId}/meetings/schedule`, b),
   get: (id: string) => get<Meeting>(`/meetings/${id}`),
   cancel: (id: string) => post(`/meetings/${id}/cancel`, {}),

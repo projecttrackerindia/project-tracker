@@ -327,34 +327,7 @@ public class ProjectMeetingTests(ApiFactory factory)
         return scope;
     }
 
-    [Fact]
-    public async Task The_background_sync_sends_a_starts_soon_notice_once_and_never_duplicates_it()
-    {
-        var owner = await TestClient.RegisterAsync(factory);
-        await owner.CreateOrgAsync();
-        await owner.UpgradeAsync("PRO");
-        var project = await owner.CreateProjectAsync("Employee Portal");
-        await ConnectGoogleAsync(owner);
-        var teammate = await owner.AddMemberAsync(factory, TenantRole.Member, "Sridhar");
-        await owner.Post($"/api/v1/projects/{project}/members", new { userId = teammate.UserId });
-        var start = DateTimeOffset.UtcNow.AddMinutes(10);
-        var created = await owner.Post($"/api/v1/projects/{project}/meetings/schedule", new { title = "Standup", startTime = start, endTime = start.AddMinutes(15), timeZone = "UTC" });
-        Assert.True(created.Ok, created.ToString());
-
-        using (var scope = AuthenticatedScope(owner))
-        {
-            var changed = await scope.ServiceProvider.GetRequiredService<MeetingSyncEngine>().RunAsync();
-            Assert.True(changed >= 0);
-        }
-        var notices = await teammate.Get("/api/v1/notifications");
-        var matches = notices.Data!["items"]!.AsArray().Count(n => n!["title"]!.GetValue<string>().Contains("starts in"));
-        Assert.Equal(1, matches);
-
-        // Running it again must not send a second one (the dedupe key, not exact timing, is what stops it).
-        using (var scope = AuthenticatedScope(owner)) await scope.ServiceProvider.GetRequiredService<MeetingSyncEngine>().RunAsync();
-        var noticesAgain = await teammate.Get("/api/v1/notifications");
-        Assert.Equal(1, noticesAgain.Data!["items"]!.AsArray().Count(n => n!["title"]!.GetValue<string>().Contains("starts in")));
-    }
+    // The "starts soon" notice is now each invited person's meeting reminder: MeetTabTests.The_reminder_goes_off_once_as_the_starts_soon_notice.
 
     [Fact]
     public async Task Recurring_scrum_is_one_calendar_series_and_cancellation_cancels_that_series()

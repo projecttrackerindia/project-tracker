@@ -378,6 +378,7 @@ function ReminderCard({ r, zone, done, sent, onDone, onSnooze, onRemove, onResto
           {r.anchorDays != null && <span className="rp-tag"><Icon name="flag" size={11} /> {r.anchorDays === 0 ? 'on the due date' : `${-r.anchorDays}d before due`}</span>}
           {r.targetKey && r.link && <button type="button" className="rp-target" onClick={() => nav(r.link!)} title={r.targetTitle ?? ''}><Icon name="paperclip" size={11} /> {r.targetKey}{r.targetTitle && r.targetTitle !== r.title ? ` · ${r.targetTitle}` : ''}</button>}
           {auto && <span className="rp-tag auto"><Icon name="bolt" size={11} /> {r.source === 'Escalation' ? 'Escalation' : 'Automatic'}</span>}
+          {r.source === 'Meeting' && <span className="rp-tag"><Icon name="video" size={11} /> Meeting</span>}
           {r.from && <span className="rp-tag from"><Icon name="user" size={11} /> From {r.from.name}</span>}
           {sent && r.for && <span className="rp-tag from"><Icon name="send" size={11} /> To {r.for.name} · {r.state === 'Done' ? 'done' : r.state === 'Fired' ? 'delivered' : 'waiting'}</span>}
           {r.isSnoozed && !done && <span className="rp-tag snz">Snoozed{r.snoozeCount > 1 ? ` ×${r.snoozeCount}` : ''}</span>}

@@ -117,10 +117,11 @@ try{
   await fitsPhone(page,'connected accounts',assert);await shot(page,'connected-phone.png');
   checks.push('phone-fits');
 
-  // 5. Scheduling names the service, and a Project Tracker call opens in the app (Calendar > Scrum call, no project).
+  // 5. Scheduling (in Meet, the one place for meetings) names the service, and a Project Tracker call opens in the app (no project).
   await page.setViewportSize({width:1440,height:1000});
-  await page.goto(origin+'/preview-org/calendar');
-  await page.getByRole('button',{name:'Scrum call',exact:true}).click();
+  await page.goto(origin+'/preview-org/meet');
+  await page.getByRole('button',{name:'Schedule',exact:true}).click();
+  await page.getByRole('dialog').getByLabel('Title',{exact:true}).fill('Atlas review');
   const svc=page.getByRole('combobox',{name:'Meeting service'});await svc.waitFor();
   assert.match(await svc.locator('option:checked').innerText(),/your choice: Project Tracker call/);
   assert.deepEqual((await svc.locator('option').allInnerTexts()).map(x=>x.split(' (')[0]),['Automatic','Google Meet','Project Tracker call']);

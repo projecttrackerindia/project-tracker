@@ -17,7 +17,6 @@ import { mailboxApi } from '../mailbox/mailboxApi';
 import { minutesText, notetakerApi } from './notetakerApi';
 import type { Minutes, NotetakerSession, NotetakerSettings } from './notetakerApi';
 import './notetaker.css';
-import { AgentsHubNav } from '../agents/AgentsHubNav';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const DURATIONS = [30, 45, 60, 90, 120, 180];
@@ -37,12 +36,14 @@ function statusOf(s: NotetakerSession): { label: string; tone: 'live' | 'wait' |
   return { label: new Date(s.start) > new Date() ? 'Scheduled' : 'Waiting for a free bot', tone: 'idle' };
 }
 
-export function NotetakerPage() {
+/** Meet › Notetaker: send it to any Google Meet or Teams link, how much it does on its own, and every call it attended with its minutes. */
+export function NotetakerPanel() {
   const wid = useWorkspaceId();
   const [params, setParams] = useSearchParams();
   const q = useWsQuery(['notetaker'], notetakerApi.overview, { refetchInterval: 10_000 });
-  const [url, setUrl] = useState('');
-  const [title, setTitle] = useState('');
+  // "Send notetaker" from a call on your calendar arrives with its link and name filled in.
+  const [url, setUrl] = useState(params.get('url') ?? '');
+  const [title, setTitle] = useState(params.get('title') ?? '');
   const [minutes, setMinutes] = useState(60);
   const [project, setProject] = useState('');
   const [raise, setRaise] = useState('');
@@ -50,10 +51,11 @@ export function NotetakerPage() {
   const [open, setOpen] = useState<string | null>(params.get('session'));
   const [pending, setPending] = useState<NotetakerSettings | null>(null);
   const data = q.data;
-  useEffect(() => { if (data && !project) setProject(data.settings.projectId ?? data.projects.find((p) => p.agentReady)?.id ?? data.projects[0]?.id ?? ''); }, [data, project]);
+  const asked = params.get('project');
+  useEffect(() => { if (data?.settings && !project) setProject((asked && data.projects.some((p) => p.id === asked) ? asked : null) ?? data.settings.projectId ?? data.projects.find((p) => p.agentReady)?.id ?? data.projects[0]?.id ?? ''); }, [data, project, asked]);
 
   if (q.isLoading) return <PageLoader />;
-  if (q.isError || !data) return <ErrorState error={q.error} retry={() => void q.refetch()} />;
+  if (q.isError || !data?.settings) return <ErrorState error={q.error} retry={() => void q.refetch()} />;
   const chosen = data.projects.find((p) => p.id === project);
   const settings = pending ?? data.settings;
 
@@ -83,12 +85,10 @@ export function NotetakerPage() {
 
   return (
     <div className="nt">
-      <AgentsHubNav sub="Your notetaker joins calls, writes the minutes and updates tasks" />
       <header className="nt-hero">
         <div>
-          <span className="nt-eyebrow"><Icon name="sparkle" size={13} /> AI notetaker</span>
-          <h1>Your notetaker</h1>
-          <p>Send it to any Google Meet or Teams call. It joins in your name, takes notes, answers questions about your project in the chat, writes the minutes and proposes task updates.</p>
+          <h2>Your notetaker</h2>
+          <p>Choose it when you schedule a meeting, or send it to any Google Meet or Teams link here. It joins in your name, takes notes, writes the minutes and proposes task updates.</p>
         </div>
         <ul className="nt-checks" aria-label="Readiness">
           <li className={data.botReady ? 'ok' : 'bad'}><Icon name={data.botReady ? 'checkCircle' : 'alert'} size={15} />{data.botReady ? 'Meeting bot online' : 'Meeting bot not set up'}</li>

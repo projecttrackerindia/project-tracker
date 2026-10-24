@@ -6,7 +6,7 @@ namespace ProjectManagement.Domain.Enums
     /// Where a reminder came from. Personal: the person asked for it. Nudge: someone else asked for it to reach them. DueDate, Overdue and
     /// Escalation are made by the system from dated work (and taken back again when the work is finished or moved).
     /// </summary>
-    public enum ReminderSource { Personal, Nudge, DueDate, Overdue, Escalation }
+    public enum ReminderSource { Personal, Nudge, DueDate, Overdue, Escalation, Meeting }
 
     /// <summary>
     /// Scheduled: waiting for its time (possibly snoozed). Fired: its time came and it waits for the person to act. Done: finished.
@@ -15,7 +15,7 @@ namespace ProjectManagement.Domain.Enums
     public enum ReminderState { Scheduled, Fired, Done, Cancelled }
 
     /// <summary>What a reminder is about. None: a free note ("call the bank").</summary>
-    public enum ReminderTarget { None, Task, Issue, ActionItem, Operational, Milestone, ChatMessage }
+    public enum ReminderTarget { None, Task, Issue, ActionItem, Operational, Milestone, ChatMessage, Meeting }
 }
 
 namespace ProjectManagement.Domain.Entities

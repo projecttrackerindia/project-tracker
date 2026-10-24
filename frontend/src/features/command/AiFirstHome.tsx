@@ -8,7 +8,7 @@ import { AiPage } from '../ai/AiPage';
 import { ReviewQueueCard } from '../github/GitHubApp';
 import type { AiConversation } from '../ai/aiApi';
 
-type Tab = 'dashboard' | 'today' | 'work' | 'meetings' | 'decisions';
+type Tab = 'dashboard' | 'today' | 'work' | 'decisions';
 
 /** Questions a link can open Home with (the morning briefing uses "plan"). Only these: a link never carries free text to the assistant. */
 const PRESETS: Record<string, string> = {
@@ -130,7 +130,7 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
           <ReviewQueueCard compact />
           {next && (
             <div className="aih-card">
-              <header><span><Icon name="video" size={14} /> Next meeting</span><button type="button" className="mb-link" onClick={() => onTab('meetings')}>Open</button></header>
+              <header><span><Icon name="video" size={14} /> Next meeting</span><Link className="mb-link" to="/meet">Open</Link></header>
               <b>{next.title}</b>
               <small>{formatTime(next.startUtc)}{next.projectKey ? ` · ${next.projectKey}` : ''}{next.agentAttending ? ' · the agent is attending' : ''}</small>
             </div>

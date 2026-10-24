@@ -268,7 +268,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
             var nowLocal = ProjectManagement.Application.Features.Reminders.ZoneTime.ToLocal(clock.Now, zone);
             if (ProjectManagement.Application.Features.Reminders.PromiseDetector.DueFrom(a.Due, nowLocal, settings) is not { } at) continue;
             var key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(a.Task.Trim().ToLowerInvariant())))[..16];
-            await promises.OfferAtAsync(bot.TenantId, owner, a.Task, at, "meeting", $"minutes:{bot.Id:N}:{key}", $"/notetaker?session={bot.Id}",
+            await promises.OfferAtAsync(bot.TenantId, owner, a.Task, at, "meeting", $"minutes:{bot.Id:N}:{key}", $"/meet/notetaker?session={bot.Id}",
                 $"{a.Task} — {a.Owner}, by {a.Due} ({content.Title})", ct);
         }
     }
@@ -326,7 +326,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
                         await db.AgentMeetingBots.Where(b => b.Id == bot.Id).ExecuteUpdateAsync(u => u.SetProperty(b => b.TranscriptProtected, (string?)null), ct);
                     await notifications.AddAsync(p.UserId, NotificationType.Meeting, $"Minutes ready: {minutes.Title}",
                         created.Count > 0 ? $"Your notetaker wrote up the call and created {created.Count} task(s) from it." : "Your notetaker wrote up the call. Review and send the minutes.",
-                        $"/notetaker?session={bot.Id}", $"minutes:{bot.Id}", toSelf: true, ct: ct);
+                        $"/meet/notetaker?session={bot.Id}", $"minutes:{bot.Id}", toSelf: true, ct: ct);
                     await db.SaveChangesAsync(ct);
                     done++;
                 }

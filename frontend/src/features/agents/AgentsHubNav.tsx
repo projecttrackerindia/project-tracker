@@ -25,7 +25,6 @@ export function AgentsHubNav({ sub, compact = false }: { sub?: string; compact?:
   const tabs: { to: string; label: string; icon: IconName | 'mark'; show: boolean; on: boolean; badge?: number }[] = [
     // With the AI-first Home, Ask is Home itself.
     { to: aiFirst ? '/' : '/ai', label: aiFirst ? 'Ask (Home)' : 'Ask', icon: 'mark', show: ai, on: pathname === '/ai' || (pathname.startsWith('/ai/') && pathname !== '/ai/operations') },
-    { to: '/notetaker', label: 'Meetings', icon: 'video', show: projects && role !== 'Guest', on: pathname === '/notetaker' },
     { to: '/project-agent', label: 'Proposals', icon: 'sparkle', show: proposals, on: pathname.startsWith('/project-agent'), badge: inbox.data?.pending },
     { to: '/ai/operations', label: 'Workflows', icon: 'workflow', show: ai, on: pathname === '/ai/operations' },
     { to: '/agent-tracker', label: 'Tracker', icon: 'gauge', show: admin, on: pathname === '/agent-tracker' },

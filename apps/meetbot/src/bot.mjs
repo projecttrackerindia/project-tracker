@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { platformFor } from './platform.mjs';
 import { AUDIO_HOOK, AudioFile, align, transcribe } from './audio.mjs';
+import { VOICE_HOOK, sayItems } from './voice.mjs';
 
 /**
  * One bot in one meeting (Google Meet or Microsoft Teams, from the link): waits until its start time, joins as a guest, turns on captions and streams who-said-what to the webhook, posts
@@ -9,7 +10,7 @@ import { AUDIO_HOOK, AudioFile, align, transcribe } from './audio.mjs';
  * Statuses: scheduled → joining → waiting_admission → in_call_recording → call_ended → done (or fatal, with an error).
  */
 export class MeetBot {
-  constructor({ meetingUrl, botName, joinAt, leaveAt, webhookUrl, introMessage, agendaMessage, captionLanguage, raiseMessage, readChat, identity }, deps) {
+  constructor({ meetingUrl, botName, joinAt, leaveAt, webhookUrl, introMessage, agendaMessage, captionLanguage, raiseMessage, readChat, identity, voice }, deps) {
     this.id = randomUUID();
     this.meetingUrl = meetingUrl;
     this.platform = platformFor(meetingUrl);
@@ -37,6 +38,10 @@ export class MeetBot {
     this.error = null;
     this.lines = 0;
     this.chatQueue = [];
+    // The meeting asked for spoken suggestions: the page gets a microphone the bot can speak into (muted until it does).
+    this.voice = Boolean(voice);
+    this.sayQueue = [];
+    this.spoken = 0;
     this.stopping = false;
     this.webhookChain = Promise.resolve();
     this.timer = setTimeout(() => void this.run(), Math.max(0, this.joinAt.getTime() - Date.now() - 30_000));
@@ -80,6 +85,7 @@ export class MeetBot {
         await context.exposeFunction('ptAudio', (b64) => { try { this.audioFile.write(b64); } catch { /* disk full: captions still work */ } });
         await context.exposeFunction('ptAudioStart', (t) => { this.audioFile.startedAt ??= Number(t) || Date.now(); });
       }
+      if (this.voice) await context.addInitScript(VOICE_HOOK);
       const page = await context.newPage();
       this.page = page;
       await page.exposeFunction('ptCaption', (name, text) => this.caption(name, text));
@@ -139,6 +145,7 @@ export class MeetBot {
         const message = this.chatQueue.shift();
         try { await this.platform.sendChat(page, message); } catch (e) { this.log(`chat: ${e.message}`); }
       }
+      while (this.sayQueue.length && !this.stopping) await this.speak(page, this.sayQueue.shift());
       const text = await this.platform.pageText(page);
       if (await this.platform.isOver(page, text)) { this.log('the call ended'); return; }
       if (this.platform.isAlone(text)) { aloneSince ||= Date.now(); if (Date.now() - aloneSince > this.deps.aloneMs) { this.log('alone in the call'); return; } }
@@ -187,6 +194,24 @@ export class MeetBot {
     if (!message) return;
     this.flush();
     void this.post({ event: 'chat.message', data: { name: String(name || 'Someone').slice(0, 80), text: message.slice(0, 1000), bot: { id: this.id } } });
+  }
+
+  /** Says one line out loud: microphone on, the voice played into it, microphone off. The chat already has the written line. */
+  async speak(page, item) {
+    try {
+      if (!this.platform.unmute || !(await this.platform.unmute(page))) { this.log('could not switch the microphone on: the reminder stays in the chat'); return; }
+      await page.evaluate((b64) => window.ptSay ? window.ptSay(b64) : 0, item.audio);
+      this.spoken++;
+    } catch (e) { this.log(`voice: ${e.message}`); }
+    finally { await this.platform.mute?.(page).catch(() => undefined); }
+  }
+
+  /** Lines to say out loud (only when the meeting asked for voice). */
+  say(list) {
+    if (!this.voice || ['call_ended', 'done', 'fatal'].includes(this.status) || this.stopping) return false;
+    this.sayQueue.push(...sayItems(list));
+    this.sayQueue.splice(0, Math.max(0, this.sayQueue.length - 4));
+    return true;
   }
 
   /** Queues a chat message: sent at once in the call, or once the bot is in it (a message for a bot that has finished is refused). */

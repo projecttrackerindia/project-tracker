@@ -8,6 +8,7 @@ import { formatDate, formatDateTime, formatTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
+import { haptic } from '../../lib/mobile';
 import { errText, useProjectsLite } from './shared';
 import { ImpactView } from './Impact';
 
@@ -149,7 +150,7 @@ export function SettingsCard() {
               </select>
             </Field>
           )}
-          {!s.googleConnected && <p className="ag-hint"><Icon name="info" size={12} />Connect Google (Settings › Integrations) so calls on your calendar count when spotting double-bookings.</p>}
+          {!s.googleConnected && <p className="ag-hint"><Icon name="info" size={12} />Connect Google (My account › Connected accounts) so calls on your calendar count when spotting double-bookings.</p>}
         </>
       )}
     </div>
@@ -217,5 +218,67 @@ export function AuditView() {
           </ol>
         )}
     </section>
+  );
+}
+
+// ------------------------------------------------------------------ sending the agent, and its report (Today and Meet use these)
+
+export function DelegateModal({ target, onClose, onDone }: { target: { meetingId: string; at: string; title?: string }; onClose: () => void; onDone: () => void }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    setBusy(true);
+    try {
+      await delegateApi.delegate({ meetingId: target.meetingId, sessionStartUtc: target.at, instructions: text.trim() || undefined });
+      haptic(12);
+      toast('The agent will attend for you and report back afterwards.');
+      onDone();
+    } catch (e) { toast(errText(e, 'Could not send the agent.'), 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Send the agent in my place" subtitle={`${target.title ?? 'Meeting'} · ${formatDate(target.at)} ${formatTime(target.at)}`} onClose={onClose}
+      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void send()}>{busy && <span className="spinner" />}<Icon name="agent" size={14} />Send the agent</button></>}>
+      <div className="cmd-delegate">
+        <ul className="cmd-steps">
+          <li><Icon name="user" size={14} /><span>It joins as <b>your assistant</b> - never as you - and says you couldn't make it.</span></li>
+          <li><Icon name="message" size={14} /><span>It raises what you write below, answers questions about the project's tasks, and notes anything people ask of you.</span></li>
+          <li><Icon name="checks" size={14} /><span>Afterwards you get the summary and what came out of it. Nothing changes in the project without approval.</span></li>
+        </ul>
+        <Field label="What should it raise? (optional)" hint="Posted in the meeting chat after its hello, in your name.">
+          <textarea className="input" rows={4} maxLength={1000} value={text} aria-label="What should it raise" placeholder="e.g. Ask whether refunds can ship on Friday, and who reviews the API spec." onChange={(e) => setText(e.target.value)} />
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
+export function ReportModal({ id, onClose }: { id: string; onClose: () => void }) {
+  const wid = useWorkspaceId();
+  const q = useWsQuery(['agent', 'delegation', id], () => delegateApi.delegation(id));
+  const d = q.data;
+  const cancel = async () => {
+    try { await delegateApi.cancelDelegation(id); toast('Cancelled - the agent will not go.'); void invalidateWorkspace(wid, 'agent'); onClose(); }
+    catch (e) { toast(errText(e, 'Could not cancel.'), 'error'); }
+  };
+  return (
+    <Modal title={d ? d.title : 'Agent report'} subtitle={d ? `${d.projectName} · ${formatDate(d.startUtc)} ${formatTime(d.startUtc)}` : undefined} onClose={onClose}
+      footer={d && d.status !== 'reported' && d.status !== 'cancelled'
+        ? <><button type="button" className="btn btn-ghost" onClick={() => void cancel()}>I'll go myself</button><button type="button" className="btn btn-primary" onClick={onClose}>OK</button></>
+        : <>{d?.canDecide && d.toDecide > 0 && <Link className="btn btn-primary" to={`/projects/${d.projectId}?tab=agent`} onClick={onClose}>Decide {d.toDecide}</Link>}<button type="button" className="btn btn-ghost" onClick={onClose}>Close</button></>}>
+      {q.isLoading ? <PageLoader /> : !d ? <ErrorState error={q.error} /> : (
+        <div className="cmd-report">
+          <div className={`cmd-report-status st-${d.status}`}>
+            <Icon name={d.status === 'reported' ? 'checkCircle' : 'agent'} size={16} />
+            <span>{d.status === 'reported' ? (d.summary ? 'The agent attended and reported back' : 'The agent could not report') : d.status === 'attending' ? `The agent is attending${d.botStatus ? ` (${d.botStatus.replace(/_/g, ' ')})` : ''}` : 'The agent will join shortly before it starts'}</span>
+          </div>
+          {d.summary && <p className="cmd-report-summary">{d.summary}</p>}
+          {d.botError && !d.summary && <p className="form-error">{d.botError}</p>}
+          {d.outcomes.length > 0 && <><h4>What came out of it</h4><ul className="cmd-why">{d.outcomes.map((o) => <li key={o}>{o}</li>)}</ul></>}
+          {d.note && <><h4>For you</h4><ul className="cmd-why">{d.note.split('\n').map((n) => <li key={n}>{n}</li>)}</ul></>}
+          {d.instructions && <><h4>You asked it to raise</h4><p className="cmd-muted">{d.instructions}</p></>}
+        </div>
+      )}
+    </Modal>
   );
 }

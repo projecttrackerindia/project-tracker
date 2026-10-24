@@ -34,15 +34,18 @@ public class MeetingBotClient(IOptions<AgentOptions> options)
 
 /// <summary>What a worker needs to join one session (stored on the session when it is queued).</summary>
 /// <summary>RaiseMessage: what the person who sent the agent asked it to raise. ReadChat: watch the meeting chat (to answer when addressed).</summary>
-public record MeetingBotJoin(string MeetingUrl, string BotName, string? IntroMessage, string? AgendaMessage, string? CaptionLanguage, string? RaiseMessage = null, bool ReadChat = false);
+/// <summary>Voice: the meeting asked for spoken suggestions, so the bot keeps a voice ready (it stays muted until it has something to say).</summary>
+public record MeetingBotJoin(string MeetingUrl, string BotName, string? IntroMessage, string? AgendaMessage, string? CaptionLanguage, string? RaiseMessage = null, bool ReadChat = false, bool Voice = false);
 
 public record BotWorkerBotReport(string? JobId, string? Status, string? Error, int Lines = 0, string? IdentityId = null);
 /// <summary>A worker's report: who it is, how many meetings it can attend at once, whether it is shutting down, and its bots.</summary>
 public record BotWorkerReport(string? WorkerId, string? Host, string? Version, int Capacity, bool Draining, IReadOnlyList<BotWorkerBotReport>? Bots);
 public record BotJobDto(string JobId, string MeetingUrl, string BotName, DateTime JoinAt, DateTime LeaveAt, string WebhookUrl,
     string? IntroMessage, string? AgendaMessage, string? CaptionLanguage, bool Rejoin, string? RaiseMessage = null, bool ReadChat = false, BotIdentityDto? Identity = null,
-    string? LiveKitUrl = null, string? LiveKitToken = null);
-public record BotInstructionDto(string JobId, IReadOnlyList<string> Chat, bool Stop);
+    string? LiveKitUrl = null, string? LiveKitToken = null, bool Voice = false);
+/// <summary>Something to say out loud: the words (also posted in the chat) and the voice, a base64 WAV file.</summary>
+public record BotSayDto(string Text, string Audio);
+public record BotInstructionDto(string JobId, IReadOnlyList<string> Chat, bool Stop, IReadOnlyList<BotSayDto>? Say = null);
 public record BotPollResponse(IReadOnlyList<BotJobDto> Jobs, IReadOnlyList<BotInstructionDto> Bots, int PollSeconds);
 
 public record BotWorkerDto(string WorkerId, string? Host, string? Version, int Capacity, int Active, bool Draining, DateTime LastSeenAt, bool Online);
@@ -87,15 +90,15 @@ public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clo
         //    longer holds. Chat is only taken where some is waiting, so a busy worker costs a few queries per report, whatever its size.
         var ids = reported.Select(b => Guid.Parse(b.JobId!)).ToList();
         var rows = await db.AgentMeetingBots.IgnoreQueryFilters().AsNoTracking().Where(b => ids.Contains(b.Id))
-            .Select(b => new { b.Id, b.WorkerId, b.Status, b.PendingChat }).ToListAsync(ct);
+            .Select(b => new { b.Id, b.WorkerId, b.Status, b.PendingChat, Say = b.PendingSay != null }).ToListAsync(ct);
         var instructions = new List<BotInstructionDto>();
-        var held = new List<(BotWorkerBotReport Report, Guid Id, string? Status, bool Finished, bool Chat)>();
+        var held = new List<(BotWorkerBotReport Report, Guid Id, string? Status, bool Finished, bool Chat, bool Say)>();
         foreach (var r in reported)
         {
             var row = rows.FirstOrDefault(x => x.Id == Guid.Parse(r.JobId!));
             if (row is null || row.WorkerId != workerId || row.Status is "done" or "failed") { instructions.Add(new(r.JobId!, [], true)); continue; }
             var status = Cut(r.Status, 32);
-            held.Add((r, row.Id, status, Finished.Contains(status ?? ""), !string.IsNullOrEmpty(row.PendingChat)));
+            held.Add((r, row.Id, status, Finished.Contains(status ?? ""), !string.IsNullOrEmpty(row.PendingChat), row.Say));
         }
         foreach (var g in held.GroupBy(h => (h.Status, h.Finished, Error: h.Status == "fatal" ? Cut(h.Report.Error, 500) : null)))
         {
@@ -111,7 +114,7 @@ public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clo
         foreach (var h in held.Where(h => h.Status == "fatal" && (h.Report.Error ?? "").StartsWith(MeetingBotIdentityService.SignedOut, StringComparison.Ordinal)))
             await identities.MarkSignedOutAsync(h.Report.IdentityId, ct);
         foreach (var h in held)
-            instructions.Add(new(h.Report.JobId!, h.Finished || !h.Chat ? [] : await TakeChatAsync(h.Id, ct), false));
+            instructions.Add(new(h.Report.JobId!, h.Finished || !h.Chat ? [] : await TakeChatAsync(h.Id, ct), false, h.Finished || !h.Say ? null : await TakeSayAsync(h.Id, ct)));
 
         // 2. New sessions, as many as it has room for (none while it is shutting down).
         var jobs = new List<BotJobDto>();
@@ -166,7 +169,7 @@ public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 jobs.Add(new BotJobDto(c.Id.ToString(), join.MeetingUrl, join.BotName, c.SessionStartUtc, c.SessionEndUtc.AddMinutes(30),
                     $"{PublicUrls.Api(app.Value)}/api/v1/agent/bot/{c.WebhookToken}",
                     rejoin ? null : join.IntroMessage, rejoin ? null : join.AgendaMessage, join.CaptionLanguage, rejoin, rejoin ? null : join.RaiseMessage, join.ReadChat,
-                    liveKitUrl is null ? await identities.PickAsync(join.MeetingUrl, ct) : null, liveKitUrl, liveKitToken));
+                    liveKitUrl is null ? await identities.PickAsync(join.MeetingUrl, ct) : null, liveKitUrl, liveKitToken, join.Voice));
                 log.LogInformation("Meeting bot session {Session} handed to worker {Worker}{Rejoin}", c.Id, workerId, rejoin ? " (rejoining)" : "");
             }
         }
@@ -200,6 +203,45 @@ public class MeetingBotQueue(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (taken == 1) return pending.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(10).ToList();
         }
         return [];
+    }
+
+    /// <summary>Takes what is waiting to be said (each is handed out once, even with several API servers).</summary>
+    private async Task<IReadOnlyList<BotSayDto>?> TakeSayAsync(Guid id, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var pending = await db.AgentMeetingBots.IgnoreQueryFilters().AsNoTracking().Where(b => b.Id == id).Select(b => b.PendingSay).FirstOrDefaultAsync(ct);
+            if (string.IsNullOrEmpty(pending)) return null;
+            var taken = await db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.Id == id && b.PendingSay == pending)
+                .ExecuteUpdateAsync(u => u.SetProperty(b => b.PendingSay, (string?)null), ct);
+            if (taken != 1) continue;
+            try { return JsonSerializer.Deserialize<List<BotSayDto>>(pending, Json)?.Take(4).ToList(); }
+            catch (JsonException) { return null; }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Queues a line for the bot to say out loud (with its voice already made), for a bot in a call. At most four wait at once: a bot that
+    /// fell behind says the latest, not a backlog.
+    /// </summary>
+    public async Task<bool> QueueSayAsync(Guid botRowId, string text, string audioBase64, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(text) || string.IsNullOrEmpty(audioBase64) || audioBase64.Length > 3_000_000) return false;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var row = await db.AgentMeetingBots.IgnoreQueryFilters().AsNoTracking().Where(b => b.Id == botRowId).Select(b => new { b.Status, b.PendingSay }).FirstOrDefaultAsync(ct);
+            if (row is null || row.Status != "in_call") return false;
+            List<BotSayDto> list;
+            try { list = string.IsNullOrEmpty(row.PendingSay) ? [] : JsonSerializer.Deserialize<List<BotSayDto>>(row.PendingSay, Json) ?? []; }
+            catch (JsonException) { list = []; }
+            list.Add(new BotSayDto(text.Trim().Length > 300 ? text.Trim()[..300] : text.Trim(), audioBase64));
+            var next = JsonSerializer.Serialize(list.TakeLast(4).ToList(), Json);
+            var before = row.PendingSay;
+            if (await db.AgentMeetingBots.IgnoreQueryFilters().Where(b => b.Id == botRowId && b.Status == "in_call" && b.PendingSay == before)
+                    .ExecuteUpdateAsync(u => u.SetProperty(b => b.PendingSay, next), ct) == 1) return true;
+        }
+        return false;
     }
 
     /// <summary>Queues a message for the bot's meeting chat; its worker posts it within a few seconds.</summary>

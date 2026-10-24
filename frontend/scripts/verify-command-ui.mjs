@@ -156,12 +156,15 @@ try{
  await shot(page,'what-if-1440.png');
  await dialog.getByRole('button',{name:'Done'}).click();
 
- await page.getByRole('button',{name:'Meetings'}).click();
- await page.locator('.cmd-meeting').first().waitFor();
+ // Meetings are in Meet now (no Meetings tab on Home); "My agent" for meetings sits with the notetaker there.
+ assert.equal(await page.locator('.cmd-tabs').getByRole('button',{name:'Meetings'}).count(),0,'No Meetings tab on Home');
+ await page.goto(origin+'/preview-org/meet/notetaker');
  await page.getByRole('switch',{name:'Go when I am double-booked'}).click();await page.waitForTimeout(300);
  assert.deepEqual(writes.at(-1).b,{autoDelegate:true});checks.push('auto-delegate-setting');
- await shot(page,'meetings-1440.png',true);
- await page.locator('.cmd-meeting').first().getByRole('button',{name:'Brief'}).click();
+ await shot(page,'meet-notetaker-1440.png',true);
+ // Today's "Coming up" still opens the brief.
+ await page.goto(origin+'/preview-org/command-center?tab=today');await page.locator('[data-attention]').first().waitFor();
+ await page.locator('.cmd-timeline').getByRole('button',{name:'Brief'}).first().click();
  dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Brief: Payments stand-up'}).waitFor();
  assert.ok(await dialog.getByText('Unblock PAY-9').isVisible());checks.push('brief');
  await shot(page,'brief-1440.png');
@@ -200,8 +203,9 @@ try{
    dialog=page.getByRole('dialog');await dialog.getByRole('radio',{name:/On track/}).waitFor();
    await shot(page,'checkin-390.png');await noOverflow(page,'check-in 390');
    await page.keyboard.press('Escape');await dialog.waitFor({state:'detached'});
-   await page.getByRole('button',{name:'Meetings'}).click();await page.locator('.cmd-meeting').first().waitFor();
-   await shot(page,'meetings-390.png',true);await noOverflow(page,'meetings 390');
+   await page.goto(origin+'/preview-org/meet');await page.getByRole('button',{name:'Schedule',exact:true}).waitFor();
+   await shot(page,'meet-390.png',true);await noOverflow(page,'meet 390');
+   await page.goto(origin+'/preview-org/command-center?tab=today');await page.locator('[data-attention]').first().waitFor();
    await page.getByRole('button',{name:/What if/}).click();
    dialog=page.getByRole('dialog');await dialog.getByLabel('Task').selectOption('t12');await dialog.locator('.cmd-gantt-row').nth(2).waitFor();
    await shot(page,'what-if-390.png');await noOverflow(page,'what-if 390');

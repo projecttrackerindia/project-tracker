@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { ScrumCallButton } from '../meetings/ScrumCallButton';
 import { useNavigate } from 'react-router-dom';
 import { PageHead } from '../../components/ui';
 import { usePersonPicker } from '../../lib/hooks';
@@ -26,7 +25,7 @@ export function CalendarPage() {
 
   return (
     <>
-      <PageHead title="Calendar" sub="Tasks, action items, operational work, project deadlines and stages by date">
+      <PageHead title="Calendar" sub="Tasks, action items, operational work, deadlines, stages and meetings by date">
         <div className="cal-filters">
           {canPick && (
             <Select className="select" value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="Person">
@@ -36,7 +35,6 @@ export function CalendarPage() {
             </Select>
           )}
           {!userId && <label className="cal-mine"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> Only my work</label>}
-          <ScrumCallButton />
           <CalendarSubscribe />
         </div>
       </PageHead>

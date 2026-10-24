@@ -196,7 +196,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             {
                 var projectId = Guid(a, "projectId")!.Value;
                 var m = await meetings.StartNowAsync(projectId, new ProjectManagement.Application.Features.ProjectMeetings.StartMeetingRequest(Str(a, "title"), Guids(a, "participantUserIds")), ct);
-                return new AiActionResult($"/projects/{projectId}?tab=meetings&meeting={m.Id}", m.Id);
+                return new AiActionResult(ProjectManagement.Application.Features.ProjectMeetings.MeetingReminders.MeetLink(m.Id, false), m.Id);
             }
             case "start_call":
             {
@@ -210,8 +210,9 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             {
                 var projectId = Guid(a, "projectId")!.Value;
                 var m = await meetings.ScheduleAsync(projectId, new ProjectManagement.Application.Features.ProjectMeetings.ScheduleMeetingRequest(
-                    Str(a, "title")!, Str(a, "description"), DateTimeOffset.Parse(Str(a, "startTime")!), DateTimeOffset.Parse(Str(a, "endTime")!), Str(a, "timeZone") ?? "UTC", Guids(a, "participantUserIds"), a.TryGetProperty("repeat", out var repeat) && repeat.ValueKind == JsonValueKind.Object ? repeat.Deserialize<ProjectManagement.Application.Features.ProjectMeetings.MeetingRepeat>(Json) : null), ct);
-                return new AiActionResult($"/projects/{projectId}?tab=meetings&meeting={m.Id}", m.Id);
+                    Str(a, "title")!, Str(a, "description"), DateTimeOffset.Parse(Str(a, "startTime")!), DateTimeOffset.Parse(Str(a, "endTime")!), Str(a, "timeZone") ?? "UTC", Guids(a, "participantUserIds"), a.TryGetProperty("repeat", out var repeat) && repeat.ValueKind == JsonValueKind.Object ? repeat.Deserialize<ProjectManagement.Application.Features.ProjectMeetings.MeetingRepeat>(Json) : null,
+                    Notetaker: Str(a, "notetaker")), ct);
+                return new AiActionResult(ProjectManagement.Application.Features.ProjectMeetings.MeetingReminders.MeetLink(m.Id, false), m.Id);
             }
             default:
                 // Home: the agent's proposals, timesheets, notifications, chat replies, pages, portfolio options and vault requests.

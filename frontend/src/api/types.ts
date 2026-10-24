@@ -454,6 +454,8 @@ export interface Meeting {
   isScrum?: boolean;
   /** Where it lives: Google Meet, a Teams meeting in Outlook, or a Project Tracker call (joined at meetUri, a path in this app). */
   provider?: MeetingProvider; providerName?: string;
+  /** The notetaker chosen on the schedule form; "project" when no choice was made (the project agent's settings decide). */
+  notetaker?: 'off' | 'transcript' | 'voice' | 'project';
 }
 export type MeetingProvider = 'google' | 'microsoft' | 'ours';
 /** A meeting for the workspace as a whole (no project), as the people invited see it. */

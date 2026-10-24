@@ -73,7 +73,7 @@ export function ConnectPage() {
           <button className="btn btn-ghost" disabled={busy} onClick={() => void decide(false)}>Cancel</button>
           <button className="btn btn-primary" disabled={busy || switching} onClick={() => void decide(true)}>{busy && <span className="spinner" />}Allow and connect</button>
         </div>
-        <p className="cn-foot muted"><Icon name="lock" size={12} /> You will return to <b>{host}</b>. Manage connected apps in Settings, Connected apps.</p>
+        <p className="cn-foot muted"><Icon name="lock" size={12} /> You will return to <b>{host}</b>. Manage it in Workspace settings › Connected AI apps.</p>
       </div>
     </div>
   );

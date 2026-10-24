@@ -60,18 +60,23 @@ export function useMainNav(): NavGroup[] {
   const command = lv('projects') > 0 && !isGuest;
   const proposals = lv('projects') > 0 && !personal && ai && !isGuest;
   const notes = lv('projects') > 0 && !isGuest;
-  // With the AI-first Home, asking happens on Home itself: the sidebar entry becomes Agents (meetings, proposals, workflows, tracker).
+  // With the AI-first Home, asking happens on Home itself: the sidebar entry becomes Agents (proposals, workflows, tracker). Meetings, calls
+  // and the notetaker are all in Meet.
   const aiFirst = ai && command;
-  const agentsTo = ai && !aiFirst ? '/ai' : notes ? '/notetaker' : proposals ? '/project-agent' : ai ? '/ai/operations' : '/agent-tracker';
-  const agentsPath = (p: string) => p === '/ai' || p.startsWith('/ai/') || p === '/project-agent' || p.startsWith('/project-agent/') || p === '/agent-tracker' || p === '/notetaker';
+  const agentsTo = ai && !aiFirst ? '/ai' : proposals ? '/project-agent' : ai ? '/ai/operations' : '/agent-tracker';
+  const agentsPath = (p: string) => p === '/ai' || p.startsWith('/ai/') || p === '/project-agent' || p.startsWith('/project-agent/') || p === '/agent-tracker';
+  // Meet: every meeting and call in one place (scheduling, joining, replies, the notetaker and past meetings).
+  const meet = lv('projects') > 0 || lv('calendar') > 0 || canChat;
   return [
     { title: 'Home', items: [
       // Home is the Command Center (what needs me today); the charts dashboard stays one search away.
       { id: '/', to: '/', label: 'Dashboard', icon: 'dashboard', end: true, show: !command, hint: 'Your day at a glance' },
       { id: '/command-center', to: '/', label: 'Home', icon: 'radar', show: command, hint: 'What needs you today, your work, meetings and decisions',
         match: (p) => p === '/' || p === '/command-center' },
-      { id: 'agents', to: agentsTo, label: aiFirst ? 'Agents' : 'Assistant', icon: 'agent', show: ai || proposals || isAdmin || notes, match: agentsPath, hint: aiFirst ? 'Your notetaker, proposals, workflows and the tracker (ask on Home)' : 'Ask the assistant, your notetaker, proposals and workflows' },
+      { id: 'agents', to: agentsTo, label: aiFirst ? 'Agents' : 'Assistant', icon: 'agent', show: ai || proposals || isAdmin, match: agentsPath, hint: aiFirst ? 'Proposals, workflows and the tracker (ask on Home)' : 'Ask the assistant, proposals and workflows' },
       { to: '/calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0 },
+      { to: '/meet', label: 'Meet', icon: 'video', show: meet, hint: 'Meetings and calls: schedule, join, reply, the notetaker and past meetings',
+        match: (p) => p === '/meet' || p.startsWith('/meet/') || p.startsWith('/calls/') },
       { to: '/chat', label: 'Chat', icon: 'message', show: canChat },
       { to: '/mailbox', label: 'Mailbox', icon: 'mail', hint: 'Gmail, Outlook and Rediffmail in one inbox, with the mail agent' },
       { to: '/reminders', label: 'Reminders', icon: 'alarm' },
@@ -97,7 +102,7 @@ export function useMainNav(): NavGroup[] {
     { title: 'Go to', items: [
       { to: command ? '/command-center?tab=work' : '/my-work', id: 'my-work', label: 'My work', icon: 'inbox', show: kinds.length > 0, paletteOnly: true },
       { to: '/ai', label: AI_NAME, icon: 'agent', show: ai, paletteOnly: true },
-      { to: '/notetaker', label: 'Notetaker', icon: 'video', show: notes, paletteOnly: true, hint: 'Send an AI notetaker to your calls: notes, minutes and task updates' },
+      { to: '/meet/notetaker', label: 'Notetaker', icon: 'video', show: notes, paletteOnly: true, hint: 'Send an AI notetaker to your calls: notes, minutes and task updates' },
       { id: 'dashboard', to: '/dashboard', label: 'Dashboard', icon: 'dashboard', show: command, paletteOnly: true, hint: 'Charts of your projects and work' },
       { to: '/project-agent', label: 'Agent proposals', icon: 'sparkle', show: proposals, paletteOnly: true },
       { to: '/ai/operations', label: 'Agent workflows', icon: 'workflow', show: ai, paletteOnly: true },

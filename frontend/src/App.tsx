@@ -24,6 +24,12 @@ import { registerPage } from './lib/prefetchPages';
  * Pages are loaded when they are first opened rather than all up front, so the first visit downloads a fraction of the app. Each page
  * module exports its page by name; `page` picks that export for React.lazy.
  */
+/** An old address that moved: keeps its query (?session=…, ?project=…). */
+function MovedTo({ to }: { to: string }) {
+  const loc = useLocation();
+  return <Navigate to={`${to}${loc.search}`} replace />;
+}
+
 function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>>>, name: K) {
   // Sign-in pages are not wanted by someone already in; everything else is fetched ahead while idle.
   if (load !== loadAuthPages) registerPage(load);
@@ -64,7 +70,7 @@ const LegalPage = page(() => import('./features/legal/LegalPage'), 'LegalPage');
 const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'TimesheetPage');
 const VaultPage = page(() => import('./features/vault/VaultPage'), 'VaultPage');
 const UserMailboxPage = page(() => import('./features/mailbox/MailboxPage'), 'MailboxPage');
-const NotetakerPage = page(() => import('./features/notetaker/NotetakerPage'), 'NotetakerPage');
+const MeetPage = page(() => import('./features/meet/MeetPage'), 'MeetPage');
 const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
 const MyWorkPage = page(() => import('./features/workitems/MyWorkPage'), 'MyWorkPage');
 const RemindersPage = page(() => import('./features/reminders/RemindersPage'), 'RemindersPage');
@@ -370,7 +376,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="project-agent" element={<Guard allow={mProjects && !personal}><AgentPage section="review" /></Guard>} />
         <Route path="project-agent/assigned" element={<Guard allow={mProjects && !personal}><AgentPage section="assigned" /></Guard>} />
         <Route path="project-agent/my-inbox" element={<Guard allow={mProjects && !personal && !isGuest}><AgentPage section="my-inbox" /></Guard>} />
-        <Route path="project-agent/meeting-bot" element={<Guard allow={mProjects && !personal}><AgentPage section="meeting-bot" /></Guard>} />
+        <Route path="project-agent/meeting-bot" element={<MovedTo to="/meet/notetaker" />} />
         <Route path="ai" element={<AiPage />} />
         <Route path="ai/operations" element={<AgentWorkflowsPage />} />
         <Route path="ai/:id" element={<AiPage />} />
@@ -382,7 +388,12 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="calendar" element={<Guard allow={mCalendar}><CalendarPage /></Guard>} />
         <Route path="chat" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
         <Route path="mailbox" element={<UserMailboxPage />} />
-        <Route path="notetaker" element={<Guard allow={mProjects && !isGuest}><NotetakerPage /></Guard>} />
+        {/* Meet: every meeting and call in one place. The notetaker's old address keeps working. */}
+        <Route path="meet" element={<MeetPage section="upcoming" />} />
+        <Route path="meet/series" element={<MeetPage section="series" />} />
+        <Route path="meet/past" element={<MeetPage section="past" />} />
+        <Route path="meet/notetaker" element={<Guard allow={mProjects && !isGuest}><MeetPage section="notetaker" /></Guard>} />
+        <Route path="notetaker" element={<MovedTo to="/meet/notetaker" />} />
         <Route path="chat/:id" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
         {/* Delivery */}
         <Route path="projects" element={<Guard allow={mProjects}><ProjectsPage /></Guard>} />

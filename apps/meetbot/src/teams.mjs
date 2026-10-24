@@ -10,6 +10,7 @@ export const SEL = {
   join: /^(join now|join meeting|join)$/i,
   dismiss: /^(got it|dismiss|close|ok|continue without audio or video|not now|maybe later)$/i,
   micOff: /^(mute|turn off microphone|microphone off)$/i,
+  micOn: /^(unmute|turn on microphone|microphone on)$/i,
   camOff: /^(turn camera off|turn off camera|camera off)$/i,
   // "Leave (Ctrl+Shift+H)" in the call; the end-of-call page has no such button.
   leave: /^(leave|hang up)\b/i,
@@ -212,6 +213,17 @@ export async function isOver(page, text) {
 }
 
 export const isAlone = (text) => TEXT.alone.test(text);
+
+/** Microphone on, to speak (the bot stays muted otherwise). True when it is on. */
+export async function unmute(page) {
+  if (await clickButton(page, SEL.micOn)) { await page.waitForTimeout(300); return true; }
+  const off = page.getByRole('button', { name: SEL.micOff }).first();
+  return (await off.count()) > 0 && await off.isVisible().catch(() => false);
+}
+
+export async function mute(page) {
+  await clickButton(page, SEL.micOff);
+}
 
 export async function leave(page) {
   await clickButton(page, SEL.leave);

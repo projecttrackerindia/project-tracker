@@ -134,6 +134,7 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     {
         var r = await EditableAsync(id, ct);
         if (Automatic.Contains(r.Source)) throw new ConflictException("Automatic reminders follow the work's due date. Snooze or dismiss them instead.", "REMINDER_AUTOMATIC");
+        if (r.Source == ReminderSource.Meeting) throw new ConflictException("Meeting reminders follow the meeting. Snooze or dismiss them instead.", "REMINDER_AUTOMATIC");
         var target = r.TargetType != ReminderTarget.None && r.TargetId is { } t ? await ResolveTargetAsync(r.TargetType, t, ct) : null;
         r.Title = Clean(req.Title, 200) ?? r.Title;
         r.Note = Clean(req.Note, 1000);
@@ -557,7 +558,7 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var from = r.CreatedBy is { } c && c != r.UserId ? new UserRefDto(c, names.GetValueOrDefault(c, "")) : null;
         var forUser = r.UserId != uid ? new UserRefDto(r.UserId, names.GetValueOrDefault(r.UserId, "")) : null;
         var text = RecurrenceRule.Parse(r.Recurrence) is { } rule && ZoneTime.TryParseLocal(r.LocalAt, out var first) ? rule.Describe(DateOnly.FromDateTime(first)) : null;
-        var canEdit = !Automatic.Contains(r.Source) && r.State is ReminderState.Scheduled or ReminderState.Fired && (r.UserId == uid || r.CreatedBy == uid && r.State == ReminderState.Scheduled);
+        var canEdit = !Automatic.Contains(r.Source) && r.Source != ReminderSource.Meeting && r.State is ReminderState.Scheduled or ReminderState.Fired && (r.UserId == uid || r.CreatedBy == uid && r.State == ReminderState.Scheduled);
         return new ReminderDto(r.Id, r.Source, r.State, r.Title, r.Note, r.TargetType, r.TargetId, r.TargetKey, r.TargetTitle, r.Link,
             r.TimeZone, r.LocalAt, r.AnchorDays, r.AnchorTime?.ToString("HH:mm"), r.Recurrence, text, r.OnlyIfOpen, r.Exact, r.NextFireAt, r.IsSnoozed,
             r.SnoozeCount, r.FireCount, r.LastFiredAt, r.Quiet, r.CompletedAt, r.SeriesId, from, forUser, canEdit, r.CreatedAt);
@@ -599,6 +600,18 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                                select new { x.Id, x.Name, x.ProjectId, p.Key, x.DueDate, x.OwnerId, x.Status }).FirstOrDefaultAsync(ct);
                 return m is null ? null : new(type, m.Id, $"{m.Key} milestone", m.Name, m.ProjectId, $"/projects/{m.ProjectId}?tab=plan", m.DueDate, m.OwnerId,
                     m.Status != StageStatus.Completed);
+            case ReminderTarget.Meeting:
+                {
+                    var me = ctx.RequireUserId();
+                    var pm = await (from x in db.ProjectMeetings.AsNoTracking()
+                                    join p in access.VisibleProjects().AsNoTracking() on x.ProjectId equals p.Id
+                                    where x.Id == id
+                                    select new { x.Id, x.Title, x.ProjectId, p.Key, x.Status, x.Provider }).FirstOrDefaultAsync(ct);
+                    if (pm is not null)
+                        return new(type, pm.Id, $"{pm.Key} meeting", pm.Title, pm.ProjectId, ProjectManagement.Application.Features.ProjectMeetings.MeetingReminders.MeetLink(pm.Id, false), null, null, pm.Status == MeetingStatus.Scheduled);
+                    var wm = await db.WorkspaceMeetings.AsNoTracking().Where(x => x.Id == id && x.Attendees.Any(a => a.UserId == me)).Select(x => new { x.Id, x.Title, x.Status }).FirstOrDefaultAsync(ct);
+                    return wm is null ? null : new(type, wm.Id, "Meeting", wm.Title, null, ProjectManagement.Application.Features.ProjectMeetings.MeetingReminders.MeetLink(wm.Id, true), null, null, wm.Status == MeetingStatus.Scheduled);
+                }
             case ReminderTarget.ChatMessage:
                 var uid = ctx.RequireUserId();
                 var c = await db.ChatMessages.AsNoTracking().Where(x => x.Id == id && x.DeletedAt == null)

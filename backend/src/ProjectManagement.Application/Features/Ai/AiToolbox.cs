@@ -269,17 +269,18 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                  "participants":{"type":"array","items":{"type":"string"},"description":"Names to notify. Default: every project member."},
                  "with_agent":{"type":"boolean","description":"Bring the project agent to take notes (default true when the person asks for notes, minutes or the agent)."}},"required":["project"]}
                 """),
-            new(StartMeeting, "Propose starting a meeting right now on a project (it goes to the organizer's Google Meet, Teams or a Project Tracker call, by their connected accounts) (an hour long by default). Every project member is invited unless specific people are named. The person confirms first, and needs their own Google account connected (Settings > Google Workspace) - if they have not connected it, say so rather than guessing why it failed.",
+            new(StartMeeting, "Propose starting a meeting right now on a project (it goes to the organizer's Google Meet, Teams or a Project Tracker call, by their connected accounts) (an hour long by default). Every project member is invited unless specific people are named. The person confirms first, and with no Google or Outlook calendar connected it is a Project Tracker call (My account > Connected accounts).",
                 """
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string","description":"Default: \"<project name> Discussion\"."},
                  "participants":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: every project member."}},"required":["project"]}
                 """),
-            new(ScheduleMeeting, "Propose scheduling a meeting or scrum call on a project (Google Meet, Teams or a Project Tracker call, by the organizer's connected accounts) for a specific time. For repeats, supply repeat_frequency and an explicitly requested total session count; ask when either is missing. The person confirms first, and needs their own Google account connected (Settings > Google Workspace).",
+            new(ScheduleMeeting, "Propose scheduling a meeting or scrum call on a project (Google Meet, Teams or a Project Tracker call, by the organizer's connected accounts) for a specific time. For repeats, supply repeat_frequency and an explicitly requested total session count; ask when either is missing. Set notetaker only when the person asks for one (or says none). The person confirms first.",
                 """
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string"},"agenda":{"type":"string","description":"Optional description/agenda."},
                  "at":{"type":"string","description":"Local date and time, yyyy-mm-ddTHH:mm"},"duration_minutes":{"type":"integer","description":"Default 30."},
                  "repeat_frequency":{"type":"string","enum":["Daily","Weekdays","Weekly"],"description":"Only when repetition is requested. Ask for the session count if missing."},"occurrences":{"type":"integer","minimum":2,"maximum":120,"description":"Total sessions including the first. Required when repeating."},
-                 "participants":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: every project member."}},"required":["project","title","at"]}
+                 "participants":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: every project member."},
+                 "notetaker":{"type":"string","enum":["off","transcript","voice"],"description":"Only when asked: off, transcript (listens and writes the minutes), or voice (also speaks up when something is missed)."}},"required":["project","title","at"]}
                 """),
         ]);
         tools.AddRange(home.Definitions(true).Where(t => AiHomeTools.WriteTools.Contains(t.Name)));
@@ -1220,9 +1221,18 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             repeat = new(frequency, total);
             ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.Rule(repeat, new DateTimeOffset(startUtc, TimeSpan.Zero), zone);
         }
-        var payload = new { repeat, projectId = project.Id, title, description = Str(a, "agenda"), startTime = new DateTimeOffset(startUtc, TimeSpan.Zero), endTime = new DateTimeOffset(startUtc.AddMinutes(minutes), TimeSpan.Zero), timeZone = zone, participantUserIds = participantIds };
+        var notetaker = Str(a, "notetaker") is { } nt ? ProjectManagement.Application.Features.ProjectMeetings.MeetNotetaker.Parse(nt) : ProjectManagement.Domain.Enums.MeetingNotetaker.ProjectDefault;
+        var payload = new { repeat, projectId = project.Id, title, description = Str(a, "agenda"), startTime = new DateTimeOffset(startUtc, TimeSpan.Zero), endTime = new DateTimeOffset(startUtc.AddMinutes(minutes), TimeSpan.Zero), timeZone = zone, participantUserIds = participantIds,
+            notetaker = ProjectManagement.Application.Features.ProjectMeetings.MeetNotetaker.Wanted(notetaker) || notetaker == ProjectManagement.Domain.Enums.MeetingNotetaker.Off ? ProjectManagement.Application.Features.ProjectMeetings.MeetNotetaker.Key(notetaker) : null };
         var summary = $"In {project.Label} — {local:ddd d MMM yyyy, HH:mm} ({zone}), {minutes} minutes{(participantIds is null ? ", every project member invited" : $", {participantIds.Count} invited")}";
-        if (repeat is not null) summary += $"; {repeat.Frequency}, {repeat.Occurrences} sessions including the first; Google Calendar invitations will be sent";
+        summary += notetaker switch
+        {
+            ProjectManagement.Domain.Enums.MeetingNotetaker.Transcript => "; the notetaker writes the transcript and minutes",
+            ProjectManagement.Domain.Enums.MeetingNotetaker.TranscriptAndVoice => "; the notetaker writes the minutes and speaks up when something is missed",
+            ProjectManagement.Domain.Enums.MeetingNotetaker.Off => "; no notetaker",
+            _ => "",
+        };
+        if (repeat is not null) summary += $"; {repeat.Frequency}, {repeat.Occurrences} sessions including the first";
         return Propose("schedule_meeting", $"Schedule a meeting “{title}”", summary, payload, Str(a, "agenda"));
     }
 

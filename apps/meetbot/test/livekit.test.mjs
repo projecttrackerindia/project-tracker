@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -103,5 +103,40 @@ test('the agent joins one of our own calls with its pass, hears each person, wri
   assert.ok(events.some((e) => e.event === 'bot.status' && e.data.status === 'call_ended'));
   assert.ok(!events.some((e) => e.event === 'bot.status' && e.data.status === 'waiting_admission'));   // nobody had to let it in
   await new Promise((r) => api.close(r));
-  await rtc.dispose();
 });
+
+test('with voice on, the agent speaks into our own call on its own microphone track; without it, it never publishes one', { skip: !url, timeout: 60_000 }, async () => {
+  const rtc = await import('@livekit/rtc-node');
+  const api = createServer((req, res) => { req.resume(); req.on('end', () => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}'); }); });
+  await new Promise((r) => api.listen(0, '127.0.0.1', r));
+  const hook = `http://127.0.0.1:${api.address().port}/hook`;
+  const room = `voice-${Date.now()}`;
+  const human = new rtc.Room();
+  let loudest = 0; let agentTracks = 0;
+  human.on(rtc.RoomEvent.TrackSubscribed, (track, _pub, participant) => {
+    if (track.kind !== rtc.TrackKind.KIND_AUDIO || !participant.identity.startsWith('agent:')) return;
+    agentTracks++;
+    const reader = new rtc.AudioStream(track, { sampleRate: RATE, numChannels: 1 }).getReader();
+    void (async () => { for (;;) { const { value, done } = await reader.read(); if (done) break; for (const v of value.data) loudest = Math.max(loudest, Math.abs(v)); } })().catch(() => undefined);
+  });
+  await human.connect(url, pass('user:asha', 'Asha', room), { autoSubscribe: true, dynacast: false });
+  const until = async (check, ms = 15_000) => { const end = Date.now() + ms; while (!check() && Date.now() < end) await new Promise((r) => setTimeout(r, 100)); return check(); };
+  const make = (identity, voice) => new LiveKitBot({ liveKitUrl: url, liveKitToken: pass(identity, 'Tracker Agent', room), botName: 'Tracker Agent', webhookUrl: hook, voice },
+    { log: () => undefined, aloneMs: 60_000, env: { MEETBOT_WHISPER_MODEL: 'off' }, rtc });
+  const quiet = make('agent:quiet', false);
+  const loud = make('agent:voice', true);
+  assert.ok(await until(() => quiet.status === 'in_call_recording' && loud.status === 'in_call_recording'));
+  // A 1 s tone at the speech service's own rate (22.05 kHz), as base64 WAV.
+  const n = 22050; const pcm = new Int16Array(n);
+  for (let i = 0; i < n; i++) pcm[i] = Math.round(0.5 * 32767 * Math.sin((2 * Math.PI * 440 * i) / 22050));
+  const audio = wav(pcm, 22050).toString('base64');
+  assert.equal(quiet.say([{ text: 'Should not be heard.', audio }]), false);
+  assert.equal(loud.say([{ text: 'Nobody owns the refund flow yet.', audio }]), true);
+  assert.ok(await until(() => loud.spoken === 1 && loudest > 3000), `heard ${loudest}`);
+  assert.equal(agentTracks, 1, 'only the voice notetaker published a microphone');
+  quiet.stop(); loud.stop();
+  await human.disconnect();
+  await new Promise((r) => api.close(r));
+});
+
+after(async () => { if (url) await (await import('@livekit/rtc-node')).dispose(); });

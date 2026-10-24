@@ -83,7 +83,7 @@ public class ConnectedAccountsTests(ApiFactory factory)
             Assert.Equal("teamsForBusiness", S(ev["onlineMeetingProvider"]));
             Assert.Equal("India Standard Time", S(ev["start"]!["timeZone"]));   // a Windows zone name, which Outlook understands everywhere
             Assert.Contains(ev["attendees"]!.AsArray(), a => S(a!["emailAddress"]!["address"]) == mate.Email);
-            Assert.Contains(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == mate.UserId).Select(n => n.Title).ToList()), t => t.Contains("scheduled a Microsoft Teams meeting"));
+            Assert.Contains(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == mate.UserId).Select(n => n.Title).ToList()), t => t.Contains("invited you to a Microsoft Teams meeting"));
 
             // Ravi accepts in Outlook: the meeting shows it.
             factory.MicrosoftProductivity.Responses[mate.Email] = "accepted";
@@ -128,7 +128,7 @@ public class ConnectedAccountsTests(ApiFactory factory)
         Assert.Equal("Project Tracker call", S(made.Data["providerName"]));
         var meetingId = S(made.Data["id"]);
         Assert.Equal($"/calls/meeting/{meetingId}", S(made.Data["meetUri"]));
-        Assert.Contains(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == mate.UserId).Select(n => n.Title).ToList()), t => t.Contains("scheduled a Project Tracker call"));
+        Assert.Contains(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == mate.UserId).Select(n => n.Title).ToList()), t => t.Contains("invited you to a Project Tracker call"));
 
         // Whoever opens it first starts it; the next person joins the same call.
         var first = await owner.Post($"/api/v1/calls/meeting/{meetingId}");

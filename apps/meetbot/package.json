@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node src/server.mjs",
-    "test": "node --test test/bot.test.mjs test/worker.test.mjs test/audio.test.mjs test/explain.test.mjs test/livekit.test.mjs"
+    "test": "node --test test/bot.test.mjs test/worker.test.mjs test/audio.test.mjs test/explain.test.mjs test/livekit.test.mjs test/voice.test.mjs"
   },
   "dependencies": {
     "@livekit/rtc-node": "1.1.0",

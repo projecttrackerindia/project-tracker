@@ -4,6 +4,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { align, transcribe } from './audio.mjs';
+import { parseWav, sayItems } from './voice.mjs';
 
 /**
  * The project agent in one of our own calls (a room on our LiveKit media server). Unlike Google Meet or Teams there is no browser and no
@@ -74,7 +75,7 @@ export function wav(pcm, rate = RATE) {
 const isAgent = (p) => (p?.identity ?? '').startsWith('agent:');
 
 export class LiveKitBot {
-  constructor({ liveKitUrl, liveKitToken, botName, joinAt, leaveAt, webhookUrl, introMessage, agendaMessage, raiseMessage, readChat }, deps) {
+  constructor({ liveKitUrl, liveKitToken, botName, joinAt, leaveAt, webhookUrl, introMessage, agendaMessage, raiseMessage, readChat, voice }, deps) {
     this.id = randomUUID();
     this.kind = 'livekit';
     this.liveKitUrl = liveKitUrl;
@@ -92,6 +93,10 @@ export class LiveKitBot {
     this.error = null;
     this.lines = 0;
     this.chatQueue = [];
+    this.voice = Boolean(voice);
+    this.sayQueue = [];
+    this.spoken = 0;
+    this.voiceSource = null;
     this.stopping = false;
     this.webhookChain = Promise.resolve();
     this.speechChain = Promise.resolve();
@@ -132,6 +137,7 @@ export class LiveKitBot {
     if (this.stopping) return;
     this.setStatus('joining');
     const rtc = this.deps.rtc ?? await import('@livekit/rtc-node');
+    this.rtc = rtc;
     const room = new rtc.Room();
     this.room = room;
     try {
@@ -179,6 +185,7 @@ export class LiveKitBot {
         const message = this.chatQueue.shift();
         try { await this.room.localParticipant.sendText(message, { topic: CHAT_TOPIC }); } catch (e) { this.log(`chat: ${e.message}`); }
       }
+      while (this.sayQueue.length && !this.stopping && !this.disconnected) await this.speak(this.sayQueue.shift());
       const people = [...this.room.remoteParticipants.values()].filter((p) => !isAgent(p)).length;
       if (people === 0) { aloneSince ||= Date.now(); if (Date.now() - aloneSince > aloneMs) { this.log('alone in the call'); return; } }
       else aloneSince = 0;
@@ -289,6 +296,43 @@ export class LiveKitBot {
     if (['call_ended', 'done', 'fatal'].includes(this.status) || this.stopping) return false;
     this.chatQueue.push(String(message).slice(0, 500));
     return true;
+  }
+
+  /** Lines to say out loud (only when the meeting asked for voice). */
+  say(list) {
+    if (!this.voice || ['call_ended', 'done', 'fatal'].includes(this.status) || this.stopping) return false;
+    this.sayQueue.push(...sayItems(list));
+    this.sayQueue.splice(0, Math.max(0, this.sayQueue.length - 4));
+    return true;
+  }
+
+  /**
+   * Says one line: the voice goes out on the agent's own microphone track (published the first time it speaks, so a quiet notetaker never
+   * shows a microphone at all). Everyone hears it like any other person in the call.
+   */
+  async speak(item) {
+    const voice = parseWav(Buffer.from(item.audio, 'base64'));
+    if (!voice || voice.pcm.length === 0) { this.log('voice: not a WAV file'); return; }
+    const rtc = this.rtc;
+    try {
+      if (!this.voiceSource || this.voiceSource.sampleRate !== voice.rate) {
+        if (this.voiceTrackSid) await this.room.localParticipant.unpublishTrack(this.voiceTrackSid).catch(() => undefined);
+        this.voiceSource = new rtc.AudioSource(voice.rate, 1);
+        const track = rtc.LocalAudioTrack.createAudioTrack('agent-voice', this.voiceSource);
+        const options = new rtc.TrackPublishOptions(); options.source = rtc.TrackSource.SOURCE_MICROPHONE;
+        const pub = await this.room.localParticipant.publishTrack(track, options);
+        this.voiceTrackSid = pub?.sid;
+        await new Promise((r) => setTimeout(r, 300));   // let the others subscribe before the first word
+      }
+      const step = Math.max(1, Math.round(voice.rate / 100));   // 10 ms frames
+      for (let i = 0; i < voice.pcm.length && !this.stopping && !this.disconnected; i += step) {
+        const chunk = new Int16Array(step);
+        chunk.set(voice.pcm.subarray(i, i + step));
+        await this.voiceSource.captureFrame(new rtc.AudioFrame(chunk, voice.rate, 1, step));
+      }
+      await this.voiceSource.waitForPlayout?.();
+      this.spoken++;
+    } catch (e) { this.log(`voice: ${e.message}`); }
   }
 
   stop() {

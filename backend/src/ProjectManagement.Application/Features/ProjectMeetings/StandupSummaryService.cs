@@ -18,7 +18,7 @@ public record StandupCard(string Kind, Guid MeetingId, string Title, string Proj
     IReadOnlyList<StandupItem> Done, IReadOnlyList<StandupItem> Doing, IReadOnlyList<StandupItem> Overdue);
 
 /// <summary>
-/// After each session of a stand-up ("Schedule scrum call" from a project), posts a summary of the project's work to its chat, so the team
+/// After each session of a stand-up (a stand-up scheduled in Meet for a project), posts a summary of the project's work to its chat, so the team
 /// has the same picture written down. Runs with the Google Meet worker (every 15 minutes): a session that ended within the last few hours,
 /// and has no summary yet for that day, gets one. The organizer (or anyone who may edit projects) can also post it on demand.
 /// </summary>

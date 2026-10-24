@@ -2,9 +2,9 @@ import { del, get, post, put } from '../../api/client';
 import { deviceZone } from './time';
 import { deviceZone as realDeviceZone } from '../../lib/zone';
 
-export type ReminderSource = 'Personal' | 'Nudge' | 'DueDate' | 'Overdue' | 'Escalation';
+export type ReminderSource = 'Personal' | 'Nudge' | 'DueDate' | 'Overdue' | 'Escalation' | 'Meeting';
 export type ReminderState = 'Scheduled' | 'Fired' | 'Done' | 'Cancelled';
-export type ReminderTarget = 'None' | 'Task' | 'Issue' | 'ActionItem' | 'Operational' | 'Milestone' | 'ChatMessage';
+export type ReminderTarget = 'None' | 'Task' | 'Issue' | 'ActionItem' | 'Operational' | 'Milestone' | 'ChatMessage' | 'Meeting';
 interface UserRef { id: string; name: string }
 
 export interface Reminder {

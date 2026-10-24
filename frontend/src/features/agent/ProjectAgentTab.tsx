@@ -39,7 +39,6 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
   const [busy, setBusy] = useState<string | null>(null);
   const [transcript, setTranscript] = useState(false);
   const [tuning, setTuning] = useState(false);
-  const [joining, setJoining] = useState(false);
   const refresh = () => { void invalidateWorkspace(wid, 'agent'); };
 
   // A failed background refresh keeps what is on screen (and any open dialog); only a first load that fails shows the error.
@@ -147,7 +146,7 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
           <div className="ag-actions">
             {manage && <button type="button" className="btn btn-primary btn-sm" onClick={() => setTranscript(true)}><Icon name="note" size={14} />Add transcript</button>}
             {manage && <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => void run()}>{busy === 'run' ? <span className="spinner" /> : <Icon name="refresh" size={14} />}Read new now</button>}
-            {manage && a.liveBotAvailable && a.readMeetings && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setJoining(true)}><Icon name="video" size={14} />Send to a call</button>}
+            {a.liveBotAvailable && a.readMeetings && <Link className="btn btn-ghost btn-sm" to={`/meet/notetaker?project=${projectId}`}><Icon name="video" size={14} />Send to a call</Link>}
           </div>
           <p className="ag-meta">{a.lastRunAt ? `Last read ${timeAgo(a.lastRunAt)}` : 'Has not read anything yet'} · {a.runsThisMonth}/{a.monthlyRunLimit} readings this month
             {a.actingUserName && <> · acts as {a.actingUserName}</>}</p>
@@ -223,7 +222,6 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
       </aside>
 
       {tuning && <TuneModal a={a} onClose={() => setTuning(false)} onSave={async (patch) => { await agentApi.save(projectId, { enabled: a.enabled, ...patch }); refresh(); setTuning(false); toast('Saved. The next reading uses it.'); }} />}
-      {joining && <JoinCallModal projectId={projectId} onClose={() => setJoining(false)} onDone={() => { setJoining(false); refresh(); }} />}
       {transcript && <TranscriptModal projectId={projectId} onClose={() => setTranscript(false)} onDone={() => { setTranscript(false); setView('proposed'); refresh(); }} />}
     </div>
   );
@@ -450,40 +448,3 @@ function TrustPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
   );
 }
 
-/** Sends the meeting bot to a Google Meet or Microsoft Teams call now, by its link. */
-function JoinCallModal({ projectId, onClose, onDone }: { projectId: string; onClose: () => void; onDone: () => void }) {
-  const [url, setUrl] = useState('');
-  const [title, setTitle] = useState('');
-  const [minutes, setMinutes] = useState(60);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const platform = /teams\.(microsoft|live)\.com|teams\.cloud\.microsoft/i.test(url) ? 'Microsoft Teams' : /meet\.google\.com/i.test(url) ? 'Google Meet' : null;
-  const submit = async () => {
-    if (!platform) { setError('Paste a Google Meet or Microsoft Teams meeting link.'); return; }
-    setBusy(true); setError(null);
-    try {
-      const r = await agentApi.joinLink(projectId, { url: url.trim(), title: title.trim() || undefined, minutes });
-      toast(`The agent is joining the ${r.platform} call - let it in from the lobby.`);
-      onDone();
-    } catch (e) { setError(errText(e, 'Could not send the agent.')); }
-    finally { setBusy(false); }
-  };
-  return (
-    <Modal title="Send the agent to a call" subtitle="Any Google Meet or Microsoft Teams meeting - a customer's call, an ad-hoc sync. It takes notes like in your stand-ups." onClose={onClose}
-      footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void submit()}>{busy && <span className="spinner" />}<Icon name="video" size={14} />Send it now</button></>}>
-      {error && <div className="form-error" role="alert">{error}</div>}
-      <div className="form-grid">
-        <Field label="Meeting link" full hint={platform ? `${platform} - someone in the call lets the agent in from the lobby.` : 'meet.google.com/… or teams.microsoft.com/l/meetup-join/…'}>
-          <input className="input" aria-label="Meeting link" inputMode="url" value={url} placeholder="https://teams.microsoft.com/l/meetup-join/…" onChange={(e) => setUrl(e.target.value)} />
-        </Field>
-        <Field label="Name (optional)"><input className="input" aria-label="Name" value={title} maxLength={200} placeholder="Customer sync" onChange={(e) => setTitle(e.target.value)} /></Field>
-        <Field label="Stays at most">
-          <select className="input" aria-label="Stays at most" value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
-            {[30, 60, 90, 120, 180, 240].map((m) => <option key={m} value={m}>{m < 60 ? `${m} minutes` : `${m / 60} hour${m === 60 ? '' : 's'}`}</option>)}
-          </select>
-        </Field>
-      </div>
-      <p className="ag-hint"><Icon name="info" size={12} />It leaves when the call ends. The organizer may need to allow guests (Teams: anonymous users can join).</p>
-    </Modal>
-  );
-}

@@ -43,7 +43,12 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     public static string Identity(Guid userId) => $"user:{userId:N}";
     public static string AgentIdentity(Guid sessionId) => $"agent:{sessionId:N}";
 
-    public async Task<CallDto> StartAsync(StartCallRequest req, CancellationToken ct = default)
+    public Task<CallDto> StartAsync(StartCallRequest req, CancellationToken ct = default) => StartCoreAsync(req, null, ct);
+
+    /// <summary>The meeting session a call is held for, so the notetaker files its notes under that meeting, in the mode the meeting chose.</summary>
+    private sealed record MeetingSession(Guid MeetingId, DateTime Start, string? Mode);
+
+    private async Task<CallDto> StartCoreAsync(StartCallRequest req, MeetingSession? session, CancellationToken ct)
     {
         RequireConfigured();
         var me = ctx.RequireUserId(); var tenant = ctx.RequireTenantId();
@@ -64,7 +69,14 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         {
             if (!await db.ConversationMembers.AnyAsync(m => m.ConversationId == cid && m.UserId == me, ct)) throw new NotFoundException("Conversation not found.");
             conversationId = cid; kind = "chat";
-            title ??= await db.Conversations.AsNoTracking().Where(c => c.Id == cid).Select(c => c.Name).FirstOrDefaultAsync(ct) is { Length: > 0 } n ? $"{n} call" : "Chat call";
+            var conversation = await db.Conversations.AsNoTracking().Where(c => c.Id == cid).Select(c => new { c.Type, c.Name }).FirstAsync(ct);
+            if (conversation.Type == ConversationType.Direct)
+            {
+                // One-to-one: the call is named after the two people in it.
+                var names = await db.ConversationMembers.AsNoTracking().Where(m => m.ConversationId == cid).Select(m => m.User!.DisplayName).Take(2).ToListAsync(ct);
+                title ??= names.Count == 2 ? $"{names[0]} and {names[1]}" : "Call";
+            }
+            else title ??= conversation.Name is { Length: > 0 } n ? $"{n} call" : "Group call";
         }
         title ??= "Call";
         if (title.Length > 200) title = title[..200];
@@ -99,8 +111,8 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             if (projectId is not { } agentProject) throw new ValidationException("agent", "The project agent can join calls in a project. Start the call from the project.");
             try
             {
-                var session = await agentMeetings.JoinCallAsync(agentProject, call.Id, room, title, now.AddHours(MaxLiveHours), ct);
-                call.AgentEnabled = true; call.AgentSessionId = session.Id;
+                var bot = await agentMeetings.JoinCallAsync(agentProject, call.Id, room, title, now.AddHours(MaxLiveHours), ct, session?.MeetingId, session?.Start, session?.Mode);
+                call.AgentEnabled = true; call.AgentSessionId = bot.Id;
                 await db.SaveChangesAsync(ct);
             }
             catch (AppException ex)
@@ -121,11 +133,11 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     {
         RequireConfigured();
         var me = ctx.RequireUserId();
-        string title; List<Guid> invite; Guid? projectId = null; bool agent = false;
+        string title; List<Guid> invite; Guid? projectId = null; bool agent = false; MeetingSession? session = null;
         if (workspaceMeeting)
         {
             var m = await db.WorkspaceMeetings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == meetingId, ct) ?? throw new NotFoundException("Meeting not found.");
-            var people = await db.WorkspaceMeetingAttendees.AsNoTracking().Where(a => a.MeetingId == meetingId).Select(a => a.UserId).ToListAsync(ct);
+            var people = await db.WorkspaceMeetingAttendees.AsNoTracking().Where(a => a.MeetingId == meetingId && a.RsvpStatus != AttendeeRsvpStatus.Declined).Select(a => a.UserId).ToListAsync(ct);
             if (!people.Contains(me) && ctx.Role is not (TenantRole.Owner or TenantRole.Admin)) throw new NotFoundException("Meeting not found.");
             if (m.Status == MeetingStatus.Cancelled) throw new ConflictException("This meeting was cancelled.", "MEETING_CANCELLED");
             if (m.Provider != MeetingProvider.ProjectTracker) throw new ConflictException("This meeting is held in another service. Use its own join link.", "MEETING_NOT_OURS");
@@ -139,12 +151,23 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             if (m.Status == MeetingStatus.Cancelled) throw new ConflictException("This meeting was cancelled.", "MEETING_CANCELLED");
             if (m.Provider != MeetingProvider.ProjectTracker) throw new ConflictException("This meeting is held in another service. Use its own join link.", "MEETING_NOT_OURS");
             title = m.Title; projectId = m.ProjectId;
-            invite = m.Participants.Where(p => p.UserId != null).Select(p => p.UserId!.Value).ToList();
-            agent = await db.ProjectAgentSettings.AsNoTracking().AnyAsync(x => x.ProjectId == m.ProjectId && x.Enabled && x.ReadMeetings, ct);
+            invite = m.Participants.Where(p => p.UserId != null && p.RsvpStatus != AttendeeRsvpStatus.Declined).Select(p => p.UserId!.Value).ToList();
+            // The notetaker comes when the meeting asked for it (or, for a meeting that made no choice, when the project's agent reads meetings);
+            // "no notetaker" keeps it out.
+            agent = m.Notetaker switch
+            {
+                MeetingNotetaker.Off => false,
+                MeetingNotetaker.Transcript or MeetingNotetaker.TranscriptAndVoice => true,
+                _ => await db.ProjectAgentSettings.AsNoTracking().AnyAsync(x => x.ProjectId == m.ProjectId && x.Enabled && x.ReadMeetings, ct),
+            };
+            var now = clock.Now;
+            var start = ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.Occurrences(m.RecurrenceRule, m.StartTimeUtc, m.TimeZone, now.AddHours(-12), now.AddHours(12))
+                .OrderBy(at => Math.Abs((at - now).TotalMinutes)).Cast<DateTime?>().FirstOrDefault() ?? now;
+            session = new MeetingSession(m.Id, start, ProjectManagement.Application.Features.ProjectMeetings.MeetNotetaker.BotMode(m.Notetaker));
         }
         var live = await LiveForMeetingAsync(meetingId, workspaceMeeting, ct);
         if (live is not null) return await GetAsync(live.Id, ct);
-        var started = await StartAsync(new StartCallRequest(title, null, workspaceMeeting ? null : meetingId, null, invite, agent, workspaceMeeting ? meetingId : null), ct);
+        var started = await StartCoreAsync(new StartCallRequest(title, null, workspaceMeeting ? null : meetingId, null, invite, agent, workspaceMeeting ? meetingId : null), session, ct);
         // Two people opening it at the same moment: everyone ends up in the earliest call, the other one is closed again.
         var first = await LiveForMeetingAsync(meetingId, workspaceMeeting, ct);
         if (first is not null && first.Id != started.Id)

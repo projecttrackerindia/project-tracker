@@ -138,15 +138,8 @@ try{
  await trust.getByRole('button',{name:'Yes, let it'}).click();await page.waitForTimeout(300);
  assert.ok(writes.at(-1).ep.endsWith('/autonomy/CreateActionItem/accept'));await trust.locator('.ag-earned').waitFor({state:'detached'});checks.push('earned-autonomy');
 
- // Send the bot to a Teams call by its link.
- await page.getByRole('button',{name:'Send to a call'}).click();
- const call=page.getByRole('dialog');await call.getByRole('heading',{name:'Send the agent to a call'}).waitFor();
- await call.getByLabel('Meeting link').fill('https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0');
- await call.getByText('Microsoft Teams - someone in the call lets the agent in').waitFor();
- await call.getByLabel('Name',{exact:true}).fill('Customer sync');
- await page.screenshot({path:path.join(out,'agent-join-call-1440.png'),animations:'disabled'});
- await call.getByRole('button',{name:'Send it now'}).click();await call.waitFor({state:'detached'});
- assert.deepEqual(writes.at(-1).b,{url:'https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0',title:'Customer sync',minutes:60});checks.push('join-teams-link');
+ // Sending the bot to any call by its link happens in one place: Meet › Notetaker (this opens it, filed under this project).
+ assert.equal(await page.getByRole('link',{name:'Send to a call'}).getAttribute('href'),`/preview-org/meet/notetaker?project=${pid}`);checks.push('join-link-in-meet');
 
  await page.getByRole('button',{name:'Add transcript'}).click();
  const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Add a transcript'}).waitFor();
@@ -206,7 +199,9 @@ try{
  await page.getByRole('link',{name:'My inbox'}).click();await page.getByRole('switch',{name:'Use Gmail'}).click();await page.waitForTimeout(300);
  assert.deepEqual(writes.at(-1).b,{provider:'google',enabled:true});
  await page.screenshot({path:path.join(out,'agent-page-inbox.png'),animations:'disabled'});checks.push('inbox-opt-in');
- await page.getByRole('link',{name:'Meeting bot'}).click();await page.getByText(/Ready ·/).waitFor();
+ // The bot's name and default reminders: Meet › Notetaker (the old address still leads there).
+ assert.equal(await page.getByRole('link',{name:'Meeting bot'}).count(),0,'No meeting bot tab on the agent page');
+ await page.goto(origin+'/preview-org/project-agent/meeting-bot');await page.waitForURL(/\/meet\/notetaker$/);await page.getByText(/Ready ·/).waitFor();
  await page.getByLabel('Bot name').fill('Tracker Bot');
  await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForTimeout(300);
  assert.deepEqual(writes.at(-1).b,{botName:'Tracker Bot'});

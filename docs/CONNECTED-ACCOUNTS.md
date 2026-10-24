@@ -25,7 +25,7 @@ Mailbox's "Stop mail" turns off only mail and inbox; Calendar, Meet and Teams ke
 
 ## Where meetings go
 
-A meeting (Start meeting, Schedule meeting, Schedule scrum call, the assistant) is created in one service and remembers it:
+A meeting (from Meet's Start now and Schedule, or from the assistant) is created in one service and remembers it ([MEET.md](MEET.md)):
 
 1. The service chosen on the meeting form, if any.
 2. Otherwise the person's choice in Connected accounts (Automatic, Google Meet, Microsoft Teams, Project Tracker call).

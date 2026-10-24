@@ -77,7 +77,7 @@ export function createServer(env = process.env) {
         const bot = new MeetBot({ meetingUrl: b.meetingUrl, botName: String(b.botName || 'Project Tracker Agent').slice(0, 60), joinAt: b.joinAt, leaveAt: b.leaveAt,
           webhookUrl: b.webhookUrl, introMessage: b.introMessage ? String(b.introMessage).slice(0, 500) : null,
           agendaMessage: b.agendaMessage ? String(b.agendaMessage).slice(0, 500) : null,
-          captionLanguage: typeof b.captionLanguage === 'string' && /^[\p{L} ()-]{2,40}$/u.test(b.captionLanguage) ? b.captionLanguage : null }, deps);
+          captionLanguage: typeof b.captionLanguage === 'string' && /^[\p{L} ()-]{2,40}$/u.test(b.captionLanguage) ? b.captionLanguage : null, voice: b.voice === true }, deps);
         bots.set(bot.id, bot);
         log(`bot ${bot.id.slice(0, 8)} scheduled for ${bot.joinAt.toISOString()}`);
         return send(res, 201, bot.summary);
@@ -89,6 +89,10 @@ export function createServer(env = process.env) {
         const b = await readJson(req);
         if (!b.message || typeof b.message !== 'string') return send(res, 422, { error: 'message is required' });
         return bot.chat(b.message) ? send(res, 202, { queued: true }) : send(res, 409, { error: `The bot is ${bot.status}, not in the call.` });
+      }
+      if (bot && req.method === 'POST' && parts[2] === 'say') {
+        const b = await readJson(req);
+        return bot.say([{ text: b.text, audio: b.audio }]) ? send(res, 202, { queued: true }) : send(res, 409, { error: `The bot is ${bot.status}, or was not asked to speak.` });
       }
       if (bot && req.method === 'DELETE' && parts.length === 2) { bot.stop(); return send(res, 202, bot.summary); }
       return send(res, 404, { error: 'not found' });

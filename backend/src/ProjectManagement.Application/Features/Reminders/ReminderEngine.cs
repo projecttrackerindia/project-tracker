@@ -86,6 +86,14 @@ public static class TargetStates
                         foreach (var c in await db.ChatMessages.IgnoreQueryFilters().AsNoTracking().Where(x => ids.Contains(x.Id) && x.DeletedAt == null).Select(x => x.Id).ToListAsync(ct))
                             result[(group.Key, c)] = new(true, null, null, null);
                         break;
+                    case ReminderTarget.Meeting:
+                        // A meeting stays "open" while it is scheduled; cancelled, its reminders end with it.
+                        foreach (var m in await db.ProjectMeetings.IgnoreQueryFilters().AsNoTracking().Where(x => ids.Contains(x.Id) && db.Projects.IgnoreQueryFilters().Any(p => p.Id == x.ProjectId && !p.IsDeleted))
+                            .Select(x => new { x.Id, x.Status, x.ProjectId }).ToListAsync(ct))
+                            result[(group.Key, m.Id)] = new(m.Status == MeetingStatus.Scheduled, null, m.ProjectId, null);
+                        foreach (var m in await db.WorkspaceMeetings.IgnoreQueryFilters().AsNoTracking().Where(x => ids.Contains(x.Id)).Select(x => new { x.Id, x.Status }).ToListAsync(ct))
+                            result[(group.Key, m.Id)] = new(m.Status == MeetingStatus.Scheduled, null, null, null);
+                        break;
                 }
             }
         return result;
@@ -361,7 +369,8 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
                 var n = new Notification
                 {
                     TenantId = r.TenantId, UserId = r.UserId, CreatedAt = now, Link = $"/r/{token}", DedupeKey = $"rem:{r.Id:N}:{r.FireCount}",
-                    Type = r.Source switch { ReminderSource.Personal => NotificationType.Reminder, ReminderSource.Nudge => NotificationType.Nudge, ReminderSource.DueDate => NotificationType.DueSoon, _ => NotificationType.Overdue },
+                    Type = r.Source switch { ReminderSource.Personal => NotificationType.Reminder, ReminderSource.Nudge => NotificationType.Nudge, ReminderSource.DueDate => NotificationType.DueSoon,
+                        ReminderSource.Meeting => NotificationType.Meeting, _ => NotificationType.Overdue },
                     Title = Text(from is null ? r.Title : $"{from} reminds you: {r.Title}", 200)!,
                     Body = Text(r.Note ?? (r.Source is ReminderSource.Personal or ReminderSource.Nudge && r.TargetKey is not null ? $"{r.TargetKey} · {r.TargetTitle}" : r.TargetTitle), 500),
                 };
@@ -720,6 +729,8 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
             if (watched.Count < Page) break;
             after = watched[^1].Id;
         }
+        // Meetings: one reminder per session for everyone invited who has not declined.
+        created += await ProjectManagement.Application.Features.ProjectMeetings.MeetingReminders.PlanAsync(db, now, ct);
         return created;
     }
 

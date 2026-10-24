@@ -62,37 +62,51 @@ try{
  });
  for(const width of [1440,390]){
   const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height:1000});
-  await page.goto(origin+'/preview-org/calendar');await page.getByRole('button',{name:'Scrum call',exact:true}).waitFor();
+  // Calendar shows meetings but makes none: the stand-up is scheduled in Meet, the one place for meetings.
+  await page.goto(origin+'/preview-org/calendar');await page.locator('.cal-filters').waitFor();
+  assert.equal(await page.getByRole('button',{name:'Scrum call',exact:true}).count(),0,'No scrum call button on the Calendar');
   assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0,'Header Ask Agent removed');
-  // Scrum call opens straight into the form with "No project" as the default: a workspace stand-up needs no project.
-  await page.getByRole('button',{name:'Scrum call',exact:true}).click();
-  let dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule scrum call'}).waitFor();
+  await page.goto(origin+'/preview-org/meet');await page.getByRole('button',{name:'Schedule',exact:true}).click();
+  let dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
+  await dialog.getByRole('button',{name:'Stand-up',exact:true}).click();await dialog.getByRole('heading',{name:'Schedule a stand-up'}).waitFor();
+  // A workspace stand-up needs no project: "No project" is the default, and the title follows the workspace.
   assert.equal(await dialog.getByLabel('Project',{exact:true}).inputValue(),'','No project is the default');
-  assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Preview Workspace Scrum');
+  assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Preview Workspace stand-up');
+  assert.equal(await dialog.getByLabel('Repeat',{exact:true}).inputValue(),'Weekdays','A stand-up repeats on weekdays by default');
+  assert.equal(await dialog.getByLabel('Duration',{exact:true}).inputValue(),'15');
+  assert.match(await dialog.locator('.mt-notetaker').innerText(),/Choose a project to bring the notetaker/);
+  await dialog.getByLabel('Repeat',{exact:true}).selectOption('Once');
   await dialog.getByText('Priya Shah',{exact:true}).click();
   await dialog.locator('input[type=date]').fill('2030-01-07');await dialog.locator('input[type=time]').fill('09:30');
-  await dialog.getByRole('button',{name:'Send invitation'}).click();await dialog.getByText('Google Meet ready',{exact:true}).waitFor();
+  await dialog.getByRole('button',{name:'Send invitation'}).click();await dialog.getByText('Meeting ready',{exact:true}).waitFor();
   assert.deepEqual(wsSaves.at(-1).participantUserIds,['00000000-0000-0000-0000-000000000009']);assert.equal(wsSaves.at(-1).startTime,'2030-01-07T04:00:00.000Z');
-  assert.equal(wsSaves.at(-1).repeat,undefined);checks.push(`scrum-no-project-${width}`);await dialog.getByRole('button',{name:'Done',exact:true}).click();
+  assert.equal(wsSaves.at(-1).repeat,undefined);assert.equal(wsSaves.at(-1).scrum,true);assert.equal(wsSaves.at(-1).notetaker,undefined,'No notetaker without a project');
+  checks.push(`scrum-no-project-${width}`);await dialog.getByRole('button',{name:'Done',exact:true}).click();
   // Choosing a project switches the invitees and the suggested title to that project's.
-  await page.getByRole('button',{name:'Scrum call',exact:true}).click();
-  dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule scrum call'}).waitFor();
+  await page.getByRole('button',{name:'Schedule',exact:true}).click();
+  dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Stand-up',exact:true}).click();
   await dialog.getByLabel('Project',{exact:true}).selectOption(pid);
-  assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Connected delivery Scrum');
+  assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Connected delivery stand-up');
   await dialog.locator('input[type=date]').fill('2030-01-07');await dialog.locator('input[type=time]').fill('09:30');
   await dialog.getByLabel('Repeat',{exact:true}).selectOption('Weekdays');await dialog.getByLabel('Total sessions',{exact:true}).fill('10');
   await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,`scrum-${width}.png`),animations:'disabled'});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'No viewport overflow');assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
   const controls=await dialog.locator('input,select,textarea').evaluateAll(xs=>xs.every(x=>x.getBoundingClientRect().right<=innerWidth+1));assert.ok(controls,'Fields fit viewport');
-  await dialog.getByRole('button',{name:'Create series & invite'}).click();await dialog.getByText('Google Meet ready',{exact:true}).waitFor();
+  await dialog.getByRole('button',{name:'Create series and invite'}).click();await dialog.getByText('Meeting ready',{exact:true}).waitFor();
   assert.deepEqual(saves.at(-1).repeat,{frequency:'Weekdays',occurrences:10});assert.equal(saves.at(-1).startTime,'2030-01-07T04:00:00.000Z');
-  assert.equal(new Date(saves.at(-1).endTime)-new Date(saves.at(-1).startTime),900000);
+  assert.equal(new Date(saves.at(-1).endTime)-new Date(saves.at(-1).startTime),900000);assert.equal(saves.at(-1).notetaker,'off');
   checks.push(`scrum-series-${width}`);await dialog.getByRole('button',{name:'Done',exact:true}).click();
-  await page.goto(origin+`/preview-org/projects/${pid}`);await page.getByRole('button',{name:'Meeting',exact:true}).click();await page.getByRole('menuitem',{name:'Schedule scrum call'}).click();
-  await page.getByRole('dialog').getByRole('heading',{name:'Schedule scrum call'}).waitFor();checks.push(`project-scrum-${width}`);
+  // The project page has one way in: Meet, filtered to the project, which then schedules for that project.
+  await page.goto(origin+`/preview-org/projects/${pid}`);
+  assert.equal(await page.getByRole('button',{name:'Meeting',exact:true}).count(),0,'No meeting menu on the project page');
+  await page.locator('.page-actions').getByRole('link',{name:'Meet',exact:true}).click();await page.waitForURL(/\/meet\?project=/);
+  await page.getByRole('button',{name:'Schedule',exact:true}).click();
+  dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
+  await page.waitForFunction(()=>document.querySelector('[aria-label="Project"]')?.value?.length>0);
+  assert.equal(await dialog.getByLabel('Project',{exact:true}).inputValue(),pid);checks.push(`project-meet-${width}`);
   await page.close();
  }
- const logo=await ctx.newPage();await logo.goto(origin+'/preview-org/calendar');await logo.getByRole('button',{name:'Scrum call',exact:true}).waitFor();
+ const logo=await ctx.newPage();await logo.goto(origin+'/preview-org/calendar');await logo.locator('.cal-filters').waitFor();
  await logo.emulateMedia({reducedMotion:'reduce'});assert.ok(await logo.locator('.agent-ribbon').count());
  assert.ok(await logo.locator('.agent-ribbon').evaluateAll(xs=>xs.every(x=>getComputedStyle(x).animationName==='none')),'Reduced motion disables logo animation');
  await logo.screenshot({path:path.join(out,'header-agent.png'),animations:'disabled'});await logo.close();checks.push('header-and-reduced-motion');

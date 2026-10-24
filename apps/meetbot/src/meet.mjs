@@ -7,6 +7,7 @@ export const SEL = {
   join: /^(ask to join|join now|join anyway|switch here)$/i,
   dismiss: /^(got it|dismiss|close|continue without microphone and camera|continue without microphone|ok)$/i,
   micOff: /turn off microphone/i,
+  micOn: /turn on microphone/i,
   camOff: /turn off camera/i,
   leave: /leave call/i,
   captionsOn: /turn on captions/i,
@@ -278,4 +279,14 @@ export const isAlone = (text) => TEXT.alone.test(text);
 
 export async function leave(page) {
   await clickButton(page, SEL.leave);
+}
+
+/** Microphone on, to speak (the bot stays muted otherwise). True when it is on. */
+export async function unmute(page) {
+  if (await clickButton(page, SEL.micOn)) { await page.waitForTimeout(300); return true; }
+  return visibleButton(page, SEL.micOff);   // already on
+}
+
+export async function mute(page) {
+  await clickButton(page, SEL.micOff);
 }

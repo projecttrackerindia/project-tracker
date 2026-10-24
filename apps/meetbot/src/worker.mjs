@@ -75,7 +75,7 @@ export function startWorker({ env, log, deps, bots, allowedHosts, version = '1.2
       liveKitUrl: job.liveKitUrl, liveKitToken: job.liveKitToken, botName: String(job.botName || 'Project Tracker Agent').slice(0, 60), joinAt: job.joinAt, leaveAt: job.leaveAt,
       webhookUrl: job.webhookUrl, introMessage: job.introMessage ? String(job.introMessage).slice(0, 500) : null,
       agendaMessage: job.agendaMessage ? String(job.agendaMessage).slice(0, 500) : null, raiseMessage: job.raiseMessage ? String(job.raiseMessage).slice(0, 500) : null,
-      readChat: job.readChat === true,
+      readChat: job.readChat === true, voice: job.voice === true,
     }, { ...deps, onFinished: (b) => { b.finishedAt = Date.now(); deps.onFinished?.(b); } });
     bot.jobId = job.jobId;
     jobs.set(job.jobId, bot);
@@ -95,7 +95,7 @@ export function startWorker({ env, log, deps, bots, allowedHosts, version = '1.2
       agendaMessage: job.agendaMessage ? String(job.agendaMessage).slice(0, 500) : null,
       captionLanguage: typeof job.captionLanguage === 'string' && /^[\p{L} ()-]{2,40}$/u.test(job.captionLanguage) ? job.captionLanguage : null,
       raiseMessage: job.raiseMessage ? String(job.raiseMessage).slice(0, 500) : null,
-      readChat: job.readChat === true,
+      readChat: job.readChat === true, voice: job.voice === true,
       identity: job.identity && typeof job.identity === 'object' ? { id: String(job.identity.id ?? ''), cookies: Array.isArray(job.identity.cookies) ? job.identity.cookies.slice(0, 400) : [] } : null,
     }, { ...deps, onFinished: (b) => { b.finishedAt = Date.now(); deps.onFinished?.(b); } });
     bot.jobId = job.jobId;
@@ -120,6 +120,7 @@ export function startWorker({ env, log, deps, bots, allowedHosts, version = '1.2
         if (!b) continue;
         if (i.stop) { b.stop(); continue; }
         for (const m of i.chat ?? []) b.chat(m);
+        if (i.say?.length) b.say?.(i.say);
       }
       if (!state.draining) for (const job of data?.jobs ?? []) take(job);
       state.lastOk = new Date().toISOString(); state.lastError = null;

@@ -17,6 +17,7 @@
 <p id="waiting">Asking to be let in...</p>
 <section id="call">
   <button type="button" aria-label="Leave call" id="leave">leave</button>
+  <button type="button" aria-label="Turn on microphone" id="mic">mic</button>
   <button type="button" aria-label="Turn on captions" id="cc">cc</button>
   <button type="button" aria-label="Chat with everyone" id="chat">chat</button>
   <div id="panel" hidden><textarea aria-label="Send a message"></textarea><ul id="messages"></ul></div>
@@ -34,6 +35,19 @@ $('ask').onclick = () => {
   if (!document.querySelector('[aria-label="Your name"]').value) return;
   show('prejoin', false); show('waiting');
   setTimeout(() => { show('waiting', false); show('call'); }, 400);   // the host lets the bot in
+};
+// The microphone in the call: muted until the bot turns it on to speak. While it is on, the page listens to what the microphone carries.
+let micOn = false, heardLoud = false, stream = null;
+$('mic').onclick = async () => {
+  micOn = !micOn;
+  $('mic').setAttribute('aria-label', micOn ? 'Turn off microphone' : 'Turn on microphone');
+  fetch('/mic-log', { method: 'POST', body: micOn ? 'on' : 'off' });
+  if (micOn && !stream) {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new AudioContext(); const an = ctx.createAnalyser(); ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Float32Array(an.fftSize);
+    setInterval(() => { an.getFloatTimeDomainData(buf); if (micOn && !heardLoud && buf.some((v) => Math.abs(v) > 0.05)) { heardLoud = true; fetch('/voice-log', { method: 'POST', body: 'heard' }); } }, 50);
+  }
 };
 $('leave').onclick = () => { show('call', false); $('ended').textContent = 'You left the meeting'; show('ended'); };
 $('chat').onclick = () => { $('panel').hidden = false; };

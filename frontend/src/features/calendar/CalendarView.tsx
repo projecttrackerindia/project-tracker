@@ -5,7 +5,6 @@ import type { CalendarEvent } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { EmptyState } from '../../components/ui';
 import { DOW, MONTHS_FULL, formatDate, formatTime, toISODate, todayISO } from '../../lib/format';
-import { WorkspaceMeetingModal } from '../meetings/WorkspaceMeetingModal';
 import { type SelectMode, activeDates as datesOf, dayClasses, monthCells, nextSelection, previewDates } from '../../lib/calendar';
 import { useWsQuery } from '../../lib/hooks';
 import { Sheet } from '../../components/Sheet';
@@ -21,12 +20,10 @@ const PREFIX: Partial<Record<CalendarEvent['type'], string>> = { project: '⚑ '
 export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }: { projectId?: string; mine?: boolean; userId?: string; onOpenTask: (taskId: string, projectId: string | null) => void; onOpenWork?: (workTaskId: string) => void }) {
   const nav = useNavigate();
   const phone = useIsMobile();
-  // A workspace meeting (no project) opens in a dialog here - also straight from its notification (/calendar?meeting=...).
-  const [params, setParams] = useSearchParams();
+  // Meetings are shown here and open in Meet, the one place they are kept (an older link, /calendar?meeting=…, goes there too).
+  const [params] = useSearchParams();
   const meetingParam = params.get('meeting');
-  const [meeting, setMeeting] = useState<string | null>(meetingParam);
-  useEffect(() => { if (meetingParam) setMeeting(meetingParam); }, [meetingParam]);   // another notification tapped while the calendar is open
-  const closeMeeting = () => { setMeeting(null); if (meetingParam) { const next = new URLSearchParams(params); next.delete('meeting'); setParams(next, { replace: true }); } };
+  useEffect(() => { if (meetingParam) nav(`/meet?open=w:${meetingParam}`, { replace: true }); }, [meetingParam, nav]);
   const [daySheet, setDaySheet] = useState<string | null>(null);   // on a phone a tapped day opens its list in a sheet
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
@@ -72,8 +69,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
     if (e.type === 'task') onOpenTask(e.id, e.projectId);
     else if (e.type === 'action' && e.projectId) nav(`/projects/${e.projectId}?tab=actions&action=${e.id}`);
     else if (e.type === 'work') { if (onOpenWork) onOpenWork(e.id); else nav(`/operations?task=${e.id}`); }
-    else if (e.type === 'meeting' && e.projectId) nav(`/projects/${e.projectId}?tab=meetings&meeting=${e.id}`);
-    else if (e.type === 'meeting') setMeeting(e.id);
+    else if (e.type === 'meeting') nav(`/meet?open=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`);
     else if (e.projectId && e.projectId !== projectId) nav(`/projects/${e.projectId}`);
   };
 
@@ -164,7 +160,6 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
           )}
         </Sheet>
       )}
-      {meeting && <WorkspaceMeetingModal id={meeting} onClose={closeMeeting} />}
     </>
   );
 }

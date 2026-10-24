@@ -10,18 +10,13 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.ProjectMeetings;
 
 /// <summary>
-/// Two background jobs on the same slow interval, so a meeting nobody has reopened recently still stays current (spec sections 5, 7 and
-/// 19): RSVP synchronization (MeetingService already syncs on every Get/List, which covers the common case - this is for the rest), and
-/// the "meeting starts soon" notice. Runs across every active tenant, in one batch, deliberately slow: neither RSVP status nor a
-/// starts-soon notice is urgent enough to justify polling Google harder, and reusing this one worker rather than adding a second
-/// scheduler is itself part of the point.
+/// RSVP synchronization on a slow interval, so a meeting nobody has reopened recently still stays current (MeetingService already syncs on
+/// every Get/List, which covers the common case - this is for the rest). Runs across every active tenant, in one batch, deliberately slow.
+/// "Starts soon" is not here any more: each invited person's reminder (<see cref="MeetingReminders"/>) is that signal.
 /// </summary>
-public class MeetingSyncEngine(IAppDbContext db, AppClock clock, MeetingCalendar calendar, Recorder recorder, NotificationRouter router, ILogger<MeetingSyncEngine> log)
+public class MeetingSyncEngine(IAppDbContext db, AppClock clock, MeetingCalendar calendar, Recorder recorder, ILogger<MeetingSyncEngine> log)
 {
     private const int Batch = 200;
-    /// <summary>How far ahead "starts soon" looks. Wider than the worker's own interval on purpose, so the notice still lands once even if
-    /// a tick lands a little early or late - DedupeKey (not exact timing) is what stops it firing twice.</summary>
-    private static readonly TimeSpan StartsSoonWindow = TimeSpan.FromMinutes(20);
 
     public async Task<int> RunAsync(CancellationToken ct = default)
     {
@@ -33,16 +28,13 @@ public class MeetingSyncEngine(IAppDbContext db, AppClock clock, MeetingCalendar
                         && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == m.TenantId && t.Status == TenantStatus.Active))
             .Include(m => m.Participants)
             .OrderBy(m => m.StartTimeUtc).Take(Batch).ToListAsync(ct);
-        await NotifyWorkspaceCallsAsync(now, ct);
-        if (meetings.Count == 0) { await db.SaveChangesAsync(ct); return 0; }
+        if (meetings.Count == 0) return 0;
 
         var changed = 0;
-        foreach (var m in meetings)
-        {
-            changed += await SyncRsvpAsync(m, ct);
-            if (m.StartTimeUtc > now && m.StartTimeUtc <= now.Add(StartsSoonWindow)) await NotifyStartsSoonAsync(m, ct);
-        }
+        foreach (var m in meetings) changed += await SyncRsvpAsync(m, ct);
         await db.SaveChangesAsync(ct);
+        // A reply that came in from Google or Outlook (a "no" takes the reminder back, a "yes" brings it) is reflected in Reminders at once.
+        if (changed > 0) await MeetingReminders.PlanAsync(db, now, ct);
         return changed;
     }
 
@@ -74,51 +66,5 @@ public class MeetingSyncEngine(IAppDbContext db, AppClock clock, MeetingCalendar
             recorder.Audit("meeting.rsvp_updated", "ProjectMeeting", m.Id, oldValue: new { Rsvp = old.ToString(), p.Email }, newValue: new { Rsvp = mapped.ToString(), p.Email }, tenantId: m.TenantId, userId: p.UserId);
         }
         return changed;
-    }
-
-    /// <summary>
-    /// Workspace meetings held as Project Tracker calls have no calendar to remind people, so the app does: shortly before, each person
-    /// invited gets a notice that opens the call. (Google and Outlook remind their own invitees.)
-    /// </summary>
-    private async Task NotifyWorkspaceCallsAsync(DateTime now, CancellationToken ct)
-    {
-        var soon = await db.WorkspaceMeetings.IgnoreQueryFilters()
-            .Where(m => m.Provider == MeetingProvider.ProjectTracker && m.Status == MeetingStatus.Scheduled && m.StartTimeUtc > now && m.StartTimeUtc <= now.Add(StartsSoonWindow)
-                        && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == m.TenantId && t.Status == TenantStatus.Active))
-            .Take(Batch).ToListAsync(ct);
-        foreach (var m in soon)
-        {
-            var key = $"meeting-soon:{m.Id:N}";
-            if (await db.Notifications.IgnoreQueryFilters().AnyAsync(n => n.DedupeKey == key, ct)) continue;
-            var minutes = Math.Max(1, (int)Math.Round((m.StartTimeUtc - now).TotalMinutes));
-            foreach (var uid in await db.WorkspaceMeetingAttendees.IgnoreQueryFilters().Where(a => a.MeetingId == m.Id).Select(a => a.UserId).ToListAsync(ct))
-            {
-                var n = new Notification
-                {
-                    TenantId = m.TenantId, UserId = uid, Type = NotificationType.Meeting, CreatedAt = clock.Now,
-                    Title = $"Meeting starts in {minutes} minute{(minutes == 1 ? "" : "s")}", Body = m.Title, DedupeKey = key, Link = MeetingCalendar.JoinPath(m.Id, true),
-                };
-                if (await router.ApplyAsync(n, ct)) db.Notifications.Add(n);
-            }
-        }
-    }
-
-    private async Task NotifyStartsSoonAsync(ProjectMeeting m, CancellationToken ct)
-    {
-        var key = $"meeting-soon:{m.Id:N}";
-        if (await db.Notifications.IgnoreQueryFilters().AnyAsync(n => n.DedupeKey == key, ct)) return;
-        var minutes = Math.Max(1, (int)Math.Round((m.StartTimeUtc - clock.Now).TotalMinutes));
-        foreach (var p in m.Participants)
-        {
-            if (p.UserId is not { } uid) continue;
-            var n = new Notification
-            {
-                TenantId = m.TenantId, UserId = uid, Type = NotificationType.Meeting, CreatedAt = clock.Now,
-                Title = $"Meeting starts in {minutes} minute{(minutes == 1 ? "" : "s")}", Body = m.Title, DedupeKey = key,
-                // A Project Tracker call: the notice opens the call itself. Google Meet and Teams: the meeting, with its join link.
-                Link = m.Provider == MeetingProvider.ProjectTracker ? MeetingCalendar.JoinPath(m.Id, false) : $"/projects/{m.ProjectId}?tab=meetings&meeting={m.Id}",
-            };
-            if (await router.ApplyAsync(n, ct)) db.Notifications.Add(n);
-        }
     }
 }

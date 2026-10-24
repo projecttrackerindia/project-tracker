@@ -18,14 +18,13 @@ import { fallbackStatus, PresenceDot } from './Presence';
 import { sendTyping } from './ChatRealtime';
 import { openReminderComposer } from '../reminders/store';
 import { offerReminderAfterSend } from '../reminders/Suggestions';
-import { GoogleMeetButton } from '../meetings/GoogleMeetButton';
+import '../meet/meet.css';
 import { StartCallButton } from '../calls/StartCall';
 import { LinkedChips, MakeFromMessage, PollCard, putMessage, SeenByDialog, SmartReplies, TranslateLine, UnfurlCards, UnfurlContext, useUnfurls, VoiceNote } from './MessageExtras';
 import { AskChatDialog, CatchUpDialog, COMPOSER_AI, PollDialog, ScheduleDialog, useVoiceRecorder } from './ChatTools';
 import type { ChatExtract } from '../../api/types';
 import { haptic } from '../../lib/mobile';
 
-/** A Google Meet message card (spec section 7): the meeting's own public details only - never anything from the Google connection itself. */
 /** The stand-up summary posted after each session of a project's scrum call. */
 function StandupCardMessage({ card, projectId }: { card: StandupCard; projectId: string }) {
   const section = (title: string, items: StandupItem[], total: number, due?: boolean) => total > 0 && (
@@ -51,10 +50,11 @@ function StandupCardMessage({ card, projectId }: { card: StandupCard; projectId:
   );
 }
 
+/** A meeting posted in the project chat: its public details, Join (a Project Tracker call opens here), and the meeting in Meet. */
 function MeetingCardMessage({ body, projectId }: { body: string; projectId: string }) {
   let card: MeetingCard | null = null;
   try { card = JSON.parse(body) as MeetingCard; } catch { /* malformed - fall through to the plain-text fallback below */ }
-  if (!card) return <div className="sys-line">Google Meet</div>;
+  if (!card) return <div className="sys-line">Meeting</div>;
   if ((card as unknown as { kind?: string }).kind === 'standup') return <StandupCardMessage card={card as unknown as StandupCard} projectId={projectId} />;
   const cancelled = card.status === 'Cancelled';
   return (
@@ -63,8 +63,10 @@ function MeetingCardMessage({ body, projectId }: { body: string; projectId: stri
       <p className="muted" style={{ fontSize: 12.5, margin: '4px 0 8px' }}>{formatDateTime(card.startTimeUtc)} – {formatDateTime(card.endTimeUtc)} · {card.participantCount} participant{card.participantCount === 1 ? '' : 's'}</p>
       {!cancelled && (
         <div style={{ display: 'flex', gap: 8 }}>
-          <a className="btn btn-primary btn-sm" href={card.meetUri} target="_blank" rel="noopener noreferrer"><Icon name="video" size={13} /> Join Meeting</a>
-          <Link className="btn btn-ghost btn-sm" to={`/projects/${projectId}?tab=meetings&meeting=${card.meetingId}`}>View details</Link>
+          {card.meetUri.startsWith('/')
+            ? <Link className="btn btn-primary btn-sm" to={card.meetUri}><Icon name="video" size={13} /> Join</Link>
+            : <a className="btn btn-primary btn-sm" href={card.meetUri} target="_blank" rel="noopener noreferrer"><Icon name="video" size={13} /> Join</a>}
+          <Link className="btn btn-ghost btn-sm" to={`/meet?project=${projectId}&open=p:${card.meetingId}`}>Details</Link>
         </div>
       )}
     </div>
@@ -255,7 +257,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
           <h2>{conversation.name}</h2>
           <div className="chat-sub" aria-live="polite">{status}</div>
         </div>
-        <StartCallButton conversationId={conversation.id} label="Call everyone in this chat" compact className="btn-icon chat-head-action call" />
+        <StartCallButton conversationId={conversation.id} label={conversation.type === 'Direct' ? `Call ${conversation.name}` : 'Group call with everyone in this chat'} compact className="btn-icon chat-head-action call" />
         <button className="btn-icon chat-head-action ai" onClick={() => setDialog('catchup')} aria-label="Catch me up on this conversation" title="Catch me up"><Icon name="sparkle" size={16} /></button>
         <button className="btn-icon chat-head-action" onClick={() => setDialog('ask')} aria-label="Ask this conversation" title="Ask this conversation"><Icon name="search" size={16} /></button>
         <button className={`btn-icon chat-head-action ${side === 'pins' ? 'on' : ''}`} onClick={() => setSide((v) => (v === 'pins' ? null : 'pins'))} aria-label={`Pinned messages${pinCount ? ` (${pinCount})` : ''}`} aria-pressed={side === 'pins'} title="Pinned">
@@ -681,7 +683,6 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   const plusRef = useRef<HTMLDivElement>(null);
   useClickOutside(aiRef, () => setAiOpen(false));
   useClickOutside(plusRef, () => setPlusOpen(false));
-  const me = useAuth((s) => s.ctx!.user.id);
   const [text, setText] = useState(() => editing?.body ?? drafts.get(draftKey) ?? '');
   const [isEmpty, setIsEmpty] = useState(() => !text);
   const [marks, setMarks] = useState({ bold: false, italic: false, underline: false });
@@ -966,9 +967,6 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
                 onClick={() => (canAttach ? picker.current?.click() : toast('Sending files in chat is not part of your plan. You can upgrade it under Settings → Billing.', 'info'))}
                 aria-label="Attach a file" title={canAttach ? 'Attach files or pictures' : 'Files in chat are not part of your plan'}><Icon name="paperclip" size={17} /></button>
             </>
-          )}
-          {conversation.type === 'Project' && conversation.projectId && !editing && (
-            <span className="pill-meet"><GoogleMeetButton projectId={conversation.projectId} projectName={conversation.name} organizerUserId={me} toolbar /></span>
           )}
           <div ref={box} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Write a message"
             className={`composer-editable ${isEmpty ? 'is-empty' : ''}`} enterKeyHint="send"

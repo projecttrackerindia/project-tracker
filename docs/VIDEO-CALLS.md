@@ -6,11 +6,12 @@ be a person. Our server writes the agent its own pass into that one room, and it
 
 ## What people get
 
-- **Start a call** from a project (with the project's people, and optionally the agent) or from a chat (everyone in the chat is notified).
-  A bar at the top of the app shows calls you can join.
+- **Start a call** from Meet (Start now) or from a chat: a one-to-one chat calls that person, a group or project chat calls everyone in
+  it. A bar at the top of the app shows calls you can join. See [MEET.md](MEET.md).
 - **Scheduled meetings as our calls**: someone with no Google or Outlook calendar connected (or who chooses Project Tracker calls)
   schedules meetings that are held here. The first person to open the meeting starts its call, everyone after joins the same one, and
-  the project agent comes along when it is on. See [CONNECTED-ACCOUNTS.md](CONNECTED-ACCOUNTS.md).
+  the notetaker comes when the meeting asked for it (Transcription, or Transcription + voice suggestions). See
+  [CONNECTED-ACCOUNTS.md](CONNECTED-ACCOUNTS.md) and [MEET.md](MEET.md).
 - **Before joining**: a camera and microphone check, and a plain notice when the agent is in the call taking notes.
 - **In the call**, laid out like Google Meet:
   - video tiles, or the person's initials in a coloured circle when their camera is off, with a ring around whoever is speaking

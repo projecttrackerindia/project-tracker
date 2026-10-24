@@ -1239,6 +1239,16 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<string>("PendingChat")
                         .HasColumnType("text");
 
+                    b.Property<string>("PendingSay")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Mode")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime?>("WrapUpAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
@@ -8848,6 +8858,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<int>("Provider")
                         .HasColumnType("integer");
 
+                    b.Property<int>("Notetaker")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("GoogleCalendarEventId");
@@ -8935,6 +8948,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<int>("Provider")
                         .HasColumnType("integer");
 
+                    b.Property<int>("Notetaker")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizerUserId");
@@ -8966,6 +8982,11 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("MeetingId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("RsvpStatus")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");

@@ -35,7 +35,7 @@ export function ConnectedApps() {
         </div>
       </div>
       <div className="card">
-        <div className="card-head"><h3>Connected apps</h3></div>
+        <div className="card-head"><h3>Connected AI apps</h3></div>
         {q.isLoading ? <PageLoader /> : q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (q.data ?? []).length === 0 ? (
           <EmptyState icon="link" title="No apps connected" text="When you connect Claude, ChatGPT or another assistant, it shows here." />
         ) : (

@@ -92,7 +92,7 @@ public class AiWorkdayTools(ICurrentContext ctx, AppClock clock, AgentDelegation
             meetings = meetings.Select(m => new
             {
                 m.Title, start = Local(m.StartUtc), end = Local(m.EndUtc), project = m.ProjectKey, organizer = m.Organizer, clashes_with = m.OverlapsWith.Count == 0 ? null : m.OverlapsWith,
-                bot_attending = m.AgentAttending, link = m.ProjectId is { } p && m.MeetingId is { } mid ? $"/projects/{p}?tab=meetings&meeting={mid}" : null,
+                bot_attending = m.AgentAttending, link = m.ProjectId is { } p && m.MeetingId is { } mid ? ProjectManagement.Application.Features.ProjectMeetings.MeetingReminders.MeetLink(mid, false) : null,
             }),
             due = due.Select(i => new { i.Key, title = Cut(i.Title, 160), i.Status, due = i.DueDate, project = i.ProjectKey }),
             already_late = late.Count == 0 ? null : late.Take(10).Select(i => new { i.Key, title = Cut(i.Title, 160), due = i.DueDate }),
