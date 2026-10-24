@@ -164,7 +164,7 @@ export function ItemSharing({ collection, canManage, canSend, onShare, onSend, o
                     <span>{s.name} · {left === null ? (ACCESS[s.access] ?? s.access.toLowerCase()) : 'time-bound'}</span>
                     <span className={urgent ? 'urgent' : ''}>{left === null ? 'standing' : left <= 0 ? 'ended' : urgent ? leftText(left) : endsText(s.expiresAt!)}</span>
                   </div>
-                  <div className={`ds-bar ${left === null ? 'standing' : urgent ? 'danger' : ''}`}><i style={{ width: `${pct}%` }} /></div>
+                  <div className={`ds-meter ${left === null ? 'standing' : urgent ? 'danger' : ''}`}><i style={{ width: `${pct}%` }} /></div>
                 </li>
               );
             })}

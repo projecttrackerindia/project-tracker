@@ -188,3 +188,7 @@
   .dt-table th, .dt-table td { padding: 10px 14px; }
   .dt-hero { padding: 20px; }
 }
+/* the search never pushes past a phone's edge: its column may shrink below the hint's natural width */
+.dl-search-wrap { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.dl-search { min-width: 0; max-width: 100%; }
+@media (max-width: 640px) { .dl-search { height: 50px; padding: 0 16px; border-radius: 20px; } .dl-search input { font-size: 16px; } }

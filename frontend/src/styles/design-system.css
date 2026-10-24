@@ -19,7 +19,8 @@
   --ds-text-2: #424245;
   --ds-text-3: #6E6E73;
   --ds-text-4: #86868B;
-  --ds-accent: #0071E3;
+  --ds-accent: #0066CC;            /* text-safe blue: 5:1 on #F5F5F7, 4.9:1 on the soft blue */
+  --ds-accent-fill: #0071E3;       /* solid buttons and fills */
   --ds-accent-hover: #0077ED;
   --ds-accent-press: #006EDB;
   --ds-accent-soft: #E8F2FF;
@@ -64,7 +65,7 @@
   --accent-rgb: 0, 113, 227;
   --primary: var(--ds-accent);
   --primary-hover: var(--ds-accent-hover);
-  --primary-fill: var(--ds-accent);
+  --primary-fill: var(--ds-accent-fill);
   --primary-soft: var(--ds-accent-soft);
   --primary-text: #FFFFFF;
   --brand-sky: #2997FF;
@@ -119,6 +120,7 @@
   --ds-text-3: #A1A1A6;
   --ds-text-4: #8E8E93;
   --ds-accent: #2997FF;
+  --ds-accent-fill: #0071E3;
   --ds-accent-hover: #47A6FF;
   --ds-accent-press: #1A8CFF;
   --ds-accent-soft: rgba(41, 151, 255, .14);
@@ -216,8 +218,8 @@ html .btn-soft, html[data-theme='dark'] .btn-soft { background: var(--ds-fill); 
 html .btn-soft:hover:not(:disabled), html[data-theme='dark'] .btn-soft:hover:not(:disabled) { background: var(--ds-fill-strong); color: var(--ds-accent); box-shadow: none; }
 
 /* dark: the strong non-primary action ("Risk review", "Open project", "Hold to reveal") */
-html .btn-dark, html[data-theme='dark'] .btn-dark { background: var(--ds-dark); color: var(--ds-on-dark); border: 1px solid transparent; }
-html .btn-dark:hover:not(:disabled) { background: color-mix(in srgb, var(--ds-dark) 86%, var(--ds-bg)); color: var(--ds-on-dark); }
+html .btn.btn-dark:not(#_), html[data-theme='dark'] .btn.btn-dark:not(#_) { background: var(--ds-dark); color: var(--ds-on-dark); border: 1px solid transparent; }
+html .btn.btn-dark:not(#_):hover:not(:disabled) { background: color-mix(in srgb, var(--ds-dark) 86%, var(--ds-bg)); color: var(--ds-on-dark); }
 
 /* destructive: the secondary shape with red words; a solid red fill only for the final confirm */
 html .btn-danger, html[data-theme='dark'] .btn-danger { background: var(--ds-surface); color: var(--ds-danger); border: 1px solid var(--ds-outline); box-shadow: none; }
@@ -226,8 +228,8 @@ html .modal-foot .btn-danger, html .confirm-box .btn-danger, html .btn-danger.so
 html .modal-foot .btn-danger:hover:not(:disabled), html .btn-danger.solid:hover:not(:disabled) { background: color-mix(in srgb, var(--ds-danger) 88%, #000); color: #fff; }
 
 /* text link button */
-html .btn-link { background: none; border: 0; color: var(--ds-accent); padding: 0 4px; min-height: 32px; }
-html .btn-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+html .btn.btn-link:not(#_), html[data-theme='dark'] .btn.btn-link:not(#_) { background: none; border: 0; color: var(--ds-accent); padding: 0 4px; min-height: 32px; }
+html .btn.btn-link:not(#_):hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* sizes: 36 compact, 40 default, 44 touch, 48 hero */
 html .btn-sm { min-height: 34px; padding: 0 14px; font-size: 13px; }
@@ -325,7 +327,7 @@ html .chip { background: var(--ds-fill); color: var(--ds-text-2); }
 .ds-pill.success { background: var(--ds-success-bg); color: var(--ds-success); }
 .ds-pill.warning { background: var(--ds-warning-bg); color: var(--ds-warning); }
 .ds-pill.danger { background: var(--ds-danger-bg); color: var(--ds-danger); }
-.ds-pill.progress { background: var(--ds-progress-bg); color: var(--ds-progress); }
+.ds-pill.violet { background: var(--ds-progress-bg); color: var(--ds-progress); }
 .ds-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
 /* --------------------------------------------------------------------------------------------- filter chips */
@@ -483,8 +485,8 @@ html .avatar { font-weight: 600; letter-spacing: 0; box-shadow: none; }
 .ds-banner.ok { background: var(--ds-success-bg); box-shadow: none; }
 .ds-banner.ok .ico { background: var(--ds-success); color: #fff; }
 .ds-banner.ok .txt b { color: var(--ds-success); }
-.btn.btn-risk, html .btn.btn-risk { background: var(--ds-danger); color: #fff; border: 1px solid transparent; }
-html .btn.btn-risk:hover:not(:disabled) { background: color-mix(in srgb, var(--ds-danger) 88%, #000); color: #fff; }
+html .btn.btn-risk:not(#_), html[data-theme='dark'] .btn.btn-risk:not(#_) { background: var(--ds-danger); color: #fff; border: 1px solid transparent; }
+html .btn.btn-risk:not(#_):hover:not(:disabled) { background: color-mix(in srgb, var(--ds-danger) 88%, #000); color: #fff; }
 
 /* ------------------------------------------------------------------------------------------------ icon tiles */
 .ds-tile-ico { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: var(--ds-accent-soft); color: var(--ds-accent); flex: none; }
@@ -492,7 +494,7 @@ html .btn.btn-risk:hover:not(:disabled) { background: color-mix(in srgb, var(--d
 .ds-tile-ico.success { background: var(--ds-success-bg); color: var(--ds-success); }
 .ds-tile-ico.warning { background: var(--ds-warning-bg); color: var(--ds-warning); }
 .ds-tile-ico.danger { background: var(--ds-danger-bg); color: var(--ds-danger); }
-.ds-tile-ico.progress { background: var(--ds-progress-bg); color: var(--ds-progress); }
+.ds-tile-ico.violet { background: var(--ds-progress-bg); color: var(--ds-progress); }
 .ds-tile-ico.neutral { background: var(--ds-fill); color: var(--ds-text-2); }
 .ds-tile-ico.lg { width: 64px; height: 64px; border-radius: 18px; }
 .ds-tile-ico.lg svg { width: 28px; height: 28px; }

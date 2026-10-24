@@ -152,7 +152,7 @@
 .vlt-who-line { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 9px; font-size: 15px; }
 .vlt-who-line span:last-child { color: var(--ds-text-3); white-space: nowrap; }
 .vlt-who-line .urgent { color: var(--ds-danger) !important; font-weight: 500; }
-.vlt-who .ds-bar.standing > i { background: var(--ds-outline); }
+.vlt-who .ds-meter.standing > i { background: var(--ds-outline); }
 .vlt-audit-line { margin: 20px 0 0; font: 500 12.5px/1.6 var(--mono); color: var(--ds-text-3); }
 
 /* ---- the clipboard pill and the people faces */

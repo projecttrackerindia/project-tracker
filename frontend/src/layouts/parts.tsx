@@ -8,12 +8,12 @@ import { toast } from '../stores/ui';
 import { Icon, type IconName } from '../components/Icon';
 
 /** One line icon per kind of notification (no emoji in the interface), with the status tone its tile is drawn in. */
-export const NOTIF_ICON: Record<string, { icon: IconName; tone: '' | 'success' | 'warning' | 'danger' | 'progress' | 'neutral' }> = {
+export const NOTIF_ICON: Record<string, { icon: IconName; tone: '' | 'success' | 'warning' | 'danger' | 'violet' | 'neutral' }> = {
   TaskAssigned: { icon: 'checkCircle', tone: '' }, Mention: { icon: 'message', tone: '' }, Comment: { icon: 'message', tone: 'neutral' },
   DueSoon: { icon: 'clock', tone: 'warning' }, Overdue: { icon: 'alert', tone: 'danger' }, Invitation: { icon: 'mail', tone: '' },
   Subscription: { icon: 'card', tone: 'neutral' }, Security: { icon: 'lock', tone: 'danger' }, Issue: { icon: 'bug', tone: 'danger' },
   Approval: { icon: 'check', tone: 'success' }, ServiceLevel: { icon: 'timer', tone: 'warning' }, Reminder: { icon: 'alarm', tone: 'warning' },
-  Nudge: { icon: 'hand', tone: 'progress' }, Briefing: { icon: 'sun', tone: '' }, Meeting: { icon: 'video', tone: '' }, Support: { icon: 'info', tone: 'success' },
+  Nudge: { icon: 'hand', tone: 'violet' }, Briefing: { icon: 'sun', tone: '' }, Meeting: { icon: 'video', tone: '' }, Support: { icon: 'info', tone: 'success' },
 };
 const BELL = { icon: 'bell' as IconName, tone: 'neutral' as const };
 /** The icon tile for a notification of this kind. */
