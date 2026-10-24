@@ -126,7 +126,7 @@ export function AiOwnKeyCard() {
       <div className="field">
         <label htmlFor="own-key-input">{needsKey ? 'API key' : `New API key (leave empty to keep the key ending ${s.keyHint})`}</label>
         <div className="row" style={{ gap: 8 }}>
-          <input id="own-key-input" className="input" type="password" autoComplete="off" spellCheck={false} value={key} placeholder={provider === 'anthropic' ? 'sk-ant-…' : 'sk-…'}
+          <input id="own-key-input" className="input" type="password" autoComplete="new-password" name="own-ai-api-key" data-1p-ignore="true" data-lpignore="true" data-form-type="other" spellCheck={false} value={key} placeholder={provider === 'anthropic' ? 'sk-ant-…' : 'sk-…'}
             onChange={(e) => { setKey(e.target.value); setCheck(null); }} />
           <button type="button" className="btn" disabled={busy !== null || (needsKey && !key.trim())} onClick={() => void runCheck()} data-testid="own-key-check">
             {busy === 'check' ? 'Checking…' : 'Check key'}
