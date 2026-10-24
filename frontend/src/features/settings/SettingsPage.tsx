@@ -317,7 +317,7 @@ export function WorkspaceSettingsPage() {
   ];
   return (
     <SectionLayout title="Workspace settings" sub="How this workspace is set up: people and access, security, notifications, integrations, AI and billing."
-      groups={groups} navTop={current ? <SettingsSearch compact /> : undefined}>
+      groups={groups} navTop={<SettingsSearch compact />}>
       {!current && <SettingsHome />}
       {current && <SettingsSection id={current.id} />}
     </SectionLayout>

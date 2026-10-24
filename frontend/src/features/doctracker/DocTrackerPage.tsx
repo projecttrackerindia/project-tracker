@@ -143,7 +143,7 @@ function DtTree({ catalog, activeDocId }: { catalog: DtCatalog; activeDocId?: st
       {/* On the front page the big search does this job, so the tree does not show a second box. */}
       {!onHome && <div className="ds-rail-search">
         <Icon name="search" size={14} />
-        <input ref={input} type="search" placeholder="Search APIs and documents…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search APIs, endpoints and documents" />
+        <input ref={input} type="search" autoComplete="off" placeholder="Search APIs and documents…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search APIs, endpoints and documents" />
         <kbd className="dt-kbd" title="Press / to search">/</kbd>
       </div>}
       <ul className="ds-rail-list">

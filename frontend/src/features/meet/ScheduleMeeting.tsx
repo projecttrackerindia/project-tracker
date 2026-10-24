@@ -83,7 +83,7 @@ function ParticipantPicker({ projectId, organizerUserId, selected, onChange }: {
   const toggle = (id: string) => { const s = new Set(selected); if (s.has(id)) s.delete(id); else s.add(id); onChange(s); };
   return (
     <Field label={`People${selected.size ? ` (${selected.size})` : ''}`} hint={projectId ? undefined : 'Anyone in the workspace. You are always included as the organizer.'}>
-      {people.length > 8 && <input className="input gm-filter" type="search" aria-label="Filter people" placeholder="Filter by name or email" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+      {people.length > 8 && <input className="input gm-filter" type="search" autoComplete="off" aria-label="Filter people" placeholder="Filter by name or email" value={filter} onChange={(e) => setFilter(e.target.value)} />}
       <div className="gm-picker">
         {people.length === 0 && <p className="muted" style={{ margin: 0 }}>{projectId ? 'No other members are on this project yet.' : 'No one else is in this workspace yet.'}</p>}
         {people.length > 0 && shown.length === 0 && <p className="muted" style={{ margin: 0 }}>No one matches “{filter}”.</p>}
@@ -157,7 +157,7 @@ function ProjectPicker({ value, onChange }: { value: { id: string; name: string 
   return (
     <Field label="Project" hint={value ? 'Invitees come from this project; the meeting is posted to its chat.' : isGuest ? 'Choose one of the projects you were invited to.' : 'No project: invite anyone in the workspace.'}>
       <div className="gm-project-pick">
-        <input className="input" type="search" aria-label="Search projects" placeholder="Search projects" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input className="input" type="search" autoComplete="off" aria-label="Search projects" placeholder="Search projects" value={query} onChange={(e) => setQuery(e.target.value)} />
         <select className="select" aria-label="Project" value={value?.id ?? NO_PROJECT} onChange={(e) => { const p = options.find((x) => x.id === e.target.value); onChange(p ? { id: p.id, name: p.name } : null); }}>
           {isGuest ? (!value && <option value={NO_PROJECT} disabled>Choose a project…</option>) : <option value={NO_PROJECT}>No project (whole workspace)</option>}
           {options.map((p) => <option key={p.id} value={p.id}>{p.key ? `${p.key} · ` : ''}{p.name}</option>)}

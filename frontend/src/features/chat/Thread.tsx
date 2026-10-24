@@ -955,7 +955,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
               {plusOpen && (
                 <div className="more-pop up" role="menu" aria-label="More">
                   {onPoll && <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); onPoll(); }}><Icon name="chart" size={15} />Poll</button>}
-                  <button type="button" role="menuitem" disabled={!text.trim()} onClick={() => { setPlusOpen(false); setLater(true); }}><span aria-hidden="true">⏰</span>Send later{!text.trim() ? ' (write first)' : ''}</button>
+                  <button type="button" role="menuitem" disabled={!text.trim()} onClick={() => { setPlusOpen(false); setLater(true); }}><Icon name="clock" size={15} />Send later{!text.trim() ? ' (write first)' : ''}</button>
                 </div>
               )}
             </div>

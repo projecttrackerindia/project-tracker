@@ -149,7 +149,7 @@ function Apis({ p, canWrite, onNew, onImport }: { p: DtProject; canWrite: boolea
   return (
     <div className="dt-apis-list">
       <div className="dt-filter">
-        <div className="doc-search"><Icon name="search" size={16} /><input className="input" type="search" placeholder="Filter by path or summary…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter endpoints" /></div>
+        <div className="doc-search"><Icon name="search" size={16} /><input className="input" type="search" autoComplete="off" placeholder="Filter by path or summary…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter endpoints" /></div>
         <div className="seg" role="radiogroup" aria-label="Sort"><button role="radio" aria-checked={sort === 'path'} className={sort === 'path' ? 'on' : ''} onClick={() => setSort('path')}>By path</button><button role="radio" aria-checked={sort === 'score'} className={sort === 'score' ? 'on' : ''} onClick={() => setSort('score')}>Weakest first</button></div>
       </div>
       {groups.map(([tag, eps]) => (

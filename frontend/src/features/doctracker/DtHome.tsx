@@ -80,7 +80,7 @@ export function DtHome({ catalog, onRequired, onNew }: { catalog: DtCatalog; onR
       <div className="dl-search-wrap">
         <label className="dl-search">
           <Icon name="search" size={18} />
-          <input type="search" value={q} onChange={(e) => { setQ(e.target.value); if (asked) setAsked(null); }} placeholder="Search, or ask a question about your pages" aria-label="Search DocTracker or ask a question"
+          <input type="search" autoComplete="off" value={q} onChange={(e) => { setQ(e.target.value); if (asked) setAsked(null); }} placeholder="Search, or ask a question about your pages" aria-label="Search DocTracker or ask a question"
             onKeyDown={(e) => { if (e.key === 'Enter' && q.trim().endsWith('?')) { e.preventDefault(); ask(); } }} />
           <button type="button" className="dl-ask" onClick={ask} disabled={q.trim().length < 3} title="Answer from the pages you can open, with links to the lines"><Icon name="sparkle" size={15} /> Ask</button>
         </label>

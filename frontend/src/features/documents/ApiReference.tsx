@@ -86,7 +86,7 @@ export function ApiReference({ detail, editable }: { detail: DocumentDetail; edi
               {published.map((v) => <option key={v.id} value={v.id}>Version {v.label}</option>)}
             </Select>
           )}
-          <div className="doc-search"><Icon name="search" size={16} /><input className="input" type="search" placeholder="Find a path, summary or group…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find an endpoint" /></div>
+          <div className="doc-search"><Icon name="search" size={16} /><input className="input" type="search" autoComplete="off" placeholder="Find a path, summary or group…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find an endpoint" /></div>
         </div>
         <div className="api-bar-actions">
           {canManage && <Menu primary icon="plus" label="Add" items={[

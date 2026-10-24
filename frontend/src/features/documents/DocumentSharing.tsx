@@ -125,7 +125,7 @@ export function AccessModal({ detail, onClose }: { detail: DocumentDetail; onClo
 
           <div className="acc-people-head">
             <h4>People who can open it ({data.peopleTotal}{data.truncated ? '+' : ''})</h4>
-            <input className="input" type="search" placeholder="Find a person or a reason…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Find a person" />
+            <input className="input" type="search" autoComplete="off" placeholder="Find a person or a reason…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Find a person" />
           </div>
           <ul className="people">
             {people.map((p) => (
