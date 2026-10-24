@@ -5,11 +5,22 @@ import { ApiError } from '../api/client';
 import { Field, Modal, SubmitButton } from '../components/ui';
 import { useAuth } from '../stores/auth';
 import { toast } from '../stores/ui';
+import { Icon, type IconName } from '../components/Icon';
 
-export const NOTIF_ICON: Record<string, string> = {
-  TaskAssigned: '📌', Mention: '💬', Comment: '🗨️', DueSoon: '⏰', Overdue: '⚠️', Invitation: '✉️', Subscription: '💳', Security: '🔒', Issue: '🐞', Approval: '✅', ServiceLevel: '⏱️',
-  Reminder: '⏰', Nudge: '👋', Briefing: '☀️', Meeting: '📹', Support: '🟢',
+/** One line icon per kind of notification (no emoji in the interface), with the status tone its tile is drawn in. */
+export const NOTIF_ICON: Record<string, { icon: IconName; tone: '' | 'success' | 'warning' | 'danger' | 'progress' | 'neutral' }> = {
+  TaskAssigned: { icon: 'checkCircle', tone: '' }, Mention: { icon: 'message', tone: '' }, Comment: { icon: 'message', tone: 'neutral' },
+  DueSoon: { icon: 'clock', tone: 'warning' }, Overdue: { icon: 'alert', tone: 'danger' }, Invitation: { icon: 'mail', tone: '' },
+  Subscription: { icon: 'card', tone: 'neutral' }, Security: { icon: 'lock', tone: 'danger' }, Issue: { icon: 'bug', tone: 'danger' },
+  Approval: { icon: 'check', tone: 'success' }, ServiceLevel: { icon: 'timer', tone: 'warning' }, Reminder: { icon: 'alarm', tone: 'warning' },
+  Nudge: { icon: 'hand', tone: 'progress' }, Briefing: { icon: 'sun', tone: '' }, Meeting: { icon: 'video', tone: '' }, Support: { icon: 'info', tone: 'success' },
 };
+const BELL = { icon: 'bell' as IconName, tone: 'neutral' as const };
+/** The icon tile for a notification of this kind. */
+export function NotifIcon({ type, className = 'dp-ico' }: { type: string; className?: string }) {
+  const k = NOTIF_ICON[type] ?? BELL;
+  return <span className={`${className} ds-tile-ico ${k.tone}`} aria-hidden="true"><Icon name={k.icon} size={16} /></span>;
+}
 
 export function CreateOrganizationModal({ onClose }: { onClose: () => void }) {
   const switchWorkspace = useAuth((s) => s.switchWorkspace);

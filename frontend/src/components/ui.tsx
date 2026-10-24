@@ -213,18 +213,103 @@ export function ErrorState({ error, retry }: { error: unknown; retry?: () => voi
 const EmbeddedContext = createContext(false);
 export const Embedded = ({ children }: { children: ReactNode }) => <EmbeddedContext.Provider value>{children}</EmbeddedContext.Provider>;
 
-export function PageHead({ title, sub, children }: { title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
+/**
+ * The one title on a screen. An optional blue eyebrow sits above it (a date, the context, a count), one line of grey below it, and the
+ * page's actions on the right (at most one primary).
+ */
+export function PageHead({ title, sub, eyebrow, eyebrowTone, children }: { title: ReactNode; sub?: ReactNode; eyebrow?: ReactNode; eyebrowTone?: 'dim' | 'danger' | 'warning' | 'success'; children?: ReactNode }) {
   const embedded = useContext(EmbeddedContext);
+  const brow = eyebrow ? <span className={`eyebrow ${eyebrowTone ?? ''}`}>{eyebrow}</span> : null;
   if (embedded) return (
     <div className="section-head">
-      <div><h2 className="hub-section-title">{title}</h2>{sub && <p className="page-sub">{sub}</p>}</div>
+      <div>{brow}<h2 className="hub-section-title">{title}</h2>{sub && <p className="page-sub">{sub}</p>}</div>
       {children && <div className="page-actions">{children}</div>}
     </div>
   );
   return (
     <div className="page-head">
-      <div><h1 className="page-title">{title}</h1>{sub && <p className="page-sub">{sub}</p>}</div>
+      <div>{brow}<h1 className="page-title">{title}</h1>{sub && <p className="page-sub">{sub}</p>}</div>
       {children && <div className="page-actions">{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * A segmented control for two to five views of the same thing (Cards / List / Board, 24 hours / 7 days / 30 days). The white thumb glides
+ * under the chosen option; keyboard arrows move between options. Each option may carry a count.
+ */
+export function Segmented<T extends string>({ options, value, onChange, label, size, wide, className = '' }: {
+  options: readonly ({ id: T; label: ReactNode; count?: number; icon?: IconName; title?: string } | T)[]; value: T; onChange: (v: T) => void; label: string;
+  size?: 'lg'; wide?: boolean; className?: string;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const [thumb, setThumb] = useState<{ x: number; w: number } | null>(null);
+  const items = options.map((o) => (typeof o === 'string' ? { id: o, label: o as ReactNode } : o)) as { id: T; label: ReactNode; count?: number; icon?: IconName; title?: string }[];
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const place = () => {
+      const on = el.querySelector<HTMLElement>('[aria-selected="true"]');
+      setThumb(on ? { x: on.offsetLeft, w: on.offsetWidth } : null);
+    };
+    place();
+    if (typeof ResizeObserver === 'undefined') return;
+    const watch = new ResizeObserver(place);
+    watch.observe(el);
+    el.querySelectorAll('button').forEach((b) => watch.observe(b));
+    return () => watch.disconnect();
+  }, [value, items.length]);
+  const move = (dir: 1 | -1) => {
+    const i = items.findIndex((o) => o.id === value);
+    const next = items[(i + dir + items.length) % items.length];
+    onChange(next.id);
+    requestAnimationFrame(() => box.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus());
+  };
+  return (
+    <div ref={box} role="tablist" aria-label={label} className={`ds-seg glide ${size ?? ''} ${wide ? 'wide' : ''} ${className}`}
+      onKeyDown={(e) => { if (e.key === 'ArrowRight') { e.preventDefault(); move(1); } else if (e.key === 'ArrowLeft') { e.preventDefault(); move(-1); } }}>
+      {thumb && <span className="ds-seg-thumb" aria-hidden="true" style={{ width: thumb.w, transform: `translateX(${thumb.x}px)` }} />}
+      {items.map((o) => (
+        <button key={o.id} type="button" role="tab" aria-selected={o.id === value} tabIndex={o.id === value ? 0 : -1} title={o.title}
+          className={o.id === value ? 'on' : ''} onClick={() => onChange(o.id)}>
+          {o.icon && <Icon name={o.icon} size={15} />}{o.label}{o.count != null && <em>{o.count}</em>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A KPI: a grey label, the big number (in its status colour when the colour means something), one short caption. */
+export function Kpi({ label, value, tone, caption, small, tile, onClick, to, className = '' }: {
+  label: ReactNode; value: ReactNode; tone?: 'success' | 'warning' | 'danger'; caption?: ReactNode; small?: boolean; tile?: boolean; onClick?: () => void; to?: string; className?: string;
+}) {
+  const body = <><span className="l">{label}</span><span className={`v ${small ? 'sm' : ''}`}>{value}</span>{caption && <span className="c">{caption}</span>}</>;
+  const cls = `ds-kpi ${tone ?? ''} ${tile ? 'tile' : ''} ${className}`;
+  if (to) return <NavLink to={to} className={cls}>{body}</NavLink>;
+  if (onClick) return <button type="button" className={cls} onClick={onClick}>{body}</button>;
+  return <div className={cls}>{body}</div>;
+}
+
+/** A completion ring: 8px stroke, round caps, the number in the middle. */
+export function Ring({ value, size = 84, stroke = 8, tone, label, children }: { value: number; size?: number; stroke?: number; tone?: 'success' | 'warning' | 'danger'; label?: string; children?: ReactNode }) {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r, v = clamp(value, 0, 100);
+  return (
+    <span className={`ds-ring ${tone ?? ''}`} style={{ width: size, height: size }} role="img" aria-label={label ?? `${Math.round(v)}%`}>
+      <svg width={size} height={size} aria-hidden="true">
+        <circle className="track" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} />
+        <circle className="val" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={c * (1 - v / 100)} />
+      </svg>
+      <b>{children ?? `${Math.round(v)}%`}</b>
+    </span>
+  );
+}
+
+/** A thin status bar split by share: on track (green), at risk (amber), late (red), done (blue). */
+export function StatusBar({ parts, label }: { parts: { tone: 'ok' | 'risk' | 'late' | 'done'; value: number }[]; label: string }) {
+  const total = parts.reduce((a, p) => a + p.value, 0) || 1;
+  return (
+    <div className="ds-statusbar" role="img" aria-label={label}>
+      {parts.filter((p) => p.value > 0).map((p, i) => <i key={i} className={p.tone} style={{ width: `${(p.value / total) * 100}%` }} />)}
     </div>
   );
 }

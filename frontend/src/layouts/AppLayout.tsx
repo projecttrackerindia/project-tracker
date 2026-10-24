@@ -21,7 +21,7 @@ import { ThemeSwitch } from '../components/ThemeSwitch';
 import { TeamLensPicker } from '../components/TeamLensPicker';
 import { LensSync } from '../lib/teamLens';
 import { AccountDock, TopbarMe } from './AccountDock';
-import { CreateOrganizationModal, NOTIF_ICON } from './parts';
+import { CreateOrganizationModal, NotifIcon } from './parts';
 import { MobileTopBar, TabBar } from './MobileChrome';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { useIsMobile } from '../lib/mobile';
@@ -82,10 +82,12 @@ function Sidebar() {
   return (
     <>
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${sidebarOpen ? 'open' : ''}`} id="sidebar">
-        <div className="sidebar-brand">
-          <div className="brand-mark"><BrandMark /></div>
-          <div className="brand-text"><strong title={brandTitle}>{brandTitle}</strong><span>{brandSub}</span></div>
-        </div>
+        {isPlatformAdmin || !ctx ? (
+          <div className="sidebar-brand">
+            <div className="brand-mark"><BrandMark /></div>
+            <div className="brand-text"><strong title={brandTitle}>{brandTitle}</strong><span>{brandSub}</span></div>
+          </div>
+        ) : <WorkspaceSwitcher brand={{ title: brandTitle, sub: brandSub }} />}
         <SidebarNav groups={groups} collapsed={sidebarCollapsed} onNavigate={closeSidebar} />
         {ctx && <AccountDock />}
       </aside>
@@ -200,7 +202,11 @@ function GlobalSearch() {
   );
 }
 
-function WorkspaceSwitcher() {
+/**
+ * Which workspace this is, and the way to another one. In the sidebar it is the brand block itself (name and kind, with a chevron), as
+ * in the design; the menu lists every workspace this person belongs to and creating an organization.
+ */
+function WorkspaceSwitcher({ brand }: { brand?: { title: string; sub: string } }) {
   const ctx = useAuth((s) => s.ctx)!;
   const switchWorkspace = useAuth((s) => s.switchWorkspace);
   const [open, setOpen] = useState(false);
@@ -217,12 +223,21 @@ function WorkspaceSwitcher() {
   };
 
   return (
-    <div className="dropdown" ref={ref}>
-      <button className="workspace-switch" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
-        <span className="ws-avatar">{(cur?.name ?? '?')[0].toUpperCase()}</span>
-        <span className="ws-name">{cur?.name ?? 'Select workspace'}</span>
-        <Icon name="chevronD" size={14} />
-      </button>
+    <div className={brand ? 'dropdown brand-switch-wrap' : 'dropdown'} ref={ref}>
+      {brand ? (
+        <button type="button" className="sidebar-brand brand-switch" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}
+          aria-label={`${brand.title}, ${brand.sub}. Switch workspace`} title="Switch workspace">
+          <span className="brand-mark"><BrandMark /></span>
+          <span className="brand-text"><strong title={brand.title}>{brand.title}</strong><span>{brand.sub}</span></span>
+          <Icon name="chevronD" size={14} className="brand-chev" />
+        </button>
+      ) : (
+        <button className="workspace-switch" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
+          <span className="ws-avatar">{(cur?.name ?? '?')[0].toUpperCase()}</span>
+          <span className="ws-name">{cur?.name ?? 'Select workspace'}</span>
+          <Icon name="chevronD" size={14} />
+        </button>
+      )}
       {open && (
         <div className="dropdown-panel left" role="menu" style={{ width: 300 }}>
           <div className="dp-head"><strong>Workspaces</strong></div>
@@ -294,7 +309,7 @@ function NotificationsMenu() {
             : shownReminders.length === 0 ? <div className="sr-empty">No reminders waiting or coming up. Add one from here, or "Remind me" on any task or ticket.</div>
             : shownReminders.map(({ r, due }) => (
               <button key={r.id} className={`dp-item ${due ? 'unread' : ''}`} onClick={() => { setOpen(false); nav(r.link ?? '/reminders'); }} data-testid={due ? 'bell-reminder-due' : 'bell-reminder'}>
-                <span className="dp-ico">{due ? '🔔' : '⏰'}</span>
+                <span className={`dp-ico ds-tile-ico ${due ? 'warning' : 'neutral'}`} aria-hidden="true"><Icon name={due ? 'bell' : 'alarm'} size={16} /></span>
                 <span className="dp-main"><b>{r.title}</b>{r.targetKey && <span>{r.targetKey}{r.targetTitle ? ` · ${r.targetTitle}` : ''}</span>}
                   <span className="muted" style={{ display: 'block', fontSize: 11 }}>{due
                     ? `Due ${r.lastFiredAt ? timeAgo(r.lastFiredAt) : 'now'} · waiting for you`
@@ -306,7 +321,7 @@ function NotificationsMenu() {
             : list.data.items.slice(0, 8).map((n) => (
               <div key={n.id} className={`dp-note ${n.isRead ? '' : 'unread'}`}>
                 <button className={`dp-item ${n.isRead ? '' : 'unread'}`} onClick={() => openItem(n)}>
-                  <span className="dp-ico">{NOTIF_ICON[n.type] ?? '🔔'}</span>
+                  <NotifIcon type={n.type} />
                   <span className="dp-main"><b>{n.title}</b>{n.body && <span>{n.body}</span>}<span className="muted" style={{ display: 'block', fontSize: 11 }}>{timeAgo(n.shownAt ?? n.createdAt)}</span></span>
                 </button>
                 <NotificationActions n={n} />
@@ -335,7 +350,6 @@ function Topbar() {
       <div className="topbar-actions">
         {!isPlatformAdmin && <RunningTimer />}
         {!isPlatformAdmin && <TeamLensPicker />}
-        {!isPlatformAdmin && <WorkspaceSwitcher />}
         <ThemeSwitch className="theme-toggle" />
         {!isPlatformAdmin && <NotificationsMenu />}
         <TopbarMe />

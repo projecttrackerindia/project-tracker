@@ -32,6 +32,7 @@ import './styles/professional.css';
 import './styles/futuristic.css';
 import './styles/documents-studio.css';
 import './styles/theme-pro.css';
+import './styles/design-system.css';
 import App from './App';
 import { queryClient } from './stores/auth';
 import { useUi } from './stores/ui';

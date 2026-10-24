@@ -19,7 +19,7 @@ import { openReminderComposer, useReminderCounts } from '../features/reminders/s
 import { useWorkspaceSections } from '../features/settings/sections';
 import { inSidebar, useMainNav } from './navigation';
 import { usePinned } from './navPrefs';
-import { CreateOrganizationModal, NOTIF_ICON } from './parts';
+import { CreateOrganizationModal, NotifIcon } from './parts';
 import { SUPPORT_EMAIL, supportMailto } from '../lib/support';
 import { planStatus } from './AccountDock';
 
@@ -152,7 +152,7 @@ function NotificationsSheet({ onClose }: { onClose: () => void }) {
         <ul className="m-list">
           {items.slice(0, 20).map((n) => (
             <li key={n.id}><button type="button" className={`m-row note ${n.isRead ? '' : 'unread'}`} onClick={() => void open(n)}>
-              <span className="m-row-ico emoji">{NOTIF_ICON[n.type] ?? '🔔'}</span>
+              <NotifIcon type={n.type} className="m-row-ico" />
               <span className="m-row-main"><b>{n.title}</b>{n.body && <small>{n.body}</small>}<em>{timeAgo(n.shownAt ?? n.createdAt)}</em></span>
               {!n.isRead && <i className="m-dot" aria-label="Unread" />}
             </button>
