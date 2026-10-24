@@ -79,7 +79,7 @@ try{
   else if(ep.includes('/counts')||ep.includes('/unread'))data={count:0,total:0};
   await json(data);
  });
- const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')console.error('console:',m.text().slice(0,400));});await page.setViewportSize({width:1440,height:1000});
+ const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&!m.text().startsWith('Failed to load resource'))console.error('console:',m.text().slice(0,400));});await page.setViewportSize({width:1440,height:1000});
  const shot=(name)=>page.screenshot({path:path.join(out,name),animations:'disabled'});
  try{
   // 1. One entry in the sidebar; the list shows what is coming with each person's reply and Join only when it is near.
