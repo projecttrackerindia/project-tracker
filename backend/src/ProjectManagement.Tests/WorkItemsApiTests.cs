@@ -74,8 +74,8 @@ public class WorkItemsApiTests(ApiFactory factory)
         Assert.Equal("Payment Engine", S(ticket.Data["projectName"]));
 
         // Unknown kinds and missing projects are refused clearly.
-        Assert.Equal(HttpStatusCode.BadRequest, (await w.Owner.Post(Url, new { kind = "epic", title = "x" })).Status);
-        Assert.Equal(HttpStatusCode.BadRequest, (await w.Owner.Post(Url, new { kind = "task", title = "No project" })).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await w.Owner.Post(Url, new { kind = "epic", title = "x" })).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await w.Owner.Post(Url, new { kind = "task", title = "No project" })).Status);
 
         // The list has all four; filters by kind, mine, project and q.
         var all = (await w.Owner.Get($"{Url}?status=all")).Data!["items"]!.AsArray();
@@ -86,7 +86,7 @@ public class WorkItemsApiTests(ApiFactory factory)
         Assert.Equal(new[] { "action", "task" }, mine.Select(x => S(x!["kind"])).OrderBy(x => x).ToArray());
         var found = (await w.Owner.Get($"{Url}?q=refund")).Data!["items"]!.AsArray();
         Assert.Equal(2, found.Count);
-        Assert.Equal(400, (int)(await w.Owner.Get($"{Url}?kind=epic")).Status);
+        Assert.Equal(422, (int)(await w.Owner.Get($"{Url}?kind=epic")).Status);
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class WorkItemsApiTests(ApiFactory factory)
         // team: a team id (its members' work), or "mine".
         var team = await w.Owner.Post("/api/v1/teams", new { name = "Support" });
         Assert.True(team.Ok, team.ToString());
-        var teamId = S(team.Data!["id"]);
+        var teamId = S(team.Data!["team"]!["id"]);
         Assert.True((await w.Owner.Post($"/api/v1/teams/{teamId}/members", new { userId = w.Dev.UserId })).Ok);
         var teamItems = (await w.Owner.Get($"{Url}?team={teamId}&status=all")).Data!["items"]!.AsArray();
         Assert.Equal("Late ticket", S(Assert.Single(teamItems)!["title"]));
@@ -144,7 +144,7 @@ public class WorkItemsApiTests(ApiFactory factory)
         // The version read before is stale now.
         var stale = await w.Owner.Patch($"{Url}/{id}", new { version = v, title = "Lost update" });
         Assert.Equal(HttpStatusCode.Conflict, stale.Status);
-        Assert.Equal(HttpStatusCode.BadRequest, (await w.Owner.Patch($"{Url}/{id}", new { title = "No version" })).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await w.Owner.Patch($"{Url}/{id}", new { title = "No version" })).Status);
 
         // null clears; status by the column's name.
         var cleared = await w.Owner.Patch($"{Url}/{id}", new { version = r.Data["version"]!.GetValue<int>(), dueDate = (string?)null, status = "In Progress" });
