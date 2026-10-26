@@ -124,6 +124,12 @@ public abstract class WorkItem : TenantEntity, ITenantScoped
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
     public Guid? DeletedBy { get; set; }
+    /// <summary>
+    /// The project that decides who may see the item: a task's or an issue's project, a work task's related project (none = workspace
+    /// work). Worked out by the database from those columns (a stored generated column), never written by the application; the query
+    /// filter reads it so one rule covers every kind.
+    /// </summary>
+    public Guid? ScopeProjectId { get; private set; }
 }
 
 public class TaskItem : WorkItem, ISoftDelete
@@ -214,6 +220,8 @@ public abstract class WorkItemComment : TenantEntity, ITenantScoped, ISoftDelete
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
     public Guid? DeletedBy { get; set; }
+    /// <summary>The item, whatever its kind: a copy of <c>WorkItemId</c> kept by the database (stored generated column), for the query filter.</summary>
+    public Guid? ItemId { get; private set; }
 }
 
 public class TaskComment : WorkItemComment

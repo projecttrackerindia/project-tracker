@@ -62,6 +62,9 @@ public partial class AppDbContext
             e.Property<string>("ItemType").HasMaxLength(16);
             e.Property(x => x.Title).HasMaxLength(200);
             e.Property(x => x.Version).IsConcurrencyToken();
+            // The project that decides visibility, whatever the kind (see the query filter). Kept by the database, so no write path can forget it.
+            e.Property(x => x.ScopeProjectId).HasComputedColumnSql("COALESCE(\"ProjectId\", \"RelatedProjectId\")", stored: true);
+            e.HasIndex(x => new { x.TenantId, x.ScopeProjectId });
             e.HasIndex(x => new { x.TenantId, x.AssigneeId });
             e.HasIndex(x => new { x.TenantId, x.DueDate });
             e.HasIndex("TenantId", "ItemType");
@@ -184,6 +187,7 @@ public partial class AppDbContext
             e.ToTable("WorkItemComments");
             e.HasDiscriminator<string>("ItemType").HasValue<TaskComment>("Task").HasValue<IssueComment>("Issue").HasValue<WorkTaskComment>("Work");
             e.Property<string>("ItemType").HasMaxLength(16);
+            e.Property(x => x.ItemId).HasComputedColumnSql("\"WorkItemId\"", stored: true);
         });
         // Each kind's comments point at their item through the one WorkItemId column (one foreign key to WorkItems; comments go with the item).
         b.Entity<WorkTaskComment>(e =>

@@ -46,19 +46,16 @@ public partial class AppDbContext
         }
 
         // Every kind of work in the one WorkItems table: same tenant, not deleted, and its project must be reachable - a task's or an issue's
-        // project, or the project a work task points at (a work task with no project is workspace work and always reachable).
+        // project, or the project a work task points at (a work task with no project is workspace work and always reachable). ScopeProjectId is
+        // that project for every kind (a generated column): a filter on the root of a hierarchy cannot cast to the kinds, because the same
+        // filter is applied when one kind is queried on its own.
         b.Entity<WorkItem>().HasQueryFilter(w => w.TenantId == CurrentTenantId && !w.IsDeleted
-            && (!ProjectsRestricted
-                || (w is TaskItem && ReachableProjects.Contains(((TaskItem)w).ProjectId))
-                || (w is StageIssue && ReachableProjects.Contains(((StageIssue)w).ProjectId))
-                || (w is WorkTask && (((WorkTask)w).RelatedProjectId == null || ReachableProjects.Contains(((WorkTask)w).RelatedProjectId!.Value)))));
+            && (!ProjectsRestricted || w.ScopeProjectId == null || ReachableProjects.Contains(w.ScopeProjectId!.Value)));
 
-        // Comments on work: a task's comment follows its task (and so the task's project); a work task's comment is workspace-wide, as before.
+        // Comments on work: a task's or an issue's comment follows its item (and so the item's project); a work task's comment is
+        // workspace-wide, as before.
         b.Entity<WorkItemComment>().HasQueryFilter(c => c.TenantId == CurrentTenantId && !c.IsDeleted
-            && (!ProjectsRestricted
-                || (c is TaskComment && Tasks.Any(t => t.Id == ((TaskComment)c).TaskId))
-                || (c is IssueComment && StageIssues.Any(i => i.Id == ((IssueComment)c).IssueId))
-                || c is WorkTaskComment));
+            && (!ProjectsRestricted || EF.Property<string>(c, "ItemType") == "Work" || WorkItems.Any(w => w.Id == c.ItemId)));
 
         // The project itself: whole workspace, or - when this person's reach is narrowed - the projects they own, were added to, or
         // that belong to a team they are in. Written once here so no query, report or assistant tool has to remember it.
