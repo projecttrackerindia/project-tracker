@@ -12,7 +12,8 @@ using ProjectManagement.Domain.Entities;
 namespace ProjectManagement.Application.Features.Ai;
 
 public record SubmitAiJobRequest(string Kind, string Title, string IdempotencyKey, Guid? TeamId = null, int Priority = 0);
-public record AiScheduleRequest(string Kind, string Title, int IntervalMinutes, Guid? TeamId = null, bool Enabled = true);
+/// <summary>FirstRunAt (optional) starts the schedule later - for example next Monday 09:00 for a weekly summary; it must be within eight days.</summary>
+public record AiScheduleRequest(string Kind, string Title, int IntervalMinutes, Guid? TeamId = null, bool Enabled = true, DateTime? FirstRunAt = null);
 public record AiJobResult(string Summary, DateTime EvidenceAt, string Methodology, IReadOnlyList<AiEvidenceSource> Sources, PortfolioBriefDto? Portfolio = null);
 public record AiEvidenceSource(string Kind, string Id, string Label, string Link, string? Version = null);
 public record AiJobDto(Guid Id, string Kind, string Title, string Status, int Progress, int Attempts, DateTime CreatedAt,
@@ -116,13 +117,20 @@ public class AiOperationsService(IAppDbContext db, ICurrentContext ctx, AppClock
     {
         await AuthorizeAsync(req.Kind, ct);
         if (req.IntervalMinutes is < 60 or > 10080) throw new ValidationException("intervalMinutes", "Review intervals range from one hour to one week.");
+        var first = clock.Now;
+        if (req.FirstRunAt is { } at)
+        {
+            var utc = at.Kind == DateTimeKind.Utc ? at : DateTime.SpecifyKind(at.ToUniversalTime(), DateTimeKind.Utc);
+            if (utc > clock.Now.AddDays(8)) throw new ValidationException("firstRunAt", "The first run must be within the next eight days.");
+            if (utc > first) first = utc;
+        }
         var uid = ctx.RequireUserId();
         await using var tx = await db.Database.BeginOwnedTransactionAsync(ct);
         await db.LockTenantLedgerAsync(ctx.RequireTenantId(), ct);
         if (await db.AiSchedules.CountAsync(s => s.UserId == uid, ct) >= 5 || await db.AiSchedules.CountAsync(ct) >= 20)
             throw new ConflictException("Schedules are limited to five per person and twenty per workspace. Remove an existing schedule first.", "AI_SCHEDULE_LIMIT");
         var row = new AiSchedule { TenantId = ctx.RequireTenantId(), UserId = uid, Kind = req.Kind, Title = Title(req.Title),
-            TeamId = await access.RequireLensAsync(req.TeamId, ct), IntervalMinutes = req.IntervalMinutes, Enabled = req.Enabled, NextRunAt = clock.Now };
+            TeamId = await access.RequireLensAsync(req.TeamId, ct), IntervalMinutes = req.IntervalMinutes, Enabled = req.Enabled, NextRunAt = first };
         db.AiSchedules.Add(row); await db.SaveChangesAsync(ct); await tx.CommitIfOwnedAsync(ct); return ScheduleDto(row);
     }
 

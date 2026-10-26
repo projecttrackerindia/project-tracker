@@ -99,4 +99,18 @@ public class AiOperationsTests(ApiFactory factory)
         Assert.Single(notices); Assert.False(notices[0].EmailPending); Assert.False(notices[0].PushPending);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Post("/api/v1/ai/operations/schedules", new { kind = "portfolio", title = "Runaway", intervalMinutes = 1 })).Status);
     }
+
+    [Fact]
+    public async Task A_weekly_summary_can_start_next_monday_and_does_not_run_before_then()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Monday owner"); await owner.CreateOrgAsync();
+        var monday = DateTime.UtcNow.Date.AddDays(((int)DayOfWeek.Monday - (int)DateTime.UtcNow.DayOfWeek + 7) % 7 + 0).AddHours(3.5);
+        if (monday <= DateTime.UtcNow) monday = monday.AddDays(7);
+        var created = await owner.Post("/api/v1/ai/operations/schedules", new { kind = "portfolio", title = "Monday summary", intervalMinutes = 10080, firstRunAt = monday });
+        Assert.True(created.Ok, created.ToString());
+        Assert.Equal(monday, created.Data!["nextRunAt"]!.GetValue<DateTime>().ToUniversalTime(), TimeSpan.FromSeconds(1));
+        await Process();
+        Assert.Empty((await owner.Get("/api/v1/ai/operations/jobs")).Data!.AsArray());   // nothing runs (or spends credits) before Monday
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Post("/api/v1/ai/operations/schedules", new { kind = "portfolio", title = "Too far", intervalMinutes = 10080, firstRunAt = DateTime.UtcNow.AddDays(30) })).Status);
+    }
 }

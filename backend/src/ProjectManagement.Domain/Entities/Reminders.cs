@@ -128,10 +128,10 @@ namespace ProjectManagement.Domain.Entities
         public TimeOnly DefaultTime { get; set; } = new(9, 0);
 
         public bool AutoEnabled { get; set; } = true;
-        /// <summary>Working days before a due date to be reminded, e.g. "1,0" = the working day before and the day itself.</summary>
-        public string DueLeads { get; set; } = "1,0";
-        /// <summary>Days after a missed due date for follow-ups, e.g. "1,3,7".</summary>
-        public string OverdueSteps { get; set; } = "1,3,7";
+        /// <summary>Working days before a due date for the one due reminder (the nearest is used); "0" = the day itself.</summary>
+        public string DueLeads { get; set; } = "0";
+        /// <summary>Any value turns on the single follow-up the next working day after a missed due date; empty turns it off.</summary>
+        public string OverdueSteps { get; set; } = "1";
         /// <summary>At most this many automatic reminders announced a day; the rest wait in the briefing.</summary>
         public int DailyAutoLimit { get; set; } = 12;
 

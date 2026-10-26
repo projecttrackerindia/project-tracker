@@ -197,14 +197,16 @@ public class ReminderTests(ApiFactory factory)
         await Run(DateTime.UtcNow);
         List<Reminder> Auto() => factory.WithDb(db => db.Reminders.IgnoreQueryFilters().Where(r => r.TargetId == taskId).ToList());
         var leads = Auto().Where(r => r.Source == ReminderSource.DueDate).ToList();
-        Assert.Equal(2, leads.Count);   // the working day before, and the day itself
+        Assert.Single(leads);   // one nudge on the day itself - no longer the day before as well
         Assert.All(leads, r => Assert.Equal(o.Dev.UserId, r.UserId));
         Assert.All(leads, r => Assert.False(r.Exact));
         var cal = new WorkCalendar(new ReminderSettings());
-        var dayBefore = leads.Single(r => r.SystemKey!.Contains(":L1:"));
-        Assert.Equal(At(cal.WorkingDaysBefore(due, 1), 9), dayBefore.NextFireAt);
-        // The person sees them too.
-        Assert.Equal(2, (await o.Dev.Get("/api/v1/reminders")).Data!["open"]!.AsArray().Count(r => S(r!["source"]) == "DueDate"));
+        var dayBefore = leads.Single(r => r.SystemKey!.Contains(":L0:"));
+        Assert.Equal(At(cal.WorkingDaysBefore(due, 0), 9), dayBefore.NextFireAt);
+        // ...and at most one follow-up (the next working day, planned once it is within reach); never +3 or +7.
+        Assert.All(Auto().Where(r => r.Source == ReminderSource.Overdue), r => Assert.Contains(":O1:", r.SystemKey));
+        // The person sees it too.
+        Assert.Equal(1, (await o.Dev.Get("/api/v1/reminders")).Data!["open"]!.AsArray().Count(r => S(r!["source"]) == "DueDate"));
 
         // The due date moves: the waiting reminders move with it.
         factory.WithDb(db => { db.Tasks.IgnoreQueryFilters().First(t => t.Id == taskId).DueDate = due.AddDays(30); db.SaveChanges(); return 0; });
@@ -212,9 +214,9 @@ public class ReminderTests(ApiFactory factory)
         Assert.Empty(Auto().Where(r => r.State == ReminderState.Scheduled && r.SystemKey!.EndsWith(due.ToString("yyyyMMdd"))));
         factory.WithDb(db => { db.Tasks.IgnoreQueryFilters().First(t => t.Id == taskId).DueDate = due; db.SaveChanges(); return 0; });
         await Run(DateTime.UtcNow);
-        Assert.Equal(2, Auto().Count(r => r.State == ReminderState.Scheduled && r.Source == ReminderSource.DueDate));   // and come back when it moves back
+        Assert.Equal(1, Auto().Count(r => r.State == ReminderState.Scheduled && r.Source == ReminderSource.DueDate));   // and come back when it moves back
 
-        // It goes off at 09:00 on the working day before.
+        // It goes off at 09:00 on the due day.
         var at = dayBefore.NextFireAt!.Value.AddMinutes(1);
         await Run(at);
         var sent = factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == o.Dev.UserId && n.Type == NotificationType.DueSoon).ToList());
@@ -236,6 +238,38 @@ public class ReminderTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Work_planned_under_the_old_four_reminder_schedule_keeps_only_the_one_escalating_nudge()
+    {
+        var o = await Setup();
+        var due = LocalToday.AddDays(3);
+        var task = await o.Owner.CreateTaskAsync(o.Project, "Audit pack", new { title = "Audit pack", priority = "High", assigneeId = o.Dev.UserId, dueDate = due.ToString("yyyy-MM-dd"), estimatedHours = 24 });
+        var taskId = Guid.Parse(S(task["id"]));
+        var tenant = factory.WithDb(db => db.Tasks.IgnoreQueryFilters().First(t => t.Id == taskId).TenantId);
+        // What the old planner left waiting: the day before, +3 and +7 days overdue.
+        factory.WithDb(db =>
+        {
+            foreach (var step in new[] { "L1", "O3", "O7" })
+                db.Reminders.Add(new Reminder
+                {
+                    TenantId = tenant, UserId = o.Dev.UserId, Source = step[0] == 'L' ? ReminderSource.DueDate : ReminderSource.Overdue, State = ReminderState.Scheduled,
+                    Title = $"old {step}", TargetType = ReminderTarget.Task, TargetId = taskId, TargetProjectId = o.Project, TimeZone = "Asia/Kolkata",
+                    NextFireAt = DateTime.UtcNow.AddDays(3), SystemKey = $"auto:task:{taskId:N}:{o.Dev.UserId:N}:{step}:{due:yyyyMMdd}",
+                });
+            db.SaveChanges();
+            return 0;
+        });
+        await Run(DateTime.UtcNow);
+        var waiting = factory.WithDb(db => db.Reminders.IgnoreQueryFilters().Where(r => r.TargetId == taskId && r.State == ReminderState.Scheduled).ToList());
+        Assert.Equal(["L0", "O1"], waiting.Select(r => r.SystemKey!.Split(':')[4]).Order().ToArray());
+        var cal = new WorkCalendar(new ReminderSettings());
+        Assert.Equal(At(cal.WorkingDaysBefore(due, 0), 9), waiting.Single(r => r.SystemKey!.Contains(":L0:")).NextFireAt);
+        Assert.Equal(At(cal.WorkingOnOrAfter(due.AddDays(1)), 9), waiting.Single(r => r.SystemKey!.Contains(":O1:")).NextFireAt);   // the next working day
+        Assert.DoesNotContain(waiting, r => r.Title.StartsWith("Time to start"));
+        Assert.Equal(new ReminderSettings().DueLeads, "0");
+        Assert.Equal(new ReminderSettings().OverdueSteps, "1");
+    }
+
+    [Fact]
     public async Task An_automatic_reminder_is_not_sent_to_someone_the_work_was_taken_from_or_for_an_old_due_date()
     {
         var o = await Setup();
@@ -243,7 +277,7 @@ public class ReminderTests(ApiFactory factory)
         var task = await o.Owner.CreateTaskAsync(o.Project, "Board pack", new { title = "Board pack", priority = "High", assigneeId = o.Dev.UserId, dueDate = due.ToString("yyyy-MM-dd") });
         var taskId = Guid.Parse(S(task["id"]));
         await Run(DateTime.UtcNow);
-        var dayBefore = factory.WithDb(db => db.Reminders.IgnoreQueryFilters().Single(r => r.TargetId == taskId && r.SystemKey!.Contains(":L1:")));
+        var dayBefore = factory.WithDb(db => db.Reminders.IgnoreQueryFilters().Single(r => r.TargetId == taskId && r.SystemKey!.Contains(":L0:")));
 
         // Reassigned between planning and firing: firing alone (no planning pass in between) must not tell the old assignee.
         factory.WithDb(db => { db.Tasks.IgnoreQueryFilters().First(t => t.Id == taskId).AssigneeId = o.Owner.UserId; db.SaveChanges(); return 0; });
@@ -291,11 +325,11 @@ public class ReminderTests(ApiFactory factory)
         Assert.True(made.Ok, made.ToString());
         var id = Guid.Parse(S(made.Data!["id"]));
 
-        // Automatically: the assignee is reminded the working day before and on the day, as for a task, and the reminder opens the action item.
+        // Automatically: the assignee is reminded on the day, as for a task, and the reminder opens the action item.
         await Run(DateTime.UtcNow);
         List<Reminder> Mine() => factory.WithDb(db => db.Reminders.IgnoreQueryFilters().Where(r => r.TargetId == id).ToList());
         var auto = Mine().Where(r => r.Source == ReminderSource.DueDate).ToList();
-        Assert.Equal(2, auto.Count);
+        Assert.Single(auto);
         Assert.All(auto, r => { Assert.Equal(ReminderTarget.ActionItem, r.TargetType); Assert.Equal(o.Dev.UserId, r.UserId); Assert.Contains($"/projects/{o.Project}", r.Link); Assert.Contains("action", r.Link); });
 
         // On request: "Remind me" on the action item, by the assignee, and also by the project owner about someone else's.
@@ -449,8 +483,8 @@ public class ReminderTests(ApiFactory factory)
         var s = (await o.Dev.Get("/api/v1/reminders/settings")).Data!;
         Assert.Equal([1, 2, 3, 4, 5], s["workDays"]!.AsArray().Select(d => d!.GetValue<int>()));
         Assert.Equal("09:00", S(s["defaultTime"]));
-        Assert.Equal([1, 0], s["dueLeads"]!.AsArray().Select(d => d!.GetValue<int>()));
-        Assert.Equal([1, 3, 7], s["overdueSteps"]!.AsArray().Select(d => d!.GetValue<int>()));
+        Assert.Equal([0], s["dueLeads"]!.AsArray().Select(d => d!.GetValue<int>()));   // one nudge on the day,
+        Assert.Equal([1], s["overdueSteps"]!.AsArray().Select(d => d!.GetValue<int>()));   // one follow-up the next working day
         var bad = s.DeepClone().AsObject();
         bad["workEnd"] = "08:00";
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await o.Dev.Put("/api/v1/reminders/settings", bad)).Status);
