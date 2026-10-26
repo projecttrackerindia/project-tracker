@@ -651,19 +651,17 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
 
             if (s.AutoEnabled)
             {
+                // One escalating nudge per piece of work, not a string of them: a reminder on the due day (the nearest lead the person
+                // chose, normally the day itself), then a single follow-up the next working day if it is still open. The rest of the
+                // old schedule (the day before, +3 and +7 days, "time to start") is no longer created; waiting ones are withdrawn below.
                 var leads = WorkCalendar.ParseNumbers(s.DueLeads, 0, 10);
-                foreach (var n in leads)
-                {
-                    var day = cal.WorkingDaysBefore(item.Due, n);
-                    var title = day == item.Due ? $"{item.Key} is due today" : day.AddDays(1) == item.Due ? $"{item.Key} is due tomorrow" : $"{item.Key} is due {When(item.Due)}";
-                    Add($"L{n}", item.Assignee, assignee.TimeZone, ReminderSource.DueDate, title, day, s.DefaultTime);
-                }
-                // Big pieces of work get a nudge to start in time: a working day per eight hours of estimate.
-                if (item.Estimate is >= 8 && (int)Math.Min(10, Math.Ceiling((double)item.Estimate.Value / 8)) is var start && start > (leads.Count == 0 ? 0 : leads.Max()))
-                    Add("W", item.Assignee, assignee.TimeZone, ReminderSource.DueDate, $"Time to start {item.Key}: about {item.Estimate:0} h of work, due {When(item.Due)}",
-                        cal.WorkingDaysBefore(item.Due, start), s.DefaultTime);
-                foreach (var n in WorkCalendar.ParseNumbers(s.OverdueSteps, 1, 30))
-                    Add($"O{n}", item.Assignee, assignee.TimeZone, ReminderSource.Overdue, $"{item.Key} is {n} day{(n == 1 ? "" : "s")} overdue", cal.WorkingOnOrAfter(item.Due.AddDays(n)), s.DefaultTime);
+                var lead = leads.Count == 0 ? 0 : leads.Min();
+                var day = cal.WorkingDaysBefore(item.Due, lead);
+                var title = day == item.Due ? $"{item.Key} is due today" : day.AddDays(1) == item.Due ? $"{item.Key} is due tomorrow" : $"{item.Key} is due {When(item.Due)}";
+                Add($"L{lead}", item.Assignee, assignee.TimeZone, ReminderSource.DueDate, title, day, s.DefaultTime);
+                if (WorkCalendar.ParseNumbers(s.OverdueSteps, 1, 30).Count > 0)
+                    Add("O1", item.Assignee, assignee.TimeZone, ReminderSource.Overdue, $"{item.Key} is still open: it was due {When(item.Due)}",
+                        cal.WorkingOnOrAfter(item.Due.AddDays(1)), s.DefaultTime);
             }
 
             if (ladders.TryGetValue(item.TenantId, out var ladder))
