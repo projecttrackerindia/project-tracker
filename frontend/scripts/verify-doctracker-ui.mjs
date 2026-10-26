@@ -147,7 +147,7 @@ try{
 
  // Project overview: KPIs and the API card.
  await page.locator('.ds-node-main',{hasText:'Payments Core'}).click();
- await page.locator('.dt-phead h2',{hasText:'Payments Core'}).waitFor();
+ await page.locator('.dt-phead h2',{hasText:'Payments Core'}).waitFor({timeout:8000}).catch(async e=>{console.log('URL',page.url());await page.screenshot({path:path.join(out,'dbg.png')});throw e;});
  await page.locator('.dt-api',{hasText:'Payments API'}).waitFor();
  await shot(page,'project-overview-1440.png');checks.push('project-overview');
 

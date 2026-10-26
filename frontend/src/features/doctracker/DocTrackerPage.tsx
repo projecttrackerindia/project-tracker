@@ -39,14 +39,15 @@ export const scoreTone = (s: number) => (s >= 85 ? 'good' : s >= 60 ? 'ok' : 'lo
 export function useDtNav() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const onTracker = useLocation().pathname === '/doctracker';
+  const path = useLocation().pathname;
+  const onTracker = path === '/doctracker' || path === '/library' || path === '/library/docs';   // v2: DocTracker is Library › Docs
   const go = (next: { p?: string | null; t?: ProjectTab | null; ep?: string | null; view?: 'security' | null }) => {
     const q = new URLSearchParams();
     if (next.view) q.set('view', next.view);
     if (next.p) q.set('p', next.p);
     if (next.p && next.t && next.t !== 'overview') q.set('t', next.t);
     if (next.p && next.ep) q.set('ep', next.ep);
-    navigate(`/doctracker${q.size ? `?${q}` : ''}`);
+    navigate(`/library/docs${q.size ? `?${q}` : ''}`);
     window.scrollTo({ top: 0 });
   };
   return onTracker
