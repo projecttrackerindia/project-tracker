@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { MeetPage } from '../meet/MeetPage';
+import { MailboxPage } from '../mailbox/MailboxPage';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -145,6 +146,8 @@ function TalkHome() {
             { label: 'Ask the chat', hint: 'Answers from your conversations, with links', icon: 'search', onSelect: () => setDialog('ask'), hidden: !chatUsable },
             { label: 'Saved messages', icon: 'star', onSelect: () => setPanel('saved'), hidden: !chatUsable },
             { label: 'Scheduled messages', icon: 'clock', onSelect: () => setPanel('scheduled'), hidden: !chatUsable },
+            { label: 'New mail', icon: 'edit', onSelect: () => navigate('/talk?f=mail&s=mailbox&compose=1') },
+            { label: 'Mailbox', hint: 'Every account and folder, filters, company mail', icon: 'inbox', onSelect: () => navigate('/talk?f=mail&s=mailbox') },
             { label: 'Connect a mailbox', icon: 'mail', onSelect: () => setDialog('connect') },
             // Meetings keep their full views (Meet): scheduling, the upcoming list with replies, series, past notes and the notetaker.
             { label: 'Schedule a meeting', icon: 'calendar', onSelect: () => navigate('/talk?f=meetings&new=schedule') },
@@ -340,5 +343,8 @@ export function TalkPage() {
   const s = params.get('s') as MeetSection | null;
   if (params.get('f') === 'meetings' && ((s && MEET_SECTIONS.includes(s)) || params.has('new')))
     return <MeetPage section={s && MEET_SECTIONS.includes(s) ? s : 'upcoming'} />;
+  // The full mailbox (every account and folder, unread and attachment filters, new mail, company mail servers) opens from Talk's ··· as
+  // ?f=mail&s=mailbox; ?compose=1 starts a new mail there.
+  if (params.get('f') === 'mail' && ((s as string | null) === 'mailbox' || params.has('compose'))) return <MailboxPage />;
   return <TalkHome />;
 }

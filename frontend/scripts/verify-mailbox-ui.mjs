@@ -83,9 +83,10 @@ try{
  const shot=async(page,name)=>{await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(400);await page.screenshot({path:path.join(out,name)});};
  const waitWrite=async(test)=>{for(let i=0;i<30&&!writes.some(test);i++)await new Promise(r=>setTimeout(r,100));return writes.find(test);};
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:960});
- await page.goto(origin+'/preview-org/mailbox');await page.locator('.mb-row').first().waitFor();
- // The sidebar offers Mailbox; the unified inbox merges Gmail and Rediffmail, newest first.
- assert.ok(await page.locator('.v2-rail-item.on',{hasText:'Talk'}).isVisible());assert.equal(await page.getByRole('tab',{name:'Mail',exact:true}).getAttribute('aria-selected'),'true');
+ // v2: /mailbox lands on Talk with Mail chosen; Talk's ··· opens the full mailbox, where the unified inbox merges Gmail and Rediffmail, newest first.
+ await page.goto(origin+'/preview-org/mailbox');await page.waitForURL(/\/talk\?f=mail/);
+ await page.locator('.v2-rail-item.on',{hasText:'Talk'}).waitFor();await page.locator('.talk-filters').waitFor();assert.equal(await page.locator('.talk-filters .ds-chip',{hasText:'Mail'}).getAttribute('aria-pressed'),'true');
+ await page.getByRole('button',{name:'More in Talk'}).click();await page.getByRole('menuitem',{name:/^Mailbox/}).click();await page.locator('.mb-row').first().waitFor();
  assert.equal(await page.locator('.mb-row').count(),3);
  assert.match(await page.locator('.mb-row').first().innerText(),/Ravi Kumar/);
  assert.match(await page.locator('.mb-row').nth(1).innerText(),/Kiran/);
@@ -152,7 +153,7 @@ try{
  await page.close();await ctx.close();
  // Phone: one pane at a time, no sideways scroll.
  ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
- await page.goto(origin+'/preview-org/mailbox');await page.locator('.mb-row').first().waitFor();
+ await page.goto(origin+'/preview-org/talk?f=mail&s=mailbox');await page.locator('.mb-row').first().waitFor();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');await shot(page,'list-390.png');
  await page.locator('.mb-row').first().click();await page.locator('.mb-msg-body').waitFor();assert.equal(await page.locator('.mb-list').isVisible(),false);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');await shot(page,'read-390.png');
@@ -162,7 +163,7 @@ try{
  noMail=true;
  for(const [theme,w,h] of [['light',1440,1000],['dark',1440,1000],['light',390,844]]){
   ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:w,height:h});
-  await page.goto(origin+'/preview-org/mailbox');await page.locator('[data-testid="mail-hero"]').waitFor();
+  await page.goto(origin+'/preview-org/talk?f=mail&s=mailbox');await page.locator('[data-testid="mail-hero"]').waitFor();
   assert.equal(await page.locator('.mb-hero h1').innerText(),'Your mail, with an assistant built in.');
   assert.match(await page.locator('.mb-hero-card .mb-company').innerText(),/Company mail[\s\S]*asha@fivestar.test/);
   assert.deepEqual(await page.locator('.mb-hero-chips .ds-chip').allInnerTexts(),['Gmail','Outlook','Other IMAP']);
