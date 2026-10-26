@@ -19,6 +19,7 @@ public class StageScheduleUpgradeTests
         {
             base.OnModelCreating(builder); builder.Entity<Project>().Ignore(p => p.StageScheduleMode); builder.Entity<ProjectStage>().Ignore(s => s.DurationDays);
             builder.Entity<Tenant>().Ignore(t => t.TimeZone);   // added later by 20261018000050_WorkspaceTimeZone
+            builder.Entity<Tenant>().Ignore(t => t.AiAgentLevels);   // added later by 20261111000100_AiControlCentre
         }
     }
     /// <param name="postgres">The PostgreSQL database still at the older migration: the person is written there with the columns it has then
