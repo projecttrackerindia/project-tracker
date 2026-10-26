@@ -31,7 +31,7 @@ export function WorkPage() {
   return (
     <>
       <PlaceTabs label="Work" options={tabs} value={tab} onChange={setTab} link={mProjects ? { to: '/work/projects', label: 'Projects' } : undefined} />
-      {tab === 'tickets' ? <WorkTasksPage /> : tab === 'team' ? <WorkloadPage /> : <MyWorkPage />}
+      {tab === 'tickets' ? <WorkTasksPage /> : tab === 'team' ? <WorkloadPage section={params.get('s') === 'capacity' ? 'capacity' : 'workload'} /> : <MyWorkPage />}
     </>
   );
 }

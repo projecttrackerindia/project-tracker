@@ -86,7 +86,7 @@ export function ProjectDetailPage() {
   useEffect(() => {
     if (rawTab !== 'meetings') return;
     const m = params.get('meeting');
-    nav(`/meet?project=${id}${m ? `&open=p:${m}` : ''}`, { replace: true });
+    nav(`/talk?f=meetings&s=upcoming&project=${id}${m ? `&open=p:${m}` : ''}`, { replace: true });   // Meet (in Talk), filtered to the project
   }, [rawTab, params, id, nav]);
   const legacy = LEGACY_TAB[rawTab];
   const wanted = (legacy?.tab ?? (legacy ? 'overview' : rawTab)) as Tab;
@@ -172,7 +172,7 @@ export function ProjectDetailPage() {
         <div className="page-actions">
           <RiskButton projectId={p.id} />
           {/* Every meeting and call is in Meet; this opens the project's own. */}
-          <Link className="btn btn-ghost" to={`/meet?project=${p.id}`}><Icon name="video" /> Meet</Link>
+          <Link className="btn btn-ghost" to={`/talk?f=meetings&s=upcoming&project=${p.id}`}><Icon name="video" /> Meet</Link>
           <ProjectChatButton projectId={p.id} name={p.name} label />
           {method === 'Agile' && canEdit && !archived && <button className="btn btn-ghost" onClick={() => setScheduling(true)}><Icon name="calendar" /> Schedule studio</button>}
           {canEdit && <button className="btn btn-ghost" onClick={() => setSettings('members')} title="Members, task workflow and automation"><Icon name="settings" /> Settings</button>}

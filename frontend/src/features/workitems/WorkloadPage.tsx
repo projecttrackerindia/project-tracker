@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useChartColors } from './chartColors';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Icon } from '../../components/Icon';
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { workItemApi } from '../../api/endpoints';
 import type { WorkItemKind, WorkloadPerson, WorkloadScope } from '../../api/types';
 import { ChartTip } from '../../components/ChartTip';
-import { Avatar, Badge, EmptyState, ErrorState, Kpi, Modal, PageHead, PageLoader, RouteTabs, Segmented } from '../../components/ui';
+import { Avatar, Badge, EmptyState, ErrorState, Kpi, Modal, PageHead, PageLoader, Segmented } from '../../components/ui';
 import './insights.css';
 import { CapacityPage } from './CapacityPage';
 import { useWsQuery } from '../../lib/hooks';
@@ -39,8 +40,12 @@ const KIND_KEYS: { kind: WorkItemKind; count: keyof NonNullable<WorkloadPerson['
   { kind: 'Task', count: 'tasks' }, { kind: 'Issue', count: 'issues' }, { kind: 'ActionItem', count: 'actionItems' }, { kind: 'Operational', count: 'operational' },
 ];
 
-const WorkloadTabs = () => (
-  <RouteTabs label="Workload" tabs={[{ to: '/workload', label: 'Open work', icon: 'users' }, { to: '/workload/capacity', label: 'Capacity & cost', icon: 'gauge' }]} />
+/** v2: Workload is Work › Team; Capacity & cost is its second view (?s=capacity), which a NavLink cannot tell apart from the first. */
+const WorkloadTabs = ({ current }: { current: 'workload' | 'capacity' }) => (
+  <nav className="tabs route-tabs" aria-label="Workload">
+    <Link to="/work?tab=team" className={`tab ${current === 'workload' ? 'active' : ''}`} aria-current={current === 'workload' ? 'page' : undefined}><Icon name="users" />Open work</Link>
+    <Link to="/work?tab=team&s=capacity" className={`tab ${current === 'capacity' ? 'active' : ''}`} aria-current={current === 'capacity' ? 'page' : undefined}><Icon name="gauge" />Capacity &amp; cost</Link>
+  </nav>
 );
 
 /** Workload: open work per person, and capacity & cost. Each is its own address (and its own component, so their hooks never mix). */
@@ -52,7 +57,7 @@ function CapacityTab() {
   return (
     <>
       <PageHead title="Workload" sub="Logged time against each person's capacity, how much of it is billable, and what it costs." />
-      <WorkloadTabs />
+      <WorkloadTabs current="capacity" />
       <CapacityPage />
     </>
   );
@@ -73,7 +78,7 @@ function OpenWork() {
 
   if (q.isLoading) return <PageLoader />;
   // A scope from an old link or bookmark that this person cannot use: fall back to their default view.
-  if (q.isError && wanted) return <Navigate to="/workload" replace />;
+  if (q.isError && wanted) return <Navigate to="/work?tab=team" replace />;
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const t = q.data;
   const setScope = (s: WorkloadScope) => { const n = new URLSearchParams(params); n.set('scope', s); setParams(n, { replace: true }); };
@@ -91,7 +96,7 @@ function OpenWork() {
           <Segmented label="Whose workload" value={t.scope} onChange={setScope} options={t.available.map((s) => ({ id: s, label: SCOPES[s].label }))} />
         )}
       </PageHead>
-      <WorkloadTabs />
+      <WorkloadTabs current="workload" />
 
       {t.members.length === 0 ? (
         <div className="card"><div className="card-body"><EmptyState icon="users" title={t.scope === 'Reports' ? 'Nobody reports to you yet' : 'Nobody to show'} text={t.scope === 'Reports' ? 'When the org chart shows people below you, their work appears here.' : undefined} /></div></div>

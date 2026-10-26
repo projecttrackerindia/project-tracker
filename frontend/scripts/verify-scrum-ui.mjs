@@ -63,10 +63,10 @@ try{
  for(const width of [1440,390]){
   const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height:1000});
   // Calendar shows meetings but makes none: the stand-up is scheduled in Meet, the one place for meetings.
-  await page.goto(origin+'/preview-org/calendar');await page.locator('.cal-filters').waitFor();
+  await page.goto(origin+'/preview-org/calendar');await page.locator('.hm-week').waitFor();   // v2: Home › Calendar
   assert.equal(await page.getByRole('button',{name:'Scrum call',exact:true}).count(),0,'No scrum call button on the Calendar');
   assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0,'Header Ask Agent removed');
-  await page.goto(origin+'/preview-org/meet');await page.getByRole('button',{name:'Schedule',exact:true}).click();
+  await page.goto(origin+'/preview-org/meet/upcoming');await page.getByRole('button',{name:'Schedule',exact:true}).click();   // v2: Talk › all meetings
   let dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
   await dialog.getByRole('button',{name:'Stand-up',exact:true}).click();await dialog.getByRole('heading',{name:'Schedule a stand-up'}).waitFor();
   // A workspace stand-up needs no project: "No project" is the default, and the title follows the workspace.
@@ -99,14 +99,14 @@ try{
   // The project page has one way in: Meet, filtered to the project, which then schedules for that project.
   await page.goto(origin+`/preview-org/projects/${pid}`);
   assert.equal(await page.getByRole('button',{name:'Meeting',exact:true}).count(),0,'No meeting menu on the project page');
-  await page.locator('.page-actions').getByRole('link',{name:'Meet',exact:true}).click();await page.waitForURL(/\/talk\?project=.*f=meetings/);
+  await page.locator('.page-actions').getByRole('link',{name:'Meet',exact:true}).click();await page.waitForURL(/\/talk\?.*f=meetings.*project=/);
   await page.getByRole('button',{name:'Schedule',exact:true}).click();
   dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
   await page.waitForFunction(()=>document.querySelector('[aria-label="Project"]')?.value?.length>0);
   assert.equal(await dialog.getByLabel('Project',{exact:true}).inputValue(),pid);checks.push(`project-meet-${width}`);
   await page.close();
  }
- const logo=await ctx.newPage();await logo.goto(origin+'/preview-org/calendar');await logo.locator('.cal-filters').waitFor();
+ const logo=await ctx.newPage();await logo.goto(origin+'/preview-org/calendar');await logo.locator('.hm-week').waitFor();
  await logo.emulateMedia({reducedMotion:'reduce'});assert.ok(await logo.locator('.v2-ask .v2-orb').count(),'v2: the Ask bar (with its AI orb) is on every page');
  await logo.screenshot({path:path.join(out,'header-agent.png'),animations:'disabled'});await logo.close();checks.push('header-and-reduced-motion');
  assert.deepEqual(errors,[]);await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,saves:saves.length,errors,scope:'Built frontend with synthetic fixtures; no external invitations or AI calls.'},null,2));console.log(JSON.stringify({checks,saves:saves.length,errors}));

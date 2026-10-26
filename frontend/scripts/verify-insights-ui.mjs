@@ -115,7 +115,10 @@ try {
     await page.setViewportSize({ width, height: 1000 });
 
     // Workload: the people, their open work and the chart.
+    // v2: /workload lands on Insights; its "Open work · team" opens the full workload, Work › Team.
     await page.goto(`${origin}/preview-org/workload`);
+    await page.waitForURL(/\/insights/); await page.getByRole('link', { name: /Open work · team/ }).click();
+    await page.waitForURL(/\/work\?tab=team/);
     await page.getByRole('heading', { name: 'Workload', level: 1 }).waitFor();
     await page.locator('.team-card', { hasText: 'Ravi Kumar' }).waitFor();
     await page.waitForTimeout(1500); await page.locator(".wl-chart").screenshot({ path: path.join(out, `workload-chart-${tag}.png`) });
