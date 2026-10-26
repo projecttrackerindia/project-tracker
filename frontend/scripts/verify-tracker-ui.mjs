@@ -159,14 +159,13 @@ try{
  assert.deepEqual(writes.at(-1).b,{enabled:false});checks.push('switch');
  await page.close();await ctx.close();
 
- // The hub: every agent place shares one header and tab bar, on a wide screen and on a phone.
+ // v2: no Agents hub. Workflows live in Insights and the tracker in Settings › AI; both open from their old addresses, wide and on a phone.
  for(const [w,h] of [[1440,1000],[390,844]]){
   ctx=await make('light');page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&/Unhandled UI error/.test(m.text()))errors.push(m.text().slice(0,300));});await page.setViewportSize({width:w,height:h});
-  for(const [url,name,ready] of [['/ai/operations','Workflows','.awf-create'],['/agent-tracker','Tracker','.trk-agent']]){
+  for(const [url,name,ready,place] of [['/ai/operations','Workflows','.awf-create',/\/insights\?tab=workflows$/],['/agent-tracker','Tracker','.trk-agent',/\/settings\/ai\/tracker$/]]){
    await page.goto(origin+'/preview-org'+url);await page.locator(ready).first().waitFor();
-   assert.ok(await page.locator('.agh').isVisible(),`hub header on ${url}`);
-   assert.ok((await page.locator('.agh-tabs .tab.active').innerText()).trim().startsWith(name),url);
-   if(w<400){const seen=await page.locator('.agh-tabs .tab.active').evaluate(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;});assert.ok(seen,`the current hub tab is in view on ${url}`);}
+   assert.match(page.url(),place,url);
+   if(name==='Tracker')assert.equal(await page.getByRole('tab',{name:'Agent tracker'}).getAttribute('aria-selected'),'true');
    await shot(page,`hub-${name.toLowerCase()}-${w}.png`,w>400);if(w<400)await noOverflow(page,`hub ${name} ${w}`);
   }
   checks.push(`hub-${w}`);await page.close();await ctx.close();

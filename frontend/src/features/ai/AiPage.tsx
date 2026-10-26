@@ -51,7 +51,7 @@ export interface AiHomeSlots {
 export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
   const routeId = useParams().id;
   const [search] = useSearchParams();
-  const id = home ? search.get('c') ?? undefined : routeId;
+  const id = home ? search.get('c') ?? undefined : routeId ?? search.get('c') ?? undefined;   // v2: /ai/<id> is now /?tab=assistant&c=<id>
   const navigate = useNavigate();
   const loc = useLocation();
   // Home is the assistant for everyone whose Home is the Command Center (the projects module, not a guest).

@@ -119,7 +119,7 @@ export function AvatarMenu() {
 
   return (
     <div ref={wrap}>
-      <button type="button" ref={trigger} className="v2-avatar" aria-haspopup="menu" aria-expanded={open} aria-label={`${user.displayName}: profile, settings and sign out`}
+      <button type="button" ref={trigger} className="v2-avatar" aria-haspopup="menu" aria-expanded={open} aria-label={`Account: ${user.displayName}`}
         title={user.displayName} onClick={() => setOpen((o) => !o)}>
         {photo ? <img src={photo} alt="" /> : initials(user.displayName)}
         {unread > 0 && <em className="v2-badge" aria-hidden="true">{unread > 9 ? '9+' : unread}</em>}

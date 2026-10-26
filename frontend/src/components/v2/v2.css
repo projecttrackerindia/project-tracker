@@ -70,6 +70,7 @@
 
 /* ------------------------------------------------------------------ a place's tabs (top right) */
 .v2-place-tabs { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; margin: 0 0 18px; }
+.m-shell.m-conversation .v2-place-tabs { display: none; }   /* a conversation fills the phone's screen */
 .v2-place-link { font-size: 14px; font-weight: 500; color: var(--ds-accent); text-decoration: none; padding: 6px 4px; }
 .v2-place-link:hover { text-decoration: underline; }
 

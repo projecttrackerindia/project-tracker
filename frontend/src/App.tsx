@@ -280,7 +280,7 @@ function SectionMoved({ to }: { to: string }) {
 /** /ai/<conversation> from before v2: the conversation now lives on Home (?c=). */
 function AiConversationMoved() {
   const { id = '' } = useParams();
-  return <Navigate to={`/?c=${encodeURIComponent(id)}`} replace />;
+  return <Navigate to={`/?tab=assistant&c=${encodeURIComponent(id)}`} replace />;
 }
 
 function NotFound() {
@@ -395,7 +395,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="project-agent/my-inbox" element={<Moved to="/?tab=mail-agent" />} />
         <Route path="project-agent/meeting-bot" element={<Moved to="/talk?f=meetings&s=notetaker" />} />
         <Route path="project-agent/*" element={<Moved to="/" />} />
-        <Route path="ai" element={<Moved to="/" />} />
+        <Route path="ai" element={<Moved to="/?tab=assistant" />} />
         <Route path="ai/operations" element={<Moved to="/insights?tab=workflows" />} />
         <Route path="ai/:id" element={<AiConversationMoved />} />
         <Route path="agent-tracker" element={<Moved to="/settings/ai/tracker" />} />

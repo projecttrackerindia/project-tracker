@@ -85,7 +85,7 @@ try{
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:960});
  await page.goto(origin+'/preview-org/mailbox');await page.locator('.mb-row').first().waitFor();
  // The sidebar offers Mailbox; the unified inbox merges Gmail and Rediffmail, newest first.
- assert.ok(await page.locator('nav a[href$="/mailbox"]').first().isVisible());
+ assert.ok(await page.locator('.v2-rail-item.on',{hasText:'Talk'}).isVisible());assert.equal(await page.getByRole('tab',{name:'Mail',exact:true}).getAttribute('aria-selected'),'true');
  assert.equal(await page.locator('.mb-row').count(),3);
  assert.match(await page.locator('.mb-row').first().innerText(),/Ravi Kumar/);
  assert.match(await page.locator('.mb-row').nth(1).innerText(),/Kiran/);

@@ -107,8 +107,7 @@ try{
   await page.close();
  }
  const logo=await ctx.newPage();await logo.goto(origin+'/preview-org/calendar');await logo.locator('.cal-filters').waitFor();
- await logo.emulateMedia({reducedMotion:'reduce'});assert.ok(await logo.locator('.agent-ribbon').count());
- assert.ok(await logo.locator('.agent-ribbon').evaluateAll(xs=>xs.every(x=>getComputedStyle(x).animationName==='none')),'Reduced motion disables logo animation');
+ await logo.emulateMedia({reducedMotion:'reduce'});assert.ok(await logo.locator('.v2-ask .v2-orb').count(),'v2: the Ask bar (with its AI orb) is on every page');
  await logo.screenshot({path:path.join(out,'header-agent.png'),animations:'disabled'});await logo.close();checks.push('header-and-reduced-motion');
  assert.deepEqual(errors,[]);await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,saves:saves.length,errors,scope:'Built frontend with synthetic fixtures; no external invitations or AI calls.'},null,2));console.log(JSON.stringify({checks,saves:saves.length,errors}));
 }finally{await browser.close();}

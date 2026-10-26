@@ -63,7 +63,8 @@ export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }
     for (const [k, v] of [['owner', f.ownerId], ['group', f.groupId], ['health', f.health], ['from', f.dueFrom], ['to', f.dueTo]] as const) { if (v) n.set(k, v); else n.delete(k); }
     setParams(n, { replace: true });
   };
-  const setView = (v: 'board' | 'timeline') => { const n = new URLSearchParams(params); if (v === 'board') n.delete('view'); else n.set('view', v); setParams(n, { replace: true }); };
+  // v2: view=portfolio is the board (Projects › Portfolio), view=timeline the timeline.
+  const setView = (v: 'board' | 'timeline') => { const n = new URLSearchParams(params); n.set('view', v === 'board' ? 'portfolio' : v); setParams(n, { replace: true }); };
   const q = useWsQuery(['portfolio', 'board', filter], () => portfolioApi.board(filter), { refetchInterval: 120_000, staleTime: 60_000, placeholderData: (prev) => prev });
   const [sending, setSending] = useState(false);
   const sendBrief = async () => {
