@@ -22,7 +22,7 @@ html .lib-ask .lib-ask-btn { min-height: 40px; padding: 0 22px; border-radius: v
 .lib-row { width: 100%; display: flex; align-items: center; gap: 14px; padding: 12px 6px; text-align: left; color: var(--ds-text); border-radius: 12px; }
 .lib-row:hover { background: var(--ds-fill); }
 .lib-row:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
-.lib-kind { flex: none; min-width: 52px; text-align: center; padding: 4px 10px; border-radius: 8px; font-size: 11.5px; font-weight: 600; background: var(--ds-fill); color: var(--ds-text-2); }
+.lib-kind { flex: none; min-width: 64px; text-align: center; padding: 4px 10px; border-radius: 8px; font-size: 11.5px; font-weight: 600; background: var(--ds-fill); color: var(--ds-text-2); }
 .lib-kind.k-api { background: var(--ds-success-bg); color: var(--ds-success); }
 .lib-kind.k-doc { background: var(--ds-info-bg); color: var(--ds-info); }
 .lib-kind.k-design { background: var(--ds-high-bg); color: var(--ds-high); }
@@ -75,17 +75,20 @@ html .lib-ask .lib-ask-btn { min-height: 40px; padding: 0 22px; border-radius: v
 .lib-shield { margin-bottom: 16px; }
 
 /* one item, v2: the fields in grey wells, one Share */
-.vlt2 { display: grid; gap: 14px; }
+.vlt2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.vlt2 > * { min-width: 0; }
 .vlt2-head { display: flex; align-items: center; gap: 14px; }
 .vlt2-head .vlt-back { display: none; }
 .vlt2-title { flex: 1; min-width: 0; }
 .vlt2-title h2 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -.02em; color: var(--ds-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vlt2-title p { margin: 2px 0 0; font-size: 13px; color: var(--ds-text-3); }
 .vlt2-conf { color: var(--ds-warning); font-weight: 600; }
-.vlt2-fields { display: grid; gap: 8px; }
+.vlt2-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.vlt2-field > * { min-width: 0; }
 .vlt2-field { display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 8px 10px 8px 16px; border-radius: var(--ds-r-tile); background: var(--ds-fill); }
 .vlt2-label { flex: none; width: 92px; font-size: 13px; color: var(--ds-text-3); }
-.vlt2-value { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: var(--ds-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vlt2-value { flex: 1; min-width: 0; display: block; font-size: 14.5px; color: var(--ds-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vlt2-value.vlt-totp { display: flex; align-items: center; gap: 10px; }
 code.vlt2-value { font-family: var(--mono); letter-spacing: .12em; }
 .vlt2-act { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 14px; border-radius: var(--ds-r-pill); font-size: 12.5px; font-weight: 600; color: var(--ds-accent); background: var(--ds-surface); box-shadow: var(--ds-e1); text-decoration: none; }
 .vlt2-act:hover:not(:disabled) { box-shadow: var(--ds-e2), 0 0 0 1px var(--ds-line); }
@@ -118,7 +121,9 @@ code.vlt2-value { font-family: var(--mono); letter-spacing: .12em; }
   .lib-vault-page:not(.has-item) .lib-vault-detail { display: none; }
   .vlt2-head { flex-wrap: wrap; }
   .vlt2-head .vlt-back { display: grid; }
-  .vlt2-title h2 { font-size: 20px; }
+  .vlt2-head > .vlt-tile, .vlt2-head > :nth-child(2) { margin-right: auto; }
+  .vlt2-title { order: 5; flex-basis: 100%; }
+  .vlt2-title h2 { font-size: 20px; white-space: normal; overflow-wrap: anywhere; }
   .vlt2-label { width: 70px; }
   .vlt2-ways { grid-template-columns: minmax(0, 1fr); }
   .lib-templates { grid-template-columns: 1fr 1fr; }

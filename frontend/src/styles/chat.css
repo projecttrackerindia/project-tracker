@@ -611,7 +611,6 @@ html .msg.mine .msg-actions { right: calc(100% + 8px); left: auto; }
 .msg-act { display: inline-flex; align-items: center; justify-content: center; min-height: 26px; padding: 0 10px; border-radius: var(--ds-r-pill); font-size: 12px; font-weight: 600; color: var(--ds-text); }
 .msg-act:hover, .msg-act[aria-expanded='true'] { background: var(--ds-fill); }
 .msg-act.dots { width: 28px; padding: 0; color: var(--ds-text-3); }
-.msg:not(.mine) .msg-actions .more-pop { left: 0; right: auto; }
 .more-pop .more-reacts { display: flex; gap: 2px; padding: 2px 2px 6px; margin-bottom: 4px; border-bottom: 1px solid var(--ds-separator); }
 .more-pop .more-reacts button { flex: 1; justify-content: center; padding: 5px 0; font-size: 17px; }
 .more-pop .more-reacts button.on { background: var(--ds-accent-soft); }
