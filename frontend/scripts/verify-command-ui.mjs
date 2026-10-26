@@ -256,7 +256,7 @@ try{
  assert.match(await steps.locator('header').innerText(),/2 of 3 done/);
  assert.ok(await steps.locator('li').nth(0).evaluate(e=>e.classList.contains('st-done')),'the confirmed card makes its step done');
  assert.ok(await steps.locator('li').nth(1).evaluate(e=>e.classList.contains('st-waiting')));
- assert.match(await steps.locator('li').nth(1).innerText(),/Waiting for you/);
+ assert.match(await steps.locator('li').nth(1).innerText(),/Ready to confirm/);
  assert.equal(await page.locator('.ai-tools .ai-tool',{hasText:'Planned the steps'}).count(),0,'the plan is not also a chip');
  await steps.scrollIntoViewIfNeeded();await page.waitForTimeout(200);await page.screenshot({path:path.join(out,'ai-plan-1440.png'),animations:'disabled'});
  checks.push('plan-steps');await page.locator('.aih-bar-title b',{hasText:'CRIF HIGHMARK'}).waitFor();

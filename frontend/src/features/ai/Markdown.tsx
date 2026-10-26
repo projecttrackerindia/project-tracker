@@ -102,14 +102,20 @@ function blocks(text: string): ReactNode[] {
       continue;
     }
 
-    const bullet = /^(\s*)([-*•])\s+/;
-    const numbered = /^(\s*)(\d+)[.)]\s+/;
+    // A marker may stand alone on its line with the text on the next one ("1." then a tab-indented line, as pasted from a document).
+    const bullet = /^(\s*)([-*•])(?:\s+|$)/;
+    const numbered = /^(\s*)(\d+)[.)](?:\s+|$)/;
     if (bullet.test(line) || numbered.test(line)) {
       const ordered = numbered.test(line);
       const items: string[] = [];
       while (i < lines.length && (ordered ? numbered : bullet).test(lines[i])) {
-        let item = lines[i].replace(ordered ? numbered : bullet, '');
+        let item = lines[i].replace(ordered ? numbered : bullet, '').trim();
         i++;
+        if (!item) {
+          // the item's words are on the following line(s)
+          while (i < lines.length && !lines[i].trim()) i++;
+          if (i < lines.length && !bullet.test(lines[i]) && !numbered.test(lines[i])) item = lines[i++].trim();
+        }
         // indented continuation lines belong to the same item
         while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !bullet.test(lines[i]) && !numbered.test(lines[i])) item += ' ' + lines[i++].trim();
         items.push(item);
@@ -121,7 +127,7 @@ function blocks(text: string): ReactNode[] {
 
     // a paragraph runs until a blank line or the start of another block
     const para: string[] = [];
-    while (i < lines.length && lines[i].trim() && !/^\s*(```|#{1,4}\s|>|[-*•]\s|\d+[.)]\s)/.test(lines[i]) && !(isTableRow(lines[i]) && isSeparator(lines[i + 1] ?? ''))) para.push(lines[i++]);
+    while (i < lines.length && lines[i].trim() && !/^\s*(```|#{1,4}\s|>|[-*•]\s|\d+[.)](?:\s|$))/.test(lines[i]) && !(isTableRow(lines[i]) && isSeparator(lines[i + 1] ?? ''))) para.push(lines[i++]);
     if (para.length === 0) { para.push(lines[i++]); }
     out.push(<p key={key()}>{inline(para.join(' '), key())}</p>);
   }

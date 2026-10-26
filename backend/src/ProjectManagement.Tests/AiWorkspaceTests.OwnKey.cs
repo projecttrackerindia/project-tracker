@@ -124,6 +124,19 @@ public partial class AiWorkspaceTests
             }
             Assert.Equal(2, factory.WithDb(db => db.WorkTasks.IgnoreQueryFilters().Count(a => a.RelatedProjectId == o.Project
                 && (a.Title == "Share the server logs" || a.Title == "Check why no alert was sent"))));
+            // The answer says which AI wrote it, and used no AI credits.
+            Assert.Equal("Claude · your organization's account", S(res.Done["answeredBy"]));
+            Assert.Equal(0, res.Done["credits"]!.GetValue<int>());
+
+            // When the key fails and the organization allows it, Project Tracker's AI answers - and the answer says so, for the admins to notice.
+            Assert.True((await o.Owner.Put("/api/v1/workspace/ai-provider", new { provider = "anthropic", apiKey = (string?)null, quickModel = "claude-haiku-5-5",
+                standardModel = "claude-sonnet-5-5", deepModel = "claude-opus-5-5", enabled = true, fallbackToPlatform = true })).Ok);
+            own.Chat.Fail = new AppException(402, "AI_CREDIT_EXHAUSTED", "Anthropic says the account has no credit left.");
+            Chat.Script.Enqueue(_ => FakeAiChat.Say("Answered by the platform."));
+            var fallback = await Ask(o.Owner, "What is late in Atlas?");
+            Assert.Equal(HttpStatusCode.OK, fallback.Status);
+            Assert.Equal("Project Tracker AI · your organization's Claude key couldn't answer", S(fallback.Done["answeredBy"]));
+            own.Chat.Fail = null;
         }
         finally { own.Reset(); }
     }

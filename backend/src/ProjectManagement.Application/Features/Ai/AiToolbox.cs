@@ -293,6 +293,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
     public async Task<AiToolOutcome> ExecuteAsync(string name, string inputJson, string? timeZone, bool actionsAllowed, CancellationToken ct, Guid? conversationId = null, string? sourceText = null)
     {
+        // One rule for every time the assistant reads or writes: the zone the person chose in their profile, else the workspace's, else
+        // Asia/Kolkata (AppClock's request zone) - never the server's, and never UTC by default.
+        if (!ZoneTime.IsKnown(timeZone)) timeZone = clock.ZoneId;
         try
         {
             using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(inputJson) ? "{}" : inputJson);

@@ -342,6 +342,37 @@ public partial class AiWorkspaceTests
     }
 
     [Fact]
+    public async Task A_plan_is_carried_through_even_when_the_model_stops_early_or_uses_a_sibling_tool()
+    {
+        // "Update my timesheet and create a task": the model planned propose_create_task but used propose_create_action_item, then stopped
+        // before the timesheet step. The step still follows its card, and the model is reminded to finish the plan.
+        var o = await Setup();
+        var task = await o.Owner.CreateTaskAsync(o.Project, "Face compare fix", new { title = "Face compare fix", priority = "High", assigneeId = o.Owner.UserId });
+        var key = task["key"]!.GetValue<string>();
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool(AiHomeTools.ShowPlan, new
+        {
+            steps = new[]
+            {
+                new { title = "Look up projects and people", tool = (string?)"list_projects, list_people" },
+                new { title = "Create the follow-up task", tool = (string?)AiToolbox.CreateTask },
+                new { title = "Propose the timesheet entry", tool = (string?)AiToolbox.LogTime },
+            },
+        }));
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool(AiToolbox.ListProjects, new { }, id: "toolu_2"));
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_create_action_item", new { project = "Atlas", title = "Share the server logs", assignee = "me", due_date = Iso(3) }, id: "toolu_3"));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("The task is ready for you to confirm."));   // stops before the timesheet step
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool(AiToolbox.LogTime, new { entries = new[] { new { key, minutes = 120, work_date = Iso(0), note = "Face compare fix" } } }, id: "toolu_4"));
+        Chat.Script.Enqueue(_ => FakeAiChat.Say("Both are ready for you to confirm."));
+        var s = await Ask(o.Owner, "Create a follow-up task in Atlas to share the server logs and update my timesheet with 2 hours on the face compare fix today");
+
+        var plan = s.Done["tools"]!.AsArray().Single(t => S(t!["name"]) == AiHomeTools.ShowPlan)!["steps"]!.AsArray();
+        Assert.Equal(new[] { "done", "waiting", "waiting" }, plan.Select(p => S(p!["state"])).ToArray());
+        var actions = s.Done["actions"]!.AsArray();
+        Assert.Equal(new[] { "create_action_item", "log_time" }, actions.Select(a => S(a!["kind"])).ToArray());
+        Assert.Contains(Chat.Requests.SelectMany(r => r.Turns).SelectMany(t => t.Blocks).OfType<AiText>(), b => b.Text.Contains("still has steps not carried out") && b.Text.Contains("Propose the timesheet entry"));
+    }
+
+    [Fact]
     public async Task Portfolio_options_and_unknown_targets_are_refused_without_a_card()
     {
         var o = await Setup();

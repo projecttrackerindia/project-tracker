@@ -25,7 +25,9 @@ public record AiActionDto(string Id, string Kind, string Title, string Summary, 
 
 public record AiMessageDto(Guid Id, string Role, string Content, string? Reasoning, string? Tier, string? Model, string? RouteReason, int Credits, string Status,
     IReadOnlyList<AiToolUseDto> Tools, IReadOnlyList<AiActionDto> Actions, IReadOnlyList<AiAttachmentDto> Attachments, DateTime CreatedAt,
-    IReadOnlyList<string>? FollowUps = null, IReadOnlyList<string>? UnverifiedKeys = null, string? Feedback = null, IReadOnlyList<AiKnowledgeReference>? Sources = null);
+    IReadOnlyList<string>? FollowUps = null, IReadOnlyList<string>? UnverifiedKeys = null, string? Feedback = null, IReadOnlyList<AiKnowledgeReference>? Sources = null,
+    /// <summary>Which AI wrote it, e.g. "Claude · your organization's account" or "Project Tracker AI".</summary>
+    string? AnsweredBy = null);
 
 public record AiConversationDetailDto(AiConversationDto Conversation, IReadOnlyList<AiMessageDto> Messages);
 
@@ -55,4 +57,5 @@ public sealed record AiStreamAction(AiActionDto Action) : AiStreamEvent("action"
 /// <summary>The plan for a request with several parts, sent when it is shown and again each time a step moves on.</summary>
 public sealed record AiStreamPlan(IReadOnlyList<AiPlanStepDto> Steps) : AiStreamEvent("plan");
 public sealed record AiStreamDone(AiMessageDto Message, long CreditsLeft, bool Unlimited) : AiStreamEvent("done");
-public sealed record AiStreamError(string Code, string Message, int? RetryAfterSeconds = null) : AiStreamEvent("error");
+/// <summary>The run failed. <see cref="Saved"/> is the answer as it was saved (its text so far and any suggestions it prepared, which can still be confirmed).</summary>
+public sealed record AiStreamError(string Code, string Message, int? RetryAfterSeconds = null, AiMessageDto? Saved = null) : AiStreamEvent("error");

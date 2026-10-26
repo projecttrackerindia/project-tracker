@@ -233,6 +233,14 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
           break;
         case 'error':
           run.failure = { code: e.code, message: e.message };
+          // The server saved what it had (its text and any cards): show that saved answer, so its cards confirm against the real record.
+          if (e.saved) {
+            const saved = e.saved;
+            run.finished = true;
+            setMessages((m) => [...m, saved]);
+            setLive(null);
+            setStreaming(false);
+          }
           if (e.retryAfterSeconds && Number.isFinite(e.retryAfterSeconds) && e.retryAfterSeconds > 0) {
             setCooldownSeconds(e.retryAfterSeconds);
             setCooldownUntil(Date.now() + e.retryAfterSeconds * 1000);
@@ -322,6 +330,13 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
     actionLock.current = true;
     setBusyAction(a.id);
     try {
+      // An answer kept only on this page (a stream that was cut off) has no saved id yet: find its saved copy by the card, which keeps its id.
+      if (m.id.startsWith('local-') && convId) {
+        const saved = (await aiWorkspaceApi.conversation(convId)).messages.find((x) => x.role === 'assistant' && x.actions.some((y) => y.id === a.id));
+        if (!saved) { toast('This answer is still being saved. Try again in a moment.', 'info'); return; }
+        setMessages((ms) => ms.map((x) => (x.id === m.id ? saved : x)));
+        m = saved;
+      }
       const res = await (kind === 'reconcile' ? aiWorkspaceApi.reconcile(m.id, a.id) : kind === 'confirm' ? aiWorkspaceApi.confirm(m.id, a.id) : kind === 'undo' ? aiWorkspaceApi.undo(m.id, a.id) : aiWorkspaceApi.dismiss(m.id, a.id));
       setMessages((ms) => ms.map((x) => (x.id === m.id ? { ...x, actions: x.actions.map((y) => (y.id === a.id ? res : y)) } : x)));
       if (kind === 'undo') {
@@ -341,6 +356,13 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
     actionLock.current = true;
     setBusyAction('all');
     try {
+      if (m.id.startsWith('local-') && convId) {
+        const first = m.actions[0]?.id;
+        const saved = (await aiWorkspaceApi.conversation(convId)).messages.find((x) => x.role === 'assistant' && x.actions.some((y) => y.id === first));
+        if (!saved) { toast('This answer is still being saved. Try again in a moment.', 'info'); return; }
+        setMessages((ms) => ms.map((x) => (x.id === m.id ? saved : x)));
+        m = saved;
+      }
       const res = await aiWorkspaceApi.confirmAll(m.id);
       setMessages((ms) => ms.map((x) => (x.id === m.id ? { ...x, actions: x.actions.map((y) => res.find((r) => r.id === y.id) ?? y) } : x)));
       const failed = res.find((r) => r.status !== 'done');
