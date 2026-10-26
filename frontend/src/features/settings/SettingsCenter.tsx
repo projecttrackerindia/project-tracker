@@ -297,6 +297,24 @@ export function SetupHealthCard() {
   );
 }
 
+/** Who changed which setting lately, across the workspace, with undo (Settings › General; it was the old Settings overview's). */
+export function LatestChanges() {
+  const sections = useWorkspaceSections();
+  const canHistory = useCanSeeHistory();
+  const recent = useWsQuery(['settings', 'changes', 'recent'], () => settingsApi.recent(8), { enabled: canHistory, staleTime: 30_000, retry: false });
+  const undo = useUndo();
+  if (!canHistory || !(recent.data?.items?.length)) return null;
+  return (
+    <section className="card set-history mb-22" aria-label="Latest changes">
+      <div className="card-head"><div><h3><Icon name="clock" size={15} /> Latest changes</h3><p>Who changed which setting, from the audit log.</p></div>
+        {sections.some((s) => s.id === 'audit') && <Link className="btn btn-ghost btn-sm" to="/settings/security/audit">Audit log</Link>}</div>
+      <ul className="set-history-list">
+        {recent.data!.items.map((c) => <ChangeRow key={`${c.key}:${c.auditId}`} c={c} busy={undo.busy === c.auditId} onUndo={() => void undo.run(c)} showPlace={sections.find((s) => s.id === c.section)} />)}
+      </ul>
+    </section>
+  );
+}
+
 /** A small wrapper that gives a block of settings its search anchor and "last changed" line. */
 export function SettingBlock({ id, section, children, className }: { id: string; section: string; children: ReactNode; className?: string }) {
   return <div className={className} data-setting={id}>{children}<LastChanged k={id} section={section} /></div>;

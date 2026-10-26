@@ -144,7 +144,7 @@ try{
   // 7. The Calendar shows meetings and opens them in Meet; it has no meeting button of its own.
   await page.goto(origin+'/preview-org/calendar');await page.locator('.cal-filters').waitFor();
   assert.equal(await page.getByRole('button',{name:/Scrum call|Schedule/}).count(),0);
-  await page.getByText('Atlas review').last().click();await page.waitForURL(/[?&]open=p:/);
+  await page.getByText('Atlas review').last().click();await page.waitForURL(/[?&]open=p(:|%3A)/);
   await page.getByRole('dialog').getByRole('heading',{name:'Atlas review'}).waitFor();checks.push('calendar-opens-meet');
 
   // 8. Old addresses lead to Meet.

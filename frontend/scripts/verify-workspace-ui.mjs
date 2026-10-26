@@ -142,7 +142,7 @@ try {
   await summary.click(); await page.locator('.ai-head-title').click();
   assert.equal(await page.locator('.ai-credit-control').getAttribute('open'), null);
   assert.doesNotMatch(await page.locator('.ai-head').innerText(), /20\/min|300\/hour|1500\/day/);
-  assert.notEqual(await page.locator('a[href$="/agent-tracker"] svg').first().innerHTML(), await page.locator('a[href$="/reports"] svg').first().innerHTML());
+  const railIcons = await page.locator('.v2-rail-item svg').evaluateAll(xs => xs.map(x => x.innerHTML)); assert.equal(new Set(railIcons).size, railIcons.length, 'each place has its own icon');
   checks.push('mode-keyboard-usage-dismissal-hidden-rate-caps-distinct-icons');
   await open('/preview-org/ai', '.ai-credit-button', 390, 844); await capture('orbit-light-mobile');
   await page.locator('.ai-credit-button').click(); await capture('orbit-usage-mobile');

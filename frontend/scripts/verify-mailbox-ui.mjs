@@ -91,7 +91,7 @@ try{
  assert.match(await page.locator('.mb-row').nth(1).innerText(),/Kiran/);
  assert.ok(await page.locator('.mb-account-head',{hasText:'Rediffmail'}).isVisible());
  assert.ok(await page.locator('.mb-needs').count()===0);checks.push('unified-inbox');
- await page.getByRole('tab',{name:'Unread'}).click();assert.equal(await page.locator('.mb-row').count(),2);await page.getByRole('tab',{name:'All'}).click();
+ await page.getByRole('tab',{name:'Unread'}).click();assert.equal(await page.locator('.mb-row').count(),2);await page.getByRole('tab',{name:'All'}).last().click();
  // Reading renders mail as text, never HTML.
  await page.locator('.mb-row').first().click();await page.locator('.mb-msg-body').waitFor();
  assert.match(await page.locator('.mb-msg-body').innerText(),/<script>/);assert.equal(await page.evaluate(()=>window.mailUnsafe),undefined);

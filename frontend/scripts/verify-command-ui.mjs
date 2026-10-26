@@ -265,7 +265,7 @@ try{
  await page.waitForTimeout(250);await page.screenshot({path:path.join(out,'ai-first-home-chat-1440.png'),animations:'disabled'});
  await page.getByRole('button',{name:'New chat'}).click();await page.locator('.aih-hero h1').waitFor();
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'ai-first-home-phone.png'),animations:'disabled'});await page.setViewportSize({width:1440,height:1000});
- await page.getByRole('link',{name:'Agents'}).first().waitFor();assert.equal(await page.getByRole('link',{name:'Assistant',exact:true}).count(),0,'no separate Assistant entry');
+ await page.locator('.v2-rail-item.on',{hasText:'Home'}).waitFor();assert.equal(await page.getByRole('link',{name:'Assistant',exact:true}).count(),0,'no separate Assistant entry');
  await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'ai-first-home-1440.png'),animations:'disabled'});
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'ai-first-home-dark-1440.png'),fullPage:true,animations:'disabled'});
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','light'));

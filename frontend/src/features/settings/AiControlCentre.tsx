@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { aiControlApi, type AgentLevel, type AiControl } from './aiControlApi';
@@ -28,12 +28,12 @@ export type AiTab = 'control' | 'usage' | 'tracker';
 
 /** Settings › AI: the control centre, the month's usage by person, and the agent tracker (moved here from Agents). */
 export function AiSettings({ tab, onTab }: { tab: AiTab; onTab: (t: AiTab) => void }) {
-  const control = useWsQuery(['ai', 'control'], aiControlApi.get, { staleTime: 30_000 });
+  const control = useWsQuery(['ai', 'control'], aiControlApi.get, { staleTime: 30_000, retry: false });
   const people = control.data?.people ?? 0;
   return (
     <div className="aic">
       <PageHead eyebrow="Settings › AI" title="AI control centre" sub="One place to decide what the AI knows, what it may do, and what it costs.">
-        {control.data && <span className={`ds-pill ${control.data.aiOn ? 'success' : ''}`}><i className="aic-dot" />{control.data.aiOn ? `AI on for ${people} ${people === 1 ? 'person' : 'people'}` : 'AI is off here'}</span>}
+        {control.data?.agents && <span className={`ds-pill ${control.data.aiOn ? 'success' : ''}`}><i className="aic-dot" />{control.data.aiOn ? `AI on for ${people} ${people === 1 ? 'person' : 'people'}` : 'AI is off here'}</span>}
       </PageHead>
       <Segmented label="AI settings" value={tab} onChange={onTab} options={[{ id: 'control', label: 'Control centre' }, { id: 'usage', label: 'Usage' }, { id: 'tracker', label: 'Agent tracker' }]} />
       {tab === 'control' && <ControlCentre control={control.data} loading={control.isLoading} />}
@@ -53,10 +53,12 @@ function ControlCentre({ control, loading }: { control?: AiControl; loading: boo
   const usage = useWsQuery(['ai', 'usage'], aiWorkspaceApi.usage, { enabled: !!status?.enabled, staleTime: 30_000 });
   const report = useWsQuery(['ai', 'report', thisMonth()], () => aiWorkspaceApi.report(thisMonth()), { enabled: !!status?.configured && !!status?.entitled, staleTime: 30_000 });
   if (loading) return <PageLoader />;
-  if (!control) return <p className="muted">The AI settings could not be loaded.</p>;
-  const u = usage.data, r = report.data;
+  // Each part stands on its own: one figure that cannot be read does not hide the others (or the model and the key).
+  const c = control?.agents ? control : undefined;
+  const u = typeof usage.data?.creditsUsed === 'number' ? usage.data : undefined;
+  const r = typeof report.data?.answers === 'number' ? report.data : undefined;
   const success = r && r.answers > 0 ? Math.round(((r.answers - r.failed) / r.answers) * 100) : null;
-  const ctxEmpty = control.contextLength === 0;
+  const ctxEmpty = (c?.contextLength ?? 0) === 0;
   return (
     <>
       <div className="ds-kpis aic-kpis">
@@ -64,18 +66,18 @@ function ControlCentre({ control, loading }: { control?: AiControl; loading: boo
           caption={u && !u.unlimited ? <span className="ds-meter"><i style={{ width: `${Math.min(100, (u.creditsUsed / Math.max(1, u.creditsLimit)) * 100)}%` }} /></span> : undefined} />
         <Kpi label="Answer success" value={success === null ? '—' : `${success}%`} tone={success === null ? undefined : success >= 90 ? 'success' : success >= 70 ? 'warning' : 'danger'}
           caption={r ? `${(r.answers - r.failed).toLocaleString()} of ${r.answers.toLocaleString()} · ${r.failed} failed` : undefined} />
-        <Kpi label="Organisation context" value={ctxEmpty ? 'Empty' : 'Written'} tone={ctxEmpty ? 'danger' : 'success'} caption={`${control.contextLength.toLocaleString()} / ${control.contextLimit.toLocaleString()} characters`} />
-        <Kpi label="Automations" value={control.automations} caption={<Link to="/settings/timelines/automation">rules running ›</Link>} />
+        <Kpi label="Organisation context" value={!c ? '—' : ctxEmpty ? 'Empty' : 'Written'} tone={!c ? undefined : ctxEmpty ? 'danger' : 'success'} caption={c ? `${c.contextLength.toLocaleString()} / ${c.contextLimit.toLocaleString()} characters` : undefined} />
+        <Kpi label="Automations" value={c ? c.automations : '—'} caption={<Link to="/settings/timelines/automation">rules running ›</Link>} />
       </div>
       <div className="aic-grid">
         <section className="aic-card" aria-labelledby="aic-agents">
           <h3 id="aic-agents">What each agent may do</h3>
           <p className="aic-sub">Pick a level per agent. “Ask first” puts its work in the Inbox for one-tap approval.</p>
-          <AgentLevels control={control} />
+          {c ? <AgentLevels control={c} /> : <p className="muted">The agents' levels could not be loaded.</p>}
         </section>
         <div className="aic-side">
           <ModelCard />
-          <TeachCard limit={control.contextLimit} canEdit={control.canEdit} />
+          <TeachCard limit={c?.contextLimit ?? 4000} />
           <section className="aic-card">
             <h3>Outside AI apps</h3>
             <p className="aic-sub">Claude or ChatGPT can work here as you, with your permissions.</p>
@@ -116,7 +118,7 @@ function AgentLevels({ control }: { control: AiControl }) {
 function ModelCard() {
   const wid = useWorkspaceId();
   const q = useWsQuery(['ai', 'provider'], aiProviderApi.get, { staleTime: 30_000, retry: false });
-  const [adding, setAdding] = useState(false);
+  const keyCard = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const s = q.data;
   if (q.isLoading) return <section className="aic-card"><PageLoader /></section>;
@@ -130,7 +132,7 @@ function ModelCard() {
     } catch (e) { toast(errText(e, 'Could not change the model.'), 'error'); }
     finally { setBusy(false); }
   };
-  const pickClaude = () => { if (claude) return; if (s.configured && s.provider === 'anthropic') void save(true); else setAdding(true); };
+  const pickClaude = () => { if (claude) return; if (s.configured && s.provider === 'anthropic') void save(true); else keyCard.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
   const pickGemini = async () => {
     if (!claude) return;
     if (await confirmDialog({ title: 'Answer with Gemini?', message: 'Everyone’s questions go to the included Gemini and use AI credits. Your Claude key stays saved.', confirmText: 'Use Gemini' })) void save(false);
@@ -148,13 +150,14 @@ function ModelCard() {
         </button>
       </div>
       {s.lastError && <p className="aic-warn" role="alert"><Icon name="alert" size={14} /> {s.lastError}</p>}
-      {(adding || (s.configured && s.provider !== 'anthropic')) && <div className="aic-key"><AiOwnKeyCard /></div>}
+      {/* The organisation's key: add, check, change models or remove it (also how to switch between Claude and ChatGPT). */}
+      <div className="aic-key" ref={keyCard}><AiOwnKeyCard /></div>
     </section>
   );
 }
 
 /** "Teach it" the organisation: shared with every question. "Draft it from my projects" writes a first version from the workspace's records. */
-function TeachCard({ limit, canEdit }: { limit: number; canEdit: boolean }) {
+function TeachCard({ limit }: { limit: number }) {
   const wid = useWorkspaceId();
   const status = useAiStatus();
   const q = useWsQuery(['ai', 'instructions'], aiWorkspaceApi.instructions, { enabled: !!status?.configured, staleTime: 60_000 });
@@ -162,6 +165,7 @@ function TeachCard({ limit, canEdit }: { limit: number; canEdit: boolean }) {
   const [busy, setBusy] = useState<'draft' | 'save' | null>(null);
   useEffect(() => { if (q.data) setText(q.data.text ?? ''); }, [q.data]);
   const saved = q.data?.text ?? '';
+  const canEdit = !!q.data?.canEdit;
   const dirty = text.trim() !== saved.trim();
   const draft = async () => {
     if (text.trim() && !(await confirmDialog({ title: 'Replace what is written?', message: 'The draft replaces the text in the box. Nothing is saved until you save.', confirmText: 'Draft it' }))) return;

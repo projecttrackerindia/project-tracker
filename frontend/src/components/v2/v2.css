@@ -57,7 +57,7 @@
 .v2-shell > .main.v2-main > .content { padding-bottom: 112px; }
 
 /* ------------------------------------------------------------------ the phone bar: the five places and + New */
-.v2-phone-bar.m-tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; display: grid; grid-template-columns: repeat(6, 1fr); align-items: center; gap: 0; pointer-events: auto;
+.v2-phone-bar.m-tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; display: grid; grid-template-columns: repeat(6, 1fr); align-items: center; gap: 0; pointer-events: auto;
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: var(--ds-glass); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
   box-shadow: 0 -1px 0 var(--ds-line); }
 /* in a conversation the bar sits under it, in the flow (the composer stays above it) */
@@ -86,7 +86,7 @@
 .v2-ask kbd { font: 500 11px/1 inherit; color: var(--ds-text-3); padding: 4px 6px; border-radius: 6px; box-shadow: 0 0 0 1px var(--ds-outline); background: var(--ds-surface); }
 .v2-ask-send { width: 34px; height: 34px; border-radius: 50%; border: 0; display: grid; place-items: center; background: var(--ds-dark); color: var(--ds-on-dark); cursor: pointer; flex: none; }
 .v2-ask-send:disabled { opacity: .35; cursor: default; }
-.m-shell .v2-ask { --rail-w: 0px; bottom: calc(76px + env(safe-area-inset-bottom)); }
+.m-shell .v2-ask { --rail-w: 0px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 44; }   /* under full-screen panels (z 50) like the bar */
 .m-shell .v2-ask kbd { display: none; }
 .m-shell .v2-ask.corner { right: 14px; }
 

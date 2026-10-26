@@ -91,7 +91,7 @@ try{
  await open('/preview-org/support','.page-title',390);await page.getByRole('heading',{name:'Operations',exact:true}).waitFor();assert.ok(/\/work\?tab=tickets$/.test(page.url()),'Old support links redirect to Operations');
  assert.equal(await page.getByRole('link',{name:'Support center',exact:true}).count(),0);
  await open('/preview-org/portfolio?project='+pid,'.ps-table',1440);assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0);
- await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.agent-mark.animated .agent-ribbon').first().evaluate(el=>getComputedStyle(el).animationName),'none');
+ await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.v2-ask .v2-orb').count(),1,'v2: the Ask bar replaces the animated agent mark');
  // Project cards line up across a row whatever the name, code or description length (the numbers, bar, badges and owner sit at the same height).
  cardProjects=[card(1,'idfc-qr-callback-api','IQCA','Api Configuration and Validation','Mule Soft','AtRisk',1,0,0,'Medium','Integration',owner(1,'Shiva kumar'),'2026-11-13'),
   card(2,'Payment Engine Disaster Recovery (DR) Setup','PEDR','Payment Engine Disaster Recovery (DR) setup in the AWS Hyderabad region, including failover runbooks and quarterly drills.','Mule Soft','AtRisk',1,0,0,'High','NewProject',owner(2,'Prasanna Krishna'),'2026-11-21'),

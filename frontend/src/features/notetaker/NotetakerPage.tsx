@@ -169,7 +169,7 @@ export function NotetakerPanel() {
                   </div>
                   <div className="nt-session-actions">
                     {['scheduled', 'in_call'].includes(s.status) && s.mine && <button className="btn btn-sm btn-ghost" onClick={() => void stop(s)}>Leave call</button>}
-                    {(s.status === 'done' || s.hasMinutes) && <button className="btn btn-sm" onClick={() => { setOpen(s.id); setParams({ session: s.id }, { replace: true }); }}><Icon name="note" size={14} /> {s.hasMinutes ? 'Minutes' : 'Write minutes'}</button>}
+                    {(s.status === 'done' || s.hasMinutes) && <button className="btn btn-sm" onClick={() => { setOpen(s.id); setParams((p) => { const n = new URLSearchParams(p); n.set('session', s.id); return n; }, { replace: true }); }}><Icon name="note" size={14} /> {s.hasMinutes ? 'Minutes' : 'Write minutes'}</button>}
                   </div>
                 </li>
               );
@@ -179,7 +179,7 @@ export function NotetakerPanel() {
       </section>
 
       {open && <MinutesModal sessionId={open} session={data.sessions.find((s) => s.id === open)} ai={data.aiAvailable}
-        onClose={() => { setOpen(null); setParams({}, { replace: true }); void invalidateWorkspace(wid, 'notetaker'); }} />}
+        onClose={() => { setOpen(null); setParams((p) => { const n = new URLSearchParams(p); n.delete('session'); return n; }, { replace: true }); void invalidateWorkspace(wid, 'notetaker'); }} />}
     </div>
   );
 }

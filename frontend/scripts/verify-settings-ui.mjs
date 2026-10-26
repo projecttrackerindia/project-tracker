@@ -92,15 +92,13 @@ try{
  const waitWrite=async(test)=>{for(let i=0;i<40&&!writes.some(test);i++)await new Promise(r=>setTimeout(r,100));return writes.find(test);};
  const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:960});
  try{
- // The overview: seven groups, setup health with its fixes, the latest changes.
- await page.goto(origin+'/preview-org/settings');
- const nav=page.getByRole('navigation',{name:'Workspace settings sections'});await nav.waitFor();
- for(const g of ['Workspace','People and access','Security','Notifications','Integrations','AI','Billing'])assert.ok(await nav.getByText(g,{exact:true}).isVisible(),`group ${g}`);
- assert.equal(await nav.getByRole('link',{name:/^Slack/}).count(),1);   // one Slack page, not two
- assert.equal(await nav.getByRole('link',{name:/Webhooks, Slack/}).count(),0);
+ // v2 Settings: You and Workspace, ten sections; General carries setup health with its fixes and the latest changes.
+ await page.goto(origin+'/preview-org/settings/general');
+ const nav=page.getByRole('navigation',{name:'Settings sections'});await nav.waitFor();
+ for(const g of ['You','Workspace'])assert.ok(await nav.getByText(g,{exact:true}).isVisible(),`group ${g}`);
+ for(const l of ['Profile & sign-in','Notifications','General','Security & audit','Integrations','AI','Billing'])assert.ok(await nav.getByRole('link',{name:l,exact:true}).isVisible(),`section ${l}`);
  const healthCard=page.getByRole('region',{name:'Setup health'});await healthCard.getByText('Two-step sign-in is not required').waitFor();
  assert.ok(await healthCard.getByRole('img',{name:'Setup health 58 out of 100'}).isVisible());
- assert.ok(await nav.getByRole('link',{name:/Overview/}).getByText('4').isVisible());   // open checks on the Overview link
  await healthCard.getByRole('button',{name:'Remind 2 members'}).click();
  await waitWrite(w=>w.ep==='/api/v1/settings/health/two-step/remind');
  await page.getByText('Reminder sent to 2 member(s).').waitFor();
@@ -108,14 +106,13 @@ try{
  assert.ok(await waitWrite(w=>w.ep==='/api/v1/settings/health/whatsapp/dismiss'));
  await healthCard.getByRole('button',{name:/Show 2 done or not needed/}).click();
  await healthCard.getByText('Marked as not needed here: We do not use WhatsApp.').waitFor();
- assert.equal(await page.getByRole('region',{name:'Integrations'}).getByRole('link').count(),6);
  const latest=page.getByRole('region',{name:'Latest changes'});await latest.getByText('Ravi Kumar',{exact:false}).first().waitFor();
  assert.ok(await latest.getByText('Off → On').isVisible());
  await latest.getByRole('listitem').filter({hasText:'Require two-step sign-in'}).getByRole('button',{name:/Undo/}).click();
  const undo=await waitWrite(w=>w.ep.endsWith('/undo'));assert.equal(undo.b.key,'security.requireMfa');assert.match(undo.ep,/a-security\.requireMfa/);
  await page.getByText('Undone: Require two-step sign-in is back to Off.').waitFor();
- await shot(page,'overview.png');
- checks.push('overview');
+ await shot(page,'general.png');
+ checks.push('general-health-and-changes');
 
  // Search: "MFA" finds the two-step switch and jumps to it; the row says who changed it last.
  const search=page.getByRole('combobox',{name:'Find a setting'}).last();
@@ -158,7 +155,7 @@ try{
  checks.push('retention');
 
  // Notification defaults for members.
- await page.goto(origin+'/preview-org/settings/notifications');
+ await page.goto(origin+'/preview-org/settings/notifications/notifications');
  await page.getByRole('heading',{name:'Defaults for members'}).waitFor();
  await page.getByLabel('Task updates: E-mail').uncheck();
  assert.ok(await page.getByLabel('Security alerts: E-mail').isDisabled());
@@ -182,11 +179,11 @@ try{
  await page.locator('[data-setting="workspace.logo"]').waitFor();
  checks.push('ctrl-k');
 
- // Phone: the overview fits.
+ // Phone: General (with setup health) fits.
  await page.setViewportSize({width:390,height:844});
- await page.goto(origin+'/preview-org/settings');
+ await page.goto(origin+'/preview-org/settings/general');
  await page.getByRole('region',{name:'Setup health'}).waitFor();
- await fitsPhone(page,'settings overview',assert);
+ await fitsPhone(page,'settings general',assert);
  await shot(page,'phone.png');
  checks.push('phone');
  assert.deepEqual(errors,[]);

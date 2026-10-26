@@ -31,7 +31,7 @@ export function HomePage() {
   const section = AGENT[tab];
   return (
     <>
-      <PlaceTabs label="Home" options={tabs} value={tab === 'calendar' ? 'calendar' : 'foryou'} onChange={setTab} />
+      {(tab === 'foryou' || tab === 'calendar') && <PlaceTabs label="Home" options={tabs} value={tab} onChange={setTab} />}
       {section ? <AgentPage section={section} onSection={(s) => setTab(AGENT_TAB[s])} />
         : tab === 'reminders' ? <RemindersPage />
         : tab === 'assistant' ? <AiPage />

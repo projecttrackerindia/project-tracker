@@ -45,7 +45,7 @@ import { SsoSettings } from './SsoSettings';
 import { PROVIDER_ICON } from '../auth/AuthPages';
 import { AiProfileCard } from '../ai/AiInstructions';
 import { MyAiProviderCard } from '../ai/OwnAiKey';
-import { LastChanged, SectionHistory, SettingsSearch, SetupHealthCard, useSettingJump } from './SettingsCenter';
+import { LastChanged, LatestChanges, SectionHistory, SettingsSearch, SetupHealthCard, useSettingJump } from './SettingsCenter';
 import { NotificationDefaultsSection } from './NotificationDefaults';
 import { MobileAppSection } from './MobileAppSection';
 import { ConnectedAccountsSection } from './ConnectedAccounts';
@@ -124,15 +124,15 @@ export function SettingsPage() {
   const choose = (v: string) => nav(v === first ? `/settings/${place}` : `/settings/${place}/${v}`);
 
   const groups = [
-    { title: 'You', items: (['profile', 'notifications'] as const).filter((p) => p === 'profile' || !isPlatformAdmin).map((p) => ({ to: `/settings/${p}`, label: PLACE_INFO[p].label, icon: PLACE_INFO[p].icon })) },
-    { title: 'Workspace', items: places.map((p) => ({ to: `/settings/${p}`, label: PLACE_INFO[p].label, icon: PLACE_INFO[p].icon })) },
+    { title: 'You', items: (['profile', 'notifications'] as const).filter((p) => p === 'profile' || !isPlatformAdmin).map((p) => ({ to: `/settings/${p}`, label: PLACE_INFO[p].label, icon: PLACE_INFO[p].icon, end: false })) },
+    { title: 'Workspace', items: places.map((p) => ({ to: `/settings/${p}`, label: PLACE_INFO[p].label, icon: PLACE_INFO[p].icon, end: false })) },
   ];
   const body = place === 'profile' ? <ProfileTab sub={sub} />
     : place === 'notifications' ? <NotificationsTab sub={sub} />
     : place === 'ai' ? <AiSettings tab={sub as AiTab} onTab={choose} />
     : <SettingsSection id={sub as WorkspaceSection} />;
   return (
-    <SectionLayout wide title="Settings" groups={groups} navTop={leaves.length > 0 ? <SettingsSearch compact /> : undefined}>
+    <SectionLayout title="Settings" groups={groups} navTop={leaves.length > 0 ? <SettingsSearch compact /> : undefined}>
       {tabs.length > 1 ? (
         <div className="set-place">
           <div className="set-place-head">
@@ -467,6 +467,7 @@ function GeneralSection() {
     <>
       <PageHead title="General" sub={`${personal ? 'Your personal workspace' : 'Organization'} · your access level: ${ctx.current.role}`} />
       {isAdmin && <div className="mb-22"><SetupHealthCard /></div>}
+      <LatestChanges />
       <div className="card mb-22">
         <div className="card-body">
           <form className="form-grid" onSubmit={(e) => { e.preventDefault(); if (wsName.trim().length >= 2) workspace.mutate(); }}>

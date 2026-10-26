@@ -31,7 +31,7 @@ function Moved({ to, prefix }: { to: string; prefix?: string }) {
   const q = new URLSearchParams(loc.search);
   new URLSearchParams(extra ?? '').forEach((v, k) => q.set(k, v));
   const s = q.toString();
-  return <Navigate to={`${path}${s ? `?${s}` : ''}${loc.hash}`} replace />;
+  return <Navigate to={`${path}${s ? `?${s}` : ''}${loc.hash}`} replace state={loc.state} />;   // and what the page was opened with (a new document, a question in hand)
 }
 
 /**
