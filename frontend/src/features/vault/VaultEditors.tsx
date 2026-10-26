@@ -449,11 +449,18 @@ export function CollectionEditor({ existing, canSeal, onClose, onSaved, onSeal }
 interface ShareRow extends ShareInput { uid: string }
 const newUid = () => Math.random().toString(36).slice(2, 10);
 
-export function ShareEditor({ collection, meId, onClose, onSaved }: { collection: VaultCollection; meId: string | null; onClose: () => void; onSaved: () => void }) {
+export function ShareEditor({ collection, meId, onClose, onSaved, start }: {
+  collection: VaultCollection; meId: string | null; onClose: () => void; onSaved: () => void;
+  /** Opened from an item's Share: begin with a new line for a person, ongoing or ending tomorrow (the dates can be changed). */ start?: 'person' | 'time';
+}) {
   const members = useWsQuery(['vault', 'members'], () => workspaceApi.members(), { staleTime: 300_000, retry: false });
   const teams = useWsQuery(['vault', 'teams'], () => teamApi.list(), { staleTime: 300_000, retry: false });
   const projects = useWsQuery(['vault', 'projects'], () => projectApi.list({ pageSize: 100 }), { staleTime: 300_000, retry: false });
-  const [rows, setRows] = useState<ShareRow[]>(() => (collection.shares ?? []).map((s) => ({ uid: s.id, principalType: s.principalType, principalId: s.principalId, role: s.role, access: s.access, expiresAt: s.expiresAt })));
+  const [rows, setRows] = useState<ShareRow[]>(() => [
+    ...(collection.shares ?? []).map((s) => ({ uid: s.id, principalType: s.principalType, principalId: s.principalId, role: s.role, access: s.access, expiresAt: s.expiresAt })),
+    ...(start ? [{ uid: newUid(), principalType: 'User' as const, principalId: null, access: 'View' as VaultAccess,
+      expiresAt: start === 'time' ? `${new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)}T23:59:00Z` : null }] : []),
+  ]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (uid: string, patch: Partial<ShareRow>) => setRows((rs) => rs.map((r) => (r.uid === uid ? { ...r, ...patch } : r)));

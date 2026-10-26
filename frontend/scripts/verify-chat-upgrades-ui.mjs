@@ -163,8 +163,10 @@ try {
   checks.push('send-later');
 
   // A task made from a message, linked back to it; pin a message.
-  await openMore(page, 2);
-  await page.getByRole('menuitem', { name: /Make a task/ }).click();
+  // "Make task" sits beside the bubble (v2), next to Reply.
+  await page.mouse.move(5, 5);
+  await page.locator(`[data-msg="${id(2)}"] .bubble`).hover({ force: true });
+  await page.locator(`[data-msg="${id(2)}"]`).getByRole('button', { name: 'Make task' }).click({ force: true });
   const dlg = page.getByRole('dialog');
   await dlg.getByLabel('Title').waitFor();
   assert.equal(await dlg.getByLabel('Title').inputValue(), 'Approve the new template');
