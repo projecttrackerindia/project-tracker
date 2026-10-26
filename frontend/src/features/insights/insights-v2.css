@@ -92,4 +92,7 @@ html .btn.btn-ai:not(#_):hover:not(:disabled) { background: color-mix(in srgb, v
   .ins-say input { font-size: 15px; }
   .ins-table tbody th { max-width: 140px; }
   .ins-week-foot .ins-submit { width: 100%; justify-content: center; }
+  .ins-types { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .ins-types .ds-choice { padding: 14px; }
+  .ins-types .ds-choice > span:last-child { display: none; }
 }
