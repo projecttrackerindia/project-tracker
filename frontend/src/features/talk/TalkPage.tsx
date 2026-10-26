@@ -13,7 +13,7 @@ import { toast } from '../../stores/ui';
 import { StartCallButton } from '../calls/StartCall';
 import { listTime } from '../chat/chatFormat';
 import { chatKeys, useChat } from '../chat/chatStore';
-import { AskChatDialog, CatchUpDialog, SavedPanel, ScheduledPanel } from '../chat/ChatTools';
+import { AskChatDialog, CatchUpDialog, QuestionsBox, SavedPanel, ScheduledPanel, StatusButton } from '../chat/ChatTools';
 import { insertIntoComposer } from '../chat/MessageExtras';
 import { FilesPanel, InfoPanel, NewChatModal } from '../chat/Panels';
 import { fallbackStatus } from '../chat/Presence';
@@ -23,6 +23,7 @@ import { mailboxApi } from '../mailbox/mailboxApi';
 import { MeetingDetail } from '../meet/MeetingDetail';
 import { parseRef } from '../meet/meetApi';
 import { DotsMenu } from './DotsMenu';
+import { WhileAway } from '../chat/ChatPage';
 import { talkApi, type TalkFilter, type TalkRow } from './talkApi';
 import './talk.css';
 
@@ -137,6 +138,7 @@ function TalkHome() {
       <aside className="talk-list" aria-label="Conversations">
         <div className="talk-list-head">
           <h2>Talk</h2>
+          {chatUsable && <StatusButton />}
           <DotsMenu label="More in Talk" items={[
             { label: 'New conversation', hint: 'Message a colleague or start a group', icon: 'plus', onSelect: () => setDialog('new'), hidden: !chatUsable },
             { label: 'Catch me up', hint: 'What you missed across your chats', icon: 'sparkle', onSelect: () => setDialog('catchup'), hidden: !chatUsable },
@@ -163,6 +165,8 @@ function TalkHome() {
         )}
         <div className="talk-scroll">
           {talk.isError && <div className="talk-note" role="alert">{talk.error instanceof ApiError ? talk.error.message : 'Talk could not be loaded.'} <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></div>}
+          {/* Questions colleagues asked you in chat and are waiting on (cleared by replying). */}
+          {chatUsable && !needle && (filter === 'all' || filter === 'chat') && <QuestionsBox />}
           <ul className="talk-rows">
             {shown.map((r) => <Row key={r.id} r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} me={me} active={r.id === activeId} onOpen={() => open(r)} />)}
             {showConnect && (
@@ -209,6 +213,9 @@ function TalkHome() {
               onProject={(pid) => navigate(`/work/projects/${pid}`)}
               headerExtra={<button type="button" className="btn-icon talk-pane-back" onClick={back} aria-label="Back to conversations"><Icon name="arrowLeft" /></button>} />
           </div>
+        ) : chatUsable ? (
+          // Nothing open: "While you were away" (decisions on request, the first question waiting for you, the latest file).
+          <WhileAway missing={false} list={live} onCatchUp={() => setDialog('catchup')} onNew={() => setDialog('new')} />
         ) : (
           <div className="talk-empty">
             <Icon name="message" size={30} />

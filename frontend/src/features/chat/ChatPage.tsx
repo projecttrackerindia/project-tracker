@@ -176,7 +176,7 @@ function hue(name: string) {
  * Nothing open yet: "While you were away" - the decisions (read for you on request, one click), the first question waiting for an answer,
  * and the latest file someone shared; or pick a conversation on the left.
  */
-function WhileAway({ missing, list, onCatchUp, onNew }: { missing: boolean; list: Conversation[]; onCatchUp: () => void; onNew: () => void }) {
+export function WhileAway({ missing, list, onCatchUp, onNew }: { missing: boolean; list: Conversation[]; onCatchUp: () => void; onNew: () => void }) {
   const navigate = useNavigate();
   const wid = useWorkspaceId() ?? '';
   const questions = useWsQuery([...chatKeys.questions(wid)].slice(1), () => chatApi.questions(), { staleTime: 30_000 });

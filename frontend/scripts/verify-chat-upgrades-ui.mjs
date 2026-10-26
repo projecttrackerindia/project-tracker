@@ -183,13 +183,14 @@ try {
   await page.locator(`[data-msg="${id(5)}"] .pin-flag`).waitFor(); checks.push('pin');
 
   // Catch me up, ask the chat, status.
-  await page.getByRole('button', { name: 'Catch me up on this conversation' }).click();
+  // v2: Talk's thread keeps these in its ··· (Conversation actions); the list's ··· is "More in Talk".
+  await page.getByRole('button', { name: 'Conversation actions' }).click(); await page.getByRole('menuitem', { name: /^Catch me up/ }).click();
   const cu = page.getByRole('dialog');
   await cu.locator('.cu-summary', { hasText: '9 am' }).waitFor();
   await cu.locator('.cu-sec', { hasText: 'Approve the template by Friday' }).waitFor();
   await shot(page, 'catch-up-1440.png');
   await cu.getByRole('button', { name: 'Close' }).last().click(); checks.push('catch-up');
-  await page.locator('.chat-list-head').getByRole('button').nth(1).click();
+  await page.getByRole('button', { name: 'More in Talk' }).click();
   await page.getByRole('menuitem', { name: /Ask the chat/ }).click();
   const ask = page.getByRole('dialog');
   await ask.getByLabel('Question').fill('When is the EMI reminder sent?');
