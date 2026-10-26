@@ -168,8 +168,10 @@ public class WorkItemsMigrationTests
         Assert.Equal((s.Ticket, "invoice.pdf", "k/3", "cc", 30L), (file.WorkTaskId, file.FileName, file.StorageKey, file.Sha256, file.SizeBytes));
         Assert.Equal(s.Parent, (await db.Attachments.SingleAsync(a => a.Id == s.TaskFile)).TaskId);
         Assert.Equal(s.Issue, (await db.Attachments.SingleAsync(a => a.Id == s.IssueFile)).IssueId);
-        Assert.Equal((s.Parent, 90), await db.TimeEntries.Where(e => e.Id == s.TaskTime).Select(e => ValueTuple.Create(e.TaskId!.Value, e.Minutes)).SingleAsync());
-        Assert.Equal((s.Ticket, 45), await db.TimeEntries.Where(e => e.Id == s.WorkTime).Select(e => ValueTuple.Create(e.WorkTaskId!.Value, e.Minutes)).SingleAsync());
+        var taskTime = await db.TimeEntries.SingleAsync(e => e.Id == s.TaskTime);
+        Assert.Equal((s.Parent, 90), (taskTime.TaskId!.Value, taskTime.Minutes));
+        var workTime = await db.TimeEntries.SingleAsync(e => e.Id == s.WorkTime);
+        Assert.Equal((s.Ticket, 45), (workTime.WorkTaskId!.Value, workTime.Minutes));
         Assert.Equal(s.Parent, (await db.TaskDependencies.SingleAsync(d => d.Id == s.Dependency)).DependsOnTaskId);
         Assert.Equal(s.Parent, (await db.ChecklistItems.SingleAsync(c => c.Id == s.Checklist)).TaskId);
         Assert.Equal("Razorpay", (await db.CustomFieldValues.SingleAsync(v => v.Id == s.FieldValue)).Value);

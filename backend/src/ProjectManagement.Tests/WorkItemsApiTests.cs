@@ -147,7 +147,7 @@ public class WorkItemsApiTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await w.Owner.Patch($"{Url}/{id}", new { title = "No version" })).Status);
 
         // null clears; status by the column's name.
-        var cleared = await w.Owner.Patch($"{Url}/{id}", new { version = r.Data["version"]!.GetValue<int>(), dueDate = (string?)null, status = "In Progress" });
+        var cleared = await w.Owner.Patch($"{Url}/{id}", new { version = r.Data["version"]!.GetValue<int>(), dueDate = (string?)null, dueDateReason = "Waiting on the client", status = "In Progress" });
         Assert.True(cleared.Ok, cleared.ToString());
         Assert.Null(cleared.Data!["dueDate"]);
         Assert.Equal("In Progress", S(cleared.Data["status"]));
