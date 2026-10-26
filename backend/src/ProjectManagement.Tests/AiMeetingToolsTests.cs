@@ -91,6 +91,26 @@ public class AiMeetingToolsTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task The_assistant_uses_the_time_zone_chosen_in_the_profile_not_the_browser_s()
+    {
+        // The person chose Asia/Kolkata in their profile; their browser happens to report UTC. "Tomorrow at 4 pm" is 16:00 in Kolkata: 10:30 UTC.
+        var (owner, project) = await SetupAsync();
+        factory.WithDb(db => { var u = db.Users.IgnoreQueryFilters().Single(x => x.Id == owner.UserId); u.TimeZone = "Asia/Kolkata"; db.SaveChanges(); return 0; });
+        var tomorrow = DateOnly.FromDateTime(DateTime.UtcNow.AddMinutes(330)).AddDays(1);
+        factory.Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_schedule_meeting", new { project = "Atlas", title = "Release review", at = $"{tomorrow:yyyy-MM-dd}T16:00", duration_minutes = 30 }));
+        factory.Chat.Script.Enqueue(_ => FakeAiChat.Say("Ready for you to confirm."));
+        var res = await Ask(owner, "Schedule a release review tomorrow at 4pm");
+
+        // The model was told the person's own zone and local time.
+        Assert.Contains("(Asia/Kolkata)", factory.Chat.Requests.First().Context);
+        var card = res.Last("action")["action"]!;
+        Assert.Contains("(Asia/Kolkata)", S(card["summary"]));
+        Assert.True((await owner.Post($"/api/v1/ai/messages/{S(res.Done["id"])}/actions/{S(card["id"])}/confirm")).Ok);
+        var created = Assert.Single(factory.WithDb(db => db.ProjectMeetings.IgnoreQueryFilters().Where(m => m.ProjectId == project).ToList()));
+        Assert.Equal(tomorrow.ToDateTime(new TimeOnly(10, 30)), created.StartTimeUtc);
+    }
+
+    [Fact]
     public async Task Listing_meetings_reads_them_without_any_confirmation_needed()
     {
         var (owner, project) = await SetupAsync();

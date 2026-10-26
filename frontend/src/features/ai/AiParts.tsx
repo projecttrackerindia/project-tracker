@@ -187,7 +187,7 @@ export function ToolChips({ tools }: { tools: (AiToolUse & { state?: 'running' |
   );
 }
 
-const STEP_LABEL: Record<AiPlanStep['state'], string> = { pending: 'To do', done: 'Done', waiting: 'Waiting for you', failed: 'Did not work', skipped: 'Not reached' };
+const STEP_LABEL: Record<AiPlanStep['state'], string> = { pending: 'To do', done: 'Done', waiting: 'Ready to confirm', failed: 'Did not work', skipped: 'Not reached' };
 
 /**
  * The plan for a request with several parts, as a checklist. A step that prepared a card follows that card: it is done once the card is
@@ -366,6 +366,7 @@ export function MessageView({ m, onConfirm, onDismiss, onReconcile, onUndo, onCo
         <ToolChips tools={m.tools} />
         {failed ? <div className="ai-error" role="alert"><Icon name="alert" size={15} /><span>{m.content}</span></div> : <Markdown text={withoutTrailer(m.content)} />}
         {!!m.sources?.length && <details style={{ marginTop: 10 }}><summary>Retrieved sources ({m.sources.length})</summary><ul>{m.sources.map(s => <li key={`${s.kind}:${s.id}:${s.version}`}><Link to={s.link}>{s.key}: {s.title}</Link> · version {s.version} · retrieved {formatDateTime(s.evidenceAt)}</li>)}</ul><p className="muted">These references identify evidence retrieved by the application. They do not verify every claim in the answer.</p></details>}
+        {m.answeredBy && <div className={`ai-answered-by${m.answeredBy.includes("couldn't answer") ? ' warn' : ''}`} data-testid="ai-answered-by"><Icon name={m.answeredBy.includes("couldn't answer") ? 'alert' : 'sparkle'} size={12} />Answered by {m.answeredBy}</div>}
         {!failed && (m.unverifiedKeys?.length ?? 0) > 0 && (
           <div className="ai-check" role="note"><Icon name="alert" size={14} /><span>Please check <b>{m.unverifiedKeys!.join(', ')}</b>: I mentioned {m.unverifiedKeys!.length === 1 ? 'it' : 'them'} but did not find {m.unverifiedKeys!.length === 1 ? 'it' : 'them'} in your data.</span></div>
         )}

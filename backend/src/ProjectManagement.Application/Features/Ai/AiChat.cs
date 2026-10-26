@@ -34,6 +34,8 @@ public sealed record AiChatRequest(string Model, string System, string Context, 
     string? Effort, bool ShowReasoning);
 
 public abstract record AiChatEvent;
+/// <summary>The organization's own key could not answer this turn, so Project Tracker's AI answers it instead (the organization allowed that).</summary>
+public sealed record AiOwnKeyFallback(string ProviderName) : AiChatEvent;
 public sealed record AiInferenceState(string State, int? WaitLimitSeconds = null) : AiChatEvent;
 public sealed record AiTextDelta(string Text) : AiChatEvent;
 public sealed record AiThinkingDelta(string Text) : AiChatEvent;

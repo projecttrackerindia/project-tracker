@@ -23,6 +23,8 @@ export interface AiMessage {
   credits: number; status: 'complete' | 'stopped' | 'failed'; tools: AiToolUse[]; actions: AiAction[]; attachments: AiAttachment[]; createdAt: string;
   followUps?: string[]; unverifiedKeys?: string[]; feedback?: 'up' | 'down' | null;
   sources?: AiKnowledgeSource[];
+  /** Which AI wrote it, e.g. "Claude · your organization's account" or "Project Tracker AI". */
+  answeredBy?: string | null;
 }
 export interface AiKnowledgeSource { kind: string; id: string; key: string; title: string; link: string; version: string; evidenceAt: string; projectId?: string | null; ownerId?: string | null; status?: string | null }
 export interface PortfolioRisk {
@@ -74,7 +76,8 @@ export type AiStreamEvent =
   | { name: 'action'; action: AiAction }
   | { name: 'plan'; steps: AiPlanStep[] }
   | { name: 'done'; message: AiMessage; creditsLeft: number; unlimited: boolean }
-  | { name: 'error'; code: string; message: string; retryAfterSeconds?: number | null };
+  // `saved`: the answer as the server saved it (text so far and any cards it prepared, which can still be confirmed).
+  | { name: 'error'; code: string; message: string; retryAfterSeconds?: number | null; saved?: AiMessage | null };
 
 // ------------------------------------------------------------------ calls
 

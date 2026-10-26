@@ -198,6 +198,8 @@ public sealed class WorkspaceAwareChat(IAiChat platform, WorkspaceAiResolver wor
             await own.Service.ReportFailureAsync(failure.Message, CancellationToken.None);
             if (!own.Key.FallbackToPlatform || !platform.Configured) throw WorkspaceAiResolver.Failed(own.Key, failure);
             log.LogWarning("The workspace's own {Provider} key could not answer ({Code}); using Project Tracker's AI", own.Key.Provider, failure.Code);
+            // Said on the answer, so the person and the admins see that the organization's key failed and who answered instead.
+            yield return new AiOwnKeyFallback(own.Key.ProviderName);
         }
         await foreach (var e in platform.StreamAsync(request, ct)) yield return e;
     }
