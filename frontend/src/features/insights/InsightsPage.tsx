@@ -23,7 +23,7 @@ const dateOf = (s: string) => new Date(`${s}T00:00:00`);
 const mondayOf = (s: string) => { const d = dateOf(s); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return iso(d); };
 const addDays = (s: string, n: number) => { const d = dateOf(s); d.setDate(d.getDate() + n); return iso(d); };
 const dayMonth = (s: string) => { const d = dateOf(s); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
-const hours = (min: number) => formatMinutes(min) || '0h';
+const hours = (min: number) => (min > 0 ? formatMinutes(min) : '0h');
 
 /** Insights: Overview (the numbers and who carries the work), Time (my week) and Reports. Tabs never leave Insights. */
 export function InsightsPage() {

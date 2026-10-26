@@ -73,7 +73,7 @@ a.hm-row-title:hover { color: var(--ds-accent); }
 .hm-dnum { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 8px; }
 .hm-day.today .hm-dnum, .hm-day.today .hm-dow { color: var(--ds-accent); }
 .hm-evs { display: grid; gap: 6px; align-content: start; }
-.hm-ev { display: block; padding: 6px 8px; border-radius: 8px; font-size: 12px; font-weight: 500; line-height: 1.3; text-decoration: none; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.hm-ev { display: block; padding: 6px 8px; border-radius: 8px; font-size: 12px; font-weight: 500; line-height: 1.3; text-decoration: none; overflow-wrap: anywhere; }
 .hm-ev.c-meeting { background: var(--ds-info-bg); color: var(--ds-info); }
 .hm-ev.c-deadline { background: var(--ds-danger-bg); color: var(--ds-danger); }
 .hm-ev.c-stage { background: var(--ds-progress-bg); color: var(--ds-progress); }

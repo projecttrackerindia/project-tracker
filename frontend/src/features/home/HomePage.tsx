@@ -182,7 +182,7 @@ function HomeNumbers() {
     <div className="hm-kpis">
       <Kpi tile label="Delayed projects" value={show(delayed, projects.isLoading)} tone={delayed ? 'danger' : undefined} to="/work/projects" />
       <Kpi tile label="Overdue items" value={show(c?.myOverdue, dash.isLoading)} tone={c?.myOverdue ? 'warning' : undefined} to="/work" />
-      <Kpi tile label="Logged this week" value={c ? formatMinutes(c.myLoggedMinutesThisWeek) || '0h' : dash.isLoading ? '…' : '—'} to="/insights?tab=time" />
+      <Kpi tile label="Logged this week" value={c ? (c.myLoggedMinutesThisWeek > 0 ? formatMinutes(c.myLoggedMinutesThisWeek) : '0h') : dash.isLoading ? '…' : '—'} to="/insights?tab=time" />
       <Kpi tile label="Team open items" value={show(team.data?.totals.open, team.isLoading)} to="/insights" />
     </div>
   );
