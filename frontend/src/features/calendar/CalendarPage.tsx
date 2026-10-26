@@ -50,7 +50,7 @@ export function CalendarPage() {
  * Planning with your own calendars, under the calendar it belongs to: Outlook free/busy, and private time blocks for your Google
  * Calendar. Each shows only when it can be used here (set up by the administrator), never as an "awaiting setup" box.
  */
-function CalendarPlanning() {
+export function CalendarPlanning() {
   const ms = useWsQuery(['account', 'microsoft-status'], microsoftApi.status, { staleTime: 60_000 });
   const gcal = useWsQuery(['account', 'calendar-options'], personalCalendarApi.options, { staleTime: 60_000 });
   const outlook = !!ms.data?.enabled && !!ms.data.configured && !!ms.data.calendarsEnabled;

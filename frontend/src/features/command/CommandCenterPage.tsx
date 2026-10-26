@@ -17,8 +17,6 @@ import { toast } from '../../stores/ui';
 import { BriefModal, DecisionsView, AuditView, WhatIfModal, DelegateModal, ReportModal } from './CommandParts';
 import { MyWorkPage } from '../workitems/MyWorkPage';
 import { errText } from './shared';
-import { AiFirstHome } from './AiFirstHome';
-import { useAiStatus } from '../ai/Assistant';
 import '../agent/agent.css';
 
 // The classic dashboard (tasks, projects, charts) is the first tab of Home; loaded on its own so the other tabs stay light.
@@ -52,7 +50,9 @@ const TABS: { id: Tab; label: string; icon: IconName }[] = [
 export function CommandCenterPage() {
   const wid = useWorkspaceId();
   const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as Tab) || 'dashboard';
+  // v2: Home is "For you"; these views open from its ··· menu as /?tab=…, and a notification's deep link (?checkin=, ?brief=…) opens Today.
+  const deepLink = ['checkin', 'delegate', 'brief', 'delegation'].some((k) => params.has(k));
+  const tab = (TABS.some((t) => t.id === params.get('tab')) ? params.get('tab') as Tab : null) ?? (deepLink ? 'today' : 'dashboard');
   const q = useWsQuery(['agent', 'command-center'], () => delegateApi.commandCenter(), { refetchInterval: 120_000 });
   const [checkIn, setCheckIn] = useState<string | null>(params.get('checkin'));
   const [delegate, setDelegate] = useState<{ meetingId: string; at: string; title?: string } | null>(params.get('delegate') && params.get('at') ? { meetingId: params.get('delegate')!, at: params.get('at')! } : null);
@@ -66,31 +66,22 @@ export function CommandCenterPage() {
     if (['checkin', 'delegate', 'brief', 'delegation', 'at'].some((k) => params.has(k))) {
       const next = new URLSearchParams(params);
       ['checkin', 'delegate', 'brief', 'delegation', 'at'].forEach((k) => next.delete(k));
+      if (!next.get('tab')) next.set('tab', tab);   // keep this view open (Home shows it only for a ?tab=)
       setParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Home is the assistant whenever AI is available here; the full views (Today, My work, Meetings…) open from it as ?tab=…, with a Home
-  // tab back. Without AI (switched off, not in the plan) Home is those views, starting with the dashboard.
-  const ai = useAiStatus();
-  const aiHome = !!ai?.enabled;
+  // The first tab leads back to Home's "For you".
   const setTab = (t: Tab | 'home') => {
     const next = new URLSearchParams(params);
-    if (t === 'home' || (t === 'dashboard' && !aiHome)) next.delete('tab'); else next.set('tab', t);
+    if (t === 'home') next.delete('tab'); else next.set('tab', t);
     setParams(next, { replace: true });
   };
-  const showAiFirst = aiHome && !params.get('tab');
-
-  if (showAiFirst) return (
-    <div className="cmd-page">
-      <AiFirstHome c={q.data} onTab={(t) => setTab(t)} />
-    </div>
-  );
   return (
     <div className="cmd-page">
       <div className="cmd-tabbar">
       <nav className="tabs cmd-tabs" aria-label="Home">
-        {aiHome && <button type="button" className="tab cmd-home-tab" onClick={() => { haptic(4); setTab('home'); }}><AgentMark size={15} /><span>Home</span></button>}
+        <button type="button" className="tab cmd-home-tab" onClick={() => { haptic(4); setTab('home'); }}><AgentMark size={15} /><span>For you</span></button>
         {TABS.map((t) => (
           <button key={t.id} type="button" className={`tab${tab === t.id ? ' active' : ''}`} aria-pressed={tab === t.id} onClick={() => { haptic(4); setTab(t.id); }}>
             <Icon name={t.icon} size={15} /><span>{t.label}</span>

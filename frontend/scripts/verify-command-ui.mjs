@@ -205,7 +205,7 @@ try{
    dialog=page.getByRole('dialog');await dialog.getByRole('radio',{name:/On track/}).waitFor();
    await shot(page,'checkin-390.png');await noOverflow(page,'check-in 390');
    await page.keyboard.press('Escape');await dialog.waitFor({state:'detached'});
-   await page.goto(origin+'/preview-org/meet');await page.getByRole('button',{name:'Schedule',exact:true}).waitFor();
+   await page.goto(origin+'/preview-org/meet/upcoming');await page.getByRole('button',{name:'Schedule',exact:true}).waitFor();   // v2: Talk › all meetings
    await shot(page,'meet-390.png',true);await noOverflow(page,'meet 390');
    await page.goto(origin+'/preview-org/command-center?tab=today');await page.locator('[data-attention]').first().waitFor();
    await page.getByRole('button',{name:/What if/}).click();
@@ -235,23 +235,23 @@ try{
  const made=writes.find(w=>w.ep===`/api/v1/projects/${pid}/tasks`).b;assert.equal(made.title,'Fix login bug, 3h');assert.equal(made.priority,'High');assert.equal(made.assigneeId,user.id);assert.equal(made.estimatedHours,null);
  assert.match(made.dueDate,/^\d{4}-\d{2}-\d{2}$/);for(let i=0;i<30&&await qa.inputValue()!=='';i++)await page.waitForTimeout(100);assert.equal(await qa.inputValue(),'','the box empties after adding');checks.push('quick-add');
  await page.close();await ctx.close();
- // AI-first Home: Home becomes the assistant (ask box, conversations, four rule tiles); the sidebar's Assistant becomes Agents; Classic view returns.
+ // v2 Home: "For you" (the inbox) is Home; the assistant is a page of Home (··· › Assistant, /?tab=assistant) with its ask box, its
+ // conversations, thinking levels and plan steps; an open conversation stays on Home (?c=). Old /command-center and /ai addresses lead here.
  ctx=await make('light',null);page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+'/preview-org/command-center');// AI-first is the default: no switch to press.
- await page.locator('.aih-hero h1').waitFor();assert.match(await page.locator('.aih-hero h1').innerText(),/Good (morning|afternoon|evening)/);
- await page.locator('.aih-tile').nth(3).waitFor();assert.equal(await page.locator('.aih-tile').count(),4);
- assert.ok(await page.locator('.aih-hero .ai-composer.stacked').isVisible(),'the ask box sits in the middle of Home');
- assert.equal(await page.locator('.ai-rail').count(),0,'no conversation list beside the chat');
- assert.ok(await page.locator('.ai-box-bar .ai-attach').isVisible(),'attach is inside the ask box');
- await page.locator('.aih-recent button',{hasText:'CRIF HIGHMARK'}).waitFor();
- for(const chip of ['What needs me','Catch me up','Plan my day','Submit my week'])assert.ok(await page.locator('.aih-chips button',{hasText:chip}).isVisible(),chip);
- await page.locator('.ai-mode-menu > summary[aria-label="Thinking level: Auto"]').click();await page.waitForTimeout(250);await page.screenshot({path:path.join(out,'ai-first-home-level-1440.png'),animations:'disabled'});await page.getByRole('menuitemradio',{name:/Quick/}).click();
- await page.locator('.ai-mode-menu > summary[aria-label="Thinking level: Quick"]').waitFor();
- await page.locator('.aih-history > summary').click();await page.locator('.aih-history-panel input[aria-label="Search conversations"]').waitFor();await page.waitForTimeout(250);await page.screenshot({path:path.join(out,'ai-first-home-chats-1440.png'),animations:'disabled'});
- await page.locator('.aih-history-panel input[aria-label="Search conversations"]').fill('zzz');await page.locator('.aih-history-panel',{hasText:'Nothing matches.'}).waitFor();
- await page.keyboard.press('Escape');assert.ok(!(await page.locator('.aih-history-panel').isVisible()),'Escape closes the Chats menu');
- await page.locator('.aih-recent button',{hasText:'CRIF HIGHMARK'}).click();await page.locator('.ai-thread .ai-msg').nth(1).waitFor();assert.match(page.url(),/[?&]c=c1/,'the chat stays on Home');
- assert.ok(await page.locator('.ai-main > .ai-composer.stacked').isVisible(),'the ask box moves to the bottom in a chat');
+ await page.goto(origin+'/preview-org/command-center');await page.locator('.hm-inbox').waitFor();
+ assert.match(await page.locator('h1').first().innerText(),/Good (morning|afternoon|evening)/);
+ await page.getByRole('button',{name:'More on Home'}).click();await page.getByRole('menuitem',{name:/^Assistant/}).click();
+ await page.waitForURL(/[?&]tab=assistant/);await page.locator('.ai-hero h1').waitFor();
+ assert.ok(await page.locator('.ai-main .ai-composer').isVisible(),'the ask box is on the assistant page');
+ assert.ok(await page.locator('.ai-composer .ai-attach').isVisible(),'attach is inside the ask box');
+ const levels=page.getByRole('radiogroup',{name:'How much thinking'});await levels.getByRole('radio',{name:/Quick/}).click();
+ assert.equal(await levels.getByRole('radio',{name:/Quick/}).getAttribute('aria-checked'),'true','the thinking level is chosen on the page');
+ await page.locator('.ai-rail').getByPlaceholder('Search conversations').fill('zzz');await page.locator('.ai-rail',{hasText:'Nothing matches.'}).waitFor();
+ await page.locator('.ai-rail').getByPlaceholder('Search conversations').fill('');
+ await page.waitForTimeout(250);await page.screenshot({path:path.join(out,'assistant-home-1440.png'),animations:'disabled'});
+ await page.locator('.ai-rail .ai-conv-main',{hasText:'CRIF HIGHMARK'}).click();await page.locator('.ai-thread .ai-msg').nth(1).waitFor();
+ assert.match(page.url(),/[?&]c=c1/,'the chat stays on Home');assert.match(new URL(page.url()).pathname,/^\/preview-org\/?$/,'still Home');
+ assert.ok(await page.locator('.ai-main > .ai-composer').isVisible(),'the ask box sits under the conversation');
  // A request with several parts keeps its plan: a step follows the card it prepared (confirmed = done, waiting = waiting for you).
  const steps=page.getByTestId('ai-plan');await steps.waitFor();
  assert.equal(await steps.locator('li').count(),3);
@@ -261,22 +261,18 @@ try{
  assert.match(await steps.locator('li').nth(1).innerText(),/Ready to confirm/);
  assert.equal(await page.locator('.ai-tools .ai-tool',{hasText:'Planned the steps'}).count(),0,'the plan is not also a chip');
  await steps.scrollIntoViewIfNeeded();await page.waitForTimeout(200);await page.screenshot({path:path.join(out,'ai-plan-1440.png'),animations:'disabled'});
- checks.push('plan-steps');await page.locator('.aih-bar-title b',{hasText:'CRIF HIGHMARK'}).waitFor();
- await page.waitForTimeout(250);await page.screenshot({path:path.join(out,'ai-first-home-chat-1440.png'),animations:'disabled'});
- await page.getByRole('button',{name:'New chat'}).click();await page.locator('.aih-hero h1').waitFor();
- await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'ai-first-home-phone.png'),animations:'disabled'});await page.setViewportSize({width:1440,height:1000});
+ checks.push('plan-steps');
+ await page.locator('.ai-rail .ai-new').click();await page.locator('.ai-hero h1').waitFor();assert.ok(!/[?&]c=/.test(page.url()),'a new chat leaves the old one');
+ await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'assistant-home-phone.png'),animations:'disabled'});await page.setViewportSize({width:1440,height:1000});
  await page.locator('.v2-rail-item.on',{hasText:'Home'}).waitFor();assert.equal(await page.getByRole('link',{name:'Assistant',exact:true}).count(),0,'no separate Assistant entry');
- await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'ai-first-home-1440.png'),animations:'disabled'});
- await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'ai-first-home-dark-1440.png'),fullPage:true,animations:'disabled'});
+ await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'assistant-home-dark-1440.png'),fullPage:true,animations:'disabled'});
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','light'));
- await page.setViewportSize({width:820,height:1000});await page.waitForTimeout(200);await page.screenshot({path:path.join(out,'ai-first-home-820.png'),fullPage:true,animations:'disabled'});
- await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+'/preview-org/ai');await page.locator('.aih-hero').waitFor();assert.ok(!new URL(page.url()).pathname.endsWith('/ai'),'the Assistant page leads to Home');
- await page.reload();await page.locator('.aih-hero').waitFor();
- // There is no classic Home any more: the full views open from Home, with a Home tab back.
+ await page.goto(origin+'/preview-org/ai');await page.waitForURL(/[?&]tab=assistant/);await page.locator('.ai-hero').waitFor();assert.ok(!new URL(page.url()).pathname.endsWith('/ai'),'the Assistant page leads to Home');
+ // There is no classic Home any more: the full views open from Home's ···, with a "For you" tab back.
  assert.equal(await page.getByRole('button',{name:'Classic view'}).count(),0,'no classic view');
- await page.getByRole('button',{name:'Dashboard'}).click();await page.locator('.cmd-tabs').waitFor();assert.match(page.url(),/[?&]tab=dashboard/);
- await page.locator('.cmd-tabs .cmd-home-tab').click();await page.locator('.aih-hero').waitFor();assert.ok(!/[?&]tab=/.test(page.url()));
+ await page.goto(origin+'/preview-org/');await page.getByRole('button',{name:'More on Home'}).click();await page.getByRole('menuitem',{name:/^Dashboard/}).click();
+ await page.locator('.cmd-tabs').waitFor();assert.match(page.url(),/[?&]tab=dashboard/);
+ await page.locator('.cmd-tabs .cmd-home-tab').click();await page.locator('.hm-inbox').waitFor();assert.ok(!/[?&]tab=/.test(page.url()));
  checks.push('ai-first-home');await page.close();await ctx.close();
  assert.deepEqual(errors,[]);
  await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,writes:writes.length,errors,scope:'Built frontend with synthetic fixtures; no live meetings, mail or AI.'},null,2));

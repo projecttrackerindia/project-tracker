@@ -2,6 +2,10 @@ import { useMemo, useState } from 'react';
 import { AgentPage, type AgentSection } from '../agent/AgentPage';
 import { AiPage } from '../ai/AiPage';
 import { RemindersPage } from '../reminders/RemindersPage';
+import { CommandCenterPage } from '../command/CommandCenterPage';
+import { ReviewQueueCard } from '../github/GitHubApp';
+import { DotsMenu } from '../talk/DotsMenu';
+import { CalendarPlanning } from '../calendar/CalendarPage';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -31,6 +35,7 @@ const addDays = (s: string, n: number) => { const d = dateOf(s); d.setDate(d.get
  * Tabs never leave Home; links with › do.
  */
 const AGENT: Record<string, AgentSection> = { proposals: 'review', given: 'assigned', 'mail-agent': 'my-inbox' };
+const COMMAND_TABS = ['today', 'decisions', 'audit', 'dashboard', 'work'];
 const AGENT_TAB: Record<AgentSection, string> = { review: 'proposals', assigned: 'given', 'my-inbox': 'mail-agent' };
 
 export function HomePage() {
@@ -41,6 +46,9 @@ export function HomePage() {
   if (AGENT[raw]) return <AgentPage section={AGENT[raw]} onSection={(sec) => setParams({ tab: AGENT_TAB[sec] }, { replace: true })} />;
   if (raw === 'reminders') return <RemindersPage />;
   if (raw === 'assistant' || params.has('c')) return <AiPage />;
+  // The former Command Center's views (Today with check-ins, the brief and "what if", Decisions, the agent's audit trail, the dashboard, My
+  // work), and the deep links notifications still carry (/command-center?checkin=… arrives here with its query).
+  if (COMMAND_TABS.includes(raw) || ['checkin', 'delegate', 'brief', 'delegation'].some((k) => params.has(k))) return <CommandCenterPage />;
   const tab: Tab = raw === 'calendar' ? 'calendar' : 'for-you';
   const setTab = (t: Tab) => setParams((p) => { const n = new URLSearchParams(p); if (t === 'for-you') n.delete('tab'); else n.set('tab', t); return n; }, { replace: true });
   return tab === 'calendar' ? <WeekCalendar onTab={setTab} /> : <ForYou onTab={setTab} />;
@@ -61,11 +69,22 @@ function greeting(name: string) {
 function ForYou({ onTab }: { onTab: (t: Tab) => void }) {
   const me = useAuth((s) => s.ctx!.user);
   const today = todayISO();
+  const nav = useNavigate();
   const briefing = useWsQuery(['inbox', 'briefing'], inboxApi.briefing, { staleTime: 30_000 });
   return (
     <div className="hm">
       <PageHead eyebrow={<span className="hm-ai-brow">✦ {longDay(today)}{briefing.data ? ' · briefing ready' : ''}</span>} title={greeting(me.displayName)}>
-        <Tabs value="for-you" onTab={onTab} />
+        <div className="hm-heads">
+          <Tabs value="for-you" onTab={onTab} />
+          <DotsMenu label="More on Home" items={[
+            { label: 'Assistant', hint: 'Your conversations with the assistant', icon: 'sparkle', onSelect: () => nav('/?tab=assistant') },
+            { label: 'Today', hint: 'Check-ins, meetings and "what if"', icon: 'target', onSelect: () => nav('/?tab=today') },
+            { label: 'Decisions', icon: 'checks', onSelect: () => nav('/?tab=decisions') },
+            { label: 'Audit trail', hint: 'Everything the agent did', icon: 'shield', onSelect: () => nav('/?tab=audit') },
+            { label: 'Dashboard', icon: 'dashboard', onSelect: () => nav('/?tab=dashboard') },
+            { label: 'Reminders', icon: 'bell', onSelect: () => nav('/?tab=reminders') },
+          ]} />
+        </div>
       </PageHead>
       <Briefing q={briefing} />
       <div className="hm-grid">
@@ -73,6 +92,7 @@ function ForYou({ onTab }: { onTab: (t: Tab) => void }) {
         <aside className="hm-side" aria-label="Tomorrow and your numbers">
           <Tomorrow onCalendar={() => onTab('calendar')} />
           <HomeNumbers />
+          <ReviewQueueCard compact />
         </aside>
       </div>
     </div>
@@ -86,7 +106,7 @@ function Briefing({ q }: { q: UseQueryResult<InboxBriefing, Error> }) {
   return (
     <section className="hm-brief" aria-label="Briefing">
       <span className="hm-orb" aria-hidden="true" />
-      <p><b>{b.headline}</b>{b.reasons.length > 0 && <> {b.reasons.join(' ')}</>}</p>
+      <p><b>{b.headline}</b>{(b.reasons?.length ?? 0) > 0 && <> {b.reasons.join(' ')}</>}</p>
       <small>{b.sources}</small>
     </section>
   );
@@ -127,6 +147,8 @@ function InboxCard() {
   };
 
   const counts = q.data?.counts;
+  // A reply without rows (an older server during a rolling release) reads as an empty inbox, not a crash of Home.
+  const rows = q.data?.rows ?? [];
   return (
     <section className="hm-card hm-inbox" aria-label="Inbox">
       <div className="ds-chips hm-chips" role="group" aria-label="Show">
@@ -136,12 +158,12 @@ function InboxCard() {
           </button>
         ))}
       </div>
-      {q.isLoading ? <PageLoader /> : q.isError ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : q.data!.rows.length === 0 ? (
+      {q.isLoading ? <PageLoader /> : q.isError ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : rows.length === 0 ? (
         <EmptyState icon="checkCircle" title={filter === 'all' ? 'Nothing needs you' : 'Nothing here'}
-          text={q.data!.later > 0 ? `${q.data!.later} moved to tomorrow.` : 'New work, decisions and mentions arrive here.'} />
+          text={(q.data?.later ?? 0) > 0 ? `${q.data!.later} moved to tomorrow.` : 'New work, decisions and mentions arrive here.'} />
       ) : (
         <ul className="hm-rows">
-          {q.data!.rows.map((r) => (
+          {rows.map((r) => (
             <li key={r.id} className={`hm-row ${done.has(r.id) ? 'done' : ''}`}>
               <span className={`hm-tag k-${r.kind}`}>{KIND_LABEL[r.kind]}</span>
               <div className="hm-row-main">
@@ -187,7 +209,7 @@ function HomeNumbers() {
   const dash = useWsQuery(['dashboard', null], () => insightApi.dashboard(null), { staleTime: 60_000 });
   const projects = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false });
   const team = useWsQuery(['workload', 'default'], () => workItemApi.workload(), { staleTime: 60_000, retry: false });
-  const delayed = projects.data?.items.filter((p) => p.health === 'Delayed').length;
+  const delayed = projects.data?.items?.filter((p) => p.health === 'Delayed').length;
   const c = dash.data?.counts;
   const show = (v: number | undefined, loading: boolean) => (v === undefined ? (loading ? '…' : '—') : v);
   return (
@@ -195,7 +217,7 @@ function HomeNumbers() {
       <Kpi tile label="Delayed projects" value={show(delayed, projects.isLoading)} tone={delayed ? 'danger' : undefined} to="/work/projects" />
       <Kpi tile label="Overdue items" value={show(c?.myOverdue, dash.isLoading)} tone={c?.myOverdue ? 'warning' : undefined} to="/work" />
       <Kpi tile label="Logged this week" value={c ? (c.myLoggedMinutesThisWeek > 0 ? formatMinutes(c.myLoggedMinutesThisWeek) : '0h') : dash.isLoading ? '…' : '—'} to="/insights?tab=time" />
-      <Kpi tile label="Team open items" value={show(team.data?.totals.open, team.isLoading)} to="/insights" />
+      <Kpi tile label="Team open items" value={show(team.data?.totals?.open, team.isLoading)} to="/insights" />
     </div>
   );
 }
@@ -208,7 +230,8 @@ function colourOf(e: CalendarEvent): 'meeting' | 'deadline' | 'stage' {
 }
 
 function hrefOf(e: CalendarEvent): string {
-  if (e.type === 'meeting') return `/talk?f=meetings&open=${e.projectId ? 'p' : 'w'}:${e.id}`;
+  // Talk opens a meeting from ?meeting= (Meet's old ?open=), and a series' occurrence from ?at=.
+  if (e.type === 'meeting') return `/talk?f=meetings&meeting=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`;
   if (e.type === 'task' || e.type === 'action' || e.type === 'work') return `/work?item=${e.id}`;
   return e.projectId ? `/work/projects/${e.projectId}` : '/work/projects';
 }
@@ -292,6 +315,8 @@ function WeekCalendar({ onTab }: { onTab: (t: Tab) => void }) {
           </section>
         </aside>
       </div>
+      {/* Planning with your own calendars (Outlook free/busy, Google time blocks): shown only when the administrator set it up. */}
+      <CalendarPlanning />
     </div>
   );
 }

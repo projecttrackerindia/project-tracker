@@ -107,6 +107,7 @@ try {
   assert.ok(!/Resume/.test(await tabs.innerText()),'Resume studio is gone');
  }
  checks.push({name:'old-account-addresses-open-profile-tabs',passed:true});
+ // v2: /calendar is Home › Calendar (the week); planning with your own calendars sits under the week.
  await page.goto(origin+'/calendar');await page.locator('.outlook-availability').waitFor({state:'visible'});
  assert.equal(calendarReads,0,'Outlook calendar inventory must not load automatically');assert.equal(calendarChecks,0);
  await page.getByRole('button',{name:'Load my Outlook calendars',exact:true}).click();
@@ -126,7 +127,7 @@ try {
  calendarDenied=true;await page.getByRole('button',{name:'Check selected calendars',exact:true}).click();await page.locator('.outlook-error').waitFor({state:'visible'});
  assert.equal(await page.locator('.outlook-planning-grid').count(),0);assert.equal(await page.locator('.outlook-result').count(),0);
  checks.push({name:'outlook-revoked-access-clears-calendar-names-and-busy-results',passed:true});
- const beforeCalendarDisabled=calendarReads;calendarsEnabled=false;await page.reload();await page.locator('.cal-filters').waitFor({state:'visible'});await page.waitForTimeout(400);
+ const beforeCalendarDisabled=calendarReads;calendarsEnabled=false;await page.reload();await page.locator('.hm-week').waitFor({state:'visible'});await page.waitForTimeout(400);
  // Switched off by the administrator: the calendar shows no Outlook panel at all (no "awaiting setup" box).
  assert.equal(await page.locator('.outlook-availability').count(),0);
  assert.equal(await page.locator('.outlook-result').count(),0);assert.equal(await page.locator('.outlook-planning-grid').count(),0);assert.equal(calendarReads,beforeCalendarDisabled);
