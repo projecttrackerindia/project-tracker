@@ -603,6 +603,19 @@ html[data-theme='dark'] .msg .bubble:has(.poll) { background: var(--ds-surface-2
 .composer-pill .composer-editable { font-size: 15px; padding-inline: 10px; }
 .send-btn { background: var(--ds-fill-strong); color: var(--ds-text-4); box-shadow: none; }
 .send-btn.ready { background: #0071E3; color: #fff; box-shadow: none; }
+
+/* v2: message actions sit BESIDE the bubble (never over the text): Reply · Make task · ···; the rest is under ···. */
+html .msg-actions { top: 2px; align-items: center; gap: 2px; padding: 3px; border-radius: var(--ds-r-pill); background: var(--ds-surface); box-shadow: var(--ds-e3); white-space: nowrap; }
+html .msg:not(.mine) .msg-actions { left: calc(100% + 8px); right: auto; }
+html .msg.mine .msg-actions { right: calc(100% + 8px); left: auto; }
+.msg-act { display: inline-flex; align-items: center; justify-content: center; min-height: 26px; padding: 0 10px; border-radius: var(--ds-r-pill); font-size: 12px; font-weight: 600; color: var(--ds-text); }
+.msg-act:hover, .msg-act[aria-expanded='true'] { background: var(--ds-fill); }
+.msg-act.dots { width: 28px; padding: 0; color: var(--ds-text-3); }
+.msg:not(.mine) .msg-actions .more-pop { left: 0; right: auto; }
+.more-pop .more-reacts { display: flex; gap: 2px; padding: 2px 2px 6px; margin-bottom: 4px; border-bottom: 1px solid var(--ds-separator); }
+.more-pop .more-reacts button { flex: 1; justify-content: center; padding: 5px 0; font-size: 17px; }
+.more-pop .more-reacts button.on { background: var(--ds-accent-soft); }
+.more-pop button.danger { color: var(--ds-danger); }
 .composer-ctx { border-left: 0; border-radius: 14px; background: var(--ds-accent-soft); }
 .composer-ctx b { color: var(--ds-accent-text); }
 .chat-info { width: 320px; }

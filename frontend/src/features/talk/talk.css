@@ -1,0 +1,93 @@
+/* Talk: one list (chat, mail, meetings) and the open conversation beside it. Design-system tokens only, so light and dark both work. */
+.talk-shell { display: grid; grid-template-columns: 340px minmax(0, 1fr) auto; gap: 20px; height: calc(100vh - var(--topbar-h, 64px) - 64px); min-height: 480px; }
+.talk-list, .talk-pane { min-width: 0; min-height: 0; background: var(--ds-surface); border-radius: var(--ds-r-card); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); overflow: hidden; }
+.talk-list { display: flex; flex-direction: column; gap: 14px; padding: 22px 14px 10px; }
+.talk-list-head { display: flex; align-items: center; gap: 6px; padding: 0 6px; }
+.talk-list-head h2 { flex: 1; margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1.1; color: var(--ds-text); }
+html .talk-list-head .talk-start { min-height: 36px; padding: 0 16px; font-size: 14px; border-radius: var(--ds-r-pill); }
+html .talk-list-head .talk-start svg { display: none; }
+.talk-filters { padding: 0 6px; gap: 6px; }
+.talk-search { display: flex; align-items: center; gap: 8px; margin: 0 6px; padding: 0 12px; min-height: 38px; border-radius: var(--ds-r-input); background: var(--ds-fill); color: var(--ds-text-3); }
+.talk-search input { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 14px; color: var(--ds-text); outline: none; }
+.talk-scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px 8px; }
+.talk-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.talk-row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 10px; border-radius: 14px; text-align: left; color: var(--ds-text); background: transparent; }
+.talk-row:hover { background: var(--ds-fill); }
+.talk-row.active { background: var(--ds-accent-soft); }
+.talk-row:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
+.talk-av { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; font-size: 13px; font-weight: 700; color: #fff; background: var(--ds-text-3); overflow: visible; position: relative; }
+.talk-av.square { border-radius: 12px; }
+.talk-av.conv-av { background: transparent; }
+.talk-av.av-c0 { background: #C2410C; } .talk-av.av-c1 { background: #5B5BD6; } .talk-av.av-c2 { background: #BE4C8B; }
+.talk-av.av-c3 { background: #3F3F46; } .talk-av.av-c4 { background: #15803D; } .talk-av.av-c5 { background: #0A64D6; }
+.talk-av.conv-av.av-c0, .talk-av.conv-av.av-c1, .talk-av.conv-av.av-c2, .talk-av.conv-av.av-c3, .talk-av.conv-av.av-c4, .talk-av.conv-av.av-c5 { background: transparent; }
+.talk-av.av-mail { background: var(--ds-text-3); }
+.talk-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.talk-top { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.talk-top b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.talk-top time { flex: none; font-size: 12px; color: var(--ds-text-3); }
+.talk-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.talk-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ds-text-3); }
+.talk-row.unread .talk-top b, .talk-row.unread .talk-preview { color: var(--ds-text); font-weight: 700; }
+.talk-live { flex: none; padding: 1px 7px; border-radius: var(--ds-r-pill); font-size: 11px; font-weight: 700; background: var(--ds-success-bg); color: var(--ds-success); }
+.talk-row.connect .talk-preview { color: var(--ds-accent); font-weight: 600; }
+.talk-note { padding: 10px 12px; font-size: 13px; color: var(--ds-text-3); list-style: none; }
+
+.talk-pane { display: flex; flex-direction: column; }
+.talk-pane > .chat-thread, .talk-pane > .talk-mail, .talk-pane > .talk-meeting { flex: 1; min-height: 0; }
+.talk-mail { display: flex; flex-direction: column; overflow: hidden; }
+.talk-mail > .mb-read { flex: 1; min-height: 0; }
+.talk-meeting { overflow-y: auto; padding: 4px 4px 20px; }
+.talk-empty { flex: 1; display: grid; place-content: center; justify-items: center; gap: 8px; padding: 32px; text-align: center; color: var(--ds-text-3); }
+.talk-empty h2 { margin: 6px 0 0; font-size: 20px; font-weight: 600; color: var(--ds-text); }
+.talk-empty p { max-width: 360px; margin: 0; font-size: 14px; }
+
+/* the thread's v2 header: name, then Call and ··· */
+.talk-head { gap: 12px; }
+html .talk-head .talk-call { min-height: 34px; padding: 0 16px; border-radius: var(--ds-r-pill); font-size: 13px; font-weight: 600; }
+html .talk-head .talk-call svg { display: none; }
+.talk-thread .chat-back { display: none; }
+
+/* ✦ summary strip: violet is for AI only */
+.talk-strip { display: flex; align-items: center; gap: 10px; margin: 12px 20px 0; padding: 10px 14px; border-radius: var(--ds-r-tile); background: color-mix(in srgb, var(--ds-violet) 8%, var(--ds-surface)); font-size: 13.5px; color: var(--ds-text-2); }
+.talk-strip-mark { display: inline-flex; align-items: center; gap: 5px; flex: none; font-weight: 700; color: var(--ds-violet); }
+.talk-strip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.talk-strip-act { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 14px; border-radius: var(--ds-r-pill); font-size: 12.5px; font-weight: 600; color: #fff; background: var(--ds-violet); }
+.talk-strip-act:hover:not(:disabled) { filter: brightness(1.08); }
+.talk-strip-act:disabled { opacity: .6; }
+
+/* a meeting in the pane */
+.mt-inline { display: grid; gap: 14px; padding: 18px 22px; }
+.mt-inline-head { display: flex; align-items: center; gap: 12px; }
+.mt-inline-ico { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 12px; color: #fff; background: #BE4C8B; }
+.mt-inline-title { flex: 1; min-width: 0; }
+.mt-inline-title h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.015em; color: var(--ds-text); }
+.mt-inline-title p { margin: 2px 0 0; font-size: 13px; color: var(--ds-text-3); }
+.talk-pane-back { display: none; }
+
+/* "···" menus */
+.v2-dots { position: relative; flex: none; }
+.v2-dots-btn { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; color: var(--ds-text-3); background: var(--ds-fill); }
+.v2-dots-btn:hover, .v2-dots-btn[aria-expanded='true'] { color: var(--ds-text); background: var(--ds-fill-strong); }
+.v2-dots-btn:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.v2-dots-list { position: absolute; top: calc(100% + 6px); z-index: 40; min-width: 240px; margin: 0; padding: 6px; list-style: none; border-radius: 14px; background: var(--ds-surface); box-shadow: var(--ds-e4), 0 0 0 1px var(--ds-line); }
+.v2-dots-list.right { right: 0; } .v2-dots-list.left { left: 0; }
+.v2-dots-list button { width: 100%; display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 10px; text-align: left; font-size: 13.5px; color: var(--ds-text); }
+.v2-dots-list button svg { margin-top: 2px; flex: none; color: var(--ds-text-3); }
+.v2-dots-list button span { display: grid; gap: 1px; }
+.v2-dots-list button b { font-weight: 500; }
+.v2-dots-list button small { font-size: 12px; color: var(--ds-text-3); }
+.v2-dots-list button:hover { background: var(--ds-fill); }
+.v2-dots-list button.danger, .v2-dots-list button.danger svg { color: var(--ds-danger); }
+
+@media (max-width: 1100px) { .talk-shell { grid-template-columns: 300px minmax(0, 1fr); gap: 14px; } }
+@media (max-width: 860px) {
+  .talk-shell { grid-template-columns: minmax(0, 1fr); gap: 0; height: calc(100vh - var(--topbar-h, 54px) - 40px); }
+  .talk-shell.is-open .talk-list { display: none; }
+  .talk-shell:not(.is-open) .talk-pane { display: none; }
+  .talk-thread .chat-back, .talk-pane-back { display: grid; }
+  .talk-list-head h2 { font-size: 26px; }
+  .talk-strip { margin: 10px 12px 0; flex-wrap: wrap; }
+  .talk-strip-text { flex-basis: 100%; order: 3; }
+  .mt-inline { padding: 14px; }
+}
