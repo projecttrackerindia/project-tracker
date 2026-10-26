@@ -106,7 +106,7 @@ function TalkHome() {
   const kind = KIND_OF[filter];
   const needle = search.trim().toLowerCase();
   const shown = rows.filter((r) => (!kind || r.kind === kind) && (!needle || `${r.title} ${r.last ?? ''} ${r.sub ?? ''}`.toLowerCase().includes(needle)));
-  const mailState = talk.data?.mail.state;
+  const mailState = talk.data?.mail?.state;
   const company = mail.imap.data?.company;
   const showConnect = (filter === 'all' || filter === 'mail') && mailState === 'not-connected' && !mail.loading && mail.accounts.length === 0;
 
@@ -144,6 +144,9 @@ function TalkHome() {
             { label: 'Saved messages', icon: 'star', onSelect: () => setPanel('saved'), hidden: !chatUsable },
             { label: 'Scheduled messages', icon: 'clock', onSelect: () => setPanel('scheduled'), hidden: !chatUsable },
             { label: 'Connect a mailbox', icon: 'mail', onSelect: () => setDialog('connect') },
+            // Meetings keep their full views (Meet): scheduling, the upcoming list with replies, series, past notes and the notetaker.
+            { label: 'Schedule a meeting', icon: 'calendar', onSelect: () => navigate('/talk?f=meetings&new=schedule') },
+            { label: 'All meetings', hint: 'Upcoming, series, past and the notetaker', icon: 'video', onSelect: () => navigate('/talk?f=meetings&s=upcoming') },
           ]} />
           <StartCallButton label="Start call" className="btn btn-primary btn-sm talk-start" />
         </div>

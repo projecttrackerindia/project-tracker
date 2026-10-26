@@ -3,8 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { delegateApi, projectApi } from '../../api/endpoints';
 import type { MyMeeting } from '../../api/types';
-import { Icon } from '../../components/Icon';
-import { Badge, EmptyState, ErrorState, PageHead, PageLoader, RouteTabs } from '../../components/ui';
+import { Icon, type IconName } from '../../components/Icon';
+import { Badge, EmptyState, ErrorState, PageHead, PageLoader } from '../../components/ui';
 import { formatDate, formatTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useModule, useWorkspaceId } from '../../stores/auth';
@@ -38,7 +38,6 @@ export function MeetPage({ section }: { section: Section }) {
   const [form, setForm] = useState<'now' | 'schedule' | null>(params.get('new') === 'schedule' ? 'schedule' : params.get('new') === 'now' ? 'now' : null);
   const projectQ = useWsQuery(['project', projectId], () => projectApi.get(projectId!), { enabled: !!projectId });
   const project = projectId && projectQ.data ? { id: projectId, name: projectQ.data.project.name } : null;
-  const keep = projectId ? `?project=${projectId}` : '';
   const setParam = (k: string, v: string | null) => { const next = new URLSearchParams(params); if (v) next.set(k, v); else next.delete(k); setParams(next, { replace: true }); };
   const closeForm = () => { setForm(null); setParam('new', null); };
 
@@ -50,18 +49,20 @@ export function MeetPage({ section }: { section: Section }) {
         <button type="button" className="btn btn-ghost" onClick={() => setForm('now')}>Start now</button>
         <button type="button" className="btn btn-primary" onClick={() => setForm('schedule')}>Schedule</button>
       </PageHead>
-      <RouteTabs label="Meet" tabs={[
-        { to: `/meet${keep}`, label: 'Upcoming', icon: 'calendar' },
-        { to: `/meet/series${keep}`, label: 'Series', icon: 'repeat' },
-        { to: `/meet/past${keep}`, label: 'Past', icon: 'clock' },
-        ...(projects && role !== 'Guest' ? [{ to: `/meet/notetaker${keep}`, label: 'Notetaker', icon: 'sparkle' as const }] : []),
-      ]} />
+      {/* v2: Meet lives in Talk (?f=meetings&s=…); the tabs keep the section in the query, which a NavLink cannot tell apart. */}
+      <nav className="tabs route-tabs" aria-label="Meet">
+        {([['upcoming', 'Upcoming', 'calendar'], ['series', 'Series', 'repeat'], ['past', 'Past', 'clock'],
+          ...(projects && role !== 'Guest' ? [['notetaker', 'Notetaker', 'sparkle']] : [])] as [Section, string, IconName][]).map(([id, label, icon]) => (
+          <Link key={id} to={`/talk?f=meetings&s=${id}${projectId ? `&project=${encodeURIComponent(projectId)}` : ''}`} className={`tab ${section === id ? 'active' : ''}`}
+            aria-current={section === id ? 'page' : undefined}><Icon name={icon} />{label}</Link>
+        ))}
+      </nav>
       {section === 'upcoming' && <Upcoming projectId={projectId} onOpen={(m) => setParam('open', m.ref)} />}
       {section === 'series' && <Series projectId={projectId} onOpen={(m) => setParam('open', m.ref)} />}
       {section === 'past' && <Past projectId={projectId} onOpen={(m) => setParam('open', m.ref)} />}
       {section === 'notetaker' && <NotetakerSection />}
       {opened && <MeetingDetail kind={opened.kind} id={opened.id} at={params.get('at')} onClose={() => { const next = new URLSearchParams(params); next.delete('open'); next.delete('at'); setParams(next, { replace: true }); }}
-        onProject={(pid) => navigate(`/meet?project=${pid}`)} />}
+        onProject={(pid) => navigate(`/talk?f=meetings&s=upcoming&project=${pid}`)} />}
       {form && <MeetingForm mode={form} project={project} onClose={closeForm} />}
     </div>
   );

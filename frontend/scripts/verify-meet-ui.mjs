@@ -18,6 +18,8 @@ const perms=['org.manage','projects.view','projects.edit','tasks.view','work.vie
 const project={id:'00000000-0000-0000-0000-0000000000a1',key:'ATL',name:'Atlas'};
 const ids={ours:'00000000-0000-0000-0000-0000000000b1',meet:'00000000-0000-0000-0000-0000000000b2',team:'00000000-0000-0000-0000-0000000000b3',past:'00000000-0000-0000-0000-0000000000b4'};
 const at=(minutes)=>new Date(Date.now()+minutes*60_000).toISOString();
+// the calendar's "today" is the user's day (Asia/Kolkata), not UTC: between 18:30 and 24:00 UTC they differ
+const istDate=(iso)=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(iso));
 let myReply='NeedsAction';
 const item=(o)=>({kind:'project',description:null,timeZone:'Asia/Kolkata',projectId:project.id,projectName:project.name,projectKey:project.key,calendarUrl:null,isScrum:false,recurring:false,sessionsLeft:null,
   notetaker:'off',isOrganizer:false,canManage:false,organizerName:'Ravi Kumar',invited:3,accepted:1,declined:0,status:'Scheduled',notes:null,live:false,...o,ref:`${o.kind==='workspace'?'w':'p'}:${o.id}`});
@@ -65,7 +67,7 @@ try{
   else if(ep===`/api/v1/projects/${project.id}/meetings/participants`)data=[{userId:'u2',name:'Ravi Kumar',email:'ravi@example.test',role:'Member',rsvpStatus:'NeedsAction'}];
   else if(ep==='/api/v1/meetings/participants')data=[{userId:'u2',name:'Ravi Kumar',email:'ravi@example.test',role:'Member',rsvpStatus:'NeedsAction'}];
   else if(ep==='/api/v1/projects')data={items:[project],page:1,totalPages:1,totalItems:1};
-  else if(ep==='/api/v1/calendar')data=[{type:'meeting',id:ids.ours,title:'Atlas review',date:at(5).slice(0,10),startsAt:at(5),projectId:project.id,projectName:project.name,category:null,overdue:false,status:null,priority:null}];
+  else if(ep==='/api/v1/calendar')data=[{type:'meeting',id:ids.ours,title:'Atlas review',date:istDate(at(5)),startsAt:at(5),projectId:project.id,projectName:project.name,category:null,overdue:false,status:null,priority:null}];
   else if(ep==='/api/v1/calls/status')data={available:true,maxParticipants:50};
   else if(ep==='/api/v1/calls/live')data=[];
   else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
@@ -82,9 +84,13 @@ try{
  const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&!m.text().startsWith('Failed to load resource'))console.error('console:',m.text().slice(0,400));});await page.setViewportSize({width:1440,height:1000});
  const shot=(name)=>page.screenshot({path:path.join(out,name),animations:'disabled'});
  try{
-  // 1. One entry: Talk in the rail, Meetings among its filters; the list shows what is coming with each person's reply and Join only when it is near.
-  await page.goto(origin+'/preview-org/meet');
-  await page.locator('.v2-rail-item',{hasText:'Talk'}).waitFor();await page.getByRole('tab',{name:'Meetings'}).waitFor();
+  // 1. One entry: Talk in the rail, Meetings among its filters (the old address lands there); Talk's ··· opens all meetings, where the list
+  // shows what is coming with each person's reply and Join only when it is near.
+  await page.goto(origin+'/preview-org/meet');await page.waitForURL(/\/talk\?f=meetings/);
+  await page.locator('.v2-rail-item.on',{hasText:'Talk'}).waitFor();
+  assert.equal(await page.locator('.talk-filters .ds-chip',{hasText:'Meetings'}).getAttribute('aria-pressed'),'true');
+  await page.getByRole('button',{name:'More in Talk'}).click();await page.getByRole('menuitem',{name:/All meetings/}).click();
+  await page.waitForURL(/[?&]s=upcoming/);
   const rows=page.locator('.mt-item');await rows.first().waitFor();
   assert.equal(await rows.count(),4,'Three meetings and one call from the calendar');
   const review=rows.filter({hasText:'Atlas review'});
@@ -102,19 +108,20 @@ try{
   await page.waitForFunction(()=>[...document.querySelectorAll('.mt-item')].some(li=>li.textContent.includes('Atlas review')&&li.textContent.includes('Going')));
   assert.deepEqual(writes.at(-1),{ep:`/api/v1/meet/p/${ids.ours}/rsvp`,method:'POST',b:{response:'accepted'}});checks.push('reply-from-list');
 
-  // 3. One meeting, opened from a link (reminders and notifications use these): people, agenda, the notetaker, and the reply.
-  await page.goto(origin+`/preview-org/meet?open=p:${ids.ours}`);
-  const d=page.getByRole('dialog');await d.getByRole('heading',{name:'Atlas review'}).waitFor();
+  // 3. One meeting, opened from a link (reminders and notifications use these): people, agenda, the notetaker, and the reply. v2: it opens
+  // in Talk's own pane.
+  await page.goto(origin+`/preview-org/meet?open=p:${ids.ours}`);await page.waitForURL(/[?&]meeting=p(:|%3A)/);
+  const d=page.locator('.mt-inline');await d.getByRole('heading',{name:'Atlas review'}).waitFor();
   assert.match(await d.locator('.mt-props').innerText(),/speaks up when something is missed/);
   assert.match(await d.locator('.mt-agenda').innerText(),/Release scope/);
   assert.match(await d.innerText(),/1 not going/);
   await d.getByRole('group',{name:'Your reply'}).getByRole('button',{name:'No'}).click();await page.waitForTimeout(300);
   assert.deepEqual(writes.at(-1).b,{response:'declined'});
   assert.equal(await d.getByRole('button',{name:'Cancel meeting'}).count(),0,'Only the organizer cancels');
-  await shot('meet-detail-1440.png');await page.keyboard.press('Escape');checks.push('detail-and-reply');
+  await shot('meet-detail-1440.png');checks.push('detail-and-reply');
 
-  // 4. Schedule: the notetaker is chosen per meeting; voice says why it cannot come; the choice is sent.
-  await page.getByRole('button',{name:'Schedule',exact:true}).click();
+  // 4. Schedule (from Talk's ···): the notetaker is chosen per meeting; voice says why it cannot come; the choice is sent.
+  await page.getByRole('button',{name:'More in Talk'}).click();await page.getByRole('menuitem',{name:/Schedule a meeting/}).click();
   const f=page.getByRole('dialog');await f.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
   assert.match(await f.locator('.mt-notetaker').innerText(),/Choose a project to bring the notetaker/);
   await f.getByLabel('Project',{exact:true}).selectOption(project.id);
@@ -141,17 +148,17 @@ try{
   await page.goto(origin+'/preview-org/meet/past');const kick=page.locator('.mt-item').filter({hasText:'Kick-off'});await kick.waitFor();
   assert.match(await kick.innerText(),/Notes/);assert.equal(await kick.getByRole('link',{name:'Join'}).count(),0);checks.push('past');
 
-  // 7. The Calendar shows meetings and opens them in Meet; it has no meeting button of its own.
-  await page.goto(origin+'/preview-org/calendar');await page.locator('.cal-filters').waitFor();
+  // 7. The Calendar (Home › Calendar in v2) shows meetings and opens them in Talk; it has no meeting button of its own.
+  await page.goto(origin+'/preview-org/calendar');await page.locator('.hm-week').waitFor();
   assert.equal(await page.getByRole('button',{name:/Scrum call|Schedule/}).count(),0);
-  await page.getByText('Atlas review').last().click();await page.waitForURL(/[?&](open|meeting)=p(:|%3A)/);
-  await page.getByRole('dialog').getByRole('heading',{name:'Atlas review'}).waitFor();checks.push('calendar-opens-meet');
+  await page.locator('.hm-ev',{hasText:'Atlas review'}).click();await page.waitForURL(/[?&](open|meeting)=p(:|%3A)/);
+  await page.locator('.mt-inline').getByRole('heading',{name:'Atlas review'}).waitFor();checks.push('calendar-opens-meet');
 
   // 8. Old addresses lead to Meet.
   await page.goto(origin+'/preview-org/notetaker?session=s1');await page.waitForURL(/\/talk\?session=s1&f=meetings&s=notetaker$/);checks.push('old-address');
 
   // 9. A phone: the list fits and Join stays reachable.
-  await page.setViewportSize({width:390,height:844});await page.goto(origin+'/preview-org/meet');await page.locator('.mt-item').first().waitFor();
+  await page.setViewportSize({width:390,height:844});await page.goto(origin+'/preview-org/meet/upcoming');await page.locator('.mt-item').first().waitFor();
   await fitsPhone(page,'meet',assert);assert.ok(await page.locator('.mt-item').filter({hasText:'Atlas review'}).getByRole('link',{name:'Join'}).isVisible());
   await shot('meet-390.png');checks.push('phone');
  }catch(e){await page.screenshot({path:path.join(out,'failure.png')}).catch(()=>{});console.error('page errors:',errors);throw e;}
