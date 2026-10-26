@@ -31,7 +31,8 @@ function useAfter(on: boolean, ms: number) {
 
 /** Chat between the people of an organization: private chats and groups, updated live. */
 export function ChatPage() {
-  const { id } = useParams();
+  const { id: legacyId, conversationId } = useParams();
+  const id = conversationId ?? legacyId;   // v2: /talk/:conversationId (was /chat/:id)
   const navigate = useNavigate();
   const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx?.user.id);

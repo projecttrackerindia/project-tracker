@@ -170,7 +170,7 @@ try{
  checks.push('notification-defaults');
 
  // Ctrl+K knows every setting too.
- await page.keyboard.press('Control+k');
+ await page.keyboard.press('Control+k');await page.keyboard.press('Control+k');   // v2: the first puts the cursor in the Ask bar, the second opens the palette
  const palette=page.getByRole('dialog',{name:'Command palette'});await palette.waitFor();
  await palette.getByRole('combobox').or(palette.getByLabel('Command')).first().fill('logo');
  await palette.getByRole('option').filter({hasText:/^Logo/}).first().waitFor();

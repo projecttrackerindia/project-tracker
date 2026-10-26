@@ -159,8 +159,8 @@ try{
   checks.push('agreeing-sends-the-same-question-and-hides-the-notice');
   await shot(page,'assistant-answered.png');
 
-  // 3. My account: the person sees what they agreed to and can withdraw.
-  await page.goto(origin+'/preview-org/account');
+  // 3. Settings › Profile › Assistant (was My account): the person sees what they agreed to and can withdraw.
+  await page.goto(origin+'/preview-org/settings/profile/assistant');
   const mine=page.getByTestId('my-ai-provider');await mine.waitFor();
   assert.ok(await mine.getByText(/You agreed on/).isVisible());
   await mine.getByRole('button',{name:'Withdraw'}).click();

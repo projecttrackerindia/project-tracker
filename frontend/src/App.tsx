@@ -24,12 +24,13 @@ import { registerPage } from './lib/prefetchPages';
  * and the #anchor, and adding any the new place needs, so bookmarks and links in old e-mails, notifications and AI answers keep working.
  * `prefix`: the old address's start is swapped for `to` and the rest is kept (/projects/7/x → /work/projects/7/x).
  */
-function Moved({ to, prefix }: { to: string; prefix?: string }) {
+function Moved({ to, prefix, rename }: { to: string; prefix?: string; /** Query names the new place calls differently (Meet's ?open= is Talk's ?meeting=). */ rename?: Record<string, string> }) {
   const loc = useLocation();
   const [base, extra] = to.split('?');
   const path = prefix ? `${base}${loc.pathname.slice(prefix.length)}`.replace(/\/+$/, '') || '/' : base;
   const q = new URLSearchParams(loc.search);
   new URLSearchParams(extra ?? '').forEach((v, k) => q.set(k, v));
+  for (const [from, name] of Object.entries(rename ?? {})) { const v = q.get(from); if (v !== null && !q.has(name)) q.set(name, v); }
   const s = q.toString();
   return <Navigate to={`${path}${s ? `?${s}` : ''}${loc.hash}`} replace state={loc.state} />;   // and what the page was opened with (a new document, a question in hand)
 }
@@ -272,9 +273,9 @@ function Guard({ allow, children }: { allow: boolean; children: React.ReactNode 
 }
 
 /** /timesheet/approvals, /meet/past …: the place that holds the page now, with the old section as `s`. */
-function SectionMoved({ to }: { to: string }) {
+function SectionMoved({ to, rename }: { to: string; rename?: Record<string, string> }) {
   const { s = '' } = useParams();
-  return <Moved to={`${to}&s=${encodeURIComponent(s)}`} />;
+  return <Moved to={`${to}&s=${encodeURIComponent(s)}`} rename={rename} />;
 }
 
 /** /ai/<conversation> from before v2: the conversation now lives on Home (?c=). */
@@ -362,7 +363,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="work/projects" element={<Guard allow={mProjects}><ProjectsHome /></Guard>} />
         <Route path="work/projects/:id" element={<Guard allow={mProjects}><ProjectPage /></Guard>} />
         <Route path="talk" element={<TalkPage />} />
-        <Route path="talk/:id" element={<TalkPage />} />
+        <Route path="talk/:conversationId" element={<TalkPage />} />
         <Route path="library" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
         <Route path="library/:section" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
         <Route path="library/:section/:id" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
@@ -411,8 +412,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="chat" element={<Moved to="/talk?f=chat" />} />
         <Route path="chat/*" element={<Moved to="/talk" prefix="/chat" />} />
         <Route path="mailbox" element={<Moved to="/talk?f=mail" />} />
-        <Route path="meet" element={<Moved to="/talk?f=meetings" />} />
-        <Route path="meet/:s" element={<SectionMoved to="/talk?f=meetings" />} />
+        <Route path="meet" element={<Moved to="/talk?f=meetings" rename={{ open: 'meeting' }} />} />
+        <Route path="meet/:s" element={<SectionMoved to="/talk?f=meetings" rename={{ open: 'meeting' }} />} />
         <Route path="notetaker" element={<Moved to="/talk?f=meetings&s=notetaker" />} />
         <Route path="doctracker/*" element={<Moved to="/library/docs" />} />
         <Route path="documents" element={<LegacyDocuments />} />
@@ -429,6 +430,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="account/security" element={<Moved to="/settings/profile/security" />} />
         <Route path="account/mobile" element={<Moved to="/settings/profile/mobile" />} />
         <Route path="account/integrations" element={<Moved to="/settings/profile/accounts" />} />
+        <Route path="account/notifications" element={<Moved to="/settings/notifications" />} />
         <Route path="account/*" element={<Moved to="/settings/profile" />} />
         <Route path="notifications" element={<Moved to="/settings/notifications/history" />} />
         <Route path="notifications/preferences" element={<Moved to="/settings/notifications/delivery" />} />

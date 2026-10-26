@@ -15,7 +15,7 @@ const MEET: readonly MeetSection[] = ['upcoming', 'series', 'past', 'notetaker']
  * `/talk?f=meetings&new=schedule` schedules one; `&s=past|series|notetaker` is a meetings section.
  */
 export function TalkPage() {
-  const { id } = useParams();
+  const { conversationId: id } = useParams();
   const [params] = useSearchParams();
   const personal = useIsPersonal();
   const guest = useAuth((s) => s.ctx?.current?.role === 'Guest');
