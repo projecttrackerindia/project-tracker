@@ -1,4 +1,4 @@
-import type { WorkspaceSection } from './sections';
+import { leafHref, type WorkspaceSection } from './sections';
 
 /**
  * Every setting by name, so typing "MFA", "logo", "Slack" or "retention" jumps straight to the switch (Settings search and Ctrl+K).
@@ -26,7 +26,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   { id: 'workspace.description', section: 'general', label: 'Workspace description', keywords: 'about description', hint: 'A line about what this workspace is for' },
   { id: 'workspace.logo', section: 'general', label: 'Logo', keywords: 'logo brand branding image picture icon colours', hint: 'Shown in the top bar, e-mails and the sign-in page' },
   { id: 'workspace.timeZone', section: 'general', label: 'Workspace time zone', keywords: 'time zone timezone tz ist india hours clock utc', hint: 'For digests, SLA clocks and people without their own zone' },
-  { id: 'workspace.costCurrency', section: null, to: '/workload/capacity', label: 'Currency for costs and budgets', keywords: 'currency inr rupee usd dollar rates cost budget money', hint: 'Workload → Capacity' },
+  { id: 'workspace.costCurrency', section: null, to: '/insights?s=capacity', label: 'Currency for costs and budgets', keywords: 'currency inr rupee usd dollar rates cost budget money', hint: 'Insights › Capacity' },
   { id: 'config.projectGroups', section: 'project-groups', label: 'Project groups', keywords: 'folders portfolio programmes programs categories', hint: 'Folders for related projects', find: 'Project groups' },
   { id: 'config.timelines', section: 'timeline-templates', label: 'Timeline templates', keywords: 'stages phases milestones template sdlc', hint: 'Stages a new project can start from', find: 'Timeline templates' },
   { id: 'config.labels', section: 'labels', label: 'Labels', keywords: 'labels tags colours', hint: 'Tags for tasks', find: 'Labels' },
@@ -51,8 +51,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   { id: 'security.sessionHours', section: 'security', label: 'Sign in again after', keywords: 'session timeout expire logout idle length hours', hint: 'How long a sign-in lasts' },
   { id: 'security.allowedSignIn', section: 'security', label: 'Allowed ways to sign in', keywords: 'login methods google microsoft github apple passkey sso password social', hint: 'Which sign-in methods open this workspace' },
   { id: 'security.members', section: 'security', label: "Members' account security", keywords: 'weak passwords old passwords who lacks two-step remind members security overview', hint: 'Who has no two-step sign-in; remind them' },
-  { id: 'security.revealSeconds', section: null, to: '/doctracker?view=security', label: 'How long a revealed secret stays visible', keywords: 'reveal secret seconds masking pii timeout', hint: 'DocTracker → Security Center' },
-  { id: 'data.masking', section: null, to: '/doctracker?view=security', label: 'Masking of personal data in documents', keywords: 'masking pii aadhaar pan personal data redact hide', hint: 'DocTracker → Security Center' },
+  { id: 'security.revealSeconds', section: null, to: '/library/docs?view=security', label: 'How long a revealed secret stays visible', keywords: 'reveal secret seconds masking pii timeout', hint: 'Library › Security Center' },
+  { id: 'data.masking', section: null, to: '/library/docs?view=security', label: 'Masking of personal data in documents', keywords: 'masking pii aadhaar pan personal data redact hide', hint: 'Library › Security Center' },
   { id: 'sso.connection', section: 'sso', label: 'Single sign-on (SAML / OpenID)', keywords: 'sso saml oidc openid okta azure ad entra google workspace idp identity provider', hint: 'Sign in with your company identity provider', find: 'Single sign-on' },
   { id: 'sso.domains', section: 'sso', label: 'Verified domains', keywords: 'domain dns verify txt email domain', hint: 'Your company e-mail domains', find: 'domain' },
   { id: 'sso.scim', section: 'sso', label: 'User provisioning (SCIM)', keywords: 'scim provisioning sync users deprovision directory', hint: 'Add and remove people from your directory', find: 'SCIM' },
@@ -96,17 +96,17 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   { id: 'billing.payment', section: 'billing', label: 'Payment', keywords: 'payment card upi razorpay pay method renew', hint: 'How the plan is paid', find: 'Pay' },
 
   // Personal: My account and the Notification Center
-  { id: 'account.profile', section: null, personal: true, to: '/account', label: 'My name and photo', keywords: 'profile name photo avatar picture my account', hint: 'My account → Profile' },
-  { id: 'account.theme', section: null, personal: true, to: '/account', label: 'Dark mode', keywords: 'dark mode light theme appearance colours', hint: 'My account → Profile', find: 'Dark mode' },
-  { id: 'account.timeZone', section: null, personal: true, to: '/account', label: 'My time zone', keywords: 'my time zone timezone', hint: 'My account → Profile', find: 'Time zone' },
-  { id: 'account.ai', section: null, personal: true, to: '/account', label: 'How the assistant works with me', keywords: 'ai learned private notes assistant personal', hint: 'My account → Profile', find: 'How the assistant works with you' },
-  { id: 'account.password', section: null, personal: true, to: '/account/security', label: 'Change my password', keywords: 'password change reset my', hint: 'My account → Sign-in & security', find: 'Password' },
-  { id: 'account.twoStep', section: null, personal: true, to: '/account/security', label: 'My two-step sign-in', keywords: 'mfa 2fa two-step authenticator otp my account', hint: 'My account → Sign-in & security', find: 'Two-step' },
-  { id: 'account.passkeys', section: null, personal: true, to: '/account/security', label: 'My passkeys', keywords: 'passkey fingerprint face id touch id windows hello', hint: 'My account → Sign-in & security', find: 'Passkeys' },
-  { id: 'account.sessions', section: null, personal: true, to: '/account/security', label: 'Devices I am signed in on', keywords: 'sessions devices sign out everywhere logout', hint: 'My account → Sign-in & security', find: 'Active sessions' },
-  { id: 'account.notifications', section: null, personal: true, to: '/notifications/preferences', label: 'My notifications', keywords: 'my notifications email push whatsapp preferences mute', hint: 'Notification Center → Preferences' },
-  { id: 'account.schedule', section: null, personal: true, to: '/notifications/schedule', label: 'My quiet hours, working days and digest', keywords: 'my quiet hours dnd working days digest briefing schedule', hint: 'Notification Center → Schedule' },
-  { id: 'account.delete', section: null, personal: true, to: '/account', label: 'Delete my account', keywords: 'delete account close remove gdpr', hint: 'My account → Profile', find: 'Delete my account' },
+  { id: 'account.profile', section: null, personal: true, to: '/settings/profile', label: 'My name and photo', keywords: 'profile name photo avatar picture my account', hint: 'Settings › Profile' },
+  { id: 'account.theme', section: null, personal: true, to: '/settings/profile', label: 'Dark mode', keywords: 'dark mode light theme appearance colours', hint: 'Settings › Profile', find: 'Dark mode' },
+  { id: 'account.timeZone', section: null, personal: true, to: '/settings/profile', label: 'My time zone', keywords: 'my time zone timezone', hint: 'Settings › Profile', find: 'Time zone' },
+  { id: 'account.ai', section: null, personal: true, to: '/settings/profile?sub=assistant', label: 'How the assistant works with me', keywords: 'ai learned private notes assistant personal', hint: 'Settings › Profile', find: 'How the assistant works with you' },
+  { id: 'account.password', section: null, personal: true, to: '/settings/profile?sub=security', label: 'Change my password', keywords: 'password change reset my', hint: 'Settings › Profile › Sign-in', find: 'Password' },
+  { id: 'account.twoStep', section: null, personal: true, to: '/settings/profile?sub=security', label: 'My two-step sign-in', keywords: 'mfa 2fa two-step authenticator otp my account', hint: 'Settings › Profile › Sign-in', find: 'Two-step' },
+  { id: 'account.passkeys', section: null, personal: true, to: '/settings/profile?sub=security', label: 'My passkeys', keywords: 'passkey fingerprint face id touch id windows hello', hint: 'Settings › Profile › Sign-in', find: 'Passkeys' },
+  { id: 'account.sessions', section: null, personal: true, to: '/settings/profile?sub=security', label: 'Devices I am signed in on', keywords: 'sessions devices sign out everywhere logout', hint: 'Settings › Profile › Sign-in', find: 'Active sessions' },
+  { id: 'account.notifications', section: null, personal: true, to: '/settings/notifications?sub=delivery', label: 'My notifications', keywords: 'my notifications email push whatsapp preferences mute', hint: 'Settings › Notifications › Delivery' },
+  { id: 'account.schedule', section: null, personal: true, to: '/settings/notifications?sub=schedule', label: 'My quiet hours, working days and digest', keywords: 'my quiet hours dnd working days digest briefing schedule', hint: 'Settings › Notifications › Schedule' },
+  { id: 'account.delete', section: null, personal: true, to: '/settings/profile', label: 'Delete my account', keywords: 'delete account close remove gdpr', hint: 'Settings › Profile', find: 'Delete my account' },
 ];
 
 const norm = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -139,7 +139,7 @@ export function searchSettings(query: string, entries: SettingEntry[], limit = 8
 
 /** Where a result goes: its section with the setting as the anchor, or its own page. */
 export function settingHref(e: SettingEntry): string {
-  const base = e.to ?? `/settings/${e.section}`;
+  const base = e.to ?? leafHref(e.section!);
   return `${base}${base.includes('#') ? '' : `#s-${e.id}`}`;
 }
 

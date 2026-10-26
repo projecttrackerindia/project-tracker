@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client';
 import { meApi, notificationApi, pushApi } from '../../api/endpoints';
 import type { AppNotification, NotificationPreference, NotificationType, TestEmailResult } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
-import { EmptyState, ErrorState, PageHead, PageLoader, Pager, RouteTabs, Segmented, type SectionLink } from '../../components/ui';
+import { EmptyState, ErrorState, PageLoader, Pager, Segmented } from '../../components/ui';
 import { TimeZonePicker } from '../../components/TimeZonePicker';
 import { formatDateTime, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useDetailsDismiss, useWsQuery } from '../../lib/hooks';
@@ -51,26 +51,13 @@ const TYPE_ICON: Partial<Record<NotificationType, IconName>> = {
 // ------------------------------------------------------------------ page
 
 /**
- * The Notification Center: the one place for everything about notifications and time - what arrived (Inbox), where each kind of event
- * reaches you (Delivery), this device's pop-ups, push and sound (This device), and when things happen: your time zone, working hours,
- * quiet hours and the morning briefing (Schedule). Replaces the separate settings that used to live on Reminders and My account.
+ * Notifications, as Settings › Notifications shows them: what arrived (History), where each kind of event reaches you (Delivery), this
+ * device's pop-ups, push and sound (This device), and when things happen: your time zone, working hours, quiet hours and the morning briefing
+ * (Schedule). Settings gives the title and the tabs; this is the body of one tab.
  */
 export function NotificationCenterPage({ section }: { section: NotificationSection }) {
-  const unread = useWsQuery(['notifications', 'unread-count'], notificationApi.unread, { refetchInterval: 60_000 });
-  const zone = useAppZone();
-  const n = unread.data?.count ?? 0;
-  const tabs: SectionLink[] = [
-    { to: '/notifications', label: 'Inbox', icon: 'inbox', end: true, badge: n || undefined },
-    { to: '/notifications/preferences', label: 'Delivery', icon: 'send' },
-    { to: '/notifications/devices', label: 'This device', icon: 'monitor' },
-    { to: '/notifications/schedule', label: 'Schedule & time zone', icon: 'clock' },
-  ];
-  // The blue line above the title says where things stand: how many are unread, or that nothing is left to read.
-  const eyebrow = unread.isLoading ? undefined : n ? `${n > 99 ? '99+' : n} unread` : "You're all caught up";
   return (
-    <div className="nc-page">
-      <PageHead eyebrow={eyebrow} title="Notification Center" sub={`Everything that reaches you, and when. All times in ${zoneCity(zone)} (${zoneOffsetLabel(zone)}).`} />
-      <RouteTabs label="Notification Center sections" tabs={tabs} />
+    <div className="nc-page embedded">
       {section === 'inbox' && <Inbox />}
       {section === 'preferences' && <Delivery />}
       {section === 'devices' && <ThisDevice />}
@@ -319,7 +306,7 @@ function Inbox() {
                       {lane !== 'archived' && lane !== 'snoozed' && <NotificationActions n={n} withSnooze={false} />}
                       {why === b.key && (
                         <p className="nc-why" role="note"><Icon name="info" size={13} /> {WHY[n.type] ?? 'This reached you because of your delivery settings.'}{' '}
-                          <button className="link-btn" onClick={() => nav('/notifications/preferences')}>Change where this reaches you</button></p>
+                          <button className="link-btn" onClick={() => nav('/settings/notifications?sub=delivery')}>Change where this reaches you</button></p>
                       )}
                       {expanded && (
                         <ul className="nc-sub">
@@ -432,7 +419,7 @@ function Delivery() {
         <div className={`nc-callout is-${device.state}`} role="note">
           <Icon name="monitor" size={16} />
           <span><b>Push is off on this device.</b> Ticked Push events still reach your other devices; turn it on here to get pop-ups on this one too.</span>
-          <button className="btn btn-primary btn-sm" onClick={() => nav('/notifications/devices')}>Set up this device</button>
+          <button className="btn btn-primary btn-sm" onClick={() => nav('/settings/notifications?sub=device')}>Set up this device</button>
         </div>
       )}
 
@@ -545,7 +532,7 @@ function ThisDevice() {
       const why = lastDeviceError();
       if (s === 'on' || s === 'tab-only') {
         if (soundOn()) playSound('urgent');
-        const shown = await systemNotification('Notifications are on', 'This is how reminders and messages will reach you.', 'pt-test', '/notifications/devices', { sticky: false });
+        const shown = await systemNotification('Notifications are on', 'This is how reminders and messages will reach you.', 'pt-test', '/settings/notifications?sub=device', { sticky: false });
         toast(s === 'on' ? 'Done. Notifications reach this device even when Project Tracker is closed.' : 'Done. Notifications show while Project Tracker is open.', 'success');
         if (!shown) setError('Permission is granted, but the system did not show the test pop-up. Check your operating system\'s notification settings (below).');
         else if (why) setError(why);
@@ -557,7 +544,7 @@ function ThisDevice() {
   const turnOff = async () => { setBusy(true); try { await disableDeviceAlerts(); toast('Push is off for this device.'); void devices.refetch(); } finally { setBusy(false); } };
   const testNow = async () => {
     unlockSound(); if (soundOn()) playSound('update');
-    const ok = await systemNotification('Test notification', 'If you can see this, pop-ups work on this device.', 'pt-test-now', '/notifications/devices', { sticky: false });
+    const ok = await systemNotification('Test notification', 'If you can see this, pop-ups work on this device.', 'pt-test-now', '/settings/notifications?sub=device', { sticky: false });
     if (!ok) setError('The browser did not show the pop-up. Turn notifications on above, or check the system settings below.');
   };
   const testReminder = useMutation({
@@ -627,7 +614,7 @@ function ThisDevice() {
           <li><b>Android:</b> install the Project Tracker app for reliable push, or allow notifications for {browserName()}.</li>
           <li><b>iPhone / iPad:</b> add Project Tracker to the Home Screen from Safari's Share menu, then open it from there and turn notifications on.</li>
         </ul>
-        <button className="btn btn-ghost btn-sm" onClick={() => nav('/account/mobile')}><Icon name="phone" size={13} /> Get the mobile app</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => nav('/settings/profile?sub=mobile')}><Icon name="phone" size={13} /> Get the mobile app</button>
       </Panel>
     </>
   );

@@ -11,21 +11,22 @@ import { Sparkle, useAi, useAssistant } from '../features/ai/Assistant';
 import { useAuth, useCan, useModule } from '../stores/auth';
 import { openReminderComposer } from '../features/reminders/store';
 import { useUi } from '../stores/ui';
+import { openNew } from './v2/state';
 
 /** Where a search hit opens. Shared with the search box in the top bar. */
 export function searchHitLink(h: Pick<SearchHit, 'type' | 'id' | 'projectId' | 'taskId'>): string {
   switch (h.type) {
-    case 'file': return h.taskId ? `/projects/${h.projectId}?task=${h.taskId}` : `/projects/${h.projectId}?tab=files`;
-    case 'task': case 'comment': return `/projects/${h.projectId}?task=${h.taskId}`;
-    case 'issue': return `/projects/${h.projectId}?tab=issues&issue=${h.id}`;
-    case 'action': return `/projects/${h.projectId}?tab=actions&action=${h.id}`;
-    case 'work': return `/operations?task=${h.id}`;
-    case 'project': return `/projects/${h.id}`;
-    case 'page': return `/documents/${h.id}`;
+    case 'file': return h.taskId ? `/work/projects/${h.projectId}?task=${h.taskId}` : `/work/projects/${h.projectId}?tab=files`;
+    case 'task': case 'comment': return `/work/projects/${h.projectId}?task=${h.taskId}`;
+    case 'issue': return `/work/projects/${h.projectId}?tab=issues&issue=${h.id}`;
+    case 'action': return `/work/projects/${h.projectId}?tab=actions&action=${h.id}`;
+    case 'work': return `/work?tab=tickets&item=${h.id}`;
+    case 'project': return `/work/projects/${h.id}`;
+    case 'page': return `/library/docs/${h.id}`;
     case 'team': return '/people/teams';
     case 'member': return '/people';
-    case 'label': return '/settings/labels';
-    default: return '/projects';
+    case 'label': return '/settings/fields?sub=labels';
+    default: return '/work/projects';
   }
 }
 const HIT_ICON: Record<string, IconName> = { task: 'check', issue: 'bug', action: 'flag', work: 'bolt', project: 'folder', team: 'users', member: 'user', comment: 'message', file: 'paperclip', label: 'tag', page: 'note' };
@@ -69,7 +70,7 @@ export function CommandPalette() {
   const ctx = useAuth((s) => s.ctx);
   const ai = useAi();
   const ask = useAssistant((s) => s.ask);
-  const { toggleTheme, toggleSidebar, theme } = useUi();
+  const { toggleTheme, theme } = useUi();
   const permProject = useCan('projects.create'), modProjects = useModule('projects');
   const permWork = useCan('work.create'), modWork = useModule('work');
   const canProject = permProject && modProjects >= 2;
@@ -106,17 +107,17 @@ export function CommandPalette() {
       for (const e of visibleSettings(settings, settings.length > 0))
         list.push({ id: `setting:${e.id}`, group: 'Settings', label: e.label, hint: e.personal ? e.hint : settings.find((s) => s.id === e.section)?.label ?? e.hint, icon: settings.find((s) => s.id === e.section)?.icon ?? (e.personal ? 'user' : 'settings'), keywords: `${e.keywords} setting`, run: go(settingHref(e)) });
     if (ctx && !ctx.user.isPlatformAdmin) {
-      list.push({ id: 'acc:profile', group: 'Settings', label: 'My profile', icon: 'user', keywords: 'account', run: go('/account') });
-      list.push({ id: 'acc:notifications', group: 'Settings', label: 'Notification Center', icon: 'bell', keywords: 'account email push desktop my notifications delivery', run: go('/notifications/preferences') });
-      list.push({ id: 'acc:mobile', group: 'Settings', label: 'Mobile app & phone sign-in', icon: 'phone', keywords: 'android install push phone approve login', run: go('/account/mobile') });
-      list.push({ id: 'acc:security', group: 'Settings', label: 'Sign-in & security', icon: 'lock', keywords: 'account password two-step mfa', run: go('/account/security') });
-      list.push({ id: 'acc:connected', group: 'Settings', label: 'Connected accounts', icon: 'link', keywords: 'google microsoft outlook teams slack github gmail calendar meet connect', run: go('/account/integrations') });
+      list.push({ id: 'acc:profile', group: 'Settings', label: 'My profile', icon: 'user', keywords: 'account', run: go('/settings/profile') });
+      list.push({ id: 'acc:notifications', group: 'Settings', label: 'My notifications', icon: 'bell', keywords: 'account email push desktop my notifications delivery', run: go('/settings/notifications') });
+      list.push({ id: 'acc:mobile', group: 'Settings', label: 'Mobile app & phone sign-in', icon: 'phone', keywords: 'android install push phone approve login', run: go('/settings/profile?sub=mobile') });
+      list.push({ id: 'acc:security', group: 'Settings', label: 'Sign-in & security', icon: 'lock', keywords: 'account password two-step mfa', run: go('/settings/profile?sub=security') });
+      list.push({ id: 'acc:connected', group: 'Settings', label: 'Connected accounts', icon: 'link', keywords: 'google microsoft outlook teams slack github gmail calendar meet connect', run: go('/settings/profile?sub=accounts') });
     }
-    if (canProject) list.push({ id: 'new:project', group: 'Create', label: 'New project', icon: 'folder', keywords: 'create add', run: go('/projects?new=1') });
-    if (canWork) list.push({ id: 'new:work', group: 'Create', label: 'New support ticket / work task', icon: 'bolt', keywords: 'create add operational ticket bug support helpdesk incident request', run: go('/operations?new=1') });
+    if (ctx && !ctx.user.isPlatformAdmin) list.push({ id: 'new:any', group: 'Create', label: 'New… (task, ticket, doc, meeting, time…)', icon: 'plus', keywords: 'create add new make', run: () => { close(); openNew(); } });
+    if (canProject) list.push({ id: 'new:project', group: 'Create', label: 'New project', icon: 'folder', keywords: 'create add', run: () => { close(); openNew('project'); } });
+    if (canWork) list.push({ id: 'new:work', group: 'Create', label: 'New support ticket / work task', icon: 'bolt', keywords: 'create add operational ticket bug support helpdesk incident request', run: () => { close(); openNew('ticket'); } });
     if (ctx && !ctx.user.isPlatformAdmin) list.push({ id: 'new:reminder', group: 'Create', label: 'New reminder', icon: 'alarm', keywords: 'create add remind me alarm later', run: () => { close(); openReminderComposer(); } });
     list.push({ id: 'ui:theme', group: 'Preferences', label: theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode', icon: theme === 'dark' ? 'sun' : 'moon', keywords: 'theme dark light', run: () => { close(); toggleTheme(); } });
-    list.push({ id: 'ui:sidebar', group: 'Preferences', label: 'Collapse or expand the sidebar', icon: 'menu', keywords: 'sidebar menu', run: () => { close(); toggleSidebar(); } });
     list.push({ id: 'help:security', group: 'Help', label: 'How we keep your data safe', icon: 'shield', keywords: 'security privacy', run: () => { close(); window.location.assign('/security/'); } });
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps

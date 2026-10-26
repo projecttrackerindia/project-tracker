@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { del, get, post } from '../../api/client';
 import { useWsQuery } from '../../lib/hooks';
-import { EmptyState, Kpi, PageLoader } from '../../components/ui';
+import { EmptyState, Kpi, PageHead, PageLoader } from '../../components/ui';
 import { Select } from '../../components/Select';
 import { Icon, type IconName } from '../../components/Icon';
 import { Markdown } from './Markdown';
-import { AgentsHubNav } from '../agents/AgentsHubNav';
 import { formatDate, formatDateTime, timeAgo } from '../../lib/format';
 import './workflows.css';
 
@@ -57,7 +56,7 @@ export function AgentWorkflowsPage() {
 
   return (
     <div className="awf">
-      <AgentsHubNav sub="Background reviews of delivery, capacity and recurring blockers" />
+      <PageHead title="Agent workflows" sub="Background reviews of delivery, capacity and recurring blockers" />
       {(error || jobs.error || schedules.error) && <div className="callout callout-error mb-18" role="alert"><Icon name="alert" size={16} /><div>{error || jobs.error?.message || schedules.error?.message}</div></div>}
 
       <section className="card awf-create" aria-labelledby="awf-create-title">

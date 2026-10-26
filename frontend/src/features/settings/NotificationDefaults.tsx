@@ -61,7 +61,7 @@ export function NotificationDefaultsSection() {
       <div className="explainer" role="note">
         <Icon name="info" size={16} />
         <div>{d.members} member{d.members === 1 ? '' : 's'} in this workspace. These defaults reach everyone who has not changed that kind of notification in the
-          Notification Center. Your own choices: <Link className="link" to="/notifications/preferences">Notification Center → Preferences</Link>.</div>
+          Notification Center. Your own choices: <Link className="link" to="/settings/notifications">Settings › Notifications</Link>.</div>
       </div>
 
       <section className="card mb-22" data-setting="notifications.defaults">

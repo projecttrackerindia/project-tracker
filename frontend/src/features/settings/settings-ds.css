@@ -188,3 +188,10 @@ html .hook-check { accent-color: var(--ds-accent-fill); }
   html .method-option, html .vis-option, html .own-key-provider { padding: 16px; }
   html .mss-kpi b { font-size: 26px; }
 }
+
+/* v2: a section with several tabs - its name, one line, and the tabs on the right (Settings › Security & audit …) */
+.set-place { display: grid; gap: 18px; min-width: 0; }
+.set-place-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.set-place-head h2 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.02em; color: var(--ds-text); }
+.set-place-head p { margin: 4px 0 0; font-size: 14px; color: var(--ds-text-3); max-width: 60ch; }
+.set-place-head .ds-seg { max-width: 100%; }

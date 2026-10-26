@@ -51,6 +51,7 @@ public partial class AppDbContext
             e.Property(x => x.CostCurrency).HasMaxLength(3);
             e.Property(x => x.TimeZone).HasMaxLength(64);
             e.Property(x => x.AiInstructions).HasMaxLength(4000);
+            e.Property(x => x.AiAgentLevels).HasMaxLength(512);
         });
         b.Entity<TenantMember>(e =>
         {

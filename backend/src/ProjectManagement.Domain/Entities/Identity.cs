@@ -107,6 +107,8 @@ public class Tenant : AuditableEntity, ISoftDelete
     public bool AiDisabled { get; set; }
     /// <summary>What the organization tells the assistant about itself and how it works (written by an Owner or Admin, shared with every answer).</summary>
     public string? AiInstructions { get; set; }
+    /// <summary>What each AI agent may do here (AI control centre), as JSON {"project":1,...}: 0 Off, 1 Suggest, 2 Ask first, 3 Auto. Null = each agent's default.</summary>
+    public string? AiAgentLevels { get; set; }
     /// <summary>Whether every member sees every project (the default) or only the projects of their own teams and the ones they were added to.</summary>
     public ProjectVisibility ProjectVisibility { get; set; } = ProjectVisibility.Organization;
 

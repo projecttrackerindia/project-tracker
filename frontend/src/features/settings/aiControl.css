@@ -1,0 +1,43 @@
+/* Settings › AI: the AI control centre (v2 screen 4). Violet only where the AI itself acts ("Draft it", the Teach card). */
+.aic { display: grid; gap: 18px; }
+.aic .page-head { margin-bottom: 0; }
+.aic-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; }
+.aic-kpis .ds-kpi .v small { font-size: 15px; font-weight: 500; color: var(--ds-text-3); }
+.aic-kpis .ds-kpi .c .ds-meter { display: block; margin-top: 8px; }
+.aic-kpis .ds-kpi .c a { color: var(--ds-text-3); text-decoration: none; }
+.aic-kpis .ds-kpi .c a:hover { color: var(--ds-accent); }
+.aic-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); gap: 18px; align-items: start; }
+.aic-side { display: grid; gap: 18px; }
+.aic-card { background: var(--ds-surface); border-radius: var(--ds-r-card); padding: 22px 24px; box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); min-width: 0; }
+.aic-card h3 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; color: var(--ds-text); }
+.aic-sub { margin: 4px 0 14px; font-size: 13px; color: var(--ds-text-3); line-height: 1.45; }
+.aic-agents { list-style: none; margin: 0; padding: 0; }
+.aic-agent { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid var(--ds-line); }
+.aic-agent:first-child { border-top: 0; }
+.aic-agent > div { display: grid; gap: 2px; min-width: 0; }
+.aic-agent b { font-size: 14px; font-weight: 600; color: var(--ds-text); }
+.aic-agent span { font-size: 12.5px; color: var(--ds-text-3); }
+.aic-agent .ds-seg { flex: none; }
+.aic-models { display: grid; gap: 10px; }
+.aic-model { display: grid; gap: 3px; text-align: left; padding: 14px 16px; border-radius: var(--ds-r-tile); border: 1px solid var(--ds-outline); background: var(--ds-surface-2); color: var(--ds-text); font: inherit; cursor: pointer; transition: border-color .15s var(--ds-ease), background .15s var(--ds-ease); }
+.aic-model b { font-size: 14px; font-weight: 600; }
+.aic-model span { font-size: 12.5px; color: var(--ds-text-3); }
+.aic-model.on { border-color: var(--ds-accent); background: var(--ds-accent-soft); box-shadow: 0 0 0 1px var(--ds-accent); }
+.aic-model:disabled { opacity: .6; cursor: progress; }
+.aic-warn { margin: 10px 0 0; font-size: 12.5px; color: var(--ds-danger); display: flex; gap: 6px; align-items: center; }
+.aic-key { margin-top: 14px; }
+.aic-teach { background: color-mix(in srgb, var(--ds-violet) 7%, var(--ds-surface)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ds-violet) 18%, transparent); }
+.aic-teach h3 { margin-bottom: 12px; }
+.aic-teach .textarea { width: 100%; resize: vertical; min-height: 120px; font-size: 13.5px; line-height: 1.5; }
+.aic-teach-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 12px; font-size: 12px; color: var(--ds-text-3); min-height: 30px; }
+.aic-ai-btn { width: 100%; justify-content: center; border-radius: var(--ds-r-pill); background: var(--ds-violet); color: #fff; border: 0; font-weight: 500; }
+.aic-ai-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--ds-violet) 88%, #000); color: #fff; }
+.aic-mcp { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; border-radius: var(--ds-r-input); background: var(--ds-fill); }
+.aic-mcp code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ds-text-2); }
+.aic-link { display: inline-block; margin-top: 10px; font-size: 13px; color: var(--ds-accent); text-decoration: none; }
+.aic-usage { display: grid; gap: 4px; }
+@media (max-width: 1100px) { .aic-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .aic-agent { flex-direction: column; align-items: stretch; }
+  .aic-agent .ds-seg { align-self: flex-start; max-width: 100%; }
+}

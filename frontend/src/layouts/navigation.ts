@@ -1,28 +1,28 @@
 import type { IconName } from '../components/Icon';
 import { useAuth, useCan, useIsPersonal } from '../stores/auth';
-import { useVisibleKinds } from '../features/workitems/workItems';
-import { usePeopleSections } from '../features/people/sections';
 import { useAi } from '../features/ai/Assistant';
 import { AI_NAME } from '../features/ai/aiBrand';
 
-/** `match`: the item is active for these addresses instead of just its own (for items that lead into a section with tabs). */
+/** `match`: the item is active for these addresses instead of just its own (for places that hold several pages). */
 export interface NavDef {
   to: string; label: string; icon: IconName; end?: boolean; show?: boolean; badge?: number; match?: (path: string) => boolean;
-  /** Stable key for the person's own layout (order, pinned, hidden); the address when not given. */
+  /** Stable key; the address when not given. */
   id?: string;
-  /** Only in the command palette (a place inside a hub), not in the sidebar, the phone menu or its tab bar. */
+  /** Only in the command palette (a page inside a place), not in the rail or the phone bar. */
   paletteOnly?: boolean;
-  /** One line on what it is, for the palette and the sidebar's tooltip in edit mode. */
+  /** One line on what it is, for the palette. */
   hint?: string;
 }
 export const navKey = (i: NavDef) => i.id ?? i.to;
-/** The places shown in the sidebar and the phone menu (hub sub-pages are reached from inside their hub). */
-export const inSidebar = (i: NavDef) => i.show !== false && !i.paletteOnly;
+export const inRail = (i: NavDef) => i.show !== false && !i.paletteOnly;
 export interface NavGroup { title: string; items: NavDef[] }
 
+const under = (...roots: string[]) => (p: string) => roots.some((r) => (r === '/' ? p === '/' : p === r || p.startsWith(`${r}/`)));
+
 /**
- * The main navigation the signed-in person may use, in sidebar order. One definition for the sidebar and the command palette, so the two
- * always offer the same places. Platform administrators get the administration menus instead.
+ * The five places of v2 (Home, Work, Talk, Library, Insights), in rail order, plus the pages inside them for the command palette. People and
+ * Settings sit behind the avatar. One definition for the rail, the phone bar and the palette, so they always offer the same places.
+ * Platform administrators get the administration places instead.
  */
 export function useMainNav(): NavGroup[] {
   const ctx = useAuth((s) => s.ctx);
@@ -30,12 +30,12 @@ export function useMainNav(): NavGroup[] {
   const lv = (m: string) => ctx?.current?.modules?.[m] ?? 0;
   const permReports = useCan('reports.view'), broad = useCan('reports.broad');
   const canReports = permReports && lv('reports') > 0;
-  const canChat = !personal && ctx?.current?.role !== 'Guest' && !ctx?.user.isPlatformAdmin;
-  const kinds = useVisibleKinds();
-  const people = usePeopleSections();
+  const isGuest = ctx?.current?.role === 'Guest';
+  const isAdmin = ctx?.current?.role === 'Owner' || ctx?.current?.role === 'Admin';
+  const canChat = !personal && !isGuest && !ctx?.user.isPlatformAdmin;
   const hasReports = (ctx?.current?.reportCount ?? 0) > 0;
   const ai = useAi();
-  const canVault = useCan('vault.use') && ctx?.current?.role !== 'Guest';
+  const canVault = useCan('vault.use') && !isGuest;
 
   if (ctx?.user.isPlatformAdmin) return [
     { title: 'Platform', items: [
@@ -53,60 +53,41 @@ export function useMainNav(): NavGroup[] {
     ] },
   ];
 
-  // Home: my own day. Work: the work itself. Insights: how it is going. Organization: the people. Places that belong together are one hub
-  // with tabs (the Command Center holds my work; Agents holds the assistant, proposals, workflows and the tracker) - the old addresses still work.
-  const isGuest = ctx?.current?.role === 'Guest';
-  const isAdmin = ctx?.current?.role === 'Owner' || ctx?.current?.role === 'Admin';
-  const command = lv('projects') > 0 && !isGuest;
-  const proposals = lv('projects') > 0 && !personal && ai && !isGuest;
-  const notes = lv('projects') > 0 && !isGuest;
-  // With the AI-first Home, asking happens on Home itself: the sidebar entry becomes Agents (proposals, workflows, tracker). Meetings, calls
-  // and the notetaker are all in Meet.
-  const aiFirst = ai && command;
-  const agentsTo = ai && !aiFirst ? '/ai' : proposals ? '/project-agent' : ai ? '/ai/operations' : '/agent-tracker';
-  const agentsPath = (p: string) => p === '/ai' || p.startsWith('/ai/') || p === '/project-agent' || p.startsWith('/project-agent/') || p === '/agent-tracker';
-  // Meet: every meeting and call in one place (scheduling, joining, replies, the notetaker and past meetings).
-  const meet = lv('projects') > 0 || lv('calendar') > 0 || canChat;
+  const projects = lv('projects') > 0;
+  const work = lv('work') > 0 || lv('tasks') > 0 || projects;
+  const library = lv('documents') > 0 || canVault;
+  const insights = !personal && (hasReports || broad) || canReports || lv('work') > 0 || lv('tasks') > 0;
+  const talk = canChat || projects || lv('calendar') > 0;
   return [
-    { title: 'Home', items: [
-      // Home is the Command Center (what needs me today); the charts dashboard stays one search away.
-      { id: '/', to: '/', label: 'Dashboard', icon: 'dashboard', end: true, show: !command, hint: 'Your day at a glance' },
-      { id: '/command-center', to: '/', label: 'Home', icon: 'radar', show: command, hint: 'What needs you today, your work, meetings and decisions',
-        match: (p) => p === '/' || p === '/command-center' },
-      { id: 'agents', to: agentsTo, label: aiFirst ? 'Agents' : 'Assistant', icon: 'agent', show: ai || proposals || isAdmin, match: agentsPath, hint: aiFirst ? 'Proposals, workflows and the tracker (ask on Home)' : 'Ask the assistant, proposals and workflows' },
-      { to: '/calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0 },
-      { to: '/meet', label: 'Meet', icon: 'video', show: meet, hint: 'Meetings and calls: schedule, join, reply, the notetaker and past meetings',
-        match: (p) => p === '/meet' || p.startsWith('/meet/') || p.startsWith('/calls/') },
-      { to: '/chat', label: 'Chat', icon: 'message', show: canChat },
-      { to: '/mailbox', label: 'Mailbox', icon: 'mail', hint: 'Gmail, Outlook and Rediffmail in one inbox, with the mail agent' },
-      { to: '/reminders', label: 'Reminders', icon: 'alarm' },
+    { title: 'Places', items: [
+      { id: 'home', to: '/', label: 'Home', icon: 'radar', end: true, hint: 'What needs you today, and your calendar',
+        match: (p) => p === '/' || p === '/dashboard' || p.startsWith('/approve/') },
+      { id: 'work', to: '/work', label: 'Work', icon: 'checkCircle', show: work, hint: 'Tasks, issues, actions and tickets in one list, and every project',
+        match: under('/work') },
+      { id: 'talk', to: '/talk', label: 'Talk', icon: 'message', show: talk, hint: 'Chat, mail and meetings in one list',
+        match: (p) => under('/talk')(p) || p.startsWith('/calls/') },
+      { id: 'library', to: '/library', label: 'Library', icon: 'note', show: library, hint: 'Documents, API docs, files and the vault',
+        match: under('/library') },
+      { id: 'insights', to: '/insights', label: 'Insights', icon: 'chart', show: insights, hint: 'How it is going: workload, time and reports',
+        match: (p) => under('/insights')(p) || p === '/activity' },
     ] },
-    { title: 'Work', items: [
-      { to: '/projects', label: 'Projects', icon: 'folder', show: lv('projects') > 0 },
-      { to: '/portfolio', label: 'Portfolio', icon: 'monitor', show: lv('projects') > 0 },
-      { to: '/operations', label: 'Operations', icon: 'bolt', show: lv('work') > 0, hint: 'Support and operational work, queues and service levels' },
-      { to: '/timesheet', label: 'Timesheet', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0 },
-      { to: '/doctracker', label: 'DocTracker', icon: 'layers', show: lv('documents') > 0, match: (p) => p === '/doctracker' || p === '/documents' || p.startsWith('/documents/') },
-      { to: '/vault', label: 'Vault', icon: 'key', show: canVault, hint: 'Team passwords, keys and secrets: encrypted, shared on purpose, every use recorded' },
-    ] },
-    { title: 'Insights', items: [
-      { to: '/workload', label: 'Workload', icon: 'users', show: !personal && (hasReports || broad) },
-      { to: '/reports', label: 'Reports', icon: 'chart', end: false, show: canReports || lv('work') > 0 },
-      { to: '/activity', label: 'Activity', icon: 'activity', show: lv('activity') > 0 },
-    ] },
-    { title: 'Organization', items: [
-      // One entry: the directory, the org chart and the teams are tabs inside it.
-      { to: people[0]?.to ?? '/people', label: 'People', icon: 'user', show: people.length > 0, match: (p) => p === '/people' || p.startsWith('/people/') },
-    ] },
-    // Inside the hubs: found by searching (Ctrl K), not listed twice in the sidebar.
+    // Pages inside the places: found by searching (Ctrl K), never listed twice.
     { title: 'Go to', items: [
-      { to: command ? '/command-center?tab=work' : '/my-work', id: 'my-work', label: 'My work', icon: 'inbox', show: kinds.length > 0, paletteOnly: true },
-      { to: '/ai', label: AI_NAME, icon: 'agent', show: ai, paletteOnly: true },
-      { to: '/meet/notetaker', label: 'Notetaker', icon: 'video', show: notes, paletteOnly: true, hint: 'Send an AI notetaker to your calls: notes, minutes and task updates' },
-      { id: 'dashboard', to: '/dashboard', label: 'Dashboard', icon: 'dashboard', show: command, paletteOnly: true, hint: 'Charts of your projects and work' },
-      { to: '/project-agent', label: 'Agent proposals', icon: 'sparkle', show: proposals, paletteOnly: true },
-      { to: '/ai/operations', label: 'Agent workflows', icon: 'workflow', show: ai, paletteOnly: true },
-      { to: '/agent-tracker', label: 'Agent Tracker', icon: 'workflow', show: isAdmin, paletteOnly: true },
+      { to: '/work', label: 'My work', icon: 'inbox', show: work, paletteOnly: true },
+      { to: '/work?tab=tickets', label: 'Tickets', icon: 'bolt', show: lv('work') > 0, paletteOnly: true, hint: 'Support and operational work, queues and service levels' },
+      { to: '/work/projects', label: 'Projects', icon: 'folder', show: projects, paletteOnly: true },
+      { to: '/work/projects?view=portfolio', label: 'Portfolio', icon: 'monitor', show: projects, paletteOnly: true },
+      { to: '/?tab=calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0, paletteOnly: true },
+      { to: '/talk?f=meetings', label: 'Meetings', icon: 'video', show: talk, paletteOnly: true, hint: 'Schedule, join and reply; the notetaker and past meetings' },
+      { to: '/talk?f=mail', label: 'Mail', icon: 'mail', paletteOnly: true, hint: 'Gmail, Outlook and Rediffmail with the mail agent' },
+      { to: '/library/docs', label: 'Docs', icon: 'layers', show: lv('documents') > 0, paletteOnly: true },
+      { to: '/library/vault', label: 'Vault', icon: 'key', show: canVault, paletteOnly: true, hint: 'Team passwords, keys and secrets' },
+      { to: '/insights?tab=time', label: 'Time', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0, paletteOnly: true, hint: 'Your timesheet' },
+      { to: '/insights?tab=reports', label: 'Reports', icon: 'chart', show: canReports || lv('work') > 0, paletteOnly: true },
+      { to: '/activity', label: 'Activity', icon: 'activity', show: lv('activity') > 0, paletteOnly: true },
+      { to: '/people', label: 'People', icon: 'user', show: !personal, paletteOnly: true },
+      { to: '/settings', label: 'Settings', icon: 'settings', paletteOnly: true },
+      { to: '/settings/ai', label: `${AI_NAME} control centre`, icon: 'sparkle', show: isAdmin && ai, paletteOnly: true, hint: 'What the AI knows, may do and costs' },
     ] },
   ];
 }

@@ -11637,6 +11637,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AiAgentLevels")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
                     b.Property<bool>("AiDisabled")
                         .HasColumnType("boolean");
 

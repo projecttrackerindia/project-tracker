@@ -12,7 +12,6 @@ import { SuccessCurtain } from './components/SuccessCurtain';
 import { UpdateBanner } from './components/UpdateBanner';
 import { Field, Modal, PageLoader, SubmitButton } from './components/ui';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './features/auth/passwordPolicy';
-import { useAi } from './features/ai/Assistant';
 import { AppSplash } from './components/AppSplash';
 import { useVisibleKinds } from './features/workitems/workItems';
 import { AppLayout } from './layouts/AppLayout';
@@ -21,15 +20,24 @@ import { MeetingCallRoute } from './features/calls/MeetingCallRoute';
 import { registerPage } from './lib/prefetchPages';
 
 /**
+ * An address from before v2 (or before an earlier regrouping): go to where that page lives now, keeping the query (a project, a task …)
+ * and the #anchor, and adding any the new place needs, so bookmarks and links in old e-mails, notifications and AI answers keep working.
+ * `prefix`: the old address's start is swapped for `to` and the rest is kept (/projects/7/x → /work/projects/7/x).
+ */
+function Moved({ to, prefix }: { to: string; prefix?: string }) {
+  const loc = useLocation();
+  const [base, extra] = to.split('?');
+  const path = prefix ? `${base}${loc.pathname.slice(prefix.length)}`.replace(/\/+$/, '') || '/' : base;
+  const q = new URLSearchParams(loc.search);
+  new URLSearchParams(extra ?? '').forEach((v, k) => q.set(k, v));
+  const s = q.toString();
+  return <Navigate to={`${path}${s ? `?${s}` : ''}${loc.hash}`} replace />;
+}
+
+/**
  * Pages are loaded when they are first opened rather than all up front, so the first visit downloads a fraction of the app. Each page
  * module exports its page by name; `page` picks that export for React.lazy.
  */
-/** An old address that moved: keeps its query (?session=…, ?project=…). */
-function MovedTo({ to }: { to: string }) {
-  const loc = useLocation();
-  return <Navigate to={`${to}${loc.search}`} replace />;
-}
-
 function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>>>, name: K) {
   // Sign-in pages are not wanted by someone already in; everything else is fetched ahead while idle.
   if (load !== loadAuthPages) registerPage(load);
@@ -49,40 +57,24 @@ const AuthCompletePage = page(loadAuthPages, 'AuthCompletePage');
 // Two-step setup (and its QR-code library) is only shown here when a workspace insists on it.
 const TwoStepRow = page(() => import('./features/settings/TwoStep'), 'TwoStepRow');
 const AdminPage = page(() => import('./features/admin/AdminPage'), 'AdminPage');
-const AgentTrackerPage = page(() => import('./features/ai/AgentTrackerPage'), 'AgentTrackerPage');
-const AgentPage = page(() => import('./features/agent/AgentPage'), 'AgentPage');
-const CommandCenterPage = page(() => import('./features/command/CommandCenterPage'), 'CommandCenterPage');
-const AgentWorkflowsPage = page(() => import('./features/ai/AgentWorkflowsPage'), 'AgentWorkflowsPage');
-const AiPage = page(() => import('./features/ai/AiPage'), 'AiPage');
-const CalendarPage = page(() => import('./features/calendar/CalendarPage'), 'CalendarPage');
-const ChatPage = page(() => import('./features/chat/ChatPage'), 'ChatPage');
-const DocTrackerPage = page(() => import('./features/doctracker/DocTrackerPage'), 'DocTrackerPage');
-const ConnectPage = page(() => import('./features/integrations/ConnectPage'), 'ConnectPage');
-const DocumentPage = page(() => import('./features/documents/DocumentPage'), 'DocumentPage');
-const DashboardPage = page(() => import('./features/dashboard/DashboardPage'), 'DashboardPage');
-const MailboxPage = page(() => import('./features/dev/MailboxPage'), 'MailboxPage');
+// The five places of v2, the project pages, People and Settings (V2-PLAN §1).
+const HomePage = page(() => import('./features/home/HomePage'), 'HomePage');
+const WorkPage = page(() => import('./features/work/WorkPage'), 'WorkPage');
+const ProjectsHome = page(() => import('./features/projects/ProjectsHome'), 'ProjectsHome');
+const ProjectPage = page(() => import('./features/projects/ProjectPage'), 'ProjectPage');
+const TalkPage = page(() => import('./features/talk/TalkPage'), 'TalkPage');
+const LibraryPage = page(() => import('./features/library/LibraryPage'), 'LibraryPage');
+const InsightsPage = page(() => import('./features/insights/InsightsPage'), 'InsightsPage');
 const PeoplePage = page(() => import('./features/people/PeoplePage'), 'PeoplePage');
-const ProjectDetailPage = page(() => import('./features/projects/ProjectDetailPage'), 'ProjectDetailPage');
-const ProjectsPage = page(() => import('./features/projects/ProjectsPage'), 'ProjectsPage');
-const ProjectStatusPage = page(() => import('./features/projects/ProjectStatusPage'), 'ProjectStatusPage');
-const ReportsPage = page(() => import('./features/reports/ReportsPage'), 'ReportsPage');
+const SettingsPage = page(() => import('./features/settings/SettingsPage'), 'SettingsPage');
+const ConnectPage = page(() => import('./features/integrations/ConnectPage'), 'ConnectPage');
+const MailboxPage = page(() => import('./features/dev/MailboxPage'), 'MailboxPage');
 const LegalPage = page(() => import('./features/legal/LegalPage'), 'LegalPage');
-const TimesheetPage = page(() => import('./features/time/TimesheetPage'), 'TimesheetPage');
-const VaultPage = page(() => import('./features/vault/VaultPage'), 'VaultPage');
-const UserMailboxPage = page(() => import('./features/mailbox/MailboxPage'), 'MailboxPage');
-const MeetPage = page(() => import('./features/meet/MeetPage'), 'MeetPage');
-const WorkTasksPage = page(() => import('./features/work/WorkTasksPage'), 'WorkTasksPage');
-const MyWorkPage = page(() => import('./features/workitems/MyWorkPage'), 'MyWorkPage');
-const RemindersPage = page(() => import('./features/reminders/RemindersPage'), 'RemindersPage');
 const UnsubscribePage = page(() => import('./features/auth/UnsubscribePage'), 'UnsubscribePage');
 const ApprovePage = page(() => import('./features/auth/ApprovePage'), 'ApprovePage');
 const ReminderActionPage = page(() => import('./features/reminders/ActionPage'), 'ReminderActionPage');
 const SecretLinkPage = page(() => import('./features/vault/SecretLinkPage'), 'SecretLinkPage');
-const WorkloadPage = page(() => import('./features/workitems/WorkloadPage'), 'WorkloadPage');
 const ActivityPage = page(() => import('./features/activity/ActivityPages'), 'ActivityPage');
-const NotificationCenterPage = page(() => import('./features/notifications/NotificationCenter'), 'NotificationCenterPage');
-const AccountPage = page(() => import('./features/settings/SettingsPage'), 'AccountPage');
-const WorkspaceSettingsPage = page(() => import('./features/settings/SettingsPage'), 'WorkspaceSettingsPage');
 import { toast } from './stores/ui';
 import { useAuth, useCan, useIsPersonal, useModule } from './stores/auth';
 import { OfflineWork } from './features/offline/offline';
@@ -253,48 +245,48 @@ function RequireAuth() {
   if (ctx?.user.mustChangePassword) return <MustChangePassword />;
   if (!ctx?.current) return <NoWorkspace />;
   // Platform administrators have an admin-only interface; workspace pages are for customers.
-  if (ctx.user.isPlatformAdmin && !loc.pathname.startsWith('/admin') && !loc.pathname.startsWith('/account') && loc.pathname !== '/settings') return <Navigate to="/admin" replace />;
+  // Their own profile and sign-in (Settings › Profile, and its old address /account) stay open to them.
+  if (ctx.user.isPlatformAdmin && !loc.pathname.startsWith('/admin') && !loc.pathname.startsWith('/account') && loc.pathname !== '/settings' && !loc.pathname.startsWith('/settings/profile')) return <Navigate to="/admin" replace />;
   return <AppLayout />;
 }
 
-/** Hide pages the current role / workspace type cannot use, instead of showing a screen of 403s. */
-/** The old Documents library now lives in DocTracker; keep old links (and their project filter) working. */
+/** The old Documents library (a project's documents): DocTracker in Library, with the project filter kept. */
 function LegacyDocuments() {
   const loc = useLocation();
   const project = new URLSearchParams(loc.search).get('project');
-  return <Navigate to={project ? `/doctracker?p=${encodeURIComponent(project)}&t=documents` : '/doctracker'} replace />;
+  return <Navigate to={project ? `/library/docs?p=${encodeURIComponent(project)}&t=documents` : '/library/docs'} replace />;
 }
 
 /** A task by id alone (a #task mention in a document): look up its project and open it there. */
 function TaskLink() {
   const { id = '' } = useParams();
   const q = useWsQuery(['tasks', id, 'link'], () => taskApi.get(id), { retry: false });
-  if (q.data) return <Navigate to={`/projects/${q.data.task.projectId}?task=${id}`} replace />;
+  if (q.data) return <Navigate to={`/work/projects/${q.data.task.projectId}?task=${id}`} replace />;
   if (q.isError) return <Navigate to="/" replace />;
   return <PageLoader />;
 }
 
+/** Hide pages the current role / workspace type cannot use, instead of showing a screen of 403s. */
 function Guard({ allow, children }: { allow: boolean; children: React.ReactNode }) {
   return allow ? <>{children}</> : <Navigate to="/" replace />;
 }
 
-/**
- * An address from before the navigation was regrouped: go to where that page lives now, keeping the query (a project, a task ...)
- * and adding any the new place needs, so bookmarks and links in old notifications and emails keep working.
- */
-function Moved({ to }: { to: string }) {
-  const loc = useLocation();
-  const [path, extra] = to.split('?');
-  const q = new URLSearchParams(loc.search);
-  new URLSearchParams(extra ?? '').forEach((v, k) => q.set(k, v));
-  const s = q.toString();
-  return <Navigate to={`${path}${s ? `?${s}` : ''}`} replace />;
+/** /timesheet/approvals, /meet/past …: the place that holds the page now, with the old section as `s`. */
+function SectionMoved({ to }: { to: string }) {
+  const { s = '' } = useParams();
+  return <Moved to={`${to}&s=${encodeURIComponent(s)}`} />;
+}
+
+/** /ai/<conversation> from before v2: the conversation now lives on Home (?c=). */
+function AiConversationMoved() {
+  const { id = '' } = useParams();
+  return <Navigate to={`/?c=${encodeURIComponent(id)}`} replace />;
 }
 
 function NotFound() {
   return (
     <div className="empty" style={{ paddingTop: 80 }}>
-      <h4>Page not found</h4><p>The page you are looking for does not exist.</p><Link className="btn btn-primary" to="/">Back to dashboard</Link>
+      <h4>Page not found</h4><p>The page you are looking for does not exist.</p><Link className="btn btn-primary" to="/">Back to Home</Link>
     </div>
   );
 }
@@ -335,13 +327,15 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
   const personal = useIsPersonal();
   const hasReports = (useAuth((s) => s.ctx?.current?.reportCount) ?? 0) > 0;
   const mReports = useModule('reports') > 0, mTasks = useModule('tasks') > 0, mProjects = useModule('projects') > 0, mWork = useModule('work') > 0;
-  const mCalendar = useModule('calendar') > 0, mActivity = useModule('activity') > 0, mDocuments = useModule('documents') > 0;
+  const mActivity = useModule('activity') > 0, mDocuments = useModule('documents') > 0;
   const permReports = useCan('reports.view'), broad = useCan('reports.broad');
   const canReports = permReports && mReports;
   const isGuest = useAuth((s) => s.ctx?.current?.role === 'Guest');
-  const canVault = useCan('vault.use') && !isGuest;
+  const permVault = useCan('vault.use');
+  const canVault = permVault && !isGuest;
   const kinds = useVisibleKinds();
-  const ai = useAi();
+  const work = kinds.length > 0 || mWork || mProjects;
+  const insights = (!personal && (hasReports || broad)) || canReports || mWork || mTasks;
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -361,89 +355,86 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
       {import.meta.env.DEV && <Route path="/dev/mailbox" element={<MailboxPage />} />}
 
       {redirecting ? <Route path="*" element={<OrgRedirect />} /> : <Route element={<RequireAuth />}>
-        {/* Home */}
-        <Route index element={mProjects && !isGuest ? <CommandCenterPage /> : <DashboardPage />} />
-        <Route path="dashboard" element={<DashboardPage />} />
+        {/* ---------------------------------------------------------------- the five places (V2-PLAN §1) */}
+        <Route index element={<HomePage />} />
         <Route path="approve/:id" element={<ApprovePage />} />
-        {/* My work lives in the Command Center now (its own tab); without the Command Center the page stands alone. */}
-        <Route path="my-work" element={<Guard allow={kinds.length > 0}>{mProjects && !isGuest ? <Moved to="/command-center?tab=work" /> : <MyWorkPage />}</Guard>} />
-        <Route path="agents" element={<Navigate to={ai ? '/ai' : '/project-agent'} replace />} />
-        <Route path="agent-tracker" element={<AgentTrackerPage />} />
+        <Route path="work" element={<Guard allow={work}><WorkPage /></Guard>} />
+        <Route path="work/projects" element={<Guard allow={mProjects}><ProjectsHome /></Guard>} />
+        <Route path="work/projects/:id" element={<Guard allow={mProjects}><ProjectPage /></Guard>} />
+        <Route path="talk" element={<TalkPage />} />
+        <Route path="talk/:id" element={<TalkPage />} />
+        <Route path="library" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
+        <Route path="library/:section" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
+        <Route path="library/:section/:id" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
+        <Route path="insights" element={<Guard allow={insights}><InsightsPage /></Guard>} />
+        <Route path="activity" element={<Guard allow={mActivity}><ActivityPage /></Guard>} />
         <Route path="calls/:id" element={<CallRoute />} />
         <Route path="calls/meeting/:meetingId" element={<MeetingCallRoute />} />
         <Route path="calls/meeting/w/:meetingId" element={<MeetingCallRoute workspace />} />
-        <Route path="command-center" element={<Guard allow={mProjects && !isGuest}><CommandCenterPage /></Guard>} />
-        <Route path="project-agent" element={<Guard allow={mProjects && !personal}><AgentPage section="review" /></Guard>} />
-        <Route path="project-agent/assigned" element={<Guard allow={mProjects && !personal}><AgentPage section="assigned" /></Guard>} />
-        <Route path="project-agent/my-inbox" element={<Guard allow={mProjects && !personal && !isGuest}><AgentPage section="my-inbox" /></Guard>} />
-        <Route path="project-agent/meeting-bot" element={<MovedTo to="/meet/notetaker" />} />
-        <Route path="ai" element={<AiPage />} />
-        <Route path="ai/operations" element={<AgentWorkflowsPage />} />
-        <Route path="ai/:id" element={<AiPage />} />
-        <Route path="reminders" element={<RemindersPage />} />
-        <Route path="timesheet" element={<Guard allow={mTasks || mWork}><TimesheetPage /></Guard>} />
-        <Route path="timesheet/approvals" element={<Guard allow={mTasks || mWork}><TimesheetPage section="approvals" /></Guard>} />
-        <Route path="timesheet/insights" element={<Guard allow={mTasks || mWork}><TimesheetPage section="insights" /></Guard>} />
-        <Route path="timesheet/entries" element={<Guard allow={mTasks || mWork}><TimesheetPage section="entries" /></Guard>} />
-        <Route path="calendar" element={<Guard allow={mCalendar}><CalendarPage /></Guard>} />
-        <Route path="chat" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
-        <Route path="mailbox" element={<UserMailboxPage />} />
-        {/* Meet: every meeting and call in one place. The notetaker's old address keeps working. */}
-        <Route path="meet" element={<MeetPage section="upcoming" />} />
-        <Route path="meet/series" element={<MeetPage section="series" />} />
-        <Route path="meet/past" element={<MeetPage section="past" />} />
-        <Route path="meet/notetaker" element={<Guard allow={mProjects && !isGuest}><MeetPage section="notetaker" /></Guard>} />
-        <Route path="notetaker" element={<MovedTo to="/meet/notetaker" />} />
-        <Route path="chat/:id" element={<Guard allow={!personal && !isGuest}><ChatPage /></Guard>} />
-        {/* Delivery */}
-        <Route path="projects" element={<Guard allow={mProjects}><ProjectsPage /></Guard>} />
-        <Route path="projects/:id" element={<Guard allow={mProjects}><ProjectDetailPage /></Guard>} />
-        <Route path="portfolio" element={<Guard allow={mProjects}><ProjectStatusPage /></Guard>} />
-        <Route path="operations" element={<Guard allow={mWork}><WorkTasksPage /></Guard>} />
-        <Route path="support" element={<Moved to="/operations" />} />
         <Route path="connect" element={<ConnectPage />} />
-        <Route path="doctracker" element={<Guard allow={mDocuments}><DocTrackerPage /></Guard>} />
-        <Route path="vault" element={<Guard allow={canVault}><VaultPage /></Guard>} />
-        <Route path="documents" element={<Guard allow={mDocuments}><LegacyDocuments /></Guard>} />
-        <Route path="documents/:id" element={<Guard allow={mDocuments}><DocumentPage /></Guard>} />
         <Route path="tasks/:id" element={<TaskLink />} />
-        {/* Insights */}
-        <Route path="workload" element={<Guard allow={!personal && (hasReports || broad)}><WorkloadPage /></Guard>} />
-        <Route path="workload/capacity" element={<Guard allow={!personal && (hasReports || broad)}><WorkloadPage section="capacity" /></Guard>} />
-        <Route path="reports" element={<Guard allow={canReports || mWork}><ReportsPage section="generate" /></Guard>} />
-        <Route path="reports/operations" element={<Guard allow={mWork}><ReportsPage section="operations" /></Guard>} />
-        <Route path="activity" element={<Guard allow={mActivity}><ActivityPage /></Guard>} />
-        {/* People (each section checks its own access) */}
+        {/* People and Settings: behind the avatar (each People section checks its own access) */}
         <Route path="people" element={<PeoplePage section="directory" />} />
         <Route path="people/invitations" element={<PeoplePage section="invitations" />} />
         <Route path="people/org-chart" element={<PeoplePage section="org-chart" />} />
         <Route path="people/teams" element={<PeoplePage section="teams" />} />
-        {/* Workspace settings and My account */}
-        <Route path="settings" element={<WorkspaceSettingsPage />} />
-        <Route path="settings/:section" element={<WorkspaceSettingsPage />} />
-        <Route path="account" element={<AccountPage section="profile" />} />
-        <Route path="account/notifications" element={<Moved to="/notifications/preferences" />} />
-        <Route path="account/security" element={<AccountPage section="security" />} />
-        <Route path="account/mobile" element={<AccountPage section="mobile" />} />
-        <Route path="account/integrations" element={<AccountPage section="integrations" />} />
-        <Route path="account/resumes" element={<AccountPage section="resumes" />} />
-        <Route path="notifications" element={<NotificationCenterPage section="inbox" />} />
-        <Route path="notifications/preferences" element={<NotificationCenterPage section="preferences" />} />
-        <Route path="notifications/devices" element={<NotificationCenterPage section="devices" />} />
-        <Route path="notifications/schedule" element={<NotificationCenterPage section="schedule" />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings/:section" element={<SettingsPage />} />
         <Route path="admin/:tab?" element={<AdminPage />} />
-        {/* Where pages used to be */}
-        <Route path="work" element={<Moved to="/operations" />} />
-        <Route path="work/mine" element={<Moved to="/my-work?kind=Operational" />} />
-        <Route path="work/reports" element={<Moved to="/reports/operations" />} />
-        <Route path="my-team" element={<Moved to="/workload" />} />
-        <Route path="project-status" element={<Moved to="/portfolio" />} />
-        <Route path="project-groups" element={<Moved to="/settings/project-groups" />} />
+
+        {/* ---------------------------------------------------------------- where pages used to be: query and #anchor are kept */}
+        <Route path="dashboard" element={<Moved to="/" />} />
+        <Route path="command-center" element={<Moved to="/" />} />
+        <Route path="calendar" element={<Moved to="/?tab=calendar" />} />
+        <Route path="reminders/*" element={<Moved to="/" />} />
+        <Route path="agents/*" element={<Moved to="/" />} />
+        <Route path="project-agent/*" element={<Moved to="/" />} />
+        <Route path="ai" element={<Moved to="/" />} />
+        <Route path="ai/operations" element={<Moved to="/insights?tab=workflows" />} />
+        <Route path="ai/:id" element={<AiConversationMoved />} />
+        <Route path="agent-tracker" element={<Moved to="/settings/ai?sub=tracker" />} />
+        <Route path="my-work" element={<Moved to="/work" />} />
+        <Route path="operations/*" element={<Moved to="/work?tab=tickets" />} />
+        <Route path="support" element={<Moved to="/work?tab=tickets" />} />
+        <Route path="work/mine" element={<Moved to="/work" />} />
+        <Route path="work/reports" element={<Moved to="/insights?tab=reports&s=operations" />} />
+        <Route path="projects" element={<Moved to="/work/projects" />} />
+        <Route path="projects/*" element={<Moved to="/work/projects" prefix="/projects" />} />
+        <Route path="portfolio/*" element={<Moved to="/work/projects?view=portfolio" />} />
+        <Route path="project-status" element={<Moved to="/work/projects?view=portfolio" />} />
+        <Route path="chat" element={<Moved to="/talk?f=chat" />} />
+        <Route path="chat/*" element={<Moved to="/talk" prefix="/chat" />} />
+        <Route path="mailbox" element={<Moved to="/talk?f=mail" />} />
+        <Route path="meet" element={<Moved to="/talk?f=meetings" />} />
+        <Route path="meet/:s" element={<SectionMoved to="/talk?f=meetings" />} />
+        <Route path="notetaker" element={<Moved to="/talk?f=meetings&s=notetaker" />} />
+        <Route path="doctracker/*" element={<Moved to="/library/docs" />} />
+        <Route path="documents" element={<LegacyDocuments />} />
+        <Route path="documents/*" element={<Moved to="/library/docs" prefix="/documents" />} />
+        <Route path="vault/*" element={<Moved to="/library/vault" prefix="/vault" />} />
+        <Route path="timesheet" element={<Moved to="/insights?tab=time" />} />
+        <Route path="timesheet/:s" element={<SectionMoved to="/insights?tab=time" />} />
+        <Route path="workload" element={<Moved to="/insights" />} />
+        <Route path="workload/capacity" element={<Moved to="/insights?s=capacity" />} />
+        <Route path="my-team" element={<Moved to="/insights" />} />
+        <Route path="reports" element={<Moved to="/insights?tab=reports" />} />
+        <Route path="reports/operations" element={<Moved to="/insights?tab=reports&s=operations" />} />
+        <Route path="account" element={<Moved to="/settings/profile" />} />
+        <Route path="account/security" element={<Moved to="/settings/profile?sub=security" />} />
+        <Route path="account/mobile" element={<Moved to="/settings/profile?sub=mobile" />} />
+        <Route path="account/integrations" element={<Moved to="/settings/profile?sub=accounts" />} />
+        <Route path="account/*" element={<Moved to="/settings/profile" />} />
+        <Route path="notifications" element={<Moved to="/settings/notifications?sub=history" />} />
+        <Route path="notifications/preferences" element={<Moved to="/settings/notifications?sub=delivery" />} />
+        <Route path="notifications/devices" element={<Moved to="/settings/notifications?sub=device" />} />
+        <Route path="notifications/schedule" element={<Moved to="/settings/notifications?sub=schedule" />} />
+        <Route path="notifications/*" element={<Moved to="/settings/notifications" />} />
+        <Route path="project-groups" element={<Moved to="/settings/timelines?sub=project-groups" />} />
         <Route path="members" element={<Moved to="/people" />} />
         <Route path="teams" element={<Moved to="/people/teams" />} />
         <Route path="organization" element={<Moved to="/people/org-chart" />} />
         <Route path="billing" element={<Moved to="/settings/billing" />} />
-        <Route path="audit" element={<Moved to="/settings/audit" />} />
+        <Route path="audit" element={<Moved to="/settings/security?sub=audit" />} />
         <Route path="*" element={<NotFound />} />
       </Route>}
     </Routes>

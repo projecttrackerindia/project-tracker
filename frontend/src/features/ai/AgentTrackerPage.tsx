@@ -11,7 +11,6 @@ import { compact, KIND_LABEL, KIND_ORDER, pct, secs, series, SOURCE_LABEL, STATU
 import { AlertList, AlertsView, CostView, TrustPanels } from './tracker/TrackerWatch';
 import { QualityView } from './tracker/TrackerQuality';
 import type { Alerts } from './tracker/types';
-import { AgentsHubNav } from '../agents/AgentsHubNav';
 import './tracker/tracker.css';
 
 type Tab = 'overview' | 'assistant' | 'quality' | 'agent' | 'meetings' | 'costs' | 'alerts' | 'runs';
@@ -62,7 +61,6 @@ export function AgentTrackerPage() {
   const d = q.data;
   return (
     <div className={`trk ${q.isPlaceholderData || fleet.isPlaceholderData ? 'trk-refreshing' : ''}`}>
-      <AgentsHubNav sub="How every agent in the workspace is doing" />
       {/* The black, glowing hero (design: Agent Tracker): what this page answers in one line, the period, and the assistant's state. */}
       <header className="trk-hero ds-hero-dark">
         <div className="trk-hero-row">

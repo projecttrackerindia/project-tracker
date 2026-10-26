@@ -1,13 +1,15 @@
 import { WorkspaceLogoCard } from './WorkspaceLogo';
 import { ProfilePhotoCard } from './ProfilePhoto';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { authApi, meApi, workspaceApi } from '../../api/endpoints';
-import { Icon } from '../../components/Icon';
-import { Badge, Field, Modal, PageHead, PageLoader, SectionLayout, SubmitButton, type SectionLink } from '../../components/ui';
-import { SETTINGS_GROUPS, useWorkspaceSections, type WorkspaceSection } from './sections';
+import { Icon, type IconName } from '../../components/Icon';
+import { Badge, Embedded, Field, Modal, PageHead, PageLoader, SectionLayout, Segmented, SubmitButton } from '../../components/ui';
+import { leafHref, PLACE_LEAVES, PLACE_OF, useWorkspaceSections, type SettingsPlace, type WorkspaceSection } from './sections';
+import { NotificationCenterPage } from '../notifications/NotificationCenter';
+import { AiSettings, type AiTab } from './AiControlCentre';
 import { timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import './settings-ds.css';
@@ -41,17 +43,14 @@ import { ReminderPolicySettings } from '../reminders/Policy';
 import { LabelSettings } from './LabelSettings';
 import { SsoSettings } from './SsoSettings';
 import { PROVIDER_ICON } from '../auth/AuthPages';
-import { AiWorkspaceSwitch } from '../ai/Assistant';
-import { AiInstructionsCard, AiProfileCard } from '../ai/AiInstructions';
-import { AiOwnKeyCard, MyAiProviderCard } from '../ai/OwnAiKey';
-import { LastChanged, SectionHistory, SettingsHome, SettingsSearch, useSettingJump, useSetupHealth } from './SettingsCenter';
+import { AiProfileCard } from '../ai/AiInstructions';
+import { MyAiProviderCard } from '../ai/OwnAiKey';
+import { LastChanged, SectionHistory, SettingsSearch, SetupHealthCard, useSettingJump } from './SettingsCenter';
 import { NotificationDefaultsSection } from './NotificationDefaults';
 import { MobileAppSection } from './MobileAppSection';
 import { ConnectedAccountsSection } from './ConnectedAccounts';
-import { AiUsageCard } from '../ai/AiUsageCard';
 import { SlackSettings } from './SlackSettings';
 import { WhatsAppSettings } from './WhatsAppSettings';
-const ResumeBuilderSection = lazy(() => import('./ResumeBuilder').then(m=>({default:m.ResumeBuilderSection})));
 
 
 /** How the session was opened, in the person's words ("with a passkey · "). Empty when it is the ordinary password. */
@@ -67,30 +66,105 @@ function browserOf(ua: string | null) {
   return `${browser}${os ? ` on ${os}` : ''}`;
 }
 
-// ================================================================== My account (personal, from the avatar menu)
+// ================================================================== Settings (v2): ten sections, two about you and eight about the workspace
 
-export type AccountSection = 'profile' | 'notifications' | 'security' | 'mobile' | 'integrations' | 'resumes';
+const PLACE_INFO: Record<SettingsPlace, { label: string; icon: IconName; sub: string }> = {
+  profile: { label: 'Profile & sign-in', icon: 'user', sub: 'Your profile, sign-in, phone app, connected accounts and how the assistant works with you. These follow you to every workspace.' },
+  notifications: { label: 'Notifications', icon: 'bell', sub: 'What reaches you, where, and when.' },
+  general: { label: 'General', icon: 'building', sub: 'Name, description, logo and time zone.' },
+  people: { label: 'People', icon: 'users', sub: 'Who is in the workspace and who sees which projects.' },
+  fields: { label: 'Fields & types', icon: 'list', sub: 'Custom fields, labels, priorities and work types.' },
+  timelines: { label: 'Timelines & automation', icon: 'flag', sub: 'Timeline templates, project groups and automation rules.' },
+  security: { label: 'Security & audit', icon: 'lock', sub: 'Sign-in rules, single sign-on, roles and access, the audit log and data retention.' },
+  integrations: { label: 'Integrations', icon: 'link', sub: 'Slack, WhatsApp, GitHub, webhooks, API keys, mail and outside AI apps.' },
+  ai: { label: 'AI', icon: 'sparkle', sub: 'What the AI knows, what it may do, and what it costs.' },
+  billing: { label: 'Billing', icon: 'card', sub: 'Plan, seats, invoices and payment.' },
+};
+const WORKSPACE_PLACES = ['general', 'people', 'fields', 'timelines', 'security', 'integrations', 'ai', 'billing'] as const;
+const PLACE_IDS = new Set<string>(['profile', 'notifications', ...WORKSPACE_PLACES]);
 
-/** My account: everything about me, whatever workspace I am in. Workspace administration lives in Workspace settings. */
-export function AccountPage({ section }: { section: AccountSection }) {
+interface SubTab { id: string; label: string }
+
+/**
+ * Settings: one page with ten sections. Each section opens on its first tab; the tab is in the address (?sub=), so a link, a search result
+ * or Back lands on it. Addresses of the old pages (/settings/sso, /settings/labels …) move to the section and tab that hold them now.
+ */
+export function SettingsPage() {
+  const { section } = useParams();
+  const loc = useLocation();
+  const [params, setParams] = useSearchParams();
+  const leaves = useWorkspaceSections();
   const isPlatformAdmin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
   useSettingJump();
-  const groups: { items: SectionLink[] }[] = [{ items: [
-    { to: '/account', label: 'Profile', icon: 'user' },
-    { to: '/account/security', label: 'Sign-in & security', icon: 'lock' },
-    ...(!isPlatformAdmin ? [{ to: '/account/mobile', label: 'Mobile app', icon: 'phone' as const }] : []),
-    ...(!isPlatformAdmin ? [{ to: '/account/integrations', label: 'Connected accounts', icon: 'video' as const }] : []),
-    { to: '/account/resumes', label: 'Resume studio', icon: 'note' },
-  ] }];
+  if (!section || (section !== 'profile' && isPlatformAdmin)) return <Navigate to={`/settings/profile${loc.search}${loc.hash}`} replace />;
+  // An old section id: its new section and tab, keeping anything else in the address.
+  if (!PLACE_IDS.has(section)) {
+    const leaf = section as WorkspaceSection;
+    if (!PLACE_OF[leaf]) return <Navigate to="/settings/profile" replace />;
+    const [path, query] = leafHref(leaf).split('?');
+    const q = new URLSearchParams(loc.search);
+    new URLSearchParams(query ?? '').forEach((v, k) => q.set(k, v));
+    const s = q.toString();
+    return <Navigate to={`${path}${s ? `?${s}` : ''}${loc.hash}`} replace />;
+  }
+  const place = section as SettingsPlace;
+  const open = new Set(leaves.map((l) => l.id));
+  const places = WORKSPACE_PLACES.filter((p) => PLACE_LEAVES[p].some((l) => open.has(l)));
+  if (place !== 'profile' && place !== 'notifications' && !places.includes(place)) return <Navigate to="/settings/profile" replace />;
+
+  const tabs: SubTab[] = place === 'profile'
+    ? [{ id: 'profile', label: 'Profile' }, { id: 'security', label: 'Sign-in & security' },
+      ...(!isPlatformAdmin ? [{ id: 'mobile', label: 'Mobile app' }, { id: 'accounts', label: 'Connected accounts' }, { id: 'assistant', label: 'Assistant' }] : [])]
+    : place === 'notifications'
+      ? [{ id: 'delivery', label: 'Delivery' }, { id: 'device', label: 'This device' }, { id: 'schedule', label: 'Schedule & time zone' }, { id: 'history', label: 'History' },
+        ...leaves.filter((l) => PLACE_LEAVES.notifications.includes(l.id)).map((l) => ({ id: l.id, label: l.id === 'notifications' ? 'Member defaults' : l.label }))]
+      : place === 'ai' ? [] : leaves.filter((l) => PLACE_LEAVES[place].includes(l.id)).sort((a, b) => PLACE_LEAVES[place].indexOf(a.id) - PLACE_LEAVES[place].indexOf(b.id)).map((l) => ({ id: l.id, label: l.label }));
+  const asked = params.get('sub');
+  const sub = place === 'ai' ? (asked === 'usage' || asked === 'tracker' ? asked : 'control') : tabs.find((t) => t.id === asked)?.id ?? tabs[0]?.id;
+  const choose = (v: string) => { const n = new URLSearchParams(params); n.set('sub', v); n.delete('tab'); setParams(n); };
+
+  const groups = [
+    { title: 'You', items: (['profile', 'notifications'] as const).filter((p) => p === 'profile' || !isPlatformAdmin).map((p) => ({ to: `/settings/${p}`, label: PLACE_INFO[p].label, icon: PLACE_INFO[p].icon })) },
+    { title: 'Workspace', items: places.map((p) => ({ to: `/settings/${p}`, label: PLACE_INFO[p].label, icon: PLACE_INFO[p].icon })) },
+  ];
+  const body = place === 'profile' ? <ProfileTab sub={sub} />
+    : place === 'notifications' ? <NotificationsTab sub={sub} />
+    : place === 'ai' ? <AiSettings tab={sub as AiTab} onTab={choose} />
+    : <SettingsSection id={sub as WorkspaceSection} />;
   return (
-    <SectionLayout wide title="My account" sub="Your profile, sign-in, connected accounts and phone app. These follow you to every workspace." groups={groups}>
-      {section === 'profile' && <ProfileSection />}
-      {section === 'security' && <SecuritySection />}
-      {section === 'mobile' && <MobileAppSection />}
-      {section === 'integrations' && <ConnectedAccountsSection />}
-      {section === 'resumes' && <Suspense fallback={<PageLoader />}><ResumeBuilderSection /></Suspense>}
+    <SectionLayout wide title="Settings" groups={groups} navTop={leaves.length > 0 ? <SettingsSearch compact /> : undefined}>
+      {tabs.length > 1 ? (
+        <div className="set-place">
+          <div className="set-place-head">
+            <div><h2>{PLACE_INFO[place].label}</h2><p>{PLACE_INFO[place].sub}</p></div>
+            <Segmented label={`${PLACE_INFO[place].label} sections`} value={sub} onChange={choose} options={tabs} />
+          </div>
+          <Embedded>{body}</Embedded>
+        </div>
+      ) : body}
     </SectionLayout>
   );
+}
+
+function ProfileTab({ sub }: { sub: string }) {
+  switch (sub) {
+    case 'security': return <SecuritySection />;
+    case 'mobile': return <MobileAppSection />;
+    case 'accounts': return <ConnectedAccountsSection />;
+    case 'assistant': return <><PageHead title="Assistant" sub="How the assistant works with you: what it learned, your own notes, and the organisation’s AI account." /><div data-setting="account.ai"><AiProfileCard /><MyAiProviderCard /></div></>;
+    default: return <ProfileSection />;
+  }
+}
+
+function NotificationsTab({ sub }: { sub: string }) {
+  switch (sub) {
+    case 'notifications': return <NotificationDefaultsSection />;
+    case 'reminders': return <><PageHead title="Escalation" sub="Everyone gets reminders about their own work on every plan. Here: what happens when work stays overdue." /><div data-setting="reminders.escalation"><ReminderPolicySettings /><LastChanged k="reminders.escalation" section="reminders" /></div><SectionHistory section="reminders" /></>;
+    case 'device': return <NotificationCenterPage section="devices" />;
+    case 'schedule': return <NotificationCenterPage section="schedule" />;
+    case 'history': return <NotificationCenterPage section="inbox" />;
+    default: return <NotificationCenterPage section="preferences" />;
+  }
 }
 
 function ProfileSection() {
@@ -112,12 +186,11 @@ function ProfileSection() {
           <form className="form-grid" onSubmit={(e) => { e.preventDefault(); if (name.trim()) profile.mutate(); }}>
             <Field label="Full name" required><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} /></Field>
             <Field label="Email" hint={ctx.user.emailVerified ? 'Verified' : 'Not verified'}><input className="input" value={ctx.user.email} disabled /></Field>
-            <Field label="Time zone" hint="Every date, due date, reminder and chart follows it."><div className="input input-static">{ctx.user.timeZone} <Link className="link" to="/notifications/schedule">Change</Link></div></Field>
+            <Field label="Time zone" hint="Every date, due date, reminder and chart follows it."><div className="input input-static">{ctx.user.timeZone} <Link className="link" to="/settings/notifications?sub=schedule">Change</Link></div></Field>
             <div className="full"><SubmitButton busy={profile.isPending}>Save profile</SubmitButton></div>
           </form>
         </div>
       </div>
-      <div data-setting="account.ai"><AiProfileCard /><MyAiProviderCard /></div>
       <DeleteAccountCard />
     </>
   );
@@ -296,38 +369,12 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ================================================================== Workspace settings (the gear; administration of this workspace)
-
-/**
- * Workspace settings: one place for everything an administrator maintains about this workspace, in seven groups, found by typing.
- * /settings is the overview (search, setup health, latest changes); each section shows who changed its settings, with undo.
- */
-export function WorkspaceSettingsPage() {
-  const { section } = useParams();
-  const sections = useWorkspaceSections();
-  const health = useSetupHealth();
-  useSettingJump();
-  if (!sections.length) return <Navigate to="/account" replace />;
-  const current = sections.find((s) => s.id === section);
-  if (section && !current) return <Navigate to="/settings" replace />;
-  const open = health.data?.open ?? 0;
-  const groups = [
-    { items: [{ to: '/settings', label: 'Overview', icon: 'grid' as const, badge: open || undefined }] },
-    ...SETTINGS_GROUPS.map((g) => ({ title: g, items: sections.filter((s) => s.group === g) })),
-  ];
-  return (
-    <SectionLayout title="Workspace settings" sub="How this workspace is set up: people and access, security, notifications, integrations, AI and billing."
-      groups={groups} navTop={<SettingsSearch compact />}>
-      {!current && <SettingsHome />}
-      {current && <SettingsSection id={current.id} />}
-    </SectionLayout>
-  );
-}
+// ================================================================== the workspace pages, one per tab
 
 function SettingsSection({ id }: { id: WorkspaceSection }) {
   switch (id) {
     case 'general': return <GeneralSection />;
-    case 'members': return <MembersRedirect />;
+    case 'members': return <MembersSection />;
     case 'access': return <><RolesAccessPage /><SectionHistory section="access" /></>;
     case 'visibility': return <><PageHead title="Project visibility" sub="Whether everyone sees every project, or each team sees its own." /><div data-setting="access.projectVisibility"><ProjectVisibilityPanel /><LastChanged k="access.projectVisibility" section="visibility" /></div><SectionHistory section="visibility" /></>;
     case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><OrgSecurityPanel /><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
@@ -340,7 +387,7 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
     case 'priorities': return <><PageHead title="Priorities" sub="The names and colours of the four priority levels." /><PrioritySettings /><SectionHistory section="priorities" /></>;
     case 'custom-fields': return <><PageHead title="Custom fields" sub="Extra fields every task in this workspace can have." /><CustomFieldSettings /><SectionHistory section="custom-fields" /></>;
     case 'work-types': return <><PageHead title="Work types" sub="The kinds of operational work people can raise, and how fast each must be answered and resolved." /><WorkTypeSettings /><SlaSettings /><SectionHistory section="work-types" /></>;
-    case 'connected-apps': return <><PageHead title="Connected AI apps" sub="Claude, ChatGPT and other AI assistants working in this workspace on someone's behalf." /><ConnectedApps /><SectionHistory section="connected-apps" /></>;
+    case 'connected-apps': return <><PageHead title="Outside AI apps" sub="Claude, ChatGPT and other AI assistants working in this workspace on someone's behalf, through its MCP address." /><ConnectedApps /><SectionHistory section="connected-apps" /></>;
     case 'api-keys': return <><PageHead title="API keys" sub="Access for scripts and other tools." /><ApiKeySettings /><SectionHistory section="api-keys" /></>;
     case 'webhooks': return <><PageHead title="Webhooks" sub="Tell your systems, and Slack or Microsoft Teams channels, when something changes here; turn alerts and forms they send into work." /><WebhookSettings /><SectionHistory section="webhooks" /></>;
     case 'email': return <><PageHead title="Email to work" sub="Turn emails from your team into operational work." /><InboundEmailSettings /><SectionHistory section="email" /></>;
@@ -348,18 +395,29 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
     case 'slack': return <SlackSection />;
     case 'git': return <><PageHead title="GitHub & Azure DevOps" sub="Link commits and pull requests to the tasks they mention." /><GitHubAppCard /><GitSettings /><SectionHistory section="git" /></>;
     case 'automation': return <><PageHead title="Automation" sub="Rules that run on every project's tasks: when something happens - or on a schedule - do something." /><WorkspaceAutomationSettings /><SectionHistory section="automation" /></>;
-    case 'notifications': return <NotificationDefaultsSection />;
-    case 'reminders': return <><PageHead title="Escalation" sub="Everyone gets reminders about their own work on every plan. Here: what happens when work stays overdue." /><div data-setting="reminders.escalation"><ReminderPolicySettings /><LastChanged k="reminders.escalation" section="reminders" /></div><SectionHistory section="reminders" /></>;
+    case 'notifications': case 'reminders': return <NotificationsTab sub={id} />;
     case 'data': return <><PageHead title="Data & retention" sub="How long history is kept, and a full export of everything." /><DataSettings /><SectionHistory section="data" /></>;
-    case 'ai': return <AiSection />;
+    case 'ai': return null;
   }
 }
 
-/** People and access → Members: everyone in the workspace (invite, change access levels, remove), and the invitations still waiting. */
-/** Members live on the People page (one home); this address and settings search still lead there. */
-function MembersRedirect() {
-  const [params] = useSearchParams();
-  return <Navigate to={params.get('tab') === 'invitations' ? '/people/invitations' : '/people'} replace />;
+/** Settings › People › Members: the people themselves are managed on People (one home); this tab says where, and how many seats are used. */
+function MembersSection() {
+  return (
+    <>
+      <PageHead title="Members" sub="Invite people, change access levels and remove members on People." />
+      <div className="card mb-22" data-setting="members.invite"><div className="card-body">
+        <div className="setting-row">
+          <div className="setting-info"><h4>Everyone in the workspace</h4><p>Directory, teams and the org chart; invite people and change what they may do.</p></div>
+          <Link className="btn btn-primary btn-sm" to="/people">Open People ›</Link>
+        </div>
+        <div className="setting-row" data-setting="members.invitations">
+          <div className="setting-info"><h4>Pending invitations</h4><p>Resend or revoke invitations that have not been accepted yet.</p></div>
+          <Link className="btn btn-ghost btn-sm" to="/people/invitations">Invitations ›</Link>
+        </div>
+      </div></div>
+    </>
+  );
 }
 
 /** Integrations → Slack: the one Slack page. Posting to a channel without the app is a webhook in Slack format (Integrations → Webhooks). */
@@ -373,21 +431,6 @@ function SlackSection() {
         <div>Only need messages in one channel? Add a webhook in <b>Slack</b> format instead, no app needed: <Link className="link" to="/settings/webhooks">Integrations → Webhooks</Link>.</div>
       </div>
       <SectionHistory section="slack" />
-    </>
-  );
-}
-
-/** AI → Assistant: on or off for the workspace, what it knows about the organization, and its credits. Admins only. */
-function AiSection() {
-  return (
-    <>
-      <PageHead title="Assistant" sub="The AI assistant for everyone in this workspace: whether it is on, what it knows about the organization, and the credits it uses." />
-      <div data-setting="ai.enabled"><AiWorkspaceSwitch /><LastChanged k="ai.enabled" section="ai" /></div>
-      <div data-setting="ai.instructions"><AiInstructionsCard /><LastChanged k="ai.instructions" section="ai" /></div>
-      <div data-setting="ai.budget"><AiUsageCard /></div>
-      <div data-setting="ai.ownKey"><AiOwnKeyCard /></div>
-      <p className="muted" style={{ marginTop: 14, fontSize: 12.5 }}>How the assistant works with you personally (what it learned, your notes) is private to you: <Link className="link" to="/account#s-account.ai">My account → Profile</Link>.</p>
-      <SectionHistory section="ai" />
     </>
   );
 }
@@ -423,6 +466,7 @@ function GeneralSection() {
   return (
     <>
       <PageHead title="General" sub={`${personal ? 'Your personal workspace' : 'Organization'} · your access level: ${ctx.current.role}`} />
+      {isAdmin && <div className="mb-22"><SetupHealthCard /></div>}
       <div className="card mb-22">
         <div className="card-body">
           <form className="form-grid" onSubmit={(e) => { e.preventDefault(); if (wsName.trim().length >= 2) workspace.mutate(); }}>

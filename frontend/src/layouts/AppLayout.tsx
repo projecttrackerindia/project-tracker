@@ -1,104 +1,38 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react';
 import { prefetchPages } from '../lib/prefetchPages';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { chatApi, insightApi, notificationApi } from '../api/endpoints';
-import { NotificationActions } from '../features/notifications/NotificationActions';
-import { Icon, type IconName } from '../components/Icon';
-import { BrandMark } from '../components/BrandMark';
+import { Outlet, useLocation } from 'react-router-dom';
+import { notificationApi } from '../api/endpoints';
 import { PageLoader, ToastRoot, ConfirmRoot } from '../components/ui';
-import { timeAgo } from '../lib/format';
-import { setTitleParts } from '../lib/title';
-import { queryClient, useAuth, useIsPersonal } from '../stores/auth';
-import { toast, useUi } from '../stores/ui';
-import { RunningTimer } from '../features/time/RunningTimer';
+import { useAuth } from '../stores/auth';
 import { AccessWatcher } from './AccessWatcher';
 import { ChatRealtime } from '../features/chat/ChatRealtime';
 import { ProjectChatHost } from '../features/chat/ProjectChat';
-import { chatKeys } from '../features/chat/chatStore';
 import { PlatformBanner } from '../components/PlatformBanner';
-import { ThemeSwitch } from '../components/ThemeSwitch';
-import { TeamLensPicker } from '../components/TeamLensPicker';
 import { LensSync } from '../lib/teamLens';
-import { AccountDock, TopbarMe } from './AccountDock';
-import { CreateOrganizationModal, NotifIcon } from './parts';
-import { MobileTopBar, TabBar } from './MobileChrome';
+import { MobileTopBar } from './MobileChrome';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { useIsMobile } from '../lib/mobile';
 import { useConversationViewport } from '../lib/conversationViewport';
-import { useMainNav } from './navigation';
-import { SidebarNav } from './SidebarNav';
 import { NetworkPill } from '../components/AppSplash';
 import { SignInIsland } from '../components/SignInIsland';
-import { CommandPalette, openPalette, searchHitLink } from '../components/CommandPalette';
-import { AssistantPanel } from '../features/ai/Assistant';
+import { CommandPalette } from '../components/CommandPalette';
 import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
 import { AlertsSetup } from '../features/notifications/AlertsSetup';
 import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
 import { firstTime, getAttention, kindForType } from '../lib/attention';
 import { pushCoversThisDevice, systemNotification } from '../features/reminders/device';
-import { openReminderComposer, useReminderComposer, useReminderCounts } from '../features/reminders/store';
-import { reminderApi } from '../features/reminders/api';
-import { ReminderSuggestions } from '../features/reminders/Suggestions';
+import { useReminderComposer } from '../features/reminders/store';
 import { LiveCallsBar } from '../features/calls/LiveCallsBar';
 import { CallHost } from '../features/calls/CallHost';
+import { AskBar, CopilotHost, NewSheetHost, PhoneBar, Rail } from '../components/v2';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
-// ------------------------------------------------------------------ helpers
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: () => void) {
-  useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onOutside(); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  });
-}
-
 const REMINDER_TYPES = new Set(['Reminder', 'Nudge', 'DueSoon', 'Overdue']);
-// ------------------------------------------------------------------ sidebar
-function Sidebar() {
-  const { sidebarCollapsed, sidebarOpen, closeSidebar } = useUi();
-  const ctx = useAuth((s) => s.ctx);
-  const personal = useIsPersonal();
-  const canChat = !personal && ctx?.current?.role !== 'Guest' && !ctx?.user.isPlatformAdmin;
-  const wid = ctx?.current?.id;
-  // Unread messages: kept current by live events; the slow refresh is only a safety net.
-  const unread = useQuery({ queryKey: chatKeys.unread(wid ?? ''), queryFn: () => chatApi.unread(), enabled: !!wid && canChat, refetchInterval: 90_000, staleTime: 30_000 });
-  // The unread count is also in the tab title, so it shows when the app is in the background.
-  const unreadCount = unread.data?.count ?? 0;
-  useEffect(() => { setTitleParts({ unread: canChat ? unreadCount : 0 }); }, [unreadCount, canChat]);
-  const isPlatformAdmin = !!ctx?.user.isPlatformAdmin;
-  const reminders = useReminderCounts(!!wid && !isPlatformAdmin);
-  // The sidebar's own identity: a Business/Enterprise workspace is confident enough to show its own name; a Free/Pro workspace (which
-  // might still be "My organization" from sign-up) shows the product name instead, and a personal space shows its own name.
-  const planCode = ctx?.current?.plan.code?.toUpperCase();
-  const brandTitle = isPlatformAdmin ? 'Platform' : personal ? (ctx?.current?.name ?? 'Personal space')
-    : planCode === 'BUSINESS' || planCode === 'ENTERPRISE' ? (ctx?.current?.name ?? 'Project Tracker') : 'Project Tracker';
-  const brandSub = isPlatformAdmin ? 'Administration' : personal ? 'Personal space' : 'Workspace';
-  // The same menu as the command palette; the sidebar adds the unread count to Chat and what needs attention to Reminders.
-  const groups = useMainNav().map((g) => ({ ...g, items: g.items.map((i) => (i.to === '/chat' ? { ...i, badge: unread.data?.count }
-    : i.to === '/reminders' ? { ...i, badge: reminders.data?.now } : i)) }));
-
-  return (
-    <>
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${sidebarOpen ? 'open' : ''}`} id="sidebar">
-        {isPlatformAdmin || !ctx ? (
-          <div className="sidebar-brand">
-            <div className="brand-mark"><BrandMark /></div>
-            <div className="brand-text"><strong title={brandTitle}>{brandTitle}</strong><span>{brandSub}</span></div>
-          </div>
-        ) : <WorkspaceSwitcher brand={{ title: brandTitle, sub: brandSub }} />}
-        <SidebarNav groups={groups} collapsed={sidebarCollapsed} onNavigate={closeSidebar} />
-        {ctx && <AccountDock />}
-      </aside>
-      <div className={`sidebar-overlay ${sidebarOpen ? 'show' : ''}`} onClick={closeSidebar} />
-    </>
-  );
-}
 
 // ------------------------------------------------------------------ desktop notifications
 /**
- * Shows a system notification (and plays the alert sound) for new items the user opted into ("Desktop" in Notification Center → Preferences) while
+ * Shows a system notification (and plays the alert sound) for new items the user opted into (Settings › Notifications › Delivery) while
  * the app is open - also when they are in another tab, window or app. Looks every 15 seconds, and straight away when the live connection
  * says someone else changed something or a mention arrived. When push is on for this device, the push already brings the notification
  * (and the page plays the sound when it arrives), so this only covers devices without push.
@@ -140,248 +74,34 @@ function DesktopNotifier() {
   return null;
 }
 
-// ------------------------------------------------------------------ top bar pieces
-function GlobalSearch() {
-  const [q, setQ] = useState('');
-  const [debounced, setDebounced] = useState('');
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLInputElement>(null);
-  const nav = useNavigate();
-  const searchWid = useAuth((s) => s.ctx?.current?.id);
-  useClickOutside(ref, () => setOpen(false));
-
-  useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 250); return () => clearTimeout(t); }, [q]);
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      const el = document.activeElement as HTMLElement | null;
-      const tag = el?.tagName ?? '';
-      if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(tag) && !el?.isContentEditable) { e.preventDefault(); input.current?.focus(); }
-    };
-    document.addEventListener('keydown', h);
-    return () => document.removeEventListener('keydown', h);
-  }, []);
-
-  const { data, isFetching } = useQuery({
-    queryKey: ['search', searchWid, debounced], queryFn: () => insightApi.search(debounced), enabled: debounced.length >= 2,
-  });
-
-  const go = (h: { type: string; id: string; projectId: string | null; taskId: string | null }) => {
-    setOpen(false); setQ('');
-    nav(searchHitLink(h));
-  };
-  const groups: Record<string, string> = { task: 'Tasks', issue: 'Issues', action: 'Action items', work: 'Operational work', project: 'Projects', team: 'Teams', member: 'People', comment: 'Comments', file: 'Files', label: 'Labels' };
-  const icons: Record<string, IconName> = { task: 'check', issue: 'bug', action: 'flag', work: 'bolt', project: 'folder', team: 'users', member: 'user', comment: 'message', file: 'paperclip', label: 'tag' };
-  const hits = data?.hits ?? [];
-
-  return (
-    <div className="global-search" ref={ref}>
-      <span className="search-icon"><Icon name="search" /></span>
-      <input ref={input} type="search" placeholder="Search work, people or a key (WT-12)" autoComplete="off" aria-label="Global search" value={q}
-        onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
-        onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); input.current?.blur(); } }} />
-      {!q && <button type="button" className="kbd kbd-btn" title="Command palette (Ctrl K)" onClick={openPalette}>Ctrl K</button>}
-      {open && debounced.length >= 2 && (
-        <div className="search-results">
-          {isFetching && !hits.length ? <div className="sr-empty">Searching…</div>
-            : !hits.length ? <div className="sr-empty">No results for “{debounced}”</div>
-            : Object.keys(groups).filter((t) => hits.some((h) => h.type === t)).map((t) => (
-              <div key={t}>
-                <div className="sr-group-title">{groups[t]}</div>
-                {hits.filter((h) => h.type === t).map((h) => (
-                  <button key={h.id} className="sr-item" onClick={() => go(h)}>
-                    <Icon name={icons[t]} />
-                    <span className="sr-item-main"><span className="sr-item-title">{h.title}</span>{h.subtitle && <span className="sr-item-sub">{h.subtitle}</span>}</span>
-                  </button>
-                ))}
-              </div>
-            ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Which workspace this is, and the way to another one. In the sidebar it is the brand block itself (name and kind, with a chevron), as
- * in the design; the menu lists every workspace this person belongs to and creating an organization.
- */
-function WorkspaceSwitcher({ brand }: { brand?: { title: string; sub: string } }) {
-  const ctx = useAuth((s) => s.ctx)!;
-  const switchWorkspace = useAuth((s) => s.switchWorkspace);
-  const [open, setOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useClickOutside(ref, () => setOpen(false));
-  const cur = ctx.current;
-
-  const pick = async (id: string) => {
-    setOpen(false);
-    if (id === cur?.id) return;
-    try { await switchWorkspace(id); toast('Workspace switched.', 'info'); }
-    catch { toast('Could not switch workspace.', 'error'); }
-  };
-
-  return (
-    <div className={brand ? 'dropdown brand-switch-wrap' : 'dropdown'} ref={ref}>
-      {brand ? (
-        <button type="button" className="sidebar-brand brand-switch" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}
-          aria-label={`${brand.title}, ${brand.sub}. Switch workspace`} title="Switch workspace">
-          <span className="brand-mark"><BrandMark /></span>
-          <span className="brand-text"><strong title={brand.title}>{brand.title}</strong><span>{brand.sub}</span></span>
-          <Icon name="chevronD" size={14} className="brand-chev" />
-        </button>
-      ) : (
-        <button className="workspace-switch" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
-          <span className="ws-avatar">{(cur?.name ?? '?')[0].toUpperCase()}</span>
-          <span className="ws-name">{cur?.name ?? 'Select workspace'}</span>
-          <Icon name="chevronD" size={14} />
-        </button>
-      )}
-      {open && (
-        <div className="dropdown-panel left" role="menu" style={{ width: 300 }}>
-          <div className="dp-head"><strong>Workspaces</strong></div>
-          {ctx.workspaces.map((w) => (
-            <button key={w.id} className={`dp-menu-item ${w.id === cur?.id ? 'active' : ''}`} onClick={() => pick(w.id)} role="menuitem">
-              <span className="ws-avatar">{w.name[0].toUpperCase()}</span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.name}</span>
-                <span className="muted" style={{ fontSize: 11 }}>{w.type} · {w.role} · {w.planCode}</span>
-              </span>
-              {w.id === cur?.id && <Icon name="tick" />}
-            </button>
-          ))}
-          <div className="dp-sep" />
-          <button className="dp-menu-item" onClick={() => { setOpen(false); setCreating(true); }}><Icon name="plus" /> Create organization</button>
-        </div>
-      )}
-      {creating && <CreateOrganizationModal onClose={() => setCreating(false)} />}
-    </div>
-  );
-}
-
-function NotificationsMenu() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const nav = useNavigate();
-  useClickOutside(ref, () => setOpen(false));
-  const wid = useAuth((s) => s.ctx?.current?.id);
-
-  const unread = useQuery({ queryKey: [wid, 'notifications', 'unread'], queryFn: notificationApi.unread, refetchInterval: 60_000, enabled: !!wid });
-  const list = useQuery({ queryKey: [wid, 'notifications', 'recent'], queryFn: () => notificationApi.list(1, true), enabled: open && !!wid });
-  const [pane, setPane] = useState<'notifications' | 'reminders'>('notifications');
-  // Reminders live in the same place as notifications: what is coming up, and one tap to add one from any page.
-  const reminders = useQuery({ queryKey: [wid, 'reminders', 'bell'], queryFn: reminderApi.list, enabled: open && !!wid });
-  // Reminders that have gone off and wait for the person (fired, not done) come first; then what is coming up.
-  const openReminders = reminders.data?.open ?? [];
-  const waiting = openReminders.filter((r) => r.state === 'Fired' && !r.completedAt).sort((a, b) => ((a.lastFiredAt ?? '') > (b.lastFiredAt ?? '') ? -1 : 1));
-  const upcoming = openReminders.filter((r) => r.state !== 'Fired' && r.nextFireAt).sort((a, b) => (a.nextFireAt! < b.nextFireAt! ? -1 : 1));
-  const shownReminders = [...waiting.map((r) => ({ r, due: true })), ...upcoming.map((r) => ({ r, due: false }))].slice(0, 8);
-  const refresh = () => queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] });
-  const readAll = useMutation({ mutationFn: notificationApi.readAll, onSuccess: refresh });
-  const count = unread.data?.count ?? 0;
-
-  const openItem = async (n: { id: string; link: string | null; isRead: boolean }) => {
-    setOpen(false);
-    if (!n.isRead) { await notificationApi.read(n.id); refresh(); }
-    if (n.link) nav(n.link);
-  };
-
-  return (
-    <div className="dropdown" ref={ref}>
-      <button className="icon-btn" title="Notifications" aria-label={`Notifications${count ? `, ${count} unread` : ''}`} aria-haspopup="true" onClick={() => setOpen((o) => !o)}>
-        <Icon name="bell" />
-        {count > 0 && <span className="notif-dot">{count > 9 ? '9+' : count}</span>}
-      </button>
-      {open && (
-        // Anchored to the window, not the bell: next to the screen's edge it would otherwise run off it and cut off its buttons.
-        <div className="dropdown-panel notif-panel" data-testid="bell-panel">
-          <div className="dp-head">
-            <div className="dp-tabs" role="tablist" aria-label="Show">
-              <button type="button" role="tab" aria-selected={pane === 'notifications'} className={pane === 'notifications' ? 'on' : ''} onClick={() => setPane('notifications')}>Notifications{count > 0 ? ` (${count > 99 ? '99+' : count})` : ''}</button>
-              <button type="button" role="tab" aria-selected={pane === 'reminders'} className={pane === 'reminders' ? 'on' : ''} onClick={() => setPane('reminders')}>Reminders{waiting.length > 0 ? ` (${waiting.length})` : ''}</button>
-            </div>
-            {pane === 'notifications' && count > 0 && <button className="link" style={{ fontSize: 12 }} onClick={() => readAll.mutate()}>Mark all read</button>}
-            {pane === 'reminders' && <button className="link" style={{ fontSize: 12 }} onClick={() => { setOpen(false); openReminderComposer(); }}>+ New reminder</button>}
-          </div>
-          {pane === 'reminders' && <ReminderSuggestions compact />}
-          {pane === 'reminders' ? (reminders.isLoading ? <div className="sr-empty">Loading…</div>
-            : shownReminders.length === 0 ? <div className="sr-empty">No reminders waiting or coming up. Add one from here, or "Remind me" on any task or ticket.</div>
-            : shownReminders.map(({ r, due }) => (
-              <button key={r.id} className={`dp-item ${due ? 'unread' : ''}`} onClick={() => { setOpen(false); nav(r.link ?? '/reminders'); }} data-testid={due ? 'bell-reminder-due' : 'bell-reminder'}>
-                <span className={`dp-ico ds-tile-ico ${due ? 'warning' : 'neutral'}`} aria-hidden="true"><Icon name={due ? 'bell' : 'alarm'} size={16} /></span>
-                <span className="dp-main"><b>{r.title}</b>{r.targetKey && <span>{r.targetKey}{r.targetTitle ? ` · ${r.targetTitle}` : ''}</span>}
-                  <span className="muted" style={{ display: 'block', fontSize: 11 }}>{due
-                    ? `Due ${r.lastFiredAt ? timeAgo(r.lastFiredAt) : 'now'} · waiting for you`
-                    : `${new Date(r.nextFireAt!).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}${r.recurrenceText ? ` · ${r.recurrenceText}` : ''}`}</span></span>
-              </button>
-            )))
-          : list.isLoading ? <div className="sr-empty">Loading…</div>
-            : !list.data?.items.length ? <div className="sr-empty">You're all caught up.</div>
-            : list.data.items.slice(0, 8).map((n) => (
-              <div key={n.id} className={`dp-note ${n.isRead ? '' : 'unread'}`}>
-                <button className={`dp-item ${n.isRead ? '' : 'unread'}`} onClick={() => openItem(n)}>
-                  <NotifIcon type={n.type} />
-                  <span className="dp-main"><b>{n.title}</b>{n.body && <span>{n.body}</span>}<span className="muted" style={{ display: 'block', fontSize: 11 }}>{timeAgo(n.shownAt ?? n.createdAt)}</span></span>
-                </button>
-                <NotificationActions n={n} />
-              </div>
-            ))}
-          <div className="dp-sep" />
-          <div className="dp-foot-row">
-            {pane === 'reminders'
-              ? <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/reminders'); }}><Icon name="alarm" size={14} /> All reminders</button>
-              : <button className="dp-menu-item" onClick={() => { setOpen(false); nav('/notifications'); }}><Icon name="inbox" size={14} /> Notification Center</button>}
-            <button className="dp-menu-item dp-menu-icon" aria-label="Notification settings" title="Notification settings" onClick={() => { setOpen(false); nav('/notifications/preferences'); }}><Icon name="settings" size={14} /></button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Topbar() {
-  const { toggleSidebar } = useUi();
-  const isPlatformAdmin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
-  return (
-    <header className="topbar">
-      <button className="icon-btn" onClick={toggleSidebar} title="Toggle sidebar" aria-label="Toggle sidebar"><Icon name="menu" /></button>
-      {isPlatformAdmin ? null : <GlobalSearch />}
-      <div className="topbar-actions">
-        {!isPlatformAdmin && <RunningTimer />}
-        {!isPlatformAdmin && <TeamLensPicker />}
-        <ThemeSwitch className="theme-toggle" />
-        {!isPlatformAdmin && <NotificationsMenu />}
-        <TopbarMe />
-      </div>
-    </header>
-  );
-}
-
 /** The reminder form, loaded the first time someone opens it. */
 function ComposerSlot() {
   const open = useReminderComposer((s) => !!s.draft);
   return open ? <Suspense fallback={null}><ReminderComposerHost /></Suspense> : null;
 }
 
+/**
+ * The v2 shell: the 84px rail on the left (the phone bar at the bottom of a phone), the page, the Ask bar floating at the bottom, and the
+ * things every page can open: + New, the copilot panel, the command palette, calls, reminders and toasts.
+ */
 export function AppLayout({ children }: { children?: ReactNode }) {
-  const collapsed = useUi((s) => s.sidebarCollapsed);
   const loc = useLocation();
   const main = useRef<HTMLElement>(null);
   const phone = useIsMobile();
   const shell = useRef<HTMLDivElement>(null);
-  // A chat open on Home (?c=…) is a conversation too: Home is where the assistant lives.
+  // A conversation fills the screen on a phone: a chat, or the assistant's conversation on Home (?c=…).
   const homeChat = (loc.pathname === '/' || loc.pathname === '') && new URLSearchParams(loc.search).has('c');   // paths are inside the workspace's basename
-  const conversation = homeChat || (/(?:^|\/)(?:ai|chat)(?:\/[^/]+)?\/?$/.test(loc.pathname) && !loc.pathname.endsWith('/ai/operations'));
+  const conversation = homeChat || /^\/talk\/[^/]+\/?$/.test(loc.pathname);
   useConversationViewport(phone && conversation, shell);
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);
+  const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
   useEffect(() => { window.scrollTo({ top: 0 }); }, [loc.pathname]);
   // Every page's code, fetched quietly once the app is idle, so a click shows the next page at once instead of a blank pause.
   useEffect(() => { prefetchPages(); }, []);
   const page = <><LiveCallsBar /><Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense></>;
   return (
-    <div ref={shell} className={`app-shell ${phone ? 'm-shell' : ''} ${phone && conversation ? 'm-conversation' : ''}`}>
+    <div ref={shell} className={`app-shell v2-shell ${phone ? 'm-shell' : ''} ${phone && conversation ? 'm-conversation' : ''}`}>
       <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); main.current?.focus(); }}>Skip to content</a>
       <LensSync />
       {phone ? (
@@ -389,19 +109,21 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           <PlatformBanner />
           <MobileTopBar />
           <main id="main-content" className="content" ref={main} tabIndex={-1}>{page}</main>
-          <TabBar />
+          <PhoneBar />
           {!conversation && <PullToRefresh />}
         </div>
       ) : (
         <>
-          <Sidebar />
-          <div className={`main ${collapsed ? 'expanded' : ''}`}>
+          <Rail />
+          <div className="main v2-main">
             <PlatformBanner />
-            <Topbar />
             <main id="main-content" className="content" ref={main} tabIndex={-1}>{page}</main>
           </div>
         </>
       )}
+      {!admin && !(phone && conversation) && <AskBar />}
+      {!admin && <NewSheetHost />}
+      {!admin && <CopilotHost />}
       <SignInIsland />
       <NetworkPill />
       <CallHost />
@@ -410,7 +132,6 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <DesktopNotifier />
       <AccessWatcher />
       <CommandPalette />
-      <AssistantPanel />
       <ReminderAlerts />
       <AlertsSetup />
       <ComposerSlot />

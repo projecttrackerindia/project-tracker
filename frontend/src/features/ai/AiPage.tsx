@@ -1,4 +1,3 @@
-import { AgentsHubNav } from '../agents/AgentsHubNav';
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode, type RefObject } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -486,7 +485,6 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
 
   return (
     <div className="ai-page">
-    <AgentsHubNav sub="Ask, analyse, plan and get things done" />
     <div className={`ai-shell ${railOpen ? 'rail-open' : ''}`} onDragEnter={onDrag} onDragOver={onDrag} onDragLeave={onDrag} onDrop={onDrag}>
       <Rail list={listQ.data ?? []} loading={listQ.isLoading} current={convId} onNew={newChat} onPick={(cid) => { setRailOpen(false); nav(`/ai/${cid}`); }}
         onChanged={refresh} onDeleted={(cid) => { refresh(); if (cid === convId) newChat(); }} />
@@ -502,7 +500,6 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
             <div><b>{title}</b><span>{streaming ? (live?.stage === 'queued' ? 'Waiting for the assistant…' : live?.stage === 'writing' ? 'Writing…' : live?.route ? `${tierName(live.route.tier)} · thinking…` : 'Choosing how much thinking this needs…') : 'Ask, analyse, plan and get things done'}</span></div>
           </div>
           {/* On a phone the hub bar gives way to the conversation; its other places stay one tap away here. */}
-          <div className="ai-head-hub"><AgentsHubNav compact /></div>
           </div>
           <div className="ai-head-controls">
             <ModeSwitch mode={mode} onChange={setMode} usage={usage} disabled={streaming} />

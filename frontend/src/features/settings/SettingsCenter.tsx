@@ -2,12 +2,12 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
-import { Badge, ErrorState, Modal, PageHead, PageLoader } from '../../components/ui';
+import { Badge, Modal, PageLoader } from '../../components/ui';
 import { formatDateTime, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { GROUP_INFO, SETTINGS_GROUPS, useWorkspaceSections, type SectionDef } from './sections';
+import { useWorkspaceSections, type SectionDef } from './sections';
 import { SETTINGS_INDEX, searchSettings, settingHref, visibleSettings, type SettingEntry } from './settingsIndex';
 import { settingsApi, type ImpactRequest, type SettingChange, type SettingImpact, type SetupCheck } from './settingsApi';
 
@@ -294,43 +294,6 @@ export function SetupHealthCard() {
         </>
       )}
     </section>
-  );
-}
-
-// ================================================================== the Settings home
-
-/** Settings home: find any setting by typing, see what the workspace still lacks, the latest changes, and the seven groups. */
-export function SettingsHome() {
-  const sections = useWorkspaceSections();
-  const admin = useIsAdmin();
-  const canHistory = useCanSeeHistory();
-  const recent = useWsQuery(['settings', 'changes', 'recent'], () => settingsApi.recent(8), { enabled: canHistory, staleTime: 30_000, retry: false });
-  const undo = useUndo();
-  const groups = SETTINGS_GROUPS.map((g) => ({ g, items: sections.filter((s) => s.group === g) })).filter((x) => x.items.length > 0);
-  return (
-    <>
-      <PageHead title="Overview" sub="Everything about how this workspace is set up, in seven groups. Type to find any setting." />
-      <div className="set-home-search"><SettingsSearch autoFocus /></div>
-      {admin && <SetupHealthCard />}
-      <div className="set-groups">
-        {groups.map(({ g, items }) => (
-          <section key={g} className="set-group card" aria-label={g}>
-            <div className="set-group-head"><span className="set-group-ico"><Icon name={GROUP_INFO[g].icon ?? 'settings'} size={17} /></span><div><h3>{g}</h3><p>{GROUP_INFO[g].blurb}</p></div></div>
-            <ul>{items.map((s) => <li key={s.id}><Link to={s.to}><span><b>{s.label}</b><small>{s.blurb}</small></span><Icon name="chevronR" size={14} /></Link></li>)}</ul>
-          </section>
-        ))}
-      </div>
-      {canHistory && (recent.data?.items?.length ?? 0) > 0 && (
-        <section className="card set-history" aria-label="Latest changes">
-          <div className="card-head"><div><h3><Icon name="clock" size={15} /> Latest changes</h3><p>Who changed which setting, from the audit log.</p></div>
-            {sections.some((s) => s.id === 'audit') && <Link className="btn btn-ghost btn-sm" to="/settings/audit">Audit log</Link>}</div>
-          <ul className="set-history-list">
-            {recent.data!.items.map((c) => <ChangeRow key={`${c.key}:${c.auditId}`} c={c} busy={undo.busy === c.auditId} onUndo={() => void undo.run(c)} showPlace={sections.find((s) => s.id === c.section)} />)}
-          </ul>
-        </section>
-      )}
-      {recent.isError && <ErrorState error={recent.error} />}
-    </>
   );
 }
 

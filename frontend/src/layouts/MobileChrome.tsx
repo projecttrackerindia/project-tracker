@@ -1,31 +1,19 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { chatApi, notificationApi } from '../api/endpoints';
+import { notificationApi } from '../api/endpoints';
 import { NotificationActions } from '../features/notifications/NotificationActions';
-import { Icon, type IconName } from '../components/Icon';
+import { Icon } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
-import { AgentMark } from '../components/AgentMark';
 import { Sheet } from '../components/Sheet';
-import { ThemeSwitch } from '../components/ThemeSwitch';
 import { openPalette } from '../components/CommandPalette';
+import { AvatarMenu } from '../components/v2';
 import { initials, timeAgo } from '../lib/format';
 import { haptic } from '../lib/mobile';
 import { useTeamLens } from '../lib/teamLens';
-import { queryClient, useAuth, useCan, useModule } from '../stores/auth';
+import { queryClient, useAuth } from '../stores/auth';
 import { toast } from '../stores/ui';
-import { chatKeys } from '../features/chat/chatStore';
-import { openReminderComposer, useReminderCounts } from '../features/reminders/store';
-import { useWorkspaceSections } from '../features/settings/sections';
-import { inSidebar, useMainNav } from './navigation';
-import { usePinned } from './navPrefs';
 import { CreateOrganizationModal, NotifIcon } from './parts';
-import { SUPPORT_EMAIL, supportMailto } from '../lib/support';
-import { planStatus } from './AccountDock';
-
-const TaskModal = lazy(() => import('../features/tasks/TaskModal').then((m) => ({ default: m.TaskModal })));
-const ProjectFormModal = lazy(() => import('../features/projects/ProjectFormModal').then((m) => ({ default: m.ProjectFormModal })));
-const WorkTaskModal = lazy(() => import('../features/work/WorkTaskModal').then((m) => ({ default: m.WorkTaskModal })));
 
 const hue = (name: string) => { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 
@@ -74,6 +62,7 @@ export function MobileTopBar() {
             <Icon name="bell" size={21} />{unread > 0 && <em className="m-badge">{unread > 9 ? '9+' : unread}</em>}
           </button>
         )}
+        <AvatarMenu />
       </div>
       {sheet === 'org' && !admin && <OrgSheet onClose={() => setSheet(null)} />}
       {sheet === 'lens' && <LensSheet onClose={() => setSheet(null)} />}
@@ -160,182 +149,7 @@ function NotificationsSheet({ onClose }: { onClose: () => void }) {
           ))}
         </ul>
       )}
-      <button type="button" className="m-text-btn center" onClick={() => { onClose(); nav('/notifications'); }}>See all notifications</button>
+      <button type="button" className="m-text-btn center" onClick={() => { onClose(); nav('/settings/notifications?sub=history'); }}>See all notifications</button>
     </Sheet>
-  );
-}
-
-// ------------------------------------------------------------------ the tab bar
-
-interface Tab { to: string; label: string; icon: IconName; end?: boolean; badge?: number; match?: (p: string) => boolean }
-
-/**
- * The bar at the bottom of a phone: the four places used most, a raised button to create something, and More for everything else. Which
- * places appear follows what this person may use, so nobody gets a tab that leads to a refusal.
- */
-export function TabBar() {
-  const ctx = useAuth((s) => s.ctx)!;
-  const { pathname } = useLocation();
-  const groups = useMainNav();
-  const admin = ctx.user.isPlatformAdmin;
-  const wid = ctx.current?.id;
-  const canChat = !admin && ctx.current?.type !== 'Personal' && ctx.current?.role !== 'Guest';
-  const chat = useQuery({ queryKey: chatKeys.unread(wid ?? ''), queryFn: () => chatApi.unread(), enabled: !!wid && canChat, refetchInterval: 90_000, staleTime: 30_000 });
-  const reminders = useReminderCounts(!!wid && !admin);
-  const [more, setMore] = useState(false);
-  const [create, setCreate] = useState(false);
-
-  const all = useMemo(() => groups.flatMap((g) => g.items).filter(inSidebar), [groups]);
-  const pins = usePinned(groups);
-  const find = (to: string) => all.find((i) => i.to === to);
-  const badgeOf = (to: string) => (to === '/chat' ? chat.data?.count : to === '/reminders' ? reminders.data?.now : undefined);
-
-  const tabs: Tab[] = useMemo(() => {
-    if (admin) return all.slice(0, 3).map((i) => ({ to: i.to, label: i.label === 'Organizations' ? 'Orgs' : i.label, icon: i.icon, end: i.end }));
-    // The person's own pins come first (from Customize in the sidebar), then the usual places.
-    const usual = ['/projects', '/mailbox', '/chat', '/calendar'].map(find).filter(Boolean) as typeof all;
-    const picks = [...pins.filter((p) => p.to !== '/'), ...usual].filter((x, i, list) => list.findIndex((y) => y.to === x.to) === i).slice(0, 2);
-    const label: Record<string, string> = { '/': 'Home', '/command-center': 'Focus' };
-    // Home lives at / and at /command-center: both light this tab, so the last tab never takes the name "Home" a second time.
-    return [{ to: '/', label: 'Home', icon: 'dashboard' as IconName, end: true, match: (p: string) => p === '/' || p === '/command-center' }, ...picks.map((i) => ({ to: i.to, label: label[i.to] ?? i.label, icon: i.icon, badge: badgeOf(i.to), match: i.match }))];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, admin, pins, chat.data?.count, reminders.data?.now]);
-
-  // Something in the menu needs attention that no tab shows: a dot on More says so.
-  const hidden = !admin && ['/chat', '/reminders'].filter((to) => !tabs.some((t) => t.to === to) && find(to) && (badgeOf(to) ?? 0) > 0).length > 0;
-  const left = tabs.slice(0, 2), right = tabs.slice(2);
-  const isOn = (t: Tab) => (t.match ? t.match(pathname) : t.end ? pathname === t.to : pathname === t.to || pathname.startsWith(`${t.to}/`));
-
-  // A page that lives in the menu (Account, Settings, People ...) has no tab of its own: the last one takes its name, so the capsule is never
-  // a row of bare icons with a gap beside them.
-  const inTabs = tabs.some(isOn);
-  const here = all.find((i) => (i.match ? i.match(pathname) : i.end ? pathname === i.to : pathname === i.to || pathname.startsWith(`${i.to}/`)));
-  const hereLabel = pathname.includes('/account') ? 'Account' : pathname.includes('/settings') ? 'Settings' : here?.label ?? 'More';
-  const lastOn = more || !inTabs;
-
-  const tab = (t: Tab) => (
-    <NavLink key={t.to} to={t.to} end={t.end} className={`m-tab ${isOn(t) ? 'on' : ''}`} onClick={() => haptic(6)} aria-label={t.label}>
-      <span className="m-tab-ico"><Icon name={t.icon} size={22} />{!!t.badge && <em className="m-badge">{t.badge > 99 ? '99+' : t.badge}</em>}</span>
-      <span className="m-tab-label">{t.label}</span>
-    </NavLink>
-  );
-
-  return (
-    <>
-      {/* A floating capsule: the open place shows its name, the others are just their icons; Create floats beside it. */}
-      <nav className="m-tabs" aria-label="Main">
-        <div className="m-pill">
-          {[...left, ...right].map(tab)}
-          <button type="button" className={`m-tab ${lastOn ? 'on' : ''}`} onClick={() => { haptic(6); setMore(true); }} aria-label="More">
-            <span className="m-tab-ico">{lastOn && here?.id === 'agents' ? <AgentMark size={26} animated /> : lastOn && here ? <Icon name={here.icon} size={22} /> : <Icon name="more" size={22} />}{hidden && <i className="m-dot top" />}</span>
-            <span className="m-tab-label">{more || inTabs ? 'More' : hereLabel}</span>
-          </button>
-        </div>
-        {!admin && <button type="button" className={`m-fab ${create ? 'open' : ''}`} onClick={() => { haptic(12); setCreate(true); }} aria-label="Create"><Icon name="plus" size={26} /></button>}
-      </nav>
-      {more && <MoreSheet onClose={() => setMore(false)} badgeOf={badgeOf} />}
-      {create && <CreateSheet onClose={() => setCreate(false)} />}
-    </>
-  );
-}
-
-// ------------------------------------------------------------------ more
-
-function MoreSheet({ onClose, badgeOf }: { onClose: () => void; badgeOf: (to: string) => number | undefined }) {
-  const ctx = useAuth((s) => s.ctx)!;
-  const logout = useAuth((s) => s.logout);
-  const groups = useMainNav();
-  const sections = useWorkspaceSections();
-  const nav = useNavigate();
-  const { user, current } = ctx;
-  const admin = user.isPlatformAdmin;
-  const plan = !admin ? current?.plan : undefined;
-  const status = plan ? planStatus(plan) : null;
-  const go = (to: string) => () => { onClose(); nav(to); };
-
-  return (
-    <Sheet title="Menu" onClose={onClose}>
-      <button type="button" className="m-me-card" onClick={go('/account')}>
-        <span className="m-me lg">{initials(user.displayName)}</span>
-        <span className="m-row-main"><b>{user.displayName}</b><small>{user.email}</small>
-          {plan && <em className="m-plan">{plan.name} plan{status && status.short !== 'Active' ? ` · ${status.short}` : ''}</em>}
-          {admin && <em className="m-plan">Platform administrator</em>}</span>
-        <Icon name="chevronR" size={18} />
-      </button>
-
-      {groups.map((g) => {
-        const items = g.items.filter(inSidebar);
-        if (!items.length) return null;
-        return (
-          <section key={g.title} className="m-group">
-            <h4>{g.title}</h4>
-            <div className="m-tiles">
-              {items.map((i) => {
-                const b = badgeOf(i.to);
-                return (
-                  <NavLink key={i.to} to={i.to} end={i.end} className="m-tile" onClick={() => { haptic(6); onClose(); }}>
-                    <span className="m-tile-ico"><Icon name={i.icon} size={22} />{!!b && <em className="m-badge">{b > 99 ? '99+' : b}</em>}</span>
-                    <span>{i.label}</span>
-                  </NavLink>
-                );
-              })}
-            </div>
-          </section>
-        );
-      })}
-
-      <section className="m-group">
-        <h4>Account</h4>
-        <ul className="m-list flat">
-          <li><div className="m-row static"><span className="m-row-ico"><Icon name="moon" size={18} /></span><span className="m-row-main"><b>Appearance</b><small>Light or dark</small></span><ThemeSwitch className="theme-toggle" /></div></li>
-          {sections.length > 0 && <li><button type="button" className="m-row" onClick={go('/settings')}><span className="m-row-ico"><Icon name="settings" size={18} /></span><span className="m-row-main"><b>Workspace settings</b></span><Icon name="chevronR" size={16} /></button></li>}
-          <li><a className="m-row" href={supportMailto('Help with Project Tracker')} onClick={onClose}><span className="m-row-ico"><Icon name="mail" size={18} /></span><span className="m-row-main"><b>Help &amp; support</b><small>{SUPPORT_EMAIL}</small></span><Icon name="chevronR" size={16} /></a></li>
-        </ul>
-      </section>
-      <button type="button" className="m-signout" onClick={() => { onClose(); void logout(); }}><Icon name="logout" size={18} /> Sign out</button>
-    </Sheet>
-  );
-}
-
-// ------------------------------------------------------------------ create
-
-type Making = 'task' | 'project' | 'work' | null;
-
-function CreateSheet({ onClose }: { onClose: () => void }) {
-  const nav = useNavigate();
-  const taskModule = useModule('tasks');
-  const projectModule = useModule('projects');
-  const workModule = useModule('work');
-  const canTask = useCan('tasks.create') && taskModule > 0 && projectModule > 0;
-  const canProject = useCan('projects.create') && projectModule >= 2;
-  const canWork = useCan('work.create') && workModule >= 2;
-  const [making, setMaking] = useState<Making>(null);
-  const done = () => { setMaking(null); onClose(); };
-
-  const Action = ({ icon, title, sub, onClick, tone }: { icon: IconName; title: string; sub: string; onClick: () => void; tone: string }) => (
-    <button type="button" className="m-make" onClick={() => { haptic(10); onClick(); }}>
-      <span className={`m-make-ico ${tone}`}><Icon name={icon} size={22} /></span><span className="m-row-main"><b>{title}</b><small>{sub}</small></span>
-    </button>
-  );
-  const hold = (node: ReactNode) => <Suspense fallback={null}>{node}</Suspense>;
-
-  return (
-    <>
-      {!making && (
-        <Sheet title="Create" onClose={onClose}>
-          <div className="m-makes">
-            {canTask && <Action icon="check" tone="violet" title="Task" sub="Add work to a project" onClick={() => setMaking('task')} />}
-            <Action icon="alarm" tone="amber" title="Reminder" sub="Be nudged at the right time" onClick={() => { onClose(); openReminderComposer(); }} />
-            {canProject && <Action icon="folder" tone="blue" title="Project" sub="Start something new" onClick={() => setMaking('project')} />}
-            {canWork && <Action icon="bolt" tone="orange" title="Work task" sub="Support, bugs and requests" onClick={() => setMaking('work')} />}
-            <Action icon="mail" tone="blue" title="Email" sub="Write from your connected mail" onClick={() => { onClose(); nav('/mailbox?compose=1'); }} />
-            {projectModule > 0 && <Action icon="video" tone="violet" title="Meeting" sub="Schedule one, start a call, or send your notetaker" onClick={() => { onClose(); nav('/meet?new=schedule'); }} />}
-          </div>
-        </Sheet>
-      )}
-      {making === 'task' && hold(<TaskModal onClose={done} />)}
-      {making === 'project' && hold(<ProjectFormModal onClose={done} onSaved={(id: string) => { done(); nav(`/projects/${id}`); }} />)}
-      {making === 'work' && hold(<WorkTaskModal onClose={done} />)}
-    </>
   );
 }

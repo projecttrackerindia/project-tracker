@@ -35,7 +35,7 @@ export function SignInHistory() {
     setBusy(s.id);
     try {
       await meApi.notMe(s.id);
-      toast('That sign-in was ended. Change your password now.', 'warning', { label: 'Change password', onClick: () => nav('/account/security?change-password=1') });
+      toast('That sign-in was ended. Change your password now.', 'warning', { label: 'Change password', onClick: () => nav('/settings/profile?sub=security&change-password=1') });
       invalidateWorkspace(wid, 'sign-ins'); invalidateWorkspace(wid, 'sessions');
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not end that sign-in.', 'error'); }
     finally { setBusy(null); }

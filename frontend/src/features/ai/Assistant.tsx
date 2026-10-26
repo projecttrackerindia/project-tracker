@@ -1,10 +1,8 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Fragment, useState, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { ApiError, get, post, put } from '../../api/client';
 import { actionItemApi } from '../../api/endpoints';
 import type { Priority, WorkItem } from '../../api/types';
-import { AgentMark } from '../../components/AgentMark';
 import { Icon } from '../../components/Icon';
 import { EmptyState, Modal, PageLoader, PriorityBadge } from '../../components/ui';
 import { formatDate, formatDateTime } from '../../lib/format';
@@ -91,33 +89,6 @@ export { Sparkle };
 
 function Thinking({ label }: { label: string }) {
   return <div className="asst-thinking"><span className="asst-orb" /><span>{label}</span></div>;
-}
-
-/** Top-bar button that opens the assistant (shown only when it can be used). */
-export function AssistantButton() {
-  const enabled = useAi();
-  const ask = useAssistant((s) => s.ask);
-  if (!enabled) return null;
-  return <button type="button" className="asst-top-btn" onClick={() => ask()} title="Ask the Agent (Ctrl K, then type)" aria-label="Ask Agent"><AgentMark size={22} animated /><span>Ask Agent</span></button>;
-}
-
-/**
- * The assistant has its own page (/ai). Anything that used to open the slide-over - the top bar, the command palette, "AI summary" on the
- * portfolio - still just asks the store to open it, and lands there with the question in hand.
- */
-export function AssistantPanel() {
-  const { open, question, summary, close } = useAssistant();
-  const nav = useNavigate();
-  const handledSummary = useRef(0);
-  useEffect(() => {
-    if (!open) return;
-    const summarise = summary !== handledSummary.current;
-    handledSummary.current = summary;
-    close();
-    const ask = summarise ? 'Give me an executive summary of all active projects: what needs attention, what is going well and what I should do next.' : question || undefined;
-    nav('/ai', { state: ask ? { ask, ts: Date.now() } : null });
-  }, [open, question, summary, close, nav]);
-  return null;
 }
 
 // ------------------------------------------------------------------ contextual features
