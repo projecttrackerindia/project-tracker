@@ -202,8 +202,8 @@ try{
  await panel.getByRole('button',{name:'Close comments'}).click();
  await page.setViewportSize({width:1440,height:1000});checks.push('phone-page');
 
- // DocTracker: ask the pages, words inside pages, drafts to approve, write with AI, team spaces, drag a page into another.
- await page.goto(origin+'/preview-org/doctracker');
+ // DocTracker (v2: Library › Docs › ··· › API workspace, ?view=home): ask the pages, words inside pages, drafts to approve, write with AI, team spaces, drag a page into another.
+ await page.goto(origin+'/preview-org/library/docs?view=home');
  const search=page.getByLabel('Search DocTracker or ask a question');
  await search.fill('How long do refunds take?');await search.press('Enter');
  const answer=page.locator('.dt-ask-card');
@@ -239,7 +239,7 @@ try{
  const draftReq=writes.find(w=>w.ep==='/api/v1/documents/ai/draft');assert.ok(draftReq,'the draft was asked for');
  await page.locator('.pg-title').waitFor();checks.push('write-with-ai');
 
- await page.goto(origin+'/preview-org/doctracker');
+ await page.goto(origin+'/preview-org/library/docs?view=home');
  const tree=page.locator('nav.dt-tree');
  await tree.locator('.ds-rail-heading',{hasText:'Team spaces'}).waitFor();
  await tree.getByRole('button',{name:'Open Collections desk'}).click();
@@ -265,7 +265,7 @@ try{
  await shot(page,'tree-1440.png');checks.push('drag-reorder');
 
  await page.setViewportSize({width:390,height:844});
- await page.goto(origin+'/preview-org/doctracker');await page.locator('.dt-drafts').waitFor();
+ await page.goto(origin+'/preview-org/library/docs?view=home');await page.locator('.dt-drafts').waitFor();
  await fitsPhone(page,'DocTracker home on a phone',assert);
  await shot(page,'doctracker-390.png');checks.push('phone-home');
  // The page tree on a phone, in dark mode.

@@ -106,8 +106,9 @@ try{
  const noScroll=(page)=>fitsPhone(page,'phone',assert);
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>{errors.push(e.message);console.log('STACK',e.stack?.split('\n').slice(0,6).join(' | '))});page.on('console',m=>{if(m.type()==='error')console.error('console:',m.text().slice(0,300));});await page.setViewportSize({width:1440,height:1000});
 
- // The old Documents link lands in DocTracker; the Control Center sums up scores.
+ // The old Documents link lands in Library › Docs; its ··· opens DocTracker's API workspace, whose Control Center sums up scores.
  await page.goto(origin+'/preview-org/documents');await page.waitForURL(/\/library\/docs/);
+ await page.getByRole('button',{name:'More in Docs'}).click();await page.getByRole('menuitem',{name:/API workspace/}).click();await page.waitForURL(/[?&]view=home/);
  await page.locator('.dt-home .dt-hero',{hasText:'API quality'}).waitFor();
  await page.locator('.dl-starter').nth(4).waitFor();assert.equal(await page.locator('.dl-starter').count(),5,'write with AI, a blank page and three templates');await page.locator('.dl-rows .dl-row',{hasText:'Payments BRD'}).first().waitFor();
  assert.equal(await page.locator('.dt-kpis').count(),0,'no wall of counters');
@@ -137,7 +138,7 @@ try{
  await page.locator('.dt-page-row',{hasText:'Engineering handbook'}).hover();await page.getByRole('button',{name:'Add a page inside Engineering handbook'}).click();
  for(let i=0;i<20&&writes.filter(w=>w.ep==='/api/v1/documents').length===before;i++)await page.waitForTimeout(100);
  assert.equal(writes.filter(w=>w.ep==='/api/v1/documents').at(-1).b.parentId,'p1');checks.push('pages');
- await page.goto(origin+'/preview-org/doctracker');await page.locator('.dt-home').waitFor();
+ await page.goto(origin+'/preview-org/library/docs?view=home');await page.locator('.dt-home').waitFor();
 
  // The tree: project ▸ overview, architecture, documents, tags ▸ endpoints.
  await page.getByRole('button',{name:'Open Payments Core'}).click();

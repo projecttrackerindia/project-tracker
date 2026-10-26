@@ -41,9 +41,11 @@ export function useDtNav() {
   const navigate = useNavigate();
   const path = useLocation().pathname;
   const onTracker = path === '/doctracker' || path === '/library' || path === '/library/docs';   // v2: DocTracker is Library › Docs
-  const go = (next: { p?: string | null; t?: ProjectTab | null; ep?: string | null; view?: 'security' | null }) => {
+  const go = (next: { p?: string | null; t?: ProjectTab | null; ep?: string | null; view?: 'security' | 'home' | null }) => {
     const q = new URLSearchParams();
-    if (next.view) q.set('view', next.view);
+    // v2: Library › Docs is the documents list; DocTracker's own home (the API workspace's control center) is ?view=home, so going "home"
+    // from inside DocTracker stays in it.
+    if (next.view) q.set('view', next.view); else if (!next.p) q.set('view', 'home');
     if (next.p) q.set('p', next.p);
     if (next.p && next.t && next.t !== 'overview') q.set('t', next.t);
     if (next.p && next.ep) q.set('ep', next.ep);
@@ -149,7 +151,7 @@ function DtTree({ catalog, activeDocId }: { catalog: DtCatalog; activeDocId?: st
       </div>}
       <ul className="ds-rail-list">
         {pinned.map((v) => {
-          const on = v.id === 'home' ? !nav.p && !nav.view : nav.view === 'security';
+          const on = v.id === 'home' ? !nav.p && (!nav.view || nav.view === 'home') : nav.view === 'security';
           return (
             <li key={v.id}><button type="button" className={`ds-rail-row${on ? ' active' : ''}`} aria-current={on ? 'page' : undefined} onClick={() => nav.go({ view: v.id === 'security' ? 'security' : null })}>
               <span className="ds-rail-ic"><Icon name={v.icon} size={14} /></span><span className="ds-rail-label">{v.label}</span></button></li>

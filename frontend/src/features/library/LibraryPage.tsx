@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { DocTrackerPage } from '../doctracker/DocTrackerPage';
+import { DotsMenu } from '../talk/DotsMenu';
 import { DocumentPage } from '../documents/DocumentPage';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -85,11 +86,17 @@ function LibraryDocs({ switcher }: { switcher: ReactNode }) {
   const filtersOn = rows.length > 10 || !!projectId || !!kind;
   const shown = rows.filter((r) => (!kind || r.kind === kind) && (!needle || `${r.title} ${r.sub}`.toLowerCase().includes(needle)));
   const ask = () => { const t = q.trim(); if (t.length >= 3) setAsked(t); };
-  const total = docs.data?.total ?? docs.data?.items.length ?? 0;
+  const total = docs.data?.total ?? docs.data?.items?.length ?? 0;
 
   return (
     <div className="page lib">
-      <LibraryHead eyebrow={`${total.toLocaleString()} document${total === 1 ? '' : 's'} · ${projects.length} project${projects.length === 1 ? '' : 's'}`} switcher={switcher} />
+      <LibraryHead eyebrow={`${total.toLocaleString()} document${total === 1 ? '' : 's'} · ${projects.length} project${projects.length === 1 ? '' : 's'}`} switcher={switcher}>
+        {/* DocTracker's API workspace (scores, endpoints, the tree, templates) and its Security Center keep their full views. */}
+        <DotsMenu label="More in Docs" items={[
+          { label: 'API workspace', hint: 'Projects, endpoints, scores and templates', icon: 'layers', onSelect: () => navigate('/library/docs?view=home') },
+          { label: 'Security Center', hint: 'Masking, reveals, access requests and the audit trail', icon: 'shield', onSelect: () => navigate('/library/docs?view=security') },
+        ]} />
+      </LibraryHead>
       <form className="lib-ask" role="search" onSubmit={(e) => { e.preventDefault(); ask(); }}>
         <Icon name="sparkle" size={17} />
         <input type="search" value={q} autoComplete="off" onChange={(e) => { setQ(e.target.value); if (asked) setAsked(null); }}
@@ -132,7 +139,7 @@ function LibraryDocs({ switcher }: { switcher: ReactNode }) {
               ))}
             </ul>
           )}
-          {docs.data?.nextCursor && <p className="lib-note">Showing the latest {docs.data.items.length}. Search, or choose a project, to find older ones.</p>}
+          {docs.data?.nextCursor && <p className="lib-note">Showing the latest {docs.data.items?.length ?? 0}. Search, or choose a project, to find older ones.</p>}
         </section>
 
         <aside className="lib-side">
@@ -151,7 +158,7 @@ function NeedsReview({ onChanged }: { onChanged: () => void }) {
   const inbox = useWsQuery(['documents', 'inbox'], documentApi.inbox, { staleTime: 30_000 });
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const items = drafts.data ?? [];
+  const items = Array.isArray(drafts.data) ? drafts.data : [];
   const reviews = inbox.data?.toReview ?? [];
   const count = items.length + reviews.length;
   const act = async (p: DocProposal, what: 'accept' | 'dismiss') => {
