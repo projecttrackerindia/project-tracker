@@ -56,27 +56,18 @@ namespace ProjectManagement.Domain.Entities
     /// preparation, support ... It may point at a project for reference (<see cref="RelatedProjectId"/>) but never changes that project - a
     /// completed project stays completed. <see cref="WorkTaskKind.ActionItem"/>: a project's follow-up, which always has a project.
     /// </summary>
-    public class WorkTask : TenantEntity, ITenantScoped, ISoftDelete
+    public class WorkTask : WorkItem, ISoftDelete
     {
         public WorkTaskKind Kind { get; set; } = WorkTaskKind.Operational;
-        /// <summary>Running number within the workspace, shared by both kinds: shown as WT-12 or AI-13.</summary>
-        public int Number { get; set; }
-        public string Title { get; set; } = "";
-        public string? Description { get; set; }
+        // Number (running within the workspace, shared by both kinds: WT-12 or AI-13), title, people, description, dates and version are on WorkItem.
         /// <summary>The kind of operational work. Always set for operational work; action items have none.</summary>
         public Guid? WorkTypeId { get; set; }
         /// <summary>Operational work: optional, for reference, reporting and traceability only. Action items: the project they belong to.</summary>
         public Guid? RelatedProjectId { get; set; }
-        public Guid? AssigneeId { get; set; }
-        public Guid ReporterId { get; set; }
         public Priority Priority { get; set; } = Priority.Medium;
         public WorkTaskStatus Status { get; set; } = WorkTaskStatus.ToDo;
-        public DateOnly? StartDate { get; set; }
-        public DateOnly? DueDate { get; set; }
-        public DateTime? CompletedAt { get; set; }
         /// <summary>Who marked it completed (cleared when it is reopened).</summary>
         public Guid? CompletedBy { get; set; }
-        public int Version { get; set; } = 1;
 
         // Acknowledgment is separate from completion and becomes stale after a work edit.
         public string? ResolutionNote { get; set; }
@@ -101,25 +92,19 @@ namespace ProjectManagement.Domain.Entities
         /// <summary>Which alerts have gone out for the current due times (SlaAlerts flags); cleared when the due times are worked out again.</summary>
         public int SlaAlerted { get; set; }
 
-        public bool IsDeleted { get; set; }
-        public DateTime? DeletedAt { get; set; }
-        public Guid? DeletedBy { get; set; }
-
         public WorkType? WorkType { get; set; }
     }
 
-    public class WorkTaskComment : TenantEntity, ITenantScoped, ISoftDelete
+    public class WorkTaskComment : WorkItemComment
     {
+        /// <summary>The work task (stored in the shared <c>WorkItemId</c> column).</summary>
         public Guid WorkTaskId { get; set; }
-        public Guid AuthorId { get; set; }
-        public string Body { get; set; } = "";
-        public DateTime? EditedAt { get; set; }
-        public bool IsDeleted { get; set; }
-        public DateTime? DeletedAt { get; set; }
-        public Guid? DeletedBy { get; set; }
     }
 
-    /// <summary>A file on a work task. The bytes live in file storage like every other attachment; only the metadata is kept here.</summary>
+    /// <summary>
+    /// A file on a work task, in the table <c>WorkItemAttachments</c> (column <c>WorkItemId</c>). The bytes live in file storage like every other
+    /// attachment; only the metadata is kept here.
+    /// </summary>
     public class WorkTaskAttachment : TenantEntity, ITenantScoped
     {
         public Guid WorkTaskId { get; set; }

@@ -77,6 +77,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<StageIssue> StageIssues => Set<StageIssue>();
     public DbSet<WorkType> WorkTypes => Set<WorkType>();
     public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
+    public DbSet<WorkItem> WorkItems => Set<WorkItem>();
+    public DbSet<WorkItemComment> WorkItemComments => Set<WorkItemComment>();
+    public DbSet<IssueComment> IssueComments => Set<IssueComment>();
     public DbSet<WorkTaskComment> WorkTaskComments => Set<WorkTaskComment>();
     public DbSet<WorkTaskAttachment> WorkTaskAttachments => Set<WorkTaskAttachment>();
     public DbSet<ProjectGroup> ProjectGroups => Set<ProjectGroup>();

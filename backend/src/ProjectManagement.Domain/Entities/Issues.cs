@@ -17,23 +17,24 @@ namespace ProjectManagement.Domain.Entities
     /// Something a tester found while checking a stage of a project (a failed test, an error, a feature that does not work as expected).
     /// A stage cannot be completed while any of its issues is unresolved, so the project only moves on once testing has passed.
     /// </summary>
-    public class StageIssue : TenantEntity, ITenantScoped
+    public class StageIssue : WorkItem
     {
         public Guid ProjectId { get; set; }
         /// <summary>The stage the issue was found in. Null when that stage was deleted afterwards (the issue stays as history).</summary>
         public Guid? StageId { get; set; }
-        /// <summary>Position in the project's list of issues (1, 2, 3 ...); shown as PRJ-I3.</summary>
-        public int Number { get; set; }
-        public string Title { get; set; } = "";
         /// <summary>What was done, what was expected and what happened instead.</summary>
         public string? Details { get; set; }
         public Priority Severity { get; set; } = Priority.Medium;
         public IssueStatus Status { get; set; } = IssueStatus.Observed;
-        public Guid ReporterId { get; set; }
-        /// <summary>Who is fixing it.</summary>
-        public Guid? AssigneeId { get; set; }
         public DateTime? ResolvedAt { get; set; }
         public Guid? ResolvedBy { get; set; }
+    }
+
+    /// <summary>A comment on an issue (v2: the item's activity stream), in the shared <c>WorkItemComments</c> table.</summary>
+    public class IssueComment : WorkItemComment
+    {
+        /// <summary>The issue (stored in the shared <c>WorkItemId</c> column).</summary>
+        public Guid IssueId { get; set; }
     }
 
     /// <summary>One step in the life of an issue: reported, assigned, moved to another status, edited. Together they are the issue's history.</summary>

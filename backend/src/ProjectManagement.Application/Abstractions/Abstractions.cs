@@ -110,6 +110,10 @@ public interface IAppDbContext
     DbSet<StageIssue> StageIssues { get; }
     DbSet<WorkType> WorkTypes { get; }
     DbSet<WorkTask> WorkTasks { get; }
+    /// <summary>Every kind of work in the one WorkItems table (tasks, issues, action items, tickets).</summary>
+    DbSet<WorkItem> WorkItems { get; }
+    DbSet<WorkItemComment> WorkItemComments { get; }
+    DbSet<IssueComment> IssueComments { get; }
     DbSet<WorkTaskComment> WorkTaskComments { get; }
     DbSet<WorkTaskAttachment> WorkTaskAttachments { get; }
     DbSet<ProjectGroup> ProjectGroups { get; }

@@ -100,7 +100,39 @@ public class Label : TenantEntity, ITenantScoped
     public string Color { get; set; } = "#8b5cf6";
 }
 
-public class TaskItem : TenantEntity, ITenantScoped, ISoftDelete
+/// <summary>
+/// Every piece of assignable work lives in one table, <c>WorkItems</c> (v2: "tasks, issues, actions and tickets - one list"): project
+/// tasks (<see cref="TaskItem"/>), test issues found in a stage (<see cref="StageIssue"/>), action items and operational tickets
+/// (<see cref="WorkTask"/>). The column <c>ItemType</c> tells the kinds apart (Task, Issue, Work); a work task's own <c>Kind</c> column says
+/// whether it is an action item or a ticket. What every kind has lives here; what only one kind has stays on that kind.
+/// </summary>
+public abstract class WorkItem : TenantEntity, ITenantScoped
+{
+    /// <summary>Position in its list (PAY-12, PAY-I3, WT-5): per project for tasks and issues, per workspace for work tasks.</summary>
+    public int Number { get; set; }
+    public string Title { get; set; } = "";
+    public Guid? AssigneeId { get; set; }
+    public Guid ReporterId { get; set; }
+    /// <summary>Free text. Issues keep their own <c>Details</c> column as well (the text they were created with).</summary>
+    public string? Description { get; set; }
+    public DateOnly? StartDate { get; set; }
+    public DateOnly? DueDate { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    /// <summary>Optimistic concurrency: an update names the version it read and fails if someone saved in between.</summary>
+    public int Version { get; set; } = 1;
+    /// <summary>Soft deletion for tasks and work tasks (they implement <see cref="ISoftDelete"/>); issues are removed outright and never set it.</summary>
+    public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
+    public Guid? DeletedBy { get; set; }
+    /// <summary>
+    /// The project that decides who may see the item: a task's or an issue's project, a work task's related project (none = workspace
+    /// work). Worked out by the database from those columns (a stored generated column), never written by the application; the query
+    /// filter reads it so one rule covers every kind.
+    /// </summary>
+    public Guid? ScopeProjectId { get; private set; }
+}
+
+public class TaskItem : WorkItem, ISoftDelete
 {
     public Guid ProjectId { get; set; }
     public Guid? ParentTaskId { get; set; }
@@ -113,24 +145,11 @@ public class TaskItem : TenantEntity, ITenantScoped, ISoftDelete
     public Guid? MilestoneId { get; set; }
     /// <summary>The sprint this task is planned into; null means it is in the backlog.</summary>
     public Guid? SprintId { get; set; }
-    public int Number { get; set; }
-    public string Title { get; set; } = "";
-    public string? Description { get; set; }
     public Guid StatusId { get; set; }
     public Priority Priority { get; set; } = Priority.Medium;
-    public Guid? AssigneeId { get; set; }
-    public Guid ReporterId { get; set; }
-    public DateOnly? StartDate { get; set; }
-    public DateOnly? DueDate { get; set; }
     public decimal? EstimatedHours { get; set; }
     public decimal? ActualHours { get; set; }
     public double Position { get; set; }
-    public DateTime? CompletedAt { get; set; }
-    public int Version { get; set; } = 1;
-
-    public bool IsDeleted { get; set; }
-    public DateTime? DeletedAt { get; set; }
-    public Guid? DeletedBy { get; set; }
 
     public Project? Project { get; set; }
     public WorkflowStatus? Status { get; set; }
@@ -189,16 +208,27 @@ public class TaskLabel : TenantEntity, ITenantScoped
     public Label? Label { get; set; }
 }
 
-public class TaskComment : TenantEntity, ITenantScoped, ISoftDelete
+/// <summary>
+/// A comment on any work item. Comments on tasks and on work tasks share one table, <c>WorkItemComments</c>, keyed by the column
+/// <c>WorkItemId</c>; <c>ItemType</c> says which kind of item the comment belongs to.
+/// </summary>
+public abstract class WorkItemComment : TenantEntity, ITenantScoped, ISoftDelete
 {
-    public Guid TaskId { get; set; }
     public Guid AuthorId { get; set; }
     public string Body { get; set; } = "";
-    public Guid? ParentCommentId { get; set; }
     public DateTime? EditedAt { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
     public Guid? DeletedBy { get; set; }
+    /// <summary>The item, whatever its kind: a copy of <c>WorkItemId</c> kept by the database (stored generated column), for the query filter.</summary>
+    public Guid? ItemId { get; private set; }
+}
+
+public class TaskComment : WorkItemComment
+{
+    /// <summary>The task (stored in the shared <c>WorkItemId</c> column).</summary>
+    public Guid TaskId { get; set; }
+    public Guid? ParentCommentId { get; set; }
     public User? Author { get; set; }
 }
 

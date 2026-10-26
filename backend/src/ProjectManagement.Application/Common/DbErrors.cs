@@ -11,7 +11,7 @@ namespace ProjectManagement.Application.Common;
 public static class DbErrors
 {
     public const string ProjectKeyIndex = "IX_Projects_TenantId_Key";
-    public const string TaskNumberIndex = "IX_Tasks_ProjectId_Number";
+    public const string TaskNumberIndex = "IX_WorkItems_Task_ProjectId_Number";
     public const string RunningTimerIndex = "IX_TimeEntries_TenantId_UserId_Running";
 
     public static bool IsUniqueViolation(DbUpdateException error, string indexName, string table, params string[] columns)
@@ -26,7 +26,7 @@ public static class DbErrors
     }
 
     public static bool IsProjectKeyTaken(DbUpdateException e) => IsUniqueViolation(e, ProjectKeyIndex, "Projects", "TenantId", "Key");
-    public static bool IsTaskNumberTaken(DbUpdateException e) => IsUniqueViolation(e, TaskNumberIndex, "Tasks", "ProjectId", "Number");
+    public static bool IsTaskNumberTaken(DbUpdateException e) => IsUniqueViolation(e, TaskNumberIndex, "WorkItems", "ProjectId", "Number");
     // SQLite names the columns, not the index: the running timer is the only unique index on TimeEntries (TenantId, UserId).
     public static bool IsTimerRunning(DbUpdateException e) => IsUniqueViolation(e, RunningTimerIndex, "TimeEntries", "TenantId", "UserId");
 }

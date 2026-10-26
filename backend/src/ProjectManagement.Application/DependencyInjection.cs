@@ -200,6 +200,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Work.SupportResolutionService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.SlaMonitor>();
         services.AddScoped<ProjectManagement.Application.Features.WorkItems.WorkItemService>();
+        services.AddScoped<ProjectManagement.Application.Features.WorkItems.WorkItemApiService>();
         services.AddScoped<ProjectManagement.Application.Features.WorkItems.WorkloadService>();
         services.AddScoped<TaskService>();
         services.AddScoped<TaskSuggestionService>();
