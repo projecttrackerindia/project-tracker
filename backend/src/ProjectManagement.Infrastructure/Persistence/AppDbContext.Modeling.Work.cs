@@ -53,17 +53,31 @@ public partial class AppDbContext
             e.Property(x => x.Name).HasMaxLength(60);
             e.Property(x => x.Description).HasMaxLength(200);
         });
+        // One table for every kind of work (v2): project tasks, stage issues and work tasks (action items and tickets). Each kind keeps its own
+        // numbering, so the unique numbers are per kind (filtered indexes); everything else that the kinds share sits in shared columns.
+        b.Entity<WorkItem>(e =>
+        {
+            e.ToTable("WorkItems");
+            e.HasDiscriminator<string>("ItemType").HasValue<TaskItem>("Task").HasValue<StageIssue>("Issue").HasValue<WorkTask>("Work");
+            e.Property<string>("ItemType").HasMaxLength(16);
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => new { x.TenantId, x.AssigneeId });
+            e.HasIndex(x => new { x.TenantId, x.DueDate });
+            e.HasIndex("TenantId", "ItemType");
+        });
         b.Entity<WorkTask>(e =>
         {
-            e.HasIndex(x => new { x.TenantId, x.Number }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.Number }).IsUnique().HasFilter("\"ItemType\" = 'Work'").HasDatabaseName("IX_WorkItems_Work_TenantId_Number");
             e.HasIndex(x => new { x.TenantId, x.Status, x.DueDate });
-            e.HasIndex(x => new { x.TenantId, x.AssigneeId });
             e.HasIndex(x => new { x.TenantId, x.RelatedProjectId });
             e.HasIndex(x => new { x.TenantId, x.WorkTypeId });
             e.HasIndex(x => new { x.TenantId, x.Kind, x.RelatedProjectId });
-            e.Property(x => x.Title).HasMaxLength(200);
-            e.Property(x => x.Description).HasMaxLength(8000);
-            e.Property(x => x.Kind).HasDefaultValue(WorkTaskKind.Operational).HasSentinel(WorkTaskKind.Operational);
+            // Priority and status live in the shared columns; status values are per kind (a ticket's ToDo/Done, an issue's Observed/Resolved).
+            e.Property(x => x.Priority).HasColumnName("Priority");
+            e.Property(x => x.Status).HasColumnName("Status");
+            // No database default: the column is shared by every row of WorkItems, and a default would stamp "Operational" on tasks and issues.
+            // Work tasks always send their kind (the property starts as Operational).
             e.HasOne(x => x.WorkType).WithMany().HasForeignKey(x => x.WorkTypeId).OnDelete(DeleteBehavior.Restrict);
             // The SLA monitor looks for open work whose response or resolution time has run out.
             e.HasIndex(x => new { x.Status, x.ResolutionDueAt });
@@ -164,8 +178,25 @@ public partial class AppDbContext
             e.Property(x => x.MemberIds).HasMaxLength(4000);
             e.HasOne<WorkType>().WithMany().HasForeignKey(x => x.WorkTypeId).OnDelete(DeleteBehavior.Cascade);
         });
-        b.Entity<WorkTaskComment>(e => { e.HasIndex(x => x.WorkTaskId); e.Property(x => x.Body).HasMaxLength(4000); });
-        b.Entity<WorkTaskAttachment>(e => { e.HasIndex(x => x.WorkTaskId); e.Property(x => x.FileName).HasMaxLength(200); e.Property(x => x.ContentType).HasMaxLength(120); e.Property(x => x.StorageKey).HasMaxLength(200); e.Property(x => x.Sha256).HasMaxLength(64); });
+        // Comments on tasks and on work tasks: one table, keyed by WorkItemId.
+        b.Entity<WorkItemComment>(e =>
+        {
+            e.ToTable("WorkItemComments");
+            e.HasDiscriminator<string>("ItemType").HasValue<TaskComment>("Task").HasValue<IssueComment>("Issue").HasValue<WorkTaskComment>("Work");
+            e.Property<string>("ItemType").HasMaxLength(16);
+        });
+        // Each kind's comments point at their item through the one WorkItemId column (one foreign key to WorkItems; comments go with the item).
+        b.Entity<WorkTaskComment>(e =>
+        {
+            e.Property(x => x.WorkTaskId).HasColumnName("WorkItemId"); e.HasIndex(x => x.WorkTaskId);
+            e.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.WorkTaskId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<IssueComment>(e =>
+        {
+            e.Property(x => x.IssueId).HasColumnName("WorkItemId"); e.HasIndex(x => x.IssueId);
+            e.HasOne<StageIssue>().WithMany().HasForeignKey(x => x.IssueId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<WorkTaskAttachment>(e => { e.ToTable("WorkItemAttachments"); e.Property(x => x.WorkTaskId).HasColumnName("WorkItemId"); e.HasIndex(x => x.WorkTaskId); e.Property(x => x.FileName).HasMaxLength(200); e.Property(x => x.ContentType).HasMaxLength(120); e.Property(x => x.StorageKey).HasMaxLength(200); e.Property(x => x.Sha256).HasMaxLength(64); });
         b.Entity<ProjectGroup>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.Order });
@@ -182,10 +213,14 @@ public partial class AppDbContext
         });
         b.Entity<StageIssue>(e =>
         {
-            e.HasIndex(x => new { x.ProjectId, x.Number }).IsUnique();
+            e.HasIndex(x => new { x.ProjectId, x.Number }).IsUnique().HasFilter("\"ItemType\" = 'Issue'").HasDatabaseName("IX_WorkItems_Issue_ProjectId_Number");
             e.HasIndex(x => new { x.ProjectId, x.StageId, x.Status });
-            e.HasIndex(x => new { x.TenantId, x.AssigneeId });
-            e.Property(x => x.Title).HasMaxLength(200);
+            // An issue's project, stage, severity and status sit in the same columns as a task's project, stage and a work task's priority/status.
+            e.Property(x => x.ProjectId).HasColumnName("ProjectId");
+            e.Property(x => x.StageId).HasColumnName("StageId");
+            e.Property(x => x.Severity).HasColumnName("Priority");
+            e.Property(x => x.Status).HasColumnName("Status");
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Details).HasMaxLength(4000);
             e.HasOne<ProjectStage>().WithMany().HasForeignKey(x => x.StageId).OnDelete(DeleteBehavior.SetNull);   // the issue stays as history when its stage is deleted
         });
@@ -201,16 +236,14 @@ public partial class AppDbContext
 
         b.Entity<TaskItem>(e =>
         {
-            e.ToTable("Tasks");
-            e.HasIndex(x => new { x.ProjectId, x.Number }).IsUnique();
+            e.HasIndex(x => new { x.ProjectId, x.Number }).IsUnique().HasFilter("\"ItemType\" = 'Task'").HasDatabaseName("IX_WorkItems_Task_ProjectId_Number");
             e.HasIndex(x => new { x.TenantId, x.ProjectId });
-            e.HasIndex(x => new { x.TenantId, x.AssigneeId });
-            e.HasIndex(x => new { x.TenantId, x.DueDate });
             e.HasIndex(x => new { x.ProjectId, x.StatusId });
-            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.ProjectId).HasColumnName("ProjectId");
+            e.Property(x => x.StageId).HasColumnName("StageId");
+            e.Property(x => x.Priority).HasColumnName("Priority");
             e.Property(x => x.EstimatedHours).HasPrecision(9, 2);
             e.Property(x => x.ActualHours).HasPrecision(9, 2);
-            e.Property(x => x.Version).IsConcurrencyToken();
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Status).WithMany().HasForeignKey(x => x.StatusId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Assignee).WithMany().HasForeignKey(x => x.AssigneeId).OnDelete(DeleteBehavior.Restrict);
@@ -812,6 +845,7 @@ public partial class AppDbContext
         });
         b.Entity<TaskComment>(e =>
         {
+            e.Property(x => x.TaskId).HasColumnName("WorkItemId");
             e.HasIndex(x => x.TaskId);
             e.HasOne(x => x.Author).WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict);
         });

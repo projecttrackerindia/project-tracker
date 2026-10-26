@@ -20,6 +20,9 @@ public partial class AppDbContext
         foreach (var entityType in b.Model.GetEntityTypes())
         {
             var clr = entityType.ClrType;
+            // A filter can only sit on the root of an inheritance hierarchy (one table holding several kinds); those roots get their own
+            // filter below, written per kind.
+            if (entityType.BaseType is not null || entityType.GetDirectlyDerivedTypes().Any()) continue;
             var tenantScoped = typeof(ITenantScoped).IsAssignableFrom(clr);
             var softDelete = typeof(ISoftDelete).IsAssignableFrom(clr);
             if (!tenantScoped && !softDelete) continue;
@@ -41,6 +44,21 @@ public partial class AppDbContext
             if (tenantScoped && ProjectScoped(clr) is { } guard) body = Expression.AndAlso(body!, guard(e));
             entityType.SetQueryFilter(Expression.Lambda(body!, e));
         }
+
+        // Every kind of work in the one WorkItems table: same tenant, not deleted, and its project must be reachable - a task's or an issue's
+        // project, or the project a work task points at (a work task with no project is workspace work and always reachable).
+        b.Entity<WorkItem>().HasQueryFilter(w => w.TenantId == CurrentTenantId && !w.IsDeleted
+            && (!ProjectsRestricted
+                || (w is TaskItem && ReachableProjects.Contains(((TaskItem)w).ProjectId))
+                || (w is StageIssue && ReachableProjects.Contains(((StageIssue)w).ProjectId))
+                || (w is WorkTask && (((WorkTask)w).RelatedProjectId == null || ReachableProjects.Contains(((WorkTask)w).RelatedProjectId!.Value)))));
+
+        // Comments on work: a task's comment follows its task (and so the task's project); a work task's comment is workspace-wide, as before.
+        b.Entity<WorkItemComment>().HasQueryFilter(c => c.TenantId == CurrentTenantId && !c.IsDeleted
+            && (!ProjectsRestricted
+                || (c is TaskComment && Tasks.Any(t => t.Id == ((TaskComment)c).TaskId))
+                || (c is IssueComment && StageIssues.Any(i => i.Id == ((IssueComment)c).IssueId))
+                || c is WorkTaskComment));
 
         // The project itself: whole workspace, or - when this person's reach is narrowed - the projects they own, were added to, or
         // that belong to a team they are in. Written once here so no query, report or assistant tool has to remember it.

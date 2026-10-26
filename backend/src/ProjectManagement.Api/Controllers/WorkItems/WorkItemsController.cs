@@ -11,8 +11,44 @@ namespace ProjectManagement.Api.Controllers.WorkItems;
 /// see <see cref="WorkItemService"/>; there is no module requirement here because the result only ever contains kinds the caller may open.
 /// </summary>
 [Route("api/v1"), RequireWorkspace]
-public class WorkItemsController(WorkItemService items, WorkloadService workload) : ApiControllerBase
+public class WorkItemsController(WorkItemService items, WorkloadService workload, WorkItemApiService work) : ApiControllerBase
 {
+    // ------------------------------------------------------------------ the one Work API (v2): every kind of work through one shape
+
+    /// <summary>
+    /// The Work list. kind: comma-separated task, issue, action, ticket. mine: assigned to me. team: a team id, or "mine" (my teams).
+    /// status: open (default), closed, all, todo, active, done, cancelled. Paged with offset and limit (up to 200 a page).
+    /// </summary>
+    [HttpGet("work-items")]
+    public async Task<IActionResult> List([FromQuery] string? kind, [FromQuery] bool mine = false, [FromQuery] string? team = null, [FromQuery] Guid? assigneeId = null,
+        [FromQuery] Guid? projectId = null, [FromQuery] string? status = null, [FromQuery] bool overdue = false, [FromQuery] string? q = null,
+        [FromQuery] int offset = 0, [FromQuery] int limit = 50, CancellationToken ct = default) =>
+        Ok(await work.ListAsync(kind, mine, team, assigneeId, projectId, status, overdue, q, offset, limit, ct));
+
+    /// <summary>One item with its activity stream (comments, time, files, changes, the agent's changes).</summary>
+    [HttpGet("work-items/{id:guid}")]
+    public async Task<IActionResult> Get(Guid id, CancellationToken ct) => Ok(await work.GetAsync(id, ct));
+
+    [HttpPost("work-items")]
+    public async Task<IActionResult> Create([FromBody] CreateWorkItemRequest req, CancellationToken ct) => Created(await work.CreateAsync(req, ct));
+
+    /// <summary>Changes the fields sent; <c>version</c> (the one last read) is required. See <see cref="WorkItemApiService.PatchAsync"/>.</summary>
+    [HttpPatch("work-items/{id:guid}")]
+    public async Task<IActionResult> Patch(Guid id, [FromBody] System.Text.Json.JsonElement body, CancellationToken ct) => Ok(await work.PatchAsync(id, body, ct));
+
+    /// <summary>A comment; "log 2h …" also logs the time.</summary>
+    [HttpPost("work-items/{id:guid}/comments")]
+    public async Task<IActionResult> Comment(Guid id, [FromBody] WorkItemCommentRequest req, CancellationToken ct) => Created(await work.CommentAsync(id, req, ct));
+
+    [HttpDelete("work-items/{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        await work.DeleteAsync(id, ct);
+        return NoContent();
+    }
+
+    // ------------------------------------------------------------------ cross-kind views
+
     /// <summary>
     /// Everything assigned to me. <paramref name="kinds"/> is a comma-separated list (Task, Issue, ActionItem, Operational); open items
     /// only unless <paramref name="open"/> is false.
