@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { AgentWorkflowsPage } from '../ai/AgentWorkflowsPage';
+import { TimesheetPage, type TimesheetSection } from '../time/TimesheetPage';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, del, get, post } from '../../api/client';
 import { opsApi, projectApi, timeApi, workItemApi } from '../../api/endpoints';
@@ -18,6 +19,7 @@ import { formatMinutes } from '../time/time';
 import './insights-v2.css';
 
 type Tab = 'overview' | 'time' | 'reports';
+const TS_SECTIONS = ['week', 'insights', 'entries', 'approvals'];
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const dateOf = (s: string) => new Date(`${s}T00:00:00`);
@@ -32,6 +34,10 @@ export function InsightsPage() {
   const raw = params.get('tab');
   // The agent workflows (where /ai/operations leads) keep their own full page here.
   if (raw === 'workflows') return <AgentWorkflowsPage />;
+  // The full timesheet (the week grid with planned leave, Insights over the weeks, Entries, Approvals, someone else's time) opens from
+  // Time's "Full timesheet ›" as ?tab=time&s=…, and old /timesheet links arrive here too.
+  const ts = params.get('s');
+  if (raw === 'time' && (TS_SECTIONS.includes(ts ?? '') || params.has('user'))) return <TimesheetPage section={(TS_SECTIONS.includes(ts ?? '') ? ts : 'week') as TimesheetSection} />;
   const tab: Tab = raw === 'time' || raw === 'reports' ? raw : 'overview';
   const setTab = (t: Tab) => setParams((p) => { const n = new URLSearchParams(p); if (t === 'overview') n.delete('tab'); else n.set('tab', t); n.delete('job'); return n; }, { replace: true });
   const tabs = <Segmented label="Insights" value={tab} onChange={setTab} options={[{ id: 'overview', label: 'Overview' }, { id: 'time', label: 'Time' }, { id: 'reports', label: 'Reports' }]} />;
@@ -131,7 +137,9 @@ function TimeTab({ tabs }: { tabs: React.ReactNode }) {
   const wid = useWorkspaceId();
   const today = todayISO();
   const hasReports = (useAuth((s) => s.ctx?.current?.reportCount) ?? 0) > 0;
-  const [week, setWeek] = useState(() => mondayOf(today));
+  const [params] = useSearchParams();
+  // A week in the address (old /timesheet?week=… links, notifications) opens that week.
+  const [week, setWeek] = useState(() => { const w = params.get('week'); return w && /^\d{4}-\d{2}-\d{2}$/.test(w) && w <= today ? mondayOf(w) : mondayOf(today); });
   const grid = useWsQuery(['time', 'grid', week], () => timeApi.grid(week), { placeholderData: (p) => p });
   const status = useWsQuery(['time', 'week', week], () => timeApi.week(week));
   const g = grid.data;
@@ -200,6 +208,7 @@ function TimeTab({ tabs }: { tabs: React.ReactNode }) {
         </div>
       )}
       {st?.status === 'Rejected' && st.reviewNote && <p className="ins-note">Returned: {st.reviewNote}</p>}
+      <p className="ins-note"><Link to={`/insights?tab=time&s=week${week !== mondayOf(today) ? `&week=${week}` : ''}`}>Full timesheet ›</Link> Planned leave, entries over any dates{hasReports ? ', approvals' : ''} and insights over your weeks.</p>
       {hasReports && <p className="ins-note">Timesheets your team submits arrive in your <Link to="/">Home inbox ›</Link></p>}
       {parsed && <TimeWordsReview parsed={parsed} onClose={() => setParsed(null)} onLogged={() => { setParsed(null); setText(''); refresh(); }} />}
     </>

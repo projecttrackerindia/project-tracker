@@ -135,7 +135,9 @@ try{
  const puts=()=>writes.filter(w=>w.ep==='/api/v1/time/grid').length;
 
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(`${origin}/preview-org/timesheet?week=${week}`);await page.locator('.tsg-table').waitFor();
+ // v2: the old address lands on Insights › Time; the full timesheet opens from its "Full timesheet ›" link, keeping the week.
+ await page.goto(`${origin}/preview-org/timesheet?week=${week}`);await page.waitForURL(/\/insights\?/);await page.getByRole('link',{name:'Full timesheet ›'}).click();
+ await page.waitForURL(/[?&]s=week/);assert.ok(page.url().includes(`week=${week}`),'the week is kept');await page.locator('.tsg-table').waitFor();
  assert.equal(await page.locator('.tsg-table tbody tr').count(),2);
  assert.equal(await page.locator('.tsg-day').count(),7);
  assert.ok(await page.locator('.tsg-day.leave .tsg-tag.leave').isVisible());
@@ -282,14 +284,14 @@ try{
 
  // Dark.
  ctx=await make('dark');page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(`${origin}/preview-org/timesheet?week=${week}`);await page.locator('.tsg-table').waitFor();await shot(page,'week-dark-1440.png');
+ await page.goto(`${origin}/preview-org/insights?tab=time&s=week&week=${week}`);await page.locator('.tsg-table').waitFor();await shot(page,'week-dark-1440.png');
  await page.goto(`${origin}/preview-org/timesheet/insights`);await page.locator('.tsi-kpis').waitFor();await shot(page,'insights-dark-1440.png');
  checks.push('dark');
  await page.close();await ctx.close();
 
  // Phone: one day at a time, with steppers; nothing scrolls sideways.
  ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
- await page.goto(`${origin}/preview-org/timesheet?week=${week}`);await page.locator('.tsd').waitFor();
+ await page.goto(`${origin}/preview-org/insights?tab=time&s=week&week=${week}`);await page.locator('.tsd').waitFor();
  assert.equal(await page.locator('.tsd-day').count(),7);
  await shot(page,'phone-top-390.png');
  await page.locator('.tsd-day').first().click();
@@ -305,7 +307,7 @@ try{
  checks.push('phone-day-view');
 
  // Phone: plain words and a voice note, checked in a sheet that fits the screen.
- await page.goto(`${origin}/preview-org/timesheet?week=${week}`);await page.locator('.tsd').waitFor();
+ await page.goto(`${origin}/preview-org/insights?tab=time&s=week&week=${week}`);await page.locator('.tsd').waitFor();
  await page.locator('.tsg-quick input').fill('2h on PAY-12 yesterday, 30m standup, 45m on XYZ-9');await page.getByRole('button',{name:'Add',exact:true}).click();
  const ptw=page.getByRole('dialog',{name:'Check your time'});await ptw.locator('.tw-row').nth(2).waitFor();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(await cutOff(page),[],'cut off at the right edge');

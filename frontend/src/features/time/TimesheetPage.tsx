@@ -4,8 +4,8 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 import { timeApi } from '../../api/endpoints';
 import type { TimeEntry } from '../../api/types';
 import { DateFilterPicker } from '../../components/DateFilterPicker';
-import { Icon } from '../../components/Icon';
-import { EmptyState, ErrorState, PageHead, PageLoader, RouteTabs, StatCard } from '../../components/ui';
+import { Icon, type IconName } from '../../components/Icon';
+import { EmptyState, ErrorState, PageHead, PageLoader, StatCard } from '../../components/ui';
 import { DOW, dateOffset, formatDate, formatDateShort, toISODate, todayISO } from '../../lib/format';
 import { usePersonPicker, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useIsPersonal, useWorkspaceId } from '../../stores/auth';
@@ -41,7 +41,8 @@ function MinutesTooltip({ active, payload, label }: { active?: boolean; payload?
   return <div className="chart-tip"><b>{label}</b><span>{formatMinutes(payload[0].value)}</span></div>;
 }
 
-type Section = 'week' | 'insights' | 'entries' | 'approvals';
+export type TimesheetSection = 'week' | 'insights' | 'entries' | 'approvals';
+type Section = TimesheetSection;
 
 /**
  * Timesheet: the week as a grid you type into (the default), Insights over the last weeks, every entry over any dates, and - for people
@@ -61,12 +62,13 @@ export function TimesheetPage({ section = 'week' }: { section?: Section | 'mine'
   const userId = params.get('user') ?? '';
   const week = mondayOf(params.get('week') ?? undefined);
   const set = (k: string, v: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (v) n.set(k, v); else n.delete(k); return n; }, { replace: true });
-  const keep = (to: string) => { const n = new URLSearchParams(); if (userId) n.set('user', userId); if (params.get('week')) n.set('week', week); const s = n.toString(); return s ? `${to}?${s}` : to; };
-  const tabs = [
-    { to: keep('/timesheet'), label: 'Week', icon: 'grid' as const },
-    { to: keep('/timesheet/insights'), label: 'Insights', icon: 'chart' as const },
-    { to: keep('/timesheet/entries'), label: 'Entries', icon: 'list' as const },
-    ...(canReview ? [{ to: '/timesheet/approvals', label: 'Approvals', icon: 'checks' as const, badge: waiting }] : []),
+  // v2: the full timesheet lives under Insights › Time as /insights?tab=time&s=<section> (the old /timesheet/<section> addresses lead here).
+  const keep = (s: Section, carry = true) => { const n = new URLSearchParams({ tab: 'time', s }); if (carry && userId) n.set('user', userId); if (carry && params.get('week')) n.set('week', week); return `/insights?${n}`; };
+  const tabs: { id: Section; to: string; label: string; icon: IconName; badge?: number }[] = [
+    { id: 'week', to: keep('week'), label: 'Week', icon: 'grid' },
+    { id: 'insights', to: keep('insights'), label: 'Insights', icon: 'chart' },
+    { id: 'entries', to: keep('entries'), label: 'Entries', icon: 'list' },
+    ...(canReview ? [{ id: 'approvals' as const, to: keep('approvals', false), label: 'Approvals', icon: 'checks' as const, badge: waiting }] : []),
   ];
   const current: Section = section === 'mine' ? 'week' : section;
   const picker = canPick && current !== 'approvals' && (
@@ -84,9 +86,16 @@ export function TimesheetPage({ section = 'week' }: { section?: Section | 'mine'
   return (
     <>
       <PageHead title="Timesheet" sub={sub}>{picker}</PageHead>
-      <RouteTabs label="Timesheet" tabs={tabs} />
+      <nav className="tabs route-tabs" aria-label="Timesheet">
+        <Link to="/insights?tab=time" className="tab">‹ Time</Link>
+        {tabs.map((t) => (
+          <Link key={t.id} to={t.to} className={`tab ${current === t.id ? 'active' : ''}`} aria-current={current === t.id ? 'page' : undefined}>
+            <Icon name={t.icon} />{t.label}{!!t.badge && <span className="tab-badge">{t.badge}</span>}
+          </Link>
+        ))}
+      </nav>
       {current === 'week' && <WeekGrid week={week} onWeek={(w) => set('week', w === mondayOf() ? null : w)} userId={userId} />}
-      {current === 'insights' && <TimesheetInsights userId={userId} onOpenWeek={(w) => { const n = new URLSearchParams(); if (userId) n.set('user', userId); n.set('week', w); navigate(`/timesheet?${n}`); }} />}
+      {current === 'insights' && <TimesheetInsights userId={userId} onOpenWeek={(w) => { const n = new URLSearchParams(); if (userId) n.set('user', userId); n.set('week', w); n.set('tab', 'time'); n.set('s', 'week'); navigate(`/insights?${n}`); }} />}
       {current === 'entries' && <MyTime userId={userId} />}
       {current === 'approvals' && (canReview ? <ApprovalsPanel initialWeek={params.get('week') ?? undefined} /> : <EmptyState icon="users" title="Nobody's timesheet is yours to review" />)}
     </>
