@@ -306,7 +306,7 @@ function Inbox() {
                       {lane !== 'archived' && lane !== 'snoozed' && <NotificationActions n={n} withSnooze={false} />}
                       {why === b.key && (
                         <p className="nc-why" role="note"><Icon name="info" size={13} /> {WHY[n.type] ?? 'This reached you because of your delivery settings.'}{' '}
-                          <button className="link-btn" onClick={() => nav('/settings/notifications?sub=delivery')}>Change where this reaches you</button></p>
+                          <button className="link-btn" onClick={() => nav('/settings/notifications/delivery')}>Change where this reaches you</button></p>
                       )}
                       {expanded && (
                         <ul className="nc-sub">
@@ -419,7 +419,7 @@ function Delivery() {
         <div className={`nc-callout is-${device.state}`} role="note">
           <Icon name="monitor" size={16} />
           <span><b>Push is off on this device.</b> Ticked Push events still reach your other devices; turn it on here to get pop-ups on this one too.</span>
-          <button className="btn btn-primary btn-sm" onClick={() => nav('/settings/notifications?sub=device')}>Set up this device</button>
+          <button className="btn btn-primary btn-sm" onClick={() => nav('/settings/notifications/device')}>Set up this device</button>
         </div>
       )}
 
@@ -532,7 +532,7 @@ function ThisDevice() {
       const why = lastDeviceError();
       if (s === 'on' || s === 'tab-only') {
         if (soundOn()) playSound('urgent');
-        const shown = await systemNotification('Notifications are on', 'This is how reminders and messages will reach you.', 'pt-test', '/settings/notifications?sub=device', { sticky: false });
+        const shown = await systemNotification('Notifications are on', 'This is how reminders and messages will reach you.', 'pt-test', '/settings/notifications/device', { sticky: false });
         toast(s === 'on' ? 'Done. Notifications reach this device even when Project Tracker is closed.' : 'Done. Notifications show while Project Tracker is open.', 'success');
         if (!shown) setError('Permission is granted, but the system did not show the test pop-up. Check your operating system\'s notification settings (below).');
         else if (why) setError(why);
@@ -544,7 +544,7 @@ function ThisDevice() {
   const turnOff = async () => { setBusy(true); try { await disableDeviceAlerts(); toast('Push is off for this device.'); void devices.refetch(); } finally { setBusy(false); } };
   const testNow = async () => {
     unlockSound(); if (soundOn()) playSound('update');
-    const ok = await systemNotification('Test notification', 'If you can see this, pop-ups work on this device.', 'pt-test-now', '/settings/notifications?sub=device', { sticky: false });
+    const ok = await systemNotification('Test notification', 'If you can see this, pop-ups work on this device.', 'pt-test-now', '/settings/notifications/device', { sticky: false });
     if (!ok) setError('The browser did not show the pop-up. Turn notifications on above, or check the system settings below.');
   };
   const testReminder = useMutation({
@@ -614,7 +614,7 @@ function ThisDevice() {
           <li><b>Android:</b> install the Project Tracker app for reliable push, or allow notifications for {browserName()}.</li>
           <li><b>iPhone / iPad:</b> add Project Tracker to the Home Screen from Safari's Share menu, then open it from there and turn notifications on.</li>
         </ul>
-        <button className="btn btn-ghost btn-sm" onClick={() => nav('/settings/profile?sub=mobile')}><Icon name="phone" size={13} /> Get the mobile app</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => nav('/settings/profile/mobile')}><Icon name="phone" size={13} /> Get the mobile app</button>
       </Panel>
     </>
   );

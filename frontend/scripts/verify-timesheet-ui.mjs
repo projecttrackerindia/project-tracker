@@ -265,7 +265,7 @@ try{
  assert.ok(await page.locator('.tsi .recharts-surface').count()>=2);
  await shot(page,'insights-1440.png');
  await page.locator('.tsi-week').nth(1).click();await page.locator('.tsg-table').waitFor();
- assert.ok(page.url().includes('/timesheet?week='));
+ assert.ok(page.url().includes('/insights?') && page.url().includes('week='), page.url());
  checks.push('insights');
 
  // Entries, then approvals: pick two weeks and approve them together.

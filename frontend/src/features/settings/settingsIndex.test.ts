@@ -29,7 +29,7 @@ describe('settings search', () => {
     const theme = all.find((e) => e.id === 'account.theme')!;
     expect(settingHref(theme)).toBe('/settings/profile#s-account.theme');
     const sso = all.find((e) => e.id === 'sso.connection')!;
-    expect(settingHref(sso)).toBe('/settings/security?sub=sso#s-sso.connection');
+    expect(settingHref(sso)).toBe('/settings/security/sso#s-sso.connection');
   });
 
   it('only offers what the person may open; personal settings always', () => {

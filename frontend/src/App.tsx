@@ -380,19 +380,25 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="people/teams" element={<PeoplePage section="teams" />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/:section" element={<SettingsPage />} />
+        <Route path="settings/:section/:sub" element={<SettingsPage />} />
         <Route path="admin/:tab?" element={<AdminPage />} />
 
         {/* ---------------------------------------------------------------- where pages used to be: query and #anchor are kept */}
         <Route path="dashboard" element={<Moved to="/" />} />
         <Route path="command-center" element={<Moved to="/" />} />
         <Route path="calendar" element={<Moved to="/?tab=calendar" />} />
-        <Route path="reminders/*" element={<Moved to="/" />} />
+        <Route path="reminders" element={<Moved to="/?tab=reminders" />} />
+        <Route path="reminders/*" element={<Moved to="/?tab=reminders" />} />
         <Route path="agents/*" element={<Moved to="/" />} />
+        <Route path="project-agent" element={<Moved to="/?tab=proposals" />} />
+        <Route path="project-agent/assigned" element={<Moved to="/?tab=given" />} />
+        <Route path="project-agent/my-inbox" element={<Moved to="/?tab=mail-agent" />} />
+        <Route path="project-agent/meeting-bot" element={<Moved to="/talk?f=meetings&s=notetaker" />} />
         <Route path="project-agent/*" element={<Moved to="/" />} />
         <Route path="ai" element={<Moved to="/" />} />
         <Route path="ai/operations" element={<Moved to="/insights?tab=workflows" />} />
         <Route path="ai/:id" element={<AiConversationMoved />} />
-        <Route path="agent-tracker" element={<Moved to="/settings/ai?sub=tracker" />} />
+        <Route path="agent-tracker" element={<Moved to="/settings/ai/tracker" />} />
         <Route path="my-work" element={<Moved to="/work" />} />
         <Route path="operations/*" element={<Moved to="/work?tab=tickets" />} />
         <Route path="support" element={<Moved to="/work?tab=tickets" />} />
@@ -420,21 +426,21 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="reports" element={<Moved to="/insights?tab=reports" />} />
         <Route path="reports/operations" element={<Moved to="/insights?tab=reports&s=operations" />} />
         <Route path="account" element={<Moved to="/settings/profile" />} />
-        <Route path="account/security" element={<Moved to="/settings/profile?sub=security" />} />
-        <Route path="account/mobile" element={<Moved to="/settings/profile?sub=mobile" />} />
-        <Route path="account/integrations" element={<Moved to="/settings/profile?sub=accounts" />} />
+        <Route path="account/security" element={<Moved to="/settings/profile/security" />} />
+        <Route path="account/mobile" element={<Moved to="/settings/profile/mobile" />} />
+        <Route path="account/integrations" element={<Moved to="/settings/profile/accounts" />} />
         <Route path="account/*" element={<Moved to="/settings/profile" />} />
-        <Route path="notifications" element={<Moved to="/settings/notifications?sub=history" />} />
-        <Route path="notifications/preferences" element={<Moved to="/settings/notifications?sub=delivery" />} />
-        <Route path="notifications/devices" element={<Moved to="/settings/notifications?sub=device" />} />
-        <Route path="notifications/schedule" element={<Moved to="/settings/notifications?sub=schedule" />} />
+        <Route path="notifications" element={<Moved to="/settings/notifications/history" />} />
+        <Route path="notifications/preferences" element={<Moved to="/settings/notifications/delivery" />} />
+        <Route path="notifications/devices" element={<Moved to="/settings/notifications/device" />} />
+        <Route path="notifications/schedule" element={<Moved to="/settings/notifications/schedule" />} />
         <Route path="notifications/*" element={<Moved to="/settings/notifications" />} />
-        <Route path="project-groups" element={<Moved to="/settings/timelines?sub=project-groups" />} />
+        <Route path="project-groups" element={<Moved to="/settings/timelines/project-groups" />} />
         <Route path="members" element={<Moved to="/people" />} />
         <Route path="teams" element={<Moved to="/people/teams" />} />
         <Route path="organization" element={<Moved to="/people/org-chart" />} />
         <Route path="billing" element={<Moved to="/settings/billing" />} />
-        <Route path="audit" element={<Moved to="/settings/security?sub=audit" />} />
+        <Route path="audit" element={<Moved to="/settings/security/audit" />} />
         <Route path="*" element={<NotFound />} />
       </Route>}
     </Routes>

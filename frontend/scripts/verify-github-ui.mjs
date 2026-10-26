@@ -171,8 +171,8 @@ try{
  await code.getByRole('button',{name:'Save as a page'}).click();
  const saved=await waitWrite(w=>w.ep.endsWith('/release-notes/page'));
  assert.match(saved.q,/from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}/);
- for(let i=0;i<30&&!page.url().includes('/documents/');i++)await page.waitForTimeout(100);
- assert.ok(page.url().includes('/documents/00000000-0000-0000-0000-0000000000d1'));
+ for(let i=0;i<30&&!page.url().includes('/library/docs/');i++)await page.waitForTimeout(100);
+ assert.ok(page.url().includes('/library/docs/00000000-0000-0000-0000-0000000000d1'));
  checks.push('code-tab');
 
  // Home (a fresh tab: the draft page stub above has no document to show): the assistant's Home shows the review queue, mine first, then mine waiting on others.

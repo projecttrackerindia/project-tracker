@@ -128,12 +128,12 @@ try {
 
   // 5. On a phone, signed in: above the tab bar.
   signedIn = true; server = 'release-3'; deployedHtml = indexHtml;
-  page = await open('/preview-org/calendar', '.m-tabs .m-pill', 390, 844);
+  page = await open('/preview-org/calendar', '.v2-phone-bar', 390, 844);
   server = 'release-4';
   await returnToTab(page);
   await banner(page).waitFor({ timeout: 5000 });
   await page.waitForTimeout(400);
-  const b = await banner(page).boundingBox(), tabs = await page.locator('.m-tabs .m-pill').boundingBox();
+  const b = await banner(page).boundingBox(), tabs = await page.locator('.v2-phone-bar').boundingBox();
   assert.ok(b.y + b.height <= tabs.y - 4, 'The banner sits above the tab bar');
   assert.ok(b.x >= 15 && b.x + b.width <= 390 - 15, 'The banner keeps the 16px side gutters');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'No sideways scroll');

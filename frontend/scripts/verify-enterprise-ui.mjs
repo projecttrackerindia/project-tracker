@@ -100,7 +100,7 @@ try {
  }
  // Notification preferences moved into the Notification Center: the old address must land there, and the center must render its sections.
  await capture('account-notifications-redirect','/account/notifications','.nc-page',1440,1000);
- assert.match(new URL(page.url()).pathname,/\/notifications\/preferences$/,'/account/notifications must open the Notification Center');
+ assert.match(new URL(page.url()).pathname,/\/settings\/notifications$/,'/account/notifications must open Settings › Notifications');
  assert.equal(await page.getByRole('navigation',{name:'Notification Center sections'}).getByRole('link').count(),4);
  for(const section of ['','/security','/mobile','/integrations','/resumes']) {
   await capture('account-navigation-'+(section.slice(1)||'profile'),'/account'+section,'.section-layout-wide',1440,1000);

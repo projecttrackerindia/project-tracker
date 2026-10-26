@@ -187,21 +187,21 @@ try{
 
  // The Project agent page: review across projects, my inbox, meeting bot.
  page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+'/preview-org/project-agent');await page.locator('.agh').getByText('Agents',{exact:true}).waitFor();
+ await page.goto(origin+'/preview-org/project-agent');await page.waitForURL(/\/preview-org\/\?tab=proposals$/);await page.locator('.ag-page').waitFor();
  await page.locator('.ag-card').first().waitFor();assert.ok(await page.getByRole('link',{name:'PAY · Payments Core'}).first().isVisible());
  await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,'agent-page-review.png'),animations:'disabled'});checks.push('agent-page');
- await page.getByRole('link',{name:/Given to me/}).click();
+ await page.getByRole('tab',{name:/Given to me/}).click();
  const g=page.locator('[data-given=g1]');await g.getByRole('button',{name:'Not mine'}).click();
  await g.getByLabel('Whose is it, or why not you').fill('Priya owns go-live');
  await page.screenshot({path:path.join(out,'agent-page-given.png'),animations:'disabled'});
  await g.getByRole('button',{name:'Send'}).click();await g.getByText('You said it is not yours: Priya owns go-live.').waitFor();
  assert.deepEqual(writes.at(-1).b,{response:'declined',note:'Priya owns go-live'});checks.push('not-mine');
- await page.getByRole('link',{name:'My inbox'}).click();await page.getByRole('switch',{name:'Use Gmail'}).click();await page.waitForTimeout(300);
+ await page.getByRole('tab',{name:'My inbox'}).click();await page.getByRole('switch',{name:'Use Gmail'}).click();await page.waitForTimeout(300);
  assert.deepEqual(writes.at(-1).b,{provider:'google',enabled:true});
  await page.screenshot({path:path.join(out,'agent-page-inbox.png'),animations:'disabled'});checks.push('inbox-opt-in');
  // The bot's name and default reminders: Meet › Notetaker (the old address still leads there).
  assert.equal(await page.getByRole('link',{name:'Meeting bot'}).count(),0,'No meeting bot tab on the agent page');
- await page.goto(origin+'/preview-org/project-agent/meeting-bot');await page.waitForURL(/\/meet\/notetaker$/);await page.getByText(/Ready ·/).waitFor();
+ await page.goto(origin+'/preview-org/project-agent/meeting-bot');await page.waitForURL(/\/talk\?f=meetings&s=notetaker$/);await page.getByText(/Ready ·/).waitFor();
  await page.getByLabel('Bot name').fill('Tracker Bot');
  await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForTimeout(300);
  assert.deepEqual(writes.at(-1).b,{botName:'Tracker Bot'});

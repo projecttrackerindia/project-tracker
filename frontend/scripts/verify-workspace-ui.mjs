@@ -167,7 +167,7 @@ try {
   await open('/preview-org/ai', '.ai-credit-button'); await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; }); await capture('orbit-dark-desktop');
   projectsLevel = 3;
   role = 'Member'; const readsBefore = hookReads;
-  await open('/preview-org/settings/webhooks', '.sidebar');
+  await open('/preview-org/settings/webhooks', '.v2-rail');
   assert.equal(await page.locator('.integration-studio').count(), 0); assert.equal(hookReads, readsBefore); checks.push('member-no-administration');
   assert.deepEqual(errors, []);
   await fs.writeFile(path.join(artifacts, 'results.json'), JSON.stringify({ checks, pageErrors: errors }, null, 2));

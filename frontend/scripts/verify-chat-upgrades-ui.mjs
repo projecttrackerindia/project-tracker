@@ -214,7 +214,7 @@ try {
   assert.equal(await page.locator('.chat-away-title').innerText(), 'While you were away');
   assert.deepEqual(await page.locator('.chat-away-tile small').allInnerTexts(), ['Decisions', 'Questions for you', 'Files']);
   await shot(page, 'away-1440.png');
-  await page.locator('.topbar .theme-switch').click(); await page.waitForTimeout(1200);
+  await page.locator('.v2-avatar').first().click();await page.locator('.v2-menu .theme-switch').click();await page.keyboard.press('Escape'); await page.waitForTimeout(1200);
   await page.locator('[data-testid="chat-away"]').waitFor();
   await shot(page, 'away-dark-1440.png');
   await page.locator('[data-testid="chat-away"] .chat-away-tile', { hasText: 'Priya needs an answer from you' }).click();

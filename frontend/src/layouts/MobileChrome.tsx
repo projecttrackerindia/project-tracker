@@ -149,7 +149,7 @@ function NotificationsSheet({ onClose }: { onClose: () => void }) {
           ))}
         </ul>
       )}
-      <button type="button" className="m-text-btn center" onClick={() => { onClose(); nav('/settings/notifications?sub=history'); }}>See all notifications</button>
+      <button type="button" className="m-text-btn center" onClick={() => { onClose(); nav('/settings/notifications/history'); }}>See all notifications</button>
     </Sheet>
   );
 }

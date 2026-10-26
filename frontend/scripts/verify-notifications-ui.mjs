@@ -178,25 +178,11 @@ try{
  assert.match(await rest.innerText(),/back /);
  await rest.hover();await rest.getByRole('button',{name:'Bring back now'}).click();assert.ok(await act('n6',b=>b.action==='wake'));
  checks.push('snooze');
- // The bell offers the same actions.
- await page.getByRole('button',{name:/^Notifications/}).first().click();
- const bell=page.locator('.dp-note',{hasText:'You were assigned'});await bell.waitFor();
- const before=writes.length;await bell.getByRole('button',{name:'Mark done'}).click();
- for(let i=0;i<30&&writes.length===before;i++)await page.waitForTimeout(100);
- assert.equal(writes.at(-1).ep,'/api/v1/notifications/n1/act');checks.push('bell-actions');
- // The panel sits wholly on screen (it used to run off the right edge and cut off Snooze), and its Reminders tab shows a reminder that
- // went off and still waits, before what is coming up.
- const panel=await page.locator('[data-testid="bell-panel"]').boundingBox();const vw=page.viewportSize().width;
- assert.ok(panel&&panel.x>=0&&panel.x+panel.width<=vw,'the bell panel is on screen');
- for(const b of await page.locator('[data-testid="bell-panel"] .na-btn').all()){const r=await b.boundingBox();if(r)assert.ok(r.x+r.width<=vw,'no action cut off');}
- await page.locator('[data-testid="bell-panel"]').getByRole('tab',{name:/Reminders/}).click();
- await page.locator('[data-testid="bell-reminder-due"]').waitFor();
- assert.match(await page.locator('[data-testid="bell-reminder-due"]').innerText(),/Call the bank about the EMI file[\s\S]*waiting for you/);
- assert.match(await page.locator('[data-testid="bell-reminder"]').innerText(),/Submit my timesheet/);
- assert.match(await page.locator('[data-testid="bell-panel"]').getByRole('tab',{name:/Reminders/}).innerText(),/Reminders \(1\)/);
- await shot(page,'bell-reminders.png');checks.push('bell-on-screen-and-reminders');
- await page.locator('[data-testid="bell-panel"]').getByRole('tab',{name:/Notifications/}).click();
- await page.keyboard.press('Escape');await page.mouse.click(5,700);
+ // v2 has no bell on the desktop: the avatar carries the unread count, and its menu leads to Settings › Notifications (this list).
+ await page.locator('.v2-avatar').first().click();
+ assert.match(await page.locator('.v2-avatar .v2-badge').first().innerText(),/^\d+$/,'the avatar shows the unread count');
+ await page.locator('.v2-menu [role="menuitem"]',{hasText:'Notifications'}).click();await page.waitForURL(/\/settings\/notifications$/);
+ await page.goBack();await page.locator('.nc-item').first().waitFor();checks.push('avatar-notifications');
  await shot(page,'inbox-actions.png');
  // Delivery: a WhatsApp column where WhatsApp is set up, showing what goes there (changed in its own consent section below).
  await page.goto(origin+'/preview-org/notifications/preferences');await page.locator('.nc-matrix').waitFor();

@@ -65,7 +65,7 @@ function ControlCentre({ control, loading }: { control?: AiControl; loading: boo
         <Kpi label="Answer success" value={success === null ? '—' : `${success}%`} tone={success === null ? undefined : success >= 90 ? 'success' : success >= 70 ? 'warning' : 'danger'}
           caption={r ? `${(r.answers - r.failed).toLocaleString()} of ${r.answers.toLocaleString()} · ${r.failed} failed` : undefined} />
         <Kpi label="Organisation context" value={ctxEmpty ? 'Empty' : 'Written'} tone={ctxEmpty ? 'danger' : 'success'} caption={`${control.contextLength.toLocaleString()} / ${control.contextLimit.toLocaleString()} characters`} />
-        <Kpi label="Automations" value={control.automations} caption={<Link to="/settings/timelines?sub=automation">rules running ›</Link>} />
+        <Kpi label="Automations" value={control.automations} caption={<Link to="/settings/timelines/automation">rules running ›</Link>} />
       </div>
       <div className="aic-grid">
         <section className="aic-card" aria-labelledby="aic-agents">
@@ -81,7 +81,7 @@ function ControlCentre({ control, loading }: { control?: AiControl; loading: boo
             <p className="aic-sub">Claude or ChatGPT can work here as you, with your permissions.</p>
             <div className="aic-mcp"><code>{MCP.replace(/^https?:\/\//, '')}</code>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => { void navigator.clipboard?.writeText(MCP).then(() => toast('Address copied.'), () => toast('Could not copy it.', 'error')); }}>Copy</button></div>
-            <Link className="aic-link" to="/settings/integrations?sub=connected-apps">Connected apps ›</Link>
+            <Link className="aic-link" to="/settings/integrations/connected-apps">Connected apps ›</Link>
           </section>
         </div>
       </div>
@@ -102,7 +102,7 @@ function AgentLevels({ control }: { control: AiControl }) {
     <ul className="aic-agents">
       {control.agents.map((a) => (
         <li key={a.id} className="aic-agent">
-          <div><b>{a.name}</b><span>{a.description}</span></div>
+          <div className="aic-agent-info"><b>{a.name}</b><span>{a.description}</span></div>
           {control.canEdit
             ? <Segmented label={`${a.name} level`} value={a.level} onChange={(v) => { if (busy !== a.id && v !== a.level) void set(a.id, v); }} options={LEVELS} />
             : <span className="ds-pill">{LEVELS.find((l) => l.id === a.level)?.label}</span>}

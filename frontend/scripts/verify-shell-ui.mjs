@@ -14,7 +14,9 @@ await fs.mkdir(out, { recursive: true });
 const csp = await appCsp();
 const user = { id: '00000000-0000-0000-0000-000000000001', displayName: 'Asha Rao', email: 'asha@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
 const ws = { id: '00000000-0000-0000-0000-000000000002', slug: 'preview-org', name: 'Preview Workspace', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 4 };
-const project = { id: '00000000-0000-0000-0000-0000000000a1', key: 'RP', name: 'Razor pay', status: 'Active', health: 'OnTrack', progress: 40 };
+const project = { id: '00000000-0000-0000-0000-0000000000a1', key: 'RP', name: 'Razor pay', description: 'Payment gateway', status: 'Active', priority: 'High', health: 'OnTrack', progress: 40, active: 2,
+  startDate: '2026-10-01', dueDate: '2026-12-19', version: 1, stageScheduleMode: 'Manual', projectType: 'NewProject', deliveryMethod: 'Agile',
+  owner: { id: '00000000-0000-0000-0000-000000000001', name: 'Asha Rao' }, stats: { total: 5, done: 2, inProgress: 2, cancelled: 0, todo: 1, overdue: 0 } };
 const token = `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`;
 const writes = [], errors = [], checks = [];
 let levels = { project: 'suggest', notetaker: 'askFirst', mail: 'askFirst', triage: 'suggest', timesheet: 'suggest' };
@@ -46,9 +48,12 @@ try {
       else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
       else if (ep === '/api/v1/workspace/members') data = [{ userId: user.id, displayName: 'Asha Rao', email: user.email, role: 'Owner' }, { userId: '00000000-0000-0000-0000-0000000000b2', displayName: 'Priya Nair', email: 'priya@example.test', role: 'Member' }];
       else if (ep === '/api/v1/work-types') data = [{ id: '00000000-0000-0000-0000-0000000000c1', name: 'Incident', description: null, order: 1, isActive: true, taskCount: 0 }, { id: '00000000-0000-0000-0000-0000000000c2', name: 'Bug fix', description: null, order: 2, isActive: true, taskCount: 0 }];
-      else if (ep === `/api/v1/projects/${project.id}`) data = { project, statuses: [], stages: [], members: [] };
+      else if (ep === `/api/v1/projects/${project.id}`) data = { project, stages: [], statuses: [{ id: project.id, name: 'To Do', order: 0, category: 'Todo', color: '#4f46e5' }], members: [{ userId: user.id, name: user.displayName, email: user.email, role: 'Owner' }] };
       else if (ep.endsWith('/projects') || ep.endsWith('/tasks') || ep.endsWith('/work-tasks')) data = { items: [], page: 1, totalPages: 0, totalItems: 0 };
       else if (ep === '/api/v1/ai/control') data = control();
+      else if (ep === '/api/v1/workspace/security') data = { requireMfa: false, ipAllowlistEnabled: false, ipRanges: [], myIp: '49.37.12.9', entitled: true, minPasswordLength: 0, sessionHours: 0, allowedSignIn: ['password', 'passkey', 'sso'], platformMinPasswordLength: 8 };
+      else if (ep === '/api/v1/workspace/security/members') data = { total: 2, withoutMfa: 0, people: [] };
+      else if (ep === '/api/v1/agent/command-center') data = { greeting: 'Good morning, Asha', headline: 'Nothing urgent.', since: '2026-10-26T00:00:00Z', counts: { attention: 0, toDecide: 0, dueToday: 0, overdue: 0, blocking: 0, checkIns: 0, meetingsToday: 0, atRisk: 0 }, attention: [], today: [], changes: [], health: [], reliability: { kept: 0, missed: 0, open: 0, moved: 0 }, checkIns: [], owe: [], delegations: [] };
       else if (ep === '/api/v1/ai/usage') data = { month: '2026-10', creditsUsed: 351, creditsLimit: 1500, creditsLeft: 1149, unlimited: false, maxTier: 'deep', attachments: true, actions: true, tiers: [], attachmentTypes: [], maxFiles: 4, maxImageMb: 5, maxDocumentMb: 10 };
       else if (ep === '/api/v1/ai/usage/report') data = { month: '2026-10', creditsUsed: 351, creditsLimit: 1500, unlimited: false, answers: 160, failed: 34, byTier: [], people: [] };
       else if (ep === '/api/v1/ai/instructions') data = { text: null, canEdit: true };
@@ -73,6 +78,7 @@ try {
   // The rail: logo, + New, the five places with their labels, the avatar; no sidebar, no top bar, no Customize.
   await page.goto(`${origin}/preview-org/`); await page.locator('.v2-rail').waitFor();
   assert.deepEqual(await page.locator('.v2-rail-item span').allTextContents(), ['Home', 'Work', 'Talk', 'Library', 'Insights']);
+  await page.waitForTimeout(500); if (!(await page.locator('.v2-rail').count())) { await page.getByText('Details').click().catch(()=>{}); console.log('ERRORS', errors, await page.locator('body').innerText()); await shot(page, 'fail.png'); }
   assert.equal(Math.round((await page.locator('.v2-rail').boundingBox()).width), 84);
   assert.equal(await page.locator('.sidebar, .topbar').count(), 0, 'no sidebar or top bar');
   assert.equal(await page.getByRole('button', { name: 'Customize' }).count(), 0);
@@ -95,22 +101,22 @@ try {
   // Old addresses: their new place, with the query and #anchor kept.
   const moved = [
     ['/projects/' + project.id + '?task=7#c-1', `/work/projects/${project.id}?task=7#c-1`], ['/operations?task=12', '/work?task=12&tab=tickets'], ['/my-work', '/work'],
-    ['/chat', '/talk?f=chat'], ['/mailbox', '/talk?f=mail'], ['/meet/past', '/talk?s=past&f=meetings'], ['/calendar', '/?tab=calendar'], ['/reminders', '/'],
-    ['/agents', '/'], ['/project-agent/assigned', '/'], ['/ai/operations', '/insights?tab=workflows'], ['/agent-tracker', '/settings/ai?sub=tracker'],
+    ['/chat', '/talk?f=chat'], ['/mailbox', '/talk?f=mail'], ['/meet/past', '/talk?f=meetings&s=past'], ['/calendar', '/?tab=calendar'], ['/reminders', '/?tab=reminders'],
+    ['/agents', '/'], ['/project-agent/assigned', '/?tab=given'], ['/ai/operations', '/insights?tab=workflows'], ['/agent-tracker', '/settings/ai/tracker'],
     ['/doctracker?p=1&t=documents', '/library/docs?p=1&t=documents'], ['/vault', '/library/vault'], ['/timesheet/approvals', '/insights?tab=time&s=approvals'],
-    ['/workload', '/insights'], ['/reports', '/insights?tab=reports'], ['/portfolio', '/work/projects?view=portfolio'], ['/account/security#s-account.twoStep', '/settings/profile?sub=security#s-account.twoStep'],
-    ['/account/resumes', '/settings/profile'], ['/notifications/preferences', '/settings/notifications?sub=delivery'], ['/settings/sso', '/settings/security?sub=sso'],
-    ['/settings/labels#s-config.labels', '/settings/fields?sub=labels#s-config.labels'], ['/settings', '/settings/profile'],
+    ['/workload', '/insights'], ['/reports', '/insights?tab=reports'], ['/portfolio', '/work/projects?view=portfolio'], ['/account/security#s-account.twoStep', '/settings/profile/security#s-account.twoStep'],
+    ['/account/resumes', '/settings/profile'], ['/notifications/preferences', '/settings/notifications/delivery'], ['/settings/sso', '/settings/security/sso'],
+    ['/settings/labels#s-config.labels', '/settings/fields/labels#s-config.labels'], ['/settings', '/settings/profile'],
   ];
-  for (const [from, to] of moved) { await page.goto(`${origin}/preview-org${from}`); await page.waitForTimeout(350); assert.equal(at(), to, `${from} moved`); }
+  for (const [from, to] of moved) { await page.goto(`${origin}/preview-org${from}`); for (let i = 0; i < 40 && at() !== to; i++) await page.waitForTimeout(100); assert.equal(at(), to, `${from} moved`); }
   checks.push(`redirects:${moved.length}`);
 
   // Settings: You (2) and Workspace (8) sections; tabs inside a section.
-  await page.goto(`${origin}/preview-org/settings/security`); await page.locator('.set-place-head').waitFor();
+  await page.goto(`${origin}/preview-org/settings/security`); await page.locator('.set-place-head').waitFor({ timeout: 8000 }).catch(async (e) => { await page.getByText('Details').click().catch(() => {}); console.log(at(), errors, (await page.locator('body').innerText()).slice(0, 600)); throw e; });
   const sections = await page.locator('.section-nav a').allInnerTexts();
   for (const want of ['Profile & sign-in', 'Notifications', 'General', 'People', 'Fields & types', 'Timelines & automation', 'Security & audit', 'Integrations', 'AI', 'Billing']) assert.ok(sections.some((t) => t.trim().startsWith(want)), `Settings has ${want}: ${sections}`);
   assert.equal(sections.length, 10, `ten sections: ${sections}`);
-  await page.getByRole('tab', { name: 'Single sign-on' }).click(); await page.waitForTimeout(300); assert.equal(at(), '/settings/security?sub=sso');
+  await page.getByRole('tab', { name: 'Single sign-on' }).click(); await page.waitForTimeout(300); assert.equal(at(), '/settings/security/sso');
   await page.goto(`${origin}/preview-org/settings/profile`); await page.locator('.set-place-head').waitFor();
   assert.ok(!(await page.locator('.set-place-head [role="tab"]').allInnerTexts()).some((t) => /Resume/.test(t)), 'no Resume studio');
   await shot(page, 'settings-profile-1440.png'); checks.push('settings-sections');
@@ -135,8 +141,8 @@ try {
   await page.waitForTimeout(300);
   assert.equal(await page.locator('.v2-new-type.on').innerText(), 'Ticket');
   assert.ok((await page.locator('.v2-understood-label').innerText()).includes('I understood this as a ticket'));
-  const chips = await page.locator('.v2-new-chip').allInnerTexts();
-  assert.ok(chips.some((c) => c.includes('Critical')) && chips.some((c) => c.includes('Priya Nair')), `chips: ${chips}`);
+  const chips = await page.locator('.v2-new-chip b').allInnerTexts();
+  assert.ok(chips.includes('Critical') && chips.includes('Priya Nair'), `chips: ${chips}`);
   await shot(page, 'new-ticket-1440.png');
   await page.getByRole('button', { name: 'Create ticket' }).click(); await page.waitForTimeout(500);
   const made = writes.find((w) => w.ep === '/api/v1/work-tasks');
@@ -147,10 +153,11 @@ try {
 
   // On a project page the Ask bar is "Ask about <project>" at the bottom right; it opens the copilot panel.
   await page.goto(`${origin}/preview-org/work/projects/${project.id}`); await page.locator('.v2-ask.corner').waitFor();
-  assert.equal(await page.locator('.v2-ask.corner').innerText(), 'Ask about Razor pay');
+  await page.locator('.v2-ask.corner', { hasText: 'Ask about Razor pay' }).waitFor();
   await page.locator('.v2-ask.corner').click(); await page.locator('.v2-panel').waitFor();
   assert.ok((await page.locator('.v2-panel h2').innerText()).includes('Razor pay'));
   assert.equal(await page.locator('.v2-panel footer, .v2-panel .modal-footer').count(), 0, 'no Save / Cancel footer');
+  await page.waitForTimeout(800); if (await page.getByText('Something went wrong').count()) { await page.getByText('Details').click(); console.log('CRASH', (await page.locator('body').innerText()).slice(0, 800)); }
   await shot(page, 'copilot-1440.png'); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
   assert.equal(await page.locator('.v2-panel').count(), 0); checks.push('copilot');
 

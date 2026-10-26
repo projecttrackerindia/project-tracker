@@ -82,9 +82,9 @@ try{
  const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&!m.text().startsWith('Failed to load resource'))console.error('console:',m.text().slice(0,400));});await page.setViewportSize({width:1440,height:1000});
  const shot=(name)=>page.screenshot({path:path.join(out,name),animations:'disabled'});
  try{
-  // 1. One entry in the sidebar; the list shows what is coming with each person's reply and Join only when it is near.
+  // 1. One entry: Talk in the rail, Meetings among its filters; the list shows what is coming with each person's reply and Join only when it is near.
   await page.goto(origin+'/preview-org/meet');
-  await page.locator('.sidebar-nav').getByRole('link',{name:'Meet',exact:true}).waitFor();
+  await page.locator('.v2-rail-item',{hasText:'Talk'}).waitFor();await page.getByRole('tab',{name:'Meetings'}).waitFor();
   const rows=page.locator('.mt-item');await rows.first().waitFor();
   assert.equal(await rows.count(),4,'Three meetings and one call from the calendar');
   const review=rows.filter({hasText:'Atlas review'});
@@ -144,11 +144,11 @@ try{
   // 7. The Calendar shows meetings and opens them in Meet; it has no meeting button of its own.
   await page.goto(origin+'/preview-org/calendar');await page.locator('.cal-filters').waitFor();
   assert.equal(await page.getByRole('button',{name:/Scrum call|Schedule/}).count(),0);
-  await page.getByText('Atlas review').last().click();await page.waitForURL(/\/meet\?open=p:/);
+  await page.getByText('Atlas review').last().click();await page.waitForURL(/[?&]open=p:/);
   await page.getByRole('dialog').getByRole('heading',{name:'Atlas review'}).waitFor();checks.push('calendar-opens-meet');
 
   // 8. Old addresses lead to Meet.
-  await page.goto(origin+'/preview-org/notetaker?session=s1');await page.waitForURL(/\/meet\/notetaker\?session=s1$/);checks.push('old-address');
+  await page.goto(origin+'/preview-org/notetaker?session=s1');await page.waitForURL(/\/talk\?session=s1&f=meetings&s=notetaker$/);checks.push('old-address');
 
   // 9. A phone: the list fits and Join stays reachable.
   await page.setViewportSize({width:390,height:844});await page.goto(origin+'/preview-org/meet');await page.locator('.mt-item').first().waitFor();

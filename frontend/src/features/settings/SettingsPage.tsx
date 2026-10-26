@@ -2,7 +2,7 @@ import { WorkspaceLogoCard } from './WorkspaceLogo';
 import { ProfilePhotoCard } from './ProfilePhoto';
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { authApi, meApi, workspaceApi } from '../../api/endpoints';
 import { Icon, type IconName } from '../../components/Icon';
@@ -86,13 +86,13 @@ const PLACE_IDS = new Set<string>(['profile', 'notifications', ...WORKSPACE_PLAC
 interface SubTab { id: string; label: string }
 
 /**
- * Settings: one page with ten sections. Each section opens on its first tab; the tab is in the address (?sub=), so a link, a search result
+ * Settings: one page with ten sections. Each section opens on its first tab; the tab is in the address (/settings/security/sso), so a link, a search result
  * or Back lands on it. Addresses of the old pages (/settings/sso, /settings/labels …) move to the section and tab that hold them now.
  */
 export function SettingsPage() {
-  const { section } = useParams();
+  const { section, sub: asked } = useParams();
   const loc = useLocation();
-  const [params, setParams] = useSearchParams();
+  const nav = useNavigate();
   const leaves = useWorkspaceSections();
   const isPlatformAdmin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
   useSettingJump();
@@ -119,9 +119,9 @@ export function SettingsPage() {
       ? [{ id: 'delivery', label: 'Delivery' }, { id: 'device', label: 'This device' }, { id: 'schedule', label: 'Schedule & time zone' }, { id: 'history', label: 'History' },
         ...leaves.filter((l) => PLACE_LEAVES.notifications.includes(l.id)).map((l) => ({ id: l.id, label: l.id === 'notifications' ? 'Member defaults' : l.label }))]
       : place === 'ai' ? [] : leaves.filter((l) => PLACE_LEAVES[place].includes(l.id)).sort((a, b) => PLACE_LEAVES[place].indexOf(a.id) - PLACE_LEAVES[place].indexOf(b.id)).map((l) => ({ id: l.id, label: l.label }));
-  const asked = params.get('sub');
   const sub = place === 'ai' ? (asked === 'usage' || asked === 'tracker' ? asked : 'control') : tabs.find((t) => t.id === asked)?.id ?? tabs[0]?.id;
-  const choose = (v: string) => { const n = new URLSearchParams(params); n.set('sub', v); n.delete('tab'); setParams(n); };
+  const first = place === 'ai' ? 'control' : tabs[0]?.id;
+  const choose = (v: string) => nav(v === first ? `/settings/${place}` : `/settings/${place}/${v}`);
 
   const groups = [
     { title: 'You', items: (['profile', 'notifications'] as const).filter((p) => p === 'profile' || !isPlatformAdmin).map((p) => ({ to: `/settings/${p}`, label: PLACE_INFO[p].label, icon: PLACE_INFO[p].icon })) },
@@ -186,7 +186,7 @@ function ProfileSection() {
           <form className="form-grid" onSubmit={(e) => { e.preventDefault(); if (name.trim()) profile.mutate(); }}>
             <Field label="Full name" required><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} /></Field>
             <Field label="Email" hint={ctx.user.emailVerified ? 'Verified' : 'Not verified'}><input className="input" value={ctx.user.email} disabled /></Field>
-            <Field label="Time zone" hint="Every date, due date, reminder and chart follows it."><div className="input input-static">{ctx.user.timeZone} <Link className="link" to="/settings/notifications?sub=schedule">Change</Link></div></Field>
+            <Field label="Time zone" hint="Every date, due date, reminder and chart follows it."><div className="input input-static">{ctx.user.timeZone} <Link className="link" to="/settings/notifications/schedule">Change</Link></div></Field>
             <div className="full"><SubmitButton busy={profile.isPending}>Save profile</SubmitButton></div>
           </form>
         </div>

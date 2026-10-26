@@ -27,7 +27,7 @@ export const PLACE_OF = Object.fromEntries(Object.entries(PLACE_LEAVES).flatMap(
 export function leafHref(leaf: WorkspaceSection): string {
   const place = PLACE_OF[leaf];
   const first = place === 'notifications' ? null : PLACE_LEAVES[place as Exclude<SettingsPlace, 'profile'>][0];
-  return first === leaf ? `/settings/${place}` : `/settings/${place}?sub=${leaf}`;
+  return first === leaf ? `/settings/${place}` : `/settings/${place}/${leaf}`;
 }
 
 /** What kind of setting a page is, shown beside it in search results (the command palette). */

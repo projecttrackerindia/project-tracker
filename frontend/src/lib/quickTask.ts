@@ -109,8 +109,9 @@ export function parseQuickTask(text: string, people: QuickPerson[] = [], today: 
 
   // Who: "@ravi", "for Ravi", "assign to Ravi Kumar", "to me". Longest matching name wins (so "Ravi Kumar" beats "Ravi").
   const findPerson = (words: string) => matchPerson(words, people, me);
-  const who = skip.has('assignee') ? null : rest.match(/(?:@([\w.-]+(?:\s[\w.-]+)?)|\b(?:assign(?:ed)?\s+to|for|to(?=\s+me\b))\s+([A-Za-z][\w.-]*(?:\s[A-Za-z][\w.-]*)?))/i);
-  if (who) {
+  // Each candidate in turn ("VPN down for collections team, assign to Priya": "collections team" is nobody, Priya is).
+  const candidates = skip.has('assignee') ? [] : [...rest.matchAll(/(?:@([\w.-]+(?:\s[\w.-]+)?)|\b(?:assign(?:ed)?\s+to|for|to(?=\s+me\b))\s+([A-Za-z][\w.-]*(?:\s[A-Za-z][\w.-]*)?))/gi)];
+  for (const who of candidates) {
     const raw = (who[1] ?? who[2]).trim();
     const two = findPerson(raw), one = findPerson(raw.split(/\s+/)[0]);
     const person = two ?? one;
@@ -119,6 +120,7 @@ export function parseQuickTask(text: string, people: QuickPerson[] = [], today: 
       // Only the words that named the person leave the title: "for Ravi about payments" keeps "about payments".
       const used = two ? who[0] : who[0].replace(/\s+\S+$/, '');
       rest = rest.replace(used, ' ');
+      break;
     }
   }
 

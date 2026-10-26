@@ -192,7 +192,7 @@ try {
 
   let ctx = await make(); let page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message)); await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${origin}/preview-org/vault`); await page.locator('.vlt-items').waitFor();
-  assert.ok(await page.locator('.sidebar a, nav a').filter({ hasText: /^Vault$/ }).first().isVisible(), 'Vault in the sidebar');
+  assert.ok(await page.locator('.v2-rail-item', { hasText: 'Library' }).isVisible(), 'Library in the rail'); assert.ok(await page.getByRole('tab', { name: 'Vault' }).isVisible(), 'Vault is a Library tab');
   assert.deepEqual(await page.locator('.vlt-rail [data-collection]').evaluateAll((els) => els.map((e) => e.getAttribute('data-collection'))), ['My vault', 'Payments servers']);
   assert.equal(await page.locator('.vlt-item').count(), 4);
   for (const v of Object.values(SECRETS).flatMap((s) => Object.values(s))) assert.ok(!(await html(page)).includes(v), 'no secret in the list page');

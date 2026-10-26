@@ -63,7 +63,7 @@ function NewSheet({ onMake }: { onMake: (m: { kind: 'task' | 'project'; title: s
   const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 5 * 60_000 });
   const people: QuickPerson[] = useMemo(() => (members.data ?? []).map((m) => ({ id: m.userId, name: m.displayName })), [members.data]);
   const mePerson = me ? { id: me.id, name: me.displayName } : undefined;
-  const parsed = useMemo(() => parseQuickTask(text, people, new Date(), mePerson), [text, people, mePerson?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const parsed = useMemo(() => parseQuickTask(text.replace(/\b(?:give|hand|pass)\s+(?:it\s+)?to\b|\bowner:?(?=\s)/gi, 'assign to'), people, new Date(), mePerson), [text, people, mePerson?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const guessed = useMemo(() => guessType(text, allowed), [text]); // eslint-disable-line react-hooks/exhaustive-deps
   const type = picked ?? guessed;
   const types = useWsQuery(['work', 'types'], () => workApi.types(), { enabled: type === 'ticket', staleTime: 5 * 60_000 });
