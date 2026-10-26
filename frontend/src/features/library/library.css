@@ -65,6 +65,19 @@ html .lib-ask .lib-ask-btn { min-height: 40px; padding: 0 22px; border-radius: v
 .lib-vault-item-main { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .lib-vault-item-main b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-vault-item-main small { font-size: 12.5px; color: var(--ds-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Quick copy beside a row (C on the focused row does the same); the row keeps room for it so it never covers the text. */
+.lib-vault-row { position: relative; }
+.lib-vault-row .lib-vault-item { padding-right: 46px; }
+.lib-vault-row:hover .vlt-quick, .lib-vault-row:focus-within .vlt-quick { opacity: 1; }
+/* One collection's items: its name as a chip, with Access and settings for its managers. */
+.lib-vault-coll { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.lib-vault-colls { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.lib-vault-colls li { display: flex; align-items: center; gap: 8px; }
+.lib-vault-coll-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 14px; text-align: left; color: var(--ds-text); }
+.lib-vault-coll-main:hover { background: var(--ds-fill); }
+.lib-vault-coll-main span { display: grid; gap: 1px; min-width: 0; }
+.lib-vault-coll-main b { font-size: 14px; font-weight: 600; }
+.lib-vault-coll-main small { font-size: 12.5px; color: var(--ds-text-3); }
 .lib-vault-mode { display: flex; align-items: center; gap: 10px; }
 .lib-vault-mode b { font-size: 15px; font-weight: 600; color: var(--ds-text); }
 .lib-vault-detail { padding: 20px; min-height: 320px; }

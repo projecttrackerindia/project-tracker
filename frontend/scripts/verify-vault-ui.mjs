@@ -189,12 +189,22 @@ try {
   const waitFor = async (pred, what) => { for (let i = 0; i < 50; i++) { if (await pred()) return; await new Promise((r) => setTimeout(r, 100)); } assert.fail(`waited for ${what}`); };
   const html = (page) => page.evaluate(() => document.body.innerText + document.body.innerHTML);
   const clip = (page) => page.evaluate(() => navigator.clipboard.readText());
+  // v2 (Library › Vault): the less-used views sit under the vault's ··· and an item's actions under its own ···; a collection opens from
+  // ··· › Collections and shows only its items, with Access and its settings beside its name.
+  const more = async (name) => { await page.getByRole('button', { name: 'More in the vault' }).click(); await page.getByRole('menuitem', { name }).click(); };
+  const itemMenu = async (name) => { await page.getByRole('button', { name: 'Item actions' }).click(); await page.getByRole('menuitem', { name }).click(); };
+  const openCollection = async (name) => { await more(/^Collections/); await page.locator(`.lib-vault-colls li[data-collection="${name}"] .lib-vault-coll-main`).click(); await page.locator(`.lib-vault-coll[data-collection="${name}"]`).waitFor(); };
+  // The sealed vault's state is the ··· entry's name: "Set up sealed vault", "My keys · sealed vault open" or "… unlock sealed vault".
+  const lockState = async () => { await page.getByRole('button', { name: 'More in the vault' }).click(); const t = await page.getByRole('menuitem', { name: /sealed vault/i }).innerText(); await page.keyboard.press('Escape'); return t; };
+  const allItems = async () => { if (await page.locator('.lib-vault-coll .lib-vault-flag').count()) await page.locator('.lib-vault-coll .lib-vault-flag').click(); if (await page.locator('.lib-vault-flag').count()) await page.locator('.lib-vault-flag').click(); };
 
   let ctx = await make(); let page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message)); await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto(`${origin}/preview-org/vault`); await page.locator('.vlt-items').waitFor();
+  await page.goto(`${origin}/preview-org/vault`); await page.locator('.lib-vault-items').waitFor();
   assert.ok(await page.locator('.v2-rail-item', { hasText: 'Library' }).isVisible(), 'Library in the rail'); assert.ok(await page.getByRole('tab', { name: 'Vault' }).isVisible(), 'Vault is a Library tab');
-  assert.deepEqual(await page.locator('.vlt-rail [data-collection]').evaluateAll((els) => els.map((e) => e.getAttribute('data-collection'))), ['My vault', 'Payments servers']);
-  assert.equal(await page.locator('.vlt-item').count(), 4);
+  await more(/^Collections/);
+  assert.deepEqual(await page.locator('.lib-vault-colls [data-collection]').evaluateAll((els) => els.map((e) => e.getAttribute('data-collection'))), ['My vault', 'Payments servers']);
+  await page.locator('.lib-vault-mode').getByRole('button', { name: 'Items' }).click();
+  assert.equal(await page.locator('.lib-vault-item').count(), 4);
   for (const v of Object.values(SECRETS).flatMap((s) => Object.values(s))) assert.ok(!(await html(page)).includes(v), 'no secret in the list page');
   checks.push('list-without-secrets');
   // The app runs under its strict policy: Trusted Types clean anything put into innerHTML, and code from text is refused.
@@ -212,14 +222,16 @@ try {
   assert.ok(!/onclick/.test(tt.iconHtml));
   checks.push('trusted-types');
   // Tiles drawn here (nothing fetched), health at a glance, and copying straight from the list with the keyboard.
-  assert.equal(await page.locator('.vlt-item[data-item="AWS root account"] .vlt-tile-text').innerText(), 'aws');
-  assert.equal(await page.locator('.vlt-item[data-item="Bank portal"] .vlt-tile-text').innerText(), 'BP');
-  assert.match(await page.getByTestId('posture').innerText(), /75/);
-  await page.getByTestId('posture').getByRole('button', { name: /in a public breach/i }).click();
+  assert.equal(await page.locator('.lib-vault-item[data-item="AWS root account"] .vlt-tile-text').innerText(), 'aws');
+  assert.equal(await page.locator('.lib-vault-item[data-item="Bank portal"] .vlt-tile-text').innerText(), 'BP');
+  // v2: health at a glance is the eyebrow (items at risk); the score and the filters are ··· › Health.
+  assert.match(await page.locator('.page-head .eyebrow').first().innerText(), /4 items · 1 at risk/);
+  await more(/^Health/); await page.locator('.vlt-score').waitFor(); assert.match(await page.locator('.vlt-score').innerText(), /75/);
+  await page.locator('.vlt-health-list button', { hasText: 'In a public breach' }).click();
   await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items' && w.q?.health === 'breached'), 'posture filter');
-  await page.locator('.vlt-chip-on').click();
-  await page.locator('.vlt-item[data-item="Bank portal"]').waitFor();
-  await page.locator('.vlt-item[data-item="Bank portal"]').focus();
+  await page.locator('.lib-vault-flag').click();
+  await page.locator('.lib-vault-item[data-item="Bank portal"]').waitFor();
+  await page.locator('.lib-vault-item[data-item="Bank portal"]').focus();
   await page.keyboard.press('c');
   await waitFor(() => writes.some((w) => w.ep.endsWith('/i1/reveal') && w.body.copy && w.body.field === 'password'), 'quick copy');
   await waitFor(async () => (await clip(page)) === SECRETS.i1.password, 'copied from the list');
@@ -234,7 +246,7 @@ try {
   await shot(page, 'list-1440.png');
 
   // The item view never draws a secret: masked, copy only (the edit screen is the one place a value shows).
-  await page.locator('.vlt-item[data-item="Bank portal"]').click();
+  await page.locator('.lib-vault-item[data-item="Bank portal"]').click();
   await page.locator('.vlt-panel[data-item="Bank portal"]').waitFor();
   assert.equal(await page.locator('[data-field="password"] .vlt-secret').getAttribute('data-state'), 'masked');
   assert.ok(await page.getByText('ravi@fivestar.in').isVisible(), 'non-secret user name shown');
@@ -242,7 +254,7 @@ try {
   assert.equal(await page.locator('.vlt-panel').getByRole('button', { name: /^(Reveal|Show) / }).count(), 0, 'no reveal button in the item view');
   assert.equal(await page.locator('.vlt-panel [data-state="revealed"]').count(), 0);
   assert.equal(writes.filter((w) => w.ep.endsWith('/reveal')).length, 0, 'opening an item fetches no value');
-  assert.match(await page.locator('.vlt-copy-only').innerText(), /never shown here/);
+  assert.match(await page.locator('.vlt2-foot').innerText(), /Copy asks for your passkey · the clipboard clears/);   // v2: copy only, said once under the fields
   // Remarks are for reading (line breaks kept) and a second address is a link; neither is masked.
   const remark = page.locator('[data-field="remarks"] .vlt-remark');
   assert.equal(await remark.innerText(), 'Shared login for the finance team.\nCall Ravi before changing it.');
@@ -271,12 +283,12 @@ try {
   checks.push('cover-when-window-left');
 
   // Files: download goes by POST and records.
-  await page.getByRole('tab', { name: /Files/ }).click();
+  await itemMenu(/^Files/);
   const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download recovery.txt' }).click()]);
   assert.equal(dl.suggestedFilename(), 'recovery.txt');
   assert.ok(writes.some((w) => w.ep === '/api/v1/vault/attachments/a1/download'));
   // History: copied, never shown; always a two-step check (asked for first, so nothing is refused for nothing).
-  await page.getByRole('tab', { name: /Earlier values/ }).click();
+  await itemMenu(/^Earlier values/);
   assert.equal(await page.locator('.vlt-history').getByRole('button', { name: /Reveal/ }).count(), 0);
   await page.locator('.vlt-history').getByRole('button', { name: 'Copy the earlier Password' }).click();
   await page.locator('.modal').getByText('Confirm it is you').waitFor();
@@ -289,14 +301,14 @@ try {
   assert.equal(await clip(page), 'Old!Value#2025');
   assert.equal(writes.filter((w) => w.ep.includes('/versions/')).at(-1).body.copy, true);
   assert.ok(!(await html(page)).includes('Old!Value#2025'), 'an earlier value is never drawn');
-  await page.getByRole('tab', { name: 'Activity' }).click();
+  await itemMenu(/^Activity/);
   await page.locator('.vlt-activity li.warn').waitFor();
   checks.push('files-history-activity');
 
   // Confidential: the check made a moment ago is reused (no second prompt).
-  await page.locator('.vlt-item[data-item="AWS root account"]').click();
+  await page.locator('.lib-vault-item[data-item="AWS root account"]').click();
   await page.locator('.vlt-panel[data-item="AWS root account"]').waitFor();
-  assert.ok(await page.locator('.vlt-badges').getByText('Confidential').isVisible());
+  assert.ok(await page.locator('.vlt2-title').getByText('Confidential').isVisible());
   await page.getByRole('button', { name: 'Copy Password' }).click();
   await waitFor(() => writes.some((w) => w.ep.endsWith('/i2/reveal')), 'confidential copy');
   assert.equal(await page.locator('.modal').count(), 0);
@@ -305,26 +317,26 @@ try {
   checks.push('confidential-step-up-once');
 
   // Use only: no reveal, only copy.
-  await page.locator('.vlt-item[data-item="Payments DB"]').click();
+  await page.locator('.lib-vault-item[data-item="Payments DB"]').click();
   await page.locator('.vlt-panel[data-item="Payments DB"]').waitFor();
   assert.equal(await page.getByRole('button', { name: 'Reveal Password' }).count(), 0);
   assert.ok(await page.getByRole('button', { name: 'Copy Password' }).isVisible());
-  assert.ok(await page.locator('.vlt-badges').getByText('Use only').isVisible());
+  assert.ok(await page.locator('.vlt2-title').getByText('Use only').isVisible());
   checks.push('use-only');
 
   // One-time code from the server.
-  await page.locator('.vlt-item[data-item="Old router"]').click();
+  await page.locator('.lib-vault-item[data-item="Old router"]').click();
   await page.locator('.vlt-panel[data-item="Old router"]').waitFor();
   assert.ok(await page.locator('.vlt-health-callout').isVisible(), 'health warning');
   await page.getByRole('button', { name: 'Show code' }).click();
   await page.locator('.vlt-totp').waitFor();
-  assert.equal(await page.locator('.vlt-totp').innerText(), '492 039');
+  assert.match(await page.locator('.vlt-totp').innerText(), /^492 039(\n\d+)?$/);   // v2: the seconds left sit beside the code
   assert.ok(!(await html(page)).includes(SECRETS.i4.totp), 'the seed never comes to the page');
   checks.push('totp');
   await shot(page, 'item-1440.png');
 
   // New item: generator, strength, breach check, a bad one-time-code key.
-  await page.getByRole('button', { name: 'New item' }).click();
+  await page.getByRole('button', { name: 'New secret' }).click();
   await page.locator('.modal').getByText('New vault item').waitFor();
   await page.getByRole('radio', { name: 'Login' }).click();
   await page.locator('#vi-title').fill('GitHub');
@@ -360,9 +372,9 @@ try {
 
   // Edit: the one place a value shows — fetched only when asked for (recorded as for the edit screen), masked again when the window is
   // left; a secret left as it was is kept, not erased or re-saved.
-  await page.locator('.vlt-item[data-item="Bank portal"]').click();
+  await page.locator('.lib-vault-item[data-item="Bank portal"]').click();
   await page.locator('.vlt-panel[data-item="Bank portal"]').waitFor();
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await itemMenu('Edit');
   await page.locator('.modal').getByText('Edit “Bank portal”').waitFor();
   assert.equal(await page.locator('#vf-password').inputValue(), '');
   assert.ok(!(await html(page)).includes(SECRETS.i1.password), 'not in the edit screen until asked for');
@@ -384,7 +396,7 @@ try {
   checks.push('edit-shows-on-request-and-keeps-secret');
 
   // Import a Bitwarden export.
-  await page.getByRole('button', { name: 'Import' }).click();
+  await more(/^Import/);
   const csv = 'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n,,login,Gmail,,,0,https://mail.google.com,asha,"G,m@il#Pass1",\n,,login,Jira,,,0,https://jira.example,asha,password1,\n';
   await page.locator('.modal input[type=file]').setInputFiles({ name: 'bitwarden.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
   await page.locator('.vlt-import-preview').waitFor();
@@ -397,7 +409,7 @@ try {
   checks.push('import');
 
   // Sharing a collection.
-  await page.locator('.vlt-rail [data-collection="Payments servers"]').click();
+  await openCollection('Payments servers');
   await page.getByRole('button', { name: 'Access', exact: true }).click();
   await page.locator('.vlt-share-row').first().waitFor();
   assert.equal(await page.locator('.vlt-share-row').count(), 2);
@@ -427,17 +439,17 @@ try {
   checks.push('pipeline-access');
 
   // Health.
-  await page.locator('.vlt-rail button', { hasText: 'Health' }).click();
+  await more(/^Health/);
   await page.locator('.vlt-score').waitFor();
   await page.locator('.vlt-health-list button', { hasText: 'In a public breach' }).click();
   await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items' && w.q?.health === 'breached'), 'health filter request');
-  await page.waitForFunction(() => document.querySelectorAll('.vlt-item').length === 1);
-  assert.equal(await page.locator('.vlt-item').first().getAttribute('data-item'), 'Old router');
-  assert.ok(await page.locator('.vlt-chip-on', { hasText: 'In a public breach' }).isVisible());
+  await page.waitForFunction(() => document.querySelectorAll('.lib-vault-item').length === 1);
+  assert.equal(await page.locator('.lib-vault-item').first().getAttribute('data-item'), 'Old router');
+  assert.ok(await page.locator('.lib-vault-flag', { hasText: 'In a public breach' }).isVisible());
   checks.push('health');
 
   // Administration: rules, review, announced access.
-  await page.locator('.vlt-rail button', { hasText: 'Administration' }).click();
+  await more(/^Administration/);
   await page.getByText('Vault rules').waitFor();
   await page.getByText('Two-step check for every reveal, copy and code').click();
   await page.getByRole('button', { name: 'Save rules' }).click();
@@ -453,20 +465,20 @@ try {
   checks.push('admin');
 
   // Decoys: a vault admin marks one from its page; the admin view lists it.
-  await page.locator('.vlt-rail button', { hasText: 'All items' }).click();
-  await page.locator('.vlt-item[data-item="Payments DB"]').click();
+  await allItems();
+  await page.locator('.lib-vault-item[data-item="Payments DB"]').click();
   await page.locator('.vlt-panel[data-item="Payments DB"]').waitFor();
-  await page.getByRole('button', { name: 'Make it a decoy' }).click();
+  await itemMenu('Make it a decoy');
   await page.locator('.modal').getByRole('button', { name: 'Make it a decoy' }).click();
   await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items/i3/decoy'), 'decoy set');
   assert.deepEqual(writes.find((w) => w.ep === '/api/v1/vault/items/i3/decoy').body, { decoy: true });
-  await page.locator('.vlt-badges').getByText('Decoy').waitFor();
-  await page.locator('.vlt-rail button', { hasText: 'Administration' }).click();
+  await page.locator('.vlt2-title').getByText('Decoy').waitFor();
+  await more(/^Administration/);
   await page.getByTestId('decoys').getByText('Payments DB').waitFor();
   checks.push('decoys');
 
   // The two-person rule on a collection, set from its settings.
-  await page.locator('.vlt-rail [data-collection="Payments servers"]').click();
+  await openCollection('Payments servers');
   await page.getByRole('button', { name: 'Collection settings' }).click();
   await page.locator('.modal').getByText('Two-person rule').click();
   await page.locator('.modal').getByText('People may ask to join for a while').click();
@@ -475,8 +487,8 @@ try {
   const rules = writes.find((w) => w.ep === '/api/v1/vault/collections/c2').body;
   assert.equal(rules.requireApproval, true); assert.equal(rules.requestable, true);
   // A copy now asks for approval first; asking sends the reason and the window.
-  await page.reload(); await page.locator('.vlt-items').waitFor();
-  await page.locator('.vlt-item[data-item="AWS root account"]').click();
+  await page.reload(); await page.locator('.lib-vault-items').waitFor();
+  await page.locator('.lib-vault-item[data-item="AWS root account"]').click();
   await page.getByTestId('approval').waitFor();
   assert.match(await page.getByTestId('approval').innerText(), /Two-person rule/);
   await page.getByRole('button', { name: 'Copy Password' }).click();
@@ -493,8 +505,9 @@ try {
   checks.push('two-person-rule-ask');
 
   // Requests: decide on someone else's, and ask to join a collection for a while.
-  assert.match(await page.getByTestId('rail-requests').innerText(), /1/);
-  await page.getByTestId('rail-requests').click();
+  const reqTab = page.getByRole('radiogroup', { name: 'Show' }).getByRole('radio', { name: /Requests/ }).or(page.getByRole('tab', { name: /Requests/ })).or(page.getByRole('button', { name: /^Requests/ })).first();
+  assert.match(await reqTab.innerText(), /1/);
+  await reqTab.click();
   await page.getByTestId('requests').waitFor();
   await page.locator('[data-request="r1"]').getByRole('button', { name: /Approve/ }).click();
   await page.locator('.modal input').fill('Go ahead, rotate after');
@@ -524,7 +537,8 @@ try {
 
   // Send once: encrypted here; the link carries the key after #; it opens once, without signing in, then it is gone.
   await page.goto(`${origin}/preview-org/vault?item=i1`); await page.locator('.vlt-panel[data-item^="Bank portal"]').waitFor();
-  await page.getByRole('button', { name: 'Send once' }).click();
+  await page.getByRole('button', { name: 'Share', exact: true }).click(); await page.getByTestId('share-choices').getByRole('radio', { name: /One-time link/ }).click();
+  await page.getByRole('button', { name: 'Create link' }).click();   // v2: Share › One-time link
   await page.locator('.modal').getByText('Notes').click();   // not the notes
   await page.locator('.modal').getByText('Also ask for a passphrase').click();
   await page.getByRole('textbox', { name: 'Passphrase' }).fill('blue elephant');
@@ -561,7 +575,7 @@ try {
   const again = await ctx.newPage(); again.on('pageerror', (e) => errors.push(e.message));
   await again.goto(linkUrl); await again.getByText('This link no longer works').waitFor();
   await again.close();
-  await page.locator('.vlt-rail button', { hasText: 'One-time links' }).click();
+  await more(/^One-time links/);
   await page.getByTestId('links').getByText('Opened and destroyed').waitFor();
   checks.push('one-time-link');
 
@@ -569,8 +583,8 @@ try {
   const cdp = await ctx.newCDPSession(page);
   await cdp.send('WebAuthn.enable');
   await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, hasPrf: true, automaticPresenceSimulation: true } });
-  assert.match(await page.getByTestId('lock-state').innerText(), /Set up sealed vault/);
-  await page.getByTestId('lock-state').click();
+  assert.match(await lockState(), /Set up sealed vault/);
+  await more(/Set up sealed vault/);
   await page.getByRole('button', { name: 'Create my vault keys' }).click();
   await page.getByTestId('recovery-kit').waitFor();
   const kit = (await page.getByLabel('Recovery key').innerText()).trim();
@@ -585,7 +599,7 @@ try {
   await page.getByRole('button', { name: 'Done — open my vault' }).click();
   await page.getByTestId('safety-code').waitFor();
   assert.equal(await page.getByTestId('safety-code').innerText(), setup.fingerprint);
-  assert.match(await page.getByTestId('lock-state').innerText(), /Sealed vault open/);
+  assert.match(await lockState(), /sealed vault open/);
   checks.push('sealed-keys-with-passkey');
   // The recovery circle: offered once keys exist; only colleagues with vault keys can be chosen.
   assert.match(await page.getByTestId('circle').innerText(), /No circle yet/);
@@ -598,7 +612,7 @@ try {
   await shot(page, 'sealed-keys-1440.png');
 
   // A sealed collection: its key is made here and wrapped to me (hybrid X25519 + ML-KEM-768 envelope).
-  await page.getByRole('button', { name: 'New collection' }).click();
+  await more(/^New shared collection/);
   await page.locator('.modal').getByRole('radio', { name: /Sealed/ }).waitFor();
   assert.equal(await page.locator('.modal').getByRole('radio', { name: /Sealed/ }).getAttribute('aria-checked'), 'true', 'sealed is the default once keys are open');
   await page.locator('.modal').getByLabel('Name', { exact: false }).first().fill('Root secrets');
@@ -609,8 +623,8 @@ try {
   const env = writes.find((w) => w.ep.match(/collections\/c\d+\/keys$/) && w.body).body.envelopes[0];
   assert.equal(Buffer.from(env.envelope, 'base64').length, 1 + 32 + 1088 + 1 + 12 + 32 + 16, 'version, ephemeral X25519, ML-KEM ciphertext, wrapped key');
   await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click();   // the access list that opens next
-  await page.locator('.vlt-rail [data-collection="Root secrets"]').click();
-  await page.getByRole('button', { name: 'New item' }).first().click();
+  await openCollection('Root secrets');
+  await page.getByRole('button', { name: 'New secret' }).first().click();
   await page.locator('#vi-title').fill('Cloud root');
   await page.locator('#vf-username').fill('root@fivestar.in');
   await page.locator('#vf-password').fill('Se@led!Root#2026x');
@@ -642,17 +656,17 @@ try {
   await shot(page, 'sealed-item-1440.png');
 
   // Lock: keys wiped from memory. Unlock with the passkey, then with the recovery key; a waiting device is approved after its code is checked.
-  await page.getByTestId('lock-state').click();
+  await more(/^My keys/);
   await page.getByRole('button', { name: 'Lock now' }).click();
-  assert.match(await page.getByTestId('lock-state').innerText(), /locked/);
-  await page.locator('.vlt-rail [data-collection="Root secrets"]').click();
+  assert.match(await lockState(), /unlock sealed vault/);
+  await openCollection('Root secrets');
   await page.getByTestId('unlock').waitFor();
   assert.ok(!(await html(page)).includes('Se@led!Root#2026x'));
   const helper = { xPriv: x25519.utils.randomSecretKey(), kem: ml_kem768.keygen() };
   reqState.toHelp = [{ requestId: 'h1', person: { id: 'u2', name: 'Ravi Kumar' }, x25519Public: Buffer.from(x25519.getPublicKey(helper.xPriv)).toString('base64'), mlKemPublic: Buffer.from(helper.kem.publicKey).toString('base64'),
     createdAt: now, expiresAt: now, ipAddress: '203.0.113.x', userAgent: 'Firefox', shareEnvelope: 'AAAA', shareSignature: 'AAAA', ownerEd25519Public: 'AAAA', ownerGeneration: 1, threshold: 2 }];
   await page.getByRole('button', { name: 'Unlock with passkey' }).click();
-  await page.locator('.vlt-item[data-item="Cloud root"]').waitFor();
+  await page.locator('.lib-vault-item[data-item="Cloud root"]').waitFor();
   checks.push('unlock-with-passkey');
   // A colleague asks their circle for help: the code to compare, a warning to call them, and a refusal that reaches the server.
   await page.getByTestId('circle-help').waitFor();
@@ -666,8 +680,8 @@ try {
   checks.push('circle-help-request');
 
   // A passkey answers a step-up too (the risk check asks here): fingerprint, face or screen lock instead of a code.
-  await page.locator('.vlt-rail button', { hasText: 'All items' }).click();
-  await page.locator('.vlt-item[data-item="AWS root account"]').click();
+  await allItems();
+  await page.locator('.lib-vault-item[data-item="AWS root account"]').click();
   await page.locator('.vlt-panel[data-item="AWS root account"]').waitFor();
   reqState.forceStepUp = true;
   await page.evaluate(() => navigator.clipboard.writeText(''));
@@ -683,9 +697,9 @@ try {
   const eph = { xPriv: x25519.utils.randomSecretKey(), kem: ml_kem768.keygen() };
   const ephPub = { x25519Public: Buffer.from(x25519.getPublicKey(eph.xPriv)).toString('base64'), mlKemPublic: Buffer.from(eph.kem.publicKey).toString('base64') };
   sealedState.pendingDevice = { link: { id: 'd1', label: 'A phone', ...ephPub, createdAt: now, expiresAt: new Date(Date.now() + 600e3).toISOString(), ipAddress: '203.0.113.20', userAgent: 'Mobile Safari', approved: false, denied: false, envelope: null, signature: null } };
-  await page.getByTestId('lock-state').click();
+  await more(/^My keys/);
   await page.getByRole('button', { name: 'Lock now' }).click();
-  await page.locator('.vlt-rail [data-collection="Root secrets"]').click();
+  await openCollection('Root secrets');
   await page.getByRole('button', { name: 'Ask my recovery circle' }).click();
   await page.getByRole('button', { name: 'Ask my circle' }).click();
   await page.getByTestId('circle-code').waitFor();
@@ -721,8 +735,8 @@ try {
 
   // A reload starts locked: nothing of the keys survives in storage.
   await page.reload();
-  await page.locator('.vlt-rail').waitFor();
-  assert.match(await page.getByTestId('lock-state').innerText(), /locked/);
+  await page.locator('.lib-vault-list').waitFor();
+  assert.match(await lockState(), /unlock sealed vault/);
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
   assert.ok(!stored.includes(kit) && !stored.includes('Se@led!Root#2026x'));
   checks.push('reload-starts-locked');
@@ -734,18 +748,18 @@ try {
   for (const theme of ['dark', 'light']) {
     ctx = await make(theme); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`${origin}/preview-org/vault`); await page.locator('.vlt-items').waitFor();
+    await page.goto(`${origin}/preview-org/vault`); await page.locator('.lib-vault-items').waitFor();
     await fitsPhone(page, `vault list ${theme}`, assert);
     await shot(page, `phone-list-${theme}.png`);
-    await page.locator('.vlt-item[data-item^="Bank portal"]').click();
+    await page.locator('.lib-vault-item[data-item^="Bank portal"]').click();
     await page.locator('.vlt-panel[data-item^="Bank portal"]').waitFor();
-    assert.equal(await page.locator('.vlt-main').isVisible(), false, 'the panel replaces the list on a phone');
+    assert.equal(await page.locator('.lib-vault-list').isVisible(), false, 'the panel replaces the list on a phone');
     assert.equal(await page.locator('[data-field="password"] .vlt-secret').getAttribute('data-state'), 'masked');
     await fitsPhone(page, `vault item ${theme}`, assert);
     await shot(page, `phone-item-${theme}.png`);
     await page.getByRole('button', { name: 'Back to the list' }).click();
-    await page.locator('.vlt-items').waitFor();
-    await page.getByRole('button', { name: 'New item' }).click();
+    await page.locator('.lib-vault-items').waitFor();
+    await page.getByRole('button', { name: 'New secret' }).click();
     await page.locator('.modal').getByText('New vault item').waitFor();
     await fitsPhone(page, `vault editor ${theme}`, assert);
     await shot(page, `phone-editor-${theme}.png`);
@@ -757,9 +771,9 @@ try {
   ctx = await make('light', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/141 ProjectTrackerDesktop/1.0.0' });
   await ctx.addInitScript(() => { window.__shield = []; window.ptDesktop = { platform: 'win32', protectContent: (on) => window.__shield.push(on), windowControl: () => {}, onMaximizeChange: () => {}, attention: () => {} }; });
   page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message)); await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto(`${origin}/preview-org/vault`); await page.locator('.vlt-items').waitFor();
+  await page.goto(`${origin}/preview-org/vault`); await page.locator('.lib-vault-items').waitFor();
   assert.deepEqual(await page.evaluate(() => window.__shield), [true], 'shield on while the vault is open');
-  assert.match(await page.getByTestId('shield-note').innerText(), /Hidden from screen sharing/);
+  assert.equal(await page.getByTestId('shield-note').count(), 0, 'v2: nothing to warn about where the system hides the window from shares');
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   await page.waitForTimeout(200);
   assert.equal(await page.getByTestId('vault-cover').count(), 0, 'no cover needed where the system hides the window');

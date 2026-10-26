@@ -110,7 +110,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
           <BrandTile title={it.title} url={it.url} kind={it.kind} size="lg" />
           <div className="vlt2-title">
             <h2>{it.title}</h2>
-            <p>{context}{it.class === 'Confidential' && <> · <span className="vlt2-conf">Confidential</span></>}{isDecoy && <> · <span className="vlt2-conf">Decoy</span></>}</p>
+            <p>{context}{it.class === 'Confidential' && <> · <span className="vlt2-conf">Confidential</span></>}{isDecoy && <> · <span className="vlt2-conf">Decoy</span></>}{it.useOnly && <> · <span className="vlt2-conf" title="Can be copied into a sign-in form, never shown">Use only</span></>}</p>
           </div>
           {!binned && (canGrant || canLink || approval) && <button type="button" className="btn btn-primary btn-sm" aria-expanded={shareOpen} onClick={() => setShareOpen((v) => !v)}>Share</button>}
           <DotsMenu label="Item actions" items={[
