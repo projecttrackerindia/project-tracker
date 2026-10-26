@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode, type RefObject } from 'react';
-import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
 import { PageLoader } from '../../components/ui';
 import { invalidateWorkspace, useDetailsDismiss, useWsQuery } from '../../lib/hooks';
 import { timeAgo } from '../../lib/format';
-import { useAuth, useModule, useWorkspaceId } from '../../stores/auth';
+import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { useAiStatus } from './Assistant';
 import { aiWorkspaceApi, type AiFeedbackReason, askAi, type AiAction, type AiConversation, type AiMessage, type AiMode, type AiStreamEvent, type AiTier, type AiToolUse, type AiPlanStep } from './aiApi';
@@ -54,22 +54,18 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
   const id = home ? search.get('c') ?? undefined : routeId ?? search.get('c') ?? undefined;   // v2: /ai/<id> is now /?tab=assistant&c=<id>
   const navigate = useNavigate();
   const loc = useLocation();
-  // Home is the assistant for everyone whose Home is the Command Center (the projects module, not a guest).
-  const projectsLevel = useModule('projects');
-  const role = useAuth((s) => s.ctx?.current?.role);
-  const aiFirst = projectsLevel > 0 && role !== 'Guest';
-  // Where a conversation lives: /ai/{id} on the Assistant page, ?c={id} on the AI-first Home. "/ai" means a new conversation.
-  // Stable on purpose (effects depend on it): it reads the current address from a ref instead of re-creating itself on every change.
+  // "/ai" means a new conversation, "/ai/{id}" an existing one. Stable on purpose (effects depend on it): it reads the current address from a ref instead of re-creating itself on every change.
   const here = useRef(loc); here.current = loc;
-  const isHome = !!home;
+  // v2: the assistant has no address of its own any more (/ai only redirects), so a conversation always stays where it is open, its id in ?c=
+  // (on Home's assistant tab or in the copilot panel). Navigating to /ai/<id> would remount the page through the redirect mid-answer.
   const nav = useCallback((to: string, opts?: { replace?: boolean; state?: unknown }) => {
-    if (!isHome || !to.startsWith('/ai')) { navigate(to, opts); return; }
+    if (!to.startsWith('/ai')) { navigate(to, opts); return; }
     const cid = to.startsWith('/ai/') ? to.slice(4) : '';
     const next = new URLSearchParams(here.current.search);
     if (cid) next.set('c', cid); else next.delete('c');
     const qs = next.toString();
     navigate(`${here.current.pathname}${qs ? `?${qs}` : ''}`, { replace: opts?.replace });
-  }, [isHome, navigate]);
+  }, [navigate]);
   const wid = useWorkspaceId();
   const firstName = useAuth((s) => s.ctx?.user.displayName?.split(' ')[0] ?? '');
   const status = useAiStatus();
@@ -422,9 +418,6 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
   }
 
   const outOfCredits = !!usage && !usage.unlimited && usage.creditsLeft <= 0;
-
-  // With the AI-first Home, the conversation lives on Home: the Assistant page's own addresses lead there (with any question in hand).
-  if (!home && aiFirst) return <Navigate to={id ? `/?c=${id}` : '/'} replace state={loc.state} />;
 
   const disabledReason = cooldownSeconds > 0 ? `Please wait ${cooldownSeconds} seconds before asking again.` : outOfCredits ? 'This month\'s AI credits are used up. They renew on the 1st.' : null;
   const empty = messages.length === 0 && !live;

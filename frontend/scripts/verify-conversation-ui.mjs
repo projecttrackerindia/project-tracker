@@ -49,8 +49,9 @@ try {
   }
   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({data})});
  });
+ // v2: an assistant conversation (/?c=…) opens the full assistant page on Home, whose ask box is .ai-composer.
  for(const [width,height] of [[320,740],[390,844],[768,1024],[740,390]]){
-  for(const [kind,url,composer] of [['agent','/preview-org/?c=c1','.ai-composer.stacked'],['chat','/preview-org/chat/'+conversation.id,'.composer']]){
+  for(const [kind,url,composer] of [['agent','/preview-org/?c=c1','.ai-composer'],['chat','/preview-org/chat/'+conversation.id,'.composer']]){
    const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height});
    await page.goto(origin+url);await page.locator(composer).waitFor({state:'visible'});await page.evaluate(()=>document.fonts.ready);
    await page.waitForFunction(s=>!!document.querySelector(s)&&!!document.querySelector('.m-tabs'),composer);await page.waitForTimeout(150);
