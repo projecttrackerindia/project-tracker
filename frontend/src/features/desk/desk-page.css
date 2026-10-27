@@ -105,3 +105,16 @@
 .dq-tacts .dq-btn.sm { height: 22px; padding: 0 9px; font-size: 11.5px; }
 .dq-t:hover .dq-tacts, .dq-t:focus-within .dq-tacts { display: flex; }
 @media (hover: none) { .dq-t:hover .dq-tacts { display: none; } }
+
+/* Touch screens and phones: hover never shows Assign / Resolve, so each row has a visible ⋯ that opens them as full-size buttons. */
+.dq-more { display: none; }
+@media (hover: none), (max-width: 760px) {
+  .dq-t { flex-wrap: wrap; padding-right: 52px; }
+  .dq-more { display: grid; place-items: center; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border: 0; border-radius: 22px;
+    background: transparent; color: var(--ds-text-2); font-size: 20px; line-height: 1; cursor: pointer; }
+  .dq-more[aria-expanded='true'] { background: var(--ds-fill); top: 8px; transform: none; }
+  .dq-t:hover .dq-tacts, .dq-t:focus-within .dq-tacts { display: none; }
+  .dq-tacts.open, .dq-t:hover .dq-tacts.open, .dq-t:focus-within .dq-tacts.open { display: flex; position: static; flex-basis: 100%; background: none; padding: 8px 0 2px 0; gap: 8px; }
+  .dq-tacts.open .dq-btn.sm { flex: 1; height: 44px; font-size: 14px; border-radius: 12px; }
+  .dq-q { max-height: none; }
+}

@@ -97,6 +97,7 @@ export function DeskPage() {
   const qc = useQueryClient();
   const [busyRow, setBusyRow] = useState<string | null>(null);
   // Assign / Resolve from the queue row: the same PATCH as the open ticket, with its current version.
+  const [actsFor, setActsFor] = useState<string | null>(null);
   const quick = async (r: WorkRow, f: { assigneeId?: string; status?: string }, done: string) => {
     setBusyRow(r.id);
     try { const w = detailOf(r.id) ?? await workItemsApi.get(r.id); await workItemsApi.update(r.id, { version: w.version, ...f }); toast(done); }
@@ -173,7 +174,11 @@ export function DeskPage() {
                     <small><ChannelIcon channel={d?.channel} />{who}</small>
                   </div>
                   {tab !== 'solved' && (
-                    <span className="dq-tacts" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" className="dq-more" aria-label={`Actions for ${r.key}`} aria-expanded={actsFor === r.id}
+                      onClick={(e) => { e.stopPropagation(); setActsFor((v) => (v === r.id ? null : r.id)); }}>⋯</button>
+                  )}
+                  {tab !== 'solved' && (
+                    <span className={`dq-tacts${actsFor === r.id ? ' open' : ''}`} onClick={(e) => e.stopPropagation()}>
                       {me && r.assignee?.id !== me.id && <button type="button" className="dq-btn sm white" disabled={busyRow === r.id} onClick={() => void quick(r, { assigneeId: me.id }, 'Assigned to you.')}>Assign</button>}
                       <button type="button" className="dq-btn sm" disabled={busyRow === r.id} onClick={() => void quick(r, { status: 'Completed' }, 'Resolved.')}>Resolve</button>
                     </span>

@@ -367,3 +367,37 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
 .v2-more-pin { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--ds-text); font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
 .v2-more-pin i { width: 10px; height: 10px; border-radius: 50%; flex: none; } .v2-more-pin svg { margin-left: auto; color: var(--ds-text-3); }
 @media (prefers-reduced-motion: reduce) { .v2-more-tile { animation: none; } }
+
+/* ------------------------------------------------------------------ phone: nothing hides under the bars */
+/* Pages end above the tab bar, the Ask bar and the home indicator, so the last row can always be scrolled into view. */
+@media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
+  :root { --m-ask: 64px; }
+  html .m-shell.v2-shell .m-main > .content { padding-bottom: calc(var(--m-tab, 62px) + var(--m-ask) + env(safe-area-inset-bottom, 0px) + 20px); }
+  html .m-shell.m-conversation .m-main > .content { padding-bottom: 0; }
+  /* toasts and live banners sit just above the Ask bar, never over a page's header */
+  html .m-shell .toast-root, html .toast-root { top: auto !important; bottom: calc(var(--m-tab, 62px) + var(--m-ask) + env(safe-area-inset-bottom, 0px) + 8px) !important; }
+  html .m-shell.m-conversation .toast-root { bottom: calc(var(--m-tab, 62px) + 72px + env(safe-area-inset-bottom, 0px)) !important; }
+  html .m-shell .toast { animation-name: v2-toast-rise; }
+  html .m-shell ~ .v2-live, html .v2-live { top: auto; right: 12px; left: 12px; width: auto; bottom: calc(var(--m-tab, 62px) + var(--m-ask) + env(safe-area-inset-bottom, 0px) + 8px); flex-direction: column-reverse; }
+  /* the Ask bar folds into a small pill while the page scrolls down, and opens again on a tap or a scroll up */
+  .m-shell .v2-ask:not(.corner) { transition: width .28s var(--ds-spring), opacity .2s var(--ds-ease), padding .28s var(--ds-spring); }
+  .m-shell .v2-ask.away:not(.corner):not(:focus-within) { opacity: 1; translate: none; pointer-events: auto; width: 92px; padding: 7px 14px 7px 8px; cursor: pointer; }
+  .m-shell .v2-ask.away:not(.corner):not(:focus-within) input,
+  .m-shell .v2-ask.away:not(.corner):not(:focus-within) .v2-ask-send { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .v2-ask-pill { display: none; font-size: 14px; font-weight: 600; color: var(--ds-text); }
+  .m-shell .v2-ask.away:not(.corner):not(:focus-within) .v2-ask-pill { display: inline; }
+  .m-shell .v2-ask.corner.away { opacity: 1; translate: none; pointer-events: auto; }
+}
+@keyframes v2-toast-rise { from { transform: translateY(24px) scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* + New › Ticket: Notify on WhatsApp (only when the workspace's WhatsApp can send) */
+.v2-new-wa { display: flex; align-items: center; gap: 12px; margin: 4px 0 12px; padding: 10px 14px; min-height: 52px; border-radius: 14px; background: var(--ds-fill); cursor: pointer; }
+.v2-new-wa-ico { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: #25d366; color: #fff; font-size: 14px; flex: none; }
+.v2-new-wa-t { flex: 1; min-width: 0; display: grid; }
+.v2-new-wa-t b { font-size: 14px; font-weight: 600; color: var(--ds-text); }
+.v2-new-wa-t small { font-size: 12px; color: var(--ds-text-3); }
+.v2-new-wa input { appearance: none; -webkit-appearance: none; width: 51px; height: 31px; border-radius: 16px; background: var(--ds-fill-strong); position: relative; flex: none; margin: 0; cursor: pointer; transition: background .2s; }
+.v2-new-wa input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .2); transition: transform .2s var(--ds-spring); }
+.v2-new-wa input:checked { background: #34c759; }
+.v2-new-wa input:checked::after { transform: translateX(20px); }
+.v2-new-wa input:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
