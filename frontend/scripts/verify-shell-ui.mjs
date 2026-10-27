@@ -81,18 +81,24 @@ try {
   const page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message)); await page.setViewportSize({ width: 1440, height: 960 });
   const at = () => { const u = new URL(page.url()); return `${u.pathname.replace('/preview-org', '') || '/'}${u.search}${u.hash}`; };
 
-  // The rail: logo, + New, the five places with their labels, the avatar; no sidebar, no top bar, no Customize.
+  // The sidebar: workspace, + New, the places in sections with their labels, the avatar; no old sidebar, no top bar, no Customize.
   await page.goto(`${origin}/preview-org/`); await page.locator('.v2-rail').waitFor();
-  assert.deepEqual(await page.locator('.v2-rail-item span').allTextContents(), ['Home', 'Work', 'Talk', 'Library', 'Insights']);
+  // The 236px sidebar: Today, then Work / Plan / Together sections (only places this person may open).
+  { const labels = await page.locator('.v2-rail-item .v2-rail-label').allTextContents();
+    for (const l of ['Today', 'My Work', 'Talk', 'Library', 'Insights']) assert.ok(labels.includes(l), `sidebar has ${l}: ${labels}`);
+    assert.equal(labels[0], 'Today'); }
   await page.waitForTimeout(500); if (!(await page.locator('.v2-rail').count())) { await page.getByText('Details').click().catch(()=>{}); console.log('ERRORS', errors, await page.locator('body').innerText()); await shot(page, 'fail.png'); }
-  assert.equal(Math.round((await page.locator('.v2-rail').boundingBox()).width), 84);
+  assert.equal(Math.round((await page.locator('.v2-rail').boundingBox()).width), 236);
   assert.equal(await page.locator('.sidebar, .topbar').count(), 0, 'no sidebar or top bar');
   assert.equal(await page.getByRole('button', { name: 'Customize' }).count(), 0);
-  assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'Home' }).isVisible());
-  assert.ok(await page.locator('.v2-ask input[placeholder="Ask, find, or tell it what to do…"]').isVisible(), 'the Ask bar');
+  assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'Today' }).isVisible());
+  // The wide layout: the toolbar's Ask field and + New at the top; no floating Ask bar and no + New in the sidebar.
+  assert.ok(await page.locator('.v2-tb-ask input[placeholder="Ask or find anything"]').isVisible(), 'the toolbar Ask field');
+  assert.equal(await page.locator('form.v2-ask').isVisible(), false, 'no floating Ask bar on a wide screen');
+  assert.equal(await page.locator('.v2-side .v2-new').isVisible(), false, 'no + New in the sidebar');
   await shot(page, 'rail-home-1440.png'); checks.push('rail');
-  await page.locator('.v2-rail-item', { hasText: 'Work' }).click(); await page.waitForTimeout(400);
-  assert.equal(at(), '/work'); assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'Work' }).isVisible()); checks.push('rail-navigates');
+  await page.locator('.v2-rail-item', { hasText: 'My Work' }).click(); await page.waitForTimeout(400);
+  assert.equal(at(), '/work'); assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'My Work' }).isVisible()); checks.push('rail-navigates');
 
   // The slim avatar menu: Profile, Workspaces, Settings, People, Help, Sign out (dark mode and team view live in Settings now).
   await page.locator('.v2-avatar').first().click();
@@ -142,7 +148,7 @@ try {
   await shot(page, 'ai-control-centre-1440.png'); checks.push('ai-control-centre');
 
   // + New: words in, "I understood this as a ticket" with chips, created through the one Work API and opened in the side panel.
-  await page.goto(`${origin}/preview-org/`); await page.locator('.v2-new').click();
+  await page.goto(`${origin}/preview-org/`); await page.locator('.v2-tb-new').click();
   await page.locator('.v2-new-input input').fill('VPN down for collections team, critical, give to Priya');
   await page.waitForTimeout(300);
   assert.equal(await page.locator('.v2-new-type.on').innerText(), 'Ticket');
@@ -155,7 +161,7 @@ try {
   assert.equal(made.b.kind, 'ticket'); assert.equal(made.b.priority, 'Critical'); assert.equal(made.b.assigneeId, '00000000-0000-0000-0000-0000000000b2'); assert.equal(made.b.workTypeId, '00000000-0000-0000-0000-0000000000c1');
   assert.equal(await page.locator('.v2-new-sheet').count(), 0);
   await page.locator('.v2-panel').getByText('WT-9 · Ticket').waitFor(); assert.equal(at(), '/work?item=00000000-0000-0000-0000-0000000000f1'); checks.push('new-sheet');
-  await page.keyboard.press('Control+k'); assert.ok(await page.locator('.v2-ask input').evaluate((el) => el === document.activeElement), 'Ctrl K puts the cursor in the Ask bar');
+  await page.keyboard.press('Control+k'); assert.ok(await page.locator('.v2-tb-ask input').evaluate((el) => el === document.activeElement), 'Ctrl K puts the cursor in the toolbar Ask field');
   await page.keyboard.press('Control+k'); await page.locator('.cmdk').waitFor(); await page.keyboard.press('Escape'); checks.push('ctrl-k');
 
   // On a project page the Ask bar is "Ask about <project>" at the bottom right; it opens the copilot panel.

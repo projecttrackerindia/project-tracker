@@ -27,13 +27,11 @@ export function SlaRing({ start, due, state }: { start: string; due: string; sta
 
 // ------------------------------------------------------------------ critical incident mode
 
-/** Critical open ticket: a red strip with the time since it was raised, and a War room that gathers the people in a Talk group. */
-export function IncidentStrip({ w }: { w: WorkItemDetail }) {
-  const now = useNow(true);
+/** Opens (or reopens) the ticket's war room: a Talk group with the people on it, remembered per ticket in this browser. */
+export function useWarRoom(w: WorkItemDetail) {
   const nav = useNavigate();
   const me = useAuth((s) => s.ctx?.user?.id);
   const [busy, setBusy] = useState(false);
-  const started = (w.detail as { createdAt?: string }).createdAt ?? w.createdAt;
   const storeKey = `pm_warroom_${w.id}`;
 
   const open = async () => {
@@ -61,6 +59,14 @@ export function IncidentStrip({ w }: { w: WorkItemDetail }) {
     } catch (e) { toast(errText(e, 'Could not open the war room.'), 'error'); }
     finally { setBusy(false); }
   };
+  return { open, busy };
+}
+
+/** Critical open ticket: a red strip with the time since it was raised, and a War room that gathers the people in a Talk group. */
+export function IncidentStrip({ w }: { w: WorkItemDetail }) {
+  const now = useNow(true);
+  const { open, busy } = useWarRoom(w);
+  const started = (w.detail as { createdAt?: string }).createdAt ?? w.createdAt;
 
   return (
     <div className="dk-incident" role="status">

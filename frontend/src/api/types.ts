@@ -117,6 +117,8 @@ export interface Project {
   /** Timeline stages, and how many are not signed off yet (stage status not Completed). */
   stageCount?: number; pendingSignOffs?: number; memberCount: number; version: number; position: number; enforceDependencies: boolean;
   projectGroupId: string | null; projectGroupName: string | null; projectType: ProjectType; deliveryMethod: DeliveryMethod;
+  /** When the project last changed (list only; the sidebar's pinned projects fall back to the most recently updated). */
+  updatedAt?: string | null;
 }
 /** A follow-up for a project, with an owner, a due date and a priority (on the project's Actions tab and the Portfolio page). */
 export type ActionItemStatus = 'Open' | 'InProgress' | 'Completed';
@@ -213,6 +215,14 @@ export interface CalendarEvent {
   overdue: boolean; projectId: string | null; projectName: string | null; priority: Priority | null;
   /** When a meeting session starts (UTC); null for anything that only has a date. */
   startsAt?: string | null;
+  /** A meeting's length (its end minus its start); null when the calendar does not know it. */
+  durationMinutes?: number | null;
+  /** The notetaker joins (its notes are filed by Project Tracker). */
+  notes?: boolean;
+  /** Where to join the call, when the meeting has one. */
+  joinUrl?: string | null;
+  /** Up to five people invited (display names, the organizer first). */
+  people?: string[] | null;
 }
 export interface SearchHit { type: string; id: string; title: string; subtitle: string | null; projectId: string | null; taskId: string | null }
 export interface ReportSummary {

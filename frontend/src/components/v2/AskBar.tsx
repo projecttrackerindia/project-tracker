@@ -6,7 +6,8 @@ import { PageLoader } from '../ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useAi, useAssistant } from '../../features/ai/Assistant';
 import { SidePanel } from './SidePanel';
-import { pageContext, useCopilot } from './state';
+import { openNew, pageContext, useCopilot } from './state';
+import { openPalette } from '../CommandPalette';
 import './v2.css';
 
 const AiPage = lazy(() => import('../../features/ai/AiPage').then((m) => ({ default: m.AiPage })));
@@ -44,6 +45,53 @@ function useScrollingAway(): boolean {
   return away;
 }
 
+/** Sends a question to the copilot with where the person is (the floating Ask bar and the toolbar's field share it). */
+function useAskSubmit() {
+  const { pathname, search } = useLocation();
+  const nav = useNavigate();
+  const show = useCopilot((s) => s.show);
+  const where = pageContext(pathname, search);
+  return (text: string) => {
+    show(null);
+    nav(`${pathname}${search}`, { state: { ask: where && where !== 'Home' ? `${text}\n\n(I am looking at ${where}.)` : text, ts: Date.now() } });
+  };
+}
+
+/**
+ * The toolbar at the top of the main area on wide screens (1100px and up): the Ask field (orb, "Ask or find anything", ⌘K) and + New on the
+ * right. The field asks the assistant like the Ask bar; with the assistant off it opens the command palette (go to, find, create).
+ */
+export function Toolbar() {
+  const ai = useAi();
+  const submit = useAskSubmit();
+  const [q, setQ] = useState('');
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k' || e.shiftKey || e.altKey) return;
+      if (!ai || !input.current || input.current.offsetParent === null || document.activeElement === input.current) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      input.current.focus();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [ai]);
+  return (
+    <div className="v2-tb" role="toolbar" aria-label="Ask and create">
+      <span className="v2-tb-sp" />
+      <form className="v2-tb-ask" role="search" aria-label="Ask the assistant" onSubmit={(e) => { e.preventDefault(); const t = q.trim(); if (!t) return; setQ(''); submit(t); }}
+        onMouseDown={(e) => { if (!ai) { e.preventDefault(); openPalette(); } }}>
+        <span className="v2-orb" aria-hidden="true" />
+        <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask or find anything" aria-label="Ask or find anything" readOnly={!ai}
+          onFocus={() => { if (!ai) { input.current?.blur(); openPalette(); } }}
+          onKeyDown={(e) => { if (e.key === 'Escape') { setQ(''); input.current?.blur(); } }} />
+        <kbd>⌘K</kbd>
+      </form>
+      <button type="button" className="v2-tb-new" title="New (N)" onClick={() => openNew()}><Icon name="plus" size={14} /> New</button>
+    </div>
+  );
+}
+
 export function AskBar() {
   const away = useScrollingAway();
   const ai = useAi();
@@ -61,7 +109,8 @@ export function AskBar() {
     if (!ai) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k' || e.shiftKey || e.altKey) return;
-      if (!input.current || document.activeElement === input.current) return;
+      // Hidden (the wide layout shows the toolbar's field instead): the toolbar takes ⌘K.
+      if (!input.current || input.current.offsetParent === null || document.activeElement === input.current) return;
       e.preventDefault(); e.stopImmediatePropagation();
       input.current.focus();
     };

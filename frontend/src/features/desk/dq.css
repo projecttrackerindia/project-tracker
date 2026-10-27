@@ -1,0 +1,34 @@
+/* Desk and Quality (Release 1 pages): the shared pieces - the page's own top bar with a segmented control, eyebrow + 34px title, cards,
+   pill buttons, the AI orb. Colours follow the mockups (ds.css) and switch with the theme through the --ds tokens. */
+.dq-page { --dq-tint: var(--ds-accent-fill); --dq-green: #34c759; --dq-orange: #ff9f0a; --dq-red: #ff3b30; --dq-blue: #0071e3; --dq-purple: #af52de;
+  --dq-ring-track: rgba(0, 0, 0, .07); --dq-fill: rgba(118, 118, 128, .12); --dq-fill2: rgba(118, 118, 128, .08); --dq-line: rgba(0, 0, 0, .08);
+  margin: -32px -6px 0; letter-spacing: -.01em; color: var(--ds-text); }
+[data-theme='dark'] .dq-page { --dq-ring-track: rgba(255, 255, 255, .12); --dq-fill: rgba(118, 118, 128, .24); --dq-fill2: rgba(118, 118, 128, .16); --dq-line: rgba(255, 255, 255, .1); }
+@media (max-width: 1280px) { .dq-page { margin-top: -28px; } }
+.dq-tb { height: 52px; display: flex; align-items: center; gap: 12px; }
+.dq-seg { display: inline-flex; background: var(--dq-fill); border-radius: 9px; padding: 2px; gap: 2px; }
+.dq-seg button { height: 26px; padding: 0 14px; border-radius: 7px; font: 500 12.5px var(--font); color: var(--ds-text); background: transparent; border: 0; cursor: pointer; }
+.dq-seg button.on { background: var(--ds-surface); box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .04); }
+.dq-seg button:focus-visible, .dq-btn:focus-visible { outline: 2px solid var(--dq-tint); outline-offset: 2px; }
+.dq-hd { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.dq-eyebrow { font-size: 13px; font-weight: 600; color: var(--dq-tint); }
+.dq-h1 { font-size: 34px; font-weight: 700; letter-spacing: -.025em; line-height: 1.1; margin: 0; }
+.dq-h3 { font-size: 17px; font-weight: 600; letter-spacing: -.015em; margin: 0; }
+.dq-card { background: var(--ds-surface); border-radius: 18px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 0 0 .5px rgba(0, 0, 0, .06); }
+.dq-row { display: flex; align-items: center; }
+.dq-sp { flex: 1; }
+.dq-faint { color: var(--ds-text-4); }
+.dq-s12 { font-size: 12px; }
+.dq-lbl { font-size: 11px; font-weight: 600; color: var(--ds-text-4); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+.dq-btn { height: 30px; padding: 0 14px; border-radius: 15px; font: 500 13px var(--font); display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--dq-fill); color: var(--ds-text); white-space: nowrap; border: 0; cursor: pointer; }
+.dq-btn.pri { background: var(--dq-tint); color: #fff; }
+.dq-btn.white { background: var(--ds-surface); }
+.dq-btn.sm { height: 26px; padding: 0 11px; font-size: 12px; border-radius: 13px; }
+.dq-btn:disabled { opacity: .55; cursor: default; }
+.dq-pill { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 11px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.dq-orb { width: 16px; height: 16px; border-radius: 50%; flex: none; background: conic-gradient(from 200deg, #5e5ce6, #bf5af2, #ff375f, #ff9f0a, #5e5ce6); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1); }
+.dq-ai { border-radius: 18px; padding: 14px 16px; background: linear-gradient(135deg, rgba(94, 92, 230, .10), rgba(191, 90, 242, .07) 55%, rgba(255, 55, 95, .05)); box-shadow: inset 0 0 0 .5px rgba(94, 92, 230, .22); }
+.dq-ai-line { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45; }
+.dq-ai-line .dq-orb { margin-top: 2px; }
+.dq-empty { color: var(--ds-text-4); font-size: 13px; padding: 16px; margin: 0; }

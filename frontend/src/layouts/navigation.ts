@@ -75,6 +75,8 @@ export function useMainNav(): NavGroup[] {
     { title: 'Go to', items: [
       { to: '/work', label: 'My work', icon: 'inbox', show: work, paletteOnly: true },
       { to: '/work?tab=tickets', label: 'Tickets', icon: 'bolt', show: lv('work') > 0, paletteOnly: true, hint: 'Support and operational work, queues and service levels' },
+      { to: '/desk', label: 'Desk', icon: 'target', show: lv('work') > 0, paletteOnly: true, hint: 'Tickets, incidents and service levels' },
+      { to: '/quality', label: 'Quality', icon: 'bug', show: lv('work') > 0, paletteOnly: true, hint: 'Test runs, defects and releases' },
       { to: '/work/projects', label: 'Projects', icon: 'folder', show: projects, paletteOnly: true },
       { to: '/work/projects?view=portfolio', label: 'Portfolio', icon: 'monitor', show: projects, paletteOnly: true },
       { to: '/?tab=calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0, paletteOnly: true },

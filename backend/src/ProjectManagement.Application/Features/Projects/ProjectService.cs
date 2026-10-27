@@ -21,7 +21,7 @@ public record ProjectListItemDto(Guid Id, string Key, string Name, string? Descr
     UserRefDto? Owner, Guid? TeamId, string? TeamName, DateOnly? StartDate, DateOnly? DueDate, int Progress, ProjectHealth Health,
     ProjectStatsDto Stats, int MemberCount, int Version, double Position, bool EnforceDependencies, Guid? ProjectGroupId = null, string? ProjectGroupName = null, ProjectType ProjectType = ProjectType.Other,
     DeliveryMethod DeliveryMethod = DeliveryMethod.Hybrid, StageScheduleMode StageScheduleMode = StageScheduleMode.Manual,
-    int StageCount = 0, int PendingSignOffs = 0);
+    int StageCount = 0, int PendingSignOffs = 0, DateTime? UpdatedAt = null);
 public record StatusDto(Guid Id, string Name, int Order, StatusCategory Category, string Color);
 public record StageDto(Guid Id, string Name, int Order, DateOnly? PlannedStart, DateOnly? PlannedEnd, DateOnly? ActualStart, DateOnly? ActualEnd,
     StageStatus Status, StageStatus EffectiveStatus, UserRefDto? Owner, UserRefDto? Assignee, string? Description,
@@ -162,7 +162,7 @@ public partial class ProjectService(
         new(p.Id, p.Key, p.Name, p.Description, p.Status, p.Priority,
             ownerName is null ? null : new UserRefDto(p.OwnerId, ownerName), p.TeamId, teamName, p.StartDate, p.DueDate,
             ProjectMetrics.Progress(stats), ProjectMetrics.Health(p, stats, clock.Today), stats, memberCount, p.Version, p.Position, p.EnforceDependencies, p.ProjectGroupId, groupName, p.ProjectType,
-            p.DeliveryMethod, p.StageScheduleMode, signOffs.Total, signOffs.Pending);
+            p.DeliveryMethod, p.StageScheduleMode, signOffs.Total, signOffs.Pending, p.UpdatedAt ?? p.CreatedAt);
 
     // ---------------------------------------------------------------- queries
 

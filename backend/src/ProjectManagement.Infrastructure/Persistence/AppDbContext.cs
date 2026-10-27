@@ -189,6 +189,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
     public DbSet<AiWatch> AiWatches => Set<AiWatch>();
     public DbSet<AiAgentAction> AiAgentActions => Set<AiAgentAction>();
+    public DbSet<TestCase> TestCases => Set<TestCase>();
+    public DbSet<TestRun> TestRuns => Set<TestRun>();
+    public DbSet<TestResult> TestResults => Set<TestResult>();
     public DbSet<AiSearchChunk> AiSearchChunks => Set<AiSearchChunk>();
     public DbSet<AiEvaluationRun> AiEvaluationRuns => Set<AiEvaluationRun>();
     public DbSet<AiWorkspaceProvider> AiWorkspaceProviders => Set<AiWorkspaceProvider>();
@@ -340,6 +343,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureAgent(b);
         ConfigureUpi(b);
         ConfigureVault(b);
+        ConfigureQuality(b);
         ApplyQueryFilters(b);
     }
 }
