@@ -115,10 +115,10 @@ public class WeeklyReportService(IAppDbContext db, AppClock clock, ProjectStatus
                 _ => $"{p.Progress}% done, due {D(p.DueDate)}.",
             };
         var people = await (from m in db.ProjectMembers.AsNoTracking()
-                            join u in db.Users.AsNoTracking() on m.UserId equals u.Id
+                            join pu in db.Users.AsNoTracking() on m.UserId equals pu.Id
                             where m.ProjectId == projectId
-                            orderby u.DisplayName
-                            select new UserRefDto(u.Id, u.DisplayName)).Take(100).ToListAsync(ct);
+                            orderby pu.DisplayName
+                            select new UserRefDto(pu.Id, pu.DisplayName)).Take(100).ToListAsync(ct);
         if (p.Owner is { } owner && people.All(x => x.Id != owner.Id)) people.Insert(0, owner);
         var week = System.Globalization.ISOWeek.GetWeekOfYear(today.ToDateTime(TimeOnly.MinValue));
 
