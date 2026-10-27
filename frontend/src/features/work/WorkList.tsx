@@ -4,6 +4,7 @@ import { Icon } from '../../components/Icon';
 import { EmptyState, ErrorState } from '../../components/ui';
 import { dateOffset, todayISO } from '../../lib/format';
 import { useDebounced } from '../../lib/hooks';
+import { SlaRing } from './Desk';
 import { Due, KIND_LABEL, KindChip, Owner, PRIORITY_ORDER, PriorityDot, useWorkList } from './workUi';
 import './work.css';
 
@@ -190,7 +191,7 @@ function WorkRowButton({ w, on, onOpen }: { w: WorkRow; on: boolean; onOpen: (id
       aria-label={`${w.key} ${w.title}, ${KIND_LABEL[w.kind]}, ${w.priority} priority, ${w.status}${w.assignee ? `, ${w.assignee.name}` : ', no owner'}${w.dueDate ? `, due ${w.dueDate}${w.isOverdue ? ', overdue' : ''}` : ''}`}
       title={[w.projectName, w.status, w.typeName && w.kind === 'ticket' ? w.typeName : null].filter(Boolean).join(' · ')}>
       <PriorityDot priority={w.priority} />
-      <span className="wk-title">{w.title}{done && <small> · {w.status}</small>}</span>
+      <span className="wk-title">{w.slaDueAt && w.slaStartAt && !done && <SlaRing start={w.slaStartAt} due={w.slaDueAt} state={w.slaState ?? null} />}{w.title}{done && <small> · {w.status}</small>}</span>
       <span className="wk-meta"><span className="wk-key">{w.key}</span><KindChip kind={w.kind} /></span>
       <Owner person={w.assignee} />
       <Due due={w.dueDate} late={w.isOverdue} />

@@ -203,7 +203,7 @@ function RuleModal({ workspace, statuses, rule, save, onClose, onSaved }: {
   );
 }
 
-function StepEditor({ n, step: f, workspace, statuses, canRemove, onChange, onRemove }: {
+export function StepEditor({ n, step: f, workspace, statuses, canRemove, onChange, onRemove }: {
   n: number; step: AutomationStep; workspace: boolean; statuses: WorkflowStatus[]; canRemove: boolean; onChange: (s: AutomationStep) => void; onRemove: () => void;
 }) {
   const members = useWsQuery(['members'], workspaceApi.members);

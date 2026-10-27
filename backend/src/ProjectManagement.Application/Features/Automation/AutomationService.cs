@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,14 @@ public record AutomationStepRequest(AutomationAction Action, Priority? ActionPri
 public record UpsertAutomationRequest(string Name, bool IsEnabled, AutomationTrigger Trigger, Guid? WhenStatusId, Priority? WhenPriority,
     AutomationAction Action, Priority? ActionPriority, Guid? ActionStatusId, Guid? ActionLabelId, AutomationTarget? ActionTarget, Guid? ActionUserId, string? ActionText,
     StatusCategory? WhenStatusCategory = null, int? TriggerDays = null, StatusCategory? ActionStatusCategory = null, IReadOnlyList<AutomationStepRequest>? MoreActions = null);
+
+/// <summary>A dry run: the rule as it would be saved, tried against one existing task. Nothing is changed or sent.</summary>
+public record TestAutomationRequest(UpsertAutomationRequest Rule, Guid TaskId);
+/// <summary>One step of a dry run: the trigger, then each action. <see cref="Pass"/> false means it stopped there (trigger) or would be skipped (action).</summary>
+public record AutomationTestStepDto(string Step, bool Pass, string Note);
+public record AutomationTestDto(string TaskKey, string TaskTitle, bool WouldRun, IReadOnlyList<AutomationTestStepDto> Steps);
+/// <summary>One time a rule did something to a task (from the activity log).</summary>
+public record AutomationRunDto(DateTime At, Guid? TaskId, string Summary);
 
 /// <summary>
 /// Creates and edits automation rules: a project's own, or the workspace's (they apply to every project). Needs a plan that includes automation,
@@ -112,6 +121,115 @@ public class AutomationService(IAppDbContext db, ICurrentContext ctx, AppClock c
         await permissions.RequireAsync(Permissions.WorkflowManage, ct);
         var rule = await db.AutomationRules.FirstOrDefaultAsync(r => r.Id == id && r.ProjectId == null, ct) ?? throw new NotFoundException("Rule not found.");
         await RemoveAsync(rule, ct);
+    }
+
+    // ---------------------------------------------------------------- dry run and history
+
+    /// <summary>
+    /// Tries a rule (saved or not) against one existing task without changing anything: does the trigger match the task as it is now, and
+    /// what would each action do. Project rules only take that project's tasks; workspace rules take any task the caller can see.
+    /// </summary>
+    public async Task<AutomationTestDto> TestAsync(Guid? projectId, TestAutomationRequest req, CancellationToken ct = default)
+    {
+        if (req.Rule is null) throw new ValidationException("rule", "Describe the rule to try.");
+        if (projectId is { } pid) await RequireEditableAsync(pid, ct); else await RequireWorkspaceManagerAsync(ct);
+        var rule = new AutomationRule { ProjectId = projectId };
+        await ApplyAsync(rule, req.Rule, ct);   // validates; the rule is never added to the database
+
+        var task = await db.Tasks.AsNoTracking().FirstOrDefaultAsync(t => t.Id == req.TaskId, ct) ?? throw new NotFoundException("Task not found.");
+        if (projectId is { } p && task.ProjectId != p) throw new ValidationException("taskId", "Choose a task of this project.");
+        var project = await access.GetProjectAsync(task.ProjectId, ct);
+        var key = $"{project.Key}-{task.Number}";
+        var status = await db.WorkflowStatuses.AsNoTracking().FirstOrDefaultAsync(s => s.Id == task.StatusId, ct);
+        var open = status is null || (status.Category != StatusCategory.Done && status.Category != StatusCategory.Cancelled);
+        var labels = (await db.TaskLabels.AsNoTracking().Where(l => l.TaskId == task.Id).Select(l => l.LabelId).ToListAsync(ct)).ToHashSet();
+
+        var steps = new List<AutomationTestStepDto>();
+        var (matched, why) = TriggerMatches(rule, task, status, open);
+        steps.Add(new AutomationTestStepDto("When", matched, why));
+        foreach (var step in StepsOf(rule))
+        {
+            if (!matched) { steps.Add(new AutomationTestStepDto("Then", false, "Not reached: the trigger did not match.")); continue; }
+            var (pass, note) = await WouldDoAsync(step, task, labels, ct);
+            steps.Add(new AutomationTestStepDto("Then", pass, note));
+        }
+        return new AutomationTestDto(key, task.Title, matched && steps.Skip(1).Any(s => s.Pass), steps);
+    }
+
+    private (bool, string) TriggerMatches(AutomationRule r, TaskItem t, WorkflowStatus? status, bool open)
+    {
+        var days = r.TriggerDays ?? 0;
+        var today = clock.Today;
+        switch (r.Trigger)
+        {
+            case AutomationTrigger.TaskCreated:
+                return (true, "Runs once when a task is created; this task stands in for a new one.");
+            case AutomationTrigger.StatusChanged:
+                if (r.WhenStatusId is { } ws && ws != t.StatusId) return (false, $"The task is in “{status?.Name ?? "?"}”, not the status the rule waits for.");
+                if (r.WhenStatusCategory is { } wc && wc != status?.Category) return (false, $"The task is in “{status?.Name ?? "?"}”, not {Category(wc)}.");
+                return (true, $"The task is in “{status?.Name ?? "?"}”.");
+            case AutomationTrigger.PriorityChanged:
+                if (r.WhenPriority is { } wp && wp != t.Priority) return (false, $"The task's priority is {t.Priority}, not {wp}.");
+                return (true, $"The task's priority is {t.Priority}.");
+            case AutomationTrigger.DueSoon:
+                if (!open) return (false, "The task is closed; scheduled rules only look at open tasks.");
+                if (t.DueDate is not { } due) return (false, "The task has no due date.");
+                return due >= today && due <= today.AddDays(days) ? (true, $"Due {due:dd MMM}, within {days} day(s).") : (false, $"Due {due:dd MMM}, not within {days} day(s) from today.");
+            case AutomationTrigger.Overdue:
+                if (!open) return (false, "The task is closed; scheduled rules only look at open tasks.");
+                if (t.DueDate is not { } d) return (false, "The task has no due date.");
+                return d < today && d <= today.AddDays(-days) ? (true, $"Due {d:dd MMM}, overdue.") : (false, $"Due {d:dd MMM}, not {days} day(s) overdue yet.");
+            default:
+                if (!open) return (false, "The task is closed; scheduled rules only look at open tasks.");
+                var changed = t.UpdatedAt ?? t.CreatedAt;
+                return changed <= clock.Now.AddDays(-days) ? (true, $"Last changed {changed:dd MMM}.") : (false, $"Changed {changed:dd MMM}, less than {days} day(s) ago.");
+        }
+    }
+
+    private async Task<(bool, string)> WouldDoAsync(AutomationStepDto s, TaskItem t, HashSet<Guid> labels, CancellationToken ct)
+    {
+        switch (s.Action)
+        {
+            case AutomationAction.SetPriority:
+                return s.ActionPriority == t.Priority ? (false, $"Skipped: the priority is already {t.Priority}.") : (true, $"Would set the priority to {s.ActionPriority}.");
+            case AutomationAction.MoveToStatus:
+            {
+                var target = s.ActionStatusId is { } sid
+                    ? await db.WorkflowStatuses.AsNoTracking().FirstOrDefaultAsync(x => x.Id == sid && x.ProjectId == t.ProjectId, ct)
+                    : s.ActionStatusCategory is { } cat
+                        ? await db.WorkflowStatuses.AsNoTracking().Where(x => x.ProjectId == t.ProjectId && x.Category == cat).OrderBy(x => x.Order).FirstOrDefaultAsync(ct)
+                        : null;
+                if (target is null) return (false, "Skipped: the task's project has no such status.");
+                if (target.Id == t.StatusId) return (false, $"Skipped: the task is already in “{target.Name}”.");
+                return (true, $"Would move it to “{target.Name}” (unless dependencies or open subtasks hold it back).");
+            }
+            case AutomationAction.AddLabel:
+                return s.ActionLabelId is { } lid && labels.Contains(lid) ? (false, "Skipped: the task already has the label.") : (true, "Would add the label.");
+            case AutomationAction.SetAssignee:
+            {
+                Guid? who = s.ActionTarget == AutomationTarget.Reporter ? t.ReporterId : s.ActionUserId;
+                if (who is null) return (false, "Skipped: nobody to assign.");
+                return who == t.AssigneeId ? (false, "Skipped: already assigned to them.") : (true, "Would assign the task.");
+            }
+            case AutomationAction.Notify:
+            {
+                Guid? who = s.ActionTarget switch { AutomationTarget.Reporter => t.ReporterId, AutomationTarget.Assignee => t.AssigneeId, _ => s.ActionUserId };
+                return who is null ? (false, "Skipped: nobody is assigned to notify.") : (true, "Would send a notification (not sent in a test).");
+            }
+            default:
+                return (true, "Would post the comment (not posted in a test).");
+        }
+    }
+
+    /// <summary>The latest times a rule did something (newest first, at most 50).</summary>
+    public async Task<IReadOnlyList<AutomationRunDto>> RunsAsync(Guid? projectId, Guid id, CancellationToken ct = default)
+    {
+        if (projectId is { } pid) await access.GetProjectAsync(pid, ct); else ctx.RequireTenantId();
+        var rule = await db.AutomationRules.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id && r.ProjectId == projectId, ct) ?? throw new NotFoundException("Rule not found.");
+        var marker = $"automation “{rule.Name}”";
+        var q = db.Activities.AsNoTracking().Where(a => a.Action == "task.automation" && a.Summary.Contains(marker));
+        if (projectId is { } p) q = q.Where(a => a.ProjectId == p);
+        return await q.OrderByDescending(a => a.CreatedAt).Take(50).Select(a => new AutomationRunDto(a.CreatedAt, a.EntityId, a.Summary)).ToListAsync(ct);
     }
 
     // ---------------------------------------------------------------- shared
@@ -352,10 +470,13 @@ public class AutomationEngine(IAppDbContext db, ICurrentContext ctx, AppClock cl
     /// </summary>
     public async Task<bool> ApplyRuleAsync(AutomationRule rule, TaskItem task, string taskKey, HashSet<Guid> labels, CancellationToken ct, bool scheduled = false)
     {
+        // Guardrail: a rule that fires too often (a bulk import, a misconfigured trigger) pauses for the rest of the hour.
+        if (!AutomationRunLimiter.Allowed(rule.Id, clock.Now)) return false;
         var outcomes = new List<string>();
         foreach (var step in AutomationService.StepsOf(rule))
             if (await ApplyAsync(rule, step, task, taskKey, labels, scheduled, ct) is { } done) outcomes.Add(done);
         if (outcomes.Count == 0) return false;
+        AutomationRunLimiter.Record(rule.Id, clock.Now);
         rule.RunCount++; rule.LastRunAt = clock.Now;
         recorder.Activity("task.automation", "Task", task.Id, $"{taskKey}: automation “{rule.Name}” {string.Join(", ", outcomes)}", task.ProjectId);
         return true;
@@ -495,4 +616,30 @@ public class AutomationScheduler(IAppDbContext db, CurrentContext cc, AppClock c
 
     /// <summary>The period as stored (at most 20 characters): a date, or the minute of the last change.</summary>
     private static string Short(string period) => period.Length <= 20 ? period : period[..20];
+}
+
+/// <summary>
+/// At most <see cref="MaxRunsPerHour"/> runs of one rule in any hour, per server process. Together with "actions never trigger further rules",
+/// this keeps a rule from flooding people (it cannot trigger itself, and it cannot run away on a bulk change).
+/// </summary>
+public static class AutomationRunLimiter
+{
+    public const int MaxRunsPerHour = 100;
+    private static readonly ConcurrentDictionary<Guid, Queue<DateTime>> Runs = new();
+
+    public static bool Allowed(Guid ruleId, DateTime now)
+    {
+        if (!Runs.TryGetValue(ruleId, out var q)) return true;
+        lock (q)
+        {
+            while (q.Count > 0 && q.Peek() <= now.AddHours(-1)) q.Dequeue();
+            return q.Count < MaxRunsPerHour;
+        }
+    }
+
+    public static void Record(Guid ruleId, DateTime now)
+    {
+        var q = Runs.GetOrAdd(ruleId, _ => new Queue<DateTime>());
+        lock (q) q.Enqueue(now);
+    }
 }

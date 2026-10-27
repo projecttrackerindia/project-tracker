@@ -137,6 +137,12 @@ public record AiSearchDto(string Interpretation, IReadOnlyList<WorkItemDto> Item
 public record AiTriageRequest(string? Title, string? Description);
 public record AiTriageDto(Guid? WorkTypeId, string? WorkType, Priority? Priority, Guid? AssigneeId, string? Assignee, string Reason);
 public record AiNotesRequest(string? Notes);
+public record AiAutomationDraftRequest(string? Text);
+/// <summary>One action of a drafted rule, in the rule's own names (SetPriority, Notify...); every id is checked against the workspace.</summary>
+public record AiAutomationDraftStepDto(string Action, string? Priority, string? StatusCategory, string? Target, Guid? UserId, string? Text);
+/// <summary>A drafted automation rule for the person to check and save; nothing is saved here.</summary>
+public record AiAutomationDraftDto(string Name, string Trigger, int? TriggerDays, string? WhenPriority, string? WhenStatusCategory,
+    IReadOnlyList<AiAutomationDraftStepDto> Steps, string Reason);
 public record AiActionItemDto(string Title, Guid? AssigneeId, string? Assignee, DateOnly? DueDate);
 public record AiNotesDto(IReadOnlyList<AiActionItemDto> Items);
 
@@ -321,6 +327,56 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var person = Guid.TryParse(Str(j["assigneeId"]), out var pid) ? people.FirstOrDefault(p => p.id == pid) : null;
         return new AiTriageDto(type?.id, type?.Name, Enum.TryParse<Priority>(Str(j["priority"]), true, out var pr) ? pr : null, person?.id, person?.name,
             Str(j["reason"]) ?? "Suggested from the work's description.");
+    }
+
+    // ------------------------------------------------------------------ a sentence to an automation rule
+
+    private static readonly string[] DraftTriggers = ["TaskCreated", "StatusChanged", "PriorityChanged", "DueSoon", "Overdue", "Stale"];
+    private static readonly string[] DraftActions = ["SetPriority", "SetAssignee", "MoveToStatus", "AddLabel", "Notify", "AddComment"];
+
+    /// <summary>
+    /// Turns "when a critical task goes overdue, tell the owner and set it to high" into a workspace rule draft using only what the rule engine
+    /// can run. Labels are left for the person to choose; people must come from the workspace.
+    /// </summary>
+    public async Task<AiAutomationDraftDto> DraftAutomationAsync(AiAutomationDraftRequest req, CancellationToken ct = default)
+    {
+        var text = (req.Text ?? "").Trim();
+        if (text.Length < 8) throw new ValidationException("text", "Describe what should happen first.");
+        if (text.Length > 1000) throw new ValidationException("text", "Keep the description under 1,000 characters.");
+        await GateAsync(ct);
+        var tid = ctx.RequireTenantId();
+        var people = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest)
+            .Select(m => new { id = m.UserId, name = m.User!.DisplayName }).Take(200).ToListAsync(ct);
+        var answer = await AskAsync("automation_draft",
+            "Turn this request into ONE automation rule for project tasks. Only these exist. TRIGGERS: TaskCreated, StatusChanged (optional whenStatusCategory Todo|Active|Done|Cancelled), " +
+            "PriorityChanged (optional whenPriority Low|Medium|High|Critical), DueSoon (triggerDays 0-365 before due), Overdue (triggerDays 0-365 after due), Stale (triggerDays 1-365 without changes). " +
+            "ACTIONS (1 to 5): SetPriority (priority), SetAssignee (target Reporter or User with userId), MoveToStatus (statusCategory), Notify (target Assignee|Reporter|User, optional text), " +
+            "AddComment (text). Answer with JSON only: {\"name\":\"under 60 characters\",\"trigger\":\"...\",\"triggerDays\":null,\"whenPriority\":null,\"whenStatusCategory\":null," +
+            "\"steps\":[{\"action\":\"...\",\"priority\":null,\"statusCategory\":null,\"target\":null,\"userId\":null,\"text\":null}],\"reason\":\"one sentence, and say what could not be done\"}\n" +
+            $"PEOPLE: {JsonSerializer.Serialize(people, Json)}\nREQUEST: {text}", 700, ct);
+        var j = JsonIn(answer) ?? throw new AppException(502, "AI_FAILED", "The assistant's answer could not be read. Try again.");
+        var trigger = DraftTriggers.FirstOrDefault(t => string.Equals(t, Str(j["trigger"]), StringComparison.OrdinalIgnoreCase)) ?? "TaskCreated";
+        int? days = j["triggerDays"] is JsonValue dv && dv.TryGetValue<int>(out var d) ? Math.Clamp(d, 0, 365) : null;
+        if (trigger is "DueSoon" or "Overdue" or "Stale") days ??= 1; else days = null;
+        string? Pick(string? v, params string[] allowed) => v is null ? null : allowed.FirstOrDefault(a => string.Equals(a, v, StringComparison.OrdinalIgnoreCase));
+        var steps = new List<AiAutomationDraftStepDto>();
+        foreach (var n in (j["steps"] as JsonArray ?? []).Take(5))
+        {
+            if (n is null) continue;
+            var action = Pick(Str(n["action"]), DraftActions);
+            if (action is null) continue;
+            var user = Guid.TryParse(Str(n["userId"]), out var u) && people.Any(p => p.id == u) ? u : (Guid?)null;
+            var target = Pick(Str(n["target"]), "User", "Reporter", "Assignee");
+            if (target == "User" && user is null) target = action == "SetAssignee" ? "Reporter" : "Assignee";
+            if (action == "SetAssignee" && target == "Assignee") target = "Reporter";
+            var said = Str(n["text"]);
+            steps.Add(new AiAutomationDraftStepDto(action, Pick(Str(n["priority"]), "Low", "Medium", "High", "Critical"), Pick(Str(n["statusCategory"]), "Todo", "Active", "Done", "Cancelled"),
+                target, user, said is { Length: > 500 } ? said[..500] : said));
+        }
+        if (steps.Count == 0) steps.Add(new AiAutomationDraftStepDto("Notify", null, null, "Assignee", null, null));
+        var name = Str(j["name"]) ?? "New rule";
+        return new AiAutomationDraftDto(name.Length > 100 ? name[..100] : name, trigger, days, Pick(Str(j["whenPriority"]), "Low", "Medium", "High", "Critical"),
+            Pick(Str(j["whenStatusCategory"]), "Todo", "Active", "Done", "Cancelled"), steps, Str(j["reason"]) ?? "Drafted from your description.");
     }
 
     // ------------------------------------------------------------------ meeting notes to action items
