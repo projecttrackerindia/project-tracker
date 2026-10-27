@@ -162,6 +162,7 @@ try {
   assert.match(await page.locator('.v2-understood-label').textContent(), /Understood as\s*a ticket/);
   const chips = await page.locator('.v2-new-chip b').allInnerTexts();
   assert.ok(chips.includes('Critical') && chips.includes('Priya Nair'), `chips: ${chips}`);
+  assert.equal(await page.getByText('Notify on WhatsApp').count(), 0, 'no WhatsApp toggle in + New');
   await shot(page, 'new-ticket-1440.png');
   await page.getByRole('button', { name: 'Create ticket' }).click(); await page.waitForTimeout(500);
   const made = writes.find((w) => w.ep === '/api/v1/work-items');

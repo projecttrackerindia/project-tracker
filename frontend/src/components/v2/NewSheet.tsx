@@ -1,8 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ApiError, get, uploadFile } from '../../api/client';
+import { ApiError, uploadFile } from '../../api/client';
 import { attachmentApi, projectApi, workApi, workspaceApi } from '../../api/endpoints';
-import { whatsAppPrefsUrl, type WhatsAppPreferences } from '../../features/settings/WhatsAppNotificationPreferences';
 import type { Priority } from '../../api/types';
 import { workItemsApi, type WorkKind } from '../../api/workItemsApi';
 import { motion, useAnimationControls, useReducedMotion } from 'framer-motion';
@@ -73,7 +72,7 @@ export function NewSheetHost() {
 
 /**
  * + New (apple/s-new): one sentence first ("Describe it…"); what it understood appears as chips one by one (kind · priority · person · place ·
- * due), each changed by tapping it, with a one-line reason; eight kind tiles with the guessed one highlighted; Attach, Notify on WhatsApp,
+ * due), each changed by tapping it, with a one-line reason; eight kind tiles with the guessed one highlighted; Attach,
  * Cancel and "Create <kind> ⌘↵" in the kind's colour. Tasks, bugs (project issues) and tickets are made here at once (POST /work-items):
  * the sheet shrinks into the matching sidebar item, whose badge bumps, and the item opens in the Work side panel. The other kinds open
  * where they are written, with the words carried over.
@@ -104,7 +103,6 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const [projectId, setProjectId] = useState<string | null>(inProject?.id ?? pathProject);
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
-  const [whatsApp, setWhatsApp] = useState(true);
   const input = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -125,8 +123,6 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const types = useWsQuery(['work', 'types'], () => workApi.types(), { enabled: type === 'ticket', staleTime: 5 * 60_000 });
   const sla = useWsQuery(['work', 'sla'], workApi.sla, { enabled: type === 'ticket', staleTime: 5 * 60_000, retry: false });
   const projects = useWsQuery(['projects', 'new-sheet'], () => projectApi.list({ pageSize: 200, sort: 'name' }), { enabled: work, staleTime: 60_000 });
-  // WhatsApp is offered where the workspace has it connected (the same signal Settings › Notifications uses).
-  const wa = useWsQuery(['account', 'whatsapp-contact', 'notification-preferences', me?.id], () => get<WhatsAppPreferences>(whatsAppPrefsUrl), { retry: false, staleTime: 5 * 60_000, enabled: work });
   const activeTypes = (types.data ?? []).filter((t) => t.isActive);
   // A ticket's type from its words ("bug", "access"…), else the first active type.
   const wordType = activeTypes.find((t) => text.toLowerCase().includes(t.name.toLowerCase().replace(/s$/, ''))) ?? activeTypes[0];
@@ -242,7 +238,6 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   ].filter(Boolean).join(' · ') || 'Tap any chip to change it. Everything else can be added later.';
   const blocked = !type || busy || (!title && type !== 'reminder' && type !== 'time') || (projectWork && !project) || (type === 'ticket' && !chosenType && types.isSuccess);
   const due = parsed.dueDate ? `Due ${parsed.dueLabel ?? parsed.dueDate}` : slaMin ? `Due ${whenIn(slaMin)}` : null;
-  const showWa = work && !!wa.data && (wa.data.canEnable || wa.data.optedIn) && !!owner && owner.id !== me?.id;
 
   // The chips, in the design's order: kind · priority · person · place · due. Each fades and rises in turn.
   const chips: React.ReactNode[] = [];
@@ -319,10 +314,6 @@ function NewSheet({ onProject }: { onProject: () => void }) {
                 ＋ {files.length ? `${files.length} attached` : 'Attach'}
               </button>
             </>
-          )}
-          {showWa && (
-            <button type="button" className={`v2-new-btn sm${whatsApp ? '' : ' off'}`} aria-pressed={whatsApp} onClick={() => setWhatsApp(!whatsApp)}
-              title={`${owner!.name} gets the assignment on WhatsApp where they agreed to WhatsApp messages.`}>Notify on WhatsApp</button>
           )}
           <span className="v2-new-sp" />
           <button type="button" className="v2-new-btn" onClick={close}>Cancel</button>
