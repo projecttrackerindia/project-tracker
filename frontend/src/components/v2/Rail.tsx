@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { chatApi } from '../../api/endpoints';
-import { Icon } from '../Icon';
+import { chatApi, projectApi } from '../../api/endpoints';
+import { Icon, type IconName } from '../Icon';
 import { BrandMark } from '../BrandMark';
 import { useAvatarUrl } from '../ui';
 import { initials } from '../../lib/format';
@@ -50,27 +50,109 @@ function usePlaces() {
     .map((i) => (i.id === 'talk' ? { ...i, badge: talk } : i.id === 'home' ? { ...i, badge: inbox.count, calm: !inbox.urgent } : i)) as (NavDef & { calm?: boolean })[];
 }
 
+type SideItem = { key: string; to: string; label: string; icon: IconName; tint: string; on: boolean; badge?: number; calm?: boolean; hint?: string };
+type SideGroup = { title: string | null; items: SideItem[] };
+
+const TINT = {
+  blue: 'linear-gradient(180deg,#3a9bff,#0071e3)', orange: 'linear-gradient(180deg,#ffb340,#ff9500)', red: 'linear-gradient(180deg,#ff6b6b,#ff3b30)',
+  indigo: 'linear-gradient(180deg,#7d7bff,#5856d6)', teal: 'linear-gradient(180deg,#4fd1e0,#30b0c7)', green: 'linear-gradient(180deg,#5de06f,#28cd41)',
+  amber: 'linear-gradient(180deg,#c9a77a,#a2845e)', gray: 'linear-gradient(180deg,#a3a3a8,#636366)', pink: 'linear-gradient(180deg,#ff6482,#ff2d55)',
+};
+const PIN_DOTS = ['#5856d6', '#ff9500', '#30b0c7'];
+
+/** The sidebar's sections, built only from places and pages the person may open (the same definitions as the palette). */
+function useSideGroups(): SideGroup[] {
+  const { pathname, search } = useLocation();
+  const groups = useMainNav();
+  const talk = useTalkUnread();
+  const inbox = useInboxOpen();
+  const all = groups.flatMap((g) => g.items).filter((i) => i.show !== false);
+  const has = (to: string) => all.find((i) => i.to === to);
+  const q = new URLSearchParams(search);
+  const tab = q.get('tab');
+  const onProjects = pathname === '/work/projects' || pathname.startsWith('/work/projects/');
+  const portfolio = onProjects && q.get('view') === 'portfolio';
+  const vault = pathname === '/library/vault' || pathname.startsWith('/library/vault/');
+  const mk = (to: string, key: string, label: string, icon: IconName, tint: string, on: boolean, extra?: Partial<SideItem>): SideItem | null => {
+    const d = has(to);
+    return d ? { key, to, label, icon, tint, on, hint: d.hint, ...extra } : null;
+  };
+  const clean = (g: SideGroup) => ({ ...g, items: g.items.filter(Boolean) as SideItem[] });
+  const home = pathname === '/' || pathname === '/dashboard' || pathname.startsWith('/approve/');
+  return [
+    clean({ title: null, items: [mk('/', 'home', 'Today', 'radar', TINT.blue, home && tab !== 'calendar', { badge: inbox.count, calm: !inbox.urgent })] as SideItem[] }),
+    clean({ title: 'Work', items: [
+      mk('/work', 'work', 'My Work', 'checkCircle', TINT.orange, pathname === '/work' && tab !== 'tickets'),
+      mk('/work?tab=tickets', 'tickets', 'Tickets', 'bolt', TINT.red, pathname === '/work' && tab === 'tickets'),
+    ] as SideItem[] }),
+    clean({ title: 'Plan', items: [
+      mk('/work/projects', 'projects', 'Projects', 'folder', TINT.indigo, onProjects && !portfolio),
+      mk('/work/projects?view=portfolio', 'portfolio', 'Portfolio', 'monitor', TINT.teal, portfolio),
+      mk('/?tab=calendar', 'calendar', 'Calendar', 'calendar', TINT.red, home && tab === 'calendar'),
+    ] as SideItem[] }),
+    clean({ title: 'Together', items: [
+      mk('/talk', 'talk', 'Talk', 'message', TINT.green, pathname === '/talk' || pathname.startsWith('/talk/') || pathname.startsWith('/calls/'), { badge: talk }),
+      mk('/library', 'library', 'Library', 'note', TINT.amber, (pathname === '/library' || pathname.startsWith('/library/')) && !vault),
+      mk('/library/vault', 'vault', 'Vault', 'key', TINT.gray, vault),
+      mk('/insights', 'insights', 'Insights', 'chart', TINT.pink, pathname === '/insights' || pathname.startsWith('/insights/') || pathname === '/activity'),
+    ] as SideItem[] }),
+  ].filter((g) => g.items.length > 0);
+}
+
+/** Up to three projects from the list Home already loads (shared cache), as quick links. */
+function usePinned(enabled: boolean) {
+  const q = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false, enabled });
+  return (q.data?.items ?? []).filter((p) => p.status !== 'Completed' && p.status !== 'Cancelled' && p.status !== 'Archived').slice(0, 3);
+}
+
 /**
- * The v2 left rail (84px): the logo, + New, the five places with the icon above a short label, and the avatar at the bottom whose menu holds
- * Profile, Workspaces, Settings, People, Help and Sign out. Fixed: no customising, the same for everyone who may use each place.
+ * The v2 left sidebar (236px; the 84px icon rail below 1100px): the workspace and role, + New, the places in macOS-style sections with a
+ * coloured tile each, pinned projects, and the avatar at the bottom whose menu holds Profile, Workspaces, Settings, People, Help and Sign out.
  */
 export function Rail() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const places = usePlaces();
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  const ctx = useAuth((s) => s.ctx);
+  const places = usePlaces();
+  const groups = useSideGroups();
+  const canProjects = (ctx?.current?.modules?.projects ?? 0) > 0;
+  const pinned = usePinned(!admin && canProjects);
   return (
-    <aside className="v2-rail" aria-label="Main">
-      <button type="button" className="v2-rail-logo" aria-label="Home" title="Home" onClick={() => nav(admin ? '/admin' : '/')}><BrandMark size={20} /></button>
-      {!admin && <button type="button" className="v2-new" aria-label="New" title="New (N)" onClick={() => openNew()}><Icon name="plus" size={20} /></button>}
+    <aside className="v2-rail v2-side" aria-label="Main">
+      <div className="v2-side-ws">
+        <button type="button" className="v2-rail-logo" aria-label="Home" title="Home" onClick={() => nav(admin ? '/admin' : '/')}><BrandMark size={20} /></button>
+        <span className="v2-side-ws-text"><b>{admin ? 'Platform' : ctx?.current?.name ?? 'Workspace'}</b><small>{admin ? 'Administrator' : ctx?.current?.role ?? ''}</small></span>
+      </div>
+      {!admin && <button type="button" className="v2-new" aria-label="New" title="New (N)" onClick={() => openNew()}><Icon name="plus" size={18} /><span className="v2-side-label">New</span></button>}
       <nav className="v2-rail-nav">
-        {places.map((i) => (
+        {admin ? places.map((i) => (
           <NavLink key={i.id ?? i.to} to={i.to} end={i.end} className={() => `v2-rail-item ${isOn(i, pathname) ? 'on' : ''}`} aria-current={isOn(i, pathname) ? 'page' : undefined} title={i.hint ?? i.label}>
-            <Icon name={i.icon} size={20} />
-            <span>{i.label}</span>
-            {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} aria-label={i.id === 'home' ? `${i.badge} waiting on you` : `${i.badge} unread`}>{i.badge > 99 ? '99+' : i.badge}</em>}
+            <span className="v2-tile" style={{ background: TINT.gray }}><Icon name={i.icon} size={13} /></span>
+            <span className="v2-rail-label">{i.label}</span>
           </NavLink>
+        )) : groups.map((g) => (
+          <div key={g.title ?? 'top'} className="v2-side-group" role="group" aria-label={g.title ?? 'Today'}>
+            {g.title && <div className="v2-side-sl">{g.title}</div>}
+            {g.items.map((i) => (
+              <Link key={i.key} to={i.to} className={`v2-rail-item ${i.on ? 'on' : ''}`} aria-current={i.on ? 'page' : undefined} title={i.hint ?? i.label} data-place={i.key}>
+                <span className="v2-tile" style={{ background: i.tint }}><Icon name={i.icon} size={13} /></span>
+                <span className="v2-rail-label">{i.label}</span>
+                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} aria-label={i.key === 'home' ? `${i.badge} waiting on you` : `${i.badge} unread`}>{i.badge > 99 ? '99+' : i.badge}</em>}
+              </Link>
+            ))}
+          </div>
         ))}
+        {pinned.length > 0 && (
+          <div className="v2-side-group v2-side-pins" role="group" aria-label="Pinned projects">
+            <div className="v2-side-sl">Pinned projects</div>
+            {pinned.map((p, n) => (
+              <Link key={p.id} to={`/work/projects/${p.id}`} className={`v2-side-pin ${pathname === `/work/projects/${p.id}` ? 'on' : ''}`} title={p.name}>
+                <i style={{ background: PIN_DOTS[n] }} /><span>{p.name}</span>
+              </Link>
+            ))}
+          </div>
+        )}
       </nav>
       <div className="v2-rail-foot">
         {!admin && <RunningTimer />}
@@ -165,7 +247,7 @@ export function PhoneBar() {
   const left = shown.slice(0, admin ? 5 : 2), right = admin ? [] : shown.slice(2);
   const tab = (i: NavDef & { calm?: boolean }) => (
     <NavLink key={i.id ?? i.to} to={i.to} end={i.end} className={() => `v2-phone-tab ${isOn(i, pathname) ? 'on' : ''}`} aria-label={i.label} onClick={() => haptic(6)}>
-      <Icon name={i.icon} size={22} /><span>{i.label}</span>
+      <Icon name={i.icon} size={22} /><span className="v2-rail-label">{i.label}</span>
       {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`}>{i.badge > 99 ? '99+' : i.badge}</em>}
     </NavLink>
   );

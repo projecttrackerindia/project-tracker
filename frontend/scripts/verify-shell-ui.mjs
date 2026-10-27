@@ -81,18 +81,21 @@ try {
   const page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message)); await page.setViewportSize({ width: 1440, height: 960 });
   const at = () => { const u = new URL(page.url()); return `${u.pathname.replace('/preview-org', '') || '/'}${u.search}${u.hash}`; };
 
-  // The rail: logo, + New, the five places with their labels, the avatar; no sidebar, no top bar, no Customize.
+  // The sidebar: workspace, + New, the places in sections with their labels, the avatar; no old sidebar, no top bar, no Customize.
   await page.goto(`${origin}/preview-org/`); await page.locator('.v2-rail').waitFor();
-  assert.deepEqual(await page.locator('.v2-rail-item span').allTextContents(), ['Home', 'Work', 'Talk', 'Library', 'Insights']);
+  // The 236px sidebar: Today, then Work / Plan / Together sections (only places this person may open).
+  { const labels = await page.locator('.v2-rail-item .v2-rail-label').allTextContents();
+    for (const l of ['Today', 'My Work', 'Talk', 'Library', 'Insights']) assert.ok(labels.includes(l), `sidebar has ${l}: ${labels}`);
+    assert.equal(labels[0], 'Today'); }
   await page.waitForTimeout(500); if (!(await page.locator('.v2-rail').count())) { await page.getByText('Details').click().catch(()=>{}); console.log('ERRORS', errors, await page.locator('body').innerText()); await shot(page, 'fail.png'); }
-  assert.equal(Math.round((await page.locator('.v2-rail').boundingBox()).width), 84);
+  assert.equal(Math.round((await page.locator('.v2-rail').boundingBox()).width), 236);
   assert.equal(await page.locator('.sidebar, .topbar').count(), 0, 'no sidebar or top bar');
   assert.equal(await page.getByRole('button', { name: 'Customize' }).count(), 0);
-  assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'Home' }).isVisible());
+  assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'Today' }).isVisible());
   assert.ok(await page.locator('.v2-ask input[placeholder="Ask, find, or tell it what to do…"]').isVisible(), 'the Ask bar');
   await shot(page, 'rail-home-1440.png'); checks.push('rail');
-  await page.locator('.v2-rail-item', { hasText: 'Work' }).click(); await page.waitForTimeout(400);
-  assert.equal(at(), '/work'); assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'Work' }).isVisible()); checks.push('rail-navigates');
+  await page.locator('.v2-rail-item', { hasText: 'My Work' }).click(); await page.waitForTimeout(400);
+  assert.equal(at(), '/work'); assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'My Work' }).isVisible()); checks.push('rail-navigates');
 
   // The slim avatar menu: Profile, Workspaces, Settings, People, Help, Sign out (dark mode and team view live in Settings now).
   await page.locator('.v2-avatar').first().click();

@@ -22,7 +22,7 @@ html[data-theme='dark'] .hm-brief { background: #232326; box-shadow: 0 0 0 1px r
 /* layout */
 .hm-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
 .hm-side { display: grid; gap: 14px; align-content: start; min-width: 0; }
-.hm-card { background: var(--ds-surface); border-radius: var(--ds-r-card); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); padding: 18px 20px; min-width: 0; }
+.hm-card { background: var(--ds-surface); border-radius: var(--ds-r-card); box-shadow: var(--ds-card-shadow); padding: 18px 20px; min-width: 0; }
 .hm-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .hm-card-head b { font-size: 15px; font-weight: 600; }
 .hm-quiet { margin: 4px 0 2px; color: var(--ds-text-3); font-size: 14px; }
@@ -123,3 +123,26 @@ html .btn.btn-ai:not(#_):hover:not(:disabled) { background: color-mix(in srgb, v
   .hm-day.weekend:not(.today) .hm-evs:empty { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .hm-brief, .hm-brief.loading .hm-orb, .hm-row { animation: none; transition: none; } }
+
+/* Your day: a 9–7 timeline, meetings above, urgent work below, the red now-line */
+.hm-yday { margin-bottom: 18px; padding: 18px 20px; }
+.hm-day-meta { font-weight: 400; color: var(--ds-text-3); }
+.hm-day-track { position: relative; padding: 22px 0 4px; }
+.hm-day-hours { position: absolute; inset: 0 0 auto 0; height: 100%; pointer-events: none; }
+.hm-day-hours span { position: absolute; top: 0; bottom: 0; transform: translateX(-50%); font-size: 10.5px; color: var(--ds-text-4); white-space: nowrap; }
+.hm-day-hours span:first-child { transform: none; } .hm-day-hours span:last-child { transform: translateX(-100%); }
+.hm-day-hours span::after { content: ''; position: absolute; left: 50%; top: 16px; bottom: 0; border-left: .5px solid var(--ds-separator); }
+.hm-day-lane { position: relative; height: 40px; margin: 4px 0; }
+.hm-day-ev { position: absolute; top: 0; height: 40px; padding: 4px 8px; border-radius: 8px; background: var(--ds-accent-soft); border-left: 3px solid var(--ds-accent-fill);
+  color: var(--ds-text); text-decoration: none; overflow: hidden; display: flex; flex-direction: column; justify-content: center; font-size: 12px; }
+.hm-day-ev b { flex: none; line-height: 1.3; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-day-ev span { font-size: 11px; color: var(--ds-text-3); }
+.hm-day-work { display: flex; gap: 6px; align-items: center; height: auto; min-height: 32px; flex-wrap: wrap; }
+.hm-day-cap { position: relative; z-index: 1; padding: 5px 12px; border-radius: 980px; background: var(--ds-danger-bg); color: var(--ds-danger); font-size: 12px; font-weight: 600;
+  text-decoration: none; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-day-now { position: absolute; top: 18px; bottom: 0; width: 0; border-left: 2px solid #ff3b30; z-index: 2; pointer-events: none; }
+.hm-day-now::before { content: ''; position: absolute; top: -4px; left: -5px; width: 8px; height: 8px; border-radius: 50%; background: #ff3b30; }
+.hm-day-now em { position: absolute; top: -20px; left: 6px; font-style: normal; font-size: 10.5px; font-weight: 600; color: #ff3b30; background: var(--ds-surface); padding: 0 3px; white-space: nowrap; }
+.hm-day-ev, .hm-day-cap { transition: transform .15s var(--ds-ease); }
+.hm-day-ev:hover, .hm-day-cap:hover { transform: translateY(-1px); }
+@media (prefers-reduced-motion: reduce) { .hm-day-ev, .hm-day-cap { transition: none; } .hm-day-ev:hover, .hm-day-cap:hover { transform: none; } }

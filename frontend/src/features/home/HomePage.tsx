@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AgentPage, type AgentSection } from '../agent/AgentPage';
 import { AiPage } from '../ai/AiPage';
 import { RemindersPage } from '../reminders/RemindersPage';
@@ -89,6 +89,7 @@ function ForYou({ onTab }: { onTab: (t: Tab) => void }) {
         </div>
       </PageHead>
       <Briefing q={briefing} />
+      <YourDay />
       <div className="hm-grid">
         <InboxCard />
         <aside className="hm-side" aria-label="Tomorrow and your numbers">
@@ -183,6 +184,52 @@ function InboxCard() {
           </AnimatePresence>
         </motion.ul>
       )}
+    </section>
+  );
+}
+
+// ------------------------------------------------------------------------------------------------------------------------ Your day
+
+const DAY_START = 9, DAY_END = 19, MEETING_MIN = 30;   // the calendar gives a start only; a meeting reads as half an hour
+
+/** Today from 9 to 7: meetings on one lane, the urgent work that waits on you on the other, and a red line at now. Hidden when both are empty. */
+function YourDay() {
+  const today = todayISO();
+  const cal = useWsQuery(['calendar', 'today', today], () => insightApi.calendar(today, today, undefined, true), { staleTime: 60_000 });
+  const inbox = useWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { staleTime: 30_000 });
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const t = window.setInterval(() => setNow(new Date()), 60_000); return () => window.clearInterval(t); }, []);
+  const meetings = (cal.data ?? []).filter((e) => e.type === 'meeting' && e.startsAt && e.category !== 'Cancelled')
+    .map((e) => { const d = new Date(e.startsAt!); return { e, h: d.getHours() + d.getMinutes() / 60 }; })
+    .filter((m) => m.h >= DAY_START - .5 && m.h < DAY_END).sort((a, b) => a.h - b.h);
+  const urgent = (inbox.data?.rows ?? []).filter((r) => r.urgent).slice(0, 4);
+  if (meetings.length === 0 && urgent.length === 0) return null;
+  const span = DAY_END - DAY_START;
+  const pct = (h: number) => `${Math.min(100, Math.max(0, ((h - DAY_START) / span) * 100))}%`;
+  const free = Math.max(0, span - (meetings.length * MEETING_MIN) / 60);
+  const nowH = now.getHours() + now.getMinutes() / 60;
+  const hours = Array.from({ length: span + 1 }, (_, i) => DAY_START + i);
+  return (
+    <section className="hm-card hm-yday" aria-label="Your day">
+      <div className="hm-card-head"><b>Your day <span className="hm-day-meta">· {meetings.length} meeting{meetings.length === 1 ? '' : 's'} · {Number.isInteger(free) ? free : free.toFixed(1)}h free</span></b></div>
+      <div className="hm-day-track">
+        <div className="hm-day-hours" aria-hidden="true">{hours.map((h) => <span key={h} style={{ left: pct(h) }}>{h === 12 ? '12PM' : h > 12 ? `${h - 12}PM` : `${h}AM`}</span>)}</div>
+        <div className="hm-day-lane" aria-label="Meetings">
+          {meetings.map(({ e, h }) => (
+            <Link key={`${e.type}:${e.id}:${e.startsAt}`} to={hrefOf(e)} className="hm-day-ev" style={{ left: pct(h), width: `max(${(MEETING_MIN / 60 / span) * 100}%, 132px)` }} title={`${formatTime(e.startsAt!)} · ${e.title}`}>
+              <b>{e.title}</b><span>{formatTime(e.startsAt!)}</span>
+            </Link>
+          ))}
+        </div>
+        <div className="hm-day-lane hm-day-work" aria-label="Urgent work">
+          {urgent.map((r) => r.href
+            ? <Link key={r.id} to={r.href} className="hm-day-cap" title={r.sub}>{r.title}</Link>
+            : <span key={r.id} className="hm-day-cap" title={r.sub}>{r.title}</span>)}
+        </div>
+        {nowH >= DAY_START && nowH <= DAY_END && (
+          <div className="hm-day-now" style={{ left: pct(nowH) }} aria-label={`Now, ${formatTime(now.toISOString())}`}><em>{formatTime(now.toISOString())}</em></div>
+        )}
+      </div>
     </section>
   );
 }
