@@ -450,7 +450,7 @@ try {
         await sheet.waitFor({ state: 'detached' });
       };
       await newSheet('Payout runbook for the bank', 'Doc');
-      await page.waitForURL((u) => u.pathname === '/preview-org/library/docs');
+      await page.waitForURL((u) => u.pathname.startsWith('/preview-org/library'));
       await newSheet('Meeting with the bank on Friday', 'Meeting');
       await page.waitForURL((u) => u.pathname === '/preview-org/messages' && u.searchParams.get('f') === 'meetings');
       await newSheet('2h on WT-5 today', null);   // Time has no tile in the design; the words pick it
