@@ -21,6 +21,7 @@ import { DotsMenu } from './DotsMenu';
 import { ToolbarSlot } from './ToolbarSlot';
 import { WhileAway } from '../chat/ChatPage';
 import { talkApi, type TalkFilter, type TalkRow } from './talkApi';
+import { usePresence } from '../chat/Presence';
 import './talk.css';
 
 const FILTERS: { id: TalkFilter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'chat', label: 'Chats' }, { id: 'meetings', label: 'Meetings' }];
@@ -239,9 +240,11 @@ function Row({ r, conversation, active, onOpen }: { r: TalkRow; conversation?: C
             : channel
               ? <span className={`talk-av square av-c${hue(r.title)}`} aria-hidden="true">#</span>
               : <Face userId={r.avatar.userId} hasAvatar={r.avatar.hasAvatar || undefined} className={`talk-av av-c${hue(r.title)}`} text={initials} />}
-          <span className={`talk-src s-${r.kind}`} title={r.kind === 'meeting' ? 'Meeting' : 'Chat'} aria-hidden="true">
-            {r.kind === 'meeting' ? <Icon name="play" size={8} /> : null}
-          </span>
+          {/* Meetings keep their ▶ badge. A person shows a dot only for their real status (green active, amber away, nothing when
+              offline or unknown), never a decorative green that reads as "available". */}
+          {r.kind === 'meeting'
+            ? <span className="talk-src s-meeting" title="Meeting" aria-hidden="true"><Icon name="play" size={8} /></span>
+            : !channel && <PeerStatus userId={conversation?.otherUserId ?? r.avatar.userId ?? null} />}
         </span>
         <span className="talk-text">
           <span className="talk-top"><b>{title}</b>{r.live && <span className="talk-live">Live</span>}<time>{when}</time></span>
@@ -250,6 +253,13 @@ function Row({ r, conversation, active, onOpen }: { r: TalkRow; conversation?: C
       </button>
     </li>
   );
+}
+
+/** The other person's live status as a dot on their avatar; nothing until the app knows they are active or away. */
+function PeerStatus({ userId }: { userId: string | null }) {
+  const status = usePresence(userId, 'offline');
+  if (status === 'offline') return null;
+  return <span className={`talk-src s-presence ${status}`} role="img" aria-label={status === 'away' ? 'Away' : 'Active'} title={status === 'away' ? 'Away' : 'Active now'} />;
 }
 
 /**

@@ -311,15 +311,9 @@ try {
   await pinRow.getByRole('button', { name: `Unpin ${rp.name}` }).click();
   await pinRow.waitFor({ state: 'detached' });
   assert.ok(pinStore[ws.id].hidden.includes(rp.id) && !pinStore[ws.id].pinned.includes(rp.id), 'unpinned and kept out of recents');
-  // Right-click a sidebar project: Pin to sidebar.
-  const recentRow = page.locator('.v2-side-pin-row').first();
-  const recentId = await recentRow.getAttribute('data-pin');
-  await recentRow.click({ button: 'right' });
-  await page.getByRole('menu', { name: 'Project actions' }).getByRole('menuitem', { name: 'Pin to sidebar' }).click();
-  await page.locator(`.v2-side-pin-row[data-pin="${recentId}"][data-pinned="true"]`).waitFor();
-  await page.locator(`.v2-side-pin-row[data-pin="${recentId}"]`).click({ button: 'right' });
-  await page.getByRole('menu', { name: 'Project actions' }).getByRole('menuitem', { name: 'Unpin from sidebar' }).click();
-  await page.locator(`.v2-side-pin-row[data-pin="${recentId}"]`).waitFor({ state: 'detached' });
+  // Nothing fills in after an unpin: the sidebar shows only pins, and says how to add one when there are none.
+  assert.equal(await page.locator('.v2-side-pin-row').count(), 0, 'no recent project takes the unpinned one’s place');
+  await page.getByTestId('pins-empty').waitFor();
   pinStore = null;
   checks.push('pin-unpin');
   // The Journey (every stage signed off), the AI line, and Overview: Key numbers, People, What's next, Risks, Docs.

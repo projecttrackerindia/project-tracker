@@ -45,7 +45,8 @@ export function usePins() {
     writeLocal(wid, next);
     const all: AllPins = { ...(q.data ?? {}), [wid]: next };
     qc.setQueryData([wid, ...KEY], all);
-    if (q.data) void put('/me/ui/pins', { value: all }).catch(() => undefined);
+    // Only once the account copy loaded, so other workspaces' pins are never overwritten; until then the device copy holds it.
+    if (q.data) void put('/me/ui/pins', { value: all }).catch(() => toast('Could not save your pins to your account; they are kept on this device.', 'info'));
   };
   const pin = (id: string) => {
     if (mine.pinned.includes(id)) return;

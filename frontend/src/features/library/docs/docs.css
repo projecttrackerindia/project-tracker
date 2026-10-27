@@ -373,7 +373,8 @@
 .dx-events small { color: var(--ds-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- a document inside its project, and the document's own controls */
-.dx-guide .rd-page { grid-template-columns: minmax(0, 760px) minmax(180px, 230px); justify-content: center; column-gap: 56px; padding: 16px 40px 96px; }
+/* A page uses the width beside the navigator: the text grows to ~900px and the outline/details sit at the right edge, so no empty band. */
+.dx-guide .rd-page { grid-template-columns: minmax(0, 1fr) minmax(200px, 240px); justify-content: stretch; column-gap: 48px; padding: 16px 40px 96px; max-width: 1240px; }
 .dx-guide .rd-col { grid-column: 1; }
 .dx-guide .rd-page > .rd-rail { grid-column: 2; }
 .rd-tools .menu > .btn { height: 30px; min-height: 30px; padding: 0 12px; border: 0; border-radius: 15px; background: var(--ds-fill); box-shadow: none; }

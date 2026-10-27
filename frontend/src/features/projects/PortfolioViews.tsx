@@ -6,6 +6,7 @@ import { useAuth } from '../../stores/auth';
 import { portfolioApi, type DecisionOption, type PortfolioDecision, type PortfolioFilter, type TimelineProject } from './portfolioApi';
 import { useDecisionActions, type DecisionItem } from './portfolioDecisions';
 import { dayMonth } from './projectParts';
+import { ProjectFacts } from './PortfolioFacts';
 import type { PortfolioBrief, PortfolioRisk } from '../ai/aiApi';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -249,7 +250,8 @@ function Slide({ item, filter, active }: { item: DecisionItem; filter: Portfolio
   const b = otherOptions(item.decision)[0];
   const tone = item.slipDays > 14 ? 'late' : 'risk';
   return (
-    <section className={`pf-slide ${active ? 'on' : ''}`} aria-hidden={!active} aria-label={item.name}>
+    <section className={`pf-slide pf-slide-split ${active ? 'on' : ''}`} aria-hidden={!active} aria-label={item.name}>
+      <div className="pf-slide-main">
       <p className={`pf-slide-ey ${tone}`}>Decision · {item.slipDays > 0 ? `Late by ${plural(item.slipDays, 'day')}` : 'On the edge'}</p>
       <h2>{item.name}</h2>
       <p className="pf-slide-dates">Due <b>{dayMonth(item.due)}</b> <span aria-hidden="true">→</span> Forecast {item.forecast ? <span className={`fc ${tone}`}>{dayMonth(item.forecast)}</span> : <em>not yet</em>}</p>
@@ -269,6 +271,8 @@ function Slide({ item, filter, active }: { item: DecisionItem; filter: Portfolio
           {!item.acceptOpt && !b && <Link className="pf-opt" tabIndex={active ? 0 : -1} to={`/work/projects/${item.projectId}`}><small>Next step</small><b>Open the project</b><span>No forecast to decide on yet</span></Link>}
         </>}
       </div>
+      </div>
+      <ProjectFacts projectId={item.projectId} active={active} />
     </section>
   );
 }

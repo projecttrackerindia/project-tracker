@@ -42,6 +42,10 @@ try{
    else if(ep.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
    else if(ep.endsWith('/workspace/members'))data=[{userId:user.id,displayName:user.displayName,email:user.email,role:'Owner'}];
    else if(ep.endsWith('/project-status/groups'))data=[{id:pid,name:'Delivery',isActive:true,count:1,projects:[project]}];
+   else if(ep==='/api/v1/time'){const at=(h,m)=>{const d=new Date(today+'T00:00:00');d.setHours(h,m,0,0);return d.toISOString();};
+     data={from:today,to:today,user:{id:'u',name:'Me'},totalMinutes:270,billableMinutes:0,byDay:[{date:today,minutes:270}],entries:[
+       {id:'te1',taskId:null,taskKey:'OPS-12',taskTitle:'MuleSoft production server got disconnected',projectId:null,user:{id:'u',name:'Me'},workDate:today,minutes:90,note:'Restarted the runtime',isRunning:false,startedAt:at(14,0),canEdit:true,workTaskId:'w12',kind:'work',billable:false,locked:false},
+       {id:'te2',taskId:'t3',taskKey:'PAY-3',taskTitle:'Reconciliation report',projectId:null,user:{id:'u',name:'Me'},workDate:today,minutes:180,note:null,isRunning:false,startedAt:null,canEdit:true,workTaskId:null,kind:'task',billable:false,locked:false}]};}
    else if(ep.includes('/project-status/projects/'))data={project,tasks,changes:[],delayedTasks:0,blockedTasks:0};
    // v2: a portfolio link to one project opens the one project page.
    else if(ep===`/api/v1/projects/${pid}`)data={project:{...card(0,project.name,'DEMO',project.description,'Delivery','AtRisk',3,1,33,'High','NewProject',owner(2,'Prasanna Krishna'),'2027-07-09'),id:pid},
@@ -78,12 +82,16 @@ try{
   const inside=await page.locator('.pp-stage').evaluateAll(chips=>chips.every(c=>{const box=c.getBoundingClientRect(),card=c.closest('.pp-stages').getBoundingClientRect();return box.left>=card.left-1&&box.right<=card.right+1;}));
   assert.equal(inside,true,'Stage chips stay inside their card');await capture('project-page-'+width);
  }
- for(const width of [1440,390]){
+ for(const width of [1440,1200,1080,390]){
   // v2: /calendar is Home › Calendar, the week planner. Timed meetings (long titles, overlapping ones in lanes) stay inside their day column.
   await open('/preview-org/calendar','[data-testid="week-planner"]',width);assert.match(new URL(page.url()).search,/tab=calendar/);
-  await page.locator(`.wp-col[data-day="${today}"] .wp-e:not(.f)`).nth(3).waitFor();
+  await page.locator(`.wp-col[data-day="${today}"] .wp-e:not(.f):not(.lg)`).nth(3).waitFor();
   await page.evaluate(()=>scrollTo(0,0));await capture('calendar-top-'+width);
-  const inside=await page.locator('.wp-col .wp-e:not(.f)').evaluateAll(items=>items.map(el=>{const day=el.closest('.wp-col').getBoundingClientRect(),box=el.getBoundingClientRect();return box.left>=day.left-1&&box.right<=day.right+1&&box.bottom<=day.bottom+1;}));
+  // The month card and filters never run under the week grid.
+  if(width>=1100){const chip=page.locator(`.wp-dh.tdy [data-testid="wp-logged"]`);await chip.waitFor();assert.equal(await chip.getAttribute('aria-label'),'4h 30m logged');assert.equal(await page.locator(`.wp-col[data-day="${today}"] .wp-e.lg`).count(),1,'the timer entry sits at its hours');}
+  const apart=await page.evaluate(()=>{const l=document.querySelector('.wp-left'),m=document.querySelector('.wp-main');if(!l||!m||getComputedStyle(l).display==='none'||l.getBoundingClientRect().width===0)return true;const mm=document.querySelector('.wp-mm')?.getBoundingClientRect(),mb=m.getBoundingClientRect();return !mm||mm.right<=mb.left+1||mm.top>=mb.bottom-1;});
+  assert.ok(apart,'Month card does not overlap the week grid at '+width);
+  const inside=await page.locator('.wp-col .wp-e:not(.f):not(.lg)').evaluateAll(items=>items.map(el=>{const day=el.closest('.wp-col').getBoundingClientRect(),box=el.getBoundingClientRect();return box.left>=day.left-1&&box.right<=day.right+1&&box.bottom<=day.bottom+1;}));
   assert.ok(inside.length===4&&inside.every(Boolean),'Calendar entries stay inside their day');await page.locator('[data-testid="week-planner"]').scrollIntoViewIfNeeded();await capture('calendar-'+width);
  }
  await open('/preview-org/settings/ai/usage','.ai-budgets',1440);
