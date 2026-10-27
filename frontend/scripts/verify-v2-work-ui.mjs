@@ -201,7 +201,7 @@ try {
     const rows = list.locator('.wk-row');
     await rows.first().waitFor();
     assert.equal(await rows.count(), 12, 'every open item assigned to me');
-    assert.ok(state.lists.some((l) => l.mine === 'true' && (l.status ?? 'open') === 'open'), 'My work asks /work-items for mine');
+    await waitFor(() => state.lists.some((l) => l.mine === 'true' && (l.status ?? 'open') === 'open'), 'My work asks /work-items for mine');
     // Each row: priority dot, key, title, kind chip, owner, due (red when late).
     const wt5 = rows.filter({ hasText: 'MuleSoft production server' });
     assert.equal(await wt5.locator('.wk-kind').innerText(), 'Ticket');
@@ -261,8 +261,9 @@ try {
     await stream.locator('.wkp-act.t-ai', { hasText: 'linked the chat with Siva' }).waitFor();
     // The page beside stays readable: the list is not covered on a wide screen.
     if (width === 1440) {
-      const listBox = await list.boundingBox(), panelBox = await panel.boundingBox();
-      assert.ok(listBox.x + listBox.width <= panelBox.x + 1, 'the panel sits beside the list, not over it');
+      // (the page makes room with a short transition)
+      await page.waitForFunction(() => { const l = document.querySelector('[aria-label="Work list"]')?.getBoundingClientRect(), p = document.querySelector('aside.v2-panel')?.getBoundingClientRect(); return !!l && !!p && l.right <= p.left + 1; }, null, { timeout: 5000 })
+        .catch(() => assert.fail('the panel sits beside the list, not over it'));
     }
     await shot(page, `panel-${tag}.png`);
 
@@ -310,7 +311,7 @@ try {
     // A file, added from the panel.
     await panel.getByTestId('wkp-file-input').setInputFiles({ name: 'vpn-log.txt', mimeType: 'text/plain', buffer: Buffer.from('VPN dropped.') });
     await panel.locator('.wkp-file', { hasText: 'vpn-log.txt' }).waitFor();
-    assert.ok(state.writes.some((w) => w.ep.endsWith('/attachments')));
+    await waitFor(() => state.writes.some((w) => w.ep.endsWith('/attachments')), 'the upload');
     if (width === 390) { await fitsPhone(page, 'Work panel', assert); const pb = await panel.boundingBox(); assert.ok(pb.width >= 389, 'the panel fills a phone'); }
     await shot(page, `panel-after-${tag}.png`);
     // An issue cannot take time: the comment posts and says why.
@@ -329,7 +330,7 @@ try {
     await tabs.getByRole('tab', { name: 'Team' }).click();
     await page.waitForURL(/tab=team/);
     await list.locator('.wk-row', { hasText: 'Ravi’s reconciliation job' }).waitFor();
-    assert.ok(state.lists.some((l) => l.team === 'mine'), 'Team asks for my teams');
+    await waitFor(() => state.lists.some((l) => l.team === 'mine'), 'Team asks for my teams');
     await page.getByRole('button', { name: 'More in Team' }).click();
     await page.getByRole('menuitem', { name: /Capacity & cost/ }).click();
     await page.waitForURL(/tab=team&s=capacity/);
@@ -342,7 +343,7 @@ try {
     await tabs.getByRole('tab', { name: 'Tickets' }).click();
     await page.waitForURL(/tab=tickets/);
     await list.locator('.wk-row', { hasText: 'Printer on floor 2 jams' }).waitFor();
-    assert.ok(state.lists.some((l) => l.kind === 'ticket'), 'Tickets asks for tickets');
+    await waitFor(() => state.lists.some((l) => l.kind === 'ticket'), 'Tickets asks for tickets');
     assert.equal(await list.locator('.wk-kchip').count(), 0, 'one kind: no kind chips');
     // The ticket desk's own views are one ··· away.
     await page.getByRole('button', { name: 'More in Tickets' }).click();
@@ -371,7 +372,7 @@ try {
     const show = page.getByRole('tablist', { name: 'Show work as' });
     assert.deepEqual((await show.getByRole('tab').allInnerTexts()).map((t) => t.trim()), ['List', 'Board', 'Timeline']);
     await list.locator('.wk-row').first().waitFor();
-    assert.ok(state.lists.some((l) => l.projectId === pid), 'the list is narrowed to the project');
+    await waitFor(() => state.lists.some((l) => l.projectId === pid), 'the list is narrowed to the project');
     assert.equal(await list.locator('.wk-row', { hasText: 'Printer on floor 2 jams' }).count(), 0);
     await show.getByRole('tab', { name: 'Board' }).click();
     await page.waitForURL(/view=board/);
