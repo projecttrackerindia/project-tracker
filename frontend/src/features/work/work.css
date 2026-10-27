@@ -239,3 +239,10 @@
 .wk-skel-row { display: block; height: 44px; border-radius: 10px; background: linear-gradient(90deg, var(--surface-2), var(--hover-bg), var(--surface-2)); background-size: 200% 100%; animation: wk-shimmer 1.2s infinite linear; }
 @keyframes wk-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .wk-skel-row { animation: none; } }
+
+/* Work › Team: the AI workload line */
+.wk-ai-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px;
+  background: color-mix(in srgb, var(--ds-violet, #6E5BFF) 9%, var(--ds-surface, transparent)); color: var(--ds-violet, #5B4BE0); font-size: 14px; }
+.wk-ai-line b { font-weight: 600; }
+.wk-ai-line .btn { margin-left: auto; }
+html[data-theme='dark'] .wk-ai-line { color: #A5A3FF; }

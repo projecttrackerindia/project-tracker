@@ -181,6 +181,9 @@ export function WhileAway({ missing, list, onCatchUp, onNew }: { missing: boolea
   const wid = useWorkspaceId() ?? '';
   const questions = useWsQuery([...chatKeys.questions(wid)].slice(1), () => chatApi.questions(), { staleTime: 30_000 });
   const q = questions.data?.[0];
+  // The decisions themselves, from the AI catch-up across all chats (read once, kept for ten minutes); no decisions or no AI: no card.
+  const catchUp = useWsQuery(['chat', 'catch-up', 'away'], () => chatApi.catchUp(null), { enabled: !missing, staleTime: 10 * 60_000, retry: false, refetchOnWindowFocus: false });
+  const decisions = (catchUp.data?.decisions ?? []).slice(0, 3).map((d) => (d.owner ? `${d.owner.split(' ')[0]}: ${d.text}` : d.text));
   const file = list.find((c) => c.lastMessage && !c.lastMessage.isSystem && /^Sent (a file|an image|a voice note)/.test(c.lastMessage.snippet));
   const who = (c: Conversation) => (c.lastMessage!.isMine ? 'You' : (c.lastMessage!.senderName ?? c.name).split(' ')[0]);
   const fileText = file ? `${who(file)} ${file.lastMessage!.snippet.replace(/^Sent a file: /, 'sent ').replace(/^Sent /, 'sent ')}` : null;
@@ -195,9 +198,12 @@ export function WhileAway({ missing, list, onCatchUp, onNew }: { missing: boolea
       <span className="eyebrow">Catch me up</span>
       <h2 className="chat-away-title">While you were away</h2>
       <div className="chat-away-tiles">
-        <button type="button" className="chat-away-tile" onClick={onCatchUp}>
-          <small>Decisions</small><b>See what was decided in your chats</b>
-        </button>
+        {decisions.length > 0 && (
+          <button type="button" className="chat-away-tile" onClick={onCatchUp}>
+            <small>Decisions</small>
+            {decisions.map((d) => <b key={d} className="chat-away-line">{d}</b>)}
+          </button>
+        )}
         {/* Empty tiles ("Nobody is waiting on you", "No new files") are not shown. */}
         {q && (
           <button type="button" className="chat-away-tile" onClick={() => navigate(messageLink(q.conversationId, q.messageId, q.threadRootId))}>

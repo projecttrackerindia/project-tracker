@@ -96,3 +96,4 @@ html .btn.btn-ai:not(#_):hover:not(:disabled) { background: color-mix(in srgb, v
   .ins-types .ds-choice { padding: 14px; }
   .ins-types .ds-choice > span:last-child { display: none; }
 }
+.ins-ai p.ins-note-act .btn { margin: 0 0 0 6px; vertical-align: baseline; }

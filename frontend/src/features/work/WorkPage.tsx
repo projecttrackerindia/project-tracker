@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { projectApi, teamApi, workApi, workspaceApi } from '../../api/endpoints';
+import { projectApi, teamApi, workApi, workItemApi, workspaceApi } from '../../api/endpoints';
 import type { WorkItem, WorkItemKind } from '../../api/types';
 import type { WorkListFilters, WorkRow } from '../../api/workItemsApi';
 import { Icon } from '../../components/Icon';
@@ -13,6 +13,7 @@ import { toast } from '../../stores/ui';
 import { saveOfflineSnapshot } from '../offline/storage';
 import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
 import { WorkloadPage } from '../workitems/WorkloadPage';
+import { useRebalance } from '../insights/InsightsPage';
 import { AutomationsPage } from './Automations';
 import { WorkItemPanel } from './WorkItemPanel';
 import { WorkList } from './WorkList';
@@ -157,6 +158,7 @@ export function WorkPage() {
   const body = tab === 'automations' ? <AutomationsPage /> : (
       <>
         {narrowing}
+        {tab === 'team' && !person && seesWorkload && <TeamLoadLine />}
         <WorkList key={tab} viewKey={tab} filters={filters} kinds={tab === 'tickets' ? ['ticket'] : kinds} showKinds={tab !== 'tickets'} selectedId={item} onOpen={open} headExtra={teamPick}
           defaults={tab === 'tickets' ? { group: 'status', sort: 'priority' } : tab === 'team' ? { group: 'owner', sort: 'priority' } : undefined}
           empty={tab === 'mine' ? { title: 'Nothing is assigned to you', text: 'Tasks, issues, action items and tickets given to you show up here.', action: <button type="button" className="btn btn-primary" onClick={() => openNew()}><Icon name="plus" size={15} /> New</button> }
@@ -171,6 +173,22 @@ export function WorkPage() {
       {head}
       {body}
       {panel}
+    </div>
+  );
+}
+
+/** Work › Team: when one person holds more than 40% of the team's open work, a violet AI line offers the same rebalance review as Insights. */
+function TeamLoadLine() {
+  const navigate = useNavigate();
+  const workload = useWsQuery(['workload', 'default'], () => workItemApi.workload(), { staleTime: 60_000, retry: false });
+  const { busy, rebalance } = useRebalance((job) => navigate(`/insights?tab=reports&job=${encodeURIComponent(job)}`));
+  const total = workload.data?.totals.open ?? 0;
+  const top = [...(workload.data?.members ?? [])].sort((a, b) => b.open - a.open)[0];
+  if (!top || total < 2 || top.open / total <= 0.4 || (workload.data?.members.length ?? 0) < 2) return null;
+  return (
+    <div className="wk-ai-line" role="status">
+      <span>✦ <b>{top.name}</b> holds {Math.round((top.open / total) * 100)}% of open work, {top.overdue} overdue</span>
+      <button type="button" className="btn btn-ai btn-sm" disabled={busy} onClick={() => void rebalance()}>{busy && <span className="spinner" />}Suggest a rebalance</button>
     </div>
   );
 }
