@@ -1,19 +1,20 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { motion, useReducedMotion } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { projectApi, projectGroupApi, workspaceApi } from '../../api/endpoints';
 import type { Project } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
-import { EmptyState, ErrorState, PageHead, PageLoader, PriorityOptions, Segmented } from '../../components/ui';
+import { EmptyState, ErrorState, PageLoader, PriorityOptions, Segmented } from '../../components/ui';
 import { PROJECT_TYPES } from '../../lib/workLabels';
 import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
-import { useAuth, useCan, useIsPersonal, useWorkspaceId } from '../../stores/auth';
+import { queryClient, useAuth, useCan, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { DotsMenu } from '../talk/DotsMenu';
 import { PortfolioView } from './PortfolioView';
-import { ProjectBoard } from './ProjectBoard';
+import { duplicateGroups, groupKey, readDismissed, writeDismissed } from './duplicates';
+import { usePortfolioBrief } from './PortfolioInsights';
 import { ProjectFormModal } from './ProjectFormModal';
-import { BackLink, dayMonth, DuplicateFlags, errText, HEALTH, HealthPill, isFinished, useAllProjects } from './projectParts';
+import { dayMonth, errText, HEALTH, HealthPill, initials, isFinished, passGradient, passStatus, useAllProjects } from './projectParts';
 import './projects.css';
 import './projectsHome.css';
 
@@ -34,26 +35,24 @@ export function ProjectsHome() {
     const actions = params.get('actions') === '1';
     return <Navigate to={`/work/projects/${encodeURIComponent(picked)}${actions ? '?tab=work&kind=action' : ''}`} replace />;
   }
-  const place: Place = portfolio ? 'portfolio' : 'projects';
+  if (!portfolio) return <ProjectsView />;
+  const place: Place = 'portfolio';
   const switcher = (
     <Segmented<Place> label="Projects or portfolio" value={place} options={[{ id: 'projects', label: 'Projects' }, { id: 'portfolio', label: 'Portfolio' }]}
       onChange={(t) => setParams(t === 'portfolio' ? { view: 'portfolio' } : {})} />
   );
-  return place === 'portfolio' ? <PortfolioView switcher={switcher} /> : <ProjectsView switcher={switcher} />;
+  return <PortfolioView switcher={switcher} />;
 }
 
 // ------------------------------------------------------------------------------------------------------------------ Projects
 
-type View = 'cards' | 'list' | 'board';
+type View = 'passes' | 'list';
 type StatusChip = 'all' | 'OnTrack' | 'AtRisk' | 'Delayed' | 'Completed';
-const CHIPS: { id: StatusChip; label: string; tone: string }[] = [
-  { id: 'all', label: 'All', tone: '' }, { id: 'OnTrack', label: 'On track', tone: 'ok' }, { id: 'AtRisk', label: 'At risk', tone: 'risk' },
-  { id: 'Delayed', label: 'Delayed', tone: 'late' }, { id: 'Completed', label: 'Completed', tone: 'done' },
+const CHIPS: { id: StatusChip; label: string }[] = [
+  { id: 'all', label: 'All' }, { id: 'OnTrack', label: 'On track' }, { id: 'AtRisk', label: 'At risk' }, { id: 'Delayed', label: 'Late' }, { id: 'Completed', label: 'Done' },
 ];
 const VIEW_KEY = 'pm_projects_view';
 const SCOPE_KEY = 'pm_projects_scope';
-/** Filters appear only past this many projects (v2: "filters only when needed"). */
-const FILTERS_FROM = 10;
 /** Owners, Admins and Managers oversee the whole organization, so they get every project; everyone else gets the ones they belong to. */
 const OVERSEES: readonly string[] = ['Owner', 'Admin', 'Manager'];
 /** Open work first, the soonest due on top; finished projects after, the latest first. */
@@ -62,12 +61,20 @@ const byDue = (a: Project, b: Project) => {
   const da = a.dueDate ?? '9999', db = b.dueDate ?? '9999';
   return isFinished(a) ? db.localeCompare(da) : da.localeCompare(db);
 };
+const needsAttention = (p: Project) => !isFinished(p) && passStatus(p).tone !== 'ok';
 
-function ProjectsView({ switcher }: { switcher: ReactNode }) {
+/**
+ * Projects (Apple design, s-projects): "14 active · 3 need attention" over the large title; search, one Filter button and Passes · List.
+ * Passes are Wallet-style cards: gradient, key, owner, progress ring, due + one honest line, a tear line, the stage dots (filled = signed
+ * off) and one state pill. One violet line proposes merging a likely duplicate. Opening a pass lifts it and carries its key, name and stage
+ * dots into the project page (shared elements; none when reduced motion is asked for).
+ */
+function ProjectsView() {
   const nav = useNavigate();
   const wid = useWorkspaceId();
+  const still = useReducedMotion();
   const [params, setParams] = useSearchParams();
-  const canCreate = useCan('projects.create'), canEdit = useCan('projects.edit'), canDelete = useCan('projects.delete');
+  const canEdit = useCan('projects.edit'), canDelete = useCan('projects.delete');
   const meId = useAuth((s) => s.ctx!.user.id);
   const role = useAuth((s) => s.ctx?.current?.role);
   const personal = useIsPersonal();
@@ -75,7 +82,7 @@ function ProjectsView({ switcher }: { switcher: ReactNode }) {
   const [scope, setScopeState] = useState<'all' | 'mine'>(() => { try { return localStorage.getItem(SCOPE_KEY) === 'mine' ? 'mine' : 'all'; } catch { return 'all'; } });
   const setScope = (s: 'all' | 'mine') => { setScopeState(s); try { localStorage.setItem(SCOPE_KEY, s); } catch { /* storage unavailable */ } };
   const mineOnly = !oversees || scope === 'mine';
-  const [view, setViewState] = useState<View>(() => { try { const x = localStorage.getItem(VIEW_KEY); return x === 'list' || x === 'board' ? x : 'cards'; } catch { return 'cards'; } });
+  const [view, setViewState] = useState<View>(() => { try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'passes'; } catch { return 'passes'; } });
   const setView = (x: View) => { setViewState(x); try { localStorage.setItem(VIEW_KEY, x); } catch { /* storage unavailable */ } };
   const [archived, setArchived] = useState(false);
   const [q, setQ] = useState('');
@@ -86,6 +93,7 @@ function ProjectsView({ switcher }: { switcher: ReactNode }) {
   const [priority, setPriority] = useState('');
   const [showCompleted, setShowCompleted] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [opening, setOpening] = useState<string | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!filterOpen) return;
@@ -108,20 +116,31 @@ function ProjectsView({ switcher }: { switcher: ReactNode }) {
 
   const filters = { mineOnly, includeArchived: archived };
   const all = useAllProjects(filters);
+  const brief = usePortfolioBrief();
   const items = useMemo(() => [...(all.data?.items ?? [])].sort(byDue), [all.data]);
-  const count = (s: StatusChip) => (s === 'all' ? items.length : items.filter((p) => p.health === s).length);
-  // How many settings inside the Filter popover differ from their defaults (shown on the chip).
+  const dupes = useMemo(() => new Set(duplicateGroups(items.filter((p) => p.status !== 'Archived')).flat().map((p) => p.id)), [items]);
   const activeFilters = [ownerId, groupId, type, priority].filter(Boolean).length + (status !== 'all' ? 1 : 0) + (archived ? 1 : 0) + (showCompleted ? 0 : 1);
   const narrowed = !!dq || activeFilters > 0;
-  // Search is always there; the single Filter chip appears past 10 projects, and while any of its filters is set so it can be cleared.
-  const filtersOn = items.length > FILTERS_FROM || activeFilters > 0;
-  const members = useWsQuery(['members'], workspaceApi.members, { enabled: filtersOn });
-  const groups = useWsQuery(['project-groups'], () => projectGroupApi.list(), { enabled: filtersOn });
+  const members = useWsQuery(['members'], workspaceApi.members, { enabled: filterOpen });
+  const groups = useWsQuery(['project-groups'], () => projectGroupApi.list(), { enabled: filterOpen });
   const shown = items.filter((p) => (status === 'all' || p.health === status) && (showCompleted || status === 'Completed' || !isFinished(p))
     && (!dq || `${p.name} ${p.key} ${p.projectGroupName ?? ''} ${p.owner?.name ?? ''}`.toLowerCase().includes(dq))
     && (!ownerId || p.owner?.id === ownerId) && (!groupId || p.projectGroupId === groupId) && (!type || p.projectType === type) && (!priority || p.priority === priority));
   const clear = () => { setQ(''); setOwnerId(''); setGroupId(''); setType(''); setPriority(''); setStatus('all'); setArchived(false); setShowCompleted(true); };
+  const active = items.filter((p) => !isFinished(p)).length;
+  const attention = items.filter(needsAttention).length;
   const open = (id: string) => nav(`/work/projects/${id}`);
+  // Opening a pass: it lifts (spring), the project's page is fetched meanwhile, then the key, name and dots fly into its header.
+  const openPass = (id: string) => {
+    if (still) { open(id); return; }
+    setOpening(id);
+    const ready = Promise.all([
+      wid ? queryClient.prefetchQuery({ queryKey: [wid, 'project', id], queryFn: () => projectApi.get(id) }) : null,
+      import('./ProjectPage'),
+      new Promise((r) => setTimeout(r, 240)),
+    ]);
+    void Promise.race([ready, new Promise((r) => setTimeout(r, 900))]).finally(() => open(id));
+  };
   const remove = async (p: Project) => {
     if (!(await confirmDialog({ title: 'Delete project?', message: `Deleting “${p.name}” will also remove all of its tasks.` }))) return;
     try { await projectApi.remove(p.id); toast('Project deleted.', 'warning'); void invalidateWorkspace(wid, 'projects'); }
@@ -129,36 +148,28 @@ function ProjectsView({ switcher }: { switcher: ReactNode }) {
   };
 
   return (
-    <div className="pj2">
-      <PageHead eyebrow={<BackLink to="/work" label="Work" />} title="Projects">
-        <div className="pj2-heads">
-          {switcher}
-          <DotsMenu label="More on Projects" items={[
-            { label: 'New project', icon: 'plus', hint: 'Or + New, from anywhere', onSelect: () => setModal({}), hidden: !canCreate },
-            { label: 'Show as cards', icon: 'grid', hint: view === 'cards' ? 'Showing now' : undefined, onSelect: () => setView('cards') },
-            { label: 'Show as a list', icon: 'list', hint: view === 'list' ? 'Showing now' : 'Owner, dates and status in columns', onSelect: () => setView('list') },
-            { label: 'Show as a board', icon: 'kanban', hint: view === 'board' ? 'Showing now' : 'Drag a project to change its status', onSelect: () => setView('board') },
-          ]} />
+    <div className="pj2 pa">
+      <header className="pa-head">
+        <div>
+          <div className="pa-eyebrow" data-testid="projects-count">{all.data ? `${active} active · ${attention} need${attention === 1 ? 's' : ''} attention` : ' '}</div>
+          <h1 className="pa-title">Projects</h1>
         </div>
-      </PageHead>
-
-      <div className="pj2-stats" role="group" aria-label="Status">
-        {CHIPS.map((c) => (
-          <button key={c.id} type="button" className={`pj2-stat ${status === c.id ? 'on' : ''}`} aria-pressed={status === c.id} onClick={() => setStatus(c.id)}>
-            <b className={c.tone}>{all.data ? count(c.id) : '–'}</b><span>{c.label}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="pj2-filters" role="group" aria-label="Search and filter">
-        <div className="search-field pj-search"><Icon name="search" /><input className="input" type="search" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search projects" /></div>
-        {filtersOn && (
+        <div className="pa-tools" role="group" aria-label="Search and filter">
+          <label className="pa-search"><Icon name="search" size={14} /><input type="search" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search projects" /></label>
           <div className="pj2-filter" ref={filterRef}>
-            <button type="button" className={`pj2-filter-chip ${activeFilters ? 'on' : ''}`} aria-haspopup="dialog" aria-expanded={filterOpen} onClick={() => setFilterOpen((o) => !o)}>
-              <Icon name="filter" size={14} /> Filter{activeFilters ? ` · ${activeFilters}` : ''}
+            <button type="button" className={`pa-btn pj2-filter-chip ${activeFilters ? 'on' : ''}`} aria-haspopup="dialog" aria-expanded={filterOpen} onClick={() => setFilterOpen((o) => !o)}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+              Filter{activeFilters ? ` · ${activeFilters}` : ''}
             </button>
             {filterOpen && (
               <div className="pj2-filter-pop card" role="dialog" aria-label="Filter projects">
+                {oversees && (
+                  <label className="pj2-filter-row"><span>Projects</span>
+                    <Select className="select" value={mineOnly ? 'mine' : 'all'} onChange={(e) => setScope(e.target.value as 'all' | 'mine')}>
+                      <option value="all">All projects</option><option value="mine">Mine</option>
+                    </Select>
+                  </label>
+                )}
                 {(groups.data?.length ?? 0) > 1 && (
                   <label className="pj2-filter-row"><span>Group</span>
                     <Select className="select" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
@@ -190,28 +201,28 @@ function ProjectsView({ switcher }: { switcher: ReactNode }) {
                 </label>
                 <label className="pj-check"><input type="checkbox" checked={showCompleted} onChange={(e) => setShowCompleted(e.target.checked)} /> Show completed</label>
                 <label className="pj-check"><input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Show archived</label>
-                {activeFilters > 0 && <button type="button" className="link-btn pj-clear" onClick={clear}>Clear filters</button>}
+                {narrowed && <button type="button" className="link-btn pj-clear" onClick={clear}>Clear filters</button>}
               </div>
             )}
           </div>
-        )}
-        {oversees && <Segmented label="Which projects" value={mineOnly ? 'mine' : 'all'} onChange={(s) => setScope(s)} options={[{ id: 'all', label: 'All projects' }, { id: 'mine', label: 'Mine' }]} />}
-        {narrowed && <button type="button" className="link-btn pj-clear" onClick={clear}>Clear</button>}
-      </div>
+          <Segmented<View> label="Show as" className="pa-seg" value={view} onChange={setView} options={[{ id: 'passes', label: 'Passes' }, { id: 'list', label: 'List' }]} />
+        </div>
+      </header>
 
-      <DuplicateFlags projects={items} />
+      <DuplicateLine projects={items} />
 
       {all.isLoading ? <PageLoader />
         : all.isError ? <ErrorState error={all.error} retry={() => all.refetch()} />
         : shown.length === 0 ? (
           <div className="pj2-empty card"><EmptyState icon="folder" title={narrowed ? 'No projects match' : 'No projects yet'} text={narrowed ? 'Try another status, or clear the filters.' : 'Create your first project to organise its work, dates and people.'}
-            action={narrowed ? <button type="button" className="btn btn-ghost" onClick={clear}>Show all</button> : canCreate ? <button type="button" className="btn btn-primary" onClick={() => setModal({})}><Icon name="plus" /> New project</button> : undefined} /></div>
-        ) : view === 'board' ? (
-          <div className="pj-board"><ProjectBoard projects={shown} cacheKey={[wid, 'projects', 'list', 'all', filters]} includeArchived={archived} canEditAll={canEdit} meId={meId} onOpen={open} /></div>
+            action={narrowed ? <button type="button" className="btn btn-ghost" onClick={clear}>Show all</button> : <button type="button" className="btn btn-primary" onClick={() => setModal({})}><Icon name="plus" /> New project</button>} /></div>
         ) : view === 'list' ? (
           <ProjectRows projects={shown} onOpen={open} canEdit={canEdit} canDelete={canDelete} meId={meId} onEdit={(p) => setModal({ project: p })} onDelete={(p) => void remove(p)} />
         ) : (
-          <div className="pj2-grid">{shown.map((p) => <ProjectTile key={p.id} p={p} />)}</div>
+          <div className={`pa-grid ${opening ? 'opening' : ''}`}>
+            {shown.map((p) => <Pass key={p.id} p={p} still={!!still} opening={opening} duplicate={dupes.has(p.id)}
+              risk={brief.data?.ranked?.find((r) => r.projectId === p.id)} onOpen={openPass} />)}
+          </div>
         )}
       {(all.data?.total ?? 0) > items.length && <p className="muted pj-note">Showing the first {items.length} of {all.data!.total} projects. Search or filter to find the others.</p>}
 
@@ -220,18 +231,109 @@ function ProjectsView({ switcher }: { switcher: ReactNode }) {
   );
 }
 
-/** A project at a glance: name and status, group · owner, one bar coloured by status, then % and due. Nothing else (Talk has the chat). */
-function ProjectTile({ p }: { p: Project }) {
-  const h = HEALTH[p.health];
-  const group = p.projectGroupName ?? p.teamName;
-  const late = !isFinished(p) && !!p.dueDate && p.dueDate.slice(0, 10) < new Date().toISOString().slice(0, 10) && p.progress < 100;
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+/** The pass's eyebrow and its one honest line, from the project's own numbers (and the portfolio forecast when there is one). */
+function passLine(p: Project, r?: { projectedFinish: string | null; projectedSlipDays: number | null }, duplicate = false): { label: string; value: string } {
+  const pending = p.pendingSignOffs ?? 0, live = p.stats.total - p.stats.cancelled;
+  const finished = isFinished(p);
+  const label = finished ? (p.status === 'Completed' ? `Live ${dayMonth(p.dueDate)}` : p.status) : p.dueDate ? `Due ${dayMonth(p.dueDate)}` : 'No due date';
+  const value = pending > 0 && (p.progress >= 100 || p.status === 'Completed') ? `${plural(pending, 'sign-off')} pending`
+    : finished ? (p.status === 'Completed' ? 'All stages signed off' : `${p.progress}% done`)
+    : duplicate ? 'Possible duplicate'
+    : r?.projectedFinish && (r.projectedSlipDays ?? 0) > 0 ? `Forecast ${dayMonth(r.projectedFinish)}`
+    : p.stats.overdue > 0 ? `${plural(p.stats.overdue, 'overdue item')}`
+    : live === 0 ? 'No work yet' : `${p.stats.done} of ${live} done`;
+  return { label, value };
+}
+
+const R = 26, C = 2 * Math.PI * R;
+/** One project as a Wallet pass. */
+function Pass({ p, still, opening, duplicate, risk, onOpen }: {
+  p: Project; still: boolean; opening: string | null; duplicate: boolean; risk?: { projectedFinish: string | null; projectedSlipDays: number | null }; onOpen: (id: string) => void;
+}) {
+  const [from, to] = passGradient(p);
+  const st = passStatus(p);
+  const line = passLine(p, risk, duplicate);
+  const stages = p.stageCount ?? 0;
+  const signed = Math.max(0, stages - (p.pendingSignOffs ?? 0));
+  const me = opening === p.id, other = !!opening && !me;
+  const pct = Math.max(0, Math.min(100, p.progress));
   return (
-    <Link className="pj2-card" to={`/work/projects/${p.id}`} data-project={p.name} aria-label={`${p.name}, ${h.label}, ${p.progress}% done${p.dueDate ? `, due ${dayMonth(p.dueDate)}` : ''}`}>
-      <span className="pj2-card-head"><b className="pj2-name" title={p.name}>{p.name}</b><HealthPill health={p.health} pendingSignOffs={p.pendingSignOffs} /></span>
-      <span className="pj2-sub">{[group, p.owner?.name ?? 'No owner'].filter(Boolean).join(' · ')}</span>
-      <span className={`pj2-bar ${h.tone}`} aria-hidden="true"><i style={{ width: p.progress > 0 ? `max(8px, ${p.progress}%)` : '8px' }} /></span>
-      <span className="pj2-foot">{p.progress}%{p.dueDate ? <> · <span className={late ? 'late' : ''}>due {dayMonth(p.dueDate)}</span></> : ' · no due date'}</span>
-    </Link>
+    <motion.a href={`/work/projects/${p.id}`} className={`pa-pass ${me ? 'lifted' : ''}`} data-project={p.name} data-testid="project-pass"
+      style={{ background: `linear-gradient(150deg, ${from}, ${to})`, ['--c' as string]: to }}
+      aria-label={`${p.name}, ${st.label}, ${p.progress}% done${p.dueDate ? `, due ${dayMonth(p.dueDate)}` : ''}, ${signed} of ${stages} stages signed off`}
+      animate={still ? undefined : me ? { scale: 1.04, y: -8, opacity: 1 } : { scale: 1, y: 0, opacity: other ? 0.6 : 1 }}
+      transition={{ type: 'spring', duration: 0.45, bounce: 0.15 }}
+      onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); onOpen(p.id); }}>
+      <span className="pa-top">
+        <motion.span className="pa-key" layoutId={still ? undefined : `pkey-${p.id}`}>{p.key}</motion.span>
+        <span className="pa-owner-av" title={p.owner?.name ?? 'No owner'}>{p.owner ? initials(p.owner.name) : '–'}</span>
+      </span>
+      <motion.b className="pa-name" layoutId={still ? undefined : `pname-${p.id}`} title={p.name}>{p.name}</motion.b>
+      <span className="pa-own">{p.owner?.name ?? 'No owner'}</span>
+      <span className="pa-mid">
+        <span className="pa-arc" role="img" aria-label={`${pct}% of the work done`}>
+          <svg width="62" height="62" viewBox="0 0 62 62" aria-hidden="true">
+            <circle cx="31" cy="31" r={R} fill="none" stroke="rgba(255,255,255,.28)" strokeWidth="5" />
+            {pct > 0 && <circle cx="31" cy="31" r={R} fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pct / 100)} transform="rotate(-90 31 31)" />}
+          </svg>
+          <b>{pct}%</b>
+        </span>
+        <span className="pa-when"><span className="pa-lbl">{line.label}</span><span className="pa-val">{line.value}</span></span>
+      </span>
+      <span className="pa-perf" aria-hidden="true" />
+      <span className="pa-foot">
+        <span>
+          <motion.span className="pa-dots" layoutId={still ? undefined : `pdots-${p.id}`} aria-hidden="true">
+            {Array.from({ length: Math.max(stages, 0) }, (_, i) => <i key={i} className={i < signed ? 'f' : ''} />)}
+          </motion.span>
+          <span className="pa-stg">{stages ? `${signed} of ${stages} signed off` : 'No stages yet'}</span>
+        </span>
+        <span className={`pa-state ${st.tone}`} data-testid="pass-state">{st.label}</span>
+      </span>
+    </motion.a>
+  );
+}
+
+/**
+ * ✦ The likely-duplicate line: "A and B look like the same project". Merge… shows the choices (there is no merge on the server, so keep
+ * one and close the other: it is archived, its work stays and it can be restored) and "Not a duplicate" (remembered for the workspace).
+ */
+function DuplicateLine({ projects }: { projects: Project[] }) {
+  const wid = useWorkspaceId();
+  const canEdit = useCan('projects.edit');
+  const meId = useAuth((s) => s.ctx?.user.id);
+  const [dismissed, setDismissed] = useState<string[]>(() => readDismissed(wid));
+  const [choosing, setChoosing] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const groups = useMemo(() => duplicateGroups(projects.filter((p) => p.status !== 'Archived')).filter((g) => !dismissed.includes(groupKey(g))), [projects, dismissed]);
+  if (groups.length === 0) return null;
+  const g = groups[0], key = groupKey(g);
+  const closable = g.filter((p) => canEdit || p.owner?.id === meId);
+  const owners = new Set(g.map((p) => p.owner?.id ?? '')).size === 1 && g[0].owner;
+  const notDuplicate = () => { const next = [...dismissed, key]; setDismissed(next); writeDismissed(wid, next); setChoosing(null); toast('Got it. They will not be flagged again.', 'info'); };
+  const close = async (p: Project) => {
+    if (!(await confirmDialog({ title: `Close “${p.name}”?`, message: 'It is archived: its work and history stay, and it can be restored from Edit details. The other project carries on.', confirmText: 'Close it' }))) return;
+    setBusy(true);
+    try { await projectApi.move(p.id, { status: 'Archived' }); toast(`“${p.name}” closed.`); setChoosing(null); void invalidateWorkspace(wid, 'projects'); void invalidateWorkspace(wid, 'portfolio'); }
+    catch (e) { toast(errText(e, 'Could not close the project.'), 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="pa-ai" role="note" aria-label="Likely duplicate" data-testid="duplicate-line">
+      <span className="pa-orb" aria-hidden="true" />
+      <span className="pa-ai-text">
+        {g.slice(0, -1).map((p, i) => <span key={p.id}>{i > 0 ? ', ' : ''}<b>{p.name}</b></span>)} and <b>{g[g.length - 1].name}</b> look like the same project — {owners ? 'same owner, ' : ''}same name apart from case and spacing.
+      </span>
+      <span className="pa-ai-acts" data-testid="duplicate-actions">
+        {choosing === key ? (
+          <>
+            {closable.map((p) => <button key={p.id} type="button" className="pa-btn sm" disabled={busy} onClick={() => void close(p)}>Close “{p.name}”</button>)}
+            <button type="button" className="pa-btn sm" onClick={notDuplicate}>Not a duplicate</button>
+          </>
+        ) : <button type="button" className="pa-btn sm" onClick={() => setChoosing(key)}>Merge…</button>}
+      </span>
+    </div>
   );
 }
 

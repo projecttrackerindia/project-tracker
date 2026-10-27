@@ -98,3 +98,42 @@ export function DuplicateFlags({ projects }: { projects: Project[] }) {
     </div>
   );
 }
+
+// ------------------------------------------------------------------------------------------------------------------ Passes (Apple design)
+
+/** The one status a pass, the list and the project page show: At risk · Late · On track · Done. 100% work with stages unsigned reads At risk. */
+export type PassTone = 'ok' | 'risk' | 'late' | 'done';
+export function passStatus(p: Pick<Project, 'health' | 'pendingSignOffs' | 'progress' | 'status'>): { label: string; tone: PassTone } {
+  const pending = p.pendingSignOffs ?? 0;
+  if ((p.health === 'Completed' || p.progress >= 100) && pending > 0 && p.health !== 'Delayed') return { label: 'At risk', tone: 'risk' };
+  switch (p.health) {
+    case 'OnTrack': return { label: 'On track', tone: 'ok' };
+    case 'AtRisk': return { label: 'At risk', tone: 'risk' };
+    case 'Delayed': return { label: 'Late', tone: 'late' };
+    case 'Completed': return { label: 'Done', tone: 'done' };
+    case 'Cancelled': return { label: 'Cancelled', tone: 'done' };
+    default: return { label: 'Archived', tone: 'done' };
+  }
+}
+
+/** Twelve Wallet-style gradients; a project keeps its own (picked from its key, so it never changes between visits). */
+const GRADIENTS: [string, string][] = [
+  ['#7a78ff', '#3634a3'], ['#ffb340', '#e0640a'], ['#5fd4e4', '#1a8aa3'], ['#4a8cff', '#1d4fc4'], ['#3fd38a', '#14905a'], ['#9ad35a', '#4c9a20'],
+  ['#ff6b7f', '#c41e3a'], ['#c38bff', '#7b3fd1'], ['#ff8a5c', '#d1452b'], ['#4fc3c8', '#167a86'], ['#f27ab8', '#b52c78'], ['#6f9bd8', '#33508f'],
+];
+const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); };
+export function passGradient(p: Pick<Project, 'key' | 'id' | 'status'>): [string, string] {
+  if (p.status === 'Completed' || p.status === 'Cancelled' || p.status === 'Archived') return ['#8e8e9a', '#4a4a55'];
+  return GRADIENTS[hash(p.key || p.id) % GRADIENTS.length];
+}
+export const initials = (name: string | null | undefined) => {
+  const w = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (w.length === 0) return '?';
+  return (w.length === 1 ? w[0].slice(0, 2) : w[0][0] + w[w.length - 1][0]).toUpperCase();
+};
+const AVATAR = ['#5856d6', '#0a84ff', '#ff9500', '#af52de', '#34c759', '#ff2d55', '#30b0c7', '#a2845e'];
+export const avatarColor = (seed: string | null | undefined) => AVATAR[hash(seed ?? '') % AVATAR.length];
+/** A round initials avatar (the projects pages draw people this way). */
+export function Initials({ name, seed, className = '' }: { name: string | null | undefined; seed?: string | null; className?: string }) {
+  return <span className={`pa-av ${className}`} style={{ background: avatarColor(seed ?? name) }} aria-hidden="true">{initials(name)}</span>;
+}

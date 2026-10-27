@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { agentApi, documentApi, projectApi } from '../../api/endpoints';
-import type { DocumentStatus, ProjectDetail } from '../../api/types';
+import { agentApi, documentApi, projectApi, timeApi } from '../../api/endpoints';
+import type { DocumentStatus, Project, ProjectDetail, Stage } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { AiCard } from '../../components/v2/AiCard';
 import { openNew } from '../../components/v2/state';
-import { ErrorState, Kpi, PageLoader, Ring, Segmented } from '../../components/ui';
+import { ErrorState, PageLoader, Segmented } from '../../components/ui';
 import { daysUntil } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useModule, useWorkspaceId } from '../../stores/auth';
@@ -27,7 +27,7 @@ import { ProjectDocs } from './ProjectDocs';
 import { ProjectFormModal } from './ProjectFormModal';
 import { ProjectSettingsModal, type ProjectSettingsTab } from './ProjectSettingsModal';
 import { ActivityTab } from './ProjectTabs';
-import { BackLink, dayMonth, errText, HEALTH, HealthPill, isFinished } from './projectParts';
+import { dayMonth, errText, Initials, isFinished, passGradient, passStatus } from './projectParts';
 import { StageScheduleStudio } from './StageScheduleStudio';
 import { Timeline } from './Timeline';
 import '../agent/agent.css';
@@ -92,6 +92,10 @@ export function ProjectPage() {
   const [risk, setRisk] = useState(false);
   const [whatIf, setWhatIf] = useState(false);
   const [reporting, setReporting] = useState<{ stageId?: string } | null>(null);
+  const still = useReducedMotion();
+  const signOff = useSignOff(id);
+  const [plan, setPlanState] = useState(() => { try { return localStorage.getItem('pm_pp_plan') === '1'; } catch { return false; } });
+  const setPlan = (v: boolean) => { setPlanState(v); try { localStorage.setItem('pm_pp_plan', v ? '1' : '0'); } catch { /* storage unavailable */ } };
 
   // A link to the chat (from a mention notification) opens the panel, then drops the marker so a reload does not open it again.
   const chatWanted = params.get('chat');
@@ -138,22 +142,26 @@ export function ProjectPage() {
     catch (e) { toast(errText(e, 'Could not delete the project.'), 'error'); }
   };
   const group = p.projectGroupName ?? p.teamName;
+  const grad = passGradient(p);
+  const share = async () => {
+    const url = window.location.href.split('?')[0];
+    try { await navigator.clipboard.writeText(url); toast('Link copied. Anyone with access to the project can open it.'); }
+    catch { toast(url, 'info'); }
+  };
 
   return (
     <div className="pp">
       <header className="pp-head">
+        <motion.span className="pp-keytile" layoutId={still ? undefined : `pkey-${p.id}`} style={{ background: `linear-gradient(150deg, ${grad[0]}, ${grad[1]})`, ['--c' as string]: grad[1] }} aria-hidden="true">{p.key}</motion.span>
         <div className="pp-head-main">
-          <BackLink to="/work/projects" label="Projects" />
-          <h1 className="page-title">{p.name}</h1>
-          <div className="pp-meta">
-            <span className="pp-key">{p.key}{group ? ` · ${group}` : ''}</span>
-            <HealthPill health={p.health} pendingSignOffs={p.pendingSignOffs} />
-            <span className="pp-people">{p.owner?.name ?? 'No owner'}{p.memberCount ? ` · ${p.memberCount} ${p.memberCount === 1 ? 'person' : 'people'}` : ''}</span>
-          </div>
+          <div className="pa-eyebrow pp-eyebrow">{[group, p.dueDate ? `${isFinished(p) ? 'Was due' : 'Due'} ${dayMonth(p.dueDate)}` : 'No due date'].filter(Boolean).join(' · ')}</div>
+          <motion.h1 className="page-title" layoutId={still ? undefined : `pname-${p.id}`}>{p.name}</motion.h1>
         </div>
         <div className="pp-actions">
-          {addWork && <button type="button" className="btn btn-primary pp-add" onClick={() => openNew('task', '', { id: p.id, name: p.name })}><Icon name="plus" size={16} /> Add work</button>}
+          <ProjectStatePill p={p} />
+          <button type="button" className="pa-btn pp-share" onClick={() => void share()}>Share</button>
           <DotsMenu label="More on this project" items={[
+            { label: 'Add work', icon: 'plus', hint: '+ New, in this project', hidden: !addWork, onSelect: () => openNew('task', '', { id: p.id, name: p.name }) },
             { label: 'Meet', icon: 'video', hint: 'The project’s calls and meetings', onSelect: () => nav(`/talk?f=meetings&s=upcoming&project=${p.id}`) },
             { label: 'Chat', icon: 'message', hint: 'The project’s team chat', hidden: !chatOn, onSelect: () => openChat(p.id, p.name) },
             { label: canEdit ? 'Settings' : 'Members', icon: canEdit ? 'settings' : 'users', hint: canEdit ? 'Members, task workflow and automation' : 'Who is on this project', onSelect: () => setSettings('members') },
@@ -168,18 +176,26 @@ export function ProjectPage() {
         </div>
       </header>
 
+      <Journey detail={detail} signOff={signOff} still={!!still} canSign={canEdit && !archived} meId={me} plan={plan} onPlan={setPlan} />
+      {plan && p.deliveryMethod !== 'Agile' && (
+        <div className="pp-plan">
+          <Timeline projectId={p.id} projectName={p.name} project={p} stages={detail.stages} canEdit={canEdit && p.status !== 'Archived'} canReportIssue={canReportIssue && seeTasks && !archived}
+            taskProgress={p.progress} finished={isFinished(p)} onShowIssues={() => setParams({ tab: 'work', kind: 'issue' })} onReportIssue={(stageId) => setReporting({ stageId })} />
+        </div>
+      )}
+
       <div className="pp-tabs">
         <Segmented<ProjectTab> label="Project" value={tab} onChange={setTab} options={[
           { id: 'overview', label: 'Overview' }, ...(allowed.includes('work') ? [{ id: 'work' as const, label: 'Work' }] : []), { id: 'docs', label: 'Docs' },
           ...(allowed.includes('time') ? [{ id: 'time' as const, label: 'Time' }] : []), ...(allowed.includes('activity') ? [{ id: 'activity' as const, label: 'Activity' }] : []),
         ]} />
+        <AiLine detail={detail} />
       </div>
 
       {archived && <div className="form-warn"><Icon name="alert" size={14} /> This project is archived and read-only. Edit it and change the status to restore it.</div>}
 
       <div className="pp-body" data-tab={tab}>
-        {tab === 'overview' && <Overview detail={detail} canEdit={canEdit} canReportIssue={canReportIssue && seeTasks && !archived}
-          onSettings={() => setSettings('members')} onReportIssue={(stageId) => setReporting({ stageId })} />}
+        {tab === 'overview' && <Overview detail={detail} signOff={signOff} canSign={canEdit && !archived} meId={me} seeTime={canReports && seeTasks} onSettings={() => setSettings('members')} />}
         {tab === 'work' && <ProjectWorkTab projectId={p.id} />}
         {tab === 'docs' && <ProjectDocs projectId={p.id} canEdit={canEdit} archived={archived} />}
         {tab === 'time' && <ProjectTime projectId={p.id} />}
@@ -230,89 +246,228 @@ export function summarise(detail: ProjectDetail, r: PortfolioRisk | undefined): 
   return lead + parts.join(' ');
 }
 
-function Overview({ detail, canEdit, canReportIssue, onSettings, onReportIssue }: {
-  detail: ProjectDetail; canEdit: boolean; canReportIssue: boolean; onSettings: () => void; onReportIssue: (stageId?: string) => void;
-}) {
+/** The honest state beside the title: amber "100% work · N sign-offs pending" when the work is done but stages are unsigned, else the one status. */
+function ProjectStatePill({ p }: { p: Project }) {
+  const pending = p.pendingSignOffs ?? 0;
+  if ((p.progress >= 100 || p.status === 'Completed') && pending > 0)
+    return <span className="pp-honest risk" title="Every task is done; the remaining stages still need sign-off">100% work · {plural(pending, 'sign-off')} pending</span>;
+  const st = passStatus(p);
+  return <span className={`pp-honest ${st.tone}`}>{st.label}</span>;
+}
+
+const ordered = (stages: Stage[]) => [...stages].sort((a, b) => a.order - b.order);
+const signedOff = (s: Stage) => s.effectiveStatus === 'Completed';
+const awaiting = (s: Stage) => s.taskTotal > 0 && s.taskDone >= s.taskTotal;
+const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+/** Who signs a stage off: its owner, else its assignee, else the project's owner. */
+const signerOf = (s: Stage, p: Project) => s.owner ?? s.assignee ?? p.owner;
+
+/** Sign a stage off: it becomes Completed today, everything else about it unchanged. */
+type SignOff = ReturnType<typeof useSignOff>;
+function useSignOff(projectId: string) {
+  const wid = useWorkspaceId();
+  const [signing, setSigning] = useState<string | null>(null);
+  const [signed, setSigned] = useState<string[]>([]);
+  const sign = async (s: Stage) => {
+    if (!(await confirmDialog({ title: `Sign off ${s.name}?`, message: `${s.taskDone} of ${plural(s.taskTotal, 'item')} done${s.openIssues ? `, ${plural(s.openIssues, 'open issue')}` : ''}. Signing off marks the stage complete today.`, confirmText: 'Sign off', danger: false }))) return;
+    setSigning(s.id);
+    try {
+      await projectApi.updateStage(projectId, s.id, {
+        name: s.name, status: 'Completed', plannedStart: s.plannedStart, plannedEnd: s.plannedEnd, actualStart: s.actualStart ?? s.plannedStart ?? todayIso(), actualEnd: todayIso(),
+        ownerId: s.owner?.id ?? null, assigneeId: s.assignee?.id ?? null, description: s.description, durationDays: s.durationDays ?? null,
+      });
+      setSigned((x) => [...x, s.id]);
+      toast(`${s.name} signed off.`);
+      void invalidateWorkspace(wid);
+    } catch (e) { toast(errText(e, `Could not sign off ${s.name}.`), 'error'); }
+    finally { setSigning(null); }
+  };
+  return { sign, signing, signed };
+}
+
+/**
+ * The Journey (s-project): the stages on one line. Signed-off stages are filled with a check, the signer's avatar and the date; the current
+ * stage glows ("Awaiting sign-off" once its work is done); later ones are hollow with their start date. Signing off fills the node (200ms),
+ * draws the line to it (500ms) and hands the glow to the next stage (300ms).
+ */
+function Journey({ detail, still, canSign, meId, plan, onPlan, signOff }: { detail: ProjectDetail; signOff: SignOff; still: boolean; canSign: boolean; meId: string; plan: boolean; onPlan: (v: boolean) => void }) {
+  const p = detail.project;
+  const { sign, signing, signed } = signOff;
+  const stages = ordered(detail.stages);
+  const done = (s: Stage) => signedOff(s) || signed.includes(s.id);
+  const curIdx = stages.findIndex((s) => !done(s));
+  const cur = curIdx >= 0 ? stages[curIdx] : null;
+  let lead = 0; while (lead < stages.length && done(stages[lead])) lead++;
+  const n = stages.length;
+  const pos = (i: number) => (n > 1 ? (i / (n - 1)) * 100 : 50);
+  const signer = cur ? signerOf(cur, p) : null;
+  const since = cur ? (curIdx > 0 ? stages[curIdx - 1].actualEnd : null) ?? cur.actualStart ?? cur.plannedStart : null;
+  const waitDays = since ? -(daysUntil(since) ?? 0) : null;
+  const note = !n ? 'No stages yet' : !cur ? 'Every stage is signed off'
+    : awaiting(cur) ? `${cur.name} is waiting on ${signer ? (signer.id === meId ? 'your' : `${signer.name}’s`) : 'a'} sign-off${waitDays && waitDays > 0 ? ` · ${plural(waitDays, 'day')}` : ''}`
+    : `${cur.name} · ${cur.taskDone} of ${plural(cur.taskTotal, 'item')} done${cur.plannedEnd ? ` · ends ${dayMonth(cur.plannedEnd)}` : ''}`;
+  const ref = useRef<HTMLDivElement>(null);
+  return (
+    <motion.section className="card pp-journey" aria-label="Journey" layoutId={still ? undefined : `pdots-${p.id}`}>
+      <div className="pp-stages-head pp-journey-head">
+        <h3>Journey</h3>
+        <span className="pp-journey-note">
+          {note}
+          {p.deliveryMethod !== 'Agile' && <button type="button" className="link-btn" aria-expanded={plan} onClick={() => onPlan(!plan)}>{plan ? 'Hide plan' : 'Plan and dates ›'}</button>}
+        </span>
+      </div>
+      {n > 0 && (
+        <div className="pp-jl-scroll">
+          <div className="pp-jl" ref={ref} style={{ ['--n' as string]: n }}>
+            <div className="pp-rail" />
+            <div className="pp-done" style={{ width: lead > 1 ? `${pos(lead - 1)}%` : 0 }} />
+            <ol>
+              {stages.map((s, i) => {
+                const isDone = done(s), isCur = i === curIdx;
+                const who = signerOf(s, p);
+                const sub = isDone ? dayMonth(signedOff(s) ? s.actualEnd ?? s.plannedEnd : todayIso())
+                  : isCur ? (awaiting(s) ? 'Awaiting sign-off' : s.effectiveStatus === 'Delayed' ? 'Late' : s.effectiveStatus === 'InProgress' ? 'In progress' : s.plannedStart ? dayMonth(s.plannedStart) : 'Next')
+                  : i === n - 1 && s.plannedEnd ? `to ${dayMonth(s.plannedEnd)}` : dayMonth(s.plannedStart ?? s.plannedEnd);
+                return (
+                  <li key={s.id} className={`pp-nd ${isDone ? 's' : ''} ${isCur ? 'cur' : ''} ${isCur && awaiting(s) ? 'wait' : ''} ${signing === s.id ? 'press' : ''}`} style={{ left: `${pos(i)}%` }}
+                    data-stage={s.name} aria-label={`${s.name}: ${isDone ? `signed off ${sub}` : isCur ? sub : `stage ${i + 1}, ${sub}`}`}>
+                    <span className="pp-nd-c">
+                      {isDone ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg> : i + 1}
+                      {isDone && who && <Initials name={who.name} seed={who.id} className="pp-nd-av" />}
+                    </span>
+                    <b>{s.name}</b>
+                    <small>{sub}</small>
+                    {isCur && canSign && awaiting(s) && !s.locked && <button type="button" className="pp-sr" onClick={() => void sign(s)}>Sign off {s.name}</button>}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        </div>
+      )}
+    </motion.section>
+  );
+}
+
+/** The one AI line beside the tabs: the gap when the work is done but stages are not, otherwise the summary's first sentence. */
+function AiLine({ detail }: { detail: ProjectDetail }) {
   const p = detail.project;
   const ai = useAi();
+  const brief = usePortfolioBrief();
+  const r = brief.data?.ranked?.find((x) => x.projectId === p.id);
+  const live = p.stats.total - p.stats.cancelled, pending = p.pendingSignOffs ?? 0;
+  const gap = pending > 0 && (p.progress >= 100 || p.status === 'Completed') && live > 0;
+  const text = gap ? `All ${live} items closed — the gap is paperwork, not code.` : firstSentences(summarise({ ...detail, project: { ...p, description: null } }, r), 110);
+  const ask = (q: string) => useAssistant.getState().ask(q);
+  return (
+    <div className="pp-ai" role="note" aria-label="From the assistant">
+      <span className="pa-orb" aria-hidden="true" />
+      <span className="pp-ai-text">{text}</span>
+      {ai && (gap
+        ? <button type="button" className="pa-btn sm" onClick={() => ask(`Draft a short message asking for the ${plural(pending, 'pending sign-off')} on project ${p.name} (${p.key}), stage by stage, with who signs each.`)}>Request {plural(pending, 'sign-off')}</button>
+        : <button type="button" className="pa-btn sm" onClick={() => ask(`About project ${p.name} (${p.key}): give me a short status summary — what is done, what is late and why, and what to do next.`)}>Ask more</button>)}
+    </div>
+  );
+}
+
+const DOC_SHORT: Record<string, string> = { API: 'API', BRD: 'BRD', ARCH: 'ARCH', TECH: 'TECH', TEST_PLAN: 'TEST', ARTIFACT: 'FILE' };
+
+/** Overview (s-project): Key numbers and People · What's next (with Sign off) · Risks and Docs. */
+function Overview({ detail, canSign, meId, seeTime, onSettings, signOff }: { detail: ProjectDetail; signOff: SignOff; canSign: boolean; meId: string; seeTime: boolean; onSettings: () => void }) {
+  const p = detail.project;
   const [, setParams] = useSearchParams();
   const brief = usePortfolioBrief();
   const r = brief.data?.ranked?.find((x) => x.projectId === p.id);
   const docsLevel = useModule('documents');
   const docs = useWsQuery(['documents', 'project', p.id], () => documentApi.list({ projectId: p.id, limit: 100 }), { enabled: docsLevel > 0, staleTime: 20_000 });
-  const [plan, setPlanState] = useState(() => { try { return localStorage.getItem('pm_pp_plan') === '1'; } catch { return false; } });
-  const setPlan = (v: boolean) => { setPlanState(v); try { localStorage.setItem('pm_pp_plan', v ? '1' : '0'); } catch { /* storage unavailable */ } };
+  const time = useWsQuery(['project', p.id, 'time'], () => timeApi.project(p.id), { enabled: seeTime, retry: false });
+  const { sign, signing, signed } = signOff;
   const s = p.stats, live = s.total - s.cancelled;
   const finished = isFinished(p);
   const days = daysUntil(p.dueDate);
   const late = !finished && days !== null && days < 0 && p.progress < 100;
+  const pending = p.pendingSignOffs ?? 0;
+  const stages = ordered(detail.stages);
+  const curIdx = stages.findIndex((x) => !signedOff(x) && !signed.includes(x.id));
+  const cur = curIdx >= 0 ? stages[curIdx] : null;
   const openIssues = detail.stages.reduce((n, x) => n + x.openIssues, 0);
-  const tone = HEALTH[p.health].tone;
-  const ringTone = (p.pendingSignOffs ?? 0) > 0 && (p.status === 'Completed' || p.progress >= 100) ? 'warning' : tone === 'late' ? 'danger' : tone === 'risk' ? 'warning' : tone === 'ok' || p.status === 'Completed' ? 'success' : undefined;
-  const pendingSignOffs = p.pendingSignOffs ?? 0;
-  const when = (p.status === 'Completed' || p.progress >= 100) && pendingSignOffs > 0 ? { text: `100% work · ${plural(pendingSignOffs, 'sign-off')} pending`, cls: 'risk' }
-    : p.status === 'Completed' ? { text: 'Completed', cls: 'ok' } : p.status === 'Cancelled' ? { text: 'Cancelled', cls: '' }
-    : days === null ? { text: 'No due date', cls: '' } : days < 0 ? { text: `${plural(-days, 'day')} overdue`, cls: 'late' } : days === 0 ? { text: 'Due today', cls: 'risk' }
-    : { text: `${plural(days, 'day')} left`, cls: tone === 'ok' ? 'ok' : tone === 'late' ? 'late' : tone === 'risk' ? 'risk' : '' };
-  const chips = (docs.data?.items ?? []).slice(0, 3);
-  const goWork = (extra: Record<string, string> = {}) => setParams({ tab: 'work', ...extra });
-  const askAbout = () => useAssistant.getState().ask(`About project ${p.name} (${p.key}): give me a short status summary — what is done, what is late and why, and what to do next.`);
+  const hours = typeof time.data?.totalMinutes === 'number' ? Math.round(time.data!.totalMinutes / 60) : null;
+  const est = time.data?.estimatedHours ?? null;
+
+  const next: { key: string; title: string; sub: string; action?: Stage }[] = [];
+  if (cur) {
+    const who = signerOf(cur, p);
+    if (awaiting(cur)) next.push({ key: cur.id, title: `Sign off ${cur.name}`, sub: `${who ? (who.id === meId ? 'You' : who.name) : 'No owner'} · ${cur.taskDone} of ${plural(cur.taskTotal, 'item')} done`, action: canSign && !cur.locked ? cur : undefined });
+    else next.push({ key: cur.id, title: `Finish ${cur.name}`, sub: `${who?.name ?? 'No owner'} · ${cur.taskDone} of ${plural(cur.taskTotal, 'item')} done${cur.plannedEnd ? ` · ends ${dayMonth(cur.plannedEnd)}` : ''}` });
+    for (const x of stages.slice(curIdx + 1, curIdx + 5)) {
+      const who2 = x.assignee ?? x.owner;
+      next.push({ key: x.id, title: x.name, sub: [who2?.name ?? 'Unassigned', x.plannedStart ? `starts ${dayMonth(x.plannedStart)}` : null, x.taskTotal ? plural(x.taskTotal, 'item') : null].filter(Boolean).join(' · ') });
+    }
+  }
+
+  const risks: { key: string; title: string; sub: string; tone: 'risk' | 'late' }[] = [];
+  if (pending > 0 && (p.progress >= 100 || p.status === 'Completed')) risks.push({ key: 'signoffs', title: 'Sign-offs stall go-live', sub: days !== null && days >= 0 ? `${plural(pending, 'stage')} in ${plural(days, 'day')}` : `${plural(pending, 'stage')} unsigned`, tone: 'risk' });
+  if (late) risks.push({ key: 'late', title: `Past its due date`, sub: `${plural(-days!, 'day')} over · ${p.progress}% done`, tone: 'late' });
+  if (r?.projectedFinish && (r.projectedSlipDays ?? 0) > 0 && !finished) risks.push({ key: 'forecast', title: `Forecast ${dayMonth(r.projectedFinish)}`, sub: `${plural(r.projectedSlipDays!, 'day')} after the due date`, tone: 'risk' });
+  if (s.overdue > 0) risks.push({ key: 'overdue', title: `${plural(s.overdue, 'overdue item')}`, sub: 'Open in Work', tone: 'late' });
+  if (openIssues > 0) risks.push({ key: 'issues', title: `${plural(openIssues, 'open issue')}`, sub: 'They keep their stages from completing', tone: 'risk' });
+  for (const [i, why] of (r?.reasons ?? []).slice(0, 2).entries()) if (p.health !== 'OnTrack') risks.push({ key: `why${i}`, title: `${why[0].toUpperCase()}${why.slice(1)}`, sub: 'From the portfolio forecast', tone: 'risk' });
+  const people = [...detail.members].sort((a, b) => (a.userId === p.owner?.id ? -1 : b.userId === p.owner?.id ? 1 : 0));
+  const docItems = (docs.data?.items ?? []).slice(0, 3);
 
   return (
-    <div className="pp-overview">
-      <div className="pp-cards">
-        <section className="pp-summary" aria-label="Summary">
-          <AiCard title="Summary" action={ai ? { label: p.health === 'AtRisk' || p.health === 'Delayed' ? 'Ask why' : 'Ask more', onClick: askAbout } : undefined}>
-            <span className="pp-summary-text">{summarise(detail, r)}</span>
-            {chips.length > 0 && (
-              <span className="pp-chips">
-                {chips.map((d) => <Link key={d.id} className="ds-pill" to={`/library/docs/${d.id}`}>{DOC_LABEL[d.typeCode] ?? d.typeName} · {DOC_STATUS[d.status]}</Link>)}
-              </span>
-            )}
-          </AiCard>
+    <div className="pp-ov">
+      <div className="pp-col">
+        <section className="card pp-box" aria-label="Key numbers">
+          <div className="pp-hd"><h3>Key numbers</h3>{p.startDate && <span className="pp-faint">since {dayMonth(p.startDate)}</span>}</div>
+          <div className="pp-nums">
+            <button type="button" onClick={() => setParams({ tab: 'work' })}><span className="n">{s.done}<span className="pp-faint pp-of"> / {live}</span></span><span className="l">Work items done</span></button>
+            <div><span className={`n ${late ? 'late' : ''}`}>{days === null ? '—' : Math.abs(days)}</span><span className="l">{days === null ? 'No due date' : days < 0 ? 'Days past due date' : 'Days to due date'}</span></div>
+            <div><span className="n">{hours === null ? '—' : `${hours}h`}</span><span className="l">{hours === null ? 'Logged' : `Logged${est ? ` · ${Math.round((hours / est) * 100)}% of estimate` : ''}`}</span></div>
+            <div><span className={`n ${pending ? 'warn' : ''}`}>{pending}</span><span className="l">Sign-offs pending</span></div>
+          </div>
         </section>
-        <section className="pp-ring card" aria-label="Progress and dates">
-          <Ring value={p.progress} tone={ringTone} size={92} stroke={9} label={`${p.progress}% of the tasks done`} />
-          <div className="pp-ring-text">
-            <b>{s.done} of {plural(live, 'task')}</b>
-            <span>{dayMonth(p.startDate)} → {dayMonth(p.dueDate)}</span>
-            <em className={when.cls}>{when.text}</em>
+        <section className="card pp-box" aria-label="People">
+          <div className="pp-hd"><h3>People</h3><button type="button" className="pp-faint pp-linkish" onClick={onSettings}>{people.length}</button></div>
+          <div className="pp-people-grid">
+            {people.slice(0, 8).map((m) => (
+              <span key={m.userId} className="pp-person"><Initials name={m.name} seed={m.userId} /><span><b>{m.name}</b><span className="pp-faint">{m.userId === p.owner?.id ? 'Owner' : m.role ?? 'Member'}</span></span></span>
+            ))}
+            {people.length === 0 && <span className="pp-faint">No one yet.</span>}
           </div>
         </section>
       </div>
 
-      <div className="ds-kpis pp-kpis">
-        <Kpi tile label="Open work" value={Math.max(0, live - s.done)} caption={s.inProgress ? `${s.inProgress} in progress` : undefined} onClick={() => goWork()} />
-        <Kpi tile label="Overdue" value={s.overdue} tone={s.overdue ? 'danger' : undefined} onClick={() => goWork()} />
-        <Kpi tile label="Open issues" value={openIssues} tone={openIssues ? 'warning' : undefined} onClick={() => goWork({ kind: 'issue' })} />
-        <Kpi tile label="People" value={p.memberCount ?? detail.members.length} caption={p.owner ? `Led by ${p.owner.name}` : undefined} onClick={onSettings} />
-      </div>
-
-      <section className="card pp-stages" aria-label="Stages">
-        <div className="pp-stages-head">
-          <h3>Stages</h3>
-          {(detail.stages.length > 0 || canEdit) && p.deliveryMethod !== 'Agile' && (
-            <button type="button" className="link-btn" aria-expanded={plan} onClick={() => setPlan(!plan)}>{plan ? 'Hide the plan' : canEdit ? 'Plan and dates ›' : 'Dates ›'}</button>
-          )}
-        </div>
-        {detail.stages.length === 0 ? <p className="muted pp-none">No stages yet.{canEdit && p.deliveryMethod !== 'Agile' ? ' Open the plan to add them.' : ''}</p> : (
-          <ol className="pp-stage-chips">
-            {[...detail.stages].sort((a, b) => a.order - b.order).map((st) => {
-              const status = st.effectiveStatus;
-              const cls = status === 'Completed' ? 'done' : status === 'InProgress' ? 'now' : status === 'Delayed' ? 'late' : '';
-              return (
-                <li key={st.id} className={`pp-stage ${cls}`} title={`${st.name}: ${status === 'Pending' ? (st.locked ? `waits for ${st.lockedBy ?? 'the stage before'}` : 'not started') : status === 'InProgress' ? 'in progress' : status.toLowerCase()}${st.openIssues ? ` · ${plural(st.openIssues, 'open issue')}` : ''}`}>
-                  {status === 'Completed' ? '✓ ' : ''}{st.name}{st.openIssues > 0 && <em aria-label={`${st.openIssues} open issues`}>{st.openIssues}</em>}
-                </li>
-              );
-            })}
-          </ol>
-        )}
+      <section className="card pp-box" aria-label="What's next">
+        <div className="pp-hd"><h3>What’s next</h3></div>
+        {next.length === 0 ? <p className="pp-faint pp-none">{stages.length ? 'Every stage is signed off.' : 'No stages yet. Open Plan and dates to add them.'}</p> : next.map((x) => (
+          <div key={x.key} className="pp-li">
+            <span className="pp-chk" aria-hidden="true" />
+            <span className="pp-tx"><b>{x.title}</b><span>{x.sub}</span></span>
+            {x.action && <button type="button" className="pa-btn sm pri" disabled={signing === x.action.id} onClick={() => void sign(x.action!)}>Sign off</button>}
+          </div>
+        ))}
       </section>
-      {plan && p.deliveryMethod !== 'Agile' && (
-        <Timeline projectId={p.id} projectName={p.name} project={p} stages={detail.stages} canEdit={canEdit && p.status !== 'Archived'} canReportIssue={canReportIssue}
-          taskProgress={p.progress} finished={finished} onShowIssues={() => goWork({ kind: 'issue' })} onReportIssue={onReportIssue} />
-      )}
+
+      <div className="pp-col">
+        <section className="card pp-box" aria-label="Risks">
+          <div className="pp-hd"><h3>Risks</h3>{risks.length > 0 && <span className="pp-count">{risks.length}</span>}</div>
+          {risks.length === 0 ? <p className="pp-faint pp-none">Nothing stands out.</p> : risks.slice(0, 4).map((x) => (
+            <div key={x.key} className="pp-li"><span className={`pp-dt ${x.tone}`} aria-hidden="true" /><span className="pp-tx"><b>{x.title}</b><span>{x.sub}</span></span></div>
+          ))}
+        </section>
+        {docsLevel > 0 && (
+          <section className="card pp-box" aria-label="Docs">
+            <div className="pp-hd"><h3>Docs</h3><span className="pp-faint">{docs.data?.total ?? docs.data?.items?.length ?? 0}</span></div>
+            {docItems.length === 0 ? <p className="pp-faint pp-none">No documents yet.</p> : docItems.map((d) => (
+              <Link key={d.id} to={`/library/docs/${d.id}`} className="pp-li pp-docrow">
+                <span className="pp-doc" aria-hidden="true">{DOC_SHORT[d.typeCode] ?? d.typeCode.slice(0, 4)}</span>
+                <span className="pp-tx"><b>{d.title}</b><span>{DOC_LABEL[d.typeCode] ?? d.typeName} · {DOC_STATUS[d.status]}</span></span>
+              </Link>
+            ))}
+          </section>
+        )}
+      </div>
       {late && <p className="pp-late-note"><Icon name="alert" size={14} /> Past its due date with {p.progress}% done. Accept a new date on <Link to="/work/projects?view=portfolio">Portfolio ›</Link></p>}
     </div>
   );
