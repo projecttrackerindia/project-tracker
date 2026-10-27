@@ -91,7 +91,7 @@ public class ReleasesAndHealthTests(ApiFactory factory)
         await owner.CreateOrgAsync();
         await owner.UpgradeAsync("BUSINESS");
         var project = await owner.CreateProjectAsync("Customer App");
-        await owner.CreateTaskAsync(project, "Onboarding screens", new { dueDate = DateTime.UtcNow.AddDays(3).ToString("yyyy-MM-dd") });
+        await owner.CreateTaskAsync(project, "Onboarding screens", new { title = "Onboarding screens", dueDate = DateTime.UtcNow.AddDays(3).ToString("yyyy-MM-dd") });
         var r = await owner.Get($"/api/v1/project-status/projects/{project}/weekly");
         Assert.True(r.Ok, r.ToString());
         var text = S(r.Data!["text"]);

@@ -31,7 +31,7 @@ public class AiAgentLevelUpgradeTests
         {
             var connection = new NpgsqlConnectionStringBuilder(configured) { Database = databaseName, Pooling = false };
             var context = new CurrentContext();
-            await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connection.ConnectionString).Options, context, TimeProvider.System);
+            await using var db = new BeforeReleasesDb(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connection.ConnectionString).Options, context, TimeProvider.System);
             await db.GetService<IMigrator>().MigrateAsync(Before);
 
             // Every column these rows use exists at the migration before (only the AiAgentActions table is new).
@@ -72,6 +72,17 @@ public class AiAgentLevelUpgradeTests
             NpgsqlConnection.ClearAllPools();
             await using var drop = new NpgsqlCommand($"DROP DATABASE \"{databaseName}\" WITH (FORCE)", admin);
             await drop.ExecuteNonQueryAsync();
+        }
+    }
+
+    /// <summary>The model as it was before 20261113001000_ReleasesAndHealth: the rows here are written at an older migration, so the
+    /// Project columns added later (status set by hand) must not be in the INSERTs.</summary>
+    private sealed class BeforeReleasesDb(DbContextOptions<AppDbContext> options, CurrentContext current, TimeProvider clock) : AppDbContext(options, current, clock)
+    {
+        protected override void OnModelCreating(ModelBuilder b)
+        {
+            base.OnModelCreating(b);
+            b.Entity<Project>().Ignore(x => x.HealthOverride).Ignore(x => x.HealthNote).Ignore(x => x.HealthUntil).Ignore(x => x.HealthSetById).Ignore(x => x.HealthSetAt);
         }
     }
 }

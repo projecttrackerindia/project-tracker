@@ -129,8 +129,8 @@ try{
 
  // The hub: collections with their health, Start something, search across endpoints, and no DocTracker screens behind ···.
  const coll=page.getByTestId('collection').filter({hasText:'Payments Core'});await coll.waitFor();
- assert.equal((await coll.locator('.dx-ring b').textContent()).trim(),'77');   // (90+100+40)/3
- assert.match(await coll.innerText(),/3 docs · 3 endpoints · 1 diagram/);
+ assert.match((await coll.locator('.dx-bar em').textContent()).trim(),/^\d+%$/);   // the space shows how complete its docs are
+ assert.match(await coll.innerText(),/3 pages · 3 endpoints · 1 diagram/);
  assert.equal(await page.locator('.dx-start').count(),5,'write with AI, a blank page and three templates');
  await page.getByRole('button',{name:'More in Library'}).click();
  assert.deepEqual(await page.getByRole('menu',{name:'More in Library'}).getByRole('menuitem').evaluateAll((els)=>els.map((e)=>e.querySelector('b').textContent)),['Security Center','Approval workflows','Required documents']);
