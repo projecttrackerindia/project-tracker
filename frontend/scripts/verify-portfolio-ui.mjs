@@ -78,21 +78,24 @@ try{
  // filters, export and the roadmap are under ···.
  await page.goto(origin+'/preview-org/portfolio');await page.waitForURL(/\/work\/projects\?view=portfolio$/);
  const summary=page.getByRole('region',{name:'Summary'});await summary.waitFor();
- assert.match(await summary.innerText(),/1 decision this week/);
+ assert.ok((await summary.innerText()).trim().length>0,'one AI sentence');
+ assert.ok(await page.getByRole('tablist',{name:'Portfolio view'}).isVisible(),'Board · Timeline · Present');
+ assert.ok(await page.locator('.pf-tile').count()===3,'three status tiles');
+ assert.equal(await page.getByRole('region',{name:'Projects that need attention'}).count(),0,'no separate Needs attention');
  checks.push('summary');
 
  // Decisions: how late, the project, why in one line, and the date change as the hero; the other ways to recover with their effect.
  const decisions=page.getByRole('region',{name:'Decisions this week'});
- const dec=decisions.locator('.pj2-decision[data-project="PAY"]');
+ const dec=decisions.locator('.pf-dec[data-project="PAY"]');
+ assert.equal(await decisions.locator('.pf-dec[data-project="PAY"]').count(),1,'one card per project');
  await dec.getByText('6 days late',{exact:true}).waitFor();
  assert.ok(await dec.getByRole('heading',{name:/Payments/}).isVisible());
  assert.ok(await dec.getByText('Ravi Kumar is on leave from 3 Nov',{exact:false}).first().isVisible());
- assert.ok(await dec.locator('.ds-shift s').isVisible()&&await dec.locator('.ds-shift b').isVisible(),'due and new dates');
- assert.ok(await dec.getByRole('button',{name:'Accept'}).isVisible(),'Accept the new date');
- await dec.getByRole('button',{name:'Other ways'}).click();
+ assert.ok(await dec.locator('.pf-dec-dates s').isVisible()&&await dec.locator('.pf-dec-dates b').isVisible(),'due and forecast dates');
+ assert.ok(await dec.getByRole('button',{name:/^Propose /}).isVisible(),'Propose the forecast date');
+ await dec.getByRole('button',{name:'What changes'}).click();
  const move=dec.getByRole('listitem').filter({hasText:'Move Jyothsna Reddy onto PAY for a week'});
  assert.ok(await move.getByText('1 day late').isVisible());
- await move.getByRole('button',{name:'What changes'}).click();
  assert.ok(await move.getByText('Give PAY-14 “Bank certification” to Jyothsna Reddy').isVisible());
  assert.ok(await dec.getByText('on time (30 Oct)').isVisible());
  await move.getByRole('button',{name:'Propose this'}).click();
@@ -137,18 +140,22 @@ try{
  checks.push('filters-export');
 
  // Timeline (··· › Timeline): bars, the slip after the due date, the original due date as a ghost, milestones and dependencies.
- await more(/^Timeline/);
+ await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Timeline'}).click();
  const tl=page.getByRole('region',{name:'Timeline'});await tl.waitFor();
  assert.ok(page.url().includes('view=timeline'));
- assert.equal(await tl.locator('.tl-row').count(),2);
- assert.equal(await tl.locator('.tl-row').first().locator('.tl-ghost').count(),1);
- assert.equal(await tl.locator('.tl-row').first().locator('.tl-slip').count(),1);
- assert.equal(await tl.locator('.tl-row').first().locator('.tl-ms').count(),1);
- assert.ok(await tl.getByText('↳ WEB').isVisible());
+ assert.equal(await tl.locator('.pf-g-row').count(),2);
+ assert.equal(await tl.locator('.pf-g-row').first().locator('.pf-g-plan').count(),1);
+ assert.equal(await tl.locator('.pf-g-row').first().locator('.pf-g-fc').count(),1);
+ assert.equal(await tl.locator('.pf-g-today').count(),1);
  await shot(page,'timeline-1440.png');
  checks.push('timeline');
 
- await page.getByRole('button',{name:'‹ Decisions and summary'}).click();
+ await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Present'}).click();
+ const pres=page.getByRole('dialog',{name:'Present decisions'});await pres.waitFor();
+ assert.ok(await pres.getByText(/^1 of \d+$/).isVisible());
+ await page.keyboard.press('Escape');await pres.waitFor({state:'detached'});
+ await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Board'}).click();
+ assert.ok(await page.getByRole('region',{name:'Board'}).isVisible());
  await page.getByRole('region',{name:'Summary'}).waitFor();
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await shot(page,'board-dark-1440.png');
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','light'));
