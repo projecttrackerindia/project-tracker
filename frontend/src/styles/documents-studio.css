@@ -284,3 +284,14 @@ a.ds-row:hover .ds-doc-title b { color: var(--primary); }
 .dv-mask b { color: var(--text); }
 .dv-mask.revealed { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: color-mix(in srgb, var(--danger) 7%, var(--surface)); }
 .dv-mask.revealed > svg { color: var(--danger); }
+
+/* Library side card: undo the notification-center .na indent that shares the class name, and fit the tabs to the narrow column */
+html .dx-attn .na { padding: 0; gap: 12px; }
+.dx-attn .na-tabs { gap: 6px; border-bottom: 0; flex-wrap: wrap; overflow: visible; }
+.dx-attn .na-tabs button { padding: 5px 10px; border-radius: 999px; background: var(--surface-2, rgba(0,0,0,.04)); border: 0; font-size: 12.5px; white-space: nowrap; }
+.dx-attn .na-tabs button.on { background: var(--accent, #0071e3); color: #fff; }
+.dx-attn .na-tabs button.on .na-count { background: rgba(255,255,255,.25); color: #fff; }
+.dx-attn .na-tabs button::after { display: none; }
+.dx-attn .empty-state, .dx-attn .es { padding: 18px 4px; }
+.dx-attn .na-row { grid-template-columns: 1fr; gap: 6px; }
+.dx-attn .na-head { display: none; }
