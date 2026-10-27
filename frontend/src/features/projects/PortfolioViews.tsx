@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'r
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { actionItemApi } from '../../api/endpoints';
+import { actionItemApi, chatApi, projectApi } from '../../api/endpoints';
 import { invalidateWorkspace } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -42,6 +42,23 @@ export function DecisionCard({ item, filter, owner }: { item: DecisionItem; filt
   const tone = item.slipDays > 14 ? 'late' : 'risk';
   const late = item.slipDays > 0 ? `${plural(item.slipDays, 'day')} late` : 'On the edge';
   const causes = item.decision?.causes.length ? item.decision.causes.map(cap) : item.changes.length ? item.changes : [item.why];
+  // Late only because of sign-offs: every task is done, but stages are still unsigned. Then the move is asking for the sign-offs.
+  const detail = useWsQuery(['project', item.projectId], () => projectApi.get(item.projectId), { staleTime: 60_000, retry: false });
+  const pendingStages = (detail.data?.stages ?? []).filter((s) => s.effectiveStatus !== 'Completed');
+  const pr = detail.data?.project;
+  const signOnly = !!pr && pendingStages.length > 0 && pr.stats.total > 0 && (pr.progress >= 100 || pr.stats.total - pr.stats.cancelled <= pr.stats.done);
+  const [asked, setAsked] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const requestSignOffs = async () => {
+    setAsking(true);
+    try {
+      const c = await chatApi.openProject(item.projectId);
+      const who = (s: (typeof pendingStages)[number]) => s.owner?.name ?? s.assignee?.name ?? pr?.owner?.name ?? 'the owner';
+      await chatApi.send(c.id, `All work on ${item.name} is done; it is late only on sign-offs. Please sign off:\n${pendingStages.map((s) => `• ${s.name} — ${who(s)}`).join('\n')}`);
+      setAsked(true); toast(`Asked for ${plural(pendingStages.length, 'sign-off')} in ${item.key}’s chat.`, 'success');
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not request the sign-offs.', 'error'); }
+    finally { setAsking(false); }
+  };
   return (
     <article className={`pf-dec ${a.done ?? ''}`} data-project={item.key} aria-label={`${item.name}: due ${dayMonth(item.due)}, forecast ${item.forecast ? dayMonth(item.forecast) : 'none yet'}`}>
       <h4><Link to={`/work/projects/${item.projectId}`}>{item.name}</Link> <span className="pf-sr">{item.key} · {late}</span></h4>
@@ -51,7 +68,8 @@ export function DecisionCard({ item, filter, owner }: { item: DecisionItem; filt
       </p>
       <div className="pf-dec-acts">
         {a.done ? <span className="ds-pill success" role="status">{a.done === 'accepted' ? '✓ team told' : '✓ proposed'}</span> : <>
-          {a.canAct
+          {signOnly && <button type="button" className="pf-btn pri" data-testid="request-signoffs" disabled={asking || asked} title={pendingStages.map((s) => s.name).join(', ')} onClick={() => void requestSignOffs()}>{asked ? '✓ Sign-offs requested' : asking ? 'Requesting…' : `Request ${plural(pendingStages.length, 'sign-off')}`}</button>}
+          {signOnly ? null : a.canAct
             ? <button type="button" className="pf-btn pri" aria-label={`Propose ${dayMonth(item.forecast)}`} title={`Propose ${dayMonth(item.forecast)} as the new due date`} disabled={a.busy !== null || a.waiting > 0} onClick={() => void a.propose(item.acceptOpt!.id)}>{a.busy === item.acceptOpt!.id ? 'Proposing…' : 'Propose date'}</button>
             : <Link className="pf-btn pri" to={`/work/projects/${item.projectId}`}>Open project</Link>}
           <button type="button" className="pf-btn" aria-expanded={open} onClick={() => setOpen((v) => !v)}>Add people</button>

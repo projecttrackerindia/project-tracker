@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../../api/client';
-import { attachmentApi, docTrackerApi } from '../../../api/endpoints';
+import { attachmentApi, chatApi, docTrackerApi, projectApi } from '../../../api/endpoints';
 import type { DesignData, DtDiagram } from '../../../api/types';
 import { Icon } from '../../../components/Icon';
 import { ErrorState, PageLoader } from '../../../components/ui';
@@ -62,6 +62,18 @@ export function Designs({ projectId, projectName }: { projectId: string | null; 
   const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState<number | null>(null);
   const [group, setGroup] = useState<string>('All');
+  const [state, setState] = useState<'all' | DesignData['state']>('all');
+  const [nudged, setNudged] = useState(false);
+  const proj = useWsQuery(['project', projectId ?? 'none'], () => projectApi.get(projectId!), { enabled: !!projectId, staleTime: 60_000, retry: false });
+  const reviewer = proj.data?.project.owner ?? null;
+  const nudge = useMutation({
+    mutationFn: async (n: number) => {
+      const c = await chatApi.openDirect(reviewer!.id);
+      return chatApi.send(c.id, `Hi ${reviewer!.name.split(' ')[0]}, ${n === 1 ? '1 design is' : `${n} designs are`} waiting on your review in ${projectName} › Designs.`);
+    },
+    onSuccess: () => { setNudged(true); toast(`Nudged ${reviewer?.name.split(' ')[0]}.`, 'success'); },
+    onError: (e) => toast(e instanceof ApiError ? e.message : 'Could not send the nudge.', 'error'),
+  });
   const save = useMutation({
     mutationFn: (next: Design[]) => docTrackerApi.saveArchitecture(projectId, { diagrams: [...all.filter((d) => d.kind !== 'design'), ...(next as unknown as DtDiagram[])], notes: q.data?.notes ?? null }),
     onSuccess: () => { void q.refetch(); invalidateWorkspace(wid, 'documents'); },
@@ -71,7 +83,9 @@ export function Designs({ projectId, projectName }: { projectId: string | null; 
   if (q.isLoading) return <PageLoader />;
   const canEdit = !!q.data?.canEdit;
   const groups = ['All', ...Array.from(new Set(designs.map((d) => d.data.group).filter((g): g is string => !!g)))];
-  const shown = designs.filter((d) => group === 'All' || d.data.group === group);
+  const shown = designs.filter((d) => (group === 'All' || d.data.group === group) && (state === 'all' || d.data.state === state));
+  const byState = (k: DesignData['state']) => designs.filter((d) => d.data.state === k).length;
+  const waiting = byState('review');
   const counts = { figma: designs.filter((d) => d.data.source === 'figma').length, ai: designs.filter((d) => d.data.source === 'ai').length, approved: designs.filter((d) => d.data.state === 'approved').length };
   const put = (next: Design[], ok: string) => save.mutate(next, { onSuccess: () => toast(ok, 'success') });
 
@@ -83,6 +97,18 @@ export function Designs({ projectId, projectName }: { projectId: string | null; 
         <p className="dx-lede">{designs.length ? `${plural(designs.length, 'screen')} · ${counts.figma} from Figma · ${counts.ai} drafted with AI · ${counts.approved} approved${q.data?.updatedAt ? ` · updated ${timeAgo(q.data.updatedAt)}` : ''}.` : 'Keep the screens beside the docs: link Figma, upload pictures, or describe a screen and let AI draft it.'}</p>
         {canEdit && <div className="dx-row"><button type="button" className="dx-btn tint" onClick={() => setAdding(true)}><Icon name="plus" size={13} /> Add a design</button></div>}
       </header>
+      {designs.length > 0 && (
+        <div className="dz-groups dz-filter" role="group" aria-label="State" data-testid="dz-states">
+          {([['all', 'All', designs.length], ['draft', 'Draft', byState('draft')], ['review', 'In review', waiting], ['approved', 'Approved', byState('approved')]] as const).map(([k, l, n]) => (
+            <button key={k} type="button" aria-pressed={state === k} className={state === k ? 'on' : ''} onClick={() => setState(k)}>{l} <em>{n}</em></button>))}
+        </div>
+      )}
+      {waiting > 0 && reviewer && (
+        <div className="dz-aistrip" data-testid="dz-aistrip"><span className="dz-orb" aria-hidden="true" />
+          <span><b>{plural(waiting, 'design')} wait{waiting === 1 ? 's' : ''} on {reviewer.name.split(' ')[0]}’s review.</b> {designs.filter((d) => d.data.state === 'review').map((d) => d.title).slice(0, 3).join(', ')}</span>
+          <button type="button" className="dx-btn tint" disabled={nudge.isPending || nudged} onClick={() => nudge.mutate(waiting)}>{nudged ? 'Nudged' : `Nudge ${reviewer.name.split(' ')[0]}`}</button>
+        </div>
+      )}
       {groups.length > 2 && (
         <div className="dz-groups" role="tablist" aria-label="Flows">
           {groups.map((g) => <button key={g} type="button" role="tab" aria-selected={group === g} className={group === g ? 'on' : ''} onClick={() => setGroup(g)}>{g}</button>)}
@@ -102,8 +128,10 @@ export function Designs({ projectId, projectName }: { projectId: string | null; 
               <button type="button" className="dz-card" onClick={() => setOpen(designs.indexOf(d))} aria-label={`Open ${d.title}`}>
                 <Screen d={d.data} width={d.data.device === 'phone' ? 200 : 280} />
               </button>
-              <div className="dz-cap"><b>{d.title}</b><span className={`dz-state s-${d.data.state}`}>{STATE[d.data.state]}</span></div>
-              <small className="dz-src">{d.data.source === 'figma' ? 'Figma' : d.data.source === 'ai' ? 'AI draft' : 'Picture'}{d.data.group ? ` · ${d.data.group}` : ''}</small>
+              <div className="dz-cap"><b>{d.title}</b>{d.data.source === 'ai' && <span className="dz-aitag">✦ AI draft</span>}</div>
+              <div className="dz-meta"><small className="dz-src">{d.data.group ?? SIZE[d.data.device]?.label}</small>
+                <span className="dz-badge">{d.data.source === 'figma' ? 'Figma' : d.data.source === 'ai' ? 'AI' : 'Picture'}</span>
+                <span className={`dz-state s-${d.data.state}`}>{STATE[d.data.state]}</span></div>
             </li>
           ))}
         </ul>

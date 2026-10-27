@@ -46,6 +46,9 @@ await ctx.route('**/*', async (route) => {
   else if (ep === '/api/v1/doctracker/architecture') data = { projectId: pid, diagrams: store, notes: null, canEdit: true, updatedAt: null, updatedBy: null };
   else if (ep === '/api/v1/documents/ai/design') data = { html: screen.replace('Paid', 'Account linked'), title: 'Bank account linked', model: 'synthetic' };
   else if (ep === '/api/v1/documents/ai/diagram') data = { data: { nodes: [...body.current.nodes, { id: 'f', kind: 'icon', icon: 'firewall', label: 'Fraud check', x: 345, y: 140, w: 150, h: 64 }], edges: body.current.edges }, summary: 'Added a fraud check.', model: 'synthetic' };
+  else if (ep === `/api/v1/projects/${pid}`) data = { project: { id: pid, key: 'PAY', name: 'Payments', owner: { id: 'u-felix', name: 'Felix Moreau' }, stats: { total: 0, done: 0, inProgress: 0, todo: 0, cancelled: 0, overdue: 0 } }, statuses: [], stages: [], members: [] };
+  else if (ep === '/api/v1/chat/conversations/direct') data = { id: 'c-felix', name: 'Felix Moreau', members: [] };
+  else if (ep === '/api/v1/chat/conversations/c-felix/messages') data = { id: 'm1', body: body?.body ?? '' };
   else if (ep === '/api/v1/ai/status') data = { enabled: true, configured: true, entitled: true, allowedHere: true };
   else if (ep === '/api/v1/timer') data = null;
   else if (ep.endsWith('/workspace/logo')) data = { hasLogo: false };
@@ -65,6 +68,24 @@ try {
   await page.getByTestId('designs').waitFor();
   assert.match(await page.locator('.dx-title').innerText(), /What Payments looks like/);
   assert.equal(await page.locator('.dz-grid li').count(), 1);
+  // s-designs: breadcrumb, state chips with counts, AI strip with Nudge (a direct chat message to the reviewer), source/state badges.
+  assert.match(await page.locator('#main-content').innerText(), /Library\s*›\s*Payments\s*›\s*Designs/);
+  assert.deepEqual((await page.getByTestId('dz-states').getByRole('button').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()), ['All 1', 'Draft 0', 'In review 1', 'Approved 0']);
+  const strip = page.getByTestId('dz-aistrip'); await strip.waitFor();
+  assert.match(await strip.innerText(), /1 design waits on Felix’s review/);
+  assert.match(await page.locator('.dz-grid li').first().innerText(), /✦ AI draft[\s\S]*AI[\s\S]*In review/);
+  await shot(page, 'designs-1440.png');
+  await strip.getByRole('button', { name: 'Nudge Felix' }).click();
+  await strip.getByRole('button', { name: 'Nudged' }).waitFor();
+  const nudge = writes.find((w) => w.ep === '/api/v1/chat/conversations/c-felix/messages');
+  assert.match(nudge.body.body, /1 design is waiting on your review in Payments/);
+  await page.getByTestId('dz-states').getByRole('button', { name: /^Approved/ }).click();
+  assert.equal(await page.locator('.dz-grid li').count(), 0);
+  await page.getByTestId('dz-states').getByRole('button', { name: /^All/ }).click();
+  await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'designs 390 scrolls sideways');
+  await shot(page, 'designs-390.png'); await page.setViewportSize({ width: 1440, height: 900 });
+  checks.push('design-filter-strip-nudge');
   const frame = page.locator('.dz-ai iframe').first();
   assert.equal(await frame.getAttribute('sandbox'), '', 'a generated screen runs in a frame that can run nothing');
   await page.getByRole('button', { name: 'Add a design' }).first().click();

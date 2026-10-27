@@ -37,6 +37,7 @@ const all = [
 const few = all.filter((p) => !['Darwin box Api', 'Darwin Box api'].includes(p.name)).slice(0, 6);
 let projects = all;
 const rp = all.find((p) => p.key === 'RP');
+Object.assign(rp, { stageCount: 8, pendingSignOffs: 0 });
 const stages = ['Created', 'Requirements', 'Development', 'Code review', 'Testing', 'UAT', 'Production', 'Completed'].map((name, i) => ({ id: `st${i}`, name, order: i, plannedStart: null, plannedEnd: null, actualStart: null, actualEnd: null,
   status: 'Completed', effectiveStatus: 'Completed', owner: null, assignee: null, description: null, taskTotal: 1, taskDone: 1, locked: false, lockedBy: null, openIssues: 0, totalIssues: 0 }));
 const detail = (p) => ({ project: { ...p, description: p.key === 'RP' ? 'Razorpay integration is live in production (v1.0.1): create order and payment status APIs, UPI, card and netbanking.' : null },
@@ -198,6 +199,10 @@ try {
   const dupe = page.getByTestId('duplicate-line');
   assert.equal(await dupe.count(), 1);
   assert.match(await dupe.innerText(), /Darwin box Api and Darwin Box api look like the same project/);
+  // Stage names under the pass dots (read from the project when the pointer rests on the pass).
+  const rpPass = page.getByTestId('project-pass').filter({ hasText: rp.name }).first();
+  await rpPass.hover(); const gn = rpPass.getByTestId('pass-stage-names'); await gn.waitFor();
+  assert.match(await gn.innerText(), /Created[\s\S]*Requirements[\s\S]*Completed/); checks.push('pass-stage-names');
   await shot(page, 'projects-1440-light.png', true);
   await dupe.getByRole('button', { name: 'Merge…' }).click();
   await dupe.getByRole('button', { name: /Close “Darwin box Api”/ }).click();

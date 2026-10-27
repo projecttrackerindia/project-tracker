@@ -154,3 +154,22 @@ html .ml-boxchips .ds-chip.on { background: var(--ml-tint); color: #fff; }
   .ml-read-body { padding: 12px 14px 24px; }
   .ml-msg-body { padding-left: 16px; }
 }
+
+/* Focused / Other, Waiting pill, action items with owner + due (apple/s-mail) */
+.ml-lanes { display: flex; gap: 2px; margin: 0 18px 8px; padding: 2px; border-radius: 9px; background: var(--ml-fill2); }
+.ml-lanes button { flex: 1; height: 26px; border: 0; border-radius: 7px; background: transparent; color: var(--ml-t2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.ml-lanes button.on { background: var(--ds-bg, #fff); color: var(--ds-text); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+html[data-theme='dark'] .ml-lanes button.on { background: rgba(255, 255, 255, .14); }
+.ml-lanes em { font-style: normal; margin-left: 5px; opacity: .6; font-weight: 500; }
+.ml-tag.t-waiting { background: color-mix(in srgb, #ff9500 15%, transparent); color: #b86a00; }
+html[data-theme='dark'] .ml-tag.t-waiting { color: #ffb340; }
+.ml-acts { margin: 10px 0 4px; }
+.ml-acts-h { margin: 0 0 4px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ml-t3); }
+.ml-act { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 13.5px; border-top: .5px solid rgba(94, 92, 230, .15); }
+.ml-act-box { flex: none; width: 16px; height: 16px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px rgba(94, 92, 230, .55); }
+.ml-act-t { flex: 1; min-width: 0; }
+.ml-act-meta { flex: none; font-size: 12px; color: var(--ml-t3); white-space: nowrap; }
+.ml-act-mk { flex: none; height: 24px; padding: 0 10px; border: 0; border-radius: 12px; background: rgba(94, 92, 230, .12); color: #5e5ce6; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.ml-act-mk:disabled { opacity: .7; cursor: default; }
+html[data-theme='dark'] .ml-act-mk { color: #a5a3ff; }
+@media (max-width: 640px) { .ml-act { flex-wrap: wrap; } .ml-act-t { flex-basis: calc(100% - 26px); } .ml-act-meta { margin-left: 26px; } .ml-act-mk { margin-left: auto; } }

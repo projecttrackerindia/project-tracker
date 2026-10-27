@@ -117,7 +117,7 @@ function AskPanel() {
   const projects = sources.filter((s) => s.kind === 'project').length + (table && /project/i.test(table.head[0] ?? '') ? table.rows.length : 0);
   const primary = projects >= 2 ? { label: 'Open Portfolio', to: '/work/projects?view=portfolio' } : sources[0] ? { label: `Open ${sources[0].key || sources[0].title}`, to: sources[0].link } : null;
   const next = m?.followUps?.[0] ?? null;
-  const proposed: AiAction[] = (m?.actions ?? []).filter((a) => a.status === 'proposed').slice(0, 2);
+  const proposed: AiAction[] = (m?.actions ?? []).filter((a) => a.status === 'proposed').slice(0, 3);
   const done = !turn.streaming;
   const openFull = () => { close(); nav(conv ? `/?tab=assistant&c=${encodeURIComponent(conv)}` : '/?tab=assistant', conv ? undefined : { state: { ask: turn.q, ts: Date.now() } }); };
   const go = (to: string) => { close(); nav(to); };

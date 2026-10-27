@@ -55,6 +55,20 @@ const WhatsAppGlyph = () => (
   <svg className="dq-ch" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#25d366" /><path d="M8.2 7.3c.3-.4.8-.4 1-.1l1 1.9c.1.3 0 .6-.2.8l-.6.6c.6 1.3 1.6 2.3 2.9 2.9l.6-.6c.2-.2.5-.3.8-.2l1.9 1c.3.2.3.7-.1 1-.9.8-2.1.9-3.2.4-2-1-3.6-2.6-4.6-4.6-.5-1.1-.4-2.3.5-3.1z" fill="#fff" /></svg>
 );
 
+/** Account facts a customer usually writes in: loan / account numbers, amounts, phone and mail. */
+function accountFacts(text: string): { label: string; value: string }[] {
+  const out: { label: string; value: string }[] = [];
+  const acct = text.match(/\b(?:loan|a\/c|account|acct|agreement)\s*(?:no\.?|number|#|:)?\s*([A-Z]{0,5}[-‑]?\d{5,})\b/i) ?? text.match(/\b([A-Z]{2,5}[-‑]\d{5,})\b/);
+  if (acct) out.push({ label: /loan/i.test(acct[0]) || /^[A-Z]{2,5}[-‑]/.test(acct[1]) ? 'Loan' : 'Account', value: acct[1] });
+  const amt = text.match(/(?:₹|rs\.?|inr)\s?([\d,]+(?:\.\d+)?)/i);
+  if (amt) out.push({ label: /emi/i.test(text) ? 'EMI' : 'Amount', value: `₹${amt[1]}` });
+  const phone = text.match(/(?:\+91[\s-]?)?\b[6-9]\d{9}\b/);
+  if (phone) out.push({ label: 'Phone', value: phone[0] });
+  const mail = text.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+  if (mail) out.push({ label: 'Mail', value: mail[0] });
+  return out;
+}
+
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
 export function DeskPage() {
@@ -80,6 +94,15 @@ export function DeskPage() {
   const details = useQueries({ queries: shown.map((r) => ({ queryKey: [wid, 'desk', 'item', r.id], queryFn: () => workItemsApi.get(r.id), staleTime: 30_000, enabled: !!wid })) });
   const detailOf = (id: string) => details[shown.findIndex((r) => r.id === id)]?.data as WorkItemDetail | undefined;
 
+  const qc = useQueryClient();
+  const [busyRow, setBusyRow] = useState<string | null>(null);
+  // Assign / Resolve from the queue row: the same PATCH as the open ticket, with its current version.
+  const quick = async (r: WorkRow, f: { assigneeId?: string; status?: string }, done: string) => {
+    setBusyRow(r.id);
+    try { const w = detailOf(r.id) ?? await workItemsApi.get(r.id); await workItemsApi.update(r.id, { version: w.version, ...f }); toast(done); }
+    catch (e) { toast(errText(e, 'Could not save the change.'), 'error'); }
+    finally { setBusyRow(null); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }
+  };
   const current = rows.find((r) => r.id === selected) ?? rows[0] ?? null;
   useEffect(() => { if (!selected && rows[0]) setSelected(rows[0].id); }, [rows, selected]);
 
@@ -145,9 +168,16 @@ export function DeskPage() {
                 <div key={r.id} data-id={r.id} role="option" aria-selected={current?.id === r.id} className={`dq-t ${current?.id === r.id ? 'on' : ''}`} onClick={() => setSelected(r.id)}>
                   <DeskRing row={r} now={now} />
                   <div className="dq-tx">
+                    <span className="dq-tmeta" data-testid="dq-row-meta"><span className={`dq-pill p-${r.priority.toLowerCase()}`}>{r.priority}</span>{[r.key, d?.channel ? `via ${CHANNEL[d.channel] ?? d.channel}` : null, r.typeName].filter(Boolean).join(' · ')}</span>
                     <b>{r.title}</b>
                     <small><ChannelIcon channel={d?.channel} />{who}</small>
                   </div>
+                  {tab !== 'solved' && (
+                    <span className="dq-tacts" onClick={(e) => e.stopPropagation()}>
+                      {me && r.assignee?.id !== me.id && <button type="button" className="dq-btn sm white" disabled={busyRow === r.id} onClick={() => void quick(r, { assigneeId: me.id }, 'Assigned to you.')}>Assign</button>}
+                      <button type="button" className="dq-btn sm" disabled={busyRow === r.id} onClick={() => void quick(r, { status: 'Completed' }, 'Resolved.')}>Resolve</button>
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -291,6 +321,15 @@ function Context({ row }: { row: WorkRow }) {
   const related = (w?.detail as { relatedProject?: { id: string; name: string; key?: string } | null } | undefined)?.relatedProject ?? null;
   const project = w?.projectName ? { name: w.projectName, key: w.projectKey } : related ? { name: related.name, key: related.key ?? null } : null;
 
+  // The customer's account facts, read from what they wrote; past tickets from the same person among recent ones.
+  const facts = accountFacts(w?.description ?? '');
+  const recent = useWsQuery(['desk', 'list', 'all-recent'], () => workItemsApi.list({ kind: ['ticket'], status: 'all', limit: 60 }), { staleTime: 60_000 });
+  const others = (recent.data?.items ?? []).filter((x) => x.id !== row.id).slice(0, 40);
+  const pastQ = useQueries({ queries: others.map((x) => ({ queryKey: [wid, 'desk', 'item', x.id], queryFn: () => workItemsApi.get(x.id), staleTime: 5 * 60_000, enabled: !!wid && !!w?.reporter })) });
+  const past = w?.reporter ? others.filter((_, i) => (pastQ[i]?.data as WorkItemDetail | undefined)?.reporter?.id === w.reporter!.id) : [];
+  const pastLoading = recent.isLoading || pastQ.some((x) => x.isLoading);
+  const pastCount = past.length;
+
   const send = async () => {
     if (!w) return;
     setSending(true);
@@ -309,6 +348,14 @@ function Context({ row }: { row: WorkRow }) {
         <div className="dq-kv"><span>Ticket</span><b>{row.key}</b></div>
         <div className="dq-kv"><span>Owner</span><b>{row.assignee && <Face userId={row.assignee.id} name={row.assignee.name} className="dq-own-av" />}{row.assignee?.name ?? 'unassigned'}</b></div>
         <div className="dq-kv"><span>Status</span><b>{row.status}</b></div>
+      </div>
+      <div className="dq-card dq-cc" data-testid="dq-customer">
+        <div className="dq-lbl">Account</div>
+        {facts.length === 0 && pastCount === 0 ? <div className="dq-faint dq-s12">No account details in the ticket.</div> : <>
+          {facts.map((f) => <div key={f.label + f.value} className="dq-kv"><span>{f.label}</span><b>{f.value}</b></div>)}
+          <div className="dq-kv"><span>Past tickets</span><b>{pastLoading ? '…' : past.length === 0 ? 'None' : `${past.length} · ${past.filter((x) => x.category === 'Done').length} solved`}</b></div>
+          {past.slice(0, 3).map((x) => <div key={x.id} className="dq-sim"><span className="dq-ok" aria-hidden="true">{x.category === 'Done' ? '✓' : '•'}</span><span>{x.title} · <span className="dq-faint">{x.key}</span></span></div>)}
+        </>}
       </div>
       <div className="dq-card dq-cc">
         <div className="dq-lbl">Linked</div>

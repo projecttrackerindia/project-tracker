@@ -234,6 +234,8 @@ try {
     assert.equal(await opts.nth(3).locator('.dq-ring.t-ok').count(), 1);
     await opts.first().getByText('Ramesh Naidu · Shiva').waitFor();
     assert.equal(await opts.nth(2).locator('svg[aria-label="E-mail"]').count(), 1);
+    // Each row: priority · key · channel · category (s-desk), with Assign / Resolve inline.
+    assert.match(await opts.first().getByTestId('dq-row-meta').innerText(), /High\s*ST-2291 · via WhatsApp · Loans/);
     checks.push('queue');
 
     const conv = page.getByRole('region', { name: 'Ticket' });
@@ -249,6 +251,9 @@ try {
     await ctxCol.getByText('Razorpay Payments').waitFor();
     await ctxCol.getByText('Double NACH debit, refund via Razorpay').waitFor();
     await ctxCol.getByRole('button', { name: 'Send' }).waitFor();
+    // The customer card: account facts read from what they wrote, and their past tickets.
+    const cust = ctxCol.getByTestId('dq-customer');
+    await cust.getByText('₹8,450').waitFor(); await cust.getByText('EMI', { exact: true }).waitFor(); await cust.getByText('Past tickets').waitFor();
     await shot(page, `desk-${tag}.png`);
     checks.push('conversation');
 
@@ -268,6 +273,16 @@ try {
     await conv.getByRole('button', { name: 'Assign' }).click();
     await waitFor(() => state.writes.some((x) => x.method === 'PATCH' && x.b.assigneeId === user.id), 'assigned to me');
     checks.push('keyboard-reply-assign');
+    const lastRow = opts.last(); await lastRow.hover();
+    const lastId = await lastRow.getAttribute('data-id');
+    await lastRow.getByRole('button', { name: 'Resolve' }).click();
+    await waitFor(() => state.writes.some((x) => x.method === 'PATCH' && x.ep.endsWith(lastId) && x.b.status === 'Completed'), 'resolved from the queue row');
+    checks.push('row-resolve');
+    if (theme === 'light') {
+      await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'desk 390 scrolls sideways');
+      await shot(page, 'desk-390.png'); await page.setViewportSize({ width: 1440, height: 900 }); checks.push('desk-390');
+    }
 
     // ---------------------------------------------------------------- Quality
     await page.goto(`${origin}/preview-org/quality`);

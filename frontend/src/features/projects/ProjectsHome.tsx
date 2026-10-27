@@ -269,6 +269,11 @@ function Pass({ p, still, opening, duplicate, risk, onOpen, onMenu }: {
   const signed = Math.max(0, stages - (p.pendingSignOffs ?? 0));
   const me = opening === p.id, other = !!opening && !me;
   const pct = Math.max(0, Math.min(100, p.progress));
+  // Stage names under the dots: read from the project (fetched on hover or when the pass lifts; the same query the project page uses).
+  const [peek, setPeek] = useState(false);
+  const detail = useWsQuery(['project', p.id], () => projectApi.get(p.id), { enabled: (peek || me) && stages > 0, staleTime: 60_000 });
+  const names = (detail.data?.stages ?? []).slice().sort((a, b) => a.order - b.order).map((x) => x.name);
+  const named = names.length === stages && stages > 0 && stages <= 10;
   return (
     <motion.a href={`/work/projects/${p.id}`} className={`pa-pass ${me ? 'lifted' : ''}`} data-project={p.name} data-testid="project-pass"
       style={{ background: `linear-gradient(150deg, ${from}, ${to})`, ['--c' as string]: to }}
@@ -276,7 +281,7 @@ function Pass({ p, still, opening, duplicate, risk, onOpen, onMenu }: {
       animate={still ? undefined : me ? { scale: 1.04, y: -8, opacity: 1 } : { scale: 1, y: 0, opacity: other ? 0.6 : 1 }}
       transition={{ type: 'spring', duration: 0.45, bounce: 0.15 }}
       onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); onOpen(p.id); }}
-      onContextMenu={onMenu}>
+      onContextMenu={onMenu} onMouseEnter={() => setPeek(true)} onFocus={() => setPeek(true)}>
       <span className="pa-top">
         <motion.span className="pa-key" layoutId={still ? undefined : `pkey-${p.id}`}>{p.key}</motion.span>
         {p.owner ? <Face className="pa-owner-av" userId={p.owner.id} name={p.owner.name} title={p.owner.name} /> : <span className="pa-owner-av" title="No owner">–</span>}
@@ -299,6 +304,7 @@ function Pass({ p, still, opening, duplicate, risk, onOpen, onMenu }: {
           <motion.span className="pa-dots" layoutId={still ? undefined : `pdots-${p.id}`} aria-hidden="true">
             {Array.from({ length: Math.max(stages, 0) }, (_, i) => <i key={i} className={i < signed ? 'f' : ''} />)}
           </motion.span>
+          {named && <span className="pa-gn" data-testid="pass-stage-names" style={{ ['--n' as string]: stages }}>{signed >= stages ? <span>{names.join(' › ')}</span> : names.map((n, i) => <span key={i} className={i < signed ? 'f' : i === signed ? 'cur' : ''} title={n}>{i === signed ? `Next: ${n}` : `› ${n}`}</span>)}</span>}
           <span className="pa-stg">{stages ? `${signed} of ${stages} signed off` : 'No stages yet'}</span>
         </span>
         <span className={`pa-state ${st.tone}`} data-testid="pass-state">{st.label}</span>
