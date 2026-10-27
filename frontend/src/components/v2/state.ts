@@ -5,7 +5,7 @@ import { create } from 'zustand';
 // ------------------------------------------------------------------ + New
 
 /** The eight things + New makes. Task, Ticket (and in wave 2 every work kind) go to work items; the rest to their own places. */
-export type NewType = 'task' | 'ticket' | 'project' | 'doc' | 'secret' | 'meeting' | 'reminder' | 'time';
+export type NewType = 'task' | 'ticket' | 'bug' | 'project' | 'doc' | 'secret' | 'meeting' | 'reminder' | 'time';
 
 /**
  * The project + New adds to when it was opened from one ("+ Add work" on a project page), and optionally which kind of project work it
@@ -31,11 +31,22 @@ export function guessType(text: string, allowed: (t: NewType) => boolean): NewTy
     ['secret', /\b(password|secret|api key|token|credential|ssh key|pin)\b/],
     ['project', /^\s*(new |start a |kick ?off )?project\b|\bproject for\b/],
     ['doc', /\b(doc|document|spec|brd|frd|policy|sop|runbook|write-?up|note on)\b/],
+    ['bug', /\b(bug|defect|crash(es|ing)?|regression)\b/],
     ['ticket', /\b(down|outage|incident|broken|error|fails?|failing|bug|ticket|issue|request|not working|disconnected|timeout|critical|urgent|p1|sla)\b/],
   ];
   for (const [type, re] of rules) if (re.test(t) && allowed(type)) return type;
   return allowed('task') ? 'task' : allowed('ticket') ? 'ticket' : null;
 }
+
+// ------------------------------------------------------------------ Ask (⌘K)
+
+/** The Spotlight-style Ask panel: the question, where the person was, and the toolbar field it springs from. */
+export interface AskFrom { left: number; top: number; width: number; height: number }
+export const useAskPanel = create<{ open: boolean; question: string; context: string | null; from: AskFrom | null; show: (question: string, context: string | null, from: AskFrom | null) => void; close: () => void }>((set) => ({
+  open: false, question: '', context: null, from: null,
+  show: (question, context, from) => set({ open: true, question, context, from }),
+  close: () => set({ open: false }),
+}));
 
 // ------------------------------------------------------------------ the copilot
 

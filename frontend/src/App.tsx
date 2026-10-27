@@ -249,7 +249,7 @@ function RequireAuth() {
   if (!ctx?.current) return <NoWorkspace />;
   // Platform administrators have an admin-only interface; workspace pages are for customers.
   // Their own profile and sign-in (Settings › Profile, and its old address /account) stay open to them.
-  if (ctx.user.isPlatformAdmin && !loc.pathname.startsWith('/admin') && !loc.pathname.startsWith('/account') && loc.pathname !== '/settings' && !loc.pathname.startsWith('/settings/profile')) return <Navigate to="/admin" replace />;
+  if (ctx.user.isPlatformAdmin && !loc.pathname.startsWith('/admin') && !loc.pathname.startsWith('/account') && loc.pathname !== '/settings' && !loc.pathname.startsWith('/settings/profile') && loc.pathname !== '/settings/security/account' && loc.pathname !== '/settings/appearance') return <Navigate to="/admin" replace />;
   return <AppLayout />;
 }
 
@@ -467,7 +467,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="reports" element={<Moved to="/insights?tab=reports" />} />
         <Route path="reports/operations" element={<Moved to="/insights?tab=reports&s=operations" />} />
         <Route path="account" element={<Moved to="/settings/profile" />} />
-        <Route path="account/security" element={<Moved to="/settings/profile/security" />} />
+        <Route path="account/security" element={<Moved to="/settings/security/account" />} />
         <Route path="account/mobile" element={<Moved to="/settings/profile/mobile" />} />
         <Route path="account/integrations" element={<Moved to="/settings/profile/accounts" />} />
         <Route path="account/notifications" element={<Moved to="/settings/notifications" />} />

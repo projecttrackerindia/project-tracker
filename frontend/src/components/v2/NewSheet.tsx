@@ -1,11 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ApiError } from '../../api/client';
-import { projectApi, workApi, workspaceApi } from '../../api/endpoints';
+import { ApiError, get, uploadFile } from '../../api/client';
+import { attachmentApi, projectApi, workApi, workspaceApi } from '../../api/endpoints';
+import { whatsAppPrefsUrl, type WhatsAppPreferences } from '../../features/settings/WhatsAppNotificationPreferences';
 import type { Priority } from '../../api/types';
 import { workItemsApi, type WorkKind } from '../../api/workItemsApi';
-import { motion, useReducedMotion } from 'framer-motion';
-import { Icon, type IconName } from '../Icon';
+import { motion, useAnimationControls, useReducedMotion } from 'framer-motion';
 import { spring } from '../../lib/motion';
 import { useWsQuery } from '../../lib/hooks';
 import { parseQuickTask, type QuickPerson } from '../../lib/quickTask';
@@ -18,11 +18,28 @@ import './v2.css';
 
 const ProjectFormModal = lazy(() => import('../../features/projects/ProjectFormModal').then((m) => ({ default: m.ProjectFormModal })));
 
-const TYPES: { id: NewType; label: string; icon: IconName }[] = [
-  { id: 'task', label: 'Task', icon: 'check' }, { id: 'ticket', label: 'Ticket', icon: 'bolt' }, { id: 'project', label: 'Project', icon: 'folder' },
-  { id: 'doc', label: 'Doc', icon: 'note' }, { id: 'secret', label: 'Secret', icon: 'key' }, { id: 'meeting', label: 'Meeting', icon: 'video' },
-  { id: 'reminder', label: 'Reminder', icon: 'alarm' }, { id: 'time', label: 'Time', icon: 'clock' },
+/** The eight kind tiles of the design (apple/s-new): glyph, colour, and the sidebar place each one lands in. Time stays reachable by words. */
+const TYPES: { id: NewType; label: string; glyph: string; color: string; place: string; to: string; tile?: false }[] = [
+  { id: 'task', label: 'Task', glyph: '✓', color: '#ff9500', place: 'My Work', to: '/work' },
+  { id: 'ticket', label: 'Ticket', glyph: '◎', color: '#ff3b30', place: 'Desk', to: '/desk' },
+  { id: 'bug', label: 'Bug', glyph: '✱', color: '#af52de', place: 'My Work', to: '/work' },
+  { id: 'project', label: 'Project', glyph: '▤', color: '#5856d6', place: 'Projects', to: '/work/projects' },
+  { id: 'doc', label: 'Doc', glyph: '✎', color: '#a2845e', place: 'Library', to: '/library' },
+  { id: 'secret', label: 'Secret', glyph: '⚿', color: '#636366', place: 'Vault', to: '/library/vault' },
+  { id: 'meeting', label: 'Meeting', glyph: '◫', color: '#30b0c7', place: 'Talk', to: '/talk' },
+  { id: 'reminder', label: 'Reminder', glyph: '◔', color: '#ff9f0a', place: 'Today', to: '/' },
+  { id: 'time', label: 'Time', glyph: '◷', color: '#34c759', place: 'Insights', to: '/insights', tile: false },
 ];
+const PRIORITY_COLOR: Record<Priority, string> = { Critical: '#ff3b30', High: '#ff9500', Medium: '#0071e3', Low: '#8e8e93' };
+const initials = (name: string) => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+/** When the service level ends, in words: "today 2:00 PM", "tomorrow 9:30 AM", "Thu 30 Oct 2:00 PM". */
+const whenIn = (min: number, now = new Date()) => {
+  const d = new Date(now.getTime() + min * 60_000);
+  const t = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase();
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(now)) / 86_400_000);
+  return diff === 0 ? `today ${t}` : diff === 1 ? `tomorrow ${t}` : `${d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} ${t}`;
+};
 const PRIORITIES: Priority[] = ['Critical', 'High', 'Medium', 'Low'];
 /** Project work: the Task tile makes a task, an issue or an action item (the Type chip). */
 type ProjectKind = 'task' | 'issue' | 'action';
@@ -55,10 +72,11 @@ export function NewSheetHost() {
 }
 
 /**
- * + New (V2-SPEC §3.11): one sheet for the eight things. You type a sentence; it says what it understood ("I understood this as a ticket")
- * with chips for type, priority, owner and SLA (or project and due date for project work), each changed by tapping it. Tasks, issues,
- * action items and tickets are made here at once (POST /work-items) and open in the Work side panel; the other types open where they are
- * written, with the words carried over.
+ * + New (apple/s-new): one sentence first ("Describe it…"); what it understood appears as chips one by one (kind · priority · person · place ·
+ * due), each changed by tapping it, with a one-line reason; eight kind tiles with the guessed one highlighted; Attach, Notify on WhatsApp,
+ * Cancel and "Create <kind> ⌘↵" in the kind's colour. Tasks, bugs (project issues) and tickets are made here at once (POST /work-items):
+ * the sheet shrinks into the matching sidebar item, whose badge bumps, and the item opens in the Work side panel. The other kinds open
+ * where they are written, with the words carried over.
  */
 function NewSheet({ onProject }: { onProject: () => void }) {
   const { type: presetType, text: presetText, project: inProject, close } = useNewSheet();
@@ -71,7 +89,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const [mTasks, mProjects, mWork, mDocs] = [useModule('tasks'), useModule('projects'), useModule('work'), useModule('documents')];
   const [cTask, cProject, cWork, cVault, cComment] = [useCan('tasks.create'), useCan('projects.create'), useCan('work.create'), useCan('vault.use'), useCan('tasks.comment')];
   const allowed = (t: NewType) => ({
-    task: (cTask || cComment) && mTasks > 0 && mProjects > 0, ticket: cWork && mWork >= 2, project: cProject && mProjects >= 2, doc: mDocs > 0,
+    task: (cTask || cComment) && mTasks > 0 && mProjects > 0, ticket: cWork && mWork >= 2, bug: cComment && mTasks > 0 && mProjects > 0, project: cProject && mProjects >= 2, doc: mDocs > 0,
     secret: cVault && role !== 'Guest', meeting: true, reminder: true, time: mTasks > 0 || mWork > 0,
   })[t];
   const kindAllowed = (k: ProjectKind) => (k === 'task' ? cTask && mTasks > 0 : k === 'issue' ? cComment && mTasks > 0 && mProjects > 0 : mProjects >= 2);
@@ -85,8 +103,15 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const pathProject = /^\/work\/projects\/([0-9a-f-]{8,})/i.exec(loc.pathname)?.[1] ?? null;
   const [projectId, setProjectId] = useState<string | null>(inProject?.id ?? pathProject);
   const [busy, setBusy] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [whatsApp, setWhatsApp] = useState(true);
   const input = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetAnim = useAnimationControls();
+  const [flying, setFlying] = useState(false);
   useEffect(() => { setTimeout(() => input.current?.focus(), 20); }, []);
+  useEffect(() => { void sheetAnim.start({ opacity: 1, y: 0, scale: 1 }, still ? { duration: 0 } : spring.panel); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 5 * 60_000 });
   const people: QuickPerson[] = useMemo(() => (members.data ?? []).filter((m) => m.role !== 'Guest').map((m) => ({ id: m.userId, name: m.displayName })), [members.data]);
@@ -94,11 +119,14 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const parsed = useMemo(() => parseQuickTask(text.replace(/\b(?:give|hand|pass)\s+(?:it\s+)?to\b|\bowner:?(?=\s)/gi, 'assign to'), people, new Date(), mePerson), [text, people, mePerson?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const guessed = useMemo(() => guessType(text, allowed), [text]); // eslint-disable-line react-hooks/exhaustive-deps
   const type = picked ?? guessed;
-  const work = type === 'task' || type === 'ticket';
+  const work = type === 'task' || type === 'ticket' || type === 'bug';
+  const projectWork = type === 'task' || type === 'bug';
 
   const types = useWsQuery(['work', 'types'], () => workApi.types(), { enabled: type === 'ticket', staleTime: 5 * 60_000 });
   const sla = useWsQuery(['work', 'sla'], workApi.sla, { enabled: type === 'ticket', staleTime: 5 * 60_000, retry: false });
   const projects = useWsQuery(['projects', 'new-sheet'], () => projectApi.list({ pageSize: 200, sort: 'name' }), { enabled: work, staleTime: 60_000 });
+  // WhatsApp is offered where the workspace has it connected (the same signal Settings › Notifications uses).
+  const wa = useWsQuery(['account', 'whatsapp-contact', 'notification-preferences', me?.id], () => get<WhatsAppPreferences>(whatsAppPrefsUrl), { retry: false, staleTime: 5 * 60_000, enabled: work });
   const activeTypes = (types.data ?? []).filter((t) => t.isActive);
   // A ticket's type from its words ("bug", "access"…), else the first active type.
   const wordType = activeTypes.find((t) => text.toLowerCase().includes(t.name.toLowerCase().replace(/s$/, ''))) ?? activeTypes[0];
@@ -106,19 +134,21 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const pr: Priority = priority ?? parsed.priority ?? 'Medium';
   const owner = ownerId === '' ? null : people.find((p) => p.id === (ownerId ?? parsed.assignee?.id)) ?? null;
   const title = (parsed.title || text).trim();
-  const label = TYPES.find((t) => t.id === type)?.label ?? '';
+  const def = TYPES.find((t) => t.id === type);
+  const label = def?.label ?? '';
 
   // Project work belongs to a project: the one asked for, the page's, one named in the words, else the last one used.
   const live = (projects.data?.items ?? []).filter((p) => p.status !== 'Archived' && p.status !== 'Cancelled');
   const named = useMemo(() => { const t = ` ${text.toLowerCase()} `; return live.find((p) => t.includes(` ${p.key.toLowerCase()} `) || (p.name.length > 3 && t.includes(p.name.toLowerCase()))); }, [text, live]);
   const project = live.find((p) => p.id === projectId) ?? named ?? live.find((p) => p.id === readLast()) ?? null;
-  const pkind: ProjectKind = kind && kindAllowed(kind) ? kind : PROJECT_KINDS.find((k) => kindAllowed(k.id))?.id ?? 'task';
+  const pkind: ProjectKind = type === 'bug' ? 'issue' : kind && kindAllowed(kind) ? kind : PROJECT_KINDS.find((k) => kindAllowed(k.id))?.id ?? 'task';
   const pkLabel = PROJECT_KINDS.find((k) => k.id === pkind)!.label;
   // The service level this ticket will get: its type's own targets, else the workspace's, for the priority.
   const levels = Array.isArray(sla.data?.defaults) ? sla.data! : null;
   const targets = levels ? (levels.overrides?.find((o) => o.workTypeId === chosenType?.id)?.targets ?? levels.defaults) : [];
   const slaOf = (p: Priority) => targets.find((t) => t.priority === p)?.resolutionMinutes ?? null;
   const shownLabel = type === 'task' ? pkLabel.toLowerCase() : label.toLowerCase();
+  const color = def?.color ?? '#0071e3';
 
   /** Opens what was just made in the Work side panel: here, when this page shows one for its project; otherwise on Work. */
   const openMade = (id: string, inProject: string | null) => {
@@ -127,6 +157,29 @@ function NewSheet({ onProject }: { onProject: () => void }) {
     }
     if (loc.pathname === '/work') { const n = new URLSearchParams(loc.search); n.set('item', id); nav(`/work?${n}`); return; }
     nav(`/work?item=${id}`);
+  };
+
+  /** The sheet shrinks and flies into the sidebar item the new thing lives in; that item's badge bumps. */
+  const flyHome = async () => {
+    const target = def ? document.querySelector<HTMLElement>(`.v2-rail-item[href$="${def.to === '/' ? '/' : def.to}"]`) : null;
+    const box = sheetRef.current?.getBoundingClientRect();
+    const to = target?.getBoundingClientRect();
+    if (still || !box || !to || to.width === 0) return;
+    setFlying(true);
+    await sheetAnim.start({ x: to.left + to.width / 2 - (box.left + box.width / 2), y: to.top + to.height / 2 - (box.top + box.height / 2), scale: 0.08, opacity: 0.35, borderRadius: 60 },
+      { duration: 0.42, ease: [0.3, 0, 0.2, 1] });
+    target!.classList.add('v2-landed');
+    target!.querySelector('.v2-badge')?.classList.add('v2-bump');
+    window.setTimeout(() => { target!.classList.remove('v2-landed'); target!.querySelector('.v2-badge')?.classList.remove('v2-bump'); }, 900);
+  };
+
+  const attach = async (id: string, k: WorkKind, projectOf: string | null) => {
+    for (const f of files) {
+      try {
+        if (k === 'ticket') await workApi.upload(id, f);
+        else if (projectOf && (k === 'task' || k === 'issue')) await uploadFile(attachmentApi.uploadPath(projectOf, k === 'task' ? id : undefined, k === 'issue' ? id : undefined), f);
+      } catch { toast(`Could not attach ${f.name}.`, 'error'); }
+    }
   };
 
   const makeWork = async () => {
@@ -144,7 +197,9 @@ function NewSheet({ onProject }: { onProject: () => void }) {
     setBusy(true);
     try {
       const made = await workItemsApi.create(body);
+      if (files.length) await attach(made.id, k, made.projectId ?? null);
       refreshWork(wid);
+      await flyHome();
       close();
       toast(`${made.key} created.`);
       openMade(made.id, k === 'ticket' ? null : made.projectId);
@@ -158,7 +213,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
     const q = (k: string, v: string) => (v ? `${k}=${encodeURIComponent(v)}` : '');
     const join = (base: string, ...parts: string[]) => { const s = parts.filter(Boolean).join('&'); return s ? `${base}${base.includes('?') ? '&' : '?'}${s}` : base; };
     switch (type) {
-      case 'task': case 'ticket': await makeWork(); return;
+      case 'task': case 'ticket': case 'bug': await makeWork(); return;
       case 'project': close(); onProject(); return;
       case 'reminder': close(); openReminderComposer({ text: words }); return;
       case 'doc': close(); nav(join('/library/docs?new=1', q('title', title))); return;
@@ -175,82 +230,117 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   };
   const goes = type === 'doc' ? 'Opens Library to write it.' : type === 'secret' ? 'Opens the Vault to fill in the secret.' : type === 'meeting' ? 'Opens the meeting form in Talk.'
     : type === 'time' ? 'Opens your timesheet with this entry.' : type === 'project' ? 'Opens the project form.' : type === 'reminder' ? 'Opens the reminder with the time it understood.'
-    : type === 'task' && !project ? 'Pick the project it belongs to.' : type === 'task' && inProject && project?.id === inProject.id ? `Adds it to ${inProject.name}.` : 'Tap any chip to change it. Everything else can be added later.';
-  const blocked = !type || busy || (!title && type !== 'reminder' && type !== 'time') || (type === 'task' && !project) || (type === 'ticket' && !chosenType && types.isSuccess);
+    : projectWork && !project ? 'Pick the project it belongs to.' : projectWork && inProject && project?.id === inProject.id ? `Adds it to ${inProject.name}.` : null;
+  // One line on why: the service level, who was named, the type and project it understood. Only what is known.
+  const slaMin = type === 'ticket' ? slaOf(pr) : null;
+  const why = [
+    goes,
+    type === 'ticket' && chosenType ? `${chosenType.name}` : null,
+    slaMin ? `${pr} SLA is ${spell(slaMin)}` : null,
+    owner && parsed.assignee?.id === owner.id && owner.id !== me?.id ? `${owner.name.split(' ')[0]} named in your words` : null,
+    projectWork && project && !goes ? `In ${project.name}` : null,
+  ].filter(Boolean).join(' · ') || 'Tap any chip to change it. Everything else can be added later.';
+  const blocked = !type || busy || (!title && type !== 'reminder' && type !== 'time') || (projectWork && !project) || (type === 'ticket' && !chosenType && types.isSuccess);
+  const due = parsed.dueDate ? `Due ${parsed.dueLabel ?? parsed.dueDate}` : slaMin ? `Due ${whenIn(slaMin)}` : null;
+  const showWa = work && !!wa.data && (wa.data.canEnable || wa.data.optedIn) && !!owner && owner.id !== me?.id;
+
+  // The chips, in the design's order: kind · priority · person · place · due. Each fades and rises in turn.
+  const chips: React.ReactNode[] = [];
+  const understood = !!type && (!!text.trim() || !!picked);
+  if (understood) {
+    chips.push(
+      <Chip key="kind" label="Type" value={type === 'task' ? pkLabel : label} glyph={def?.glyph} color={color}>
+        <select aria-label="Change type" value={type === 'ticket' ? `ticket:${chosenType?.id ?? ''}` : type === 'task' ? `task:${pkind}` : type}
+          onChange={(e) => { const [t, sub] = e.target.value.split(':'); setPicked(t as NewType); if (t === 'ticket' && sub) setWorkTypeId(sub); if (t === 'task' && sub) setKind(sub as ProjectKind); }}>
+          {TYPES.filter((t) => allowed(t.id)).flatMap((t) => t.id === 'ticket' && activeTypes.length
+            ? activeTypes.map((w) => <option key={`ticket:${w.id}`} value={`ticket:${w.id}`}>Ticket · {w.name}</option>)
+            : t.id === 'task' ? PROJECT_KINDS.filter((k) => k.id !== 'issue' && kindAllowed(k.id)).map((k) => <option key={`task:${k.id}`} value={`task:${k.id}`}>{k.label}</option>)
+            : [<option key={t.id} value={t.id}>{t.label}</option>])}
+          {type === 'ticket' && !activeTypes.length && <option value="ticket:">Ticket</option>}
+        </select>
+      </Chip>,
+    );
+    if (work) {
+      chips.push(
+        <Chip key="pr" label="Priority" value={pr} glyph="!" color={PRIORITY_COLOR[pr]} tone={pr === 'Critical' ? 'critical' : undefined}>
+          <select aria-label="Change priority" value={pr} onChange={(e) => setPriority(e.target.value as Priority)}>{PRIORITIES.map((p) => <option key={p} value={p}>{p}{slaOf(p) ? ` · ${spell(slaOf(p)!)}` : ''}</option>)}</select>
+        </Chip>,
+        <Chip key="who" label="Owner" value={owner?.name ?? 'Nobody yet'} avatar={owner ? initials(owner.name) : undefined}>
+          <select aria-label="Change owner" value={owner?.id ?? ''} onChange={(e) => setOwnerId(e.target.value)}><option value="">Nobody yet</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.id === me?.id ? ' (you)' : ''}</option>)}</select>
+        </Chip>,
+      );
+      if (projectWork || (live.length > 0 && !!projectId)) chips.push(
+        <Chip key="place" label="Project" value={projectWork ? project?.name ?? 'Choose…' : live.find((p) => p.id === projectId)?.name ?? 'None'} glyph="▤" color="#5856d6" warn={projectWork && !project}>
+          <select aria-label="Change project" value={projectWork ? project?.id ?? '' : projectId ?? ''} onChange={(e) => setProjectId(e.target.value || null)}>
+            <option value="" disabled={projectWork}>{projectWork ? 'Choose a project' : 'None'}</option>
+            {live.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
+          </select>
+        </Chip>,
+      );
+      else chips.push(<Chip key="place" label="Goes to" value={def!.place} glyph={def!.glyph} color="linear-gradient(180deg,#ff6961,#ff3b30)" />);
+      if (due) chips.push(<Chip key="due" label="Due" value={due} glyph="◷" color="#0071e3" />);
+    } else if (def) chips.push(<Chip key="place" label="Opens in" value={def.place} glyph={def.glyph} color={def.color} />);
+  }
 
   return (
-    <div className="v2-new-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <motion.div className="v2-new-sheet" role="dialog" aria-modal="true" aria-labelledby="v2-new-title" onKeyDown={onKey}
-        initial={still ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={still ? { duration: 0 } : spring.panel}>
-        <div className="v2-new-head"><h2 id="v2-new-title">New</h2>
-          <button type="button" className="v2-panel-close" aria-label="Close" onClick={close}><Icon name="close" size={16} /></button></div>
+    <motion.div className={`v2-new-scrim${flying ? ' flying' : ''}`} onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}
+      animate={flying ? { backgroundColor: 'rgba(30,30,40,0.06)' } : undefined} transition={{ duration: 0.42 }}>
+      <motion.div ref={sheetRef} className="v2-new-sheet" role="dialog" aria-modal="true" aria-labelledby="v2-new-title" onKeyDown={onKey}
+        style={{ ['--kind' as string]: color }}
+        initial={still ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.98 }} animate={sheetAnim}>
+        <div className="v2-new-head"><h2 id="v2-new-title">New</h2><span>Describe it — Project Tracker fills in the rest · esc</span></div>
         <label className="v2-new-input">
-          <span className="v2-spark" aria-hidden="true">✦</span>
-          <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder="Say what it is: “VPN down for collections, critical, give to Priya”" aria-label="What to create" />
+          <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder="Describe it…" aria-label="What to create" />
         </label>
+        <div className="v2-understood" aria-live="polite">
+          <div className="v2-new-chips">
+            <span className="v2-understood-label"><span className="v2-orb" aria-hidden="true" />Understood as{understood ? <span className="sr-only"> {/^[aeiou]/.test(shownLabel) ? 'an' : 'a'} {shownLabel}</span> : null}</span>
+            {chips.map((c, i) => (
+              <motion.span key={(c as React.ReactElement).key} className="v2-new-chip-wrap" initial={still ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.18, delay: still ? 0 : 0.06 * i }}>{c}</motion.span>
+            ))}
+            {!understood && <span className="v2-new-shim" aria-hidden="true" />}
+          </div>
+          <p>{understood ? why : 'Type a sentence: what it is, how urgent, who and when.'}</p>
+        </div>
         <div className="v2-new-types" role="radiogroup" aria-label="Type">
-          {TYPES.map((t) => (
+          {TYPES.filter((t) => t.tile !== false).map((t) => (
             <button key={t.id} type="button" role="radio" aria-checked={type === t.id} className={`v2-new-type ${type === t.id ? 'on' : ''}`} disabled={!allowed(t.id)}
-              onClick={() => { setPicked(t.id); input.current?.focus(); }}>
-              <Icon name={t.icon} size={18} />{t.label}
+              style={{ ['--kind' as string]: t.color }} onClick={() => { setPicked(t.id); input.current?.focus(); }}>
+              <span className="v2-new-type-tile" aria-hidden="true" data-glyph={t.glyph} />{t.label}
             </button>
           ))}
         </div>
-        {type && (
-          <div className="v2-understood" aria-live="polite">
-            <span className="v2-understood-label">✦ I understood this as {/^[aeiou]/.test(shownLabel) ? 'an' : 'a'} {shownLabel}</span>
-            <h3 className={title ? '' : 'empty'}>{title || 'Type what it is above'}</h3>
-            {work && (
-              <div className="v2-new-chips">
-                {type === 'ticket' ? (
-                  <Chip label="Type" value={chosenType?.name ?? '—'}>
-                    {activeTypes.length > 0 && <select aria-label="Change type" value={chosenType?.id ?? ''} onChange={(e) => setWorkTypeId(e.target.value)}>{activeTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>}
-                  </Chip>
-                ) : (
-                  <Chip label="Type" value={pkLabel}>
-                    <select aria-label="Change type" value={pkind} onChange={(e) => { if (e.target.value === 'ticket') setPicked('ticket'); else setKind(e.target.value as ProjectKind); }}>
-                      {PROJECT_KINDS.filter((k) => kindAllowed(k.id)).map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
-                      {allowed('ticket') && <option value="ticket">Ticket</option>}
-                    </select>
-                  </Chip>
-                )}
-                <Chip label="Priority" value={pr}><select aria-label="Change priority" value={pr} onChange={(e) => setPriority(e.target.value as Priority)}>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}</select></Chip>
-                <Chip label="Owner" value={owner?.name ?? 'Nobody yet'}>
-                  <select aria-label="Change owner" value={owner?.id ?? ''} onChange={(e) => setOwnerId(e.target.value)}><option value="">Nobody yet</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.id === me?.id ? ' (you)' : ''}</option>)}</select>
-                </Chip>
-                {type === 'ticket' && targets.length > 0 && (
-                  <Chip label="SLA" value={slaOf(pr) ? spell(slaOf(pr)!) : 'None'} title="The time to fix it, from the service levels for this type and priority. Choosing one sets the priority.">
-                    <select aria-label="Change SLA" value={pr} onChange={(e) => setPriority(e.target.value as Priority)}>
-                      {PRIORITIES.map((p) => <option key={p} value={p}>{slaOf(p) ? `${spell(slaOf(p)!)} (${p})` : `No target (${p})`}</option>)}
-                    </select>
-                  </Chip>
-                )}
-                {(type === 'task' || (live.length > 0 && !!projectId)) && (
-                  <Chip label="Project" value={type === 'task' ? project?.name ?? 'Choose…' : live.find((p) => p.id === projectId)?.name ?? 'None'} warn={type === 'task' && !project}>
-                    <select aria-label="Change project" value={type === 'task' ? project?.id ?? '' : projectId ?? ''} onChange={(e) => setProjectId(e.target.value || null)}>
-                      <option value="" disabled={type === 'task'}>{type === 'task' ? 'Choose a project' : 'None'}</option>
-                      {live.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
-                    </select>
-                  </Chip>
-                )}
-                {parsed.dueDate && <Chip label="Due" value={parsed.dueLabel ?? parsed.dueDate} />}
-              </div>
-            )}
-            <p>{goes}</p>
-          </div>
-        )}
         <div className="v2-new-foot">
-          <span>⌘↵ to create · Esc to close</span>
-          <button type="button" className="btn btn-primary" disabled={blocked} onClick={() => void createIt()}>
-            {busy ? 'Creating…' : type ? `Create ${shownLabel}` : 'Create'}
+          {work && (
+            <>
+              <input ref={fileInput} type="file" multiple hidden onChange={(e) => { setFiles([...files, ...Array.from(e.target.files ?? [])]); e.target.value = ''; }} />
+              <button type="button" className="v2-new-btn sm" onClick={() => fileInput.current?.click()} title={files.map((f) => f.name).join(', ') || undefined}>
+                ＋ {files.length ? `${files.length} attached` : 'Attach'}
+              </button>
+            </>
+          )}
+          {showWa && (
+            <button type="button" className={`v2-new-btn sm${whatsApp ? '' : ' off'}`} aria-pressed={whatsApp} onClick={() => setWhatsApp(!whatsApp)}
+              title={`${owner!.name} gets the assignment on WhatsApp where they agreed to WhatsApp messages.`}>Notify on WhatsApp</button>
+          )}
+          <span className="v2-new-sp" />
+          <button type="button" className="v2-new-btn" onClick={close}>Cancel</button>
+          <button type="button" className="v2-new-create" disabled={blocked} onClick={() => void createIt()}>
+            {busy ? 'Creating…' : type ? `Create ${shownLabel}` : 'Create'}<kbd aria-hidden="true">⌘↵</kbd>
           </button>
         </div>
       </motion.div>
-    </div>
+    </motion.div>
   );
 }
 
 /** A chip that says what was understood; tapping it opens its choices (a native picker over the chip, so phones show their own). */
-function Chip({ label, value, warn, title, children }: { label: string; value: string; warn?: boolean; title?: string; children?: React.ReactNode }) {
-  return <span className={`v2-new-chip ${warn ? 'warn' : ''} ${children ? 'tap' : ''}`} title={title}>{label} <b>{value}</b>{children}</span>;
+function Chip({ label, value, warn, glyph, color, avatar, tone, children }: { label: string; value: string; warn?: boolean; glyph?: string; color?: string; avatar?: string; tone?: 'critical'; children?: React.ReactNode }) {
+  return (
+    <span className={`v2-new-chip ${warn ? 'warn' : ''} ${children ? 'tap' : ''} ${tone ?? ''}`}>
+      {avatar ? <span className="v2-new-chip-av" aria-hidden="true">{avatar}</span> : glyph ? <i aria-hidden="true" style={{ background: color }}>{glyph}</i> : null}
+      <span className="sr-only">{label} </span><b>{value}</b>{children}
+    </span>
+  );
 }

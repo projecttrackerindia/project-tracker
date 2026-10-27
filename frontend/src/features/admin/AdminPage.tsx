@@ -387,6 +387,7 @@ function MembershipChips({ user }: { user: AdminUser }) {
 function UserDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
   const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx!.user.id);
+  const platformAdmin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
   const q = useWsQuery(['admin', 'user', id], () => adminApi.user(id));
   const refresh = () => invalidateWorkspace(wid, 'admin');
   const act = async (fn: () => Promise<unknown>, ok: string) => {
@@ -405,6 +406,13 @@ function UserDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
           if (await confirmDialog({ title: 'Sign out everywhere?', confirmText: 'Sign out', message: `${u.displayName} will be signed out of ${activeSessions} active session${activeSessions === 1 ? '' : 's'}. They can sign in again.` }))
             await act(() => adminApi.signOutUser(u.id), 'User signed out.');
         }}><Icon name="logout" /> Sign out everywhere</button>
+        {platformAdmin && u.mfaEnabled && (
+          <button className="btn btn-ghost" onClick={async () => {
+            if (await confirmDialog({ title: 'Reset two-step verification?', confirmText: 'Reset two-step', danger: true,
+              message: `${u.displayName} will be signed out everywhere and can sign in with their password alone, then set up two-step again. Do this only after confirming who they are. It is recorded in the audit log.` }))
+              await act(() => adminApi.resetMfa(u.id), 'Two-step verification reset.');
+          }}><Icon name="shield" /> Reset two-step</button>
+        )}
         <button className="btn btn-ghost" onClick={() => act(() => adminApi.setPlatformAdmin(u.id, !u.isPlatformAdmin), 'Updated.')}>{u.isPlatformAdmin ? 'Revoke platform admin' : 'Make platform admin'}</button>
         <button className={`btn ${u.isActive ? 'btn-danger' : 'btn-primary'}`} onClick={async () => {
           if (u.isActive && !(await confirmDialog({ title: 'Disable account?', confirmText: 'Disable', message: `${u.displayName} will be signed out and unable to sign in until re-enabled.` }))) return;

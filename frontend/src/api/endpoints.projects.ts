@@ -151,6 +151,8 @@ export const adminApi = {
   users: (q?: string, page = 1) => get<Paged<AdminUser>>('/admin/users', { q, page, pageSize: 20 }),
   user: (id: string) => get<AdminUserDetail>(`/admin/users/${id}`),
   signOutUser: (id: string) => post(`/admin/users/${id}/sign-out`),
+  /** Switches someone's two-step verification off and signs them out (audited). 409 when they do not use it. */
+  resetMfa: (id: string) => post(`/admin/users/${id}/mfa-reset`),
   setUserStatus: (id: string, isActive: boolean) => put(`/admin/users/${id}/status`, { isActive }),
   setPlatformAdmin: (id: string, isPlatformAdmin: boolean) => put(`/admin/users/${id}/platform-admin`, { isPlatformAdmin }),
   plans: () => get<AdminPlan[]>('/admin/plans'),
