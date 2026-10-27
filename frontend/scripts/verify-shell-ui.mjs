@@ -85,7 +85,7 @@ try {
   await page.goto(`${origin}/preview-org/`); await page.locator('.v2-rail').waitFor();
   // The 236px sidebar: Today, then Work / Plan / Together sections (only places this person may open).
   { const labels = await page.locator('.v2-rail-item .v2-rail-label').allTextContents();
-    for (const l of ['Today', 'My Work', 'Talk', 'Library', 'Insights']) assert.ok(labels.includes(l), `sidebar has ${l}: ${labels}`);
+    for (const l of ['Today', 'My Work', 'Messages', 'Library', 'Insights']) assert.ok(labels.includes(l), `sidebar has ${l}: ${labels}`);
     assert.equal(labels[0], 'Today'); }
   await page.waitForTimeout(500); if (!(await page.locator('.v2-rail').count())) { await page.getByText('Details').click().catch(()=>{}); console.log('ERRORS', errors, await page.locator('body').innerText()); await shot(page, 'fail.png'); }
   assert.equal(Math.round((await page.locator('.v2-rail').boundingBox()).width), 236);
@@ -113,7 +113,7 @@ try {
   const moved = [
     ['/projects/' + project.id + '?task=7#c-1', '/work?item=7#c-1'], ['/projects/' + project.id + '?tab=issues&issue=8', '/work?item=8'], ['/projects/' + project.id + '?tab=board', `/work/projects/${project.id}?tab=board`],
     ['/operations?task=12', '/work?tab=tickets&item=12'], ['/operations?project=p1', '/work?project=p1&tab=tickets&view=queue'], ['/tasks/7', '/work?item=7'], ['/my-work', '/work'],
-    ['/chat', '/talk?f=chat'], ['/mailbox', '/mail'], ['/talk?f=mail', '/mail'], ['/settings/mail', '/settings/integrations/mail'], ['/meet/past', '/talk?f=meetings&s=past'], ['/calendar', '/?tab=calendar'], ['/reminders', '/?tab=reminders'],
+    ['/chat', '/messages?f=chat'], ['/mailbox', '/mail'], ['/talk?f=mail', '/mail'], ['/settings/mail', '/settings/integrations/mail'], ['/meet/past', '/messages?f=meetings&s=past'], ['/talk?f=meetings&s=past#x', '/messages?f=meetings&s=past#x'], ['/talk/c-9?f=chat&q=hi', '/messages/c-9?f=chat&q=hi'], ['/calendar', '/?tab=calendar'], ['/reminders', '/?tab=reminders'],
     ['/agents', '/'], ['/project-agent/assigned', '/?tab=given'], ['/ai/operations', '/insights?tab=workflows'], ['/agent-tracker', '/settings/ai/tracker'],
     ['/doctracker?p=1&t=documents', '/library/docs?p=1&t=documents'], ['/vault', '/library/vault'], ['/timesheet/approvals', '/insights?tab=time&s=approvals'],
     ['/workload', '/insights'], ['/reports', '/insights?tab=reports'], ['/portfolio', '/work/projects?view=portfolio'], ['/account/security#s-account.twoStep', '/settings/security/account#s-account.twoStep'], ['/settings/profile/security', '/settings/security/account'],
@@ -184,7 +184,7 @@ try {
 
   // Phone: the five places and + New at the bottom, nothing cut off.
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto(`${origin}/preview-org/work`); await page.locator('.v2-phone-bar').waitFor(); await page.waitForTimeout(500);
-  assert.deepEqual(await page.locator('.v2-phone-tab span').allTextContents(), ['Home', 'Work', 'Talk', 'Library', 'Insights']);
+  assert.deepEqual(await page.locator('.v2-phone-tab span').allTextContents(), ['Home', 'Work', 'Messages', 'Library', 'Insights']);
   assert.equal(await page.locator('.v2-phone-new').count(), 1);
   await fitsPhone(page, 'work', assert); await shot(page, 'phone-390.png'); checks.push('phone-bar');
 

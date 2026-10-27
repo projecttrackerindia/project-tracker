@@ -1,3 +1,4 @@
+import { takeVaultHandoff } from './vaultHandoff';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { projectApi, teamApi, workspaceApi } from '../../api/endpoints';
@@ -214,7 +215,12 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
     : existing
     ? withTemplate(existing.item.kind, existing.fields.map((f) => ({ key: f.key, label: f.label, type: f.type, secret: f.secret, value: f.secret ? '' : f.value ?? '', existing: f.secret, custom: !TEMPLATES[existing.item.kind].some((t) => t.key === f.key) })))
     : TEMPLATES[k].map((t) => ({ ...t, value: '', existing: false, custom: false }));
-  const [rows, setRows] = useState<Row[]>(() => initialRows(kind));
+  // A payload handed over from Messages ("Send to Vault instead") pre-fills a new note, in memory only.
+  const [handoff] = useState(() => (existing || sealedEdit ? null : takeVaultHandoff()));
+  const [rows, setRows] = useState<Row[]>(() => handoff
+    ? [...initialRows(kind), { key: 'payload', label: 'Payload', type: 'text' as FieldType, secret: true, value: handoff.text, existing: false, custom: true }]
+    : initialRows(kind));
+  useEffect(() => { if (handoff) { setTitle((t) => t || handoff.title); } }, [handoff]);
   const [adding, setAdding] = useState<{ label: string; type: FieldType } | null>(null);
   const target = sealedEdit?.collection ?? collections.find((c) => c.id === collectionId);
   const changedSecret = sp ? rows.some((r) => r.secret && r.value !== (sp.fields.find((f) => f.key === r.key)?.value ?? '')) : rows.some((r) => r.secret && r.value !== (r.orig ?? ''));

@@ -58,7 +58,7 @@ export const useCopilot = create<{ open: boolean; about: string | null; show: (a
 }));
 
 const PLACE: [RegExp, string][] = [
-  [/^\/work\/projects\/?$/, 'Projects'], [/^\/work/, 'Work'], [/^\/talk/, 'Talk'], [/^\/library\/vault/, 'the Vault'], [/^\/library/, 'Library'],
+  [/^\/work\/projects\/?$/, 'Projects'], [/^\/work/, 'Work'], [/^\/messages/, 'Messages'], [/^\/library\/vault/, 'the Vault'], [/^\/library/, 'Library'],
   [/^\/insights/, 'Insights'], [/^\/people/, 'People'], [/^\/settings/, 'Settings'], [/^\/$/, 'Home'],
 ];
 const TAB: Record<string, string> = { tickets: 'Tickets', team: 'Team', calendar: 'Calendar', time: 'Time', reports: 'Reports', portfolio: 'Portfolio', mail: 'Mail', meetings: 'Meetings', chat: 'Chat' };

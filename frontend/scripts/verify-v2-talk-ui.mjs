@@ -96,9 +96,12 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${origin}/preview-org/talk`);
   await page.locator('.talk-list').waitFor();
+  assert.ok(new URL(page.url()).pathname.endsWith('/preview-org/messages'), `the old /talk address lands on /messages: ${page.url()}`);
+  assert.equal(await page.locator('.talk-shell h1.sr-only').innerText(), 'Messages');
+  checks.push('talk-renamed-messages');
   await page.locator('.talk-row[data-row="Daily status call"]').waitFor();
   assert.deepEqual(await page.locator('.talk-filters .talk-chip').allInnerTexts(), ['All', 'Unread 1', 'Chats', 'Meetings']);
-  assert.ok(await page.getByRole('textbox', { name: 'Search Talk' }).isVisible(), 'search at the top of the list');
+  assert.ok(await page.getByRole('textbox', { name: 'Search Messages' }).isVisible(), 'search at the top of the list');
   assert.equal(await page.locator('.talk-row .talk-src').count(), await page.locator('.talk-row').count(), 'a source glyph on every row');
   assert.equal(await page.locator('.talk-row[data-row="MuleSoft Support"] .talk-dot').count(), 1, 'an unread dot');
   // the meeting is a rounded square, people are round
@@ -128,7 +131,7 @@ try {
 
   // A chat: the v2 header, the summary strip, the composer.
   await page.locator('.talk-row[data-row="Devraj Kumar"]').click();
-  await page.waitForFunction((id) => location.pathname.endsWith(`/talk/${id}`), direct.id);
+  await page.waitForFunction((id) => location.pathname.endsWith(`/messages/${id}`), direct.id);
   await page.locator('.talk-head').waitFor();
   assert.ok(await page.locator('.talk-head').getByRole('button', { name: 'Call' }).isVisible(), 'Call in the thread header');
   assert.ok(await page.getByRole('button', { name: 'Conversation actions' }).isVisible(), 'ⓘ (details and more) in the thread header');
@@ -154,7 +157,7 @@ try {
   const b = await theirs.locator('.bubble').boundingBox(), a = await acts.boundingBox();
   assert.ok(a.x >= b.x + b.width, `actions sit to the right of their bubble (${a.x} vs ${b.x + b.width})`);
   await acts.getByRole('button', { name: 'More actions' }).click();
-  const menu = theirs.getByRole('menu', { name: 'More actions' });
+  const menu = page.getByRole('menu', { name: 'More actions' });   // the menu floats in a portal, outside the row
   for (const name of ['Save for later', 'Copy text', 'Pin to the conversation']) assert.ok(await menu.getByRole('menuitem', { name }).isVisible(), name);
   assert.equal(await menu.getByRole('menuitem', { name: /React/ }).count(), 6, 'reactions live under ···');
   await shot(page, 'thread-1440-light.png');
@@ -164,7 +167,7 @@ try {
   const b2 = await mine.locator('.bubble').boundingBox(), a2 = await mine.locator('.msg-actions').boundingBox();
   assert.ok(a2.x + a2.width <= b2.x, 'my message: actions sit to the left of the bubble');
   await mine.getByRole('button', { name: 'More actions' }).click();
-  assert.ok(await mine.getByRole('menuitem', { name: 'Delete' }).isVisible(), 'delete is under ··· for my own message');
+  assert.ok(await page.getByRole('menu', { name: 'More actions' }).getByRole('menuitem', { name: 'Delete' }).isVisible(), 'delete is under ··· for my own message');
   await page.mouse.click(5, 5);
   checks.push('actions-beside-bubble');
 
@@ -178,10 +181,58 @@ try {
   assert.deepEqual(errors, []);
   await ctx.close();
 
+  // ---- the last message is a long JSON payload: it renders as a folded code block, its hover actions sit on the bubble's top edge
+  // inside the visible list, and its ··· menu opens upward, fully inside the window and above the composer.
+  const payload = { serviceCode: 'CAS10001', monitoringDate: '08102020', addresses: Array.from({ length: 6 }, (_, i) => ({ index: `A0${i}`, line1: 'KONGU VIBROSTREET TNAGAR', line2: '', stateCode: '33', pinCode: '600054', addressCategory: '01', residenceCode: '01' })), enquiryAccounts: [{ index: 'I01', accountNumber: '' }] };
+  messages.push(M(4, true, JSON.stringify(payload, null, 4), 1));
+  ctx = await make(); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 1173, height: 564 });
+  await page.goto(`${origin}/preview-org/messages/${direct.id}`);
+  const last = page.locator(`[data-msg="${messages[3].id}"]`);
+  await last.locator('.msg-code').waitFor();
+  const code = await last.locator('.msg-code').evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, font: getComputedStyle(e.querySelector('pre')).fontFamily, h: e.querySelector('.msg-code-body').getBoundingClientRect().height }));
+  assert.match(code.font, /mono|Menlo|Consolas/i, 'code is monospace');
+  assert.notEqual(code.bg, await last.locator('.bubble').evaluate((e) => getComputedStyle(e).backgroundColor), 'code sits on a neutral ground, not the green bubble');
+  assert.ok(code.h <= 330, `long code folds (${code.h})`);
+  assert.ok(await last.getByRole('button', { name: /Show more/ }).isVisible(), 'Show more');
+  assert.ok(await last.getByRole('button', { name: 'Copy code' }).isVisible(), 'Copy');
+  const col = await last.locator('.msg-col').boundingBox(), pane = await page.locator('.chat-messages').boundingBox();
+  assert.ok(col.width <= pane.width * 0.66, `bubble stays within ~64% (${col.width} of ${pane.width})`);
+  await last.getByRole('button', { name: /Show more/ }).click();
+  await page.locator('.chat-messages').evaluate((e) => { e.scrollTop = e.scrollHeight; });
+  await page.mouse.move(5, 5); await last.locator('.bubble').hover({ position: { x: 40, y: 20 } });
+  const list = await page.locator('.chat-messages').boundingBox(), composer = await page.locator('.composer-row').boundingBox();
+  const lb = await last.locator('.bubble').boundingBox(), la = await last.locator('.msg-actions').boundingBox();
+  // Beside the bubble's top edge on its outer side; in a pane too narrow for that, just above the bubble, or tucked inside its visible top.
+  const mode = await last.locator('.msg-actions').evaluate((e) => (e.classList.contains('inside') ? 'inside' : e.classList.contains('above') ? 'above' : 'beside'));
+  if (mode === 'beside') assert.ok(la.x + la.width <= lb.x, 'actions on the outer (left) side of my bubble');
+  else assert.ok(la.x >= lb.x - 1 && la.x + la.width <= lb.x + lb.width + 1, `actions over my bubble's width (${mode})`);
+  if (mode === 'above') assert.ok(Math.abs(la.y + la.height + 4 - lb.y) <= 2, 'actions sit right above the bubble top');
+  else assert.ok(la.y >= Math.max(lb.y, list.y) - 1 && la.y + la.height <= Math.min(lb.y + lb.height, list.y + list.height) + 1, `actions inside the visible part of the bubble (${la.y} in ${lb.y}..${lb.y + lb.height})`);
+  assert.ok(la.y >= list.y - 1 && la.x >= list.x - 1 && la.x + la.width <= list.x + list.width + 1, 'actions not clipped by the pane');
+  assert.ok(la.y + la.height <= composer.y, 'actions above the composer');
+  await last.getByRole('button', { name: 'More actions' }).click();
+  const pop = page.getByRole('menu', { name: 'More actions' });
+  await pop.waitFor();
+  const mb = await pop.boundingBox(), vp = page.viewportSize();
+  assert.ok(mb.x >= 0 && mb.y >= 0 && mb.x + mb.width <= vp.width && mb.y + mb.height <= vp.height, `menu inside the window (${JSON.stringify(mb)})`);
+  assert.ok(mb.y + mb.height <= composer.y, `menu above the composer (${mb.y + mb.height} vs ${composer.y})`);
+  await pop.getByRole('menuitem').first().waitFor();
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('role')), 'menuitem', 'arrow keys move into the menu');
+  await shot(page, 'talk-menu-fixed.png');
+  await page.keyboard.press('Escape');
+  await pop.waitFor({ state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'More actions', 'focus returns to ···');
+  messages.pop();
+  checks.push('menu-fits-above-composer');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+
   // ---- 1440, dark
   ctx = await make('dark'); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`${origin}/preview-org/talk/${direct.id}`);
+  await page.goto(`${origin}/preview-org/messages/${direct.id}`);
   await page.locator('.talk-head').waitFor();
   const bg = await page.locator('.talk-list').evaluate((e) => getComputedStyle(e).backgroundColor);
   assert.notEqual(bg, 'rgb(255, 255, 255)', 'the list card follows the dark theme');
@@ -193,7 +244,7 @@ try {
   for (const theme of ['light', 'dark']) {
     ctx = await make(theme, { hasTouch: true, isMobile: true }); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`${origin}/preview-org/talk`);
+    await page.goto(`${origin}/preview-org/messages`);
     await page.locator('.talk-row[data-row="Devraj Kumar"]').waitFor();
     assert.equal(await page.locator('.talk-pane').isVisible(), false, 'the phone shows the list first');
     await fitsPhone(page, `talk list ${theme}`, assert);

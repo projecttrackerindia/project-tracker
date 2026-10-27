@@ -14,7 +14,7 @@
 html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-pill); font-size: 15px; font-weight: 500; gap: 6px; }
 .pp-actions .v2-dots-btn { width: 44px; height: 44px; background: var(--ds-surface); color: var(--ds-text-2); box-shadow: var(--ds-e2), 0 0 0 1px var(--ds-line); border: 0; cursor: pointer; }
 .pp-actions .v2-dots-btn:hover, .pp-actions .v2-dots-btn[aria-expanded='true'] { background: var(--ds-surface); color: var(--ds-text); box-shadow: var(--ds-hover-lift); }
-.pp-actions .v2-dots-list { min-width: 280px; }
+.v2-dots-list.wide { min-width: 280px; }
 .pp-tabs { display: flex; margin-bottom: 22px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .pp-tabs::-webkit-scrollbar { display: none; }
 .pp > .form-warn { margin-bottom: 18px; }
