@@ -411,7 +411,7 @@ try {
     // ---------------------------------------------------------------- + New: a ticket from words, with chips, opened in the panel
     await page.goto(`${origin}/preview-org/work`);
     await list.locator('.mw-r').first().waitFor();
-    await page.evaluate(() => document.querySelector(window.innerWidth < 769 ? '.v2-phone-new' : '.v2-new')?.click());
+    await page.evaluate(() => document.querySelector(window.innerWidth < 769 ? '.m-new' : '.v2-new')?.click());
     const sheet = page.getByRole('dialog', { name: 'New' });
     await sheet.getByLabel('What to create').fill('VPN down for collections team, critical, give to Ravi');
     await sheet.locator('.v2-understood-label', { hasText: /Understood as\s*a ticket/ }).waitFor();
