@@ -628,6 +628,13 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
             ["POST documents/{id:guid}/api/endpoints"] = async () => { var r = await owner.Post($"/api/v1/documents/{doc}/api/endpoints", new { definitionId = apiDef, method = "GET", path = "/audit", summary = "Audited", deprecated = false, details = new { } }); apiEndpoint = Guid.Parse(S(r.Data!["item"]!["id"])); return r; },
             ["PUT documents/{id:guid}/api/endpoints/{endpointId:guid}"] = () => owner.Put($"/api/v1/documents/{doc}/api/endpoints/{apiEndpoint}", new { definitionId = apiDef, method = "GET", path = "/audit", summary = "Audited again", deprecated = true, details = new { } }),
             ["POST documents/{id:guid}/api/import"] = () => owner.Post($"/api/v1/documents/{doc}/api/import", new { content = "{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"Imp\",\"version\":\"1\"},\"paths\":{\"/imp\":{\"get\":{\"responses\":{\"200\":{\"description\":\"ok\"}}}}}}", fileName = "imp.json", mode = "merge", dryRun = false }),
+            ["POST documents/{id:guid}/api/endpoints/{endpointId:guid}/live-check"] = async () =>
+            {
+                // A sample success response first (the check compares against it), then a pasted live response.
+                Assert.True((await owner.Put($"/api/v1/documents/{doc}/api/endpoints/{apiEndpoint}", new { definitionId = apiDef, method = "GET", path = "/audit", summary = "Audited again", deprecated = true,
+                    details = new { responses = new[] { new { status = "200", description = "ok", contentType = "application/json", example = "{\"id\":1,\"name\":\"a\"}" } } } })).Ok);
+                return await owner.Post($"/api/v1/documents/{doc}/api/endpoints/{apiEndpoint}/live-check", new { liveBody = "{\"id\":1}" });
+            },
             ["POST documents/{id:guid}/api/endpoints/{endpointId:guid}/reveal"] = () => owner.Post($"/api/v1/documents/{doc}/api/endpoints/{apiEndpoint}/reveal", new { purpose = "read", reason = "Audit check" }),
             ["DELETE documents/{id:guid}/api/endpoints/{endpointId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/api/endpoints/{apiEndpoint}"),
             ["DELETE documents/{id:guid}/api/definitions/{definitionId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/api/definitions/{apiDef}"),

@@ -171,7 +171,9 @@ public class DeskReplies(IAppDbContext db, ICurrentContext ctx, PermissionServic
         var chatName = await db.SupportConversations.AsNoTracking().Where(c => c.WorkTaskId == t.Id).Select(c => c.ContactName).FirstOrDefaultAsync(ct);
         var reporter = await db.Users.AsNoTracking().Where(u => u.Id == t.ReporterId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct);
         var agent = ctx.UserId is { } me ? await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) : null;
-        var values = Values(t, chatName ?? reporter, agent, clock.Now);
+        // The customer's own words: what raised the ticket and the first comments on it (account numbers are often there, not in the title).
+        var said = string.Join("\n", await db.WorkTaskComments.AsNoTracking().Where(c => c.WorkTaskId == t.Id).OrderBy(c => c.CreatedAt).Select(c => c.Body).Take(10).ToListAsync(ct));
+        var values = Values(t, chatName ?? reporter, agent, clock.Now, said);
         var missing = new List<string>();
         var filled = Slot.Replace(template, m =>
         {
@@ -184,11 +186,11 @@ public class DeskReplies(IAppDbContext db, ICurrentContext ctx, PermissionServic
     }
 
     /// <summary>What a ticket can fill in by itself. The ETA is the resolution target, else the due date (null when there is neither).</summary>
-    public static Dictionary<string, string?> Values(WorkTask t, string? customer, string? agent, DateTime now)
+    public static Dictionary<string, string?> Values(WorkTask t, string? customer, string? agent, DateTime now, string? more = null)
     {
         var eta = t.ResolutionDueAt is { } due && due > now ? due.ToString("d MMM, HH:mm", CultureInfo.InvariantCulture) + " UTC"
             : t.DueDate is { } d ? d.ToString("d MMM", CultureInfo.InvariantCulture) : null;
-        var acct = Account.Match(t.Description ?? "");
+        var acct = Account.Match($"{t.Title}\n{t.Description}\n{more}");
         return new Dictionary<string, string?>
         {
             ["name"] = First(customer) ?? "there",

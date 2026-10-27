@@ -405,6 +405,10 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         var vapid = S(sub.Data!["publicKey"]);
         Assert.Equal(65, B64(vapid).Length);
 
+        // No quiet hours, so the push goes out now whatever time the tests run (the default 21:00–08:00 would hold it back).
+        var quiet = (await o.Dev.Get("/api/v1/reminders/settings")).Data!.AsObject();
+        quiet["quietStart"] = null; quiet["quietEnd"] = null;
+        Assert.True((await o.Dev.Put("/api/v1/reminders/settings", quiet)).Ok);
         // Dev wants "task assigned" on their devices.
         Assert.True((await o.Dev.Put("/api/v1/me/notification-preferences", new { items = new[] { new { type = "TaskAssigned", inApp = true, email = false, browser = true } } })).Ok);
         await o.Owner.CreateTaskAsync(o.Project, "Prepare the demo", new { title = "Prepare the demo", priority = "High", assigneeId = o.Dev.UserId });

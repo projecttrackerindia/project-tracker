@@ -295,3 +295,12 @@ html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
 @keyframes fl-up { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes fl-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .floating.floating-sheet, .floating-scrim { animation: none; } }
+
+/* Phones: small controls keep their look but get a 44×44 tap area (Apple HIG / Material minimum), centred on the control. */
+@media (max-width: 599px) {
+  :where(.ds-seg button, .ds-chip, .pv-chip, .mw-pill, .mw-chk, .v2-dots-btn, .wp-nav, .wp-today, .wp-sw, .link-btn, .btn-sm, .dq-btn, .dq-kbd, .dq-sr-btn, .pv-select-btn, .ins-card-title) { position: relative; }
+  :is(.ds-seg button, .ds-chip, .pv-chip, .mw-pill, .mw-chk, .v2-dots-btn, .wp-nav, .wp-today, .wp-sw, .link-btn, .btn-sm, .dq-btn, .dq-kbd, .dq-sr-btn, .pv-select-btn, .ins-card-title)::before {
+    content: ''; position: absolute; left: 50%; top: 50%; width: 100%; height: max(100%, 44px); transform: translate(-50%, -50%); }
+  /* Icon-sized ones also grow sideways (they sit away from the screen edge). */
+  :is(.mw-chk, .wp-nav)::before { width: 44px; }
+}
