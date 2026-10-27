@@ -216,3 +216,7 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 .ph-field textarea, .ph-field input { padding: 8px 10px; border: 0; border-radius: 9px; background: var(--ds-fill); color: var(--ds-text); font: inherit; font-size: 14px; }
 .ph-hint { margin: 0; font-size: 12.5px; color: var(--ds-text-2); line-height: 1.45; }
 @media (prefers-reduced-motion: reduce) { .ph-banner { animation: none; } }
+.wr-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.wr-chip { padding: 6px 12px; border-radius: 14px; background: var(--ds-fill); font-size: 13px; color: var(--ds-text-2); } .wr-chip b { color: var(--ds-text); margin-right: 3px; }
+.wr-chip.ok { background: rgba(40, 205, 65, .12); } .wr-chip.warn { background: rgba(255, 159, 10, .14); } .wr-chip.bad { background: rgba(255, 59, 48, .1); }
+.wr-text { width: 100%; box-sizing: border-box; padding: 14px; border: 0; border-radius: 12px; background: var(--ds-fill); color: var(--ds-text); font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }

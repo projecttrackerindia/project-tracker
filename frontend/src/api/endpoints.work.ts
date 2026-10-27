@@ -44,6 +44,8 @@ export const actionItemApi = {
 export const statusApi = {
   groups: (teamId?: string | null) => get<StatusGroup[]>('/project-status/groups', { teamId: teamId ?? undefined }),
   report: (projectId: string) => get<ProjectStatusReport>(`/project-status/projects/${projectId}`),
+  weekly: (projectId: string) => get<{ projectId: string; projectName: string; from: string; to: string; health: string; text: string; moved: number; slipped: number; risks: number; next: number; canSend: boolean }>(`/project-status/projects/${projectId}/weekly`),
+  sendWeekly: (projectId: string, text: string) => post<{ sent: boolean }>(`/project-status/projects/${projectId}/weekly/send`, { text }),
 };
 
 /** Issues found in a project's stages (Observed / Failed → In progress → Fixed → Resolved). */

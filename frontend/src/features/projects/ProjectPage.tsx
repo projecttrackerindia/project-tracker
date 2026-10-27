@@ -30,6 +30,7 @@ import { ProjectSettingsModal, type ProjectSettingsTab } from './ProjectSettings
 import { ActivityTab } from './ProjectTabs';
 import { dayMonth, errText, Initials, isFinished, passGradient, passStatus } from './projectParts';
 import { HealthBanner, HealthSheet } from './ProjectHealth';
+import { WeeklyReport } from './WeeklyReport';
 import { StageScheduleStudio } from './StageScheduleStudio';
 import { Timeline } from './Timeline';
 import '../agent/agent.css';
@@ -91,6 +92,7 @@ export function ProjectPage() {
   const rawTab = params.get('tab') ?? 'overview';
   const [editing, setEditing] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
+  const [weekly, setWeekly] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [importing, setImporting] = useState(false);
   const [risk, setRisk] = useState(false);
@@ -171,6 +173,7 @@ export function ProjectPage() {
             { label: canEdit ? 'Settings' : 'Members', icon: canEdit ? 'settings' : 'users', hint: canEdit ? 'Members, task workflow and automation' : 'Who is on this project', onSelect: () => setSettings('members') },
             { label: 'Delay risk', icon: 'sparkle', hint: 'How likely it is to be late, and why', hidden: !ai, onSelect: () => setRisk(true) },
             { label: 'What if…', icon: 'target', hint: 'When it finishes if work slips, people join or scope is cut', hidden: isFinished(p), onSelect: () => setWhatIf(true) },
+            { label: 'Weekly report', icon: 'note', hint: 'What moved, what slipped, risks, next week', onSelect: () => setWeekly(true) },
             { label: 'Set status…', icon: 'flag', hint: 'On track, at risk or late — with why', hidden: !canEdit || isFinished(p), onSelect: () => setHealthOpen(true) },
             { label: 'Edit details', icon: 'edit', hidden: !canEdit, onSelect: () => setEditing(true) },
             { label: 'Schedule studio', icon: 'calendar', hint: 'Stage lengths and the project end', hidden: !(p.deliveryMethod === 'Agile' && canEdit && !archived), onSelect: () => setScheduling(true) },
@@ -183,6 +186,7 @@ export function ProjectPage() {
       </header>
 
       <HealthBanner projectId={p.id} canEdit={canEdit && !archived} onEdit={() => setHealthOpen(true)} />
+      {weekly && <WeeklyReport projectId={p.id} onClose={() => setWeekly(false)} />}
       {healthOpen && <HealthSheet projectId={p.id} projectName={p.name} onClose={() => setHealthOpen(false)} />}
       <Journey detail={detail} signOff={signOff} still={!!still} canSign={canEdit && !archived} meId={me} plan={plan} onPlan={setPlan} />
       {plan && p.deliveryMethod !== 'Agile' && (

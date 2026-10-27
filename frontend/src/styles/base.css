@@ -283,3 +283,15 @@ html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
 .floating { z-index: 1400; outline: none; }
 .floating.floating > * { position: static; margin: 0; max-height: inherit; overflow-y: auto; }
 .floating:focus-visible { outline: none; }
+
+/* Phones: menus open as bottom sheets — full width, a grab handle, the safe area respected, a dimmed page behind. */
+.floating-scrim { position: fixed; inset: 0; z-index: 999; background: rgba(0, 0, 0, .28); animation: fl-fade .2s ease-out both; }
+.floating.floating-sheet { z-index: 1000; width: auto !important; max-width: none !important; max-height: 72vh; overflow-y: auto; overscroll-behavior: contain;
+  border-radius: 20px 20px 0 0 !important; padding: 6px 10px calc(12px + env(safe-area-inset-bottom)) !important; background: var(--ds-surface, #fff);
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, .2); animation: fl-up .32s cubic-bezier(.32, .72, 0, 1) both; }
+.floating-sheet > :not(.floating-grab) { width: auto !important; position: static !important; box-shadow: none !important; border: 0 !important; }
+.floating-sheet [role='menuitem'], .floating-sheet button { min-height: 44px; }
+.floating-grab { display: block; width: 36px; height: 5px; border-radius: 3px; margin: 4px auto 8px; background: var(--ds-fill-strong, rgba(0, 0, 0, .2)); }
+@keyframes fl-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes fl-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .floating.floating-sheet, .floating-scrim { animation: none; } }

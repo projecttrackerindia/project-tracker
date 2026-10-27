@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react';
 import { prefetchPages } from '../lib/prefetchPages';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
+import { openNew } from '../components/v2/state';
 import { notificationApi } from '../api/endpoints';
 import { PageLoader, ToastRoot, ConfirmRoot } from '../components/ui';
 import { useAuth } from '../stores/auth';
@@ -116,6 +117,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
     <div ref={shell} className={`app-shell v2-shell ${phone ? 'm-shell' : ''} ${phone && conversation ? 'm-conversation' : ''}`}>
       <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); main.current?.focus(); }}>Skip to content</a>
       <LensSync />
+      <ShortcutNew />
       {phone ? (
         <div className="main m-main">
           <PlatformBanner />
@@ -156,4 +158,16 @@ export function AppLayout({ children }: { children?: ReactNode }) {
     </div>
     </MotionConfig>
   );
+}
+
+/** Home-screen shortcuts (long-press the app icon on iPhone or Android): /?new=task opens + New on that kind, once. */
+function ShortcutNew() {
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const kind = params.get('new');
+    if (!kind || !['task', 'ticket', 'bug', 'meeting', 'reminder', 'time', 'doc'].includes(kind)) return;
+    openNew(kind as Parameters<typeof openNew>[0]);
+    setParams((p) => { const n = new URLSearchParams(p); n.delete('new'); return n; }, { replace: true });
+  }, [params, setParams]);
+  return null;
 }
