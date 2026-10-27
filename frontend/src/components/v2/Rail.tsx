@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { chatApi, notificationApi } from '../../api/endpoints';
+import { chatApi } from '../../api/endpoints';
 import { Icon } from '../Icon';
 import { BrandMark } from '../BrandMark';
 import { useAvatarUrl } from '../ui';
-import { TeamLensPicker } from '../TeamLensPicker';
-import { ThemeSwitch } from '../ThemeSwitch';
 import { initials } from '../../lib/format';
 import { haptic } from '../../lib/mobile';
 import { setTitleParts } from '../../lib/title';
+import { useWsQuery } from '../../lib/hooks';
+import { inboxApi } from '../../features/home/inboxApi';
 import { useAuth, useIsPersonal } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { chatKeys } from '../../features/chat/chatStore';
@@ -31,11 +31,12 @@ function useTalkUnread() {
   return canChat ? n : 0;
 }
 
-function useNotificationsUnread() {
-  const wid = useAuth((s) => s.ctx?.current?.id);
+/** Open inbox rows (the badge on Home): the same query Home's inbox uses, so the two agree. Red when any row is urgent. */
+function useInboxOpen() {
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
-  const q = useQuery({ queryKey: [wid, 'notifications', 'unread'], queryFn: notificationApi.unread, refetchInterval: 60_000, enabled: !!wid && !admin });
-  return q.data?.count ?? 0;
+  const q = useWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { enabled: !admin, refetchInterval: 90_000, staleTime: 30_000 });
+  const rows = q.data?.rows ?? [];
+  return { count: q.data?.counts?.all ?? rows.length, urgent: rows.some((r) => r.urgent) };
 }
 
 const isOn = (i: NavDef, path: string) => (i.match ? i.match(path) : i.end ? path === i.to : path === i.to || path.startsWith(`${i.to}/`));
@@ -44,12 +45,14 @@ const isOn = (i: NavDef, path: string) => (i.match ? i.match(path) : i.end ? pat
 function usePlaces() {
   const groups = useMainNav();
   const talk = useTalkUnread();
-  return groups.flatMap((g) => g.items).filter(inRail).map((i) => (i.id === 'talk' ? { ...i, badge: talk } : i));
+  const inbox = useInboxOpen();
+  return groups.flatMap((g) => g.items).filter(inRail)
+    .map((i) => (i.id === 'talk' ? { ...i, badge: talk } : i.id === 'home' ? { ...i, badge: inbox.count, calm: !inbox.urgent } : i)) as (NavDef & { calm?: boolean })[];
 }
 
 /**
  * The v2 left rail (84px): the logo, + New, the five places with the icon above a short label, and the avatar at the bottom whose menu holds
- * Profile, Settings, People, the theme, the workspace and Sign out. Fixed: no customising, the same for everyone who may use each place.
+ * Profile, Workspaces, Settings, People, Help and Sign out. Fixed: no customising, the same for everyone who may use each place.
  */
 export function Rail() {
   const { pathname } = useLocation();
@@ -65,7 +68,7 @@ export function Rail() {
           <NavLink key={i.id ?? i.to} to={i.to} end={i.end} className={() => `v2-rail-item ${isOn(i, pathname) ? 'on' : ''}`} aria-current={isOn(i, pathname) ? 'page' : undefined} title={i.hint ?? i.label}>
             <Icon name={i.icon} size={20} />
             <span>{i.label}</span>
-            {!!i.badge && <em className="v2-badge" aria-label={`${i.badge} unread`}>{i.badge > 99 ? '99+' : i.badge}</em>}
+            {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} aria-label={i.id === 'home' ? `${i.badge} waiting on you` : `${i.badge} unread`}>{i.badge > 99 ? '99+' : i.badge}</em>}
           </NavLink>
         ))}
       </nav>
@@ -84,8 +87,8 @@ export function AvatarMenu() {
   const switchWorkspace = useAuth((s) => s.switchWorkspace);
   const personal = useIsPersonal();
   const nav = useNavigate();
-  const unread = useNotificationsUnread();
   const [open, setOpen] = useState(false);
+  const [wsOpen, setWsOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -122,7 +125,6 @@ export function AvatarMenu() {
       <button type="button" ref={trigger} className="v2-avatar" aria-haspopup="menu" aria-expanded={open} aria-label={`Account: ${user.displayName}`}
         title={user.displayName} onClick={() => setOpen((o) => !o)}>
         {photo ? <img src={photo} alt="" /> : initials(user.displayName)}
-        {unread > 0 && <em className="v2-badge" aria-hidden="true">{unread > 9 ? '9+' : unread}</em>}
       </button>
       {open && (
         <div className="v2-menu" role="menu" aria-label="Account" ref={menu} onKeyDown={onKey}>
@@ -131,26 +133,21 @@ export function AvatarMenu() {
             <div><b>{user.displayName}</b><span>{user.email}</span><span>{admin ? 'Platform administrator' : `${current?.name ?? ''} · ${current?.role ?? ''}`}</span></div>
           </div>
           <button type="button" role="menuitem" className="v2-menu-item" onClick={() => go('/settings/profile')}><Icon name="user" size={16} /><span className="grow">Profile</span></button>
-          {!admin && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => go('/settings/notifications')}><Icon name="bell" size={16} /><span className="grow">Notifications</span>{unread > 0 && <em className="v2-badge">{unread > 99 ? '99+' : unread}</em>}</button>}
-          {!admin && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => go('/settings/general')}><Icon name="settings" size={16} /><span className="grow">Settings</span></button>}
-          {!admin && !personal && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => go('/people')}><Icon name="users" size={16} /><span className="grow">People</span></button>}
-          <div className="v2-menu-sep" />
-          <div className="v2-menu-row"><Icon name="moon" size={16} /><span className="grow">Dark mode</span><ThemeSwitch className="theme-toggle" /></div>
-          {!admin && <div className="v2-menu-row v2-lens"><Icon name="users" size={16} /><span className="grow">Team view</span><TeamLensPicker /></div>}
-          {!admin && (
-            <>
-              <div className="v2-menu-sep" />
-              <div className="v2-menu-label">Workspaces</div>
+          {!admin && <button type="button" role="menuitem" className="v2-menu-item" aria-expanded={wsOpen} onClick={() => setWsOpen((o) => !o)}><Icon name="building" size={16} /><span className="grow">Workspaces</span><span style={{ display: 'inline-flex', transform: wsOpen ? 'rotate(180deg)' : undefined }}><Icon name="chevronD" size={14} /></span></button>}
+          {!admin && wsOpen && (
+            <div className="v2-menu-sub">
               {ctx.workspaces.map((w) => (
                 <button key={w.id} type="button" role="menuitem" className="v2-menu-item" aria-current={w.id === current?.id ? 'true' : undefined} onClick={() => void pick(w.id)}>
                   <span className="v2-ws">{w.name[0]?.toUpperCase()}</span><span className="grow">{w.name}</span>{w.id === current?.id && <Icon name="tick" size={15} />}
                 </button>
               ))}
               <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { close(false); setCreating(true); }}><Icon name="plus" size={16} /><span className="grow">Create organization</span></button>
-            </>
+            </div>
           )}
+          {!admin && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => go('/settings/general')}><Icon name="settings" size={16} /><span className="grow">Settings</span></button>}
+          {!admin && !personal && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => go('/people')}><Icon name="users" size={16} /><span className="grow">People</span></button>}
           <div className="v2-menu-sep" />
-          <a role="menuitem" className="v2-menu-item" href={supportMailto('Help with Project Tracker')} onClick={() => close(false)}><Icon name="mail" size={16} /><span className="grow">Help &amp; support</span></a>
+          <a role="menuitem" className="v2-menu-item" href={supportMailto('Help with Project Tracker')} onClick={() => close(false)}><Icon name="mail" size={16} /><span className="grow">Help</span></a>
           <button type="button" role="menuitem" className="v2-menu-item danger" onClick={() => { close(false); void logout(); }}><Icon name="logout" size={16} /><span className="grow">Sign out</span></button>
         </div>
       )}
@@ -166,10 +163,10 @@ export function PhoneBar() {
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
   const shown = admin ? places.slice(0, 5) : places;
   const left = shown.slice(0, admin ? 5 : 2), right = admin ? [] : shown.slice(2);
-  const tab = (i: NavDef) => (
+  const tab = (i: NavDef & { calm?: boolean }) => (
     <NavLink key={i.id ?? i.to} to={i.to} end={i.end} className={() => `v2-phone-tab ${isOn(i, pathname) ? 'on' : ''}`} aria-label={i.label} onClick={() => haptic(6)}>
       <Icon name={i.icon} size={22} /><span>{i.label}</span>
-      {!!i.badge && <em className="v2-badge">{i.badge > 99 ? '99+' : i.badge}</em>}
+      {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`}>{i.badge > 99 ? '99+' : i.badge}</em>}
     </NavLink>
   );
   return (

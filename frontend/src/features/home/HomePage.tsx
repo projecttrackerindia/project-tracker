@@ -19,6 +19,8 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { formatMinutes } from '../time/time';
 import { KIND_LABEL, inboxApi, type InboxBriefing, type InboxFilter, type InboxRow } from './inboxApi';
+import { AnimatePresence, motion } from 'framer-motion';
+import { itemVariants, listVariants } from '../../lib/motion';
 import './home.css';
 
 type Tab = 'for-you' | 'calendar';
@@ -151,20 +153,22 @@ function InboxCard() {
   const rows = q.data?.rows ?? [];
   return (
     <section className="hm-card hm-inbox" aria-label="Inbox">
-      <div className="ds-chips hm-chips" role="group" aria-label="Show">
+      {/* The chips only help with more than 10 rows (or when a chip other than All is on). */}
+      {(filter !== 'all' || (counts?.all ?? rows.length) > 10) && <div className="ds-chips hm-chips" role="group" aria-label="Show">
         {CHIPS.map((c) => (
           <button key={c.id} type="button" className={`ds-chip ${filter === c.id ? 'on' : ''}`} aria-pressed={filter === c.id} onClick={() => setFilter(c.id)}>
             {c.label}{counts && counts[c.count] > 0 && <em>{counts[c.count]}</em>}
           </button>
         ))}
-      </div>
+      </div>}
       {q.isLoading ? <PageLoader /> : q.isError ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : rows.length === 0 ? (
         <EmptyState icon="checkCircle" title={filter === 'all' ? 'Nothing needs you' : 'Nothing here'}
           text={(q.data?.later ?? 0) > 0 ? `${q.data!.later} moved to tomorrow.` : 'New work, decisions and mentions arrive here.'} />
       ) : (
-        <ul className="hm-rows">
+        <motion.ul className="hm-rows" variants={listVariants} initial="hidden" animate="show">
+          <AnimatePresence initial={false}>
           {rows.map((r) => (
-            <li key={r.id} className={`hm-row ${done.has(r.id) ? 'done' : ''}`}>
+            <motion.li key={r.id} layout="position" variants={itemVariants} exit="exit" style={{ overflow: 'hidden' }} className={`hm-row ${done.has(r.id) ? 'done' : ''}`}>
               <span className={`hm-tag k-${r.kind}`}>{KIND_LABEL[r.kind]}</span>
               <div className="hm-row-main">
                 {r.href ? <Link to={r.href} className="hm-row-title">{r.title}</Link> : <span className="hm-row-title">{r.title}</span>}
@@ -174,9 +178,10 @@ function InboxCard() {
                 <button type="button" className="btn btn-primary btn-sm" disabled={busy === r.id || done.has(r.id)} onClick={() => void act(r)}>{r.action.label}</button>
                 <button type="button" className="btn btn-soft btn-sm hm-later" disabled={busy === r.id || done.has(r.id)} onClick={() => void later(r)} title="Hide until tomorrow morning">Later</button>
               </div>
-            </li>
+            </motion.li>
           ))}
-        </ul>
+          </AnimatePresence>
+        </motion.ul>
       )}
     </section>
   );

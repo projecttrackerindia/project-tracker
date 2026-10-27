@@ -153,6 +153,8 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
   const list: Row[] = view === 'bin' ? [...(items.data ?? []), ...sealedBin.map((r) => r.sum)]
     : [...(items.data ?? []).filter((r) => inShow(r.collectionId)), ...sealedRows.map((r) => r.sum)]
       .sort((a, b) => (b.health.length > 0 ? 1 : 0) - (a.health.length > 0 ? 1 : 0) || a.title.localeCompare(b.title));
+  // All · Mine · Shared · Requests only earn their place once there is something to sort: more than 10 items, or a request waiting.
+  const showTabs = show !== 'all' || waiting > 0 || !!q || items.isLoading || list.length > 10;
   const selectedSealed = (view === 'bin' ? sealedBin : sealedRows).find((r) => r.s.row.id === itemId) ?? null;
   const hasKeys = !!keysMe.data?.identity;
   const canSeal = hasKeys && unlocked;
@@ -281,7 +283,7 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
         <section className="lib-card lib-vault-list" aria-label="Vault items">
           {view === 'bin' ? (
             <div className="lib-vault-mode"><button type="button" className="btn btn-link btn-sm" onClick={() => go({ view: null, item: null })}><Icon name="arrowLeft" size={14} /> All items</button><b>Bin</b></div>
-          ) : (
+          ) : showTabs && (
             <Segmented label="Show" wide value={show} onChange={(s) => go({ show: s, item: null, view: null })}
               options={[{ id: 'all', label: 'All' }, { id: 'mine', label: 'Mine' }, { id: 'shared', label: 'Shared' }, { id: 'requests', label: 'Requests', count: waiting || undefined }]} />
           )}

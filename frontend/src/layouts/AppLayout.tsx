@@ -24,7 +24,9 @@ import { pushCoversThisDevice, systemNotification } from '../features/reminders/
 import { useReminderComposer } from '../features/reminders/store';
 import { LiveCallsBar } from '../features/calls/LiveCallsBar';
 import { CallHost } from '../features/calls/CallHost';
-import { AskBar, CopilotHost, NewSheetHost, PhoneBar, Rail } from '../components/v2';
+import { AskBar, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail } from '../components/v2';
+import { MotionConfig, motion } from 'framer-motion';
+import { pageVariants } from '../lib/motion';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -100,8 +102,10 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   useEffect(() => { window.scrollTo({ top: 0 }); }, [loc.pathname]);
   // Every page's code, fetched quietly once the app is idle, so a click shows the next page at once instead of a blank pause.
   useEffect(() => { prefetchPages(); }, []);
-  const page = <><LiveCallsBar /><Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense></>;
+  // The page content fades up when the place changes (keyed by path; the rail and the Ask bar stay put).
+  const page = <><LiveCallsBar /><motion.div key={loc.pathname} className="v2-route" variants={pageVariants} initial="hidden" animate="show"><Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense></motion.div></>;
   return (
+    <MotionConfig reducedMotion="user">
     <div ref={shell} className={`app-shell v2-shell ${phone ? 'm-shell' : ''} ${phone && conversation ? 'm-conversation' : ''}`}>
       <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); main.current?.focus(); }}>Skip to content</a>
       <LensSync />
@@ -138,6 +142,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <ComposerSlot />
       {chatOn && <ChatRealtime />}
       {chatOn && <ProjectChatHost />}
+      {!admin && <LiveBanners />}
     </div>
+    </MotionConfig>
   );
 }

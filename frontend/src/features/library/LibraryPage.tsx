@@ -91,7 +91,7 @@ function LibraryDocs({ switcher }: { switcher: ReactNode }) {
 
   return (
     <div className="page lib">
-      <LibraryHead eyebrow={`${total.toLocaleString()} document${total === 1 ? '' : 's'} · ${projects.length} project${projects.length === 1 ? '' : 's'}`} switcher={switcher}>
+      <LibraryHead eyebrow={`${total.toLocaleString()} doc${total === 1 ? '' : 's'}`} switcher={switcher}>
         {/* DocTracker's API workspace (scores, endpoints, the tree, templates) and its Security Center keep their full views. */}
         <DotsMenu label="More in Docs" items={[
           { label: 'API workspace', hint: 'Projects, endpoints, scores and templates', icon: 'layers', onSelect: () => navigate('/library/docs?view=home') },

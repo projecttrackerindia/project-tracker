@@ -4,7 +4,9 @@ import { ApiError } from '../../api/client';
 import { projectApi, workApi, workspaceApi } from '../../api/endpoints';
 import type { Priority } from '../../api/types';
 import { workItemsApi, type WorkKind } from '../../api/workItemsApi';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Icon, type IconName } from '../Icon';
+import { spring } from '../../lib/motion';
 import { useWsQuery } from '../../lib/hooks';
 import { parseQuickTask, type QuickPerson } from '../../lib/quickTask';
 import { useAuth, useCan, useModule, useWorkspaceId } from '../../stores/auth';
@@ -60,6 +62,7 @@ export function NewSheetHost() {
  */
 function NewSheet({ onProject }: { onProject: () => void }) {
   const { type: presetType, text: presetText, project: inProject, close } = useNewSheet();
+  const still = useReducedMotion();
   const nav = useNavigate();
   const loc = useLocation();
   const wid = useWorkspaceId();
@@ -177,7 +180,8 @@ function NewSheet({ onProject }: { onProject: () => void }) {
 
   return (
     <div className="v2-new-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="v2-new-sheet" role="dialog" aria-modal="true" aria-labelledby="v2-new-title" onKeyDown={onKey}>
+      <motion.div className="v2-new-sheet" role="dialog" aria-modal="true" aria-labelledby="v2-new-title" onKeyDown={onKey}
+        initial={still ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={still ? { duration: 0 } : spring.panel}>
         <div className="v2-new-head"><h2 id="v2-new-title">New</h2>
           <button type="button" className="v2-panel-close" aria-label="Close" onClick={close}><Icon name="close" size={16} /></button></div>
         <label className="v2-new-input">
@@ -241,7 +245,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
             {busy ? 'Creating…' : type ? `Create ${shownLabel}` : 'Create'}
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

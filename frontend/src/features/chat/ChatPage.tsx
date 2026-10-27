@@ -198,12 +198,17 @@ export function WhileAway({ missing, list, onCatchUp, onNew }: { missing: boolea
         <button type="button" className="chat-away-tile" onClick={onCatchUp}>
           <small>Decisions</small><b>See what was decided in your chats</b>
         </button>
-        <button type="button" className="chat-away-tile" disabled={!q} onClick={() => q && navigate(messageLink(q.conversationId, q.messageId, q.threadRootId))}>
-          <small>Questions for you</small><b>{q ? `${(q.senderName ?? 'Someone').split(' ')[0]} needs an answer from you` : 'Nobody is waiting on you'}</b>
-        </button>
-        <button type="button" className="chat-away-tile" disabled={!file} onClick={() => file && navigate(`/chat/${file.id}`)}>
-          <small>Files</small><b>{fileText ?? 'No new files'}</b>
-        </button>
+        {/* Empty tiles ("Nobody is waiting on you", "No new files") are not shown. */}
+        {q && (
+          <button type="button" className="chat-away-tile" onClick={() => navigate(messageLink(q.conversationId, q.messageId, q.threadRootId))}>
+            <small>Questions for you</small><b>{`${(q.senderName ?? 'Someone').split(' ')[0]} needs an answer from you`}</b>
+          </button>
+        )}
+        {file && (
+          <button type="button" className="chat-away-tile" onClick={() => navigate(`/chat/${file.id}`)}>
+            <small>Files</small><b>{fileText}</b>
+          </button>
+        )}
       </div>
       <p className="chat-away-foot">{list.length ? 'Or pick a conversation on the left.' : <>No conversations yet. <button type="button" className="link-btn" onClick={onNew}>Message a colleague or start a group</button>.</>}</p>
     </div>

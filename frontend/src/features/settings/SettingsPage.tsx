@@ -1,5 +1,7 @@
 import { WorkspaceLogoCard } from './WorkspaceLogo';
 import { ProfilePhotoCard } from './ProfilePhoto';
+import { ThemeSwitch } from '../../components/ThemeSwitch';
+import { TeamLensPicker } from '../../components/TeamLensPicker';
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -194,8 +196,23 @@ function ProfileSection() {
           </form>
         </div>
       </div>
+      <AppearanceCard />
       <DeleteAccountCard />
     </>
+  );
+}
+
+/** Appearance (dark mode) and Team view: moved here from the avatar menu. */
+function AppearanceCard() {
+  const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  return (
+    <div className="card mb-22" data-setting="me.appearance">
+      <div className="card-head"><h3>Appearance &amp; team view</h3></div>
+      <div className="card-body set-appearance">
+        <div className="set-appearance-row"><Icon name="moon" size={16} /><span className="grow"><b>Dark mode</b><small className="muted"> · Follows this device until you choose.</small></span><ThemeSwitch className="theme-toggle" /></div>
+        {!admin && <div className="set-appearance-row v2-lens"><Icon name="users" size={16} /><span className="grow"><b>Team view</b><small className="muted"> · Whose work lists and numbers show.</small></span><TeamLensPicker /></div>}
+      </div>
+    </div>
   );
 }
 
