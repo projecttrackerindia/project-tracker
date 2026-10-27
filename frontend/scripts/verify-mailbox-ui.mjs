@@ -47,7 +47,7 @@ try{
    else if(ep==='/api/v1/me/mailbox/agent/assist'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data=assist;}
    else if(ep==='/api/v1/me/mailbox/agent/compose'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={body:b.draft.trim()+'\n\nImproved.',model:'test'};}
    else if(ep==='/api/v1/me/mailbox/company/test'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={ok:false,checks:[{server:`POP ${b.settings.incomingHost}:${b.settings.incomingPort}`,ok:true,detail:'Signed in.'},{server:`SMTP ${b.settings.smtpHost}:${b.settings.smtpPort}`,ok:false,detail:'The server could not be reached on this port.'}]};}
-   else if(ep==='/api/v1/me/mailbox/company'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});data={provider:b.provider,name:'Rediffmail Pro',domains:['fivestar.test'],incoming:b.incoming,incomingHost:b.incomingHost,incomingPort:b.incomingPort,smtpHost:b.smtpHost,smtpPort:b.smtpPort,custom:true};}
+   else if(ep==='/api/v1/me/mailbox/company'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});data={provider:b.provider,name:'Rediffmail Pro',domains:['northwind.test'],incoming:b.incoming,incomingHost:b.incomingHost,incomingPort:b.incomingPort,smtpHost:b.smtpHost,smtpPort:b.smtpPort,custom:true};}
    else if(ep==='/api/v1/me/mailbox/accounts/imap'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});const a={id:'00000000-0000-0000-0000-0000000000bb',provider:b.provider,name:'Rediffmail Pro',email:b.email,connectedAt:iso(0),lastSyncedAt:iso(0),lastError:null};imap=[...imap,a];data=a;}
    else if(/\/api\/v1\/work-tasks\/w\d+\/status/.test(ep)&&method==='PUT'){writes.push({ep,b:req.postDataJSON()});data={id:'w2'};}
    else if(/\/api\/v1\/work-tasks\/w\d+\/comments/.test(ep)&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data={id:'c1'};}
@@ -62,7 +62,7 @@ try{
     else if(ep==='/api/v1/integrations/google/status'&&noMail)data={connected:false,googleEmail:null,lastError:null,calendarAccess:false,mailEnabled:true,mailSendAccess:false,inboxEnabled:true,inboxAccess:false};
     else if(ep==='/api/v1/integrations/google/status')data={connected:true,googleEmail:'asha@example.test',connectedAt:iso(-9000),lastError:null,calendarAccess:true,mailEnabled:true,mailSendAccess:true,inboxEnabled:true,inboxAccess:true};
     else if(ep==='/api/v1/integrations/microsoft/status')data={enabled:false,configured:false,connected:false,email:null,mailSendAccess:false,inboxEnabled:false,inboxAccess:false,calendarsEnabled:true,calendarAccess:false};
-    else if(ep==='/api/v1/me/mailbox/accounts')data={imap:noMail?[]:imap,presets,company:{provider:'rediffpro',name:'Rediffmail Pro',domains:['fivestar.test'],incoming:'imap',incomingHost:'imap.rediffmailpro.com',incomingPort:993,smtpHost:'smtp.rediffmailpro.com',smtpPort:465,custom:false},canManageCompany:true,myEmail:'asha@fivestar.test'};
+    else if(ep==='/api/v1/me/mailbox/accounts')data={imap:noMail?[]:imap,presets,company:{provider:'rediffpro',name:'Rediffmail Pro',domains:['northwind.test'],incoming:'imap',incomingHost:'imap.rediffmailpro.com',incomingPort:993,smtpHost:'smtp.rediffmailpro.com',smtpPort:465,custom:false},canManageCompany:true,myEmail:'asha@northwind.test'};
     else if(ep==='/api/v1/me/mailbox/agent/options')data={available:!aiOff,credits:1};
     else if(ep==='/api/v1/me/mailbox/messages'){const acc=p.get('account');const list=p.get('folder')==='sent'?(acc==='google'?sent:[]):acc==='google'?gmail:acc.startsWith('imap:')?rediff:[];data={account:acc,email:acc==='google'?'asha@example.test':'asha@rediffmail.com',folder:p.get('folder'),messages:list.map(({body,...m})=>m),cursor:null};}
     else if(ep==='/api/v1/me/mailbox/thread'){const acc=p.get('account');const m=[...gmail,...rediff,...sent].find(x=>x.id===p.get('messageId'));data={account:acc,email:'asha@example.test',folder:'inbox',threadId:m.id,messages:[m],truncated:false};}
@@ -192,9 +192,9 @@ try{
  const con=await waitWrite(w=>w.ep==='/api/v1/me/mailbox/accounts/imap');assert.deepEqual(Object.keys(con.b).sort(),['email','password','provider']);assert.equal(con.b.provider,'rediffpro');
  await pane.getByText('asha@company.in').waitFor();checks.push('connect-rediff');
  // Company mail: the address is known, just the password.
- await pane.locator('.mb-company').waitFor();assert.match(await pane.locator('.mb-company').innerText(),/asha@fivestar.test/);
+ await pane.locator('.mb-company').waitFor();assert.match(await pane.locator('.mb-company').innerText(),/asha@northwind.test/);
  await pane.locator('.mb-company input[type=password]').fill('company-pass-for-test');await pane.locator('.mb-company').getByRole('button',{name:'Connect'}).click();
- const cc=await waitWrite(w=>w.ep==='/api/v1/me/mailbox/accounts/imap'&&w.b.email==='asha@fivestar.test');assert.equal(cc.b.provider,'rediffpro');checks.push('company-mail');
+ const cc=await waitWrite(w=>w.ep==='/api/v1/me/mailbox/accounts/imap'&&w.b.email==='asha@northwind.test');assert.equal(cc.b.provider,'rediffpro');checks.push('company-mail');
  // Organisation mail server (owners and admins): POP like Outlook, the SMTP server, a test with one's own mailbox, then save for everyone.
  await page.getByTestId('mail-company-setup').click();await page.locator('.mbc').waitFor();
  const dlg=page.getByRole('dialog').filter({has:page.locator('.mbc')});await dlg.getByRole('radio',{name:/POP/}).click();

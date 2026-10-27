@@ -162,7 +162,7 @@ function AgentTab({ s }: { s: VoiceSettings }) {
         <h3><Icon name="user" size={16} /> Persona</h3>
         <div className="va-grid">
           <label className="va-field"><span>Name</span><input value={f.agentName} onChange={(e) => set('agentName', e.target.value)} /></label>
-          <label className="va-field"><span>Company name it says</span><input value={f.companyName} onChange={(e) => set('companyName', e.target.value)} placeholder="FiveStar Business Finance" /></label>
+          <label className="va-field"><span>Company name it says</span><input value={f.companyName} onChange={(e) => set('companyName', e.target.value)} placeholder="Northwind Business Finance" /></label>
         </div>
         <div className="va-field"><span>Languages — tap in order; the first is the greeting language</span>
           <div className="va-langs">{Object.entries(f.availableLanguages).map(([code, name]) => (

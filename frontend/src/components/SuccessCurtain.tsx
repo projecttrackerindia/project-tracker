@@ -21,7 +21,7 @@ const SKIP_AFTER_MS = 800;
 
 interface Step { label: string; status: string; next?: boolean }
 
-/** "FIVESTAR BUSINESS FINANCE LTD" -> "Fivestar Business Finance Ltd"; names already in mixed case are left alone. */
+/** "NORTHWIND BUSINESS FINANCE LTD" -> "Northwind Business Finance Ltd"; names already in mixed case are left alone. */
 export function normalCase(name: string): string {
   if (name !== name.toUpperCase() || name === name.toLowerCase()) return name;
   return name.toLowerCase().replace(/(^|[\s\-/(&])(\p{L})/gu, (_m, sep: string, ch: string) => sep + ch.toUpperCase());

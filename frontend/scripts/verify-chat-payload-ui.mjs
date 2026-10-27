@@ -93,7 +93,7 @@ const make = async (theme = 'light', opts = {}) => {
     else if (ep === '/api/v1/calls/live') data = [];
     else if (ep === '/api/v1/integrations/google/status') data = { connected: false, inboxEnabled: true };
     else if (ep === '/api/v1/integrations/microsoft/status') data = { enabled: true, configured: true, connected: false };
-    else if (ep === '/api/v1/me/mailbox/accounts') data = { imap: [], presets: [{ id: 'rediff', name: 'Rediffmail', domain: 'rediffmail.com' }], company: { provider: 'rediff', name: 'Rediffmail', domains: ['fivestar.example'], incoming: 'imap', incomingHost: 'imap.example.test', incomingPort: 993, smtpHost: 'smtp.example.test', smtpPort: 465, custom: false }, canManageCompany: false, myEmail: user.email };
+    else if (ep === '/api/v1/me/mailbox/accounts') data = { imap: [], presets: [{ id: 'rediff', name: 'Rediffmail', domain: 'rediffmail.com' }], company: { provider: 'rediff', name: 'Rediffmail', domains: ['northwind.example'], incoming: 'imap', incomingHost: 'imap.example.test', incomingPort: 993, smtpHost: 'smtp.example.test', smtpPort: 465, custom: false }, canManageCompany: false, myEmail: user.email };
     else if (ep === '/api/v1/meet') data = { items: [meeting], from: url.searchParams.get('from'), to: url.searchParams.get('to'), truncated: false };
     else if (ep === `/api/v1/meetings/${meetingId}`) data = { id: meetingId, projectId: project.id, title: meeting.title, description: 'Blockers and today', startTime: meeting.start, endTime: meeting.end, timeZone: 'Asia/Kolkata', status: 'Scheduled',
       meetUri: meeting.joinUrl, organizerUserId: user.id, organizerName: user.displayName, provider: 'ours', providerName: 'Project Tracker call', notetaker: 'transcript', recurrenceRule: null, isScrum: false,

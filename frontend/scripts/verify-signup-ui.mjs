@@ -61,11 +61,11 @@ try {
       await page.getByRole('button', { name: 'Create account' }).click();
       await page.getByText("Enter your organisation's name.").waitFor();
       assert.equal(sent.length, 0, 'an organisation without a name is not sent');
-      await page.getByLabel('Organisation name').fill('Five Star Test Ltd');
+      await page.getByLabel('Organisation name').fill('Northwind Test Ltd');
       await page.getByRole('button', { name: 'Create account' }).click();
       await page.getByText('Check your email').waitFor();
       assert.equal(sent.at(-1).workspaceType, 'organization');
-      assert.equal(sent.at(-1).organizationName, 'Five Star Test Ltd');
+      assert.equal(sent.at(-1).organizationName, 'Northwind Test Ltd');
     }
     await page.close();
   }

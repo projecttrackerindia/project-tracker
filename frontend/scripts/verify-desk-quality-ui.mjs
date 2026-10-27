@@ -19,7 +19,7 @@ const me = { id: user.id, name: user.displayName };
 const p = (n, name) => ({ id: g(n), name });
 const shiva = p(2, 'Shiva Kumar'), siva = p(3, 'Siva Rao'), ravi = p(4, 'Ravi Teja'), priya = p(5, 'Priya S'), rakshit = p(6, 'Rakshit M');
 const ramesh = p(20, 'Ramesh Naidu'), lakshmi = p(21, 'Lakshmi P'), kavya = p(22, 'Kavya R'), nellore = p(23, 'Branch Nellore'), anil = p(24, 'Anil Kumar'), hrops = p(25, 'HR Ops'), sujatha = p(26, 'Sujatha M');
-const ws = { id: g(9), slug: 'preview-org', name: 'FiveStar Finance', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 6 };
+const ws = { id: g(9), slug: 'preview-org', name: 'Northwind Finance', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 6 };
 const members = [me, shiva, siva, ravi].map((x, i) => ({ userId: x.id, displayName: x.name, email: `${x.name.split(' ')[0].toLowerCase()}@example.test`, role: i ? 'Member' : 'Owner', joinedAt: '2026-01-01T00:00:00Z', jobRole: null }));
 const ago = (min) => new Date(Date.now() - min * 60e3).toISOString();
 const ahead = (min) => new Date(Date.now() + min * 60e3).toISOString();

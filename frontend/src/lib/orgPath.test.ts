@@ -13,11 +13,11 @@ describe('firstSegment', () => {
 });
 
 describe('orgFromPath', () => {
-  const workspaces = [ws('acme'), ws('fivestar')];
+  const workspaces = [ws('acme'), ws('northwind')];
 
   it('finds the workspace whose slug matches the first segment, case-insensitively', () => {
     expect(orgFromPath('/acme/projects/1', workspaces)?.slug).toBe('acme');
-    expect(orgFromPath('/FiveStar/chat', workspaces)?.slug).toBe('fivestar');
+    expect(orgFromPath('/Northwind/chat', workspaces)?.slug).toBe('northwind');
   });
 
   it('never matches a reserved top-level segment, even if a workspace happened to share the name', () => {

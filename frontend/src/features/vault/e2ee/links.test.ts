@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { LinkKeyError, openLink, sealLink, tokenHash, type LinkPayload } from './links';
 
-const payload: LinkPayload = { v: 1, title: 'Wi-Fi at the office', fields: [{ label: 'Network', value: 'FIVESTAR-5G', secret: false }, { label: 'Password', value: 'Mang0!Lassi#42', secret: true }] };
+const payload: LinkPayload = { v: 1, title: 'Wi-Fi at the office', fields: [{ label: 'Network', value: 'NORTHWIND-5G', secret: false }, { label: 'Password', value: 'Mang0!Lassi#42', secret: true }] };
 const parts = (url: string) => { const u = new URL(url); return { token: u.pathname.split('/').pop()!, fragment: u.hash.slice(1) }; };
 
 describe('self-destructing links', () => {
@@ -13,7 +13,7 @@ describe('self-destructing links', () => {
     expect(made.body.tokenHash).toBe(createHash('sha256').update(token).digest('hex'));
     expect(tokenHash(token)).toBe(made.body.tokenHash);
     const sent = JSON.stringify(made.body);
-    for (const s of ['Mang0!Lassi#42', 'FIVESTAR-5G', 'Wi-Fi', fragment, token]) expect(sent).not.toContain(s);
+    for (const s of ['Mang0!Lassi#42', 'NORTHWIND-5G', 'Wi-Fi', fragment, token]) expect(sent).not.toContain(s);
     expect(await openLink(token, fragment, made.body.cipher, null, null, null)).toEqual(payload);
   });
 

@@ -13,7 +13,7 @@ await fs.mkdir(out, { recursive: true });
 const csp = await appCsp();
 const g = (n) => `92000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
 const user = { id: g(1), displayName: 'Prasanna K', email: 'prasanna@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
-const ws = { id: g(9), slug: 'preview-org', name: 'FiveStar Finance', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 4 };
+const ws = { id: g(9), slug: 'preview-org', name: 'Northwind Finance', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 4 };
 const P = (n, name) => ({ id: g(n), name });
 const me = P(1, 'Prasanna K'), clara = P(2, 'Clara Novak'), lena = P(3, 'Lena Fischer'), tomas = P(4, 'Tomás Rivera');
 const members = [me, clara, lena, tomas].map((x, i) => ({ userId: x.id, displayName: x.name, email: `u${i}@example.test`, role: i ? 'Member' : 'Owner', joinedAt: '2026-01-01T00:00:00Z', jobRole: null }));
