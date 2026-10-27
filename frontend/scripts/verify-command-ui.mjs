@@ -82,7 +82,7 @@ try{
   else if(ep===`/api/v1/projects/${pid}/agent`&&method==='PUT'){const b=body();writes.push({ep,b});agent={...agent,...b};data=agent;}
   else if(ep===`/api/v1/projects/${pid}/agent`)data=agent;
   else if(ep===`/api/v1/projects/${pid}/agent/findings`)data={items:[],pending:0,canDecide:true};
-  else if(ep===`/api/v1/projects/${pid}/tasks`&&method==='POST'){const b=body();writes.push({ep,b});data={id:'t9',key:'PAY-9',title:b.title};}
+  else if((ep===`/api/v1/projects/${pid}/tasks`||ep==='/api/v1/work-items')&&method==='POST'){const b=body();writes.push({ep,b});data={id:'t9',key:'PAY-9',title:b.title};}
   else{
    assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
    if(ep.endsWith('/auth/refresh'))data={accessToken:`x.${Buffer.from(JSON.stringify({wid:ws.id,exp:4102444800})).toString('base64url')}.x`,expiresAt:'2099-01-01T00:00:00Z',user};
@@ -219,7 +219,8 @@ try{
  // A new task suggests who, how long, when and how urgent from similar finished work; "Use all" fills only empty fields.
  ctx=await make('light');page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
  // v2: + Add work opens + New in this project; a task opens the task form there.
- await page.goto(origin+`/preview-org/projects/${pid}`);await page.getByRole('button',{name:'Add work'}).click();await page.locator('.v2-new-input input').fill('CRIF HIGHMARK API integration');await page.getByRole('button',{name:'Create task'}).click();
+ // v2: + New creates the task straight away; the full new-task form (with suggestions) opens from the Work tab's quick add with Shift+Enter.
+ await page.goto(origin+`/preview-org/projects/${pid}?tab=work`);{const q=page.getByLabel('Add a task in plain words');await q.waitFor();await q.fill('CRIF HIGHMARK API integration');await q.press('Shift+Enter');}
  const tm=page.getByRole('dialog');await tm.getByPlaceholder('e.g. Complete API development').fill('CRIF HIGHMARK API integration');
  await tm.locator('.tsg-chip').first().waitFor();assert.equal(await tm.locator('.tsg-chip').count(),4);
  await page.waitForTimeout(400);await page.screenshot({path:path.join(out,'task-suggestions-1440.png'),animations:'disabled'});
@@ -233,8 +234,8 @@ try{
  await page.locator('.qa-chip').nth(3).waitFor();assert.equal(await page.locator('.qa-chip').count(),4);assert.equal((await page.locator('.qa-title').innerText()).trim(),'Fix login bug');
  await page.waitForTimeout(200);await page.screenshot({path:path.join(out,'quick-add-1440.png'),animations:'disabled'});
  await page.getByRole('button',{name:/Not the estimate/}).click();assert.equal((await page.locator('.qa-title').innerText()).trim(),'Fix login bug, 3h');
- await qa.press('Enter');for(let i=0;i<20&&!writes.some(w=>w.ep===`/api/v1/projects/${pid}/tasks`);i++)await page.waitForTimeout(100);
- const made=writes.find(w=>w.ep===`/api/v1/projects/${pid}/tasks`).b;assert.equal(made.title,'Fix login bug, 3h');assert.equal(made.priority,'High');assert.equal(made.assigneeId,user.id);assert.equal(made.estimatedHours,null);
+ await qa.press('Enter');for(let i=0;i<20&&!writes.some(w=>w.ep===`/api/v1/projects/${pid}/tasks`||w.ep==='/api/v1/work-items');i++)await page.waitForTimeout(100);
+ const made=writes.find(w=>w.ep===`/api/v1/projects/${pid}/tasks`||w.ep==='/api/v1/work-items').b;assert.equal(made.title,'Fix login bug, 3h');assert.equal(made.priority,'High');assert.equal(made.assigneeId,user.id);assert.equal(made.estimatedHours,null);
  assert.match(made.dueDate,/^\d{4}-\d{2}-\d{2}$/);for(let i=0;i<30&&await qa.inputValue()!=='';i++)await page.waitForTimeout(100);assert.equal(await qa.inputValue(),'','the box empties after adding');checks.push('quick-add');
  await page.close();await ctx.close();
  // v2 Home: "For you" (the inbox) is Home; the assistant is a page of Home (··· › Assistant, /?tab=assistant) with its ask box, its
