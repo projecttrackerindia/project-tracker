@@ -1,3 +1,4 @@
+import { handToVault } from '../vault/vaultHandoff';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
@@ -845,11 +846,12 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   };
   const payloadToVault = () => {
     if (!payload) return;
-    void navigator.clipboard?.writeText(payload.text).catch(() => undefined);
-    toast('Copied — paste it into the new Vault item. Nothing was sent.', 'info');
     const title = cleanFileName(payload.name, payload.kind).replace(/\.[^.]+$/, '');
+    // Handed over in memory only (never the clipboard or the address); nothing is sent to the chat.
+    handToVault(title, payload.text);
+    toast('Opened a new Vault item with this payload. Nothing was sent.', 'info');
     setPayload(null);
-    navigate(`/library/vault?new=item&title=${encodeURIComponent(title)}`);
+    navigate('/library/vault?new=item');
   };
   const uploading = pending.some((f) => f.status === 'uploading');
 
