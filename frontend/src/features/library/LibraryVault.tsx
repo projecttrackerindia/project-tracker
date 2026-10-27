@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon, type IconName } from '../../components/Icon';
@@ -26,7 +26,6 @@ import { RequestsView } from '../vault/VaultRequests';
 import { useVaultRequests } from '../vault/requestsData';
 import { StepUpProvider } from '../vault/stepUp';
 import { useStepUp } from '../vault/stepUpContext';
-import { LibraryHead } from './LibraryHead';
 import '../vault/vault.css';
 import '../vault/vault-ds.css';
 
@@ -41,15 +40,32 @@ type Row = VaultItemSummary & { sealed?: boolean };
 const IDLE_MS = 5 * 60_000;
 const DAY_MS = 86_400_000;
 
-/** A row's sharing state, from its collection's shares: "Shared with Siva · 2 days left" or "Shared with 3 people"; null when not shared. */
-function shareChip(c: VaultCollection | undefined): string | null {
+/**
+ * A row's sharing state, from its collection's shares: "Shared with Siva · 2 days left" (or "3 h left"), with how much of the share's window is
+ * left (0..1) for its ring; null when not shared. The window is the step the time left falls in (an hour, a day, a week, a month).
+ */
+function shareChip(c: VaultCollection | undefined, meId: string | null): { text: string; left: number | null } | null {
   const now = Date.now();
-  const live = (c?.shares ?? []).filter((x) => !x.expiresAt || new Date(x.expiresAt).getTime() > now);
-  if (!live.length) return null;
+  const live = (c?.shares ?? []).filter((x) => x.principalId !== meId && (!x.expiresAt || new Date(x.expiresAt).getTime() > now));
+  if (!live.length || c?.kind === 'Personal') return null;
   const who = live.length === 1 ? (live[0].principalType === 'User' ? live[0].name.split(' ')[0] : live[0].name) : `${live.length} people`;
   const soonest = Math.min(...live.map((x) => (x.expiresAt ? new Date(x.expiresAt).getTime() : Infinity)));
-  const days = Number.isFinite(soonest) ? Math.max(1, Math.ceil((soonest - now) / DAY_MS)) : null;
-  return `Shared with ${who}${days !== null ? ` · ${days} day${days === 1 ? '' : 's'} left` : ''}`;
+  if (!Number.isFinite(soonest)) return live.some((x) => x.expiresAt) || live.length < 4 ? { text: `Shared with ${who}`, left: null } : null;
+  const ms = soonest - now;
+  const hours = Math.max(1, Math.ceil(ms / 3_600_000));
+  const days = Math.max(1, Math.ceil(ms / DAY_MS));
+  const window = [3_600_000, DAY_MS, 7 * DAY_MS, 30 * DAY_MS].find((w) => ms <= w) ?? ms;
+  return { text: `Shared with ${who} · ${ms < DAY_MS ? `${hours} h left` : `${days} day${days === 1 ? '' : 's'} left`}`, left: Math.max(0.04, Math.min(1, ms / window)) };
+}
+/** The time a share has left, as a ring that empties clockwise (static: it is a gauge, not a spinner). */
+function ShareRing({ left }: { left: number | null }) {
+  const c = 2 * Math.PI * 5;
+  return (
+    <svg className="pw-ring" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+      <circle cx="7" cy="7" r="5" className="pw-ring-track" />
+      {left === null ? <circle cx="7" cy="7" r="2" className="pw-ring-dot" /> : <circle cx="7" cy="7" r="5" className="pw-ring-left" strokeDasharray={`${left * c} ${c}`} transform="rotate(-90 7 7)" />}
+    </svg>
+  );
 }
 const SHIELD_SEEN_KEY = 'pt-vault-shield-seen';
 
@@ -59,14 +75,14 @@ const SHIELD_SEEN_KEY = 'pt-vault-shield-seen';
  * and Notes first and one Share button; Generator, Import, Health, One-time links, Bin and Seal my vault under ···.
  * Addresses: /library/vault/{item id}; the less-used views are ?view=health|bin|links|keys|admin.
  */
-export function LibraryVault({ switcher }: { switcher: ReactNode }) {
+export function LibraryVault() {
   const overview = useWsQuery(['vault', 'overview'], vaultApi.overview, { staleTime: 30_000 });
-  if (overview.isLoading) return <div className="page lib"><LibraryHead eyebrow="Vault" switcher={switcher} /><PageLoader /></div>;
-  if (overview.error || !overview.data) return <div className="page lib"><LibraryHead eyebrow="Vault" switcher={switcher} /><ErrorState error={overview.error} retry={() => overview.refetch()} /></div>;
-  return <StepUpProvider mfaEnabled={overview.data.mfaEnabled} hasPasskeys={overview.data.hasPasskeys}><VaultTab switcher={switcher} /></StepUpProvider>;
+  if (overview.isLoading) return <div className="page lib pw-page"><h1 className="pw-h1">Vault</h1><PageLoader /></div>;
+  if (overview.error || !overview.data) return <div className="page lib pw-page"><h1 className="pw-h1">Vault</h1><ErrorState error={overview.error} retry={() => overview.refetch()} /></div>;
+  return <StepUpProvider mfaEnabled={overview.data.mfaEnabled} hasPasskeys={overview.data.hasPasskeys}><VaultTab /></StepUpProvider>;
 }
 
-function VaultTab({ switcher }: { switcher: ReactNode }) {
+function VaultTab() {
   const wid = useWorkspaceId();
   const user = useAuth((s) => s.ctx?.user);
   const me: Me | null = user ? { id: user.id, email: user.email, name: user.displayName } : null;
@@ -178,7 +194,8 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
     return { total, weak: o.health.weak + c('weak'), reused: o.health.reused + c('reused'), breached: o.health.breached + c('breached'), expired: o.health.expired + c('expired'), old: o.health.old + c('old'),
       toRotate: o.health.toRotate + c('rotate'), score: total === 0 ? 100 : Math.round((100 * healthy) / total) };
   }, [o.health, sealedRows]);
-  const atRisk = health2.total - Math.round((health2.score / 100) * health2.total);
+  const reusedN = health2.reused, breachedN = health2.breached;
+  const insight = reusedN > 0 ? { text: `${reusedN} item${reusedN === 1 ? ' uses' : 's use'} a password that is used elsewhere in the vault.`, act: () => go({ view: null, show: null, health: 'reused', item: null, c: null }) } : null;
 
   const sealMine = async () => {
     if (!personal) return;
@@ -230,7 +247,7 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
     const rows = Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>('.lib-vault-item') ?? []);
     const at = rows.indexOf(document.activeElement as HTMLButtonElement);
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); rows[Math.min(rows.length - 1, Math.max(0, at + (e.key === 'ArrowDown' ? 1 : -1)))]?.focus(); }
-    else if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && at >= 0 && view !== 'bin') { e.preventDefault(); void quickCopy(list[at]); }
+    else if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && at >= 0 && view !== 'bin') { e.preventDefault(); { const r = list.find((x) => x.id === rows[at].dataset.id); if (r) void quickCopy(r); } }
   };
 
   // A sealed collection that is not open on this device yet: set up keys, unlock, or wait for the key.
@@ -265,34 +282,68 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
     : itemId && collection?.sealed ? <PageLoader />
     : itemId
       ? <VaultItemPanel key={itemId} id={itemId} layout="v2" policy={o.policy} lockEpoch={lockEpoch} binned={view === 'bin'} collections={o.collections} canAdmin={o.canAdmin}
-          onEdit={(d) => setEditing(d)} onClose={() => go({ item: null })} onChanged={refresh} onShare={(cid, start) => void openShare(cid, start)} />
+          onEdit={(d) => setEditing(d)} onClose={() => go({ item: null })} onChanged={refresh} onShare={(cid, start) => void openShare(cid, start)} insight={insight} />
     : null;
 
+  const menu = (
+    <DotsMenu label="More in the vault" items={[
+      { label: 'New secret', hint: 'A password, API key, server or note', icon: 'plus', onSelect: () => setEditing('new') },
+      { label: 'Generator', hint: 'A strong password or passphrase', icon: 'sparkle', onSelect: () => setGenerator(true) },
+      { label: 'Import', hint: 'From another password manager', icon: 'upload', onSelect: () => setImporting(true) },
+      { label: 'Collections', hint: 'Open one, its access and its rules', icon: 'folder', onSelect: () => go({ view: 'collections', item: null }) },
+      { label: 'Health', hint: health2.total ? `Score ${health2.score}` : undefined, icon: 'gauge', onSelect: () => go({ view: 'health', item: null }) },
+      { label: 'One-time links', icon: 'send', onSelect: () => go({ view: 'links', item: null }) },
+      { label: 'Bin', hint: 'Deleted items, for 30 days', icon: 'trash', onSelect: () => go({ view: 'bin', item: null, show: null }) },
+      { label: 'Seal my vault', hint: 'End-to-end: only your devices can open it', icon: 'lock', onSelect: () => void sealMine(), hidden: !personal || personal.sealed },
+      { label: hasKeys ? (unlocked ? 'My keys · sealed vault open' : 'My keys · unlock sealed vault') : 'Set up sealed vault', icon: 'key', onSelect: () => go({ view: 'keys', item: null }) },
+      { label: 'New shared collection', icon: 'users', onSelect: () => setCollectionEdit('new'), hidden: !o.canCreateShared },
+      { label: 'Administration', icon: 'shield', onSelect: () => go({ view: 'admin', item: null }), hidden: !o.canAdmin },
+    ]} />
+  );
+  const row = (it: Row) => {
+    const quick = view !== 'bin' ? QUICK[it.kind] : undefined;
+    const shared = view !== 'bin' ? shareChip(o.collections.find((c) => c.id === it.collectionId), meId) : null;
+    const flag = it.health.includes('breached') ? 'breached' : it.health[0];
+    const host = it.url?.replace(/^https?:\/\//, '').split('/')[0];
+    return (
+      <li key={it.id} className="lib-vault-row pw-row">
+        <button type="button" className={`lib-vault-item pw-item${it.id === itemId ? ' on' : ''}`} onClick={() => go({ item: it.id, view: view === 'bin' ? 'bin' : null })} data-item={it.title} data-id={it.id} aria-current={it.id === itemId || undefined}>
+          <BrandTile title={it.title} url={it.url} kind={it.kind} pass />
+          <span className="lib-vault-item-main pw-item-main">
+            <b>{it.title}</b>
+            <small>{it.usernameHint || host || KIND_LABEL[it.kind]}</small>
+            {shared && <span className="pw-share" title={shared.text}><ShareRing left={shared.left} />{shared.text}</span>}
+          </span>
+          {it.sealed && <span className="vlt-e2ee-dot" title="End-to-end encrypted"><Icon name="lock" size={12} /></span>}
+          {flag && <span className={`pw-flag${flag === 'breached' || flag === 'rotate' ? ' bad' : ''}`} title={it.health.map((h) => HEALTH_LABEL[h]).join(', ')}>{flag === 'reused' ? 'Reused' : HEALTH_LABEL[flag]}</span>}
+        </button>
+        {quick && <button type="button" className="vlt-quick" tabIndex={-1} onClick={() => void quickCopy(it)} aria-label={`Copy the ${quick.label} of ${it.title}`} title={`Copy the ${quick.label} (or press C)`}><Icon name="copy" size={14} /></button>}
+      </li>
+    );
+  };
+  // Shared first: items with a live share (its chip) lead the group, the rest keep the list's order (at risk first, then by name).
+  const chipOf = (r: Row) => (shareChip(o.collections.find((c) => c.id === r.collectionId), meId) ? 0 : 1);
+  const sharedRows = view === 'bin' || collection ? [] : list.filter((r) => r.collectionId !== personal?.id).sort((a, b) => chipOf(a) - chipOf(b));
+  const ownRows = view === 'bin' || collection ? list : list.filter((r) => r.collectionId === personal?.id);
+
   return (
-    <div className={`page lib lib-vault-page vlt-scope${itemId || view !== 'items' ? ' has-item' : ''}`}>
-      <LibraryHead switcher={switcher} eyebrowTone={atRisk > 0 ? 'warning' : 'success'}
-        eyebrow={`${health2.total} item${health2.total === 1 ? '' : 's'} · ${atRisk > 0 ? `${atRisk} at risk` : 'all healthy'}`}>
-        <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}><Icon name="plus" size={15} /> New secret</button>
-        <DotsMenu label="More in the vault" items={[
-          { label: 'Generator', hint: 'A strong password or passphrase', icon: 'sparkle', onSelect: () => setGenerator(true) },
-          { label: 'Import', hint: 'From another password manager', icon: 'upload', onSelect: () => setImporting(true) },
-          { label: 'Collections', hint: 'Open one, its access and its rules', icon: 'folder', onSelect: () => go({ view: 'collections', item: null }) },
-          { label: 'Health', hint: health2.total ? `Score ${health2.score}` : undefined, icon: 'gauge', onSelect: () => go({ view: 'health', item: null }) },
-          { label: 'One-time links', icon: 'send', onSelect: () => go({ view: 'links', item: null }) },
-          { label: 'Bin', hint: 'Deleted items, for 30 days', icon: 'trash', onSelect: () => go({ view: 'bin', item: null, show: null }) },
-          { label: 'Seal my vault', hint: 'End-to-end: only your devices can open it', icon: 'lock', onSelect: () => void sealMine(), hidden: !personal || personal.sealed },
-          { label: hasKeys ? (unlocked ? 'My keys · sealed vault open' : 'My keys · unlock sealed vault') : 'Set up sealed vault', icon: 'key', onSelect: () => go({ view: 'keys', item: null }) },
-          { label: 'New shared collection', icon: 'users', onSelect: () => setCollectionEdit('new'), hidden: !o.canCreateShared },
-          { label: 'Administration', icon: 'shield', onSelect: () => go({ view: 'admin', item: null }), hidden: !o.canAdmin },
-        ]} />
-      </LibraryHead>
+    <div className={`page lib lib-vault-page pw-page vlt-scope${itemId || view !== 'items' ? ' has-item' : ''}`}>
+      <div className="pw-top">
+        <h1 className="pw-h1">Vault</h1>
+        {menu}
+      </div>
       <ShieldOnce info={shield} />
       {!o.mfaEnabled && (
         <div className="vlt-banner" role="note"><Icon name="shield" size={16} /><span>Turn on two-step verification to copy confidential items and earlier values.</span><Link className="btn btn-ghost btn-xs" to="/settings/profile">Set it up</Link></div>
       )}
 
-      <div className={`lib-vault${show === 'requests' ? ' wide' : ''}`}>
-        <section className="lib-card lib-vault-list" aria-label="Vault items">
+      <div className={`lib-vault pw${show === 'requests' ? ' wide' : ''}`}>
+        <section className="lib-vault-list pw-list" aria-label="Vault items">
+          <div className="pw-sec" role="group" aria-label="Vault health">
+            <button type="button" onClick={() => go({ health: null, show: null, view: null, c: null })} aria-pressed={!health && !collection && show === 'all'}><b>{health2.total}</b><span>Items</span></button>
+            <button type="button" onClick={() => go({ health: health === 'reused' ? null : 'reused', view: null, item: null })} aria-pressed={health === 'reused'}><b className="warn">{reusedN}</b><span>Reused</span></button>
+            <button type="button" onClick={() => go({ health: health === 'breached' ? null : 'breached', view: null, item: null })} aria-pressed={health === 'breached'}><b className={breachedN ? 'bad' : 'ok'}>{breachedN}</b><span>Breached</span></button>
+          </div>
           {view === 'bin' ? (
             <div className="lib-vault-mode"><button type="button" className="btn btn-link btn-sm" onClick={() => go({ view: null, item: null })}><Icon name="arrowLeft" size={14} /> All items</button><b>Bin</b></div>
           ) : showTabs && (
@@ -301,7 +352,7 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
           )}
           {show === 'requests' && view !== 'bin' ? <div className="lib-vault-requests"><RequestsView /></div> : (
             <>
-              <label className="lib-vault-search"><Icon name="search" size={15} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search names, URLs, tags" aria-label="Search the vault" /></label>
+              <label className="lib-vault-search pw-search"><Icon name="search" size={14} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" aria-label="Search the vault" /></label>
               {collection && (
                 <div className="lib-vault-coll" data-collection={collection.name}>
                   <button type="button" className="ds-chip on lib-vault-flag" onClick={() => go({ c: null, item: null })} aria-label={`Show every collection, not only ${collection.name}`}>{collection.name} <Icon name="close" size={12} /></button>
@@ -321,24 +372,11 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
                     : <EmptyState icon="lock" title={show === 'shared' ? 'Nothing shared with you yet' : 'Your vault is empty'} text="Save a password, an API key, a server or a secure note. Or import from another password manager."
                         action={<button className="btn btn-primary" onClick={() => setEditing('new')}><Icon name="plus" size={15} /> New secret</button>} />
               ) : (
-                <ul className="lib-vault-items" aria-label="Items" ref={listRef} onKeyDown={onListKey}>
-                  {list.map((it) => {
-                    const host = it.url?.replace(/^https?:\/\//, '').split('/')[0];
-                    const quick = view !== 'bin' ? QUICK[it.kind] : undefined;
-                    const shared = view !== 'bin' ? shareChip(o.collections.find((c) => c.id === it.collectionId)) : null;
-                    return (
-                      <li key={it.id} className="lib-vault-row">
-                        <button type="button" className={`lib-vault-item${it.id === itemId ? ' on' : ''}`} onClick={() => go({ item: it.id, view: view === 'bin' ? 'bin' : null })} data-item={it.title} aria-current={it.id === itemId || undefined}>
-                          <BrandTile title={it.title} url={it.url} kind={it.kind} />
-                          <span className="lib-vault-item-main"><b>{it.title}</b><small>{host || it.usernameHint || KIND_LABEL[it.kind]}{show !== 'mine' && it.collectionId !== personal?.id ? ` · ${it.collectionName}` : ''}</small></span>
-                          {shared && <span className="lib-vault-share" title={shared}>{shared}</span>}
-                          {it.sealed && <span className="vlt-e2ee-dot" title="End-to-end encrypted"><Icon name="lock" size={12} /></span>}
-                          {it.health.length > 0 && <span className={`vlt-risk ${it.health.includes('breached') || it.health.includes('rotate') ? 'bad' : ''}`} title={it.health.map((h) => HEALTH_LABEL[h]).join(', ')} aria-label={it.health.map((h) => HEALTH_LABEL[h]).join(', ')} />}
-                        </button>
-                        {quick && <button type="button" className="vlt-quick" tabIndex={-1} onClick={() => void quickCopy(it)} aria-label={`Copy the ${quick.label} of ${it.title}`} title={`Copy the ${quick.label} (or press C)`}><Icon name="copy" size={14} /></button>}
-                      </li>
-                    );
-                  })}
+                <ul className="lib-vault-items pw-items" aria-label="Items" ref={listRef} onKeyDown={onListKey}>
+                  {sharedRows.length > 0 && <li className="pw-gh" aria-hidden="true">Shared with me and by me</li>}
+                  {sharedRows.map(row)}
+                  {ownRows.length > 0 && sharedRows.length > 0 && <li className="pw-gh" aria-hidden="true">Everything</li>}
+                  {ownRows.map(row)}
                 </ul>
               ))}
             </>
@@ -346,12 +384,12 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
         </section>
 
         {show !== 'requests' && (
-          <section className="lib-card lib-vault-detail" aria-label={view !== 'items' && view !== 'bin' ? viewTitle[view] : 'Item'}>
+          <section className="lib-vault-detail pw-det" aria-label={view !== 'items' && view !== 'bin' ? viewTitle[view] : 'Item'}>
             {view !== 'items' && view !== 'bin' && (
               <div className="lib-vault-mode"><button type="button" className="btn btn-link btn-sm" onClick={() => go({ view: null })}><Icon name="arrowLeft" size={14} /> Items</button><b>{viewTitle[view]}</b></div>
             )}
             {right ?? (
-              <div className="lib-vault-empty"><Icon name="lock" size={28} /><p>Pick an item to see its username, website, password, 2FA code and notes.</p></div>
+              <div className="lib-vault-empty"><Icon name="lock" size={28} /><p>Pick an item to see its username, password, verification code, website and notes.</p></div>
             )}
           </section>
         )}
@@ -426,8 +464,8 @@ function ShieldOnce({ info }: { info: ShieldInfo }) {
     <div className="vlt-banner vlt-shield lib-shield" role="note" data-testid="shield-note">
       <Icon name="eye" size={16} />
       <span>{info.level === 'partial'
-        ? 'On a Mac, most screenshots and shares show this window black, but some newer recording apps can still see it. Values are never shown here, and the vault hides itself when you switch windows.'
-        : 'Screen sharing can see a browser tab. The vault never shows a value here and hides when you switch windows; the Windows and Android apps go fully black in shares.'}</span>
+        ? 'On a Mac, most screenshots and shares show this window black, but some newer recording apps can still see it. A value shows only when you choose Reveal, hides itself again, and the vault hides itself when you switch windows.'
+        : 'Screen sharing can see a browser tab. A value shows only when you choose Reveal and hides itself again; the vault hides when you switch windows, and the Windows and Android apps go fully black in shares.'}</span>
       <button className="btn-icon" aria-label="Dismiss" onClick={() => setShow(false)}><Icon name="close" size={14} /></button>
     </div>
   );

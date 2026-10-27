@@ -1,3 +1,4 @@
+import { useReadingProgress } from './readingProgress';
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
@@ -95,6 +96,7 @@ const RELATED_PARTS = ['links', 'requirements', 'files', 'secrets'] as const;
 /** A document with the Documents tree beside it (the tree opens on this document and lists its sections). */
 export function DocumentPage() {
   const { id = '' } = useParams();
+  useReadingProgress(id);
   return (
     <div className="doc-scope dv-shell-page">
       <DocShell browseLabel="Browse DocTracker" tree={<DtTreeStandalone activeDocId={id} />}>

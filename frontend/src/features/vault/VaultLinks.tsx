@@ -23,7 +23,8 @@ export type LinkSource =
  * Sends a secret once: the browser encrypts it with a key that only the link carries (after the #), so the server — and anyone reading its
  * database or logs — gets nothing readable. The link opens the chosen number of times before the deadline, then the secret is destroyed.
  */
-export function SendLinkModal({ source, clipboardSeconds, onClose }: { source: LinkSource; clipboardSeconds: number; onClose: () => void }) {
+export function SendLinkModal({ source, clipboardSeconds, onClose, initial }: { source: LinkSource; clipboardSeconds: number; onClose: () => void;
+  /** Chosen before opening (an item's Share for… 1 hour / 1 day / Once): how long the link lives and how many times it opens. Both can still be changed. */ initial?: { hours: number; views: number } }) {
   const step = useStepUp();
   const fieldsOf = (): { key: string; label: string; secret: boolean; value?: string | null }[] => {
     if (source.kind === 'guarded') return source.item.fields.filter((f) => f.type !== 'totp' && (f.secret || !!f.value)).map((f) => ({ key: f.key, label: f.label, secret: f.secret, value: f.secret ? null : f.value }));
@@ -36,8 +37,8 @@ export function SendLinkModal({ source, clipboardSeconds, onClose }: { source: L
   const [blankTitle, setBlankTitle] = useState('');
   const [blankUser, setBlankUser] = useState('');
   const [blankSecret, setBlankSecret] = useState('');
-  const [views, setViews] = useState(1);
-  const [hours, setHours] = useState(24);
+  const [views, setViews] = useState(initial?.views ?? 1);
+  const [hours, setHours] = useState(initial?.hours ?? 24);
   const [usePass, setUsePass] = useState(false);
   const [pass, setPass] = useState('');
   const [note, setNote] = useState('');
