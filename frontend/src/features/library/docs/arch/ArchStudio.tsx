@@ -34,11 +34,11 @@ const MULTS = [1, 3, 10];
  * edge), group them in frames, label everything, and style lines (dashed, animated, two-way). Undo/redo, tidy up, templates, and export to
  * PNG, SVG or JSON. "Done" hands the diagram back to the caller, which saves it.
  */
-export function ArchStudio(props: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void; context?: string[] }) {
+export function ArchStudio(props: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void; context?: string[]; onDraft?: (data: ArchData, title: string) => void }) {
   return createPortal(<ReactFlowProvider><Studio {...props} /></ReactFlowProvider>, document.body);
 }
 
-function Studio({ title: initialTitle, data, onDone, onClose, context }: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void; context?: string[] }) {
+function Studio({ title: initialTitle, data, onDone, onClose, context, onDraft }: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void; context?: string[]; onDraft?: (data: ArchData, title: string) => void }) {
   const start = useMemo(() => toFlow(data), [data]);
   const [nodes, setNodes, onNodesChange] = useNodesState<ArchFlowNode>(start.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<ArchFlowEdge>(start.edges);
@@ -66,6 +66,8 @@ function Studio({ title: initialTitle, data, onDone, onClose, context }: { title
 
   const dirty = () => JSON.stringify(fromFlow(flow.getNodes(), flow.getEdges())) !== JSON.stringify(fromFlow(start.nodes, start.edges)) || title !== initialTitle;
   const close = async () => { if (!dirty() || await confirmDialog({ title: 'Leave without keeping the changes?', message: 'Your changes to this diagram will be lost.', confirmText: 'Discard', danger: true })) onClose(); };
+  // Keeps the work in progress outside this component, so a layout change that remounts the page (desktop ↔ phone) reopens it as it was.
+  useEffect(() => { onDraft?.(fromFlow(nodes, edges), title); }, [nodes, edges, title, onDraft]);
   const done = () => onDone(fromFlow(flow.getNodes(), flow.getEdges()), title.trim() || 'Architecture');
 
   // ✦ Describe it: the assistant draws the system, or changes the current one, from a sentence. One undo step brings the old one back.

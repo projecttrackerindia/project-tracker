@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ReactFlowProvider } from '@xyflow/react';
@@ -30,12 +30,18 @@ function Preview({ data }: { data: ArchData }) {
  * A project's architecture: system diagrams and request flows drawn in the studio (components, frames, labelled arrows; start empty or from
  * a template), shown as a gallery to read, with the project's architecture notes under them. Saved together for the project.
  */
+/** The diagram being edited, kept across a remount of this page (e.g. the window crossing the phone breakpoint). */
+let openStudio: { pid: string; index: number; diagram: DtDiagram } | null = null;
+
 export function Architecture({ projectId, projectName }: { projectId: string | null; projectName: string }) {
   const wid = useWorkspaceId();
   const q = useWsQuery(['documents', 'doctracker', 'architecture', projectId ?? 'general'], () => docTrackerApi.architecture(projectId));
   const [diagrams, setDiagrams] = useState<DtDiagram[] | null>(null);
   const [notes, setNotes] = useState('');
-  const [editing, setEditing] = useState<{ index: number; diagram: DtDiagram } | null>(null);
+  const pidKey = projectId ?? 'general';
+  const [editing, setEditingState] = useState<{ index: number; diagram: DtDiagram } | null>(() => (openStudio?.pid === pidKey ? { index: openStudio.index, diagram: openStudio.diagram } : null));
+  const setEditing = (e: { index: number; diagram: DtDiagram } | null) => { openStudio = e && { pid: pidKey, ...e }; setEditingState(e); };
+  const onDraft = useCallback((data: ArchData, title: string) => { if (openStudio) openStudio = { ...openStudio, diagram: { ...openStudio.diagram, title, data: data as unknown as DtDiagram['data'] } }; }, []);
   const [focus, setFocus] = useState<string | null>(null);
   const [walk, setWalk] = useState<DtDiagram | null>(null);
   // What the project has, for the assistant to use real names when it draws (endpoints and pages).
@@ -112,7 +118,7 @@ export function Architecture({ projectId, projectName }: { projectId: string | n
       </section>
 
       {editing && (
-        <ArchStudio title={editing.diagram.title} data={asData(editing.diagram.data)} context={context} onClose={() => setEditing(null)}
+        <ArchStudio title={editing.diagram.title} data={asData(editing.diagram.data)} context={context} onDraft={onDraft} onClose={() => setEditing(null)}
           onDone={(data, title) => {
             const d: DtDiagram = { ...editing.diagram, title: title.trim() || editing.diagram.title, data: data as unknown as DtDiagram['data'] };
             commit(editing.index < 0 ? [...diagrams, d] : diagrams.map((x, j) => (j === editing.index ? d : x)));
