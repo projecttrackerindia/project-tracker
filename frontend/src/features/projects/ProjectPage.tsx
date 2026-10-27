@@ -111,7 +111,7 @@ export function ProjectPage() {
   // The project's meetings live in Talk: old links (?tab=meetings&meeting=…) open them there.
   if (rawTab === 'meetings') {
     const m = params.get('meeting');
-    return <Navigate to={`/talk?f=meetings&s=upcoming&project=${id}${m ? `&open=p:${m}` : ''}`} replace />;
+    return <Navigate to={`/messages?f=meetings&s=upcoming&project=${id}${m ? `&open=p:${m}` : ''}`} replace />;
   }
   // An old tab: the tab that holds it now, keeping the query (a task, an issue…) and the #anchor.
   // A proposal from the Home inbox (?finding=) is reviewed on Activity, beside the agent's switch.
@@ -162,9 +162,9 @@ export function ProjectPage() {
         <div className="pp-actions">
           <ProjectStatePill p={p} />
           <button type="button" className="pa-btn pp-share" onClick={() => void share()}>Share</button>
-          <DotsMenu label="More on this project" items={[
+          <DotsMenu label="More on this project" listClassName="wide" items={[
             { label: 'Add work', icon: 'plus', hint: '+ New, in this project', hidden: !addWork, onSelect: () => openNew('task', '', { id: p.id, name: p.name }) },
-            { label: 'Meet', icon: 'video', hint: 'The project’s calls and meetings', onSelect: () => nav(`/talk?f=meetings&s=upcoming&project=${p.id}`) },
+            { label: 'Meet', icon: 'video', hint: 'The project’s calls and meetings', onSelect: () => nav(`/messages?f=meetings&s=upcoming&project=${p.id}`) },
             { label: 'Chat', icon: 'message', hint: 'The project’s team chat', hidden: !chatOn, onSelect: () => openChat(p.id, p.name) },
             { label: canEdit ? 'Settings' : 'Members', icon: canEdit ? 'settings' : 'users', hint: canEdit ? 'Members, task workflow and automation' : 'Who is on this project', onSelect: () => setSettings('members') },
             { label: 'Delay risk', icon: 'sparkle', hint: 'How likely it is to be late, and why', hidden: !ai, onSelect: () => setRisk(true) },

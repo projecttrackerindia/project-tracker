@@ -123,7 +123,7 @@ try {
     await page.getByRole('region', { name: 'Done vs planned' }).waitFor();
     const load = page.getByRole('region', { name: 'Workload' });
     assert.equal(await load.locator('.ins-bars li').count(), 4);
-    assert.equal(await load.locator('.ins-bars li').first().locator('.ins-name').innerText(), 'Siva Reddy');
+    assert.match(await load.locator('.ins-bars li').first().locator('.ins-name').innerText(), /Siva Reddy$/);
     assert.ok((await load.locator('.ins-bar i.late').first().evaluate((e) => e.getBoundingClientRect().width)) > 0, 'overdue shows in red');
     const stand = page.getByRole('region', { name: 'What stands out' });
     await stand.getByText('Siva Reddy holds 50% of the team\'s open work, 1 of it overdue.').waitFor();

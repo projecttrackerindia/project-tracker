@@ -55,6 +55,7 @@ import { LastChanged, LatestChanges, SectionHistory, SettingsSearch, SetupHealth
 import { NotificationDefaultsSection } from './NotificationDefaults';
 import { MobileAppSection } from './MobileAppSection';
 import { ConnectedAccountsSection } from './ConnectedAccounts';
+import { MailIntegrationSettings } from './MailIntegration';
 import { SlackSettings } from './SlackSettings';
 import { WhatsAppSettings } from './WhatsAppSettings';
 
@@ -91,7 +92,7 @@ const PLACE_IDS = new Set<string>(['profile', 'notifications', ...WORKSPACE_PLAC
 
 interface SubTab { id: string; label: string }
 
-type NavId = 'profile' | 'workspace' | 'people' | 'ai' | 'notifications' | 'mail' | 'integrations' | 'security' | 'billing' | 'appearance';
+type NavId = 'profile' | 'workspace' | 'people' | 'ai' | 'notifications' | 'integrations' | 'security' | 'billing' | 'appearance';
 /** The left list of the macOS System Settings layout: coloured icon tiles, in three groups (apple/s-settings). */
 const NAV: { id: NavId; label: string; color: string; glyph: string; sub: string }[] = [
   { id: 'profile', label: 'Profile', color: '#8e8e93', glyph: '☺', sub: PLACE_INFO.profile.sub },
@@ -99,7 +100,6 @@ const NAV: { id: NavId; label: string; color: string; glyph: string; sub: string
   { id: 'people', label: 'People & roles', color: '#5856d6', glyph: '⚇', sub: PLACE_INFO.people.sub },
   { id: 'ai', label: 'AI', color: 'linear-gradient(135deg,#5e5ce6,#bf5af2)', glyph: '✦', sub: PLACE_INFO.ai.sub },
   { id: 'notifications', label: 'Notifications', color: '#ff3b30', glyph: '◉', sub: 'Choose where things reach you. Project Tracker only interrupts for what matters.' },
-  { id: 'mail', label: 'Mail accounts', color: '#30b0c7', glyph: '✉', sub: '' },
   { id: 'integrations', label: 'Integrations', color: '#28cd41', glyph: '⇄', sub: PLACE_INFO.integrations.sub },
   { id: 'security', label: 'Security', color: '#636366', glyph: '⚿', sub: 'Your password, passkeys, two-step verification and devices; the workspace’s sign-in rules, single sign-on, roles, audit log and retention.' },
   { id: 'billing', label: 'Billing', color: '#ff9500', glyph: '₹', sub: PLACE_INFO.billing.sub },
@@ -122,6 +122,8 @@ export function SettingsPage() {
   const ctx = useAuth((s) => s.ctx);
   const isPlatformAdmin = !!ctx?.user.isPlatformAdmin;
   useSettingJump();
+  // Mail is connected in one place: Integrations › Mail (the old "Mail accounts" address lands there).
+  if (section === 'mail') return <Navigate to={`/settings/integrations/mail${loc.search}${loc.hash}`} replace />;
   if (!section || (section !== 'profile' && section !== 'appearance' && !(section === 'security' && asked === 'account') && isPlatformAdmin)) return <Navigate to={`/settings/profile${loc.search}${loc.hash}`} replace />;
   // An old section id: its new section and tab, keeping anything else in the address.
   if (!PLACE_IDS.has(section) && section !== 'appearance') {
@@ -134,7 +136,8 @@ export function SettingsPage() {
     return <Navigate to={`${path}${s ? `?${s}` : ''}${loc.hash}`} replace />;
   }
   const open = new Set(leaves.map((l) => l.id));
-  const places = WORKSPACE_PLACES.filter((p) => PLACE_LEAVES[p].some((l) => open.has(l)));
+  // Integrations is open to everyone (their own mail accounts live there); its workspace pages stay for admins.
+  const places = WORKSPACE_PLACES.filter((p) => PLACE_LEAVES[p].some((l) => open.has(l)) || (p === 'integrations' && !isPlatformAdmin));
   if (section === 'appearance') return <SettingsShell nav={nav} places={places} current="appearance" isPlatformAdmin={isPlatformAdmin}><AppearancePane /></SettingsShell>;
   const place = section as SettingsPlace;
   // Your own sign-in security moved from Profile to the top-level Security section.
@@ -151,6 +154,7 @@ export function SettingsPage() {
     : place === 'notifications' ? [{ id: 'overview', label: 'Overview' }, ...notifTabs]
       : place === 'ai' ? []
       : place === 'security' ? [{ id: 'account', label: 'Your account' }, ...(wsSecurity ? leaves.filter((l) => PLACE_LEAVES.security.includes(l.id)).sort((a, b) => PLACE_LEAVES.security.indexOf(a.id) - PLACE_LEAVES.security.indexOf(b.id)).map((l) => ({ id: l.id, label: l.label })) : [])]
+      : place === 'integrations' ? [{ id: 'mail', label: 'Mail' }, ...leaves.filter((l) => PLACE_LEAVES.integrations.includes(l.id)).sort((a, b) => PLACE_LEAVES.integrations.indexOf(a.id) - PLACE_LEAVES.integrations.indexOf(b.id)).map((l) => ({ id: l.id, label: l.label }))]
       : inWorkspace ? leaves.filter((l) => WORKSPACE_LEAVES.includes(l.id)).sort((a, b) => WORKSPACE_LEAVES.indexOf(a.id) - WORKSPACE_LEAVES.indexOf(b.id)).map((l) => ({ id: l.id, label: l.label }))
       : leaves.filter((l) => PLACE_LEAVES[place].includes(l.id)).sort((a, b) => PLACE_LEAVES[place].indexOf(a.id) - PLACE_LEAVES[place].indexOf(b.id)).map((l) => ({ id: l.id, label: l.label }));
   // AI: the control centre, usage and the tracker are for admins; Project agent for whoever leads a project.
@@ -160,18 +164,20 @@ export function SettingsPage() {
   const sub = place === 'ai' ? ((asked === 'usage' || asked === 'tracker') && aiAdmin ? asked : asked === 'project-agent' && aiAgent ? asked : aiFirst)
     : inWorkspace ? tabs.find((t) => t.id === (asked ?? placeFirst))?.id ?? tabs[0]?.id
     : place === 'security' ? tabs.find((t) => t.id === asked)?.id ?? (wsSecurity ? 'security' : 'account')
+    : place === 'integrations' ? tabs.find((t) => t.id === asked)?.id ?? (tabs[1]?.id ?? 'mail')
     : tabs.find((t) => t.id === asked)?.id ?? tabs[0]?.id;
-  const first = place === 'ai' ? aiFirst : place === 'security' ? (wsSecurity ? 'security' : 'account') : tabs[0]?.id;
+  const first = place === 'ai' ? aiFirst : place === 'security' ? (wsSecurity ? 'security' : 'account') : place === 'integrations' ? (tabs[1]?.id ?? 'mail') : tabs[0]?.id;
   const choose = (v: string) => (inWorkspace ? nav(leafHref(v as WorkspaceSection)) : nav(v === first ? `/settings/${place}` : `/settings/${place}/${v}`));
 
-  const current: NavId = place === 'profile' ? (sub === 'accounts' ? 'mail' : 'profile')
+  const current: NavId = place === 'profile' ? 'profile'
     : inWorkspace ? 'workspace' : (place as NavId);
   const body = place === 'profile' ? <ProfileTab sub={sub} />
     : place === 'notifications' ? (sub === 'overview' ? <NotificationsOverview more={notifTabs} /> : <NotificationsTab sub={sub} />)
     : place === 'security' && sub === 'account' ? <SecuritySection head={tabs.length <= 1} />
     : place === 'ai' ? <AiSettings tab={sub as AiTab} onTab={choose} admin={aiAdmin} agent={aiAgent} />
+    : place === 'integrations' && sub === 'mail' ? <MailIntegrationSettings />
     : <SettingsSection id={sub as WorkspaceSection} />;
-  const info = NAV.find((n) => n.id === (current === 'mail' ? 'profile' : current))!;
+  const info = NAV.find((n) => n.id === current)!;
   const headTitle = place === 'profile' ? PLACE_INFO.profile.label : info.label;
   return (
     <SettingsShell nav={nav} places={places} current={current} isPlatformAdmin={isPlatformAdmin}>
@@ -199,7 +205,6 @@ function SettingsShell({ nav, places, current, isPlatformAdmin, children }: { na
     people: has('people') ? '/settings/people' : null,
     ai: has('ai') ? '/settings/ai' : null,
     notifications: isPlatformAdmin ? null : '/settings/notifications',
-    mail: isPlatformAdmin ? null : '/settings/profile/accounts',
     integrations: has('integrations') ? '/settings/integrations' : null,
     security: '/settings/security/account',
     billing: has('billing') ? '/settings/billing' : null,

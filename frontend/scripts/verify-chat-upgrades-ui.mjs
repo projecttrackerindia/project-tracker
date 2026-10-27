@@ -190,7 +190,7 @@ try {
   await cu.locator('.cu-sec', { hasText: 'Approve the template by Friday' }).waitFor();
   await shot(page, 'catch-up-1440.png');
   await cu.getByRole('button', { name: 'Close' }).last().click(); checks.push('catch-up');
-  await page.getByRole('button', { name: 'More in Talk' }).click();
+  await page.getByRole('button', { name: 'More in Messages' }).click();
   await page.getByRole('menuitem', { name: /Ask the chat/ }).click();
   const ask = page.getByRole('dialog');
   await ask.getByLabel('Question').fill('When is the EMI reminder sent?');

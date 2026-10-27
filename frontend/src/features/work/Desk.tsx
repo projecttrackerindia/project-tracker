@@ -53,9 +53,9 @@ export function useWarRoom(w: WorkItemDetail) {
         id = c.id;
         try { localStorage.setItem(storeKey, id); } catch { /* private window */ }
         await chatApi.send(id, `🚨 Critical incident ${w.key}: ${w.title}\nOpen it: ${window.location.origin}/work?item=${w.id}`);
-        void workItemsApi.comment(w.id, `War room opened in Talk (“War room · ${w.key}”).`).catch(() => undefined);
+        void workItemsApi.comment(w.id, `War room opened in Messages (“War room · ${w.key}”).`).catch(() => undefined);
       }
-      nav(`/talk/${encodeURIComponent(id)}`);
+      nav(`/messages/${encodeURIComponent(id)}`);
     } catch (e) { toast(errText(e, 'Could not open the war room.'), 'error'); }
     finally { setBusy(false); }
   };

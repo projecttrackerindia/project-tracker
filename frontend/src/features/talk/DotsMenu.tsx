@@ -1,20 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Icon, type IconName } from '../../components/Icon';
+import { Popover } from '../../lib/popover';
 import './dots.css';
 
 export interface DotsItem { label: string; icon?: IconName; onSelect: () => void; hint?: string; danger?: boolean; hidden?: boolean }
 
-/** "···": the less-used actions of a screen, in one small list. Closes on choosing, on a click outside and on Escape. */
-export function DotsMenu({ label, items, className = '', align = 'right', icon = 'more' }: { label: string; items: DotsItem[]; className?: string; align?: 'left' | 'right'; icon?: IconName }) {
+/**
+ * "···": the less-used actions of a screen, in one small list. The list floats above everything (lib/popover): it opens below the
+ * button, or above it when there is no room, and stays inside the window. Closes on choosing, on a click outside, on Escape and when
+ * the button scrolls away; arrow keys move between the actions and focus returns to the button.
+ */
+export function DotsMenu({ label, items, className = '', listClassName = '', align = 'right', icon = 'more' }: { label: string; items: DotsItem[]; className?: string; listClassName?: string; align?: 'left' | 'right'; icon?: IconName }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', away); document.addEventListener('keydown', esc);
-    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
-  }, [open]);
   const shown = items.filter((i) => !i.hidden);
   if (shown.length === 0) return null;
   return (
@@ -22,8 +20,8 @@ export function DotsMenu({ label, items, className = '', align = 'right', icon =
       <button type="button" className="v2-dots-btn" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <Icon name={icon} size={16} />
       </button>
-      {open && (
-        <ul className={`v2-dots-list ${align}`} role="menu" aria-label={label}>
+      <Popover open={open} onClose={() => setOpen(false)} anchorRef={ref} align={align === 'right' ? 'end' : 'start'} className="v2-dots-pop">
+        <ul className={`v2-dots-list ${listClassName}`} role="menu" aria-label={label}>
           {shown.map((i) => (
             <li key={i.label} role="none">
               <button type="button" role="menuitem" className={i.danger ? 'danger' : ''} onClick={() => { setOpen(false); i.onSelect(); }}>
@@ -32,7 +30,7 @@ export function DotsMenu({ label, items, className = '', align = 'right', icon =
             </li>
           ))}
         </ul>
-      )}
+      </Popover>
     </div>
   );
 }

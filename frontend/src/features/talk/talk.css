@@ -98,7 +98,7 @@ html .talk-thread .msg.mine .bubble { background: var(--talk-tint); color: #fff;
 .talk-thread .msg .avatar, .talk-thread .msg .avatar-gap { width: 26px; height: 26px; font-size: 10px; }
 .talk-thread .bubble-meta { display: none; }
 /* hover actions beside the bubble: Make task (green) · Remind me · ↩ · ··· */
-html .talk-thread .msg-actions { top: auto; bottom: 2px; gap: 4px; padding: 3px; border-radius: 11px; background: var(--ds-surface); box-shadow: 0 4px 16px rgba(0, 0, 0, .06), 0 0 0 .5px rgba(0, 0, 0, .06); }
+html .talk-thread .msg-actions { top: 0; bottom: auto; gap: 4px; padding: 3px; border-radius: 11px; background: var(--ds-surface); box-shadow: 0 4px 16px rgba(0, 0, 0, .06), 0 0 0 .5px rgba(0, 0, 0, .06); }
 .talk-thread .msg-act { gap: 5px; height: 26px; min-height: 26px; padding: 0 10px; border-radius: 8px; font-size: 12px; font-weight: 500; }
 .talk-thread .msg-act.make { background: rgba(40, 205, 65, .14); color: var(--talk-tint-d); }
 .talk-thread .msg-act.make:hover { background: rgba(40, 205, 65, .22); }

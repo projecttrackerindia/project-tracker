@@ -1,23 +1,20 @@
 import { Face } from '../../components/Face';
 import { useMemo, useState } from 'react';
 import { MeetPage } from '../meet/MeetPage';
-import { MailboxPage } from '../mailbox/MailboxPage';
 import { useQuery } from '@tanstack/react-query';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { chatApi } from '../../api/endpoints';
 import type { Conversation } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { EmptyState, PageLoader, Spinner } from '../../components/ui';
-import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { useWsQuery } from '../../lib/hooks';
 import { useAuth, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { listTime } from '../chat/chatFormat';
 import { chatKeys, useChat } from '../chat/chatStore';
 import { AskChatDialog, CatchUpDialog, QuestionsBox, SavedPanel, ScheduledPanel, StatusButton } from '../chat/ChatTools';
 import { FilesPanel, InfoPanel, NewChatModal } from '../chat/Panels';
 import { Thread } from '../chat/Thread';
-import { ConnectModal, Reader, useMailAccounts } from '../mailbox/MailParts';
-import { mailboxApi } from '../mailbox/mailboxApi';
 import { MeetingDetail } from '../meet/MeetingDetail';
 import { parseRef } from '../meet/meetApi';
 import { DotsMenu } from './DotsMenu';
@@ -26,12 +23,12 @@ import { WhileAway } from '../chat/ChatPage';
 import { talkApi, type TalkFilter, type TalkRow } from './talkApi';
 import './talk.css';
 
-const FILTERS: { id: TalkFilter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'chat', label: 'Chats' }, { id: 'mail', label: 'Mail' }, { id: 'meetings', label: 'Meetings' }];
+const FILTERS: { id: TalkFilter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'chat', label: 'Chats' }, { id: 'meetings', label: 'Meetings' }];
 const KIND_OF: Record<TalkFilter, TalkRow['kind'] | null> = { all: null, unread: null, chat: 'chat', mail: 'mail', meetings: 'meeting' };
 const NO_CONVERSATIONS: Conversation[] = [];
 const DAY = 86_400_000;
 
-/** Where a row sits: a chat or mail by its last message; a meeting now or within a day with the newest, one further ahead lower the further away it is. */
+/** Where a row sits: a chat by its last message; a meeting now or within a day with the newest, one further ahead lower the further away it is. */
 function sortKey(r: TalkRow, now: number) {
   const at = r.at ? Date.parse(r.at) : 0;
   if (r.kind !== 'meeting') return at;
@@ -53,9 +50,9 @@ function meetingTime(r: TalkRow) {
 }
 
 /**
- * Talk: chat, mail and meetings in one list (filters All · Chat · Mail · Meetings), and the open one on the right in the same pane: a chat
- * thread (actions beside the bubble, ✦ summary strip, ✦ draft a reply), a mail conversation, or a meeting. Calls start from the list or a
- * thread. Chats keep their conversation id in the address (/talk/{id}); mail and meetings open with ?mail= and ?meeting=.
+ * Talk: chats and meetings in one list (filters All · Unread · Chats · Meetings), and the open one on the right in the same pane: a chat
+ * thread (actions beside the bubble, ✦ summary strip, ✦ draft a reply) or a meeting. Calls start from the list or a thread. Chats keep
+ * their conversation id in the address (/messages/{id}); meetings open with ?meeting=. Mail has its own place (/mail).
  */
 function TalkHome() {
   const location = useLocation();
@@ -69,15 +66,13 @@ function TalkHome() {
   const chatUsable = !personal && role !== 'Guest';
 
   const filter = (FILTERS.some((x) => x.id === params.get('f')) ? params.get('f') : 'all') as TalkFilter;
-  const chatId = (() => { const m = /\/talk\/([^/?#]+)/.exec(location.pathname); return m ? decodeURIComponent(m[1]) : null; })();
-  const mailId = params.get('mail');
-  const mailAccount = params.get('account');
+  const chatId = (() => { const m = /\/messages\/([^/?#]+)/.exec(location.pathname); return m ? decodeURIComponent(m[1]) : null; })();
   const meeting = parseRef(params.get('meeting'));
   const [search, setSearch] = useState('');
   const [panel, setPanel] = useState<'info' | 'files' | 'saved' | 'scheduled' | null>(null);
-  const [dialog, setDialog] = useState<null | 'catchup' | 'ask' | 'new' | 'connect'>(null);
+  const [dialog, setDialog] = useState<null | 'catchup' | 'ask' | 'new'>(null);
 
-  const talk = useWsQuery(['talk', 'conversations'], () => talkApi.conversations('all'), { staleTime: 15_000, refetchInterval: 120_000 });
+  const talk = useWsQuery(['talk', 'conversations'], () => talkApi.conversations('talk'), { staleTime: 15_000, refetchInterval: 120_000 });
   // The live chat list (the realtime connection keeps it current), so a new message moves its chat to the top at once.
   const conversations = useQuery({
     queryKey: chatKeys.conversations(wid ?? ''),
@@ -85,8 +80,6 @@ function TalkHome() {
     enabled: !!wid && chatUsable, staleTime: 15_000,
   });
   const live = conversations.data ?? NO_CONVERSATIONS;
-  const mail = useMailAccounts();
-  const agentOpts = useWsQuery(['mailbox', 'agent-options'], mailboxApi.agentOptions, { staleTime: 300_000, enabled: !!mailId });
 
   // One list: the merged rows, with each chat's last message and unread count taken from the live list.
   const rows = useMemo(() => {
@@ -95,6 +88,7 @@ function TalkHome() {
     const out: TalkRow[] = [];
     const seen = new Set<string>();
     for (const r of talk.data?.items ?? []) {
+      if (r.kind === 'mail') continue;   // mail lives in Mail now
       if (r.kind !== 'chat') { out.push(r); continue; }
       const c = byId.get(r.id);
       seen.add(r.id);
@@ -107,12 +101,6 @@ function TalkHome() {
   const needle = search.trim().toLowerCase();
   const unreadCount = rows.filter((r) => r.unread > 0).length;
   const shown = rows.filter((r) => (!kind || r.kind === kind) && (filter !== 'unread' || r.unread > 0) && (!needle || `${r.title} ${r.last ?? ''} ${r.sub ?? ''}`.toLowerCase().includes(needle)));
-  const mailState = talk.data?.mail?.state;
-  const company = mail.imap.data?.company;
-  const [connectDismissed, setConnectDismissed] = useState(() => { try { return localStorage.getItem('pm_talk_connect_dismissed') === '1'; } catch { return false; } });
-  const dismissConnect = () => { setConnectDismissed(true); try { localStorage.setItem('pm_talk_connect_dismissed', '1'); } catch { /* private window */ } };
-  // "Connect your mailbox" is a dismissible banner in the Mail filter, not a conversation row.
-  const showConnect = filter === 'mail' && !connectDismissed && mailState === 'not-connected' && !mail.loading && mail.accounts.length === 0;
 
   const setParam = (patch: Record<string, string | null>, path?: string) => {
     const next = new URLSearchParams(params);
@@ -123,40 +111,35 @@ function TalkHome() {
   const keepF = filter === 'all' ? '' : `?f=${filter}`;
   const open = (r: TalkRow) => {
     setPanel(null);
-    if (r.kind === 'chat') navigate(`/talk/${r.id}${keepF}`);
-    else if (r.kind === 'mail') navigate(`/talk?${new URLSearchParams({ ...(filter === 'all' ? {} : { f: filter }), mail: r.messageId ?? '', account: r.account ?? '' })}`);
-    else navigate(`/talk?${new URLSearchParams({ ...(filter === 'all' ? {} : { f: filter }), meeting: r.meetingRef ?? '', ...(r.sessionStart ? { at: r.sessionStart } : {}) })}`);
+    if (r.kind === 'chat') navigate(`/messages/${r.id}${keepF}`);
+    else navigate(`/messages?${new URLSearchParams({ ...(filter === 'all' ? {} : { f: filter }), meeting: r.meetingRef ?? '', ...(r.sessionStart ? { at: r.sessionStart } : {}) })}`);
   };
-  const back = () => navigate(`/talk${keepF}`);
-  const activeId = chatId ?? (mailId ? `mail:${mailId}` : meeting ? `meet:${params.get('meeting')}` : null);
+  const back = () => navigate(`/messages${keepF}`);
+  const activeId = chatId ?? (meeting ? `meet:${params.get('meeting')}` : null);
   const current = chatId ? live.find((c) => c.id === chatId) ?? null : null;
-  const mailAcct = mailId ? mail.accounts.find((a) => a.key === mailAccount) ?? null : null;
   const opened = !!activeId;
 
   if (talk.isLoading && conversations.isLoading) return <PageLoader />;
 
   return (
     <div className={`talk-shell${opened ? ' is-open' : ''}`} data-testid="talk">
-      <h1 className="sr-only">Talk</h1>
-      <ToolbarSlot title={<span className="tb-big" aria-hidden="true">Talk</span>} />
+      <h1 className="sr-only">Messages</h1>
+      <ToolbarSlot title={<span className="tb-big" aria-hidden="true">Messages</span>} />
       <aside className="talk-list" aria-label="Conversations">
         <div className="talk-list-top">
           <label className="talk-search"><Icon name="search" size={14} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats, mail, meetings" aria-label="Search Talk" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats and meetings" aria-label="Search Messages" />
           </label>
           {chatUsable && <StatusButton />}
-          <DotsMenu label="More in Talk" items={[
+          <DotsMenu label="More in Messages" items={[
             { label: 'New conversation', hint: 'Message a colleague or start a group', icon: 'plus', onSelect: () => setDialog('new'), hidden: !chatUsable },
             { label: 'Catch me up', hint: 'What you missed across your chats', icon: 'sparkle', onSelect: () => setDialog('catchup'), hidden: !chatUsable },
             { label: 'Ask the chat', hint: 'Answers from your conversations, with links', icon: 'search', onSelect: () => setDialog('ask'), hidden: !chatUsable },
             { label: 'Saved messages', icon: 'star', onSelect: () => setPanel('saved'), hidden: !chatUsable },
             { label: 'Scheduled messages', icon: 'clock', onSelect: () => setPanel('scheduled'), hidden: !chatUsable },
-            { label: 'New mail', icon: 'edit', onSelect: () => navigate('/talk?f=mail&s=mailbox&compose=1') },
-            { label: 'Mailbox', hint: 'Every account and folder, filters, company mail', icon: 'inbox', onSelect: () => navigate('/talk?f=mail&s=mailbox') },
-            { label: 'Connect a mailbox', icon: 'mail', onSelect: () => setDialog('connect') },
             // Meetings keep their full views (Meet): scheduling, the upcoming list with replies, series, past notes and the notetaker.
-            { label: 'Schedule a meeting', icon: 'calendar', onSelect: () => navigate('/talk?f=meetings&new=schedule') },
-            { label: 'All meetings', hint: 'Upcoming, series, past and the notetaker', icon: 'video', onSelect: () => navigate('/talk?f=meetings&s=upcoming') },
+            { label: 'Schedule a meeting', icon: 'calendar', onSelect: () => navigate('/messages?f=meetings&new=schedule') },
+            { label: 'All meetings', hint: 'Upcoming, series, past and the notetaker', icon: 'video', onSelect: () => navigate('/messages?f=meetings&s=upcoming') },
           ]} />
         </div>
         <div className="talk-filters" role="group" aria-label="Show">
@@ -166,28 +149,17 @@ function TalkHome() {
           ))}
         </div>
         <div className="talk-scroll">
-          {talk.isError && <div className="talk-note" role="alert">{talk.error instanceof ApiError ? talk.error.message : 'Talk could not be loaded.'} <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></div>}
+          {talk.isError && <div className="talk-note" role="alert">{talk.error instanceof ApiError ? talk.error.message : 'Messages could not be loaded.'} <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></div>}
           {/* Questions colleagues asked you in chat and are waiting on (cleared by replying). */}
           {chatUsable && !needle && (filter === 'all' || filter === 'chat') && <QuestionsBox />}
-          {showConnect && (
-            <div className="talk-connect-banner" role="note" data-testid="connect-mailbox-banner">
-              <Icon name="mail" size={15} />
-              <span className="grow">{company?.name ? `Connect your ${company.name} mailbox to see mail here.` : 'Connect your mailbox to see mail here.'}</span>
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => setDialog('connect')} data-testid="connect-mailbox">Connect</button>
-              <button type="button" className="icon-btn" aria-label="Dismiss" onClick={dismissConnect}><Icon name="close" size={14} /></button>
-            </div>
-          )}
           <ul className="talk-rows">
-            {shown.map((r) => <Row key={r.id} r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} source={r.kind === 'mail' ? mailSource(mail.accounts.find((a) => a.key === r.account)?.label ?? talk.data?.mail?.provider ?? '') : null} active={r.id === activeId} onOpen={() => open(r)} />)}
-            {(filter === 'all' || filter === 'mail') && mailState === 'unavailable' && (
-              <li className="talk-note">Your mailbox did not answer in time. <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></li>
-            )}
+            {shown.map((r) => <Row key={r.id} r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} active={r.id === activeId} onOpen={() => open(r)} />)}
           </ul>
           {shown.length === 0 && !talk.isLoading && (
-            <EmptyState icon={filter === 'meetings' ? 'video' : filter === 'mail' ? 'mail' : 'message'}
-              title={needle ? 'Nothing found' : filter === 'meetings' ? 'No meetings in the next two weeks' : filter === 'mail' ? 'No mail yet' : 'No conversations yet'}
-              text={needle ? undefined : filter === 'meetings' ? 'Meetings you organize or are invited to show here.' : filter === 'mail' ? undefined : 'Message a colleague or start a group.'}
-              action={!needle && filter !== 'meetings' && filter !== 'mail' && chatUsable ? <button type="button" className="btn btn-primary" onClick={() => setDialog('new')}>Start a conversation</button> : undefined} />
+            <EmptyState icon={filter === 'meetings' ? 'video' : 'message'}
+              title={needle ? 'Nothing found' : filter === 'meetings' ? 'No meetings in the next two weeks' : 'No conversations yet'}
+              text={needle ? undefined : filter === 'meetings' ? 'Meetings you organize or are invited to show here.' : 'Message a colleague or start a group.'}
+              action={!needle && filter !== 'meetings' && chatUsable ? <button type="button" className="btn btn-primary" onClick={() => setDialog('new')}>Start a conversation</button> : undefined} />
           )}
         </div>
       </aside>
@@ -201,11 +173,6 @@ function TalkHome() {
                 filesOpen={panel === 'files'} onFiles={() => setPanel((p) => (p === 'files' ? null : 'files'))} />
             : conversations.isLoading || conversations.isFetching ? <PageLoader />
               : <Gone text="This conversation was removed, or you are no longer in it." onBack={back} />
-        ) : mailId ? (
-          mailAcct
-            ? <div className="talk-mail"><Reader key={`${mailAcct.key}-${mailId}`} account={mailAcct} folder="inbox" messageId={mailId} row={null} agent={!!agentOpts.data?.available} onBack={back}
-                onSent={() => { void invalidateWorkspace(wid, 'mailbox'); void talk.refetch(); }} /></div>
-            : mail.loading ? <PageLoader /> : <Gone text="This mailbox is no longer connected." onBack={back} />
         ) : meeting ? (
           <div className="talk-meeting">
             <MeetingDetail key={params.get('meeting')} inline kind={meeting.kind} id={meeting.id} at={params.get('at')} onClose={back}
@@ -219,7 +186,7 @@ function TalkHome() {
           <div className="talk-empty">
             <Icon name="message" size={30} />
             <h2>Pick a conversation</h2>
-            <p>Chats, mail and meetings are all on the left. Start a call or a new conversation from there.</p>
+            <p>Chats and meetings are all on the left. Start a call or a new conversation from there.</p>
           </div>
         )}
       </section>
@@ -231,10 +198,6 @@ function TalkHome() {
       {dialog === 'catchup' && <CatchUpDialog conversationId={chatId} onClose={() => setDialog(null)} />}
       {dialog === 'ask' && <AskChatDialog onClose={() => setDialog(null)} />}
       {dialog === 'new' && <NewChatModal onClose={() => setDialog(null)} />}
-      {dialog === 'connect' && (
-        <ConnectModal accountsData={mail.imap.data} presets={mail.imap.data?.presets ?? []} google={mail.google.data} microsoft={mail.ms.data} imapAccounts={mail.imap.data?.imap ?? []}
-          onClose={() => setDialog(null)} onConnected={() => { void invalidateWorkspace(wid, 'mailbox'); void invalidateWorkspace(wid, 'talk'); }} />
-      )}
     </div>
   );
 }
@@ -257,19 +220,11 @@ function shortTime(iso: string) {
   return /\d:\d\d/.test(t) ? new Date(iso).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s?[ap]m$/i, '') : t;
 }
 
-/** Which mailbox a mail row came from: Gmail (M), Rediffmail (R), or the first letter of the account. */
-function mailSource(label: string): { name: string; glyph: string } {
-  const l = label.toLowerCase();
-  if (l.includes('gmail') || l.includes('google')) return { name: 'Gmail', glyph: 'M' };
-  if (l.includes('rediff')) return { name: 'Rediffmail', glyph: 'R' };
-  return { name: label || 'Mail', glyph: (label || 'M').charAt(0).toUpperCase() };
-}
-
-/** A Messages-style row: avatar with its source glyph (chat ●, mail M/R, meeting ▶), unread dot, name and time, two lines of preview. */
-function Row({ r, conversation, source, active, onOpen }: { r: TalkRow; conversation?: Conversation; source: { name: string; glyph: string } | null; active: boolean; onOpen: () => void }) {
+/** A Messages-style row: avatar with its source glyph (chat ●, meeting ▶), unread dot, name and time, two lines of preview. */
+function Row({ r, conversation, active, onOpen }: { r: TalkRow; conversation?: Conversation; active: boolean; onOpen: () => void }) {
   const channel = r.kind === 'chat' && (conversation ? conversation.type !== 'Direct' : r.group);
   const recording = r.kind === 'meeting' && !r.upcoming && !r.live && !!r.sessionStart && Date.parse(r.sessionStart) < Date.now();
-  const title = r.kind === 'mail' && source && !r.title.includes(source.name) ? `${r.title} · ${source.name}` : channel && !r.title.startsWith('#') ? `#${r.title}` : r.title;
+  const title = channel && !r.title.startsWith('#') ? `#${r.title}` : r.title;
   const iso = r.kind === 'meeting' ? r.sessionStart ?? r.at : r.at;
   const when = r.live ? 'Now' : iso ? shortTime(iso) : meetingTime(r);
   const initials = r.avatar.initials || r.title.replace(/^#/, '').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
@@ -284,8 +239,8 @@ function Row({ r, conversation, source, active, onOpen }: { r: TalkRow; conversa
             : channel
               ? <span className={`talk-av square av-c${hue(r.title)}`} aria-hidden="true">#</span>
               : <Face userId={r.avatar.userId} hasAvatar={r.avatar.hasAvatar || undefined} className={`talk-av av-c${hue(r.title)}`} text={initials} />}
-          <span className={`talk-src s-${r.kind}`} title={r.kind === 'mail' ? source?.name : r.kind === 'meeting' ? 'Meeting' : 'Chat'} aria-hidden="true">
-            {r.kind === 'mail' ? source?.glyph ?? 'M' : r.kind === 'meeting' ? <Icon name="play" size={8} /> : null}
+          <span className={`talk-src s-${r.kind}`} title={r.kind === 'meeting' ? 'Meeting' : 'Chat'} aria-hidden="true">
+            {r.kind === 'meeting' ? <Icon name="play" size={8} /> : null}
           </span>
         </span>
         <span className="talk-text">
@@ -331,7 +286,7 @@ function Gone({ text, onBack }: { text: string; onBack: () => void }) {
       <Icon name="alert" size={28} />
       <h2>Not here</h2>
       <p>{text}</p>
-      <button type="button" className="btn btn-ghost" onClick={onBack}>Back to Talk</button>
+      <button type="button" className="btn btn-ghost" onClick={onBack}>Back to Messages</button>
     </div>
   );
 }
@@ -341,15 +296,13 @@ const MEET_SECTIONS: readonly MeetSection[] = ['upcoming', 'series', 'past', 'no
 
 /**
  * Talk. Meetings keep their full views here: a section (`?f=meetings&s=series|past|notetaker`) or scheduling (`&new=schedule|now`) opens
- * the meetings page; everything else is the one list of chats, mail and meetings.
+ * the meetings page; everything else is the one list of chats and meetings. Old mail addresses (?f=mail, ?mail=) move to Mail.
  */
 export function TalkPage() {
   const [params] = useSearchParams();
   const s = params.get('s') as MeetSection | null;
   if (params.get('f') === 'meetings' && ((s && MEET_SECTIONS.includes(s)) || params.has('new')))
     return <MeetPage section={s && MEET_SECTIONS.includes(s) ? s : 'upcoming'} />;
-  // The full mailbox (every account and folder, unread and attachment filters, new mail, company mail servers) opens from Talk's ··· as
-  // ?f=mail&s=mailbox; ?compose=1 starts a new mail there.
-  if (params.get('f') === 'mail' && ((s as string | null) === 'mailbox' || params.has('compose'))) return <MailboxPage />;
+  if (params.get('f') === 'mail' || params.has('mail')) return <Navigate to={`/mail${params.has('compose') ? '?compose=1' : ''}`} replace />;
   return <TalkHome />;
 }

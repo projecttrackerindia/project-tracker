@@ -6,7 +6,7 @@ import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
 // Connected accounts and where meetings go: the meeting-service choice (only what is connected can be chosen), one feature of an account
-// switched off on its own (Calendar stays when Gmail stops), Slack linked with its message choice, and the schedule form that names the
+// switched off on its own (each part on its own; mail moved to Integrations › Mail), Slack linked with its message choice, and the schedule form that names the
 // service and opens a Project Tracker call in the app. Synthetic API fixtures only: no provider is contacted.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve(process.env.PM_UI_ARTIFACTS||'test-results/enterprise-ui','connected');
 await fs.mkdir(out,{recursive:true});
@@ -17,7 +17,7 @@ const token=`x.${Buffer.from(JSON.stringify({wid:ws.id,exp:4102444800})).toStrin
 const perms=['org.manage','projects.view','projects.edit','tasks.view','work.view','calendar.view'];
 const project={id:'00000000-0000-0000-0000-0000000000a1',key:'ATL',name:'Atlas'};
 const now=new Date().toISOString();
-let google={connected:true,configured:true,googleEmail:'asha@gmail.example.test',connectedAt:now,lastError:null,calendarAccess:true,mailEnabled:true,mailSendAccess:true,inboxEnabled:true,inboxAccess:true,transcriptAccess:false};
+let google={connected:true,configured:true,googleEmail:'asha@gmail.example.test',connectedAt:now,lastError:null,calendarAccess:true,mailEnabled:true,mailSendAccess:true,inboxEnabled:true,inboxAccess:true,transcriptAccess:true};
 let microsoft={enabled:true,configured:true,connected:false,email:null,mailSendAccess:false,inboxEnabled:true,inboxAccess:false,calendarsEnabled:true,calendarAccess:false,connectedAt:null,meetingsEnabled:true,meetingsAccess:false};
 let slack={available:true,workspaceConnected:true,teamName:'Preview HQ',linked:true,name:'Asha Rao',messages:'needs',problem:null};
 let service='auto';
@@ -39,7 +39,7 @@ try{
   if(method!=='GET'&&!ep.endsWith('/auth/refresh')&&ep!=='/api/v1/me/ui/sidebar'&&!ep.endsWith('/read')&&!ep.endsWith('/presence')){
    writes.push({ep,method,b:body()});
    if(ep==='/api/v1/me/connected-accounts'&&method==='PUT'){const b=body();if(b.meetingService)service=b.meetingService;if(b.slackMessages)slack={...slack,messages:b.slackMessages};return json(accounts());}
-   if(ep==='/api/v1/integrations/google/features/inbox/off'){google={...google,inboxAccess:false};return json(google);}
+   if(ep==='/api/v1/integrations/google/features/transcripts/off'){google={...google,transcriptAccess:false};return json(google);}
    if(ep===`/api/v1/projects/${project.id}/meetings/schedule`){const b=body();const ours=(b.service??'auto')==='ours'||choice().provider==='ours';
     return json({id:'m1',projectId:project.id,title:b.title,description:null,startTime:b.startTime,endTime:b.endTime,timeZone:b.timeZone,status:'Scheduled',
      meetUri:ours?'/calls/meeting/m1':'https://meet.google.com/abc-defg-hij',organizerUserId:user.id,organizerName:user.displayName,participants:[],provider:ours?'ours':'google',providerName:ours?'Project Tracker call':'Google Meet'},201);}
@@ -91,13 +91,15 @@ try{
   assert.equal(await page.getByTestId('ca-service-ours').getAttribute('aria-checked'),'true');
   checks.push('meeting-service-choice');
 
-  // 2. One Google feature off: the inbox stops, Calendar and Meet stay on, after confirming.
-  await page.getByTestId('ca-google-inbox-off').click();
+  // 2. Mail is not here any more (Settings › Integrations › Mail); one Google feature off: Calendar stops, the rest stays, after confirming.
+  assert.equal(await page.getByTestId('ca-google-inbox-off').count(),0,'no Gmail inbox switch in Connected accounts');
+  assert.equal(await page.getByTestId('ca-google-mail-off').count(),0,'no Gmail sending switch in Connected accounts');
+  assert.equal(await page.getByTestId('ca-mail-moved').getByRole('link').getAttribute('href'),'/preview-org/settings/integrations/mail');
+  await page.getByTestId('ca-google-transcripts-off').click();
   await page.getByRole('dialog').getByRole('button',{name:'Turn off'}).click();
-  await page.getByTestId('ca-google-inbox-on').waitFor();
-  assert.ok(writes.some(w=>w.ep==='/api/v1/integrations/google/features/inbox/off'));
+  await page.getByTestId('ca-google-transcripts-on').waitFor();
+  assert.ok(writes.some(w=>w.ep==='/api/v1/integrations/google/features/transcripts/off'));
   assert.ok(await page.getByTestId('ca-google-calendar-off').isVisible(),'Calendar and Meet keep working');
-  assert.ok(await page.getByTestId('ca-google-mail-off').isVisible(),'sending mail keeps working');
   checks.push('google-feature-off-alone');
 
   // 3. Slack: linked, what reaches Slack is a choice.

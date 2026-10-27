@@ -147,7 +147,7 @@ try{
  assert.ok(writes.at(-1).ep.endsWith('/autonomy/CreateActionItem/accept'));await trust.locator('.ag-earned').waitFor({state:'detached'});checks.push('earned-autonomy');
 
  // Sending the bot to any call by its link happens in one place: Meet › Notetaker (this opens it, filed under this project).
- assert.equal(await page.getByRole('link',{name:'Send to a call'}).getAttribute('href'),`/preview-org/talk?f=meetings&s=notetaker&project=${pid}`);checks.push('join-link-in-meet');
+ assert.equal(await page.getByRole('link',{name:'Send to a call'}).getAttribute('href'),`/preview-org/messages?f=meetings&s=notetaker&project=${pid}`);checks.push('join-link-in-meet');
 
  await page.getByRole('button',{name:'Add transcript'}).click();
  const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Add a transcript'}).waitFor();
@@ -209,7 +209,7 @@ try{
  await page.screenshot({path:path.join(out,'agent-page-inbox.png'),animations:'disabled'});checks.push('inbox-opt-in');
  // The bot's name and default reminders: Meet › Notetaker (the old address still leads there).
  assert.equal(await page.getByRole('link',{name:'Meeting bot'}).count(),0,'No meeting bot tab on the agent page');
- await page.goto(origin+'/preview-org/project-agent/meeting-bot');await page.waitForURL(/\/talk\?f=meetings&s=notetaker$/);await page.getByText(/Ready ·/).waitFor();
+ await page.goto(origin+'/preview-org/project-agent/meeting-bot');await page.waitForURL(/\/messages\?f=meetings&s=notetaker$/);await page.getByText(/Ready ·/).waitFor();
  await page.getByLabel('Bot name').fill('Tracker Bot');
  await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForTimeout(300);
  assert.deepEqual(writes.at(-1).b,{botName:'Tracker Bot'});

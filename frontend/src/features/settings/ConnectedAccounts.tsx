@@ -31,7 +31,7 @@ const OUTCOMES: Record<string, Record<string, [string, 'success' | 'info' | 'err
 };
 
 /**
- * My account > Connected accounts: the person's own Google, Microsoft, Slack and GitHub. Each thing an account is used for is turned on or
+ * My account > Connected accounts: the person's own Google, Microsoft, Slack and GitHub for calendars and meetings (mail is in Integrations › Mail). Each thing an account is used for is turned on or
  * off on its own (stopping Gmail never stops Calendar and Meet), and the person chooses where their meetings go.
  */
 export function ConnectedAccountsSection() {
@@ -56,7 +56,7 @@ export function ConnectedAccountsSection() {
       if (p === 'microsoft') {
         let toMailbox = false;
         try { toMailbox = sessionStorage.getItem('pt.mailbox-return') === '1'; sessionStorage.removeItem('pt.mailbox-return'); } catch { /* stay here */ }
-        if (toMailbox) { navigate(`/mailbox?microsoft=${encodeURIComponent(outcome)}`, { replace: true }); return; }
+        if (toMailbox) { navigate(`/mail?microsoft=${encodeURIComponent(outcome)}`, { replace: true }); return; }
       }
       const [text, kind] = OUTCOMES[p][outcome] ?? OUTCOMES[p].error;
       toast(text, kind);
@@ -92,10 +92,6 @@ export function ConnectedAccountsSection() {
   const googleFeatures: Feature[] = [
     { key: 'calendar', name: 'Calendar and Google Meet', does: 'Meetings you schedule go to your Google Calendar with a Meet link; invitations and replies stay real.',
       on: !!g.connected && g.calendarAccess !== false, available: true, turnOn: () => go('g-calendar', () => integrationsApi.googleConnectUrl(back)), turnOff: () => integrationsApi.googleFeatureOff('calendar') },
-    { key: 'mail', name: 'Send mail from Gmail', does: 'Replies and updates you send from Project Tracker go from your own address.',
-      on: !!g.mailSendAccess, available: !!g.mailEnabled, turnOn: () => go('g-mail', () => integrationsApi.googleConnectUrl(back, true)), turnOff: () => integrationsApi.googleFeatureOff('mail') },
-    { key: 'inbox', name: 'Read your Gmail inbox', does: 'Read and answer mail in Mailbox; the mail agent can turn mail into task updates.',
-      on: !!g.inboxAccess, available: !!g.inboxEnabled, turnOn: () => go('g-inbox', () => integrationsApi.googleConnectUrl(back, true, true)), turnOff: () => integrationsApi.googleFeatureOff('inbox') },
     { key: 'transcripts', name: 'Meeting transcripts', does: 'The project agent reads finished Google Meet transcripts for notes and follow-ups.',
       on: !!g.transcriptAccess, available: true, turnOn: () => go('g-transcripts', () => integrationsApi.googleConnectUrl(back, false, false, true)), turnOff: () => integrationsApi.googleFeatureOff('transcripts') },
   ];
@@ -106,10 +102,6 @@ export function ConnectedAccountsSection() {
       on: !!m.meetingsAccess, available: msReady && m.meetingsEnabled !== false, turnOn: msConnect(false, false, true), turnOff: () => microsoftApi.featureOff('meetings') },
     { key: 'calendar', name: 'Calendar availability', does: 'Check when you and others are free before planning.',
       on: !!m.calendarAccess, available: msReady && !!m.calendarsEnabled, turnOn: msConnect(false, true, false), turnOff: () => microsoftApi.featureOff('calendar') },
-    { key: 'mail', name: 'Send mail from Outlook', does: 'Replies and updates you send from Project Tracker go from your own address.',
-      on: !!m.mailSendAccess, available: msReady, turnOn: msConnect(false, false, false), turnOff: () => microsoftApi.featureOff('mail') },
-    { key: 'inbox', name: 'Read your Outlook inbox', does: 'Read and answer mail in Mailbox; the mail agent can turn mail into task updates.',
-      on: !!m.inboxAccess, available: msReady && !!m.inboxEnabled, turnOn: msConnect(true, false, false), turnOff: () => microsoftApi.featureOff('inbox') },
   ];
 
   const disconnectGoogle = async () => {
@@ -165,7 +157,7 @@ export function ConnectedAccountsSection() {
           }} />
       </div>
 
-      <div className="connection-mailbox-note"><Icon name="mail" size={16} /><p>Mail from Gmail, Outlook and Rediffmail is read and answered in <b>Mailbox</b>.</p><Link className="btn btn-sm" to="/mailbox">Open Mailbox</Link></div>
+      <div className="connection-mailbox-note" data-testid="ca-mail-moved"><Icon name="mail" size={16} /><p>Gmail, Outlook, Rediffmail and company mail are connected in <b>Settings › Integrations › Mail</b>, and read in <b>Mail</b>.</p><Link className="btn btn-sm" to="/settings/integrations/mail">Mail accounts</Link></div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { providerConnectionUrl } from './providerConnection';
-import { del, download, fetchBlobUrl, get, post, put, uploadFile, create, qs } from './client';
+import { del, download, fetchBlobUrl, fetchText, get, post, put, uploadFile, create, qs } from './client';
 import type { ChatAttachment,ChatThreadView,ChatSavedItem,ChatSeenBy,ChatQuestion,ChatStatus,ChatScheduled,ChatLink,ChatUnfurl,ChatCatchUp,ChatAskAnswer,ChatExtract,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,GitHubAppStatus,GitHubStatusRules,GitHubBranch,ReviewQueue,ReleaseNotes,DeliveryMetrics,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,MeetingProvider,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
 export const platformApi = {
   billing: () => get<PlatformBilling>('/admin/billing'),
@@ -72,6 +72,8 @@ export const chatApi = {
   removeFile: (fileId: string) => del(`/chat/files/${fileId}`),
   /** A file as an object URL, fetched with the signed-in person's access (pictures inline). */
   fileUrl: (fileId: string, inline = false) => fetchBlobUrl(`/chat/files/${fileId}${inline ? '?inline=true' : ''}`),
+  /** A text file's content (a payload sent as a file: JSON, logs, XML, CSV), read for its preview and viewer. */
+  fileText: (fileId: string) => fetchText(`/chat/files/${fileId}`),
   react: (messageId: string, emoji: string) => put<ChatMessage>(`/chat/messages/${messageId}/reaction`, { emoji }),
   unreact: (messageId: string, emoji: string) => del<ChatMessage>(`/chat/messages/${messageId}/reaction?emoji=${encodeURIComponent(emoji)}`),
   edit: (messageId: string, body: string) => put<ChatMessage>(`/chat/messages/${messageId}`, { body }),
