@@ -126,7 +126,7 @@ function useSideGroups(): SideGroup[] {
       mk('/?tab=calendar', 'calendar', 'Calendar', 'calendar', TINT.red, home && tab === 'calendar'),
     ] as SideItem[] }),
     clean({ title: 'Together', items: [
-      mk('/talk', 'talk', 'Talk', 'message', TINT.green, pathname === '/talk' || pathname.startsWith('/talk/') || pathname.startsWith('/calls/'), { badge: talk, calm: true }),
+      mk('/messages', 'talk', 'Messages', 'message', TINT.green, pathname === '/messages' || pathname.startsWith('/messages/') || pathname.startsWith('/calls/'), { badge: talk, calm: true }),
       mk('/library', 'library', 'Library', 'note', TINT.amber, (pathname === '/library' || pathname.startsWith('/library/')) && !vault),
       mk('/library/vault', 'vault', 'Vault', 'key', TINT.gray, vault),
       mk('/insights', 'insights', 'Insights', 'chart', TINT.pink, pathname === '/insights' || pathname.startsWith('/insights/') || pathname === '/activity'),

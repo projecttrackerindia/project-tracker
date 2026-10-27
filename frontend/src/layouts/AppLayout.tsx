@@ -95,7 +95,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   // A conversation fills the screen on a phone: a chat, or the assistant's conversation on Home (?c=…).
   const homeChat = (loc.pathname === '/' || loc.pathname === '') && new URLSearchParams(loc.search).has('c');   // paths are inside the workspace's basename
   // Talk (its list and an open conversation) is a conversation on a phone: its composer stays above the tab bar.
-  const conversation = homeChat || /^\/talk(?:\/[^/]+)?\/?$/.test(loc.pathname);
+  const conversation = homeChat || /^\/messages(?:\/[^/]+)?\/?$/.test(loc.pathname);
   useConversationViewport(phone && conversation, shell);
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);

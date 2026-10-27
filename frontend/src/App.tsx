@@ -402,8 +402,11 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="quality" element={<Guard allow={mWork}><QualityPage /></Guard>} />
         <Route path="work/projects/:id" element={<Guard allow={mProjects}><ProjectPage /></Guard>} />
         <Route path="work/projects/:id/:tab" element={<ProjectTabMoved />} />
-        <Route path="talk" element={<TalkPage />} />
-        <Route path="talk/:conversationId" element={<TalkPage />} />
+        <Route path="messages" element={<TalkPage />} />
+        <Route path="messages/:conversationId" element={<TalkPage />} />
+        {/* "Talk" was renamed Messages: old links (and every query they carry) land on the same place. */}
+        <Route path="talk" element={<Moved to="/messages" />} />
+        <Route path="talk/*" element={<Moved to="/messages" prefix="/talk" />} />
         <Route path="library" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
         <Route path="library/:section" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
         <Route path="library/:section/:id" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
@@ -434,7 +437,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="project-agent" element={<Moved to="/?tab=proposals" />} />
         <Route path="project-agent/assigned" element={<Moved to="/?tab=given" />} />
         <Route path="project-agent/my-inbox" element={<Moved to="/?tab=mail-agent" />} />
-        <Route path="project-agent/meeting-bot" element={<Moved to="/talk?f=meetings&s=notetaker" />} />
+        <Route path="project-agent/meeting-bot" element={<Moved to="/messages?f=meetings&s=notetaker" />} />
         <Route path="project-agent/*" element={<Moved to="/" />} />
         <Route path="ai" element={<Moved to="/?tab=assistant" />} />
         <Route path="ai/operations" element={<Moved to="/insights?tab=workflows" />} />
@@ -449,12 +452,12 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="projects/*" element={<ProjectsMoved />} />
         <Route path="portfolio/*" element={<Moved to="/work/projects?view=portfolio" />} />
         <Route path="project-status" element={<Moved to="/work/projects?view=portfolio" />} />
-        <Route path="chat" element={<Moved to="/talk?f=chat" />} />
-        <Route path="chat/*" element={<Moved to="/talk" prefix="/chat" />} />
-        <Route path="mailbox" element={<Moved to="/talk?f=mail" />} />
-        <Route path="meet" element={<Moved to="/talk?f=meetings" rename={{ open: 'meeting' }} />} />
-        <Route path="meet/:s" element={<SectionMoved to="/talk?f=meetings" rename={{ open: 'meeting' }} />} />
-        <Route path="notetaker" element={<Moved to="/talk?f=meetings&s=notetaker" />} />
+        <Route path="chat" element={<Moved to="/messages?f=chat" />} />
+        <Route path="chat/*" element={<Moved to="/messages" prefix="/chat" />} />
+        <Route path="mailbox" element={<Moved to="/messages?f=mail" />} />
+        <Route path="meet" element={<Moved to="/messages?f=meetings" rename={{ open: 'meeting' }} />} />
+        <Route path="meet/:s" element={<SectionMoved to="/messages?f=meetings" rename={{ open: 'meeting' }} />} />
+        <Route path="notetaker" element={<Moved to="/messages?f=meetings&s=notetaker" />} />
         <Route path="doctracker/*" element={<Moved to="/library/docs" />} />
         <Route path="documents" element={<LegacyDocuments />} />
         <Route path="documents/*" element={<Moved to="/library/docs" prefix="/documents" />} />

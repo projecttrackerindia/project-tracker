@@ -29,6 +29,8 @@ import { haptic } from '../../lib/mobile';
 import { Popover } from '../../lib/popover';
 import { MessageBody } from './CodeBlock';
 import { isCodeOnly } from './codeDetect';
+import { cleanFileName, detectPayload, findSecrets, KIND_MIME, kindOfFile, maskSecrets, payloadFileName } from './payload';
+import { PayloadFileCard, PayloadSuggestion, type PayloadDraft } from './PayloadViews';
 
 /** The stand-up summary posted after each session of a project's scrum call. */
 function StandupCardMessage({ card }: { card: StandupCard; projectId?: string }) {
@@ -128,7 +130,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
   useEffect(() => {
     if (!(thread.error instanceof ApiError && thread.error.status === 404)) return;
     if (variant === 'panel') { toast('You no longer have access to this chat.', 'info'); onClose?.(); }
-    else navigate(variant === 'talk' ? '/talk' : '/chat', { replace: true });
+    else navigate(variant === 'talk' ? '/messages' : '/chat', { replace: true });
   }, [thread.error, navigate, variant, onClose]);
 
   // ---- keep the view where the person expects it
@@ -511,6 +513,8 @@ function ChatFile({ file }: { file: ChatAttachment }) {
     } catch { toast('Could not download the file.', 'error'); }
     finally { setBusy(false); }
   };
+  // JSON, logs, XML, CSV and text files show what is in them (a preview, and a viewer to open).
+  if (kindOfFile(file.fileName, file.contentType)) return <PayloadFileCard file={file} onDownload={() => void save()} />;
   return (
     <button type="button" className="chat-file" onClick={() => void save()} disabled={busy} title={`Download ${file.fileName}`}>
       <span className="chat-file-icon"><Icon name="paperclip" size={16} /></span>
@@ -804,6 +808,49 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
     if (f?.attachment) void chatApi.removeFile(f.attachment.id).catch(() => undefined);
   };
   const readyIds = pending.filter((f) => f.status === 'ready').map((f) => f.attachment!.id);
+
+  // ---- a large payload (JSON, logs, XML, CSV, a very long text) is offered as a file instead of a wall of text
+  const navigate = useNavigate();
+  const [payload, setPayload] = useState<PayloadDraft | null>(null);
+  const [payloadBusy, setPayloadBusy] = useState(false);
+  const offerAsFile = (raw: string, caption: string) => {
+    const p = canAttach ? detectPayload(raw) : null;
+    if (!p) return false;
+    const secrets = findSecrets(p.text);
+    setPayload({ ...p, name: payloadFileName(p.kind, conversation.name), secrets, mask: secrets.length > 0, caption });
+    return true;
+  };
+  const clearBox = () => { setText(''); setIsEmpty(true); if (box.current) box.current.innerHTML = ''; drafts.delete(draftKey); };
+  const sendPayloadAsFile = async () => {
+    if (!payload || payloadBusy || uploading) return;
+    const content = payload.mask ? maskSecrets(payload.text) : payload.text;
+    const name = cleanFileName(payload.name, payload.kind);
+    const caption = (payload.caption ? `${payload.caption}\n` : '') + text.trim();
+    setPayloadBusy(true);
+    try {
+      const att = await chatApi.uploadFile(id, new File([content], name, { type: KIND_MIME[payload.kind] }));
+      setPayload(null);
+      clearBox();
+      send.mutate({ body: caption.trim(), ids: [...readyIds, att.id] });
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not upload the file.', 'error'); }
+    finally { setPayloadBusy(false); }
+  };
+  const sendPayloadAsText = () => {
+    if (!payload) return;
+    const body = [payload.caption, payload.raw, text.trim()].filter(Boolean).join('\n');
+    if (body.length > MAX_LENGTH) { toast(`A message can be up to ${MAX_LENGTH.toLocaleString()} characters — send it as a file.`, 'info'); return; }
+    setPayload(null);
+    clearBox();
+    send.mutate({ body, ids: readyIds });
+  };
+  const payloadToVault = () => {
+    if (!payload) return;
+    void navigator.clipboard?.writeText(payload.text).catch(() => undefined);
+    toast('Copied — paste it into the new Vault item. Nothing was sent.', 'info');
+    const title = cleanFileName(payload.name, payload.kind).replace(/\.[^.]+$/, '');
+    setPayload(null);
+    navigate(`/library/vault?new=item&title=${encodeURIComponent(title)}`);
+  };
   const uploading = pending.some((f) => f.status === 'uploading');
 
   // ---- @mentions (project chats): typing @ and a few letters suggests the people in the chat; picking one puts a chip in the text.
@@ -903,7 +950,10 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   const voice = useVoiceRecorder(id, (attachmentId) => send.mutate({ body: '', ids: [attachmentId] }));
 
   const submit = () => {
+    if (payload) { void sendPayloadAsFile(); return; }
     const body = text.trim();
+    // A payload typed or dropped into the box (not pasted): ask before sending it as a wall of text.
+    if (body && !editing && offerAsFile(plainText(body), '')) { clearBox(); return; }
     if ((!body && readyIds.length === 0) || send.isPending || uploading || body.length > MAX_LENGTH) return;
     setText('');
     setIsEmpty(true);
@@ -958,6 +1008,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
       if (k === 'i') { e.preventDefault(); applyMark('italic'); return; }
       if (k === 'u') { e.preventDefault(); applyMark('underline'); return; }
     }
+    if (payload && e.key === 'Escape') { e.stopPropagation(); setPayload(null); return; }
     if (e.key === 'Enter' && !e.shiftKey && !composing.current && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
     else if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); document.execCommand('insertLineBreak'); sync(); }
     else if (e.key === 'Escape') {
@@ -975,12 +1026,15 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
     const pictures = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'));
     if (pictures.length > 0 && canAttach) { e.preventDefault(); addFiles(pictures); return; }
     e.preventDefault();
-    document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
+    const pasted = e.clipboardData.getData('text/plain');
+    // A big JSON / log / XML / CSV paste does not go into the box: the suggestion offers it as a file, with what is typed as the caption.
+    if (!editing && !payload && offerAsFile(pasted, text.trim())) { clearBox(); return; }
+    document.execCommand('insertText', false, pasted);
     sync();
   };
 
   const over = text.length > MAX_LENGTH - 500;
-  const ready = (!!text.trim() || readyIds.length > 0) && !send.isPending && !uploading && text.length <= MAX_LENGTH;
+  const ready = (!!text.trim() || readyIds.length > 0 || !!payload) && !send.isPending && !uploading && text.length <= MAX_LENGTH;
   return (
     <div className={`composer ${dragging ? 'dragging' : ''}`}
       onDragOver={(e) => { if (canAttach && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } }}
@@ -1014,6 +1068,8 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
           <span className="composer-tools-hint">Enter sends · Shift+Enter new line{editing || replyTo ? ' · Esc cancels' : ''}</span>
         </div>
       )}
+      {payload && <PayloadSuggestion draft={payload} busy={payloadBusy || send.isPending} canText={payload.raw.length + payload.caption.length + text.length < MAX_LENGTH}
+        onChange={setPayload} onFile={() => void sendPayloadAsFile()} onText={sendPayloadAsText} onVault={payloadToVault} onDismiss={() => setPayload(null)} />}
       {pending.length > 0 && (
         <ul className="composer-files" aria-label="Files to send">
           {pending.map((f) => (

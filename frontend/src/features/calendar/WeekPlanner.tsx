@@ -43,7 +43,7 @@ interface Focus { day: string; start: number; end: number; label: string }
 
 const isDeadline = (e: CalendarEvent) => e.type === 'project' || e.type === 'milestone' || e.type === 'stage' || ((e.type === 'task' || e.type === 'action' || e.type === 'work') && (e.priority === 'High' || e.priority === 'Critical'));
 const hrefOf = (e: CalendarEvent) => (e.type === 'meeting'
-  ? `/talk?f=meetings&meeting=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`
+  ? `/messages?f=meetings&meeting=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`
   : e.type === 'task' || e.type === 'action' || e.type === 'work' ? `/work?item=${e.id}` : e.projectId ? `/work/projects/${e.projectId}` : '/work/projects');
 
 /** Suggested focus blocks: free gaps of an hour or more between meetings (today: from now), up to two a day, at most two hours each. */
@@ -142,9 +142,9 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const focus = layers.focus ? focusFor(days, placed.filter((m) => shown(m.e)), topics.length ? topics : ['Deep work', 'Reviews'], today, nowH) : [];
 
   const canMove = (m: Meet): string | null => {
-    if (!m.feed) return 'Open the meeting in Talk to move it';
+    if (!m.feed) return 'Open the meeting in Messages to move it';
     if (!m.feed.canManage) return 'Only the organiser can move this meeting';
-    if (m.feed.recurring) return 'A recurring meeting moves from its series in Talk';
+    if (m.feed.recurring) return 'A recurring meeting moves from its series in Messages';
     if (Date.parse(m.feed.end) < Date.now()) return 'This meeting has ended';
     return null;
   };
@@ -409,7 +409,7 @@ function Inspector({ m, events, nowH, today, onOpen }: { m: Meet | null; events:
         <span className="wp-orb" aria-hidden="true" />
         <div><b>Notes by Project Tracker</b><small>Summary &amp; action items after the call</small></div>
         <button type="button" role="switch" aria-checked={notes} aria-label="Notes by Project Tracker" className={`wp-sw${notes ? ' on' : ''}`} aria-disabled="true"
-          title="The notetaker is set on the meeting — open it in Talk to change" onClick={() => onOpen(e)} />
+          title="The notetaker is set on the meeting — open it in Messages to change" onClick={() => onOpen(e)} />
       </div>
       {linked.length > 0 && (
         <div>

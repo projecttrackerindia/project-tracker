@@ -3,6 +3,8 @@ import { Icon } from '../../components/Icon';
 import { toast } from '../../stores/ui';
 import { linkify, renderBody } from './chatFormat';
 import { splitBody } from './codeDetect';
+import { detectPayload } from './payload';
+import { CodePayloadActions } from './PayloadViews';
 
 const FOLD_PX = 320;
 
@@ -32,11 +34,16 @@ function Fold({ children, className, label }: { children: ReactNode; className: 
 /** A code block in a message: monospace on a neutral ground (also in my own bubbles), scrolls sideways, folds when tall, has Copy. */
 export function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const copy = () => { void navigator.clipboard?.writeText(code).then(() => toast('Copied.')).catch(() => undefined); };
+  // A payload sent as text before it could go as a file: it keeps its folded block, and can open in the viewer or be saved as a file.
+  const big = useMemo(() => detectPayload(code) !== null, [code]);
   return (
     <div className="msg-code" data-lang={lang}>
       <div className="msg-code-head">
         <span>{lang ? lang.toUpperCase() : 'Code'}</span>
-        <button type="button" className="msg-code-copy" onClick={copy} aria-label="Copy code" title="Copy"><Icon name="copy" size={13} />Copy</button>
+        <span className="msg-code-acts">
+          {big && <CodePayloadActions code={code} lang={lang} />}
+          <button type="button" className="msg-code-copy" onClick={copy} aria-label="Copy code" title="Copy"><Icon name="copy" size={13} />Copy</button>
+        </span>
       </div>
       <Fold className="msg-code-body" label="code"><pre><code>{linkify(code)}</code></pre></Fold>
     </div>

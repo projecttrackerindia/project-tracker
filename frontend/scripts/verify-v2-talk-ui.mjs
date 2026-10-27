@@ -96,9 +96,12 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${origin}/preview-org/talk`);
   await page.locator('.talk-list').waitFor();
+  assert.ok(new URL(page.url()).pathname.endsWith('/preview-org/messages'), `the old /talk address lands on /messages: ${page.url()}`);
+  assert.equal(await page.locator('.talk-shell h1.sr-only').innerText(), 'Messages');
+  checks.push('talk-renamed-messages');
   await page.locator('.talk-row[data-row="Daily status call"]').waitFor();
   assert.deepEqual(await page.locator('.talk-filters .talk-chip').allInnerTexts(), ['All', 'Unread 1', 'Chats', 'Mail', 'Meetings']);
-  assert.ok(await page.getByRole('textbox', { name: 'Search Talk' }).isVisible(), 'search at the top of the list');
+  assert.ok(await page.getByRole('textbox', { name: 'Search Messages' }).isVisible(), 'search at the top of the list');
   assert.equal(await page.locator('.talk-row .talk-src').count(), await page.locator('.talk-row').count(), 'a source glyph on every row');
   assert.equal(await page.locator('.talk-row[data-row="MuleSoft Support"] .talk-dot').count(), 1, 'an unread dot');
   // the meeting is a rounded square, people are round
@@ -130,7 +133,7 @@ try {
 
   // A chat: the v2 header, the summary strip, the composer.
   await page.locator('.talk-row[data-row="Devraj Kumar"]').click();
-  await page.waitForFunction((id) => location.pathname.endsWith(`/talk/${id}`), direct.id);
+  await page.waitForFunction((id) => location.pathname.endsWith(`/messages/${id}`), direct.id);
   await page.locator('.talk-head').waitFor();
   assert.ok(await page.locator('.talk-head').getByRole('button', { name: 'Call' }).isVisible(), 'Call in the thread header');
   assert.ok(await page.getByRole('button', { name: 'Conversation actions' }).isVisible(), 'ⓘ (details and more) in the thread header');
@@ -186,7 +189,7 @@ try {
   messages.push(M(4, true, JSON.stringify(payload, null, 4), 1));
   ctx = await make(); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1173, height: 564 });
-  await page.goto(`${origin}/preview-org/talk/${direct.id}`);
+  await page.goto(`${origin}/preview-org/messages/${direct.id}`);
   const last = page.locator(`[data-msg="${messages[3].id}"]`);
   await last.locator('.msg-code').waitFor();
   const code = await last.locator('.msg-code').evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, font: getComputedStyle(e.querySelector('pre')).fontFamily, h: e.querySelector('.msg-code-body').getBoundingClientRect().height }));
@@ -231,7 +234,7 @@ try {
   // ---- 1440, dark
   ctx = await make('dark'); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`${origin}/preview-org/talk/${direct.id}`);
+  await page.goto(`${origin}/preview-org/messages/${direct.id}`);
   await page.locator('.talk-head').waitFor();
   const bg = await page.locator('.talk-list').evaluate((e) => getComputedStyle(e).backgroundColor);
   assert.notEqual(bg, 'rgb(255, 255, 255)', 'the list card follows the dark theme');
@@ -243,7 +246,7 @@ try {
   for (const theme of ['light', 'dark']) {
     ctx = await make(theme, { hasTouch: true, isMobile: true }); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`${origin}/preview-org/talk`);
+    await page.goto(`${origin}/preview-org/messages`);
     await page.locator('.talk-row[data-row="Devraj Kumar"]').waitFor();
     assert.equal(await page.locator('.talk-pane').isVisible(), false, 'the phone shows the list first');
     await fitsPhone(page, `talk list ${theme}`, assert);

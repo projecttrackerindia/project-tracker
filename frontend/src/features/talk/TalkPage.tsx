@@ -69,7 +69,7 @@ function TalkHome() {
   const chatUsable = !personal && role !== 'Guest';
 
   const filter = (FILTERS.some((x) => x.id === params.get('f')) ? params.get('f') : 'all') as TalkFilter;
-  const chatId = (() => { const m = /\/talk\/([^/?#]+)/.exec(location.pathname); return m ? decodeURIComponent(m[1]) : null; })();
+  const chatId = (() => { const m = /\/messages\/([^/?#]+)/.exec(location.pathname); return m ? decodeURIComponent(m[1]) : null; })();
   const mailId = params.get('mail');
   const mailAccount = params.get('account');
   const meeting = parseRef(params.get('meeting'));
@@ -123,11 +123,11 @@ function TalkHome() {
   const keepF = filter === 'all' ? '' : `?f=${filter}`;
   const open = (r: TalkRow) => {
     setPanel(null);
-    if (r.kind === 'chat') navigate(`/talk/${r.id}${keepF}`);
-    else if (r.kind === 'mail') navigate(`/talk?${new URLSearchParams({ ...(filter === 'all' ? {} : { f: filter }), mail: r.messageId ?? '', account: r.account ?? '' })}`);
-    else navigate(`/talk?${new URLSearchParams({ ...(filter === 'all' ? {} : { f: filter }), meeting: r.meetingRef ?? '', ...(r.sessionStart ? { at: r.sessionStart } : {}) })}`);
+    if (r.kind === 'chat') navigate(`/messages/${r.id}${keepF}`);
+    else if (r.kind === 'mail') navigate(`/messages?${new URLSearchParams({ ...(filter === 'all' ? {} : { f: filter }), mail: r.messageId ?? '', account: r.account ?? '' })}`);
+    else navigate(`/messages?${new URLSearchParams({ ...(filter === 'all' ? {} : { f: filter }), meeting: r.meetingRef ?? '', ...(r.sessionStart ? { at: r.sessionStart } : {}) })}`);
   };
-  const back = () => navigate(`/talk${keepF}`);
+  const back = () => navigate(`/messages${keepF}`);
   const activeId = chatId ?? (mailId ? `mail:${mailId}` : meeting ? `meet:${params.get('meeting')}` : null);
   const current = chatId ? live.find((c) => c.id === chatId) ?? null : null;
   const mailAcct = mailId ? mail.accounts.find((a) => a.key === mailAccount) ?? null : null;
@@ -137,26 +137,26 @@ function TalkHome() {
 
   return (
     <div className={`talk-shell${opened ? ' is-open' : ''}`} data-testid="talk">
-      <h1 className="sr-only">Talk</h1>
-      <ToolbarSlot title={<span className="tb-big" aria-hidden="true">Talk</span>} />
+      <h1 className="sr-only">Messages</h1>
+      <ToolbarSlot title={<span className="tb-big" aria-hidden="true">Messages</span>} />
       <aside className="talk-list" aria-label="Conversations">
         <div className="talk-list-top">
           <label className="talk-search"><Icon name="search" size={14} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats, mail, meetings" aria-label="Search Talk" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats, mail, meetings" aria-label="Search Messages" />
           </label>
           {chatUsable && <StatusButton />}
-          <DotsMenu label="More in Talk" items={[
+          <DotsMenu label="More in Messages" items={[
             { label: 'New conversation', hint: 'Message a colleague or start a group', icon: 'plus', onSelect: () => setDialog('new'), hidden: !chatUsable },
             { label: 'Catch me up', hint: 'What you missed across your chats', icon: 'sparkle', onSelect: () => setDialog('catchup'), hidden: !chatUsable },
             { label: 'Ask the chat', hint: 'Answers from your conversations, with links', icon: 'search', onSelect: () => setDialog('ask'), hidden: !chatUsable },
             { label: 'Saved messages', icon: 'star', onSelect: () => setPanel('saved'), hidden: !chatUsable },
             { label: 'Scheduled messages', icon: 'clock', onSelect: () => setPanel('scheduled'), hidden: !chatUsable },
-            { label: 'New mail', icon: 'edit', onSelect: () => navigate('/talk?f=mail&s=mailbox&compose=1') },
-            { label: 'Mailbox', hint: 'Every account and folder, filters, company mail', icon: 'inbox', onSelect: () => navigate('/talk?f=mail&s=mailbox') },
+            { label: 'New mail', icon: 'edit', onSelect: () => navigate('/messages?f=mail&s=mailbox&compose=1') },
+            { label: 'Mailbox', hint: 'Every account and folder, filters, company mail', icon: 'inbox', onSelect: () => navigate('/messages?f=mail&s=mailbox') },
             { label: 'Connect a mailbox', icon: 'mail', onSelect: () => setDialog('connect') },
             // Meetings keep their full views (Meet): scheduling, the upcoming list with replies, series, past notes and the notetaker.
-            { label: 'Schedule a meeting', icon: 'calendar', onSelect: () => navigate('/talk?f=meetings&new=schedule') },
-            { label: 'All meetings', hint: 'Upcoming, series, past and the notetaker', icon: 'video', onSelect: () => navigate('/talk?f=meetings&s=upcoming') },
+            { label: 'Schedule a meeting', icon: 'calendar', onSelect: () => navigate('/messages?f=meetings&new=schedule') },
+            { label: 'All meetings', hint: 'Upcoming, series, past and the notetaker', icon: 'video', onSelect: () => navigate('/messages?f=meetings&s=upcoming') },
           ]} />
         </div>
         <div className="talk-filters" role="group" aria-label="Show">
@@ -166,7 +166,7 @@ function TalkHome() {
           ))}
         </div>
         <div className="talk-scroll">
-          {talk.isError && <div className="talk-note" role="alert">{talk.error instanceof ApiError ? talk.error.message : 'Talk could not be loaded.'} <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></div>}
+          {talk.isError && <div className="talk-note" role="alert">{talk.error instanceof ApiError ? talk.error.message : 'Messages could not be loaded.'} <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></div>}
           {/* Questions colleagues asked you in chat and are waiting on (cleared by replying). */}
           {chatUsable && !needle && (filter === 'all' || filter === 'chat') && <QuestionsBox />}
           {showConnect && (
@@ -331,7 +331,7 @@ function Gone({ text, onBack }: { text: string; onBack: () => void }) {
       <Icon name="alert" size={28} />
       <h2>Not here</h2>
       <p>{text}</p>
-      <button type="button" className="btn btn-ghost" onClick={onBack}>Back to Talk</button>
+      <button type="button" className="btn btn-ghost" onClick={onBack}>Back to Messages</button>
     </div>
   );
 }

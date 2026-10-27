@@ -86,10 +86,10 @@ try{
  try{
   // 1. One entry: Talk in the rail, Meetings among its filters (the old address lands there); Talk's ··· opens all meetings, where the list
   // shows what is coming with each person's reply and Join only when it is near.
-  await page.goto(origin+'/preview-org/meet');await page.waitForURL(/\/talk\?f=meetings/);
-  await page.locator('.v2-rail-item.on',{hasText:'Talk'}).waitFor();
+  await page.goto(origin+'/preview-org/meet');await page.waitForURL(/\/messages\?f=meetings/);
+  await page.locator('.v2-rail-item.on',{hasText:'Messages'}).waitFor();
   assert.equal(await page.locator('.talk-filters .ds-chip',{hasText:'Meetings'}).getAttribute('aria-pressed'),'true');
-  await page.getByRole('button',{name:'More in Talk'}).click();await page.getByRole('menuitem',{name:/All meetings/}).click();
+  await page.getByRole('button',{name:'More in Messages'}).click();await page.getByRole('menuitem',{name:/All meetings/}).click();
   await page.waitForURL(/[?&]s=upcoming/);
   const rows=page.locator('.mt-item');await rows.first().waitFor();
   assert.equal(await rows.count(),4,'Three meetings and one call from the calendar');
@@ -121,7 +121,7 @@ try{
   await shot('meet-detail-1440.png');checks.push('detail-and-reply');
 
   // 4. Schedule (from Talk's ···): the notetaker is chosen per meeting; voice says why it cannot come; the choice is sent.
-  await page.getByRole('button',{name:'More in Talk'}).click();await page.getByRole('menuitem',{name:/Schedule a meeting/}).click();
+  await page.getByRole('button',{name:'More in Messages'}).click();await page.getByRole('menuitem',{name:/Schedule a meeting/}).click();
   const f=page.getByRole('dialog');await f.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
   assert.match(await f.locator('.mt-notetaker').innerText(),/Choose a project to bring the notetaker/);
   await f.getByLabel('Project',{exact:true}).selectOption(project.id);
@@ -159,7 +159,7 @@ try{
   await page.locator('.mt-inline').getByRole('heading',{name:'Atlas review'}).waitFor();checks.push('calendar-opens-meet');
 
   // 8. Old addresses lead to Meet.
-  await page.goto(origin+'/preview-org/notetaker?session=s1');await page.waitForURL(/\/talk\?session=s1&f=meetings&s=notetaker$/);checks.push('old-address');
+  await page.goto(origin+'/preview-org/notetaker?session=s1');await page.waitForURL(/\/messages\?session=s1&f=meetings&s=notetaker$/);checks.push('old-address');
 
   // 9. A phone: the list fits and Join stays reachable.
   await page.setViewportSize({width:390,height:844});await page.goto(origin+'/preview-org/meet/upcoming');await page.locator('.mt-item').first().waitFor();

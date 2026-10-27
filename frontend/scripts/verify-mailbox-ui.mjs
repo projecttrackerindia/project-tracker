@@ -84,9 +84,9 @@ try{
  const waitWrite=async(test)=>{for(let i=0;i<30&&!writes.some(test);i++)await new Promise(r=>setTimeout(r,100));return writes.find(test);};
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:960});
  // v2: /mailbox lands on Talk with Mail chosen; Talk's ··· opens the full mailbox, where the unified inbox merges Gmail and Rediffmail, newest first.
- await page.goto(origin+'/preview-org/mailbox');await page.waitForURL(/\/talk\?f=mail/);
- await page.locator('.v2-rail-item.on',{hasText:'Talk'}).waitFor();await page.locator('.talk-filters').waitFor();assert.equal(await page.locator('.talk-filters .ds-chip',{hasText:'Mail'}).getAttribute('aria-pressed'),'true');
- await page.getByRole('button',{name:'More in Talk'}).click();await page.getByRole('menuitem',{name:/^Mailbox/}).click();await page.locator('.mb-row').first().waitFor();
+ await page.goto(origin+'/preview-org/mailbox');await page.waitForURL(/\/messages\?f=mail/);
+ await page.locator('.v2-rail-item.on',{hasText:'Messages'}).waitFor();await page.locator('.talk-filters').waitFor();assert.equal(await page.locator('.talk-filters .ds-chip',{hasText:'Mail'}).getAttribute('aria-pressed'),'true');
+ await page.getByRole('button',{name:'More in Messages'}).click();await page.getByRole('menuitem',{name:/^Mailbox/}).click();await page.locator('.mb-row').first().waitFor();
  assert.equal(await page.locator('.mb-row').count(),3);
  assert.match(await page.locator('.mb-row').first().innerText(),/Ravi Kumar/);
  assert.match(await page.locator('.mb-row').nth(1).innerText(),/Kiran/);
