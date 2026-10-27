@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { projectApi, teamApi, workApi, workItemApi, workspaceApi } from '../../api/endpoints';
@@ -17,6 +18,7 @@ import { useRebalance } from '../insights/InsightsPage';
 import { AutomationsPage } from './Automations';
 import { WorkItemPanel } from './WorkItemPanel';
 import { WorkList } from './WorkList';
+import { MyWork } from './MyWork';
 import { ProjectWorkTab } from './ProjectWorkTab';
 import { WorkTasksPage, type OpsView } from './WorkTasksPage';
 import { useWorkKinds, useWorkList } from './workUi';
@@ -42,14 +44,14 @@ export function WorkPage() {
   const kinds = useWorkKinds();
   const me = useAuth((s) => s.ctx);
 
+  // Mine · Team · Automations in the toolbar; Tickets moved to Desk in the sidebar but /work?tab=tickets still opens the ticket list here.
   const tabs = useMemo(() => [
-    { id: 'mine' as const, label: 'My work' },
+    { id: 'mine' as const, label: 'Mine' },
     ...(!personal ? [{ id: 'team' as const, label: 'Team' }] : []),
-    ...(mWork > 0 ? [{ id: 'tickets' as const, label: 'Tickets' }] : []),
     ...(mProjects ? [{ id: 'automations' as const, label: 'Automations' }] : []),
-  ], [personal, mWork, mProjects]);
+  ], [personal, mWork, mProjects]); // eslint-disable-line react-hooks/exhaustive-deps
   const asked = params.get('tab') as Tab | null;
-  const tab: Tab = asked && tabs.some((t) => t.id === asked) ? asked : 'mine';
+  const tab: Tab = asked && (tabs.some((t) => t.id === asked) || (asked === 'tickets' && mWork > 0)) ? asked : 'mine';
   const item = params.get('item');
   const view = params.get('view') as OpsView | null;
   const opsView = tab === 'tickets' && view && OPS_VIEWS.includes(view) ? view : null;
@@ -116,12 +118,13 @@ export function WorkPage() {
     { label: 'Only what is overdue', icon: 'alert', hidden: overdue, onSelect: () => go({ overdue: '1' }) },
   ];
 
+  const tabName = tab === 'tickets' ? 'Tickets' : tabs.find((t) => t.id === tab)?.label ?? 'Work';
+  const seg = <ToolbarSlot><Segmented label="Work" value={tab} onChange={setTab} options={tabs} className="mw-seg" /></ToolbarSlot>;
   const head = (
-    <PageHead eyebrow="Tasks, issues, actions and tickets — one list" title="Work">
+    <PageHead eyebrow={tab === 'team' ? 'Work owned by your teams' : tab === 'tickets' ? 'Support and operational work' : tab === 'mine' ? 'Only what is overdue' : 'Rules that do the routine work'} title={tab === 'team' ? 'Team' : tabName}>
       <div className="wk-heads">
-        <Segmented label="Work" value={tab} onChange={setTab} options={tabs} />
         {mProjects && <Link className="wk-projects" to="/work/projects">Projects <span aria-hidden="true">›</span></Link>}
-        <DotsMenu label={`More in ${tabs.find((t) => t.id === tab)?.label ?? 'Work'}`} items={dots} />
+        <DotsMenu label={`More in ${tabName}`} items={dots} />
       </div>
     </PageHead>
   );
@@ -155,6 +158,7 @@ export function WorkPage() {
           <option value="mine">My teams</option>{teams.data!.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select></label>
     ) : null;
+  if (tab === 'mine' && !overdue) return <div className="wk wk-mine">{seg}<MyWork onOpen={open} />{panel}</div>;
   const body = tab === 'automations' ? <AutomationsPage /> : (
       <>
         {narrowing}
@@ -169,7 +173,8 @@ export function WorkPage() {
     );
 
   return (
-    <div className="wk">
+    <div className="wk wk-v3">
+      {seg}
       {head}
       {body}
       {panel}
@@ -191,4 +196,16 @@ function TeamLoadLine() {
       <button type="button" className="btn btn-ai btn-sm" disabled={busy} onClick={() => void rebalance()}>{busy && <span className="spinner" />}Suggest a rebalance</button>
     </div>
   );
+}
+
+/** Puts the page's Mine · Team · Automations control at the left of the app toolbar (as in the design); inline where there is no toolbar (phone). */
+function ToolbarSlot({ children }: { children: ReactNode }) {
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const find = () => { const el = document.querySelector<HTMLElement>('.v2-tb'); setHost(el && getComputedStyle(el).display !== 'none' ? el : null); };
+    find();
+    window.addEventListener('resize', find);
+    return () => window.removeEventListener('resize', find);
+  }, []);
+  return host ? createPortal(<div className="mw-tbslot">{children}</div>, host) : <div className="mw-tbslot inline">{children}</div>;
 }
