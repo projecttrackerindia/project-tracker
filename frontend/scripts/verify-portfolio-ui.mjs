@@ -88,12 +88,13 @@ try{
  const decisions=page.getByRole('region',{name:'Decisions this week'});
  const dec=decisions.locator('.pf-dec[data-project="PAY"]');
  assert.equal(await decisions.locator('.pf-dec[data-project="PAY"]').count(),1,'one card per project');
- await dec.getByText('6 days late',{exact:true}).waitFor();
+ await dec.getByText('PAY · 6 days late',{exact:true}).waitFor();
  assert.ok(await dec.getByRole('heading',{name:/Payments/}).isVisible());
- assert.ok(await dec.getByText('Ravi Kumar is on leave from 3 Nov',{exact:false}).first().isVisible());
  assert.ok(await dec.locator('.pf-dec-dates s').isVisible()&&await dec.locator('.pf-dec-dates b').isVisible(),'due and forecast dates');
  assert.ok(await dec.getByRole('button',{name:/^Propose /}).isVisible(),'Propose the forecast date');
- await dec.getByRole('button',{name:'What changes'}).click();
+ // Add people opens why it moved and the other ways to recover.
+ await dec.getByRole('button',{name:'Add people'}).click();
+ assert.ok(await dec.getByText('Ravi Kumar is on leave from 3 Nov',{exact:false}).first().isVisible());
  const move=dec.getByRole('listitem').filter({hasText:'Move Jyothsna Reddy onto PAY for a week'});
  assert.ok(await move.getByText('1 day late').isVisible());
  assert.ok(await move.getByText('Give PAY-14 “Bank certification” to Jyothsna Reddy').isVisible());
@@ -143,7 +144,7 @@ try{
  // Timeline (··· › Timeline): bars, the slip after the due date, the original due date as a ghost, milestones and dependencies.
  await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Timeline'}).click();
  const tl=page.getByRole('region',{name:'Timeline'});await tl.waitFor();
- assert.ok(page.url().includes('view=timeline'));
+ { const u=new URL(page.url()); assert.equal(u.searchParams.get('view'),'portfolio'); assert.equal(u.searchParams.get('mode'),'timeline'); }
  assert.equal(await tl.locator('.pf-g-row').count(),2);
  assert.equal(await tl.locator('.pf-g-row').first().locator('.pf-g-plan').count(),1);
  assert.equal(await tl.locator('.pf-g-row').first().locator('.pf-g-fc').count(),1);

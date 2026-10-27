@@ -249,7 +249,7 @@ try {
   { const t = await dec.innerText(); assert.match(t, /47 days late/); assert.match(t, /s-internal-api/); }
   assert.equal(await page.locator('.pj2-portfolio .pj2-dupe').count(), 0, 'dismissed duplicates stay dismissed on Portfolio too');
   await shot(page, 'portfolio-1440-light.png', true);
-  await dec.getByRole('button', { name: 'What changes' }).click();
+  await dec.getByRole('button', { name: 'Add people' }).click();
   assert.ok(await dec.getByText('Move Siva Reddy onto SIA for a week').isVisible());
   await dec.getByRole('button', { name: `Propose ${dm(day(53))}` }).click();
   await dec.getByText('✓ proposed').waitFor();
