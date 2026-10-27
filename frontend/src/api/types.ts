@@ -389,6 +389,19 @@ export interface UtilisationPerson {
   userId: string; name: string; capacityMinutes: number; loggedMinutes: number; billableMinutes: number; projectMinutes: number; operationalMinutes: number;
   utilisation: number | null; billableShare: number | null; cost: number | null; billableValue: number | null;
 }
+/** Portfolio › Capacity: person × week plan (capacity after leave vs booked open estimates). */
+export interface CapacityPlanCell { weekStart: string; capacityMinutes: number; bookedMinutes: number; leaveDays: number; workingDays: number; onLeave: boolean; over: boolean }
+export interface CapacityPlanPerson { userId: string; name: string; weeklyCapacityMinutes: number; weeks: CapacityPlanCell[] }
+export interface CapacityPlanSuggestion {
+  fromUserId: string; fromName: string; toUserId: string; toName: string; firstWeek: string; lastWeek: string; overMinutes: number; freeMinutes: number;
+  tasks: { id: string; title: string; minutes: number; dueDate: string | null }[];
+}
+export interface CapacityPlan {
+  from: string; weeks: number; scope: WorkloadScope; available: WorkloadScope[]; entitled: boolean; weekStarts: string[]; people: CapacityPlanPerson[];
+  totals: { capacityMinutes: number; bookedMinutes: number; booked: number | null; overWeeks: number; leaveWeeks: number; publicHolidays: number };
+  suggestion: CapacityPlanSuggestion | null;
+}
+
 export interface Utilisation {
   from: string; to: string; scope: WorkloadScope; available: WorkloadScope[]; currency: string; showMoney: boolean; entitled: boolean; workingDays: number;
   people: UtilisationPerson[]; totals: UtilisationPerson;

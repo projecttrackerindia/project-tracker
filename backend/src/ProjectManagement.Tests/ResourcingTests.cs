@@ -146,6 +146,49 @@ public class ResourcingTests(ApiFactory factory)
         Assert.False((await owner.Get("/api/v1/resources/utilisation")).Data!["entitled"]!.GetValue<bool>());
     }
 
+    // ------------------------------------------------------------------ capacity plan
+
+    [Fact]
+    public async Task The_capacity_plan_books_estimates_per_week_counts_leave_and_suggests_a_move()
+    {
+        var t = await Setup();
+        var monday = LastMonday.AddDays(7);
+        var next = monday.AddDays(7);
+        foreach (var (title, hours) in new[] { ("Retry queue", 30), ("Ledger export", 20) })
+        {
+            var task = await t.Owner.CreateTaskAsync(t.Project, title, new { title, priority = "Medium", assigneeId = t.Dev.UserId, estimatedHours = hours, startDate = Iso(next), dueDate = Iso(next.AddDays(4)) });
+            Assert.NotNull(task["id"]);
+        }
+        var leave = await t.Owner.Post("/api/v1/time/leave", new { userIds = new[] { t.Peer.UserId }, from = Iso(next.AddDays(7)), to = Iso(next.AddDays(11)), requestId = Guid.NewGuid() });
+        Assert.True(leave.Ok, leave.ToString());
+
+        var res = await t.Owner.Get($"/api/v1/resources/plan?scope=Everyone&from={Iso(monday)}&weeks=6");
+        Assert.True(res.Ok, res.ToString());
+        var plan = res.Data!;
+        Assert.True(plan["entitled"]!.GetValue<bool>());
+        Assert.Equal(6, plan["weekStarts"]!.AsArray().Count);
+        var dev = plan["people"]!.AsArray().Single(p => S(p!["userId"]) == t.Dev.UserId.ToString())!;
+        var week2 = dev["weeks"]![1]!;
+        Assert.Equal(50 * 60, I(week2["bookedMinutes"]));
+        Assert.Equal(40 * 60, I(week2["capacityMinutes"]));
+        Assert.True(week2["over"]!.GetValue<bool>());
+        var peer = plan["people"]!.AsArray().Single(p => S(p!["userId"]) == t.Peer.UserId.ToString())!;
+        Assert.True(peer["weeks"]![2]!["onLeave"]!.GetValue<bool>());
+        Assert.Equal(0, I(peer["weeks"]![2]!["capacityMinutes"]));
+        Assert.True(I(plan["totals"]!["overWeeks"]) >= 1);
+        Assert.Equal(1, I(plan["totals"]!["leaveWeeks"]));
+
+        var s = plan["suggestion"]!;
+        Assert.Equal(t.Dev.UserId.ToString(), S(s["fromUserId"]));
+        Assert.Equal("Retry queue", S(s["tasks"]![0]!["title"]));
+        Assert.Equal(30 * 60, I(s["tasks"]![0]!["minutes"]));
+
+        // Same groups as utilisation; weeks are bounded.
+        Assert.Equal(HttpStatusCode.Forbidden, (await t.Dev.Get("/api/v1/resources/plan?scope=Everyone")).Status);
+        Assert.Equal(422, (int)(await t.Owner.Get("/api/v1/resources/plan?weeks=40")).Status);
+        Assert.True((await t.Dev.Get("/api/v1/resources/plan")).Ok);
+    }
+
     // ------------------------------------------------------------------ capacity and cost
 
     [Fact]

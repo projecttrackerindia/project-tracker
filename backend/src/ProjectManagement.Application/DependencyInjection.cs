@@ -220,6 +220,7 @@ public static class DependencyInjection
         services.AddScoped<TimesheetInsightsService>();
         services.AddScoped<TimesheetNudgeMonitor>();
         services.AddScoped<CapacityService>();
+        services.AddScoped<CapacityPlanService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.CalendarFeedService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.InboundEmailService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.GitLinkService>();
