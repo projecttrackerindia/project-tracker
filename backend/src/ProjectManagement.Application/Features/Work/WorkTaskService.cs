@@ -55,7 +55,7 @@ public record WorkSummaryDto(DateOnly From, DateOnly To, int Open, int Overdue, 
 /// </summary>
 public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access,
     NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log, SlaService sla, WorkRouting routing,
-    TicketTriage triage)
+    TicketTriage triage, ProjectManagement.Application.Features.Automation.TicketAutomationEngine automations)
 {
     private const int MaxPageSize = 100;
     private const int MaxFilesPerTask = 50;
@@ -315,6 +315,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         // Work activity belongs to the workspace, not to the related project: the project's own history stays about the project.
         recorder.Activity("worktask.created", "WorkTask", task.Id, $"Created work task {KeyOf(task.Number)} “{title}” ({type.Name})", null);
         await NotifyAssignedAsync(task, ct);
+        await RunAutomationsAsync(task, true, ct);
         await db.SaveChangesAsync(ct);
         return await GetAsync(task.Id, ct);
     }
@@ -363,6 +364,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (otherChanges.Count > 0)
             foreach (var who in new[] { task.AssigneeId, (Guid?)task.ReporterId }.Where(x => x is not null).Select(x => x!.Value).Distinct())
                 await notifications.AddAsync(who, NotificationType.TaskUpdated, $"{key} updated", string.Join(" · ", otherChanges), LinkOf(id), ct: ct);
+        await RunAutomationsAsync(task, false, ct);
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }
@@ -377,9 +379,17 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             await ApplyStatusAsync(task, req.Status, ct);
             task.Version++; task.UpdatedAt = clock.Now; task.UpdatedBy = ctx.UserId;
             recorder.Activity("worktask.status", "WorkTask", id, $"{KeyOf(task.Number)}: {Label(was)} → {Label(task.Status)}", null, was.ToString(), task.Status.ToString());
+            await RunAutomationsAsync(task, false, ct);
             await db.SaveChangesAsync(ct);
         }
         return await GetAsync(id, ct);
+    }
+
+    /// <summary>Desk automation rules on this ticket (Work › Automations). A failing rule never stops the ticket being saved.</summary>
+    private async Task RunAutomationsAsync(WorkTask task, bool created, CancellationToken ct)
+    {
+        try { await automations.RunAsync(task, created, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Desk automation failed for {Key}", KeyOf(task.Number)); }
     }
 
     private async Task ApplyStatusAsync(WorkTask task, WorkTaskStatus status, CancellationToken ct)

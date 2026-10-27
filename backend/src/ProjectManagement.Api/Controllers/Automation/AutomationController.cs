@@ -23,6 +23,10 @@ public class AutomationController(AutomationService automation) : ApiControllerB
     [HttpPost("test"), RequireModule(Modules.Projects, AccessLevel.Edit)]
     public async Task<IActionResult> Test(Guid projectId, [FromBody] TestAutomationRequest req, CancellationToken ct) => Ok(await automation.TestAsync(projectId, req, ct));
 
+    /// <summary>A backtest of a rule over the last 7 days: how often it would have fired, per day, and on what. Nothing is changed or sent.</summary>
+    [HttpPost("backtest"), RequireModule(Modules.Projects, AccessLevel.Edit)]
+    public async Task<IActionResult> Backtest(Guid projectId, [FromBody] UpsertAutomationRequest req, CancellationToken ct) => Ok(await automation.BacktestAsync(projectId, req, ct));
+
     [HttpGet("{id:guid}/runs"), RequireModule(Modules.Projects)]
     public async Task<IActionResult> Runs(Guid projectId, Guid id, CancellationToken ct) => Ok(await automation.RunsAsync(projectId, id, ct));
 
@@ -50,6 +54,10 @@ public class WorkspaceAutomationController(AutomationService automation) : ApiCo
     /// <summary>A dry run of a workspace rule against one task: nothing is changed or sent.</summary>
     [HttpPost("test"), RequireModule(Modules.Projects, AccessLevel.Edit)]
     public async Task<IActionResult> Test([FromBody] TestAutomationRequest req, CancellationToken ct) => Ok(await automation.TestAsync(null, req, ct));
+
+    /// <summary>A backtest of a workspace rule over the last 7 days. Nothing is changed or sent.</summary>
+    [HttpPost("backtest"), RequireModule(Modules.Projects, AccessLevel.Edit)]
+    public async Task<IActionResult> Backtest([FromBody] UpsertAutomationRequest req, CancellationToken ct) => Ok(await automation.BacktestAsync(null, req, ct));
 
     [HttpGet("{id:guid}/runs"), RequireModule(Modules.Projects)]
     public async Task<IActionResult> Runs(Guid id, CancellationToken ct) => Ok(await automation.RunsAsync(null, id, ct));
