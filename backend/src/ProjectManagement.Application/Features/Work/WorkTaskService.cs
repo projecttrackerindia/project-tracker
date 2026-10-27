@@ -55,7 +55,8 @@ public record WorkSummaryDto(DateOnly From, DateOnly To, int Open, int Overdue, 
 /// </summary>
 public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access,
     NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log, SlaService sla, WorkRouting routing,
-    TicketTriage triage, ProjectManagement.Application.Features.Automation.TicketAutomationEngine automations)
+    TicketTriage triage, ProjectManagement.Application.Features.Automation.TicketAutomationEngine automations,
+    ProjectManagement.Application.Features.Support.TicketCustomerMessenger customers)
 {
     private const int MaxPageSize = 100;
     private const int MaxFilesPerTask = 50;
@@ -365,9 +366,30 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             foreach (var who in new[] { task.AssigneeId, (Guid?)task.ReporterId }.Where(x => x is not null).Select(x => x!.Value).Distinct())
                 await notifications.AddAsync(who, NotificationType.TaskUpdated, $"{key} updated", string.Join(" · ", otherChanges), LinkOf(id), ct: ct);
         await RunAutomationsAsync(task, false, ct);
+        await customers.StatusChangedAsync(task, was, ct);
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }
+
+    /// <summary>Desk: tells the ticket's customer on its channel (WhatsApp or e-mail) and keeps it on the ticket; without a channel, a plain comment.</summary>
+    public async Task<ProjectManagement.Application.Features.Support.TicketTellResultDto> TellCustomerAsync(Guid id, ProjectManagement.Application.Features.Support.TicketTellRequest req, CancellationToken ct = default)
+    {
+        var task = await FindAsync(id, ct);
+        if (await permissions.LevelAsync(Modules.Work, ct) < AccessLevel.Edit) throw new ForbiddenException("You cannot reply on work tasks.", "PERMISSION_DENIED");
+        var text = CleanBody(req.Text);
+        var me = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct);
+        var told = await customers.TellAsync(task, text, me ?? "Agent", ct);
+        if (told is null) { await AddCommentAsync(id, new WorkCommentRequest(text), ct); return new("comment", false, "this ticket has no customer channel, so it was kept as a comment"); }
+        sla.OnComment(task, ctx.RequireUserId());
+        recorder.Activity("worktask.customer_reply", "WorkTask", id, $"Replied to the customer on {KeyOf(task.Number)}", null);
+        await db.SaveChangesAsync(ct);
+        return told;
+    }
+
+    /// <summary>Desk: a saved reply with what this ticket knows filled in.</summary>
+    public async Task<ProjectManagement.Application.Features.Support.DeskFillDto> FillReplyAsync(Guid id, ProjectManagement.Application.Features.Support.DeskFillRequest req,
+        ProjectManagement.Application.Features.Support.DeskReplies replies, CancellationToken ct = default) =>
+        await replies.FillAsync(await FindAsync(id, ct), req.Text, ct);
 
     public async Task<WorkTaskDto> SetStatusAsync(Guid id, SetWorkTaskStatusRequest req, CancellationToken ct = default)
     {
@@ -380,6 +402,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             task.Version++; task.UpdatedAt = clock.Now; task.UpdatedBy = ctx.UserId;
             recorder.Activity("worktask.status", "WorkTask", id, $"{KeyOf(task.Number)}: {Label(was)} → {Label(task.Status)}", null, was.ToString(), task.Status.ToString());
             await RunAutomationsAsync(task, false, ct);
+            await customers.StatusChangedAsync(task, was, ct);
             await db.SaveChangesAsync(ct);
         }
         return await GetAsync(id, ct);

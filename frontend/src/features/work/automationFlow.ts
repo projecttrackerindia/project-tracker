@@ -20,6 +20,8 @@ export interface Flow {
 export const TRIGGER_LABEL: Record<AutomationTrigger, string> = {
   TicketCreated: 'A Desk ticket is created',
   TicketChanged: 'A Desk ticket is created or updated',
+  TicketWaiting: 'A Desk ticket has had no agent reply for a while (scheduled)',
+  TicketResolved: 'A Desk ticket has been resolved for a while (scheduled)',
   TaskCreated: 'A task is created',
   StatusChanged: 'A task changes status',
   PriorityChanged: 'A task’s priority changes',
@@ -30,15 +32,23 @@ export const TRIGGER_LABEL: Record<AutomationTrigger, string> = {
 
 /** The "is …" part of the When sentence, per subject. */
 export const EVENTS: Record<Subject, { id: AutomationTrigger; label: string }[]> = {
-  ticket: [{ id: 'TicketCreated', label: 'created' }, { id: 'TicketChanged', label: 'created or updated' }],
+  ticket: [
+    { id: 'TicketCreated', label: 'created' }, { id: 'TicketChanged', label: 'created or updated' },
+    { id: 'TicketWaiting', label: 'waiting on a reply' }, { id: 'TicketResolved', label: 'resolved' },
+  ],
   task: [
     { id: 'TaskCreated', label: 'created' }, { id: 'StatusChanged', label: 'moved to a status' }, { id: 'PriorityChanged', label: 'given a priority' },
     { id: 'DueSoon', label: 'due soon' }, { id: 'Overdue', label: 'overdue' }, { id: 'Stale', label: 'left unchanged' },
   ],
 };
 
-export const isScheduled = (t: AutomationTrigger) => t === 'DueSoon' || t === 'Overdue' || t === 'Stale';
-export const subjectOf = (t: AutomationTrigger): Subject => (t === 'TicketCreated' || t === 'TicketChanged' ? 'ticket' : 'task');
+/** Checked on a timer: task due dates / quiet spells, and Desk tickets waiting on a reply (minutes) or resolved (days). */
+export const isScheduled = (t: AutomationTrigger) => t === 'DueSoon' || t === 'Overdue' || t === 'Stale' || t === 'TicketWaiting' || t === 'TicketResolved';
+export const subjectOf = (t: AutomationTrigger): Subject => (t === 'TicketCreated' || t === 'TicketChanged' || t === 'TicketWaiting' || t === 'TicketResolved' ? 'ticket' : 'task');
+/** The scheduled amount's unit and range: TicketWaiting counts minutes, the rest days. */
+export const scheduleUnit = (t: AutomationTrigger) => t === 'TicketWaiting'
+  ? { unit: 'minutes', min: 5, max: 10080, fallback: 30 }
+  : { unit: 'days', min: t === 'Stale' ? 1 : 0, max: 365, fallback: t === 'Stale' ? 1 : t === 'TicketResolved' ? 3 : 0 };
 
 /** The conditions offered, per subject (each can be used once; all must hold). */
 export const CONDITIONS: { field: AutomationConditionField; label: string; ticketOnly?: boolean }[] = [
@@ -77,7 +87,7 @@ const stepOf = (s: AutomationStep): AutomationStep => step({
 });
 
 export const ruleToFlow = (r: AutomationRule): Flow => ({
-  name: r.name, isEnabled: r.isEnabled, isDraft: !!r.isDraft, trigger: r.trigger, triggerDays: r.triggerDays ?? (r.trigger === 'Stale' ? 1 : 0), whenPriority: r.whenPriority,
+  name: r.name, isEnabled: r.isEnabled, isDraft: !!r.isDraft, trigger: r.trigger, triggerDays: r.triggerDays ?? scheduleUnit(r.trigger).fallback, whenPriority: r.whenPriority,
   whenStatusCategory: r.whenStatusCategory, conditions: (r.conditions ?? []).map((c) => ({ ...c })), steps: [stepOf(r), ...r.moreActions.map(stepOf)],
 });
 
@@ -97,7 +107,7 @@ export function flowToInput(f: Flow): AutomationInput {
 
 export function draftToFlow(d: AutomationDraft): Flow {
   return {
-    name: d.name, isEnabled: true, isDraft: true, trigger: d.trigger, triggerDays: d.triggerDays ?? (d.trigger === 'Stale' ? 1 : 0), whenPriority: d.whenPriority,
+    name: d.name, isEnabled: true, isDraft: true, trigger: d.trigger, triggerDays: d.triggerDays ?? scheduleUnit(d.trigger).fallback, whenPriority: d.whenPriority,
     whenStatusCategory: d.whenStatusCategory, conditions: [],
     steps: d.steps.map((s) => step({
       action: s.action, actionPriority: s.action === 'SetPriority' ? s.priority ?? 'High' : null, actionStatusCategory: s.action === 'MoveToStatus' ? s.statusCategory : null,
@@ -126,9 +136,9 @@ export const RECIPES: { id: string; name: string; text: string; icon: string; co
     builtIn: { text: 'Open Quality', to: '/quality' },
   },
   {
-    id: 'close', name: 'Close resolved after 3 days', text: 'When an open task has had no change for 3 days, close it with a note', icon: '↻', color: '#28cd41',
-    flow: () => ({ ...emptyFlow(), isDraft: true, name: 'Close resolved after 3 days', trigger: 'Stale', triggerDays: 3,
-      steps: [step({ action: 'MoveToStatus', actionStatusCategory: 'Done' }), step({ action: 'AddComment', actionText: 'Closed after 3 days without a reply. Reopen it if it still needs work.' })] }),
+    id: 'close', name: 'Close resolved after 3 days', text: 'When a ticket has been resolved for 3 days, tell the customer and close it', icon: '↻', color: '#28cd41',
+    flow: () => ({ ...emptyFlow(), isDraft: true, name: 'Close resolved after 3 days', trigger: 'TicketResolved', triggerDays: 3,
+      steps: [step({ action: 'TellCustomer', actionText: 'Hi {name}, we have closed {key}. Reply here if anything is still not right.' }), step({ action: 'CloseTicket' })] }),
   },
   {
     id: 'report', name: 'Friday status report', text: 'Built in: each project drafts its weekly report for the manager to approve and send', icon: '◷', color: '#5856d6',

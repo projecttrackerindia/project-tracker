@@ -2,10 +2,11 @@ import { ToolbarSeg } from '../../components/v2/ToolbarSeg';
 import { openNew } from '../../components/v2/state';
 import { Face } from '../../components/Face';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { chatApi, opsApi } from '../../api/endpoints';
-import { workItemsApi, type WorkActivity, type WorkItemDetail, type WorkRow } from '../../api/workItemsApi';
+import { deskApi, workItemsApi, type DeskReplyTemplate, type WorkActivity, type WorkItemDetail, type WorkRow } from '../../api/workItemsApi';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -67,6 +68,20 @@ function accountFacts(text: string): { label: string; value: string }[] {
   const mail = text.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
   if (mail) out.push({ label: 'Mail', value: mail[0] });
   return out;
+}
+
+/**
+ * A Desk reply: on the ticket's own channel (its WhatsApp chat or the e-mail that raised it) through the Desk API, which keeps it on the ticket;
+ * a ticket raised in the app gets a comment. Returns the toast to show.
+ */
+async function sendReply(w: WorkItemDetail, text: string): Promise<{ ok: boolean; msg: string }> {
+  if (w.channel === 'whatsapp' || w.channel === 'email') {
+    const r = await deskApi.tell(w.id, text);
+    const where = r.channel === 'whatsapp' ? 'WhatsApp' : r.channel === 'email' ? 'mail' : 'the ticket';
+    return r.sent ? { ok: true, msg: `Sent on ${where}.` } : { ok: false, msg: r.channel === 'comment' ? 'Kept on the ticket.' : `Not sent on ${where}: ${r.note}. Kept on the ticket.` };
+  }
+  await workItemsApi.comment(w.id, text);
+  return { ok: true, msg: 'Reply sent.' };
 }
 
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -221,6 +236,7 @@ function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
   const d = useWsQuery(['desk', 'item', row.id], () => workItemsApi.get(row.id), { staleTime: 30_000 });
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const w = d.data;
   const reload = () => { void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); };
@@ -235,7 +251,7 @@ function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
   const send = async () => {
     if (!text.trim() || !w) return;
     setBusy(true);
-    try { await workItemsApi.comment(w.id, text.trim()); setText(''); reload(); }
+    try { const r = await sendReply(w, text.trim()); setText(''); if (!r.ok) toast(r.msg, 'warning'); reload(); }
     catch (e) { toast(errText(e, 'Could not send the reply.'), 'error'); }
     finally { setBusy(false); }
   };
@@ -273,14 +289,80 @@ function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
         {items.map((a, i) => <Bubble key={a.id} a={a} prev={i > 0 ? items[i - 1] : null} reporter={reporter} channel={channel} />)}
         {w && !w.description && items.length === 0 && <p className="dq-empty">No messages yet.</p>}
       </div>
+      {saved && w && <SavedReplies w={w} onClose={() => setSaved(false)} onUse={(t) => { setText(t); setSaved(false); setTimeout(() => box.current?.focus(), 0); }} />}
       <form className="dq-comp" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         <span className="dq-orb" aria-hidden="true" />
         <textarea ref={box} rows={1} value={text} maxLength={4000} aria-label="Reply" placeholder={`Reply on ${channel === 'whatsapp' ? 'WhatsApp' : channel === 'email' ? 'mail' : 'the ticket'}…`}
           onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }} />
+        <button type="button" className={`dq-sr-btn${saved ? ' on' : ''}`} aria-label="Saved replies" aria-expanded={saved} title="Saved replies" disabled={!w}
+          onClick={() => setSaved((x) => !x)} data-testid="dq-saved-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16l-7-4-7 4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
+        </button>
         <button type="submit" className="dq-kbd" disabled={busy || !text.trim()} aria-label="Send (⌘ Enter)">⌘↵</button>
       </form>
     </section>
   );
+}
+
+/**
+ * Saved replies over the reply box: the Desk's own and every WhatsApp number's. Insert fills in what the ticket knows (customer, key, status,
+ * ETA, account); AI fill also lets the AI complete what is left and smooth it into one natural message.
+ */
+function SavedReplies({ w, onUse, onClose }: { w: WorkItemDetail; onUse: (text: string) => void; onClose: () => void }) {
+  const ai = useAi();
+  const list = useWsQuery(['desk', 'templates'], deskApi.templates, { staleTime: 5 * 60_000 });
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node) && !(e.target as HTMLElement).closest('[data-testid="dq-saved-btn"]')) onClose(); };
+    window.addEventListener('keydown', onKey); window.addEventListener('mousedown', onDown);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onDown); };
+  }, [onClose]);
+  const items = (list.data ?? []).filter((t) => !q.trim() || `${t.title} ${t.text}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const use = async (t: DeskReplyTemplate, withAi: boolean) => {
+    setBusy(`${t.id}-${withAi ? 'ai' : 'in'}`);
+    try {
+      const filled = await deskApi.fill(w.id, t.text);
+      let text = filled.text;
+      if (withAi) {
+        const a = await chatApi.ask(`Rewrite this support reply for ticket ${w.key} "${w.title}" as one natural, friendly message. Fill any {placeholder} left `
+          + `(${filled.missing.join(', ') || 'none'}) from the ticket details, or leave the sentence out when the details do not say. Keep every fact already in it. `
+          + `Reply text only.\n\nReply: ${text}${w.description ? `\n\nTicket details: ${w.description.slice(0, 1200)}` : ''}`);
+        if (a.found !== false && a.answer?.trim()) text = a.answer.trim();
+      }
+      onUse(text);
+    } catch (e) { toast(errText(e, 'Could not fill in the reply.'), 'error'); }
+    finally { setBusy(null); }
+  };
+  // On a phone it is a bottom sheet over the whole screen, so it is drawn outside the page's scrolling and transformed boxes.
+  const phone = typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches;
+  const sheet = (
+    <div className="dq-sr" ref={ref} role="dialog" aria-label="Saved replies" data-testid="dq-saved">
+      <div className="dq-sr-h">
+        <b>Saved replies</b>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search saved replies" autoFocus />
+        <button type="button" className="dq-sr-x" aria-label="Close" onClick={onClose}>×</button>
+      </div>
+      <div className="dq-sr-list">
+        {list.isLoading && <p className="dq-empty">Loading…</p>}
+        {!list.isLoading && items.length === 0 && <p className="dq-empty">No saved replies match.</p>}
+        {items.map((t) => (
+          <div key={t.id} className="dq-sr-i">
+            <div className="dq-sr-t"><b>{t.title}</b>{t.source !== 'built-in' && <span className="dq-faint"> · {t.source}</span>}
+              <div className="dq-sr-p">{t.text}</div></div>
+            <div className="dq-sr-a">
+              <button type="button" className="dq-btn sm" disabled={!!busy} onClick={() => void use(t, false)}>{busy === `${t.id}-in` ? '…' : 'Insert'}</button>
+              {ai && <button type="button" className="dq-btn sm dq-sr-ai" disabled={!!busy} onClick={() => void use(t, true)}><span className="dq-orb" aria-hidden="true" />{busy === `${t.id}-ai` ? 'Filling…' : 'AI fill'}</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="dq-sr-f dq-faint">Fills in {'{name} {key} {status} {eta} {account}'} from this ticket.</div>
+    </div>
+  );
+  return phone ? createPortal(<div className="dq-page dq-sr-portal"><div className="dq-sr-scrim" aria-hidden="true" onClick={onClose} />{sheet}</div>, document.body) : sheet;
 }
 
 function Bubble({ a, prev, reporter, channel }: { a: WorkActivity; prev: WorkActivity | null; reporter: string | null; channel: string | null }) {
@@ -333,7 +415,7 @@ function Context({ row }: { row: WorkRow }) {
   const send = async () => {
     if (!w) return;
     setSending(true);
-    try { await workItemsApi.comment(w.id, reply); toast('Reply sent.'); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }
+    try { const r = await sendReply(w, reply); toast(r.msg, r.ok ? undefined : 'warning'); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }
     catch (e) { toast(errText(e, 'Could not send the reply.'), 'error'); }
     finally { setSending(false); }
   };

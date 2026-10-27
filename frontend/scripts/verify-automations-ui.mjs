@@ -140,7 +140,16 @@ try {
       // A recipe starts a draft flow.
       await page.getByRole('button', { name: /Close resolved after 3 days/ }).click();
       assert.equal(await main.getByLabel('Automation name').inputValue(), 'Close resolved after 3 days');
-      assert.equal(await main.getByLabel('Event', { exact: true }).inputValue(), 'Stale');
+      // A real Desk ticket rule: resolved for 3 days → tell the customer on the ticket's channel, then close it.
+      assert.equal(await main.getByLabel('Event', { exact: true }).inputValue(), 'TicketResolved');
+      assert.equal(await main.getByLabel('Days', { exact: true }).inputValue(), '3');
+      assert.equal(await main.getByLabel('Step 1', { exact: true }).inputValue(), 'TellCustomer');
+      assert.equal(await main.getByLabel('Step 2', { exact: true }).inputValue(), 'CloseTicket');
+      await main.getByText('on the ticket’s WhatsApp or e-mail').waitFor();
+      await shot(page, 'automations-close-recipe-1440.png');
+      // "Waiting on a reply" counts minutes.
+      await main.getByLabel('Event', { exact: true }).selectOption('TicketWaiting');
+      assert.equal(await main.getByLabel('Minutes', { exact: true }).inputValue(), '30');
 
       // Phone: no sideways scroll, the sentence stacks.
       await page.setViewportSize({ width: 390, height: 844 });
@@ -150,6 +159,42 @@ try {
       await fitsPhone(page, 'Automations 390', assert);
       await shot(page, 'automations-390.png');
     }
+    await ctx.close();
+  }
+  // Settings › Automation (the project / workspace rules card): Pause and Edit › Save keep a rule's conditions, draft flag and Messages channel.
+  {
+    const state = { rules: [base({ id: g(72), name: 'High work to the channel', isEnabled: true, trigger: 'TaskCreated', action: 'PostToChannel', actionConversationId: g(60), actionText: 'New high task',
+      conditions: [{ field: 'priority', value: 'High', minutes: null }, { field: 'unassigned', value: null, minutes: null }],
+      moreActions: [base({ action: 'Notify', actionTarget: 'Assignee' })], summary: 'When a task is created in any project and priority is High and nobody is assigned, post in #lending-incidents and notify the assignee.' })], writes: [] };
+    const ctx = await make('light', state);
+    const page = await ctx.newPage();
+    watch(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`${origin}/preview-org/settings/automation`);
+    await page.getByText('High work to the channel').waitFor();
+    await page.getByRole('button', { name: 'Pause' }).click();
+    await page.waitForFunction(() => true);
+    for (let i = 0; i < 40 && !state.writes.some((w) => w.method === 'PUT'); i++) await page.waitForTimeout(100);
+    const paused = state.writes.filter((w) => w.method === 'PUT').at(-1);
+    assert.equal(paused.b.isEnabled, false);
+    assert.deepEqual(paused.b.conditions.map((c) => c.field), ['priority', 'unassigned']);
+    assert.equal(paused.b.actionConversationId, g(60));
+    assert.deepEqual(paused.b.moreActions.map((x) => x.action), ['Notify']);
+    await page.getByRole('button', { name: 'Edit High work to the channel' }).click();
+    const cond = page.getByTestId('rule-conditions');
+    await cond.getByText('Priority is…').waitFor();
+    await cond.getByText('Nobody is assigned').waitFor();
+    await cond.getByLabel('Add a condition').click();
+    await page.getByRole('option', { name: 'Within business hours' }).click();
+    await cond.getByText('Within business hours').waitFor();
+    await page.getByTestId('rule-draft').check();
+    await shot(page, 'settings-rule-modal-1440.png');
+    await page.getByRole('button', { name: 'Save rule' }).click();
+    for (let i = 0; i < 40 && state.writes.filter((w) => w.method === 'PUT').length < 2; i++) await page.waitForTimeout(100);
+    const saved = state.writes.filter((w) => w.method === 'PUT').at(-1);
+    assert.deepEqual(saved.b.conditions.map((c) => c.field), ['priority', 'unassigned', 'businessHours']);
+    assert.equal(saved.b.isDraft, true);
+    assert.equal(saved.b.action, 'PostToChannel'); assert.equal(saved.b.actionConversationId, g(60));
     await ctx.close();
   }
   assert.deepEqual(errors, [], `console errors: ${errors.join('\n')}`);

@@ -13,7 +13,7 @@ public class AutomationOptions
     public int IntervalMinutes { get; set; } = 10;
 }
 
-/// <summary>Hosted worker: runs the time-based automation rules (due soon, overdue, no changes for a while) every few minutes.</summary>
+/// <summary>Hosted worker: runs the time-based automation rules (due soon, overdue, no changes for a while; Desk tickets waiting or resolved) every few minutes.</summary>
 public class AutomationWorker(IServiceScopeFactory scopes, IOptions<AutomationOptions> options, ILogger<AutomationWorker> log, ProjectManagement.Application.Common.WorkerHeartbeats beats) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -32,6 +32,12 @@ public class AutomationWorker(IServiceScopeFactory scopes, IOptions<AutomationOp
                     using var scope = scopes.CreateScope();
                     var n = await scope.ServiceProvider.GetRequiredService<AutomationScheduler>().RunAsync(stoppingToken);
                     if (n > 0) log.LogInformation("Scheduled automation acted on {Count} task(s)", n);
+                    // Desk ticket rules on a timer (no agent reply for N minutes, resolved for N days), in their own scope.
+                    using (var tickets = scopes.CreateScope())
+                    {
+                        var t = await tickets.ServiceProvider.GetRequiredService<TicketRuleScheduler>().RunAsync(stoppingToken);
+                        if (t > 0) log.LogInformation("Scheduled ticket rules acted on {Count} ticket(s)", t);
+                    }
                     beats.Beat("Automation", every * 60);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

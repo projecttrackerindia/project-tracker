@@ -123,6 +123,18 @@ const make = async (theme, state) => {
         w.activity.push(c);
         return json({ comment: c, time: null, timeProblem: null }, 201);
       }
+      // Desk replies on the ticket's channel, and saved replies filled in from the ticket.
+      const tell = ep.match(/^\/api\/v1\/work-tasks\/([0-9a-f-]{36})\/(tell-customer|fill-reply)$/);
+      if (tell && tell[2] === 'tell-customer') {
+        const w = find(tell[1]);
+        w.activity.push({ type: 'comment', id: g(850 + state.writes.length), at: new Date().toISOString(), actor: me, summary: 'commented', body: `📣 Told the customer on WhatsApp: ${b.text}` });
+        return json({ channel: w.channel === 'email' ? 'email' : 'whatsapp', sent: true, note: 'sent' });
+      }
+      if (tell && tell[2] === 'fill-reply') {
+        const w = find(tell[1]);
+        const text = b.text.replace(/\{name\}/g, w.reporter.name.split(' ')[0]).replace(/\{key\}/g, w.key).replace(/\{eta\}/g, '28 Oct, 18:00 UTC');
+        return json({ text, missing: [...text.matchAll(/\{(\w+)\}/g)].map((x) => x[1]) });
+      }
       if (m && !m[2] && method === 'PATCH') {
         const w = find(m[1]);
         assert.equal(b.version, w.version);
@@ -174,6 +186,11 @@ const make = async (theme, state) => {
       data = { items: list, offset: 0, limit: 200, hasMore: false };
     }
     else if (m && !m[2]) data = detailOf(find(m[1]));
+    else if (ep === '/api/v1/desk/reply-templates') data = [
+      { id: 'ack', title: 'Acknowledge', text: 'Hi {name}, thanks for reaching out. We have logged this as {key} and will update you by {eta}.', source: 'built-in' },
+      { id: 'account', title: 'Account check', text: 'Hi {name}, we are checking account {account} for you under {key}.', source: 'built-in' },
+      { id: 'wa-1', title: 'Refund timeline', text: 'Refunds reach your bank in 5-7 working days.', source: 'Loans care line' },
+    ];
     else if (ep === '/api/v1/quality/matrix') data = { runs: q.runs, cases: q.cases.map(caseDto), results: q.results };
     else if (ep === '/api/v1/quality/readiness') data = readiness(q, sp.get('runId'));
     else if (ep === '/api/v1/releases') data = [{ id: g(470), name: 'v1.4', projectId: pid, projectName: 'SIA Internal API', targetDate: null, status: 'Planned', notes: null, items: 3, runs: 1, approvedBy: null, approvedAt: null, shippedAt: null, createdAt: ago(9000) }];
@@ -270,7 +287,23 @@ try {
     assert.match(await box.inputValue(), /Hi Ramesh/);
     await box.fill('Refund is initiated today.');
     await box.press('Control+Enter');
-    await waitFor(() => state.writes.some((x) => x.ep.endsWith('/comments') && x.b.body === 'Refund is initiated today.'), 'the reply posted');
+    // A WhatsApp ticket: the reply goes to the customer on WhatsApp (and is kept on the ticket), not only as a comment.
+    await waitFor(() => state.writes.some((x) => x.ep.endsWith('/tell-customer') && x.b.text === 'Refund is initiated today.'), 'the reply sent on WhatsApp');
+    checks.push('reply-on-channel');
+
+    // Saved replies: Insert fills in the customer's name, the ticket key and the ETA.
+    await conv.getByRole('button', { name: 'Saved replies' }).click();
+    const sr = page.getByTestId('dq-saved');
+    await sr.getByText('Acknowledge').waitFor();
+    await sr.getByText('· Loans care line').waitFor();
+    assert.equal(await sr.getByRole('button', { name: 'AI fill' }).count(), 0, 'no AI fill while AI is off');
+    if (theme === 'light') await shot(page, 'desk-saved-replies-1440.png');
+    await sr.locator('.dq-sr-i', { hasText: 'Acknowledge' }).getByRole('button', { name: 'Insert' }).click();
+    await waitFor(() => state.writes.some((x) => x.ep.endsWith('/fill-reply')), 'template filled');
+    await sr.waitFor({ state: 'detached' });
+    assert.equal(await box.inputValue(), 'Hi Ramesh, thanks for reaching out. We have logged this as ST-2291 and will update you by 28 Oct, 18:00 UTC.');
+    await box.fill('');
+    checks.push('saved-replies');
     await conv.getByRole('button', { name: 'Assign' }).click();
     await waitFor(() => state.writes.some((x) => x.method === 'PATCH' && x.b.assigneeId === user.id), 'assigned to me');
     checks.push('keyboard-reply-assign');
@@ -282,7 +315,16 @@ try {
     if (theme === 'light') {
       await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'desk 390 scrolls sideways');
-      await shot(page, 'desk-390.png'); await page.setViewportSize({ width: 1440, height: 900 }); checks.push('desk-390');
+      await shot(page, 'desk-390.png');
+      await conv.getByRole('button', { name: 'Saved replies' }).click();
+      await page.getByTestId('dq-saved').getByText('Acknowledge').waitFor();
+      const sheet = await page.getByTestId('dq-saved').boundingBox();
+      const vw = await page.evaluate(() => document.querySelector('#main-content').getBoundingClientRect().right);
+      assert.ok(sheet && sheet.x <= 1 && sheet.width >= vw - 1 && Math.abs(sheet.y + sheet.height - 844) <= 2, `saved replies is a bottom sheet on a phone (${JSON.stringify(sheet)})`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'saved replies 390 scrolls sideways');
+      await shot(page, 'desk-saved-replies-390.png');
+      await page.keyboard.press('Escape');
+      await page.setViewportSize({ width: 1440, height: 900 }); checks.push('desk-390');
     }
 
     // ---------------------------------------------------------------- Quality

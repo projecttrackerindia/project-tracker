@@ -306,6 +306,9 @@ public static class DependencyInjection
         services.AddScoped<AutomationService>();
         services.AddScoped<AutomationEngine>();
         services.AddScoped<TicketAutomationEngine>();
+        services.AddScoped<TicketRuleScheduler>();
+        services.AddScoped<ProjectManagement.Application.Features.Support.TicketCustomerMessenger>();
+        services.AddScoped<ProjectManagement.Application.Features.Support.DeskReplies>();
         services.AddScoped<AttachmentService>();
         services.AddScoped<AttachmentJanitor>();
         services.AddScoped<NotificationRouter>();

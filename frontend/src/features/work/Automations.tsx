@@ -13,7 +13,7 @@ import { useCan, useEntitlement, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { useAi } from '../ai/Assistant';
 import {
-  CONDITIONS, draftToFlow, emptyFlow, EVENTS, flowToInput, isScheduled, newCondition, RECIPES, ruleToFlow, step, subjectOf, TASK_CATEGORIES, TICKET_STATUSES,
+  CONDITIONS, draftToFlow, emptyFlow, EVENTS, flowToInput, isScheduled, newCondition, RECIPES, ruleToFlow, scheduleUnit, step, subjectOf, TASK_CATEGORIES, TICKET_STATUSES,
   type Flow, type Subject,
 } from './automationFlow';
 import './desk.css';
@@ -167,11 +167,16 @@ function Builder({ rule, initial, canEdit, onCount, onSaved, onRemoved }: {
     setF((x) => ({
       ...x, trigger: s === 'ticket' ? 'TicketCreated' : 'TaskCreated',
       conditions: x.conditions.filter((c) => c.field !== 'noReply' && c.field !== 'status'),
-      steps: x.steps.map((st) => (s === 'task' && st.action === 'TellCustomer') || (s === 'ticket' && st.action === 'AddLabel') ? step({}) : st),
+      steps: x.steps.map((st) => (s === 'task' && (st.action === 'TellCustomer' || st.action === 'CloseTicket')) || (s === 'ticket' && st.action === 'AddLabel') ? step({}) : st),
     }));
     setEditedAt(Date.now());
   };
-  const setTrigger = (t: AutomationTrigger) => setF((x) => ({ ...x, trigger: t, triggerDays: t === 'Stale' ? Math.max(1, x.triggerDays) : x.triggerDays }));
+  const setTrigger = (t: AutomationTrigger) => setF((x) => {
+    const u = scheduleUnit(t), was = scheduleUnit(x.trigger);
+    // Minutes and days do not mix: switching unit starts from the new unit's usual amount.
+    const days = u.unit !== was.unit ? u.fallback : Math.min(u.max, Math.max(u.min, x.triggerDays));
+    return { ...x, trigger: t, triggerDays: days };
+  });
   const setCond = (i: number, c: AutomationCondition) => set('conditions', f.conditions.map((x, k) => (k === i ? c : x)));
   const setStep = (i: number, s: AutomationStep) => set('steps', f.steps.map((x, k) => (k === i ? s : x)));
   const free = CONDITIONS.filter((c) => (subject === 'ticket' || !c.ticketOnly) && !f.conditions.some((x) => x.field === c.field));
@@ -249,8 +254,9 @@ function Builder({ rule, initial, canEdit, onCount, onSaved, onRemoved }: {
               </Tok></>)}
             {isScheduled(f.trigger) && (<>
               <span className="au-word">{f.trigger === 'DueSoon' ? 'within' : f.trigger === 'Overdue' ? 'by' : 'for'}</span>
-              <TokInput label="Days" type="number" width={48} min={f.trigger === 'Stale' ? 1 : 0} max={365} value={String(f.triggerDays)} disabled={ro} onChange={(v) => set('triggerDays', Number(v))} />
-              <span className="au-word">days</span></>)}
+              <TokInput label={scheduleUnit(f.trigger).unit === 'minutes' ? 'Minutes' : 'Days'} type="number" width={scheduleUnit(f.trigger).unit === 'minutes' ? 60 : 48}
+                min={scheduleUnit(f.trigger).min} max={scheduleUnit(f.trigger).max} value={String(f.triggerDays)} disabled={ro} onChange={(v) => set('triggerDays', Number(v))} />
+              <span className="au-word">{scheduleUnit(f.trigger).unit}</span></>)}
             <span className="au-word">in</span><span className="au-tok v static">{subject === 'ticket' ? 'Desk · all queues' : 'any project'}</span>
           </div>
         </div>
@@ -331,10 +337,10 @@ function Condition({ c, subject, ro, onChange }: { c: AutomationCondition; subje
 
 const ACTION_LABEL: Record<AutomationAction, string> = {
   SetAssignee: 'Assign to', Notify: 'Notify', PostToChannel: 'Post in', TellCustomer: 'Tell the customer', SetPriority: 'Set priority to',
-  MoveToStatus: 'Move to', AddComment: 'Add a note', AddLabel: 'Add label',
+  MoveToStatus: 'Move to', AddComment: 'Add a note', AddLabel: 'Add label', CloseTicket: 'Close the ticket',
 };
 const ACTIONS: Record<Subject, AutomationAction[]> = {
-  ticket: ['SetAssignee', 'PostToChannel', 'TellCustomer', 'Notify', 'SetPriority', 'MoveToStatus', 'AddComment'],
+  ticket: ['SetAssignee', 'PostToChannel', 'TellCustomer', 'Notify', 'SetPriority', 'MoveToStatus', 'AddComment', 'CloseTicket'],
   task: ['SetAssignee', 'PostToChannel', 'Notify', 'SetPriority', 'MoveToStatus', 'AddLabel', 'AddComment'],
 };
 
@@ -370,7 +376,9 @@ function StepTokens({ n, s, subject, ro, onChange, people, labels, channels }: {
           <option value="">Messages · choose a channel…</option>{channels.map((c) => <option key={c.id} value={c.id}>Messages · #{c.name}</option>)}
         </Tok>
         <TokInput label="Channel message" quoted value={s.actionText ?? ''} disabled={ro} placeholder="what to say (optional)" onChange={(v) => up({ actionText: v })} /></>)}
-      {s.action === 'TellCustomer' && <TokInput label="What to tell the customer" quoted value={s.actionText ?? ''} disabled={ro} placeholder="We’re on it — update within 1 hour" onChange={(v) => up({ actionText: v })} />}
+      {s.action === 'TellCustomer' && <TokInput label="What to tell the customer" quoted value={s.actionText ?? ''} disabled={ro} placeholder="Hi {name}, {key} is with us — update by {eta}" onChange={(v) => up({ actionText: v })} />}
+      {s.action === 'TellCustomer' && <span className="au-word muted">on the ticket’s WhatsApp or e-mail</span>}
+      {s.action === 'CloseTicket' && <span className="au-word muted">once it is resolved</span>}
       {s.action === 'AddComment' && <TokInput label="Note" quoted value={s.actionText ?? ''} disabled={ro} placeholder="the note to add" onChange={(v) => up({ actionText: v })} />}
       {s.action === 'SetPriority' && <Tok label="Priority" value={s.actionPriority ?? 'High'} disabled={ro} onChange={(v) => up({ actionPriority: v })}><PriorityOptions /></Tok>}
       {s.action === 'MoveToStatus' && (
