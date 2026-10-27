@@ -82,7 +82,7 @@ export function useMainNav(): NavGroup[] {
       { to: '/?tab=calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0, paletteOnly: true },
       { to: '/talk?f=meetings', label: 'Meetings', icon: 'video', show: talk, paletteOnly: true, hint: 'Schedule, join and reply; the notetaker and past meetings' },
       { to: '/talk?f=mail', label: 'Mail', icon: 'mail', paletteOnly: true, hint: 'Gmail, Outlook and Rediffmail with the mail agent' },
-      { to: '/library/docs', label: 'Docs', icon: 'layers', show: lv('documents') > 0, paletteOnly: true },
+      { to: '/library/security', label: 'Security Center', icon: 'shield', show: lv('documents') > 0, paletteOnly: true, hint: 'Masking, reveals, access requests and the audit trail' },
       { to: '/library/vault', label: 'Vault', icon: 'key', show: canVault, paletteOnly: true, hint: 'Team passwords, keys and secrets' },
       { to: '/insights?tab=time', label: 'Time', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0, paletteOnly: true, hint: 'Your timesheet' },
       { to: '/insights?tab=reports', label: 'Reports', icon: 'chart', show: canReports || lv('work') > 0, paletteOnly: true },

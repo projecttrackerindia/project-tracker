@@ -15,6 +15,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { PortfolioView } from './PortfolioView';
 import { duplicateGroups, groupKey, readDismissed, writeDismissed } from './duplicates';
 import { usePortfolioBrief } from './PortfolioInsights';
+import { ProjectBoard } from './ProjectBoard';
 import { ProjectFormModal } from './ProjectFormModal';
 import { dayMonth, errText, HEALTH, HealthPill, isFinished, passGradient, passStatus, useAllProjects } from './projectParts';
 import './projects.css';
@@ -48,7 +49,8 @@ export function ProjectsHome() {
 
 // ------------------------------------------------------------------------------------------------------------------ Projects
 
-type View = 'passes' | 'list';
+type View = 'passes' | 'board' | 'list';
+const VIEWS: readonly View[] = ['passes', 'board', 'list'];
 type StatusChip = 'all' | 'OnTrack' | 'AtRisk' | 'Delayed' | 'Completed';
 const CHIPS: { id: StatusChip; label: string }[] = [
   { id: 'all', label: 'All' }, { id: 'OnTrack', label: 'On track' }, { id: 'AtRisk', label: 'At risk' }, { id: 'Delayed', label: 'Late' }, { id: 'Completed', label: 'Done' },
@@ -66,7 +68,7 @@ const byDue = (a: Project, b: Project) => {
 const needsAttention = (p: Project) => !isFinished(p) && passStatus(p).tone !== 'ok';
 
 /**
- * Projects (Apple design, s-projects): "14 active · 3 need attention" over the large title; search, one Filter button and Passes · List.
+ * Projects (Apple design, s-projects): "14 active · 3 need attention" over the large title; search, one Filter button and Passes · Board · List (the choice is remembered).
  * Passes are Wallet-style cards: gradient, key, owner, progress ring, due + one honest line, a tear line, the stage dots (filled = signed
  * off) and one state pill. One violet line proposes merging a likely duplicate. Opening a pass lifts it and carries its key, name and stage
  * dots into the project page (shared elements; none when reduced motion is asked for).
@@ -84,7 +86,7 @@ function ProjectsView() {
   const [scope, setScopeState] = useState<'all' | 'mine'>(() => { try { return localStorage.getItem(SCOPE_KEY) === 'mine' ? 'mine' : 'all'; } catch { return 'all'; } });
   const setScope = (s: 'all' | 'mine') => { setScopeState(s); try { localStorage.setItem(SCOPE_KEY, s); } catch { /* storage unavailable */ } };
   const mineOnly = !oversees || scope === 'mine';
-  const [view, setViewState] = useState<View>(() => { try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'passes'; } catch { return 'passes'; } });
+  const [view, setViewState] = useState<View>(() => { try { const v = localStorage.getItem(VIEW_KEY) as View | null; return v && VIEWS.includes(v) ? v : 'passes'; } catch { return 'passes'; } });
   const setView = (x: View) => { setViewState(x); try { localStorage.setItem(VIEW_KEY, x); } catch { /* storage unavailable */ } };
   const [archived, setArchived] = useState(false);
   const [q, setQ] = useState('');
@@ -209,7 +211,7 @@ function ProjectsView() {
               </div>
             )}
           </div>
-          <Segmented<View> label="Show as" className="pa-seg" value={view} onChange={setView} options={[{ id: 'passes', label: 'Passes' }, { id: 'list', label: 'List' }]} />
+          <Segmented<View> label="Show as" className="pa-seg" value={view} onChange={setView} options={[{ id: 'passes', label: 'Passes' }, { id: 'board', label: 'Board' }, { id: 'list', label: 'List' }]} />
         </div>
       </header>
 
@@ -220,6 +222,8 @@ function ProjectsView() {
         : shown.length === 0 ? (
           <div className="pj2-empty card"><EmptyState icon="folder" title={narrowed ? 'No projects match' : 'No projects yet'} text={narrowed ? 'Try another status, or clear the filters.' : 'Create your first project to organise its work, dates and people.'}
             action={narrowed ? <button type="button" className="btn btn-ghost" onClick={clear}>Show all</button> : <button type="button" className="btn btn-primary" onClick={() => setModal({})}><Icon name="plus" /> New project</button>} /></div>
+        ) : view === 'board' ? (
+          <ProjectBoard projects={shown} cacheKey={[wid, 'projects', 'list', 'all', filters]} canEditAll={canEdit} meId={meId} onOpen={open} />
         ) : view === 'list' ? (
           <ProjectRows projects={shown} onOpen={open} canEdit={canEdit} canDelete={canDelete} meId={meId} onEdit={(p) => setModal({ project: p })} onDelete={(p) => void remove(p)} />
         ) : (

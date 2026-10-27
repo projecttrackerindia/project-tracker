@@ -36,7 +36,7 @@ function AnswerText({ text }: { text: string }) {
  * Ask your docs: a question in the field, and the answer unfurls from it — read from the pages this person can open (the same AI ask as
  * DocTracker), with the documents it came from flying in underneath.
  */
-export function AskDocs({ typeOf, onAsking }: { typeOf: (documentId: string) => string | undefined; onAsking: (on: boolean) => void }) {
+export function AskDocs({ typeOf, onAsking, onQuery, onAsked, placeholder = 'Ask your docs', hero }: { typeOf: (documentId: string) => string | undefined; onAsking: (on: boolean) => void; onQuery?: (q: string) => void; onAsked?: (question: string | null) => void; placeholder?: string; hero?: boolean }) {
   const still = useReducedMotion();
   const [q, setQ] = useState('');
   const [asked, setAsked] = useState<string | null>(null);
@@ -50,16 +50,17 @@ export function AskDocs({ typeOf, onAsking }: { typeOf: (documentId: string) => 
     return () => { off = true; };
   }, [asked]);
   useEffect(() => { onAsking(!!asked && state.busy); }, [asked, state.busy, onAsking]);
+  useEffect(() => { onAsked?.(asked); }, [asked, onAsked]);
   const a = state.answer;
   const cites = a ? a.citations.filter((c, i, all) => all.findIndex((x) => x.documentId === c.documentId) === i).slice(0, 3) : [];
   const spring = still ? { duration: 0 } : { type: 'spring' as const, duration: 0.38, bounce: 0.12 };
   return (
-    <div className="lb-askwrap">
+    <div className={`lb-askwrap${hero ? ' hero' : ''}`}>
       <form className={`lb-q${asked ? ' on' : ''}`} role="search" onSubmit={(e) => { e.preventDefault(); const t = q.trim(); if (t.length >= 3) setAsked(t); }}>
         <span className="lb-orb" aria-hidden="true" />
-        <input type="search" value={q} autoComplete="off" placeholder="Ask your docs" aria-label="Ask your docs"
-          onChange={(e) => { setQ(e.target.value); if (asked && e.target.value.trim() !== asked) setAsked(null); }} />
-        <button type="submit" className="lb-q-go" aria-label="Ask" disabled={q.trim().length < 3}>↩</button>
+        <input type="search" value={q} autoComplete="off" placeholder={placeholder} aria-label="Ask your docs"
+          onChange={(e) => { setQ(e.target.value); onQuery?.(e.target.value); if (asked && e.target.value.trim() !== asked) setAsked(null); }} />
+        {hero ? <button type="submit" className="lb-q-ask" disabled={q.trim().length < 3}>Ask</button> : <button type="submit" className="lb-q-go" aria-label="Ask" disabled={q.trim().length < 3}>↩</button>}
       </form>
       <AnimatePresence initial={false}>
         {asked && (

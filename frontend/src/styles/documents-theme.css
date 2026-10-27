@@ -30,103 +30,12 @@
    DOCUMENTS SIDEBAR — pinned scopes + a project tree, DocTracker's layout
    ============================================================ */
 
-.doc-shell {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-.doc-shell-main { min-width: 0; }
-
-.doc-sidebar {
-  position: sticky;
-  top: calc(var(--topbar-h, 64px) + 18px);
-  max-height: calc(100vh - var(--topbar-h, 64px) - 36px);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: none;
-  overflow: hidden;
-}
-
-.doc-sidebar-search {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  flex: none;
-}
-.doc-sidebar-search svg { flex: none; color: var(--text-3); }
-.doc-sidebar-search .input { height: 30px; padding: 0 8px; font-size: 12.5px; }
-
-.doc-sidebar-pinned, .doc-sidebar-groups { list-style: none; margin: 0; padding: 6px; display: grid; gap: 1px; }
-.doc-sidebar-pinned { border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 4px; }
-
-.doc-sidebar-row {
-  width: 100%; display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: var(--radius-sm);
-  font-size: 12.5px; font-weight: 550; color: var(--text-2); text-align: left; min-width: 0;
-}
-.doc-sidebar-row svg { flex: none; color: var(--text-3); }
-.doc-sidebar-row span:not(.doc-count) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.doc-sidebar-row:hover { background: var(--hover-bg); color: var(--text); }
-.doc-sidebar-row.active { background: var(--primary-soft); color: var(--text); font-weight: 650; }
-.doc-sidebar-row.active svg { color: var(--primary); }
-.doc-sidebar-row .doc-count { margin-left: auto; background: var(--primary); }
-
-.doc-sidebar-tree { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; }
-.doc-sidebar-label {
-  padding: 8px 15px 4px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3);
-}
-
 /* ---- tree connectors: a vertical spine down the open group's children, drawn with ::before on the row
    elements themselves (no extra connector <div>s in the DOM), exactly DocTracker's technique. */
-.doc-sidebar-group { position: relative; }
+
 /* A flex row, not a single button: the toggle takes most of the width, an optional per-project actions menu
    (delete, for now) sits at the end - a project here had no way to reach it at all before, even though the
    capability already existed on the main Projects list and a project's own Actions menu. */
-.doc-sidebar-group-head {
-  width: 100%; display: flex; align-items: center; gap: 2px; border-radius: var(--radius-sm);
-  color: var(--text-2);
-}
-.doc-sidebar-group-head:hover { background: var(--hover-bg); color: var(--text); }
-.doc-sidebar-group-head.active { color: var(--primary); font-weight: 650; }
-.doc-sidebar-group-toggle {
-  flex: 1; display: flex; align-items: center; gap: 6px; padding: 6px 0 6px 9px;
-  font-size: 12.5px; font-weight: 550; color: inherit; text-align: left; min-width: 0;
-}
-.doc-sidebar-group-toggle svg { flex: none; color: var(--text-3); }
-.doc-sidebar-group-toggle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.doc-sidebar-group-menu { position: relative; flex: none; opacity: 0; }
-.doc-sidebar-group:hover .doc-sidebar-group-menu, .doc-sidebar-group-menu:has(.menu-list) { opacity: 1; }
-.doc-sidebar-group-menu .btn-icon { width: 24px; height: 24px; margin-right: 4px; }
-
-.doc-sidebar-children { list-style: none; margin: 0; padding: 0 0 0 19px; position: relative; }
-.doc-sidebar-children::before {
-  content: ''; position: absolute; left: 10px; top: 0; bottom: 8px; width: 1px; background: var(--border-strong);
-}
-.doc-sidebar-children li { position: relative; }
-.doc-sidebar-children li::before {
-  content: ''; position: absolute; left: -9px; top: 13px; width: 8px; height: 8px;
-  border: 1px solid var(--border-strong); border-top: 0; border-right: 0; border-radius: 0 0 0 6px;
-}
-.doc-sidebar-child { padding-left: 9px; }
-.doc-sidebar-child .doc-key { margin-right: 2px; }
-
-.doc-sidebar-empty { padding: 8px 15px; font-size: 12px; }
-
-@media (max-width: 900px) {
-  .doc-shell { grid-template-columns: minmax(0, 1fr); }
-  .doc-sidebar { position: static; max-height: none; }
-  .doc-sidebar-tree { max-height: 320px; }
-}
 
 /* ============================================================
    DOCUMENTS CONTROL CENTER — hero + KPI grid + status bar + data table,

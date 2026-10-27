@@ -5,8 +5,8 @@ import {
   type Connection, type OnSelectionChangeParams,
 } from '@xyflow/react';
 import { toPng, toSvg } from 'html-to-image';
-import { Icon } from '../../../components/Icon';
-import { confirmDialog, toast } from '../../../stores/ui';
+import { Icon } from '../../../../components/Icon';
+import { confirmDialog, toast } from '../../../../stores/ui';
 import { ARCH_ICONS, CATEGORIES, SWATCHES, iconByKey } from './archIcons';
 import { ArchCanvas, edgeFor, fromFlow, IconGlyph, toFlow, type ArchData, type ArchEdgeData, type ArchFlowEdge, type ArchFlowNode, type ArchNodeData } from './ArchCanvas';
 import { TEMPLATES } from './archTemplates';

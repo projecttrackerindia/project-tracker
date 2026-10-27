@@ -155,7 +155,7 @@ try {
   assert.equal(await page.locator('.pa-title').innerText(), 'Projects');
   assert.equal(await page.getByRole('tablist', { name: 'Projects or portfolio' }).count(), 0);
   const showAs = page.getByRole('tablist', { name: 'Show as' });
-  assert.deepEqual(await showAs.getByRole('tab').allInnerTexts(), ['Passes', 'List']);
+  assert.deepEqual(await showAs.getByRole('tab').allInnerTexts(), ['Passes', 'Board', 'List']);
   checks.push('head');
 
   // Passes: key, owner, ring %, due + one line, stage dots, one state pill. No chat button.
@@ -215,6 +215,16 @@ try {
   await page.reload(); await page.locator('.pa-pass').first().waitFor(); await page.waitForTimeout(300);
   assert.equal(await page.getByTestId('duplicate-line').count(), 0, 'not flagged again after a reload');
   checks.push('duplicate-not-a-duplicate');
+
+  // Board: status columns from the one status source; the choice is remembered.
+  await page.getByRole('tablist', { name: 'Show as' }).getByRole('tab', { name: 'Board' }).click();
+  await page.getByTestId('projects-board').waitFor();
+  assert.deepEqual(await page.locator('.pb-head b').allInnerTexts(), ['Not started', 'In progress', 'At risk', 'Late', 'Done']);
+  assert.equal(await page.getByTestId('board-card').count(), 12);
+  assert.equal(await page.locator('[data-column="atRisk"] [data-project="s-internal-api"]').count(), 1);
+  if (process.env.BOARD_SHOT) await page.screenshot({ path: process.env.BOARD_SHOT });
+  await page.reload(); await page.getByTestId('projects-board').waitFor();
+  checks.push('board-view');
 
   // List: the existing table.
   await page.getByRole('tablist', { name: 'Show as' }).getByRole('tab', { name: 'List' }).click();

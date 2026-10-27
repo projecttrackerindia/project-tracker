@@ -1,4 +1,4 @@
-import { pageTree } from '../documents/pages';
+import { pageTree } from '../../documents/pages';
 
 type Doc = { id: string; title: string; parentId?: string | null; pageOrder?: number };
 export type DropWhere = 'before' | 'after' | 'inside';

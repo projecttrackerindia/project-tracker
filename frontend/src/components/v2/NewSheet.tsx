@@ -212,7 +212,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
       case 'task': case 'ticket': case 'bug': await makeWork(); return;
       case 'project': close(); onProject(); return;
       case 'reminder': close(); openReminderComposer({ text: words }); return;
-      case 'doc': close(); nav(join('/library/docs?new=1', q('title', title))); return;
+      case 'doc': close(); nav(join('/library?new=1', q('title', title))); return;
       case 'secret': close(); nav(join('/library/vault?new=item', q('title', title))); return;
       case 'meeting': close(); nav(join('/talk?f=meetings&new=schedule', q('title', title))); return;
       case 'time': close(); nav(join('/insights?tab=time', q('log', words))); return;

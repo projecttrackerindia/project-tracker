@@ -1,0 +1,29 @@
+import { useRef, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import type { DtProject } from '../../../api/types';
+import { ReaderRail, useOutline } from '../../documents/DocReader';
+import { docsPath } from './nav';
+
+/** Library › Project › Topic. */
+export function Crumb({ p, here }: { p: Pick<DtProject, 'id' | 'name'>; here?: ReactNode }) {
+  return (
+    <nav className="dx-crumb" aria-label="Breadcrumb" data-testid="docs-crumb">
+      <Link to={docsPath.hub()}>Library</Link><span aria-hidden="true">›</span>
+      {here ? <><Link to={docsPath.project(p.id)}>{p.name}</Link><span aria-hidden="true">›</span><span aria-current="page">{here}</span></> : <span aria-current="page">{p.name}</span>}
+    </nav>
+  );
+}
+
+/** The reading column with its outline on the right. */
+export function Reading({ p, title, children, tools, wide }: { p: DtProject; title?: string; children: ReactNode; tools?: ReactNode; wide?: boolean }) {
+  const col = useRef<HTMLDivElement>(null);
+  const outline = useOutline(col, []);
+  return (
+    <div className={`dx-read${wide ? ' wide' : ''}`}>
+      <div className="dx-bar"><Crumb p={p} here={title} />{tools && <div className="dx-tools">{tools}</div>}</div>
+      <div className="dx-col" ref={col}>{children}</div>
+      {!wide && <ReaderRail outline={outline} />}
+    </div>
+  );
+}
+

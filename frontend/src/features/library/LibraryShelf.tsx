@@ -85,7 +85,7 @@ export function ContinueShelf({ docs, onOpen }: { docs: DocumentItem[]; onOpen: 
   if (docs.length === 0) return null;
   return (
     <section className="lb-continue" aria-label="Continue">
-      <div className="lb-shelfh"><h2>Continue</h2><span>Picked up where you left off</span></div>
+      <div className="lb-shelfh"><h2>Recently viewed</h2><span>Picked up where you left off</span></div>
       <div className="lb-shelf">
         {docs.map((d, i) => {
           const shelf = shelfOf(d.typeCode);

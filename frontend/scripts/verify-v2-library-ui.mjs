@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
-// Library (Apple design). Docs: title and the kind control, the Continue shelf of covers with previews and reading progress, one list (kind,
-// project, status, updated), Ask your docs answering with its sources, Needs your review with AI drafts, and Paste a cURL into the import.
+// Library (Apple design). Docs hub: title, the search/ask hero, collections, the Continue shelf of covers with previews and reading progress,
+// All documents filtered by kind (kind, project, status, updated), Ask your docs answering with its sources, Needs your review with AI drafts, and Paste a cURL into the import.
 // Vault: the security strip, All · Mine · Shared · Requests, search, an item showing its fields in one well (values masked; copied or
 // revealed after the same step-up check, the reveal hiding itself), Share for 1 hour · 1 day · Once, the rest under ···, and the
 // screen-share notice once. 1440 light and dark, and a 390 phone. Synthetic API only.
@@ -116,14 +116,15 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${origin}/preview-org/library`);
-  await page.locator('.lb-tr[data-doc="Razorpay API"]').waitFor();
-  assert.equal(await page.locator('.lb-h1').innerText(), 'Library');
+  await page.locator('.dx-li[data-doc="Razorpay API"]').waitFor();
+  assert.equal(await page.locator('.dx-h1').innerText(), 'Library');
   assert.equal(await page.getByRole('tab', { name: 'Vault' }).count(), 0, 'Vault is its own place in the sidebar, not a Library tab');
   assert.deepEqual(await page.getByRole('tablist', { name: 'Kind' }).getByRole('tab').allInnerTexts(), ['All', 'API docs', 'Specs', 'Runbooks', 'Tests']);
   assert.ok(await page.getByRole('searchbox', { name: 'Ask your docs' }).isVisible(), 'the question field');
-  assert.deepEqual(await page.locator('.lb-table thead th').allInnerTexts(), ['Name', 'Kind', 'Project', 'Status', 'Updated']);
-  assert.deepEqual(await page.locator('.lb-tr .lib-kind').allInnerTexts(), ['API', 'API', 'BRD', 'Spec', 'Guide', 'File']);
-  assert.deepEqual(await page.locator('.lb-tr .lb-st').allInnerTexts(), ['Published', 'In review', 'Approved', 'Draft', 'Published', 'Published']);
+  assert.deepEqual(await page.locator('.dx-li[data-doc] .dx-kc').allInnerTexts(), ['API', 'API', 'BRD', 'Spec', 'Guide', 'File']);
+  assert.deepEqual(await page.locator('.dx-li[data-doc] .dx-st').allInnerTexts(), ['Published', 'In review', 'Approved', 'Draft', 'Published', 'Published']);
+  assert.equal(await page.locator('.dx-li[data-doc="Razorpay API"]').getAttribute('href'), `/preview-org/library/p/${projects[0].id}/d/${few[0].id}`, 'a project document opens inside its collection');
+  assert.deepEqual(await page.getByTestId('collection').locator('b').allInnerTexts(), ['Payments', 'Account Aggregator']);
   // Continue: four covers (the artifact is not a book), each with its kind, a preview and a reading-progress bar.
   assert.deepEqual(await page.locator('.lb-book').evaluateAll((els) => els.map((e) => e.getAttribute('data-cover'))), ['Razorpay API', 'Loan despatch details API', 'Account Aggregator BRD', 'Payment engine DR architecture']);
   assert.deepEqual(await page.locator('.lb-book .lb-cov-k').allInnerTexts(), ['API REFERENCE', 'API REFERENCE', 'BRD', 'ARCHITECTURE']);
@@ -150,7 +151,7 @@ try {
   assert.ok(writes.some((w) => w.ep === '/api/v1/documents/ai/ask' && /headers/.test(w.body.question)));
   await page.locator('.lb-cite', { hasText: 'Razorpay API' }).waitFor();
   assert.equal(await page.locator('.lb-cite').first().getAttribute('href'), `/preview-org/library/docs/${few[0].id}#b-0`);
-  assert.equal(await page.locator('.lb-tr').count(), 6, 'asking does not filter the list');
+  assert.equal(await page.locator('.dx-li[data-doc]').count(), 6, 'asking does not filter the list');
   checks.push('ask-your-docs');
   await bar.fill('');
 
@@ -165,13 +166,13 @@ try {
   // The kind control filters the list.
   docSet = many;
   await page.reload();
-  await page.locator('.lb-tr').first().waitFor();
+  await page.locator('.dx-li[data-doc]').first().waitFor();
   await page.getByRole('tablist', { name: 'Kind' }).getByRole('tab', { name: 'Specs' }).click();
-  assert.deepEqual(await page.locator('.lb-tr').evaluateAll((els) => els.map((e) => e.getAttribute('data-doc'))), ['Account Aggregator BRD', 'Payment engine DR architecture']);
+  assert.deepEqual(await page.locator('.dx-li[data-doc]').evaluateAll((els) => els.map((e) => e.getAttribute('data-doc'))), ['Account Aggregator BRD', 'Payment engine DR architecture']);
   await page.getByRole('tablist', { name: 'Kind' }).getByRole('tab', { name: 'API docs' }).click();
-  assert.deepEqual(await page.locator('.lb-tr').evaluateAll((els) => els.map((e) => e.getAttribute('data-doc'))), ['Razorpay API', 'Loan despatch details API']);
+  assert.deepEqual(await page.locator('.dx-li[data-doc]').evaluateAll((els) => els.map((e) => e.getAttribute('data-doc'))), ['Razorpay API', 'Loan despatch details API']);
   await page.getByRole('tablist', { name: 'Kind' }).getByRole('tab', { name: 'All' }).click();
-  await page.waitForFunction(() => document.querySelectorAll('.lb-tr').length === 14);
+  await page.waitForFunction(() => document.querySelectorAll('.dx-li[data-doc]').length === 14);
   checks.push('kind-filter');
   await ctx.close();
   docSet = few;
@@ -261,7 +262,7 @@ try {
   ctx = await make('dark'); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${origin}/preview-org/library`);
-  await page.locator('.lb-tr').first().waitFor();
+  await page.locator('.dx-li[data-doc]').first().waitFor();
   assert.notEqual(await page.locator('.lb-cov').first().evaluate((e) => getComputedStyle(e).backgroundColor), 'rgb(255, 255, 255)', 'docs follow the dark theme');
   await shot(page, 'docs-1440-dark.png');
   await page.goto(`${origin}/preview-org/library/vault/i2`);
@@ -276,7 +277,7 @@ try {
     ctx = await make(theme, { hasTouch: true, isMobile: true }); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${origin}/preview-org/library`);
-    await page.locator('.lb-tr').first().waitFor();
+    await page.locator('.dx-li[data-doc]').first().waitFor();
     await fitsPhone(page, `docs ${theme}`, assert);
     await shot(page, `docs-390-${theme}.png`);
     await page.goto(`${origin}/preview-org/library/vault`);
