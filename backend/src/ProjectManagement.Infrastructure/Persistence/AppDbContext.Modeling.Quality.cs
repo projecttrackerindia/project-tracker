@@ -29,6 +29,19 @@ public partial class AppDbContext
             e.Property(x => x.Environment).HasMaxLength(40);
             e.Property(x => x.Build).HasMaxLength(40);
             e.Property(x => x.Status).HasMaxLength(16);
+            e.HasIndex(x => new { x.TenantId, x.ReleaseId });
+        });
+        b.Entity<Release>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.ProjectId, x.TargetDate });
+            e.Property(x => x.Name).HasMaxLength(80);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Notes).HasMaxLength(4000);
+        });
+        b.Entity<ReleaseItem>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.ReleaseId, x.WorkItemId }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.WorkItemId });
         });
         b.Entity<TestResult>(e =>
         {

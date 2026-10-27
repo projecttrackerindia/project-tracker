@@ -7895,6 +7895,23 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<bool>("EnforceDependencies")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("HealthNote")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("HealthOverride")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime?>("HealthSetAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("HealthSetById")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("HealthUntil")
+                        .HasColumnType("date");
+
                     b.Property<bool>("IsBillable")
                         .HasColumnType("boolean");
 
@@ -8565,6 +8582,100 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("RefreshTokens");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.Release", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ApprovedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ShippedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateOnly?>("TargetDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProjectId", "TargetDate");
+
+                    b.ToTable("Releases");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.ReleaseItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ReleaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("WorkItemId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "WorkItemId");
+
+                    b.HasIndex("TenantId", "ReleaseId", "WorkItemId")
+                        .IsUnique();
+
+                    b.ToTable("ReleaseItems");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.Reminder", b =>
@@ -11552,6 +11663,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ProjectId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ReleaseId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -11572,6 +11686,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "ProjectId", "CreatedAt");
+
+                    b.HasIndex("TenantId", "ReleaseId");
 
                     b.ToTable("TestRuns");
                 });

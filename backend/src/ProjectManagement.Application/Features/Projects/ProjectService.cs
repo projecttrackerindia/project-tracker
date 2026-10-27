@@ -41,6 +41,10 @@ public record ProjectQuery(string? Q, ProjectStatus? Status, Priority? Priority,
 public record AddProjectMemberRequest(Guid UserId);
 /// <summary>Board move: a new status (column) and/or a new order inside it.</summary>
 public record MoveProjectRequest(ProjectStatus Status, double? Position);
+/// <summary>A status set by hand: OnTrack, AtRisk or Delayed (empty clears it), why, and until when (optional).</summary>
+public record SetProjectHealthRequest(string? Health, string? Note = null, DateOnly? Until = null);
+/// <summary>The status shown (Health), the one from dates and progress (Calculated), and the hand-set one when in force.</summary>
+public record ProjectHealthDto(string Health, string Calculated, string? Override, string? Note, DateOnly? Until, UserRefDto? SetBy, DateTime? SetAt);
 public record UpsertStatusRequest(string Name, StatusCategory Category, string? Color, int? Order);
 /// <summary>The whole workflow in its new order: every status of the project exactly once.</summary>
 public record ReorderStatusesRequest(IReadOnlyList<Guid> StatusIds);
@@ -67,6 +71,21 @@ public static partial class ProjectMetrics
 
     /// <summary>Automatically calculated health (progress vs. elapsed time, deadline).</summary>
     public static ProjectHealth Health(Project p, ProjectStatsDto s, DateOnly today)
+    {
+        switch (p.Status)
+        {
+            case ProjectStatus.Completed: return ProjectHealth.Completed;
+            case ProjectStatus.Cancelled: return ProjectHealth.Cancelled;
+            case ProjectStatus.Archived: return ProjectHealth.Archived;
+        }
+        // A status set by hand stands until its date (or until cleared): the person who knows the project overrides the arithmetic.
+        if (p.HealthOverride is { } manual && (p.HealthUntil is not { } until || today <= until) && Enum.TryParse<ProjectHealth>(manual, out var set)
+            && set is ProjectHealth.OnTrack or ProjectHealth.AtRisk or ProjectHealth.Delayed) return set;
+        return CalculatedHealth(p, s, today);
+    }
+
+    /// <summary>The status from dates and progress alone, ignoring a status set by hand.</summary>
+    public static ProjectHealth CalculatedHealth(Project p, ProjectStatsDto s, DateOnly today)
     {
         switch (p.Status)
         {
@@ -468,6 +487,58 @@ public partial class ProjectService(
         project.Status = next;
         project.ArchivedAt = next == ProjectStatus.Archived ? project.ArchivedAt ?? clock.Now : null;
         project.ArchivedBy = next == ProjectStatus.Archived ? project.ArchivedBy ?? ctx.UserId : null;
+    }
+
+    // ------------------------------------------------------------------ status set by hand
+
+    public static readonly string[] ManualHealth = ["OnTrack", "AtRisk", "Delayed"];
+
+    /// <summary>The calculated status and, when one is set and still in force, the one set by hand (why, until when, who, when).</summary>
+    public async Task<ProjectHealthDto> GetHealthAsync(Guid id, CancellationToken ct = default)
+    {
+        var project = await access.GetProjectAsync(id, ct);
+        return await HealthDtoAsync(project, ct);
+    }
+
+    private async Task<ProjectHealthDto> HealthDtoAsync(Project project, CancellationToken ct)
+    {
+        var stats = (await GetStatsAsync([project.Id], ct)).GetValueOrDefault(project.Id) ?? new ProjectStatsDto(0, 0, 0, 0, 0, 0);
+        var today = clock.Today;
+        var inForce = project.HealthOverride is not null && (project.HealthUntil is not { } u || today <= u);
+        var by = inForce && project.HealthSetById is { } b ? await db.Users.AsNoTracking().Where(x => x.Id == b).Select(x => new UserRefDto(x.Id, x.DisplayName)).FirstOrDefaultAsync(ct) : null;
+        return new ProjectHealthDto(Health(project, stats, today).ToString(), CalculatedHealth(project, stats, today).ToString(),
+            inForce ? project.HealthOverride : null, inForce ? project.HealthNote : null, inForce ? project.HealthUntil : null, by, inForce ? project.HealthSetAt : null);
+    }
+
+    /// <summary>
+    /// Sets the project's status by hand (OnTrack, AtRisk or Delayed) with a reason and an optional end date, or clears it (null). Recorded
+    /// in the project's activity. Needs the right to edit the project.
+    /// </summary>
+    public async Task<ProjectHealthDto> SetHealthAsync(Guid id, SetProjectHealthRequest req, CancellationToken ct = default)
+    {
+        var project = await access.GetProjectAsync(id, ct);
+        await access.RequireProjectEditAsync(project, ct);
+        var before = project.HealthOverride;
+        if (string.IsNullOrWhiteSpace(req.Health))
+        {
+            project.HealthOverride = null; project.HealthNote = null; project.HealthUntil = null; project.HealthSetById = null; project.HealthSetAt = null;
+            recorder.Activity("project.health_cleared", "Project", id, $"Cleared the status set by hand on \"{project.Name}\"", id, before, null);
+        }
+        else
+        {
+            var h = ManualHealth.FirstOrDefault(x => string.Equals(x, req.Health.Trim(), StringComparison.OrdinalIgnoreCase))
+                ?? throw new ValidationException("health", "Choose OnTrack, AtRisk or Delayed.");
+            var note = (req.Note ?? "").Trim();
+            if (note.Length == 0) throw new ValidationException("note", "Say why, so everyone reading the status knows.");
+            if (note.Length > 300) throw new ValidationException("note", "Keep the reason under 300 characters.");
+            if (req.Until is { } until && until < clock.Today) throw new ValidationException("until", "Pick today or a later date.");
+            project.HealthOverride = h; project.HealthNote = note; project.HealthUntil = req.Until; project.HealthSetById = ctx.UserId; project.HealthSetAt = clock.Now;
+            recorder.Activity("project.health_set", "Project", id, $"Set \"{project.Name}\" to {h}: {note}", id, before, h);
+        }
+        recorder.Audit("project.health_set", "Project", id, before, project.HealthOverride);
+        project.Version++;
+        await db.SaveChangesAsync(ct);
+        return await HealthDtoAsync(project, ct);
     }
 
     /// <summary>

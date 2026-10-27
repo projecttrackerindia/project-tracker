@@ -37,6 +37,15 @@ public class Project : TenantEntity, ITenantScoped, ISoftDelete
     public decimal? BillRate { get; set; }
     /// <summary>Optimistic concurrency version (spec section 80).</summary>
     public int Version { get; set; } = 1;
+    /// <summary>
+    /// The status a project manager set by hand (OnTrack, AtRisk or Delayed), shown instead of the calculated one until <see cref="HealthUntil"/>
+    /// (or until cleared), with why and who set it. Null: the calculated status stands.
+    /// </summary>
+    public string? HealthOverride { get; set; }
+    public string? HealthNote { get; set; }
+    public DateOnly? HealthUntil { get; set; }
+    public Guid? HealthSetById { get; set; }
+    public DateTime? HealthSetAt { get; set; }
 
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }

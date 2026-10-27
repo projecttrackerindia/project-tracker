@@ -191,6 +191,8 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<AiAgentAction> AiAgentActions => Set<AiAgentAction>();
     public DbSet<TestCase> TestCases => Set<TestCase>();
     public DbSet<TestRun> TestRuns => Set<TestRun>();
+    public DbSet<Release> Releases => Set<Release>();
+    public DbSet<ReleaseItem> ReleaseItems => Set<ReleaseItem>();
     public DbSet<TestResult> TestResults => Set<TestResult>();
     public DbSet<AiSearchChunk> AiSearchChunks => Set<AiSearchChunk>();
     public DbSet<AiEvaluationRun> AiEvaluationRuns => Set<AiEvaluationRun>();

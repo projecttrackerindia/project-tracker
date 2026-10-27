@@ -46,6 +46,14 @@ public class ProjectsController(ProjectService projects, TaskService tasks, Acti
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateProjectRequest req, CancellationToken ct) => Ok(await projects.UpdateAsync(id, req, ct));
 
+    /// <summary>The status shown, the calculated one, and the one set by hand (when in force).</summary>
+    [HttpGet("{id:guid}/health")]
+    public async Task<IActionResult> Health(Guid id, CancellationToken ct) => Ok(await projects.GetHealthAsync(id, ct));
+
+    /// <summary>Set the status by hand (OnTrack / AtRisk / Delayed with why and until when), or clear it with an empty health.</summary>
+    [HttpPut("{id:guid}/health")]
+    public async Task<IActionResult> SetHealth(Guid id, [FromBody] SetProjectHealthRequest req, CancellationToken ct) => Ok(await projects.SetHealthAsync(id, req, ct));
+
     [HttpPatch("{id:guid}/move")]
     public async Task<IActionResult> Move(Guid id, [FromBody] MoveProjectRequest req, CancellationToken ct) => Ok(await projects.MoveAsync(id, req, ct));
 

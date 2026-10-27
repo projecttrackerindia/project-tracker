@@ -68,7 +68,7 @@ public class QualityService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     private static TestCaseDto ToDto(TestCase c, IReadOnlyDictionary<Guid, string> projects) =>
         new(c.Id, c.Key, c.Title, c.Steps, c.Expected, c.Priority, c.Tags, c.ProjectId, c.ProjectId is { } p ? projects.GetValueOrDefault(p) : null, c.CreatedAt, c.UpdatedAt);
 
-    private static TestRunDto ToDto(TestRun r) => new(r.Id, r.Name, r.Environment, r.Build, r.Status, r.ProjectId, r.CreatedAt, r.StartedAt, r.CompletedAt);
+    public static TestRunDto ToDto(TestRun r) => new(r.Id, r.Name, r.Environment, r.Build, r.Status, r.ProjectId, r.CreatedAt, r.StartedAt, r.CompletedAt);
 
     private async Task<List<TestResultDto>> ToDtosAsync(IReadOnlyList<TestResult> results, CancellationToken ct)
     {
