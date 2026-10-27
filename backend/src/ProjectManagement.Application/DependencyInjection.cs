@@ -177,6 +177,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.People.UserAvatarService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.EnvelopeCrypto>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.StepUpService>();
+        services.AddScoped<ProjectManagement.Application.Features.Vault.RevealStepUpService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.SecretService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.AuditChainService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.KeyRotationService>();

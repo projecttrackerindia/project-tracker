@@ -7,6 +7,12 @@ export interface StepUpApi {
    * Resolves to null when the person cancels.
    */
   run: <T>(fn: (token?: string) => Promise<T>, ask?: boolean) => Promise<T | null>;
+  /**
+   * Shows a value on screen. The vault is copy-only by default: this asks for the account password AND a two-step code or passkey (the
+   * server checks both and gives a short reveal grant), then runs `fn` with that grant. `anchor` is where the sheet settles when it closes.
+   * Resolves to null when the person cancels or cannot verify.
+   */
+  reveal: <T>(fn: (grant: string) => Promise<T>, anchor?: HTMLElement | null) => Promise<T | null>;
   /** Forget the check (the vault locked itself, or the person locked it). */
   forget: () => void;
   fresh: () => boolean;

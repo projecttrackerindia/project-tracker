@@ -24,7 +24,7 @@ const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.mes
 
 /**
  * One item. Secret values are never drawn here: they stay masked, and a value is fetched only to be copied (one field at a time, straight to
- * the clipboard, which clears itself). The only place a value can be shown is the edit screen, for people who can manage the item.
+ * the clipboard, which clears itself). Showing one on screen needs Reveal: the password and a two-step code or passkey, checked by the server.
  */
 export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collections = [], canAdmin = false, onEdit, onClose, onChanged, onShare, layout = 'classic', insight = null }: {
   id: string; policy: VaultPolicy; lockEpoch: number; binned?: boolean; collections?: VaultCollection[]; canAdmin?: boolean; onEdit: (item: VaultItem) => void; onClose: () => void; onChanged: () => void;
@@ -83,7 +83,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
     const href = it.url ? (/^https?:\/\//i.test(it.url) ? it.url : `https://${it.url}`) : null;
     const canGrant = d.canManage && !!collection && collection.kind !== 'Personal' && !!onShare;
     const canLink = d.canCopy && d.canReveal;
-    // Reveal on screen: only for people who could already see the value in Edit (they manage it and it is not use-only); every reveal asks again.
+    // Reveal on screen: only for people who manage the item (and it is not use-only); it needs the password and a second factor (checked by the server).
     const canShow = d.canManage && d.canReveal && !it.useOnly && !binned;
     const secretRow = (f: VaultField) => (
       <div key={f.key} className="vlt2-field pw-f" data-field={f.key}>
@@ -281,7 +281,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
             ))}
           {d.fields.some((f) => f.secret && f.type !== 'totp') && d.canCopy && !binned && (
             <p className="vlt-small muted vlt-copy-only"><Icon name="lock" size={13} /> {d.canManage && d.canReveal
-              ? 'Values are never shown here. Copy them, or open Edit to see one.'
+              ? 'Values stay hidden; copy them. Reveal asks for your password and a two-step code or passkey.'
               : 'Values are never shown. Copy one into a sign-in form; the clipboard clears itself.'}
               <span className="vlt-policy-line">{[d.needsStepUp ? 'copy needs a two-step check' : null, `clipboard clears after ${policy.clipboardSeconds}s`].filter(Boolean).join(' · ')}</span></p>
           )}

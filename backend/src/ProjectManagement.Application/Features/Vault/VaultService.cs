@@ -652,6 +652,10 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
             throw await DenyAsync(item, c, key, item.UseOnly ? "use only" : "use-only access",
                 new ForbiddenException(item.UseOnly ? "This item is use-only: it can be copied into a form but never shown." : "Your access lets you copy this value, not see it.", "VAULT_USE_ONLY"), ct);
         await GuardAsync(item, c, key, req.StepUp, ct);
+        // Copy-only by default: a value is shown on screen (item page or edit screen) only with a reveal grant (password and a second factor).
+        if (!req.Copy && !await stepUp.IsRevealGrantAsync(me, tid, req.StepUp, ct))
+            throw await DenyAsync(item, c, key, "shown without password and second-factor check",
+                new ForbiddenException("Showing a value needs your password and a two-step code or passkey. Copy works without it.", "REVEAL_VERIFY_REQUIRED"), ct);
 
         string? value;
         try { value = (await crypto.OpenAsync(tid, item.Id, item.Cipher, item.WrappedItemKey, item.KeyVersion, ct)).GetValueOrDefault(key); }
@@ -699,6 +703,9 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         if (!await stepUp.IsFreshAsync(me, req.StepUp, ct))
             throw await DenyAsync(item, c, req.Field ?? "", "earlier value without a two-step check", new ForbiddenException("Earlier values need a fresh two-step check.", "STEP_UP_REQUIRED"), ct);
         await GuardAsync(item, c, req.Field ?? "", req.StepUp, ct);
+        if (!req.Copy && !await stepUp.IsRevealGrantAsync(me, tid, req.StepUp, ct))
+            throw await DenyAsync(item, c, req.Field ?? "", "earlier value shown without password and second-factor check",
+                new ForbiddenException("Showing a value needs your password and a two-step code or passkey. Copy works without it.", "REVEAL_VERIFY_REQUIRED"), ct);
         var value = (await crypto.OpenAsync(tid, item.Id, v.Cipher, v.WrappedItemKey, v.KeyVersion, ct)).GetValueOrDefault((req.Field ?? "").Trim())
             ?? throw new NotFoundException("That field was empty then.", "VAULT_EMPTY");
         recorder.Audit(req.Copy ? "vault.version_copied" : "vault.version_revealed", "VaultItem", item.Id, null, new { item = item.Title, collection = c.Name, field = req.Field, version = v.CreatedAt });

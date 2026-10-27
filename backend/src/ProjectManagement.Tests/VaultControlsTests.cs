@@ -80,6 +80,14 @@ public class VaultControlsTests(ApiFactory factory)
         return secret;
     }
 
+    private async Task<string> RevealGrant(TestClient c, string secret)
+    {
+        factory.WithDb(db => db.Users.IgnoreQueryFilters().Where(u => u.Id == c.UserId).ExecuteUpdate(s => s.SetProperty(u => u.MfaLastStep, 0L)));
+        var res = await c.Post("/api/v1/vault/step-up/reveal", new { password = "Passw0rd!x", code = CodeNow(secret) });
+        Assert.True(res.Ok, res.ToString());
+        return S(res.Data!["token"]);
+    }
+
     private async Task<string> StepUp(TestClient c, string secret)
     {
         factory.WithDb(db => db.Users.IgnoreQueryFilters().Where(u => u.Id == c.UserId).ExecuteUpdate(s => s.SetProperty(u => u.MfaLastStep, 0L)));
@@ -261,17 +269,20 @@ public class VaultControlsTests(ApiFactory factory)
         var shared = await Collection(owner, "Shared logins", people: (viewer, "View"));
         var id = await AddItem(owner, Login(shared));
 
-        var forEdit = await owner.Post($"/api/v1/vault/items/{id}/reveal", new { field = "password", copy = false, forEdit = true });
+        // Even the edit screen shows a value only after the password and a second factor (a reveal grant).
+        var secret = await EnableMfa(owner);
+        Assert.Equal("REVEAL_VERIFY_REQUIRED", (await owner.Post($"/api/v1/vault/items/{id}/reveal", new { field = "password", copy = false, forEdit = true })).ErrorCode);
+        var forEdit = await owner.Post($"/api/v1/vault/items/{id}/reveal", new { field = "password", copy = false, forEdit = true, stepUp = await RevealGrant(owner, secret) });
         Assert.True(forEdit.Ok, forEdit.ToString());
         Assert.Contains("\"inEditor\":true", Audit(owner.WorkspaceId, "vault.revealed").Last().NewValue!);
         // Someone who cannot edit is never recorded as having used the edit screen.
-        Assert.True((await viewer.Post($"/api/v1/vault/items/{id}/reveal", new { field = "password", copy = false, forEdit = true })).Ok);
+        var viewerGrant = await RevealGrant(viewer, await EnableMfa(viewer));
+        Assert.True((await viewer.Post($"/api/v1/vault/items/{id}/reveal", new { field = "password", copy = false, forEdit = true, stepUp = viewerGrant })).Ok);
         Assert.Contains("\"inEditor\":false", Audit(owner.WorkspaceId, "vault.revealed").Last().NewValue!);
 
         var changed = await owner.Put($"/api/v1/vault/items/{id}", Login(shared, password: "N3w!Passw0rd#Ax7q"));
         Assert.True(changed.Ok, changed.ToString());
         var v = G(Assert.Single(changed.Data!["versions"]!.AsArray())!["id"]);
-        var secret = await EnableMfa(owner);
         var copied = await owner.Post($"/api/v1/vault/items/{id}/versions/{v}/reveal", new { field = "password", copy = true, stepUp = await StepUp(owner, secret) });
         Assert.True(copied.Ok, copied.ToString());
         Assert.Equal(Password, S(copied.Data!["value"]));

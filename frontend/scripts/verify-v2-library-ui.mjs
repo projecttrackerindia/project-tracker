@@ -84,11 +84,13 @@ const make = async (theme = 'light', opts = {}) => {
     else if (ep === '/api/v1/vault/items' && method === 'GET') { const c = url.searchParams.get('collectionId'), q = (url.searchParams.get('q') ?? '').toLowerCase(); data = url.searchParams.get('bin') ? [] : vItems.filter((i) => (!c || i.collectionId === c) && (!q || i.title.toLowerCase().includes(q))); }
     else if (m && !m[2]) data = vDetail(m[1]);
     else if (m && m[2] === 'reveal') {
-      if (m[1] === 'i1' && body.stepUp !== STEP) { await json({ errors: [{ code: 'STEP_UP_REQUIRED', message: 'This needs a fresh two-step check.' }], message: 'This needs a fresh two-step check.' }, 403); return; }
+      if (!body.copy && body.stepUp !== 'reveal-grant') { await json({ errors: [{ code: 'REVEAL_VERIFY_REQUIRED', message: 'Showing a value needs your password and a second check.' }], message: 'Showing a value needs your password and a second check.' }, 403); return; }
+      if (m[1] === 'i1' && body.stepUp !== STEP && body.stepUp !== 'reveal-grant') { await json({ errors: [{ code: 'STEP_UP_REQUIRED', message: 'This needs a fresh two-step check.' }], message: 'This needs a fresh two-step check.' }, 403); return; }
       data = { value: 'Synthetic!Value#1', revealSeconds: 10, clipboardSeconds: 30 };
     }
     else if (m && m[2] === 'totp') data = { code: '492039', secondsLeft: 21, period: 30, digits: 6 };
     else if (m && m[2] === 'activity') data = [];
+    else if (ep === '/api/v1/vault/step-up/reveal') { if (body.password !== 'Passw0rd!x' || body.code !== '123456') { await json({ errors: [{ code: 'REVEAL_SECOND_FACTOR_REQUIRED', message: 'Confirm with a two-step code.' }], message: 'Confirm with a two-step code.' }, 403); return; } data = { token: 'reveal-grant', expiresAt: new Date(Date.now() + 300e3).toISOString() }; }
     else if (ep === '/api/v1/vault/step-up') { if (body.code !== '123456') { await json({ errors: [{ code: 'MFA_CODE_INVALID', message: 'That code is not right.' }], message: 'That code is not right.' }, 422); return; } data = { token: STEP, expiresAt: new Date(Date.now() + 300e3).toISOString() }; }
     else if (ep.match(/^\/api\/v1\/vault\/collections\/[^/]+$/)) data = collections.find((c) => c.id === ep.split('/').pop());
     else if (ep === '/api/v1/vault/requests') data = { mine: [], toDecide: [{ id: 'r1', kind: 'Collection', collectionId: 'c2', collectionName: 'Payments servers', itemId: null, itemTitle: null, requester: { id: 'u2', name: 'Ravi Kumar' }, reason: 'Release tonight', access: 'View', minutes: 240, status: 'Pending', decidedBy: null, decidedAt: null, decisionNote: null, grantedUntil: null, createdAt: now, canDecide: true }] };
@@ -207,10 +209,13 @@ try {
   await panel.getByRole('button', { name: 'Show code' }).click();
   await panel.locator('[data-field="totp"] [data-state="revealed"]').waitFor();
   checks.push('copy-with-step-up');
-  // Reveal: the existing step-up check (a recent one counts), then the dots turn into the value, which hides itself.
+  // Reveal: copy-only by default; the reveal sheet asks for the password AND a two-step code, then the dots turn into the value, which hides itself.
   await panel.getByRole('button', { name: 'Reveal Password' }).click();
+  const rv = page.getByTestId('reveal-sheet'); await rv.waitFor();
+  await rv.getByLabel('Account password').fill('Passw0rd!x'); await rv.getByLabel('Two-step code').fill('123456');
+  await rv.getByRole('button', { name: 'Reveal', exact: true }).click();
   await panel.locator('[data-field="password"] .vlt-secret[data-state="revealed"]').waitFor();
-  assert.ok(writes.some((w) => w.ep === '/api/v1/vault/items/i1/reveal' && w.body.copy === false && w.body.stepUp === STEP), 'revealed through the step-up check');
+  assert.ok(writes.some((w) => w.ep === '/api/v1/vault/items/i1/reveal' && w.body.copy === false && w.body.stepUp === 'reveal-grant'), 'revealed with the reveal grant');
   await page.waitForFunction(() => document.querySelector('[data-field="password"] .vlt-secret')?.textContent.replace(/•/g, '') === 'Synthetic!Value#1');
   assert.match(await panel.locator('[data-field="password"] .pw-hide').innerText(), /Hides in \d+s/);
   await panel.getByRole('button', { name: 'Hide Password' }).click();

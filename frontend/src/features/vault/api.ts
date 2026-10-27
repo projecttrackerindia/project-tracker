@@ -104,6 +104,8 @@ export const vaultApi = {
   stepUp: (code: string) => post<{ token: string; expiresAt: string }>('/vault/step-up', { code }),
   stepUpPasskeyOptions: () => post<PasskeyChallenge>('/vault/step-up/passkey/options', {}),
   stepUpPasskey: (challengeId: string, response: Record<string, unknown>) => post<{ token: string; expiresAt: string }>('/vault/step-up/passkey', { challengeId, response }),
+  /** Showing a value on screen: the account password AND a two-step code or a passkey answer; returns a short reveal grant. */
+  revealStepUp: (b: { password: string; code?: string; challengeId?: string; response?: Record<string, unknown> }) => post<{ token: string; expiresAt: string }>('/vault/step-up/reveal', b),
   requestReveal: (itemId: string, reason: string, minutes: number) => post<VaultRequest>(`/vault/items/${itemId}/requests`, { reason, minutes }),
   /** Asks the owner and managers for a new value: the item is marked to rotate, with who asked and why. */
   requestRotation: (itemId: string, reason: string) => post<VaultItemSummary>(`/vault/items/${itemId}/rotation-request`, { reason }),

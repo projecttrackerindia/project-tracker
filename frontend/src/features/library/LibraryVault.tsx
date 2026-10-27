@@ -464,8 +464,8 @@ function ShieldOnce({ info }: { info: ShieldInfo }) {
     <div className="vlt-banner vlt-shield lib-shield" role="note" data-testid="shield-note">
       <Icon name="eye" size={16} />
       <span>{info.level === 'partial'
-        ? 'On a Mac, most screenshots and shares show this window black, but some newer recording apps can still see it. A value shows only when you choose Reveal, hides itself again, and the vault hides itself when you switch windows.'
-        : 'Screen sharing can see a browser tab. A value shows only when you choose Reveal and hides itself again; the vault hides when you switch windows, and the Windows and Android apps go fully black in shares.'}</span>
+        ? 'On a Mac, most screenshots and shares show this window black, but some newer recording apps can still see it. Values stay copy-only; Reveal needs your password and a two-step code or passkey, the value hides itself in seconds, and the vault hides when you switch windows.'
+        : 'Screen sharing can see a browser tab. Values stay copy-only: Reveal needs your password and a two-step code or passkey, and a revealed value hides itself in seconds and whenever you switch windows. The Windows and Android apps go fully black in shares.'}</span>
       <button className="btn-icon" aria-label="Dismiss" onClick={() => setShow(false)}><Icon name="close" size={14} /></button>
     </div>
   );

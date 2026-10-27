@@ -11,7 +11,7 @@ import { useStepUp } from './stepUpContext';
 /** Twenty dots whatever the value: the mask never tells how long a secret is. */
 const DOTS = 20;
 
-/** Face ID / passkey glyph (the reveal always asks for the passkey or a two-step code). */
+/** Face ID / passkey glyph (the reveal always asks for the password and a passkey or two-step code). */
 export const FaceIdGlyph = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
     <path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M9 9.5v1M15 9.5v1M12 9.5V13h-1M9.5 16c1.4 1 3.6 1 5 0" />
@@ -30,10 +30,11 @@ export function CountRing({ left, total, size = 16, stroke = 2, tone = 'grey' }:
 }
 
 /**
- * A secret shown on purpose: Reveal always needs a passed passkey or two-step check (one from the last few minutes counts, as everywhere in
- * the vault) and the same reveal call and server checks as the edit screen; it is offered only to people who can manage the item (who could
- * already see it there), and every reveal is recorded. The dots turn into characters
- * left to right, and the value hides itself after the workspace's reveal time, when the vault locks, or when the tab is hidden.
+ * A secret shown on purpose. The vault is copy-only by default: Reveal opens a sheet that asks for the account password AND a two-step code
+ * or passkey; the server checks both and gives a reveal grant for a few minutes, and refuses to show a value without one. It is offered only
+ * to people who can manage the item, and every reveal (and every failed check) is recorded. After the sheet settles into this field the
+ * dots turn into characters left to right, and the value hides itself after the workspace's reveal time, when the vault locks, when the
+ * tab is hidden or the window loses focus.
  */
 export function RevealSecret({ itemId, field, canReveal, lockEpoch, busy, onApproval, onCopy }: {
   itemId: string; field: VaultField; canReveal: boolean; lockEpoch: number; busy: boolean; onApproval: () => void; onCopy: (() => void) | null;
@@ -42,6 +43,7 @@ export function RevealSecret({ itemId, field, canReveal, lockEpoch, busy, onAppr
   const [shown, setShown] = useState<{ value: string; total: number; at: number } | null>(null);
   const [left, setLeft] = useState(0);
   const [asking, setAsking] = useState(false);
+  const field$ = useRef<HTMLElement>(null);
   const hide = useCallback(() => setShown(null), []);
   useEffect(() => { setShown(null); }, [itemId, lockEpoch]);
   useEffect(() => {
@@ -61,7 +63,7 @@ export function RevealSecret({ itemId, field, canReveal, lockEpoch, busy, onAppr
   const reveal = async () => {
     setAsking(true);
     try {
-      const res = await step.run((t) => vaultApi.reveal(itemId, field.key, false, t), true);
+      const res = await step.reveal((g) => vaultApi.reveal(itemId, field.key, false, g), field$.current);
       if (res) setShown({ value: res.value, total: Math.max(1, res.revealSeconds), at: Date.now() });
     } catch (e) {
       if (e instanceof ApiError && e.code === 'VAULT_APPROVAL_REQUIRED') onApproval();
@@ -72,7 +74,7 @@ export function RevealSecret({ itemId, field, canReveal, lockEpoch, busy, onAppr
   const n = Math.max(DOTS, chars.length);
   return (
     <>
-      <code className={`pw-v pw-pw vlt-secret${shown ? ' on' : ''}`} data-state={shown ? 'revealed' : 'masked'} aria-label={shown ? `${field.label}, shown` : `${field.label}, hidden`} aria-live="polite">
+      <code ref={field$} className={`pw-v pw-pw vlt-secret${shown ? ' on' : ''}`} data-state={shown ? 'revealed' : 'masked'} aria-label={shown ? `${field.label}, shown` : `${field.label}, hidden`} aria-live="polite">
         {shown
           ? Array.from({ length: n }, (_, i) => <span key={i} className="pw-ch" style={{ '--i': i } as CSSProperties}>{i < chars.length && <b>{chars[i]}</b>}<i aria-hidden="true">•</i></span>)
           : <span className="pw-dots" aria-hidden="true">{'•'.repeat(DOTS)}</span>}
@@ -81,7 +83,7 @@ export function RevealSecret({ itemId, field, canReveal, lockEpoch, busy, onAppr
       {onCopy && <button type="button" className="pw-link" aria-label={`Copy ${field.label}`} title="Asks for your passkey; the clipboard clears itself" disabled={busy} onClick={onCopy}>{busy ? <Spinner /> : 'Copy'}</button>}
       {canReveal && (shown
         ? <button type="button" className="pw-btn" onClick={hide} aria-label={`Hide ${field.label}`}>Hide</button>
-        : <button type="button" className="pw-btn fid" onClick={() => void reveal()} disabled={asking} aria-label={`Reveal ${field.label}`} title="Asks for your passkey or a two-step code; recorded">{asking ? <Spinner /> : <FaceIdGlyph />}Reveal</button>)}
+        : <button type="button" className="pw-btn fid" onClick={() => void reveal()} disabled={asking} aria-label={`Reveal ${field.label}`} title="Asks for your password and a passkey or two-step code; recorded">{asking ? <Spinner /> : <FaceIdGlyph />}Reveal</button>)}
     </>
   );
 }
