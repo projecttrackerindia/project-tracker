@@ -403,6 +403,13 @@ export interface AutomationRule extends AutomationStep {
   summary: string; runCount: number; lastRunAt: string | null;
 }
 export type AutomationInput = Omit<AutomationRule, 'id' | 'projectId' | 'summary' | 'runCount' | 'lastRunAt'>;
+/** A dry run: the trigger, then each action; pass false = stopped there (trigger) or would be skipped (action). */
+export interface AutomationTest { taskKey: string; taskTitle: string; wouldRun: boolean; steps: { step: 'When' | 'Then'; pass: boolean; note: string }[] }
+export interface AutomationRunEntry { at: string; taskId: string | null; summary: string }
+export interface AutomationDraft {
+  name: string; trigger: AutomationTrigger; triggerDays: number | null; whenPriority: string | null; whenStatusCategory: StatusCategory | null; reason: string;
+  steps: { action: AutomationAction; priority: string | null; statusCategory: StatusCategory | null; target: AutomationTarget | null; userId: string | null; text: string | null }[];
+}
 
 // ---- sprints
 export interface Sprint {

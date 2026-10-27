@@ -31,6 +31,10 @@ public class AiController(AiAssistant assistant) : ApiControllerBase
     [HttpPost("triage"), RequireModule(Modules.Work, AccessLevel.Edit), AiRequestLimit]
     public async Task<IActionResult> Triage([FromBody] AiTriageRequest req, CancellationToken ct) => Ok(await assistant.TriageAsync(req, ct));
 
+    /// <summary>A sentence to an automation rule draft (not saved).</summary>
+    [HttpPost("automation-draft"), RequireModule(Modules.Projects), AiRequestLimit]
+    public async Task<IActionResult> AutomationDraft([FromBody] AiAutomationDraftRequest req, CancellationToken ct) => Ok(await assistant.DraftAutomationAsync(req, ct));
+
     [HttpPost("projects/{projectId:guid}/action-items"), RequireModule(Modules.Projects), AiRequestLimit]
     public async Task<IActionResult> ActionItems(Guid projectId, [FromBody] AiNotesRequest req, CancellationToken ct) => Ok(await assistant.ActionItemsFromNotesAsync(projectId, req, ct));
 }

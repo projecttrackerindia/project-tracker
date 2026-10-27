@@ -18,6 +18,7 @@ import { DotsMenu } from '../talk/DotsMenu';
 import { useAi } from '../ai/Assistant';
 import { DevLinks } from '../settings/IntegrationSettings';
 import { formatMinutes } from '../time/time';
+import { IncidentStrip, ReplyHelper, TriageChips } from './Desk';
 import { SlaChip } from './Sla';
 import { SupportResolution } from './SupportResolution';
 import { KIND_LONG, dueText, refreshWork } from './workUi';
@@ -193,6 +194,7 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
           <button type="button" className="btn-icon" aria-label="Dismiss" onClick={onDismissConflict}><Icon name="close" size={14} /></button>
         </div>
       )}
+      {w.kind === 'ticket' && w.priority === 'Critical' && (w.category === 'Todo' || w.category === 'Active') && <IncidentStrip w={w} />}
       <div className="wkp-tiles">
         <Tile label="Status" value={w.status} tone={w.category === 'Done' ? 'done' : w.category === 'Active' ? 'active' : undefined} disabled={!editable}>
           <select aria-label="Status" value={current} onChange={(e) => setStatus(e.target.value)} disabled={!editable}>
@@ -217,6 +219,7 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
 
       <Copilot w={w} me={me?.id ?? null} save={save} onDueAsk={(to) => setDueAsk({ to })} onStatus={setStatus} statuses={statuses} refetch={refetch} />
 
+      {w.kind === 'ticket' && w.category === 'Todo' && editable && <TriageChips w={w} save={save} />}
       {w.kind === 'ticket' && <TicketFields w={w} editable={editable} save={save} />}
       {w.kind !== 'ticket' && (w.projectName || w.loggedMinutes > 0) && (
         <dl className="wkp-fields">
@@ -229,6 +232,7 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
       <Description key={`${w.id}:${w.version}`} value={w.description ?? ''} disabled={!editable} onSave={(description) => save({ description: description || null })} />
       <Files w={w} editable={editable} onAdded={refetch} />
       {(w.kind === 'task' || w.kind === 'ticket') && <div className="wkp-dev">{w.kind === 'task' ? <DevLinks taskId={w.id} /> : <DevLinks workTaskId={w.id} />}</div>}
+      {w.kind === 'ticket' && (w.category === 'Todo' || w.category === 'Active') && <ReplyHelper key={w.id} w={w} onPosted={refetch} />}
       <Activity w={w} onPosted={refetch} />
       <p className="wkp-foot">Changes save as you go · Time, files and history live in this one stream.</p>
     </div>

@@ -13,6 +13,7 @@ import { toast } from '../../stores/ui';
 import { saveOfflineSnapshot } from '../offline/storage';
 import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
 import { WorkloadPage } from '../workitems/WorkloadPage';
+import { AutomationsPage } from './Automations';
 import { WorkItemPanel } from './WorkItemPanel';
 import { WorkList } from './WorkList';
 import { ProjectWorkTab } from './ProjectWorkTab';
@@ -20,7 +21,7 @@ import { WorkTasksPage, type OpsView } from './WorkTasksPage';
 import { useWorkKinds, useWorkList } from './workUi';
 import './work.css';
 
-type Tab = 'mine' | 'team' | 'tickets';
+type Tab = 'mine' | 'team' | 'tickets' | 'automations';
 /** The ticket desk's own views (the queue with SLA views and bulk edit, the board, insights, channels, settings), kept one ··· away. */
 const OPS_VIEWS: OpsView[] = ['queue', 'board', 'insights', 'whatsapp', 'voice', 'settings'];
 const KIND_V1: Record<WorkRow['kind'], WorkItemKind> = { task: 'Task', issue: 'Issue', action: 'ActionItem', ticket: 'Operational' };
@@ -44,7 +45,8 @@ export function WorkPage() {
     { id: 'mine' as const, label: 'My work' },
     ...(!personal ? [{ id: 'team' as const, label: 'Team' }] : []),
     ...(mWork > 0 ? [{ id: 'tickets' as const, label: 'Tickets' }] : []),
-  ], [personal, mWork]);
+    ...(mProjects ? [{ id: 'automations' as const, label: 'Automations' }] : []),
+  ], [personal, mWork, mProjects]);
   const asked = params.get('tab') as Tab | null;
   const tab: Tab = asked && tabs.some((t) => t.id === asked) ? asked : 'mine';
   const item = params.get('item');
@@ -103,6 +105,8 @@ export function WorkPage() {
     opsItem('voice', 'Voice agent', 'phone', 'Calls that become tickets'),
     opsItem('settings', 'Desk settings', 'settings', 'Business hours, rules, service levels'),
     { label: 'Export CSV', icon: 'download', onSelect: () => void workApi.exportCsv({ open: true }).catch((e) => toast(e instanceof ApiError ? e.message : 'Could not export the list.', 'error')) },
+  ] : tab === 'automations' ? [
+    { label: 'New task', icon: 'plus', onSelect: () => openNew('task') },
   ] : tab === 'team' ? [
     { label: 'Workload by person', icon: 'users', hint: 'Open, overdue and done per person', hidden: !seesWorkload, onSelect: () => go({ s: 'workload', item: null }) },
     { label: 'Capacity & cost', icon: 'gauge', hint: 'Logged time against capacity', hidden: !seesWorkload, onSelect: () => go({ s: 'capacity', item: null }) },
@@ -150,7 +154,7 @@ export function WorkPage() {
           <option value="mine">My teams</option>{teams.data!.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select></label>
     ) : null;
-  const body = (
+  const body = tab === 'automations' ? <AutomationsPage /> : (
       <>
         {narrowing}
         <WorkList key={tab} viewKey={tab} filters={filters} kinds={tab === 'tickets' ? ['ticket'] : kinds} showKinds={tab !== 'tickets'} selectedId={item} onOpen={open} headExtra={teamPick}

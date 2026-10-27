@@ -20,7 +20,8 @@ namespace ProjectManagement.Application.Features.WorkItems;
 
 /// <summary>A row of the one Work list. <see cref="Kind"/> is task, issue, action or ticket.</summary>
 public record WorkItemRowDto(string Kind, Guid Id, string Key, string Title, Guid? ProjectId, string? ProjectKey, string? ProjectName, string Status,
-    StatusCategory Category, Priority Priority, DateOnly? DueDate, bool IsOverdue, UserRefDto? Assignee, string? TypeName, DateTime UpdatedAt);
+    StatusCategory Category, Priority Priority, DateOnly? DueDate, bool IsOverdue, UserRefDto? Assignee, string? TypeName, DateTime UpdatedAt,
+    DateTime? SlaStartAt = null, DateTime? SlaDueAt = null, string? SlaState = null);
 
 public record WorkItemPageDto(IReadOnlyList<WorkItemRowDto> Items, int Offset, int Limit, bool HasMore);
 
@@ -127,7 +128,24 @@ public class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock 
         if (category is { Length: > 0 } cats) filtered = filtered.Where(r => cats.Contains(r.Category));
         var list = filtered.ToList();
         var page = list.Skip(offset).Take(limit).Select(ToRow).ToList();
+        page = await WithSlaAsync(page, ct);
         return new WorkItemPageDto(page, offset, limit, list.Count > offset + limit);
+    }
+
+    /// <summary>
+    /// Tickets' SLA clock on their rows (for the ring in the list): when it started, when it is due (resolution, else response) and its state.
+    /// </summary>
+    private async Task<List<WorkItemRowDto>> WithSlaAsync(List<WorkItemRowDto> page, CancellationToken ct)
+    {
+        var ids = page.Where(r => r.Kind == "ticket").Select(r => r.Id).ToList();
+        if (ids.Count == 0) return page;
+        var byId = await db.WorkTasks.AsNoTracking().Where(t => ids.Contains(t.Id)).ToDictionaryAsync(t => t.Id, ct);
+        var now = clock.Now;
+        return page.Select(r =>
+        {
+            if (r.Kind != "ticket" || !byId.TryGetValue(r.Id, out var t) || SlaService.State(t, now) is not { } sla) return r;
+            return r with { SlaStartAt = t.CreatedAt, SlaDueAt = sla.Resolution?.DueAt ?? sla.Response?.DueAt, SlaState = sla.State };
+        }).ToList();
     }
 
     /// <summary>Null = open only; otherwise the categories to keep (empty = all).</summary>
