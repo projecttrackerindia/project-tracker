@@ -55,16 +55,16 @@ html[data-theme='dark'] .wp-mm, html[data-theme='dark'] .wp-cal, html[data-theme
 .wp-nav { width: 26px; height: 26px; border-radius: 13px; display: grid; place-items: center; color: var(--wp-t3); background: none; }
 .wp-nav:hover, .wp-today:hover { background: var(--wp-fill); color: var(--ds-text); }
 .wp-cal { position: relative; padding: 0 10px 0 0; overflow: hidden; }
-.wp-days { display: grid; grid-template-columns: 40px repeat(var(--cols), 1fr); height: 58px; border-bottom: .5px solid var(--wp-line); }
+.wp-days { display: grid; grid-template-columns: 52px repeat(var(--cols), 1fr); height: 58px; border-bottom: .5px solid var(--wp-line); }
 .wp-dh { position: relative; padding: 8px 6px 0; font-size: 11px; color: var(--wp-t2); font-weight: 600; min-width: 0; }
 .wp-dh b { display: block; font-size: 20px; font-weight: 600; color: var(--ds-text); letter-spacing: -.02em; line-height: 1.1; }
 .wp-dh.tdy b { color: #fff; background: var(--wp-red); border-radius: 14px; width: 30px; height: 28px; display: grid; place-items: center; margin-left: -4px; }
 .wp-flag { position: absolute; right: 6px; top: 30px; max-width: calc(100% - 44px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
   font-size: 10px; font-weight: 700; color: var(--wp-red); background: rgba(255, 59, 48, .1); border-radius: 8px; padding: 2px 6px; }
-.wp-body { position: relative; display: grid; grid-template-columns: 40px repeat(var(--cols), 1fr); }
-.wp-lines { position: absolute; inset: 0 0 0 40px; background: repeating-linear-gradient(to bottom, var(--wp-line) 0 .5px, transparent .5px var(--wp-hr)); pointer-events: none; }
+.wp-body { position: relative; display: grid; grid-template-columns: 52px repeat(var(--cols), 1fr); }
+.wp-lines { position: absolute; inset: 0 0 0 52px; background: repeating-linear-gradient(to bottom, var(--wp-line) 0 .5px, transparent .5px var(--wp-hr)); pointer-events: none; }
 .wp-hrs { position: relative; }
-.wp-hrs span { position: absolute; left: 0; font-size: 10.5px; color: var(--wp-t3); font-weight: 500; transform: translateY(-6px); white-space: nowrap; }
+.wp-hrs span { position: absolute; right: 8px; text-align: right; font-size: 10.5px; color: var(--wp-t3); font-weight: 500; transform: translateY(-6px); white-space: nowrap; }
 .wp-hrs .wp-nowl { transform: none; font-size: 10px; font-weight: 700; color: var(--wp-red); background: var(--ds-surface); z-index: 5; }
 .wp-col { position: relative; border-left: .5px solid var(--wp-line); min-width: 0; }
 .wp-slot { display: contents; }
