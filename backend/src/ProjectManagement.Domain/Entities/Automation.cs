@@ -6,11 +6,16 @@ namespace ProjectManagement.Domain.Enums
     public enum SprintStatus { Planned, Active, Completed }
     /// <summary>
     /// Event triggers run when a task changes; DueSoon, Overdue and Stale are checked on a schedule (with <c>TriggerDays</c>). TicketCreated and
-    /// TicketChanged (created or updated) run on Desk tickets (operational work) and are workspace rules only. New values go at the end: stored as text.
+    /// TicketChanged (created or updated) run on Desk tickets (operational work) and are workspace rules only. TicketWaiting (no agent has replied
+    /// for <c>TriggerDays</c> MINUTES) and TicketResolved (resolved for <c>TriggerDays</c> days) are Desk ticket rules checked on a schedule.
+    /// New values go at the end: stored as text.
     /// </summary>
-    public enum AutomationTrigger { TaskCreated, StatusChanged, PriorityChanged, DueSoon, Overdue, Stale, TicketCreated, TicketChanged }
-    /// <summary>PostToChannel posts a line in a Messages channel; TellCustomer (Desk tickets only) adds a customer-facing reply to the ticket.</summary>
-    public enum AutomationAction { SetPriority, SetAssignee, MoveToStatus, AddLabel, Notify, AddComment, PostToChannel, TellCustomer }
+    public enum AutomationTrigger { TaskCreated, StatusChanged, PriorityChanged, DueSoon, Overdue, Stale, TicketCreated, TicketChanged, TicketWaiting, TicketResolved }
+    /// <summary>
+    /// PostToChannel posts a line in a Messages channel; TellCustomer (Desk tickets only) sends a line to the customer on the ticket's channel
+    /// (WhatsApp or e-mail; a comment when it has none); CloseTicket (Desk tickets only) closes a resolved ticket for good.
+    /// </summary>
+    public enum AutomationAction { SetPriority, SetAssignee, MoveToStatus, AddLabel, Notify, AddComment, PostToChannel, TellCustomer, CloseTicket }
     /// <summary>Who an action refers to: a chosen person, or whoever reported / is assigned the task.</summary>
     public enum AutomationTarget { User, Reporter, Assignee }
 }

@@ -416,9 +416,9 @@ export interface ProjectTime { totalMinutes: number; estimatedHours: number | nu
 
 // ---- automation
 /** Event triggers run when a task changes; DueSoon, Overdue and Stale are checked every few minutes (with `triggerDays`). */
-export type AutomationTrigger = 'TaskCreated' | 'StatusChanged' | 'PriorityChanged' | 'DueSoon' | 'Overdue' | 'Stale' | 'TicketCreated' | 'TicketChanged';
+export type AutomationTrigger = 'TaskCreated' | 'StatusChanged' | 'PriorityChanged' | 'DueSoon' | 'Overdue' | 'Stale' | 'TicketCreated' | 'TicketChanged' | 'TicketWaiting' | 'TicketResolved';
 /** PostToChannel: a line in a Messages channel. TellCustomer: a reply to the customer (Desk tickets only). */
-export type AutomationAction = 'SetPriority' | 'SetAssignee' | 'MoveToStatus' | 'AddLabel' | 'Notify' | 'AddComment' | 'PostToChannel' | 'TellCustomer';
+export type AutomationAction = 'SetPriority' | 'SetAssignee' | 'MoveToStatus' | 'AddLabel' | 'Notify' | 'AddComment' | 'PostToChannel' | 'TellCustomer' | 'CloseTicket';
 /** One "If" condition; a rule's conditions are ANDed. `noReply` (minutes) is for Desk tickets. */
 export type AutomationConditionField = 'priority' | 'status' | 'unassigned' | 'businessHours' | 'noReply';
 export interface AutomationCondition { field: AutomationConditionField; value?: string | null; minutes?: number | null }

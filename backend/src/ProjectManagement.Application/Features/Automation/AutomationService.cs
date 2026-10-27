@@ -72,7 +72,9 @@ public class AutomationService(IAppDbContext db, ICurrentContext ctx, AppClock c
 
     public static bool IsScheduled(AutomationTrigger t) => t is AutomationTrigger.DueSoon or AutomationTrigger.Overdue or AutomationTrigger.Stale;
     /// <summary>Rules on Desk tickets (operational work) rather than on project tasks.</summary>
-    public static bool IsTicket(AutomationTrigger t) => t is AutomationTrigger.TicketCreated or AutomationTrigger.TicketChanged;
+    public static bool IsTicket(AutomationTrigger t) => t is AutomationTrigger.TicketCreated or AutomationTrigger.TicketChanged or AutomationTrigger.TicketWaiting or AutomationTrigger.TicketResolved;
+    /// <summary>Desk ticket rules checked on a schedule (see <see cref="TicketRuleScheduler"/>).</summary>
+    public static bool IsTicketScheduled(AutomationTrigger t) => t is AutomationTrigger.TicketWaiting or AutomationTrigger.TicketResolved;
 
     // ---------------------------------------------------------------- project rules
 
@@ -192,7 +194,14 @@ public class AutomationService(IAppDbContext db, ICurrentContext ctx, AppClock c
             ?? throw new NotFoundException("Ticket not found.");
         var steps = new List<AutomationTestStepDto>
         {
-            new("When", true, rule.Trigger == AutomationTrigger.TicketCreated ? "This ticket stands in for a new one." : "This ticket stands in for one that was just created or updated."),
+            new("When", true, rule.Trigger switch
+            {
+                AutomationTrigger.TicketCreated => "This ticket stands in for a new one.",
+                AutomationTrigger.TicketWaiting => t.RespondedAt is null && t.CreatedAt <= clock.Now.AddMinutes(-(rule.TriggerDays ?? 0))
+                    ? $"Nobody has replied for {rule.TriggerDays} minutes." : "This ticket stands in for one waiting on a reply (checked every few minutes).",
+                AutomationTrigger.TicketResolved => t.Status == WorkTaskStatus.Completed ? "It is resolved; the rule picks it up once the days have passed." : "This ticket stands in for a resolved one (checked every few minutes).",
+                _ => "This ticket stands in for one that was just created or updated.",
+            }),
         };
         var failed = AutomationConditions.Failing(ConditionsOf(rule), t.Priority, t.Status.ToString(), t.AssigneeId, t.CreatedAt, t.RespondedAt, clock.Now, hours);
         if (ConditionsOf(rule).Count > 0) steps.Add(new AutomationTestStepDto("If", failed is null, failed is null ? "Every condition holds." : $"Stops here: {failed}."));
@@ -202,7 +211,8 @@ public class AutomationService(IAppDbContext db, ICurrentContext ctx, AppClock c
             steps.Add(new AutomationTestStepDto("Then", true, s.Action switch
             {
                 AutomationAction.PostToChannel => "Would post in the Messages channel (not posted in a test).",
-                AutomationAction.TellCustomer => "Would add the reply for the customer (not sent in a test).",
+                AutomationAction.TellCustomer => "Would tell the customer on the ticket's channel (not sent in a test).",
+                AutomationAction.CloseTicket => t.Status == WorkTaskStatus.Completed ? "Would close the ticket." : "Skipped: only resolved tickets are closed.",
                 AutomationAction.Notify => "Would send a notification (not sent in a test).",
                 AutomationAction.AddComment => "Would post the comment (not posted in a test).",
                 AutomationAction.SetPriority => s.ActionPriority == t.Priority ? "Skipped: the priority is already that." : $"Would set the priority to {s.ActionPriority}.",
@@ -320,13 +330,23 @@ public class AutomationService(IAppDbContext db, ICurrentContext ctx, AppClock c
             var rows = await db.WorkTasks.AsNoTracking()
                 .Where(t => t.Kind == WorkTaskKind.Operational && (t.CreatedAt >= since || (t.UpdatedAt != null && t.UpdatedAt >= since)))
                 .OrderByDescending(t => t.CreatedAt).Take(BacktestScan)
-                .Select(t => new { t.Id, t.Number, t.Title, t.Priority, t.Status, t.AssigneeId, t.CreatedAt, t.UpdatedAt, t.RespondedAt }).ToListAsync(ct);
+                .Select(t => new { t.Id, t.Number, t.Title, t.Priority, t.Status, t.AssigneeId, t.CreatedAt, t.UpdatedAt, t.RespondedAt, t.CompletedAt }).ToListAsync(ct);
             var noReply = conditions.FirstOrDefault(c => c.Field == "noReply")?.Minutes;
             foreach (var t in rows)
             {
                 // When it would have fired: on creation, or (created or updated) on its latest change - or, waiting for a reply, when the wait ran out.
                 DateTime at;
-                if (noReply is { } m)
+                if (rule.Trigger == AutomationTrigger.TicketWaiting)
+                {
+                    at = t.CreatedAt.AddMinutes(rule.TriggerDays ?? 0);
+                    if (t.RespondedAt is { } r && r <= at) continue;
+                }
+                else if (rule.Trigger == AutomationTrigger.TicketResolved)
+                {
+                    if (t.Status != WorkTaskStatus.Completed || t.CompletedAt is not { } done) continue;
+                    at = done.AddDays(rule.TriggerDays ?? 0);
+                }
+                else if (noReply is { } m)
                 {
                     at = t.CreatedAt.AddMinutes(m);
                     if (t.RespondedAt is { } r && r <= at) continue;   // an agent answered in time
@@ -411,6 +431,7 @@ public class AutomationService(IAppDbContext db, ICurrentContext ctx, AppClock c
             AutomationTrigger.TaskCreated or AutomationTrigger.TicketCreated => "Replayed from what was created in the last 7 days.",
             AutomationTrigger.StatusChanged or AutomationTrigger.PriorityChanged => "Replayed from the changes recorded in the last 7 days.",
             AutomationTrigger.TicketChanged => "Replayed from tickets created or updated in the last 7 days.",
+            AutomationTrigger.TicketWaiting or AutomationTrigger.TicketResolved => "Replayed from tickets created or updated in the last 7 days and when their wait ran out.",
             _ => "Replayed from due dates and quiet spells in the last 7 days.",
         } + " Conditions are checked against each item as it is now. Nothing was changed or sent.";
         return new AutomationBacktestDto(hits.Count, perDay, hits.Take(BacktestItems).ToList(), note);
@@ -487,6 +508,16 @@ public class AutomationService(IAppDbContext db, ICurrentContext ctx, AppClock c
                 throw new ValidationException("triggerDays", req.Trigger == AutomationTrigger.Stale ? "Say after how many days without changes (1-365)." : "Say how many days (0-365).");
             rule.TriggerDays = days;
         }
+        else if (req.Trigger == AutomationTrigger.TicketWaiting)
+        {
+            if (req.TriggerDays is not { } minutes || minutes < 5 || minutes > 10080) throw new ValidationException("triggerDays", "Say after how many minutes without an agent's reply (5-10080).");
+            rule.TriggerDays = minutes;
+        }
+        else if (req.Trigger == AutomationTrigger.TicketResolved)
+        {
+            if (req.TriggerDays is not { } days || days < 0 || days > 365) throw new ValidationException("triggerDays", "Say how many days after it was resolved (0-365).");
+            rule.TriggerDays = days;
+        }
 
         var first = await StepAsync(rule.ProjectId, new AutomationStepRequest(req.Action, req.ActionPriority, req.ActionStatusId, req.ActionStatusCategory, req.ActionLabelId,
             req.ActionTarget, req.ActionUserId, req.ActionText, req.ActionConversationId), "", ticket, ct);
@@ -560,6 +591,7 @@ public class AutomationService(IAppDbContext db, ICurrentContext ctx, AppClock c
         if (s is null) throw new ValidationException($"{prefix}action", "Choose what the rule does.");
         if (!Enum.IsDefined(s.Action)) throw new ValidationException($"{prefix}action", "Choose what the rule does.");
         if (s.Action == AutomationAction.TellCustomer && !ticket) throw new ValidationException($"{prefix}action", "“Tell the customer” is for Desk tickets.");
+        if (s.Action == AutomationAction.CloseTicket && !ticket) throw new ValidationException($"{prefix}action", "“Close the ticket” is for Desk tickets.");
         if (s.Action == AutomationAction.AddLabel && ticket) throw new ValidationException($"{prefix}action", "Desk tickets have no labels: choose another step.");
         Guid? conversation = null;
         var text = string.IsNullOrWhiteSpace(s.ActionText) ? null : s.ActionText.Trim();
@@ -694,6 +726,8 @@ public class AutomationService(IAppDbContext db, ICurrentContext ctx, AppClock c
             AutomationTrigger.Overdue => days == 0 ? "an open task becomes overdue" : $"an open task is {days} day{(days == 1 ? "" : "s")} overdue",
             AutomationTrigger.TicketCreated => "a Desk ticket is created",
             AutomationTrigger.TicketChanged => "a Desk ticket is created or updated",
+            AutomationTrigger.TicketWaiting => $"a Desk ticket has had no agent reply for {days} minute{(days == 1 ? "" : "s")}",
+            AutomationTrigger.TicketResolved => days == 0 ? "a Desk ticket is resolved" : $"a Desk ticket has been resolved for {days} day{(days == 1 ? "" : "s")}",
             _ => $"an open task has not changed for {days} day{(days == 1 ? "" : "s")}",
         };
         var ifs = ConditionsOf(r).Select(c => c.Field switch
@@ -715,6 +749,7 @@ public class AutomationService(IAppDbContext db, ICurrentContext ctx, AppClock c
             AutomationAction.Notify => $"notify {Who(s, n)}",
             AutomationAction.PostToChannel => $"post in #{(s.ActionConversationId is { } c ? n.Channels.GetValueOrDefault(c) ?? "channel" : "channel")}",
             AutomationAction.TellCustomer => "tell the customer",
+            AutomationAction.CloseTicket => "close it",
             _ => "post a comment",
         };
         var thens = steps.Select(Then).ToList();

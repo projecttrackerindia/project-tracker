@@ -1,6 +1,6 @@
 // The one Work API (v2): every kind of work - project tasks, issues, action items and tickets - through /api/v1/work-items.
 // Each kind keeps its own rules on the server; `detail` on an item is the kind's own full record.
-import { create, del, get, patch } from './client';
+import { create, del, get, patch, post } from './client';
 import type { Priority, StatusCategory, UserRef } from './types';
 
 export type WorkKind = 'task' | 'issue' | 'action' | 'ticket';
@@ -148,4 +148,17 @@ export const workItemsApi = {
   /** "log 2h …" also logs the time on tasks and tickets. */
   comment: (id: string, body: string, mentionUserIds?: string[]) => create<WorkCommentResult>(`/work-items/${id}/comments`, { body, mentionUserIds }),
   remove: (id: string) => del(`/work-items/${id}`),
+};
+
+/** A Desk saved reply: built in or a WhatsApp number's. Text may hold {name}, {key}, {title}, {status}, {eta}, {account}, {agent}. */
+export interface DeskReplyTemplate { id: string; title: string; text: string; source: string }
+/** A template with what the ticket knows filled in; `missing` are the placeholders left for the AI or the agent. */
+export interface DeskFill { text: string; missing: string[] }
+/** Where a Desk reply went: the ticket's WhatsApp chat, the e-mail that raised it, or (no channel) a comment. */
+export interface DeskTellResult { channel: 'whatsapp' | 'email' | 'comment'; sent: boolean; note: string }
+
+export const deskApi = {
+  templates: () => get<DeskReplyTemplate[]>('/desk/reply-templates'),
+  fill: (id: string, text: string) => post<DeskFill>(`/work-tasks/${id}/fill-reply`, { text }),
+  tell: (id: string, text: string) => post<DeskTellResult>(`/work-tasks/${id}/tell-customer`, { text }),
 };

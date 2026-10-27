@@ -40,6 +40,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Auth/AuthService.cs",
         "ProjectManagement.Application/Features/Auth/DeviceLoginService.cs",
         "ProjectManagement.Application/Features/Automation/AutomationService.cs",
+        "ProjectManagement.Application/Features/Automation/AutomationConditions.cs", // scheduled Desk ticket rules: finds enabled rules of every active workspace (ids only), then runs each as that workspace
         "ProjectManagement.Application/Features/Billing/BillingService.cs", // personal certification destinations and bounded expired-summary ID deletion only; no employer reads or decrypted email retrieval
         "ProjectManagement.Application/Features/Billing/BillingWebhookService.cs",
         "ProjectManagement.Application/Features/Billing/SubscriptionActivator.cs",
