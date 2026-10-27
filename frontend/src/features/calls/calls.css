@@ -183,7 +183,7 @@
   .cs .cs-strip { grid-auto-flow: column; grid-auto-columns: 150px; grid-auto-rows: auto; overflow-x: auto; overflow-y: hidden; }
   .cs .cs-bar { grid-template-columns: 1fr; padding: 10px 8px calc(12px + env(safe-area-inset-bottom)); }
   .cs .cs-bar-side { display: none; }
-  .cs .cs-bar-mid { justify-content: center; gap: 8px; }
+  .cs .cs-bar-mid { justify-content: center; gap: 8px; flex-wrap: wrap; min-width: 0; max-width: 100%; }
   .cs .cs-pair > .cs-menu { display: none; }
   .cs .cs-btn { width: 46px; height: 46px; }
   .cs .cs-leave { width: 58px; height: 46px; }

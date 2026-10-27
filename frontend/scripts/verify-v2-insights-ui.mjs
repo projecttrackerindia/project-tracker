@@ -133,7 +133,7 @@ try {
     await page.getByText(/Week of .* · not submitted/).waitFor();
     const say = page.getByRole('textbox', { name: 'Log time in words' });
     assert.match(await say.getAttribute('placeholder'), /3h on CIBIL-2 today/);
-    assert.equal(await page.locator('.ins-draft').count(), 1, 'one draft card');
+    await page.locator('.ins-draft').first().waitFor(); assert.equal(await page.locator('.ins-draft').count(), 1, 'one draft card');
     await page.locator('.ins-draft').getByText(/6h across 2 items/).waitFor();
     assert.equal(await page.locator('.ins-table tbody tr').count(), 5);
     assert.equal(await page.locator('.ins-table thead th').count(), 7, 'Work, Monday to Friday, Total');

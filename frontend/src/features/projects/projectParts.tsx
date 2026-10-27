@@ -28,7 +28,10 @@ export const errText = (e: unknown, fallback: string) => (e instanceof ApiError 
 export const isFinished = (p: Pick<Project, 'status'>) => p.status === 'Completed' || p.status === 'Cancelled' || p.status === 'Archived';
 
 /** A project's status as a small coloured pill (colour means status). */
-export function HealthPill({ health }: { health: ProjectHealth }) {
+export function HealthPill({ health, pendingSignOffs = 0 }: { health: ProjectHealth; pendingSignOffs?: number }) {
+  // Completed (or 100% of the work done) but stages still unsigned: not really finished yet, so amber.
+  if (health === 'Completed' && pendingSignOffs > 0)
+    return <span className="pj2-pill risk" title="Every task is done; the remaining stages still need sign-off">100% work · {pendingSignOffs} sign-off{pendingSignOffs === 1 ? '' : 's'} pending</span>;
   const h = HEALTH[health];
   return <span className={`pj2-pill ${h.tone}`}>{h.label}</span>;
 }

@@ -202,9 +202,11 @@
 }
 @media (max-width: 720px) {
   .wk .page-head { flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 18px; }
-  .wk-heads { justify-content: space-between; flex-wrap: nowrap; }
-  .wk-heads .ds-seg { flex: 1; min-width: 0; display: flex; }
-  .wk-heads .ds-seg button { flex: 1; padding: 0 8px; font-size: 13.5px; }
+  .wk-heads { justify-content: space-between; flex-wrap: nowrap; min-width: 0; max-width: 100%; }
+  .wk .page-actions { min-width: 0; max-width: 100%; }
+  .wk-heads .ds-seg { flex: 1; min-width: 0; display: flex; overflow-x: auto; scrollbar-width: none; }
+  .wk-heads .ds-seg::-webkit-scrollbar { display: none; }
+  .wk-heads .ds-seg button { flex: 1 0 auto; padding: 0 10px; font-size: 13.5px; }
   .wk-projects { padding: 0 10px; height: 40px; flex: none; }
   .wk-card { padding: 10px 4px 6px; border-radius: 18px; }
   .wk-bar { padding: 2px 8px 10px; }
@@ -233,3 +235,16 @@
   .wkp-compose-box textarea, .wkp-desc, .wkp-due-ask input { font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { .wk-row, .wk-kchip, .wkp-tile { transition: none; } }
+
+/* Loading rows for the work list (instead of a spinner). */
+.wk-skeleton { display: grid; gap: 10px; padding: 8px 0; }
+.wk-skel-row { display: block; height: 44px; border-radius: 10px; background: linear-gradient(90deg, var(--surface-2), var(--hover-bg), var(--surface-2)); background-size: 200% 100%; animation: wk-shimmer 1.2s infinite linear; }
+@keyframes wk-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .wk-skel-row { animation: none; } }
+
+/* Work › Team: the AI workload line */
+.wk-ai-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px;
+  background: color-mix(in srgb, var(--ds-violet, #6E5BFF) 9%, var(--ds-surface, transparent)); color: var(--ds-violet, #5B4BE0); font-size: 14px; }
+.wk-ai-line b { font-weight: 600; }
+.wk-ai-line .btn { margin-left: auto; }
+html[data-theme='dark'] .wk-ai-line { color: #A5A3FF; }

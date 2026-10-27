@@ -24,7 +24,8 @@ import { pushCoversThisDevice, systemNotification } from '../features/reminders/
 import { useReminderComposer } from '../features/reminders/store';
 import { LiveCallsBar } from '../features/calls/LiveCallsBar';
 import { CallHost } from '../features/calls/CallHost';
-import { AskBar, CopilotHost, NewSheetHost, PhoneBar, Rail } from '../components/v2';
+import { AskBar, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail } from '../components/v2';
+import { MotionConfig } from 'framer-motion';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -100,8 +101,16 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   useEffect(() => { window.scrollTo({ top: 0 }); }, [loc.pathname]);
   // Every page's code, fetched quietly once the app is idle, so a click shows the next page at once instead of a blank pause.
   useEffect(() => { prefetchPages(); }, []);
+  // The page content fades in when the place changes (the rail and the Ask bar stay put). A class on the existing main element, not a
+  // wrapper: an extra box would break the phone layout's height chain, and a transform would trap position:fixed panels inside it.
+  useEffect(() => {
+    const el = main.current;
+    if (!el) return;
+    el.classList.remove('v2-enter'); void el.offsetWidth; el.classList.add('v2-enter');
+  }, [loc.pathname]);
   const page = <><LiveCallsBar /><Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense></>;
   return (
+    <MotionConfig reducedMotion="user">
     <div ref={shell} className={`app-shell v2-shell ${phone ? 'm-shell' : ''} ${phone && conversation ? 'm-conversation' : ''}`}>
       <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); main.current?.focus(); }}>Skip to content</a>
       <LensSync />
@@ -138,6 +147,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <ComposerSlot />
       {chatOn && <ChatRealtime />}
       {chatOn && <ProjectChatHost />}
+      {!admin && <LiveBanners />}
     </div>
+    </MotionConfig>
   );
 }

@@ -39,6 +39,18 @@ const QUICK: Partial<Record<VaultItemKind, { key: string; label: string }>> = {
 };
 type Row = VaultItemSummary & { sealed?: boolean };
 const IDLE_MS = 5 * 60_000;
+const DAY_MS = 86_400_000;
+
+/** A row's sharing state, from its collection's shares: "Shared with Siva · 2 days left" or "Shared with 3 people"; null when not shared. */
+function shareChip(c: VaultCollection | undefined): string | null {
+  const now = Date.now();
+  const live = (c?.shares ?? []).filter((x) => !x.expiresAt || new Date(x.expiresAt).getTime() > now);
+  if (!live.length) return null;
+  const who = live.length === 1 ? (live[0].principalType === 'User' ? live[0].name.split(' ')[0] : live[0].name) : `${live.length} people`;
+  const soonest = Math.min(...live.map((x) => (x.expiresAt ? new Date(x.expiresAt).getTime() : Infinity)));
+  const days = Number.isFinite(soonest) ? Math.max(1, Math.ceil((soonest - now) / DAY_MS)) : null;
+  return `Shared with ${who}${days !== null ? ` · ${days} day${days === 1 ? '' : 's'} left` : ''}`;
+}
 const SHIELD_SEEN_KEY = 'pt-vault-shield-seen';
 
 /**
@@ -153,6 +165,8 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
   const list: Row[] = view === 'bin' ? [...(items.data ?? []), ...sealedBin.map((r) => r.sum)]
     : [...(items.data ?? []).filter((r) => inShow(r.collectionId)), ...sealedRows.map((r) => r.sum)]
       .sort((a, b) => (b.health.length > 0 ? 1 : 0) - (a.health.length > 0 ? 1 : 0) || a.title.localeCompare(b.title));
+  // All · Mine · Shared · Requests only earn their place once there is something to sort: more than 10 items, or a request waiting.
+  const showTabs = show !== 'all' || waiting > 0 || !!q || !!collection || !!health || list.length > 10;   // a filter chip in this row keeps it shown
   const selectedSealed = (view === 'bin' ? sealedBin : sealedRows).find((r) => r.s.row.id === itemId) ?? null;
   const hasKeys = !!keysMe.data?.identity;
   const canSeal = hasKeys && unlocked;
@@ -281,7 +295,7 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
         <section className="lib-card lib-vault-list" aria-label="Vault items">
           {view === 'bin' ? (
             <div className="lib-vault-mode"><button type="button" className="btn btn-link btn-sm" onClick={() => go({ view: null, item: null })}><Icon name="arrowLeft" size={14} /> All items</button><b>Bin</b></div>
-          ) : (
+          ) : showTabs && (
             <Segmented label="Show" wide value={show} onChange={(s) => go({ show: s, item: null, view: null })}
               options={[{ id: 'all', label: 'All' }, { id: 'mine', label: 'Mine' }, { id: 'shared', label: 'Shared' }, { id: 'requests', label: 'Requests', count: waiting || undefined }]} />
           )}
@@ -311,11 +325,13 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
                   {list.map((it) => {
                     const host = it.url?.replace(/^https?:\/\//, '').split('/')[0];
                     const quick = view !== 'bin' ? QUICK[it.kind] : undefined;
+                    const shared = view !== 'bin' ? shareChip(o.collections.find((c) => c.id === it.collectionId)) : null;
                     return (
                       <li key={it.id} className="lib-vault-row">
                         <button type="button" className={`lib-vault-item${it.id === itemId ? ' on' : ''}`} onClick={() => go({ item: it.id, view: view === 'bin' ? 'bin' : null })} data-item={it.title} aria-current={it.id === itemId || undefined}>
                           <BrandTile title={it.title} url={it.url} kind={it.kind} />
                           <span className="lib-vault-item-main"><b>{it.title}</b><small>{host || it.usernameHint || KIND_LABEL[it.kind]}{show !== 'mine' && it.collectionId !== personal?.id ? ` · ${it.collectionName}` : ''}</small></span>
+                          {shared && <span className="lib-vault-share" title={shared}>{shared}</span>}
                           {it.sealed && <span className="vlt-e2ee-dot" title="End-to-end encrypted"><Icon name="lock" size={12} /></span>}
                           {it.health.length > 0 && <span className={`vlt-risk ${it.health.includes('breached') || it.health.includes('rotate') ? 'bad' : ''}`} title={it.health.map((h) => HEALTH_LABEL[h]).join(', ')} aria-label={it.health.map((h) => HEALTH_LABEL[h]).join(', ')} />}
                         </button>

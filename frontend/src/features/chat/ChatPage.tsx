@@ -181,6 +181,11 @@ export function WhileAway({ missing, list, onCatchUp, onNew }: { missing: boolea
   const wid = useWorkspaceId() ?? '';
   const questions = useWsQuery([...chatKeys.questions(wid)].slice(1), () => chatApi.questions(), { staleTime: 30_000 });
   const q = questions.data?.[0];
+  // The decisions themselves, from the AI catch-up across all chats: read only when the person asks (an AI call costs credits), then kept for
+  // ten minutes so coming back shows them without asking again.
+  const [read, setRead] = useState(false);
+  const catchUp = useWsQuery(['chat', 'catch-up', 'away'], () => chatApi.catchUp(null), { enabled: !missing && read, staleTime: 10 * 60_000, retry: false, refetchOnWindowFocus: false });
+  const decisions = (catchUp.data?.decisions ?? []).slice(0, 3).map((d) => (d.owner ? `${d.owner.split(' ')[0]}: ${d.text}` : d.text));
   const file = list.find((c) => c.lastMessage && !c.lastMessage.isSystem && /^Sent (a file|an image|a voice note)/.test(c.lastMessage.snippet));
   const who = (c: Conversation) => (c.lastMessage!.isMine ? 'You' : (c.lastMessage!.senderName ?? c.name).split(' ')[0]);
   const fileText = file ? `${who(file)} ${file.lastMessage!.snippet.replace(/^Sent a file: /, 'sent ').replace(/^Sent /, 'sent ')}` : null;
@@ -195,15 +200,27 @@ export function WhileAway({ missing, list, onCatchUp, onNew }: { missing: boolea
       <span className="eyebrow">Catch me up</span>
       <h2 className="chat-away-title">While you were away</h2>
       <div className="chat-away-tiles">
-        <button type="button" className="chat-away-tile" onClick={onCatchUp}>
-          <small>Decisions</small><b>See what was decided in your chats</b>
-        </button>
-        <button type="button" className="chat-away-tile" disabled={!q} onClick={() => q && navigate(messageLink(q.conversationId, q.messageId, q.threadRootId))}>
-          <small>Questions for you</small><b>{q ? `${(q.senderName ?? 'Someone').split(' ')[0]} needs an answer from you` : 'Nobody is waiting on you'}</b>
-        </button>
-        <button type="button" className="chat-away-tile" disabled={!file} onClick={() => file && navigate(`/chat/${file.id}`)}>
-          <small>Files</small><b>{fileText ?? 'No new files'}</b>
-        </button>
+        {decisions.length > 0 ? (
+          <button type="button" className="chat-away-tile" onClick={onCatchUp}>
+            <small>Decisions</small>
+            {decisions.map((d) => <b key={d} className="chat-away-line">{d}</b>)}
+          </button>
+        ) : !(catchUp.isSuccess || catchUp.isError) && (
+          <button type="button" className="chat-away-tile" onClick={() => setRead(true)} aria-busy={catchUp.isFetching}>
+            <small>Decisions</small><b>{catchUp.isFetching ? 'Reading your chats…' : 'Show what was decided'}</b>
+          </button>
+        )}
+        {/* Empty tiles ("Nobody is waiting on you", "No new files") are not shown. */}
+        {q && (
+          <button type="button" className="chat-away-tile" onClick={() => navigate(messageLink(q.conversationId, q.messageId, q.threadRootId))}>
+            <small>Questions for you</small><b>{`${(q.senderName ?? 'Someone').split(' ')[0]} needs an answer from you`}</b>
+          </button>
+        )}
+        {file && (
+          <button type="button" className="chat-away-tile" onClick={() => navigate(`/chat/${file.id}`)}>
+            <small>Files</small><b>{fileText}</b>
+          </button>
+        )}
       </div>
       <p className="chat-away-foot">{list.length ? 'Or pick a conversation on the left.' : <>No conversations yet. <button type="button" className="link-btn" onClick={onNew}>Message a colleague or start a group</button>.</>}</p>
     </div>

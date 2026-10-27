@@ -19,6 +19,13 @@ public class AutomationController(AutomationService automation) : ApiControllerB
     [HttpPut("{id:guid}"), RequireModule(Modules.Projects, AccessLevel.Edit)]
     public async Task<IActionResult> Update(Guid projectId, Guid id, [FromBody] UpsertAutomationRequest req, CancellationToken ct) => Ok(await automation.UpdateAsync(projectId, id, req, ct));
 
+    /// <summary>A dry run of a rule against one task: nothing is changed or sent.</summary>
+    [HttpPost("test"), RequireModule(Modules.Projects, AccessLevel.Edit)]
+    public async Task<IActionResult> Test(Guid projectId, [FromBody] TestAutomationRequest req, CancellationToken ct) => Ok(await automation.TestAsync(projectId, req, ct));
+
+    [HttpGet("{id:guid}/runs"), RequireModule(Modules.Projects)]
+    public async Task<IActionResult> Runs(Guid projectId, Guid id, CancellationToken ct) => Ok(await automation.RunsAsync(projectId, id, ct));
+
     [HttpDelete("{id:guid}"), RequireModule(Modules.Projects, AccessLevel.Edit)]
     public async Task<IActionResult> Delete(Guid projectId, Guid id, CancellationToken ct)
     {
@@ -39,6 +46,13 @@ public class WorkspaceAutomationController(AutomationService automation) : ApiCo
 
     [HttpPut("{id:guid}"), RequireModule(Modules.Projects, AccessLevel.Edit)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpsertAutomationRequest req, CancellationToken ct) => Ok(await automation.UpdateWorkspaceAsync(id, req, ct));
+
+    /// <summary>A dry run of a workspace rule against one task: nothing is changed or sent.</summary>
+    [HttpPost("test"), RequireModule(Modules.Projects, AccessLevel.Edit)]
+    public async Task<IActionResult> Test([FromBody] TestAutomationRequest req, CancellationToken ct) => Ok(await automation.TestAsync(null, req, ct));
+
+    [HttpGet("{id:guid}/runs"), RequireModule(Modules.Projects)]
+    public async Task<IActionResult> Runs(Guid id, CancellationToken ct) => Ok(await automation.RunsAsync(null, id, ct));
 
     [HttpDelete("{id:guid}"), RequireModule(Modules.Projects, AccessLevel.Edit)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)

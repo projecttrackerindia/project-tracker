@@ -110,7 +110,10 @@ function TalkHome() {
   const shown = rows.filter((r) => (!kind || r.kind === kind) && (!needle || `${r.title} ${r.last ?? ''} ${r.sub ?? ''}`.toLowerCase().includes(needle)));
   const mailState = talk.data?.mail?.state;
   const company = mail.imap.data?.company;
-  const showConnect = (filter === 'all' || filter === 'mail') && mailState === 'not-connected' && !mail.loading && mail.accounts.length === 0;
+  const [connectDismissed, setConnectDismissed] = useState(() => { try { return localStorage.getItem('pm_talk_connect_dismissed') === '1'; } catch { return false; } });
+  const dismissConnect = () => { setConnectDismissed(true); try { localStorage.setItem('pm_talk_connect_dismissed', '1'); } catch { /* private window */ } };
+  // "Connect your mailbox" is a dismissible banner in the Mail filter, not a conversation row.
+  const showConnect = filter === 'mail' && !connectDismissed && mailState === 'not-connected' && !mail.loading && mail.accounts.length === 0;
 
   const setParam = (patch: Record<string, string | null>, path?: string) => {
     const next = new URLSearchParams(params);
@@ -170,24 +173,21 @@ function TalkHome() {
           {talk.isError && <div className="talk-note" role="alert">{talk.error instanceof ApiError ? talk.error.message : 'Talk could not be loaded.'} <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></div>}
           {/* Questions colleagues asked you in chat and are waiting on (cleared by replying). */}
           {chatUsable && !needle && (filter === 'all' || filter === 'chat') && <QuestionsBox />}
+          {showConnect && (
+            <div className="talk-connect-banner" role="note" data-testid="connect-mailbox-banner">
+              <Icon name="mail" size={15} />
+              <span className="grow">{company?.name ? `Connect your ${company.name} mailbox to see mail here.` : 'Connect your mailbox to see mail here.'}</span>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => setDialog('connect')} data-testid="connect-mailbox">Connect</button>
+              <button type="button" className="icon-btn" aria-label="Dismiss" onClick={dismissConnect}><Icon name="close" size={14} /></button>
+            </div>
+          )}
           <ul className="talk-rows">
             {shown.map((r) => <Row key={r.id} r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} me={me} active={r.id === activeId} onOpen={() => open(r)} />)}
-            {showConnect && (
-              <li>
-                <button type="button" className="talk-row connect" onClick={() => setDialog('connect')} data-testid="connect-mailbox">
-                  <span className="talk-av av-mail" aria-hidden="true">{(company?.name ?? 'Mail').slice(0, 2).toUpperCase()}</span>
-                  <span className="talk-text">
-                    <span className="talk-top"><b>{company?.name ? `${company.name} · 0 unread` : 'Your mailbox'}</b><time>—</time></span>
-                    <span className="talk-bottom"><span className="talk-preview">Mail · Connect your mailbox</span></span>
-                  </span>
-                </button>
-              </li>
-            )}
             {(filter === 'all' || filter === 'mail') && mailState === 'unavailable' && (
               <li className="talk-note">Your mailbox did not answer in time. <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></li>
             )}
           </ul>
-          {shown.length === 0 && !showConnect && !talk.isLoading && (
+          {shown.length === 0 && !talk.isLoading && (
             <EmptyState icon={filter === 'meetings' ? 'video' : filter === 'mail' ? 'mail' : 'message'}
               title={needle ? 'Nothing found' : filter === 'meetings' ? 'No meetings in the next two weeks' : filter === 'mail' ? 'No mail yet' : 'No conversations yet'}
               text={needle ? undefined : filter === 'meetings' ? 'Meetings you organize or are invited to show here.' : filter === 'mail' ? undefined : 'Message a colleague or start a group.'}

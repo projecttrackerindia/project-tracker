@@ -123,6 +123,7 @@ const make = async (theme, state) => {
         w.activity.push({ type: 'file', id: g(995), at: new Date().toISOString(), actor: asha, summary: 'added vpn-log.txt', fileId: g(996), fileName: 'vpn-log.txt' });
         return json({ id: g(996), workTaskId: w.id, fileName: 'vpn-log.txt', contentType: 'text/plain', sizeBytes: 12, uploadedBy: asha, createdAt: new Date().toISOString(), canDelete: true, isImage: false }, 201);
       }
+      if (ep === '/api/v1/operations/triage') return json({ workTypeId: null, workTypeName: null, priority: null, suggestedAssignee: null, similar: [] });   // read-only suggestions (POST for the body)
       assert.fail(`Unexpected write: ${method} ${ep}`);
     }
     let data = [];
@@ -192,7 +193,7 @@ try {
     await page.getByRole('heading', { level: 1, name: 'Work' }).waitFor();
     await page.getByText('Tasks, issues, actions and tickets — one list').waitFor();
     const tabs = page.getByRole('tablist', { name: 'Work' });
-    assert.deepEqual((await tabs.getByRole('tab').allInnerTexts()).map((t) => t.trim()), ['My work', 'Team', 'Tickets']);
+    assert.deepEqual((await tabs.getByRole('tab').allInnerTexts()).map((t) => t.trim()), ['My work', 'Team', 'Tickets', 'Automations']);
     assert.equal(await tabs.getByRole('tab', { name: 'My work' }).getAttribute('aria-selected'), 'true');
     // Projects › is a link that leaves Work, not a tab.
     const projectsLink = page.getByRole('link', { name: /^Projects/ });

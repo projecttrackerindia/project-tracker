@@ -78,3 +78,8 @@ html .talk-head .talk-call svg { display: none; }
   .talk-strip-text { flex-basis: 100%; order: 3; }
   .mt-inline { padding: 14px; }
 }
+
+/* "Connect your mailbox": a dismissible banner in the Mail filter. */
+.talk-connect-banner { display: flex; align-items: center; gap: 10px; margin: 8px 12px; padding: 10px 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, #0a84ff) 8%, transparent); border: 1px solid color-mix(in srgb, var(--accent, #0a84ff) 22%, transparent); font-size: 13px; }
+.talk-connect-banner .grow { flex: 1; min-width: 0; }

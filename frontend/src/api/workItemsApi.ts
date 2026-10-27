@@ -23,6 +23,10 @@ export interface WorkRow {
   assignee: UserRef | null;
   typeName: string | null;
   updatedAt: string;
+  /** Tickets with a service level: when the clock started, when it is due (resolution, else response) and its state. */
+  slaStartAt?: string | null;
+  slaDueAt?: string | null;
+  slaState?: string | null;
 }
 
 export interface WorkPage { items: WorkRow[]; offset: number; limit: number; hasMore: boolean }

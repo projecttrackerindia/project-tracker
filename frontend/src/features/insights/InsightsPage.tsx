@@ -15,6 +15,7 @@ import { Markdown } from '../ai/Markdown';
 import { ExportList, KIND_INFO, ReportGenerator } from '../reports/Exports';
 import { TimeWordsReview, useWordsRecorder } from '../time/TimeWords';
 import { cellKey, hm, parseCell } from '../time/grid';
+import { reminderApi } from '../reminders/api';
 import { formatMinutes } from '../time/time';
 import './insights-v2.css';
 
@@ -58,7 +59,9 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
   const projects = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false });
   const workload = useWsQuery(['workload', 'default'], () => workItemApi.workload(), { staleTime: 60_000, retry: false });
   const ops = useWsQuery(['ops', 'insights', 30], () => opsApi.insights(30), { enabled: seeWork, staleTime: 60_000, retry: false });
-  const [busy, setBusy] = useState(false);
+  const { busy, rebalance } = useRebalance(onReports);
+  const [reminded, setReminded] = useState(false);
+  const [reminding, setReminding] = useState(false);
 
   const live = (projects.data?.items ?? []).filter((p) => p.status === 'Planning' || p.status === 'Active' || p.status === 'OnHold');
   const onTrack = live.filter((p) => p.health === 'OnTrack').length;
@@ -79,14 +82,19 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
   if (workload.data && workload.data.members.length > 0 && workload.data.members.every((m) => m.loggedMinutesLast7Days === 0)) notes.push('Nobody has logged time in the last 7 days.');
   if (!notes.length && workload.data) notes.push(idle ? 'Work is spread evenly; nothing stands out.' : 'Nothing stands out this week.');
 
-  const rebalance = async () => {
-    setBusy(true);
-    try {
-      const job = await post<{ id: string }>('/ai/operations/jobs', { kind: 'workload', title: 'Workload and capacity review', idempotencyKey: crypto.randomUUID() });
-      toast('Started a workload review. It appears under Reports when ready.');
-      onReports(job.id);
-    } catch (e) { toast(errText(e, 'Could not start the review.'), 'error'); }
-    finally { setBusy(false); }
+  const noTime = 'Nobody has logged time in the last 7 days.';
+  const remindTeam = async () => {
+    const people = workload.data?.members ?? [];
+    if (!people.length) return;
+    setReminding(true);
+    const results = await Promise.allSettled(people.map((m) => reminderApi.create({
+      title: 'Log your time for this week', note: 'Nobody on the team has logged time in the last 7 days. Please fill in your timesheet.',
+      forUserId: m.userId, when: { at: new Date().toISOString() },
+    })));
+    setReminding(false);
+    const sent = results.filter((r) => r.status === 'fulfilled').length;
+    if (sent > 0) { setReminded(true); toast(`Reminded ${sent} ${sent === 1 ? 'person' : 'people'} to log their time.`); }
+    else { const first = results.find((r): r is PromiseRejectedResult => r.status === 'rejected'); toast(errText(first?.reason, 'Could not send the reminders.'), 'error'); }
   };
 
   return (
@@ -121,12 +129,29 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
         </section>
         <section className="ins-card ins-ai" aria-label="What stands out">
           <b>✦ What stands out</b>
-          {workload.isLoading || projects.isLoading ? <p>Reading the numbers…</p> : notes.map((n) => <p key={n}>{n}</p>)}
+          {workload.isLoading || projects.isLoading ? <p>Reading the numbers…</p> : notes.map((n) => n === noTime ? (
+            <p key={n} className="ins-note-act">{n} <button type="button" className="btn btn-ghost btn-sm" disabled={reminded || reminding} onClick={() => void remindTeam()}>{reminding && <span className="spinner" />}{reminded ? 'Reminded' : 'Remind team'}</button></p>
+          ) : <p key={n}>{n}</p>)}
           {members.length > 1 && <button type="button" className="btn btn-ai" disabled={busy} onClick={() => void rebalance()}>{busy && <span className="spinner" />}Suggest a rebalance</button>}
         </section>
       </div>
     </>
   );
+}
+
+/** "Suggest a rebalance": starts the AI workload and capacity review; `onStarted` gets the job id (Insights opens it under Reports). */
+export function useRebalance(onStarted: (job: string) => void) {
+  const [busy, setBusy] = useState(false);
+  const rebalance = async () => {
+    setBusy(true);
+    try {
+      const job = await post<{ id: string }>('/ai/operations/jobs', { kind: 'workload', title: 'Workload and capacity review', idempotencyKey: crypto.randomUUID() });
+      toast('Started a workload review. It appears under Reports when ready.');
+      onStarted(job.id);
+    } catch (e) { toast(errText(e, 'Could not start the review.'), 'error'); }
+    finally { setBusy(false); }
+  };
+  return { busy, rebalance };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------ Time

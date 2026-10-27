@@ -62,8 +62,11 @@ export function ProjectBoard({ projects, cacheKey, includeArchived, canEditAll, 
       ...old, items: old.items.map((p) => (p.id === project.id ? { ...p, status, position } : p)),
     }));
     try {
-      await projectApi.move(project.id, { status, position });
-      if (project.status !== status) toast(`“${project.name}” moved to ${[...COLUMNS, ARCHIVED].find((c) => c.status === status)?.label}.`);
+      const res = await projectApi.move(project.id, { status, position });
+      const pending = res?.pendingSignOffs ?? 0;
+      if (project.status !== status && status === 'Completed' && pending > 0)
+        toast(`“${project.name}” marked Completed, but ${pending} stage sign-off${pending === 1 ? ' is' : 's are'} still pending.`, 'warning');
+      else if (project.status !== status) toast(`“${project.name}” moved to ${[...COLUMNS, ARCHIVED].find((c) => c.status === status)?.label}.`);
       void invalidateWorkspace(wid, 'projects');
     } catch (e) {
       queryClient.setQueryData(cacheKey, previous);

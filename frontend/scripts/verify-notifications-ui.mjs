@@ -178,10 +178,9 @@ try{
  assert.match(await rest.innerText(),/back /);
  await rest.hover();await rest.getByRole('button',{name:'Bring back now'}).click();assert.ok(await act('n6',b=>b.action==='wake'));
  checks.push('snooze');
- // v2 has no bell on the desktop: the avatar carries the unread count, and its menu leads to Settings › Notifications (this list).
- await page.locator('.v2-avatar').first().click();
- assert.match(await page.locator('.v2-avatar .v2-badge').first().innerText(),/^\d+$/,'the avatar shows the unread count');
- await page.locator('.v2-menu [role="menuitem"]',{hasText:'Notifications'}).click();await page.waitForURL(/\/settings\/notifications$/);
+ // v2: no avatar badge (the Home inbox and live banners carry notifications); Settings › Notifications holds this list.
+ assert.equal(await page.locator('.v2-avatar .v2-badge').count(),0,'no badge on the avatar');
+ await page.goto(origin+'/preview-org/settings/notifications');await page.waitForURL(/\/settings\/notifications$/);
  await page.goBack();await page.locator('.nc-item').first().waitFor();checks.push('avatar-notifications');
  await shot(page,'inbox-actions.png');
  // Delivery: a WhatsApp column where WhatsApp is set up, showing what goes there (changed in its own consent section below).

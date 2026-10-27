@@ -131,3 +131,11 @@
   .pj2-summary .v2-ai-card .btn-ai, .pp-summary .v2-ai-card .btn-ai { margin-left: 27px; }
 }
 @media (prefers-reduced-motion: reduce) { .pj2-card, .pj2-stat, .pj2-bar > i { transition: none; } .pj2-card:hover { transform: none; } }
+
+/* One Filter chip holding group, owner, status, type, priority and show completed/archived. */
+.pj2-filter { position: relative; }
+.pj2-filter-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border: 1px solid var(--ds-border, rgba(127,127,127,.3)); border-radius: 999px; background: none; font: inherit; font-size: 14px; color: var(--ds-text-2); cursor: pointer; }
+.pj2-filter-chip.on { border-color: var(--ds-accent); color: var(--ds-accent); }
+.pj2-filter-pop { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; width: min(300px, calc(100vw - 32px)); display: grid; gap: 10px; padding: 14px; }
+.pj2-filter-row { display: grid; gap: 4px; font-size: 13px; color: var(--ds-text-2); }
+.pj2-filters .pj2-filter-pop .select { width: 100%; min-width: 0; }

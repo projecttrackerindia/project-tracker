@@ -643,3 +643,4 @@ html .chat-list-head .menu > .btn { width: 36px; min-width: 36px; min-height: 36
 html .chat-list-head .menu > .btn:hover { background: var(--ds-fill); color: var(--ds-text); }
 .chat-list-head .menu > .btn svg + svg { display: none; }
 .composer-pill .composer-editable:focus-visible { outline: none; }
+.chat-away-tile b.chat-away-line { display: block; font-size: 14.5px; }

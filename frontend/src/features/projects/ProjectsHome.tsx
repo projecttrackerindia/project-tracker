@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { projectApi, projectGroupApi, workspaceApi } from '../../api/endpoints';
 import type { Project } from '../../api/types';
@@ -29,7 +29,7 @@ export function ProjectsHome() {
   const [params, setParams] = useSearchParams();
   const v = params.get('view');
   const picked = params.get('project');
-  const portfolio = v === 'portfolio' || v === 'timeline';
+  const portfolio = v === 'portfolio' || v === 'timeline' || v === 'present';
   if (picked && (portfolio || params.has('actions'))) {
     const actions = params.get('actions') === '1';
     return <Navigate to={`/work/projects/${encodeURIComponent(picked)}${actions ? '?tab=work&kind=action' : ''}`} replace />;
@@ -84,6 +84,16 @@ function ProjectsView({ switcher }: { switcher: ReactNode }) {
   const [groupId, setGroupId] = useState('');
   const [type, setType] = useState('');
   const [priority, setPriority] = useState('');
+  const [showCompleted, setShowCompleted] = useState(true);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!filterOpen) return;
+    const close = (e: MouseEvent) => { if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setFilterOpen(false); };
+    document.addEventListener('mousedown', close); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [filterOpen]);
   const [modal, setModal] = useState<{ project?: Project } | null>(null);
   const rawStatus = params.get('status');
   const status: StatusChip = CHIPS.some((c) => c.id === rawStatus) ? rawStatus as StatusChip : 'all';
@@ -100,15 +110,17 @@ function ProjectsView({ switcher }: { switcher: ReactNode }) {
   const all = useAllProjects(filters);
   const items = useMemo(() => [...(all.data?.items ?? [])].sort(byDue), [all.data]);
   const count = (s: StatusChip) => (s === 'all' ? items.length : items.filter((p) => p.health === s).length);
-  const narrowed = status !== 'all' || !!(dq || ownerId || groupId || type || priority);
-  // Past 10 projects; and while a filter is set, so it can be cleared (the status counts are always there: they are the first filter).
-  const filtersOn = items.length > FILTERS_FROM || !!(dq || ownerId || groupId || type || priority) || archived || (oversees && mineOnly);
+  // How many settings inside the Filter popover differ from their defaults (shown on the chip).
+  const activeFilters = [ownerId, groupId, type, priority].filter(Boolean).length + (status !== 'all' ? 1 : 0) + (archived ? 1 : 0) + (showCompleted ? 0 : 1);
+  const narrowed = !!dq || activeFilters > 0;
+  // Search is always there; the single Filter chip appears past 10 projects, and while any of its filters is set so it can be cleared.
+  const filtersOn = items.length > FILTERS_FROM || activeFilters > 0;
   const members = useWsQuery(['members'], workspaceApi.members, { enabled: filtersOn });
   const groups = useWsQuery(['project-groups'], () => projectGroupApi.list(), { enabled: filtersOn });
-  const shown = items.filter((p) => (status === 'all' || p.health === status)
+  const shown = items.filter((p) => (status === 'all' || p.health === status) && (showCompleted || status === 'Completed' || !isFinished(p))
     && (!dq || `${p.name} ${p.key} ${p.projectGroupName ?? ''} ${p.owner?.name ?? ''}`.toLowerCase().includes(dq))
     && (!ownerId || p.owner?.id === ownerId) && (!groupId || p.projectGroupId === groupId) && (!type || p.projectType === type) && (!priority || p.priority === priority));
-  const clear = () => { setQ(''); setOwnerId(''); setGroupId(''); setType(''); setPriority(''); setStatus('all'); };
+  const clear = () => { setQ(''); setOwnerId(''); setGroupId(''); setType(''); setPriority(''); setStatus('all'); setArchived(false); setShowCompleted(true); };
   const open = (id: string) => nav(`/work/projects/${id}`);
   const remove = async (p: Project) => {
     if (!(await confirmDialog({ title: 'Delete project?', message: `Deleting “${p.name}” will also remove all of its tasks.` }))) return;
@@ -138,30 +150,54 @@ function ProjectsView({ switcher }: { switcher: ReactNode }) {
         ))}
       </div>
 
-      {filtersOn && (
-        <div className="pj2-filters" role="group" aria-label="Filters">
-          <div className="search-field pj-search"><Icon name="search" /><input className="input" type="search" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search projects" /></div>
-          {(groups.data?.length ?? 0) > 1 && (
-            <Select className="select filter-input" value={groupId} onChange={(e) => setGroupId(e.target.value)} aria-label="Group">
-              <option value="">All groups</option>{groups.data?.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </Select>
-          )}
-          {(members.data?.length ?? 0) > 1 && (
-            <Select className="select filter-input" value={ownerId} onChange={(e) => setOwnerId(e.target.value)} aria-label="Owner">
-              <option value="">All owners</option>{members.data?.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
-            </Select>
-          )}
-          <Select className="select filter-input" value={type} onChange={(e) => setType(e.target.value)} aria-label="Project type">
-            <option value="">All types</option>{PROJECT_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </Select>
-          <Select className="select filter-input" value={priority} onChange={(e) => setPriority(e.target.value)} aria-label="Priority">
-            <option value="">All priorities</option><PriorityOptions />
-          </Select>
-          <label className="pj-check"><input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Show archived</label>
-          {oversees && <Segmented label="Which projects" value={mineOnly ? 'mine' : 'all'} onChange={(s) => setScope(s)} options={[{ id: 'all', label: 'All projects' }, { id: 'mine', label: 'Mine' }]} />}
-          {narrowed && <button type="button" className="link-btn pj-clear" onClick={clear}>Clear</button>}
-        </div>
-      )}
+      <div className="pj2-filters" role="group" aria-label="Search and filter">
+        <div className="search-field pj-search"><Icon name="search" /><input className="input" type="search" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search projects" /></div>
+        {filtersOn && (
+          <div className="pj2-filter" ref={filterRef}>
+            <button type="button" className={`pj2-filter-chip ${activeFilters ? 'on' : ''}`} aria-haspopup="dialog" aria-expanded={filterOpen} onClick={() => setFilterOpen((o) => !o)}>
+              <Icon name="filter" size={14} /> Filter{activeFilters ? ` · ${activeFilters}` : ''}
+            </button>
+            {filterOpen && (
+              <div className="pj2-filter-pop card" role="dialog" aria-label="Filter projects">
+                {(groups.data?.length ?? 0) > 1 && (
+                  <label className="pj2-filter-row"><span>Group</span>
+                    <Select className="select" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                      <option value="">All groups</option>{groups.data?.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </Select>
+                  </label>
+                )}
+                {(members.data?.length ?? 0) > 1 && (
+                  <label className="pj2-filter-row"><span>Owner</span>
+                    <Select className="select" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+                      <option value="">All owners</option>{members.data?.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
+                    </Select>
+                  </label>
+                )}
+                <label className="pj2-filter-row"><span>Status</span>
+                  <Select className="select" value={status} onChange={(e) => setStatus(e.target.value as StatusChip)}>
+                    {CHIPS.map((c) => <option key={c.id} value={c.id}>{c.id === 'all' ? 'Any status' : c.label}</option>)}
+                  </Select>
+                </label>
+                <label className="pj2-filter-row"><span>Type</span>
+                  <Select className="select" value={type} onChange={(e) => setType(e.target.value)}>
+                    <option value="">All types</option>{PROJECT_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </Select>
+                </label>
+                <label className="pj2-filter-row"><span>Priority</span>
+                  <Select className="select" value={priority} onChange={(e) => setPriority(e.target.value)}>
+                    <option value="">All priorities</option><PriorityOptions />
+                  </Select>
+                </label>
+                <label className="pj-check"><input type="checkbox" checked={showCompleted} onChange={(e) => setShowCompleted(e.target.checked)} /> Show completed</label>
+                <label className="pj-check"><input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Show archived</label>
+                {activeFilters > 0 && <button type="button" className="link-btn pj-clear" onClick={clear}>Clear filters</button>}
+              </div>
+            )}
+          </div>
+        )}
+        {oversees && <Segmented label="Which projects" value={mineOnly ? 'mine' : 'all'} onChange={(s) => setScope(s)} options={[{ id: 'all', label: 'All projects' }, { id: 'mine', label: 'Mine' }]} />}
+        {narrowed && <button type="button" className="link-btn pj-clear" onClick={clear}>Clear</button>}
+      </div>
 
       <DuplicateFlags projects={items} />
 
@@ -191,7 +227,7 @@ function ProjectTile({ p }: { p: Project }) {
   const late = !isFinished(p) && !!p.dueDate && p.dueDate.slice(0, 10) < new Date().toISOString().slice(0, 10) && p.progress < 100;
   return (
     <Link className="pj2-card" to={`/work/projects/${p.id}`} data-project={p.name} aria-label={`${p.name}, ${h.label}, ${p.progress}% done${p.dueDate ? `, due ${dayMonth(p.dueDate)}` : ''}`}>
-      <span className="pj2-card-head"><b className="pj2-name" title={p.name}>{p.name}</b><HealthPill health={p.health} /></span>
+      <span className="pj2-card-head"><b className="pj2-name" title={p.name}>{p.name}</b><HealthPill health={p.health} pendingSignOffs={p.pendingSignOffs} /></span>
       <span className="pj2-sub">{[group, p.owner?.name ?? 'No owner'].filter(Boolean).join(' · ')}</span>
       <span className={`pj2-bar ${h.tone}`} aria-hidden="true"><i style={{ width: p.progress > 0 ? `max(8px, ${p.progress}%)` : '8px' }} /></span>
       <span className="pj2-foot">{p.progress}%{p.dueDate ? <> · <span className={late ? 'late' : ''}>due {dayMonth(p.dueDate)}</span></> : ' · no due date'}</span>
@@ -214,7 +250,7 @@ function ProjectRows({ projects, onOpen, canEdit, canDelete, meId, onEdit, onDel
                 <td><div className="td-title">{p.name}</div><div className="td-sub mono">{p.key}{p.projectGroupName ? ` · ${p.projectGroupName}` : ''}</div></td>
                 <td className="cell-muted">{p.owner?.name ?? '—'}</td>
                 <td className="cell-muted">{dayMonth(p.startDate)} → {dayMonth(p.dueDate)}</td>
-                <td><HealthPill health={p.health} /></td>
+                <td><HealthPill health={p.health} pendingSignOffs={p.pendingSignOffs} /></td>
                 <td style={{ minWidth: 150 }}><div className="pj2-rowbar"><span className={`pj2-bar ${HEALTH[p.health].tone}`}><i style={{ width: p.progress > 0 ? `max(8px, ${p.progress}%)` : '8px' }} /></span><b>{p.progress}%</b></div></td>
                 <td onClick={(e) => e.stopPropagation()}>
                   <div className="td-actions">

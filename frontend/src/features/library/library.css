@@ -141,3 +141,4 @@ code.vlt2-value { font-family: var(--mono); letter-spacing: .12em; }
   .vlt2-ways { grid-template-columns: minmax(0, 1fr); }
   .lib-templates { grid-template-columns: 1fr 1fr; }
 }
+.lib-vault-share { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 8px; border-radius: 999px; background: var(--ds-fill); color: var(--ds-text-2); font-size: 11.5px; font-weight: 500; }

@@ -64,7 +64,10 @@ export function useWorkList(f: WorkListFilters, enabled = true) {
     initialPageParam: 0,
     queryFn: ({ pageParam }) => workItemsApi.list({ ...f, offset: pageParam, limit: Math.min(PAGE, WINDOW - pageParam) }),
     getNextPageParam: (last: WorkPage) => (last.hasMore && last.offset + last.limit < WINDOW ? last.offset + last.limit : undefined),
+    // Show the last list straight away (cached, or the previous filters' rows) and refresh behind it, rather than a spinner.
     placeholderData: (p) => p,
+    staleTime: 60_000,
+    gcTime: 15 * 60_000,
   });
   const items: WorkRow[] = q.data?.pages.flatMap((p) => p?.items ?? []) ?? [];
   const more = !!q.data?.pages.at(-1)?.hasMore;

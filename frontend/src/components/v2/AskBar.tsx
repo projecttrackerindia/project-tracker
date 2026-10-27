@@ -19,7 +19,33 @@ const projectIdOf = (pathname: string) => /^\/work\/projects\/([0-9a-f-]{8,})/i.
  * with where the person is, and the answer opens in the copilot panel on the right, so the page stays in view. On a project page it is a
  * small pill at the bottom right, "Ask about <project>", that opens the copilot about that project.
  */
+/**
+ * True while the person scrolls down through a page, so the floating bar steps aside instead of covering the rows they are reading; it
+ * comes back the moment they stop (450 ms) or scroll up. Listens on capture so page-level scroll containers count too.
+ */
+function useScrollingAway(): boolean {
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    const last = new WeakMap<EventTarget, number>();
+    let timer: number | undefined;
+    const onScroll = (e: Event) => {
+      const t = e.target === document ? document.scrollingElement : (e.target as Element | null);
+      if (!t) return;
+      const y = (t as Element).scrollTop;
+      const prev = last.get(t) ?? y;
+      last.set(t, y);
+      if (y > prev + 4) setAway(true); else if (y < prev - 4) setAway(false);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setAway(false), 450);
+    };
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    return () => { document.removeEventListener('scroll', onScroll, { capture: true }); window.clearTimeout(timer); };
+  }, []);
+  return away;
+}
+
 export function AskBar() {
+  const away = useScrollingAway();
   const ai = useAi();
   const { pathname, search } = useLocation();
   const nav = useNavigate();
@@ -45,7 +71,7 @@ export function AskBar() {
 
   if (!ai) return null;
   if (projectId) return (
-    <button type="button" className="v2-ask corner" onClick={() => show(projectName)} aria-label={`Ask about ${projectName ?? 'this project'}`}>
+    <button type="button" className={`v2-ask corner${away ? ' away' : ''}`} onClick={() => show(projectName)} aria-label={`Ask about ${projectName ?? 'this project'}`}>
       <span className="v2-orb" aria-hidden="true" /><span>Ask about {projectName ?? 'this project'}</span>
     </button>
   );
@@ -59,7 +85,7 @@ export function AskBar() {
     nav(`${pathname}${search}`, { state: { ask: where && where !== 'Home' ? `${text}\n\n(I am looking at ${where}.)` : text, ts: Date.now() } });
   };
   return (
-    <form className="v2-ask" role="search" aria-label="Ask the assistant" onSubmit={(e) => { e.preventDefault(); ask(); }}>
+    <form className={`v2-ask${away ? ' away' : ''}`} role="search" aria-label="Ask the assistant" onSubmit={(e) => { e.preventDefault(); ask(); }}>
       <span className="v2-orb" aria-hidden="true" />
       <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask, find, or tell it what to do…" aria-label="Ask, find, or tell it what to do"
         onKeyDown={(e) => { if (e.key === 'Escape') { setQ(''); input.current?.blur(); } }} />

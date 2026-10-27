@@ -113,7 +113,9 @@ export interface Project {
   stageScheduleMode?: 'Manual' | 'FixedDeadline' | 'FollowSchedule';
   id: string; key: string; name: string; description: string | null; status: ProjectStatus; priority: Priority;
   owner: UserRef | null; teamId: string | null; teamName: string | null; startDate: string | null; dueDate: string | null;
-  progress: number; health: ProjectHealth; stats: ProjectStats; memberCount: number; version: number; position: number; enforceDependencies: boolean;
+  progress: number; health: ProjectHealth; stats: ProjectStats;
+  /** Timeline stages, and how many are not signed off yet (stage status not Completed). */
+  stageCount?: number; pendingSignOffs?: number; memberCount: number; version: number; position: number; enforceDependencies: boolean;
   projectGroupId: string | null; projectGroupName: string | null; projectType: ProjectType; deliveryMethod: DeliveryMethod;
 }
 /** A follow-up for a project, with an owner, a due date and a priority (on the project's Actions tab and the Portfolio page). */
@@ -403,6 +405,13 @@ export interface AutomationRule extends AutomationStep {
   summary: string; runCount: number; lastRunAt: string | null;
 }
 export type AutomationInput = Omit<AutomationRule, 'id' | 'projectId' | 'summary' | 'runCount' | 'lastRunAt'>;
+/** A dry run: the trigger, then each action; pass false = stopped there (trigger) or would be skipped (action). */
+export interface AutomationTest { taskKey: string; taskTitle: string; wouldRun: boolean; steps: { step: 'When' | 'Then'; pass: boolean; note: string }[] }
+export interface AutomationRunEntry { at: string; taskId: string | null; summary: string }
+export interface AutomationDraft {
+  name: string; trigger: AutomationTrigger; triggerDays: number | null; whenPriority: string | null; whenStatusCategory: StatusCategory | null; reason: string;
+  steps: { action: AutomationAction; priority: string | null; statusCategory: StatusCategory | null; target: AutomationTarget | null; userId: string | null; text: string | null }[];
+}
 
 // ---- sprints
 export interface Sprint {

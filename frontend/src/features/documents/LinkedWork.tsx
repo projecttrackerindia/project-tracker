@@ -65,7 +65,21 @@ export function LinkedWork({ documentId, canLink }: { documentId: string; canLin
 }
 
 /** On a task, issue, work item or project: the documents linked to it. */
-export function TargetDocuments({ targetType, targetId, title = 'Documents' }: { targetType: LinkTarget; targetId: string; title?: string }) {
+/** "Link a document" on its own (for a header), opening the same picker as the list's button. */
+export function LinkDocumentButton({ targetType, targetId, className = 'btn btn-ghost btn-sm' }: { targetType: LinkTarget; targetId: string; className?: string }) {
+  const level = useModule('documents');
+  const [adding, setAdding] = useState(false);
+  if (level < 2) return null;
+  return (
+    <>
+      <button type="button" className={className} onClick={() => setAdding(true)}><Icon name="link" size={14} /> Link a document</button>
+      {adding && <DocumentPicker targetType={targetType} targetId={targetId} onClose={() => setAdding(false)} />}
+    </>
+  );
+}
+
+/** `hideWhenEmpty`: nothing at all is shown while no document is linked (offer LinkDocumentButton elsewhere). */
+export function TargetDocuments({ targetType, targetId, title = 'Documents', hideWhenEmpty }: { targetType: LinkTarget; targetId: string; title?: string; hideWhenEmpty?: boolean }) {
   const wid = useWorkspaceId();
   const level = useModule('documents');
   const q = useWsQuery(['linked-documents', targetType, targetId], () => documentApi.linkedTo(targetType, targetId), { enabled: level > 0 });
@@ -78,6 +92,7 @@ export function TargetDocuments({ targetType, targetId, title = 'Documents' }: {
   if (level === 0) return null;
   const items = q.data?.items ?? [];
   const hidden = q.data?.restricted ?? 0;
+  if (hideWhenEmpty && (q.isLoading || (items.length === 0 && hidden === 0))) return null;
   return (
     <div className="doc-target">
       <div className="doc-target-head">

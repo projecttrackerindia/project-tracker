@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { WorkKind, WorkListFilters, WorkRow, WorkStatusFilter } from '../../api/workItemsApi';
 import { Icon } from '../../components/Icon';
-import { EmptyState, ErrorState, PageLoader } from '../../components/ui';
+import { EmptyState, ErrorState } from '../../components/ui';
 import { dateOffset, todayISO } from '../../lib/format';
 import { useDebounced } from '../../lib/hooks';
+import { SlaRing } from './Desk';
 import { Due, KIND_LABEL, KindChip, Owner, PRIORITY_ORDER, PriorityDot, useWorkList } from './workUi';
 import './work.css';
 
@@ -158,7 +159,7 @@ export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, d
         </div>
       )}
 
-      {list.isLoading ? <PageLoader /> : list.isError ? <ErrorState error={list.error} retry={() => void list.refetch()} /> : shown.length === 0 ? (
+      {list.isLoading ? <WorkSkeleton /> : list.isError ? <ErrorState error={list.error} retry={() => void list.refetch()} /> : shown.length === 0 ? (
         narrowed || kind
           ? <EmptyState icon="search" title="Nothing matches" action={<button type="button" className="btn btn-ghost" onClick={reset}>Clear filters</button>} />
           : <EmptyState icon="checkCircle" title={prefs.show === 'closed' ? 'Nothing done yet' : empty.title} text={prefs.show === 'closed' ? undefined : empty.text} action={empty.action} />
@@ -190,10 +191,19 @@ function WorkRowButton({ w, on, onOpen }: { w: WorkRow; on: boolean; onOpen: (id
       aria-label={`${w.key} ${w.title}, ${KIND_LABEL[w.kind]}, ${w.priority} priority, ${w.status}${w.assignee ? `, ${w.assignee.name}` : ', no owner'}${w.dueDate ? `, due ${w.dueDate}${w.isOverdue ? ', overdue' : ''}` : ''}`}
       title={[w.projectName, w.status, w.typeName && w.kind === 'ticket' ? w.typeName : null].filter(Boolean).join(' · ')}>
       <PriorityDot priority={w.priority} />
-      <span className="wk-title">{w.title}{done && <small> · {w.status}</small>}</span>
+      <span className="wk-title">{w.slaDueAt && w.slaStartAt && !done && <SlaRing start={w.slaStartAt} due={w.slaDueAt} state={w.slaState ?? null} />}{w.title}{done && <small> · {w.status}</small>}</span>
       <span className="wk-meta"><span className="wk-key">{w.key}</span><KindChip kind={w.kind} /></span>
       <Owner person={w.assignee} />
       <Due due={w.dueDate} late={w.isOverdue} />
     </button>
+  );
+}
+
+/** Placeholder rows while the first page loads, so the list keeps its shape instead of a full-page spinner. */
+function WorkSkeleton() {
+  return (
+    <div className="wk-list wk-skeleton" aria-busy="true" aria-label="Loading work">
+      {Array.from({ length: 8 }, (_, i) => <span key={i} className="wk-skel-row" style={{ width: `${70 + ((i * 37) % 30)}%` }} />)}
+    </div>
   );
 }
