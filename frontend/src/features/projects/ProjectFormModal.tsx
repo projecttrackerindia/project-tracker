@@ -72,7 +72,11 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
         ? projectApi.update(project!.id, { ...base, status, version: project!.version, enforceDependencies: enforce, dueDateReason: moved ? dueReason.trim() || null : null, dueDateDependency: moved ? dueDependency.trim() || null : null })
         : projectApi.create({ ...base, key: key.trim() || undefined, status, memberIds, timelineTemplate: timeline });
     },
-    onSuccess: async (res) => { toast(isEdit ? 'Project updated.' : 'Project created.'); await invalidateWorkspace(wid); onSaved?.(res.project.id); onClose(); },
+    onSuccess: async (res) => {
+      const pending = res.project.pendingSignOffs ?? 0;
+      if (isEdit && res.project.status === 'Completed' && project?.status !== 'Completed' && pending > 0)
+        toast(`Project marked Completed, but ${pending} stage sign-off${pending === 1 ? ' is' : 's are'} still pending. Sign them off on the Timeline.`, 'warning');
+      else toast(isEdit ? 'Project updated.' : 'Project created.'); await invalidateWorkspace(wid); onSaved?.(res.project.id); onClose(); },
     onError: async (err) => {
       if (!(err instanceof ApiError)) { setFormError('Could not save the project.'); return; }
       if (err.code === 'VERSION_CONFLICT') { toast('Someone else changed this project. Reloaded the latest version.', 'warning'); await invalidateWorkspace(wid); onClose(); return; }

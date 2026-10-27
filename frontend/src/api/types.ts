@@ -113,7 +113,9 @@ export interface Project {
   stageScheduleMode?: 'Manual' | 'FixedDeadline' | 'FollowSchedule';
   id: string; key: string; name: string; description: string | null; status: ProjectStatus; priority: Priority;
   owner: UserRef | null; teamId: string | null; teamName: string | null; startDate: string | null; dueDate: string | null;
-  progress: number; health: ProjectHealth; stats: ProjectStats; memberCount: number; version: number; position: number; enforceDependencies: boolean;
+  progress: number; health: ProjectHealth; stats: ProjectStats;
+  /** Timeline stages, and how many are not signed off yet (stage status not Completed). */
+  stageCount?: number; pendingSignOffs?: number; memberCount: number; version: number; position: number; enforceDependencies: boolean;
   projectGroupId: string | null; projectGroupName: string | null; projectType: ProjectType; deliveryMethod: DeliveryMethod;
 }
 /** A follow-up for a project, with an owner, a due date and a priority (on the project's Actions tab and the Portfolio page). */

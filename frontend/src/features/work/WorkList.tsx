@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { WorkKind, WorkListFilters, WorkRow, WorkStatusFilter } from '../../api/workItemsApi';
 import { Icon } from '../../components/Icon';
-import { EmptyState, ErrorState, PageLoader } from '../../components/ui';
+import { EmptyState, ErrorState } from '../../components/ui';
 import { dateOffset, todayISO } from '../../lib/format';
 import { useDebounced } from '../../lib/hooks';
 import { Due, KIND_LABEL, KindChip, Owner, PRIORITY_ORDER, PriorityDot, useWorkList } from './workUi';
@@ -158,7 +158,7 @@ export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, d
         </div>
       )}
 
-      {list.isLoading ? <PageLoader /> : list.isError ? <ErrorState error={list.error} retry={() => void list.refetch()} /> : shown.length === 0 ? (
+      {list.isLoading ? <WorkSkeleton /> : list.isError ? <ErrorState error={list.error} retry={() => void list.refetch()} /> : shown.length === 0 ? (
         narrowed || kind
           ? <EmptyState icon="search" title="Nothing matches" action={<button type="button" className="btn btn-ghost" onClick={reset}>Clear filters</button>} />
           : <EmptyState icon="checkCircle" title={prefs.show === 'closed' ? 'Nothing done yet' : empty.title} text={prefs.show === 'closed' ? undefined : empty.text} action={empty.action} />
@@ -195,5 +195,14 @@ function WorkRowButton({ w, on, onOpen }: { w: WorkRow; on: boolean; onOpen: (id
       <Owner person={w.assignee} />
       <Due due={w.dueDate} late={w.isOverdue} />
     </button>
+  );
+}
+
+/** Placeholder rows while the first page loads, so the list keeps its shape instead of a full-page spinner. */
+function WorkSkeleton() {
+  return (
+    <div className="wk-list wk-skeleton" aria-busy="true" aria-label="Loading work">
+      {Array.from({ length: 8 }, (_, i) => <span key={i} className="wk-skel-row" style={{ width: `${70 + ((i * 37) % 30)}%` }} />)}
+    </div>
   );
 }

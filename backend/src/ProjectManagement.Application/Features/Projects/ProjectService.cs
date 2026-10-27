@@ -20,7 +20,8 @@ public record ProjectStatusSummaryDto(string Key, string Name, ProjectStatus Sta
 public record ProjectListItemDto(Guid Id, string Key, string Name, string? Description, ProjectStatus Status, Priority Priority,
     UserRefDto? Owner, Guid? TeamId, string? TeamName, DateOnly? StartDate, DateOnly? DueDate, int Progress, ProjectHealth Health,
     ProjectStatsDto Stats, int MemberCount, int Version, double Position, bool EnforceDependencies, Guid? ProjectGroupId = null, string? ProjectGroupName = null, ProjectType ProjectType = ProjectType.Other,
-    DeliveryMethod DeliveryMethod = DeliveryMethod.Hybrid, StageScheduleMode StageScheduleMode = StageScheduleMode.Manual);
+    DeliveryMethod DeliveryMethod = DeliveryMethod.Hybrid, StageScheduleMode StageScheduleMode = StageScheduleMode.Manual,
+    int StageCount = 0, int PendingSignOffs = 0);
 public record StatusDto(Guid Id, string Name, int Order, StatusCategory Category, string Color);
 public record StageDto(Guid Id, string Name, int Order, DateOnly? PlannedStart, DateOnly? PlannedEnd, DateOnly? ActualStart, DateOnly? ActualEnd,
     StageStatus Status, StageStatus EffectiveStatus, UserRefDto? Owner, UserRefDto? Assignee, string? Description,
@@ -137,11 +138,31 @@ public partial class ProjectService(
         });
     }
 
-    private ProjectListItemDto ToItem(Project p, string? ownerName, string? teamName, int memberCount, ProjectStatsDto stats, string? groupName = null) =>
+    /// <summary>
+    /// Per project: how many timeline stages it has and how many are not yet signed off (a stage is signed off once its status is Completed).
+    /// A project only truly reads as finished when every stage is signed off; until then the UI shows "100% work · N sign-offs pending".
+    /// Marking a project Completed with unsigned stages is allowed (the board drags projects freely) - the response carries PendingSignOffs and the UI warns.
+    /// </summary>
+    public async Task<Dictionary<Guid, (int Total, int Pending)>> GetSignOffsAsync(IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
+    {
+        var rows = await db.ProjectStages.AsNoTracking()
+            .Where(s => projectIds.Contains(s.ProjectId))
+            .GroupBy(s => s.ProjectId)
+            .Select(g => new { ProjectId = g.Key, Total = g.Count(), Pending = g.Count(s => s.Status != StageStatus.Completed) })
+            .ToListAsync(ct);
+        return projectIds.ToDictionary(id => id, id =>
+        {
+            var row = rows.FirstOrDefault(r => r.ProjectId == id);
+            return row is null ? (0, 0) : (row.Total, row.Pending);
+        });
+    }
+
+    private ProjectListItemDto ToItem(Project p, string? ownerName, string? teamName, int memberCount, ProjectStatsDto stats, string? groupName = null,
+        (int Total, int Pending) signOffs = default) =>
         new(p.Id, p.Key, p.Name, p.Description, p.Status, p.Priority,
             ownerName is null ? null : new UserRefDto(p.OwnerId, ownerName), p.TeamId, teamName, p.StartDate, p.DueDate,
             ProjectMetrics.Progress(stats), ProjectMetrics.Health(p, stats, clock.Today), stats, memberCount, p.Version, p.Position, p.EnforceDependencies, p.ProjectGroupId, groupName, p.ProjectType,
-            p.DeliveryMethod, p.StageScheduleMode);
+            p.DeliveryMethod, p.StageScheduleMode, signOffs.Total, signOffs.Pending);
 
     // ---------------------------------------------------------------- queries
 
@@ -185,7 +206,8 @@ public partial class ProjectService(
             .Select(p => new { Project = p, OwnerName = p.Owner!.DisplayName, TeamName = p.Team!.Name, GroupName = p.Group!.Name, MemberCount = p.Members.Count() })
             .ToListAsync(ct);
         var stats = await GetStatsAsync(rows.Select(r => r.Project.Id).ToList(), ct);
-        var items = rows.Select(r => ToItem(r.Project, r.OwnerName, r.TeamName, r.MemberCount, stats[r.Project.Id], r.GroupName)).ToList();
+        var signOffs = await GetSignOffsAsync(rows.Select(r => r.Project.Id).ToList(), ct);
+        var items = rows.Select(r => ToItem(r.Project, r.OwnerName, r.TeamName, r.MemberCount, stats[r.Project.Id], r.GroupName, signOffs[r.Project.Id])).ToList();
         return new PagedResult<ProjectListItemDto>(items, page.SafePage, page.SafeSize(), total);
     }
 
@@ -212,7 +234,8 @@ public partial class ProjectService(
         var members = await GetMembersAsync(project.Id, ct);
         var stats = (await GetStatsAsync([project.Id], ct))[project.Id];
         var groupName = project.ProjectGroupId is { } gid ? await db.ProjectGroups.AsNoTracking().Where(g => g.Id == gid).Select(g => g.Name).FirstOrDefaultAsync(ct) : null;
-        return new ProjectDetailDto(ToItem(project, owner, teamName, members.Count, stats, groupName),
+        var signOffs = (await GetSignOffsAsync([project.Id], ct))[project.Id];
+        return new ProjectDetailDto(ToItem(project, owner, teamName, members.Count, stats, groupName, signOffs),
             await GetStatusesAsync(project.Id, ct), await GetStagesAsync(project.Id, ct), members);
     }
 

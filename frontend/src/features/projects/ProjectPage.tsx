@@ -147,7 +147,7 @@ export function ProjectPage() {
           <h1 className="page-title">{p.name}</h1>
           <div className="pp-meta">
             <span className="pp-key">{p.key}{group ? ` · ${group}` : ''}</span>
-            <HealthPill health={p.health} />
+            <HealthPill health={p.health} pendingSignOffs={p.pendingSignOffs} />
             <span className="pp-people">{p.owner?.name ?? 'No owner'}{p.memberCount ? ` · ${p.memberCount} ${p.memberCount === 1 ? 'person' : 'people'}` : ''}</span>
           </div>
         </div>
@@ -248,8 +248,10 @@ function Overview({ detail, canEdit, canReportIssue, onSettings, onReportIssue }
   const late = !finished && days !== null && days < 0 && p.progress < 100;
   const openIssues = detail.stages.reduce((n, x) => n + x.openIssues, 0);
   const tone = HEALTH[p.health].tone;
-  const ringTone = tone === 'late' ? 'danger' : tone === 'risk' ? 'warning' : tone === 'ok' || p.status === 'Completed' ? 'success' : undefined;
-  const when = p.status === 'Completed' ? { text: 'Completed', cls: 'ok' } : p.status === 'Cancelled' ? { text: 'Cancelled', cls: '' }
+  const ringTone = (p.pendingSignOffs ?? 0) > 0 && (p.status === 'Completed' || p.progress >= 100) ? 'warning' : tone === 'late' ? 'danger' : tone === 'risk' ? 'warning' : tone === 'ok' || p.status === 'Completed' ? 'success' : undefined;
+  const pendingSignOffs = p.pendingSignOffs ?? 0;
+  const when = (p.status === 'Completed' || p.progress >= 100) && pendingSignOffs > 0 ? { text: `100% work · ${plural(pendingSignOffs, 'sign-off')} pending`, cls: 'risk' }
+    : p.status === 'Completed' ? { text: 'Completed', cls: 'ok' } : p.status === 'Cancelled' ? { text: 'Cancelled', cls: '' }
     : days === null ? { text: 'No due date', cls: '' } : days < 0 ? { text: `${plural(-days, 'day')} overdue`, cls: 'late' } : days === 0 ? { text: 'Due today', cls: 'risk' }
     : { text: `${plural(days, 'day')} left`, cls: tone === 'ok' ? 'ok' : tone === 'late' ? 'late' : tone === 'risk' ? 'risk' : '' };
   const chips = (docs.data?.items ?? []).slice(0, 3);
