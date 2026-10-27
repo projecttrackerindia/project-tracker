@@ -33,7 +33,7 @@ const CATEGORY: Record<Category, { label: string; icon: IconName; types: Notific
   work: { label: 'Work', icon: 'kanban', types: ['TaskAssigned', 'TaskUpdated', 'Comment', 'Issue', 'Approval', 'ProjectUpdated', 'Document', 'Meeting', 'ReportReady', 'AgentAlert', 'AgentDigest', 'TimesheetReminder'] },
   operations: { label: 'Operations & support', icon: 'bolt', types: ['ServiceLevel', 'Support'] },
   reminders: { label: 'Reminders & due dates', icon: 'alarm', types: ['DueSoon', 'Overdue', 'Reminder', 'Nudge', 'Briefing', 'PortfolioDigest', 'CertificationExpiry'] },
-  messages: { label: 'Messages & mentions', icon: 'message', types: ['Message', 'Mention'] },
+  messages: { label: 'Messages, mentions & calls', icon: 'message', types: ['Message', 'Mention', 'Call'] },
   account: { label: 'Account & workspace', icon: 'shield', types: ['Invitation', 'Subscription', 'Security'] },
 };
 /** The tone of each kind's icon tile: the colour says what kind of thing it is, the words say the rest. */
@@ -45,7 +45,7 @@ const TYPE_ICON: Partial<Record<NotificationType, IconName>> = {
   TaskAssigned: 'userPlus', TaskUpdated: 'edit', Comment: 'message', Mention: 'message', Message: 'message', DueSoon: 'clock', Overdue: 'alert',
   Reminder: 'alarm', Nudge: 'alarm', Briefing: 'sun', PortfolioDigest: 'chart', Invitation: 'mail', Subscription: 'card', Security: 'lock',
   ReportReady: 'download', Issue: 'bug', Approval: 'checks', ServiceLevel: 'gauge', Document: 'note', Meeting: 'video', ProjectUpdated: 'folder',
-  CertificationExpiry: 'star', Support: 'message', AgentAlert: 'radar', AgentDigest: 'sparkle', TimesheetReminder: 'timer',
+  CertificationExpiry: 'star', Support: 'message', AgentAlert: 'radar', AgentDigest: 'sparkle', TimesheetReminder: 'timer', Call: 'video',
 };
 
 // ------------------------------------------------------------------ page
@@ -113,6 +113,7 @@ const WHY: Record<NotificationType, string> = {
   PortfolioDigest: 'The digest for projects you lead or follow.',
   Document: 'A document you own, review or follow changed.',
   Meeting: 'A meeting you are invited to, or its notes.',
+  Call: 'Someone called you in Project Tracker, or you missed their call.',
   TaskUpdated: 'A task assigned to you changed (priority, due date or status).',
   ProjectUpdated: 'A project you are a member of changed.',
   CertificationExpiry: 'A certification you hold or manage is about to expire.',

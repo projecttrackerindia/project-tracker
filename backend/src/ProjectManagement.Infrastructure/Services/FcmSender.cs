@@ -13,7 +13,10 @@ namespace ProjectManagement.Infrastructure.Services;
 public class DevicePushSender(WebPushSender web, FcmSender fcm) : IWebPushSender
 {
     public Task<int?> SendAsync(PushSubscription subscription, string payload, VapidKeys keys, CancellationToken ct) =>
-        PushService.IsNative(subscription.Endpoint) ? fcm.SendAsync(subscription, payload, ct) : web.SendAsync(subscription, payload, keys, ct);
+        SendAsync(subscription, payload, keys, PushDelivery.Default, ct);
+
+    public Task<int?> SendAsync(PushSubscription subscription, string payload, VapidKeys keys, PushDelivery delivery, CancellationToken ct) =>
+        PushService.IsNative(subscription.Endpoint) ? fcm.SendAsync(subscription, payload, ct, delivery) : web.SendAsync(subscription, payload, keys, delivery, ct);
 }
 
 /// <summary>
@@ -31,13 +34,13 @@ public class FcmSender(IHttpClientFactory http, IOptions<PushOptions> options, I
     private Account? account;
     private bool loaded;
 
-    public async Task<int?> SendAsync(PushSubscription subscription, string payload, CancellationToken ct)
+    public async Task<int?> SendAsync(PushSubscription subscription, string payload, CancellationToken ct, PushDelivery? delivery = null)
     {
         var acct = Load();
         if (acct is null) return null;   // not set up: counts as a failed attempt, nothing else
         var bearer = await TokenAsync(acct, ct);
         if (bearer is null) return null;
-        var body = BuildMessage(subscription.Endpoint[PushService.NativePrefix.Length..], payload);
+        var body = BuildMessage(subscription.Endpoint[PushService.NativePrefix.Length..], payload, delivery);
         using var req = new HttpRequestMessage(HttpMethod.Post, $"https://fcm.googleapis.com/v1/projects/{acct.ProjectId}/messages:send")
         { Content = new StringContent(body, Encoding.UTF8, "application/json") };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
@@ -53,13 +56,13 @@ public class FcmSender(IHttpClientFactory http, IOptions<PushOptions> options, I
     }
 
     /// <summary>The FCM message for the Web Push payload: a notification (shown by the system) plus the data the app uses to open the right page.</summary>
-    public static string BuildMessage(string deviceToken, string payload)
+    public static string BuildMessage(string deviceToken, string payload, PushDelivery? delivery = null)
     {
         using var doc = JsonDocument.Parse(payload);
         var root = doc.RootElement;
         string? Get(string name) => root.TryGetProperty(name, out var v) && v.ValueKind is not JsonValueKind.Null ? (v.ValueKind == JsonValueKind.String ? v.GetString() : v.ToString()) : null;
         var data = new Dictionary<string, string>();
-        foreach (var name in new[] { "link", "tag", "type", "token", "urgent", "number" })
+        foreach (var name in new[] { "link", "tag", "type", "token", "urgent", "number", "call" })
             if (Get(name) is { Length: > 0 } v) data[name] = v;
         var title = Get("title") ?? "Project Tracker";
         var message = new Dictionary<string, object?>
@@ -70,7 +73,7 @@ public class FcmSender(IHttpClientFactory http, IOptions<PushOptions> options, I
             ["android"] = new
             {
                 priority = "HIGH",
-                ttl = "86400s",
+                ttl = $"{(delivery ?? PushDelivery.Default).TtlSeconds}s",
                 notification = new { channel_id = "alerts", tag = Get("tag"), click_action = "FCM_PLUGIN_ACTIVITY" },
             },
         };

@@ -14,15 +14,18 @@ public class WebPushSender(IHttpClientFactory http) : IWebPushSender
 {
     private const int RecordSize = 4096;
 
-    public async Task<int?> SendAsync(PushSubscription subscription, string payload, VapidKeys keys, CancellationToken ct)
+    public Task<int?> SendAsync(PushSubscription subscription, string payload, VapidKeys keys, CancellationToken ct) =>
+        SendAsync(subscription, payload, keys, PushDelivery.Default, ct);
+
+    public async Task<int?> SendAsync(PushSubscription subscription, string payload, VapidKeys keys, PushDelivery delivery, CancellationToken ct)
     {
         var body = Encrypt(Base64Url.Decode(subscription.P256dh), Base64Url.Decode(subscription.Auth), Encoding.UTF8.GetBytes(payload));
         var endpoint = new Uri(subscription.Endpoint);
         using var req = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = new ByteArrayContent(body) };
         req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         req.Content.Headers.ContentEncoding.Add("aes128gcm");
-        req.Headers.Add("TTL", "86400");
-        req.Headers.Add("Urgency", "normal");
+        req.Headers.Add("TTL", delivery.TtlSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        req.Headers.Add("Urgency", delivery.Urgency);
         req.Headers.TryAddWithoutValidation("Authorization", $"vapid t={VapidToken(endpoint, keys)}, k={keys.PublicKey}");
         using var res = await http.CreateClient("push").SendAsync(req, ct);
         return (int)res.StatusCode;

@@ -33,6 +33,17 @@ public record VapidKeys(string PublicKey, string PrivateKey, string Subject);
 public interface IWebPushSender
 {
     Task<int?> SendAsync(PushSubscription subscription, string payload, VapidKeys keys, CancellationToken ct);
+
+    /// <summary>The same, with how long the push service may hold the message and how urgently it is delivered (an incoming call: high, under a minute).</summary>
+    Task<int?> SendAsync(PushSubscription subscription, string payload, VapidKeys keys, PushDelivery delivery, CancellationToken ct) => SendAsync(subscription, payload, keys, ct);
+}
+
+/// <summary>Web Push delivery hints (RFC 8030): TTL in seconds and Urgency ("very-low", "low", "normal" or "high").</summary>
+public record PushDelivery(int TtlSeconds, string Urgency)
+{
+    public static readonly PushDelivery Default = new(86400, "normal");
+    /// <summary>A ringing call: worthless once it stops ringing, so the push service drops it after 45 seconds, and wakes the device now.</summary>
+    public static readonly PushDelivery Ring = new(45, "high");
 }
 
 public record PushKeysRequest(string? P256dh, string? Auth);
@@ -196,11 +207,16 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
             foreach (var n in pending)
             {
                 var token = n.Link is { } l && l.StartsWith("/r/", StringComparison.Ordinal) ? l[3..] : null;
-                var payload = JsonSerializer.Serialize(new { title = n.Title, body = n.Body, link = NotificationEmailService.OrgLink(slugs.GetValueOrDefault(n.TenantId), n.Link), tag = n.Id, type = n.Type.ToString(), token }, Json);
+                // An incoming call rings: high urgency, a short life, and the call's id so the notification can offer Answer / Decline.
+                // A ring that waited (the worker was busy, or do-not-disturb held it) is not pushed any more: the call is no longer ringing.
+                var ring = IsRing(n);
+                if (ring && deliverableAt - n.CreatedAt > RingFor) continue;
+                var payload = JsonSerializer.Serialize(new { title = n.Title, body = n.Body, link = NotificationEmailService.OrgLink(slugs.GetValueOrDefault(n.TenantId), n.Link), tag = ring ? $"call-{CallIdOf(n)}" : n.Id.ToString(), type = n.Type.ToString(), token,
+                    call = ring ? CallIdOf(n) : null }, Json);
                 foreach (var s in subs.Where(s => s.UserId == n.UserId && s.Failures < 20))
                 {
                     int? status;
-                    try { status = await sender.SendAsync(s, payload, keys, ct); }
+                    try { status = await sender.SendAsync(s, payload, keys, ring ? PushDelivery.Ring : PushDelivery.Default, ct); }
                     catch (Exception ex) when (ex is not OperationCanceledException) { log.LogDebug(ex, "Push to a device failed"); status = null; }
                     if (status is >= 200 and < 300) { s.LastSuccessAt = now; s.Failures = 0; sent++; }
                     else if (status is 404 or 410) db.PushSubscriptions.Remove(s);   // the device unsubscribed or expired
@@ -212,4 +228,12 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
         await db.SaveChangesAsync(ct);
         return sent;
     }
+
+    /// <summary>How long a call rings before it counts as missed.</summary>
+    public static readonly TimeSpan RingFor = TimeSpan.FromSeconds(45);
+
+    /// <summary>The "X is calling" notice (not the "Missed call" one that follows it).</summary>
+    public static bool IsRing(Notification n) => n.Type == ProjectManagement.Domain.Enums.NotificationType.Call && n.DedupeKey is { } k && k.StartsWith("call:", StringComparison.Ordinal);
+
+    private static string? CallIdOf(Notification n) => n.Link is { } l && l.StartsWith("/calls/", StringComparison.Ordinal) ? l[7..] : null;
 }

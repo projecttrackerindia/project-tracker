@@ -32,6 +32,10 @@ public sealed class CallsController(CallService calls) : ApiControllerBase
     [HttpPost("{id:guid}/join")]
     public async Task<IActionResult> Join(Guid id, CancellationToken ct) => Ok(await calls.JoinAsync(id, ct));
 
+    /// <summary>Turns down a call that is ringing for you: it stops ringing on your other devices and the caller is told.</summary>
+    [HttpPost("{id:guid}/decline")]
+    public async Task<IActionResult> Decline(Guid id, CancellationToken ct) { await calls.DeclineAsync(id, ct); return NoContent(); }
+
     [HttpPost("{id:guid}/end")]
     public async Task<IActionResult> End(Guid id, CancellationToken ct) => Ok(await calls.EndAsync(id, ct));
 }

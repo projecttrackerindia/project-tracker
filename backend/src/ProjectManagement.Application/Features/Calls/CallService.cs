@@ -28,7 +28,7 @@ public record CallJoinDto(Guid CallId, string Url, string Token, string Room, st
 /// admit it), it hears each person separately, and its notes, minutes and follow-ups arrive like those of any other meeting.
 /// </summary>
 public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, IOptions<CallsOptions> options, ILiveKitRooms rooms, ProjectAccess access,
-    NotificationService notifications, Recorder recorder, AgentMeetingService agentMeetings, ILogger<CallService> log)
+    NotificationService notifications, Recorder recorder, AgentMeetingService agentMeetings, ILogger<CallService> log, ProjectManagement.Application.Features.Chat.IChatNotifier? liveFeed = null)
 {
     private CallsOptions O => options.Value;
     public const int MaxInvite = 100, MaxLiveHours = 12;
@@ -101,10 +101,14 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         db.CallParticipants.Add(new CallParticipant { TenantId = tenant, CallId = call.Id, UserId = me, Role = "host", CreatedAt = now });
         foreach (var u in invite) db.CallParticipants.Add(new CallParticipant { TenantId = tenant, CallId = call.Id, UserId = u, Role = "member", InvitedAt = now, CreatedAt = now });
         var starter = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.DisplayName).FirstAsync(ct);
+        // The "is calling" notice: its own kind (Calls), so it rings at once - it is never held for quiet hours or the daily digest the way an
+        // ordinary update ("Meetings") was - and it is pushed with high urgency to devices with no tab open (PushDispatcher).
         foreach (var u in invite)
-            await notifications.AddAsync(u, NotificationType.Meeting, $"{starter} is calling: {title}", "Tap to join the call.", $"/calls/{call.Id}", $"call:{call.Id:N}:{u:N}", ct: ct);
+            await notifications.AddAsync(u, NotificationType.Call, $"{starter} is calling", title, $"/calls/{call.Id}", RingKey(call.Id, u), ct: ct);
         recorder.Audit("call.started", "CallRoom", call.Id, new { kind, invited = invite.Count, agent = req.Agent });
         await db.SaveChangesAsync(ct);
+        // Open tabs ring straight away over the live connection (the incoming-call card with Answer / Decline), on any page.
+        await TellAsync(tenant, invite, CallEvents.Incoming, new { callId = call.Id, title, kind, fromId = me, fromName = starter, projectId, conversationId, startedAt = now }, ct);
 
         if (req.Agent)
         {
@@ -233,6 +237,98 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         return new CallJoinDto(call.Id, O.Url!, token, call.RoomName, Identity(me), call.Title, call.AgentEnabled, now.Add(ttl));
     }
 
+    /// <summary>
+    /// The person turns the call down from the ringing card or notification: it stops ringing on their other tabs and devices, the caller is
+    /// told, and it does not count as missed. (A declined invitation is kept as "left without joining"; they can still join later.)
+    /// </summary>
+    public async Task DeclineAsync(Guid id, CancellationToken ct = default)
+    {
+        var call = await VisibleAsync(id, ct);
+        var me = ctx.RequireUserId(); var now = clock.Now;
+        var row = await db.CallParticipants.FirstOrDefaultAsync(p => p.CallId == id && p.UserId == me, ct);
+        if (row is not null && row.JoinedAt is null) row.LeftAt ??= now;
+        // Nothing to ring any more: the "is calling" notice is read.
+        foreach (var n in await db.Notifications.Where(n => n.UserId == me && n.DedupeKey == RingKey(id, me) && n.ReadAt == null).ToListAsync(ct)) n.ReadAt = now;
+        await db.SaveChangesAsync(ct);
+        if (call.Status != "live") return;
+        var name = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Someone";
+        await TellAsync(call.TenantId, [me], CallEvents.Stopped, new { callId = id, reason = "declined" }, ct);
+        await TellAsync(call.TenantId, [call.StartedBy], CallEvents.Declined, new { callId = id, userId = me, name }, ct);
+    }
+
+    public static string RingKey(Guid callId, Guid userId) => $"call:{callId:N}:{userId:N}";
+    public static string MissedKey(Guid callId, Guid userId) => $"call-missed:{callId:N}:{userId:N}";
+
+    /// <summary>Live-connection events for calls (the browser's incoming-call card listens to them).</summary>
+    public static class CallEvents
+    {
+        public const string Incoming = "call.incoming", Stopped = "call.stopped", Declined = "call.declined";
+    }
+
+    private async Task TellAsync(Guid tenant, IEnumerable<Guid> users, string name, object payload, CancellationToken ct)
+    {
+        if (liveFeed is null) return;
+        // The call itself is already saved: a live connection that cannot be reached must not fail it (push and the inbox still reach them).
+        try { await liveFeed.ToUsersAsync(tenant, users, name, payload, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Could not send {Event} for a call", name); }
+    }
+
+    /// <summary>
+    /// "Missed call from X" for each invited person who neither joined nor declined while it rang (45 seconds) or before it ended. Runs with the
+    /// reminder worker; each missed call is written once (its dedupe key), into the inbox (and to devices, by the person's choice for Calls).
+    /// Their open tabs are told to stop ringing. Returns how many were written.
+    /// </summary>
+    public static async Task<int> NotifyMissedAsync(IServiceProvider sp, CancellationToken ct)
+    {
+        var db = sp.GetRequiredService<IAppDbContext>();
+        var router = sp.GetRequiredService<NotificationRouter>();
+        var now = sp.GetRequiredService<AppClock>().Now;
+        var rang = now - PushDispatcher.RingFor;
+        var since = now.AddDays(-1);
+        var rows = await (from p in db.CallParticipants.IgnoreQueryFilters()
+                          join c in db.CallRooms.IgnoreQueryFilters() on p.CallId equals c.Id
+                          where p.InvitedAt != null && p.InvitedAt > since && p.JoinedAt == null && p.LeftAt == null && p.UserId != c.StartedBy
+                                && (p.InvitedAt < rang || c.Status != "live")
+                          select new { p.UserId, p.TenantId, CallId = c.Id, c.Title, c.StartedBy, Live = c.Status == "live" })
+            .Take(500).ToListAsync(ct);
+        if (rows.Count == 0) return 0;
+        var keys = rows.Select(r => MissedKey(r.CallId, r.UserId)).ToList();
+        var done = (await db.Notifications.IgnoreQueryFilters().Where(n => n.DedupeKey != null && keys.Contains(n.DedupeKey)).Select(n => n.DedupeKey!).ToListAsync(ct)).ToHashSet();
+        var callers = rows.Select(r => r.StartedBy).Distinct().ToList();
+        var names = await db.Users.IgnoreQueryFilters().Where(u => callers.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var written = new List<(Guid Tenant, Guid User, Guid Call)>();
+        foreach (var r in rows)
+        {
+            var key = MissedKey(r.CallId, r.UserId);
+            if (!done.Add(key)) continue;
+            var n = new Notification
+            {
+                TenantId = r.TenantId, UserId = r.UserId, Type = NotificationType.Call, Title = ProjectManagement.Application.Common.Text.Truncate($"Missed call from {names.GetValueOrDefault(r.StartedBy) ?? "someone"}", 200)!,
+                Body = ProjectManagement.Application.Common.Text.Truncate(r.Live ? $"{r.Title} · still on, you can join" : r.Title, 500), Link = $"/calls/{r.CallId}", DedupeKey = key, CreatedAt = now,
+            };
+            // Written even if the person switched every channel for calls off: a missed call belongs in the inbox like a phone's call log.
+            if (!await router.ApplyAsync(n, ct)) n.InApp = true;
+            db.Notifications.Add(n);
+            written.Add((r.TenantId, r.UserId, r.CallId));
+        }
+        // The ringing notice is read now: the missed-call one takes its place.
+        var ringKeys = written.Select(w => RingKey(w.Call, w.User)).ToList();
+        foreach (var ring in await db.Notifications.IgnoreQueryFilters().Where(n => n.DedupeKey != null && ringKeys.Contains(n.DedupeKey) && n.ReadAt == null).ToListAsync(ct)) ring.ReadAt = now;
+        await db.SaveChangesAsync(ct);
+        var notifier = sp.GetService<ProjectManagement.Application.Features.Chat.IChatNotifier>();
+        if (notifier is not null)
+            foreach (var w in written)
+            {
+                try
+                {
+                    await notifier.ToUsersAsync(w.Tenant, [w.User], CallEvents.Stopped, new { callId = w.Call, reason = "missed" }, ct);
+                    await notifier.ToUsersAsync(w.Tenant, [w.User], ProjectManagement.Application.Features.Chat.ChatEvents.Notification, new { }, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException) { sp.GetService<ILogger<CallService>>()?.LogDebug(ex, "Could not tell a tab to stop ringing"); }
+            }
+        return written.Count;
+    }
+
     /// <summary>Ends the call for everyone (its host, whoever started it, or an owner/admin). The agent leaves with it and writes up its notes.</summary>
     public async Task<CallDto> EndAsync(Guid id, CancellationToken ct = default)
     {
@@ -243,6 +339,9 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         await MarkEndedAsync(call, clock.Now, ct);
         recorder.Audit("call.ended", "CallRoom", call.Id, new { call.PeakParticipants });
         await db.SaveChangesAsync(ct);
+        // Anyone it is still ringing for: stop. (Missed-call notices follow from the reminder worker.)
+        var ringing = await db.CallParticipants.AsNoTracking().Where(p => p.CallId == id && p.InvitedAt != null && p.JoinedAt == null).Select(p => p.UserId).ToListAsync(ct);
+        await TellAsync(call.TenantId, ringing, CallEvents.Stopped, new { callId = id, reason = "ended" }, ct);
         return await GetAsync(id, ct);
     }
 

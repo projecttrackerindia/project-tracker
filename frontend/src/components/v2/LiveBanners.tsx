@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { notificationApi } from '../../api/endpoints';
 import type { AppNotification } from '../../api/types';
 import { CHECK_NOTIFICATIONS } from '../../features/notifications/events';
+import { isRingNotice } from '../../features/calls/incomingCalls';
 import { useAuth } from '../../stores/auth';
 import { spring } from '../../lib/motion';
 import { Icon } from '../Icon';
@@ -12,7 +13,7 @@ import './v2.css';
 
 const MAX = 3;
 const HIDE_MS = 6000;
-/** Reminders have their own alert (ReminderAlerts); they do not get a second banner. */
+/** Reminders have their own alert (ReminderAlerts), and a ringing call its own card (IncomingCallHost); they do not get a second banner. */
 const SKIP = new Set(['Reminder', 'Nudge', 'DueSoon', 'Overdue']);
 
 /**
@@ -39,7 +40,7 @@ export function LiveBanners() {
       running = true;
       try {
         const page = await notificationApi.list(1, true);
-        const fresh = page.items.filter((n) => !seen.current.has(n.id) && !SKIP.has(n.type) && Date.parse(n.createdAt) > since.current - 2000);
+        const fresh = page.items.filter((n) => !seen.current.has(n.id) && !SKIP.has(n.type) && !isRingNotice(n) && Date.parse(n.createdAt) > since.current - 2000);
         fresh.forEach((n) => seen.current.add(n.id));
         if (fresh.length) {
           setItems((cur) => [...fresh.reverse(), ...cur].slice(0, MAX));
