@@ -60,6 +60,9 @@ const AdminPage = page(() => import('./features/admin/AdminPage'), 'AdminPage');
 // The five places of v2, the project pages, People and Settings (V2-PLAN §1).
 const HomePage = page(() => import('./features/home/HomePage'), 'HomePage');
 const WorkPage = page(() => import('./features/work/WorkPage'), 'WorkPage');
+// Release 1: the support desk and Quality (testers) as their own places.
+const DeskPage = page(() => import('./features/desk/DeskPage'), 'DeskPage');
+const QualityPage = page(() => import('./features/quality/QualityPage'), 'QualityPage');
 const ProjectsHome = page(() => import('./features/projects/ProjectsHome'), 'ProjectsHome');
 const ProjectPage = page(() => import('./features/projects/ProjectPage'), 'ProjectPage');
 const TalkPage = page(() => import('./features/talk/TalkPage'), 'TalkPage');
@@ -395,6 +398,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="approve/:id" element={<ApprovePage />} />
         <Route path="work" element={<Guard allow={work}><WorkPage /></Guard>} />
         <Route path="work/projects" element={<Guard allow={mProjects}><ProjectsHome /></Guard>} />
+        <Route path="desk" element={<Guard allow={mWork}><DeskPage /></Guard>} />
+        <Route path="quality" element={<Guard allow={mWork}><QualityPage /></Guard>} />
         <Route path="work/projects/:id" element={<Guard allow={mProjects}><ProjectPage /></Guard>} />
         <Route path="work/projects/:id/:tab" element={<ProjectTabMoved />} />
         <Route path="talk" element={<TalkPage />} />
