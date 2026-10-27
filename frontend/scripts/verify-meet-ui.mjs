@@ -149,9 +149,9 @@ try{
   assert.match(await kick.innerText(),/Notes/);assert.equal(await kick.getByRole('link',{name:'Join'}).count(),0);checks.push('past');
 
   // 7. The Calendar (Home › Calendar in v2) shows meetings and opens them in Talk; it has no meeting button of its own.
-  await page.goto(origin+'/preview-org/calendar');await page.locator('.hm-week').waitFor();
+  await page.goto(origin+'/preview-org/calendar');await page.locator('[data-testid="week-planner"]').waitFor();
   assert.equal(await page.getByRole('button',{name:/Scrum call|Schedule/}).count(),0);
-  await page.locator('.hm-ev',{hasText:'Atlas review'}).click();await page.waitForURL(/[?&](open|meeting)=p(:|%3A)/);
+  await page.locator('.wp-e',{hasText:'Atlas review'}).click();await page.locator('.wp-insp [title^="The notetaker is set"]').click();await page.waitForURL(/[?&](open|meeting)=p(:|%3A)/);
   await page.locator('.mt-inline').getByRole('heading',{name:'Atlas review'}).waitFor();checks.push('calendar-opens-meet');
 
   // 8. Old addresses lead to Meet.

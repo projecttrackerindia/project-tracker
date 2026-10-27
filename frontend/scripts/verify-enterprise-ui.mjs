@@ -129,7 +129,7 @@ try {
  calendarDenied=true;await page.getByRole('button',{name:'Check selected calendars',exact:true}).click();await page.locator('.outlook-error').waitFor({state:'visible'});
  assert.equal(await page.locator('.outlook-planning-grid').count(),0);assert.equal(await page.locator('.outlook-result').count(),0);
  checks.push({name:'outlook-revoked-access-clears-calendar-names-and-busy-results',passed:true});
- const beforeCalendarDisabled=calendarReads;calendarsEnabled=false;await page.reload();await page.locator('.hm-week').waitFor({state:'visible'});await page.waitForTimeout(400);
+ const beforeCalendarDisabled=calendarReads;calendarsEnabled=false;await page.reload();await page.locator('[data-testid="week-planner"]').waitFor({state:'visible'});await page.waitForTimeout(400);
  // Switched off by the administrator: the calendar shows no Outlook panel at all (no "awaiting setup" box).
  assert.equal(await page.locator('.outlook-availability').count(),0);
  assert.equal(await page.locator('.outlook-result').count(),0);assert.equal(await page.locator('.outlook-planning-grid').count(),0);assert.equal(calendarReads,beforeCalendarDisabled);

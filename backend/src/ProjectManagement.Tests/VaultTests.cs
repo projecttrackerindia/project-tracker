@@ -434,7 +434,7 @@ public class VaultTests(ApiFactory factory)
 
         Assert.Equal("STEP_UP_REQUIRED", (await owner.Post($"/api/v1/vault/items/{id}/versions/{v}/reveal", new { field = "password" })).ErrorCode);
         var secret = await EnableMfa(owner);
-        var old = await owner.Post($"/api/v1/vault/items/{id}/versions/{v}/reveal", new { field = "password", stepUp = await StepUp(owner, secret) });
+        var old = await owner.Post($"/api/v1/vault/items/{id}/versions/{v}/reveal", new { field = "password", copy = true, stepUp = await StepUp(owner, secret) });
         Assert.True(old.Ok, old.ToString());
         Assert.Equal(Password, S(old.Data!["value"]));
 

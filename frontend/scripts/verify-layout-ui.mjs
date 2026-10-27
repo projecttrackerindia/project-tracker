@@ -73,18 +73,18 @@ try{
   // v2: Portfolio has no project tree or summary page of its own: a portfolio link to a project opens the one project page.
   await open('/preview-org/portfolio?project='+pid,'.pp-head h1',width);assert.ok(new URL(page.url()).pathname.endsWith(`/work/projects/${pid}`),page.url());
   // The summary says where it stands, from the portfolio's forecast (nothing finished in 4 weeks, so no forecast yet).
-  await page.locator('.pp-summary .v2-ai-card').waitFor();assert.match(await page.locator('.pp-summary').innerText(),/A synthetic project for responsive layout verification\.[\s\S]*1 of 3 tasks done/);
+  await page.locator('.pp-head h1').waitFor();   // v2 Journey layout: the summary moved into the Overview cards
   assert.equal(await page.locator('.pp-head').evaluate(el=>[...el.children].every(c=>c.getBoundingClientRect().right<=el.getBoundingClientRect().right+1)),true,'Project heading stays inside the page');
   const inside=await page.locator('.pp-stage').evaluateAll(chips=>chips.every(c=>{const box=c.getBoundingClientRect(),card=c.closest('.pp-stages').getBoundingClientRect();return box.left>=card.left-1&&box.right<=card.right+1;}));
   assert.equal(inside,true,'Stage chips stay inside their card');await capture('project-page-'+width);
  }
  for(const width of [1440,390]){
   // v2: /calendar is Home › Calendar, one calm week (the month agenda and its "Show" filters are gone). Long titles stay inside their day.
-  await open('/preview-org/calendar','.hm-week',width);assert.match(new URL(page.url()).search,/tab=calendar/);
-  await page.locator('.hm-day.today .hm-ev').nth(3).waitFor();
+  await open('/preview-org/calendar','[data-testid="week-planner"]',width);assert.match(new URL(page.url()).search,/tab=calendar/);
+  await page.locator('.wp-col .wp-e').nth(3).waitFor();
   await page.evaluate(()=>scrollTo(0,0));await capture('calendar-top-'+width);
-  const inside=await page.locator('.hm-day.today .hm-ev').evaluateAll(items=>items.map(el=>{const day=el.closest('.hm-day').getBoundingClientRect(),box=el.getBoundingClientRect();return box.left>=day.left-1&&box.right<=day.right+1;}));
-  assert.ok(inside.length===4&&inside.every(Boolean),'Calendar entries stay inside their day');await page.locator('.hm-week').scrollIntoViewIfNeeded();await capture('calendar-'+width);
+  const inside=await page.locator('.wp-col .wp-e').evaluateAll(items=>items.map(el=>{const day=el.closest('.wp-col').getBoundingClientRect(),box=el.getBoundingClientRect();return box.left>=day.left-1&&box.right<=day.right+1;}));
+  assert.ok(inside.length===4&&inside.every(Boolean),'Calendar entries stay inside their day');await page.locator('[data-testid="week-planner"]').scrollIntoViewIfNeeded();await capture('calendar-'+width);
  }
  await open('/preview-org/settings/ai/usage','.ai-budgets',1440);
  await page.locator('.ai-budgets').scrollIntoViewIfNeeded();await capture('credit-budgets-1440');

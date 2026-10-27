@@ -63,7 +63,7 @@ try{
  for(const width of [1440,390]){
   const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height:1000});
   // Calendar shows meetings but makes none: the stand-up is scheduled in Meet, the one place for meetings.
-  await page.goto(origin+'/preview-org/calendar');await page.locator('.hm-week').waitFor();   // v2: Home › Calendar
+  await page.goto(origin+'/preview-org/calendar');await page.locator('[data-testid="week-planner"]').waitFor();   // v2: Home › Calendar
   assert.equal(await page.getByRole('button',{name:'Scrum call',exact:true}).count(),0,'No scrum call button on the Calendar');
   assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0,'Header Ask Agent removed');
   await page.goto(origin+'/preview-org/meet/upcoming');await page.getByRole('button',{name:'Schedule',exact:true}).click();   // v2: Talk › all meetings
@@ -106,7 +106,7 @@ try{
   assert.equal(await dialog.getByLabel('Project',{exact:true}).inputValue(),pid);checks.push(`project-meet-${width}`);
   await page.close();
  }
- const logo=await ctx.newPage();await logo.goto(origin+'/preview-org/calendar');await logo.locator('.hm-week').waitFor();
+ const logo=await ctx.newPage();await logo.goto(origin+'/preview-org/calendar');await logo.locator('[data-testid="week-planner"]').waitFor();
  await logo.emulateMedia({reducedMotion:'reduce'});assert.ok(await logo.locator('.v2-ask .v2-orb').count(),'v2: the Ask bar (with its AI orb) is on every page');
  await logo.screenshot({path:path.join(out,'header-agent.png'),animations:'disabled'});await logo.close();checks.push('header-and-reduced-motion');
  assert.deepEqual(errors,[]);await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,saves:saves.length,errors,scope:'Built frontend with synthetic fixtures; no external invitations or AI calls.'},null,2));console.log(JSON.stringify({checks,saves:saves.length,errors}));
