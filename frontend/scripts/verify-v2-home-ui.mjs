@@ -106,7 +106,7 @@ const watch = (page) => {
 };
 
 try {
-  for (const [theme, width] of [['light', 1440], ['dark', 1440], ['light', 390]]) {
+  for (const [theme, width] of [['light', 1440], ['dark', 1440], ['light', 640]]) {   // 390 is the phone's own Today: verify-phone-parity-ui
     const tag = `${width}${theme === 'dark' ? '-dark' : ''}`;
     const writes = [];
     let ctx = await make(theme, writes);
@@ -170,7 +170,7 @@ try {
       assert.equal(await page.locator('form.v2-ask').isVisible(), false);
       assert.equal(await page.locator('.v2-side .v2-new').isVisible(), false);
     }
-    if (width === 390) await fitsPhone(page, 'Home', assert);
+    if (width < 700) await fitsPhone(page, 'Home', assert);
     await shot(page, `home-${tag}.png`);
 
     // The row's own action runs in place (approve a timesheet), and Later (revealed on hover) moves a row to tomorrow.
@@ -183,12 +183,12 @@ try {
 
     // Calendar (s-calendar): mini month + filters + ✦ week line, the work week 9–6 with meetings at their real lengths, focus blocks, deadline
     // flags, reminder capsules and the now line, and the selected meeting on the right. From the sidebar on a desk, from Home's own tab on a phone.
-    if (width === 390) await page.getByRole('tab', { name: 'Calendar' }).click();
+    if (width < 700) await page.getByRole('tab', { name: 'Calendar' }).click();
     else await page.getByRole('link', { name: 'Calendar' }).first().click();
     await page.getByRole('heading', { level: 1, name: 'Calendar' }).waitFor();
     assert.match(page.url(), /tab=calendar/);
     await page.locator('.wp-e', { hasText: 'CRIF UAT sign-off' }).waitFor();
-    assert.equal(await page.locator('.wp-dh').count(), width === 390 ? 1 : 5, width === 390 ? 'a phone opens on the day' : 'a work week');
+    assert.equal(await page.locator('.wp-dh').count(), width < 700 ? 1 : 5, width < 700 ? 'a phone opens on the day' : 'a work week');
     const h = (await page.locator('.wp-e', { hasText: 'Portfolio review' }).boundingBox()).height;
     assert.ok(Math.abs(h - 73 * 1.25 + 2) < 3, `real durations: 75 min is ${h}px`);
     assert.ok(await page.locator('.wp-e.f').count() > 0, 'hatched focus blocks');
@@ -200,7 +200,7 @@ try {
     assert.match(await insp.innerText(), /in 18 min/);
     await insp.getByRole('link', { name: 'Join meeting' }).waitFor();
     assert.equal(await insp.getByRole('switch', { name: 'Notes by Project Tracker' }).getAttribute('aria-checked'), 'true');
-    if (width !== 390) {
+    if (width >= 700) {
       assert.equal(await page.locator('.wp-dh', { hasText: 'UAT' }).locator('.wp-flag').count(), 1, 'a deadline flag on the day header');
       const ai = page.getByRole('region', { name: 'This week' });
       assert.match(await ai.innerText(), /This week: .*meetings, .*focus/);
@@ -212,7 +212,7 @@ try {
       assert.ok(writes.includes(`POST /api/v1/meetings/${g(11)}/reschedule`), 'reschedule sent');
       assert.match(await page.locator('.wp-e', { hasText: 'Status call' }).first().getAttribute('title'), /recurring/, 'a recurring meeting is not dragged');
     }
-    if (width === 390) await fitsPhone(page, 'Calendar', assert);
+    if (width < 700) await fitsPhone(page, 'Calendar', assert);
     await shot(page, `calendar-${tag}.png`);
     await page.getByRole('button', { name: 'Subscribe in Google / Outlook ›' }).click();
     await page.getByRole('dialog').getByText('Subscribe in your calendar').waitFor();
@@ -227,7 +227,7 @@ try {
     await page.goto(`${origin}/preview-org/`);
     await page.getByText("You're all caught up.").waitFor();
     await page.getByText('Nothing needs you').waitFor();
-    if (width === 390) await fitsPhone(page, 'Home empty', assert);
+    if (width < 700) await fitsPhone(page, 'Home empty', assert);
     await shot(page, `home-empty-${tag}.png`);
     await ctx.close();
     checks.push(tag);

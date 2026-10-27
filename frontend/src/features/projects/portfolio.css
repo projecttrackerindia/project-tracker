@@ -546,3 +546,16 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
   .pf-wk-cols li { font-size: 14px; }
   .pf-wk-tg { padding: 4px 10px; font-size: 12px; }
 }
+
+/* Present on a phone: the slide fills the screen, swipe between slides, a compact top bar with ⋯, the app's bars, Ask and toasts hidden. */
+html.pf-presenting .v2-phone-bar, html.pf-presenting .v2-ask, html.pf-presenting .m-top, html.pf-presenting .toast-root, html.pf-presenting .v2-live { display: none !important; }
+.pf-present.phone { z-index: 3000; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+.pf-present.phone .pf-present-top { position: relative; height: 52px; gap: 8px; padding: 0 8px 0 16px; font-size: 14px; }
+.pf-present.phone .pf-ph-count { font-variant-numeric: tabular-nums; }
+.pf-present.phone .pf-ph-sp { flex: 1; }
+.pf-present.phone .pf-ph-more, .pf-present.phone .pf-exit { min-width: 44px; min-height: 44px; border: 0; border-radius: 22px; background: rgba(255, 255, 255, .1); color: #f5f5f7; font: inherit; font-size: 15px; font-weight: 600; padding: 0 14px; }
+.pf-ph-menu { position: absolute; right: 60px; top: 50px; z-index: 5; min-width: 200px; padding: 6px; border-radius: 14px; background: #2c2c2e; box-shadow: 0 12px 40px rgba(0, 0, 0, .5); }
+.pf-ph-menu button { display: block; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: #f5f5f7; font: inherit; font-size: 15px; text-align: left; }
+.pf-present.phone .pf-stage { flex: 1; min-height: 0; touch-action: pan-y; padding: 0 12px 12px; }
+.pf-present.phone .pf-count { display: none; }
+.pf-present.phone .pf-strip { display: none; }

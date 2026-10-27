@@ -208,6 +208,13 @@ try{
   await shot(page,'present-weekly-1440.png');
   await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'present fits the phone');
+  // Phone: a compact top bar (Week, n / N, ⋯, Done), no thumbnail strip, the app's bars hidden, and a swipe moves to the next slide.
+  await pres.getByRole('button',{name:'Done'}).waitFor();assert.equal(await pres.locator('.pf-strip').isVisible(),false);
+  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.v2-phone-bar,.v2-ask,.toast-root')].some(e=>e.getBoundingClientRect().height>0)),false,'bars hidden while presenting');
+  await pres.getByRole('button',{name:'More'}).click();await pres.getByRole('menuitemcheckbox',{name:/Weekly reports/}).waitFor();await shot(page,'present-phone-menu-390.png');await pres.getByRole('button',{name:'More'}).click();
+  const cnt=async()=>pres.locator('.pf-ph-count').innerText();const was=await cnt();
+  await page.locator('[data-testid="pf-stage"]').evaluate(el=>{const mk=(x)=>new Touch({identifier:1,target:el,clientX:x,clientY:300});el.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,touches:[mk(320)],changedTouches:[mk(320)]}));el.dispatchEvent(new TouchEvent('touchend',{bubbles:true,touches:[],changedTouches:[mk(80)]}));});
+  await page.waitForTimeout(200);assert.notEqual(await cnt(),was,'a swipe left moves to the next slide');
   await shot(page,'present-weekly-390.png');await page.setViewportSize({width:1440,height:900});
   checks.push('present-weekly-report');}
  await page.keyboard.press('Escape');await pres.waitFor({state:'detached'});

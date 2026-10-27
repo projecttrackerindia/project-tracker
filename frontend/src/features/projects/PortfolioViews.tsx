@@ -1,5 +1,6 @@
 import { Face } from '../../components/Face';
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useIsMobile } from '../../lib/mobile';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -440,17 +441,39 @@ export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items:
     const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
   }, [go, onClose]);
+  // Phones: the slide fills the screen, a swipe moves between slides, the app's bars and toasts step aside, the top bar is compact.
+  const phone = useIsMobile();
+  const [menu, setMenu] = useState(false);
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => { document.documentElement.classList.add('pf-presenting'); return () => document.documentElement.classList.remove('pf-presenting'); }, []);
   const cur = slides[Math.min(i, n - 1)];
   const note = cur.kind === 'decision' ? cur.item.why : cur.kind === 'weekly' ? `${cur.item.name}: the latest weekly report.` : brief.headlines[0] ?? 'Every project in one view.';
   const week = isoWeek(asOf ? new Date(asOf) : new Date());
   return (
-    <div className="pf-present" role="dialog" aria-modal="true" aria-label="Present decisions">
+    <div className={`pf-present${phone ? ' phone' : ''}`} role="dialog" aria-modal="true" aria-label="Present decisions">
+      {phone ? (
+        <div className="pf-present-top">
+          <b>Week {week}</b><span className="pf-ph-count">{i + 1} / {n}</span>
+          <span className="pf-ph-sp" />
+          {items.length > 0 && <button type="button" className="pf-ph-more" aria-label="More" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>⋯</button>}
+          <button type="button" className="pf-exit" onClick={onClose} autoFocus>Done</button>
+          {menu && (
+            <div className="pf-ph-menu" role="menu">
+              <button type="button" role="menuitemcheckbox" aria-checked={weekly} onClick={() => { setMenu(false); toggleWeekly(); }}>{weekly ? '✓ ' : ''}Weekly reports</button>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="pf-present-top">
         <b>Portfolio review · Week {week}</b>{who && <span>with {who}{role ? `, ${role}` : ''}</span>}
         {items.length > 0 && <button type="button" className={`pf-wk-tg ${weekly ? 'on' : ''}`} aria-pressed={weekly} onClick={toggleWeekly}>{weekly ? '✓ ' : '+ '}Weekly reports</button>}
         <button type="button" className="pf-exit" onClick={onClose} autoFocus>Esc to exit</button>
       </div>
-      <div className="pf-stage">
+      )}
+      <div className="pf-stage" data-testid="pf-stage"
+        onTouchStart={(e) => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY }; }}
+        onTouchEnd={(e) => { const s0 = touch.current; touch.current = null; if (!s0) return; const t = e.changedTouches[0]; const dx = t.clientX - s0.x, dy = t.clientY - s0.y;
+          if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) go(dx < 0 ? 1 : -1); }}>
         <span className="pf-count" aria-live="polite"><b>{i + 1}</b> of {n}</span>
         {slides.map((sl, k) => sl.kind === 'overview' ? <Overview key="overview" brief={brief} n={items.length} active={i === k} />
           : sl.kind === 'decision' ? <Slide key={sl.item.projectId} item={sl.item} filter={filter} active={i === k} />
