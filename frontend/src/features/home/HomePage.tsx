@@ -268,7 +268,8 @@ function YourDay({ team }: { team: boolean }) {
   const inbox = useWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { staleTime: 30_000 });
   // Time I logged today: the total in the heading; timer entries drawn at the hours they ran.
   const logged = useWsQuery(['time', 'sheet', today, 'me'], () => timeApi.timesheet({ from: today, to: today }), { staleTime: 60_000, retry: false, enabled: !team });
-  const loggedMin = (logged.data?.entries ?? []).reduce((n, t) => n + t.minutes, 0);
+  const loggedEntries = Array.isArray(logged.data?.entries) ? logged.data!.entries : [];
+  const loggedMin = loggedEntries.reduce((n, t) => n + t.minutes, 0);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const t = window.setInterval(() => setNow(new Date()), 60_000); return () => window.clearInterval(t); }, []);
   const nowH = hourOf(now);
@@ -321,7 +322,7 @@ function YourDay({ team }: { team: boolean }) {
             {r.title}<small>since {since}</small>
           </Link>
         ))}
-        {(logged.data?.entries ?? []).filter((t) => t.startedAt).map((t) => {
+        {loggedEntries.filter((t) => t.startedAt).map((t) => {
           const st = new Date(t.startedAt!); const a = hourOf(st); const b = a + (t.isRunning ? Math.max(.25, nowH - a) : t.minutes / 60);
           if (b <= DAY_START || a >= DAY_START + DAY_COLS) return null;
           return (

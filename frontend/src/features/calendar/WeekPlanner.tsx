@@ -112,6 +112,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const rem = useWsQuery(['reminders', 'list'], reminderApi.list, { staleTime: 60_000, retry: false });
   // Time this person logged this week: timer entries sit at the hours they ran; typed-in entries are totalled on the day.
   const logged = useWsQuery(['time', 'sheet', monday, 'me'], () => timeApi.timesheet({ from: monday, to: sunday }), { staleTime: 60_000, retry: false, placeholderData: (p) => p });
+  const loggedEntries = Array.isArray(logged.data?.entries) ? logged.data!.entries : [];
 
   const events = useMemo(() => (q.data ?? []).filter((e) => e.category !== 'Cancelled' && e.status !== 'Cancelled'), [q.data]);
   const projects = useMemo(() => [...new Set(events.map((e) => e.projectName).filter((n): n is string => !!n))].slice(0, 6), [events]);
@@ -273,7 +274,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                     <div key={d} className={`wp-dh${d === today ? ' tdy' : ''}`}>
                       {DOW3[dateOf(d).getDay()]}<b>{dateOf(d).getDate()}</b>
                       {layers.logged && (() => {
-                        const ents = (logged.data?.entries ?? []).filter((t) => t.workDate === d);
+                        const ents = loggedEntries.filter((t) => t.workDate === d);
                         const mins = ents.reduce((n, t) => n + t.minutes, 0);
                         if (!mins) return null;
                         const h = Math.floor(mins / 60), mm = mins % 60;
@@ -299,7 +300,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                   return (
                     <div key={d} className="wp-col" data-day={d}>
                       {d === today && nowH >= START && nowH <= END && <div className="wp-now" style={{ top: (nowH - START) * HR }} aria-label={`Now, ${clockH(nowH)}`} />}
-                      {layers.logged && (logged.data?.entries ?? []).filter((t) => t.startedAt && t.workDate === d).map((t) => {
+                      {layers.logged && loggedEntries.filter((t) => t.startedAt && t.workDate === d).map((t) => {
                         const st = new Date(t.startedAt!); const h0 = st.getHours() + st.getMinutes() / 60; const h1 = h0 + (t.isRunning ? Math.max(.25, (Date.now() - st.getTime()) / 3.6e6) : t.minutes / 60);
                         if (h1 <= START || h0 >= END) return null;
                         const top = Math.max(h0, START), bot = Math.min(h1, END);

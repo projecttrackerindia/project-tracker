@@ -102,7 +102,8 @@ try {
   await page.locator('.talk-row[data-row="Daily status call"]').waitFor();
   assert.deepEqual(await page.locator('.talk-filters .talk-chip').allInnerTexts(), ['All', 'Unread 1', 'Chats', 'Meetings']);
   assert.ok(await page.getByRole('textbox', { name: 'Search Messages' }).isVisible(), 'search at the top of the list');
-  assert.equal(await page.locator('.talk-row .talk-src').count(), await page.locator('.talk-row').count(), 'a source glyph on every row');
+  assert.equal(await page.locator('.talk-row.k-meeting .talk-src').count(), await page.locator('.talk-row.k-meeting').count(), 'a ▶ badge on every meeting');
+  assert.equal(await page.locator('.talk-row.k-meeting .talk-src.s-presence').count(), 0, 'presence only on people');
   assert.equal(await page.locator('.talk-row[data-row="MuleSoft Support"] .talk-dot').count(), 1, 'an unread dot');
   // the meeting is a rounded square, people are round
   const radius = async (sel) => page.locator(sel).first().evaluate((e) => parseFloat(getComputedStyle(e).borderTopLeftRadius));
