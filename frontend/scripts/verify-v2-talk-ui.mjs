@@ -104,7 +104,7 @@ try {
   const sq = await radius('.talk-row[data-row="Daily status call"] .talk-av');
   assert.ok(sq > 4 && sq < 20, `meeting avatar is a rounded square (${sq}px)`);
   assert.ok(await radius('.talk-row[data-row="MuleSoft Support"] .talk-av') >= 19, 'a group is round');
-  assert.match(await page.getByTestId('connect-mailbox').innerText(), /Rediffmail[\s\S]*Connect your mailbox/);
+  assert.equal(await page.getByTestId('connect-mailbox').count(), 0, 'v2: no mailbox row in the list; it is a banner under Mail');
   checks.push('one-list');
   await shot(page, 'list-1440-light.png');
 
@@ -112,17 +112,17 @@ try {
   await page.waitForFunction(() => location.search.includes('f=meetings'));
   assert.deepEqual(await page.locator('.talk-rows .talk-row').evaluateAll((els) => els.map((e) => e.getAttribute('data-row'))), ['Daily status call']);
   await page.locator('.talk-filters .ds-chip', { hasText: 'Mail' }).click();
+  await page.waitForFunction(() => location.search.includes('f=mail')); await page.getByTestId('connect-mailbox-banner').waitFor();
   assert.equal(await page.locator('.talk-rows .talk-row:not(.connect)').count(), 0);
-  assert.equal(await page.getByTestId('connect-mailbox').count(), 1, 'the connect row shows under Mail');
-  await page.locator('.talk-filters .ds-chip', { hasText: 'All' }).click();
-  checks.push('filters');
-
-  // Connect your mailbox opens the mailbox connection.
+  assert.match(await page.getByTestId('connect-mailbox-banner').innerText(), /Rediffmail[\s\S]*mailbox/);
+  // Connect opens the mailbox connection.
   await page.getByTestId('connect-mailbox').click();
   await page.getByRole('dialog').waitFor();
   await page.keyboard.press('Escape');
   await page.getByRole('dialog').waitFor({ state: 'detached' });
   checks.push('connect-mailbox');
+  await page.locator('.talk-filters .ds-chip', { hasText: 'All' }).click();
+  checks.push('filters');
 
   // A chat: the v2 header, the summary strip, the composer.
   await page.locator('.talk-row[data-row="Devraj Kumar"]').click();

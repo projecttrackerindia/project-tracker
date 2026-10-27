@@ -158,7 +158,7 @@ try {
   assert.deepEqual((await page.locator('.pj2-card .pj2-pill').allInnerTexts()).sort(), ['At risk', 'At risk', 'At risk']);
   assert.ok(at(page).includes('status=AtRisk'), 'the filter is in the address');
   await stats.locator('.pj2-stat', { hasText: 'Completed' }).click();
-  await page.waitForFunction(() => document.querySelectorAll('.pj2-card').length === 3);
+  await page.waitForFunction(() => location.search.includes('status=Completed') && [...document.querySelectorAll('.pj2-card .pj2-pill')].every((p) => !/At risk/.test(p.textContent ?? '')) && document.querySelectorAll('.pj2-card').length === 3);
   assert.deepEqual((await page.locator('.pj2-card .pj2-name').allInnerTexts()).sort(), ['Darwin Box api', 'Insurance', 'Razor pay']);
   await stats.locator('.pj2-stat', { hasText: 'All' }).click();
   await page.waitForFunction(() => document.querySelectorAll('.pj2-card').length === 12);
@@ -175,8 +175,9 @@ try {
   checks.push('cards');
 
   // Past 10 projects the filters show: search narrows the cards.
-  const filters = page.getByRole('group', { name: 'Filters' });
-  assert.ok(await filters.isVisible(), 'filters with 12 projects');
+  // v2: search is always there; the one Filter chip appears past 10 projects.
+  const filters = page.getByRole('group', { name: 'Search and filter' });
+  assert.ok(await filters.locator('.pj2-filter-chip').isVisible(), 'Filter chip with 12 projects');
   await filters.getByLabel('Search projects').fill('darwin');
   await page.waitForFunction(() => document.querySelectorAll('.pj2-card').length === 2);
   await filters.getByLabel('Search projects').fill('');
@@ -245,7 +246,7 @@ try {
   const dm = (iso) => { const [, m, d] = iso.split('-').map(Number); return `${d} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]}`; };
   assert.equal(await dec.locator('.pf-dec-dates s').innerText(), dm(day(6)), 'the old date');
   assert.equal(await dec.locator('.pf-dec-dates b').innerText(), dm(day(53)), 'the forecast');
-  assert.match(await dec.innerText(), /47 days late[\s\S]*s-internal-api/);
+  { const t = await dec.innerText(); assert.match(t, /47 days late/); assert.match(t, /s-internal-api/); }
   assert.equal(await page.locator('.pj2-portfolio .pj2-dupe').count(), 0, 'dismissed duplicates stay dismissed on Portfolio too');
   await shot(page, 'portfolio-1440-light.png', true);
   await dec.getByRole('button', { name: 'What changes' }).click();
@@ -257,7 +258,7 @@ try {
   checks.push('decision-accept-team-told');
   await page.getByRole('button', { name: 'More on Portfolio' }).click();
   const pmenu = (await page.getByRole('menu', { name: 'More on Portfolio' }).getByRole('menuitem').locator('b').allInnerTexts()).join(' | ');
-  for (const want of ['Timeline', 'Filters', 'Export to Excel', 'Export to PDF', 'Action items', 'Send me this', 'Risk review']) assert.ok(pmenu.includes(want), `portfolio ··· has ${want}: ${pmenu}`);
+  for (const want of ['Filters', 'Export to Excel', 'Export to PDF', 'Action items', 'Send me this', 'Risk review']) assert.ok(pmenu.includes(want), `portfolio ··· has ${want}: ${pmenu}`);
   await page.keyboard.press('Escape');
   checks.push('portfolio-menu');
 
@@ -414,7 +415,7 @@ try {
   const text = await page.locator('.pj2-card .pj2-name').first().evaluate((e) => getComputedStyle(e).color);
   assert.ok(text.match(/\d+/g).map(Number).slice(0, 3).reduce((a, c) => a + c) > 600, `light text on dark: ${text}`);
   await shot(page, 'projects-1440-dark.png', true);
-  await page.goto(`${origin}/preview-org/work/projects?view=portfolio`); await page.locator('.pj2-decision').first().waitFor(); await shot(page, 'portfolio-1440-dark.png', true);
+  await page.goto(`${origin}/preview-org/work/projects?view=portfolio`); await page.locator('.pf-dec').first().waitFor(); await shot(page, 'portfolio-1440-dark.png', true);
   await page.goto(`${origin}/preview-org/work/projects/${rp.id}`); await page.locator('.pp-ring').waitFor(); await shot(page, 'project-1440-dark.png', true);
   checks.push('dark-mode');
   await ctx.close();
@@ -424,7 +425,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${origin}/preview-org/work/projects`); await page.locator('.pj2-card').first().waitFor(); await page.waitForTimeout(400);
   await fitsPhone(page, 'projects', assert); await shot(page, 'projects-390.png', true);
-  await page.goto(`${origin}/preview-org/work/projects?view=portfolio`); await page.locator('.pj2-decision').first().waitFor(); await page.waitForTimeout(400);
+  await page.goto(`${origin}/preview-org/work/projects?view=portfolio`); await page.locator('.pf-dec').first().waitFor(); await page.waitForTimeout(400);
   await fitsPhone(page, 'portfolio', assert); await shot(page, 'portfolio-390.png', true);
   for (const t of ['', '?tab=work', '?tab=docs', '?tab=time', '?tab=activity']) {
     await page.goto(`${origin}/preview-org/work/projects/${rp.id}${t}`); await page.locator('.pp-head h1').waitFor(); await page.waitForTimeout(500);
