@@ -253,7 +253,7 @@ public class QualityService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var item = await work.CreateAsync(new CreateWorkItemRequest("ticket", title, description, c.ProjectId ?? run.ProjectId, req.AssigneeId, priority, WorkTypeId: type.Id), ct);
         result.LinkedWorkItemId = item.Id;
         result.UpdatedAt = clock.Now; result.UpdatedBy = ctx.UserId;
-        recorder.Audit("quality.bug.filed", "TestResult", result.Id, null, new { c.Key, item.Key });
+        recorder.Audit("quality.bug.filed", "TestResult", result.Id, null, new { CaseKey = c.Key, WorkItemKey = item.Key });
         await db.SaveChangesAsync(ct);
         return new FiledBugDto((await ToDtosAsync([result], ct))[0], item);
     }

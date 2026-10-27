@@ -18,6 +18,7 @@ import { DOW, MONTHS, formatTime, initials, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
+import { DotsMenu } from '../talk/DotsMenu';
 import { formatMinutes } from '../time/time';
 import { KIND_LABEL, inboxApi, type InboxBriefing, type InboxFilter, type InboxKind, type InboxRow } from './inboxApi';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -85,6 +86,7 @@ function greeting(name: string) {
 type HomeSeg = 'me' | 'team' | 'calendar';
 
 function ForYou({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) => void }) {
+  const nav = useNavigate();
   const me = useAuth((s) => s.ctx!.user);
   const today = todayISO();
   const phone = useIsMobile();
@@ -99,8 +101,19 @@ function ForYou({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) => void
           <div className="hm-date">{headDay(today)}</div>
           <h1 className="hm-h1">{greeting(me.displayName)}</h1>
         </div>
-        <Segmented label="Home" className="hm-seg" value={view as HomeSeg} options={segs}
-          onChange={(v) => (v === 'calendar' ? onTab('calendar') : onTab('for-you', v))} />
+        <div className="hm-heads">
+          <Segmented label="Home" className="hm-seg" value={view as HomeSeg} options={segs}
+            onChange={(v) => (v === 'calendar' ? onTab('calendar') : onTab('for-you', v))} />
+          {/* The Command Center's own views stay one click away (quiet ··· beside the switch). */}
+          <DotsMenu label="More on Home" items={[
+            { label: 'Assistant', hint: 'Your conversations with the assistant', icon: 'sparkle', onSelect: () => nav('/?tab=assistant') },
+            { label: 'Today', hint: 'Check-ins, meetings and "what if"', icon: 'target', onSelect: () => nav('/?tab=today') },
+            { label: 'Decisions', icon: 'checks', onSelect: () => nav('/?tab=decisions') },
+            { label: 'Audit trail', hint: 'Everything the agent did', icon: 'shield', onSelect: () => nav('/?tab=audit') },
+            { label: 'Dashboard', icon: 'dashboard', onSelect: () => nav('/?tab=dashboard') },
+            { label: 'Reminders', icon: 'bell', onSelect: () => nav('/?tab=reminders') },
+          ]} />
+        </div>
       </header>
       <Briefing q={briefing} />
       <YourDay team={team} />

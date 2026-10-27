@@ -129,7 +129,7 @@ try{
  await page.getByRole('heading',{name:'Good morning, Asha'}).waitFor();
  assert.equal(await page.locator('[data-attention]').count(),5);
  assert.ok(await page.getByText('moves 3 dependent tasks',{exact:false}).isVisible());checks.push('attention-with-evidence');
- assert.ok(await page.getByRole('link',{name:'Home'}).first().isVisible());checks.push('nav-entry');
+ assert.ok(await page.getByRole('link',{name:/^(Home|Today)/}).first().isVisible());checks.push('nav-entry');
  await shot(page,'command-1440.png',true);await noOverflow(page,'command 1440');
 
  await page.locator('[data-attention=check_in]').getByRole('button',{name:'Answer'}).click();
@@ -267,7 +267,7 @@ try{
  checks.push('plan-steps');
  await page.locator('.ai-rail .ai-new').click();await page.locator('.ai-hero h1').waitFor();assert.ok(!/[?&]c=/.test(page.url()),'a new chat leaves the old one');
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);await page.screenshot({path:path.join(out,'assistant-home-phone.png'),animations:'disabled'});await page.setViewportSize({width:1440,height:1000});
- await page.locator('.v2-rail-item.on',{hasText:'Home'}).waitFor();assert.equal(await page.getByRole('link',{name:'Assistant',exact:true}).count(),0,'no separate Assistant entry');
+ await page.locator('.v2-rail-item.on',{hasText:/(Home|Today)/}).waitFor();assert.equal(await page.getByRole('link',{name:'Assistant',exact:true}).count(),0,'no separate Assistant entry');
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'assistant-home-dark-1440.png'),fullPage:true,animations:'disabled'});
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','light'));
  await page.goto(origin+'/preview-org/ai');await page.waitForURL(/[?&]tab=assistant/);await page.locator('.ai-hero').waitFor();assert.ok(!new URL(page.url()).pathname.endsWith('/ai'),'the Assistant page leads to Home');
