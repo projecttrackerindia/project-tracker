@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ApiError, uploadFile } from '../../api/client';
-import { attachmentApi, projectApi, workApi, workspaceApi } from '../../api/endpoints';
+import { ApiError, get, uploadFile } from '../../api/client';
+import { attachmentApi, opsApi, projectApi, workApi, workspaceApi } from '../../api/endpoints';
 import type { Priority } from '../../api/types';
 import { workItemsApi, type WorkKind } from '../../api/workItemsApi';
 import { motion, useAnimationControls, useReducedMotion } from 'framer-motion';
@@ -126,6 +126,14 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const sla = useWsQuery(['work', 'sla'], workApi.sla, { enabled: type === 'ticket', staleTime: 5 * 60_000, retry: false });
   const projects = useWsQuery(['projects', 'new-sheet'], () => projectApi.list({ pageSize: 200, sort: 'name' }), { enabled: work, staleTime: 60_000 });
   const activeTypes = (types.data ?? []).filter((t) => t.isActive);
+  // Tickets: WhatsApp updates (only when the workspace's WhatsApp is connected and can send), who is on call, and similar open tickets.
+  const wa = useWsQuery(['whatsapp', 'status'], () => get<{ connected: boolean; messagingEnabled: boolean }>('/integrations/whatsapp/status'), { enabled: type === 'ticket', staleTime: 5 * 60_000, retry: false });
+  const waReady = type === 'ticket' && wa.data?.connected === true && wa.data.messagingEnabled === true;
+  const [notifyWa, setNotifyWa] = useState(true);
+  const ops = useWsQuery(['ops', 'settings'], opsApi.settings, { enabled: type === 'ticket', staleTime: 5 * 60_000, retry: false });
+  const [triageText, setTriageText] = useState('');
+  useEffect(() => { const t = window.setTimeout(() => setTriageText(type === 'ticket' ? text.trim() : ''), 600); return () => window.clearTimeout(t); }, [text, type]);
+  const triage = useWsQuery(['ops', 'triage', triageText], () => opsApi.triage({ title: triageText }), { enabled: triageText.length >= 6, staleTime: 60_000, retry: false });
   // A ticket's type from its words ("bug", "access"…), else the first active type.
   const wordType = activeTypes.find((t) => text.toLowerCase().includes(t.name.toLowerCase().replace(/s$/, ''))) ?? activeTypes[0];
   const chosenType = activeTypes.find((t) => t.id === workTypeId) ?? wordType;
@@ -186,7 +194,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
     const body: Parameters<typeof workItemsApi.create>[0] = { kind: 'task', title, priority: pr, assigneeId: owner?.id ?? null, dueDate: parsed.dueDate ?? null };
     if (type === 'ticket') {
       if (!chosenType) { toast('Add a work type first (Settings › Fields & types).', 'error'); return; }
-      k = 'ticket'; Object.assign(body, { kind: 'ticket', workTypeId: chosenType.id, projectId: projectId ?? null });
+      k = 'ticket'; Object.assign(body, { kind: 'ticket', workTypeId: chosenType.id, projectId: projectId ?? null, ...(waReady ? { notifyWhatsApp: notifyWa } : {}) });
     } else {
       if (!project) { toast('Choose the project it belongs to.', 'error'); return; }
       k = pkind; Object.assign(body, { kind: pkind, projectId: project.id, estimatedHours: pkind === 'task' ? parsed.estimatedHours ?? null : undefined });
@@ -231,10 +239,22 @@ function NewSheet({ onProject }: { onProject: () => void }) {
     : projectWork && !project ? 'Pick the project it belongs to.' : projectWork && inProject && project?.id === inProject.id ? `Adds it to ${inProject.name}.` : null;
   // One line on why: the service level, who was named, the type and project it understood. Only what is known.
   const slaMin = type === 'ticket' ? slaOf(pr) : null;
+  // Who is on call: the rota (routing rule) for this type, else the workspace's; round robin names the next person after the last one.
+  const rule = type === 'ticket' ? (ops.data?.rules ?? []).filter((r) => r.enabled && r.members.length > 0)
+    .sort((a, b) => Number(b.workTypeId === chosenType?.id) - Number(a.workTypeId === chosenType?.id))
+    .find((r) => r.workTypeId === chosenType?.id || r.workTypeId === null) ?? null : null;
+  const onCall = rule ? (rule.mode === 'round_robin'
+    ? rule.members[(rule.members.findIndex((m) => m.id === rule.lastAssigned?.id) + 1) % rule.members.length] : null) : null;
+  const first = (n: string) => n.split(' ')[0];
+  const callLine = type !== 'ticket' || owner ? null : onCall ? `${first(onCall.name)} is on call`
+    : rule ? `Goes to whoever on the ${rule.workType ?? 'desk'} rota has least open` : triage.data?.assignee ? `${first(triage.data.assignee.name)} solved similar${triage.data.assigneeReason ? ` (${triage.data.assigneeReason.split(' · ')[0]})` : ''}` : null;
+  const dupes = type === 'ticket' ? triage.data?.duplicates?.length ?? 0 : 0;
   const why = [
     goes,
     type === 'ticket' && chosenType ? `${chosenType.name}` : null,
     slaMin ? `${pr} SLA is ${spell(slaMin)}` : null,
+    callLine,
+    dupes ? `${dupes} similar ticket${dupes === 1 ? '' : 's'} open` : null,
     owner && parsed.assignee?.id === owner.id && owner.id !== me?.id ? `${owner.name.split(' ')[0]} named in your words` : null,
     projectWork && project && !goes ? `In ${project.name}` : null,
   ].filter(Boolean).join(' · ') || 'Tap any chip to change it. Everything else can be added later.';
@@ -300,6 +320,13 @@ function NewSheet({ onProject }: { onProject: () => void }) {
           </div>
           <p>{understood ? why : 'Type a sentence: what it is, how urgent, who and when.'}</p>
         </div>
+        {waReady && (
+          <label className="v2-new-wa" data-testid="notify-whatsapp">
+            <span className="v2-new-wa-ico" aria-hidden="true">◉</span>
+            <span className="v2-new-wa-t"><b>Notify on WhatsApp</b><small>The reporter gets updates on WhatsApp</small></span>
+            <input type="checkbox" role="switch" checked={notifyWa} onChange={(e) => setNotifyWa(e.target.checked)} aria-label="Notify on WhatsApp" />
+          </label>
+        )}
         <div className="v2-new-types" role="radiogroup" aria-label="Type">
           {TYPES.filter((t) => t.tile !== false).map((t) => (
             <button key={t.id} type="button" role="radio" aria-checked={type === t.id} className={`v2-new-type ${type === t.id ? 'on' : ''}`} disabled={!allowed(t.id)}

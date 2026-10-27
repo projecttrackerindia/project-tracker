@@ -186,13 +186,13 @@ const at = (page) => { const u = new URL(page.url()); return `${u.pathname.repla
 const waitFor = async (fn, what) => { for (let i = 0; i < 40; i++) { if (fn()) return; await new Promise((r) => setTimeout(r, 100)); } assert.fail(`timed out waiting for ${what}`); };
 
 try {
-  for (const [theme, width] of [['light', 1440], ['dark', 1440], ['light', 390]]) {
+  for (const [theme, width] of [['light', 1440], ['dark', 1440], ['light', 640]]) {   // at 390 My Work is the phone's FOCUS NOW: verify-phone-parity-ui
     const tag = `${width}${theme === 'dark' ? '-dark' : ''}`;
     const state = { items: seed(), writes: [], lists: [], bump: false };
     const ctx = await make(theme, state);
     const page = await ctx.newPage();
     watch(page);
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+    await page.setViewportSize({ width, height: width < 700 ? 844 : 1000 });
     if (theme === 'dark') { await page.goto(`${origin}/preview-org/work`); assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark'); }
 
     // ---------------------------------------------------------------- My Work: the Focus Stack, today's ring, one suggestion, Today / This week / Later
@@ -235,7 +235,7 @@ try {
     const [r0, g0, b0] = red.match(/\d+/g).map(Number); assert.ok(r0 > 180 && g0 < 130 && b0 < 130, `overdue is red (${red})`);
     assert.equal(await lateRow.locator('.mw-flag').innerText(), '!');
     await list.getByRole('button', { name: '＋ Add item' }).waitFor();
-    if (width === 390) await fitsPhone(page, 'My Work', assert);
+    if (width < 700) await fitsPhone(page, 'My Work', assert);
     // Pull request and build status as small chips: on the front card and in the list, one request for the page.
     await front.getByTestId('pr-chips').getByRole('link', { name: 'Pull request 412, Open, checks failing' }).waitFor();
     await list.locator('.mw-r', { hasText: 'CreditVision score API' }).getByRole('link', { name: 'Pull request 398, Merged, checks passing' }).waitFor();
@@ -331,7 +331,7 @@ try {
     await panel.getByTestId('wkp-file-input').setInputFiles({ name: 'vpn-log.txt', mimeType: 'text/plain', buffer: Buffer.from('VPN dropped.') });
     await panel.locator('.wkp-file', { hasText: 'vpn-log.txt' }).waitFor();
     await waitFor(() => state.writes.some((w) => w.ep.endsWith('/attachments')), 'the upload');
-    if (width === 390) { await fitsPhone(page, 'Work panel', assert); const pb = await panel.boundingBox(); assert.ok(pb.width >= 389, 'the panel fills a phone'); }
+    if (width < 700) { await fitsPhone(page, 'Work panel', assert); const pb = await panel.boundingBox(); assert.ok(pb.width >= 360, 'the panel is a full-height sheet'); }
     await shot(page, `panel-after-${tag}.png`);
     // An issue cannot take time: the comment posts and says why.
     await page.goto(`${origin}/preview-org/work?item=${state.items[1].id}`);
@@ -421,7 +421,7 @@ try {
     assert.equal(await show.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected'), 'true');
     await page.locator('.wk-timeline').getByText('Development').first().waitFor();
     await page.goto(`${origin}/preview-org/work?project=${pid}`);
-    if (width === 390) await fitsPhone(page, 'Project work', assert);
+    if (width < 700) await fitsPhone(page, 'Project work', assert);
     await page.keyboard.press('Escape');
     checks.push(`project-${tag}`);
 
@@ -441,7 +441,7 @@ try {
     // Tap a chip to change it: the work type is picked from the kind chip.
     await sheet.getByLabel('Change type').selectOption({ label: 'Ticket · Access request' });
     await sheet.locator('.v2-understood p', { hasText: 'Access request' }).waitFor();
-    if (width === 390) await fitsPhone(page, 'New sheet', assert);
+    if (width < 700) await fitsPhone(page, 'New sheet', assert);
     await shot(page, `new-${tag}.png`);
     await sheet.getByRole('button', { name: 'Create ticket' }).click();
     await waitFor(() => state.writes.some((w) => w.ep === '/api/v1/work-items'), 'the create');

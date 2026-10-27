@@ -1,0 +1,77 @@
+/* Today on a phone (apple/s-mobile, apple/s-phone). Tokens only, so dark mode follows the design system. */
+.pt { display: grid; gap: 0; padding-top: 4px; min-width: 0; }
+.pt-date { font-size: 13px; font-weight: 600; color: var(--ds-text-3); text-transform: uppercase; letter-spacing: .02em; }
+.pt-h1 { margin: 2px 0 10px; font-size: 34px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; color: var(--ds-text); }
+.pt-brief { margin: 0 0 2px; font-size: 15px; line-height: 1.4; color: var(--ds-text-2); }
+.pt-brief b { color: var(--ds-text); font-weight: 600; }
+.pt-faint { color: var(--ds-text-3); font-size: 13px; margin: 6px 0; }
+
+.pt-card { background: var(--ds-surface); border-radius: 18px; box-shadow: var(--ds-card-shadow); padding: 6px 16px; margin-top: 12px; min-width: 0; }
+.pt-li { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 0; font-size: 14px; }
+.pt-li + .pt-li { border-top: .5px solid var(--ds-separator); }
+.pt-li.done { opacity: .5; }
+.pt-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.pt-li-main { flex: 1; min-width: 0; display: grid; gap: 1px; color: var(--ds-text); text-decoration: none; }
+.pt-li-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.pt-li-main small { font-size: 12px; color: var(--ds-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-act { flex: none; min-height: 36px; min-width: 64px; padding: 0 14px; border-radius: 18px; border: 0; background: var(--ds-fill); color: var(--ds-accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; position: relative; }
+.pt-act::after { content: ''; position: absolute; inset: -4px; }   /* 44px touch target */
+.pt-act:disabled { opacity: .55; }
+
+/* the outage pill (Live Activity) */
+.pt-la { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; padding: 12px 14px; border-radius: 22px; background: #1c1c1e; color: #fff; text-decoration: none; min-width: 0; }
+.pt-pulse { width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 59, 48, .25); display: grid; place-items: center; flex: none; }
+.pt-pulse i { width: 14px; height: 14px; border-radius: 50%; background: #ff453a; animation: pt-pulse 1.6s ease-in-out infinite; }
+@keyframes pt-pulse { 50% { transform: scale(.7); opacity: .6; } }
+.pt-la-main { flex: 1; min-width: 0; display: grid; }
+.pt-la-main b { font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-la-main small { font-size: 12px; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-la-clock { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; color: #ff6961; flex: none; }
+[data-theme='dark'] .pt-la { background: #2c2c2e; box-shadow: 0 0 0 .5px rgba(255, 255, 255, .12); }
+@media (prefers-reduced-motion: reduce) { .pt-pulse i { animation: none; } }
+
+/* up next */
+.pt-next { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.pt-next-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.pt-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--ds-accent); }
+.pt-next-t { font-size: 15px; font-weight: 600; color: var(--ds-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-next-main small { font-size: 12px; color: var(--ds-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-join { flex: none; display: grid; place-items: center; min-height: 44px; padding: 0 20px; border-radius: 22px; background: var(--ds-accent-fill); color: #fff; font-size: 15px; font-weight: 600; text-decoration: none; }
+
+/* one-tap timesheet approval */
+.pt-ts { padding: 16px; }
+.pt-ts-hd { display: flex; align-items: center; gap: 12px; }
+.pt-ts-hd > div { display: grid; min-width: 0; }
+.pt-ts-hd b { font-size: 16px; font-weight: 600; color: var(--ds-text); }
+.pt-ts-hd small { font-size: 13px; color: var(--ds-text-3); }
+.pt-ts-av { width: 40px; height: 40px; border-radius: 50%; font-size: 14px; flex: none; }
+.pt-ts-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin: 14px 0 6px; }
+.pt-ts-days span { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; height: 70px; font-size: 11px; font-weight: 600; color: var(--ds-text-3); }
+.pt-ts-days i { width: 100%; min-height: 3px; border-radius: 5px 5px 2px 2px; background: var(--ds-fill-strong); }
+.pt-ts-days span.on i { background: var(--ds-accent-fill); opacity: .85; }
+.pt-ts-lines { margin-top: 6px; }
+.pt-dl { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding: 9px 0; border-bottom: .5px solid var(--ds-separator); color: var(--ds-text); }
+.pt-dl span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-dl b { font-weight: 600; flex: none; font-variant-numeric: tabular-nums; }
+.pt-dl.total { border-bottom: 0; }
+.pt-rec { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0 12px; font-size: 13px; line-height: 1.4; }
+.pt-rec span { flex: none; font-weight: 700; }
+.pt-rec.ok { color: var(--ds-success); }
+.pt-rec.warn { color: var(--ds-warning); }
+.pt-note { width: 100%; box-sizing: border-box; margin-bottom: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--ds-outline); background: var(--ds-surface-2); color: var(--ds-text); font: inherit; font-size: 15px; resize: vertical; }
+.pt-approve, .pt-return { display: block; width: 100%; min-height: 48px; border-radius: 14px; border: 0; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; }
+.pt-approve { background: var(--ds-accent-fill); color: #fff; }
+.pt-return { margin-top: 8px; background: var(--ds-fill); color: var(--ds-accent); }
+.pt-approve:disabled, .pt-return:disabled { opacity: .55; }
+.pt-ts-done { margin: 4px 0 0; font-size: 15px; font-weight: 600; color: var(--ds-success); text-align: center; }
+
+/* My Work on a phone: FOCUS NOW (apple/s-mobile "Android · My Work") */
+.pw-focus { background: var(--ds-surface); border-radius: 18px; box-shadow: var(--ds-card-shadow); padding: 16px; margin: 4px 0 12px; display: grid; gap: 4px; min-width: 0; }
+.pw-focus .pt-eyebrow { color: var(--ds-orange); }
+.pw-focus-t { min-height: 44px; font-size: 17px; font-weight: 600; color: var(--ds-text); background: none; border: 0; padding: 0; text-align: left; font-family: inherit; cursor: pointer; }
+.pw-focus small { font-size: 13px; color: var(--ds-text-3); }
+.pw-focus-acts { display: flex; gap: 8px; margin-top: 10px; }
+.pw-focus-acts button { flex: 1; min-height: 44px; border-radius: 22px; border: 0; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.pw-start { background: var(--ds-accent-fill); color: #fff; }
+.pw-start.running { background: var(--ds-dark); color: var(--ds-on-dark); font-variant-numeric: tabular-nums; }
+.pw-log { background: var(--ds-fill); color: var(--ds-accent); }
