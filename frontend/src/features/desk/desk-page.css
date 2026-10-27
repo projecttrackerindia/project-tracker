@@ -95,3 +95,13 @@
 .dq-allclear-stats dt { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ds-text-3, #86868b); }
 .dq-allclear-stats dd { margin: 4px 0 0; font-size: 24px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .dq-allclear-acts { display: flex; gap: 8px; }
+
+/* Queue row meta + inline Assign / Resolve (apple/s-desk) */
+.dq-tmeta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ds-text-3); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dq-tmeta .dq-pill { font-size: 10.5px; padding: 1px 7px; }
+.dq-t { position: relative; }
+.dq-tacts { display: none; gap: 5px; position: absolute; right: 10px; top: 7px; padding-left: 18px; background: linear-gradient(90deg, transparent, var(--dq-tacts-bg, var(--dq-fill2)) 18px); }
+.dq-t.on { --dq-tacts-bg: transparent; }
+.dq-tacts .dq-btn.sm { height: 22px; padding: 0 9px; font-size: 11.5px; }
+.dq-t:hover .dq-tacts, .dq-t:focus-within .dq-tacts { display: flex; }
+@media (hover: none) { .dq-t:hover .dq-tacts { display: none; } }

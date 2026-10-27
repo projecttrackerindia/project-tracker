@@ -91,7 +91,12 @@ try{
  const railMail=page.locator('.v2-rail-item.on',{hasText:'Mail'});await railMail.waitFor();assert.match(await railMail.innerText(),/2/);
  await page.goto(origin+'/preview-org/talk?f=mail');await page.waitForURL(/\/mail$/);await page.locator('[data-testid="ml-row"]').first().waitFor();checks.push('routes');
 
- assert.equal(await page.locator('[data-testid="ml-row"]').count(),3);
+ // Focused / Other: the no-reply payslip goes to Other; the subtitle counts unread mail, sorted by the assistant (needs-reply first).
+ assert.equal(await page.locator('[data-testid="ml-row"]').count(),2);
+ assert.equal(await page.getByTestId('ml-subtitle').innerText(),'2 unread · sorted by AI');
+ await page.getByTestId('ml-lanes').getByRole('tab',{name:/^Other/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
+ assert.match(await page.locator('[data-testid="ml-row"]').first().innerText(),/Payroll/);assert.equal(await page.getByTestId('ml-subtitle').innerText(),'0 unread · sorted by AI');
+ await page.getByTestId('ml-lanes').getByRole('tab',{name:'Focused'}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);checks.push('focused-other');
  assert.match(await page.locator('[data-testid="ml-row"]').first().innerText(),/Ravi Kumar[\s\S]*Needs reply/);
  assert.match(await page.locator('[data-testid="ml-row"]').nth(1).innerText(),/Kiran[\s\S]*Invoice/);
  assert.equal(await page.locator('.ml-row.unread').count(),2);
@@ -102,12 +107,14 @@ try{
  await page.locator('.ml-side').getByRole('button',{name:/^Needs reply/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
  await page.locator('.ml-side').getByRole('button',{name:/^Waiting on others/}).click();await page.locator('[data-testid="ml-row"]',{hasText:'CRIF'}).waitFor();
  await page.locator('[data-testid="ml-row"]').first().click();await page.getByTestId('ml-followup').waitFor();assert.match(await page.getByTestId('ml-followup').innerText(),/No reply from CRIF Ops in 5 days — remind\?/);
- await page.locator('.ml-side').getByRole('button',{name:/^Inbox/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===3);checks.push('mailboxes');
+ await page.locator('.ml-side').getByRole('button',{name:/^Inbox/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);checks.push('mailboxes');
  // Reading renders mail as text, never HTML; the assistant reads it on opening: summary, action items, three reply chips.
  await page.locator('[data-testid="ml-row"]').first().click();await page.locator('.ml-msg-body').waitFor();
  assert.match(await page.locator('.ml-msg-body').innerText(),/<script>/);assert.equal(await page.evaluate(()=>window.mailUnsafe),undefined);
  await page.getByTestId('ml-summary').waitFor();assert.match(await page.getByTestId('ml-summary').innerText(),/Ravi needs confirmation[\s\S]*Urgent/);
  assert.match(await page.getByRole('list',{name:'Action items'}).innerText(),/Confirm the release date/);
+ // Each action item carries an owner and a due day read from its wording, and Make task (no linked project: the New sheet, prefilled).
+ const act=page.getByRole('list',{name:'Action items'}).getByRole('listitem').first();assert.match(await act.innerText(),/You/);assert.ok(await act.getByRole('button',{name:'Make task'}).isVisible());checks.push('action-items');
  assert.deepEqual(await page.getByRole('group',{name:'Suggested replies'}).getByRole('button').allInnerTexts().then(t=>t.map(x=>x.replace(/\s+/g,' ').trim())),['CONCISE Confirm Friday','WARM Ask for details']);
  await shot(page,'read-1440.png');checks.push('read-assistant');
  await page.locator('.mb-task',{hasText:'W-2'}).getByRole('button',{name:'Apply update'}).click();
@@ -129,7 +136,7 @@ try{
  assert.equal(sentReply.b.account,'google');assert.equal(sentReply.b.replyToId,'a1');assert.equal(sentReply.b.replyAll,true);assert.equal(sentReply.b.confirmed,true);assert.match(sentReply.b.body,/> Hi Asha/);
  checks.push('reply-all');
  // Archive takes it out of the inbox (and Archive holds it).
- await page.getByTestId('ml-reader').getByRole('button',{name:'Archive',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);
+ await page.getByTestId('ml-reader').getByRole('button',{name:'Archive',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
  await page.locator('.ml-side').getByRole('button',{name:/^Archive/}).click();await page.locator('[data-testid="ml-row"]',{hasText:'Ravi'}).waitFor();checks.push('archive');
  // Natural-language search: what it understood, then the matches.
  await page.getByLabel('Search mail').fill('mails from kiran about invoice');await page.getByLabel('Search mail').press('Enter');

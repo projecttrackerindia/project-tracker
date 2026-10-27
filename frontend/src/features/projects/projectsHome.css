@@ -241,3 +241,11 @@
 .pb-bar i { display: block; height: 100%; border-radius: 3px; }
 .pb-meta { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ds-text-4); font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) { .pb-board { grid-template-columns: repeat(5, 78vw); scroll-snap-type: x mandatory; } .pb-col { scroll-snap-align: start; } }
+
+/* Stage names under the pass dots (apple/s-projects) */
+.pa-foot > span:first-child { min-width: 0; flex: 1; }
+.pa-gn { display: flex; gap: 6px; flex-wrap: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); margin-top: 5px; font-size: 10.5px; font-weight: 500; line-height: 1.2; opacity: .75; max-width: 100%; animation: pa-gn-in .3s ease both; }
+.pa-gn span { white-space: nowrap; }
+.pa-gn span.f { display: none; }
+.pa-gn span.cur { opacity: 1; font-weight: 700; }
+@keyframes pa-gn-in { from { opacity: 0; transform: translateY(3px); } to { opacity: .75; transform: none; } }
