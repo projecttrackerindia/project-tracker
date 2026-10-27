@@ -308,3 +308,23 @@
   .call-prejoin .lk-prejoin { border-radius: 24px; padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .cs .cs-btn:not(:disabled):active { transform: none; } }
+
+/* ---- An incoming call: a card at the top of the screen on every page and layout, above everything but dialogs. ---- */
+.call-incoming-stack { position: fixed; top: max(16px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 1200; display: flex; flex-direction: column; gap: 10px; width: min(500px, calc(100vw - 32px)); pointer-events: none; }
+.call-incoming { pointer-events: auto; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 18px; background: var(--surface, #fff); color: var(--text, inherit); border: 1px solid var(--border, rgba(0,0,0,.08)); box-shadow: 0 18px 50px rgba(0,0,0,.22); animation: call-incoming-in .22s ease-out; }
+.call-incoming-ico { flex-shrink: 0; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--success, #1a9e55); animation: call-incoming-pulse 1.4s ease-out infinite; }
+.call-incoming-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.call-incoming-text b { font-size: 15px; line-height: 1.25; overflow-wrap: anywhere; }
+.call-incoming-text span { font-size: 13px; color: var(--text-muted, #666); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.call-incoming-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.call-incoming-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.call-incoming .btn.call-incoming-decline { background: #d93025; border-color: transparent; color: #fff; }
+.call-incoming .btn.call-incoming-answer { background: #1a9e55; border-color: transparent; color: #fff; }
+@keyframes call-incoming-in { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+@keyframes call-incoming-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success, #1a9e55) 55%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
+@media (max-width: 480px) {
+  .call-incoming { flex-wrap: wrap; }
+  .call-incoming-actions { width: 100%; }
+  .call-incoming-actions .btn { flex: 1; justify-content: center; min-height: 42px; }
+}
+@media (prefers-reduced-motion: reduce) { .call-incoming, .call-incoming-ico { animation: none; } }

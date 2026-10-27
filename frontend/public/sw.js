@@ -1,6 +1,6 @@
 /* Project Tracker service worker: the app shell for offline start, push notifications, and opening them.
  * Data from the API is never cached here - it belongs to whoever is signed in. */
-const SHELL = 'pm-shell-v7';
+const SHELL = 'pm-shell-v8';
 
 /** The page and the scripts and styles it names, so the app can start without a connection. */
 async function cacheShell() {
@@ -64,6 +64,9 @@ self.addEventListener('push', (event) => {
   // A reminder carries its one-time key: Done and Snooze work right from the notification, even with the app closed
   // (where the browser shows buttons - Chrome, Edge, Android; elsewhere a tap opens it).
   const reminder = !!data.token;
+  // An incoming call: it rings (the device's own sound and a long buzz when no open page can ring), stays until answered, and offers
+  // Answer / Decline. An open page shows its own incoming-call card and ringtone.
+  const call = data.type === 'Call' && data.call ? String(data.call) : null;
   // A request to sign in somewhere else is urgent and short-lived: it stays on screen until answered, buzzes, and opens the approval screen.
   const signIn = data.type === 'SignInRequest';
   const urgent = reminder || URGENT.includes(data.type);
@@ -72,7 +75,15 @@ self.addEventListener('push', (event) => {
     const pages = wins.filter((w) => new URL(w.url).origin === self.location.origin);
     // An open page plays its own (distinct) alert sound, so the system notification stays silent - but only if the page really did: when
     // the page cannot make sound yet, or the app is closed, the notification makes the device's own sound instead.
-    const played = (await Promise.all(pages.map((w) => askPage(w, { type: 'pm-push', kind, notificationType: data.type || '', tag: data.tag || '' })))).some(Boolean);
+    const played = (await Promise.all(pages.map((w) => askPage(w, { type: 'pm-push', kind, notificationType: data.type || '', tag: data.tag || '', call, title: data.title || '' })))).some(Boolean);
+    if (call) {
+      return self.registration.showNotification(data.title || 'Incoming call', {
+        body: data.body || '', tag: `call-${call}`, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
+        data: { link: data.link || '/', call }, requireInteraction: true, renotify: true, silent: played,
+        vibrate: [500, 250, 500, 250, 500, 250, 500],
+        actions: [{ action: 'answer', title: 'Answer' }, { action: 'decline', title: 'Decline' }],
+      });
+    }
     return self.registration.showNotification(data.title || 'Project Tracker', {
       body: data.body || '', tag: data.tag || undefined, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
       data: { link: data.link || '/', token: data.token || null },
@@ -92,6 +103,14 @@ self.addEventListener('notificationclick', (event) => {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
       body: JSON.stringify(event.action === 'done' ? { action: 'done' } : { action: 'snooze', preset: '1h' }),
     }).catch(() => undefined));
+    return;
+  }
+  const call = event.notification.data && event.notification.data.call;
+  if (call && event.action === 'decline') {
+    // Turned down: an open page tells the server (it holds the sign-in); with none open the call simply stops ringing here.
+    event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      for (const w of wins.filter((x) => new URL(x.url).origin === self.location.origin)) w.postMessage({ type: 'pm-call', action: 'decline', callId: call });
+    }));
     return;
   }
   const link = new URL((event.notification.data && event.notification.data.link) || '/', self.location.origin).href;

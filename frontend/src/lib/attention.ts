@@ -28,15 +28,29 @@ const context = () => {
   return audio;
 };
 
-/** Browsers only allow sound after the person has touched the page once: get ready on the first click, key press or tap. */
+const GESTURES = ['pointerdown', 'keydown', 'touchend', 'click'] as const;
+let priming = false;
+
+/**
+ * Browsers only allow sound after the person has touched the page: get ready on a click, key press or tap. It keeps listening until the
+ * sound is really allowed (a first tap that the browser did not count, or iOS suspending the sound when the app went to the background,
+ * would otherwise leave a later ringtone silent), and gets ready again whenever the browser suspends it.
+ */
 export function primeSound() {
-  const once = () => {
-    void context()?.resume().catch(() => undefined);
-    window.removeEventListener('pointerdown', once);
-    window.removeEventListener('keydown', once);
-  };
-  window.addEventListener('pointerdown', once);
-  window.addEventListener('keydown', once);
+  if (priming || typeof window === 'undefined') return;
+  priming = true;
+  let listening = false;
+  const off = () => { for (const g of GESTURES) window.removeEventListener(g, unlock, true); listening = false; };
+  const on = () => { if (listening) return; listening = true; for (const g of GESTURES) window.addEventListener(g, unlock, { capture: true, passive: true }); };
+  function unlock() {
+    const c = context();
+    if (!c) { off(); return; }
+    // A silent, one-sample sound inside the gesture: Safari only lets a context make sound once it has played something from a gesture.
+    try { const b = c.createBuffer(1, 1, 22050); const s = c.createBufferSource(); s.buffer = b; s.connect(c.destination); s.start(0); } catch { /* not needed elsewhere */ }
+    void c.resume().then(() => { if (c.state === 'running') off(); }).catch(() => undefined);
+    c.onstatechange = () => { if (c.state !== 'running') on(); };
+  }
+  on();
 }
 
 interface Note { freq: number; at: number; length: number; type: OscillatorType; volume: number }
@@ -82,6 +96,19 @@ export const SOUNDS: Record<AttentionKind, Note[]> = {
     { freq: 1568, at: burst + 0.39, length: 0.12, type: 'square' as const, volume: 0.22 },
   ]),
 };
+
+/** The ringtone of an incoming call: a two-tone ring, twice (about 2 seconds; the caller repeats it). */
+const RING: Note[] = [0, 0.45].flatMap((at) => [
+  { freq: 880, at, length: 0.18, type: 'sine' as const, volume: 0.32 },
+  { freq: 1108.73, at: at + 0.2, length: 0.2, type: 'sine' as const, volume: 0.32 },
+]);
+
+/** Rings once (if sound is on). Returns whether it could be heard - false until the person has touched the page once. */
+export function playRing(): boolean {
+  if (!soundOn()) return false;
+  play(RING);
+  return audio?.state === 'running';
+}
 
 /** Lets the page make sound (call it from a click or tap). */
 export function unlockSound() { void context()?.resume().catch(() => undefined); }

@@ -15,6 +15,7 @@ import { plainText } from './chatFormat';
 import { chatKeys, useChat } from './chatStore';
 import { markAnswered, putMessage } from './chatCache';
 import { useProjectChat } from './projectChatStore';
+import { emitCallEvent } from '../calls/incomingCalls';
 import { emitReminders, emitViewing, notifyLiveConnected, setLiveConnection, type ReminderEvent, type ViewingEvent } from '../live/bus';
 
 /** Screens that show work: refreshed (if open) when someone else changes something. Chat, settings and the like have their own events or none. */
@@ -121,6 +122,10 @@ export function ChatRealtime() {
     });
     connection.on('viewing', (e: ViewingEvent) => emitViewing(e));
     connection.on('reminder', (e: ReminderEvent[]) => emitReminders(e));
+    // Calls: one ringing for me, one that stopped ringing (ended, missed, or declined on another device), my call turned down.
+    connection.on('call.incoming', (e: { callId: string; title?: string; fromName?: string; startedAt?: string }) => emitCallEvent({ event: 'incoming', ...e }));
+    connection.on('call.stopped', (e: { callId: string; reason?: string }) => emitCallEvent({ event: 'stopped', ...e }));
+    connection.on('call.declined', (e: { callId: string; name?: string }) => emitCallEvent({ event: 'declined', ...e }));
 
     const refreshLists = () => {
       void queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid) });

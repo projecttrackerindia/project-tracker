@@ -42,6 +42,8 @@ public class ReminderWorker(IServiceScopeFactory scopes, IOptions<ReminderOption
                     if (watched > 0) log.LogInformation("{Count} watch(es) fired", watched);
                     // Calls left marked live after a missed media-server event.
                     await ProjectManagement.Application.Features.Calls.CallService.SweepAsync(scope.ServiceProvider, stoppingToken);
+                    // Calls that rang without an answer: "Missed call from …" in the person's inbox.
+                    await ProjectManagement.Application.Features.Calls.CallService.NotifyMissedAsync(scope.ServiceProvider, stoppingToken);
                     beats.Beat("Reminders", every);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

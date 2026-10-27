@@ -24,6 +24,8 @@ import { pushCoversThisDevice, systemNotification } from '../features/reminders/
 import { useReminderComposer } from '../features/reminders/store';
 import { LiveCallsBar } from '../features/calls/LiveCallsBar';
 import { CallHost } from '../features/calls/CallHost';
+import { IncomingCallHost } from '../features/calls/IncomingCall';
+import { isRingNotice } from '../features/calls/incomingCalls';
 import { AskBar, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
 import { MotionConfig } from 'framer-motion';
 
@@ -56,7 +58,7 @@ function DesktopNotifier() {
         const last = read();
         const newest = Math.max(last, ...times, 0);
         if (last === 0) { write(newest || Date.now()); return; } // first run: do not replay history
-        const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type) && firstTime(`n-${x.id}`, 120_000)).reverse();
+        const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type) && !isRingNotice(x) && firstTime(`n-${x.id}`, 120_000)).reverse();
         for (const n of fresh) {
           const kind = kindForType(n.type);
           getAttention({ kind });
@@ -138,6 +140,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <SignInIsland />
       <NetworkPill />
       <CallHost />
+      {!admin && <IncomingCallHost />}
       <ToastRoot />
       <ConfirmRoot />
       <DesktopNotifier />

@@ -13,7 +13,7 @@ export const NOTIF_ICON: Record<string, { icon: IconName; tone: '' | 'success' |
   DueSoon: { icon: 'clock', tone: 'warning' }, Overdue: { icon: 'alert', tone: 'danger' }, Invitation: { icon: 'mail', tone: '' },
   Subscription: { icon: 'card', tone: 'neutral' }, Security: { icon: 'lock', tone: 'danger' }, Issue: { icon: 'bug', tone: 'danger' },
   Approval: { icon: 'check', tone: 'success' }, ServiceLevel: { icon: 'timer', tone: 'warning' }, Reminder: { icon: 'alarm', tone: 'warning' },
-  Nudge: { icon: 'hand', tone: 'violet' }, Briefing: { icon: 'sun', tone: '' }, Meeting: { icon: 'video', tone: '' }, Support: { icon: 'info', tone: 'success' },
+  Nudge: { icon: 'hand', tone: 'violet' }, Briefing: { icon: 'sun', tone: '' }, Meeting: { icon: 'video', tone: '' }, Call: { icon: 'video', tone: 'success' }, Support: { icon: 'info', tone: 'success' },
 };
 const BELL = { icon: 'bell' as IconName, tone: 'neutral' as const };
 /** The icon tile for a notification of this kind. */
