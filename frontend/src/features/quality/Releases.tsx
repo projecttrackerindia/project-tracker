@@ -19,11 +19,11 @@ const day = (d: string | null) => (d ? new Date(`${d}T00:00:00`).toLocaleDateStr
  * green or what is missing), the work going out with its state, the test runs tied to it, and Approve (with a reason when the checks
  * say no) then Ship.
  */
-export function Releases() {
+export function Releases({ initial }: { initial?: string | null } = {}) {
   const wid = useWorkspaceId();
   const qc = useQueryClient();
   const list = useWsQuery(['quality', 'releases'], () => releaseApi.list(), { staleTime: 20_000 });
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(initial ?? null);
   const [creating, setCreating] = useState(false);
   const releases = list.data ?? [];
   useEffect(() => { if (!sel && releases[0]) setSel(releases[0].id); }, [releases, sel]);
@@ -105,6 +105,7 @@ function Detail({ s, onChange }: { s: ReleaseState; onChange: (s: ReleaseState) 
           {s.previous && <span className="rl-pill">{s.previous.name} shipped {s.previous.shippedAt ? new Date(s.previous.shippedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}</span>}
           {r.status !== 'Shipped' && toGo != null && <span className={`rl-pill ${toGo < 0 ? 'late' : 'warn'}`}>{toGo > 0 ? `${plural(toGo, 'day')} to go` : toGo === 0 ? 'Due today' : `${plural(-toGo, 'day')} late`}</span>}
           <span className={`rl-st s-${r.status.toLowerCase()}`}>{r.status}</span>
+          {r.notesDocumentId && <Link className="dq-btn sm rl-notes" to={`/documents/${r.notesDocumentId}`}>Release notes{r.notesDocumentKey ? ` · ${r.notesDocumentKey}` : ''}</Link>}
           {planned && s.go && <button type="button" className="dq-btn pri" disabled={busy} onClick={() => void act(() => releaseApi.approve(r.id), `${r.name} approved.`)}>Approve release</button>}
           {r.status === 'Approved' && <button type="button" className="dq-btn pri" disabled={busy} onClick={() => void act(() => releaseApi.ship(r.id), `${r.name} marked shipped.`)}>Mark shipped</button>}
         </div>

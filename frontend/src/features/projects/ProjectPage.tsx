@@ -1,8 +1,10 @@
+import { useQueries } from '@tanstack/react-query';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { agentApi, documentApi, projectApi, timeApi } from '../../api/endpoints';
+import { releaseApi, type Release } from '../../api/qualityApi';
 import type { DocumentStatus, Project, ProjectDetail, Stage } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { openNew } from '../../components/v2/state';
@@ -185,7 +187,7 @@ export function ProjectPage() {
 
       <HealthBanner projectId={p.id} canEdit={canEdit && !archived} onEdit={() => setHealthOpen(true)} />
       {healthOpen && <HealthSheet projectId={p.id} projectName={p.name} onClose={() => setHealthOpen(false)} />}
-      <Journey detail={detail} signOff={signOff} still={!!still} canSign={canEdit && !archived} meId={me} plan={plan} onPlan={setPlan} />
+      <Journey detail={detail} signOff={signOff} still={!!still} canSign={canEdit && !archived} meId={me} plan={plan} onPlan={setPlan} releases={seeWork} />
       {plan && p.deliveryMethod !== 'Agile' && (
         <div className="pp-plan">
           <Timeline projectId={p.id} projectName={p.name} project={p} stages={detail.stages} canEdit={canEdit && p.status !== 'Archived'} canReportIssue={canReportIssue && seeTasks && !archived}
@@ -299,7 +301,7 @@ function useSignOff(projectId: string) {
  * stage glows ("Awaiting sign-off" once its work is done); later ones are hollow with their start date. Signing off fills the node (200ms),
  * draws the line to it (500ms) and hands the glow to the next stage (300ms).
  */
-function Journey({ detail, still, canSign, meId, plan, onPlan, signOff }: { detail: ProjectDetail; signOff: SignOff; still: boolean; canSign: boolean; meId: string; plan: boolean; onPlan: (v: boolean) => void }) {
+function Journey({ detail, still, canSign, meId, plan, onPlan, signOff, releases }: { detail: ProjectDetail; signOff: SignOff; still: boolean; canSign: boolean; meId: string; plan: boolean; onPlan: (v: boolean) => void; releases?: boolean }) {
   const p = detail.project;
   const { sign, signing, signed } = signOff;
   const stages = ordered(detail.stages);
@@ -352,9 +354,76 @@ function Journey({ detail, still, canSign, meId, plan, onPlan, signOff }: { deta
               })}
             </ol>
           </div>
+          {releases && <JourneyReleases projectId={p.id} stages={stages} n={n} pos={pos} />}
         </div>
       )}
+      {n === 0 && releases && <div className="pp-jl-scroll"><JourneyReleases projectId={p.id} stages={[]} n={1} pos={() => 50} /></div>}
     </motion.section>
+  );
+}
+
+const dayNum = (d: string) => Math.floor(new Date(`${d}T00:00:00Z`).getTime() / 86_400_000);
+/** Where a date sits on the Journey: between the stage nodes whose dates bracket it (nodes are evenly spaced, so the scale is piecewise). */
+function journeyPos(date: string | null, anchors: { day: number; at: number }[], fallback: number): number {
+  if (!date || anchors.length === 0) return fallback;
+  const d = dayNum(date);
+  if (anchors.length === 1 || d <= anchors[0].day) return anchors[0].at;
+  for (let k = 1; k < anchors.length; k++) {
+    const a = anchors[k - 1], b = anchors[k];
+    if (d <= b.day) return b.day === a.day ? b.at : a.at + ((d - a.day) / (b.day - a.day)) * (b.at - a.at);
+  }
+  return anchors[anchors.length - 1].at;
+}
+
+type RelState = { label: string; tone: 'go' | 'nogo' | 'ok' | 'done' };
+function relState(r: Release, go: boolean | undefined): RelState {
+  if (r.status === 'Shipped') return { label: `Shipped${r.shippedAt ? ` ${dayMonth(r.shippedAt.slice(0, 10))}` : ''}`, tone: 'done' };
+  if (r.status === 'Approved') return { label: 'Approved', tone: 'ok' };
+  return go === undefined ? { label: 'Planned', tone: 'ok' } : go ? { label: 'Go', tone: 'go' } : { label: 'No go', tone: 'nogo' };
+}
+
+/**
+ * The project's releases on the Journey: a lane under the stages, each release a flag at its date (shipped ones at the day they shipped)
+ * with its go/no-go, linking to the release in Quality. The last two shipped and every one still to come.
+ */
+function JourneyReleases({ projectId, stages, n, pos }: { projectId: string; stages: Stage[]; n: number; pos: (i: number) => number }) {
+  const list = useWsQuery(['quality', 'releases', 'project', projectId], () => releaseApi.list(projectId), { staleTime: 30_000, retry: false });
+  const all = list.data ?? [];
+  const shipped = all.filter((r) => r.status === 'Shipped').sort((a, b) => (b.shippedAt ?? '').localeCompare(a.shippedAt ?? '')).slice(0, 2);
+  const coming = all.filter((r) => r.status !== 'Shipped').slice(0, 4);
+  const shown = [...shipped.reverse(), ...coming];
+  const planned = coming.filter((r) => r.status === 'Planned').map((r) => r.id);
+  const wid = useWorkspaceId();
+  const states = useQueries({ queries: planned.map((id) => ({ queryKey: [wid, 'quality', 'release', id], enabled: !!wid, queryFn: () => releaseApi.get(id), staleTime: 30_000, retry: false })) });
+  const goOf = (id: string) => { const k = planned.indexOf(id); return k < 0 ? undefined : states[k]?.data?.go; };
+  if (shown.length === 0) return null;
+  const anchors = stages.map((s, i) => ({ d: i === stages.length - 1 ? s.plannedEnd ?? s.plannedStart : s.plannedStart ?? s.plannedEnd, at: pos(i) }))
+    .filter((a): a is { d: string; at: number } => !!a.d).map((a) => ({ day: dayNum(a.d), at: a.at })).sort((a, b) => a.day - b.day);
+  const placed = shown.map((r, k) => {
+    const when = r.status === 'Shipped' ? r.shippedAt?.slice(0, 10) ?? r.targetDate : r.targetDate;
+    return { r, when, at: journeyPos(when ?? null, anchors, shown.length === 1 ? 50 : (k / (shown.length - 1)) * 100) };
+  }).sort((a, b) => a.at - b.at);
+  // Flags closer than ~a label apart alternate above and below the lane, so their names never sit on each other.
+  let last = -Infinity, flip = false;
+  const rows = placed.map((x) => { flip = x.at - last < 14 ? !flip : false; last = x.at; return { ...x, low: flip }; });
+  return (
+    <div className="pp-jr" style={{ ['--n' as string]: n }} aria-label="Releases">
+      <span className="pp-jr-rail" aria-hidden="true" />
+      <ol>
+        {rows.map(({ r, when, at, low }) => {
+          const st = relState(r, goOf(r.id));
+          return (
+            <li key={r.id} className={`pp-rel ${st.tone} ${low ? 'low' : ''} ${at < 6 ? 'start' : at > 94 ? 'end' : ''}`} style={{ left: `${at}%` }}>
+              <Link to={`/quality?release=${encodeURIComponent(r.id)}`} aria-label={`Release ${r.name}: ${st.label}${when ? `, ${dayMonth(when)}` : ''}`}>
+                <span className="pp-rel-flag" aria-hidden="true" />
+                <b>{r.name}</b>
+                <small><i>{st.label}</i>{r.status !== 'Shipped' && when ? ` · ${dayMonth(when)}` : ''}</small>
+              </Link>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 

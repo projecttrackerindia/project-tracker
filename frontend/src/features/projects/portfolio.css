@@ -530,3 +530,19 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 .pf-drop-form textarea, .pf-drop-form input { padding: 8px 10px; border: 0; border-radius: 9px; background: var(--ds-fill); color: var(--ds-text); font: inherit; font-size: 14px; resize: vertical; }
 .pf-drop-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 @media (prefers-reduced-motion: reduce) { .pf-drop, .pf-drop-back { animation: none; } .pf-board .pf-card[draggable='true'] { transition: none; } }
+
+/* Present · weekly report slides (the toggle in the top bar adds one after each project's decision). */
+.pf-wk-tg { border: 0; background: rgba(255,255,255,.08); color: #d1d1d6; font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 980px; cursor: pointer; }
+.pf-wk-tg:hover, .pf-wk-tg:focus-visible { outline: none; background: rgba(255,255,255,.14); color: #f5f5f7; }
+.pf-wk-tg.on { background: rgba(48,176,199,.28); color: #64d2ff; box-shadow: inset 0 0 0 1px rgba(48,176,199,.6); }
+.pf-wk-cols ul { margin: 0; padding: 0 0 0 18px; display: grid; gap: 6px; }
+.pf-wk-cols li { font-size: 16px; }
+.pf-wk-none { font-style: normal; color: #8e8e93; }
+.pf-wk-foot { margin: 0; font-size: 13px; color: #8e8e93; }
+.pf-th.wk { background: #1c2a2e; }
+.pf-th i.ok { background: #30d158; }
+@media (max-width: 760px) {
+  .pf-wk-cols { grid-template-columns: 1fr; gap: 10px; margin: 20px 0; }
+  .pf-wk-cols li { font-size: 14px; }
+  .pf-wk-tg { padding: 4px 10px; font-size: 12px; }
+}

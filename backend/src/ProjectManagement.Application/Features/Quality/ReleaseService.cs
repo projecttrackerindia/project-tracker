@@ -1,5 +1,8 @@
+using System.Globalization;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Features.Projects;
@@ -11,7 +14,7 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Quality;
 
 public record ReleaseDto(Guid Id, string Name, Guid? ProjectId, string? ProjectName, DateOnly? TargetDate, string Status, string? Notes, int Items, int Runs,
-    UserRefDto? ApprovedBy, DateTime? ApprovedAt, DateTime? ShippedAt, DateTime CreatedAt);
+    UserRefDto? ApprovedBy, DateTime? ApprovedAt, DateTime? ShippedAt, DateTime CreatedAt, Guid? NotesDocumentId = null, string? NotesDocumentKey = null);
 public record ReleaseItemDto(Guid Id, string Kind, string Key, string Title, string Status, StatusCategory Category, UserRefDto? Assignee, DateOnly? DueDate, bool Bug);
 public record ReleaseCheckDto(string Key, string Label, bool Ok, string Detail);
 public record ReleaseGoNoGoDto(ReleaseDto Release, IReadOnlyList<ReleaseItemDto> Items, IReadOnlyList<TestRunDto> Runs, QualityReadinessDto? Tests,
@@ -36,8 +39,10 @@ public record ReleaseItemsRequest(IReadOnlyList<Guid>? Add = null, IReadOnlyList
 /// and when; it can be approved against a "no go" only with a reason, which is kept in the notes. Shipped closes it.
 /// </summary>
 public class ReleaseService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, WorkItemApiService work, QualityService quality,
-    NotificationService notifications)
+    NotificationService notifications, DocumentService documents)
 {
+    /// <summary>The tag on the Library document holding a release's notes (written when it ships), so the release can link to it.</summary>
+    public static string NotesTag(Guid releaseId) => $"release/{releaseId:N}";
     public const int MaxItems = 150;
     public const int MaxSignOffs = 20;
 
@@ -66,9 +71,17 @@ public class ReleaseService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var projects = await db.Projects.AsNoTracking().Where(p => pids.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name, ct);
         var uids = rows.Where(r => r.ApprovedById != null).Select(r => r.ApprovedById!.Value).Distinct().ToList();
         var users = await db.Users.AsNoTracking().Where(u => uids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var tags = rows.Where(r => r.Status == "Shipped").Select(r => NotesTag(r.Id)).ToList();
+        var notes = tags.Count == 0 ? [] : await (from t in db.DocumentTags.AsNoTracking()
+                                                  join d in db.Documents.AsNoTracking() on t.DocumentId equals d.Id
+                                                  where tags.Contains(t.Tag)
+                                                  orderby d.CreatedAt
+                                                  select new { t.Tag, d.Id, d.Number }).ToListAsync(ct);
+        var noteBy = notes.GroupBy(n => n.Tag).ToDictionary(g => g.Key, g => g.First());
         return rows.Select(r => new ReleaseDto(r.Id, r.Name, r.ProjectId, r.ProjectId is { } p ? projects.GetValueOrDefault(p) : null, r.TargetDate, r.Status, r.Notes,
             items.GetValueOrDefault(r.Id), runs.GetValueOrDefault(r.Id), r.ApprovedById is { } a && users.TryGetValue(a, out var n) ? new UserRefDto(a, n) : null,
-            r.ApprovedAt, r.ShippedAt, r.CreatedAt)).ToList();
+            r.ApprovedAt, r.ShippedAt, r.CreatedAt,
+            noteBy.TryGetValue(NotesTag(r.Id), out var doc) ? doc.Id : null, noteBy.TryGetValue(NotesTag(r.Id), out var doc2) ? DocumentService.KeyOf(doc2.Number) : null)).ToList();
     }
 
     private async Task<Release> FindAsync(Guid id, CancellationToken ct) =>
@@ -291,6 +304,57 @@ public class ReleaseService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         r.Status = "Shipped"; r.ShippedAt = clock.Now; r.UpdatedAt = clock.Now; r.UpdatedBy = ctx.UserId;
         recorder.Audit("release.shipped", "Release", id, null, new { r.Name });
         await db.SaveChangesAsync(ct);
+        var state = await GoNoGoAsync(id, ct);
+        await WriteNotesAsync(r, state, ct);
         return await GoNoGoAsync(id, ct);
+    }
+
+    /// <summary>
+    /// Release notes, written when a release ships: a "Release documentation" draft in the Library under the release's project, with what
+    /// shipped grouped into new work and fixes (bugs). Tagged with <see cref="NotesTag"/> so the release links to it. Shipping never fails
+    /// because of it: someone who may not write documents (or a workspace at its document limit) ships without notes.
+    /// </summary>
+    private async Task WriteNotesAsync(Release r, ReleaseGoNoGoDto state, CancellationToken ct)
+    {
+        var tag = NotesTag(r.Id);
+        if (await db.DocumentTags.AnyAsync(t => t.Tag == tag, ct)) return;
+        bool Shipped(ReleaseItemDto i) => i.Category == StatusCategory.Done;
+        var shipped = state.Items.Where(Shipped).ToList();
+        var fixes = shipped.Where(i => i.Bug).ToList();
+        var features = shipped.Where(i => !i.Bug).ToList();
+        var left = state.Items.Where(i => i.Category is not (StatusCategory.Done or StatusCategory.Cancelled)).ToList();
+        JsonObject Text(string s, string? mark = null) => mark is null ? new() { ["type"] = "text", ["text"] = s }
+            : new() { ["type"] = "text", ["text"] = s, ["marks"] = new JsonArray(new JsonObject { ["type"] = mark }) };
+        JsonObject Para(params JsonNode[] parts) => new() { ["type"] = "paragraph", ["content"] = new JsonArray(parts) };
+        JsonObject Heading(string s) => new() { ["type"] = "heading", ["attrs"] = new JsonObject { ["level"] = 3 }, ["content"] = new JsonArray(Text(s)) };
+        JsonObject Bullets(IEnumerable<ReleaseItemDto> items) => new()
+        {
+            ["type"] = "bulletList",
+            ["content"] = new JsonArray(items.Select(i => (JsonNode)new JsonObject { ["type"] = "listItem", ["content"] = new JsonArray(Para(Text($"{i.Key} ", "bold"), Text(i.Title))) }).ToArray()),
+        };
+        string Doc(JsonArray content) => new JsonObject { ["type"] = "doc", ["content"] = content }.ToJsonString();
+        var when = (r.ShippedAt ?? clock.Now).ToString("d MMM yyyy", CultureInfo.InvariantCulture);
+        var summary = new JsonArray(Para(Text($"{r.Name} shipped on {when}: {features.Count} new item{(features.Count == 1 ? "" : "s")} and {fixes.Count} fix{(fixes.Count == 1 ? "" : "es")}.")));
+        if (state.Tests is { Run: { } run } tests) summary.Add(Para(Text($"Tested in {run.Name}: {tests.PassPercent}% passed.")));
+        summary.Add(Para(Text("Written from the release's shipped work. Check it, then publish to share it.", "italic")));
+        var changes = new JsonArray();
+        if (features.Count > 0) { changes.Add(Heading("New")); changes.Add(Bullets(features)); }
+        if (fixes.Count > 0) { changes.Add(Heading("Fixes")); changes.Add(Bullets(fixes)); }
+        if (shipped.Count == 0) changes.Add(Para(Text("No finished work was linked to this release.")));
+        var known = new JsonArray();
+        if (left.Count > 0) known.Add(Bullets(left));
+        try
+        {
+            await documents.EnsureTypesAsync(ct);
+            var type = await db.DocumentTypes.AsNoTracking().Where(t => t.Code == "RELEASE" && t.IsActive).Select(t => t.Id).FirstOrDefaultAsync(ct);
+            if (type == Guid.Empty) return;
+            var sections = new List<SectionInput> { new("summary", Doc(summary)), new("changes", Doc(changes)) };
+            if (known.Count > 0) sections.Add(new SectionInput("knownIssues", Doc(known)));
+            var created = await documents.CreateAsync(new CreateDocumentRequest($"Release notes – {r.Name}", type, r.ProjectId, Tags: [tag, "release notes"],
+                Sections: sections, Icon: "🚀"), ct);
+            recorder.Audit("release.notes_written", "Release", r.Id, null, new { r.Name, document = created.Item.Key });
+            await db.SaveChangesAsync(ct);
+        }
+        catch (AppException) { /* no right to write documents here, or at the plan's limit: the release still ships */ }
     }
 }

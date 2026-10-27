@@ -3,14 +3,14 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'r
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { actionItemApi, chatApi, projectApi } from '../../api/endpoints';
+import { actionItemApi, chatApi, projectApi, statusApi } from '../../api/endpoints';
 import { invalidateWorkspace } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth } from '../../stores/auth';
 import { portfolioApi, type DecisionOption, type PortfolioDecision, type PortfolioFilter, type TimelineProject } from './portfolioApi';
-import { useDecisionActions, type DecisionItem } from './portfolioDecisions';
+import { decisionTone, useDecisionActions, type DecisionItem } from './portfolioDecisions';
 import { dayMonth } from './projectParts';
 import { ProjectFacts } from './PortfolioFacts';
 import { HealthSheet } from './ProjectHealth';
@@ -332,11 +332,13 @@ function Slide({ item, filter, active }: { item: DecisionItem; filter: Portfolio
   const a = useDecisionActions(item, filter);
   const reasons = labelled(item.decision?.causes.length ? item.decision.causes.map(cap) : item.changes.length ? item.changes : [item.why]);
   const b = otherOptions(item.decision)[0];
-  const tone = item.slipDays > 14 ? 'late' : 'risk';
+  const tone = decisionTone(item);
+  const status = item.health === 'OnTrack' ? 'On track' : item.health === 'AtRisk' ? 'At risk' : item.health === 'Delayed' ? 'Late' : null;
+  const lead = item.slipDays > 0 ? (tone === 'ok' ? `Forecast ${plural(item.slipDays, 'day')} past due` : `Late by ${plural(item.slipDays, 'day')}`) : 'On the edge';
   return (
     <section className={`pf-slide pf-slide-split ${active ? 'on' : ''}`} aria-hidden={!active} aria-label={item.name}>
       <div className="pf-slide-main">
-      <p className={`pf-slide-ey ${tone}`}>Decision · {item.slipDays > 0 ? `Late by ${plural(item.slipDays, 'day')}` : 'On the edge'}</p>
+      <p className={`pf-slide-ey ${tone}`}>Decision · {lead}{status && tone === 'ok' ? ` · ${status}` : ''}</p>
       <h2>{item.name}</h2>
       <p className="pf-slide-dates">Due <b>{dayMonth(item.due)}</b> <span aria-hidden="true">→</span> Forecast {item.forecast ? <span className={`fc ${tone}`}>{dayMonth(item.forecast)}</span> : <em>not yet</em>}</p>
       <div className="pf-slide-why">{reasons.map((r) => <div key={r.label}><span>{r.label}</span>{r.text}</div>)}</div>
@@ -374,15 +376,59 @@ function Overview({ brief, n, active }: { brief: PortfolioBrief; n: number; acti
 
 const clock = (ms: number) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
-/** Present: full window, dark, one decision per slide (Overview first), a presenter strip with thumbnails, notes and the elapsed time. ← → / space, Esc. */
+const HEALTH_WORD: Record<string, string> = { OnTrack: 'On track', AtRisk: 'At risk', Delayed: 'Late', 'On track': 'On track', 'At risk': 'At risk', Late: 'Late' };
+const healthTone = (h: string) => (/delay|late/i.test(h) ? 'late' : /risk/i.test(h) ? 'risk' : 'ok');
+
+/** The project's latest weekly report (the one Reports writes from its data) as a slide: health, the verdict, what moved, slipped and comes next. */
+function WeeklySlide({ item, active, near }: { item: DecisionItem; active: boolean; near: boolean }) {
+  const q = useWsQuery(['project-status', 'weekly', item.projectId], () => statusApi.weekly(item.projectId), { enabled: near, staleTime: 5 * 60_000, retry: false });
+  const w = q.data;
+  const cols: { label: string; n: number; items: { text: string }[] }[] = w ? [
+    { label: 'Moved', n: w.moved, items: w.movedItems ?? [] }, { label: 'Slipped', n: w.slipped, items: w.slippedItems ?? [] }, { label: 'Next week', n: w.next, items: w.nextItems ?? [] },
+  ] : [];
+  const health = w ? HEALTH_WORD[w.health] ?? w.health : null;
+  return (
+    <section className={`pf-slide pf-wk ${active ? 'on' : ''}`} aria-hidden={!active} aria-label={`Weekly report: ${item.name}`}>
+      <p className={`pf-slide-ey ${health ? healthTone(health) : 'ok'}`}>Weekly report{w?.week ? ` · Week ${w.week}` : ''}{health ? ` · ${health}` : ''}</p>
+      <h2>{item.name}</h2>
+      {q.isLoading ? <p className="pf-slide-dates">Reading the week…</p> : !w ? <p className="pf-slide-dates">No weekly report for this project.</p> : <>
+        <p className="pf-slide-dates">{w.verdict || `${w.progress ?? 0}% done`}</p>
+        <div className="pf-slide-why pf-wk-cols">
+          {cols.map((c) => (
+            <div key={c.label}><span>{c.label} · {c.n}</span>
+              {c.items.length === 0 ? <em className="pf-wk-none">Nothing</em> : <ul>{c.items.slice(0, 3).map((x, k) => <li key={k}>{x.text}</li>)}</ul>}
+            </div>
+          ))}
+        </div>
+        <p className="pf-wk-foot">{dayMonth(w.from)} – {dayMonth(w.to)} · written from the project&rsquo;s data{w.risks > 0 ? ` · ${plural(w.risks, 'risk')}` : ''}</p>
+      </>}
+    </section>
+  );
+}
+
+type PresentSlide = { kind: 'overview' } | { kind: 'decision'; item: DecisionItem } | { kind: 'weekly'; item: DecisionItem };
+
+/**
+ * Present: full window, dark, one decision per slide (Overview first), a presenter strip with thumbnails, notes and the elapsed time. ← → / space, Esc.
+ * "Weekly reports" adds each project's latest weekly report as the slide after its decision.
+ */
 export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items: DecisionItem[]; filter: PortfolioFilter; brief: PortfolioBrief; asOf: string | null; onClose: () => void }) {
   const [i, setI] = useState(0);
+  const [weekly, setWeekly] = useState(false);
   const [startedAt] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
   const who = useAuth((s) => s.ctx?.user.displayName);
   const role = useAuth((s) => s.ctx?.current?.role);
-  const n = items.length + 1;
+  const slides = useMemo<PresentSlide[]>(() => [{ kind: 'overview' }, ...items.flatMap((item): PresentSlide[] => weekly ? [{ kind: 'decision', item }, { kind: 'weekly', item }] : [{ kind: 'decision', item }])], [items, weekly]);
+  const n = slides.length;
   const go = useCallback((d: number) => setI((v) => Math.min(Math.max(0, v + d), n - 1)), [n]);
+  const toggleWeekly = () => {
+    // Stay on the same project's decision when the slides change around it.
+    const at = slides[i];
+    const next = !weekly;
+    setWeekly(next);
+    if (at.kind !== 'overview') { const k = items.indexOf(at.item); setI(next ? 1 + k * 2 : 1 + k); }
+  };
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(t); }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -394,26 +440,27 @@ export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items:
     const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
   }, [go, onClose]);
-  const cur = i === 0 ? null : items[i - 1];
-  const note = cur ? cur.why : brief.headlines[0] ?? 'Every project in one view.';
+  const cur = slides[Math.min(i, n - 1)];
+  const note = cur.kind === 'decision' ? cur.item.why : cur.kind === 'weekly' ? `${cur.item.name}: the latest weekly report.` : brief.headlines[0] ?? 'Every project in one view.';
   const week = isoWeek(asOf ? new Date(asOf) : new Date());
   return (
     <div className="pf-present" role="dialog" aria-modal="true" aria-label="Present decisions">
       <div className="pf-present-top">
         <b>Portfolio review · Week {week}</b>{who && <span>with {who}{role ? `, ${role}` : ''}</span>}
+        {items.length > 0 && <button type="button" className={`pf-wk-tg ${weekly ? 'on' : ''}`} aria-pressed={weekly} onClick={toggleWeekly}>{weekly ? '✓ ' : '+ '}Weekly reports</button>}
         <button type="button" className="pf-exit" onClick={onClose} autoFocus>Esc to exit</button>
       </div>
       <div className="pf-stage">
         <span className="pf-count" aria-live="polite"><b>{i + 1}</b> of {n}</span>
-        <Overview brief={brief} n={items.length} active={i === 0} />
-        {items.map((it, k) => <Slide key={it.projectId} item={it} filter={filter} active={k + 1 === i} />)}
+        {slides.map((sl, k) => sl.kind === 'overview' ? <Overview key="overview" brief={brief} n={items.length} active={i === k} />
+          : sl.kind === 'decision' ? <Slide key={sl.item.projectId} item={sl.item} filter={filter} active={i === k} />
+          : <WeeklySlide key={`wk-${sl.item.projectId}`} item={sl.item} active={i === k} near={Math.abs(i - k) <= 2} />)}
       </div>
       <div className="pf-strip">
         <div className="pf-thumbs" role="tablist" aria-label="Slides">
-          <button type="button" role="tab" aria-selected={i === 0} className={`pf-th ${i === 0 ? 'on' : ''}`} onClick={() => setI(0)}>1<b>Overview</b><i className="none" /></button>
-          {items.map((it, k) => (
-            <button key={it.projectId} type="button" role="tab" aria-selected={i === k + 1} className={`pf-th ${i === k + 1 ? 'on' : ''}`} onClick={() => setI(k + 1)}>
-              {k + 2}<b>{it.name}</b><i className={it.slipDays > 14 ? 'late' : 'risk'} />
+          {slides.map((sl, k) => (
+            <button key={sl.kind === 'overview' ? 'overview' : `${sl.kind}-${sl.item.projectId}`} type="button" role="tab" aria-selected={i === k} className={`pf-th ${i === k ? 'on' : ''} ${sl.kind === 'weekly' ? 'wk' : ''}`} onClick={() => setI(k)}>
+              {k + 1}<b>{sl.kind === 'overview' ? 'Overview' : sl.kind === 'weekly' ? `Weekly · ${sl.item.name}` : sl.item.name}</b><i className={sl.kind === 'overview' ? 'none' : decisionTone(sl.item)} />
             </button>
           ))}
         </div>

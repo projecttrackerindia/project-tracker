@@ -67,6 +67,8 @@ try{
    else if(ep===`/api/v1/projects/${pay}`)data={project:{id:pay},statuses:[{id:'s-todo',name:'To do',order:0,category:'Todo',color:'#8e8e93'},{id:'s-done',name:'Done',order:2,category:'Done',color:'#30d158'}],stages:[],members:[{userId:'u1',name:'Prasanna Krishna',email:'p@example.com',role:null},{userId:'u2',name:'Siva Reddy',email:'s@example.com',role:null}]};
    else if(ep==='/api/v1/project-status/groups')data=[{id:'g1',name:'Delivery',isActive:true,count:2,projects:[{id:pay,name:'Payments',health:'AtRisk',progress:40,active:10},{id:web,name:'Website',health:'OnTrack',progress:20,active:0}]}];
    else if(ep==='/api/v1/ai/portfolio/brief')data=brief;
+   else if(ep===`/api/v1/project-status/projects/${pay}/weekly`)data={projectId:pay,projectName:'Payments',from:day(-6),to:day(0),health:'At risk',text:'',moved:2,slipped:1,risks:1,next:2,canSend:true,projectKey:'PAY',week:44,
+     verdict:'Set at risk by hand: the bank has not shared the sandbox keys.',progress:40,movedItems:[{text:'PAY-7 Payout retries'},{text:'PAY-9 Webhook signatures'}],slippedItems:[{text:'PAY-2 Bank sandbox certification · to 2 Nov'}],riskItems:[],nextItems:[{text:'PAY-1 Bulk payout API'},{text:'PAY-3 Reconciliation report'}]};
    else if(ep.endsWith('/ai/status'))data={enabled:true,configured:true,entitled:true,allowedHere:true};
    else if(ep==='/api/v1/notifications/counts')data={unread:0,needsYou:0,forInfo:0,snoozed:0};
    else if(ep==='/api/v1/notifications')data={items:[],page:1,pageSize:20,totalPages:0,totalItems:0};
@@ -190,7 +192,24 @@ try{
   await facts.getByRole('button',{name:'Add',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('[aria-label="Follow-up"]')?.value);
   assert.ok(writes.some(w=>w.ep===`/api/v1/projects/${pay}/action-items`&&w.b.assigneeId==='u2'),'follow-up saved with its owner');
-  checks.push('present-facts-actions');}
+  checks.push('present-facts-actions');
+  // Weekly reports: each project's latest weekly report joins as the slide after its decision; its health is the one shown everywhere (set by hand included).
+  const before=await pres.getByRole('tab').count();
+  await pres.getByRole('button',{name:'+ Weekly reports'}).click();
+  assert.equal(await pres.getByRole('button',{name:'✓ Weekly reports'}).getAttribute('aria-pressed'),'true');
+  assert.equal(await pres.getByRole('tab').count(),before*2-1,'one weekly slide per decision');
+  assert.equal(await pres.getByRole('tab',{selected:true}).innerText().then(t=>/Payments/.test(t)&&!/Weekly/.test(t)),true,'stays on the same project');
+  await pres.getByRole('tab').filter({hasText:'Weekly · Payments'}).click();
+  const wk=pres.getByRole('region',{name:'Weekly report: Payments'});
+  await wk.getByText('Set at risk by hand: the bank has not shared the sandbox keys.').waitFor();
+  assert.match(await wk.locator('.pf-slide-ey').innerText(),/Weekly report · Week 44 · At risk/i);
+  assert.match(await wk.locator('.pf-slide-ey').getAttribute('class'),/\brisk\b/);
+  const wt=await wk.innerText();assert.match(wt,/Moved · 2[\s\S]*PAY-7 Payout retries/i);assert.match(wt,/Slipped · 1[\s\S]*PAY-2/i);assert.match(wt,/Next week · 2[\s\S]*PAY-3/i);
+  await shot(page,'present-weekly-1440.png');
+  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'present fits the phone');
+  await shot(page,'present-weekly-390.png');await page.setViewportSize({width:1440,height:900});
+  checks.push('present-weekly-report');}
  await page.keyboard.press('Escape');await pres.waitFor({state:'detached'});
  await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Board'}).click();
  assert.ok(await page.getByRole('region',{name:'Board'}).isVisible());

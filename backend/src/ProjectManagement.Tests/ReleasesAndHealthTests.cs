@@ -100,6 +100,85 @@ public class ReleasesAndHealthTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task A_bug_filed_from_a_release_run_joins_the_release_and_shipping_writes_its_notes()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Nila Notes");
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("BUSINESS");
+        var project = await owner.CreateProjectAsync("Ledger Bridge");
+        var task = S((await owner.CreateTaskAsync(project, "Statement export"))["id"]);
+        var id = S((await owner.Post("/api/v1/releases", new { name = "v3.1", projectId = project })).Data!["id"]);
+        Assert.True((await owner.Put($"/api/v1/releases/{id}/items", new { add = new[] { task } })).Ok);
+
+        // A run tied to the release: the bug filed from its failed result is an item of the release and blocks the go.
+        var tc = S((await owner.Post("/api/v1/quality/cases", new { title = "Export opens in the viewer", priority = "High", projectId = project })).Data!["id"]);
+        var run = S((await owner.Post("/api/v1/quality/runs", new { name = "SIT 3.1", environment = "SIT", projectId = project })).Data!["id"]);
+        Assert.True((await owner.Put($"/api/v1/releases/{id}/runs/{run}", new { })).Ok);
+        var runs = (await owner.Get($"/api/v1/quality/runs?projectId={project}")).Data!.AsArray();
+        Assert.Equal(id, S(runs.First(r => S(r!["id"]) == run)!["releaseId"]));
+        var result = S((await owner.Put($"/api/v1/quality/runs/{run}/results/{tc}", new { status = "Fail", actual = "Blank page" })).Data!["id"]);
+        var bug = await owner.Post($"/api/v1/quality/results/{result}/bug", new { });
+        Assert.True(bug.Status == HttpStatusCode.Created, bug.ToString());
+        var bugId = S(bug.Data!["workItem"]!["id"]);
+        var state = (await owner.Get($"/api/v1/releases/{id}")).Data!;
+        Assert.Equal(2, state["release"]!["items"]!.GetValue<int>());   // the task and the bug
+        var row = state["items"]!.AsArray().First(i => S(i!["id"]) == bugId)!;
+        Assert.True(B(row["bug"]));
+        Assert.Equal(1, state["openBugs"]!.GetValue<int>());
+        Assert.False(state["checks"]!.AsArray().First(c => S(c!["key"]) == "bugs")!["ok"]!.GetValue<bool>());
+
+        // Fix the bug, ship against the open task: the notes are written into the Library under the project, fixes apart from the rest.
+        var v = bug.Data["workItem"]!["version"]!.GetValue<int>();
+        Assert.True((await owner.Patch($"/api/v1/work-items/{bugId}", new { version = v, status = "Completed" })).Ok);
+        Assert.Equal(0, (await owner.Get($"/api/v1/releases/{id}")).Data!["openBugs"]!.GetValue<int>());
+        Assert.True((await owner.Post($"/api/v1/releases/{id}/approve", new { reason = "The export can follow in 3.1.1." })).Ok);
+        var shipped = await owner.Post($"/api/v1/releases/{id}/ship", new { });
+        Assert.True(shipped.Ok, shipped.ToString());
+        var docId = S(shipped.Data!["release"]!["notesDocumentId"]);
+        Assert.StartsWith("DOC-", S(shipped.Data["release"]!["notesDocumentKey"]));
+        var doc = await owner.Get($"/api/v1/documents/{docId}");
+        Assert.True(doc.Ok, doc.ToString());
+        Assert.Equal("RELEASE", S(doc.Data!["item"]!["typeCode"]));
+        Assert.Equal(project.ToString(), S(doc.Data["item"]!["projectId"]));
+        Assert.Contains("v3.1", S(doc.Data["item"]!["title"]));
+        var sections = doc.Data["sections"]!.AsArray();
+        var changes = S(sections.First(x => S(x!["key"]) == "changes")!["content"]);
+        Assert.Contains("Fixes", changes);
+        Assert.Contains(S(bug.Data["workItem"]!["key"]), changes);
+        Assert.Contains("Statement export", S(sections.First(x => S(x!["key"]) == "knownIssues")!["content"]));
+        // The list links the notes too.
+        var listed = (await owner.Get($"/api/v1/releases?projectId={project}")).Data!.AsArray().First(r => S(r!["id"]) == id)!;
+        Assert.Equal(docId, S(listed["notesDocumentId"]));
+    }
+
+    [Fact]
+    public async Task A_status_set_by_hand_decides_the_portfolio_and_the_list()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Hema Hand");
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("BUSINESS");
+        var project = await owner.CreateProjectAsync("Treasury Sync");
+        await owner.CreateTaskAsync(project, "Rate feed");
+        Assert.True((await owner.Put($"/api/v1/projects/{project}/health", new { health = "Delayed", note = "Partner bank moved the go-live" })).Ok);
+
+        var item = (await owner.Get("/api/v1/projects?pageSize=50")).Data!["items"]!.AsArray().First(p => S(p!["id"]) == project.ToString())!;
+        Assert.Equal("Delayed", S(item["health"]));
+        Assert.True(B(item["healthByHand"]));
+        var ranked = (await owner.Get("/api/v1/ai/portfolio/brief")).Data!;
+        var mine = ranked["ranked"]!.AsArray().First(r => S(r!["projectId"]) == project.ToString())!;
+        Assert.Equal("Delayed", S(mine["health"]));
+        Assert.Contains("Set to late by hand: Partner bank moved the go-live", mine["reasons"]!.ToJsonString());
+        Assert.DoesNotContain("Past its due date", mine["reasons"]!.ToJsonString());
+        Assert.Equal(1, ranked["delayed"]!.GetValue<int>());
+        Assert.Equal("Delayed", S((await owner.Get($"/api/v1/project-status/projects/{project}")).Data!["project"]!["health"]));
+
+        Assert.True((await owner.Put($"/api/v1/projects/{project}/health", new { health = (string?)null })).Ok);
+        item = (await owner.Get("/api/v1/projects?pageSize=50")).Data!["items"]!.AsArray().First(p => S(p!["id"]) == project.ToString())!;
+        Assert.False(B(item["healthByHand"]));
+        Assert.NotEqual("Delayed", S(item["health"]));
+    }
+
+    [Fact]
     public async Task A_status_set_by_hand_is_shown_with_its_reason_until_cleared()
     {
         var owner = await TestClient.RegisterAsync(factory, "Hari Health");

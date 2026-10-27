@@ -11,6 +11,16 @@ import type { PortfolioBrief } from '../ai/aiApi';
 export interface DecisionItem {
   projectId: string; key: string; name: string; due: string | null; forecast: string | null; why: string; slipDays: number;
   decision: PortfolioDecision | null; acceptOpt: DecisionOption | null; changes: string[];
+  /** The project's health as the brief has it: a status set by hand wins over the arithmetic (OnTrack, AtRisk, Delayed...). */
+  health?: string | null;
+}
+
+/** The slide/thumbnail tone: the health shown everywhere (a status set by hand included), else how late the forecast is. */
+export function decisionTone(item: Pick<DecisionItem, 'health' | 'slipDays'>): 'late' | 'risk' | 'ok' {
+  if (item.health === 'Delayed') return 'late';
+  if (item.health === 'AtRisk') return 'risk';
+  if (item.health === 'OnTrack') return 'ok';
+  return item.slipDays > 14 ? 'late' : 'risk';
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -35,7 +45,8 @@ export function decisionItems(decisions: PortfolioDecision[], brief: PortfolioBr
       decision: null, acceptOpt: null, why: r.reasons[0] ?? `${r.level} risk.`, changes: r.reasons,
     });
   }
-  return [...seen.values()];
+  const health = new Map(brief.ranked.map((r) => [r.projectId, r.health]));
+  return [...seen.values()].map((x) => ({ ...x, health: health.get(x.projectId) ?? null }));
 }
 
 /** Accept (propose and approve the new date at once) and Propose (leave the date proposal for approval), shared by cards and slides. */

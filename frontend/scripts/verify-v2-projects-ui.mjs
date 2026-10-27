@@ -38,6 +38,9 @@ const few = all.filter((p) => !['Darwin box Api', 'Darwin Box api'].includes(p.n
 let projects = all;
 const rp = all.find((p) => p.key === 'RP');
 Object.assign(rp, { stageCount: 8, pendingSignOffs: 0 });
+// The project's releases on the Journey: one shipped, one approved, one planned (its go/no-go read from the release).
+const rel = (id, name, status, targetDate, shippedAt = null) => ({ id, name, projectId: null, projectName: 'Razor pay', targetDate, status, notes: null, items: 4, runs: 1, approvedBy: null, approvedAt: null, shippedAt, createdAt: '2026-09-01T00:00:00Z' });
+const rpReleases = [rel('rel-1', 'v1.0', 'Shipped', '2026-09-20', '2026-09-21T10:00:00Z'), rel('rel-2', 'v1.1', 'Approved', '2026-11-04'), rel('rel-3', 'v1.2', 'Planned', '2026-11-25')];
 const stages = ['Created', 'Requirements', 'Development', 'Code review', 'Testing', 'UAT', 'Production', 'Completed'].map((name, i) => ({ id: `st${i}`, name, order: i, plannedStart: null, plannedEnd: null, actualStart: null, actualEnd: null,
   status: 'Completed', effectiveStatus: 'Completed', owner: null, assignee: null, description: null, taskTotal: 1, taskDone: 1, locked: false, lockedBy: null, openIssues: 0, totalIssues: 0 }));
 const detail = (p) => ({ project: { ...p, description: p.key === 'RP' ? 'Razorpay integration is live in production (v1.0.1): create order and payment status APIs, UPI, card and netbanking.' : null },
@@ -116,6 +119,8 @@ const make = async (theme = 'light') => {
     else if (proj && proj[2] === '/issues') data = [];
     else if (ep === '/api/v1/documents') data = { items: url.searchParams.get('projectId') === rp.id ? docs : [], nextCursor: null, total: url.searchParams.get('projectId') === rp.id ? docs.length : 0 };
     else if (ep === '/api/v1/linked-documents') data = { items: [], restricted: 0 };
+    else if (ep === '/api/v1/releases') data = url.searchParams.get('projectId') === rp.id ? rpReleases : [];
+    else if (ep === '/api/v1/releases/rel-3') data = { release: rpReleases[2], items: [], runs: [], tests: null, done: 3, open: 1, openBugs: 1, checks: [], go: false, canApprove: true };
     else if (ep === '/api/v1/attachments/limits') data = { maxFileBytes: 10_000_000, allowedExtensions: ['json', 'pdf', 'png'], storageUsedBytes: 0, storageLimitBytes: -1 };
     else if (ep === '/api/v1/portfolio/board') data = board();
     else if (ep === '/api/v1/portfolio/timeline') data = { from: day(-60), to: day(60), projects: [] };
@@ -326,6 +331,15 @@ try {
   assert.equal(await journey.locator('.pp-nd.s').count(), 8);
   assert.deepEqual(await journey.locator('.pp-nd b').allInnerTexts(), ['Created', 'Requirements', 'Development', 'Code review', 'Testing', 'UAT', 'Production', 'Completed']);
   assert.match(await journey.innerText(), /Every stage is signed off/);
+  const lane = journey.getByLabel('Releases');
+  await lane.getByText('No go').waitFor();
+  assert.deepEqual(await lane.locator('.pp-rel b').allInnerTexts(), ['v1.0', 'v1.1', 'v1.2']);
+  assert.match(await lane.locator('.pp-rel.done').innerText(), /Shipped 21 Sep/);
+  assert.match(await lane.locator('.pp-rel.ok').innerText(), /Approved · 4 Nov/);
+  assert.match(await lane.locator('.pp-rel.nogo').innerText(), /No go · 25 Nov/);
+  assert.match(await lane.getByRole('link', { name: /Release v1\.2: No go/ }).getAttribute('href'), /\/quality\?release=rel-3$/);
+  await journey.screenshot({ path: path.join(out, 'journey-releases-1440.png') });
+  checks.push('journey-releases');
   assert.match(await page.locator('.pp-ai').innerText(), /All 8 tasks done/);
   assert.match(await page.getByRole('region', { name: 'Key numbers' }).innerText(), /8 \/ 8[\s\S]*Work items done[\s\S]*Sign-offs pending/);
   assert.match(await page.getByRole('region', { name: 'People' }).innerText(), /Prasanna[\s\S]*Owner[\s\S]*Siva Reddy/);
