@@ -11,6 +11,7 @@ import { spring } from '../../lib/motion';
 import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { PRIORITY_ORDER, refreshWork, useWorkList } from './workUi';
+import { SavedViewsBar } from '../platform/SavedViews';
 
 /* ------------------------------------------------------------------ rules */
 
@@ -224,6 +225,8 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
         </div>
       </div>
 
+      <SavedViewsBar scope="mywork" current={{ sort, filter: filter === 'all' ? undefined : filter }}
+        onApply={(c) => { setSort((['smart', 'due', 'priority'] as Sort[]).includes(c.sort as Sort) ? (c.sort as Sort) : 'smart'); setFilter(typeof c.filter === 'string' ? c.filter : 'all'); }} />
       <div className="mw-top">
         <section className="mw-stack" aria-label="Do this now">
           <AnimatePresence initial={false}>

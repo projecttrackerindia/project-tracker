@@ -3,7 +3,8 @@ import { useAuth, useIsPersonal, useModule } from '../../stores/auth';
 
 export type WorkspaceSection = 'general' | 'members' | 'access' | 'visibility' | 'security' | 'sso' | 'billing' | 'audit' | 'data'
   | 'project-groups' | 'timeline-templates' | 'labels' | 'priorities' | 'custom-fields' | 'work-types' | 'automation'
-  | 'notifications' | 'reminders' | 'ai' | 'project-agent' | 'api-keys' | 'connected-apps' | 'webhooks' | 'slack' | 'whatsapp' | 'email' | 'git';
+  | 'notifications' | 'reminders' | 'ai' | 'project-agent' | 'api-keys' | 'connected-apps' | 'webhooks' | 'slack' | 'whatsapp' | 'email' | 'git'
+  | 'holidays' | 'data-location' | 'status-page';
 
 /**
  * The ten sections of Settings (v2): two about you, eight about the workspace. Each workspace section holds one or more of the pages above
@@ -13,12 +14,12 @@ export type WorkspaceSection = 'general' | 'members' | 'access' | 'visibility' |
 export type SettingsPlace = 'profile' | 'notifications' | 'general' | 'people' | 'fields' | 'timelines' | 'security' | 'integrations' | 'ai' | 'billing';
 export const PLACE_LEAVES: Record<Exclude<SettingsPlace, 'profile'>, WorkspaceSection[]> = {
   notifications: ['notifications', 'reminders'],
-  general: ['general'],
+  general: ['general', 'holidays'],
   people: ['members', 'visibility'],
   fields: ['custom-fields', 'labels', 'priorities', 'work-types'],
   timelines: ['timeline-templates', 'project-groups', 'automation'],
-  security: ['security', 'sso', 'access', 'audit', 'data'],
-  integrations: ['slack', 'whatsapp', 'git', 'webhooks', 'api-keys', 'email', 'connected-apps'],
+  security: ['security', 'sso', 'access', 'audit', 'data', 'data-location'],
+  integrations: ['slack', 'whatsapp', 'git', 'webhooks', 'api-keys', 'email', 'connected-apps', 'status-page'],
   ai: ['ai', 'project-agent'],
   billing: ['billing'],
 };
@@ -46,6 +47,7 @@ export function useWorkspaceSections(): SectionDef[] {
   const isAdmin = ctx.current.role === 'Owner' || ctx.current.role === 'Admin';
   const all: (SectionDef & { show: boolean })[] = [
     { id: 'general', group: 'Workspace', to: leafHref('general'), label: 'General', icon: 'building', blurb: 'Name, description, logo and time zone.', show: true },
+    { id: 'holidays', group: 'Workspace', to: leafHref('holidays'), label: 'Holidays', icon: 'calendar', blurb: 'Public holidays: days off for everyone in Capacity.', show: !personal && isAdmin },
     { id: 'project-groups', group: 'Workspace', to: leafHref('project-groups'), label: 'Project groups', icon: 'layers', blurb: 'Folders that hold related projects.', show: has('projectgroups.manage') && mProjects > 0 },
     { id: 'timeline-templates', group: 'Workspace', to: leafHref('timeline-templates'), label: 'Timeline templates', icon: 'flag', blurb: 'Stages and dates a new project can start from.', show: has('workflow.manage') && mProjects > 0 },
     { id: 'labels', group: 'Workspace', to: leafHref('labels'), label: 'Labels', icon: 'tag', blurb: 'Tags for tasks.', show: has('labels.manage') && mTasks > 0 },
@@ -61,6 +63,7 @@ export function useWorkspaceSections(): SectionDef[] {
     { id: 'security', group: 'Security', to: leafHref('security'), label: 'Sign-in rules', icon: 'lock', blurb: 'Two-step sign-in, allowed networks, passwords, session length.', show: !personal && has('org.manage') },
     { id: 'sso', group: 'Security', to: leafHref('sso'), label: 'Single sign-on', icon: 'key', blurb: 'Sign in with your company identity provider; provisioning.', show: !personal && isAdmin },
     { id: 'data', group: 'Security', to: leafHref('data'), label: 'Data & retention', icon: 'database', blurb: 'How long history is kept; a full export.', show: isAdmin },
+    { id: 'data-location', group: 'Security', to: leafHref('data-location'), label: 'Data location', icon: 'pin', blurb: 'Where data and backups are kept; keep data in India.', show: !personal && isAdmin },
     { id: 'audit', group: 'Security', to: leafHref('audit'), label: 'Audit log', icon: 'activity', blurb: 'Every security-relevant change, tamper-evident.', show: !personal && has('audit.view') && mAudit > 0 },
 
     { id: 'notifications', group: 'Notifications', to: leafHref('notifications'), label: 'Defaults for members', icon: 'bell', blurb: 'Channels, quiet hours and digest until people choose their own.', show: !personal && isAdmin },
@@ -71,6 +74,7 @@ export function useWorkspaceSections(): SectionDef[] {
     { id: 'email', group: 'Integrations', to: leafHref('email'), label: 'Email to work', icon: 'mail', blurb: 'Emails to your team become operational work.', show: isAdmin && mWork > 0 },
     { id: 'git', group: 'Integrations', to: leafHref('git'), label: 'GitHub & Azure DevOps', icon: 'git', blurb: 'Commits and pull requests move tasks.', show: isAdmin },
     { id: 'webhooks', group: 'Integrations', to: leafHref('webhooks'), label: 'Webhooks', icon: 'send', blurb: 'Tell other systems (and Teams channels) when something changes; receive alerts as work.', show: isAdmin },
+    { id: 'status-page', group: 'Integrations', to: leafHref('status-page'), label: 'Status page', icon: 'activity', blurb: 'A public page showing whether your APIs are up.', show: !personal && isAdmin },
     { id: 'api-keys', group: 'Integrations', to: leafHref('api-keys'), label: 'API keys', icon: 'key', blurb: 'Access for scripts and other tools.', show: isAdmin },
 
     { id: 'ai', group: 'AI', to: leafHref('ai'), label: 'AI control centre', icon: 'sparkle', blurb: 'What the AI knows, what each agent may do, the model, credits and outside AI apps.', show: isAdmin },

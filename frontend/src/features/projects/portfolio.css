@@ -530,3 +530,4 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 .pf-drop-form textarea, .pf-drop-form input { padding: 8px 10px; border: 0; border-radius: 9px; background: var(--ds-fill); color: var(--ds-text); font: inherit; font-size: 14px; resize: vertical; }
 .pf-drop-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 @media (prefers-reduced-motion: reduce) { .pf-drop, .pf-drop-back { animation: none; } .pf-board .pf-card[draggable='true'] { transition: none; } }
+.pf-views { margin: -6px 0 6px; } .pf-views .pv-views { padding: 0; }

@@ -197,6 +197,11 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTypeService>();
         services.AddScoped<ProjectManagement.Application.Features.Quality.QualityService>();
         services.AddScoped<ProjectManagement.Application.Features.Quality.ReleaseService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.HistoryService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.SavedViewService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.HolidayService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.StatusPageService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.DataLocationService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTaskService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.SlaService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkRouting>();

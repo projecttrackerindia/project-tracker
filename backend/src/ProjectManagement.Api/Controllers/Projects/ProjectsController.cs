@@ -8,7 +8,8 @@ using ProjectManagement.Domain;
 namespace ProjectManagement.Api.Controllers.Projects;
 
 [Route("api/v1/projects"), RequireWorkspace, RequireModule(Modules.Projects)]
-public class ProjectsController(ProjectService projects, TaskService tasks, ActivityService activity, TimelineTemplateService timelineTemplates, TaskSuggestionService suggestions) : ApiControllerBase
+public class ProjectsController(ProjectService projects, TaskService tasks, ActivityService activity, TimelineTemplateService timelineTemplates, TaskSuggestionService suggestions,
+    ProjectManagement.Application.Features.Platform.HistoryService history) : ApiControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] ProjectQuery query, CancellationToken ct) => Ok(await projects.ListAsync(query, ct));
@@ -47,6 +48,10 @@ public class ProjectsController(ProjectService projects, TaskService tasks, Acti
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateProjectRequest req, CancellationToken ct) => Ok(await projects.UpdateAsync(id, req, ct));
 
     /// <summary>The status shown, the calculated one, and the one set by hand (when in force).</summary>
+    /// <summary>Field changes on the project (who, when, old → new), newest first.</summary>
+    [HttpGet("{id:guid}/history")]
+    public async Task<IActionResult> History(Guid id, CancellationToken ct) => Ok(await history.ProjectAsync(id, ct));
+
     [HttpGet("{id:guid}/health")]
     public async Task<IActionResult> Health(Guid id, CancellationToken ct) => Ok(await projects.GetHealthAsync(id, ct));
 

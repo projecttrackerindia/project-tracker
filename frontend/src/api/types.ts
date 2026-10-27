@@ -390,7 +390,7 @@ export interface UtilisationPerson {
   utilisation: number | null; billableShare: number | null; cost: number | null; billableValue: number | null;
 }
 /** Portfolio › Capacity: person × week plan (capacity after leave vs booked open estimates). */
-export interface CapacityPlanCell { weekStart: string; capacityMinutes: number; bookedMinutes: number; leaveDays: number; workingDays: number; onLeave: boolean; over: boolean }
+export interface CapacityPlanCell { weekStart: string; capacityMinutes: number; bookedMinutes: number; leaveDays: number; workingDays: number; onLeave: boolean; over: boolean; /** Public holidays on weekdays that week (Settings › Holidays). */ holidayDays?: number }
 export interface CapacityPlanPerson { userId: string; name: string; weeklyCapacityMinutes: number; weeks: CapacityPlanCell[] }
 export interface CapacityPlanSuggestion {
   fromUserId: string; fromName: string; toUserId: string; toName: string; firstWeek: string; lastWeek: string; overMinutes: number; freeMinutes: number;

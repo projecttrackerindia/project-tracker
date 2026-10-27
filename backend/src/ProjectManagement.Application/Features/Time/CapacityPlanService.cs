@@ -12,7 +12,7 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Time;
 
 /// <summary>One person in one week: capacity after leave, booked (estimated open work), leave days, and whether the week is over-booked.</summary>
-public record CapacityPlanCellDto(DateOnly WeekStart, int CapacityMinutes, int BookedMinutes, int LeaveDays, int WorkingDays, bool OnLeave, bool Over);
+public record CapacityPlanCellDto(DateOnly WeekStart, int CapacityMinutes, int BookedMinutes, int LeaveDays, int WorkingDays, bool OnLeave, bool Over, int HolidayDays = 0);
 public record CapacityPlanPersonDto(Guid UserId, string Name, int WeeklyCapacityMinutes, IReadOnlyList<CapacityPlanCellDto> Weeks);
 public record CapacityPlanTaskDto(Guid Id, string Title, int Minutes, DateOnly? DueDate);
 /// <summary>A suggested move: tasks of an over-booked person that fit into someone else's free time in the same weeks.</summary>
@@ -26,7 +26,8 @@ public record CapacityPlanDto(DateOnly From, int Weeks, WorkloadScope Scope, IRe
 /// Capacity plan (Portfolio › Capacity): a read-only person × week view of the weeks ahead. Capacity is each person's weekly hours, less
 /// planned leave; booked is the remaining estimate (estimate less actual hours) of their open tasks, spread evenly over the working days
 /// from the task's start (or today) to its due date. Overdue or undated-start work lands from today. Tasks without an estimate or due
-/// date are not booked. There is no public-holiday calendar yet, so holidays count as zero. Same groups and entitlement as utilisation.
+/// date are not booked. Public holidays (Settings › Holidays) are days off for everyone: they lower capacity and no work is spread onto them.
+/// Same groups and entitlement as utilisation.
 /// </summary>
 public class CapacityPlanService(IAppDbContext db, ICurrentContext ctx, AppClock clock, EntitlementService entitlements, ReportingLineService reporting, WorkloadService workload)
 {
@@ -57,6 +58,9 @@ public class CapacityPlanService(IAppDbContext db, ICurrentContext ctx, AppClock
         var leave = await db.PlannedLeaves.AsNoTracking().Where(l => people.Contains(l.UserId) && l.WorkDate >= start && l.WorkDate <= end)
             .Select(l => new { l.UserId, l.WorkDate }).ToListAsync(ct);
         var leaveSet = leave.Select(l => (l.UserId, l.WorkDate)).ToHashSet();
+        var holidays = await ProjectManagement.Application.Features.Platform.HolidayService.DatesAsync(db, start.AddDays(-7), end.AddDays(400), ct);
+        bool Weekday(DateOnly d) => d.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday;
+        bool Workday(DateOnly d) => Weekday(d) && !holidays.Contains(d);
         var tasks = await db.Tasks.AsNoTracking()
             .Where(t => t.AssigneeId != null && people.Contains(t.AssigneeId.Value) && t.CompletedAt == null && t.EstimatedHours != null && t.EstimatedHours > 0
                         && t.DueDate != null && t.DueDate >= start.AddDays(-365) && (t.StartDate == null || t.StartDate <= end))
@@ -75,7 +79,7 @@ public class CapacityPlanService(IAppDbContext db, ICurrentContext ctx, AppClock
             if (due < first) due = first;   // overdue: everything lands today
             var days = new List<DateOnly>();
             for (var d = first; d <= due; d = d.AddDays(1))
-                if (d.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday && !leaveSet.Contains((t.AssigneeId, d))) days.Add(d);
+                if (Workday(d) && !leaveSet.Contains((t.AssigneeId, d))) days.Add(d);
             if (days.Count == 0) days.Add(first);
             var perDay = remaining / days.Count;
             foreach (var d in days)
@@ -91,12 +95,13 @@ public class CapacityPlanService(IAppDbContext db, ICurrentContext ctx, AppClock
             var weekly = m.WeeklyCapacityMinutes ?? CapacityService.StandardWeekMinutes;
             var cells = weekStarts.Select((w, i) =>
             {
-                var working = CapacityService.WorkingDays(w, w.AddDays(6));
-                var off = Enumerable.Range(0, 7).Count(k => { var d = w.AddDays(k); return d.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday && leaveSet.Contains((m.UserId, d)); });
+                var holidayDays = Enumerable.Range(0, 7).Count(k => { var d = w.AddDays(k); return Weekday(d) && holidays.Contains(d); });
+                var working = CapacityService.WorkingDays(w, w.AddDays(6)) - holidayDays;
+                var off = Enumerable.Range(0, 7).Count(k => { var d = w.AddDays(k); return Workday(d) && leaveSet.Contains((m.UserId, d)); });
                 var cap = (int)Math.Round(weekly * (working - off) / 5m);
                 var b = (int)Math.Round(booked.Where(kv => kv.Key.User == m.UserId && kv.Key.Week == i).Sum(kv => kv.Value));
                 var onLeave = off >= working && working > 0;
-                return new CapacityPlanCellDto(w, cap, b, off, working, onLeave, !onLeave && b > cap);
+                return new CapacityPlanCellDto(w, cap, b, off, working, onLeave, !onLeave && b > cap, holidayDays);
             }).ToList();
             return new CapacityPlanPersonDto(m.UserId, m.DisplayName, weekly, cells);
         }).OrderBy(r => r.Name).ToList();
@@ -104,7 +109,7 @@ public class CapacityPlanService(IAppDbContext db, ICurrentContext ctx, AppClock
         var capTotal = rows.Sum(r => r.Weeks.Sum(w => w.CapacityMinutes));
         var bookTotal = rows.Sum(r => r.Weeks.Sum(w => w.BookedMinutes));
         var totals = new CapacityPlanTotalsDto(capTotal, bookTotal, capTotal > 0 ? Math.Round((decimal)bookTotal / capTotal, 4) : null,
-            rows.Sum(r => r.Weeks.Count(w => w.Over)), rows.Sum(r => r.Weeks.Count(w => w.OnLeave)), 0);
+            rows.Sum(r => r.Weeks.Count(w => w.Over)), rows.Sum(r => r.Weeks.Count(w => w.OnLeave)), holidays.Count(d => d >= start && d <= end && Weekday(d)));
 
         return new CapacityPlanDto(start, n, scope, available, true, weekStarts, rows, totals, Suggest(rows, booked, tasks.ToDictionary(t => t.Id, t => (t.Title, t.DueDate))));
     }

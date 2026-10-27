@@ -15,6 +15,7 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
     {
         services.Configure<AppOptions>(config.GetSection(AppOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Platform.DataLocationOptions>(config.GetSection(ProjectManagement.Application.Features.Platform.DataLocationOptions.Section));
         services.Configure<ResumeImportOptions>(config.GetSection(ResumeImportOptions.Section));
         services.AddSingleton<ProjectManagement.Application.Features.Resumes.IResumeDocumentExtractor,IsolatedResumeDocumentExtractor>();
         services.Configure<ProjectManagement.Application.Features.Billing.PricingOptions>(config.GetSection(ProjectManagement.Application.Features.Billing.PricingOptions.Section));

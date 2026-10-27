@@ -195,6 +195,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<ReleaseItem> ReleaseItems => Set<ReleaseItem>();
     public DbSet<ReleaseSignOff> ReleaseSignOffs => Set<ReleaseSignOff>();
     public DbSet<TestResult> TestResults => Set<TestResult>();
+    public DbSet<SavedView> SavedViews => Set<SavedView>();
+    public DbSet<Holiday> Holidays => Set<Holiday>();
+    public DbSet<StatusPage> StatusPages => Set<StatusPage>();
     public DbSet<AiSearchChunk> AiSearchChunks => Set<AiSearchChunk>();
     public DbSet<AiEvaluationRun> AiEvaluationRuns => Set<AiEvaluationRun>();
     public DbSet<AiWorkspaceProvider> AiWorkspaceProviders => Set<AiWorkspaceProvider>();
@@ -347,6 +350,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureUpi(b);
         ConfigureVault(b);
         ConfigureQuality(b);
+        ConfigurePlatformViews(b);
         ApplyQueryFilters(b);
     }
 }

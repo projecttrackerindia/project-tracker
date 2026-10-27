@@ -15,6 +15,8 @@ import { fillMacro, MACROS } from '../work/deskLogic';
 import { useWarRoom } from '../work/Desk';
 import { clock, deskRing, firstLine, initials, leftLabel, type DeskTone } from './deskPageLogic';
 import './desk-page.css';
+import { BulkEditBar } from '../platform/BulkEditBar';
+import { SavedViewsBar } from '../platform/SavedViews';
 
 type Tab = 'queue' | 'mine' | 'solved';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -74,6 +76,10 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2
 export function DeskPage() {
   const [tab, setTab] = useState<Tab>('queue');
   const [selected, setSelected] = useState<string | null>(null);
+  const [prio, setPrio] = useState<'all' | 'urgent'>('all');
+  const [unassigned, setUnassigned] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const now = useNow(true);
   const me = useAuth((s) => s.ctx?.user);
   const wid = useWorkspaceId();
@@ -84,10 +90,17 @@ export function DeskPage() {
   const open = useWsQuery(['desk', 'list', 'queue'], () => workItemsApi.list({ kind: ['ticket'], status: 'open', limit: 200 }), { refetchInterval: 30_000 });
 
   const rows = useMemo(() => {
-    const items = [...(list.data?.items ?? [])];
+    const items = (list.data?.items ?? []).filter((r) => (prio === 'all' || r.priority === 'Critical' || r.priority === 'High') && (!unassigned || !r.assignee));
     const due = (r: WorkRow) => (r.slaDueAt ? Date.parse(r.slaDueAt) : Number.POSITIVE_INFINITY);
     return tab === 'solved' ? items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)) : items.sort((a, b) => due(a) - due(b) || a.key.localeCompare(b.key));
-  }, [list.data, tab]);
+  }, [list.data, tab, prio, unassigned]);
+  const pickedRows = rows.filter((r) => picked.has(r.id));
+  const togglePick = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const viewConfig = { tab, priority: prio === 'all' ? undefined : prio, unassigned: unassigned || undefined };
+  const applyView = (c: Record<string, unknown>) => {
+    setTab(c.tab === 'mine' || c.tab === 'solved' ? c.tab : 'queue'); setPrio(c.priority === 'urgent' ? 'urgent' : 'all'); setUnassigned(c.unassigned === true);
+    setSelected(null); setPicked(new Set());
+  };
 
   // The first tickets' details (who raised it, where from) for the queue rows; the same queries serve the open ticket.
   const shown = rows.slice(0, 12);
@@ -133,7 +146,7 @@ export function DeskPage() {
       <ToolbarSeg className="dq-tb">
         <div className="dq-seg" role="tablist" aria-label="Desk views">
           {(['queue', 'mine', 'solved'] as Tab[]).map((t) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setSelected(null); }}>
+            <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setSelected(null); setPicked(new Set()); }}>
               {t === 'queue' ? 'Queue' : t === 'mine' ? 'Mine' : 'Solved'}
             </button>
           ))}
@@ -156,7 +169,13 @@ export function DeskPage() {
 
       <div className="dq-cols">
         <section className="dq-card dq-q" aria-label="Live queue">
-          <div className="dq-qh"><h2 className="dq-h3">{tab === 'solved' ? 'Solved' : tab === 'mine' ? 'Mine' : 'Live queue'}</h2><span className="dq-faint">{tab === 'solved' ? 'latest first' : 'by SLA left'}</span></div>
+          <div className="dq-qh"><h2 className="dq-h3">{tab === 'solved' ? 'Solved' : tab === 'mine' ? 'Mine' : 'Live queue'}</h2><span className="dq-faint">{tab === 'solved' ? 'latest first' : 'by SLA left'}</span>
+            {rows.length > 0 && <button type="button" className="pv-select-btn dq-select" aria-pressed={selecting} onClick={() => { setSelecting((v) => !v); setPicked(new Set()); }}>{selecting ? 'Done' : 'Select'}</button>}</div>
+          <div className="dq-filters" role="group" aria-label="Narrow the queue">
+            <button type="button" className={`pv-chip dq-fchip${prio === 'urgent' ? ' on' : ''}`} aria-pressed={prio === 'urgent'} onClick={() => setPrio((p) => (p === 'urgent' ? 'all' : 'urgent'))}><span>Critical & high</span></button>
+            <button type="button" className={`pv-chip dq-fchip${unassigned ? ' on' : ''}`} aria-pressed={unassigned} onClick={() => setUnassigned((v) => !v)}><span>Unassigned</span></button>
+          </div>
+          <SavedViewsBar scope="desk" current={viewConfig} onApply={applyView} />
           <div className="dq-qlist" ref={listRef} role="listbox" aria-label="Tickets" tabIndex={0}
             onKeyDown={(e: ReactKeyboardEvent) => { if (e.key === 'Enter' && current) setSelected(current.id); }}>
             {list.isLoading && <p className="dq-empty">Loading…</p>}
@@ -165,14 +184,16 @@ export function DeskPage() {
               const d = detailOf(r.id);
               const who = [d?.reporter?.name, r.assignee?.name.split(' ')[0] ?? 'unassigned'].filter(Boolean).join(' · ');
               return (
-                <div key={r.id} data-id={r.id} role="option" aria-selected={current?.id === r.id} className={`dq-t ${current?.id === r.id ? 'on' : ''}`} onClick={() => setSelected(r.id)}>
+                <div key={r.id} data-id={r.id} role="option" aria-selected={current?.id === r.id} className={`dq-t ${current?.id === r.id ? 'on' : ''}${selecting ? ' selecting' : ''}${picked.has(r.id) ? ' picked' : ''}`}
+                  onClick={() => (selecting ? togglePick(r.id) : setSelected(r.id))}>
+                  {selecting && <label className="pv-check" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={picked.has(r.id)} onChange={() => togglePick(r.id)} aria-label={`Select ${r.key} ${r.title}`} /></label>}
                   <DeskRing row={r} now={now} />
                   <div className="dq-tx">
                     <span className="dq-tmeta" data-testid="dq-row-meta"><span className={`dq-pill p-${r.priority.toLowerCase()}`}>{r.priority}</span>{[r.key, d?.channel ? `via ${CHANNEL[d.channel] ?? d.channel}` : null, r.typeName].filter(Boolean).join(' · ')}</span>
                     <b>{r.title}</b>
                     <small><ChannelIcon channel={d?.channel} />{who}</small>
                   </div>
-                  {tab !== 'solved' && (
+                  {tab !== 'solved' && !selecting && (
                     <span className="dq-tacts" onClick={(e) => e.stopPropagation()}>
                       {me && r.assignee?.id !== me.id && <button type="button" className="dq-btn sm white" disabled={busyRow === r.id} onClick={() => void quick(r, { assigneeId: me.id }, 'Assigned to you.')}>Assign</button>}
                       <button type="button" className="dq-btn sm" disabled={busyRow === r.id} onClick={() => void quick(r, { status: 'Completed' }, 'Resolved.')}>Resolve</button>
@@ -187,6 +208,7 @@ export function DeskPage() {
         {current ? <Conversation key={current.id} row={current} me={me?.id ?? null} /> : <AllClear tab={tab} onSolved={() => { setTab('solved'); setSelected(null); }} />}
         {current ? <Context key={`c-${current.id}`} row={current} /> : <div className="dq-ctx" />}
       </div>
+      {selecting && <BulkEditBar rows={pickedRows} onClear={() => setPicked(new Set())} onDone={() => { setSelecting(false); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }} />}
     </div>
   );
 }

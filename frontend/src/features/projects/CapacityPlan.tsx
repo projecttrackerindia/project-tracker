@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../stores/auth';
 import { resourcesApi } from '../../api/endpoints';
 import type { CapacityPlan, CapacityPlanCell, WorkloadScope } from '../../api/types';
 import { Avatar, EmptyState, ErrorState, Modal, PageLoader, Segmented } from '../../components/ui';
@@ -21,13 +22,15 @@ function Cell({ c, unit }: { c: CapacityPlanCell; unit: Unit }) {
   if (c.onLeave) return <div className="cp-cell leave" title={`On leave ${c.leaveDays} day${c.leaveDays === 1 ? '' : 's'}`}>Leave</div>;
   const ratio = c.capacityMinutes > 0 ? c.bookedMinutes / c.capacityMinutes : c.bookedMinutes > 0 ? 2 : 0;
   const tone = c.over ? 'over' : c.capacityMinutes > 0 && ratio < 0.65 ? 'lo' : '';
-  const label = `${fmtH(c.bookedMinutes)} booked of ${fmtH(c.capacityMinutes)}${c.leaveDays ? `, ${c.leaveDays} day${c.leaveDays === 1 ? '' : 's'} leave` : ''}`;
+  const hol = c.holidayDays ?? 0;
+  const label = `${fmtH(c.bookedMinutes)} booked of ${fmtH(c.capacityMinutes)}${c.leaveDays ? `, ${c.leaveDays} day${c.leaveDays === 1 ? '' : 's'} leave` : ''}${hol ? `, ${hol} public holiday${hol === 1 ? '' : 's'}` : ''}`;
   return (
     <div className={`cp-cell ${tone}`} title={label} aria-label={label}>
       {unit === 'hours'
         ? <><b>{h(c.bookedMinutes)}</b><span> / {h(c.capacityMinutes)}h</span></>
         : <><b>{Math.round(ratio * 100)}%</b><span className="cp-sub"> of {h(c.capacityMinutes)}h</span></>}
       {c.leaveDays > 0 && <em className="cp-leave-dot" aria-hidden="true" />}
+      {hol > 0 && <em className="cp-hol-dot" aria-hidden="true" />}
       <i style={{ ['--w' as string]: `${Math.min(100, ratio * 100)}%` }} />
     </div>
   );
@@ -43,6 +46,7 @@ export function CapacityPlanView() {
   const [unit, setUnit] = useState<Unit>('hours');
   const [scope, setScope] = useState<WorkloadScope | undefined>(undefined);
   const [preview, setPreview] = useState(false);
+  const canHolidays = useAuth((x) => x.ctx?.current?.role === 'Owner' || x.ctx?.current?.role === 'Admin');
   const q = useWsQuery(['capacity', 'plan', scope ?? ''], () => resourcesApi.plan({ weeks: 6, scope }), { staleTime: 60_000, placeholderData: (p) => p });
   const { busy, rebalance } = useRebalance((job) => navigate(`/insights?tab=reports&job=${encodeURIComponent(job)}`));
 
@@ -52,6 +56,7 @@ export function CapacityPlanView() {
   if (!p.entitled) return <div className="card"><div className="card-body"><EmptyState icon="gauge" title="Capacity planning comes with the Business plan" text="See each person's booked work against their capacity for the weeks ahead, with leave taken into account." /></div></div>;
 
   const s = p.suggestion;
+  const holidayWeeks = p.weekStarts.filter((_, i) => (p.people[0]?.weeks[i]?.holidayDays ?? 0) > 0).map(wk);
   const t = p.totals;
   const weeksTxt = (a: string, b: string) => a === b ? `week ${isoWeek(day(a))}` : `weeks ${isoWeek(day(a))}–${isoWeek(day(b))}`;
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -88,7 +93,7 @@ export function CapacityPlanView() {
           <div className="cp-grid" role="table" aria-label="Capacity by person and week" style={{ ['--n' as string]: p.weekStarts.length }}>
             <div className="cp-row cp-th" role="row">
               <div className="cp-who" role="columnheader">Person</div>
-              {p.weekStarts.map((w) => <div key={w} role="columnheader">{wk(w)}<small>{short(w)}</small></div>)}
+              {p.weekStarts.map((w, i) => <div key={w} role="columnheader">{wk(w)}<small>{short(w)}{(p.people[0]?.weeks[i]?.holidayDays ?? 0) > 0 && <span className="cp-hol" title="Public holiday this week"> · holiday</span>}</small></div>)}
             </div>
             {p.people.map((person) => (
               <div className="cp-row" role="row" key={person.userId}>
@@ -105,7 +110,7 @@ export function CapacityPlanView() {
 
       <div className="cp-foot">
         <span>Team total · {p.weeks} weeks: <b>{fmtH(t.bookedMinutes)} booked / {fmtH(t.capacityMinutes)} available</b>{t.booked !== null && ` (${Math.round(t.booked * 100)}%)`}</span>
-        <span>{plural(t.overWeeks, 'over-booked week')} · {plural(t.leaveWeeks, 'leave week')} · {plural(t.publicHolidays, 'public holiday')}</span>
+        <span>{plural(t.overWeeks, 'over-booked week')} · {plural(t.leaveWeeks, 'leave week')} · {plural(t.publicHolidays, 'public holiday')}{holidayWeeks.length > 0 && ` (${holidayWeeks.join(', ')})`}{canHolidays && <> · <Link className="link" to="/settings/general/holidays">Holidays ›</Link></>}</span>
       </div>
 
       {preview && s && (

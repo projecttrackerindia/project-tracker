@@ -409,6 +409,7 @@ public partial class ProjectService(
         if ((req.StageScheduleMode ?? project.StageScheduleMode) != StageScheduleMode.FollowSchedule || req.DueDate != project.DueDate)
             ValidateDates(req.StartDate, req.DueDate);
         var oldStart = project.StartDate;
+        var oldOwner = project.OwnerId; var oldMethod = project.DeliveryMethod; var oldType = project.ProjectType;
         if (req.ProjectType is { } newType) project.ProjectType = newType;
         if (req.DeliveryMethod is { } method && method != project.DeliveryMethod)
         {
@@ -436,6 +437,8 @@ public partial class ProjectService(
 
         var oldStatus = project.Status;
         var oldDue = project.DueDate;
+        var oldName = project.Name; var oldDescription = project.Description; var oldPriority = project.Priority; var oldTeam = project.TeamId;
+        var oldStartDate = project.StartDate;
         project.Name = req.Name.Trim();
         project.Description = req.Description?.Trim();
         project.Priority = req.Priority;
@@ -458,6 +461,19 @@ public partial class ProjectService(
         SetStatus(project, req.Status);
         project.Version++;
 
+        {
+            var people = await ProjectManagement.Application.Features.Platform.FieldDiff.NamesAsync(db, [oldOwner, project.OwnerId], ct);
+            var teamIds = new[] { oldTeam, project.TeamId }.Where(x => x is not null).Select(x => x!.Value).ToList();
+            var teams = teamIds.Count == 0 ? new Dictionary<Guid, string>() : await db.Teams.AsNoTracking().Where(t => teamIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
+            new ProjectManagement.Application.Features.Platform.FieldDiff()
+                .Add("Name", oldName, project.Name).Add("Status", oldStatus.ToString(), project.Status.ToString())
+                .Add("Owner", ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldOwner), ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, project.OwnerId))
+                .Add("Priority", oldPriority.ToString(), project.Priority.ToString()).Add("Start date", oldStartDate, project.StartDate).Add("Due date", oldDue, project.DueDate)
+                .Add("Team", oldTeam is { } a ? teams.GetValueOrDefault(a) : null, project.TeamId is { } b2 ? teams.GetValueOrDefault(b2) : null)
+                .Add("Delivery method", oldMethod.ToString(), project.DeliveryMethod.ToString()).Add("Type", oldType.ToString(), project.ProjectType.ToString())
+                .Add("Description", oldDescription, project.Description, 60)
+                .Record(recorder, "project", "Project", id);
+        }
         if (oldStatus != req.Status)
         {
             recorder.Activity("project.status_changed", "Project", id, $"Changed project \"{project.Name}\" status: {oldStatus} → {req.Status}", id, oldStatus.ToString(), req.Status.ToString());
@@ -536,6 +552,7 @@ public partial class ProjectService(
             recorder.Activity("project.health_set", "Project", id, $"Set \"{project.Name}\" to {h}: {note}", id, before, h);
         }
         recorder.Audit("project.health_set", "Project", id, before, project.HealthOverride);
+        new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Health", before, project.HealthOverride).Record(recorder, "project", "Project", id);
         project.Version++;
         await db.SaveChangesAsync(ct);
         return await HealthDtoAsync(project, ct);
@@ -561,6 +578,7 @@ public partial class ProjectService(
             SetStatus(project, req.Status);
             recorder.Activity("project.status_changed", "Project", id, $"Changed project \"{project.Name}\" status: {old} → {req.Status}", id, old.ToString(), req.Status.ToString());
             recorder.Audit("project.status_changed", "Project", id, old.ToString(), req.Status.ToString());
+            new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", old.ToString(), req.Status.ToString()).Record(recorder, "project", "Project", id);
         }
         project.Position = req.Position ?? await NextPositionAsync(ct);
         project.Version++;

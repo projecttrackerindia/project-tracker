@@ -79,6 +79,7 @@ const UnsubscribePage = page(() => import('./features/auth/UnsubscribePage'), 'U
 const ApprovePage = page(() => import('./features/auth/ApprovePage'), 'ApprovePage');
 const ReminderActionPage = page(() => import('./features/reminders/ActionPage'), 'ReminderActionPage');
 const SecretLinkPage = page(() => import('./features/vault/SecretLinkPage'), 'SecretLinkPage');
+const PublicStatusPage = page(() => import('./features/platform/PublicStatusPage'), 'PublicStatusPage');
 const ActivityPage = page(() => import('./features/activity/ActivityPages'), 'ActivityPage');
 import { toast } from './stores/ui';
 import { useAuth, useCan, useIsPersonal, useModule } from './stores/auth';
@@ -392,6 +393,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
       <Route path="/r/:token" element={<Suspense fallback={<PageLoader />}><ReminderActionPage /></Suspense>} />
       {/* A one-time secret from the vault: opened without signing in; the key is in the link's #fragment and never reaches a server. */}
       <Route path="/s/:token" element={<Suspense fallback={<PageLoader />}><SecretLinkPage /></Suspense>} />
+      {/* A workspace's public API status page: no account needed. */}
+      <Route path="/status/:slug" element={<Suspense fallback={<PageLoader />}><PublicStatusPage /></Suspense>} />
       {import.meta.env.DEV && <Route path="/dev/mailbox" element={<MailboxPage />} />}
 
       {redirecting ? <Route path="*" element={<OrgRedirect />} /> : <Route element={<RequireAuth />}>

@@ -74,6 +74,10 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 .pp-proposals { padding: 20px 22px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .pp-proposals > h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--ds-text); }
 .pp-proposals > h3 span { color: var(--ds-text-3); font-weight: 500; }
+.pp-history { padding: 20px 22px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.pp-history > h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--ds-text); }
+.pp-history > .pp-faint { margin: 0 0 6px; font-size: 13px; }
+@media (max-width: 720px) { .pp-history { padding: 16px; } }
 
 /* ------------------------------------------------------------------ narrow screens */
 @media (max-width: 1080px) { .pp-cards { grid-template-columns: minmax(0, 1fr); } }
