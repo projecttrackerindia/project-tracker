@@ -17,7 +17,7 @@ const ws = { id: g(9), slug: 'preview-org', name: 'FiveStar Finance', type: 'Org
 const P = (n, name) => ({ id: g(n), name });
 const me = P(1, 'Prasanna K'), clara = P(2, 'Clara Novak'), lena = P(3, 'Lena Fischer'), tomas = P(4, 'Tomás Rivera');
 const members = [me, clara, lena, tomas].map((x, i) => ({ userId: x.id, displayName: x.name, email: `u${i}@example.test`, role: i ? 'Member' : 'Owner', joinedAt: '2026-01-01T00:00:00Z', jobRole: null }));
-const iso = (d) => d.toISOString().slice(0, 10);
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;   // local date, like the page
 const plus = (days) => { const d = new Date(); d.setDate(d.getDate() + days); return iso(d); };
 const pid = g(50);
 const rel = { id: g(60), name: 'v2.4', projectId: pid, projectName: 'Loan Origination', targetDate: plus(18), status: 'Planned', notes: null, items: 4, runs: 2, approvedBy: null, approvedAt: null, shippedAt: null, createdAt: '2026-10-01T00:00:00Z' };
