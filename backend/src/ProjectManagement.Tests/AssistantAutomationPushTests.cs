@@ -412,7 +412,7 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         // Dev wants "task assigned" on their devices.
         Assert.True((await o.Dev.Put("/api/v1/me/notification-preferences", new { items = new[] { new { type = "TaskAssigned", inApp = true, email = false, browser = true } } })).Ok);
         await o.Owner.CreateTaskAsync(o.Project, "Prepare the demo", new { title = "Prepare the demo", priority = "High", assigneeId = o.Dev.UserId });
-        await factory.Services.GetRequiredService<PushDispatcher>().RunAsync();
+        for (var i = 0; i < 50; i++) await factory.Services.GetRequiredService<PushDispatcher>().RunAsync();   // other tests may have queued more than one batch
 
         var sent = factory.Push.Sent.Single(s => s.Url.ToString() == endpoint);
         Assert.Equal("aes128gcm", sent.Headers["Content-Encoding"]);
@@ -457,7 +457,7 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         try
         {
             await o.Owner.CreateTaskAsync(o.Project, "Another", new { title = "Another", priority = "Low", assigneeId = o.Dev.UserId });
-            await factory.Services.GetRequiredService<PushDispatcher>().RunAsync();
+            for (var i = 0; i < 50; i++) await factory.Services.GetRequiredService<PushDispatcher>().RunAsync();   // other tests may have queued more than one batch
             Assert.Equal(0, (await o.Dev.Get("/api/v1/push")).Data!["devices"]!.GetValue<int>());
         }
         finally { factory.Push.Status = HttpStatusCode.Created; }

@@ -13,14 +13,23 @@ namespace ProjectManagement.Tests;
 public class StageScheduleUpgradeTests
 {
     // Simulate the actual preceding schema: both new columns are absent, dates already contain customer plans.
-    private sealed class PreviousContext(DbContextOptions<AppDbContext> options, CurrentContext context) : AppDbContext(options, context, TimeProvider.System)
+    /// <summary>The PostgreSQL schema at the older migration also lacks the columns 20261113001000_ReleasesAndHealth adds (status set by hand).</summary>
+    private sealed class PreviousPostgresContext(DbContextOptions<AppDbContext> options, CurrentContext context) : PreviousContextBase(options, context)
+    {
+        protected override void OnModelCreating(ModelBuilder builder)
+        {
+            base.OnModelCreating(builder);
+            builder.Entity<Project>().Ignore(p => p.HealthOverride).Ignore(p => p.HealthNote).Ignore(p => p.HealthUntil).Ignore(p => p.HealthSetById).Ignore(p => p.HealthSetAt);
+        }
+    }
+    private sealed class PreviousContext(DbContextOptions<AppDbContext> options, CurrentContext context) : PreviousContextBase(options, context);
+    private class PreviousContextBase(DbContextOptions<AppDbContext> options, CurrentContext context) : AppDbContext(options, context, TimeProvider.System)
     {
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder); builder.Entity<Project>().Ignore(p => p.StageScheduleMode); builder.Entity<ProjectStage>().Ignore(s => s.DurationDays);
             builder.Entity<Tenant>().Ignore(t => t.TimeZone);   // added later by 20261018000050_WorkspaceTimeZone
             builder.Entity<Tenant>().Ignore(t => t.AiAgentLevels);   // added later by 20261111000100_AiControlCentre
-            builder.Entity<Project>().Ignore(p => p.HealthOverride).Ignore(p => p.HealthNote).Ignore(p => p.HealthUntil).Ignore(p => p.HealthSetById).Ignore(p => p.HealthSetAt);   // added later by 20261113001000_ReleasesAndHealth
         }
     }
     /// <param name="postgres">The PostgreSQL database still at the older migration: the person is written there with the columns it has then
@@ -69,7 +78,7 @@ public class StageScheduleUpgradeTests
             await using var db = new AppDbContext(options, context, TimeProvider.System);
             await db.GetService<IMigrator>().MigrateAsync("20261012171600_PlannedTimesheetLeave");
             Guid project; Guid stage;
-            await using (var old = new PreviousContext(options, context)) (project, stage) = await SeedOldAsync(old, context, configured.ConnectionString);
+            await using (var old = new PreviousPostgresContext(options, context)) (project, stage) = await SeedOldAsync(old, context, configured.ConnectionString);
             await db.Database.MigrateAsync(); await db.Database.MigrateAsync(); await AssertPreservedAsync(db, project, stage);
             Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         }

@@ -37,7 +37,7 @@ public class DeskCustomerChannelTests(ApiFactory factory)
     {
         var box = (await owner.Put("/api/v1/integrations/inbound-email", new { enabled = true })).Data!;
         using var anon = factory.CreateClient();
-        var res = await anon.PostAsJsonAsync(new Uri(S(box["webhookUrl"])).PathAndQuery, new { From = $"Kiran Patel <{from.Email}>", To = "work@inbound.test", Subject = subject, TextBody = text });
+        var res = await anon.PostAsJsonAsync(new Uri(S(box["webhookUrl"])).PathAndQuery, new { From = $"Kiran Patel <{from.Email}>", To = "work@inbound.test", Subject = subject, Text = text });   // sent as camelCase JSON, so "text" (not TextBody)
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var key = (await res.Content.ReadFromJsonAsync<JsonNode>())!["data"]!["workTask"]!.GetValue<string>();
         return (await owner.Get($"/api/v1/work-tasks?q={Uri.EscapeDataString(subject)}")).Data!["items"]!.AsArray().First(t => S(t!["key"]) == key)!;
