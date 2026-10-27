@@ -260,3 +260,32 @@ html .v2-ai-card .btn.btn-ai:not(#_):hover:not(:disabled) { background: color-mi
 .v2-enter { animation: v2-enter .28s cubic-bezier(.2,.8,.2,1); }
 @keyframes v2-enter { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .v2-enter { animation: none; } }
+
+.v2-side-me > span { display: none; }
+/* The toolbar (wide layout): Ask field + "+ New" at the top of the main area; replaces the floating Ask bar and the sidebar's + New. */
+.v2-tb { display: none; }
+@media (min-width: 1100px) {
+  .v2-tb { display: flex; position: sticky; top: 0; z-index: 40; height: 52px; flex: none; align-items: center; gap: 12px; padding: 0 22px;
+    background: color-mix(in srgb, var(--ds-bg) 82%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
+  .v2-tb-sp { flex: 1; }
+  .v2-tb-ask { display: flex; align-items: center; gap: 8px; height: 30px; width: 280px; padding: 0 10px; border-radius: 9px; background: rgba(118, 118, 128, .12); cursor: text; }
+  .v2-tb-ask:focus-within { background: var(--ds-surface); box-shadow: 0 0 0 3px rgba(0, 113, 227, .18); }
+  .v2-tb-ask .v2-orb { width: 16px; height: 16px; box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1); background: conic-gradient(from 200deg, #5e5ce6, #bf5af2, #ff375f, #ff9f0a, #5e5ce6); }
+  .v2-tb-ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 13px; color: var(--ds-text); padding: 0; letter-spacing: -.01em; }
+  .v2-tb-ask input::placeholder { color: #86868b; }
+  .v2-tb-ask kbd { font: 500 11px/1 inherit; color: #86868b; background: none; box-shadow: none; padding: 0; }
+  .v2-tb-new { height: 30px; padding: 0 14px; border-radius: 15px; border: 0; display: inline-flex; align-items: center; gap: 6px; background: var(--ds-accent-fill); color: #fff;
+    font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .v2-tb-new:hover { background: var(--ds-accent-hover); }
+  .v2-tb-new:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+  .v2-shell .v2-ask:not(.corner) { display: none; }
+  .v2-side .v2-new { display: none; }
+  html .v2-shell > .main.v2-main > .content { padding: 6px 34px 40px; }
+  /* the sidebar, as the design's side.js: translucent grey with blur, grey counts, name in the footer */
+  .v2-rail.v2-side { background: rgba(236, 236, 240, .78); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-right: .5px solid rgba(0, 0, 0, .08); }
+  [data-theme='dark'] .v2-rail.v2-side { background: rgba(30, 30, 32, .78); border-right-color: rgba(255, 255, 255, .08); }
+  .v2-side .v2-rail-item .v2-badge.calm { color: #86868b; }
+  .v2-side-me { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .v2-side-me > span { display: inline; font-size: 13px; font-weight: 500; color: var(--ds-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+@media (min-width: 1100px) { .v2-side .v2-side-me .v2-avatar { width: 28px; height: 28px; font-size: 11px; background: linear-gradient(135deg, #0a84ff, #5e5ce6); } }

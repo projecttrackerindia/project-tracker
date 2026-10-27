@@ -28,7 +28,8 @@ public record DashboardDto(DashboardCounts Counts, IReadOnlyList<TaskDto> MyTask
     IReadOnlyList<ActivityDto> Activity, IReadOnlyList<WorkItemDto> MyWork);
 
 public record CalendarEventDto(string Type, Guid Id, string Title, DateOnly Date, string? Status, StatusCategory? Category, bool Overdue,
-    Guid? ProjectId, string? ProjectName, Priority? Priority, DateTime? StartsAt = null);
+    Guid? ProjectId, string? ProjectName, Priority? Priority, DateTime? StartsAt = null,
+    int? DurationMinutes = null, bool Notes = false, string? JoinUrl = null, IReadOnlyList<string>? People = null);
 public record SearchHit(string Type, Guid Id, string Title, string? Subtitle, Guid? ProjectId, Guid? TaskId);
 public record SearchResultDto(IReadOnlyList<SearchHit> Hits);
 
@@ -221,6 +222,8 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         // (organizer or an invited participant), so this follows the assignees filter rather than showWorkspaceEvents.
         // Local-to-UTC shift, with ticks clamped before the shift so a boundary date (DateOnly.MinValue/MaxValue, reachable when a caller
         // omits "from"/"to" and model binding defaults them) can never make AddMinutes overflow past what DateTime can represent.
+        // A session lasts as long as the series' first one (the end time is stored once per meeting); unknown or nonsense reads as null.
+        static int? DurationOf(DateTime start, DateTime end) { var min = (int)Math.Round((end - start).TotalMinutes); return min is > 0 and <= 24 * 60 ? min : null; }
         DateTime ShiftToUtc(DateOnly localDate)
         {
             var ticks = Math.Clamp(localDate.ToDateTime(TimeOnly.MinValue).Ticks - TimeSpan.FromMinutes(clock.OffsetMinutes).Ticks, DateTime.MinValue.Ticks, DateTime.MaxValue.Ticks);
@@ -237,11 +240,13 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (projectId is { } meetingProject) meq = meq.Where(m => m.ProjectId == meetingProject);
         if (assignees is { } meetingIds) meq = meq.Where(m => meetingIds.Contains(m.OrganizerUserId) || m.Participants.Any(p => p.UserId != null && meetingIds.Contains(p.UserId.Value)));
         var meetingRows = await meq.AsNoTracking().OrderBy(m => m.StartTimeUtc).Take(200)
-            .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.TimeZone, m.RecurrenceRule, m.Status, m.ProjectId, ProjectName = db.Projects.Where(p => p.Id == m.ProjectId).Select(p => p.Name).FirstOrDefault() })
+            .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, m.RecurrenceRule, m.Status, m.ProjectId, m.Notetaker, m.GoogleMeetUri, ProjectName = db.Projects.Where(p => p.Id == m.ProjectId).Select(p => p.Name).FirstOrDefault(),
+                People = m.Participants.Where(x => x.User != null).OrderBy(x => x.Role).Select(x => x.User!.DisplayName).Take(5).ToList() })
             .ToListAsync(ct);
         foreach (var m in meetingRows)
             foreach (var at in ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.Occurrences(m.RecurrenceRule, m.StartTimeUtc, m.TimeZone, fromUtc, toUtcExclusive))
-                events.Add(new CalendarEventDto("meeting", m.Id, m.Title, clock.LocalDate(at), m.Status.ToString(), null, false, m.ProjectId, m.ProjectName, null, at));
+                events.Add(new CalendarEventDto("meeting", m.Id, m.Title, clock.LocalDate(at), m.Status.ToString(), null, false, m.ProjectId, m.ProjectName, null, at,
+                    DurationOf(m.StartTimeUtc, m.EndTimeUtc), m.Notetaker != MeetingNotetaker.Off, string.IsNullOrEmpty(m.GoogleMeetUri) ? null : m.GoogleMeetUri, m.People));
 
         // Workspace meetings (a stand-up with no project): for the people invited, or everyone's when the view is the whole workspace.
         if (projectId is null)
@@ -252,10 +257,12 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (assignees is { } invited) wq = wq.Where(m => m.Attendees.Any(a => invited.Contains(a.UserId)));
             else if (!orgAdmin) wq = wq.Where(m => m.Attendees.Any(a => a.UserId == me));
             var workspaceRows = await wq.AsNoTracking().OrderBy(m => m.StartTimeUtc).Take(200)
-                .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.TimeZone, m.RecurrenceRule, m.Status }).ToListAsync(ct);
+                .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, m.RecurrenceRule, m.Status, m.GoogleMeetUri,
+                    People = m.Attendees.OrderByDescending(a => a.IsOrganizer).Select(a => db.Users.Where(u => u.Id == a.UserId).Select(u => u.DisplayName).FirstOrDefault() ?? a.Email).Take(5).ToList() }).ToListAsync(ct);
             foreach (var m in workspaceRows)
                 foreach (var at in ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.Occurrences(m.RecurrenceRule, m.StartTimeUtc, m.TimeZone, fromUtc, toUtcExclusive))
-                    events.Add(new CalendarEventDto("meeting", m.Id, m.Title, clock.LocalDate(at), m.Status.ToString(), null, false, null, null, null, at));
+                    events.Add(new CalendarEventDto("meeting", m.Id, m.Title, clock.LocalDate(at), m.Status.ToString(), null, false, null, null, null, at,
+                        DurationOf(m.StartTimeUtc, m.EndTimeUtc), false, string.IsNullOrEmpty(m.GoogleMeetUri) ? null : m.GoogleMeetUri, m.People));
         }
 
         if (showWorkspaceEvents)

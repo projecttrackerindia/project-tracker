@@ -24,7 +24,7 @@ import { pushCoversThisDevice, systemNotification } from '../features/reminders/
 import { useReminderComposer } from '../features/reminders/store';
 import { LiveCallsBar } from '../features/calls/LiveCallsBar';
 import { CallHost } from '../features/calls/CallHost';
-import { AskBar, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail } from '../components/v2';
+import { AskBar, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
 import { MotionConfig } from 'framer-motion';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
@@ -127,6 +127,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           <Rail />
           <div className="main v2-main">
             <PlatformBanner />
+            {!admin && <Toolbar />}
             <main id="main-content" className="content" ref={main} tabIndex={-1}>{page}</main>
           </div>
         </>

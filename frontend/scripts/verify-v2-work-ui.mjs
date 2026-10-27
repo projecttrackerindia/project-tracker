@@ -196,7 +196,7 @@ try {
     assert.deepEqual((await tabs.getByRole('tab').allInnerTexts()).map((t) => t.trim()), ['My work', 'Team', 'Tickets', 'Automations']);
     assert.equal(await tabs.getByRole('tab', { name: 'My work' }).getAttribute('aria-selected'), 'true');
     // Projects › is a link that leaves Work, not a tab.
-    const projectsLink = page.getByRole('link', { name: /^Projects/ });
+    const projectsLink = page.locator('main').getByRole('link', { name: /^Projects/ });
     assert.equal(await projectsLink.getAttribute('href'), '/preview-org/work/projects');
     const list = page.getByRole('region', { name: 'Work list' });
     const rows = list.locator('.wk-row');
@@ -434,7 +434,7 @@ try {
       const kept = errors.length;
       const newSheet = async (words, tile) => {
         await page.goto(`${origin}/preview-org/work`); await rows.first().waitFor();
-        await page.locator('.v2-new').click();
+        await page.locator('.v2-tb-new').click();
         await sheet.getByLabel('What to create').fill(words);
         if (tile) await sheet.getByRole('radio', { name: tile }).click();
         await sheet.getByRole('button', { name: /^Create / }).click();
@@ -454,7 +454,7 @@ try {
       await page.keyboard.press('Escape');
       // A task needs its project: the Project chip asks for one, then it is made through /work-items too.
       await page.goto(`${origin}/preview-org/work`); await rows.first().waitFor();
-      await page.locator('.v2-new').click();
+      await page.locator('.v2-tb-new').click();
       await sheet.getByLabel('What to create').fill('Write the settlement runbook');
       await sheet.getByRole('radio', { name: 'Task' }).click();
       await sheet.getByLabel('Change project').selectOption(pid);

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { chatApi, projectApi } from '../../api/endpoints';
+import { chatApi, insightApi, projectApi } from '../../api/endpoints';
+import type { Project } from '../../api/types';
 import { Icon, type IconName } from '../Icon';
 import { BrandMark } from '../BrandMark';
 import { useAvatarUrl } from '../ui';
@@ -36,7 +37,7 @@ function useInboxOpen() {
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
   const q = useWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { enabled: !admin, refetchInterval: 90_000, staleTime: 30_000 });
   const rows = q.data?.rows ?? [];
-  return { count: q.data?.counts?.all ?? rows.length, urgent: rows.some((r) => r.urgent) };
+  return { count: q.data?.counts?.all ?? rows.length, urgent: rows.some((r) => r.urgent), tickets: rows.filter((r) => r.kind === 'ticket').length };
 }
 
 const isOn = (i: NavDef, path: string) => (i.match ? i.match(path) : i.end ? path === i.to : path === i.to || path.startsWith(`${i.to}/`));
@@ -60,12 +61,36 @@ const TINT = {
 };
 const PIN_DOTS = ['#5856d6', '#ff9500', '#30b0c7'];
 
+/** The projects this person opened most recently on this device (newest first, at most 10), per workspace. */
+const recentKey = (wid: string) => `pt_recent_projects:${wid}`;
+export function readRecentProjects(wid: string): string[] {
+  try { const v = JSON.parse(localStorage.getItem(recentKey(wid)) ?? '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 10) : []; } catch { return []; }
+}
+function rememberProject(wid: string, id: string) {
+  try { localStorage.setItem(recentKey(wid), JSON.stringify([id, ...readRecentProjects(wid).filter((x) => x !== id)].slice(0, 10))); } catch { /* storage blocked: pins fall back to recently updated */ }
+}
+/** Pinned projects: the ones opened most recently here first, then the most recently updated, open projects only. */
+export function pickPinned(items: Project[], recent: string[], n = 3): Project[] {
+  const live = items.filter((p) => p.status !== 'Completed' && p.status !== 'Cancelled' && p.status !== 'Archived');
+  const byId = new Map(live.map((p) => [p.id, p]));
+  const first = recent.map((id) => byId.get(id)).filter(Boolean) as Project[];
+  const rest = live.filter((p) => !recent.includes(p.id)).sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
+  return [...first, ...rest].slice(0, n);
+}
+
 /** The sidebar's sections, built only from places and pages the person may open (the same definitions as the palette). */
 function useSideGroups(): SideGroup[] {
   const { pathname, search } = useLocation();
   const groups = useMainNav();
   const talk = useTalkUnread();
   const inbox = useInboxOpen();
+  const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  const canProjects = (useAuth((s) => s.ctx?.current?.modules?.projects) ?? 0) > 0;
+  const dash = useWsQuery(['dashboard', null], () => insightApi.dashboard(null), { staleTime: 60_000, retry: false, enabled: !admin });
+  const projectList = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false, enabled: !admin && canProjects });
+  const myOpen = dash.data?.counts?.myOpen ?? 0;
+  const deskOpen = inbox.tickets;
+  const projectCount = (projectList.data?.items ?? []).filter((p) => p.status !== 'Completed' && p.status !== 'Cancelled' && p.status !== 'Archived').length;
   const all = groups.flatMap((g) => g.items).filter((i) => i.show !== false);
   const has = (to: string) => all.find((i) => i.to === to);
   const q = new URLSearchParams(search);
@@ -80,18 +105,19 @@ function useSideGroups(): SideGroup[] {
   const clean = (g: SideGroup) => ({ ...g, items: g.items.filter(Boolean) as SideItem[] });
   const home = pathname === '/' || pathname === '/dashboard' || pathname.startsWith('/approve/');
   return [
-    clean({ title: null, items: [mk('/', 'home', 'Today', 'radar', TINT.blue, home && tab !== 'calendar', { badge: inbox.count, calm: !inbox.urgent })] as SideItem[] }),
+    clean({ title: null, items: [mk('/', 'home', 'Today', 'sun', TINT.blue, home && tab !== 'calendar', { badge: inbox.count, calm: !inbox.urgent })] as SideItem[] }),
     clean({ title: 'Work', items: [
-      mk('/work', 'work', 'My Work', 'checkCircle', TINT.orange, pathname === '/work' && tab !== 'tickets'),
-      mk('/work?tab=tickets', 'tickets', 'Tickets', 'bolt', TINT.red, pathname === '/work' && tab === 'tickets'),
+      mk('/work', 'work', 'My Work', 'checkCircle', TINT.orange, pathname === '/work', { badge: myOpen, calm: true }),
+      mk('/desk', 'desk', 'Desk', 'target', TINT.red, pathname === '/desk' || pathname.startsWith('/desk/'), { badge: deskOpen, calm: true }),
+      mk('/quality', 'quality', 'Quality', 'bug', 'linear-gradient(180deg,#cf7bf0,#af52de)', pathname === '/quality' || pathname.startsWith('/quality/')),
     ] as SideItem[] }),
     clean({ title: 'Plan', items: [
-      mk('/work/projects', 'projects', 'Projects', 'folder', TINT.indigo, onProjects && !portfolio),
+      mk('/work/projects', 'projects', 'Projects', 'folder', TINT.indigo, onProjects && !portfolio, { badge: projectCount, calm: true }),
       mk('/work/projects?view=portfolio', 'portfolio', 'Portfolio', 'monitor', TINT.teal, portfolio),
       mk('/?tab=calendar', 'calendar', 'Calendar', 'calendar', TINT.red, home && tab === 'calendar'),
     ] as SideItem[] }),
     clean({ title: 'Together', items: [
-      mk('/talk', 'talk', 'Talk', 'message', TINT.green, pathname === '/talk' || pathname.startsWith('/talk/') || pathname.startsWith('/calls/'), { badge: talk }),
+      mk('/talk', 'talk', 'Talk', 'message', TINT.green, pathname === '/talk' || pathname.startsWith('/talk/') || pathname.startsWith('/calls/'), { badge: talk, calm: true }),
       mk('/library', 'library', 'Library', 'note', TINT.amber, (pathname === '/library' || pathname.startsWith('/library/')) && !vault),
       mk('/library/vault', 'vault', 'Vault', 'key', TINT.gray, vault),
       mk('/insights', 'insights', 'Insights', 'chart', TINT.pink, pathname === '/insights' || pathname.startsWith('/insights/') || pathname === '/activity'),
@@ -99,10 +125,18 @@ function useSideGroups(): SideGroup[] {
   ].filter((g) => g.items.length > 0);
 }
 
-/** Up to three projects from the list Home already loads (shared cache), as quick links. */
+/** Up to three projects (most recently opened here, then most recently updated) from the list Home already loads (shared cache). */
 function usePinned(enabled: boolean) {
+  const { pathname } = useLocation();
+  const wid = useAuth((s) => s.ctx?.current?.id) ?? '';
+  const [recent, setRecent] = useState(() => readRecentProjects(wid));
+  useEffect(() => {
+    const id = /^\/work\/projects\/([0-9a-f-]{8,})/i.exec(pathname)?.[1];
+    if (wid && id) rememberProject(wid, id);
+    setRecent(readRecentProjects(wid));
+  }, [pathname, wid]);
   const q = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false, enabled });
-  return (q.data?.items ?? []).filter((p) => p.status !== 'Completed' && p.status !== 'Cancelled' && p.status !== 'Archived').slice(0, 3);
+  return pickPinned(q.data?.items ?? [], recent);
 }
 
 /**
@@ -124,7 +158,7 @@ export function Rail() {
         <button type="button" className="v2-rail-logo" aria-label="Home" title="Home" onClick={() => nav(admin ? '/admin' : '/')}><BrandMark size={20} /></button>
         <span className="v2-side-ws-text"><b>{admin ? 'Platform' : ctx?.current?.name ?? 'Workspace'}</b><small>{admin ? 'Administrator' : ctx?.current?.role ?? ''}</small></span>
       </div>
-      {!admin && <button type="button" className="v2-new" aria-label="New" title="New (N)" onClick={() => openNew()}><Icon name="plus" size={18} /><span className="v2-side-label">New</span></button>}
+      {!admin && <button type="button" className="v2-new v2-rail-new" aria-label="New" title="New (N)" onClick={() => openNew()}><Icon name="plus" size={18} /><span className="v2-side-label">New</span></button>}
       <nav className="v2-rail-nav">
         {admin ? places.map((i) => (
           <NavLink key={i.id ?? i.to} to={i.to} end={i.end} className={() => `v2-rail-item ${isOn(i, pathname) ? 'on' : ''}`} aria-current={isOn(i, pathname) ? 'page' : undefined} title={i.hint ?? i.label}>
@@ -138,7 +172,7 @@ export function Rail() {
               <Link key={i.key} to={i.to} className={`v2-rail-item ${i.on ? 'on' : ''}`} aria-current={i.on ? 'page' : undefined} title={i.hint ?? i.label} data-place={i.key}>
                 <span className="v2-tile" style={{ background: i.tint }}><Icon name={i.icon} size={13} /></span>
                 <span className="v2-rail-label">{i.label}</span>
-                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} aria-label={i.key === 'home' ? `${i.badge} waiting on you` : `${i.badge} unread`}>{i.badge > 99 ? '99+' : i.badge}</em>}
+                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} aria-label={i.key === 'home' ? `${i.badge} waiting on you` : i.key === 'talk' ? `${i.badge} unread` : `${i.badge} open`}>{i.badge > 99 ? '99+' : i.badge}</em>}
               </Link>
             ))}
           </div>
@@ -156,7 +190,7 @@ export function Rail() {
       </nav>
       <div className="v2-rail-foot">
         {!admin && <RunningTimer />}
-        <AvatarMenu />
+        <div className="v2-side-me"><AvatarMenu /><span>{ctx?.user.displayName}</span></div>
       </div>
     </aside>
   );
