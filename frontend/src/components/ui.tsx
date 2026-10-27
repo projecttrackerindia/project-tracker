@@ -84,6 +84,9 @@ export const activeShare = (s: { total: number; done: number; inProgress: number
 };
 
 /** `value` is what is done; `active` (optional) is the extra share being worked on, drawn lighter after it. */
+/** Unit tests and automated browsers (UI checks, crawlers) get final values with no count-up or growth. */
+const AUTOMATED = import.meta.env.MODE === 'test' || (typeof navigator !== 'undefined' && navigator.webdriver === true);
+
 export function Progress({ value, tone = 'auto', large, active = 0 }: { value: number; tone?: 'auto' | '' | 'green' | 'amber' | 'red'; large?: boolean; active?: number }) {
   const p = clamp(Math.round(value), 0, 100);
   const a = clamp(Math.round(active), 0, 100 - p);
@@ -100,7 +103,7 @@ export function Progress({ value, tone = 'auto', large, active = 0 }: { value: n
 /** The bar grows to its value the first time it scrolls into view (at once under prefers-reduced-motion). */
 function ProgressFill({ cls, p }: { cls: string; p: number }) {
   const still = useReducedMotion();
-  if (still || import.meta.env.MODE === 'test') return <div className={`progress-bar ${cls}`} style={{ width: `${p}%` }} />;
+  if (still || AUTOMATED) return <div className={`progress-bar ${cls}`} style={{ width: `${p}%` }} />;
   return <motion.div className={`progress-bar ${cls}`} initial={{ width: 0 }} whileInView={{ width: `${p}%` }} viewport={{ once: true }} transition={reveal} />;
 }
 
@@ -306,7 +309,8 @@ export function Kpi({ label, value, tone, caption, small, tile, onClick, to, cla
  */
 export function CountUp({ value }: { value: number }) {
   const still = useReducedMotion();
-  const skip = still || import.meta.env.MODE === 'test' || !Number.isFinite(value) || !Number.isInteger(value);
+  // Small numbers (under 10) just appear: counting 0 → 2 reads as a flicker, not motion. Automated browsers see final values at once.
+  const skip = still || AUTOMATED || !Number.isFinite(value) || !Number.isInteger(value) || Math.abs(value) < 10;
   const done = useRef(false);
   const [shown, setShown] = useState(skip ? value : 0);
   useEffect(() => {
