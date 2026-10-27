@@ -21,4 +21,5 @@ export const itemVariants: Variants = {
   exit: { opacity: 0, height: 0, minHeight: 0, marginTop: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0, transition: { duration: 0.22, ease: [0.2, 0.8, 0.2, 1] } },
 };
 /** Page content on a route change. */
-export const pageVariants: Variants = { hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0, transition: reveal } };
+// Opacity only: a transform on the page wrapper would become the containing block for every position:fixed panel, sheet and composer inside it.
+export const pageVariants: Variants = { hidden: { opacity: 0 }, show: { opacity: 1, transition: reveal } };

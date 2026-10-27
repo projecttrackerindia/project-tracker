@@ -218,4 +218,6 @@ html .v2-ai-card .btn.btn-ai:not(#_):hover:not(:disabled) { background: color-mi
 .v2-live-text span { color: var(--ds-text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .v2-live-x { background: none; border: 0; padding: 4px; color: var(--ds-text-2); cursor: pointer; border-radius: 6px; }
 /* The route wrapper: framer resets its transform to none once shown, so fixed children are not trapped after the fade. */
-.v2-route { min-width: 0; }
+.v2-enter { animation: v2-enter .28s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes v2-enter { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .v2-enter { animation: none; } }
