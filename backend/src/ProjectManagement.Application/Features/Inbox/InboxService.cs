@@ -64,14 +64,14 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
             rows.Count(r => r.Kind is "task" or "ticket" && r.Sub.Contains("due today", StringComparison.OrdinalIgnoreCase)),
             rows.Count(r => r.Kind == "decision"), rows.Count(r => r.Kind is "approval" or "access" or "review"),
             rows.Count(r => r.Kind == "mention"), rows.Count(r => r.Kind == "reminder"));
-        var reasons = new List<string>();
-        foreach (var r in rows.Where(r => r.Urgent).Take(2)) reasons.Add($"{r.Title} — {r.Sub}.");
-        if (stats.Decisions > 0) reasons.Add(stats.Decisions == 1 ? "1 proposal waits for your decision." : $"{stats.Decisions} proposals wait for your decision.");
-        if (stats.Approvals > 0) reasons.Add(stats.Approvals == 1 ? "1 approval is waiting on you." : $"{stats.Approvals} approvals are waiting on you.");
-        if (stats.Mentions > 0 && reasons.Count < 4) reasons.Add(stats.Mentions == 1 ? "Someone mentioned you." : $"{stats.Mentions} people mentioned you.");
+        // The briefing names the first rows of the inbox itself (urgent first, as the inbox orders them), so the count in the headline and the
+        // sentences below always describe the same things; whatever is not named is counted as "+N more below".
+        const int Named = 3;
+        var reasons = rows.Take(Named).Select(r => $"{r.Title} — {r.Sub}.").ToList();
+        if (rows.Count > Named) reasons.Add($"+{rows.Count - Named} more below.");
         var headline = rows.Count switch { 0 => "You're all caught up.", 1 => "1 thing needs you.", var n => $"{n} things need you." };
         var sources = $"read your work, {(stats.Decisions > 0 ? "project agent, " : "")}approvals, mentions and reminders · {today:d MMM}";
-        return new InboxBriefingDto(rows.Count, headline, reasons.Take(4).ToList(), sources, stats);
+        return new InboxBriefingDto(rows.Count, headline, reasons, sources, stats);
     }
 
     /// <summary>Hides one row until tomorrow morning (06:00 in the person's own time zone).</summary>
@@ -217,9 +217,20 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         var list = await reminders.ListAsync(ct);
         foreach (var r in list.Open.Where(r => r.State == ReminderState.Fired && r.CompletedAt is null).Take(20))
         {
+            // A reminder about a work item already in the inbox is folded into that item's row (one row per real thing), not shown twice.
+            if (r.TargetKey is { Length: > 0 } tk)
+            {
+                var i = rows.FindIndex(x => x.Kind is "task" or "ticket" && x.Title.StartsWith(tk + " ", StringComparison.OrdinalIgnoreCase));
+                if (i >= 0)
+                {
+                    var row = rows[i];
+                    if (!row.Sub.Contains("reminder", StringComparison.OrdinalIgnoreCase)) rows[i] = row with { Sub = $"{row.Sub} · reminder" };
+                    continue;
+                }
+            }
             var sub = r.TargetKey is { Length: > 0 } key ? $"{key}{(r.TargetTitle is { Length: > 0 } t ? " · " + t : "")}" : r.RecurrenceText ?? "Reminder";
             rows.Add(new InboxRowDto($"reminder:{r.Id:N}", "reminder", "assigned", r.Title, sub,
-                new InboxActionDto("Done", "done", $"/api/v1/reminders/{r.Id}/done"), r.Link, r.LastFiredAt ?? r.CreatedAt, false));
+                new InboxActionDto("Done", "done", $"/api/v1/reminders/{r.Id}/done"), CurrentLink(r.Link), r.LastFiredAt ?? r.CreatedAt, false));
         }
     }
 
@@ -235,6 +246,18 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         if (string.IsNullOrEmpty(value)) return [];
         try { return JsonSerializer.Deserialize<Dictionary<string, DateTime>>(value) ?? []; }
         catch (JsonException) { return []; }
+    }
+
+    /// <summary>Links saved before v2 point at retired pages (/operations?task=…, /tasks?task=…); open the item's panel in Work instead.</summary>
+    internal static string? CurrentLink(string? link)
+    {
+        if (string.IsNullOrEmpty(link)) return link;
+        foreach (var old in new[] { "/operations?task=", "/tasks?task=", "/operations?item=" })
+        {
+            var at = link.IndexOf(old, StringComparison.OrdinalIgnoreCase);
+            if (at >= 0) return string.Concat(link.AsSpan(0, at), "/work?item=", link.AsSpan(at + old.Length));
+        }
+        return link;
     }
 
     private static string Hours(int minutes) => minutes % 60 == 0 ? $"{minutes / 60}h" : $"{minutes / 60}h {minutes % 60}m";

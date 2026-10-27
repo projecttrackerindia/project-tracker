@@ -282,9 +282,16 @@ function Copilot({ w, me, save, onDueAsk, onStatus, statuses, refetch }: {
   const nextDay = () => { let d = dateOffset(1); const day = new Date(`${d}T00:00:00`).getDay(); if (day === 6) d = dateOffset(3); else if (day === 0) d = dateOffset(2); return d; };
   const activeStatus = w.kind === 'task' ? statuses.find((s) => /progress|doing|active/i.test(s.label))?.id : 'InProgress';
 
+  // An urgent ticket is fixed or escalated, never quietly given a later date: moving the due date of an outage hides it instead of solving it.
+  const urgentTicket = w.kind === 'ticket' && open && (w.priority === 'Critical' || w.priority === 'High');
   let s: Suggestion | null = null;
   if (open && editable && !w.assignee && me) s = { id: 'own', text: 'Nobody owns this yet. Work without an owner tends to wait.', label: 'Take it', run: () => save({ assigneeId: me }) };
-  else if (open && editable && w.isOverdue && w.dueDate) {
+  else if (urgentTicket && ai && w.isOverdue && w.dueDate) {
+    const late = Math.abs(daysUntil(w.dueDate) ?? 0);
+    s = { id: 'escalate', text: `${w.priority} and ${late === 0 ? 'past its target today' : `${late} day${late === 1 ? '' : 's'} past its target`}. Escalate it and send a status update.`, label: 'Draft escalation',
+      run: () => ask(`Ticket ${w.key} "${w.title}" is ${w.priority} and past its target${w.assignee ? ` (owner ${w.assignee.name})` : ''}. Draft a short escalation to the on-call lead and a status update for the people affected, and list the next fix steps from similar tickets or runbooks.${w.description ? `\n\nDetails: ${w.description.slice(0, 600)}` : ''}`) };
+  }
+  else if (open && editable && w.isOverdue && w.dueDate && !urgentTicket) {
     const to = nextDay(), late = Math.abs(daysUntil(w.dueDate) ?? 0);
     s = { id: 'late', text: `This is ${late} day${late === 1 ? '' : 's'} late. If it still matters, give it a date it can meet.`, label: `Move to ${formatDate(to).slice(0, 6)}`,
       run: () => (w.kind === 'task' ? onDueAsk(to) : save({ dueDate: to })) };

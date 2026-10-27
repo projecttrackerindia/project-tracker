@@ -74,6 +74,8 @@ public static partial class ProjectMetrics
             case ProjectStatus.Archived: return ProjectHealth.Archived;
         }
         var progress = Progress(s);
+        // All the work is done: the project reads as Completed everywhere (Projects, Portfolio, Insights), never "On track" at 100%.
+        if (s.Total - s.Cancelled > 0 && progress >= 100) return ProjectHealth.Completed;
         if (p.DueDate is { } due && today > due && progress < 100) return ProjectHealth.Delayed;
         if (s.Total > 0)
         {
