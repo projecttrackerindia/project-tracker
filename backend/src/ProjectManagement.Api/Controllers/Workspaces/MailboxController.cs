@@ -23,7 +23,7 @@ public class MailboxController(MailboxService mailbox, MailboxAgent agent, Proje
         {
             // A promise in a sent email ("I will share the revised quote on Monday") is offered as a reminder too.
             var key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{req.Account}|{sent.To}|{sent.Subject}|{req.Body}")))[..24];
-            await promises.OfferFromTextAsync(req.Body, "email", $"mail:{key}", "/mailbox", ct);
+            await promises.OfferFromTextAsync(req.Body, "email", $"mail:{key}", "/mail", ct);
         }
         return Ok(sent);
     }

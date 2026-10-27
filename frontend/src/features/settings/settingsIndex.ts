@@ -106,6 +106,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   { id: 'account.sessions', section: null, personal: true, to: '/settings/security/account', label: 'Devices I am signed in on', keywords: 'sessions devices sign out everywhere logout', hint: 'Settings › Security', find: 'Active sessions' },
   { id: 'account.notifications', section: null, personal: true, to: '/settings/notifications/delivery', label: 'My notifications', keywords: 'my notifications email push whatsapp preferences mute', hint: 'Settings › Notifications › Delivery' },
   { id: 'account.schedule', section: null, personal: true, to: '/settings/notifications/schedule', label: 'My quiet hours, working days and digest', keywords: 'my quiet hours dnd working days digest briefing schedule', hint: 'Settings › Notifications › Schedule' },
+  { id: 'account.mail', section: null, personal: true, to: '/settings/integrations/mail', label: 'My mail accounts', keywords: 'mail email gmail outlook rediffmail imap smtp pop mailbox connect company mail server', hint: 'Settings › Integrations › Mail' },
   { id: 'account.delete', section: null, personal: true, to: '/settings/profile', label: 'Delete my account', keywords: 'delete account close remove gdpr', hint: 'Settings › Profile', find: 'Delete my account' },
 ];
 

@@ -64,7 +64,7 @@ export function useMainNav(): NavGroup[] {
         match: (p) => p === '/' || p === '/dashboard' || p.startsWith('/approve/') },
       { id: 'work', to: '/work', label: 'Work', icon: 'checkCircle', show: work, hint: 'Tasks, issues, actions and tickets in one list, and every project',
         match: under('/work') },
-      { id: 'talk', to: '/talk', label: 'Talk', icon: 'message', show: talk, hint: 'Chat, mail and meetings in one list',
+      { id: 'talk', to: '/talk', label: 'Talk', icon: 'message', show: talk, hint: 'Chats and meetings in one list',
         match: (p) => under('/talk')(p) || p.startsWith('/calls/') },
       { id: 'library', to: '/library', label: 'Library', icon: 'note', show: library, hint: 'Documents, API docs, files and the vault',
         match: under('/library') },
@@ -73,6 +73,7 @@ export function useMainNav(): NavGroup[] {
     ] },
     // Pages inside the places: found by searching (Ctrl K), never listed twice.
     { title: 'Go to', items: [
+      { to: '/mail', label: 'Mail', icon: 'mail', show: !ctx?.user.isPlatformAdmin, paletteOnly: true, hint: 'Your Gmail, Outlook and company mail, with an assistant built in' },
       { to: '/work', label: 'My work', icon: 'inbox', show: work, paletteOnly: true },
       { to: '/work?tab=tickets', label: 'Tickets', icon: 'bolt', show: lv('work') > 0, paletteOnly: true, hint: 'Support and operational work, queues and service levels' },
       { to: '/desk', label: 'Desk', icon: 'target', show: lv('work') > 0, paletteOnly: true, hint: 'Tickets, incidents and service levels' },
@@ -81,7 +82,6 @@ export function useMainNav(): NavGroup[] {
       { to: '/work/projects?view=portfolio', label: 'Portfolio', icon: 'monitor', show: projects, paletteOnly: true },
       { to: '/?tab=calendar', label: 'Calendar', icon: 'calendar', show: lv('calendar') > 0, paletteOnly: true },
       { to: '/talk?f=meetings', label: 'Meetings', icon: 'video', show: talk, paletteOnly: true, hint: 'Schedule, join and reply; the notetaker and past meetings' },
-      { to: '/talk?f=mail', label: 'Mail', icon: 'mail', paletteOnly: true, hint: 'Gmail, Outlook and Rediffmail with the mail agent' },
       { to: '/library/docs', label: 'Docs', icon: 'layers', show: lv('documents') > 0, paletteOnly: true },
       { to: '/library/vault', label: 'Vault', icon: 'key', show: canVault, paletteOnly: true, hint: 'Team passwords, keys and secrets' },
       { to: '/insights?tab=time', label: 'Time', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0, paletteOnly: true, hint: 'Your timesheet' },

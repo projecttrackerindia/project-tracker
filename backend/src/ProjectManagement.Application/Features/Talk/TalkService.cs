@@ -41,12 +41,13 @@ public class TalkService(ChatService chat, MailboxService mailbox, MeetFeedServi
     {
         ctx.RequireTenantId();
         var f = (filter ?? "all").Trim().ToLowerInvariant();
-        if (f is not ("all" or "chat" or "mail" or "meetings")) f = "all";
+        // "talk" is chats and meetings only: mail has its own place (/mail) now.
+        if (f is not ("all" or "talk" or "chat" or "mail" or "meetings")) f = "all";
         var now = clock.Now;
         var rows = new List<(TalkConversationDto Row, DateTime Sort)>();
 
         var chatAvailable = true;
-        if (f is "all" or "chat")
+        if (f is "all" or "talk" or "chat")
         {
             try
             {
@@ -55,7 +56,7 @@ public class TalkService(ChatService chat, MailboxService mailbox, MeetFeedServi
             catch (ForbiddenException) { chatAvailable = false; }   // a personal space or a guest: no chat, the rest still shows
         }
 
-        if (f is "all" or "meetings")
+        if (f is "all" or "talk" or "meetings")
         {
             var feed = await meet.FeedAsync(new DateTimeOffset(now.AddDays(-2), TimeSpan.Zero), new DateTimeOffset(now.AddDays(14), TimeSpan.Zero), null, ct);
             // One row per meeting: a repeating meeting shows its next session (or, when all are past, the latest one).

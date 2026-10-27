@@ -113,7 +113,7 @@ try {
   const moved = [
     ['/projects/' + project.id + '?task=7#c-1', '/work?item=7#c-1'], ['/projects/' + project.id + '?tab=issues&issue=8', '/work?item=8'], ['/projects/' + project.id + '?tab=board', `/work/projects/${project.id}?tab=board`],
     ['/operations?task=12', '/work?tab=tickets&item=12'], ['/operations?project=p1', '/work?project=p1&tab=tickets&view=queue'], ['/tasks/7', '/work?item=7'], ['/my-work', '/work'],
-    ['/chat', '/talk?f=chat'], ['/mailbox', '/talk?f=mail'], ['/meet/past', '/talk?f=meetings&s=past'], ['/calendar', '/?tab=calendar'], ['/reminders', '/?tab=reminders'],
+    ['/chat', '/talk?f=chat'], ['/mailbox', '/mail'], ['/talk?f=mail', '/mail'], ['/settings/mail', '/settings/integrations/mail'], ['/meet/past', '/talk?f=meetings&s=past'], ['/calendar', '/?tab=calendar'], ['/reminders', '/?tab=reminders'],
     ['/agents', '/'], ['/project-agent/assigned', '/?tab=given'], ['/ai/operations', '/insights?tab=workflows'], ['/agent-tracker', '/settings/ai/tracker'],
     ['/doctracker?p=1&t=documents', '/library/docs?p=1&t=documents'], ['/vault', '/library/vault'], ['/timesheet/approvals', '/insights?tab=time&s=approvals'],
     ['/workload', '/insights'], ['/reports', '/insights?tab=reports'], ['/portfolio', '/work/projects?view=portfolio'], ['/account/security#s-account.twoStep', '/settings/security/account#s-account.twoStep'], ['/settings/profile/security', '/settings/security/account'],
@@ -133,8 +133,8 @@ try {
   await page.goto(`${origin}/preview-org/settings/security`); await page.locator('.set-place-head').waitFor({ timeout: 8000 }).catch(async (e) => { await page.getByText('Details').click().catch(() => {}); console.log(at(), errors, (await page.locator('body').innerText()).slice(0, 600)); throw e; });
   // The macOS System Settings list: ten sections with coloured icon tiles.
   const sections = await page.locator('.set-mac-item').allInnerTexts();
-  for (const want of ['Profile', 'Workspace', 'People & roles', 'AI', 'Notifications', 'Mail accounts', 'Integrations', 'Security', 'Billing', 'Appearance']) assert.ok(sections.some((t) => t.trim() === want), `Settings has ${want}: ${sections}`);
-  assert.equal(sections.length, 10, `ten sections: ${sections}`);
+  for (const want of ['Profile', 'Workspace', 'People & roles', 'AI', 'Notifications', 'Integrations', 'Security', 'Billing', 'Appearance']) assert.ok(sections.some((t) => t.trim() === want), `Settings has ${want}: ${sections}`);
+  assert.equal(sections.length, 9, `nine sections (mail accounts live in Integrations): ${sections}`);
   await page.getByRole('tab', { name: 'Single sign-on' }).click(); await page.waitForTimeout(300); assert.equal(at(), '/settings/security/sso');
   await page.goto(`${origin}/preview-org/settings/profile`); await page.locator('.set-place-head').waitFor();
   assert.ok(!(await page.locator('.set-place-head [role="tab"]').allInnerTexts()).some((t) => /Resume/.test(t)), 'no Resume studio');

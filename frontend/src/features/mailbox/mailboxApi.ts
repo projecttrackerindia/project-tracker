@@ -10,7 +10,10 @@ export interface MailAccounts { imap: MailImapAccount[]; presets: MailPreset[]; 
 export interface MailMessage { id: string; threadId: string; subject: string; from: string; to: string; cc: string; date: string | null; unread: boolean; hasAttachments: boolean; body?: string | null; bodyTruncated?: boolean }
 export interface MailList { account: string; email: string; folder: MailFolder; messages: MailMessage[]; cursor: string | null }
 export interface MailThread { account: string; email: string; folder: MailFolder; threadId: string; messages: MailMessage[]; truncated: boolean }
-export interface MailSendInput { account: string; replyToId?: string | null; folder?: MailFolder; replyAll?: boolean; to?: string; cc?: string; subject?: string; body: string; confirmed: boolean }
+export interface MailSendInput { account: string; replyToId?: string | null; folder?: MailFolder; replyAll?: boolean; to?: string; cc?: string; subject?: string; body: string; confirmed: boolean;
+  /** Files to send with it (base64): at most 10, 15 MB in all. */
+  attachments?: MailAttachment[] }
+export interface MailAttachment { name: string; contentType: string; data: string }
 export interface MailSendResult { accepted: boolean; to: string; cc: string; subject: string }
 export interface MailForwardInput { account: string; folder?: MailFolder; messageId: string; to: string; cc?: string; note?: string; confirmed: boolean }
 export interface MailReplySuggestion { label: string; body: string }

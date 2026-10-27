@@ -78,6 +78,11 @@ public class TalkTests(ApiFactory factory)
         Assert.Equal(2, chats.Count);
         var meetings = (await owner.Get("/api/v1/talk/conversations?f=meetings")).Data!["items"]!.AsArray();
         Assert.Single(meetings);
+        // f=talk (the Talk page now that mail has its own place): chats and meetings, never mail.
+        var talkOnly = (await owner.Get("/api/v1/talk/conversations?f=talk")).Data!["items"]!.AsArray();
+        Assert.Contains(talkOnly, r => S(r!["kind"]) == "chat");
+        Assert.Contains(talkOnly, r => S(r!["kind"]) == "meeting");
+        Assert.DoesNotContain(talkOnly, r => S(r!["kind"]) == "mail");
         var mail = await owner.Get("/api/v1/talk/conversations?f=mail");
         Assert.Empty(mail.Data!["items"]!.AsArray());
         Assert.Equal("not-connected", S(mail.Data["mail"]!["state"]));
@@ -107,5 +112,19 @@ public class TalkTests(ApiFactory factory)
         Assert.Equal("CD", TalkService.Initials("Chalumuri Devaraju"));
         Assert.Equal("IX", TalkService.Initials("ixeaf"));
         Assert.Equal("?", TalkService.Initials(""));
+    }
+
+    [Fact]
+    public void Mail_attachments_make_a_multipart_body_and_are_checked()
+    {
+        var plain = ProjectManagement.Application.Features.Mailbox.MailboxService.Body("Hi", null);
+        Assert.IsType<MimeKit.TextPart>(plain);
+        var data = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("a,b\n1,2"));
+        var multi = ProjectManagement.Application.Features.Mailbox.MailboxService.Body("Hi", [new("../../report.csv", "text/csv", data)]);
+        var part = Assert.IsType<MimeKit.Multipart>(multi);
+        var file = part.OfType<MimeKit.MimePart>().Single(p => p.IsAttachment);
+        Assert.Equal("report.csv", file.FileName);
+        Assert.Throws<ProjectManagement.Application.Exceptions.ValidationException>(() =>
+            ProjectManagement.Application.Features.Mailbox.MailboxService.Files([new("x.bin", null, "not base64!")]));
     }
 }
