@@ -119,7 +119,8 @@ try{
 
  // Written by the AI for the meeting.
  await summary.getByRole('button',{name:'Write it for the meeting'}).click();
- await summary.getByText('Moving Jyothsna onto it for a week',{exact:false}).waitFor();
+ // v2: one sentence on the page (the full write-up is kept on hover).
+ await summary.getByText('Payments is the one project at risk',{exact:false}).waitFor();assert.ok(await summary.locator('[title*="Moving Jyothsna"]').count()>0||(await summary.innerText()).includes('Moving Jyothsna'),'full write-up kept');
  assert.ok(await summary.getByText('Written by the AI',{exact:false}).isVisible());
  checks.push('ai-summary');
 
