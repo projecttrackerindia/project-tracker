@@ -168,7 +168,7 @@ try{
   assert.match(await page.locator('.mb-hero-card .mb-company').innerText(),/Company mail[\s\S]*asha@fivestar.test/);
   assert.deepEqual(await page.locator('.mb-hero-chips .ds-chip').allInnerTexts(),['Gmail','Outlook','Other IMAP']);
   assert.equal(await page.locator('.mb-hero-features > div').count(),3);
-  if(theme==='dark'){await page.locator('.v2-avatar').first().click();await page.locator('.v2-menu .theme-switch').click();await page.keyboard.press('Escape');await page.waitForTimeout(1200);}
+  if(theme==='dark'){await page.evaluate(()=>{try{localStorage.setItem('pm_theme','dark')}catch{}});await page.reload();await page.waitForTimeout(1200);}
   if(w<500)await fitsPhone(page,'mail invitation on a phone',assert);
   await shot(page,`hero-${theme}-${w}.png`);
   if(theme==='light'&&w>500){

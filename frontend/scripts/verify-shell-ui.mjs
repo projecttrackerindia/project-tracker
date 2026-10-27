@@ -93,13 +93,12 @@ try {
   await page.locator('.v2-rail-item', { hasText: 'Work' }).click(); await page.waitForTimeout(400);
   assert.equal(at(), '/work'); assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'Work' }).isVisible()); checks.push('rail-navigates');
 
-  // The avatar menu: Profile, Notifications, Settings, People, dark mode, the workspaces, Sign out.
+  // The slim avatar menu: Profile, Workspaces, Settings, People, Help, Sign out (dark mode and team view live in Settings now).
   await page.locator('.v2-avatar').first().click();
   const items = await page.locator('.v2-menu [role="menuitem"]').allInnerTexts();
-  for (const want of ['Profile', 'Settings', 'People', 'Second Org', 'Create organization', 'Sign out']) assert.ok(items.some((t) => t.includes(want)), `avatar menu has ${want}: ${items}`);
-  const sw = page.locator('.v2-menu .theme-switch'); await sw.click(); await page.waitForTimeout(1200);
-  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark'); await shot(page, 'avatar-menu-dark-1440.png');
-  await sw.click(); await page.waitForTimeout(1200);
+  for (const want of ['Profile', 'Settings', 'People', 'Sign out']) assert.ok(items.some((t) => t.includes(want)), `avatar menu has ${want}: ${items}`);
+  assert.equal(await page.locator('.v2-menu .theme-switch').count(), 0, 'dark mode moved to Settings');
+  await shot(page, 'avatar-menu-1440.png');
   await page.locator('.v2-menu [role="menuitem"]', { hasText: 'Settings' }).click(); await page.waitForTimeout(500);
   assert.equal(at(), '/settings/general'); checks.push('avatar-menu');
 
