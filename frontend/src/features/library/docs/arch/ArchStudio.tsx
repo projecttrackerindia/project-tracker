@@ -5,6 +5,8 @@ import {
   type Connection, type OnSelectionChangeParams,
 } from '@xyflow/react';
 import { toPng, toSvg } from 'html-to-image';
+import { ApiError } from '../../../../api/client';
+import { docTrackerApi } from '../../../../api/endpoints';
 import { Icon } from '../../../../components/Icon';
 import { confirmDialog, toast } from '../../../../stores/ui';
 import { ARCH_ICONS, CATEGORIES, SWATCHES, iconByKey } from './archIcons';
@@ -22,11 +24,11 @@ type PaletteItem = { kind: ArchNodeData['kind']; icon?: string; shape?: string; 
  * edge), group them in frames, label everything, and style lines (dashed, animated, two-way). Undo/redo, tidy up, templates, and export to
  * PNG, SVG or JSON. "Done" hands the diagram back to the caller, which saves it.
  */
-export function ArchStudio(props: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void }) {
+export function ArchStudio(props: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void; context?: string[] }) {
   return createPortal(<ReactFlowProvider><Studio {...props} /></ReactFlowProvider>, document.body);
 }
 
-function Studio({ title: initialTitle, data, onDone, onClose }: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void }) {
+function Studio({ title: initialTitle, data, onDone, onClose, context }: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void; context?: string[] }) {
   const start = useMemo(() => toFlow(data), [data]);
   const [nodes, setNodes, onNodesChange] = useNodesState<ArchFlowNode>(start.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<ArchFlowEdge>(start.edges);
@@ -55,6 +57,46 @@ function Studio({ title: initialTitle, data, onDone, onClose }: { title: string;
   const dirty = () => JSON.stringify(fromFlow(flow.getNodes(), flow.getEdges())) !== JSON.stringify(fromFlow(start.nodes, start.edges)) || title !== initialTitle;
   const close = async () => { if (!dirty() || await confirmDialog({ title: 'Leave without keeping the changes?', message: 'Your changes to this diagram will be lost.', confirmText: 'Discard', danger: true })) onClose(); };
   const done = () => onDone(fromFlow(flow.getNodes(), flow.getEdges()), title.trim() || 'Architecture');
+
+  // ✦ Describe it: the assistant draws the system, or changes the current one, from a sentence. One undo step brings the old one back.
+  const [ask, setAsk] = useState('');
+  const [drawing, setDrawing] = useState(false);
+  const draw = async () => {
+    const prompt = ask.trim(); if (!prompt || drawing) return;
+    setDrawing(true);
+    try {
+      const cur = fromFlow(flow.getNodes(), flow.getEdges());
+      const r = await docTrackerApi.aiDiagram(prompt, cur.nodes.length ? cur : undefined, context);
+      const f = toFlow(r.data as unknown as ArchData); setNodes(f.nodes); setEdges(f.edges); setSel({});
+      window.setTimeout(() => { commit(); flow.fitView({ padding: 0.25, duration: 500 }); }, 30);
+      setAsk(''); toast(`${r.summary} Undo with Ctrl+Z.`, 'success');
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'The assistant could not draw that.', 'error'); }
+    finally { setDrawing(false); }
+  };
+
+  // ▶ Simulate: a request travels the diagram, one arrow at a time from where traffic enters (boxes nothing points to), lighting each
+  // box it reaches. Nothing is saved; Stop or Esc ends it.
+  const [sim, setSim] = useState<{ step: number; order: string[] } | null>(null);
+  const simulate = () => {
+    if (sim) { setSim(null); return; }
+    const es = flow.getEdges(); if (!es.length) { toast('Draw some arrows first.', 'info'); return; }
+    const into = new Set(es.map((e) => e.target));
+    const queue = flow.getNodes().filter((n) => !into.has(n.id) && es.some((e) => e.source === n.id)).map((n) => n.id);
+    const seen = new Set<string>(); const order: string[] = [];
+    while (queue.length) { const id = queue.shift()!; for (const e of es.filter((x) => x.source === id && !seen.has(x.id))) { seen.add(e.id); order.push(e.id); queue.push(e.target); } }
+    for (const e of es) if (!seen.has(e.id)) order.push(e.id);
+    setSim({ step: 0, order });
+  };
+  useEffect(() => {
+    if (!sim) { setEdges((es) => es.map((e) => (e.className?.includes('sim') ? { ...e, className: undefined } : e))); setNodes((ns) => ns.map((n) => (n.className?.includes('sim') ? { ...n, className: undefined } : n))); return; }
+    const lit = new Set(sim.order.slice(0, sim.step + 1));
+    const cur = sim.order[sim.step];
+    const reached = new Set(flow.getEdges().filter((e) => lit.has(e.id)).flatMap((e) => [e.source, e.target]));
+    setEdges((es) => es.map((e) => ({ ...e, className: e.id === cur ? 'sim sim-now' : lit.has(e.id) ? 'sim sim-done' : 'sim sim-wait' })));
+    setNodes((ns) => ns.map((n) => ({ ...n, className: reached.has(n.id) ? 'sim sim-hit' : 'sim' })));
+    const t = window.setTimeout(() => setSim((s) => (s ? (s.step + 1 < s.order.length ? { ...s, step: s.step + 1 } : { ...s, step: 0 }) : s)), 900);
+    return () => window.clearTimeout(t);
+  }, [sim]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -187,6 +229,7 @@ function Studio({ title: initialTitle, data, onDone, onClose }: { title: string;
           <button type="button" className="arch-ibtn" onClick={undo} disabled={past.current.length < 2} title="Undo (Ctrl+Z)" aria-label="Undo"><Icon name="undo" size={15} /></button>
           <button type="button" className="arch-ibtn" onClick={redo} disabled={future.current.length === 0} title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><Icon name="undo" size={15} style={{ transform: 'scaleX(-1)' }} /></button>
           <button type="button" className="arch-btn" onClick={tidy} title="Arrange the boxes left to right"><Icon name="grid" size={14} /> Tidy up</button>
+          <button type="button" className={`arch-btn${sim ? ' primary' : ''}`} onClick={simulate} aria-pressed={!!sim} title="Watch a request travel the diagram"><Icon name={sim ? 'close' : 'play'} size={14} /> {sim ? 'Stop' : 'Simulate'}</button>
           <details className="arch-menu">
             <summary className="arch-btn"><Icon name="download" size={14} /> Export</summary>
             <div className="arch-menu-pop">
@@ -232,6 +275,12 @@ function Studio({ title: initialTitle, data, onDone, onClose }: { title: string;
           <ArchCanvas nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onSelectionChange={onSelection}
             onNodeDragStop={() => commit()} onNodesDelete={() => window.setTimeout(commit, 0)} onEdgesDelete={() => window.setTimeout(commit, 0)}
             fitView fitViewOptions={{ padding: 0.25, maxZoom: 1.2 }} minimap deleteKeyCode={['Delete', 'Backspace']} />
+          <form className={`arch-ask${drawing ? ' busy' : ''}`} onSubmit={(e) => { e.preventDefault(); void draw(); }}>
+            <span className="arch-orb" aria-hidden="true" />
+            <input value={ask} onChange={(e) => setAsk(e.target.value)} disabled={drawing} maxLength={1500} aria-label="Describe the system or a change"
+              placeholder={nodes.length ? 'Describe a change — “Add a fraud check between the gateway and payouts”' : 'Describe the system — “Mobile app → gateway → loan service → core banking, with a cache”'} />
+            <button type="submit" className="arch-btn primary" disabled={drawing || !ask.trim()}>{drawing ? 'Drawing…' : 'Draw it'}</button>
+          </form>
           {nodes.length === 0 && (
             <div className="arch-empty">
               <Icon name="layers" size={28} />

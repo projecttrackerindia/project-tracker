@@ -98,3 +98,21 @@
   .arch-inspector { max-height: 220px; border-left: 0; border-top: 1px solid var(--arch-line); }
   .arch-top { overflow-x: auto; } .arch-brand { display: none; }
 }
+
+/* ✦ Describe it: a floating bar over the canvas. */
+.arch-ask { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 6; width: min(640px, calc(100% - 32px)); display: flex; align-items: center; gap: 10px;
+  padding: 6px 6px 6px 16px; border-radius: 26px; background: color-mix(in srgb, var(--arch-panel, #fff) 92%, transparent); backdrop-filter: blur(20px) saturate(160%);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .18), 0 0 0 .5px rgba(0, 0, 0, .12); }
+.arch-ask input { flex: 1; min-width: 0; height: 36px; border: 0; outline: 0; background: transparent; color: var(--arch-text); font: inherit; font-size: 14px; }
+.arch-ask .arch-btn { border-radius: 18px; }
+.arch-orb { width: 20px; height: 20px; flex: none; border-radius: 50%; background: conic-gradient(#5e5ce6, #bf5af2, #ff375f, #ff9f0a, #5e5ce6); }
+.arch-ask.busy .arch-orb { animation: arch-spin 1.2s linear infinite; }
+@keyframes arch-spin { to { transform: rotate(360deg); } }
+/* ▶ Simulate: the arrow now travelling glows; the ones still to come wait faintly; boxes reached light up. */
+.react-flow__edge.sim-wait path.react-flow__edge-path { opacity: .25; }
+.react-flow__edge.sim-now path.react-flow__edge-path { stroke: #0a84ff !important; stroke-width: 3; stroke-dasharray: 8 6; animation: arch-flow .6s linear infinite; filter: drop-shadow(0 0 6px rgba(10, 132, 255, .7)); }
+.react-flow__edge.sim-done path.react-flow__edge-path { stroke: #30d158 !important; }
+.react-flow__node.sim { transition: opacity .3s, box-shadow .3s; opacity: .45; }
+.react-flow__node.sim-hit { opacity: 1; box-shadow: 0 0 0 2px #0a84ff, 0 0 22px rgba(10, 132, 255, .35); border-radius: 12px; }
+@keyframes arch-flow { to { stroke-dashoffset: -28; } }
+@media (prefers-reduced-motion: reduce) { .arch-ask.busy .arch-orb, .react-flow__edge.sim-now path.react-flow__edge-path { animation: none; } }

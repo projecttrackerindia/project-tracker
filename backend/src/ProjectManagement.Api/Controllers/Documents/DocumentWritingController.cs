@@ -37,6 +37,14 @@ public class DocumentWritingController(DocumentAiService writing, DocumentRanked
     }
 
     /// <summary>Selected text rewritten, shortened, expanded, fixed, translated (Telugu, Hindi, English) or given another tone.</summary>
+    /// <summary>An architecture diagram drawn from a sentence, or the current one changed as described (cleaned before it is returned).</summary>
+    [HttpPost("documents/ai/diagram"), AiRequestLimit]
+    public async Task<IActionResult> Diagram([FromBody] DiagramDraftRequest req, CancellationToken ct) => Ok(await writing.DiagramAsync(req, ct));
+
+    /// <summary>An app screen mock-up generated from a prompt, as cleaned static HTML (shown only in a sandboxed frame).</summary>
+    [HttpPost("documents/ai/design"), AiRequestLimit]
+    public async Task<IActionResult> Design([FromBody] DesignDraftRequest req, CancellationToken ct) => Ok(await writing.DesignAsync(req, ct));
+
     [HttpPost("documents/ai/transform"), AiRequestLimit]
     public async Task<IActionResult> Transform([FromBody] DocTransformRequest req, CancellationToken ct) => Ok(await writing.TransformAsync(req, ct));
 
