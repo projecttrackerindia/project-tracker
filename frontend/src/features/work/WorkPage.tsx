@@ -130,7 +130,7 @@ export function WorkPage() {
   if (section) return <div className="wk wk-sub">{back('Work · Team', { s: null, scope: null })}<WorkloadPage section={section} />{panel}</div>;
   if (scope) return (
     <div className="wk wk-sub">
-      {back('Work', { project: null, show: null, item: null })}
+      {back('Work', { project: null, view: null, kind: null, item: null })}
       <PageHead eyebrow={scoped.data ? `${scoped.data.project.key} · ${scoped.data.project.status === 'Active' ? 'Active' : scoped.data.project.status}` : 'Project'} title={scoped.data?.project.name ?? 'Project work'}>
         <Link className="wk-projects" to={`/work/projects/${scope}`}>Open project <span aria-hidden="true">›</span></Link>
       </PageHead>

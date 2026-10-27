@@ -76,8 +76,21 @@ export function WorkItemPanel({ id, onClose }: { id: string; onClose: () => void
   useEffect(() => { setConflict(false); }, [id]);
   const w = q.data?.id ? q.data : undefined;
 
-  /** Saves one change with the version last read. A 409 means someone saved in between: read it again and say so. */
-  const save = async (fields: Omit<WorkItemPatch, 'version'>): Promise<boolean> => {
+  /**
+   * Saves one change with the version last read. A 409 means someone saved in between: read it again and say so. Changes made quickly one
+   * after another wait for each other, so each is sent with the version the one before it produced (never a clash with yourself).
+   */
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const save = (fields: Omit<WorkItemPatch, 'version'>): Promise<boolean> => {
+    // What shows at once: the simple fields change in place while the save is on its way.
+    const shown = queryClient.getQueryData<WorkItemDetail>(key);
+    const quick = (['title', 'description', 'priority', 'dueDate'] as const).filter((f) => f in fields);
+    if (shown && quick.length) queryClient.setQueryData<WorkItemDetail>(key, { ...shown, ...Object.fromEntries(quick.map((f) => [f, fields[f]])) });
+    const next = queue.current.then(() => send(fields));
+    queue.current = next.catch(() => undefined);
+    return next;
+  };
+  const send = async (fields: Omit<WorkItemPatch, 'version'>): Promise<boolean> => {
     const cur = queryClient.getQueryData<WorkItemDetail>(key) ?? w;
     if (!cur) return false;
     try {
@@ -90,7 +103,7 @@ export function WorkItemPanel({ id, onClose }: { id: string; onClose: () => void
       if (e instanceof ApiError && e.status === 409) {
         setConflict(true);   // the panel says so at its top, where the tiles are
         await q.refetch();
-      } else toast(errText(e, 'Could not save that change.'), 'error');
+      } else { toast(errText(e, 'Could not save that change.'), 'error'); void q.refetch(); }   // and back to what is saved
       return false;
     }
   };
@@ -341,7 +354,7 @@ function Resolution({ id, done }: { id: string; done: boolean }) {
   return (
     <div className="wkp-resolution">
       <button type="button" className="wkp-link" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {open ? 'Hide' : done ? 'Record or check the verified fix' : 'Not completed yet · see how it works'} <Icon name="chevronD" size={12} />
+        {open ? 'Hide' : done ? 'Record or check the verified fix' : 'After it is completed'} <Icon name="chevronD" size={12} />
       </button>
       {open && <div className="wkp-resolution-body"><SupportResolution taskId={id} onChanged={() => undefined} /></div>}
     </div>

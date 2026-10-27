@@ -6,4 +6,4 @@ export { SidePanel } from './SidePanel';
 export { InboxRow, type InboxKind } from './InboxRow';
 export { AiCard } from './AiCard';
 export { PlaceTabs } from './PlaceTabs';
-export { openNew, useNewSheet, guessType, useCopilot, pageContext, useTabParam, useSaveState, type NewType, type NewContext, type SaveState } from './state';
+export { openNew, useNewSheet, guessType, useCopilot, pageContext, useTabParam, useSaveState, type NewType, type NewProject, type SaveState } from './state';

@@ -59,7 +59,7 @@ export function NewSheetHost() {
  * written, with the words carried over.
  */
 function NewSheet({ onProject }: { onProject: () => void }) {
-  const { type: presetType, text: presetText, context, close } = useNewSheet();
+  const { type: presetType, text: presetText, project: inProject, close } = useNewSheet();
   const nav = useNavigate();
   const loc = useLocation();
   const wid = useWorkspaceId();
@@ -78,9 +78,9 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const [priority, setPriority] = useState<Priority | null>(null);
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [workTypeId, setWorkTypeId] = useState<string | null>(null);
-  const [kind, setKind] = useState<ProjectKind | null>(context.kind ?? null);
+  const [kind, setKind] = useState<ProjectKind | null>(inProject?.kind ?? null);
   const pathProject = /^\/work\/projects\/([0-9a-f-]{8,})/i.exec(loc.pathname)?.[1] ?? null;
-  const [projectId, setProjectId] = useState<string | null>(context.projectId ?? pathProject);
+  const [projectId, setProjectId] = useState<string | null>(inProject?.id ?? pathProject);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { setTimeout(() => input.current?.focus(), 20); }, []);
@@ -172,7 +172,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   };
   const goes = type === 'doc' ? 'Opens Library to write it.' : type === 'secret' ? 'Opens the Vault to fill in the secret.' : type === 'meeting' ? 'Opens the meeting form in Talk.'
     : type === 'time' ? 'Opens your timesheet with this entry.' : type === 'project' ? 'Opens the project form.' : type === 'reminder' ? 'Opens the reminder with the time it understood.'
-    : type === 'task' && !project ? 'Pick the project it belongs to.' : 'Tap any chip to change it. Everything else can be added later.';
+    : type === 'task' && !project ? 'Pick the project it belongs to.' : type === 'task' && inProject && project?.id === inProject.id ? `Adds it to ${inProject.name}.` : 'Tap any chip to change it. Everything else can be added later.';
   const blocked = !type || busy || (!title && type !== 'reminder' && type !== 'time') || (type === 'task' && !project) || (type === 'ticket' && !chosenType && types.isSuccess);
 
   return (

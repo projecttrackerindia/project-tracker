@@ -61,26 +61,30 @@ function compare(s: Sort) {
  * date (red when late), grouped and sorted as the person chooses. The kind chips narrow it; search, project, owner and "Overdue" appear
  * only when the list is long enough to need them. A row opens the item in the side panel.
  */
-export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, defaults, showKinds = true, headExtra }: {
+export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, defaults, showKinds = true, headExtra, kind: kindProp, onKind }: {
   /** What the server is asked for (mine, team, kind, project …); the list adds status and search. */ filters: WorkListFilters;
   /** Where the group / sort / show choice is remembered. */ viewKey: string;
   selectedId: string | null; onOpen: (id: string) => void;
   empty: { title: string; text?: string; action?: ReactNode };
   /** The kinds this person can see (the chips). */ kinds: WorkKind[];
   defaults?: Partial<Prefs>; showKinds?: boolean; headExtra?: ReactNode;
+  /** The kind chip in the address (a project's ?kind=): given, the chips follow it and report changes through `onKind`. */
+  kind?: WorkKind | null; onKind?: (k: WorkKind | null) => void;
 }) {
   const fallback: Prefs = { group: 'due', sort: 'priority', show: 'open', ...defaults };
   const [prefs, setPrefs] = useState<Prefs>(() => readPrefs(viewKey, fallback));
   useEffect(() => { setPrefs(readPrefs(viewKey, fallback)); }, [viewKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (p: Partial<Prefs>) => setPrefs((x) => { const n = { ...x, ...p }; writePrefs(viewKey, n); return n; });
 
-  const [kind, setKind] = useState<WorkKind | null>(null);
+  const [ownKind, setOwnKind] = useState<WorkKind | null>(null);
+  const kind = kindProp !== undefined ? kindProp : ownKind;
+  const setKind = (k: WorkKind | null) => { if (onKind) onKind(k); if (kindProp === undefined) setOwnKind(k); };
   const [q, setQ] = useState('');
   const dq = useDebounced(q.trim());
   const [projectId, setProjectId] = useState('');
   const [ownerId, setOwnerId] = useState('');
   const [overdue, setOverdue] = useState(false);
-  useEffect(() => { setKind(null); setQ(''); setProjectId(''); setOwnerId(''); setOverdue(false); }, [viewKey]);
+  useEffect(() => { setOwnKind(null); setQ(''); setProjectId(''); setOwnerId(''); setOverdue(false); }, [viewKey]);
 
   const status: WorkStatusFilter = prefs.show;
   const list = useWorkList({ ...filters, kind: filters.kind ?? (showKinds ? undefined : kinds), status, q: dq || undefined });
