@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
-// Talk (v2, s-talk): chat, mail and meetings in one list with All · Unread · Chats · Mail · Meetings and a source glyph per row, meetings and
+// Talk (v2, s-talk): chats and meetings in one list with All · Unread · Chats · Meetings (mail has its own place) and a source glyph per row, meetings and
 // channels as rounded squares, the "Connect your mailbox" banner, a chat thread with members, call and ⓘ, the pinned "While you were away"
 // card, actions BESIDE the bubble (Make task · Remind me · ↩ · ···), "Message …" with Draft reply, and a meeting opening in the same pane. 1440 light and dark, and a 390 phone. Synthetic API only.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist');
@@ -43,7 +43,7 @@ const talk = () => ({
   ],
   mail: { state: 'not-connected', account: null, email: null, provider: null }, chatAvailable: true,
 });
-const errors = [], checks = [], writes = [];
+const errors = [], checks = [], writes = [], talkFilters = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 const make = async (theme = 'light', opts = {}) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', ...opts });
@@ -63,7 +63,7 @@ const make = async (theme = 'light', opts = {}) => {
     if (ep.endsWith('/auth/refresh')) data = { accessToken: token, expiresAt: '2099-01-01T00:00:00Z', user };
     else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['org.manage', 'work.view', 'chat.view', 'projects.view', 'calendar.view'], modules: { projects: 3, work: 3, ai: 3, chat: 3, people: 3, documents: 3, calendar: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { AI_ASSISTANT: 3 } } };
     else if (ep === '/api/v1/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };
-    else if (ep === '/api/v1/talk/conversations') data = talk();
+    else if (ep === '/api/v1/talk/conversations') { talkFilters.push(url.searchParams.get('f')); data = talk(); }
     else if (ep === '/api/v1/chat/conversations') data = [direct, group];
     else if (ep === `/api/v1/chat/conversations/${direct.id}/messages` && method === 'GET') data = { items: messages, hasMore: false };
     else if (ep.endsWith('/messages') && method === 'GET') data = { items: [], hasMore: false };
@@ -97,7 +97,7 @@ try {
   await page.goto(`${origin}/preview-org/talk`);
   await page.locator('.talk-list').waitFor();
   await page.locator('.talk-row[data-row="Daily status call"]').waitFor();
-  assert.deepEqual(await page.locator('.talk-filters .talk-chip').allInnerTexts(), ['All', 'Unread 1', 'Chats', 'Mail', 'Meetings']);
+  assert.deepEqual(await page.locator('.talk-filters .talk-chip').allInnerTexts(), ['All', 'Unread 1', 'Chats', 'Meetings']);
   assert.ok(await page.getByRole('textbox', { name: 'Search Talk' }).isVisible(), 'search at the top of the list');
   assert.equal(await page.locator('.talk-row .talk-src').count(), await page.locator('.talk-row').count(), 'a source glyph on every row');
   assert.equal(await page.locator('.talk-row[data-row="MuleSoft Support"] .talk-dot').count(), 1, 'an unread dot');
@@ -108,23 +108,21 @@ try {
   assert.ok(await radius('.talk-row[data-row="Devraj Kumar"] .talk-av') >= 19, 'a person is round');
   const ch = await radius('.talk-row[data-row="MuleSoft Support"] .talk-av');
   assert.ok(ch > 4 && ch < 20, `a group is a rounded square with # (${ch}px)`);
-  assert.equal(await page.getByTestId('connect-mailbox').count(), 0, 'v2: no mailbox row in the list; it is a banner under Mail');
+  assert.equal(await page.getByTestId('connect-mailbox').count(), 0, 'no mail in Talk: it has its own place');
+  assert.equal(await page.locator('.talk-src').filter({ hasText: /^[MR]$/ }).count(), 0, 'no mail rows');
   checks.push('one-list');
   await shot(page, 'list-1440-light.png');
 
   await page.locator('.talk-filters .talk-chip', { hasText: 'Meetings' }).click();
   await page.waitForFunction(() => location.search.includes('f=meetings'));
   assert.deepEqual(await page.locator('.talk-rows .talk-row').evaluateAll((els) => els.map((e) => e.getAttribute('data-row'))), ['Daily status call']);
-  await page.locator('.talk-filters .talk-chip', { hasText: 'Mail' }).click();
-  await page.waitForFunction(() => location.search.includes('f=mail')); await page.getByTestId('connect-mailbox-banner').waitFor();
-  assert.equal(await page.locator('.talk-rows .talk-row:not(.connect)').count(), 0);
-  assert.match(await page.getByTestId('connect-mailbox-banner').innerText(), /Rediffmail[\s\S]*mailbox/);
-  // Connect opens the mailbox connection.
-  await page.getByTestId('connect-mailbox').click();
-  await page.getByRole('dialog').waitFor();
-  await page.keyboard.press('Escape');
-  await page.getByRole('dialog').waitFor({ state: 'detached' });
-  checks.push('connect-mailbox');
+  // Mail moved out of Talk: the old Mail filter address opens Mail, and Talk asks only for chats and meetings.
+  assert.ok(talkFilters.length > 0 && talkFilters.every((f) => f === 'talk'), `Talk asks for f=talk: ${talkFilters}`);
+  await page.goto(`${origin}/preview-org/talk?f=mail`);
+  await page.waitForURL(/\/mail$/);
+  await page.goto(`${origin}/preview-org/talk`);
+  await page.locator('.talk-row[data-row="Daily status call"]').waitFor();
+  checks.push('no-mail');
   await page.locator('.talk-filters .talk-chip', { hasText: 'All' }).click();
   checks.push('filters');
 

@@ -20,6 +20,7 @@ import { inRail, useMainNav, type NavDef } from '../../layouts/navigation';
 import { CreateOrganizationModal } from '../../layouts/parts';
 import { supportMailto } from '../../lib/support';
 import { openNew } from './state';
+import { useMailUnread } from '../../features/mail/useMail';
 import './v2.css';
 
 /** Unread chat messages (the badge on Talk, and in the tab title so it shows when the app is in the background). */
@@ -94,6 +95,7 @@ function useSideGroups(): SideGroup[] {
   const talk = useTalkUnread();
   const inbox = useInboxOpen();
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  const mailUnread = useMailUnread(!admin);
   const canProjects = (useAuth((s) => s.ctx?.current?.modules?.projects) ?? 0) > 0;
   const dash = useWsQuery(['dashboard', null], () => insightApi.dashboard(null), { staleTime: 60_000, retry: false, enabled: !admin });
   const projectList = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false, enabled: !admin && canProjects });
@@ -127,6 +129,7 @@ function useSideGroups(): SideGroup[] {
     ] as SideItem[] }),
     clean({ title: 'Together', items: [
       mk('/talk', 'talk', 'Talk', 'message', TINT.green, pathname === '/talk' || pathname.startsWith('/talk/') || pathname.startsWith('/calls/'), { badge: talk, calm: true }),
+      mk('/mail', 'mail', 'Mail', 'mail', TINT.blue, pathname === '/mail' || pathname.startsWith('/mail/'), { badge: mailUnread, calm: true }),
       mk('/library', 'library', 'Library', 'note', TINT.amber, (pathname === '/library' || pathname.startsWith('/library/')) && !vault),
       mk('/library/vault', 'vault', 'Vault', 'key', TINT.gray, vault),
       mk('/insights', 'insights', 'Insights', 'chart', TINT.pink, pathname === '/insights' || pathname.startsWith('/insights/') || pathname === '/activity'),
@@ -184,7 +187,7 @@ export function Rail() {
               <Link key={i.key} to={i.to} className={`v2-rail-item ${i.on ? 'on' : ''}`} aria-current={i.on ? 'page' : undefined} title={i.hint ?? i.label} data-place={i.key}>
                 <span className="v2-tile" style={{ background: i.tint }}><Icon name={i.icon} size={13} /></span>
                 <span className="v2-rail-label">{i.label}</span>
-                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} aria-label={i.key === 'home' ? `${i.badge} waiting on you` : i.key === 'talk' ? `${i.badge} unread` : `${i.badge} open`}>{i.badge > 99 ? '99+' : i.badge}</em>}
+                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} aria-label={i.key === 'home' ? `${i.badge} waiting on you` : i.key === 'talk' || i.key === 'mail' ? `${i.badge} unread` : `${i.badge} open`}>{i.badge > 99 ? '99+' : i.badge}</em>}
               </Link>
             ))}
           </div>

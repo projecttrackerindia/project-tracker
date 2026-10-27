@@ -36,10 +36,10 @@ export function shortDate(iso: string | null) {
 export const quote = (m: MailMessage) => `\n\nOn ${m.date ? formatDateTime(m.date) : ''}, ${m.from} wrote:\n` + (m.body ?? '').split('\n').map(l => '> ' + l).join('\n');
 
 /** The person's mail accounts in one list: Gmail and Outlook when connected, then each company or IMAP mailbox. */
-export function useMailAccounts() {
-  const google = useWsQuery(['account', 'google-status'], integrationsApi.googleStatus);
-  const ms = useWsQuery(['account', 'microsoft-status'], microsoftApi.status);
-  const imap = useWsQuery(['mailbox', 'accounts'], mailboxApi.accounts);
+export function useMailAccounts(enabled = true) {
+  const google = useWsQuery(['account', 'google-status'], integrationsApi.googleStatus, { enabled });
+  const ms = useWsQuery(['account', 'microsoft-status'], microsoftApi.status, { enabled });
+  const imap = useWsQuery(['mailbox', 'accounts'], mailboxApi.accounts, { enabled });
   const accounts: Account[] = useMemo(() => {
     const list: Account[] = [];
     const g = google.data;
@@ -55,13 +55,13 @@ export function useMailAccounts() {
 }
 
 /** Sends the person to Google or Microsoft to (re)connect their mailbox; they come back to <paramref>returnTo</paramref>. */
-export async function reconnect(kind: Account['kind'], returnTo = '/mailbox') {
+export async function reconnect(kind: Account['kind'], returnTo = '/mail') {
   if (continueConnectionInBrowser()) return;
   try {
     if (kind === 'gmail') { const { url } = await integrationsApi.googleConnectUrl(returnTo, true, true); window.location.assign(url); }
     else if (kind === 'outlook') {
-      try { sessionStorage.setItem(MAILBOX_RETURN_KEY, '1'); } catch { /* the person lands in settings instead */ }
-      const { url } = await microsoftApi.connect(true); window.location.assign(url);
+      if (returnTo === '/mail') try { sessionStorage.setItem(MAILBOX_RETURN_KEY, '1'); } catch { /* the person lands in settings instead */ }
+      const { url } = await microsoftApi.connect(true, false, false, returnTo); window.location.assign(url);
     }
   } catch (e) { toast(errText(e, 'Could not start the connection.'), 'error'); }
 }

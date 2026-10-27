@@ -12,6 +12,6 @@ export interface TalkMailState { state: 'connected' | 'not-connected' | 'unavail
 export interface TalkList { items: TalkRow[]; mail: TalkMailState; chatAvailable: boolean }
 
 export const talkApi = {
-  /** Chat, mail and meetings in one list, newest first (each thread keeps its own endpoints). */
-  conversations: (f: TalkFilter = 'all') => get<TalkList>('/talk/conversations', { f }),
+  /** Chat, mail and meetings in one list, newest first (each thread keeps its own endpoints). Talk asks for 'talk': chats and meetings only. */
+  conversations: (f: TalkFilter | 'talk' = 'all') => get<TalkList>('/talk/conversations', { f }),
 };

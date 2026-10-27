@@ -66,6 +66,7 @@ const QualityPage = page(() => import('./features/quality/QualityPage'), 'Qualit
 const ProjectsHome = page(() => import('./features/projects/ProjectsHome'), 'ProjectsHome');
 const ProjectPage = page(() => import('./features/projects/ProjectPage'), 'ProjectPage');
 const TalkPage = page(() => import('./features/talk/TalkPage'), 'TalkPage');
+const MailPage = page(() => import('./features/mail/MailPage'), 'MailPage');
 const LibraryPage = page(() => import('./features/library/LibraryPage'), 'LibraryPage');
 const InsightsPage = page(() => import('./features/insights/InsightsPage'), 'InsightsPage');
 const PeoplePage = page(() => import('./features/people/PeoplePage'), 'PeoplePage');
@@ -402,6 +403,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="quality" element={<Guard allow={mWork}><QualityPage /></Guard>} />
         <Route path="work/projects/:id" element={<Guard allow={mProjects}><ProjectPage /></Guard>} />
         <Route path="work/projects/:id/:tab" element={<ProjectTabMoved />} />
+        <Route path="mail" element={<MailPage />} />
         <Route path="talk" element={<TalkPage />} />
         <Route path="talk/:conversationId" element={<TalkPage />} />
         <Route path="library" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
@@ -452,7 +454,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="project-status" element={<Moved to="/work/projects?view=portfolio" />} />
         <Route path="chat" element={<Moved to="/talk?f=chat" />} />
         <Route path="chat/*" element={<Moved to="/talk" prefix="/chat" />} />
-        <Route path="mailbox" element={<Moved to="/talk?f=mail" />} />
+        <Route path="mailbox" element={<Moved to="/mail" />} />
         <Route path="meet" element={<Moved to="/talk?f=meetings" rename={{ open: 'meeting' }} />} />
         <Route path="meet/:s" element={<SectionMoved to="/talk?f=meetings" rename={{ open: 'meeting' }} />} />
         <Route path="notetaker" element={<Moved to="/talk?f=meetings&s=notetaker" />} />

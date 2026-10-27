@@ -39,7 +39,10 @@ public record ConnectImapRequest(string Provider, string Email, string Password)
 public record MailMessageDto(string Id, string ThreadId, string Subject, string From, string To, string Cc, DateTimeOffset? Date, bool Unread, bool HasAttachments, string? Body = null, bool BodyTruncated = false);
 public record MailListDto(string Account, string Email, string Folder, IReadOnlyList<MailMessageDto> Messages, string? Cursor);
 public record MailThreadDto(string Account, string Email, string Folder, string ThreadId, IReadOnlyList<MailMessageDto> Messages, bool Truncated);
-public record MailSendRequest(string Account, string? ReplyToId, string? Folder, bool ReplyAll, string? To, string? Cc, string? Subject, string Body, bool Confirmed);
+public record MailSendRequest(string Account, string? ReplyToId, string? Folder, bool ReplyAll, string? To, string? Cc, string? Subject, string Body, bool Confirmed,
+    IReadOnlyList<MailAttachmentInput>? Attachments = null);
+/// <summary>A file sent with a new mail or a reply: its name, MIME type and base64 content (at most 10 files and 15 MB in all).</summary>
+public record MailAttachmentInput(string? Name, string? ContentType, string? Data);
 public record MailSendResultDto(bool Accepted, string To, string Cc, string Subject);
 /// <summary>Forward one message to new recipients, with the person's own note above it and the original's attachments.</summary>
 public record MailForwardRequest(string Account, string? Folder, string MessageId, string To, string? Cc, string? Note, bool Confirmed);
@@ -598,6 +601,39 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         return (target, copies, title);
     }
 
+    /// <summary>The attachments of a send, checked: at most 10 files and 15 MB in all, valid base64, a plain file name.</summary>
+    public static List<(string Name, ContentType Type, byte[] Bytes)> Files(IReadOnlyList<MailAttachmentInput>? attachments)
+    {
+        var list = new List<(string, ContentType, byte[])>();
+        if (attachments is not { Count: > 0 }) return list;
+        if (attachments.Count > 10) throw new ValidationException("attachments", "Attach at most 10 files.");
+        long total = 0;
+        foreach (var a in attachments)
+        {
+            byte[] bytes;
+            try { bytes = Convert.FromBase64String(a.Data ?? ""); }
+            catch (FormatException) { throw new ValidationException("attachments", "An attachment could not be read. Attach it again."); }
+            total += bytes.Length;
+            if (total > 15 * 1024 * 1024) throw new ValidationException("attachments", "Attachments can be up to 15 MB in all.");
+            var name = Path.GetFileName((a.Name ?? "").Replace('\\', '/'));
+            if (string.IsNullOrWhiteSpace(name)) name = "attachment";
+            if (name.Length > 200) name = name[^200..];
+            var type = ContentType.TryParse(a.ContentType ?? "", out var parsed) ? parsed : new ContentType("application", "octet-stream");
+            list.Add((name, type, bytes));
+        }
+        return list;
+    }
+
+    /// <summary>A plain-text body, or a multipart one with the attachments.</summary>
+    public static MimeEntity Body(string body, IReadOnlyList<MailAttachmentInput>? attachments)
+    {
+        var files = Files(attachments);
+        if (files.Count == 0) return new TextPart("plain") { Text = body };
+        var builder = new BodyBuilder { TextBody = body };
+        foreach (var (name, type, bytes) in files) builder.Attachments.Add(name, bytes, type);
+        return builder.ToMessageBody();
+    }
+
     public async Task<MailSendResultDto> SendAsync(MailSendRequest req, CancellationToken ct)
     {
         ctx.RequireTenantId();
@@ -616,6 +652,7 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
             HttpRequestMessage request;
             if (isReply)
             {
+                if (req.Attachments is { Count: > 0 }) throw new ValidationException("attachments", "Outlook replies cannot carry attachments here yet. Send a new mail with the files instead.");
                 var id = SafeId(req.ReplyToId!);
                 request = new HttpRequestMessage(HttpMethod.Post, $"https://graph.microsoft.com/v1.0/me/messages/{Uri.EscapeDataString(id)}/{(req.ReplyAll ? "replyAll" : "reply")}")
                 { Content = new StringContent(JsonSerializer.Serialize(new { comment = body }), Encoding.UTF8, "application/json") };
@@ -628,7 +665,8 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
                 object Recipients(InternetAddressList l) => l.Mailboxes.Select(m => new { emailAddress = new { address = m.Address, name = m.Name } }).ToArray();
                 request = new HttpRequestMessage(HttpMethod.Post, "https://graph.microsoft.com/v1.0/me/sendMail")
                 {
-                    Content = new StringContent(JsonSerializer.Serialize(new { message = new { subject, body = new { contentType = "Text", content = body }, toRecipients = Recipients(to), ccRecipients = Recipients(cc) }, saveToSentItems = true }), Encoding.UTF8, "application/json")
+                    Content = new StringContent(JsonSerializer.Serialize(new { message = new { subject, body = new { contentType = "Text", content = body }, toRecipients = Recipients(to), ccRecipients = Recipients(cc),
+                        attachments = Files(req.Attachments).Select(f => new Dictionary<string, string> { ["@odata.type"] = "#microsoft.graph.fileAttachment", ["name"] = f.Name, ["contentType"] = f.Type.MimeType, ["contentBytes"] = Convert.ToBase64String(f.Bytes) }).ToArray() }, saveToSentItems = true }), Encoding.UTF8, "application/json")
                 };
             }
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", grant.AccessToken);
@@ -667,7 +705,7 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
             else { to = Addresses(req.To, "to"); cc = Addresses(req.Cc, "cc"); subject = Subject(req.Subject); }
             if (to.Count == 0) throw new ValidationException("to", "Add at least one recipient.");
             message.To.AddRange(to); message.Cc.AddRange(cc); message.Subject = subject;
-            message.Body = new TextPart("plain") { Text = body };
+            message.Body = Body(body, req.Attachments);
             using var post = new HttpRequestMessage(HttpMethod.Post, "https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
             { Content = new StringContent(JsonSerializer.Serialize(new { raw = Raw(message), threadId }), Encoding.UTF8, "application/json") };
             post.Headers.Authorization = new AuthenticationHeaderValue("Bearer", send.AccessToken);
@@ -693,7 +731,7 @@ public class MailboxService(IAppDbContext db, ICurrentContext ctx, PersonalInbox
         else { to = Addresses(req.To, "to"); cc = Addresses(req.Cc, "cc"); subject = Subject(req.Subject); }
         if (to.Count == 0) throw new ValidationException("to", "Add at least one recipient.");
         message.To.AddRange(to); message.Cc.AddRange(cc); message.Subject = subject;
-        message.Body = new TextPart("plain") { Text = body };
+        message.Body = Body(body, req.Attachments);
         await SmtpSendAsync(row, message, ct);
         await AuditAsync(req, row.Provider);
         return new(true, to.ToString(), cc.ToString(), subject);

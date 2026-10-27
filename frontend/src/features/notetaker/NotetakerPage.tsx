@@ -322,7 +322,7 @@ function SendMinutes({ sessionId, minutes, owner, onClose, onSent }: { sessionId
     <Modal title="Email the minutes" onClose={onClose} size="lg" footer={<>
       <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
       <button className="btn btn-primary" disabled={busy || !account || !to.trim()} onClick={() => void send()}>{busy ? <Spinner /> : <Icon name="send" size={14} />} Send</button></>}>
-      {accounts.length === 0 ? <p className="muted">Connect a mail account in <Link to="/mailbox">Mailbox</Link> first.</p> : (
+      {accounts.length === 0 ? <p className="muted">Connect a mail account in <Link to="/settings/integrations/mail">Settings › Integrations › Mail</Link> first.</p> : (
         <div className="nt-mail">
           <label className="nt-field"><span>From</span><Select className="select" aria-label="From" value={account} onChange={(e) => setFrom(e.target.value)}>{accounts.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}</Select></label>
           <label className="nt-field"><span>To</span><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="attendees@company.com, …" autoFocus /></label>
