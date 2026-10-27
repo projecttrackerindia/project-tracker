@@ -155,7 +155,7 @@ try {
     page.on('pageerror', (e) => errors.push(e.message));
     await page.setViewportSize({ width, height: 1000 });
     await page.goto(`${origin}/preview-org/my-work`);
-    await page.getByText('Reconcile yesterday’s failed payouts').waitFor();
+    await page.getByText('Reconcile yesterday’s failed payouts').first().waitFor();
     if (width === 390) await fitsPhone(page, 'My work', assert);
     await shot(page, `my-work-${tag}.png`);
     await ctx.close();
