@@ -95,8 +95,7 @@ try{
  // v2 Settings: You and Workspace, ten sections; General carries setup health with its fixes and the latest changes.
  await page.goto(origin+'/preview-org/settings/general');
  const nav=page.getByRole('navigation',{name:'Settings sections'});await nav.waitFor();
- for(const g of ['You','Workspace'])assert.ok(await nav.getByText(g,{exact:true}).isVisible(),`group ${g}`);
- for(const l of ['Profile & sign-in','Notifications','General','Security & audit','Integrations','AI','Billing'])assert.ok(await nav.getByRole('link',{name:l,exact:true}).isVisible(),`section ${l}`);
+ for(const l of ['Profile','Workspace','People & roles','Notifications','Mail accounts','Security','Integrations','AI','Billing','Appearance'])assert.ok(await nav.getByRole('link',{name:l,exact:true}).isVisible(),`section ${l}`);
  const healthCard=page.getByRole('region',{name:'Setup health'});await healthCard.getByText('Two-step sign-in is not required').waitFor();
  assert.ok(await healthCard.getByRole('img',{name:'Setup health 58 out of 100'}).isVisible());
  await healthCard.getByRole('button',{name:'Remind 2 members'}).click();

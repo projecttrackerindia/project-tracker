@@ -1,0 +1,60 @@
+/* macOS System Settings: grouped inset rows, switches and pop-up buttons (mock: apple/s-settings.html). */
+.sg-wrap { margin-top: 20px; }
+.sg-wrap:first-of-type { margin-top: 20px; }
+.sg-label { font-size: 12px; font-weight: 600; color: var(--ds-text-3); margin: 0 0 10px 4px; letter-spacing: 0; }
+.sg { background: var(--ds-surface); border-radius: 12px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 0 0 .5px rgba(0, 0, 0, .06); }
+.sg-critical .sg-row { background: rgba(255, 59, 48, .05); border-radius: 12px; }
+.sg-row { display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 8px 16px; position: relative; width: 100%; text-align: left;
+  font: inherit; color: var(--ds-text); background: none; border: 0; }
+.sg-row + .sg-row::before { content: ""; position: absolute; left: 16px; right: 0; top: 0; height: .5px; background: rgba(0, 0, 0, .08); }
+.sg-row.dim > :not(.sg-end) { opacity: .45; }
+.sg-link { cursor: pointer; }
+.sg-link:hover { background: var(--ds-fill); }
+.sg > .sg-row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+.sg > .sg-row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }
+.sg-chev { color: var(--ds-text-4); font-size: 18px; line-height: 1; }
+.sg-tile { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: #fff; font-size: 13px; flex: none; font-style: normal; }
+.sg-tile[data-glyph]::before { content: attr(data-glyph); }
+.sg-tile svg { width: 15px; height: 15px; }
+.sg-tx { flex: 1; min-width: 0; }
+.sg-tx b { font-size: 13.5px; font-weight: 500; display: block; }
+.sg-tx > span { font-size: 12px; color: var(--ds-text-3); display: block; margin-top: 2px; }
+.sg-end { display: flex; align-items: center; gap: 10px; flex: none; font-size: 12px; color: var(--ds-text-4); }
+
+.sg-sw { width: 38px; height: 22px; border-radius: 11px; background: rgba(120, 120, 128, .24); position: relative; flex: none; border: 0; padding: 0; cursor: pointer;
+  transition: background .25s var(--ds-ease); }
+.sg-sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 9px; background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .2), 0 0 0 .5px rgba(0, 0, 0, .04); transition: left .25s var(--ds-spring), width .15s var(--ds-ease); }
+.sg-sw.on { background: #34c759; }
+.sg-sw.on::after { left: 18px; }
+.sg-sw:active:not(:disabled)::after { width: 24px; }
+.sg-sw.on:active:not(:disabled)::after { left: 12px; }
+.sg-sw:disabled { cursor: default; }
+.sg-sw.lock { opacity: .5; }
+.sg-sw:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+.sg-pop { position: relative; display: inline-flex; }
+.sg-pop select { appearance: none; -webkit-appearance: none; height: 24px; padding: 0 22px 0 10px; border-radius: 6px; border: 0; background: var(--ds-surface); color: var(--ds-text);
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .15), 0 1px 2px rgba(0, 0, 0, .08); font: inherit; font-size: 12.5px; cursor: pointer; }
+.sg-pop::after { content: "⌃⌄"; position: absolute; right: 7px; top: 50%; transform: translateY(-50%); font-size: 8px; line-height: 7px; width: 6px; color: var(--ds-text-3);
+  writing-mode: vertical-lr; pointer-events: none; }
+.sg-pop input { height: 24px; border-radius: 6px; border: 0; box-shadow: 0 0 0 .5px rgba(0, 0, 0, .15), 0 1px 2px rgba(0, 0, 0, .08); padding: 0 8px; font: inherit; font-size: 12.5px;
+  background: var(--ds-surface); color: var(--ds-text); }
+
+.sg-head { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+.sg-head .sg-tile { border-radius: 11px; font-size: 22px; }
+.sg-head .sg-tile[data-glyph]::before { content: attr(data-glyph); }
+.sg-tile svg { width: 22px; height: 22px; }
+.sg-head h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin: 0; line-height: 1.2; }
+.sg-head p { font-size: 13px; color: var(--ds-text-3); margin: 2px 0 0; }
+
+[data-theme='dark'] .sg { box-shadow: 0 0 0 .5px rgba(255, 255, 255, .08); }
+[data-theme='dark'] .sg-row + .sg-row::before { background: rgba(255, 255, 255, .08); }
+[data-theme='dark'] .sg-pop select, [data-theme='dark'] .sg-pop input { background: var(--ds-fill); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .12); }
+[data-theme='dark'] .sg-critical .sg-row { background: rgba(255, 69, 58, .1); }
+
+/* Existing setting rows placed inside a group take the group's inset and hairlines. */
+html body .sg .setting-row { padding: 10px 16px; min-height: 50px; border-top: .5px solid rgba(0, 0, 0, .08); margin: 0; }
+html body .sg > .setting-row:first-child { border-top: 0; }
+html body .sg .setting-row .btn { height: 28px; min-height: 28px; padding: 0 12px; font-size: 12.5px; border-radius: 14px; }
+[data-theme='dark'] .sg > .setting-row { border-top-color: rgba(255, 255, 255, .08); }

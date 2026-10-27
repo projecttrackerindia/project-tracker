@@ -9,6 +9,7 @@ import { isRingNotice } from '../../features/calls/incomingCalls';
 import { useAuth } from '../../stores/auth';
 import { spring } from '../../lib/motion';
 import { Icon } from '../Icon';
+import { liveBannersOn } from './liveBannersPref';
 import './v2.css';
 
 const MAX = 3;
@@ -42,7 +43,7 @@ export function LiveBanners() {
         const page = await notificationApi.list(1, true);
         const fresh = page.items.filter((n) => !seen.current.has(n.id) && !SKIP.has(n.type) && !isRingNotice(n) && Date.parse(n.createdAt) > since.current - 2000);
         fresh.forEach((n) => seen.current.add(n.id));
-        if (fresh.length) {
+        if (fresh.length && liveBannersOn()) {
           setItems((cur) => [...fresh.reverse(), ...cur].slice(0, MAX));
           void qc.invalidateQueries({ queryKey: [wid, 'inbox'] });
         }

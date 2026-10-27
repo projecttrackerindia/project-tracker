@@ -97,15 +97,17 @@ try {
   checks.push({name,overflow});
  }
  // v2: My account is Settings › Profile & sign-in, and notification preferences are Settings › Notifications; the old addresses land there.
- await capture('account-notifications-redirect','/account/notifications','.nc-page',1440,1000);
+ await capture('account-notifications-redirect','/account/notifications','[data-setting="notifications.overview"]',1440,1000);
  assert.match(new URL(page.url()).pathname,/\/settings\/notifications$/,'/account/notifications must open Settings › Notifications');
- for(const [section,tab] of [['','Profile'],['/security','Sign-in & security'],['/mobile','Mobile app'],['/integrations','Connected accounts'],['/resumes','Profile']]) {
+ for(const [section,tab] of [['','Profile'],['/mobile','Mobile app'],['/integrations','Connected accounts'],['/resumes','Profile']]) {
   await capture('account-navigation-'+(section.slice(1)||'profile'),'/account'+section,'.set-place-head',1440,1000);
   const tabs=page.getByRole('tablist',{name:'Profile & sign-in sections'});
-  assert.equal(await tabs.getByRole('tab').count(),5);   // Profile, Sign-in & security, Mobile app, Connected accounts, Assistant
+  assert.equal(await tabs.getByRole('tab').count(),4);   // Profile, Mobile app, Connected accounts, Assistant (sign-in security is its own section now)
   assert.equal(await tabs.getByRole('tab',{name:tab,exact:true}).getAttribute('aria-selected'),'true',`/account${section} opens ${tab}`);
   assert.ok(!/Resume/.test(await tabs.innerText()),'Resume studio is gone');
  }
+ await capture('account-navigation-security','/account/security','.set-place-head',1440,1000);
+ assert.match(new URL(page.url()).pathname,/\/settings\/security\/account$/,'/account/security opens Settings › Security');
  checks.push({name:'old-account-addresses-open-profile-tabs',passed:true});
  // v2: /calendar is Home › Calendar (the week); planning with your own calendars sits under the week.
  await page.goto(origin+'/calendar');await page.locator('.outlook-availability').waitFor({state:'visible'});

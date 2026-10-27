@@ -401,14 +401,16 @@ try {
     await page.evaluate(() => document.querySelector(window.innerWidth < 769 ? '.v2-phone-new' : '.v2-new')?.click());
     const sheet = page.getByRole('dialog', { name: 'New' });
     await sheet.getByLabel('What to create').fill('VPN down for collections team, critical, give to Ravi');
-    await sheet.getByText('✦ I understood this as a ticket').waitFor();
-    await sheet.locator('.v2-new-chip', { hasText: 'Type' }).locator('b', { hasText: 'Bug fix' }).waitFor();
+    await sheet.locator('.v2-understood-label', { hasText: /Understood as\s*a ticket/ }).waitFor();
+    // The kind chip says Ticket; its work type and service level are in the one-line reason under the chips.
+    await sheet.locator('.v2-new-chip', { hasText: 'Type' }).locator('b', { hasText: 'Ticket' }).waitFor();
+    await sheet.locator('.v2-understood p', { hasText: 'Bug fix' }).waitFor();
     await sheet.locator('.v2-new-chip', { hasText: 'Priority' }).locator('b', { hasText: 'Critical' }).waitFor();
     await sheet.locator('.v2-new-chip', { hasText: 'Owner' }).locator('b', { hasText: 'Ravi Kumar' }).waitFor();
-    await sheet.locator('.v2-new-chip', { hasText: 'SLA' }).locator('b', { hasText: '4 hours' }).waitFor();
-    // Tap a chip to change it: the type.
-    await sheet.getByLabel('Change type').selectOption({ label: 'Access request' });
-    await sheet.locator('.v2-new-chip', { hasText: 'Type' }).locator('b', { hasText: 'Access request' }).waitFor();
+    await sheet.locator('.v2-understood p', { hasText: 'Critical SLA is 4 hours' }).waitFor();
+    // Tap a chip to change it: the work type is picked from the kind chip.
+    await sheet.getByLabel('Change type').selectOption({ label: 'Ticket · Access request' });
+    await sheet.locator('.v2-understood p', { hasText: 'Access request' }).waitFor();
     if (width === 390) await fitsPhone(page, 'New sheet', assert);
     await shot(page, `new-${tag}.png`);
     await sheet.getByRole('button', { name: 'Create ticket' }).click();
@@ -438,7 +440,7 @@ try {
       await page.waitForURL((u) => u.pathname === '/preview-org/library/docs');
       await newSheet('Meeting with the bank on Friday', 'Meeting');
       await page.waitForURL((u) => u.pathname === '/preview-org/talk' && u.searchParams.get('f') === 'meetings');
-      await newSheet('2h on WT-5 today', 'Time');
+      await newSheet('2h on WT-5 today', null);   // Time has no tile in the design; the words pick it
       await page.waitForURL((u) => u.pathname === '/preview-org/insights' && u.searchParams.get('tab') === 'time' && u.searchParams.get('log') === '2h on WT-5 today');
       await newSheet('Remind me to call Ravi tomorrow at 10', 'Reminder');
       await page.locator('.rm-composer, [role="dialog"]').first().waitFor();
@@ -452,8 +454,8 @@ try {
       await sheet.getByLabel('What to create').fill('Write the settlement runbook');
       await sheet.getByRole('radio', { name: 'Task' }).click();
       await sheet.getByLabel('Change project').selectOption(pid);
-      await sheet.getByLabel('Change type').selectOption('issue');
-      await sheet.getByText('✦ I understood this as an issue').waitFor();
+      await sheet.getByLabel('Change type').selectOption('bug');   // a project issue is the Bug kind now
+      await sheet.locator('.v2-understood-label', { hasText: /Understood as\s*a bug/ }).waitFor();
       await page.keyboard.press('Escape');
       errors.splice(kept);
       checks.push('new-every-type');

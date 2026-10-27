@@ -110,7 +110,7 @@ export function CommandPalette() {
       list.push({ id: 'acc:profile', group: 'Settings', label: 'My profile', icon: 'user', keywords: 'account', run: go('/settings/profile') });
       list.push({ id: 'acc:notifications', group: 'Settings', label: 'My notifications', icon: 'bell', keywords: 'account email push desktop my notifications delivery', run: go('/settings/notifications') });
       list.push({ id: 'acc:mobile', group: 'Settings', label: 'Mobile app & phone sign-in', icon: 'phone', keywords: 'android install push phone approve login', run: go('/settings/profile/mobile') });
-      list.push({ id: 'acc:security', group: 'Settings', label: 'Sign-in & security', icon: 'lock', keywords: 'account password two-step mfa', run: go('/settings/profile/security') });
+      list.push({ id: 'acc:security', group: 'Settings', label: 'Sign-in & security', icon: 'lock', keywords: 'account password two-step mfa', run: go('/settings/security/account') });
       list.push({ id: 'acc:connected', group: 'Settings', label: 'Connected accounts', icon: 'link', keywords: 'google microsoft outlook teams slack github gmail calendar meet connect', run: go('/settings/profile/accounts') });
     }
     if (ctx && !ctx.user.isPlatformAdmin) list.push({ id: 'new:any', group: 'Create', label: 'New… (task, ticket, doc, meeting, time…)', icon: 'plus', keywords: 'create add new make', run: () => { close(); openNew(); } });

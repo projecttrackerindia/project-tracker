@@ -116,17 +116,24 @@ try {
     ['/chat', '/talk?f=chat'], ['/mailbox', '/talk?f=mail'], ['/meet/past', '/talk?f=meetings&s=past'], ['/calendar', '/?tab=calendar'], ['/reminders', '/?tab=reminders'],
     ['/agents', '/'], ['/project-agent/assigned', '/?tab=given'], ['/ai/operations', '/insights?tab=workflows'], ['/agent-tracker', '/settings/ai/tracker'],
     ['/doctracker?p=1&t=documents', '/library/docs?p=1&t=documents'], ['/vault', '/library/vault'], ['/timesheet/approvals', '/insights?tab=time&s=approvals'],
-    ['/workload', '/insights'], ['/reports', '/insights?tab=reports'], ['/portfolio', '/work/projects?view=portfolio'], ['/account/security#s-account.twoStep', '/settings/profile/security#s-account.twoStep'],
+    ['/workload', '/insights'], ['/reports', '/insights?tab=reports'], ['/portfolio', '/work/projects?view=portfolio'], ['/account/security#s-account.twoStep', '/settings/security/account#s-account.twoStep'], ['/settings/profile/security', '/settings/security/account'],
     ['/account/resumes', '/settings/profile'], ['/notifications/preferences', '/settings/notifications/delivery'], ['/settings/sso', '/settings/security/sso'],
     ['/settings/labels#s-config.labels', '/settings/fields/labels#s-config.labels'], ['/settings', '/settings/profile'],
   ];
   for (const [from, to] of moved) { await page.goto(`${origin}/preview-org${from}`); for (let i = 0; i < 40 && at() !== to; i++) await page.waitForTimeout(100); assert.equal(at(), to, `${from} moved`); }
   checks.push(`redirects:${moved.length}`);
+  // Your own security is a top-level section: password, passkeys, two-step (with its badge and actions), sign-in methods, sessions.
+  await page.goto(`${origin}/preview-org/settings/security/account`); await page.locator('.set-mac-item.on', { hasText: 'Security' }).waitFor();
+  for (const g of ['Password', 'Passkeys', 'Sign-in methods', 'Active sessions']) await page.locator('.sg h4', { hasText: g }).first().waitFor();
+  await page.getByRole('heading', { name: /^Two-step verification (On|Off)$/ }).waitFor();
+  assert.ok(await page.getByRole('button', { name: /Set up|Turn off/ }).first().isVisible(), 'two-step action');
+  await shot(page, 'settings-security-1440.png'); checks.push('own-security');
 
   // Settings: You (2) and Workspace (8) sections; tabs inside a section.
   await page.goto(`${origin}/preview-org/settings/security`); await page.locator('.set-place-head').waitFor({ timeout: 8000 }).catch(async (e) => { await page.getByText('Details').click().catch(() => {}); console.log(at(), errors, (await page.locator('body').innerText()).slice(0, 600)); throw e; });
-  const sections = await page.locator('.section-nav a').allInnerTexts();
-  for (const want of ['Profile & sign-in', 'Notifications', 'General', 'People', 'Fields & types', 'Timelines & automation', 'Security & audit', 'Integrations', 'AI', 'Billing']) assert.ok(sections.some((t) => t.trim().startsWith(want)), `Settings has ${want}: ${sections}`);
+  // The macOS System Settings list: ten sections with coloured icon tiles.
+  const sections = await page.locator('.set-mac-item').allInnerTexts();
+  for (const want of ['Profile', 'Workspace', 'People & roles', 'AI', 'Notifications', 'Mail accounts', 'Integrations', 'Security', 'Billing', 'Appearance']) assert.ok(sections.some((t) => t.trim() === want), `Settings has ${want}: ${sections}`);
   assert.equal(sections.length, 10, `ten sections: ${sections}`);
   await page.getByRole('tab', { name: 'Single sign-on' }).click(); await page.waitForTimeout(300); assert.equal(at(), '/settings/security/sso');
   await page.goto(`${origin}/preview-org/settings/profile`); await page.locator('.set-place-head').waitFor();
@@ -152,9 +159,10 @@ try {
   await page.locator('.v2-new-input input').fill('VPN down for collections team, critical, give to Priya');
   await page.waitForTimeout(300);
   assert.equal(await page.locator('.v2-new-type.on').innerText(), 'Ticket');
-  assert.ok((await page.locator('.v2-understood-label').innerText()).includes('I understood this as a ticket'));
+  assert.match(await page.locator('.v2-understood-label').textContent(), /Understood as\s*a ticket/);
   const chips = await page.locator('.v2-new-chip b').allInnerTexts();
   assert.ok(chips.includes('Critical') && chips.includes('Priya Nair'), `chips: ${chips}`);
+  assert.equal(await page.getByText('Notify on WhatsApp').count(), 0, 'no WhatsApp toggle in + New');
   await shot(page, 'new-ticket-1440.png');
   await page.getByRole('button', { name: 'Create ticket' }).click(); await page.waitForTimeout(500);
   const made = writes.find((w) => w.ep === '/api/v1/work-items');

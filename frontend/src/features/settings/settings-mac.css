@@ -1,0 +1,63 @@
+/* Settings as macOS System Settings (mock: apple/s-settings.html): the list on the left, grouped inset rows on the right. */
+.set-mac { display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: stretch; }
+.set-mac-title { font-size: 15px; font-weight: 600; letter-spacing: -.01em; margin: 0; }
+.set-mac-nav { padding: 10px 12px; border-right: .5px solid rgba(0, 0, 0, .08); background: rgba(255, 255, 255, .4); align-self: stretch; box-shadow: none; border-radius: 0; position: static; }
+.set-mac-nav .set-search.compact { margin: 0 0 12px; }
+html body .set-mac .set-mac-nav .set-search.compact > .input { height: 28px; min-height: 28px; line-height: 28px; border-radius: 8px; background: rgba(118, 118, 128, .12); box-shadow: none; font-size: 12.5px; padding-left: 26px; }
+html .set-mac-nav .set-search.compact > .input:focus { background: var(--ds-surface); box-shadow: 0 0 0 3px rgba(0, 113, 227, .18); }
+html .set-mac-nav .set-search.compact > svg { left: 10px; width: 11px; height: 11px; }
+.set-mac-me { display: flex; gap: 10px; align-items: center; padding: 8px; margin-bottom: 8px; border-radius: 9px; color: var(--ds-text); text-decoration: none; }
+.set-mac-me:hover { background: rgba(118, 118, 128, .08); }
+.set-mac-me b { display: block; font-size: 13px; font-weight: 600; }
+.set-mac-me small { display: block; font-size: 11px; color: var(--ds-text-3); }
+.set-mac-av { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none; color: #fff; font-size: 14px; font-weight: 600;
+  background: linear-gradient(135deg, #0a84ff, #5e5ce6); }
+.set-mac-item { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 7px; font-size: 13px; color: var(--ds-text); text-decoration: none; }
+.set-mac-item .sg-tile { width: 20px; height: 20px; border-radius: 5px; font-size: 11px; }
+.set-mac-item:hover { background: rgba(118, 118, 128, .1); }
+.set-mac-item.on { background: #0071e3; color: #fff; }
+.set-mac-item:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
+.set-mac-gap { display: block; margin-bottom: 10px; }
+.set-mac-pane { padding: 20px 60px 30px; min-width: 0; }
+
+/* The pane header and its tabs */
+.set-mac .set-place-head { display: block; margin-bottom: 14px; }
+.set-mac .set-place-head .sg-head { margin-bottom: 14px; }
+.set-mac .set-place { max-width: none; }
+
+/* The existing pages, restyled as grouped inset rows: cards become the white group, card titles the small label above it. */
+.set-mac-pane .card { border-radius: 12px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 0 0 .5px rgba(0, 0, 0, .06); border: 0; background: var(--ds-surface); margin-bottom: 20px; }
+.set-mac-pane .card-head { padding: 12px 16px 0; border: 0; }
+.set-mac-pane .card-head h3 { font-size: 13.5px; font-weight: 600; letter-spacing: -.01em; }
+.set-mac-pane .card-body { padding: 8px 16px 14px; }
+.set-mac-pane .setting-row { min-height: 50px; padding: 8px 0; border-top: .5px solid rgba(0, 0, 0, .08); }
+.set-mac-pane .setting-row:first-child { border-top: 0; }
+.set-mac-pane .setting-info h4 { font-size: 13.5px; font-weight: 500; }
+.set-mac-pane .setting-info p { font-size: 12px; color: var(--ds-text-3); }
+.set-mac-pane .page-head h1, .set-mac-pane .page-head h2 { font-size: 17px; letter-spacing: -.015em; }
+.set-mac-pane .page-head { margin-bottom: 12px; }
+.set-mac-pane .page-head p { font-size: 12.5px; }
+.set-mac-pane .nc-panel { border-radius: 12px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 0 0 .5px rgba(0, 0, 0, .06); border: 0; }
+[data-theme='dark'] .set-mac-nav { background: rgba(255, 255, 255, .03); border-right-color: rgba(255, 255, 255, .08); }
+[data-theme='dark'] .set-mac-pane .card, [data-theme='dark'] .set-mac-pane .nc-panel { box-shadow: 0 0 0 .5px rgba(255, 255, 255, .08); }
+[data-theme='dark'] .set-mac-pane .setting-row { border-top-color: rgba(255, 255, 255, .08); }
+
+/* Wide: the window fills the main area, "Settings" sits in the toolbar row. */
+@media (min-width: 1100px) {
+  html .v2-shell > .main.v2-main > .content:has(> .set-mac), html .v2-shell > .main.v2-main > .content:has(> * > .set-mac) { padding: 0; }
+  .set-mac { min-height: calc(100vh - 52px); }
+  .set-mac > .set-mac-title { display: none; }
+  .v2-tb > .v2-tb-title { order: -1; font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--ds-text); }
+  .set-mac-nav { position: sticky; top: 52px; height: calc(100vh - 52px); overflow-y: auto; }
+}
+@media (max-width: 1099px) {
+  .v2-tb-title { display: none; }
+  .set-mac { grid-template-columns: 1fr; }
+  .set-mac-title { font-size: 28px; font-weight: 700; margin-bottom: 12px; }
+  .set-mac-nav { border-right: 0; background: none; padding: 0 0 12px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .set-mac-nav > .set-search, .set-mac-nav > .set-mac-me { flex-basis: 100%; }
+  .set-mac-gap { margin: 0; }
+  .set-mac-pane { padding: 8px 0 24px; }
+}
+/* The toolbar's + New takes the page tint (graphite in Settings), as in the mock. */
+@media (min-width: 1100px) { .v2-main:has(.set-mac) .v2-tb-new { background: #636366; } .v2-main:has(.set-mac) .v2-tb-new:hover { background: #48484a; } }
