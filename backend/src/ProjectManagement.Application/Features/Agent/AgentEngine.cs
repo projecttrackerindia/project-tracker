@@ -17,9 +17,10 @@ namespace ProjectManagement.Application.Features.Agent;
 /// <summary>
 /// One tick of the project agent, for every workspace: collect new chat, run the live bots and fetch finished meetings' transcripts, read
 /// what is new, send the morning updates, and look in the inboxes people opted in. Each project is handled in its own scope, acting as the
-/// person who switched its agent on.
+/// person who switched its agent on. What Settings › AI allows decides what runs (see <see cref="AgentProjectTick"/>): with the project agent Off
+/// nobody's inbox is searched for it, and with the meeting notetaker Off nobody's agent is sent to meetings in their place.
 /// </summary>
-public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, AppClock clock, IOptions<AgentOptions> options, ILogger<AgentEngine> log)
+public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, AppClock clock, IOptions<AgentOptions> options, ILogger<AgentEngine> log, AiAgentGate gate)
 {
     public record TickResult(int Projects, int Runs, int Signals, int Bots, int Updates, int Inboxes, int Erased = 0);
 
@@ -68,6 +69,7 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, AppClock
             .OrderBy(p => p.Id).Select(p => new { p.Id, p.TenantId, p.UserId }).Take(2000).ToListAsync(ct);
         foreach (var person in people)
         {
+            if (await gate.LevelAsync(person.TenantId, AiAgents.Notetaker, ct) == AiAgentLevel.Off) continue;
             try
             {
                 using var scope = scopes.CreateScope();
@@ -84,6 +86,7 @@ public class AgentEngine(IAppDbContext db, IServiceScopeFactory scopes, AppClock
             .OrderBy(o => o.Id).Select(o => new { o.Id, o.TenantId, o.UserId }).Take(1000).ToListAsync(ct);
         foreach (var o in optIns)
         {
+            if (await gate.LevelAsync(o.TenantId, AiAgents.Project, ct) == AiAgentLevel.Off) continue;
             try
             {
                 using var scope = scopes.CreateScope();
