@@ -39,10 +39,19 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     private static bool Open(StatusCategory c) => c is not (StatusCategory.Done or StatusCategory.Cancelled);
 
     /// <summary>When the open work is likely to be finished at the pace of the last four weeks, and how much to trust that.</summary>
-    public static (DateOnly? Finish, int? SlipDays, string Confidence) Forecast(int remaining, int finishedLast28, DateOnly today, DateOnly? due)
+    public static (DateOnly? Finish, int? SlipDays, string Confidence) Forecast(int remaining, int finishedLast28, DateOnly today, DateOnly? due,
+        int doneSinceStart = 0, DateOnly? startedOn = null)
     {
         if (remaining <= 0) return (today, null, "high");
-        if (finishedLast28 <= 0) return (null, null, "none");
+        if (finishedLast28 <= 0)
+        {
+            // Nothing finished in four weeks: fall back to the pace since the project started (low confidence), so a stalled project still
+            // gets a date to decide on instead of "no forecast". With nothing ever finished there is no pace to go on.
+            if (doneSinceStart <= 0 || startedOn is not { } s || s >= today) return (null, null, "none");
+            var lifePerDay = doneSinceStart / (double)(today.DayNumber - s.DayNumber);
+            var lifeFinish = today.AddDays((int)Math.Min(3650, Math.Ceiling(remaining / lifePerDay)));
+            return (lifeFinish, due is { } dd ? lifeFinish.DayNumber - dd.DayNumber : null, "low");
+        }
         var perDay = finishedLast28 / (double)WindowDays;
         var finish = today.AddDays((int)Math.Ceiling(remaining / perDay));
         var confidence = finishedLast28 >= 8 ? "high" : finishedLast28 >= 3 ? "medium" : "low";
@@ -207,7 +216,7 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             var ai = itemsBy.GetValueOrDefault(r.Id);
             var original = baseline.GetValueOrDefault(r.Id) ?? r.DueDate;
             var delayed = original is { } o && r.DueDate is { } cur && cur > o ? cur.DayNumber - o.DayNumber : 0;
-            var (finish, slip, conf) = Forecast(open, finished, today, r.DueDate);
+            var (finish, slip, conf) = Forecast(open, finished, today, r.DueDate, st.Done, r.StartDate);
             if (truncated) { finish = null; slip = null; conf = "none"; }
 
             var reasons = new List<string>(); var score = 0.0;
@@ -254,7 +263,9 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         if (ranked.Count == 0) headlines.Add("There are no active projects you can see.");
         else
         {
-            headlines.Add($"{ranked.Count} active project{(ranked.Count == 1 ? "" : "s")}: {onTrack} on track, {atRisk} at risk, {late} delayed.");
+            // The parts always add up to the whole: anything not yet rated (on hold, or no health yet) is named too.
+            var other = ranked.Count - onTrack - atRisk - late;
+            headlines.Add($"{ranked.Count} active project{(ranked.Count == 1 ? "" : "s")}: {onTrack} on track, {atRisk} at risk, {late} delayed{(other > 0 ? $", {other} not rated yet" : "")}.");
             if (totalOverdue > 0) { var worst = ranked.OrderByDescending(x => x.OverdueTasks).First(); headlines.Add($"{totalOverdue} tasks are overdue; {worst.OverdueTasks} of them in {worst.Name}."); }
             foreach (var p in ranked.Where(x => x.ProjectedSlipDays is > 0 && x.Confidence != "low").OrderByDescending(x => x.ProjectedSlipDays).Take(2))
                 headlines.Add($"{p.Name} is likely to finish about {p.ProjectedSlipDays} days after its due date ({p.Confidence} confidence).");
