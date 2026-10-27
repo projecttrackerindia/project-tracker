@@ -7,7 +7,7 @@ import { appCsp } from './lib/csp.mjs';
 
 // Documents release 2 on screen: a toggle and a live task list inside a page, "may be out of date" with what changed and "Still correct",
 // AI on selected text (preview, then replace), a comment on selected text (its highlight saved in the page) and resolving a thread from
-// its highlight, "/" for a toggle and a task list, a jump to a cited block, DocTracker's "Write with AI", ask-the-pages with citations,
+// its highlight, "/" for a toggle and a task list, a jump to a cited block, Library's "Write with AI", ask-the-pages with citations,
 // words found inside pages, drafts to approve, team spaces and dragging a page into another. Built frontend, synthetic API only.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/documents-r2-ui');
 await fs.mkdir(out,{recursive:true});
@@ -204,31 +204,32 @@ try{
  await panel.getByRole('button',{name:'Close comments'}).click();
  await page.setViewportSize({width:1440,height:1000});checks.push('phone-page');
 
- // DocTracker (v2: Library › Docs › ··· › API workspace, ?view=home): ask the pages, words inside pages, drafts to approve, write with AI, team spaces, drag a page into another.
- await page.goto(origin+'/preview-org/library/docs?view=home');
- const search=page.getByLabel('Search DocTracker or ask a question');
+ // Library's documentation hub: ask the pages (the answer unfurls with its sources), words inside pages, drafts to approve, write with AI.
+ await page.goto(origin+'/preview-org/library');
+ const search=page.getByRole('searchbox',{name:'Ask your docs'});
  await search.fill('How long do refunds take?');await search.press('Enter');
- const answer=page.locator('.dt-ask-card');
- await answer.locator('.dt-ask-text',{hasText:'five working days'}).waitFor();
- assert.equal(await answer.locator('a.dt-cite').getAttribute('href'),'/preview-org/documents/pg#b-1');
+ const answer=page.locator('.lb-ans');
+ await answer.getByText('five working days').waitFor();
+ assert.equal(await answer.locator('a.lb-cite').first().getAttribute('href'),'/preview-org/library/docs/pg#b-1');
  await shot(page,'ask-1440.png');checks.push('ask-the-space');
  await search.fill('cut-off');
- await page.locator('.dt-text-hit',{hasText:'Bank cut-off times'}).waitFor();
- assert.equal(await page.locator('.dt-text-hit').getAttribute('href'),'/preview-org/documents/pg#b-3');
- assert.equal(await page.locator('.dt-text-hit mark').first().textContent(),'cut-off');
+ await page.locator('.dx-hit',{hasText:'Bank cut-off times'}).waitFor();
+ assert.equal(await page.locator('.dx-hit').getAttribute('href'),'/preview-org/library/docs/pg#b-3');
+ assert.equal(await page.locator('.dx-hit mark').first().textContent(),'cut-off');
  await search.fill('');checks.push('inside-page-search');
 
- const drafts=page.locator('.dt-drafts');
- await drafts.locator('.dt-draft-list > li').nth(1).waitFor();
- await drafts.locator('li',{hasText:'Release notes – Sprint 14'}).getByRole('button',{name:'Read'}).click();
- await drafts.locator('.dt-draft-body',{hasText:'PAY-8 Refund status on WhatsApp'}).waitFor();
- await drafts.locator('li',{hasText:'Release notes – Sprint 14'}).getByRole('button',{name:'Create page'}).click();
+ const drafts=page.getByTestId('needs-review');
+ await drafts.locator('.dx-rv').nth(1).waitFor();
+ await drafts.locator('.dx-rv',{hasText:'Release notes – Sprint 14'}).getByRole('button',{name:'Review'}).click();
+ await drafts.locator('.dx-draft-body',{hasText:'PAY-8 Refund status on WhatsApp'}).waitFor();
+ await drafts.locator('.dx-rv',{hasText:'Release notes – Sprint 14'}).getByRole('button',{name:'Create page'}).click();
  await waitFor(()=>writes.some(w=>w.ep==='/api/v1/documents/proposals/pr1/accept'),'the accept');
- await drafts.locator('li',{hasText:'Decision log'}).getByRole('button',{name:'Dismiss'}).click();
+ await drafts.locator('.dx-rv',{hasText:'Decision log'}).getByRole('button',{name:'Review'}).click();
+ await drafts.locator('.dx-rv',{hasText:'Decision log'}).getByRole('button',{name:'Dismiss'}).click();
  await waitFor(()=>writes.some(w=>w.ep==='/api/v1/documents/proposals/pr2/dismiss'),'the dismiss');
- await drafts.locator('.dl-empty').waitFor();checks.push('drafts-to-review');
+ await drafts.getByText('Nothing waiting').waitFor();checks.push('drafts-to-review');
 
- await page.locator('.dl-starter.ai').click();
+ await page.locator('.dx-start.ai').click();
  const dlg=page.getByRole('dialog');
  await dlg.getByLabel('What should the page be?').fill('How the support team escalates a late refund');
  await dlg.getByRole('button',{name:/Write the page/}).click();
@@ -241,40 +242,38 @@ try{
  const draftReq=writes.find(w=>w.ep==='/api/v1/documents/ai/draft');assert.ok(draftReq,'the draft was asked for');
  await page.locator('.pg-title').waitFor();checks.push('write-with-ai');
 
- await page.goto(origin+'/preview-org/library/docs?view=home');
- const tree=page.locator('nav.dt-tree');
- await tree.locator('.ds-rail-heading',{hasText:'Team spaces'}).waitFor();
- await tree.getByRole('button',{name:'Open Collections desk'}).click();
- await tree.locator('.dt-page-row',{hasText:'Desk handbook'}).waitFor();
- assert.equal(await tree.getByRole('button',{name:'New page for Collections desk'}).count(),1);
- await tree.getByRole('button',{name:'Open General'}).click();
- const general=tree.locator('li.ds-node',{has:page.locator('.ds-rail-label',{hasText:/^General$/})});
- await general.locator('.ds-type-head',{hasText:'Documents'}).click();
- await general.locator('.dt-page-row',{hasText:'Holidays'}).waitFor();
- assert.equal(await general.locator('.dt-page-row',{hasText:'Desk handbook'}).count(),0,'team pages are in the team space, not the company pages');
+ // Team spaces live in General's topic navigator; company pages stay in Guides.
+ await page.goto(origin+'/preview-org/library/p/general');
+ const nav=page.getByTestId('topic-nav');
+ const deskGroup=nav.locator('.dx-group',{has:page.locator('.dx-group-h',{hasText:'Collections desk'})});
+ await deskGroup.locator('.dx-tree-row',{hasText:'Desk handbook'}).waitFor();
+ assert.equal(await nav.getByRole('button',{name:'New page in Collections desk'}).count(),1);
+ const guides=nav.locator('.dx-group',{has:page.locator('.dx-group-h',{hasText:/^Guides/})}).first();
+ await guides.locator('.dx-tree-row',{hasText:'Holidays'}).waitFor();
+ assert.equal(await guides.locator('.dx-tree-row',{hasText:'Desk handbook'}).count(),0,'team pages are in the team space, not the company pages');
  checks.push('team-spaces');
- await tree.getByRole('button',{name:'Open Payments Core'}).click();
- const pay=tree.locator('li.ds-node',{has:page.locator('.ds-rail-label',{hasText:/^Payments Core$/})});
- await pay.locator('.ds-type-head',{hasText:'Documents'}).click();
- const disputes=pay.locator('.dt-page-row',{hasText:'Disputes'}), handbook=pay.locator('.dt-page-row',{hasText:'Refund handbook'});
+ // Guides as a tree: drag a page into another, Alt+↑ to move one up.
+ await page.goto(origin+`/preview-org/library/p/${pid}`);
+ const pay=page.getByTestId('topic-nav').locator('.dx-group',{has:page.locator('.dx-group-h',{hasText:/^Guides/})}).first();
+ const disputes=pay.locator('.dx-tree-row',{hasText:'Disputes'}), handbook=pay.locator('.dx-tree-row',{hasText:'Refund handbook'});
  await disputes.waitFor();
  await disputes.dragTo(handbook);
  await waitFor(()=>writes.some(w=>w.ep==='/api/v1/documents/q2/place'),'the move');
  assert.deepEqual(writes.find(w=>w.ep==='/api/v1/documents/q2/place').b,{parentId:'pg',pageOrder:0});
- await pay.locator('.dt-page-row',{hasText:'Chargebacks'}).locator('a').focus();await page.keyboard.press('Alt+ArrowUp');
+ await pay.locator('.dx-tree-row',{hasText:'Chargebacks'}).locator('a').focus();await page.keyboard.press('Alt+ArrowUp');
  await waitFor(()=>writes.some(w=>w.ep==='/api/v1/documents/q1/place'),'the keyboard move');
  assert.deepEqual(writes.find(w=>w.ep==='/api/v1/documents/q1/place').b,{parentId:null,pageOrder:0});
  await shot(page,'tree-1440.png');checks.push('drag-reorder');
 
  await page.setViewportSize({width:390,height:844});
- await page.goto(origin+'/preview-org/library/docs?view=home');await page.locator('.dt-drafts').waitFor();
- await fitsPhone(page,'DocTracker home on a phone',assert);
- await shot(page,'doctracker-390.png');checks.push('phone-home');
- // The page tree on a phone, in dark mode.
- await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));
- await page.getByRole('button',{name:'Browse DocTracker'}).click();await page.waitForTimeout(400);
- await fitsPhone(page,'DocTracker tree on a phone (dark)',assert);
- await shot(page,'doctracker-tree-390-dark.png');checks.push('phone-tree-dark');
+ await page.goto(origin+'/preview-org/library');await page.getByTestId('needs-review').waitFor();
+ await fitsPhone(page,'Library on a phone',assert);
+ await shot(page,'library-390.png');checks.push('phone-home');
+ // The topic navigator on a phone, in dark mode.
+ await page.goto(origin+`/preview-org/library/p/${pid}`);await page.getByTestId('topic-nav').waitFor();
+ await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(300);
+ await fitsPhone(page,'Project documentation on a phone (dark)',assert);
+ await shot(page,'project-390-dark.png');checks.push('phone-tree-dark');
  // The page itself in dark mode, with its comments open.
  await page.setViewportSize({width:1440,height:1000});
  await page.goto(origin+'/preview-org/documents/pg');await page.locator('.pg-title').waitFor();

@@ -23,7 +23,7 @@ export function ReaderCrumb({ d, trail = [] }: { d: Pick<DocumentItem, 'projectI
     <nav className="rd-crumb" aria-label="Breadcrumb" data-testid="doc-crumb">
       <Link to="/library">Library</Link>
       <span aria-hidden="true">›</span>
-      <Link to={`/library/docs?p=${d.projectId ?? 'general'}`}>{where}</Link>
+      <Link to={`/library/p/${d.projectId ?? 'general'}`}>{where}</Link>
       {trail.map((a) => <span key={a.id} className="rd-crumb-step"><span aria-hidden="true">›</span><Link to={`/library/docs/${a.id}`}>{a.title}</Link></span>)}
       <span aria-hidden="true">›</span>
       <span aria-current="page" title={d.key}>{d.title}</span>

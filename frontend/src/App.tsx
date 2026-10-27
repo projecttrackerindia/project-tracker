@@ -253,11 +253,11 @@ function RequireAuth() {
   return <AppLayout />;
 }
 
-/** The old Documents library (a project's documents): DocTracker in Library, with the project filter kept. */
+/** The old Documents library (a project's documents): that project's documentation in Library. */
 function LegacyDocuments() {
   const loc = useLocation();
   const project = new URLSearchParams(loc.search).get('project');
-  return <Navigate to={project ? `/library/docs?p=${encodeURIComponent(project)}&t=documents` : '/library/docs'} replace />;
+  return <Navigate to={project ? `/library/p/${encodeURIComponent(project)}` : '/library'} replace />;
 }
 
 /** A task by id alone (a #task mention in a document): it opens in the Work side panel. */
@@ -407,6 +407,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="library" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
         <Route path="library/:section" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
         <Route path="library/:section/:id" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />
+        <Route path="library/p/:projectId/*" element={<Guard allow={mDocuments}><LibraryPage /></Guard>} />
         <Route path="insights" element={<Guard allow={insights}><InsightsPage /></Guard>} />
         <Route path="activity" element={<Guard allow={mActivity}><ActivityPage /></Guard>} />
         <Route path="calls/:id" element={<CallRoute />} />
@@ -455,7 +456,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="meet" element={<Moved to="/talk?f=meetings" rename={{ open: 'meeting' }} />} />
         <Route path="meet/:s" element={<SectionMoved to="/talk?f=meetings" rename={{ open: 'meeting' }} />} />
         <Route path="notetaker" element={<Moved to="/talk?f=meetings&s=notetaker" />} />
-        <Route path="doctracker/*" element={<Moved to="/library/docs" />} />
+        <Route path="doctracker/*" element={<Moved to="/library/docs" />} />   {/* LibraryPage sends ?p= / ?ep= / ?view= on to the new addresses */}
         <Route path="documents" element={<LegacyDocuments />} />
         <Route path="documents/*" element={<Moved to="/library/docs" prefix="/documents" />} />
         <Route path="vault/*" element={<Moved to="/library/vault" prefix="/vault" />} />

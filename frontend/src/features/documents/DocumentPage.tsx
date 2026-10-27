@@ -16,9 +16,10 @@ import { LinkedWork } from './LinkedWork';
 import { ArtifactCard } from './ArtifactHistory';
 import { DocumentFiles } from './DocumentFiles';
 import { DocumentIdContext } from './DocImage';
-import { HistoryModal, PublishModal } from './DocumentHistory';
+import { PublishModal } from './DocumentHistory';
 import { DocumentGate } from './DocumentGate';
-import { PublishApprovedModal, ReviewPanel, SubmitModal } from './DocumentReview';
+import { PublishApprovedModal, SubmitModal } from './DocumentReview';
+import { ReviewInspector, VersionsInspector, VersionStage, type VersionView } from '../library/docs/Inspectors';
 import { RequirementsCard } from './DocumentRequirements';
 import { ActivityCard } from './DocumentActivity';
 import { CommentsCard } from './DocumentComments';
@@ -97,15 +98,15 @@ const STATUS_TONE: Record<string, string> = { InReview: 'review', ChangesRequest
  * A document in Library, reader-first: no tree beside it (Library › Browse all has the whole project tree). A slim crumb, a centred
  * column, and a sticky rail with the outline and the inspector.
  */
-export function DocumentPage() {
-  const { id = '' } = useParams();
+export function DocumentPage({ id: forced }: { id?: string } = {}) {
+  const { id: param = '' } = useParams();
+  const id = forced ?? param;
   useReadingProgress(id);
-  return <div className="doc-scope rd-shell"><DocumentView /></div>;
+  return <div className="doc-scope rd-shell"><DocumentView key={id} id={id} /></div>;
 }
 
 /** One document: its sections (editable by people who may edit), who and where, and the work linked to it. */
-function DocumentView() {
-  const { id = '' } = useParams();
+function DocumentView({ id }: { id: string }) {
   const nav = useNavigate();
   const wid = useWorkspaceId();
   const canWrite = useModule('documents') >= 2;
@@ -113,11 +114,12 @@ function DocumentView() {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<'view' | 'edit'>('view');   // a document opens for reading; people who may edit switch to editing
   const [details, setDetails] = useState(false);
-  const [panel, setPanel] = useState<'publish' | 'history' | 'access' | 'submit' | 'publishApproved' | null>(null);
+  const [panel, setPanel] = useState<'publish' | 'access' | 'submit' | 'publishApproved' | null>(null);
+  const [verView, setVerView] = useState<VersionView>(null);
   const review = useWsQuery(['documents', id, 'review'], () => documentApi.review(id), { enabled: !!q.data, retry: false });
   const [stale, setStale] = useState(false);
   const [params] = useSearchParams();
-  const [inspector, setInspector] = useState<string | null>(() => inspectorFor(params.get('tab')));
+  const [inspector, setInspector] = useState<string | null>(() => params.get('inspect') ?? inspectorFor(params.get('tab')));
   const [apiFull, setApiFull] = useState(() => params.get('tab') === 'api');
   const colRef = useRef<HTMLDivElement>(null);
   const apiOverview = useWsQuery(['documents', id, 'api', ''], () => apiDocApi.overview(id), { enabled: !!q.data, retry: false });
@@ -211,7 +213,11 @@ function DocumentView() {
   const words = detail.sections.reduce((n, s) => n + wordsIn(edits[s.key] ?? s.content), 0);
 
 
+  const live = review.data?.current && ['Pending', 'Approved', 'ChangesRequested'].includes(review.data.current.state);
   const inspectorParts: InspectorPart[] = [
+    ...(review.data && (review.data.workflowApplies || review.data.current) && !isArtifact ? [{ id: 'review', label: live ? `Review · ${review.data.current!.state === 'Pending' ? 'in progress' : review.data.current!.state === 'Approved' ? 'approved' : 'changes asked'}` : 'Review', count: review.data.current?.canDecide ? 1 : undefined,
+      body: <ReviewInspector detail={detail} review={review.data} canEdit={canEdit} onSubmit={() => setPanel('submit')} onPublish={() => setPanel('publishApproved')} /> }] : []),
+    ...(!isArtifact ? [{ id: 'versions', label: 'Versions', body: <VersionsInspector detail={detail} hasApi={hasApi} onExpand={(v) => { setVerView(v); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> }] : []),
     { id: 'notes', label: 'Margin notes', body: <div className="rd-notes"><CommentsCard id={id} title={`${d.key} · ${d.title}`} /></div> },
     { id: 'related', label: 'Related docs & work', count: d.linkedCount || undefined, body: (
       <RelatedPanel focus={params.get('tab')}>
@@ -222,6 +228,13 @@ function DocumentView() {
       </RelatedPanel>
     ) },
     { id: 'activity', label: 'Activity', body: <ActivityCard id={id} title={`${d.key} · ${d.title}`} /> },
+    { id: 'sharing', label: 'Sharing & access', body: (
+      <div className="dx-share">
+        <p className="dx-note">{VISIBILITY[d.visibility].label}: {VISIBILITY[d.visibility].hint}</p>
+        <button type="button" className="rd-btn sm" onClick={() => setPanel('access')}>{detail.can.share ? 'Share and manage access' : 'See who has access'}</button>
+        <button type="button" className="rd-btn sm" onClick={() => { if (!pdf.busy) void pdf.run(); }} disabled={isArtifact}>{pdf.busy ? 'Preparing the PDF…' : 'Export PDF'}</button>
+      </div>
+    ) },
     { id: 'details', label: 'Details', body: (
       <>
         <dl>
@@ -245,18 +258,14 @@ function DocumentView() {
       <div className="rd-bar">
         <ReaderCrumb d={d} />
         <div className="rd-tools" role="toolbar" aria-label="Document actions">
-          {dirty && <span className="rd-save">Unsaved changes</span>}
-          {canEdit && (mode === 'view'
-            ? <button type="button" className="rd-btn" onClick={() => void enterEdit()}><Icon name="edit" size={14} /> Edit</button>
-            : <>
-                <button type="button" className="rd-btn" onClick={() => { setMode('view'); if (!plainUntil) setPlain(null); }}>Done</button>
-                <button type="button" className="rd-btn pri" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending && <span className="spinner" />}Save</button>
-              </>)}
-          {canEdit && detail.can.publish && !workflow && !isArtifact && <button type="button" className="rd-btn" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}>Publish</button>}
-          {canEdit && workflow && review.data?.canSubmit && !isArtifact && <button type="button" className="rd-btn" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to submit' : undefined} onClick={() => setPanel('submit')}>Submit for review</button>}
-          <button type="button" className="rd-btn" onClick={() => setPanel('access')}><Icon name="users" size={14} /> {detail.can.share ? 'Share' : 'Access'}</button>
+          {hasApi && apiOverview.data && <span className={`dx-live${apiOverview.data.live ? ' on' : ''}`} title={apiOverview.data.live ? 'The API is shown from the working copy' : `Reading ${apiOverview.data.reading}`}>{apiOverview.data.live ? 'Live' : apiOverview.data.reading}</span>}
+          {canEdit && mode === 'view' && <button type="button" className="rd-btn" onClick={() => void enterEdit()}><Icon name="edit" size={14} /> Edit</button>}
+          {mode === 'view' && canEdit && detail.can.publish && !workflow && !isArtifact && detail.hasUnpublishedChanges && <button type="button" className="rd-btn" onClick={() => setPanel('publish')}>Publish</button>}
+          {mode === 'view' && <button type="button" className="rd-btn" onClick={() => setPanel('access')}><Icon name="users" size={14} /> {detail.can.share ? 'Share' : 'Access'}</button>}
           <Menu label="" icon="more" items={[
-            { label: 'Versions', hint: 'History, compare and restore', icon: 'clock', onSelect: () => setPanel('history'), hidden: isArtifact },
+            { label: 'Review', hint: 'Submit, approve or ask for changes', icon: 'checks', onSelect: () => setInspector('review'), hidden: !inspectorParts.some((x) => x.id === 'review') },
+            { label: 'Versions', hint: 'Timeline, what changed, restore', icon: 'clock', onSelect: () => setInspector('versions'), hidden: isArtifact },
+            { label: 'Sharing & access', hint: 'Who can open it, export', icon: 'users', onSelect: () => setInspector('sharing') },
             { label: 'Margin notes', hint: 'Comments on this document', icon: 'message', onSelect: () => setInspector('notes') },
             { label: 'Related docs & work', hint: 'Linked work, files, requirements, secrets', icon: 'link', onSelect: () => setInspector('related') },
             { label: 'Activity', hint: 'Who changed what', icon: 'activity', onSelect: () => setInspector('activity') },
@@ -276,6 +285,16 @@ function DocumentView() {
           ]} />
         </div>
       </div>
+      {editable && (
+        <div className="dx-float" role="toolbar" aria-label="Editing" data-testid="edit-toolbar">
+          <span className={`dx-float-st${dirty ? ' dirty' : ''}`}>{save.isPending ? 'Saving…' : dirty ? 'Unsaved changes' : 'All changes saved'}</span>
+          <span className="dx-float-sep" aria-hidden="true" />
+          <button type="button" className="dx-btn sm" onClick={() => { setMode('view'); if (!plainUntil) setPlain(null); }}>Done</button>
+          <button type="button" className="dx-btn sm pri" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending && <span className="spinner" />}Save <kbd>⌘S</kbd></button>
+          {canEdit && detail.can.publish && !workflow && !isArtifact && <button type="button" className="dx-btn sm" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : !detail.hasUnpublishedChanges && detail.publishedLabel ? 'Nothing new to publish' : undefined} onClick={() => setPanel('publish')}>Publish</button>}
+          {canEdit && workflow && review.data?.canSubmit && !isArtifact && <button type="button" className="dx-btn sm" disabled={dirty || (!detail.hasUnpublishedChanges && !!detail.publishedLabel)} title={dirty ? 'Save your changes first' : undefined} onClick={() => setPanel('submit')}>Submit for review</button>}
+        </div>
+      )}
 
       <div className={`rd-col${editable ? ' editing' : ''}`} ref={colRef}>
         <header className="rd-head">
@@ -293,7 +312,12 @@ function DocumentView() {
         {detail.viewingPublished && <div className="doc-alert info"><Icon name="info" size={16} /><div>You are reading version {detail.publishedLabel}, the latest published one.</div></div>}
         {stale && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>Someone else changed this document while you were editing. <button className="link-btn" onClick={() => { setStale(false); q.refetch(); }}>Reload to see their changes</button> (your unsaved words stay here until you save or leave).</div></div>}
         {d.status === 'Archived' && <div className="doc-alert info"><Icon name="info" size={16} /><div>This document is archived and read-only.</div></div>}
-        {review.data && <ReviewPanel detail={detail} review={review.data} canEdit={canEdit} onPublish={() => setPanel('publishApproved')} />}
+        {live && review.data?.current && (
+          <button type="button" className={`dx-rvw-note s-${review.data.current.state.toLowerCase()}`} onClick={() => setInspector('review')}>
+            <span className="dx-dot" aria-hidden="true" />{review.data.current.canDecide ? 'Waiting for your review' : review.data.current.state === 'Approved' ? 'Approved, ready to publish' : review.data.current.state === 'ChangesRequested' ? 'Changes were asked for' : 'In review'}<span className="dx-note">Open review</span>
+          </button>
+        )}
+        {verView && <VersionStage documentId={id} view={verView} onClose={() => setVerView(null)} />}
 
         {!editable && (masked > 0 || plainUntil) && (
           plainUntil
@@ -308,12 +332,12 @@ function DocumentView() {
         }} />}
 
         {isArtifact && <div className="dv-panel"><ArtifactCard detail={detail} canEdit={canEdit} /></div>}
-        <article className="dv-paper doc-body" aria-label={d.title}>
+        <article className="dv-paper doc-body" aria-label={d.title} hidden={!!verView}>
           {!editable && shownSections.length === 0 && !hasApi && <p className="dv-blank">Nothing has been written yet.{canEdit ? ' Choose Edit to start.' : ''}</p>}
           <DocumentIdContext.Provider value={id}>
             {shownSections.map((s) => (
               <div key={s.key} data-outline={s.title} id={`sec-${s.key}`} className="rd-sec">
-                <SectionEditor section={s} template={tplFor.get(s.key) ?? null} value={edits[s.key] ?? s.content} onChange={editable ? (v) => set(s.key, v) : undefined} readOnly={!editable} onPickImage={editable ? pickImage : undefined} />
+                <SectionEditor section={s} template={tplFor.get(s.key) ?? null} value={edits[s.key] ?? s.content} onChange={editable ? (v) => set(s.key, v) : undefined} readOnly={!editable} onPickImage={editable ? pickImage : undefined} minimal />
               </div>
             ))}
           </DocumentIdContext.Provider>
@@ -329,7 +353,6 @@ function DocumentView() {
 
       {details && <DetailsModal detail={detail} onClose={() => setDetails(false)} />}
       {panel === 'publish' && <PublishModal detail={detail} onClose={() => setPanel(null)} />}
-      {panel === 'history' && <HistoryModal detail={detail} onClose={() => setPanel(null)} />}
       {panel === 'access' && <AccessModal detail={detail} onClose={() => setPanel(null)} />}
       {panel === 'submit' && review.data && <SubmitModal detail={detail} review={review.data} onClose={() => setPanel(null)} />}
       {panel === 'publishApproved' && review.data && <PublishApprovedModal detail={detail} review={review.data} onClose={() => setPanel(null)} />}
