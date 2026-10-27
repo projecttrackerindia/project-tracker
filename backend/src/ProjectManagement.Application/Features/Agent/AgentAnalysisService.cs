@@ -24,7 +24,7 @@ namespace ProjectManagement.Application.Features.Agent;
 /// </summary>
 public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppClock clock, IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions,
     AgentSignalService signals, AgentSettingsService settings, ProjectAccess access, Recorder recorder, NotificationService notifications,
-    IOptions<AgentOptions> agentOptions, ILogger<AgentAnalysisService> log, IServiceProvider services)
+    IOptions<AgentOptions> agentOptions, ILogger<AgentAnalysisService> log, IServiceProvider services, AiAgentGate gate)
 {
     private const int MaxPromptSource = 90_000;
     private const int MaxFindings = 25;
@@ -43,6 +43,7 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
         if (!await settings.CanManageAsync(project, ct)) throw new ForbiddenException("Only people who may edit this project can run its agent.", "PERMISSION_DENIED");
         var s = await db.ProjectAgentSettings.FirstOrDefaultAsync(x => x.ProjectId == projectId, ct);
         if (s is null || !s.Enabled) throw new ConflictException("Switch the project agent on first.", "AGENT_DISABLED");
+        if (!await gate.OnAsync(AiAgents.Project, ct)) throw new ConflictException("The project agent is off for this workspace (Settings › AI).", "AGENT_DISABLED");
         var run = await RunAsync(s, "manual", null, ct);
         if (run is null && !await db.AgentSignals.AnyAsync(x => x.ProjectId == projectId && x.ProcessedAt == null, ct))
             throw new ConflictException("There is nothing new for the agent to read yet.", "AGENT_NOTHING_NEW");
@@ -55,6 +56,9 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
     /// </summary>
     public async Task<AgentRunDto?> RunAsync(ProjectAgentSettings s, string trigger, Guid? meetingId, CancellationToken ct)
     {
+        // Off in Settings › AI: no readings and no proposals (what arrived waits, and is erased after the retention period like anything read).
+        var level = await gate.LevelAsync(s.TenantId, AiAgents.Project, ct);
+        if (level == AiAgentLevel.Off) return null;
         var pending = await db.AgentSignals.Where(x => x.ProjectId == s.ProjectId && x.ProcessedAt == null && x.RunId == null).OrderBy(x => x.OccurredAt).Take(40).ToListAsync(ct);
         if (pending.Count == 0) return null;
         var month = clock.Now.ToString("yyyy-MM");
@@ -294,7 +298,8 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
             s.LastError = null;
             await db.SaveChangesAsync(ct);
             // Telling people is not part of the reading: if it fails, the findings stay.
-            if (findings.Count > 0)
+            // At "Suggest" the proposals are shown on the project only: nobody is interrupted about them.
+            if (findings.Count > 0 && level >= AiAgentLevel.AskFirst)
             {
                 try { await NotifyAsync(project, run, findings, trigger, ct); await db.SaveChangesAsync(ct); }
                 catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Project agent could not notify about run {Run}", run.Id); }

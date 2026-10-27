@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Application.Features.Issues;
 using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Features.Projects;
@@ -19,7 +20,7 @@ namespace ProjectManagement.Application.Features.Agent;
 /// </summary>
 public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, ProjectAccess access, AgentSettingsService settings,
     TaskService tasks, ActionItemService actionItems, IssueService issues, NotificationService notifications, AgentMinutesService minutes,
-    ILogger<AgentReviewService> log, ProjectManagement.Application.Features.Projects.ProjectService projects)
+    ILogger<AgentReviewService> log, ProjectManagement.Application.Features.Projects.ProjectService projects, AiAgentGate gate, AiActionLog actionLog)
 {
     private const int PageSize = 100;
 
@@ -36,10 +37,14 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         return new AgentFindingPageDto(await DtosAsync(rows, ct), pending, true);
     }
 
-    /// <summary>Everything waiting across the projects this person may decide on - the workspace's agent inbox.</summary>
+    /// <summary>
+    /// Everything waiting across the projects this person may decide on - the workspace's agent inbox. Empty while the project agent is at
+    /// Off or Suggest in Settings › AI: its proposals are then shown on the project only.
+    /// </summary>
     public async Task<AgentFindingPageDto> InboxAsync(CancellationToken ct = default)
     {
         ctx.RequireTenantId();
+        if (await gate.LevelAsync(AiAgents.Project, ct) < AiAgentLevel.AskFirst) return new AgentFindingPageDto([], 0, true);
         var projectIds = await db.AgentFindings.AsNoTracking().Where(f => f.Status == AgentFindingStatus.Proposed).Select(f => f.ProjectId).Distinct().OrderBy(x => x).Take(200).ToListAsync(ct);
         var mine = new List<Guid>();
         foreach (var p in await db.Projects.Where(p => projectIds.Contains(p.Id)).ToListAsync(ct))
@@ -98,10 +103,13 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
     /// <summary>
     /// Autonomy level 4: carries out the safe proposals of a reading by itself (new items and notes that are grounded, confident enough and,
     /// for new work, have an owner), acting as the person the agent acts for. Everything else keeps waiting. Returns how many were carried out.
+    /// The workspace has to allow it as well (the project agent at Auto in Settings › AI): the effective level is the lower of the two, so a
+    /// project at level 4 in a workspace at Ask first asks like every other project.
     /// </summary>
     public async Task<int> AutoApplyRunAsync(ProjectAgentSettings s, Guid runId, CancellationToken ct = default)
     {
         if (AgentAutonomy.Level(s.AutonomyLevel) < AgentAutonomy.Delegate) return 0;
+        if (await gate.LevelAsync(s.TenantId, AiAgents.Project, ct) < AiAgentLevel.Auto) return 0;
         var candidates = await db.AgentFindings.Where(f => f.RunId == runId && f.ProjectId == s.ProjectId && f.Status == AgentFindingStatus.Proposed)
             .OrderByDescending(f => f.Confidence).Take(25).ToListAsync(ct);
         var done = new List<AgentFinding>();
@@ -265,6 +273,7 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
         row.AppliedEntityId = entity; row.AppliedKey = key; row.Before = before; row.AutoApplied = f.AutoApplied;
         recorder.Audit(f.AutoApplied ? "agent.finding_auto_applied" : "agent.finding_applied", "AgentFinding", row.Id,
             before is null ? null : new { Before = before }, new { row.Kind, entity, key, row.DueDate, row.NewStatus, row.AssigneeId, row.Confidence });
+        actionLog.Applied(AiAgents.Project, ActionOf(row.Kind), TargetOf(row, entity, key), row.Title, f.AutoApplied ? null : me, row.Id);
         await CommitAsync(row, me, ct);
         await AnswerRequesterAsync(row, true, ct);
         if (row.Kind is AgentFindingKind.Delay or AgentFindingKind.Missed or AgentFindingKind.Suggestion or AgentFindingKind.Decision)
@@ -276,6 +285,25 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
                 $"agent-owner:{row.Id}", ct: ct);
         await db.SaveChangesAsync(ct);
         f.Status = row.Status;
+    }
+
+    private static string ActionOf(AgentFindingKind k) => k switch
+    {
+        AgentFindingKind.CreateTask => "create_task", AgentFindingKind.UpdateTask => "update_task", AgentFindingKind.CreateActionItem => "create_action_item",
+        AgentFindingKind.CreateIssue => "create_issue", AgentFindingKind.UpdateIssue => "update_issue", AgentFindingKind.Delay => "note_delay",
+        AgentFindingKind.Missed => "note_missed", AgentFindingKind.Suggestion => "note_suggestion", _ => "note_decision",
+    };
+
+    /// <summary>What an applied proposal changed or created, for the AI action log: the work item, or the project for a note about no item.</summary>
+    private static AiActionLog.Target TargetOf(AgentFinding f, Guid? entity, string? key)
+    {
+        var type = f.Kind switch
+        {
+            AgentFindingKind.CreateTask or AgentFindingKind.UpdateTask => "task", AgentFindingKind.CreateActionItem => "action",
+            AgentFindingKind.CreateIssue or AgentFindingKind.UpdateIssue => "issue", _ => f.TaskId is not null ? "task" : f.IssueId is not null ? "issue" : "project",
+        };
+        var id = entity ?? f.TaskId ?? f.IssueId ?? (type == "project" ? f.ProjectId : null);
+        return new(type, id, key, f.ProjectId, type == "project" ? $"/projects/{f.ProjectId}?tab=agent" : id is { } x ? $"/work?item={x}" : null);
     }
 
     private static void Copy(AgentFinding from, AgentFinding to)

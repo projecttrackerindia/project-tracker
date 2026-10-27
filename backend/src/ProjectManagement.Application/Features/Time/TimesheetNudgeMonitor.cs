@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Features.Reminders;
@@ -15,7 +17,9 @@ namespace ProjectManagement.Application.Features.Time;
 /// people who track time (anything logged in the last three weeks) are reminded, never on planned leave, and each reminder goes out once.
 /// Everyone can switch them off under Notifications → "Timesheet reminders".
 /// </summary>
-public class TimesheetNudgeMonitor(IAppDbContext db, AppClock clock, NotificationRouter router, ILogger<TimesheetNudgeMonitor> log)
+/// <remarks>When a day went by empty, the timesheet helper also drafts it for workspaces that let it go further than suggesting (Settings › AI):
+/// see <see cref="TimesheetHelper"/>. That runs as each person, in their own scope.</remarks>
+public class TimesheetNudgeMonitor(IAppDbContext db, AppClock clock, NotificationRouter router, ILogger<TimesheetNudgeMonitor> log, IServiceScopeFactory scopes, AiAgentGate gate)
 {
     private const int Batch = 5000;
 
@@ -47,6 +51,7 @@ public class TimesheetNudgeMonitor(IAppDbContext db, AppClock clock, Notificatio
             .Select(a => new { a.TenantId, a.UserId, a.WeekStart, a.Status }).ToListAsync(ct)).ToDictionary(x => (x.TenantId, x.UserId, x.WeekStart), x => x.Status);
 
         var notes = new List<Notification>();
+        var emptyDays = new List<(Guid TenantId, Guid UserId, DateOnly Day, string Key)>();
         foreach (var p in people)
         {
             var local = ZoneTime.ToLocal(now, ZoneTime.Find(p.TimeZone));
@@ -55,6 +60,8 @@ public class TimesheetNudgeMonitor(IAppDbContext db, AppClock clock, Notificatio
             var previous = today.AddDays(today.DayOfWeek == DayOfWeek.Monday ? -3 : -1);
             var week = TimesheetApprovalService.WeekOf(today);
 
+            if (!days.Contains((p.TenantId, p.UserId, previous)) && !leave.Contains((p.TenantId, p.UserId, previous)))
+                emptyDays.Add((p.TenantId, p.UserId, previous, $"ts-day:{p.TenantId:N}:{p.UserId:N}:{previous:yyyyMMdd}"));
             if (!days.Contains((p.TenantId, p.UserId, previous)) && !leave.Contains((p.TenantId, p.UserId, previous)))
                 notes.Add(new Notification
                 {
@@ -84,6 +91,8 @@ public class TimesheetNudgeMonitor(IAppDbContext db, AppClock clock, Notificatio
 
         var keys = notes.Select(n => n.DedupeKey!).ToList();
         var sent = (await db.Notifications.IgnoreQueryFilters().Where(n => n.DedupeKey != null && keys.Contains(n.DedupeKey)).Select(n => n.DedupeKey!).ToListAsync(ct)).ToHashSet();
+        // The day's draft, once, alongside its first reminder (the reminder's de-duplication key says whether this is the first time).
+        var fresh = emptyDays.Where(d => !sent.Contains(d.Key)).ToList();
         await router.PreloadAsync(notes.Select(n => n.UserId), ct);
         var added = 0;
         foreach (var n in notes)
@@ -93,6 +102,26 @@ public class TimesheetNudgeMonitor(IAppDbContext db, AppClock clock, Notificatio
         }
         await db.SaveChangesAsync(ct);
         if (added > 0) log.LogInformation("Timesheet reminders: sent {Count}", added);
+        await DraftDaysAsync(fresh, ct);
         return added;
+    }
+
+    private async Task DraftDaysAsync(List<(Guid TenantId, Guid UserId, DateOnly Day, string Key)> empty, CancellationToken ct)
+    {
+        foreach (var d in empty)
+        {
+            if (await gate.LevelAsync(d.TenantId, AiAgents.Timesheet, ct) < AiAgentLevel.AskFirst) continue;
+            try
+            {
+                using var scope = scopes.CreateScope();
+                var sp = scope.ServiceProvider;
+                await ProjectManagement.Application.Services.WorkspaceExecutionPrincipal.ConfigureAsync(sp, d.UserId, d.TenantId, null, ct);
+                await sp.GetRequiredService<TimesheetHelper>().DraftDayAsync(d.Day, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.LogWarning(ex, "The timesheet helper could not draft {Day} for {User}", d.Day, d.UserId);
+            }
+        }
     }
 }

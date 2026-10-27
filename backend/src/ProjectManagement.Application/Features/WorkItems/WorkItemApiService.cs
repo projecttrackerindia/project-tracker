@@ -4,7 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Application.Features.Issues;
+using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.Tasks;
 using ProjectManagement.Application.Features.Time;
@@ -24,7 +26,7 @@ public record WorkItemPageDto(IReadOnlyList<WorkItemRowDto> Items, int Offset, i
 
 /// <summary>
 /// One entry of an item's activity stream. <see cref="Type"/>: comment, time (time logged), file, change (a field changed, from the
-/// activity log) or ai (a change the project agent made or proposed and a person approved).
+/// activity log) or ai (a change an AI agent made - by itself, <see cref="Auto"/>, or approved by <see cref="Actor"/> - from the AI action log).
 /// </summary>
 public record WorkActivityItemDto(string Type, Guid Id, DateTime At, UserRefDto? Actor, string Summary, string? Body = null, int? Minutes = null,
     DateOnly? WorkDate = null, Guid? FileId = null, string? FileName = null, string? Action = null, bool? Auto = null);
@@ -55,7 +57,7 @@ public record WorkItemCommentResultDto(WorkActivityItemDto Comment, WorkActivity
 /// so each kind keeps its rules (who may see, change, delete; workflow; notifications; automation); this class only translates.
 /// </summary>
 public class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock clock, WorkItemService items, TaskService tasks, IssueService issues,
-    ActionItemService actions, WorkTaskService tickets, TimeService time, PermissionService permissions)
+    ActionItemService actions, WorkTaskService tickets, TimeService time, PermissionService permissions, NotificationService notifications)
 {
     public const int MaxPage = 200;
     public const int MaxWindow = WorkItemService.MaxLimit;
@@ -291,11 +293,18 @@ public class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock 
         rows.AddRange(changes.Where(a => !Regex.IsMatch(a.Action, "comment|time_logged|timer|attach|file", RegexOptions.IgnoreCase) && !(item is StageIssue && a.Action.StartsWith("issue.")))
             .Select(a => new WorkActivityItemDto("change", a.Id, a.CreatedAt, a.ActorId is { } u ? Ref(u) : null, a.Summary, Action: a.Action)));
 
-        // the project agent's changes, approved by a person or carried out by the agent itself
-        var ai = await db.AgentFindings.AsNoTracking()
+        // every AI agent's changes (the AI action log), approved by a person or carried out by the agent itself
+        var logged = await db.AiAgentActions.AsNoTracking().Where(a => a.TargetId == id && a.Status == "applied")
+            .Select(a => new { a.Id, a.Agent, a.Action, a.Title, a.ApprovedBy, a.At, a.CreatedAt, a.FindingId }).ToListAsync(ct);
+        var findings = await db.AgentFindings.AsNoTracking()
             .Where(f => f.Status == AgentFindingStatus.Applied && (f.AppliedEntityId == id || f.TaskId == id || f.IssueId == id))
             .Select(f => new { f.Id, f.Kind, f.Title, f.DecidedBy, f.DecidedAt, f.CreatedAt, f.AutoApplied, f.Before }).ToListAsync(ct);
-        rows.AddRange(ai.Select(f => new WorkActivityItemDto("ai", f.Id, f.DecidedAt ?? f.CreatedAt, f.DecidedBy is { } u ? Ref(u) : null, f.Title,
+        var before = findings.ToDictionary(f => f.Id, f => f.Before);
+        rows.AddRange(logged.Select(a => new WorkActivityItemDto("ai", a.Id, a.At ?? a.CreatedAt, a.ApprovedBy is { } u ? Ref(u) : null, a.Title,
+            a.FindingId is { } fid && before.GetValueOrDefault(fid) is { } was ? "Before: " + was : AiAgents.Name(a.Agent), Action: $"{a.Agent}.{a.Action}", Auto: a.ApprovedBy is null)));
+        // the project agent's changes from before the log existed
+        var inLog = logged.Where(a => a.FindingId != null).Select(a => a.FindingId!.Value).ToHashSet();
+        rows.AddRange(findings.Where(f => !inLog.Contains(f.Id)).Select(f => new WorkActivityItemDto("ai", f.Id, f.DecidedAt ?? f.CreatedAt, f.DecidedBy is { } u ? Ref(u) : null, f.Title,
             f.Before is null ? null : "Before: " + f.Before, Action: f.Kind.ToString(), Auto: f.AutoApplied)));
 
         var ordered = rows.OrderByDescending(r => r.At).ThenBy(r => r.Id).Take(MaxActivity).ToList();
@@ -533,6 +542,7 @@ public class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock 
                 await issues.RequireVisibleAsync(si.ProjectId, id, ct);
                 var c = new IssueComment { TenantId = si.TenantId, IssueId = id, AuthorId = me, Body = body, CreatedAt = clock.Now, CreatedBy = me };
                 db.IssueComments.Add(c);
+                await NotifyCommentAsync(si, si.ProjectId, req.MentionUserIds, body, ct);
                 await db.SaveChangesAsync(ct);
                 comment = new WorkActivityItemDto("comment", c.Id, c.CreatedAt, new UserRefDto(me, ""), "commented", c.Body);
                 break;
@@ -542,6 +552,7 @@ public class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock 
                 await ActionAsync(wa, ct);
                 var c = new WorkTaskComment { TenantId = wa.TenantId, WorkTaskId = id, AuthorId = me, Body = body, CreatedAt = clock.Now, CreatedBy = me };
                 db.WorkTaskComments.Add(c);
+                await NotifyCommentAsync(wa, wa.RelatedProjectId, req.MentionUserIds, body, ct);
                 await db.SaveChangesAsync(ct);
                 comment = new WorkActivityItemDto("comment", c.Id, c.CreatedAt, new UserRefDto(me, ""), "commented", c.Body);
                 break;
@@ -579,6 +590,32 @@ public class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock 
         }
         var named = await NameAsync([comment], ct);
         return new WorkItemCommentResultDto(named[0], logged, problem);
+    }
+
+    /// <summary>
+    /// An issue's or action item's comment tells people the way a task comment does: everyone @mentioned (members of the workspace who can
+    /// open the project, never the writer) gets a mention, and the assignee and reporter who were not mentioned hear about a new comment.
+    /// </summary>
+    private async Task NotifyCommentAsync(WorkItem item, Guid? projectId, IReadOnlyList<Guid>? mentionUserIds, string body, CancellationToken ct)
+    {
+        var me = ctx.RequireUserId();
+        var key = item switch
+        {
+            StageIssue si => await db.Projects.AsNoTracking().Where(p => p.Id == si.ProjectId).Select(p => p.Key).FirstOrDefaultAsync(ct) is { } pk ? $"{pk}-I{si.Number}" : "an issue",
+            WorkTask w => WorkItemService.KeyOf(w.Kind, w.Number),
+            _ => "an item",
+        };
+        var link = $"/work?item={item.Id}";
+        var snippet = Text.Truncate(body, 200);
+        var mentioned = (mentionUserIds ?? []).Distinct().Where(u => u != me).ToList();
+        var valid = mentioned.Count == 0 ? [] : await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == item.TenantId && mentioned.Contains(m.UserId)
+                && (m.Role != TenantRole.Guest || (projectId != null && (db.ProjectMembers.Any(pm => pm.ProjectId == projectId && pm.UserId == m.UserId)
+                    || db.Projects.Any(p => p.Id == projectId && p.OwnerId == m.UserId)))))
+            .Select(m => m.UserId).ToListAsync(ct);
+        foreach (var who in valid)
+            await notifications.AddAsync(who, NotificationType.Mention, $"You were mentioned on {key}: {Text.Truncate(item.Title, 120)}", snippet, link, ct: ct);
+        foreach (var who in new[] { item.AssigneeId, item.ReporterId }.Where(x => x is not null && x != me).Select(x => x!.Value).Distinct().Where(u => !valid.Contains(u)))
+            await notifications.AddAsync(who, NotificationType.Comment, $"New comment on {key}: {Text.Truncate(item.Title, 120)}", snippet, link, ct: ct);
     }
 
     // ------------------------------------------------------------------ delete

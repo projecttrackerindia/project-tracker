@@ -95,6 +95,22 @@ public partial class AppDbContext
             e.Property(x => x.State).HasMaxLength(16);
             e.Property(x => x.Outcome).HasMaxLength(300);
         });
+        b.Entity<AiAgentAction>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.TargetId });
+            e.HasIndex(x => new { x.TenantId, x.ForUserId, x.Status });
+            e.HasIndex(x => new { x.TenantId, x.ProjectId, x.CreatedAt });
+            e.HasIndex(x => new { x.TenantId, x.FindingId });
+            e.Property(x => x.Agent).HasMaxLength(16);
+            e.Property(x => x.Action).HasMaxLength(64);
+            e.Property(x => x.TargetType).HasMaxLength(16);
+            e.Property(x => x.TargetKey).HasMaxLength(40);
+            e.Property(x => x.Title).HasMaxLength(500);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Payload).HasMaxLength(8000);
+            e.Property(x => x.Error).HasMaxLength(500);
+            e.Property(x => x.Link).HasMaxLength(300);
+        });
         b.Entity<AiForecastSnapshot>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.JobId, x.ProjectId }).IsUnique();

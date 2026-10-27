@@ -60,6 +60,8 @@ public class ProjectAgentDelegateTests(ApiFactory factory)
         try
         {
             var (owner, project, ravi, key) = await SetupAsync("Autonomy Desk");
+            // Level 4 needs the workspace to let the project agent act alone too (Settings › AI, Auto).
+            Assert.True((await owner.Put("/api/v1/ai/control/agents/project", new { level = "auto" })).Ok);
             Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, autoApplyKinds = new[] { "UpdateTask" } })).Status);
             Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, autonomyLevel = 7 })).Status);
             var on = await owner.Put($"/api/v1/projects/{project}/agent", new { enabled = true, autonomyLevel = 4, autoApplyConfidence = 90, autoApplyKinds = new[] { "CreateTask", "Decision", "Suggestion" } });

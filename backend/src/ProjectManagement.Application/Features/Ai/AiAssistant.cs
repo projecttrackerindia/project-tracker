@@ -148,7 +148,7 @@ public record AiNotesDto(IReadOnlyList<AiActionItemDto> Items);
 /// </summary>
 public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, IAiClient ai, EntitlementService entitlements,
     ProjectStatusService status, WorkItemService workItems,
-    PermissionService permissions, ProjectAccess access, AiCreditService credits, IOptions<AiOptions> options)
+    PermissionService permissions, ProjectAccess access, AiCreditService credits, IOptions<AiOptions> options, AiAgentGate gate)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -304,6 +304,7 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var title = (req.Title ?? "").Trim();
         if (title.Length < 3) throw new ValidationException("title", "Write a title first.");
         await permissions.RequireModuleAsync(Modules.Work, AccessLevel.Edit, ct);
+        if (!await gate.OnAsync(AiAgents.Triage, ct)) throw new ForbiddenException("Ticket triage is off for this workspace (Settings › AI).", "AI_AGENT_OFF");
         await GateAsync(ct);
         var tid = ctx.RequireTenantId();
         var types = await db.WorkTypes.AsNoTracking().Where(t => t.IsActive).OrderBy(t => t.Order).Select(t => new { id = t.Id, t.Name, t.Description }).ToListAsync(ct);

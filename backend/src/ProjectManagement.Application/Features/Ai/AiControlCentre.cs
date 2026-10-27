@@ -12,30 +12,52 @@ namespace ProjectManagement.Application.Features.Ai;
 public enum AiAgentLevel { Off = 0, Suggest = 1, AskFirst = 2, Auto = 3 }
 
 public record AiAgentLevelDto(string Id, string Name, string Description, string Level);
-public record AiControlDto(IReadOnlyList<AiAgentLevelDto> Agents, int ContextLength, int ContextLimit, int Automations, int People, bool AiOn, bool CanEdit);
+/// <summary>
+/// Settings › AI's figures for this month, from what each answer recorded about itself: answers (the assistant's, plus the other AI features'),
+/// how many failed, <see cref="SuccessPercent"/> (the share not failed, null before the first answer) and the credits used against the plan's
+/// limit (<see cref="CreditsLimit"/> -1 when unlimited).
+/// </summary>
+public record AiControlFiguresDto(string Month, int Answers, int Failed, int? SuccessPercent, long CreditsUsed, long CreditsLimit, bool Unlimited);
+public record AiControlDto(IReadOnlyList<AiAgentLevelDto> Agents, int ContextLength, int ContextLimit, int Automations, int People, bool AiOn, bool CanEdit,
+    AiControlFiguresDto? Figures = null);
 public record AiContextDraftDto(string Text);
 public record SetAiAgentLevelRequest(string Level);
 
 /// <summary>
-/// The AI control centre (Settings › AI): per-agent levels for the workspace, and the figures that sit beside them that are not already served
-/// elsewhere (context length, automations, people). Credits, answer success, the model and the organisation context itself come from their own
-/// endpoints. Owners and admins change levels; everyone in the workspace may read them, so features can respect them.
+/// The AI control centre (Settings › AI): per-agent levels for the workspace, and the figures that sit beside them (context length,
+/// automations, people, answer success and credits this month). The model and the organisation context itself come from their own endpoints.
+/// Owners and admins change levels; everyone in the workspace may read them, so features can respect them (through <see cref="AiAgentGate"/>).
 /// </summary>
-public class AiControlCentre(IAppDbContext db, ICurrentContext ctx, Recorder recorder)
+public class AiControlCentre(IAppDbContext db, ICurrentContext ctx, Recorder recorder, AiUsageService usage, AiAgentGate gate)
 {
     public const int ContextLimit = 4000;
 
     private sealed record Agent(string Id, string Name, string Description, AiAgentLevel Default);
 
-    /// <summary>The five agents of v2, in the order the control centre lists them, with their level when nobody has chosen one.</summary>
+    /// <summary>
+    /// The five agents of v2, in the order the control centre lists them, with their level when nobody has chosen one. Each default is the
+    /// level at which the agent behaves exactly as it did before the control centre existed (the agents' own switches still narrow it):
+    /// <list type="bullet">
+    /// <item>Project agent: Ask first. Its proposals already waited for a person in the Home inbox. Projects whose lead set autonomy 4
+    /// ("delegate", carry out safe items alone) need Auto: migration 20261111002000_AiAgentActionLog sets Auto for the workspaces that had one.</item>
+    /// <item>Meeting notetaker: Ask first. It joins and writes minutes as each person chose; tasks from the minutes are made only for people who
+    /// switched on "create tasks" - those workspaces were set to Auto by the same migration, so nothing changes for them.</item>
+    /// <item>Mail agent: Suggest. It only ever suggested replies and tasks beside the open mail; the person applied them.</item>
+    /// <item>Ticket triage: Suggest. It only suggested type, priority and owner on the new-ticket form.</item>
+    /// <item>Timesheet helper: Suggest. "Draft my week" proposed cells and saved nothing until the person accepted them.</item>
+    /// </list>
+    /// </summary>
     private static readonly Agent[] Agents =
     [
-        new("project", "Project agent", "Reads email, chat and meetings; proposes dates, tasks, risks", AiAgentLevel.Suggest),
-        new("notetaker", "Meeting notetaker", "Joins calls, writes notes and action items", AiAgentLevel.AskFirst),
-        new("mail", "Mail agent", "Summarises threads and drafts replies", AiAgentLevel.AskFirst),
-        new("triage", "Ticket triage", "Sets priority, SLA and assignee on new tickets", AiAgentLevel.Suggest),
-        new("timesheet", "Timesheet helper", "Drafts your week from tasks and meetings", AiAgentLevel.Suggest),
+        new(AiAgents.Project, "Project agent", "Reads email, chat and meetings; proposes dates, tasks, risks", AiAgentLevel.AskFirst),
+        new(AiAgents.Notetaker, "Meeting notetaker", "Joins calls, writes notes and action items", AiAgentLevel.AskFirst),
+        new(AiAgents.Mail, "Mail agent", "Summarises threads and drafts replies", AiAgentLevel.Suggest),
+        new(AiAgents.Triage, "Ticket triage", "Sets priority, SLA and assignee on new tickets", AiAgentLevel.Suggest),
+        new(AiAgents.Timesheet, "Timesheet helper", "Drafts your week from tasks and meetings", AiAgentLevel.Suggest),
     ];
+
+    /// <summary>The level an agent has when nobody chose one.</summary>
+    public static AiAgentLevel DefaultOf(string agent) => Agents.FirstOrDefault(a => a.Id == agent)?.Default ?? AiAgentLevel.Off;
 
     private static readonly Dictionary<string, AiAgentLevel> Names = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -61,12 +83,7 @@ public class AiControlCentre(IAppDbContext db, ICurrentContext ctx, Recorder rec
     }
 
     /// <summary>The level of one agent in the current workspace (for agents deciding whether to act, suggest or ask).</summary>
-    public async Task<AiAgentLevel> LevelAsync(string agent, CancellationToken ct = default)
-    {
-        var tid = ctx.RequireTenantId();
-        var json = await db.Tenants.AsNoTracking().Where(t => t.Id == tid).Select(t => t.AiAgentLevels).FirstOrDefaultAsync(ct);
-        return Parse(json).TryGetValue(agent, out var l) ? l : AiAgentLevel.Off;
-    }
+    public Task<AiAgentLevel> LevelAsync(string agent, CancellationToken ct = default) => gate.LevelAsync(agent, ct);
 
     private bool Admin => ctx.Role is TenantRole.Owner or TenantRole.Admin;
 
@@ -77,8 +94,11 @@ public class AiControlCentre(IAppDbContext db, ICurrentContext ctx, Recorder rec
         var levels = Parse(t.AiAgentLevels);
         var automations = await db.AutomationRules.AsNoTracking().CountAsync(r => r.TenantId == tid && r.IsEnabled, ct);
         var people = await db.TenantMembers.AsNoTracking().CountAsync(m => m.TenantId == tid, ct);
+        var f = await usage.FiguresAsync(ct);
+        var figures = new AiControlFiguresDto(f.Month, f.Answers, f.Failed, f.Answers > 0 ? (int)Math.Round((f.Answers - f.Failed) * 100.0 / f.Answers) : null,
+            f.CreditsUsed, f.Unlimited ? -1 : f.CreditsLimit, f.Unlimited);
         return new AiControlDto(Agents.Select(a => new AiAgentLevelDto(a.Id, a.Name, a.Description, Wire(levels[a.Id]))).ToList(),
-            t.AiInstructions?.Length ?? 0, ContextLimit, automations, people, !t.AiDisabled, Admin);
+            t.AiInstructions?.Length ?? 0, ContextLimit, automations, people, !t.AiDisabled, Admin, figures);
     }
 
     public async Task<AiControlDto> SetLevelAsync(string agent, string level, CancellationToken ct = default)
@@ -96,6 +116,7 @@ public class AiControlCentre(IAppDbContext db, ICurrentContext ctx, Recorder rec
             tenant.AiAgentLevels = JsonSerializer.Serialize(levels.ToDictionary(x => x.Key, x => (int)x.Value));
             recorder.Audit("ai.agent_level_changed", "Tenant", tid, new { agent = def.Id, level = Wire(before) }, new { agent = def.Id, level = Wire(next) });
             await db.SaveChangesAsync(ct);
+            gate.Forget(tid);
         }
         return await GetAsync(ct);
     }

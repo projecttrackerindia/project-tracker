@@ -18,7 +18,7 @@ public record NotetakerReadinessDto(bool Available, string? Reason, bool VoiceAv
 /// let in by our own media server for a Project Tracker call), so it needs a project with its agent allowed to read meetings. Speaking up also
 /// needs a speech service (to turn its words into a voice) and AI (to notice what is being missed).
 /// </summary>
-public class MeetNotetaker(IAppDbContext db, MeetingBotClient bot, VoiceSpeechService speech, AgentSettingsService agent)
+public class MeetNotetaker(IAppDbContext db, MeetingBotClient bot, VoiceSpeechService speech, AgentSettingsService agent, ProjectManagement.Application.Features.Ai.AiAgentGate gate)
 {
     public static MeetingNotetaker Parse(string? value) => (value ?? "").Trim().ToLowerInvariant() switch
     {
@@ -43,6 +43,7 @@ public class MeetNotetaker(IAppDbContext db, MeetingBotClient bot, VoiceSpeechSe
         var canSwitch = await agent.CanManageAsync(project, ct);
         string? reason = null;
         if (!bot.Configured) reason = "The notetaker is not set up on this installation yet.";
+        else if (!await gate.OnAsync(ProjectManagement.Application.Features.Ai.AiAgents.Notetaker, ct)) reason = "The meeting notetaker is off for this workspace (Settings › AI).";
         else
         {
             var s = await db.ProjectAgentSettings.AsNoTracking().FirstOrDefaultAsync(x => x.ProjectId == projectId, ct);

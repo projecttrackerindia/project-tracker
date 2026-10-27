@@ -91,14 +91,16 @@ function ProjectAgentPicker() {
 
 function ControlCentre({ control, loading }: { control?: AiControl; loading: boolean }) {
   const status = useAiStatus();
-  const usage = useWsQuery(['ai', 'usage'], aiWorkspaceApi.usage, { enabled: !!status?.enabled, staleTime: 30_000 });
-  const report = useWsQuery(['ai', 'report', thisMonth()], () => aiWorkspaceApi.report(thisMonth()), { enabled: !!status?.configured && !!status?.entitled, staleTime: 30_000 });
+  // The control centre serves this month's answers and credits itself; the usage and report endpoints are read only when it does not.
+  const f = control?.figures ?? undefined;
+  const usage = useWsQuery(['ai', 'usage'], aiWorkspaceApi.usage, { enabled: !f && !!status?.enabled, staleTime: 30_000 });
+  const report = useWsQuery(['ai', 'report', thisMonth()], () => aiWorkspaceApi.report(thisMonth()), { enabled: !f && !!status?.configured && !!status?.entitled, staleTime: 30_000 });
   if (loading) return <PageLoader />;
   // Each part stands on its own: one figure that cannot be read does not hide the others (or the model and the key).
   const c = control?.agents ? control : undefined;
-  const u = typeof usage.data?.creditsUsed === 'number' ? usage.data : undefined;
-  const r = typeof report.data?.answers === 'number' ? report.data : undefined;
-  const success = r && r.answers > 0 ? Math.round(((r.answers - r.failed) / r.answers) * 100) : null;
+  const u = f ? { creditsUsed: f.creditsUsed, creditsLimit: f.creditsLimit, unlimited: f.unlimited } : typeof usage.data?.creditsUsed === 'number' ? usage.data : undefined;
+  const r = f ? { answers: f.answers, failed: f.failed } : typeof report.data?.answers === 'number' ? report.data : undefined;
+  const success = f ? f.successPercent : r && r.answers > 0 ? Math.round(((r.answers - r.failed) / r.answers) * 100) : null;
   const ctxEmpty = (c?.contextLength ?? 0) === 0;
   return (
     <>
