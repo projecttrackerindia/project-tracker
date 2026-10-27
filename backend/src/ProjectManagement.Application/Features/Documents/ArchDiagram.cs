@@ -75,6 +75,44 @@ public static class ArchDiagram
         return new JsonObject { ["nodes"] = nodes, ["edges"] = edges };
     }
 
+    /// <summary>A known C4 level, or "containers".</summary>
+    public static string LevelOr(string? level) => level is { } l && Levels.Contains(l) ? l : "containers";
+
+    private static readonly Dictionary<string, string> CtypeOfIcon = new()
+    {
+        ["user"] = "person", ["users"] = "person", ["partner"] = "external", ["bank"] = "external", ["crm"] = "external", ["erp"] = "external", ["hrms"] = "external", ["payment"] = "external", ["whatsapp"] = "external",
+        ["web"] = "web", ["mobile"] = "web", ["desktop"] = "web", ["portal"] = "web",
+        ["api"] = "api", ["gateway"] = "api", ["mulesoft"] = "api", ["esb"] = "api", ["function"] = "api", ["server"] = "api", ["container"] = "api",
+        ["queue"] = "queue", ["topic"] = "queue", ["database"] = "db", ["warehouse"] = "db", ["storage"] = "db", ["cache"] = "cache",
+    };
+    private static readonly Dictionary<string, (string Level, string Icon)> Ctypes = new()
+    {
+        ["person"] = ("context", "user"), ["external"] = ("context", "partner"), ["web"] = ("containers", "web"), ["api"] = ("containers", "api"),
+        ["queue"] = ("containers", "queue"), ["db"] = ("containers", "database"), ["cache"] = ("containers", "cache"), ["zone"] = ("containers", "vpn"), ["group"] = ("containers", "box"),
+    };
+
+    /// <summary>
+    /// C4 details for boxes the assistant drew: a box type (ctype) from its icon when it gave none, a level from its type (people and outside
+    /// systems on Context) or else the level the person is on, and the type's size for component boxes. Unknown types are dropped. Boxes that
+    /// already had a level (from the current diagram) keep it.
+    /// </summary>
+    public static JsonObject ApplyC4(JsonObject data, string? level)
+    {
+        var fallback = LevelOr(level);
+        foreach (var o in (data["nodes"] as JsonArray ?? []).OfType<JsonObject>())
+        {
+            var kind = o["kind"]?.GetValue<string>() ?? "icon";
+            if (kind is "text" or "shape") continue;
+            var ctype = o["ctype"]?.GetValue<string>();
+            if (ctype is not null && !Ctypes.ContainsKey(ctype)) { o.Remove("ctype"); ctype = null; }
+            if (ctype is null && kind == "icon" && o["icon"]?.GetValue<string>() is { } icon && CtypeOfIcon.TryGetValue(icon, out var c)) { o["ctype"] = c; ctype = c; }
+            if (ctype is null && kind == "frame") { o["ctype"] = "zone"; ctype = "zone"; }
+            if (o["level"] is null) o["level"] = ctype is "person" or "external" ? "context" : fallback;
+            if (ctype is not null && kind == "icon" && o["icon"] is null) o["icon"] = Ctypes[ctype].Icon;
+        }
+        return data;
+    }
+
     /// <summary>The diagram as a left-to-right flowchart (for the PDF and for comparing versions). Frames become labels; text boxes are left out.</summary>
     public static string ToFlowchart(JsonNode? data)
     {

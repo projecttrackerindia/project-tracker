@@ -15,6 +15,19 @@ import { TEMPLATES } from './archTemplates';
 import { capacityOf, fmtSeconds, simulate as runSim, type SimResult } from './archSim';
 import './arch.css';
 
+/**
+ * Boxes from the assistant with a C4 level each: a new one it left without a level goes on the tab the person is on (boxes that were
+ * already there keep theirs, or none). Returns the level most of the
+ * new boxes (ids not in `before`) are on, so the studio can switch to it.
+ */
+export function withLevels(data: ArchData, current: ArchLevel, before: Set<string>): { data: ArchData; level: ArchLevel | null } {
+  const nodes = data.nodes.map((n) => (n.level || n.kind === 'text' || before.has(n.id) ? n : { ...n, level: current }));
+  const count = new Map<ArchLevel, number>();
+  for (const n of nodes) if (!before.has(n.id) && n.level) count.set(n.level, (count.get(n.level) ?? 0) + 1);
+  const top = [...count.entries()].sort((a, b) => b[1] - a[1] || (a[0] === current ? -1 : b[0] === current ? 1 : 0))[0];
+  return { data: { ...data, nodes }, level: top ? top[0] : null };
+}
+
 let seq = 0;
 const newId = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
 const DRAG_TYPE = 'application/x-arch-item';
@@ -34,11 +47,11 @@ const MULTS = [1, 3, 10];
  * edge), group them in frames, label everything, and style lines (dashed, animated, two-way). Undo/redo, tidy up, templates, and export to
  * PNG, SVG or JSON. "Done" hands the diagram back to the caller, which saves it.
  */
-export function ArchStudio(props: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void; context?: string[]; onDraft?: (data: ArchData, title: string) => void }) {
+export function ArchStudio(props: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void; context?: string[]; onDraft?: (data: ArchData, title: string) => void; shareUrl?: string }) {
   return createPortal(<ReactFlowProvider><Studio {...props} /></ReactFlowProvider>, document.body);
 }
 
-function Studio({ title: initialTitle, data, onDone, onClose, context, onDraft }: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void; context?: string[]; onDraft?: (data: ArchData, title: string) => void }) {
+function Studio({ title: initialTitle, data, onDone, onClose, context, onDraft, shareUrl }: { title: string; data: ArchData; onDone: (data: ArchData, title: string) => void; onClose: () => void; context?: string[]; onDraft?: (data: ArchData, title: string) => void; shareUrl?: string }) {
   const start = useMemo(() => toFlow(data), [data]);
   const [nodes, setNodes, onNodesChange] = useNodesState<ArchFlowNode>(start.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<ArchFlowEdge>(start.edges);
@@ -78,8 +91,11 @@ function Studio({ title: initialTitle, data, onDone, onClose, context, onDraft }
     setDrawing(true);
     try {
       const cur = fromFlow(flow.getNodes(), flow.getEdges());
-      const r = await docTrackerApi.aiDiagram(prompt, cur.nodes.length ? cur : undefined, context);
-      const f = toFlow(r.data as unknown as ArchData); setNodes(f.nodes); setEdges(f.edges); setSel({});
+      const r = await docTrackerApi.aiDiagram(prompt, cur.nodes.length ? cur : undefined, context, level);
+      // The assistant sets each box's C4 level, type and tech; a box it left without a level goes on this tab. Then show the level most new boxes are on.
+      const drawn = withLevels(r.data as unknown as ArchData, level, new Set(cur.nodes.map((n) => n.id)));
+      const f = toFlow(drawn.data); setNodes(f.nodes); setEdges(f.edges); setSel({});
+      if (drawn.level && drawn.level !== level) setLevel(drawn.level);
       window.setTimeout(() => { commit(); flow.fitView({ padding: 0.25, duration: 500 }); }, 30);
       setAsk(''); toast(`${r.summary} Undo with Ctrl+Z.`, 'success');
     } catch (e) { toast(e instanceof ApiError ? e.message : 'The assistant could not draw that.', 'error'); }
@@ -132,7 +148,7 @@ function Studio({ title: initialTitle, data, onDone, onClose, context, onDraft }
     toast(fix.kind === 'queue' ? 'Added a retry queue in front of it. Undo with Ctrl+Z.' : 'Added a cache in front of it. Undo with Ctrl+Z.', 'success');
   };
   const share = async () => {
-    try { await navigator.clipboard.writeText(window.location.href); toast('Link copied. People with access to this project can open it.', 'success'); }
+    try { await navigator.clipboard.writeText(shareUrl ?? window.location.href); toast(shareUrl ? 'Link copied. It opens this diagram for people with access to the project.' : 'Link copied. Save the diagram first to link straight to it.', 'success'); }
     catch { toast('Could not copy the link.', 'error'); }
   };
 

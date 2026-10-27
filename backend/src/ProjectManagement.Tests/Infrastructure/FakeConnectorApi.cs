@@ -66,3 +66,25 @@ public sealed class FakeGitHub : HttpMessageHandler
             : new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{\"message\":\"Not Found\"}", Encoding.UTF8, "application/json") };
     }
 }
+
+/// <summary>Stands in for a documented API checked "against live": answers by path, and keeps the Authorization headers it was sent.</summary>
+public sealed class FakeLiveApi : HttpMessageHandler
+{
+    public ConcurrentDictionary<string, string> Answers { get; } = new();
+    public ConcurrentQueue<string?> Authorizations { get; } = new();
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        Authorizations.Enqueue(request.Headers.Authorization?.ToString());
+        return Task.FromResult(Answers.TryGetValue(request.RequestUri!.AbsolutePath, out var body)
+            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") }
+            : new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{}") });
+    }
+}
+
+/// <summary>API drift's resolver with names resolved without DNS: "localhost" and 10.x stay private, everything else is a public address.</summary>
+public sealed class TestApiLiveResolver : ProjectManagement.Application.Features.ApiDocs.ApiLiveResolver
+{
+    public override Task<IPAddress[]> ResolveAsync(string host, CancellationToken ct) =>
+        Task.FromResult(host is "localhost" ? [IPAddress.Loopback] : host.StartsWith("10.", StringComparison.Ordinal) ? [IPAddress.Parse(host)] : new[] { IPAddress.Parse("93.184.216.34") });
+}

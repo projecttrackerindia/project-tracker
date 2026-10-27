@@ -154,7 +154,7 @@ export function DocsHub() {
 
           <aside className="dx-hub-side" aria-label="Review and import">
             <NeedsReview canCreate={canCreate} projects={projects} onChanged={() => void invalidateWorkspace(wid, 'documents')} />
-            <OutOfDate docs={all} />
+            <OutOfDate docs={all} catalog={c} />
             <PasteCurl projectId={null} canCreate={canCreate} />
             {attention > 0 && c && (
               <section className="dx-card dx-attn" aria-label="Needs attention">
@@ -355,13 +355,19 @@ function NewDocFromLink({ projects, canCreate }: { projects: { id: string; name:
     onUse={async (d, from) => { await newPage.create({ title: d.title, body: d.body, projectId: from.projectId }); setAi(false); }} />;
 }
 
-/** Pages whose linked work changed after they were written, newest first; one click opens the page to update it. */
-function OutOfDate({ docs }: { docs: { id: string; title: string; projectId: string | null; staleSince?: string | null }[] }) {
+/** Pages whose linked work changed after they were written, and endpoints whose docs differ from the live API; one click opens each to update it. */
+function OutOfDate({ docs, catalog }: { docs: { id: string; title: string; projectId: string | null; staleSince?: string | null }[]; catalog?: DtCatalog }) {
   const stale = docs.filter((d) => d.staleSince).sort((a, b) => b.staleSince!.localeCompare(a.staleSince!)).slice(0, 3);
-  if (stale.length === 0) return null;
+  const drifting = (catalog?.projects ?? []).flatMap((p) => p.endpoints.filter((e) => e.drift?.differs).map((e) => ({ p, e })))
+    .sort((a, b) => b.e.drift!.checkedAt.localeCompare(a.e.drift!.checkedAt)).slice(0, 3);
+  if (stale.length === 0 && drifting.length === 0) return null;
   return (
-    <section className="dx-card dx-stale" aria-label="Out of date">
+    <section className="dx-card dx-stale" aria-label="Out of date" data-testid="out-of-date">
       <h3>Out of date</h3>
+      {drifting.map(({ p, e }) => {
+        const n = e.drift!.missing + e.drift!.extra + e.drift!.changed;
+        return <p key={e.id}><b>{e.method} {e.path}</b> — Docs differ from live API ({n} field{n === 1 ? '' : 's'} on {e.drift!.env}). <Link to={docsPath.endpoint(p.id, e.id)}>Review it ›</Link></p>;
+      })}
       {stale.map((d) => (
         <p key={d.id}><b>{d.title}</b> — its linked work changed {timeAgo(d.staleSince!)}. <Link to={d.projectId ? docsPath.guide(d.projectId, d.id) : docsPath.doc(d.id)}>Update it ›</Link></p>
       ))}

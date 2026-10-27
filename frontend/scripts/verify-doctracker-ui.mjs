@@ -30,9 +30,12 @@ const detail={item:docs[1],revision:3,versionLabel:'v1.0',publishedLabel:'v1.0',
 const def={id:'def1',name:'Payments API',description:null,basePath:'/v1',version:'v1',auth:'Bearer',authNote:null,servers:['https://api.example.test'],endpoints:3,sortOrder:0,stage:'Uat'};
 const E=(id,method,p,summary,tag,score,gaps)=>({id,documentId:'d1',definitionId:'def1',definition:'Payments API',method,path:p,summary,tag,deprecated:false,score,gaps,stage:'Uat',updatedAt:iso(-30)});
 const eps=[E('e1','POST','/payments','Create a payment','Payments',90,['No error cases']),E('e2','GET','/payments/{id}','Get a payment','Payments',100,[]),E('e3','GET','/refunds','','Refunds',40,['No summary','No description','No success response example'])];
+// API drift and freshness: one endpoint whose docs differ from the live API, the API document verified 3 days ago, the BRD out of date.
+eps[1].drift={checkedAt:iso(-30),env:'UAT',differs:true,missing:1,extra:1,changed:1,error:null};
+const liveCheck={checkedAt:iso(0),env:'UAT',source:'live',status:200,comparedWith:'200',differs:true,error:null,fields:[{path:'penalty',kind:'missing',documented:'number',live:null},{path:'overdueDays',kind:'extra',documented:null,live:'number'},{path:'due',kind:'type',documented:'number',live:'string'}]};
 const catalog={projects:[{id:pid,key:'PAY',name:'Payments Core',endpoints:eps,definitions:[{id:'def1',documentId:'d1',name:'Payments API',version:'v1',stage:'Uat',auth:'Bearer',servers:def.servers}],
-  documents:[{id:'d1',key:'DOC-1',title:'Payments APIs',typeCode:'API',typeName:'API documentation',typeColor:'#35c491',status:'Published',classification:'Internal',updatedAt:iso(-60),isApi:true},
-   {id:'d3',key:'DOC-3',title:'Payments BRD',typeCode:'BRD',typeName:'Business requirements',typeColor:'#5c7cfa',status:'InReview',classification:'Confidential',updatedAt:iso(-180),isApi:false}],diagrams:1},
+  documents:[{id:'d1',key:'DOC-1',title:'Payments APIs',typeCode:'API',typeName:'API documentation',typeColor:'#35c491',status:'Published',classification:'Internal',updatedAt:iso(-60),isApi:true,verifiedAt:iso(-3*1440-60)},
+   {id:'d3',key:'DOC-3',title:'Payments BRD',typeCode:'BRD',typeName:'Business requirements',typeColor:'#5c7cfa',status:'InReview',classification:'Confidential',updatedAt:iso(-180),isApi:false,staleSince:iso(-120)}],diagrams:1},
   {id:null,key:null,name:'General',endpoints:[],definitions:[],documents:[],diagrams:0}],canCreate:true,isAdmin:true,truncated:0};
 // Pages: a handbook with a page inside it, and the page made in the test.
 catalog.projects[0].documents.push({id:'p1',key:'DOC-7',title:'Engineering handbook',typeCode:'PAGE',typeName:'Page',typeColor:'#4f46e5',status:'Draft',classification:'Internal',updatedAt:iso(-20),isApi:false,parentId:null,pageOrder:0,icon:'📘'},
@@ -74,6 +77,7 @@ try{
    if(ep==='/api/v1/documents/pnew/sections'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});assert.equal(b.revision,made.revision,'each save carries the newest revision');made={...made,revision:made.revision+1,sections:[{...made.sections[0],content:b.sections[0].content}]};await json(made);return;}
    if(ep==='/api/v1/documents/pnew'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});made={...made,revision:made.revision+1,item:{...made.item,title:b.title}};await json(made);return;}
    if(ep==='/api/v1/documents/d3/approve'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});review={...review,current:{...review.current,state:'Approved',canDecide:false,steps:review.current.steps.map((x)=>({...x,state:'Done'}))}};await json(review);return;}
+   if(ep==='/api/v1/documents/d1/api/endpoints/e2/live-check'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});await json(liveCheck);return;}
    if(ep==='/api/v1/doctracker/architecture'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});arch={...arch,diagrams:b.diagrams,notes:b.notes};await json(arch);return;}
    if(ep==='/api/v1/documents/d1/api/export'){await route.fulfill({contentType:'application/json',body:JSON.stringify(spec)});return;}
    assert.ok(method==='GET'||ep.endsWith('/auth/refresh')||ep.endsWith('/views'),`Unexpected write: ${method} ${ep}`);
@@ -290,6 +294,44 @@ try{
  await big('docs-edit.png');
  await bar.getByRole('button',{name:'Done'}).click();checks.push('edit-toolbar');
  await noScroll(page);
+ await page.close();await ctx.close();
+
+ // Freshness on every page, API drift on the endpoint and in Out of date, and a link to one diagram.
+ ctx=await make();await ctx.grantPermissions(['clipboard-read','clipboard-write'],{origin});page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
+ await page.goto(origin+'/preview-org/library');
+ const ood=page.getByTestId('out-of-date');await ood.waitFor();
+ assert.match(await ood.innerText(),/GET \/payments\/\{id\} — Docs differ from live API \(3 fields on UAT\)/);
+ assert.equal(await ood.getByRole('link',{name:'Review it ›'}).getAttribute('href'),`/preview-org/library/p/${pid}/api/e2`);checks.push('out-of-date-drift');
+ await page.goto(origin+`/preview-org/library/p/${pid}`);await page.locator('.dx-title',{hasText:'Payments Core'}).waitFor();
+ assert.equal((await page.getByTestId('fresh-pill').first().innerText()).trim(),'May be stale','a collection with an out-of-date page may be stale');
+ await page.goto(origin+`/preview-org/library/p/${pid}/api`);await page.locator('.dx-title',{hasText:'Payments Core API'}).waitFor();
+ assert.equal((await page.getByTestId('fresh-pill').innerText()).trim(),'Verified 3 days ago');
+ await page.locator('.dx-li',{hasText:'/payments/{id}'}).getByText('Differs from live').waitFor();
+ await page.goto(origin+`/preview-org/library/p/${pid}/api/e2`);await page.getByTestId('api-symbol').waitFor();
+ assert.equal((await page.getByTestId('fresh-pill').innerText()).trim(),'Verified 3 days ago');
+ await page.getByTestId('drift-pill').filter({hasText:'Docs differ from live API'}).waitFor();await big('endpoint-top-1440.png');
+ const lc=page.getByTestId('live-check');await lc.scrollIntoViewIfNeeded();
+ await lc.getByRole('button',{name:/Check against live · /}).click();
+ for(let i=0;i<20&&!writes.some(w=>w.ep.endsWith('/e2/live-check'));i++)await page.waitForTimeout(100);
+ const sent=writes.find(w=>w.ep.endsWith('/e2/live-check')).b;assert.equal(typeof sent.env,'number');assert.ok(!JSON.stringify(sent).includes('example.test'),'the browser sends no address');
+ await lc.locator('li',{hasText:'penalty'}).waitFor();await lc.locator('li',{hasText:'number in docs → string live'}).waitFor();
+ assert.ok(!(await lc.innerText()).includes('example.test'),'no hostnames in the live check');
+ await lc.screenshot({path:path.join(out,'live-check.png')});await big('endpoint-drift-1440.png');checks.push('live-check');
+ await page.goto(origin+`/preview-org/library/p/${pid}/d/d3`);await page.locator('.dx-guide-fresh').waitFor();
+ assert.equal((await page.getByTestId('fresh-pill').innerText()).trim(),'May be stale');checks.push('guide-fresh');
+ arch={...arch,diagrams:[...arch.diagrams,{key:'flow-2',title:'Refund flow',kind:'flow',data:{nodes:[{id:'r',kind:'icon',icon:'api',label:'Refunds',x:0,y:0,w:150,h:64}],edges:[]}}]};
+ await page.goto(origin+`/preview-org/library/p/${pid}/architecture`);await page.getByTestId('arch-gallery').waitFor();
+ assert.equal(await page.locator('.dx-fig').count(),2);assert.match((await page.getByTestId('fresh-pill').innerText()).trim(),/^Verified (today|\d+ days? ago)$/);
+ await page.getByRole('button',{name:'Copy a link to Refund flow'}).click();
+ const link=await page.evaluate(()=>navigator.clipboard.readText());assert.equal(link,`${origin}/preview-org/library/p/${pid}/architecture?diagram=flow-2`,'Share copies the one-diagram address');
+ checks.push('diagram-share');
+ await page.goto(origin+`/preview-org/library/p/${pid}/architecture?diagram=flow-2`);await page.getByTestId('arch-gallery').waitFor();
+ assert.equal(await page.locator('.dx-fig').count(),1);await page.locator('.dx-fig figcaption',{hasText:'Refund flow'}).waitFor();checks.push('diagram-link');
+ await page.close();await ctx.close();
+ ctx=await make();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
+ await page.goto(origin+`/preview-org/library/p/${pid}/api/e2`);await page.getByTestId('api-symbol').waitFor();await page.getByTestId('drift-pill').waitFor();
+ await noScroll(page);await shot(page,'endpoint-drift-390.png');await page.getByTestId('live-check').scrollIntoViewIfNeeded();await noScroll(page);await shot(page,'live-check-390.png');
+ arch={...arch,diagrams:arch.diagrams.filter((d)=>d.key!=='flow-2')};
  await page.close();await ctx.close();
 
  // Phone: the navigator sits above the column; pages fit.

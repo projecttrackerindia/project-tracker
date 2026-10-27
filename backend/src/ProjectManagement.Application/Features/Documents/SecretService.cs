@@ -116,6 +116,26 @@ public class SecretService(IAppDbContext db, ICurrentContext ctx, AppClock clock
 
     // ------------------------------------------------------------------ revealing
 
+    /// <summary>
+    /// The stored credential for a server-side call the document's editor asked for (API drift "Check against live"): the newest Secret-class
+    /// value whose label names the scheme (token, key, basic/password). Confidential values are never used this way. The value goes into the
+    /// request header only and never back to the browser; every use is recorded. Null when there is none.
+    /// </summary>
+    public async Task<string?> ValueForCallAsync(Guid documentId, string scheme, CancellationToken ct = default)
+    {
+        var words = scheme switch { "ApiKey" => new[] { "key" }, "Basic" => new[] { "basic", "password", "credential" }, _ => new[] { "token", "bearer", "jwt" } };
+        var rows = await db.SensitiveValues.AsNoTracking().Where(v => v.DocumentId == documentId && v.Class != SensitivityClass.Confidential).OrderByDescending(v => v.ValueChangedAt ?? v.CreatedAt).Take(MaxPerDocument).ToListAsync(ct);
+        var row = rows.FirstOrDefault(r => words.Any(w => r.Label.Contains(w, StringComparison.OrdinalIgnoreCase)));
+        if (row is null) return null;
+        try
+        {
+            var value = crypto.Decrypt(await crypto.KeyAsync(row.TenantId, row.KeyVersion, ct), row.Cipher, Aad(row.TenantId, row.DocumentId, row.Id));
+            recorder.Audit("document.secret_used", "Document", documentId, null, new { secret = row.Label, purpose = "api_live_check" });
+            return value;
+        }
+        catch (Exception e) when (e is CryptographicException or FormatException or InvalidOperationException) { return null; }
+    }
+
     public async Task<RevealDto> RevealAsync(Guid documentId, Guid id, RevealRequest req, CancellationToken ct = default)
     {
         var (doc, _) = await OpenAsync(documentId, false, ct);

@@ -8,6 +8,8 @@ import { useWsQuery } from '../../lib/hooks';
 import { toast } from '../../stores/ui';
 import { useAi } from '../ai/Assistant';
 import { Initials } from './projectParts';
+import { useMailData, useMailLocal } from '../mail/useMail';
+import type { MailRow } from '../mail/useMail';
 import './weeklyReport.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -72,6 +74,7 @@ export function WeeklyReportPage() {
   }, [d]);
 
   const people = useMemo(() => new Map((d?.people ?? []).map((p) => [p.id, p.name])), [d]);
+  const mail = useProjectMail(id, d?.from ?? null);
   if (q.isError) return <ErrorState error={q.error} retry={() => void q.refetch()} />;
   if (!d) return <PageLoader />;
 
@@ -135,7 +138,7 @@ export function WeeklyReportPage() {
           <h1 className="wrp-h1">Week {d.week ?? isoWeek(d.to)} report</h1>
         </div>
         <div className="wrp-sourceline"><span className="wrp-orb" aria-hidden="true" />
-          Written from {s ? `${plural(s.updates, 'update')}, ${plural(s.meetings, 'meeting')} and ${plural(s.commits, 'commit')}` : 'the project'} · {ago(d.writtenAt)}
+          Written from {s ? `${plural(s.updates, 'update')}, ${plural(s.meetings, 'meeting')}${mail.count ? `, ${plural(mail.count, 'mail')}` : ''} and ${plural(s.commits, 'commit')}` : 'the project'} · {ago(d.writtenAt)}
         </div>
       </header>
 
@@ -206,6 +209,18 @@ export function WeeklyReportPage() {
             </button>
           </div>
 
+          {mail.threads.length > 0 && (
+            <div className="wrp-card" data-testid="report-mail">
+              <h3>From mail</h3>
+              <ul className="wrp-mail">
+                {mail.threads.map((t) => (
+                  <li key={t.key}><span className="wrp-mail-s">{t.subject || '(no subject)'}</span><Link className="wrp-src" to="/mail" title={`${t.count} message${t.count === 1 ? '' : 's'} this week, linked to this project in Mail`}>Mail · {t.who}</Link></li>
+                ))}
+              </ul>
+              <p className="wrp-none">Threads linked to this project in Mail. Cite them in the text if they explain a line.</p>
+            </div>
+          )}
+
           <div className="wrp-card wrp-ai">
             <p><span className="wrp-orb" aria-hidden="true" />{ai ? 'Tone is neutral and every line comes from the project. Want it shorter, or framed for executives?' : 'Read it through, edit any line, then approve.'}</p>
             <div className="wrp-ai-row">
@@ -233,3 +248,27 @@ export function WeeklyReportPage() {
   );
 }
 
+
+/** "Ruth Varma <ruth@…>" → "Ruth". */
+const firstName = (from: string) => (from.replace(/<.*>/, '').replace(/["']/g, '').trim() || from.split('@')[0]).split(/\s+/)[0];
+
+/**
+ * Mail as a source: threads the person linked to this project in Mail (kept with their mail settings in this browser), with the messages of
+ * the report's week. Mail is only read when at least one thread is linked.
+ */
+function useProjectMail(projectId: string, from: string | null) {
+  const [local] = useMailLocal();
+  const keys = useMemo(() => Object.entries(local.projects ?? {}).filter(([, pid]) => pid === projectId).map(([k]) => k), [local.projects, projectId]);
+  const data = useMailData({ sent: true, enabled: keys.length > 0 });
+  return useMemo(() => {
+    if (!keys.length) return { count: 0, threads: [] as { key: string; subject: string; who: string; count: number }[] };
+    const linked = data.rows.filter((r) => keys.includes(r.key));
+    const threadIds = new Set(linked.map((r) => `${r.account}|${r.threadId}`));
+    const inWeek = (r: MailRow) => !from || !r.date || r.date.slice(0, 10) >= from;
+    const rows = data.rows.filter((r) => threadIds.has(`${r.account}|${r.threadId}`) && inWeek(r));
+    const groups = new Map<string, MailRow[]>();
+    for (const r of rows) { const k = `${r.account}|${r.threadId}`; groups.set(k, [...(groups.get(k) ?? []), r]); }
+    const threads = [...groups.entries()].map(([key, rs]) => ({ key, subject: rs[0].subject.replace(/^(re|fwd?):\s*/i, ''), who: firstName(rs[rs.length - 1].from), count: rs.length })).slice(0, 6);
+    return { count: rows.length, threads };
+  }, [keys, data.rows, from]);
+}

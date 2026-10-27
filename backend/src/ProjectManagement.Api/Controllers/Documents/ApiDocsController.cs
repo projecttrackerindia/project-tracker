@@ -7,8 +7,12 @@ namespace ProjectManagement.Api.Controllers.Documents;
 
 /// <summary>The API reference of a document: the APIs it describes, their endpoints, import and export, and what changed between versions. Who may open a document is decided in the data layer (see <c>DocumentService</c>).</summary>
 [Route("api/v1"), RequireWorkspace, RequireModule(Modules.Documents)]
-public class ApiDocsController(ApiDocService api, ApiTransferService transfer, ProjectManagement.Application.Features.Documents.DocumentProposalService proposals) : ApiControllerBase
+public class ApiDocsController(ApiDocService api, ApiTransferService transfer, ProjectManagement.Application.Features.Documents.DocumentProposalService proposals, ApiDriftService drift) : ApiControllerBase
 {
+    /// <summary>API drift: the documented sample response against the live API (called from the server with the document's stored credential) or a pasted response. Editors only.</summary>
+    [HttpPost("documents/{id:guid}/api/endpoints/{endpointId:guid}/live-check")]
+    public async Task<IActionResult> LiveCheck(Guid id, Guid endpointId, [FromBody] LiveCheckRequest req, CancellationToken ct) => Ok(await drift.CheckAsync(id, endpointId, req, ct));
+
     [HttpGet("documents/{id:guid}/api")]
     public async Task<IActionResult> Overview(Guid id, [FromQuery] Guid? versionId, CancellationToken ct) => Ok(await api.OverviewAsync(id, versionId, ct));
 

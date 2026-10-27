@@ -111,6 +111,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     /// <summary>Stands in for Meta's Graph API for teams' own WhatsApp support numbers.</summary>
     public FakeSupportGraph SupportGraph { get; } = new();
     public FakeConnectorApi Connectors { get; } = new();
+    public FakeLiveApi LiveApi { get; } = new();
     public FakePwnedPasswords Pwned { get; } = new();
     public FakeGitHub GitHub { get; } = new();
     /// <summary>Stands in for GitHub Actions' OpenID Connect issuer (vault machine access).</summary>
@@ -185,6 +186,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddHttpClient("whatsapp-installation").ConfigurePrimaryHttpMessageHandler(() => WhatsApp);
             services.AddHttpClient("support-whatsapp").ConfigurePrimaryHttpMessageHandler(() => SupportGraph);
             services.AddHttpClient("voice-connector").ConfigurePrimaryHttpMessageHandler(() => Connectors);
+            services.AddHttpClient("api-live").ConfigurePrimaryHttpMessageHandler(() => LiveApi);
+            services.RemoveAll<ProjectManagement.Application.Features.ApiDocs.ApiLiveResolver>();
+            services.AddSingleton<ProjectManagement.Application.Features.ApiDocs.ApiLiveResolver, TestApiLiveResolver>();
             services.AddHttpClient("pwned-passwords").ConfigurePrimaryHttpMessageHandler(() => Pwned);
             services.AddHttpClient("github-app").ConfigurePrimaryHttpMessageHandler(() => GitHub);
             services.AddHttpClient("github-oidc").ConfigurePrimaryHttpMessageHandler(() => GitHubOidc);

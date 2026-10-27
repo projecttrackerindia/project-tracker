@@ -14,13 +14,13 @@ export function Crumb({ p, here }: { p: Pick<DtProject, 'id' | 'name'>; here?: R
   );
 }
 
-/** The reading column with its outline on the right. */
-export function Reading({ p, title, children, tools, wide }: { p: DtProject; title?: string; children: ReactNode; tools?: ReactNode; wide?: boolean }) {
+/** The reading column with its outline on the right; `fresh` is the page's freshness (Verified N days ago / May be stale), shown by the breadcrumb. */
+export function Reading({ p, title, children, tools, wide, fresh }: { p: DtProject; title?: string; children: ReactNode; tools?: ReactNode; wide?: boolean; fresh?: ReactNode }) {
   const col = useRef<HTMLDivElement>(null);
   const outline = useOutline(col, []);
   return (
     <div className={`dx-read${wide ? ' wide' : ''}`}>
-      <div className="dx-bar"><Crumb p={p} here={title} />{tools && <div className="dx-tools">{tools}</div>}</div>
+      <div className="dx-bar"><Crumb p={p} here={title} />{fresh && <div className="dx-freshes">{fresh}</div>}{tools && <div className="dx-tools">{tools}</div>}</div>
       <div className="dx-col" ref={col}>{children}</div>
       {!wide && <ReaderRail outline={outline} />}
     </div>
