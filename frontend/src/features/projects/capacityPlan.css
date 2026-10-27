@@ -67,3 +67,5 @@
   .cp-cell.leave { font-size: 11px; }
   .cp-foot { gap: 6px; flex-direction: column; }
 }
+.cp-hol { color: #c77700; font-weight: 600; }
+.cp-hol-dot { position: absolute; top: 6px; right: 16px; width: 6px; height: 6px; border-radius: 3px; background: #ff9f0a; }

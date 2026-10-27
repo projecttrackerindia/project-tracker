@@ -2665,6 +2665,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "CreatedAt");
 
+                    b.HasIndex("TenantId", "EntityId");
+
                     b.HasIndex("TenantId", "Seq")
                         .IsUnique();
 
@@ -5688,6 +5690,47 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("GoogleConnections");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.Holiday", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Region")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Date", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Holidays");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.IdempotencyRecord", b =>
@@ -9347,6 +9390,58 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("RolePermissionOverrides");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.SavedView", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConfigJson")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("Shared")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("TeamId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Scope", "OwnerId");
+
+                    b.ToTable("SavedViews");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.ScimToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -10050,6 +10145,59 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("IssueId");
 
                     b.ToTable("StageIssueEvents");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.StatusPage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ComponentsJson")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Published")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("StatusPages");
                 });
 
             modelBuilder.Entity("ProjectManagement.Domain.Entities.StepUpGrant", b =>
@@ -11525,6 +11673,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(6000)
                         .HasColumnType("character varying(6000)");
+
+                    b.Property<bool>("KeepDataInIndia")
+                        .HasColumnType("boolean");
 
                     b.Property<int>("MinPasswordLength")
                         .HasColumnType("integer");

@@ -23,6 +23,8 @@ import { IncidentStrip, ReplyHelper, TriageChips } from './Desk';
 import { SlaChip } from './Sla';
 import { SupportResolution } from './SupportResolution';
 import { KIND_LONG, dueText, refreshWork } from './workUi';
+import { historyApi } from '../../api/platformApi';
+import { HistoryList } from '../platform/HistoryList';
 import './work.css';
 
 const TaskModal = lazy(() => import('../tasks/TaskModal').then((m) => ({ default: m.TaskModal })));
@@ -236,7 +238,7 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
       {(w.kind === 'task' || w.kind === 'ticket') && <div className="wkp-dev">{w.kind === 'task' ? <DevLinks taskId={w.id} /> : <DevLinks workTaskId={w.id} />}</div>}
       {w.kind === 'ticket' && (w.category === 'Todo' || w.category === 'Active') && <ReplyHelper key={w.id} w={w} onPosted={refetch} />}
       <Activity w={w} onPosted={refetch} />
-      <p className="wkp-foot">Changes save as you go · Time, files and history live in this one stream.</p>
+      <p className="wkp-foot">Changes save as you go · History lists every field change, who made it and when.</p>
     </div>
   );
 }
@@ -428,12 +430,25 @@ const SHOWN = 8;
 
 function Activity({ w, onPosted }: { w: WorkItemDetail; onPosted: () => void }) {
   const [all, setAll] = useState(false);
-  useEffect(() => { setAll(false); }, [w.id]);
+  const [view, setView] = useState<'activity' | 'history'>('activity');
+  useEffect(() => { setAll(false); setView('activity'); }, [w.id]);
   const rows = useMemo(() => [...w.activity].reverse(), [w.activity]);   // oldest first; the newest sits by the comment box
   const hidden = all ? 0 : Math.max(0, rows.length - SHOWN);
+  const seg = (
+    <div className="pv-seg" role="tablist" aria-label="Activity or history">
+      <button type="button" role="tab" aria-selected={view === 'activity'} onClick={() => setView('activity')}>Activity</button>
+      <button type="button" role="tab" aria-selected={view === 'history'} onClick={() => setView('history')}>History</button>
+    </div>
+  );
+  if (view === 'history') return (
+    <section className="wkp-section" aria-label="History">
+      <div className="pv-sec-head"><h3 className="wkp-h">History</h3>{seg}</div>
+      <HistoryList queryKey={['work-item', w.id, w.version]} load={() => historyApi.workItem(w.id)} />
+    </section>
+  );
   return (
     <section className="wkp-section" aria-label="Activity">
-      <h3 className="wkp-h">Activity</h3>
+      <div className="pv-sec-head"><h3 className="wkp-h">Activity</h3>{seg}</div>
       {rows.length === 0 ? <p className="wkp-empty">Nothing yet. Comments, time, files and changes appear here.</p> : (
         <ol className="wkp-stream">
           {hidden > 0 && <li><button type="button" className="wkp-link" onClick={() => setAll(true)}>Show {hidden} earlier</button></li>}

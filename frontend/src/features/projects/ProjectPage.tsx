@@ -30,6 +30,8 @@ import { ProjectDocs } from './ProjectDocs';
 import { ProjectFormModal } from './ProjectFormModal';
 import { ProjectSettingsModal, type ProjectSettingsTab } from './ProjectSettingsModal';
 import { ActivityTab } from './ProjectTabs';
+import { historyApi } from '../../api/platformApi';
+import { HistoryList } from '../platform/HistoryList';
 import { dayMonth, errText, Initials, isFinished, passGradient, passStatus } from './projectParts';
 import { HealthBanner, HealthSheet } from './ProjectHealth';
 import { StageScheduleStudio } from './StageScheduleStudio';
@@ -565,6 +567,11 @@ function Activity({ projectId, archived, agent, history }: { projectId: string; 
           <ProjectAgentQueue projectId={projectId} archived={archived} />
         </section>
       )}
+      <section className="card pp-history" aria-label="History">
+        <h3>History</h3>
+        <p className="pp-faint">Every change to the project’s name, status, owner, dates, priority and health: who made it, when, and what it was before.</p>
+        <HistoryList queryKey={['project', projectId]} load={() => historyApi.project(projectId)} empty="No changes to the project’s fields yet." />
+      </section>
       {history && <ActivityTab projectId={projectId} />}
     </div>
   );

@@ -36,6 +36,14 @@ public class WorkItemsController(WorkItemService items, WorkloadService workload
     [HttpPatch("work-items/{id:guid}")]
     public async Task<IActionResult> Patch(Guid id, [FromBody] System.Text.Json.JsonElement body, CancellationToken ct) => Ok(await work.PatchAsync(id, body, ct));
 
+    /// <summary>Field changes on the item (who, when, old → new), newest first.</summary>
+    [HttpGet("work-items/{id:guid}/history")]
+    public async Task<IActionResult> History(Guid id, CancellationToken ct) => Ok(await work.HistoryAsync(id, ct));
+
+    /// <summary>One change for up to 200 items (status, assignee, priority, due date, labels, project) or delete them; each item is checked on its own.</summary>
+    [HttpPost("work-items/bulk")]
+    public async Task<IActionResult> Bulk([FromBody] BulkWorkRequest req, CancellationToken ct) => Ok(await work.BulkAsync(req, ct));
+
     /// <summary>A comment; "log 2h …" also logs the time.</summary>
     [HttpPost("work-items/{id:guid}/comments")]
     public async Task<IActionResult> Comment(Guid id, [FromBody] WorkItemCommentRequest req, CancellationToken ct) => Created(await work.CommentAsync(id, req, ct));

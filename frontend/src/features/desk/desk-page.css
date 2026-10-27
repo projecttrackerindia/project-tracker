@@ -137,3 +137,13 @@
 }
 .dq-sr-portal { margin: 0; }
 .dq-sr-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, .28); z-index: 59; }
+/* Narrowing, saved views and selecting in the queue (bulk edit). */
+.dq-qh { justify-content: flex-start; gap: 8px; }
+.dq-qh .dq-faint { margin-left: auto; }
+.dq-qh .dq-select { font-size: 13px; }
+.dq-filters { display: flex; gap: 6px; padding: 0 14px 8px; flex-wrap: wrap; }
+.dq-fchip { padding: 0 12px; cursor: pointer; height: 26px; font-size: 12px; }
+.dq-q .pv-views { padding: 0 14px 8px; }
+.dq-t.selecting { gap: 10px; }
+.dq-t.picked { background: var(--ds-accent-soft); }
+.dq-t .pv-check { height: auto; flex: none; }

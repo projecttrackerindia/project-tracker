@@ -16,6 +16,7 @@ import { decisionItems, type DecisionItem } from './portfolioDecisions';
 import { portfolioApi, type PortfolioAiSummary, type PortfolioFilter } from './portfolioApi';
 import { errText } from './projectParts';
 import './portfolio.css';
+import { SavedViewsBar } from '../platform/SavedViews';
 import './projectsHome.css';
 
 type Mode = 'board' | 'timeline' | 'capacity' | 'present';
@@ -78,6 +79,18 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
         </div>
       </PageHead>
 
+      {mode !== 'present' && (
+        <div className="pf-views">
+          <SavedViewsBar scope="portfolio" current={{ mode: mode === 'board' ? undefined : mode, owner: filter.ownerId ?? undefined, group: filter.groupId ?? undefined,
+            health: filter.health ?? undefined, from: filter.dueFrom ?? undefined, to: filter.dueTo ?? undefined }}
+            onApply={(c) => {
+              const n = new URLSearchParams(params);
+              n.set('view', 'portfolio');
+              for (const k of ['mode', 'owner', 'group', 'health', 'from', 'to']) { const val = c[k]; if (typeof val === 'string' && val) n.set(k, val); else n.delete(k); }
+              setParams(n, { replace: true });
+            }} />
+        </div>
+      )}
       {board && (filtersOpen || nFilters > 0) && <div className="pj2-pfilters"><PortfolioFilters board={board} filter={filter} onChange={setFilter} /></div>}
 
       {q.isLoading ? <PageLoader /> : q.isError || !board || !b ? <ErrorState error={q.error} retry={() => q.refetch()} /> : mode === 'capacity' ? (

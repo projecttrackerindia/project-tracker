@@ -546,3 +546,4 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
   .pf-wk-cols li { font-size: 14px; }
   .pf-wk-tg { padding: 4px 10px; font-size: 12px; }
 }
+.pf-views { margin: -6px 0 6px; } .pf-views .pv-views { padding: 0; }

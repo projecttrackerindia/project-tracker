@@ -206,6 +206,9 @@ public interface IAppDbContext
     DbSet<AiAgentAction> AiAgentActions { get; }
     DbSet<TestCase> TestCases { get; }
     DbSet<TestRun> TestRuns { get; }
+    DbSet<SavedView> SavedViews { get; }
+    DbSet<Holiday> Holidays { get; }
+    DbSet<StatusPage> StatusPages { get; }
     DbSet<Release> Releases { get; }
     DbSet<ReleaseItem> ReleaseItems { get; }
     DbSet<ReleaseSignOff> ReleaseSignOffs { get; }

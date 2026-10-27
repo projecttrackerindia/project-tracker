@@ -36,7 +36,8 @@ public record SlackConnectStart(string Url, string BrowserProof);
 
 /// <summary>Installation foundation only. No Slack identity is granted access to business data by installing the app.</summary>
 public class SlackConnectionService(IAppDbContext db, CurrentContext ctx, EntitlementService entitlements,
-    AppClock clock, Recorder recorder, IOptions<SlackOptions> options, IHttpClientFactory http, ISecretProtector secrets)
+    AppClock clock, Recorder recorder, IOptions<SlackOptions> options, IHttpClientFactory http, ISecretProtector secrets,
+    ProjectManagement.Application.Features.Platform.DataLocationService dataLocation)
 {
     private readonly SlackOptions _o = options.Value;
     public const string Scopes = "chat:write,app_mentions:read,im:history,im:write,users:read";
@@ -78,6 +79,7 @@ public class SlackConnectionService(IAppDbContext db, CurrentContext ctx, Entitl
     {
         var tenant = ctx.RequireTenantId(); var user = ctx.RequireUserId();
         await RequireAdminAsync(tenant, user, ct); await RequireEligibleAsync(tenant, ct);
+        await dataLocation.EnsureAllowedAsync("slack", ct);
         if (!_o.Configured) throw new ConflictException("Slack OAuth is not configured by the platform administrator.", "SLACK_NOT_CONFIGURED");
         if (await db.SlackConnections.AnyAsync(x => x.TenantId == tenant, ct))
             throw new ConflictException("Disconnect this organization's existing workspace before connecting another.", "SLACK_ALREADY_CONNECTED");

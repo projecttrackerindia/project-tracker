@@ -59,8 +59,9 @@ public record WorkItemCommentResultDto(WorkActivityItemDto Comment, WorkActivity
 /// The one Work API (/api/v1/work-items) over every kind of work in the WorkItems table. Every write goes through the kind's own service,
 /// so each kind keeps its rules (who may see, change, delete; workflow; notifications; automation); this class only translates.
 /// </summary>
-public class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock clock, WorkItemService items, TaskService tasks, IssueService issues,
-    ActionItemService actions, WorkTaskService tickets, TimeService time, PermissionService permissions, NotificationService notifications)
+public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock clock, WorkItemService items, TaskService tasks, IssueService issues,
+    ActionItemService actions, WorkTaskService tickets, TimeService time, PermissionService permissions, NotificationService notifications,
+    ProjectManagement.Application.Features.Platform.HistoryService history, Recorder recorder)
 {
     public const int MaxPage = 200;
     public const int MaxWindow = WorkItemService.MaxLimit;
@@ -423,7 +424,7 @@ public class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock 
                     p.Has("dueDate") ? p.Day("dueDate") : t.DueDate,
                     p.Has("estimatedHours") ? p.Number("estimatedHours") : t.EstimatedHours,
                     p.Has("actualHours") ? p.Number("actualHours") : t.ActualHours,
-                    t.Labels.Select(l => l.Id).ToList(),
+                    p.Has("labelIds") ? p.UuidList("labelIds") : t.Labels.Select(l => l.Id).ToList(),
                     version,
                     p.Has("milestoneId") ? p.Uuid("milestoneId") : t.MilestoneId,
                     p.Has("stageId") ? p.Uuid("stageId") : t.StageId,
@@ -529,6 +530,10 @@ public class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock 
         public System.Guid? Uuid(string name) => Get(name) is { } v
             ? v.ValueKind == JsonValueKind.String && System.Guid.TryParse(v.GetString(), out var g) ? g : throw Bad(name)
             : null;
+
+        public List<System.Guid> UuidList(string name) => Get(name) is { ValueKind: JsonValueKind.Array } v
+            ? v.EnumerateArray().Select(x => x.ValueKind == JsonValueKind.String && System.Guid.TryParse(x.GetString(), out var g) ? g : throw Bad(name)).ToList()
+            : [];
 
         public DateOnly? Day(string name) => Get(name) is { } v
             ? v.ValueKind == JsonValueKind.String && DateOnly.TryParse(v.GetString(), System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : throw Bad(name)

@@ -246,7 +246,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var people = rows.SelectMany(r => new[] { r.AssigneeId, (Guid?)r.ReporterId }).Where(x => x != null).Select(x => x!.Value).Distinct().ToList();
         var names = await db.Users.AsNoTracking().Where(u => people.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
         var projectIds = rows.Where(r => r.RelatedProjectId != null).Select(r => r.RelatedProjectId!.Value).Distinct().ToList();
-        var projects = await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => new WorkProjectRefDto(p.Id, p.Key, p.Name, p.Status), ct);
+        var projectNames = await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => new WorkProjectRefDto(p.Id, p.Key, p.Name, p.Status), ct);
         var comments = await db.WorkTaskComments.AsNoTracking().Where(c => ids.Contains(c.WorkTaskId)).GroupBy(c => c.WorkTaskId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
         var attachments = await db.WorkTaskAttachments.AsNoTracking().Where(a => ids.Contains(a.WorkTaskId)).GroupBy(a => a.WorkTaskId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
         var logged = await db.TimeEntries.AsNoTracking().Where(e => e.WorkTaskId != null && ids.Contains(e.WorkTaskId.Value) && !(e.StartedAt != null && e.EndedAt == null))
@@ -346,6 +346,9 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (task.StartDate != req.StartDate) changes.Add("start date");
         if (task.Description != description) changes.Add("description");
 
+        var history = new ProjectManagement.Application.Features.Platform.FieldDiff();
+        var oldTitle = task.Title; var oldDescription = task.Description; var oldType = task.WorkTypeId; var oldProject = task.RelatedProjectId;
+        var oldAssignee = task.AssigneeId; var oldPriority = task.Priority; var oldStart = task.StartDate; var oldDue = task.DueDate;
         var reprioritized=task.Priority!=req.Priority;
         var retarget = task.Priority != req.Priority || task.WorkTypeId != type.Id;
         task.Title = title; task.Description = description; task.WorkTypeId = type.Id; task.RelatedProjectId = req.RelatedProjectId;
@@ -356,6 +359,20 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         task.Version++;
         task.UpdatedAt = clock.Now; task.UpdatedBy = ctx.UserId;
 
+        {
+            var people = await ProjectManagement.Application.Features.Platform.FieldDiff.NamesAsync(db, [oldAssignee, task.AssigneeId], ct);
+            var typeIds = new[] { oldType, task.WorkTypeId }.Where(x => x is not null).Select(x => x!.Value).ToList();
+            var typeNames = await db.WorkTypes.AsNoTracking().Where(t => typeIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
+            var projectIds = new[] { oldProject, task.RelatedProjectId }.Where(x => x is not null).Select(x => x!.Value).ToList();
+            var projectNames = await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name, ct);
+            history.Add("Title", oldTitle, task.Title).Add("Status", Label(was), Label(task.Status))
+                .Add("Assignee", ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldAssignee), ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, task.AssigneeId))
+                .Add("Priority", oldPriority.ToString(), task.Priority.ToString()).Add("Start date", oldStart, task.StartDate).Add("Due date", oldDue, task.DueDate)
+                .Add("Type", oldType is { } ot ? typeNames.GetValueOrDefault(ot) : null, task.WorkTypeId is { } nt ? typeNames.GetValueOrDefault(nt) : null)
+                .Add("Project", oldProject is { } op ? projectNames.GetValueOrDefault(op) : null, task.RelatedProjectId is { } np ? projectNames.GetValueOrDefault(np) : null)
+                .Add("Description", oldDescription, task.Description, 60)
+                .Record(recorder, "worktask", "WorkTask", id);
+        }
         if (was != task.Status) recorder.Activity("worktask.status", "WorkTask", id, $"{key}: {Label(was)} → {Label(task.Status)}", null, was.ToString(), task.Status.ToString());
         if (changes.Count > 0) recorder.Activity("worktask.updated", "WorkTask", id, $"{key}: changed {string.Join(", ", changes)}", null);
         if (reassigned) await NotifyAssignedAsync(task, ct);
@@ -401,6 +418,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             await ApplyStatusAsync(task, req.Status, ct);
             task.Version++; task.UpdatedAt = clock.Now; task.UpdatedBy = ctx.UserId;
             recorder.Activity("worktask.status", "WorkTask", id, $"{KeyOf(task.Number)}: {Label(was)} → {Label(task.Status)}", null, was.ToString(), task.Status.ToString());
+            new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", Label(was), Label(task.Status)).Record(recorder, "worktask", "WorkTask", id);
             await RunAutomationsAsync(task, false, ct);
             await customers.StatusChangedAsync(task, was, ct);
             await db.SaveChangesAsync(ct);

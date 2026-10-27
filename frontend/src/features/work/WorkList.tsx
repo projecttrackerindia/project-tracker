@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { WorkKind, WorkListFilters, WorkRow, WorkStatusFilter } from '../../api/workItemsApi';
 import { Icon } from '../../components/Icon';
 import { EmptyState, ErrorState } from '../../components/ui';
 import { dateOffset, todayISO } from '../../lib/format';
 import { useDebounced } from '../../lib/hooks';
 import { SlaRing } from './Desk';
+import { BulkEditBar } from '../platform/BulkEditBar';
+import { SavedViewsBar } from '../platform/SavedViews';
 import { Due, KIND_LABEL, KindChip, Owner, PRIORITY_ORDER, PriorityDot, useWorkList } from './workUi';
 import './work.css';
 
@@ -62,7 +64,7 @@ function compare(s: Sort) {
  * date (red when late), grouped and sorted as the person chooses. The kind chips narrow it; search, project, owner and "Overdue" appear
  * only when the list is long enough to need them. A row opens the item in the side panel.
  */
-export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, defaults, showKinds = true, headExtra, kind: kindProp, onKind }: {
+export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, defaults, showKinds = true, headExtra, kind: kindProp, onKind, views = true, bulk = true }: {
   /** What the server is asked for (mine, team, kind, project …); the list adds status and search. */ filters: WorkListFilters;
   /** Where the group / sort / show choice is remembered. */ viewKey: string;
   selectedId: string | null; onOpen: (id: string) => void;
@@ -71,6 +73,8 @@ export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, d
   defaults?: Partial<Prefs>; showKinds?: boolean; headExtra?: ReactNode;
   /** The kind chip in the address (a project's ?kind=): given, the chips follow it and report changes through `onKind`. */
   kind?: WorkKind | null; onKind?: (k: WorkKind | null) => void;
+  /** Saved views above the list (scope "work", per list) and selecting rows for bulk edit. */
+  views?: boolean; bulk?: boolean;
 }) {
   const fallback: Prefs = { group: 'due', sort: 'priority', show: 'open', ...defaults };
   const [prefs, setPrefs] = useState<Prefs>(() => readPrefs(viewKey, fallback));
@@ -85,7 +89,9 @@ export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, d
   const [projectId, setProjectId] = useState('');
   const [ownerId, setOwnerId] = useState('');
   const [overdue, setOverdue] = useState(false);
-  useEffect(() => { setOwnKind(null); setQ(''); setProjectId(''); setOwnerId(''); setOverdue(false); }, [viewKey]);
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  useEffect(() => { setOwnKind(null); setQ(''); setProjectId(''); setOwnerId(''); setOverdue(false); setSelecting(false); setPicked(new Set()); }, [viewKey]);
 
   const status: WorkStatusFilter = prefs.show;
   const list = useWorkList({ ...filters, kind: filters.kind ?? (showKinds ? undefined : kinds), status, q: dq || undefined });
@@ -114,11 +120,30 @@ export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, d
   }, [shown, prefs.group, prefs.sort, today, weekEnd]);
 
   const reset = () => { setKind(null); setQ(''); setProjectId(''); setOwnerId(''); setOverdue(false); };
+
+  // A saved view is the list's own choices: show, group and sort, the kind chip, search and filters.
+  const config = useMemo(() => ({ list: viewKey, group: prefs.group, sort: prefs.sort, show: prefs.show, kind: kind ?? undefined, q: q.trim() || undefined,
+    projectId: projectId || undefined, ownerId: ownerId || undefined, overdue: overdue || undefined }), [viewKey, prefs, kind, q, projectId, ownerId, overdue]);
+  const apply = (c: Record<string, unknown>) => {
+    const str = (k: string) => (typeof c[k] === 'string' ? (c[k] as string) : '');
+    set({ group: (GROUPS.some((g) => g.id === c.group) ? c.group : fallback.group) as Group, sort: (SORTS.some((o) => o.id === c.sort) ? c.sort : fallback.sort) as Sort,
+      show: (SHOWS.some((o) => o.id === c.show) ? c.show : fallback.show) as Show });
+    setKind(kinds.includes(str('kind') as WorkKind) ? (str('kind') as WorkKind) : null);
+    setQ(str('q')); setProjectId(str('projectId')); setOwnerId(str('ownerId')); setOverdue(c.overdue === true);
+  };
+
+  // Selection for bulk edit: only rows still in the list count.
+  const byId = useMemo(() => new Map(all.map((w) => [w.id, w])), [all]);
+  const pickedRows = useMemo(() => [...picked].map((id) => byId.get(id)).filter((w): w is WorkRow => !!w), [picked, byId]);
+  const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleMany = (ids: string[], on: boolean) => setPicked((p) => { const n = new Set(p); for (const id of ids) { if (on) n.add(id); else n.delete(id); } return n; });
+  const stopSelecting = () => { setSelecting(false); setPicked(new Set()); };
   const chips = showKinds && kinds.length > 1;
   const label = (opts: { id: string; label: string }[], id: string) => opts.find((o) => o.id === id)?.label ?? id;
 
   return (
     <section className="wk-card" aria-label="Work list">
+      {views && <SavedViewsBar scope="work" only={viewKey} current={config} onApply={apply} />}
       <div className="wk-bar">
         {chips ? (
           <div className="wk-kchips" role="group" aria-label="Kind">
@@ -132,6 +157,7 @@ export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, d
         ) : <div className="wk-count">{list.isLoading ? '' : `${shown.length} ${prefs.show === 'closed' ? 'done' : prefs.show === 'all' ? 'in all' : 'open'}`}</div>}
         {headExtra}
         <div className="wk-view" aria-label="Show, group and sort">
+          {bulk && all.length > 0 && <><button type="button" className="pv-select-btn" aria-pressed={selecting} onClick={() => (selecting ? stopSelecting() : setSelecting(true))}>{selecting ? 'Done' : 'Select'}</button><span aria-hidden="true">·</span></>}
           <label className="wk-pick"><span>Show: <b>{label(SHOWS, prefs.show)}</b></span>
             <select aria-label="Show" value={prefs.show} onChange={(e) => set({ show: e.target.value as Show })}>{SHOWS.map((o) => <option key={o.id} value={o.id}>{o.label[0].toUpperCase() + o.label.slice(1)}</option>)}</select></label>
           <span aria-hidden="true">·</span>
@@ -167,8 +193,15 @@ export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, d
         <div className="wk-list">
           {groups.map((g) => (
             <div key={g.title || 'all'} className="wk-group" role="group" aria-label={g.title || 'Work'}>
-              {g.title && <div className={`wk-group-head ${g.title === 'Overdue' ? 'late' : ''}`}><span>{g.title}</span><em>{g.items.length}</em></div>}
-              {g.items.map((w) => <WorkRowButton key={w.id} w={w} on={w.id === selectedId} onOpen={onOpen} />)}
+              {g.title && <div className={`wk-group-head ${g.title === 'Overdue' ? 'late' : ''}`}>
+                {selecting && <GroupCheck ids={g.items.map((w) => w.id)} picked={picked} onChange={toggleMany} label={g.title} />}
+                <span>{g.title}</span><em>{g.items.length}</em></div>}
+              {g.items.map((w) => selecting ? (
+                <div key={w.id} className={`wk-sel-row ${picked.has(w.id) ? 'sel' : ''}`}>
+                  <label className="pv-check"><input type="checkbox" checked={picked.has(w.id)} onChange={() => toggle(w.id)} aria-label={`Select ${w.key} ${w.title}`} /></label>
+                  <WorkRowButton w={w} on={w.id === selectedId} onOpen={() => toggle(w.id)} />
+                </div>
+              ) : <WorkRowButton key={w.id} w={w} on={w.id === selectedId} onOpen={onOpen} />)}
             </div>
           ))}
           {list.more && (
@@ -180,7 +213,18 @@ export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, d
           )}
         </div>
       )}
+      {selecting && <BulkEditBar rows={pickedRows} onClear={() => setPicked(new Set())} onDone={stopSelecting} />}
     </section>
+  );
+}
+
+/** Select or clear every row of a group; shows a dash when only some are selected. */
+function GroupCheck({ ids, picked, onChange, label }: { ids: string[]; picked: Set<string>; onChange: (ids: string[], on: boolean) => void; label: string }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const count = ids.filter((id) => picked.has(id)).length;
+  useEffect(() => { if (ref.current) ref.current.indeterminate = count > 0 && count < ids.length; }, [count, ids.length]);
+  return (
+    <label className="pv-check"><input ref={ref} type="checkbox" checked={count === ids.length && ids.length > 0} onChange={(e) => onChange(ids, e.target.checked)} aria-label={`Select all in ${label}`} /></label>
   );
 }
 

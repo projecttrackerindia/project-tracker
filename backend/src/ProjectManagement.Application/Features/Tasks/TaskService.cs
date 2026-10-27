@@ -303,6 +303,7 @@ public class TaskService(
 
         var oldStatus = await db.WorkflowStatuses.Where(x => x.Id == task.StatusId).Select(x => x.Name).FirstAsync(ct);
         var oldAssignee = task.AssigneeId; var oldDue = task.DueDate; var oldPriority = task.Priority; var oldStart = task.StartDate; var oldTitle = task.Title;
+        var oldDescription = task.Description; var oldEstimate = task.EstimatedHours;
         var key = $"{project.Key}-{task.Number}";
 
         task.Title = req.Title.Trim(); task.Description = req.Description?.Trim(); task.Priority = req.Priority;
@@ -322,6 +323,20 @@ public class TaskService(
         foreach (var lid in wanted.Where(w => current.All(c => c.LabelId != w)))
             db.TaskLabels.Add(new TaskLabel { TenantId = task.TenantId, TaskId = id, LabelId = lid, CreatedAt = clock.Now });
 
+        // History: every field this save changed, old → new, in one audit row.
+        {
+            var people = await ProjectManagement.Application.Features.Platform.FieldDiff.NamesAsync(db, [oldAssignee, task.AssigneeId], ct);
+            var labelIds = current.Select(l => l.LabelId).Union(wanted).ToList();
+            var labelNames = labelIds.Count == 0 ? new Dictionary<Guid, string>() : await db.Labels.AsNoTracking().Where(l => labelIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+            string Labels(IEnumerable<Guid> ids) => string.Join(", ", ids.Select(i => labelNames.GetValueOrDefault(i, "?")).OrderBy(n => n));
+            new ProjectManagement.Application.Features.Platform.FieldDiff()
+                .Add("Title", oldTitle, task.Title).Add("Status", oldStatus, status.Name)
+                .Add("Assignee", ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldAssignee), ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, task.AssigneeId))
+                .Add("Priority", oldPriority.ToString(), task.Priority.ToString()).Add("Start date", oldStart, task.StartDate).Add("Due date", oldDue, task.DueDate)
+                .Add("Labels", Labels(current.Select(l => l.LabelId)), Labels(wanted))
+                .Add("Description", oldDescription, task.Description, 60).Add("Estimate (h)", oldEstimate?.ToString("0.##"), task.EstimatedHours?.ToString("0.##"))
+                .Record(recorder, "task", "Task", id);
+        }
         if (oldStatus != status.Name)
             recorder.Activity("task.status_changed", "Task", id, $"{key}: status {oldStatus} → {status.Name}", task.ProjectId, oldStatus, status.Name);
         if (oldAssignee != task.AssigneeId)
@@ -448,6 +463,7 @@ public class TaskService(
         {
             var key = $"{await db.Projects.Where(p => p.Id == task.ProjectId).Select(p => p.Key).FirstAsync(ct)}-{task.Number}";
             recorder.Activity("task.status_changed", "Task", id, $"{key}: status {oldName} → {status.Name}", task.ProjectId, oldName, status.Name);
+            new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", oldName, status.Name).Record(recorder, "task", "Task", id);
             await automation.RunAsync(task, key, AutomationTrigger.StatusChanged, status.Id, null, null, ct);
         }
         await db.SaveChangesAsync(ct);

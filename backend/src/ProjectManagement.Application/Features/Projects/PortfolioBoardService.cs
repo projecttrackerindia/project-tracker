@@ -347,11 +347,13 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         var members = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && people.Contains(m.UserId)).Select(m => new { m.UserId, m.User!.DisplayName, m.WeeklyCapacityMinutes }).ToListAsync(ct);
         var leave = await db.PlannedLeaves.AsNoTracking().Where(l => people.Contains(l.UserId) && l.WorkDate >= start && l.WorkDate <= end).Select(l => new { l.UserId, l.WorkDate }).ToListAsync(ct);
         var weeks = Enumerable.Range(0, CapacityWeeks).Select(i => start.AddDays(i * 7)).ToList();
+        var holidays = await ProjectManagement.Application.Features.Platform.HolidayService.DatesAsync(db, start, end, ct);
 
         var result = new List<CapacityPersonDto>();
         foreach (var m in members)
         {
-            var off = leave.Where(l => l.UserId == m.UserId).Select(l => l.WorkDate).ToHashSet();
+            var leaveDays = leave.Where(l => l.UserId == m.UserId).Select(l => l.WorkDate).ToHashSet();
+            var off = leaveDays.Union(holidays).ToHashSet();   // public holidays are days off for everyone
             var weekly = m.WeeklyCapacityMinutes ?? CapacityService.StandardWeekMinutes;
             var demand = weeks.ToDictionary(w => w, _ => 0);
             var perProject = new Dictionary<Guid, (string Key, string Name, int Minutes, int Tasks)>();
@@ -375,7 +377,7 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
             var load = CapacityPlan.Load(totalDemand, totalCap);
             result.Add(new CapacityPersonDto(m.UserId, m.DisplayName, load, weekRows,
                 perProject.Select(p => new CapacityProjectDto(p.Key, p.Value.Key, p.Value.Name, p.Value.Minutes, p.Value.Tasks)).OrderByDescending(p => p.Minutes).ToList(),
-                off.Count, unestimated));
+                leaveDays.Count, unestimated));
         }
         // Over: more work than time in some week - including work in a week with no time at all (all of it on leave).
         var over = result.Where(p => p.Weeks.Any(w => w.Load > 100 || (w.CapacityMinutes == 0 && w.DemandMinutes > 0)))
@@ -385,7 +387,8 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         var notes = new List<string>();
         var unest = result.Sum(p => p.UnestimatedTasks);
         if (unest > 0) notes.Add($"{Plural(unest, "task has", "tasks have")} no estimate and {(unest == 1 ? "counts" : "count")} as {DefaultTaskMinutes / 60} hours.");
-        notes.Add("Only assigned work with a due date in the next 4 weeks is counted; planned leave lowers capacity.");
+        notes.Add(holidays.Count > 0 ? "Only assigned work with a due date in the next 4 weeks is counted; planned leave and public holidays lower capacity."
+            : "Only assigned work with a due date in the next 4 weeks is counted; planned leave lowers capacity.");
         return new PortfolioCapacityDto(start, end, result.Count, over, atRisk, notes);
     }
 
