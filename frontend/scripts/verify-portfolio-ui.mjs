@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
-// The portfolio board: filters in the address, the summary (and one written by the AI), decisions with options that become proposals,
-// money with a warning, capacity over 100%, the timeline with slipped dates as ghosts, and the export. Synthetic API fixtures only.
+// Projects › Portfolio (v2; the old /portfolio): the summary (and one written by the AI), decisions with the date change and the other ways
+// to recover that become proposals, money with a warning, capacity over 100%, and under ···: filters in the address, the export, the timeline. Synthetic fixtures only.
 const origin='https://projecttracker-preview.test', dist=path.resolve('dist'), out=path.resolve('test-results/portfolio-ui');
 await fs.mkdir(out,{recursive:true});
 const csp = await appCsp();
@@ -74,23 +74,27 @@ try{
  const waitWrite=async(test)=>{for(let i=0;i<40&&!writes.some(test);i++)await new Promise(r=>setTimeout(r,100));return writes.find(test);};
  const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:960});
  try{
- await page.goto(origin+'/preview-org/portfolio');
+ // v2: the old /portfolio is Projects › Portfolio: the AI summary, the decisions (old date → new date, Accept, other ways), money, capacity;
+ // filters, export and the roadmap are under ···.
+ await page.goto(origin+'/preview-org/portfolio');await page.waitForURL(/\/work\/projects\?view=portfolio$/);
  const summary=page.getByRole('region',{name:'Summary'});await summary.waitFor();
  assert.match(await summary.innerText(),/1 decision this week/);
  checks.push('summary');
 
- // Decisions: the headline with its causes and options with their effect; proposing one.
+ // Decisions: how late, the project, why in one line, and the date change as the hero; the other ways to recover with their effect.
  const decisions=page.getByRole('region',{name:'Decisions this week'});
- // The decision card: how late as the eyebrow, the project, why in one line, and the date change (due struck → forecast) as its hero.
- await decisions.getByText('6 days late',{exact:true}).waitFor();
- assert.ok(await decisions.getByRole('heading',{name:/Payments/}).isVisible());
- assert.ok(await decisions.getByText('Ravi Kumar is on leave from 3 Nov',{exact:false}).first().isVisible());
- assert.ok(await decisions.locator('.ds-shift s').isVisible()&&await decisions.locator('.ds-shift b').isVisible(),'due and forecast dates');
- const move=decisions.getByRole('listitem').filter({hasText:'Move Jyothsna Reddy onto PAY for a week'});
+ const dec=decisions.locator('.pj2-decision[data-project="PAY"]');
+ await dec.getByText('6 days late',{exact:true}).waitFor();
+ assert.ok(await dec.getByRole('heading',{name:/Payments/}).isVisible());
+ assert.ok(await dec.getByText('Ravi Kumar is on leave from 3 Nov',{exact:false}).first().isVisible());
+ assert.ok(await dec.locator('.ds-shift s').isVisible()&&await dec.locator('.ds-shift b').isVisible(),'due and new dates');
+ assert.ok(await dec.getByRole('button',{name:'Accept'}).isVisible(),'Accept the new date');
+ await dec.getByRole('button',{name:'Other ways'}).click();
+ const move=dec.getByRole('listitem').filter({hasText:'Move Jyothsna Reddy onto PAY for a week'});
  assert.ok(await move.getByText('1 day late').isVisible());
  await move.getByRole('button',{name:'What changes'}).click();
  assert.ok(await move.getByText('Give PAY-14 “Bank certification” to Jyothsna Reddy').isVisible());
- assert.ok(await decisions.getByText('on time (30 Oct)').isVisible());
+ assert.ok(await dec.getByText('on time (30 Oct)').isVisible());
  await move.getByRole('button',{name:'Propose this'}).click();
  const applied=await waitWrite(w=>w.ep.endsWith('/apply'));
  assert.equal(applied.b.option,'move_person');
@@ -116,23 +120,24 @@ try{
  assert.ok(await summary.getByText('Written by the AI',{exact:false}).isVisible());
  checks.push('ai-summary');
 
- // Filters (behind the "Filters · n" pill) go into the address and the query.
- await page.getByRole('button',{name:'Filters · 0'}).click();
+ // Filters (··· › Filters) go into the address and the query; export (··· › Export to Excel) uses them.
+ const more=async(item)=>{await page.getByRole('button',{name:'More on Portfolio'}).click();await page.getByRole('menu',{name:'More on Portfolio'}).getByRole('menuitem',{name:item}).click();};
+ await more(/^Filters/);
  await page.getByRole('group',{name:'Filters'}).getByRole('combobox',{name:'Owner'}).click();await page.getByRole('option',{name:'Ravi Kumar'}).click();
  for(let i=0;i<100&&!page.url().includes(`owner=${ravi}`);i++)await page.waitForTimeout(100);
  assert.ok(page.url().includes(`owner=${ravi}`),page.url());
  for(let i=0;i<30&&!boardQueries.some(qs=>qs.includes(`ownerId=${ravi}`));i++)await page.waitForTimeout(100);
  assert.ok(boardQueries.some(qs=>qs.includes(`ownerId=${ravi}`)));
- assert.ok(await page.getByRole('button',{name:'Filters · 1'}).isVisible(),'the pill counts the filters set');
- await page.getByRole('button',{name:'Export'}).click();
- const [dl]=await Promise.all([page.waitForEvent('download'),page.getByRole('menuitem',{name:'Excel'}).click()]);
+ await page.getByRole('button',{name:'More on Portfolio'}).click();
+ assert.ok(await page.getByRole('menu',{name:'More on Portfolio'}).getByRole('menuitem',{name:/^Filters · 1/}).isVisible(),'··· counts the filters set');
+ const [dl]=await Promise.all([page.waitForEvent('download'),page.getByRole('menu',{name:'More on Portfolio'}).getByRole('menuitem',{name:/^Export to Excel/}).click()]);
  assert.match(dl.suggestedFilename(),/portfolio-.*\.xlsx/);
  const exp=await waitWrite(w=>w.ep==='/api/v1/portfolio/export');
  assert.match(exp.q,/format=xlsx/);assert.match(exp.q,new RegExp(`ownerId=${ravi}`));
  checks.push('filters-export');
 
- // Timeline: bars, the slip after the due date, the original due date as a ghost, milestones and dependencies.
- await page.getByRole('navigation',{name:'Portfolio view'}).getByRole('button',{name:'Timeline'}).click();
+ // Timeline (··· › Timeline): bars, the slip after the due date, the original due date as a ghost, milestones and dependencies.
+ await more(/^Timeline/);
  const tl=page.getByRole('region',{name:'Timeline'});await tl.waitFor();
  assert.ok(page.url().includes('view=timeline'));
  assert.equal(await tl.locator('.tl-row').count(),2);
@@ -143,7 +148,7 @@ try{
  await shot(page,'timeline-1440.png');
  checks.push('timeline');
 
- await page.getByRole('navigation',{name:'Portfolio view'}).getByRole('button',{name:'Board'}).click();
+ await page.getByRole('button',{name:'‹ Decisions and summary'}).click();
  await page.getByRole('region',{name:'Summary'}).waitFor();
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await shot(page,'board-dark-1440.png');
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','light'));

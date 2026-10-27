@@ -205,7 +205,7 @@ export function ActivityTab({ projectId }: { projectId: string }) {
     <div className="card">
       <div className="card-head"><div><h3>Project activity</h3><p>Everything that changed in this project.</p></div></div>
       <div className="card-body">
-        {!data?.items.length ? <EmptyState icon="activity" title="No activity yet" text="Changes to tasks and the project will appear here." /> : (
+        {!data?.items?.length ? <EmptyState icon="activity" title="No activity yet" text="Changes to tasks and the project will appear here." /> : (
           <div className="activity-list">
             {data.items.map((a) => (
               <div className="act-item" key={a.id}>
@@ -216,7 +216,7 @@ export function ActivityTab({ projectId }: { projectId: string }) {
           </div>
         )}
       </div>
-      {data && <Pager page={data.page} totalPages={data.totalPages} totalItems={data.totalItems} onPage={setPage} />}
+      {data?.items && <Pager page={data.page} totalPages={data.totalPages} totalItems={data.totalItems} onPage={setPage} />}
     </div>
   );
 }

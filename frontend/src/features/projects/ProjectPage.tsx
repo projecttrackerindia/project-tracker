@@ -237,7 +237,7 @@ function Overview({ detail, canEdit, canReportIssue, onSettings, onReportIssue }
   const ai = useAi();
   const [, setParams] = useSearchParams();
   const brief = usePortfolioBrief();
-  const r = brief.data?.ranked.find((x) => x.projectId === p.id);
+  const r = brief.data?.ranked?.find((x) => x.projectId === p.id);
   const docsLevel = useModule('documents');
   const docs = useWsQuery(['documents', 'project', p.id], () => documentApi.list({ projectId: p.id, limit: 100 }), { enabled: docsLevel > 0, staleTime: 20_000 });
   const [plan, setPlanState] = useState(() => { try { return localStorage.getItem('pm_pp_plan') === '1'; } catch { return false; } });

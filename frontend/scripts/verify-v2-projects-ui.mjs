@@ -94,7 +94,7 @@ const make = async (theme = 'light') => {
     else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
     else if (ep === '/api/v1/workspace/members') data = [{ userId: user.id, displayName: 'Prasanna', email: user.email, role: 'Owner' }, { userId: siva.id, displayName: siva.name, email: 'siva@example.test', role: 'Member' }];
     else if (ep === '/api/v1/projects' && method === 'GET') { const ps = Number(url.searchParams.get('pageSize') ?? 25), pg = Number(url.searchParams.get('page') ?? 1); const items = projects.slice((pg - 1) * ps, pg * ps); data = { items, page: pg, pageSize: ps, totalItems: projects.length, totalPages: Math.ceil(projects.length / ps) }; }
-    else if (proj && proj[2] === '/move' && method === 'PATCH') { const x = projects.find((y) => y.id === proj[1]); x.status = body.status; projects = projects.filter((y) => y.status !== 'Archived'); data = x; }
+    else if (proj && proj[2] === '/move' && method === 'PATCH') { const x = { ...projects.find((y) => y.id === proj[1]), status: body.status }; projects = projects.filter((y) => y.id !== x.id || x.status !== 'Archived'); data = x; }
     else if (proj && !proj[2] && p) data = detail(p);
     else if (proj && proj[2] === '/agent' && method === 'PUT') { agent = { ...agent, ...body }; data = agent; }
     else if (proj && proj[2] === '/agent') data = { ...agent, projectId: proj[1], pending: agent.enabled ? 1 : 0 };

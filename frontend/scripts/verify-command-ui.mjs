@@ -182,8 +182,8 @@ try{
  await shot(page,'audit-1440.png');checks.push('audit');
  await noOverflow(page,'audit 1440');
 
- // The project's Agent tab: autonomy levels.
- await page.goto(origin+`/preview-org/projects/${pid}?tab=agent`);
+ // The project agent's autonomy levels: Settings › AI › Project agent (v2: moved there from the project's Agent tab).
+ await page.goto(origin+`/preview-org/settings/ai/project-agent?project=${pid}`);
  await page.getByRole('radiogroup',{name:'Autonomy level'}).waitFor();
  assert.ok(await page.getByRole('button',{name:'New tasks'}).isVisible());
  await page.getByRole('button',{name:'New tasks'}).click();await page.waitForTimeout(300);
@@ -218,7 +218,8 @@ try{
 
  // A new task suggests who, how long, when and how urgent from similar finished work; "Use all" fills only empty fields.
  ctx=await make('light');page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+`/preview-org/projects/${pid}`);await page.getByRole('button',{name:'Add task'}).first().click();
+ // v2: + Add work opens + New in this project; a task opens the task form there.
+ await page.goto(origin+`/preview-org/projects/${pid}`);await page.getByRole('button',{name:'Add work'}).click();await page.locator('.v2-new-input input').fill('CRIF HIGHMARK API integration');await page.getByRole('button',{name:'Create task'}).click();
  const tm=page.getByRole('dialog');await tm.getByPlaceholder('e.g. Complete API development').fill('CRIF HIGHMARK API integration');
  await tm.locator('.tsg-chip').first().waitFor();assert.equal(await tm.locator('.tsg-chip').count(),4);
  await page.waitForTimeout(400);await page.screenshot({path:path.join(out,'task-suggestions-1440.png'),animations:'disabled'});
@@ -227,6 +228,7 @@ try{
  assert.equal(await tm.locator('.tsg-chip').count(),0,'every suggestion was used');checks.push('task-suggestions');
  // Quick add: one line of plain words, what was understood shown as chips, one dismissed, Enter adds.
  await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'detached'}).catch(()=>{});
+ await page.goto(origin+`/preview-org/projects/${pid}?tab=work`);   // v2: quick add is part of the project's Work tab
  const qa=page.getByLabel('Add a task in plain words');await qa.waitFor();await qa.fill('fix login bug for me by tomorrow, high, 3h');
  await page.locator('.qa-chip').nth(3).waitFor();assert.equal(await page.locator('.qa-chip').count(),4);assert.equal((await page.locator('.qa-title').innerText()).trim(),'Fix login bug');
  await page.waitForTimeout(200);await page.screenshot({path:path.join(out,'quick-add-1440.png'),animations:'disabled'});

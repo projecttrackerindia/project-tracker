@@ -54,6 +54,8 @@ try{
  });
  for(const width of [1440,390]){
   const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',e=>{if(e.type()==='error'&&!e.text().startsWith('Failed to load resource'))errors.push(e.text());});await page.setViewportSize({width,height:1000});await page.goto(origin+`/preview-org/projects/${pid}`);
+  // v2: the Overview shows the stages as chips; the full timeline (dates, Schedule studio) opens under them with "Plan and dates ›".
+  const plan=page.locator(".pp-stages-head .link-btn");await plan.waitFor();if(await plan.getAttribute("aria-expanded")!=="true")await plan.click();
   // The timeline card: nothing in its header, summary or stages overlaps anything else, at any width.
   await page.locator('.tl-card').waitFor({timeout:15000});await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(300);
   const clash=await page.evaluate(()=>{const card=document.querySelector('.tl-card');const els=[...card.querySelectorAll('.tl-actions > *, .tl-progress-top > *, .tl-legend li, .tl-segments, .htl-dot, .htl-body, h3')].filter(e=>e.getClientRects().length);

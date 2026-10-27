@@ -43,6 +43,10 @@ try{
    else if(ep.endsWith('/workspace/members'))data=[{userId:user.id,displayName:user.displayName,email:user.email,role:'Owner'}];
    else if(ep.endsWith('/project-status/groups'))data=[{id:pid,name:'Delivery',isActive:true,count:1,projects:[project]}];
    else if(ep.includes('/project-status/projects/'))data={project,tasks,changes:[],delayedTasks:0,blockedTasks:0};
+   // v2: a portfolio link to one project opens the one project page.
+   else if(ep===`/api/v1/projects/${pid}`)data={project:{...card(0,project.name,'DEMO',project.description,'Delivery','AtRisk',3,1,33,'High','NewProject',owner(2,'Prasanna Krishna'),'2027-07-09'),id:pid},
+    stages:['Requirements and Planning','Code Review','User Acceptance Testing','Production Deployment'].map((name,i)=>({id:`50000000-0000-0000-0000-00000000000${i}`,name,order:i,plannedStart:null,plannedEnd:null,actualStart:null,actualEnd:null,status:i?'Pending':'InProgress',effectiveStatus:i?'Pending':'InProgress',owner:null,assignee:null,description:null,taskTotal:1,taskDone:0,locked:i>0,lockedBy:null,openIssues:0,totalIssues:0})),
+    statuses:[],members:[{userId:user.id,name:user.displayName,email:user.email,role:'Owner'}]};
    else if(ep==='/api/v1/calendar')data=['Requirements and Planning','Code Review','User Acceptance Testing','Production Deployment'].map((title,i)=>({id:`20000000-0000-0000-0000-00000000000${i}`,type:'stage',title,date:today,status:'Pending',category:'Todo',overdue:false,projectId:pid,projectName:'Long integration project name with a descriptive delivery title',priority:'Medium'}));
    else if(ep==='/api/v1/ai/status')data={enabled:true,configured:true,entitled:true,allowedHere:true,model:'synthetic',provider:'Gemini'};
    else if(ep==='/api/v1/ai/portfolio/brief')data={ranked:[{projectId:pid,key:'DEMO',name:project.name,group:'Delivery',health:'AtRisk',progress:33,owner:null,startDate:'2026-10-01',dueDate:'2027-07-09',delayedDays:0,openTasks:2,overdueTasks:0,blockedTasks:0,openActionItems:0,overdueActionItems:1,finishedLast28Days:0,inProgressTasks:2,projectedFinish:null,projectedSlipDays:null,confidence:'none',score:5,level:'High',reasons:['Nothing has finished in the last 4 weeks, and 2 tasks are still open.','1 action item is overdue.']}],projects:1,totals:{}};
@@ -66,13 +70,13 @@ try{
  async function open(url,selector,width){await page?.close();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height:1000});await page.goto(origin+url);try{await page.locator(selector).waitFor({timeout:15000});}catch(e){await fs.writeFile(path.join(out,'failure.json'),JSON.stringify({url:page.url(),errors,body:await page.locator('body').innerText()}));throw e;}await page.evaluate(()=>document.fonts.ready);}
  async function capture(name){assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,name+' viewport overflow');assert.deepEqual(await cutOff(page),[],'cut off at the right edge');await page.screenshot({path:path.join(out,name+'.png'),animations:'disabled'});checks.push(name);}
  for(const width of [1440,1080,820,390]){
-  await open('/preview-org/portfolio?project='+pid,'.ps-table',width);
-  // The risk banner: the level and forecast in one line, the first reason under it, Why? and What if…
-  await page.locator('.pi-project.ds-banner.risk').waitFor();assert.match(await page.locator('.pi-project .txt b').innerText(),/High risk — no forecast possible/);
-  assert.equal(await page.locator('.ps-head').evaluate(el=>[...el.children].every(c=>c.getBoundingClientRect().right<=el.getBoundingClientRect().right+1)),true,'Project heading stays inside the panel');
-  if(width===1080)await page.getByRole('tab',{name:'Side by side'}).click();
-  const overlap=await page.locator('.ps-table tbody tr').evaluateAll(rows=>rows.some(row=>{const cells=[...row.cells];return cells.slice(0,-1).some((c,i)=>{const box=c.getBoundingClientRect(),next=cells[i+1].getBoundingClientRect();if(Math.abs(box.top-next.top)>2)return false;return [...c.querySelectorAll('.ps-assignee span:not(.avatar),.ps-date>span,.ps-status')].some(el=>el.getBoundingClientRect().right>box.right+1);});}));
-  assert.equal(overlap,false,'Task metadata stays inside its cells');if(width===390)assert.deepEqual(await page.locator('.ps-table tbody tr').first().locator('td').evaluateAll(c=>c.map(t=>t.dataset.label)),['Task','Assignee','Start','Due','Status']);await capture('portfolio-'+width);
+  // v2: Portfolio has no project tree or summary page of its own: a portfolio link to a project opens the one project page.
+  await open('/preview-org/portfolio?project='+pid,'.pp-head h1',width);assert.ok(new URL(page.url()).pathname.endsWith(`/work/projects/${pid}`),page.url());
+  // The summary says where it stands, from the portfolio's forecast (nothing finished in 4 weeks, so no forecast yet).
+  await page.locator('.pp-summary .v2-ai-card').waitFor();assert.match(await page.locator('.pp-summary').innerText(),/A synthetic project for responsive layout verification\.[\s\S]*1 of 3 tasks done/);
+  assert.equal(await page.locator('.pp-head').evaluate(el=>[...el.children].every(c=>c.getBoundingClientRect().right<=el.getBoundingClientRect().right+1)),true,'Project heading stays inside the page');
+  const inside=await page.locator('.pp-stage').evaluateAll(chips=>chips.every(c=>{const box=c.getBoundingClientRect(),card=c.closest('.pp-stages').getBoundingClientRect();return box.left>=card.left-1&&box.right<=card.right+1;}));
+  assert.equal(inside,true,'Stage chips stay inside their card');await capture('project-page-'+width);
  }
  for(const width of [1440,390]){
   // v2: /calendar is Home › Calendar, one calm week (the month agenda and its "Show" filters are gone). Long titles stay inside their day.
@@ -91,7 +95,7 @@ try{
  await open('/preview-org/insights?tab=time&s=week&week='+plannedDate,'.planned-leave',390);await page.locator('.planned-leave .leave-list').waitFor();await capture('timesheet-leave-390');
  await open('/preview-org/support','.page-title',390);await page.getByRole('heading',{name:'Operations',exact:true}).waitFor();assert.ok(/\/work\?tab=tickets$/.test(page.url()),'Old support links redirect to Operations');
  assert.equal(await page.getByRole('link',{name:'Support center',exact:true}).count(),0);
- await open('/preview-org/portfolio?project='+pid,'.ps-table',1440);assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0);
+ await open('/preview-org/portfolio?project='+pid,'.pp-head h1',1440);assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0);
  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.v2-ask .v2-orb').count(),1,'v2: the Ask bar replaces the animated agent mark');
  // Project cards line up across a row whatever the name, code or description length (the numbers, bar, badges and owner sit at the same height).
  cardProjects=[card(1,'idfc-qr-callback-api','IQCA','Api Configuration and Validation','Mule Soft','AtRisk',1,0,0,'Medium','Integration',owner(1,'Shiva kumar'),'2026-11-13'),
@@ -99,19 +103,19 @@ try{
   card(3,'TCN Call Recording API','TCRA','TCN Call Recording API request implementation, sharing Postman collections with the vendor.','Mule Soft','OnTrack',1,1,100,'Medium','Integration',owner(2,'Prasanna Krishna'),'2026-12-20'),
   card(4,'GEN AI','GA2',null,'Mule Soft','OnTrack',1,1,100,'Medium','NewProject',owner(2,'Prasanna Krishna'),'2027-02-14')];
  await ctx.addInitScript(()=>{try{localStorage.setItem('pm_projects_view','cards');}catch{}});
- await open('/preview-org/projects','.project-grid',1440);await page.locator('.project-card').nth(3).waitFor();
+ await open('/preview-org/projects','.pj2-grid',1440);await page.locator('.pj2-card').nth(3).waitFor();
  for(const width of [1440,1100]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(200);
-  // Five facts per card: name and key, status, description, tasks done with one bar, owner and date (no boxed numbers, no tag row).
-  const cards=await page.evaluate(()=>[...document.querySelectorAll('.project-card')].map(c=>({row:Math.round(c.getBoundingClientRect().top),parts:['.pc-desc','.pc-progress','.progress','.pc-foot'].map(s=>Math.round(c.querySelector(s)?.getBoundingClientRect().top??-1))})));
-  assert.equal(await page.locator('.project-card .pc-stats, .project-card .task-meta').count(),0,'the boxed numbers and tag row are gone');
+  // v2: four facts per card, at the same height whatever the name: status, group · owner, one bar, % · due (no boxed numbers, tag row or chat button).
+  const cards=await page.evaluate(()=>[...document.querySelectorAll('.pj2-card')].map(c=>({row:Math.round(c.getBoundingClientRect().top),parts:['.pj2-pill','.pj2-sub','.pj2-bar','.pj2-foot'].map(s=>Math.round(c.querySelector(s)?.getBoundingClientRect().top??-1))})));
+  assert.equal(await page.locator('.pj2-card .pc-stats, .pj2-card .task-meta, .pj2-card .pchat-btn').count(),0,'no boxed numbers, tag row or chat button');
   for(const row of new Set(cards.map(c=>c.row))){const same=cards.filter(c=>c.row===row);if(same.length<2)continue;
-   for(const part of [0,1,2,3]){const tops=same.map(c=>c.parts[part]);assert.ok(Math.max(...tops)-Math.min(...tops)<=1,`project cards misaligned at ${width}px (${['description','tasks','progress','owner'][part]}): ${tops.join(', ')}`);}}}
+   for(const part of [0,1,2,3]){const tops=same.map(c=>c.parts[part]);assert.ok(Math.max(...tops)-Math.min(...tops)<=1,`project cards misaligned at ${width}px (${['status','group and owner','bar','% and due'][part]}): ${tops.join(', ')}`);}}}
  await page.setViewportSize({width:1440,height:1000});
  await capture('project-cards-1440');
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'project-cards-dark-1440.png'),animations:'disabled'});
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','light'));
  for(const width of [820,390]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(200);await capture('project-cards-'+width);}
  cardProjects=null;
- await open('/preview-org/portfolio?project='+pid,'.ps-table',1440);await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'portfolio-dark-1440.png'),animations:'disabled'});
+ await open('/preview-org/portfolio?project='+pid,'.pp-head h1',1440);await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'project-page-dark-1440.png'),animations:'disabled'});
  assert.deepEqual(errors,[]);await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,writes:writes.length,errors,scope:'Production bundle with synthetic APIs only; no customer or paid AI actions.'},null,2));console.log(JSON.stringify({checks,writes:writes.length,errors}));
 }finally{await browser.close();}

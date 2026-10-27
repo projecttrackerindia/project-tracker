@@ -96,10 +96,10 @@ try{
   assert.deepEqual(saves.at(-1).repeat,{frequency:'Weekdays',occurrences:10});assert.equal(saves.at(-1).startTime,'2030-01-07T04:00:00.000Z');
   assert.equal(new Date(saves.at(-1).endTime)-new Date(saves.at(-1).startTime),900000);assert.equal(saves.at(-1).notetaker,'off');
   checks.push(`scrum-series-${width}`);await dialog.getByRole('button',{name:'Done',exact:true}).click();
-  // The project page has one way in: Meet, filtered to the project, which then schedules for that project.
+  // The project page has one way in: Meet (under ··· since v2), filtered to the project, which then schedules for that project.
   await page.goto(origin+`/preview-org/projects/${pid}`);
   assert.equal(await page.getByRole('button',{name:'Meeting',exact:true}).count(),0,'No meeting menu on the project page');
-  await page.locator('.page-actions').getByRole('link',{name:'Meet',exact:true}).click();await page.waitForURL(/\/talk\?.*f=meetings.*project=/);
+  await page.getByRole('button',{name:'More on this project'}).click();await page.getByRole('menu',{name:'More on this project'}).getByRole('menuitem',{name:/^Meet/}).click();await page.waitForURL(/\/talk\?.*f=meetings.*project=/);
   await page.getByRole('button',{name:'Schedule',exact:true}).click();
   dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
   await page.waitForFunction(()=>document.querySelector('[aria-label="Project"]')?.value?.length>0);

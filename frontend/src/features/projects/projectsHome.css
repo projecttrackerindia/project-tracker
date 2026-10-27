@@ -4,7 +4,7 @@
    Status colours: on track green, at risk amber, delayed red, completed blue. Violet only inside AI cards.
    ===================================================================================================================== */
 
-.pj2 { display: grid; gap: 20px; min-width: 0; }
+.pj2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; min-width: 0; }
 .pj2 > .page-head { margin-bottom: 4px; }
 .pj2-back { display: inline-flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 500; color: var(--ds-accent); text-decoration: none; border: 0; background: none; padding: 0; cursor: pointer; font-family: inherit; }
 .pj2-back:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -104,7 +104,7 @@
 .pj2-slips small { grid-column: 1 / -1; color: var(--ds-text-3); font-size: 12.5px; }
 .pj2-shift s { color: var(--ds-text-3); }
 .pj2-note { margin: 0; font-size: 13.5px; color: var(--ds-text-2); }
-.pj2-portfolio .pb-money, .pj2-portfolio .pb-capacity { margin: 0; }
+.pj2-portfolio .pb-money, .pj2-portfolio .pb-capacity { margin: 0; min-width: 0; overflow-x: auto; }
 
 /* ------------------------------------------------------------------ narrow screens */
 @media (max-width: 1080px) { .pj2-stats { gap: 12px; } .pj2-stat { padding: 18px; } }
@@ -123,5 +123,11 @@
   .pj2-options > li { grid-template-columns: minmax(0, 1fr); }
   .pj2-decision .acts { justify-content: stretch; }
   .pj2-decision .acts .btn { flex: 1; }
+}
+/* phones: an AI card's one action goes under its words, so the words keep the width */
+@media (max-width: 640px) {
+  .pj2-summary .v2-ai-card, .pp-summary .v2-ai-card { flex-wrap: wrap; }
+  .pj2-summary .v2-ai-card-main, .pp-summary .v2-ai-card-main { flex: 1 1 calc(100% - 30px); }
+  .pj2-summary .v2-ai-card .btn-ai, .pp-summary .v2-ai-card .btn-ai { margin-left: 27px; }
 }
 @media (prefers-reduced-motion: reduce) { .pj2-card, .pj2-stat, .pj2-bar > i { transition: none; } .pj2-card:hover { transform: none; } }

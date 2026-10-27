@@ -94,13 +94,15 @@ try{
  // Desktop: switch the agent on, review, approve, edit and approve, dismiss, add a transcript.
  let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1100});
  if(process.env.VERIFY_DEBUG){page.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.error('[console]',m.text().slice(0,300));});page.on('framenavigated',f=>{if(f===page.mainFrame())console.error('[nav]',f.url());});}
- await page.goto(origin+`/preview-org/projects/${pid}?tab=agent`);
- await page.getByRole('heading',{name:'Let an agent keep this project up to date'}).waitFor();
+ // v2: the old Agent tab is the project's Activity tab: the agent is one switch there, with its proposals under it; how it behaves is set in
+ // Settings › AI › Project agent ("Set how the agent behaves ›").
+ await page.goto(origin+`/preview-org/projects/${pid}?tab=agent`);await page.waitForURL(new RegExp(`/work/projects/${pid}\\?tab=activity$`));
+ const agentSwitch=page.getByRole('switch',{name:'Project agent'});await agentSwitch.waitFor();assert.equal(await agentSwitch.getAttribute('aria-checked'),'false');
+ assert.equal(await page.getByRole('link',{name:'Set how the agent behaves ›'}).getAttribute('href'),`/preview-org/settings/ai/project-agent?project=${pid}`);
  await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,'agent-off-1440.png'),animations:'disabled'});
- await page.getByRole('button',{name:/Switch on the agent/}).click();
+ await agentSwitch.click();
  await page.getByRole('heading',{name:'Prepare the go-live checklist'}).waitFor();
  assert.equal(writes.at(-1).b.enabled,true);checks.push('switch-on');
- assert.ok(await page.getByText('agent+0a1b2c3d4e5f60718293a4b5@inbound.projecttracker.in').isVisible());
  assert.ok(await page.getByText('“who is doing refunds?”').isVisible());
  assert.ok(await page.locator('[data-finding=f4]').getByText('Check the source').isVisible());assert.equal(await page.locator('[data-finding=f1]').getByText('Check the source').count(),0);checks.push('ungrounded-flag');
  await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,'agent-queue-1440.png'),animations:'disabled',fullPage:true});
@@ -124,6 +126,12 @@ try{
  await page.screenshot({path:path.join(out,'agent-dismiss-why-1440.png'),animations:'disabled'});
  await card.getByRole('button',{name:'Duplicate'}).click();await page.waitForTimeout(300);
  assert.deepEqual(writes.find(w=>w.ep.endsWith('/f5/dismiss')).b,{reason:'duplicate'});checks.push('dismiss-with-reason');
+ assert.equal(await page.locator('.pp-body').getByText('What it reads').count(),0,'the settings are not on the project');
+
+ // How it behaves: Settings › AI › Project agent, for this project (every control the Agent tab had).
+ await page.getByRole('link',{name:'Set how the agent behaves ›'}).click();await page.waitForURL(new RegExp(`/settings/ai/project-agent\\?project=${pid}$`));
+ await page.getByText('What it reads').waitFor();
+ assert.ok(await page.getByText('agent+0a1b2c3d4e5f60718293a4b5@inbound.projecttracker.in').isVisible());checks.push('settings-in-settings-ai');
 
  // Credits: the month's use against the cap, and changing the cap.
  assert.ok(await page.getByRole('meter',{name:'Credits used of the monthly cap'}).isVisible());
@@ -139,7 +147,7 @@ try{
  assert.ok(writes.at(-1).ep.endsWith('/autonomy/CreateActionItem/accept'));await trust.locator('.ag-earned').waitFor({state:'detached'});checks.push('earned-autonomy');
 
  // Sending the bot to any call by its link happens in one place: Meet › Notetaker (this opens it, filed under this project).
- assert.equal(await page.getByRole('link',{name:'Send to a call'}).getAttribute('href'),`/preview-org/meet/notetaker?project=${pid}`);checks.push('join-link-in-meet');
+ assert.equal(await page.getByRole('link',{name:'Send to a call'}).getAttribute('href'),`/preview-org/talk?f=meetings&s=notetaker&project=${pid}`);checks.push('join-link-in-meet');
 
  await page.getByRole('button',{name:'Add transcript'}).click();
  const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Add a transcript'}).waitFor();
