@@ -62,7 +62,7 @@ export function PhoneToday() {
   };
 
   const b = briefing.data;
-  const n = b?.count ?? inbox.data?.counts.all ?? rows.length;
+  const n = b?.count ?? inbox.data?.counts?.all ?? rows.length;
   return (
     <div className="pt" data-testid="phone-today">
       <div className="pt-date">{headDay(today)}</div>

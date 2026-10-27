@@ -246,7 +246,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var people = rows.SelectMany(r => new[] { r.AssigneeId, (Guid?)r.ReporterId }).Where(x => x != null).Select(x => x!.Value).Distinct().ToList();
         var names = await db.Users.AsNoTracking().Where(u => people.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
         var projectIds = rows.Where(r => r.RelatedProjectId != null).Select(r => r.RelatedProjectId!.Value).Distinct().ToList();
-        var projectNames = await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => new WorkProjectRefDto(p.Id, p.Key, p.Name, p.Status), ct);
+        var projects = await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => new WorkProjectRefDto(p.Id, p.Key, p.Name, p.Status), ct);
         var comments = await db.WorkTaskComments.AsNoTracking().Where(c => ids.Contains(c.WorkTaskId)).GroupBy(c => c.WorkTaskId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
         var attachments = await db.WorkTaskAttachments.AsNoTracking().Where(a => ids.Contains(a.WorkTaskId)).GroupBy(a => a.WorkTaskId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
         var logged = await db.TimeEntries.AsNoTracking().Where(e => e.WorkTaskId != null && ids.Contains(e.WorkTaskId.Value) && !(e.StartedAt != null && e.EndedAt == null))
