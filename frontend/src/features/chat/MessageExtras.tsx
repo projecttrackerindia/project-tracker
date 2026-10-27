@@ -225,7 +225,9 @@ const para = (text: string) => ({ type: 'paragraph', content: text ? [{ type: 't
  * The fields filled from the message (by AI when it is on), for the person to check; "Create" makes the item with its own rules, then the
  * message links to it so everyone in the conversation sees what was done about it.
  */
-export function MakeFromMessage({ m, conversation, kind, onClose }: { m: ChatMessage; conversation: Conversation; kind: ChatExtract['kind']; onClose: () => void }) {
+export interface MadeTask { id: string; title: string; assigneeName: string | null; due: string | null; projectName: string | null }
+export function MakeFromMessage({ m, conversation, kind, onClose, onMade }: { m: ChatMessage; conversation: Conversation; kind: ChatExtract['kind']; onClose: () => void;
+  /** A task was made (Talk shows it flying to My Work, with Undo, instead of the plain toast). */ onMade?: (t: MadeTask) => void }) {
   const wid = useWorkspaceId() ?? '';
   const navigate = useNavigate();
   const fields = useWsQuery(['chat', 'extract', m.id, kind], () => chatApi.extract(m.id, kind), { staleTime: Infinity, retry: false });
@@ -277,6 +279,13 @@ export function MakeFromMessage({ m, conversation, kind, onClose }: { m: ChatMes
       }
       const linked = await chatApi.link(m.id, { kind, id: made.id });
       putMessage(wid, linked);
+      if (kind === 'task' && onMade) {
+        const who = conversation.members.find((p) => p.userId === assigneeId)?.name ?? null;
+        const proj = (projects.data?.items ?? []).find((p) => p.id === projectId)?.name ?? null;
+        onClose();
+        onMade({ id: made.id, title: title.trim(), assigneeName: who, due: due || null, projectName: proj });
+        return;
+      }
       toast(`The ${KIND_LABEL[kind]} is made and linked to the message.`, 'success', { label: 'Open', onClick: () => navigate(made.open) });
       onClose();
     } catch (e) { toast(e instanceof ApiError ? e.message : `Could not make the ${KIND_LABEL[kind]}.`, 'error'); }

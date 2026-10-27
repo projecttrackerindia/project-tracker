@@ -5,9 +5,9 @@ import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
-// Talk (v2): chat, mail and meetings in one list with All · Chat · Mail · Meetings, meetings as rounded squares, the "Connect your
-// mailbox" row, a chat thread with Call and ···, the ✦ summary strip with one action, actions BESIDE the bubble (Reply · Make task · ···),
-// "Message — or ✦ draft a reply", and a meeting opening in the same pane. 1440 light and dark, and a 390 phone. Synthetic API only.
+// Talk (v2, s-talk): chat, mail and meetings in one list with All · Unread · Chats · Mail · Meetings and a source glyph per row, meetings and
+// channels as rounded squares, the "Connect your mailbox" banner, a chat thread with members, call and ⓘ, the pinned "While you were away"
+// card, actions BESIDE the bubble (Make task · Remind me · ↩ · ···), "Message …" with Draft reply, and a meeting opening in the same pane. 1440 light and dark, and a 390 phone. Synthetic API only.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist');
 const out = path.resolve(process.env.PM_UI_ARTIFACTS || 'test-results/enterprise-ui', 'v2-talk');
 await fs.mkdir(out, { recursive: true });
@@ -97,21 +97,25 @@ try {
   await page.goto(`${origin}/preview-org/talk`);
   await page.locator('.talk-list').waitFor();
   await page.locator('.talk-row[data-row="Daily status call"]').waitFor();
-  assert.deepEqual(await page.locator('.talk-filters .ds-chip').allInnerTexts(), ['All', 'Chat', 'Mail', 'Meetings']);
-  assert.ok(await page.getByRole('button', { name: 'Start call' }).isVisible(), 'Start call in the list head');
+  assert.deepEqual(await page.locator('.talk-filters .talk-chip').allInnerTexts(), ['All', 'Unread 1', 'Chats', 'Mail', 'Meetings']);
+  assert.ok(await page.getByRole('textbox', { name: 'Search Talk' }).isVisible(), 'search at the top of the list');
+  assert.equal(await page.locator('.talk-row .talk-src').count(), await page.locator('.talk-row').count(), 'a source glyph on every row');
+  assert.equal(await page.locator('.talk-row[data-row="MuleSoft Support"] .talk-dot').count(), 1, 'an unread dot');
   // the meeting is a rounded square, people are round
   const radius = async (sel) => page.locator(sel).first().evaluate((e) => parseFloat(getComputedStyle(e).borderTopLeftRadius));
   const sq = await radius('.talk-row[data-row="Daily status call"] .talk-av');
   assert.ok(sq > 4 && sq < 20, `meeting avatar is a rounded square (${sq}px)`);
-  assert.ok(await radius('.talk-row[data-row="MuleSoft Support"] .talk-av') >= 19, 'a group is round');
+  assert.ok(await radius('.talk-row[data-row="Devraj Kumar"] .talk-av') >= 19, 'a person is round');
+  const ch = await radius('.talk-row[data-row="MuleSoft Support"] .talk-av');
+  assert.ok(ch > 4 && ch < 20, `a group is a rounded square with # (${ch}px)`);
   assert.equal(await page.getByTestId('connect-mailbox').count(), 0, 'v2: no mailbox row in the list; it is a banner under Mail');
   checks.push('one-list');
   await shot(page, 'list-1440-light.png');
 
-  await page.locator('.talk-filters .ds-chip', { hasText: 'Meetings' }).click();
+  await page.locator('.talk-filters .talk-chip', { hasText: 'Meetings' }).click();
   await page.waitForFunction(() => location.search.includes('f=meetings'));
   assert.deepEqual(await page.locator('.talk-rows .talk-row').evaluateAll((els) => els.map((e) => e.getAttribute('data-row'))), ['Daily status call']);
-  await page.locator('.talk-filters .ds-chip', { hasText: 'Mail' }).click();
+  await page.locator('.talk-filters .talk-chip', { hasText: 'Mail' }).click();
   await page.waitForFunction(() => location.search.includes('f=mail')); await page.getByTestId('connect-mailbox-banner').waitFor();
   assert.equal(await page.locator('.talk-rows .talk-row:not(.connect)').count(), 0);
   assert.match(await page.getByTestId('connect-mailbox-banner').innerText(), /Rediffmail[\s\S]*mailbox/);
@@ -121,7 +125,7 @@ try {
   await page.keyboard.press('Escape');
   await page.getByRole('dialog').waitFor({ state: 'detached' });
   checks.push('connect-mailbox');
-  await page.locator('.talk-filters .ds-chip', { hasText: 'All' }).click();
+  await page.locator('.talk-filters .talk-chip', { hasText: 'All' }).click();
   checks.push('filters');
 
   // A chat: the v2 header, the summary strip, the composer.
@@ -129,30 +133,31 @@ try {
   await page.waitForFunction((id) => location.pathname.endsWith(`/talk/${id}`), direct.id);
   await page.locator('.talk-head').waitFor();
   assert.ok(await page.locator('.talk-head').getByRole('button', { name: 'Call' }).isVisible(), 'Call in the thread header');
-  assert.ok(await page.getByRole('button', { name: 'Conversation actions' }).isVisible(), '··· in the thread header');
-  assert.equal(await page.locator('.composer-editable').getAttribute('data-placeholder'), 'Message — or ✦ draft a reply');
+  assert.ok(await page.getByRole('button', { name: 'Conversation actions' }).isVisible(), 'ⓘ (details and more) in the thread header');
+  assert.equal(await page.locator('.composer-editable').getAttribute('data-placeholder'), 'Message Devraj Kumar');
   const strip = page.getByTestId('summary-strip');
-  await strip.getByRole('button', { name: 'Summarize' }).click();
+  await strip.getByText('While you were away').waitFor();
+  assert.match(await strip.innerText(), /Pinned/);
+  await strip.getByRole('button', { name: 'Show what was decided' }).click();
   await strip.getByText('He agreed to the plan and asked for the doc by mail.').waitFor();
-  await strip.getByRole('button', { name: 'Draft a reply' }).click();
-  await page.waitForFunction(() => document.querySelector('.composer-editable')?.textContent?.includes('Sending the doc by mail now.'));
-  checks.push('summary-strip-and-draft');
-  await page.locator('.composer-editable').click(); await page.keyboard.press('Control+a'); await page.keyboard.press('Delete');
+  checks.push('while-you-were-away');
+  assert.equal((await page.getByRole('button', { name: 'Draft a reply with AI' }).innerText()).trim(), 'Draft reply');
   await page.getByRole('button', { name: 'Draft a reply with AI' }).click();
   await page.waitForFunction(() => document.querySelector('.composer-editable')?.textContent?.includes('Sending the doc by mail now.'));
   checks.push('composer-draft');
 
-  // Hover: Reply · Make task · ··· beside the bubble, never over it.
+  // Hover: Make task · Remind me · ↩ · ··· beside the bubble, never over it.
   const theirs = page.locator(`[data-msg="${messages[0].id}"]`);
   await theirs.locator('.bubble').hover();
   const acts = theirs.locator('.msg-actions');
   await acts.waitFor();
-  assert.deepEqual((await acts.locator('button').allInnerTexts()).map((t) => t.trim()), ['Reply', 'Make task', '']);
+  assert.deepEqual((await acts.locator('button').allInnerTexts()).map((t) => t.trim()), ['Make task', 'Remind me', '', '']);
+  assert.ok(await acts.getByRole('button', { name: 'Reply' }).isVisible(), '↩ is Reply');
   const b = await theirs.locator('.bubble').boundingBox(), a = await acts.boundingBox();
   assert.ok(a.x >= b.x + b.width, `actions sit to the right of their bubble (${a.x} vs ${b.x + b.width})`);
   await acts.getByRole('button', { name: 'More actions' }).click();
   const menu = theirs.getByRole('menu', { name: 'More actions' });
-  for (const name of ['Remind me', 'Save for later', 'Copy text', 'Pin to the conversation']) assert.ok(await menu.getByRole('menuitem', { name }).isVisible(), name);
+  for (const name of ['Save for later', 'Copy text', 'Pin to the conversation']) assert.ok(await menu.getByRole('menuitem', { name }).isVisible(), name);
   assert.equal(await menu.getByRole('menuitem', { name: /React/ }).count(), 6, 'reactions live under ···');
   await shot(page, 'thread-1440-light.png');
   await page.keyboard.press('Escape'); await page.mouse.click(5, 5);

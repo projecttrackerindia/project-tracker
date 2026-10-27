@@ -65,7 +65,7 @@ const make = async (theme, writes, opts = {}) => {
       return;
     }
     if (method !== 'GET' && !ep.endsWith('/auth/refresh')) {
-      assert.ok(/^\/api\/v1\/inbox\/[^/]+\/later$/.test(ep) || ep === `/api/v1/agent/findings/${g(2)}/approve` || ep === `/api/v1/time/approvals/${g(5)}/approve` || ep === `/api/v1/reminders/${g(6)}/done`, `Unexpected write: ${method} ${ep}`);
+      assert.ok(/^\/api\/v1\/inbox\/[^/]+\/later$/.test(ep) || ep === `/api/v1/agent/findings/${g(2)}/approve` || ep === `/api/v1/time/approvals/${g(5)}/approve` || ep === `/api/v1/reminders/${g(6)}/done` || ep === `/api/v1/meetings/${g(11)}/reschedule`, `Unexpected write: ${method} ${ep}`);
       writes.push(`${method} ${ep}`);
       await route.fulfill({ status: ep.endsWith('/later') ? 204 : 200, contentType: 'application/json', body: ep.endsWith('/later') ? '' : JSON.stringify({ data: {} }) });
       return;
@@ -82,6 +82,10 @@ const make = async (theme, writes, opts = {}) => {
     }
     else if (ep === '/api/v1/inbox/briefing') data = opts.empty ? { count: 0, headline: "You're all caught up.", reasons: [], sources: 'read your work', stats: { overdue: 0, dueToday: 0, decisions: 0, approvals: 0, mentions: 0, reminders: 0 } } : briefing;
     else if (ep === '/api/v1/calendar') { const from = url.searchParams.get('from'), to = url.searchParams.get('to'); data = calendar.filter((e) => e.date >= from && e.date <= to && (url.searchParams.get('mine') === 'true' ? e.type !== 'project' : true)); }
+    else if (ep === '/api/v1/meet') data = { items: calendar.filter((e) => e.type === 'meeting').map((e) => ({ ref: `p:${e.id}`, kind: 'project', id: e.id, title: e.title, description: e.title === 'CRIF UAT sign-off' ? '1. Open defects\n2. Token rotation status' : null, start: e.startsAt,
+      end: new Date(Date.parse(e.startsAt) + (e.durationMinutes ?? 30) * 60_000).toISOString(), timeZone: 'Asia/Kolkata', projectId: e.projectId, projectName: e.projectName, projectKey: null, provider: 'google', providerName: 'Google Meet', joinUrl: e.joinUrl ?? '',
+      calendarUrl: null, isScrum: false, recurring: e.title !== 'CRIF UAT sign-off', sessionsLeft: null, notetaker: 'off', myRsvp: 'Organizer', isOrganizer: true, canManage: true, organizerName: 'Asha', invited: 3, accepted: 1, declined: 0, status: 'Scheduled', notes: null, live: false })), from: '', to: '', truncated: false };
+    else if (ep === '/api/v1/reminders') data = { open: [{ id: g(7), title: 'Rotate CRIF token', nextFireAt: at(today, 15, 15) }], completed: [], sent: [], counts: { now: 0, today: 1, upcoming: 0, completed: 0 }, limits: { open: 100, recurring: 10, openUsed: 1, recurringUsed: 0 } };
     else if (ep === '/api/v1/calendar/feed') data = { enabled: true, url: 'https://projecttracker-preview.test/api/v1/calendar/feed/abc.ics', createdAt: ago(100), lastUsedAt: null };
     else if (ep === '/api/v1/dashboard') data = dashboard;
     else if (ep === '/api/v1/projects') data = { items: projects, page: 1, pageSize: 100, totalItems: projects.length, totalPages: 1 };
@@ -177,25 +181,37 @@ try {
     await page.getByText('Moved to tomorrow morning.').waitFor();
     assert.deepEqual(writes.sort(), [`POST /api/v1/inbox/${encodeURIComponent(rows[1].id)}/later`, `POST /api/v1/time/approvals/${g(5)}/approve`].sort());
 
-    // Calendar: a week with Me / Team, three colours only, the ✦ card and Subscribe as a link.
-    // Calendar: from the sidebar on a desk, from Home's own tab on a phone.
+    // Calendar (s-calendar): mini month + filters + ✦ week line, the work week 9–6 with meetings at their real lengths, focus blocks, deadline
+    // flags, reminder capsules and the now line, and the selected meeting on the right. From the sidebar on a desk, from Home's own tab on a phone.
     if (width === 390) await page.getByRole('tab', { name: 'Calendar' }).click();
     else await page.getByRole('link', { name: 'Calendar' }).first().click();
     await page.getByRole('heading', { level: 1, name: 'Calendar' }).waitFor();
     assert.match(page.url(), /tab=calendar/);
-    assert.equal(await page.locator('.hm-day').count(), 7);
-    await page.locator('.hm-ev.c-meeting').first().waitFor();
-    await page.locator('.hm-ev.c-stage', { hasText: 'UAT' }).waitFor();
-    await page.locator('.hm-ev.c-deadline').first().waitFor();
-    const colours = await page.locator('.hm-ev').evaluateAll((els) => [...new Set(els.map((e) => [...e.classList].find((c) => c.startsWith('c-'))))]);
-    assert.ok(colours.every((c) => ['c-meeting', 'c-deadline', 'c-stage'].includes(c)), `three colours only: ${colours}`);
-    const ai = page.getByRole('region', { name: 'This week' });
-    await ai.getByText('✦ This week').waitFor();
-    assert.match(await ai.innerText(), /\d+ deadlines? and \d+ meetings?/);
-    assert.equal(await page.getByRole('tab', { name: 'Me', exact: true }).getAttribute('aria-selected'), 'true');
-    await page.getByRole('tab', { name: 'Team' }).click();
-    assert.equal(await page.getByRole('tab', { name: 'Team' }).getAttribute('aria-selected'), 'true');
-    await page.getByRole('button', { name: 'Subscribe in Google / Outlook ›' }).waitFor();
+    await page.locator('.wp-e', { hasText: 'CRIF UAT sign-off' }).waitFor();
+    assert.equal(await page.locator('.wp-dh').count(), width === 390 ? 1 : 5, width === 390 ? 'a phone opens on the day' : 'a work week');
+    const h = (await page.locator('.wp-e', { hasText: 'Portfolio review' }).boundingBox()).height;
+    assert.ok(Math.abs(h - 73 * 1.25 + 2) < 3, `real durations: 75 min is ${h}px`);
+    assert.ok(await page.locator('.wp-e.f').count() > 0, 'hatched focus blocks');
+    await page.locator('.wp-now').waitFor();
+    assert.equal((await page.locator('.wp-nowl').innerText()).trim(), '10:42');
+    await page.locator('.wp-rem', { hasText: 'Rotate CRIF token' }).waitFor();
+    const insp = page.getByRole('complementary', { name: 'Meeting' });
+    await insp.getByRole('heading', { name: 'CRIF UAT sign-off' }).waitFor();
+    assert.match(await insp.innerText(), /in 18 min/);
+    await insp.getByRole('link', { name: 'Join meeting' }).waitFor();
+    assert.equal(await insp.getByRole('switch', { name: 'Notes by Project Tracker' }).getAttribute('aria-checked'), 'true');
+    if (width !== 390) {
+      assert.equal(await page.locator('.wp-dh', { hasText: 'UAT' }).locator('.wp-flag').count(), 1, 'a deadline flag on the day header');
+      const ai = page.getByRole('region', { name: 'This week' });
+      assert.match(await ai.innerText(), /This week: .*meetings, .*focus/);
+      await page.getByRole('tablist', { name: 'Calendar view' }).getByRole('tab', { name: 'Week' }).waitFor();
+      // Move a meeting you organise with the keyboard (as dragging does): 15 minutes later, with Undo.
+      await page.locator('.wp-e', { hasText: 'CRIF UAT sign-off' }).focus();
+      await page.keyboard.press('Alt+ArrowDown');
+      await page.locator('.talk-toast', { hasText: 'moved to' }).getByRole('button', { name: 'Undo' }).waitFor();
+      assert.ok(writes.includes(`POST /api/v1/meetings/${g(11)}/reschedule`), 'reschedule sent');
+      assert.match(await page.locator('.wp-e', { hasText: 'Status call' }).first().getAttribute('title'), /recurring/, 'a recurring meeting is not dragged');
+    }
     if (width === 390) await fitsPhone(page, 'Calendar', assert);
     await shot(page, `calendar-${tag}.png`);
     await page.getByRole('button', { name: 'Subscribe in Google / Outlook ›' }).click();
