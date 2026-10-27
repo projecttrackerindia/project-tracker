@@ -89,6 +89,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Projects/ProjectService.Statuses.cs",
         "ProjectManagement.Application/Features/Projects/ProjectStatusService.cs",
         "ProjectManagement.Application/Features/Calls/CallService.cs", // signed media-server webhooks name a room before a tenant is known; only that room's rows change
+        "ProjectManagement.Application/Features/Quality/QualityService.cs", // next TC-n number: max over this workspace's own cases (tenant id named explicitly), including deleted ones so keys are never reused
         "ProjectManagement.Application/Features/Projects/ActionItemService.cs", // restoring an action item from the bin (deleted rows are filtered out otherwise), checked against its project and tenant
         "ProjectManagement.Application/Features/Reminders/PortfolioDigestService.cs",
         "ProjectManagement.Application/Features/Reminders/ReminderEngine.cs",
