@@ -95,7 +95,7 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
       <div className="ds-kpis ins-kpis">
         <Kpi label="Projects on track" value={projects.data ? <>{onTrack} <small className="ins-of">of {live.length}</small></> : v(undefined, projects.isLoading)} tone={projects.data ? 'success' : undefined} to="/work/projects" />
         <Kpi label="Delayed" value={projects.data ? delayed.length : v(undefined, projects.isLoading)} tone={delayed.length ? 'danger' : undefined} to="/work/projects" />
-        <Kpi label="Open work · team" value={v(workload.data?.totals.open, workload.isLoading)} to="/work?tab=team" />
+        <Kpi label="Open work · team" value={v(workload.data?.totals.open, workload.isLoading)} to="/work?tab=team&s=workload" />
         {seeWork && <Kpi label="Tickets · SLA breached" value={v(ops.data?.breached, ops.isLoading)} tone={ops.data?.breached ? 'danger' : undefined} to="/work?tab=tickets" />}
       </div>
       <div className="ins-row">
@@ -144,7 +144,7 @@ function TimeTab({ tabs }: { tabs: React.ReactNode }) {
   const status = useWsQuery(['time', 'week', week], () => timeApi.week(week));
   const g = grid.data;
   const draft = useWsQuery(['time', 'draft', week], () => timeApi.draft(week), { enabled: !!g?.editable && !g.locked, staleTime: 60_000, retry: false });
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => params.get('log') ?? '');   // + New › Time arrives with the words (?log=)
   const [parsed, setParsed] = useState<ParsedTime | null>(null);
   const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState(false);

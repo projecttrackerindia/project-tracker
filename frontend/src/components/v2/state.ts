@@ -7,8 +7,11 @@ import { create } from 'zustand';
 /** The eight things + New makes. Task, Ticket (and in wave 2 every work kind) go to work items; the rest to their own places. */
 export type NewType = 'task' | 'ticket' | 'project' | 'doc' | 'secret' | 'meeting' | 'reminder' | 'time';
 
-/** The project + New adds to when it was opened from one ("+ Add work" on a project page). */
-export interface NewProject { id: string; name: string }
+/**
+ * The project + New adds to when it was opened from one ("+ Add work" on a project page), and optionally which kind of project work it
+ * starts on (a task, an issue, an action item).
+ */
+export interface NewProject { id: string; name: string; kind?: 'task' | 'issue' | 'action' }
 export const useNewSheet = create<{ open: boolean; type: NewType | null; text: string; project: NewProject | null; show: (type?: NewType | null, text?: string, project?: NewProject | null) => void; close: () => void }>((set) => ({
   open: false, type: null, text: '', project: null,
   show: (type = null, text = '', project = null) => set({ open: true, type, text, project }),

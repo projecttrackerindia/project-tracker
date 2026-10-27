@@ -66,7 +66,7 @@ export function FindingCard({ f, canDecide, showProject }: { f: AgentFinding; ca
   const assignee = edits.clearAssignee ? null : edits.assigneeId ? people.data?.find((p) => p.userId === edits.assigneeId)?.displayName ?? '…' : f.assignee?.name;
   const due = edits.clearDueDate ? null : edits.dueDate ?? f.dueDate;
   const open = f.status === 'Proposed' || f.status === 'Failed';
-  const taskLink = f.taskId ? `/projects/${f.projectId}?task=${f.taskId}` : null;
+  const taskLink = f.taskId ? `/work?item=${f.taskId}` : null;
 
   return (
     <article className={`ag-card ag-${meta.tone} ${open ? '' : 'ag-closed'}`} data-finding={f.id}>

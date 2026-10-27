@@ -123,7 +123,7 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
                     <li key={w.id} className={`st-${w.state}`}>
                       <span className="aih-dot" aria-hidden />
                       <div className="aih-item">
-                        <Link to={`/projects/${w.projectId}?task=${w.id}`}><span className="aih-key">{w.key}</span> {w.title}</Link>
+                        <Link to={`/work?item=${w.id}`}><span className="aih-key">{w.key}</span> {w.title}</Link>
                         <small>{w.state === 'overdue' ? `Late${w.daysLate ? ` by ${w.daysLate} day${w.daysLate === 1 ? '' : 's'}` : ''}` : w.state === 'due_today' ? 'Due today' : w.due ? `Due ${formatDate(w.due)}` : 'No due date'}{w.waiting.length ? ` · ${w.waiting.length} waiting on it` : ''}</small>
                       </div>
                       <button type="button" className="aih-ask" onClick={() => ask(`Help me finish ${w.key} "${w.title}": what is left, what is blocking it, and what should I do next?`)} title="Ask the assistant about it">

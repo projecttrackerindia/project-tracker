@@ -10,6 +10,6 @@ const DEFAULTS: PriorityInfo[] = [
 /** This workspace's names and colours for the four priority levels (falls back to the standard ones while loading). */
 export function usePriorities() {
   const q = useWsQuery(['priorities'], priorityApi.get, { staleTime: 60_000 });
-  const list = q.data ?? DEFAULTS;
+  const list = q.data?.length ? q.data : DEFAULTS;
   return { list, info: (p: Priority) => list.find((x) => x.level === p) ?? DEFAULTS.find((x) => x.level === p)!, isLoading: q.isLoading };
 }

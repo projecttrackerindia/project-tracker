@@ -63,9 +63,9 @@ export const TARGET_LABEL: Record<LinkTarget, string> = { Project: 'Project', Ta
 /** Where a linked item opens in the app. */
 export function targetLink(type: LinkTarget, id: string, projectId: string | null): string {
   switch (type) {
-    case 'Task': return projectId ? `/projects/${projectId}?task=${id}` : '/projects';
-    case 'Issue': return projectId ? `/projects/${projectId}?tab=issues&issue=${id}` : '/projects';
-    case 'WorkItem': return `/operations?task=${id}`;
+    case 'Task': return `/work?item=${id}`;
+    case 'Issue': return `/work?item=${id}`;
+    case 'WorkItem': return `/work?item=${id}`;
     case 'Sprint': return projectId ? `/projects/${projectId}?tab=plan` : '/projects';
     default: return `/projects/${id}`;
   }

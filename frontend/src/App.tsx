@@ -3,8 +3,7 @@ import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useParams } 
 import { orgFromPath, firstSegment } from './lib/orgPath';
 import { setTitleParts } from './lib/title';
 import { ApiError } from './api/client';
-import { consentApi, meApi, taskApi } from './api/endpoints';
-import { useWsQuery } from './lib/hooks';
+import { consentApi, meApi } from './api/endpoints';
 import type { ConsentDocument } from './api/types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Icon } from './components/Icon';
@@ -258,13 +257,36 @@ function LegacyDocuments() {
   return <Navigate to={project ? `/library/docs?p=${encodeURIComponent(project)}&t=documents` : '/library/docs'} replace />;
 }
 
-/** A task by id alone (a #task mention in a document): look up its project and open it there. */
+/** A task by id alone (a #task mention in a document): it opens in the Work side panel. */
 function TaskLink() {
   const { id = '' } = useParams();
-  const q = useWsQuery(['tasks', id, 'link'], () => taskApi.get(id), { retry: false });
-  if (q.data) return <Navigate to={`/work/projects/${q.data.task.projectId}?task=${id}`} replace />;
-  if (q.isError) return <Navigate to="/" replace />;
-  return <PageLoader />;
+  const loc = useLocation();
+  return <Navigate to={`/work?item=${encodeURIComponent(id)}${loc.hash}`} replace />;
+}
+
+/**
+ * Old links to one task, issue or action item on its project (/projects/7?task=…, ?tab=issues&issue=…, ?tab=actions&action=…, from
+ * notifications, e-mails and the AI): the item opens in the Work side panel. Anything else on /projects/… goes to the project as before.
+ */
+function ProjectsMoved() {
+  const loc = useLocation();
+  const q = new URLSearchParams(loc.search);
+  const id = q.get('task') ?? q.get('issue') ?? q.get('action');
+  if (id) return <Navigate to={`/work?item=${encodeURIComponent(id)}${loc.hash}`} replace />;
+  return <Moved to="/work/projects" prefix="/projects" />;
+}
+
+/**
+ * The old Operations page: a ticket (?task=) opens in the Work side panel over Work › Tickets; its views (?view=board, whatsapp …) and
+ * its queue filters (?project=, ?type=, ?sla= …, which only the desk's queue understands) open the ticket desk under Tickets.
+ */
+function OperationsMoved() {
+  const loc = useLocation();
+  const q = new URLSearchParams(loc.search);
+  const id = q.get('task');
+  if (id) return <Navigate to={`/work?tab=tickets&item=${encodeURIComponent(id)}${loc.hash}`} replace />;
+  const queue = !q.has('view') && ['project', 'type', 'sla', 'open', 'unassigned', 'status', 'priority'].some((k) => q.has(k));
+  return <Moved to={`/work?tab=tickets${queue ? '&view=queue' : ''}`} />;
 }
 
 /** Hide pages the current role / workspace type cannot use, instead of showing a screen of 403s. */
@@ -414,12 +436,12 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="ai/:id" element={<AiConversationMoved />} />
         <Route path="agent-tracker" element={<Moved to="/settings/ai/tracker" />} />
         <Route path="my-work" element={<Moved to="/work" />} />
-        <Route path="operations/*" element={<Moved to="/work?tab=tickets" />} />
-        <Route path="support" element={<Moved to="/work?tab=tickets" />} />
+        <Route path="operations/*" element={<OperationsMoved />} />
+        <Route path="support" element={<OperationsMoved />} />
         <Route path="work/mine" element={<Moved to="/work" />} />
         <Route path="work/reports" element={<Moved to="/insights?tab=reports&s=operations" />} />
         <Route path="projects" element={<Moved to="/work/projects" />} />
-        <Route path="projects/*" element={<Moved to="/work/projects" prefix="/projects" />} />
+        <Route path="projects/*" element={<ProjectsMoved />} />
         <Route path="portfolio/*" element={<Moved to="/work/projects?view=portfolio" />} />
         <Route path="project-status" element={<Moved to="/work/projects?view=portfolio" />} />
         <Route path="chat" element={<Moved to="/talk?f=chat" />} />

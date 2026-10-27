@@ -164,7 +164,7 @@ function TodayView({ c, onCheckIn, onDelegate, onBrief, onReport }: {
             <ul className="cmd-owe card">
               {c.owe.map((w) => (
                 <li key={w.id}>
-                  <Link to={`/projects/${w.projectId}?task=${w.id}`} className="cmd-owe-main">
+                  <Link to={`/work?item=${w.id}`} className="cmd-owe-main">
                     <b>{w.key}</b><span>{w.title}</span>
                   </Link>
                   <span className={`cmd-pill ${w.state === 'overdue' ? 'bad' : w.state === 'due_today' ? 'warn' : ''}`}>

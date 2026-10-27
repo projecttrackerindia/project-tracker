@@ -68,8 +68,8 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
 
   const open = (e: CalendarEvent) => {
     if (e.type === 'task') onOpenTask(e.id, e.projectId);
-    else if (e.type === 'action' && e.projectId) nav(`/projects/${e.projectId}?tab=actions&action=${e.id}`);
-    else if (e.type === 'work') { if (onOpenWork) onOpenWork(e.id); else nav(`/operations?task=${e.id}`); }
+    else if (e.type === 'action') nav(`/work?item=${e.id}`);
+    else if (e.type === 'work') { if (onOpenWork) onOpenWork(e.id); else nav(`/work?item=${e.id}`); }
     else if (e.type === 'meeting') nav(`/meet?open=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`);
     else if (e.projectId && e.projectId !== projectId) nav(`/projects/${e.projectId}`);
   };

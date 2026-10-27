@@ -61,7 +61,7 @@ function GivenCard({ f }: { f: AgentFinding }) {
     } catch (e) { toast(errText(e, 'Could not save.'), 'error'); }
     finally { setBusy(false); }
   };
-  const link = f.kind === 'CreateTask' && f.appliedEntityId ? `/projects/${f.projectId}?task=${f.appliedEntityId}` : `/projects/${f.projectId}`;
+  const link = f.kind === 'CreateTask' && f.appliedEntityId ? `/work?item=${f.appliedEntityId}` : `/projects/${f.projectId}`;
   return (
     <article className={`ag-card ${f.ownerResponse ? 'ag-closed' : ''}`} data-given={f.id}>
       <header className="ag-card-head">

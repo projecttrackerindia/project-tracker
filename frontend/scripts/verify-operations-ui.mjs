@@ -100,7 +100,8 @@ try{
   return ctx;};
  const shot=async(page,name)=>{await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(500);await page.screenshot({path:path.join(out,name)});};
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+'/preview-org/operations');await page.locator('.work-table').waitFor();
+ // v2: the ticket desk (queue, board, insights, channels, settings) is Work › Tickets › ···; the old address with a view lands on it.
+ await page.goto(origin+'/preview-org/operations?view=queue');await page.waitForURL(/\/work\?view=queue&tab=tickets/);await page.locator('.work-table').waitFor();
  const tabs=await page.locator('.ops-tabs .tab').allInnerTexts();assert.deepEqual(tabs.map(t=>t.trim()),['Tickets','Insights','Channels']);
  assert.equal(await page.locator('.ops-stat').count(),4,'the counts strip');assert.ok(await page.getByRole('button',{name:'Settings'}).isVisible(),'Settings is a header button');
  assert.equal(await page.locator('.ops-toolbar').count(),1,'one toolbar row');assert.equal(await page.locator('.work-table thead th',{hasText:'Related project'}).count(),0,'no column of dashes');

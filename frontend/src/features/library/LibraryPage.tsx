@@ -1,10 +1,11 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { DocTrackerPage } from '../doctracker/DocTrackerPage';
 import { DotsMenu } from '../talk/DotsMenu';
 import { DocumentPage } from '../documents/DocumentPage';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { apiDocApi, docTrackerApi, documentApi } from '../../api/endpoints';
+import { aiApi } from '../ai/Assistant';
 import { attachmentApi } from '../../api/endpoints.work';
 import type { ApiDefinition, DocumentItem, DocumentStatus, DocumentType } from '../../api/types';
 import { Icon } from '../../components/Icon';
@@ -211,6 +212,18 @@ function StartCard({ projects, projectId, canCreate }: { projects: { id: string;
   const [ai, setAi] = useState(false);
   const [api, setApi] = useState<{ documentId: string; definitions: ApiDefinition[] } | null>(null);
   const [opening, setOpening] = useState(false);
+  // + New › Doc (?new=1&title=…): the AI draft opens with those words; without the AI, a page with that title is made and opened. Once.
+  const [params, setParams] = useSearchParams();
+  const aiStatus = useWsQuery(['ai', 'status'], aiApi.status, { staleTime: 5 * 60_000, retry: false });
+  const [prompt, setPrompt] = useState('');
+  const asked = useRef(false);
+  useEffect(() => {
+    if (asked.current || params.get('new') !== '1' || !canCreate || aiStatus.isLoading) return;
+    asked.current = true;
+    const title = params.get('title') ?? '';
+    setParams((p) => { const n = new URLSearchParams(p); n.delete('new'); n.delete('title'); return n; }, { replace: true });
+    if (aiStatus.data?.enabled) { setPrompt(title); setAi(true); } else void newPage.create({ title: title || undefined, projectId });
+  }, [params, setParams, canCreate, aiStatus.isLoading, aiStatus.data, newPage, projectId]);
   const all = (types.data ?? []).filter((t) => t.code !== PAGE_CODE && t.code !== 'ARTIFACT');
   const starters: DocumentType[] = [...START_CODES.map((c) => all.find((t) => t.code === c)).filter((t): t is DocumentType => !!t), ...all.filter((t) => !START_CODES.includes(t.code))].slice(0, 4);
   const fromSpec = async () => {
@@ -236,7 +249,7 @@ function StartCard({ projects, projectId, canCreate }: { projects: { id: string;
           <button key={t.id} type="button" style={{ '--dc': t.color } as CSSProperties} onClick={() => void newPage.create({ template: t, projectId })} title={t.description ?? undefined}>{START_LABEL[t.code] ?? t.name}</button>
         ))}
       </div>
-      {ai && <AiDraftDialog projects={projects} projectId={projectId} useLabel="Create the page" onClose={() => setAi(false)}
+      {ai && <AiDraftDialog projects={projects} projectId={projectId} initialPrompt={prompt} useLabel="Create the page" onClose={() => { setAi(false); setPrompt(''); }}
         onUse={async (d, from) => { await newPage.create({ title: d.title, body: d.body, projectId: from.projectId }); setAi(false); }} />}
       {api && <ApiImportModal documentId={api.documentId} definitions={api.definitions} onClose={() => setApi(null)}
         onDone={() => { const id = api.documentId; setApi(null); navigate(`/library/docs/${id}`); }} />}

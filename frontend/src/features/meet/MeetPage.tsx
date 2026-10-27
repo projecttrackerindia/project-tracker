@@ -63,7 +63,7 @@ export function MeetPage({ section }: { section: Section }) {
       {section === 'notetaker' && <NotetakerSection />}
       {opened && <MeetingDetail kind={opened.kind} id={opened.id} at={params.get('at')} onClose={() => { const next = new URLSearchParams(params); next.delete('open'); next.delete('at'); setParams(next, { replace: true }); }}
         onProject={(pid) => navigate(`/talk?f=meetings&s=upcoming&project=${pid}`)} />}
-      {form && <MeetingForm mode={form} project={project} onClose={closeForm} />}
+      {form && <MeetingForm mode={form} project={project} title={params.get('title')} onClose={closeForm} />}
     </div>
   );
 }

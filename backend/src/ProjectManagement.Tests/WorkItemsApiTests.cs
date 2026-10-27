@@ -72,6 +72,8 @@ public class WorkItemsApiTests(ApiFactory factory)
         Assert.StartsWith("WT-", S(ticket.Data["key"]));
         Assert.Equal("To Do", S(ticket.Data["status"]));
         Assert.Equal("Payment Engine", S(ticket.Data["projectName"]));
+        Assert.Equal("app", S(ticket.Data["channel"]));   // where it came from: made in the app
+        Assert.Null(task.Data["channel"]);
 
         // Unknown kinds and missing projects are refused clearly.
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await w.Owner.Post(Url, new { kind = "epic", title = "x" })).Status);

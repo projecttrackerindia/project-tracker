@@ -306,7 +306,7 @@ function RowLabel({ r, grid, today, onRemove }: { r: GridRow; grid: TimesheetGri
   const running = grid.running && (grid.running.kind === 'work' ? grid.running.workTaskId : grid.running.taskId) === r.targetId ? grid.running : null;
   const now = useNow(!!running);
   const inWeek = grid.days.some((d) => d.date === today);
-  const link = r.kind === 'work' ? `/operations?task=${r.targetId}` : `/projects/${r.projectId}?task=${r.targetId}`;
+  const link = `/work?item=${r.targetId}`;
   const start = async () => {
     try { await (r.kind === 'work' ? timeApi.startOnWorkTask(r.targetId) : timeApi.start(r.targetId)); toast(`Timer started on ${r.key}.`); }
     catch (e) { toast(errText(e, 'Could not start the timer.'), 'error'); }

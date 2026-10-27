@@ -16,11 +16,11 @@ import { openNew } from './v2/state';
 /** Where a search hit opens. Shared with the search box in the top bar. */
 export function searchHitLink(h: Pick<SearchHit, 'type' | 'id' | 'projectId' | 'taskId'>): string {
   switch (h.type) {
-    case 'file': return h.taskId ? `/work/projects/${h.projectId}?task=${h.taskId}` : `/work/projects/${h.projectId}?tab=files`;
-    case 'task': case 'comment': return `/work/projects/${h.projectId}?task=${h.taskId}`;
-    case 'issue': return `/work/projects/${h.projectId}?tab=issues&issue=${h.id}`;
-    case 'action': return `/work/projects/${h.projectId}?tab=actions&action=${h.id}`;
-    case 'work': return `/work?tab=tickets&item=${h.id}`;
+    case 'file': return h.taskId ? `/work?item=${h.taskId}` : `/work/projects/${h.projectId}?tab=files`;
+    case 'task': case 'comment': return `/work?item=${h.taskId}`;
+    case 'issue': return `/work?item=${h.id}`;
+    case 'action': return `/work?item=${h.id}`;
+    case 'work': return `/work?item=${h.id}`;
     case 'project': return `/work/projects/${h.id}`;
     case 'page': return `/library/docs/${h.id}`;
     case 'team': return '/people/teams';

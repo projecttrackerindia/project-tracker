@@ -529,7 +529,7 @@ function ChatPane({ id, onClose }: { id: string; onClose: () => void }) {
           ? <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void act(() => api.mode(id, 'human'), 'You have the chat.')}><Icon name="user" size={14} /> Take over</button>
           : <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void act(() => api.mode(id, 'ai'), 'The AI employee has the chat again.')}><Icon name="agent" size={14} /> Hand to AI</button>}
         {chat.workTaskId
-          ? <Link className="btn btn-ghost btn-sm" to={`?task=${chat.workTaskId}`}><Icon name="link" size={14} /> {chat.ticketKey}</Link>
+          ? <Link className="btn btn-ghost btn-sm" to={`/work?tab=tickets&view=whatsapp&item=${chat.workTaskId}`}><Icon name="link" size={14} /> {chat.ticketKey}</Link>
           : <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void act(() => api.ticket(id), 'Ticket raised. The customer is told shortly.')}><Icon name="plus" size={14} /> Raise ticket</button>}
         {chat.status !== 'closed' && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void act(() => api.mode(id, 'close'), 'Chat closed.')}><Icon name="check" size={14} /> Close</button>}
       </div>

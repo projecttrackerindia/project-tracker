@@ -246,7 +246,7 @@ function MyTime({ userId }: { userId: string }) {
                     <div className="time-row" key={e.id}>
                       <span className="time-min">{e.isRunning ? 'running' : formatMinutes(e.minutes)}</span>
                       <span className="time-what">
-                        <Link className="link" to={e.kind === 'work' ? `/operations?task=${e.workTaskId}` : `/projects/${e.projectId}?task=${e.taskId}`}>{e.taskKey}</Link> {e.taskTitle} · {formatDate(e.workDate)}
+                        <Link className="link" to={`/work?item=${e.kind === 'work' ? e.workTaskId : e.taskId}`}>{e.taskKey}</Link> {e.taskTitle} · {formatDate(e.workDate)}
                         {e.kind === 'work' && <span className="badge badge-warning" style={{ marginLeft: 6 }}>Operational</span>}
                         {e.billable && <span className="badge badge-success" style={{ marginLeft: 6 }}>Billable</span>}
                         {e.locked && <span className="time-lock" title="In a submitted or approved week"><Icon name="lock" size={12} /></span>}
