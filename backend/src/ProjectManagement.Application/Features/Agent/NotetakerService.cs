@@ -38,7 +38,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
     ISecretProtector secrets, AppClock clock, IAiClient ai, AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions,
     MailboxService mailbox, GoogleMeetingClient google, NotificationService notifications, Recorder recorder, ILogger<NotetakerService> log, AgentSignalService signals,
     ProjectManagement.Application.Features.Tasks.TaskService tasks, IEmailSender email, AgentSettingsService agentSettings, IOptions<ProjectManagement.Application.Common.AppOptions> app,
-    ProjectManagement.Application.Features.Reminders.ReminderSuggestionService promises)
+    ProjectManagement.Application.Features.Reminders.ReminderSuggestionService promises, AiAgentGate gate, AiActionLog actionLog)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -93,8 +93,15 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
         return new(row.ProjectId, row.AutoJoin, row.AutoMinutes, row.AutoEmail, row.AutoTasks, row.DeleteTranscript);
     }
 
+    /// <summary>Off in Settings › AI: the notetaker neither joins nor writes anything.</summary>
+    private async Task RequireOnAsync(CancellationToken ct)
+    {
+        if (!await gate.OnAsync(AiAgents.Notetaker, ct)) throw new ConflictException("The meeting notetaker is off for this workspace (Settings › AI).", "NOTETAKER_OFF");
+    }
+
     public async Task<NotetakerSessionDto> JoinAsync(NotetakerJoinRequest req, CancellationToken ct)
     {
+        await RequireOnAsync(ct);
         var uid = ctx.RequireUserId();
         if (req.Minutes is < 10 or > 240) throw new ValidationException("minutes", "Choose from 10 minutes to 4 hours.");
         var projectId = req.ProjectId ?? (await SettingsRowAsync(uid, ct))?.ProjectId ?? throw new ValidationException("projectId", "Choose the project the notes are filed under.");
@@ -180,6 +187,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
 
     public async Task<MinutesDto> GenerateMinutesAsync(Guid id, CancellationToken ct)
     {
+        await RequireOnAsync(ct);
         var bot = await SessionAsync(id, ct);
         RequireOwner(await db.MeetingMinutes.AsNoTracking().FirstOrDefaultAsync(m => m.BotRowId == bot.Id, ct));
         return await WriteMinutesAsync(bot, ctx.RequireUserId(), ct);
@@ -288,10 +296,15 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
     /// <summary>
     /// Project-agent tick for one project: sends the notetaker of everyone who files notes under it to the calls on their Google Calendar
     /// (when they chose that), and writes minutes for their finished calls (when they chose that).
+    /// Tasks from the minutes follow the lower of the workspace's level (Settings › AI) and the person's own "create tasks" switch (on = Auto,
+    /// off = Suggest): at Auto they are created and logged, at Ask first one row in the person's inbox creates them, at Suggest they stay in the
+    /// minutes. Off does nothing at all.
     /// </summary>
     public async Task<int> TickAsync(ProjectAgentSettings s, CancellationToken ct)
     {
         if (!s.Enabled || !s.ReadMeetings) return 0;
+        var level = await gate.LevelAsync(s.TenantId, AiAgents.Notetaker, ct);
+        if (level == AiAgentLevel.Off) return 0;
         // Only people who are still active and still in the project.
         var people = await db.NotetakerSettings.AsNoTracking().Where(n => n.ProjectId == s.ProjectId && (n.AutoJoin || n.AutoMinutes)
             && db.Users.Any(u => u.Id == n.UserId && u.IsActive)
@@ -320,7 +333,9 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
                 try
                 {
                     var minutes = await WriteMinutesAsync(bot, p.UserId, ct);
-                    var created = p.AutoTasks ? await CreateTasksAsync(bot.ProjectId, minutes, ct) : [];
+                    var tasksLevel = AiAgentGate.Min(level, p.AutoTasks ? AiAgentLevel.Auto : AiAgentLevel.Suggest);
+                    var created = tasksLevel == AiAgentLevel.Auto ? await CreateTasksAsync(bot.ProjectId, minutes, null, ct) : [];
+                    if (tasksLevel == AiAgentLevel.AskFirst) ProposeTasks(p.UserId, bot, minutes);
                     if (p.AutoEmail) await EmailOwnerAsync(p.UserId, bot, minutes, created, ct);
                     if (p.DeleteTranscript)
                         await db.AgentMeetingBots.Where(b => b.Id == bot.Id).ExecuteUpdateAsync(u => u.SetProperty(b => b.TranscriptProtected, (string?)null), ct);
@@ -345,8 +360,31 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
         return done;
     }
 
-    /// <summary>The minutes' action items as tasks in the project, assigned where the owner named in the call matches a member.</summary>
-    private async Task<List<string>> CreateTasksAsync(Guid projectId, MinutesDto minutes, CancellationToken ct)
+    /// <summary>What an "Ask first" row for a meeting's tasks carries: the session whose minutes they come from.</summary>
+    public record TasksProposal(Guid SessionId, Guid ProjectId);
+
+    /// <summary>"Ask first": one inbox row for the person who sent the notetaker, creating every action item of the minutes at once.</summary>
+    private void ProposeTasks(Guid userId, AgentMeetingBot bot, MinutesDto minutes)
+    {
+        var n = minutes.Content.ActionItems.Count(a => a.Task.Length > 0);
+        if (n == 0) return;
+        actionLog.Propose(AiAgents.Notetaker, "create_tasks", new AiActionLog.Target("project", null, null, bot.ProjectId, $"/meet/notetaker?session={bot.Id}"),
+            $"Create {n} task{(n == 1 ? "" : "s")} from the minutes of {minutes.Content.Title}", userId, new TasksProposal(bot.Id, bot.ProjectId));
+    }
+
+    /// <summary>Approving an "Ask first" row: the action items of those minutes become tasks, created as the person approving.</summary>
+    public async Task<int> ApplyTasksAsync(TasksProposal p, Guid approver, CancellationToken ct)
+    {
+        var row = await db.MeetingMinutes.AsNoTracking().FirstOrDefaultAsync(m => m.BotRowId == p.SessionId && m.ProjectId == p.ProjectId, ct)
+            ?? throw new ConflictException("Those minutes are gone, so there is nothing to create.", "MINUTES_MISSING");
+        return (await CreateTasksAsync(p.ProjectId, ToDto(row), approver, ct)).Count;
+    }
+
+    /// <summary>
+    /// The minutes' action items as tasks in the project, assigned where the owner named in the call matches a member. Each one is in the AI
+    /// action log (approved by <paramref name="approvedBy"/>, or by nobody when the notetaker created it on its own).
+    /// </summary>
+    private async Task<List<string>> CreateTasksAsync(Guid projectId, MinutesDto minutes, Guid? approvedBy, CancellationToken ct)
     {
         var members = await db.ProjectMembers.AsNoTracking().Where(m => m.ProjectId == projectId).Join(db.Users, m => m.UserId, u => u.Id, (m, u) => new { u.Id, u.DisplayName }).ToListAsync(ct);
         Guid? Match(string? name)
@@ -365,9 +403,12 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
             var title = a.Task.Length > 200 ? a.Task[..200] : a.Task;
             try
             {
-                await tasks.CreateAsync(projectId, new ProjectManagement.Application.Features.Tasks.CreateTaskRequest(title,
+                var task = await tasks.CreateAsync(projectId, new ProjectManagement.Application.Features.Tasks.CreateTaskRequest(title,
                     $"From the minutes of {minutes.Title}.{(a.Owner is null ? "" : $" Owner named in the call: {a.Owner}.")}{(a.Due is not null && due is null ? $" Due as said: {a.Due}." : "")}",
                     null, Priority.Medium, Match(a.Owner), null, due, null, null, null), ct);
+                actionLog.Applied(AiAgents.Notetaker, "create_task", new AiActionLog.Target("task", task.Id, task.Key, projectId, $"/work?item={task.Id}"),
+                    $"Created {task.Key} from the minutes of {minutes.Title}", approvedBy);
+                await db.SaveChangesAsync(ct);
                 created.Add(title);
             }
             catch (AppException ex) { log.LogInformation("A task from the minutes could not be created: {Reason}", ex.Message); }

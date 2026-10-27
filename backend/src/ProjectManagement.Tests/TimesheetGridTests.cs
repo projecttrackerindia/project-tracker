@@ -228,7 +228,8 @@ public class TimesheetGridTests(ApiFactory factory)
             using var scope = factory.Services.CreateScope();
             var sp = scope.ServiceProvider;
             var clock = new AppClock(new FixedTime(now), sp.GetRequiredService<IOptions<AppOptions>>());
-            await new TimesheetNudgeMonitor(sp.GetRequiredService<IAppDbContext>(), clock, sp.GetRequiredService<NotificationRouter>(), NullLogger<TimesheetNudgeMonitor>.Instance).RunAsync();
+            await new TimesheetNudgeMonitor(sp.GetRequiredService<IAppDbContext>(), clock, sp.GetRequiredService<NotificationRouter>(), NullLogger<TimesheetNudgeMonitor>.Instance,
+                sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<ProjectManagement.Application.Features.Ai.AiAgentGate>()).RunAsync();
         }
         int Count(Guid user) => factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Count(n => n.UserId == user && n.Type == NotificationType.TimesheetReminder));
 

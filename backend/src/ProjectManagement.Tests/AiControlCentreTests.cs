@@ -23,8 +23,12 @@ public sealed class AiControlCentreTests(ApiFactory factory)
 
         var start = await owner.Get("/api/v1/ai/control"); start.CheckStatus(HttpStatusCode.OK);
         Assert.Equal(5, start.Data!["agents"]!.AsArray().Count);
-        Assert.Equal("suggest", LevelOf(start, "project"));
+        // Each default keeps the agent doing what it did before the control centre (see AiControlCentre.Agents).
+        Assert.Equal("askFirst", LevelOf(start, "project"));
         Assert.Equal("askFirst", LevelOf(start, "notetaker"));
+        Assert.Equal("suggest", LevelOf(start, "mail"));
+        Assert.Equal("suggest", LevelOf(start, "triage"));
+        Assert.Equal("suggest", LevelOf(start, "timesheet"));
         Assert.Equal(4000, start.Data["contextLimit"]!.GetValue<int>());
         Assert.True(start.Data["canEdit"]!.GetValue<bool>());
 
@@ -70,8 +74,9 @@ public sealed class AiControlCentreTests(ApiFactory factory)
     [Fact]
     public void Stored_levels_fall_back_to_defaults_when_unreadable()
     {
-        Assert.Equal(AiAgentLevel.Suggest, AiControlCentre.Parse(null)["project"]);
-        Assert.Equal(AiAgentLevel.Suggest, AiControlCentre.Parse("not json")["project"]);
+        Assert.Equal(AiAgentLevel.AskFirst, AiControlCentre.Parse(null)["project"]);
+        Assert.Equal(AiAgentLevel.AskFirst, AiControlCentre.Parse("not json")["project"]);
+        Assert.Equal(AiAgentLevel.Suggest, AiControlCentre.Parse(null)["mail"]);
         Assert.Equal(AiAgentLevel.AskFirst, AiControlCentre.Parse("{\"notetaker\":99}")["notetaker"]);
         Assert.Equal(AiAgentLevel.Off, AiControlCentre.Parse("{\"project\":0,\"unknown\":3}")["project"]);
         Assert.False(AiControlCentre.Parse("{\"unknown\":3}").ContainsKey("unknown"));

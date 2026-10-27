@@ -261,6 +261,11 @@ public static class DependencyInjection
         services.AddSingleton<ProjectManagement.Application.Features.Ai.AiOperationsProcessor>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AgentTrackerService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiControlCentre>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiAgentGate>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiActionLog>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiActionService>();
+        services.AddScoped<ProjectManagement.Application.Features.Work.TicketTriage>();
+        services.AddScoped<ProjectManagement.Application.Features.Time.TimesheetHelper>();
         services.AddScoped<ProjectManagement.Application.Features.Automation.AutomationScheduler>();
         services.AddScoped<ProjectManagement.Application.Features.Notifications.PushService>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderService>();

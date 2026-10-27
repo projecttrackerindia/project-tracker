@@ -42,7 +42,7 @@ public record WeekDraftDto(DateOnly WeekStart, IReadOnlyList<DraftCellDto> Cells
 /// five days, nothing on planned leave), their meetings, and what they probably worked on but have not logged yet.
 /// </summary>
 public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppClock clock, TimeService time, TimesheetApprovalService approvals, ProjectAccess access,
-    PermissionService permissions)
+    PermissionService permissions, ProjectManagement.Application.Features.Ai.AiAgentGate gate)
 {
     public const int MaxCells = 120;
     private const int MaxSuggestions = 12;
@@ -179,6 +179,8 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
     public async Task<WeekDraftDto> DraftAsync(DateOnly? weekStart, CancellationToken ct = default)
     {
         var me = ctx.RequireUserId();
+        if (!await gate.OnAsync(ProjectManagement.Application.Features.Ai.AiAgents.Timesheet, ct))
+            throw new ConflictException("The timesheet helper is off for this workspace (Settings › AI).", "AI_AGENT_OFF");
         var week = TimesheetApprovalService.WeekOf(weekStart ?? clock.Today);
         var end = week.AddDays(6);
         var grid = await GridAsync(week, null, ct);

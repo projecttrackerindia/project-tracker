@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Agent;
+using ProjectManagement.Application.Features.Ai;
 using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Features.Reminders;
 using ProjectManagement.Application.Features.Time;
@@ -33,11 +34,12 @@ public record InboxStatsDto(int Overdue, int DueToday, int Decisions, int Approv
 /// <summary>
 /// Home's inbox: everything that waits on the signed-in person, from the places it already lives - their late and due work and urgent tickets,
 /// the project agent's proposals they may decide, timesheets and vault access to approve, documents to review, mentions and reminders that
-/// went off. Each source is read through the service that owns it, with its own visibility rules; a source the person cannot use simply adds
-/// nothing. Nothing here changes data, except "Later", which hides a row for this person until the next morning.
+/// went off, and what the other AI agents put here at "Ask first" (Settings › AI). Each source is read through the service that owns it, with
+/// its own visibility rules; a source the person cannot use simply adds nothing. Nothing here changes data, except "Later", which hides a row
+/// for this person until the next morning.
 /// </summary>
 public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock, WorkItemService work, AgentReviewService agent,
-    TimesheetApprovalService timesheets, VaultService vault, DocumentInboxService documents, ReminderService reminders)
+    TimesheetApprovalService timesheets, VaultService vault, DocumentInboxService documents, ReminderService reminders, AiAgentGate gate)
 {
     public const int MaxRows = 60;
 
@@ -98,6 +100,7 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         var rows = new List<InboxRowDto>();
         await Safe(() => WorkAsync(rows, ct));
         await Safe(() => DecisionsAsync(rows, ct));
+        await Safe(() => AiAsksAsync(rows, ct));
         await Safe(() => TimesheetsAsync(rows, ct));
         await Safe(() => VaultAsync(rows, ct));
         await Safe(() => DocumentsAsync(rows, ct));
@@ -143,6 +146,25 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
             var sub = f.ProjectName is { Length: > 0 } ? $"Project agent · {f.ProjectName}" : "Project agent";
             rows.Add(new InboxRowDto($"finding:{f.Id:N}", "decision", "decisions", f.Title, sub,
                 new InboxActionDto("Accept", "accept", $"/api/v1/agent/findings/{f.Id}/approve"), $"/work/projects/{f.ProjectId}?finding={f.Id}", f.CreatedAt, false));
+        }
+    }
+
+    /// <summary>
+    /// The other agents' "Ask first" work for this person: ticket triage, tasks from meeting minutes, tasks from mail, a drafted timesheet day.
+    /// One action each (approve carries it out); a row whose agent was since turned down below Ask first is not shown.
+    /// </summary>
+    private async Task AiAsksAsync(List<InboxRowDto> rows, CancellationToken ct)
+    {
+        var me = ctx.RequireUserId();
+        var asks = await db.AiAgentActions.AsNoTracking().Where(a => a.ForUserId == me && (a.Status == "proposed" || a.Status == "failed"))
+            .OrderByDescending(a => a.CreatedAt).Take(40).ToListAsync(ct);
+        foreach (var a in asks)
+        {
+            if (await gate.LevelAsync(a.Agent, ct) < AiAgentLevel.AskFirst) continue;
+            var timesheet = a.Agent == AiAgents.Timesheet;
+            var sub = a.Status == "failed" && a.Error is { Length: > 0 } e ? $"{AiAgents.Name(a.Agent)} · could not be done: {Clip(e, 120)}" : AiAgents.Name(a.Agent);
+            rows.Add(new InboxRowDto($"ai:{a.Id:N}", timesheet ? "approval" : "decision", "decisions", a.Title, sub,
+                new InboxActionDto(timesheet ? "Approve" : "Accept", timesheet ? "approve" : "accept", $"/api/v1/ai/actions/{a.Id}/approve"), a.Link, a.CreatedAt, false));
         }
     }
 

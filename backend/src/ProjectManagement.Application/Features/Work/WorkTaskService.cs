@@ -54,7 +54,8 @@ public record WorkSummaryDto(DateOnly From, DateOnly To, int Open, int Overdue, 
 /// only ever reads and writes operational work.
 /// </summary>
 public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access,
-    NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log, SlaService sla, WorkRouting routing)
+    NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log, SlaService sla, WorkRouting routing,
+    TicketTriage triage)
 {
     private const int MaxPageSize = 100;
     private const int MaxFilesPerTask = 50;
@@ -300,6 +301,10 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         // Raised without an assignee: a routing rule for its type may pick one.
         string? routedBy = null;
         if (task.AssigneeId is null && await routing.PickAsync(type.Id, ct) is { } pick) { task.AssigneeId = pick.UserId; routedBy = pick.Mode == "least_loaded" ? "least open work" : "taking turns"; }
+        // Ticket triage (Settings › AI): at Auto it sets what the person left open (before the service-level targets, which follow the priority);
+        // at Ask first its suggestion waits in the inbox. A failure there never stops the ticket being raised.
+        try { await triage.OnRaisedAsync(task, req.Priority is not null, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Ticket triage failed for a new ticket"); }
         await sla.ApplyTargetsAsync(task, ct);
         db.WorkTasks.Add(task);
         if (routedBy is not null)

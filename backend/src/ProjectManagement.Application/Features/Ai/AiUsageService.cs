@@ -80,6 +80,24 @@ public class AiUsageService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             extra.GroupBy(r => r.Feature).Select(g => new AiFeatureUsageDto(g.Key, g.Count(), g.Sum(r => (long)r.Charged))).ToList());
     }
 
+    public record Figures(string Month, int Answers, int Failed, long CreditsUsed, long CreditsLimit, bool Unlimited);
+
+    /// <summary>
+    /// This month's totals for Settings › AI, counted the same way as <see cref="WorkspaceAsync"/> (the assistant's answers plus the other AI
+    /// features' settled requests; failed answers; credits spent against the plan's limit), but only totals, so anyone in the workspace may see them.
+    /// </summary>
+    public async Task<Figures> FiguresAsync(CancellationToken ct = default)
+    {
+        ctx.RequireTenantId();
+        var (label, from, to) = Month(null);
+        var answers = await db.AiMessages.AsNoTracking().Where(m => m.Role == "assistant" && m.CreatedAt >= from && m.CreatedAt < to)
+            .GroupBy(m => m.Status == "failed").Select(g => new { Failed = g.Key, N = g.Count(), Credits = g.Sum(x => (long)x.Credits) }).ToListAsync(ct);
+        var account = await db.AiCreditAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.PeriodStart == from, ct);
+        var extra = account is null ? 0 : await db.AiCreditReservations.AsNoTracking().CountAsync(r => r.AccountId == account.Id && r.Feature != "workspace" && r.Status == "settled", ct);
+        var limit = await entitlements.GetValueAsync(FeatureKeys.AiMonthlyCredits, ct);
+        return new Figures(label, answers.Sum(a => a.N) + extra, answers.Where(a => a.Failed).Sum(a => a.N), account?.Spent ?? answers.Sum(a => a.Credits), limit, limit < 0);
+    }
+
     // ------------------------------------------------------------------ the platform
 
     public async Task<AdminAiUsageDto> PlatformAsync(string? month, CancellationToken ct = default)

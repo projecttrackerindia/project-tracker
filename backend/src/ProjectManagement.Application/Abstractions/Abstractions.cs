@@ -203,6 +203,7 @@ public interface IAppDbContext
     DbSet<AiSchedule> AiSchedules { get; }
     DbSet<AiMessage> AiMessages { get; }
     DbSet<AiWatch> AiWatches { get; }
+    DbSet<AiAgentAction> AiAgentActions { get; }
     DbSet<AiSearchChunk> AiSearchChunks { get; }
     DbSet<AiEvaluationRun> AiEvaluationRuns { get; }
     DbSet<AiWorkspaceProvider> AiWorkspaceProviders { get; }
