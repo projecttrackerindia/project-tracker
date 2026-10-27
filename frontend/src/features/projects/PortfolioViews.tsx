@@ -1,6 +1,12 @@
 import { Face } from '../../components/Face';
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { ApiError } from '../../api/client';
+import { actionItemApi } from '../../api/endpoints';
+import { invalidateWorkspace } from '../../lib/hooks';
+import { useWorkspaceId } from '../../stores/auth';
+import { toast } from '../../stores/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth } from '../../stores/auth';
 import { portfolioApi, type DecisionOption, type PortfolioDecision, type PortfolioFilter, type TimelineProject } from './portfolioApi';
@@ -95,18 +101,27 @@ const useProjects = (filter: PortfolioFilter, brief: PortfolioBrief) => {
 };
 
 /** Three calm columns, On track / At risk / Late, of compact cards: key chip, name, progress, owner and forecast. */
-export function BoardColumns({ filter, brief }: { filter: PortfolioFilter; brief: PortfolioBrief }) {
+export function BoardColumns({ filter, brief, items = [] }: { filter: PortfolioFilter; brief: PortfolioBrief; items?: DecisionItem[] }) {
   const { projects } = useProjects(filter, brief);
   const ranked = new Map(brief.ranked.map((r) => [r.projectId, r]));
   const [all, setAll] = useState<Col | null>(null);
+  // Drag a card to another column: the columns follow each project's dates and progress, so a drop opens what really moves it there —
+  // agree the forecast as the new date (to On track), or flag the risk with an owner and a date (to At risk / Late).
+  const [drag, setDrag] = useState<{ id: string; from: Col } | null>(null);
+  const [over, setOver] = useState<Col | null>(null);
+  const [drop, setDrop] = useState<{ p: TimelineProject; from: Col; to: Col } | null>(null);
+  const [flagged, setFlagged] = useState<Set<string>>(new Set());
   return (
-    <section className="pf-board" aria-label="Board">
+    <section className={`pf-board${drag ? ' dragging' : ''}`} aria-label="Board">
       {COLS.map((c) => {
         const list = projects.filter((p) => colOf(p.health) === c.id);
         const shown = all === c.id || list.length <= SHOWN + 1 ? list : list.slice(0, SHOWN);
         const more = list.length - shown.length;
         return (
-          <div key={c.id} className={`pf-colwrap ${c.id}`}>
+          <div key={c.id} className={`pf-colwrap ${c.id}${over === c.id && drag?.from !== c.id ? ' over' : ''}`}
+            onDragOver={(e) => { if (drag) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (over !== c.id) setOver(c.id); } }}
+            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null); }}
+            onDrop={(e) => { e.preventDefault(); const d = drag; setOver(null); setDrag(null); const p = d && projects.find((x) => x.id === d.id); if (p && d.from !== c.id) setDrop({ p, from: d.from, to: c.id }); }}>
             <h4 className="pf-col-head"><i />{c.label} <em>{list.length}</em></h4>
             <div className="pf-col">
               {list.length === 0 ? <p className="pf-empty">None</p> : shown.map((p) => {
@@ -114,9 +129,11 @@ export function BoardColumns({ filter, brief }: { filter: PortfolioFilter; brief
                 const why = explain(p, r, c.id);
                 const end = p.forecast ?? p.due;
                 return (
-                  <Link key={p.id} to={`/work/projects/${p.id}`} className="pf-card" title={why} aria-describedby={`pf-why-${p.id}`}>
+                  <Link key={p.id} to={`/work/projects/${p.id}`} className={`pf-card${drag?.id === p.id ? ' lifted' : ''}`} title={why} aria-describedby={`pf-why-${p.id}`}
+                    draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', p.key); setDrag({ id: p.id, from: c.id }); }} onDragEnd={() => { setDrag(null); setOver(null); }}>
                     <span className="pf-card-t"><span className="pf-key" style={{ background: chipColour(p.key) }}>{p.key}</span><b className="pf-card-name">{p.name}</b></span>
                     <span className="pf-bar" aria-label={`${p.progress}% done`}><i style={{ width: `${Math.min(100, Math.max(0, p.progress))}%` }} /></span>
+                    {flagged.has(p.id) && <span className="pf-flag">⚑ Flagged</span>}
                     <span className="pf-card-f"><span>{r?.owner ?? 'No owner'}</span><span>{p.progress >= 100 ? 'Done' : end ? `→ ${dayMonth(end)}` : 'No date'}</span></span>
                     <span className="pf-tip" id={`pf-why-${p.id}`} role="tooltip">{why}</span>
                   </Link>
@@ -133,8 +150,53 @@ export function BoardColumns({ filter, brief }: { filter: PortfolioFilter; brief
           </div>
         );
       })}
+      {drop && <DropSheet {...drop} item={items.find((i) => i.projectId === drop.p.id) ?? null} filter={filter} onClose={() => setDrop(null)} onFlagged={(id) => setFlagged((s) => new Set(s).add(id))} />}
     </section>
   );
+}
+
+const COL_NAME: Record<Col, string> = { ok: 'On track', risk: 'At risk', late: 'Late' };
+
+/** What a drop means. To On track: agree the forecast as the new due date (or replan in the project). To At risk / Late: flag it. */
+function DropSheet({ p, from, to, item, filter, onClose, onFlagged }: { p: TimelineProject; from: Col; to: Col; item: DecisionItem | null; filter: PortfolioFilter; onClose: () => void; onFlagged: (id: string) => void }) {
+  const wid = useWorkspaceId();
+  const navigate = useNavigate();
+  const a = useDecisionActions(item ?? { projectId: p.id, key: p.key, name: p.name, due: p.due, forecast: p.forecast, why: '', slipDays: 0, decision: null, acceptOpt: null, changes: [] }, filter);
+  const [reason, setReason] = useState('');
+  const [due, setDue] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
+  const flag = async () => {
+    if (!reason.trim()) return;
+    setBusy(true);
+    try {
+      await actionItemApi.create(p.id, { title: `${to === 'late' ? 'Late' : 'Risk'}: ${reason.trim()}`.slice(0, 200), details: `Flagged from Portfolio (moved from ${COL_NAME[from]} to ${COL_NAME[to]}).`, dueDate: due || null, priority: to === 'late' ? 'Critical' : 'High' });
+      for (const k of ['portfolio', 'projects', 'project']) void invalidateWorkspace(wid, k);
+      onFlagged(p.id); toast(`${p.key} flagged. The follow-up is on the project.`, 'success'); onClose();
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not flag it.', 'error'); }
+    finally { setBusy(false); }
+  };
+  return createPortal(
+    <div className="pf-drop-back" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="pf-drop" role="dialog" aria-modal="true" aria-label={`Move ${p.name} to ${COL_NAME[to]}`}>
+        <p className="pf-drop-ey"><span className="pf-key" style={{ background: chipColour(p.key) }}>{p.key}</span> {COL_NAME[from]} → <b>{COL_NAME[to]}</b></p>
+        <h3>{to === 'ok' ? `Bring ${p.name} back on track` : `Flag ${p.name} as ${COL_NAME[to].toLowerCase()}`}</h3>
+        <p className="pf-drop-why">Columns follow each project’s dates and progress{p.due ? ` (due ${dayMonth(p.due)}${p.forecast ? `, forecast ${dayMonth(p.forecast)}` : ''})` : ''}, so moving a card does what really moves it.</p>
+        {to === 'ok' ? (
+          <div className="pf-drop-acts">
+            {item?.acceptOpt && item.forecast && <button type="button" className="pf-btn pri" disabled={!a.canAct || a.busy !== null} onClick={() => void a.accept().then(onClose)}>{a.busy ? 'Setting…' : `Make ${dayMonth(item.forecast)} the new due date`}</button>}
+            <button type="button" className="pf-btn" onClick={() => navigate(`/work/projects/${p.id}`)}>Replan in the project</button>
+            <button type="button" className="pf-btn" onClick={onClose}>Cancel</button>
+          </div>
+        ) : (
+          <form onSubmit={(e) => { e.preventDefault(); void flag(); }} className="pf-drop-form">
+            <label>What is the risk?<textarea autoFocus rows={3} maxLength={180} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Bank sandbox keys not shared; UAT cannot start" /></label>
+            <label>Follow up by<input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></label>
+            <div className="pf-drop-acts"><button type="submit" className="pf-btn pri" disabled={busy || !reason.trim()}>{busy ? 'Flagging…' : 'Flag it'}</button><button type="button" className="pf-btn" onClick={onClose}>Cancel</button></div>
+          </form>
+        )}
+      </section>
+    </div>, document.body);
 }
 
 // ------------------------------------------------------------------------------------------------------------------ Timeline

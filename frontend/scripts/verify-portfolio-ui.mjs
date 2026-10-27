@@ -161,6 +161,15 @@ try{
  await shot(page,'timeline-1440.png');
  checks.push('timeline');
 
+ // Drag a card to another column: a sheet explains and does the real thing (flag the risk as a follow-up on the project).
+ await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Board'}).click();await page.locator('.pf-board .pf-card[draggable="true"]').first().waitFor();
+ {const card=page.locator('.pf-board .pf-card[draggable="true"]',{hasText:'Payments'}).first();
+  {const target=page.locator('.pf-colwrap.late');await card.dragTo(target);
+   const sheet=page.getByRole('dialog',{name:/Move Payments to Late/});await sheet.waitFor();
+   await sheet.getByLabel('What is the risk?').fill('Bank sandbox keys not shared');await shot(page,'board-drop-1440.png');
+   await sheet.getByRole('button',{name:'Flag it'}).click();await sheet.waitFor({state:'detached'});
+   assert.ok(writes.some(w=>w.ep===`/api/v1/projects/${pay}/action-items`&&/Late: Bank sandbox keys/.test(w.b.title)&&w.b.priority==='Critical'),'the drop flags the project with a follow-up');
+   await page.locator('.pf-flag').first().waitFor();checks.push('board-drag-flag');}}
  await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Present'}).click();
  const pres=page.getByRole('dialog',{name:'Present decisions'});await pres.waitFor();
  assert.ok(await pres.getByText(/^1 of \d+$/).isVisible());
