@@ -117,6 +117,8 @@ try{
  await page.goto(origin+'/preview-org/documents/pg');
  await page.locator('.pg-title').waitFor();
  const editor=page.locator('.pg-body .ProseMirror');
+ await page.getByTestId('doc-reader').waitFor(); await page.getByTestId('doc-crumb').waitFor(); await page.getByTestId('doc-inspector').waitFor();
+ if(process.env.DOC_SHOT){await editor.locator('p').first().waitFor();await page.waitForTimeout(400);await page.screenshot({path:process.env.DOC_SHOT});}
  await editor.locator('[data-type="details"]',{hasText:'Bank cut-off times'}).waitFor();
  assert.equal(await editor.getByText('HDFC 4 pm, SBI 3 pm.').isVisible(),false,'a closed toggle hides its content');
  await editor.locator('[data-type="details"] > button').first().click();

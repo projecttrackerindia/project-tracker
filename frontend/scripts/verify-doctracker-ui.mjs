@@ -135,7 +135,9 @@ try{
  await page.goto(origin+'/preview-org/documents/p1');await page.locator('.pg-title').waitFor();
  await page.locator('.pg-under .pg-list a',{hasText:'Code review'}).first().waitFor();
  const before=writes.filter(w=>w.ep==='/api/v1/documents').length;
- await page.locator('.dt-page-row',{hasText:'Engineering handbook'}).hover();await page.getByRole('button',{name:'Add a page inside Engineering handbook'}).click();
+ // Reader-first page: no tree beside it; "Add a page" under Pages inside adds one inside this page.
+ assert.equal(await page.locator('.ds-shell').count(),0);await page.getByTestId('doc-crumb').waitFor();
+ await page.locator('.pg-under').getByRole('button',{name:'Add a page'}).click();
  for(let i=0;i<20&&writes.filter(w=>w.ep==='/api/v1/documents').length===before;i++)await page.waitForTimeout(100);
  assert.equal(writes.filter(w=>w.ep==='/api/v1/documents').at(-1).b.parentId,'p1');checks.push('pages');
  await page.goto(origin+'/preview-org/library/docs?view=home');await page.locator('.dt-home').waitFor();
@@ -208,15 +210,16 @@ try{
  await shot(page,'security-1440.png');checks.push('security-center');
  await noScroll(page);
 
- // A document opens beside the DocTracker tree, with its own masking.
- await page.goto(origin+'/preview-org/documents/d3');await page.locator('.dv-head h1',{hasText:'Payments BRD'}).waitFor();
- await page.locator('.dt-tree .ds-doc.active',{hasText:'Payments BRD'}).waitFor();
+ // A document opens reader-first (crumb, centred column, outline + inspector rail; no tree), with its own masking.
+ await page.goto(origin+'/preview-org/documents/d3');await page.locator('.rd-title',{hasText:'Payments BRD'}).waitFor();
+ assert.equal(await page.locator('.dt-tree').count(),0);
+ assert.deepEqual(await page.getByTestId('doc-crumb').locator('a').allInnerTexts(),['Library','Payments Core']);
+ await page.getByTestId('doc-meta').getByText(/min read/).waitFor();await page.getByTestId('doc-inspector').waitFor();
  await page.locator('.dv-mask').getByRole('button',{name:'Reveal'}).click();
  const d2=page.getByRole('dialog');await d2.getByLabel('Why do you need to see them?').fill('Escalation review');await d2.getByRole('button',{name:'Reveal'}).click();
  await page.locator('.dv-mask.revealed').waitFor();
- await shot(page,'document-beside-tree-1440.png');checks.push('document-tree');
- await page.keyboard.press('Control+\\');await page.locator('.ds-shell.collapsed').waitFor();
- await page.getByRole('button',{name:'Show document tree'}).click();await page.locator('.ds-shell:not(.collapsed)').waitFor();checks.push('collapse');
+ await shot(page,'document-reader-1440.png');checks.push('document-reader');
+ await page.getByRole('button',{name:/Related docs/}).click();await page.locator('#rd-ins-related .rd-ins-body').waitFor();checks.push('inspector');
  await noScroll(page);
  await page.close();await ctx.close();
 
