@@ -173,7 +173,7 @@ try{
  await page.locator('.cmd-tabs button',{hasText:'My work'}).click();await page.locator('.cmd-mywork').waitFor();await page.waitForTimeout(300);
  assert.ok(new URL(page.url()).searchParams.get('tab')==='work');checks.push('my-work-tab');
  // v2: the old My work address is Work's first tab.
- await page.goto(origin+'/preview-org/my-work');await page.waitForURL(/\/preview-org\/work$/);await page.getByRole('tab',{name:'My work',selected:true}).waitFor();checks.push('my-work-redirect');
+ await page.goto(origin+'/preview-org/my-work');await page.waitForURL(/\/preview-org\/work$/);await page.getByRole('tab',{name:'Mine',selected:true}).waitFor();checks.push('my-work-redirect');
  await page.goto(origin+'/preview-org/?tab=work');await page.locator('.cmd-mywork').waitFor();
  await page.getByRole('button',{name:'Decisions'}).click();await page.getByRole('heading',{name:'Launch in two phases'}).waitFor();
  await shot(page,'decisions-1440.png');checks.push('decisions');
