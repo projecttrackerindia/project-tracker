@@ -3,16 +3,16 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { projectApi } from '../../api/endpoints';
-import { qualityApi, releaseApi, type Release, type ReleaseState } from '../../api/qualityApi';
+import { workspaceApi } from '../../api/endpoints.auth';
+import { qualityApi, releaseApi, type Release, type ReleaseSignOff, type ReleaseState } from '../../api/qualityApi';
 import { workItemsApi } from '../../api/workItemsApi';
 import { Field, Modal } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
-import { useWorkspaceId } from '../../stores/auth';
+import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 
 const err = (e: unknown, f: string) => (e instanceof ApiError ? e.message : f);
 const day = (d: string | null) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'No date');
-const ICON: Record<string, string> = { work: '✓', bugs: '🐞', tests: '⚗' };
 
 /**
  * Releases: a list on the left (planned first, by target date), the chosen release on the right — the go/no-go up top (three checks, each
@@ -55,12 +55,24 @@ export function Releases() {
   );
 }
 
+const DAY_MS = 86_400_000;
+const daysTo = (d: string) => Math.round((new Date(`${d}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / DAY_MS);
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]!.toUpperCase()).join('');
+const HUES = ['#28cd41', '#5856d6', '#ff9500', '#30b0c7', '#af52de', '#ff2d55', '#007aff'];
+const hue = (id: string) => HUES[parseInt(id.replace(/[^0-9a-f]/gi, '').slice(-4) || '0', 16) % HUES.length];
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const weekday = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+
 function Detail({ s, onChange }: { s: ReleaseState; onChange: (s: ReleaseState) => void }) {
   const r = s.release;
+  const meId = useAuth((a) => a.ctx?.user.id ?? null);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [people, setPeople] = useState(false);
   const [reason, setReason] = useState('');
   const [asking, setAsking] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [note, setNote] = useState('');
   const runs = useWsQuery(['quality', 'runs', r.projectId ?? 'all'], () => qualityApi.runs(r.projectId ?? undefined), { staleTime: 30_000 });
   const free = (runs.data ?? []).filter((x) => !s.runs.some((y) => y.id === x.id));
   const act = async (fn: () => Promise<ReleaseState>, ok: string) => {
@@ -68,57 +80,141 @@ function Detail({ s, onChange }: { s: ReleaseState; onChange: (s: ReleaseState) 
     try { onChange(await fn()); toast(ok, 'success'); return true; } catch (e) { toast(err(e, 'That did not work.'), 'error'); return false; } finally { setBusy(false); }
   };
   const planned = r.status === 'Planned';
+  const signOffs = s.signOffs ?? [];
+  const pending = signOffs.filter((x) => x.status !== 'Signed');
+  const mine = signOffs.find((x) => x.user.id === meId);
+  const closed = (c: string) => c === 'Done' || c === 'Cancelled';
+  const blockers = s.items.filter((i) => i.bug && !closed(i.category));
+  const openWork = s.items.filter((i) => !i.bug && !closed(i.category)).length;
+  const t = s.tests;
+  const toGo = r.targetDate ? daysTo(r.targetDate) : null;
+  const ready = [blockers.length ? `${plural(blockers.length, 'blocker')} close` : null, openWork ? `${plural(openWork, 'item')} ${openWork === 1 ? 'is' : 'are'} done` : null,
+    pending.length ? `${plural(pending.length, 'person')} sign${pending.length === 1 ? 's' : ''} off`.replace('persons', 'people') : null, !t ? 'tests run' : !t.ready ? 'tests pass' : null].filter(Boolean) as string[];
+  const verdict = r.status === 'Shipped' ? `Shipped ${r.shippedAt ? new Date(r.shippedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}`.trim()
+    : r.status === 'Approved' ? `Approved by ${r.approvedBy?.name ?? 'someone'}` : s.go ? 'Every check passes — ready to go' : ready.length ? `Ready once ${ready.length > 1 ? `${ready.slice(0, -1).join(', ')} and ${ready[ready.length - 1]}` : ready[0]}` : 'Not ready yet';
+  const f = s.forecast;
+  const forecast = !f ? null : f.openBlockers === 0 ? 'No open bugs block this release.' : f.blockersClearBy
+    ? `At the recent fix rate (${f.closedPerDay} a day) ${f.openBlockers === 1 ? 'the blocker closes' : `the ${f.openBlockers} blockers close`} by ${weekday(f.blockersClearBy)}${r.targetDate ? (f.blockersClearBy <= r.targetDate ? ' — on track for the target.' : ` — after the target of ${day(r.targetDate)}.`) : '.'}`
+    : 'No bugs closed in the last two weeks, so there is no fix rate to forecast from yet.';
+  const grid = s.grid;
   return (
     <>
-      <header className={`dq-card rl-head ${s.go ? 'go' : 'nogo'}`}>
-        <div className="rl-verdict" aria-live="polite"><span className="rl-orb" aria-hidden="true">{s.go ? '✓' : '!'}</span><div><small>{r.projectName ?? 'All projects'} · {day(r.targetDate)}</small><h1>{r.name}</h1><b>{r.status === 'Shipped' ? 'Shipped' : r.status === 'Approved' ? `Approved by ${r.approvedBy?.name ?? 'someone'}` : s.go ? 'Go — every check passes' : 'No go yet'}</b></div></div>
-        <div className="rl-checks">
-          {s.checks.map((c) => <div key={c.key} className={`rl-check ${c.ok ? 'ok' : 'no'}`}><span aria-hidden="true">{ICON[c.key]}</span><div><b>{c.label}</b><small>{c.detail}</small></div></div>)}
-        </div>
-        <div className="rl-acts">
-          {planned && (s.go
-            ? <button type="button" className="dq-btn pri" disabled={busy} onClick={() => void act(() => releaseApi.approve(r.id), `${r.name} approved.`)}>Approve release</button>
-            : asking
-              ? <form className="rl-why" onSubmit={(e) => { e.preventDefault(); void act(() => releaseApi.approve(r.id, reason), `${r.name} approved against the checks.`).then((ok) => ok && setAsking(false)); }}>
-                  <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} placeholder="Why go anyway?" aria-label="Reason to approve against the checks" />
-                  <button type="submit" className="dq-btn pri" disabled={busy || !reason.trim()}>Approve anyway</button>
-                  <button type="button" className="dq-btn" onClick={() => setAsking(false)}>Cancel</button>
-                </form>
-              : <button type="button" className="dq-btn" onClick={() => setAsking(true)}>Approve anyway…</button>)}
+      <header className="rl-top">
+        <div><small className="rl-eyebrow">{r.projectName ?? 'All projects'} · release</small><h1>{r.name}{r.targetDate ? ` · ${day(r.targetDate)}` : ''}</h1></div>
+        <div className="rl-pills">
+          {s.previous && <span className="rl-pill">{s.previous.name} shipped {s.previous.shippedAt ? new Date(s.previous.shippedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}</span>}
+          {r.status !== 'Shipped' && toGo != null && <span className={`rl-pill ${toGo < 0 ? 'late' : 'warn'}`}>{toGo > 0 ? `${plural(toGo, 'day')} to go` : toGo === 0 ? 'Due today' : `${plural(-toGo, 'day')} late`}</span>}
+          <span className={`rl-st s-${r.status.toLowerCase()}`}>{r.status}</span>
+          {planned && s.go && <button type="button" className="dq-btn pri" disabled={busy} onClick={() => void act(() => releaseApi.approve(r.id), `${r.name} approved.`)}>Approve release</button>}
           {r.status === 'Approved' && <button type="button" className="dq-btn pri" disabled={busy} onClick={() => void act(() => releaseApi.ship(r.id), `${r.name} marked shipped.`)}>Mark shipped</button>}
         </div>
       </header>
 
-      <div className="rl-cols">
-        <section className="dq-card rl-items" aria-label="Work in this release">
-          <div className="rl-sec-hd"><h2 className="dq-h3">Work <span className="dq-faint">{s.done} done · {s.open} open{s.openBugs ? ` · ${s.openBugs} open bug${s.openBugs === 1 ? '' : 's'}` : ''}</span></h2>{planned && <button type="button" className="dq-btn sm" onClick={() => setAdding(true)}>Add work</button>}</div>
-          {s.items.length === 0 ? <p className="dq-empty">Add the tasks, tickets and bugs going out in {r.name}.</p> : (
-            <ul>{s.items.map((i) => (
-              <li key={i.id} className={`rl-item${i.category === 'Done' || i.category === 'Cancelled' ? ' done' : ''}${i.bug ? ' bug' : ''}`}>
-                <span className="rl-dot" aria-hidden="true" />
-                <Link to={`/work?item=${i.id}`}><b>{i.key}</b> {i.title}</Link>
-                <small>{[i.bug ? 'Bug' : null, i.status, i.assignee?.name].filter(Boolean).join(' · ')}</small>
-                {planned && !i.bug && <button type="button" className="rl-x" aria-label={`Take ${i.key} out of the release`} onClick={() => void act(() => releaseApi.items(r.id, { remove: [i.id] }), `${i.key} taken out.`)}>×</button>}
+      <div className="rl-grid">
+        <section className={`dq-card rl-go ${s.go || r.status !== 'Planned' ? 'go' : 'nogo'}`} aria-label="Go or no-go">
+          <div className="rl-verdict" aria-live="polite"><span className="rl-orb" aria-hidden="true">{s.go || r.status !== 'Planned' ? '✓' : '⏸'}</span>
+            <div><small className="rl-kicker">GO / NO-GO · {r.status !== 'Planned' ? r.status.toUpperCase() : s.go ? 'GO' : 'NOT YET'}</small><h2>{verdict}</h2></div></div>
+          <div className="rl-stats">
+            <div><b>{t ? t.passed : '—'}{t && <span>/{t.ran + t.notRun}</span>}</b><small>Tests passed{t ? ` · ${t.passPercent}%` : ''}</small><i className="rl-bar" aria-hidden="true"><i style={{ width: `${t?.passPercent ?? 0}%` }} /></i></div>
+            <div><b className={blockers.length ? 'red' : ''}>{blockers.length}</b><small>Blocking bug{blockers.length === 1 ? '' : 's'} open</small></div>
+            <div><b className={pending.length ? 'amber' : ''}>{pending.length}</b><small>Sign-off{pending.length === 1 ? '' : 's'} pending</small></div>
+          </div>
+          {forecast && <p className="rl-forecast"><span className="rl-ai" aria-hidden="true" />{forecast}</p>}
+          <ul className="rl-checks">{s.checks.map((c) => <li key={c.key} className={c.ok ? 'ok' : 'no'}><span aria-hidden="true">{c.ok ? '✓' : '•'}</span><b>{c.label}</b><small>{c.detail}</small></li>)}</ul>
+          {planned && !s.go && (asking
+            ? <form className="rl-why" onSubmit={(e) => { e.preventDefault(); void act(() => releaseApi.approve(r.id, reason), `${r.name} approved against the checks.`).then((ok) => ok && setAsking(false)); }}>
+                <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} placeholder="Why go anyway?" aria-label="Reason to approve against the checks" />
+                <button type="submit" className="dq-btn pri" disabled={busy || !reason.trim()}>Approve anyway</button>
+                <button type="button" className="dq-btn" onClick={() => setAsking(false)}>Cancel</button>
+              </form>
+            : <div className="rl-why"><button type="button" className="dq-btn sm" onClick={() => setAsking(true)}>Approve anyway…</button></div>)}
+        </section>
+
+        <section className="dq-card rl-so" aria-label="Sign-offs">
+          <div className="rl-sec-hd"><h2 className="dq-h3">Sign-offs</h2>{planned && <button type="button" className="dq-btn sm" onClick={() => setPeople(true)}>{signOffs.length ? 'Edit' : 'Ask people'}</button>}</div>
+          {signOffs.length === 0 ? <p className="dq-empty">Ask the people who sign off — QA, Product, Engineering — and see who is still pending.</p> : (
+            <ul>{signOffs.map((x) => (
+              <li key={x.id} className="rl-so-row">
+                <span className="rl-av" style={{ background: hue(x.user.id) }} aria-hidden="true">{initials(x.user.name)}</span>
+                <span className="rl-so-who"><b>{x.user.name}</b> · {x.role}{x.note && <small>{x.note}</small>}</span>
+                <span className={`rl-tag ${x.status === 'Signed' ? 'ok' : x.status === 'Declined' ? 'bad' : 'warn'}`}>{x.status}{x.signedAt ? ` · ${new Date(x.signedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}</span>
               </li>))}</ul>
           )}
-        </section>
-        <section className="dq-card rl-runs" aria-label="Test runs">
-          <div className="rl-sec-hd"><h2 className="dq-h3">Test runs</h2></div>
-          {s.runs.length === 0 ? <p className="dq-empty">Tie the test run that checks this release.</p> : (
-            <ul>{s.runs.map((x) => <li key={x.id}><b>{x.name}</b><small>{[x.environment, x.build ? `build ${x.build}` : null, x.status].filter(Boolean).join(' · ')}</small>
-              {planned && <button type="button" className="rl-x" aria-label={`Untie ${x.name}`} onClick={() => void act(() => releaseApi.detachRun(r.id, x.id), 'Run untied.')}>×</button>}</li>)}</ul>
+          <div className="rl-so-acts">
+            {planned && pending.some((x) => x.status === 'Pending') && <button type="button" className="dq-btn sm" disabled={busy} onClick={() => void act(() => releaseApi.remind(r.id), `Reminded ${plural(pending.filter((x) => x.status === 'Pending').length, 'person').replace('persons', 'people')}.`)}>Remind pending</button>}
+            {planned && mine && mine.status !== 'Signed' && !declining && <>
+              <button type="button" className="dq-btn sm pri" disabled={busy} onClick={() => void act(() => releaseApi.sign(r.id, true), 'Signed off.')}>Sign off as {mine.role}</button>
+              <button type="button" className="dq-btn sm" onClick={() => setDeclining(true)}>Decline…</button>
+            </>}
+          </div>
+          {declining && (
+            <form className="rl-why" onSubmit={(e) => { e.preventDefault(); void act(() => releaseApi.sign(r.id, false, note), 'Sign-off declined.').then((ok) => ok && setDeclining(false)); }}>
+              <input autoFocus value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="Why not yet?" aria-label="Reason for declining" />
+              <button type="submit" className="dq-btn" disabled={busy || !note.trim()}>Decline</button>
+              <button type="button" className="dq-btn" onClick={() => setDeclining(false)}>Cancel</button>
+            </form>
           )}
-          {s.tests && <p className="rl-pass"><b>{s.tests.passPercent}%</b> passed in {s.tests.run?.name} · {s.tests.failed} failed · {s.tests.blocked} blocked · {s.tests.notRun} not run</p>}
+        </section>
+
+        <section className="dq-card rl-env" aria-label="Test runs by environment">
+          <div className="rl-sec-hd"><h2 className="dq-h3">Test runs by environment</h2></div>
+          {!grid || grid.rows.length === 0 ? <p className="dq-empty">Tie the test runs that check this release; results show here by suite and environment.</p> : (
+            <div className="rl-table-wrap"><div className="rl-table" role="table" aria-label="Suites by environment" style={{ gridTemplateColumns: `minmax(96px, 1.6fr) repeat(${grid.environments.length}, minmax(56px, 1fr))` }}>
+              <div role="row" className="rl-tr hd"><span role="columnheader">Suite</span>{grid.environments.map((e) => <span key={e} role="columnheader">{e}</span>)}</div>
+              {grid.rows.map((row) => (
+                <div role="row" className="rl-tr" key={row.suite}><span role="rowheader">{row.suite}</span>{row.cells.map((c) => (
+                  <span role="cell" key={c.environment}><span className={`rl-c ${c.total === 0 ? (c.running ? 'run' : 'na') : c.passed === c.total ? 'ok' : 'bad'}`}>{c.total === 0 ? (c.running ? 'running' : '—') : `${c.passed}/${c.total}`}</span></span>))}</div>))}
+            </div></div>
+          )}
+          {s.runs.length > 0 && <ul className="rl-runs">{s.runs.map((x) => <li key={x.id}><b>{x.name}</b><small>{[x.environment, x.build ? `build ${x.build}` : null, x.status].filter(Boolean).join(' · ')}</small>
+            {planned && <button type="button" className="rl-x" aria-label={`Untie ${x.name}`} onClick={() => void act(() => releaseApi.detachRun(r.id, x.id), 'Run untied.')}>×</button>}</li>)}</ul>}
           {planned && free.length > 0 && (
             <label className="rl-tie">Tie a run<select value="" onChange={(e) => { if (e.target.value) void act(() => releaseApi.attachRun(r.id, e.target.value), 'Run tied to the release.'); }}>
               <option value="">Choose…</option>{free.map((x) => <option key={x.id} value={x.id}>{x.name}{x.environment ? ` · ${x.environment}` : ''}</option>)}
             </select></label>
           )}
         </section>
+
+        <section className="dq-card rl-items" aria-label="Linked work items">
+          <div className="rl-sec-hd"><h2 className="dq-h3">Linked work items</h2><span className="rl-sec-r"><span className="dq-faint">{s.items.length} in release</span>{planned && <button type="button" className="dq-btn sm" onClick={() => setAdding(true)}>Add work</button>}</span></div>
+          {s.items.length === 0 ? <p className="dq-empty">Add the tasks, tickets and bugs going out in {r.name}.</p> : (
+            <ul>{[...s.items].sort((a, b) => Number(closed(a.category)) - Number(closed(b.category)) || Number(b.bug) - Number(a.bug)).map((i) => {
+              const done = closed(i.category), blocker = i.bug && !done;
+              return (
+                <li key={i.id} className="rl-wi">
+                  <code>{i.key}</code>
+                  <Link to={`/work?item=${i.id}`}>{i.title}</Link>
+                  <span className={`rl-tag ${blocker ? 'bad' : done ? 'ok' : ''}`}>{blocker ? 'Blocker' : done ? 'Done' : i.status}</span>
+                  {planned && !i.bug && <button type="button" className="rl-x" aria-label={`Take ${i.key} out of the release`} onClick={() => void act(() => releaseApi.items(r.id, { remove: [i.id] }), `${i.key} taken out.`)}>×</button>}
+                </li>);
+            })}</ul>
+          )}
+        </section>
       </div>
       {r.notes && <section className="dq-card rl-notes"><h2 className="dq-h3">Notes</h2><p>{r.notes}</p></section>}
       {adding && <AddWork projectId={r.projectId} exclude={s.items.map((i) => i.id)} onClose={() => setAdding(false)} onAdd={(ids) => void act(() => releaseApi.items(r.id, { add: ids }), `${ids.length} added.`).then((ok) => ok && setAdding(false))} />}
+      {people && <SignOffPeople current={signOffs} onClose={() => setPeople(false)} onSave={(list) => void act(() => releaseApi.setSignOffs(r.id, list), 'Sign-offs updated.').then((ok) => ok && setPeople(false))} />}
     </>
+  );
+}
+
+function SignOffPeople({ current, onClose, onSave }: { current: ReleaseSignOff[]; onClose: () => void; onSave: (list: { userId: string; role: string }[]) => void }) {
+  const members = useWsQuery(['workspace', 'members'], () => workspaceApi.members(), { staleTime: 60_000 });
+  const [rows, setRows] = useState(() => current.map((x) => ({ userId: x.user.id, role: x.role })));
+  const [who, setWho] = useState('');
+  const list = (members.data ?? []).filter((m) => m.role !== 'Guest');
+  const name = (id: string) => list.find((m) => m.userId === id)?.displayName ?? current.find((x) => x.user.id === id)?.user.name ?? 'Someone';
+  return (
+    <Modal title="Who signs off" onClose={onClose} footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={rows.some((x) => !x.role.trim())} onClick={() => onSave(rows.map((x) => ({ userId: x.userId, role: x.role.trim() })))}>Save</button></>}>
+      <ul className="rl-pick">{rows.map((x, i) => (
+        <li key={x.userId} className="rl-person"><b>{name(x.userId)}</b>
+          <input className="input" value={x.role} maxLength={60} placeholder="Role, e.g. QA" aria-label={`Role for ${name(x.userId)}`} onChange={(e) => setRows((r) => r.map((y, j) => (j === i ? { ...y, role: e.target.value } : y)))} />
+          <button type="button" className="rl-x" aria-label={`Remove ${name(x.userId)}`} onClick={() => setRows((r) => r.filter((_, j) => j !== i))}>×</button></li>
+      ))}</ul>
+      <label className="rl-tie">Add a person<select value={who} onChange={(e) => { const v = e.target.value; setWho(''); if (v) setRows((r) => [...r, { userId: v, role: '' }]); }}>
+        <option value="">Choose…</option>{list.filter((m) => !rows.some((x) => x.userId === m.userId)).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}{m.jobRole ? ` · ${m.jobRole}` : ''}</option>)}
+      </select></label>
+    </Modal>
   );
 }
 

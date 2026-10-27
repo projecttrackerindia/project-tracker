@@ -8,7 +8,7 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 {
     /// <summary>
     /// Releases (the work items going out together, the test runs that check them, a go/no-go) and a project status set by hand (on track /
-    /// at risk / late with why, until when and who). Two new tables and nullable columns only: nothing existing changes.
+    /// at risk / late with why, until when and who). Three new tables (with who signs off a release) and nullable columns only: nothing existing changes.
     /// </summary>
     [DbContext(typeof(AppDbContext))]
     [Migration("20261113001000_ReleasesAndHealth")]
@@ -70,11 +70,36 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                 });
             migrationBuilder.CreateIndex(name: "IX_ReleaseItems_TenantId_ReleaseId_WorkItemId", table: "ReleaseItems", columns: new[] { "TenantId", "ReleaseId", "WorkItemId" }, unique: true);
             migrationBuilder.CreateIndex(name: "IX_ReleaseItems_TenantId_WorkItemId", table: "ReleaseItems", columns: new[] { "TenantId", "WorkItemId" });
+
+            migrationBuilder.CreateTable(
+                name: "ReleaseSignOffs",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    ReleaseId = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Role = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
+                    Status = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    Note = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    SignedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    RemindedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ReleaseSignOffs", x => x.Id);
+                });
+            migrationBuilder.CreateIndex(name: "IX_ReleaseSignOffs_TenantId_ReleaseId_UserId", table: "ReleaseSignOffs", columns: new[] { "TenantId", "ReleaseId", "UserId" }, unique: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(name: "ReleaseSignOffs");
             migrationBuilder.DropTable(name: "ReleaseItems");
             migrationBuilder.DropTable(name: "Releases");
             migrationBuilder.DropIndex(name: "IX_TestRuns_TenantId_ReleaseId", table: "TestRuns");
