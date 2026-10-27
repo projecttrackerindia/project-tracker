@@ -65,6 +65,8 @@ try{
    else if(ep==='/api/v1/me/review-queue')data=queue;
    else if(ep===`/api/v1/tasks/${tid}/dev-links`)data=links;
    else if(ep===`/api/v1/tasks/${tid}`)data={task,subtasks:[]};
+   else if(ep===`/api/v1/work-items/${tid}`)data={kind:'task',id:tid,key:task.key,title:task.title,description:null,projectId:pid,projectKey:'PAY',projectName:'Refunds',status:'Review',category:'Active',priority:'High',startDate:null,dueDate:null,isOverdue:false,
+    assignee:task.assignee,reporter:task.reporter,version:3,createdAt:task.createdAt,updatedAt:task.updatedAt,completedAt:null,loggedMinutes:0,detail:task,activity:[],channel:null};
    else if(ep===`/api/v1/tasks/${tid}/checklist`)data={items:[],total:0,done:0,progress:0};
    else if(ep===`/api/v1/tasks/${tid}/dependencies`)data={blockedBy:[],blocks:[]};
    else if(ep==='/api/v1/attachments/limits')data={maxFileBytes:10485760,storageLimitBytes:1073741824,storageUsedBytes:0,allowedExtensions:['pdf','png']};
@@ -122,7 +124,12 @@ try{
  checks.push('rules');
 
  // The task: the pull request's checks, review wait and risk with reasons; Create branch picks a repository and shows the command.
+ // v2: the old task link opens the task in the Work side panel, which shows its pull request; the full task sheet is one ··· away.
  await page.goto(origin+`/preview-org/projects/${pid}?task=${tid}`);
+ await page.waitForURL(/\/work\?item=/);
+ const side=page.locator('aside.v2-panel');await side.getByText('PAY-12 · Task').waitFor();
+ await side.getByTestId('dev-links').getByText('✓ Checks pass').waitFor();
+ await side.getByRole('button',{name:'More for this item'}).click();await page.getByRole('menuitem',{name:/All task details/}).click();
  const dialog=page.getByRole('dialog');await dialog.waitFor();
  await dialog.getByRole('heading').first().waitFor();
  // The task as a calm sheet: key and status in pills, the big title, fields as rows. Light, dark and a phone.

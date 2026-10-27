@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, download, uploadFile } from '../../api/client';
 import { projectApi, workApi, workspaceApi } from '../../api/endpoints';
 import type { Priority, WorkSla } from '../../api/types';
@@ -69,8 +69,11 @@ export function WorkItemPanel({ id, onClose }: { id: string; onClose: () => void
   const q = useWsQuery(['work-items', 'item', id], () => workItemsApi.get(id), { retry: (n, e) => !(e instanceof ApiError && (e.status === 404 || e.status === 403)) && n < 2 });
   const { state, run } = useSaveState();
   const [conflict, setConflict] = useState(false);
-  const [full, setFull] = useState(false);
-  useEffect(() => { setConflict(false); setFull(false); }, [id]);
+  // All the details (the task sheet or the ticket form) for what the panel leaves out; in the address (?full=1) so it survives a reload.
+  const [params, setParams] = useSearchParams();
+  const full = params.get('full') === '1';
+  const setFull = (on: boolean) => setParams((p) => { const n = new URLSearchParams(p); if (on) n.set('full', '1'); else n.delete('full'); return n; }, { replace: true });
+  useEffect(() => { setConflict(false); }, [id]);
   const w = q.data?.id ? q.data : undefined;
 
   /** Saves one change with the version last read. A 409 means someone saved in between: read it again and say so. */

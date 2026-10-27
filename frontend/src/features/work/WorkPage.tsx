@@ -70,8 +70,8 @@ export function WorkPage() {
     return n;
   }, { replace });
   const setTab = (t: Tab) => setParams(() => { const n = new URLSearchParams(); if (t !== 'mine') n.set('tab', t); if (item) n.set('item', item); return n; });
-  const open = useCallback((id: string) => go({ item: id }, true), []); // eslint-disable-line react-hooks/exhaustive-deps
-  const close = useCallback(() => go({ item: null }, true), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const open = useCallback((id: string) => go({ item: id, full: null }, true), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const close = useCallback(() => go({ item: null, full: null }, true), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------------------------------------------------------------- what each tab lists
   const person = tab === 'team' ? params.get('person') : null;

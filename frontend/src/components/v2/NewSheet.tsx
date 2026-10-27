@@ -221,7 +221,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
                     </select>
                   </Chip>
                 )}
-                {(type === 'task' || live.length > 0) && (
+                {(type === 'task' || (live.length > 0 && !!projectId)) && (
                   <Chip label="Project" value={type === 'task' ? project?.name ?? 'Choose…' : live.find((p) => p.id === projectId)?.name ?? 'None'} warn={type === 'task' && !project}>
                     <select aria-label="Change project" value={type === 'task' ? project?.id ?? '' : projectId ?? ''} onChange={(e) => setProjectId(e.target.value || null)}>
                       <option value="" disabled={type === 'task'}>{type === 'task' ? 'Choose a project' : 'None'}</option>

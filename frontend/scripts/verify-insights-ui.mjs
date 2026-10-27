@@ -87,6 +87,8 @@ const make = async (theme, modules) => {
     else if (ep === '/api/v1/resources/rates') data = rates;
     else if (ep === '/api/v1/reports/exports') data = exportsList;
     else if (ep === '/api/v1/my-work') data = mine;
+    // v2: My work is Work's first tab, on the one Work API.
+    else if (ep === '/api/v1/work-items') data = { items: mine.map((w) => ({ ...w, kind: { Task: 'task', Issue: 'issue', ActionItem: 'action', Operational: 'ticket' }[w.kind], category: w.category === 'InProgress' ? 'Active' : w.category })), offset: 0, limit: 200, hasMore: false };
     else if (ep === `/api/v1/projects/${pid}`) data = detail;
     else if (ep === `/api/v1/projects/${pid}/issues`) data = issues;
     else if (ep === `/api/v1/projects/${pid}/attachments`) data = files;

@@ -43,8 +43,8 @@ export function ProjectWorkTab({ projectId }: { projectId: string }) {
     for (const [k, v] of Object.entries(next)) { if (v === null) n.delete(k); else n.set(k, v); }
     return n;
   }, { replace: true });
-  const open = useCallback((id: string) => set({ item: id }), []); // eslint-disable-line react-hooks/exhaustive-deps
-  const close = useCallback(() => set({ item: null }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const open = useCallback((id: string) => set({ item: id, full: null }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const close = useCallback(() => set({ item: null, full: null }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const detail = q.data;
   const p = detail?.project;
