@@ -166,7 +166,7 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
     : [...(items.data ?? []).filter((r) => inShow(r.collectionId)), ...sealedRows.map((r) => r.sum)]
       .sort((a, b) => (b.health.length > 0 ? 1 : 0) - (a.health.length > 0 ? 1 : 0) || a.title.localeCompare(b.title));
   // All · Mine · Shared · Requests only earn their place once there is something to sort: more than 10 items, or a request waiting.
-  const showTabs = show !== 'all' || waiting > 0 || !!q || items.isLoading || list.length > 10;
+  const showTabs = show !== 'all' || waiting > 0 || !!q || !!collection || !!health || list.length > 10;   // a filter chip in this row keeps it shown
   const selectedSealed = (view === 'bin' ? sealedBin : sealedRows).find((r) => r.s.row.id === itemId) ?? null;
   const hasKeys = !!keysMe.data?.identity;
   const canSeal = hasKeys && unlocked;

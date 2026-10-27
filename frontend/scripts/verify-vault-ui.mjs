@@ -196,7 +196,7 @@ try {
   const openCollection = async (name) => { await more(/^Collections/); await page.locator(`.lib-vault-colls li[data-collection="${name}"] .lib-vault-coll-main`).click(); await page.locator(`.lib-vault-coll[data-collection="${name}"]`).waitFor(); };
   // The sealed vault's state is the ··· entry's name: "Set up sealed vault", "My keys · sealed vault open" or "… unlock sealed vault".
   const lockState = async () => { await page.getByRole('button', { name: 'More in the vault' }).click(); const t = await page.getByRole('menuitem', { name: /sealed vault/i }).innerText(); await page.keyboard.press('Escape'); return t; };
-  const allItems = async () => { if (await page.locator('.lib-vault-coll .lib-vault-flag').count()) await page.locator('.lib-vault-coll .lib-vault-flag').click(); if (await page.locator('.lib-vault-flag').count()) await page.locator('.lib-vault-flag').click(); };
+  const allItems = async () => { if (await page.locator('.lib-vault-coll .lib-vault-flag').count()) { await page.locator('.lib-vault-coll .lib-vault-flag').click(); await page.locator('.lib-vault-coll').waitFor({ state: 'detached' }); } if (await page.locator('.lib-vault-flag').count()) await page.locator('.lib-vault-flag').click(); };
 
   let ctx = await make(); let page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message)); await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${origin}/preview-org/vault`); await page.locator('.lib-vault-items').waitFor();
