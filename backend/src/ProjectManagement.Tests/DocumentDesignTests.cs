@@ -133,7 +133,7 @@ public class DocumentDesignTests(ApiFactory factory)
     [Fact]
     public async Task The_pdf_carries_the_logo_the_lifecycle_the_request_flow_and_masked_credentials()
     {
-        var owner = await TestClient.RegisterAsync(factory, "Prasanna Krishna");
+        var owner = await TestClient.RegisterAsync(factory, "Maya Chen");
         await owner.CreateOrgAsync(); await owner.UpgradeAsync("BUSINESS", 5);
         Assert.True((await UploadLogo(owner, Png())).Ok);
         var type = Guid.Parse(S((await owner.Get("/api/v1/document-types")).Data!.AsArray().First(t => S(t!["code"]) == "API")!["id"]));

@@ -13,9 +13,9 @@ const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'
 await fs.mkdir(out, { recursive: true });
 const csp = await appCsp();
 const g = (n) => `93000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
-const user = { id: g(1), displayName: 'Prasanna K', email: 'prasanna@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
+const user = { id: g(1), displayName: 'Maya C', email: 'maya@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
 const ws = { id: g(9), slug: 'preview-org', name: 'Preview Org', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 3 };
-const members = [[g(1), 'Prasanna K'], [g(2), 'Shiva Kumar'], [g(3), 'Siva Rao']].map(([id, n], i) => ({ userId: id, displayName: n, email: `u${i}@example.test`, role: i ? 'Member' : 'Owner', joinedAt: '2026-01-01T00:00:00Z', jobRole: null }));
+const members = [[g(1), 'Maya C'], [g(2), 'Shiva Kumar'], [g(3), 'Siva Rao']].map(([id, n], i) => ({ userId: id, displayName: n, email: `u${i}@example.test`, role: i ? 'Member' : 'Owner', joinedAt: '2026-01-01T00:00:00Z', jobRole: null }));
 const channel = { id: g(60), type: 'Group', name: 'lending-incidents', members: [], lastMessage: null, unread: 0, isMuted: false, canManage: true, otherUserId: null, lastActivityAt: '2026-10-01T00:00:00Z', projectId: null, unreadMentions: 0 };
 const base = (o) => ({ projectId: null, whenStatusId: null, whenPriority: null, whenStatusCategory: null, triggerDays: null, actionPriority: null, actionStatusId: null, actionStatusCategory: null,
   actionLabelId: null, actionTarget: 'User', actionUserId: null, actionText: null, actionConversationId: null, moreActions: [], conditions: [], isDraft: false, runCount: 0, lastRunAt: null, conversationName: null, ...o });

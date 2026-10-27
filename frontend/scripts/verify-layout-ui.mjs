@@ -48,7 +48,7 @@ try{
        {id:'te2',taskId:'t3',taskKey:'PAY-3',taskTitle:'Reconciliation report',projectId:null,user:{id:'u',name:'Me'},workDate:today,minutes:180,note:null,isRunning:false,startedAt:null,canEdit:true,workTaskId:null,kind:'task',billable:false,locked:false}]};}
    else if(ep.includes('/project-status/projects/'))data={project,tasks,changes:[],delayedTasks:0,blockedTasks:0};
    // v2: a portfolio link to one project opens the one project page.
-   else if(ep===`/api/v1/projects/${pid}`)data={project:{...card(0,project.name,'DEMO',project.description,'Delivery','AtRisk',3,1,33,'High','NewProject',owner(2,'Prasanna Krishna'),'2027-07-09'),id:pid},
+   else if(ep===`/api/v1/projects/${pid}`)data={project:{...card(0,project.name,'DEMO',project.description,'Delivery','AtRisk',3,1,33,'High','NewProject',owner(2,'Maya Chen'),'2027-07-09'),id:pid},
     stages:['Requirements and Planning','Code Review','User Acceptance Testing','Production Deployment'].map((name,i)=>({id:`50000000-0000-0000-0000-00000000000${i}`,name,order:i,plannedStart:null,plannedEnd:null,actualStart:null,actualEnd:null,status:i?'Pending':'InProgress',effectiveStatus:i?'Pending':'InProgress',owner:null,assignee:null,description:null,taskTotal:1,taskDone:0,locked:i>0,lockedBy:null,openIssues:0,totalIssues:0})),
     statuses:[],members:[{userId:user.id,name:user.displayName,email:user.email,role:'Owner'}]};
    else if(ep==='/api/v1/calendar')data=[['Requirements and Planning workshop with every delivery stakeholder','10:00',60],['Code Review','10:30',45],['User Acceptance Testing sign-off with the business owners','13:00',90],['Production Deployment readiness','15:30',30]].map(([title,hm,mins],i)=>({id:`20000000-0000-0000-0000-00000000000${i}`,type:'meeting',title,date:today,startsAt:`${today}T${hm}:00+05:30`,durationMinutes:mins,status:null,category:null,overdue:false,projectId:pid,projectName:'Long integration project name with a descriptive delivery title',priority:null}));
@@ -107,9 +107,9 @@ try{
  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.v2-ask .v2-orb').count(),1,'v2: the Ask bar replaces the animated agent mark');
  // Project cards line up across a row whatever the name, code or description length (the numbers, bar, badges and owner sit at the same height).
  cardProjects=[card(1,'idfc-qr-callback-api','IQCA','Api Configuration and Validation','Mule Soft','AtRisk',1,0,0,'Medium','Integration',owner(1,'Shiva kumar'),'2026-11-13'),
-  card(2,'Payment Engine Disaster Recovery (DR) Setup','PEDR','Payment Engine Disaster Recovery (DR) setup in the AWS Hyderabad region, including failover runbooks and quarterly drills.','Mule Soft','AtRisk',1,0,0,'High','NewProject',owner(2,'Prasanna Krishna'),'2026-11-21'),
-  card(3,'TCN Call Recording API','TCRA','TCN Call Recording API request implementation, sharing Postman collections with the vendor.','Mule Soft','OnTrack',1,1,100,'Medium','Integration',owner(2,'Prasanna Krishna'),'2026-12-20'),
-  card(4,'GEN AI','GA2',null,'Mule Soft','OnTrack',1,1,100,'Medium','NewProject',owner(2,'Prasanna Krishna'),'2027-02-14')];
+  card(2,'Payment Engine Disaster Recovery (DR) Setup','PEDR','Payment Engine Disaster Recovery (DR) setup in the AWS Hyderabad region, including failover runbooks and quarterly drills.','Mule Soft','AtRisk',1,0,0,'High','NewProject',owner(2,'Maya Chen'),'2026-11-21'),
+  card(3,'TCN Call Recording API','TCRA','TCN Call Recording API request implementation, sharing Postman collections with the vendor.','Mule Soft','OnTrack',1,1,100,'Medium','Integration',owner(2,'Maya Chen'),'2026-12-20'),
+  card(4,'GEN AI','GA2',null,'Mule Soft','OnTrack',1,1,100,'Medium','NewProject',owner(2,'Maya Chen'),'2027-02-14')];
  await ctx.addInitScript(()=>{try{localStorage.setItem('pm_projects_view','passes');}catch{}});
  await open('/preview-org/projects','.pa-grid',1440);await page.locator('.pa-pass').nth(3).waitFor();
  for(const width of [1440,1100]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(200);

@@ -14,7 +14,7 @@ const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'
 await fs.mkdir(out, { recursive: true });
 const csp = await appCsp();
 const g = (n) => `91000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
-const user = { id: g(1), displayName: 'Prasanna K', email: 'prasanna@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
+const user = { id: g(1), displayName: 'Maya C', email: 'maya@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
 const me = { id: user.id, name: user.displayName };
 const p = (n, name) => ({ id: g(n), name });
 const shiva = p(2, 'Shiva Kumar'), siva = p(3, 'Siva Rao'), ravi = p(4, 'Ravi Teja'), priya = p(5, 'Priya S'), rakshit = p(6, 'Rakshit M');

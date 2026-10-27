@@ -94,6 +94,8 @@ const make = async (device, theme) => {
     if (ep.endsWith('/auth/refresh')) data = { accessToken: `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`, expiresAt: '2099-01-01T00:00:00Z', user };
     else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['projects.view', 'projects.edit', 'projects.create', 'tasks.view', 'tasks.edit', 'tasks.create', 'tasks.comment', 'org.manage', 'work.view', 'work.edit', 'work.create', 'reports.view', 'reports.broad', 'vault.use'], modules: { projects: 3, tasks: 3, calendar: 3, work: 3, ai: 3, activity: 3, documents: 3, people: 3, reports: 3, billing: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { AI_ASSISTANT: 3 } } };
     else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
+    else if (ep === '/api/v1/doctracker/catalog') data = { projects: [{ id: g(70), key: 'ORL', name: 'Orchard Ledger', endpoints: [], definitions: [], documents: [], diagrams: 1, designs: 0 }], canCreate: true, isAdmin: true, truncated: 0, teams: [] };
+    else if (ep === '/api/v1/documents/dashboard') data = { total: 0, byStatus: [], byType: [], mine: 0, waitingForMe: 0, updatedThisWeek: 0, notUpdatedIn90Days: 0, unpublished: 0, recent: [] };
     else if (ep === '/api/v1/timer') data = timer;
     else if (ep === '/api/v1/inbox') data = { rows, counts: { all: 6, assigned: 2, decisions: 2, mentions: 1 }, later: 0 };
     else if (ep === '/api/v1/inbox/briefing') data = briefing;

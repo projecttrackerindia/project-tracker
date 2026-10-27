@@ -56,7 +56,7 @@ public class ProjectMeetingTests(ApiFactory factory)
     [Fact]
     public async Task Starting_a_meeting_defaults_to_every_project_member_and_marks_the_organizer_accepted()
     {
-        var owner = await TestClient.RegisterAsync(factory, "Prasanna");
+        var owner = await TestClient.RegisterAsync(factory, "Maya");
         await owner.CreateOrgAsync();
         await owner.UpgradeAsync("PRO");
         var project = await owner.CreateProjectAsync("Payment Engine");
@@ -161,7 +161,7 @@ public class ProjectMeetingTests(ApiFactory factory)
     [Fact]
     public async Task Scheduling_and_then_cancelling_posts_a_meeting_card_into_the_projects_chat()
     {
-        var owner = await TestClient.RegisterAsync(factory, "Prasanna");
+        var owner = await TestClient.RegisterAsync(factory, "Maya");
         await owner.CreateOrgAsync();
         var project = await owner.CreateProjectAsync("Payment Engine");
         await ConnectGoogleAsync(owner);

@@ -220,7 +220,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
     }
 
     /// <summary>
-    /// The person's own notetaker: sends the bot to a call in their name ("Prasanna's assistant"), filed under one of their projects. Unlike
+    /// The person's own notetaker: sends the bot to a call in their name ("Maya's assistant"), filed under one of their projects. Unlike
     /// <see cref="JoinLinkAsync"/> this needs only access to the project (not the right to set up its agent). <paramref name="start"/>
     /// null = now. Returns null when the bot is already going to that call.
     /// </summary>

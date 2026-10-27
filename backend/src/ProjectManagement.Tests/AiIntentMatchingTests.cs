@@ -18,7 +18,7 @@ public sealed class AiIntentMatchingTests
     [InlineData("SIVA-REDDY")]
     [InlineData("sivaredy")]
     public void Normalization_and_one_edit_match_existing_members(string query) =>
-        Assert.Equal([0], AiPersonMatching.Match(query, [("Siva Reddy", "siva@example.com"), ("Prasanna", "p@example.com")]));
+        Assert.Equal([0], AiPersonMatching.Match(query, [("Siva Reddy", "siva@example.com"), ("Maya", "p@example.com")]));
     [Fact]
     public void Close_candidates_require_clarification() =>
         Assert.Equal(2, AiPersonMatching.Match("sivareddx", [("Siva Reddy", "one@example.com"), ("Siva Reddi", "two@example.com")]).Count);

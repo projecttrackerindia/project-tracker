@@ -43,7 +43,7 @@ public class WorkspaceMeetingTests(ApiFactory factory)
     [Fact]
     public async Task A_scrum_call_can_be_scheduled_without_a_project_and_notifies_the_invited_members()
     {
-        var owner = await TestClient.RegisterAsync(factory, "Prasanna");
+        var owner = await TestClient.RegisterAsync(factory, "Maya");
         await owner.CreateOrgAsync();
         await owner.UpgradeAsync("PRO");
         var teammate = await owner.AddMemberAsync(factory, TenantRole.Member, "Sridhar");

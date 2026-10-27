@@ -61,10 +61,10 @@ try{
    else if(ep==='/api/v1/portfolio/board'){boardQueries.push(url.search);data=board();}
    else if(ep==='/api/v1/portfolio/timeline')data=timeline;
    else if(ep===`/api/v1/project-status/projects/${pay}`){const t=(id,n,title,extra)=>({id,key:'PAY-'+n,title,parentTaskId:null,startDate:'2026-10-01',dueDate:'2026-10-20',originalDueDate:'2026-10-15',delayedDays:5,statusName:'In progress',statusCategory:'Active',statusColor:'#0a84ff',assignee:{id:'u2',name:'Siva Reddy'},overdueDays:0,revisions:1,blockedBy:[],...extra});
-     data={project:{id:pay,key:'PAY',name:'Payments',description:null,groupName:'Delivery',startDate:'2026-09-01',dueDate:'2026-11-02',originalDueDate:'2026-10-25',delayedDays:8,status:'Active',health:'AtRisk',progress:40,owner:{id:'u1',name:'Prasanna Krishna'},stats:{},projectType:'Delivery'},
+     data={project:{id:pay,key:'PAY',name:'Payments',description:null,groupName:'Delivery',startDate:'2026-09-01',dueDate:'2026-11-02',originalDueDate:'2026-10-25',delayedDays:8,status:'Active',health:'AtRisk',progress:40,owner:{id:'u1',name:'Maya Chen'},stats:{},projectType:'Delivery'},
        tasks:[t('t-pay-1',1,'Bulk payout API',{overdueDays:7}),t('t-pay-2',2,'Bank sandbox certification',{blockedBy:[{key:'OPS-4',title:'Sandbox keys from the bank',statusName:'Waiting'}]}),t('t-pay-3',3,'Reconciliation report',{assignee:null,delayedDays:0})],
-       changes:[{id:'ch1',scope:'Project',taskId:null,taskKey:null,title:'Payments',previous:'2026-10-25',revised:'2026-11-02',daysShifted:8,reason:'Ravi on leave for a week',dependency:null,changedBy:{id:'u1',name:'Prasanna Krishna'},changedAt:'2026-10-20T10:00:00Z',currentStatus:'Active',currentCategory:null}],delayedTasks:2,blockedTasks:1};}
-   else if(ep===`/api/v1/projects/${pay}`)data={project:{id:pay},statuses:[{id:'s-todo',name:'To do',order:0,category:'Todo',color:'#8e8e93'},{id:'s-done',name:'Done',order:2,category:'Done',color:'#30d158'}],stages:[],members:[{userId:'u1',name:'Prasanna Krishna',email:'p@example.com',role:null},{userId:'u2',name:'Siva Reddy',email:'s@example.com',role:null}]};
+       changes:[{id:'ch1',scope:'Project',taskId:null,taskKey:null,title:'Payments',previous:'2026-10-25',revised:'2026-11-02',daysShifted:8,reason:'Ravi on leave for a week',dependency:null,changedBy:{id:'u1',name:'Maya Chen'},changedAt:'2026-10-20T10:00:00Z',currentStatus:'Active',currentCategory:null}],delayedTasks:2,blockedTasks:1};}
+   else if(ep===`/api/v1/projects/${pay}`)data={project:{id:pay},statuses:[{id:'s-todo',name:'To do',order:0,category:'Todo',color:'#8e8e93'},{id:'s-done',name:'Done',order:2,category:'Done',color:'#30d158'}],stages:[],members:[{userId:'u1',name:'Maya Chen',email:'p@example.com',role:null},{userId:'u2',name:'Siva Reddy',email:'s@example.com',role:null}]};
    else if(ep==='/api/v1/project-status/groups')data=[{id:'g1',name:'Delivery',isActive:true,count:2,projects:[{id:pay,name:'Payments',health:'AtRisk',progress:40,active:10},{id:web,name:'Website',health:'OnTrack',progress:20,active:0}]}];
    else if(ep==='/api/v1/ai/portfolio/brief')data=brief;
    else if(ep===`/api/v1/project-status/projects/${pay}/weekly`)data={projectId:pay,projectName:'Payments',from:day(-6),to:day(0),health:'At risk',text:'',moved:2,slipped:1,risks:1,next:2,canSend:true,projectKey:'PAY',week:44,
@@ -179,7 +179,7 @@ try{
  const payTab=pres.getByRole('tab').filter({hasText:'Payments'});
  if(await payTab.count()){await payTab.first().click();
   const facts=pres.getByRole('complementary',{name:'Payments details'});await facts.waitFor();
-  const ft=await facts.innerText();assert.match(ft,/Lead[\s\S]*Prasanna Krishna/i);assert.match(ft,/Started[\s\S]*1 Sep/i);assert.match(ft,/was 25 Oct/);
+  const ft=await facts.innerText();assert.match(ft,/Lead[\s\S]*Maya Chen/i);assert.match(ft,/Started[\s\S]*1 Sep/i);assert.match(ft,/was 25 Oct/);
   assert.match(ft,/PAY-1[\s\S]*Siva Reddy[\s\S]*7d overdue/);assert.match(ft,/Waiting on OPS-4/);assert.match(ft,/Ravi on leave/);
   await shot(page,'present-facts-1440.png');
   await facts.getByRole('button',{name:'Mark PAY-1 done'}).click();await facts.getByText('PAY-1').waitFor({state:'detached'});
