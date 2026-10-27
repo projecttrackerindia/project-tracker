@@ -67,6 +67,7 @@ const sha1hex = (s) => createHash('sha1').update(s).digest('hex').toUpperCase();
 const collectionKeys = (id) => ({ collectionId: id, sealed: true, keyVersion: 1, rekeyNeeded: false, myAccess: 'Manage', pending: [],
   mine: sealedState.envelopes.filter((e) => e.collectionId === id).map((e) => ({ ...e, senderUserId: user.id, senderEd25519Public: sealedState.identity.ed25519Public })) });
 const STEP = 'step-token-1';
+const REVEAL = 'reveal-grant-1', ACCOUNT_PASSWORD = 'Passw0rd!x';
 const writes = [], errors = [], checks = [];
 const err = (status, code, message) => ({ status, body: { errors: [{ code, message }], message } });
 
@@ -90,6 +91,14 @@ try {
       const m = ep.match(/^\/api\/v1\/vault\/items\/([^/]+)(?:\/(reveal|totp|activity|restore|versions\/([^/]+)\/reveal))?$/);
       if (ep === '/api/v1/vault/overview') data = overview();
       else if (ep === '/api/v1/vault/step-up') { writes.push({ ep, body }); data = body.code === '123456' ? { token: STEP, expiresAt: new Date(Date.now() + 300e3).toISOString() } : null; if (!data) fail = err(422, 'MFA_CODE_INVALID', 'That code is not right. Try the current one.'); }
+      else if (ep === '/api/v1/vault/step-up/reveal') {
+        // The server checks the password AND a second factor (code or passkey) before it gives a reveal grant.
+        writes.push({ ep, body });
+        if (body.password !== ACCOUNT_PASSWORD) fail = err(422, 'VALIDATION_FAILED', 'That password is not correct.');
+        else if (body.challengeId || body.code === '123456') data = { token: REVEAL, expiresAt: new Date(Date.now() + 300e3).toISOString() };
+        else if (!body.code) fail = err(403, 'REVEAL_SECOND_FACTOR_REQUIRED', 'Your password is right. Now confirm with a two-step code or a passkey.');
+        else fail = err(422, 'VALIDATION_FAILED', 'That code is not correct.');
+      }
       else if (ep === '/api/v1/vault/items' && method === 'GET') {
         writes.push({ ep, q: Object.fromEntries(url.searchParams) });
         const c = url.searchParams.get('collectionId'), h = url.searchParams.get('health'), q = (url.searchParams.get('q') ?? '').toLowerCase();
@@ -102,8 +111,9 @@ try {
         writes.push({ ep, body }); const s = items.find((i) => i.id === m[1]);
         if (reqState.forceStepUp && body.stepUp !== 'passkey-token') { reqState.forceStepUp = false; fail = err(403, 'STEP_UP_REQUIRED', 'This looks unusual — a new browser or device. Confirm it is you.'); }
         else if (collections.find((c) => c.id === s.collectionId)?.requireApproval && !reqState.mine.some((r) => r.itemId === s.id && r.status === 'Approved')) fail = err(403, 'VAULT_APPROVAL_REQUIRED', 'Someone else must approve this first (the two-person rule).');
-        else if (s.class === 'Confidential' && body.stepUp !== STEP && body.stepUp !== 'passkey-token') fail = err(403, 'STEP_UP_REQUIRED', 'This needs a fresh two-step check. Confirm with your authenticator first.');
+        else if (s.class === 'Confidential' && body.stepUp !== STEP && body.stepUp !== 'passkey-token' && body.stepUp !== REVEAL) fail = err(403, 'STEP_UP_REQUIRED', 'This needs a fresh two-step check. Confirm with your authenticator first.');
         else if (s.useOnly && !body.copy) fail = err(403, 'VAULT_USE_ONLY', 'This item is use-only.');
+        else if (!body.copy && body.stepUp !== REVEAL) fail = err(403, 'REVEAL_VERIFY_REQUIRED', 'Showing a value needs your password and a two-step code or passkey.');
         else data = { value: SECRETS[m[1]][body.field], revealSeconds: policy.revealSeconds, clipboardSeconds: policy.clipboardSeconds };
       }
       else if (m && m[2] === 'totp') { writes.push({ ep, body }); data = { code: '492039', secondsLeft: 21, period: 30, digits: 6 }; }
@@ -200,7 +210,7 @@ try {
 
   let ctx = await make(); let page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message)); await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${origin}/preview-org/vault`); await page.locator('.lib-vault-items').waitFor();
-  assert.ok(await page.locator('.v2-rail-item', { hasText: 'Library' }).isVisible(), 'Library in the rail'); assert.ok(await page.getByRole('tab', { name: 'Vault' }).isVisible(), 'Vault is a Library tab');
+  assert.ok(await page.locator('.v2-rail-item', { hasText: 'Library' }).isVisible(), 'Library in the rail'); assert.ok(await page.locator('.v2-rail-item', { hasText: 'Vault' }).isVisible(), 'Vault in the rail'); assert.equal(await page.locator('.pw-h1').innerText(), 'Vault');
   await more(/^Collections/);
   assert.deepEqual(await page.locator('.lib-vault-colls [data-collection]').evaluateAll((els) => els.map((e) => e.getAttribute('data-collection'))), ['My vault', 'Payments servers']);
   await page.locator('.lib-vault-mode').getByRole('button', { name: 'Items' }).click();
@@ -222,10 +232,10 @@ try {
   assert.ok(!/onclick/.test(tt.iconHtml));
   checks.push('trusted-types');
   // Tiles drawn here (nothing fetched), health at a glance, and copying straight from the list with the keyboard.
-  assert.equal(await page.locator('.lib-vault-item[data-item="AWS root account"] .vlt-tile-text').innerText(), 'aws');
-  assert.equal(await page.locator('.lib-vault-item[data-item="Bank portal"] .vlt-tile-text').innerText(), 'BP');
-  // v2: health at a glance is the eyebrow (items at risk); the score and the filters are ··· › Health.
-  assert.match(await page.locator('.page-head .eyebrow').first().innerText(), /4 items · 1 at risk/);
+  assert.equal(await page.locator('.lib-vault-item[data-item="AWS root account"] .vlt-tile-text').innerText(), 'a');   // Passwords-style: one white letter on the brand colour
+  assert.equal(await page.locator('.lib-vault-item[data-item="Bank portal"] .vlt-tile-text').innerText(), 'B');
+  // Health at a glance is the security strip (items · reused · breached); the score and the other filters are ··· › Health.
+  assert.equal((await page.locator('.pw-sec').innerText()).replace(/\s+/g, ' '), '4 Items 0 Reused 1 Breached');
   await more(/^Health/); await page.locator('.vlt-score').waitFor(); assert.match(await page.locator('.vlt-score').innerText(), /75/);
   await page.locator('.vlt-health-list button', { hasText: 'In a public breach' }).click();
   await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items' && w.q?.health === 'breached'), 'posture filter');
@@ -251,17 +261,50 @@ try {
   assert.equal(await page.locator('[data-field="password"] .vlt-secret').getAttribute('data-state'), 'masked');
   assert.ok(await page.getByText('ravi@fivestar.in').isVisible(), 'non-secret user name shown');
   assert.ok(!(await html(page)).includes(SECRETS.i1.password));
-  assert.equal(await page.locator('.vlt-panel').getByRole('button', { name: /^(Reveal|Show) / }).count(), 0, 'no reveal button in the item view');
+  // Reveal is offered only to people who manage the item (they could already see it in Edit); nothing is shown until they ask.
+  assert.ok(await page.locator('.vlt-panel').getByRole('button', { name: 'Reveal Password' }).isVisible(), 'Reveal for a manager');
   assert.equal(await page.locator('.vlt-panel [data-state="revealed"]').count(), 0);
   assert.equal(writes.filter((w) => w.ep.endsWith('/reveal')).length, 0, 'opening an item fetches no value');
-  assert.match(await page.locator('.vlt2-foot').innerText(), /Copy asks for your passkey · the clipboard clears/);   // v2: copy only, said once under the fields
+  // Reveal: copy-only by default. The sheet asks for the account password AND a two-step code (or passkey); nothing is fetched before.
+  await page.locator('.vlt-panel').getByRole('button', { name: 'Reveal Password' }).click();
+  const sheet = page.getByTestId('reveal-sheet'); await sheet.waitFor();
+  assert.ok(await sheet.getByLabel('Account password').isVisible() && await sheet.getByLabel('Two-step code').isVisible(), 'password and code asked for');
+  assert.equal(writes.filter((w) => w.ep.endsWith('/reveal')).length, 0, 'no value without verification');
+  assert.ok(!(await html(page)).includes(SECRETS.i1.password));
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: path.join(out, 'vault-verify.png') });
+  // Password only: refused by the server, the field shakes, nothing is shown.
+  await sheet.getByLabel('Account password').fill(ACCOUNT_PASSWORD);
+  await sheet.getByRole('button', { name: 'Reveal', exact: true }).click();
+  await sheet.locator('.form-error').waitFor();
+  assert.match(await sheet.locator('.form-error').innerText(), /two-step code or a passkey/);
+  assert.equal(writes.filter((w) => w.ep.endsWith('/i1/reveal')).length, 0, 'password only reveals nothing');
+  assert.deepEqual(writes.filter((w) => w.ep === '/api/v1/vault/step-up/reveal').at(-1).body, { password: ACCOUNT_PASSWORD });
+  // A wrong password with a right code fails too.
+  await sheet.getByLabel('Account password').fill('not-it');
+  await sheet.getByLabel('Two-step code').fill('123456');
+  await sheet.getByRole('button', { name: 'Reveal', exact: true }).click();
+  await waitFor(async () => /password is not correct/.test(await sheet.locator('.form-error').innerText()), 'wrong password refused');
+  assert.equal(await page.locator('.vlt-panel [data-state="revealed"]').count(), 0);
+  // Password and code: the lock opens, the sheet settles into the field, the dots turn into characters, then it hides itself.
+  await sheet.getByLabel('Account password').fill(ACCOUNT_PASSWORD);
+  await sheet.getByRole('button', { name: 'Reveal', exact: true }).click();
+  await sheet.waitFor({ state: 'detached' });
+  await page.locator('.vlt-panel [data-field="password"] .vlt-secret[data-state="revealed"]').waitFor();
+  { const b = writes.filter((w) => w.ep.endsWith('/i1/reveal')).at(-1).body; assert.deepEqual([b.copy, b.stepUp], [false, REVEAL]); }
+  await page.waitForFunction((v) => document.querySelector('.vlt-panel [data-field="password"] .vlt-secret')?.textContent.replace(/•/g, '') === v, SECRETS.i1.password);
+  assert.match(await page.locator('.vlt-panel [data-field="password"] .pw-hide').innerText(), /Hides in \d+s/);
+  await page.locator('.vlt-panel [data-field="password"] .vlt-secret[data-state="masked"]').waitFor({ timeout: 6000 });
+  assert.ok(!(await page.locator('.vlt-panel').innerText()).includes(SECRETS.i1.password), 'hidden again after the reveal time');
+  writes.length = 0;
+  checks.push('reveal-needs-password-and-code');
   // Remarks are for reading (line breaks kept) and a second address is a link; neither is masked.
   const remark = page.locator('[data-field="remarks"] .vlt-remark');
   assert.equal(await remark.innerText(), 'Shared login for the finance team.\nCall Ravi before changing it.');
   assert.equal(await page.locator('[data-field="statements"] a').getAttribute('href'), 'https://statements.bank.example/login');
   assert.equal(await page.locator('[data-field="statements"] a').getAttribute('rel'), 'noopener noreferrer nofollow');
   await shot(page, 'item-remarks-1440.png');
-  assert.match(await page.getByTestId('shield-note').innerText(), /Screen sharing can see a browser tab/);
+  assert.match(await page.getByTestId('shield-note').innerText(), /Screen sharing can see a browser tab\. Values stay copy-only: Reveal needs your password/);
   checks.push('item-view-copy-only');
 
   // Copy: on the clipboard, then cleared.
@@ -335,8 +378,8 @@ try {
   checks.push('totp');
   await shot(page, 'item-1440.png');
 
-  // New item: generator, strength, breach check, a bad one-time-code key.
-  await page.getByRole('button', { name: 'New secret' }).click();
+  // New item (··· › New secret): generator, strength, breach check, a bad one-time-code key.
+  await more(/^New secret/);
   await page.locator('.modal').getByText('New vault item').waitFor();
   await page.getByRole('radio', { name: 'Login' }).click();
   await page.locator('#vi-title').fill('GitHub');
@@ -374,12 +417,19 @@ try {
   // left; a secret left as it was is kept, not erased or re-saved.
   await page.locator('.lib-vault-item[data-item="Bank portal"]').click();
   await page.locator('.vlt-panel[data-item="Bank portal"]').waitFor();
-  await itemMenu('Edit');
+  await page.locator('.vlt2').getByRole('button', { name: 'Edit', exact: true }).click();   // Edit is its own button beside the title
   await page.locator('.modal').getByText('Edit “Bank portal”').waitFor();
   assert.equal(await page.locator('#vf-password').inputValue(), '');
   assert.ok(!(await html(page)).includes(SECRETS.i1.password), 'not in the edit screen until asked for');
   await page.getByRole('button', { name: 'Show the current Password' }).click();
+  // The edit screen shows a value under the same rule (a reveal grant from the last few minutes counts).
+  if (await page.getByTestId('reveal-sheet').waitFor({ timeout: 1000 }).then(() => true, () => false)) {
+    await page.getByTestId('reveal-sheet').getByLabel('Account password').fill(ACCOUNT_PASSWORD);
+    await page.getByTestId('reveal-sheet').getByLabel('Two-step code').fill('123456');
+    await page.getByTestId('reveal-sheet').getByRole('button', { name: 'Reveal', exact: true }).click();
+  }
   await page.locator('#vf-password[data-state="revealed"]').waitFor();
+  assert.equal(writes.filter((w) => w.ep.endsWith('/i1/reveal')).at(-1).body.stepUp, REVEAL);
   assert.equal(await page.locator('#vf-password').inputValue(), SECRETS.i1.password);
   assert.equal(await page.locator('#vf-password').getAttribute('type'), 'text');
   { const b = writes.filter((w) => w.ep.endsWith('/i1/reveal')).at(-1).body; assert.deepEqual([b.field, b.copy, b.forEdit], ['password', false, true]); }
@@ -537,8 +587,7 @@ try {
 
   // Send once: encrypted here; the link carries the key after #; it opens once, without signing in, then it is gone.
   await page.goto(`${origin}/preview-org/vault?item=i1`); await page.locator('.vlt-panel[data-item^="Bank portal"]').waitFor();
-  await page.getByRole('button', { name: 'Share', exact: true }).click(); await page.getByTestId('share-choices').getByRole('radio', { name: /One-time link/ }).click();
-  await page.getByRole('button', { name: 'Create link' }).click();   // v2: Share › One-time link
+  await page.getByTestId('share-choices').getByRole('radio', { name: /^Once/ }).click();   // Share for… Once: a link opened one time
   await page.locator('.modal').getByText('Notes').click();   // not the notes
   await page.locator('.modal').getByText('Also ask for a passphrase').click();
   await page.getByRole('textbox', { name: 'Passphrase' }).fill('blue elephant');
@@ -759,7 +808,7 @@ try {
     await shot(page, `phone-item-${theme}.png`);
     await page.getByRole('button', { name: 'Back to the list' }).click();
     await page.locator('.lib-vault-items').waitFor();
-    await page.getByRole('button', { name: 'New secret' }).click();
+    await more(/^New secret/);
     await page.locator('.modal').getByText('New vault item').waitFor();
     await fitsPhone(page, `vault editor ${theme}`, assert);
     await shot(page, `phone-editor-${theme}.png`);

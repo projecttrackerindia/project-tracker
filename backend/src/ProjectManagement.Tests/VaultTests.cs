@@ -147,6 +147,15 @@ public class VaultTests(ApiFactory factory)
         return S(res.Data!["token"]);
     }
 
+    /// <summary>The check before a value is shown: the password and a fresh authenticator code, giving a reveal grant.</summary>
+    private async Task<string> RevealGrant(TestClient c, string secret)
+    {
+        factory.WithDb(db => db.Users.IgnoreQueryFilters().Where(u => u.Id == c.UserId).ExecuteUpdate(s => s.SetProperty(u => u.MfaLastStep, 0L)));
+        var res = await c.Post("/api/v1/vault/step-up/reveal", new { password = "Passw0rd!x", code = CodeNow(secret) });
+        Assert.True(res.Ok, res.ToString());
+        return S(res.Data!["token"]);
+    }
+
     // ------------------------------------------------------------------ storage
 
     [Fact]
@@ -206,7 +215,8 @@ public class VaultTests(ApiFactory factory)
     {
         var owner = await Owner();
         var id = await AddItem(owner, Login(await MyVault(owner)));
-        var res = await Reveal(owner, id);
+        var grant = await RevealGrant(owner, await EnableMfa(owner));
+        var res = await Reveal(owner, id, stepUp: grant);
         Assert.True(res.Ok, res.ToString());
         Assert.Equal(Password, S(res.Data!["value"]));
         Assert.Equal(30, res.Data["clipboardSeconds"]!.GetValue<int>());
@@ -221,7 +231,7 @@ public class VaultTests(ApiFactory factory)
         var used = factory.WithDb(db => db.VaultItems.IgnoreQueryFilters().Single(i => i.Id == id));
         Assert.Equal(owner.UserId, used.LastUsedBy);
 
-        Assert.Equal("VAULT_NOT_FOUND", (await Reveal(owner, id, "nosuchfield")).ErrorCode);
+        Assert.Equal("VAULT_NOT_FOUND", (await Reveal(owner, id, "nosuchfield", stepUp: grant)).ErrorCode);
     }
 
     [Fact]
@@ -229,11 +239,12 @@ public class VaultTests(ApiFactory factory)
     {
         var owner = await Owner();
         var id = await AddItem(owner, Login(await MyVault(owner)));
+        var grant = await RevealGrant(owner, await EnableMfa(owner));
         owner.Extra["Idempotency-Key"] = "vault-reveal-0001";
         try
         {
-            Assert.True((await Reveal(owner, id)).Ok);
-            Assert.True((await Reveal(owner, id)).Ok);
+            Assert.True((await Reveal(owner, id, stepUp: grant)).Ok);
+            Assert.True((await Reveal(owner, id, stepUp: grant)).Ok);
         }
         finally { owner.Extra.Remove("Idempotency-Key"); }
         Assert.Equal(2, Audit(owner.WorkspaceId, "vault.revealed").Count);   // each one checked and recorded
@@ -308,7 +319,7 @@ public class VaultTests(ApiFactory factory)
         var shared = await SharedWith(owner, (viewer, "View"), (user, "UseOnly"));
         var id = await AddItem(owner, Login(shared, "Payments DB"));
 
-        Assert.Equal(Password, S((await Reveal(viewer, id)).Data!["value"]));
+        Assert.Equal(Password, S((await Reveal(viewer, id, copy: true)).Data!["value"]));
         Assert.Equal("VAULT_DENIED", (await viewer.Put($"/api/v1/vault/items/{id}", Login(shared, "Renamed"))).ErrorCode);   // view is not manage
 
         var shown = await Reveal(user, id);
@@ -345,7 +356,7 @@ public class VaultTests(ApiFactory factory)
         } });
         Assert.True(saved.Ok, saved.ToString());
         var item = await AddItem(owner, Login(id, "Release signing key"));
-        Assert.True((await Reveal(manager, item)).Ok);
+        Assert.True((await Reveal(manager, item, copy: true)).Ok);
         Assert.Equal(HttpStatusCode.NotFound, (await Reveal(member, item)).Status);
 
         Assert.Equal(HttpStatusCode.Forbidden, (await guest.Get("/api/v1/vault/overview")).Status);
@@ -372,7 +383,7 @@ public class VaultTests(ApiFactory factory)
 
         var secret = await EnableMfa(owner);
         var token = await StepUp(owner, secret);
-        var ok = await Reveal(owner, id, stepUp: token);
+        var ok = await Reveal(owner, id, copy: true, stepUp: token);
         Assert.True(ok.Ok, ok.ToString());
         Assert.Equal(Password, S(ok.Data!["value"]));
 
@@ -380,7 +391,7 @@ public class VaultTests(ApiFactory factory)
         var plain = await AddItem(owner, Login(await MyVault(owner), "Ordinary"));
         Assert.True((await owner.Put("/api/v1/vault/policy", new { stepUpAlways = true, clipboardSeconds = 20, sharedAdminsOnly = false })).Ok);
         Assert.Equal("STEP_UP_REQUIRED", (await Reveal(owner, plain)).ErrorCode);
-        var again = await Reveal(owner, plain, stepUp: token);
+        var again = await Reveal(owner, plain, copy: true, stepUp: token);
         Assert.Equal(20, again.Data!["clipboardSeconds"]!.GetValue<int>());
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put("/api/v1/vault/policy", new { stepUpAlways = true, clipboardSeconds = 2, sharedAdminsOnly = false })).Status);
     }
@@ -394,16 +405,16 @@ public class VaultTests(ApiFactory factory)
         var items = new List<Guid>();
         for (var i = 0; i < VaultService.UnusualDistinctItems; i++) items.Add(await AddItem(owner, Login(shared, $"Server {i}")));
 
-        for (var i = 0; i < VaultService.UnusualDistinctItems - 1; i++) Assert.True((await Reveal(member, items[i])).Ok, $"item {i}");
-        Assert.True((await Reveal(member, items[0])).Ok);   // the same item again is not "another item"
-        var paused = await Reveal(member, items[^1]);
+        for (var i = 0; i < VaultService.UnusualDistinctItems - 1; i++) Assert.True((await Reveal(member, items[i], copy: true)).Ok, $"item {i}");
+        Assert.True((await Reveal(member, items[0], copy: true)).Ok);   // the same item again is not "another item"
+        var paused = await Reveal(member, items[^1], copy: true);
         Assert.Equal(HttpStatusCode.Forbidden, paused.Status);
         Assert.Equal("STEP_UP_REQUIRED", paused.ErrorCode);
         Assert.NotEmpty(Audit(owner.WorkspaceId, "vault.unusual_activity"));
         Assert.True(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == owner.UserId && n.Title.StartsWith("Unusual vault use: Quick Quinn"))));
 
         var secret = await EnableMfa(member);
-        Assert.True((await Reveal(member, items[^1], stepUp: await StepUp(member, secret))).Ok);
+        Assert.True((await Reveal(member, items[^1], copy: true, stepUp: await StepUp(member, secret))).Ok);
     }
 
     [Fact]
@@ -414,7 +425,7 @@ public class VaultTests(ApiFactory factory)
         var id = await AddItem(owner, Login(mine));
         var changed = await owner.Put($"/api/v1/vault/items/{id}", Login(mine, password: "N3w!Passw0rd#Ax7q"));
         Assert.True(changed.Ok, changed.ToString());
-        Assert.Equal("N3w!Passw0rd#Ax7q", S((await Reveal(owner, id)).Data!["value"]));
+        Assert.Equal("N3w!Passw0rd#Ax7q", S((await Reveal(owner, id, copy: true)).Data!["value"]));
 
         var versions = changed.Data!["versions"]!.AsArray();
         var v = G(Assert.Single(versions)!["id"]);
@@ -423,7 +434,7 @@ public class VaultTests(ApiFactory factory)
 
         Assert.Equal("STEP_UP_REQUIRED", (await owner.Post($"/api/v1/vault/items/{id}/versions/{v}/reveal", new { field = "password" })).ErrorCode);
         var secret = await EnableMfa(owner);
-        var old = await owner.Post($"/api/v1/vault/items/{id}/versions/{v}/reveal", new { field = "password", stepUp = await StepUp(owner, secret) });
+        var old = await owner.Post($"/api/v1/vault/items/{id}/versions/{v}/reveal", new { field = "password", copy = true, stepUp = await StepUp(owner, secret) });
         Assert.True(old.Ok, old.ToString());
         Assert.Equal(Password, S(old.Data!["value"]));
 
@@ -517,7 +528,7 @@ public class VaultTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.NotFound, (await Reveal(owner, id)).Status);
         Assert.Contains((await owner.Get("/api/v1/vault/items?bin=true")).Data!.AsArray(), x => G(x!["id"]) == id);
         Assert.True((await owner.Post($"/api/v1/vault/items/{id}/restore")).Ok);
-        Assert.True((await Reveal(owner, id)).Ok);
+        Assert.True((await Reveal(owner, id, copy: true)).Ok);
 
         Assert.True((await owner.Delete($"/api/v1/vault/items/{id}")).Ok);
         factory.WithDb(db => db.VaultItems.IgnoreQueryFilters().Where(i => i.Id == id).ExecuteUpdate(s => s.SetProperty(i => i.DeletedAt, DateTime.UtcNow.AddDays(-31))));
@@ -538,7 +549,7 @@ public class VaultTests(ApiFactory factory)
         var used = await AddItem(owner, Login(shared, "Production DB"));
         var untouched = await AddItem(owner, Login(shared, "Staging DB"));
         var personal = await AddItem(leaver, Login(await MyVault(leaver), "Lalit's own"));
-        Assert.True((await Reveal(leaver, used)).Ok);
+        Assert.True((await Reveal(leaver, used, copy: true)).Ok);
 
         Assert.True((await owner.Delete($"/api/v1/workspace/members/{leaver.UserId}")).Ok);
 
@@ -601,7 +612,7 @@ public class VaultTests(ApiFactory factory)
         Assert.Equal(before.Cipher, after.Cipher);   // only the item key is re-wrapped
         Assert.All(factory.WithDb(db => db.VaultItemVersions.IgnoreQueryFilters().Where(v => v.ItemId == id).ToList()), v => Assert.Equal(2, v.KeyVersion));
         Assert.All(factory.WithDb(db => db.VaultAttachments.IgnoreQueryFilters().Where(a => a.ItemId == id).ToList()), a => Assert.Equal(2, a.KeyVersion));
-        Assert.Equal("Sec0nd!Value#77q", S((await Reveal(owner, id)).Data!["value"]));
+        Assert.Equal("Sec0nd!Value#77q", S((await Reveal(owner, id, copy: true)).Data!["value"]));
     }
 
     [Fact]
@@ -621,7 +632,7 @@ public class VaultTests(ApiFactory factory)
         var secret = await EnableMfa(admin);
         var took = await admin.Post($"/api/v1/vault/collections/{id}/admin-access", new { reason = "Kavya is on leave and the firewall is down", stepUp = await StepUp(admin, secret) });
         Assert.True(took.Ok, took.ToString());
-        Assert.True((await Reveal(admin, item)).Ok);
+        Assert.True((await Reveal(admin, item, copy: true)).Ok);
         Assert.True(factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Any(n => n.UserId == keeper.UserId && n.Title.Contains("took admin access to Ops break-glass"))));
         var share = factory.WithDb(db => db.VaultShares.IgnoreQueryFilters().Single(s => s.CollectionId == id && s.PrincipalId == admin.UserId));
         Assert.NotNull(share.ExpiresAt);

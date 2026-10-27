@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using ProjectManagement.Api.Filters;
 using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Features.Vault;
@@ -12,7 +13,7 @@ namespace ProjectManagement.Api.Controllers.Vault;
 /// and written to the audit trail. No vault response is ever cached.
 /// </summary>
 [Route("api/v1/vault"), RequireWorkspace, SecretResponse]
-public class VaultController(VaultService vault, StepUpService stepUp, ProjectManagement.Application.Features.Auth.PasskeyService passkeys) : ApiControllerBase
+public class VaultController(VaultService vault, StepUpService stepUp, ProjectManagement.Application.Features.Auth.PasskeyService passkeys, RevealStepUpService revealStepUp) : ApiControllerBase
 {
     private const long UploadCeiling = VaultService.MaxAttachmentBytes + 256 * 1024;
 
@@ -263,6 +264,10 @@ public class VaultController(VaultService vault, StepUpService stepUp, ProjectMa
     public async Task<IActionResult> RefuseRecovery(Guid id, CancellationToken ct) { await vault.AnswerRecoveryAsync(id, new VaultDeviceApproveRequest(null, null), false, ct); return NoContent(); }
 
     // ------------------------------------------------------------- controls: decoys, the two-person rule, just-in-time access, passkey step-up
+
+    /// <summary>The check before a value is shown on screen: the account password AND a two-step code or a passkey. Rate-limited like sign-in.</summary>
+    [HttpPost("step-up/reveal"), EnableRateLimiting("auth")]
+    public async Task<IActionResult> RevealStepUp([FromBody] RevealStepUpRequest req, CancellationToken ct) { NoStore(); return Ok(await revealStepUp.VerifyAsync(req, ct)); }
 
     [HttpPost("step-up/passkey/options")]
     public async Task<IActionResult> StepUpPasskeyOptions(CancellationToken ct) { NoStore(); return Ok(await passkeys.BeginStepUpAsync(ct)); }

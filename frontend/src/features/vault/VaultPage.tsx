@@ -347,8 +347,8 @@ function ShieldNote({ info }: { info: ShieldInfo }) {
     <div className="vlt-banner vlt-shield" role="note" data-testid="shield-note">
       <Icon name="eye" size={16} />
       <span>{info.level === 'partial'
-        ? 'On a Mac, most screenshots and shares show this window black, but some newer recording apps can still see it. Values are never shown outside the edit screen, and the vault hides itself when you switch windows.'
-        : 'Screen sharing can see a browser tab. The vault never shows a value here and hides when you switch windows; the Windows and Android apps go fully black in shares.'}</span>
+        ? 'On a Mac, most screenshots and shares show this window black, but some newer recording apps can still see it. Values stay copy-only; showing one needs your password and a second check, hides itself in seconds, and the vault hides when you switch windows.'
+        : 'Screen sharing can see a browser tab. Values stay copy-only unless you reveal one with your password and a second check; a revealed value hides itself in seconds and whenever you switch windows. The Windows and Android apps go fully black in shares.'}</span>
       {info.where === 'browser' && <a className="btn btn-ghost btn-xs" href="/download/" target="_blank" rel="noopener noreferrer">Get the app</a>}
       <button className="btn-icon" aria-label="Dismiss" onClick={dismiss}><Icon name="close" size={14} /></button>
     </div>

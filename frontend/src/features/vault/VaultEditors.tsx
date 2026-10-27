@@ -222,7 +222,7 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
   const loadCurrent = (r: Row) => async () => {
     if (!existing) return false;
     try {
-      const res = await step.run((t) => vaultApi.reveal(existing.item.id, r.key, false, t, true), existing.needsStepUp);
+      const res = await step.reveal((g) => vaultApi.reveal(existing.item.id, r.key, false, g, true), document.getElementById(`vf-${r.key}`));
       if (!res) return false;
       setRows((rs) => rs.map((x) => (x.key === r.key ? { ...x, value: res.value, orig: res.value } : x)));
       return true;

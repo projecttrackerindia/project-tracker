@@ -5,10 +5,10 @@ import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
-// Library (v2). Docs: the big "Search or ask" bar answering from the pages, one list with a type chip per row, filters (type chips and one
-// project dropdown) only past 10 items, "Needs your review" with AI drafts, and Start (Write with AI, cURL or spec, 4 templates).
-// Vault: All · Mine · Shared · Requests, search, an item showing Username · Website · Password · 2FA code · Notes (values stay masked and
-// are copied after the same step-up check), one Share with Person · For a time · One-time link, the rest under ···, and the
+// Library (Apple design). Docs: title and the kind control, the Continue shelf of covers with previews and reading progress, one list (kind,
+// project, status, updated), Ask your docs answering with its sources, Needs your review with AI drafts, and Paste a cURL into the import.
+// Vault: the security strip, All · Mine · Shared · Requests, search, an item showing its fields in one well (values masked; copied or
+// revealed after the same step-up check, the reveal hiding itself), Share for 1 hour · 1 day · Once, the rest under ···, and the
 // screen-share notice once. 1440 light and dark, and a 390 phone. Synthetic API only.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist');
 const out = path.resolve(process.env.PM_UI_ARTIFACTS || 'test-results/enterprise-ui', 'v2-library');
@@ -66,7 +66,11 @@ const make = async (theme = 'light', opts = {}) => {
     if (ep.endsWith('/auth/refresh')) data = { accessToken: token, expiresAt: '2099-01-01T00:00:00Z', user };
     else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['org.manage', 'projects.view', 'documents.view', 'documents.edit', 'vault.use'], modules: { projects: 3, documents: 3, work: 3, ai: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { AI_ASSISTANT: 3 } } };
     else if (ep === '/api/v1/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };
-    else if (ep === '/api/v1/documents') { const p = url.searchParams.get('projectId'); const list = docSet.filter((d) => !p || d.projectId === p); data = { items: list, nextCursor: null, total: list.length }; }
+    else if (ep === '/api/v1/documents') { const p = url.searchParams.get('projectId'); const list = docSet.filter((d) => !p || d.projectId === p); data = { items: url.searchParams.get('scope') === 'recent' ? list.filter((d) => d.typeCode !== 'ARTIFACT').slice(0, 4) : list, nextCursor: null, total: list.length }; }
+    else if (/^\/api\/v1\/documents\/[0-9a-f-]{36}$/.test(ep)) { const d = docSet.find((x) => x.id === ep.split('/').pop()); data = { item: d, revision: 1, versionLabel: '1.0', can: { edit: true, delete: true, link: true, share: true, publish: true }, publishedLabel: null, hasUnpublishedChanges: false, viewingPublished: false,
+      sections: [{ key: 'body', title: 'Body', kind: 'Rich', sortOrder: 0, content: d?.typeCode === 'API' ? '<p>POST /payments/orders</p><pre>curl -X POST \\\n -H "X-Client-Id" \\\n -d \'{"amount":50000}\'</pre>' : '<p>Scope and goals.</p>' }] }; }
+    else if (ep === '/api/v1/doctracker/apihome' || ep.startsWith('/api/v1/doctracker/api-home')) data = { documentId: few[0].id };
+    else if (/^\/api\/v1\/documents\/[^/]+\/api$/.test(ep)) data = { definitions: [], endpoints: [] };
     else if (ep === '/api/v1/doctracker/catalog') data = { projects: projects.map((p) => ({ ...p, endpoints: [], definitions: [], documents: [], diagrams: 0 })), canCreate: true, isAdmin: true, truncated: 0 };
     else if (ep === '/api/v1/documents/proposals') data = [{ id: 'pr1', projectId: projects[0].id, projectKey: 'PAY', kind: 'api-reference', sourceType: 'api', sourceId: null, title: 'Loan despatch details API', summary: 'Three endpoints changed in UAT.',
       body: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'POST /despatch now needs a branch code.' }] }] }), targetDocumentId: null, targetTitle: null, status: 'Proposed', createdAt: now, resultDocumentId: null, action: 'create' }];
@@ -80,11 +84,13 @@ const make = async (theme = 'light', opts = {}) => {
     else if (ep === '/api/v1/vault/items' && method === 'GET') { const c = url.searchParams.get('collectionId'), q = (url.searchParams.get('q') ?? '').toLowerCase(); data = url.searchParams.get('bin') ? [] : vItems.filter((i) => (!c || i.collectionId === c) && (!q || i.title.toLowerCase().includes(q))); }
     else if (m && !m[2]) data = vDetail(m[1]);
     else if (m && m[2] === 'reveal') {
-      if (m[1] === 'i1' && body.stepUp !== STEP) { await json({ errors: [{ code: 'STEP_UP_REQUIRED', message: 'This needs a fresh two-step check.' }], message: 'This needs a fresh two-step check.' }, 403); return; }
+      if (!body.copy && body.stepUp !== 'reveal-grant') { await json({ errors: [{ code: 'REVEAL_VERIFY_REQUIRED', message: 'Showing a value needs your password and a second check.' }], message: 'Showing a value needs your password and a second check.' }, 403); return; }
+      if (m[1] === 'i1' && body.stepUp !== STEP && body.stepUp !== 'reveal-grant') { await json({ errors: [{ code: 'STEP_UP_REQUIRED', message: 'This needs a fresh two-step check.' }], message: 'This needs a fresh two-step check.' }, 403); return; }
       data = { value: 'Synthetic!Value#1', revealSeconds: 10, clipboardSeconds: 30 };
     }
     else if (m && m[2] === 'totp') data = { code: '492039', secondsLeft: 21, period: 30, digits: 6 };
     else if (m && m[2] === 'activity') data = [];
+    else if (ep === '/api/v1/vault/step-up/reveal') { if (body.password !== 'Passw0rd!x' || body.code !== '123456') { await json({ errors: [{ code: 'REVEAL_SECOND_FACTOR_REQUIRED', message: 'Confirm with a two-step code.' }], message: 'Confirm with a two-step code.' }, 403); return; } data = { token: 'reveal-grant', expiresAt: new Date(Date.now() + 300e3).toISOString() }; }
     else if (ep === '/api/v1/vault/step-up') { if (body.code !== '123456') { await json({ errors: [{ code: 'MFA_CODE_INVALID', message: 'That code is not right.' }], message: 'That code is not right.' }, 422); return; } data = { token: STEP, expiresAt: new Date(Date.now() + 300e3).toISOString() }; }
     else if (ep.match(/^\/api\/v1\/vault\/collections\/[^/]+$/)) data = collections.find((c) => c.id === ep.split('/').pop());
     else if (ep === '/api/v1/vault/requests') data = { mine: [], toDecide: [{ id: 'r1', kind: 'Collection', collectionId: 'c2', collectionName: 'Payments servers', itemId: null, itemTitle: null, requester: { id: 'u2', name: 'Ravi Kumar' }, reason: 'Release tonight', access: 'View', minutes: 240, status: 'Pending', decidedBy: null, decidedAt: null, decisionNote: null, grantedUntil: null, createdAt: now, canDecide: true }] };
@@ -110,15 +116,23 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${origin}/preview-org/library`);
-  await page.locator('.lib-row[data-doc="Razorpay API"]').waitFor();
-  assert.ok(await page.getByRole('searchbox', { name: 'Search or ask your docs' }).isVisible(), 'the big Search or ask bar');
-  assert.deepEqual(await page.locator('.lib-row .lib-kind').allInnerTexts(), ['API', 'API', 'Doc', 'Design', 'Doc', 'File']);
-  assert.equal(await page.locator('.lib-filters').count(), 0, 'no filters with 6 items');
+  await page.locator('.lb-tr[data-doc="Razorpay API"]').waitFor();
+  assert.equal(await page.locator('.lb-h1').innerText(), 'Library');
+  assert.equal(await page.getByRole('tab', { name: 'Vault' }).count(), 0, 'Vault is its own place in the sidebar, not a Library tab');
+  assert.deepEqual(await page.getByRole('tablist', { name: 'Kind' }).getByRole('tab').allInnerTexts(), ['All', 'API docs', 'Specs', 'Runbooks', 'Tests']);
+  assert.ok(await page.getByRole('searchbox', { name: 'Ask your docs' }).isVisible(), 'the question field');
+  assert.deepEqual(await page.locator('.lb-table thead th').allInnerTexts(), ['Name', 'Kind', 'Project', 'Status', 'Updated']);
+  assert.deepEqual(await page.locator('.lb-tr .lib-kind').allInnerTexts(), ['API', 'API', 'BRD', 'Spec', 'Guide', 'File']);
+  assert.deepEqual(await page.locator('.lb-tr .lb-st').allInnerTexts(), ['Published', 'In review', 'Approved', 'Draft', 'Published', 'Published']);
+  // Continue: four covers (the artifact is not a book), each with its kind, a preview and a reading-progress bar.
+  assert.deepEqual(await page.locator('.lb-book').evaluateAll((els) => els.map((e) => e.getAttribute('data-cover'))), ['Razorpay API', 'Loan despatch details API', 'Account Aggregator BRD', 'Payment engine DR architecture']);
+  assert.deepEqual(await page.locator('.lb-book .lb-cov-k').allInnerTexts(), ['API REFERENCE', 'API REFERENCE', 'BRD', 'ARCHITECTURE']);
+  await page.locator('.lb-book[data-cover="Razorpay API"] .lb-code').waitFor();
+  assert.match(await page.locator('.lb-book[data-cover="Razorpay API"] .lb-req').innerText(), /POST\s*\/payments\/orders/);
+  assert.equal(await page.locator('.lb-book .lb-prog').count(), 4);
   const review = page.getByTestId('needs-review');
-  assert.match(await review.innerText(), /Needs your review · 1[\s\S]*Loan despatch details API[\s\S]*API reference · AI draft/);
-  const start = page.getByRole('region', { name: 'Start' });
-  assert.ok(await start.getByRole('button', { name: /Write with AI/ }).isVisible());
-  assert.deepEqual(await start.locator('.lib-templates button').allInnerTexts(), ['API doc', 'BRD', 'Tech design', 'Test plan']);
+  assert.match(await review.innerText(), /Needs your review\s*1[\s\S]*Loan despatch details API[\s\S]*API reference · AI draft/);
+  assert.ok(await page.getByTestId('paste-curl').isVisible(), 'Paste a cURL');
   await shot(page, 'docs-1440-light.png');
   checks.push('docs-list');
 
@@ -128,35 +142,37 @@ try {
   assert.ok(await review.getByRole('button', { name: 'Create page' }).isVisible());
   checks.push('needs-review');
 
-  // Search filters the list; Ask answers from the pages with a link.
-  const bar = page.getByRole('searchbox', { name: 'Search or ask your docs' });
-  await bar.fill('razorpay');
-  assert.deepEqual(await page.locator('.lib-row').evaluateAll((els) => els.map((e) => e.getAttribute('data-doc'))), ['Razorpay API']);
+  // Ask: the answer unfurls from the field with its sources as covers.
+  const bar = page.getByRole('searchbox', { name: 'Ask your docs' });
   await bar.fill('what headers does the Razorpay API need?');
-  await page.getByRole('button', { name: 'Ask', exact: true }).click();
+  await bar.press('Enter');
   await page.getByText('Send X-Api-Key and Content-Type on every call').waitFor();
   assert.ok(writes.some((w) => w.ep === '/api/v1/documents/ai/ask' && /headers/.test(w.body.question)));
-  checks.push('search-or-ask');
+  await page.locator('.lb-cite', { hasText: 'Razorpay API' }).waitFor();
+  assert.equal(await page.locator('.lb-cite').first().getAttribute('href'), `/preview-org/library/docs/${few[0].id}#b-0`);
+  assert.equal(await page.locator('.lb-tr').count(), 6, 'asking does not filter the list');
+  checks.push('ask-your-docs');
   await bar.fill('');
 
-  // Write with AI opens the drafting dialog.
-  await start.getByRole('button', { name: /Write with AI/ }).click();
-  await page.getByRole('dialog').getByText('Write a page with AI').waitFor();
+  // Paste a cURL opens the existing cURL import with the commands filled in.
+  await page.getByTestId('paste-curl').evaluate((el) => { const dt = new DataTransfer(); dt.setData('text/plain', "curl -X POST 'https://api.example.test/v1/orders'"); el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true })); });
+  await page.getByRole('dialog').getByText('Import an API').waitFor();
+  assert.match(await page.getByLabel('cURL commands').inputValue(), /api\.example\.test\/v1\/orders/);
   await page.keyboard.press('Escape');
   await page.getByRole('dialog').waitFor({ state: 'detached' });
-  checks.push('write-with-ai');
+  checks.push('paste-curl');
 
-  // Past 10 items the filters appear: type chips and one project dropdown.
+  // The kind control filters the list.
   docSet = many;
   await page.reload();
-  await page.locator('.lib-filters').waitFor();
-  assert.deepEqual(await page.locator('.lib-filters .ds-chip').allInnerTexts(), ['All', 'API', 'Doc', 'Design', 'File']);
-  await page.locator('.lib-filters .ds-chip', { hasText: 'Design' }).click();
-  assert.deepEqual(await page.locator('.lib-row').evaluateAll((els) => els.map((e) => e.getAttribute('data-doc'))), ['Payment engine DR architecture']);
-  await page.locator('.lib-filters .ds-chip', { hasText: 'All' }).click();
-  await page.getByLabel('Project', { exact: true }).selectOption(projects[1].id);
-  await page.waitForFunction(() => document.querySelectorAll('.lib-row').length === 7);
-  checks.push('filters-past-10');
+  await page.locator('.lb-tr').first().waitFor();
+  await page.getByRole('tablist', { name: 'Kind' }).getByRole('tab', { name: 'Specs' }).click();
+  assert.deepEqual(await page.locator('.lb-tr').evaluateAll((els) => els.map((e) => e.getAttribute('data-doc'))), ['Account Aggregator BRD', 'Payment engine DR architecture']);
+  await page.getByRole('tablist', { name: 'Kind' }).getByRole('tab', { name: 'API docs' }).click();
+  assert.deepEqual(await page.locator('.lb-tr').evaluateAll((els) => els.map((e) => e.getAttribute('data-doc'))), ['Razorpay API', 'Loan despatch details API']);
+  await page.getByRole('tablist', { name: 'Kind' }).getByRole('tab', { name: 'All' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.lb-tr').length === 14);
+  checks.push('kind-filter');
   await ctx.close();
   docSet = few;
 
@@ -173,7 +189,9 @@ try {
   await page.waitForFunction(() => location.pathname.endsWith('/library/vault/i1'));
   const panel = page.locator('.vlt2[data-item="SOPHOS VPN"]');
   await panel.waitFor();
-  assert.deepEqual(await panel.locator('.vlt2-field .vlt2-label').allInnerTexts(), ['Username', 'Website', 'Password', '2FA code', 'Notes']);
+  assert.deepEqual(await panel.locator('.vlt2-field .vlt2-label').allInnerTexts(), ['Username', 'Password', 'Verification code', 'Website', 'Notes']);
+  assert.equal(await panel.locator('.vlt-tile.xl .vlt-tile-text').innerText(), 'S', 'big Passwords-style tile');
+  assert.equal(await page.locator('.pw-sec').innerText().then((t) => t.replace(/\s+/g, ' ')), '2 Items 0 Reused 0 Breached');
   assert.match(await panel.locator('[data-field="username"]').innerText(), /asha\.vpn[\s\S]*Copy/);
   assert.equal(await panel.locator('[data-field="url"] a').getAttribute('href'), 'https://vpn.example.test');
   assert.equal(await panel.locator('[data-field="password"] .vlt-secret').getAttribute('data-state'), 'masked');
@@ -191,26 +209,40 @@ try {
   await panel.getByRole('button', { name: 'Show code' }).click();
   await panel.locator('[data-field="totp"] [data-state="revealed"]').waitFor();
   checks.push('copy-with-step-up');
-  // One Share: three choices.
-  await panel.getByRole('button', { name: 'Share' }).click();
+  // Reveal: copy-only by default; the reveal sheet asks for the password AND a two-step code, then the dots turn into the value, which hides itself.
+  await panel.getByRole('button', { name: 'Reveal Password' }).click();
+  const rv = page.getByTestId('reveal-sheet'); await rv.waitFor();
+  await rv.getByLabel('Account password').fill('Passw0rd!x'); await rv.getByLabel('Two-step code').fill('123456');
+  await rv.getByRole('button', { name: 'Reveal', exact: true }).click();
+  await panel.locator('[data-field="password"] .vlt-secret[data-state="revealed"]').waitFor();
+  assert.ok(writes.some((w) => w.ep === '/api/v1/vault/items/i1/reveal' && w.body.copy === false && w.body.stepUp === 'reveal-grant'), 'revealed with the reveal grant');
+  await page.waitForFunction(() => document.querySelector('[data-field="password"] .vlt-secret')?.textContent.replace(/•/g, '') === 'Synthetic!Value#1');
+  assert.match(await panel.locator('[data-field="password"] .pw-hide').innerText(), /Hides in \d+s/);
+  await panel.getByRole('button', { name: 'Hide Password' }).click();
+  assert.equal(await panel.locator('[data-field="password"] .vlt-secret').getAttribute('data-state'), 'masked');
+  assert.ok(!(await panel.innerText()).includes('Synthetic!Value#1'), 'hidden again');
+  checks.push('reveal');
+  // Share for… 1 hour / 1 day / Once: a link that ends by itself.
   const share = page.getByTestId('share-choices');
-  assert.deepEqual(await share.getByRole('radio').evaluateAll((els) => els.map((e) => e.querySelector('b').textContent)), ['Person', 'For a time', 'One-time link']);
-  assert.equal(await share.getByRole('radio', { name: /^Person/ }).isDisabled(), true, 'a personal item is not shared with people');
-  assert.equal(await share.getByRole('radio', { name: /One-time link/ }).getAttribute('aria-checked'), 'true');
+  assert.deepEqual(await share.getByRole('radio').evaluateAll((els) => els.map((e) => e.querySelector('b').textContent)), ['1 hour', '1 day', 'Once']);
+  assert.equal(await share.getByRole('radio', { name: /^1 day/ }).getAttribute('aria-checked'), 'true');
   await shot(page, 'vault-item-1440-light.png');
+  await share.getByRole('radio', { name: /^Once/ }).click();
+  const linkDlg = page.getByRole('dialog'); await linkDlg.getByText('Send “SOPHOS VPN” once').waitFor();
+  assert.equal(await linkDlg.getByRole('radio', { name: 'Once', exact: true }).getAttribute('aria-checked'), 'true');
+  await page.keyboard.press('Escape'); await linkDlg.waitFor({ state: 'detached' });
   await page.locator('.lib-vault-item[data-item="Payments DB admin"]').click();
   const panel2 = page.locator('.vlt2[data-item="Payments DB admin"]'); await panel2.waitFor();
-  await panel2.getByRole('button', { name: 'Share' }).click();
-  await page.getByTestId('share-choices').getByRole('radio', { name: /For a time/ }).click();
-  await page.getByRole('button', { name: 'Pick dates' }).click();
+  await panel2.getByRole('button', { name: 'Item actions' }).click();
+  await page.getByRole('menuitem', { name: /^Share for dates/ }).click();
   const editor = page.getByRole('dialog'); await editor.getByText('Access to Payments servers').waitFor();
   assert.ok((await editor.getByLabel('Ends on').last().inputValue()).length === 10, 'the new line ends on a date');
   await page.keyboard.press('Escape');
-  checks.push('one-share');
+  checks.push('share-for');
   // ··· holds the rest.
   await page.getByRole('button', { name: 'More in the vault' }).click();
   const more = page.getByRole('menu', { name: 'More in the vault' });
-  for (const name of ['Generator', 'Import', 'Health', 'One-time links', 'Bin', 'Seal my vault']) assert.ok(await more.getByRole('menuitem', { name: new RegExp(`^${name}`) }).isVisible(), name);
+  for (const name of ['New secret', 'Generator', 'Import', 'Health', 'One-time links', 'Bin', 'Seal my vault']) assert.ok(await more.getByRole('menuitem', { name: new RegExp(`^${name}`) }).isVisible(), name);
   await more.getByRole('menuitem', { name: /^Health/ }).click();
   await page.waitForFunction(() => location.search.includes('view=health'));
   checks.push('more-menu');
@@ -229,8 +261,8 @@ try {
   ctx = await make('dark'); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${origin}/preview-org/library`);
-  await page.locator('.lib-row').first().waitFor();
-  assert.notEqual(await page.locator('.lib-list').evaluate((e) => getComputedStyle(e).backgroundColor), 'rgb(255, 255, 255)', 'docs follow the dark theme');
+  await page.locator('.lb-tr').first().waitFor();
+  assert.notEqual(await page.locator('.lb-cov').first().evaluate((e) => getComputedStyle(e).backgroundColor), 'rgb(255, 255, 255)', 'docs follow the dark theme');
   await shot(page, 'docs-1440-dark.png');
   await page.goto(`${origin}/preview-org/library/vault/i2`);
   await page.locator('.vlt2[data-item="Payments DB admin"]').waitFor();
@@ -244,7 +276,7 @@ try {
     ctx = await make(theme, { hasTouch: true, isMobile: true }); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${origin}/preview-org/library`);
-    await page.locator('.lib-row').first().waitFor();
+    await page.locator('.lb-tr').first().waitFor();
     await fitsPhone(page, `docs ${theme}`, assert);
     await shot(page, `docs-390-${theme}.png`);
     await page.goto(`${origin}/preview-org/library/vault`);

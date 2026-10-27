@@ -16,6 +16,7 @@ import { PlainValue } from './PlainValue';
 import { copySecret, STRENGTH_LABEL } from './secure';
 import { useStepUp } from './stepUpContext';
 import { DotsMenu } from '../talk/DotsMenu';
+import { AccessLog, CountRing, RevealSecret, SharedPeople } from './VaultPass';
 
 const MASK = '••••••••••••';
 
@@ -23,13 +24,14 @@ const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.mes
 
 /**
  * One item. Secret values are never drawn here: they stay masked, and a value is fetched only to be copied (one field at a time, straight to
- * the clipboard, which clears itself). The only place a value can be shown is the edit screen, for people who can manage the item.
+ * the clipboard, which clears itself). Showing one on screen needs Reveal: the password and a two-step code or passkey, checked by the server.
  */
-export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collections = [], canAdmin = false, onEdit, onClose, onChanged, onShare, layout = 'classic' }: {
+export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collections = [], canAdmin = false, onEdit, onClose, onChanged, onShare, layout = 'classic', insight = null }: {
   id: string; policy: VaultPolicy; lockEpoch: number; binned?: boolean; collections?: VaultCollection[]; canAdmin?: boolean; onEdit: (item: VaultItem) => void; onClose: () => void; onChanged: () => void;
   /** Opens this collection's access list (time-bound sharing); `start` adds a line for a person, ongoing or with an end date. */ onShare?: (collectionId: string, start?: 'person' | 'time') => void;
   /** 'v2' (Library): Username · Website · Password · 2FA · Notes first, and one Share button with three choices. Same calls, same checks. */
   layout?: 'classic' | 'v2';
+  /** v2: one line from the vault's health ("3 items use a password used elsewhere") with its action. */ insight?: { text: string; act: () => void } | null;
 }) {
   const wid = useWorkspaceId();
   const q = useWsQuery(['vault', 'item', id], () => vaultApi.item(id), { staleTime: 0 });
@@ -41,11 +43,9 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
   const approval = !!collections.find((c) => c.id === q.data?.item.collectionId)?.requireApproval;
   const { grant, pending, refetch: refetchGrant } = useItemGrant(id, approval);
   const [asking, setAsking] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [sending, setSending] = useState<boolean | { hours: number; views: number }>(false);
+  const [shareFor, setShareFor] = useState<'1h' | '1d' | 'once'>('1d');
   const [rotating, setRotating] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
-  const [way, setWay] = useState<'person' | 'time' | 'link'>('time');
-  useEffect(() => { setShareOpen(false); }, [id]);
   const decoys = useWsQuery(['vault', 'decoys'], vaultApi.decoys, { enabled: canAdmin, staleTime: 30_000 });
   const isDecoy = !!decoys.data?.some((x) => x.itemId === id);
 
@@ -83,38 +83,40 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
     const href = it.url ? (/^https?:\/\//i.test(it.url) ? it.url : `https://${it.url}`) : null;
     const canGrant = d.canManage && !!collection && collection.kind !== 'Personal' && !!onShare;
     const canLink = d.canCopy && d.canReveal;
+    // Reveal on screen: only for people who manage the item (and it is not use-only); it needs the password and a second factor (checked by the server).
+    const canShow = d.canManage && d.canReveal && !it.useOnly && !binned;
     const secretRow = (f: VaultField) => (
-      <div key={f.key} className="vlt2-field" data-field={f.key}>
-        <span className="vlt2-label">{f.label}</span>
-        <code className="vlt2-value vlt-secret" data-state="masked" aria-label={`${f.label}, hidden`}>{MASK}</code>
-        {d.canCopy && !binned && <button type="button" className="vlt2-act" aria-label={`Copy ${f.label}`} title="Asks for your passkey; the clipboard clears itself" disabled={busy !== null} onClick={() => void copy(f)}>{busy === `copy:${f.key}` ? <Spinner /> : 'Copy'}</button>}
+      <div key={f.key} className="vlt2-field pw-f" data-field={f.key}>
+        <span className="vlt2-label pw-l">{f.label}</span>
+        <RevealSecret itemId={id} field={f} canReveal={canShow} lockEpoch={lockEpoch} busy={busy === `copy:${f.key}`} onApproval={() => setAsking(true)}
+          onCopy={d.canCopy && !binned ? () => void copy(f) : null} />
       </div>
     );
-    const plainRow = (label: string, value: string, key: string, actions: React.ReactNode) => (
-      <div key={key} className="vlt2-field" data-field={key}>
-        <span className="vlt2-label">{label}</span>
-        <span className="vlt2-value">{value}</span>
+    const plainRow = (label: string, value: React.ReactNode, key: string, actions: React.ReactNode, cls = '') => (
+      <div key={key} className="vlt2-field pw-f" data-field={key}>
+        <span className="vlt2-label pw-l">{label}</span>
+        <span className={`vlt2-value pw-v ${cls}`}>{value}</span>
         {actions}
       </div>
     );
     const copyPlain = (label: string, value: string) => () => void navigator.clipboard?.writeText(value).then(() => toast(`${label} copied.`)).catch(() => undefined);
-    const pick = way !== 'link' && !canGrant ? 'link' : way;
-    const share = () => {
-      if (pick === 'link') { setSending(true); return; }
-      if (canGrant) onShare!(it.collectionId, pick);
-    };
+    const editedBy = d.versions[0]?.by?.name;
+    const changed = it.valueChangedAt ? `${editedBy ? `edited by ${editedBy.split(' ')[0]} ` : 'changed '}${timeAgo(it.valueChangedAt)}` : null;
+    const SHARE_FOR = [{ id: '1h', label: '1 hour', hint: 'auto‑expires', hours: 1, views: 5 }, { id: '1d', label: '1 day', hint: 'auto‑expires', hours: 24, views: 5 }, { id: 'once', label: 'Once', hint: 'view one time', hours: 24, views: 1 }] as const;
     return (
-      <section className="vlt-panel vlt2" aria-label={it.title} data-item={it.title}>
-        <header className="vlt2-head">
+      <section className="vlt-panel vlt2 pw-panel" aria-label={it.title} data-item={it.title}>
+        <header className="vlt2-head pw-big">
           <button className="btn-icon vlt-back" aria-label="Back to the list" onClick={onClose}><Icon name="arrowLeft" /></button>
-          <BrandTile title={it.title} url={it.url} kind={it.kind} size="lg" />
+          <BrandTile title={it.title} url={it.url} kind={it.kind} size="xl" pass />
           <div className="vlt2-title">
             <h2>{it.title}</h2>
-            <p>{context}{it.class === 'Confidential' && <> · <span className="vlt2-conf">Confidential</span></>}{isDecoy && <> · <span className="vlt2-conf">Decoy</span></>}{it.useOnly && <> · <span className="vlt2-conf" title="Can be copied into a sign-in form, never shown">Use only</span></>}</p>
+            <p>{[it.collectionName, changed].filter(Boolean).join(' · ')}{it.class === 'Confidential' && <> · <span className="vlt2-conf">Confidential</span></>}{isDecoy && <> · <span className="vlt2-conf">Decoy</span></>}{it.useOnly && <> · <span className="vlt2-conf" title="Can be copied into a sign-in form, never shown">Use only</span></>}</p>
           </div>
-          {!binned && (canGrant || canLink || approval) && <button type="button" className="btn btn-primary btn-sm" aria-expanded={shareOpen} onClick={() => setShareOpen((v) => !v)}>Share</button>}
+          {d.canManage && !binned && <button type="button" className="pw-btn lg" onClick={() => onEdit(d)}>Edit</button>}
           <DotsMenu label="Item actions" items={[
-            { label: 'Edit', icon: 'edit', onSelect: () => onEdit(d), hidden: !d.canManage || binned },
+            { label: 'Share with a person', hint: 'Ongoing access to its collection', icon: 'users', onSelect: () => onShare!(it.collectionId, 'person'), hidden: binned || !canGrant },
+            { label: 'Share for dates', hint: 'Access that ends on a date', icon: 'calendar', onSelect: () => onShare!(it.collectionId, 'time'), hidden: binned || !canGrant },
+            { label: 'Ask for access', hint: 'Two-person rule', icon: 'users', onSelect: () => setAsking(true), hidden: !!(binned || !approval || grant || pending) },
             { label: `Files${d.attachments.length ? ` (${d.attachments.length})` : ''}`, icon: 'paperclip', onSelect: () => setTab('files') },
             { label: `Earlier values${d.versions.length ? ` (${d.versions.length})` : ''}`, icon: 'clock', onSelect: () => setTab('history'), hidden: !d.canManage },
             { label: 'Activity', hint: 'Every copy, share and change', icon: 'list', onSelect: () => setTab('activity'), hidden: !d.canManage },
@@ -155,37 +157,48 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
           </div>
         ) : (
           <>
-            <div className="vlt2-fields">
-              {plainRow('Username', username?.value || '—', 'username', username?.value ? <button type="button" className="vlt2-act" aria-label="Copy the username" onClick={copyPlain('Username', username.value)}>Copy</button> : null)}
-              {plainRow('Website', it.url || '—', 'url', href ? <a className="vlt2-act" href={href} target="_blank" rel="noopener noreferrer nofollow" referrerPolicy="no-referrer" aria-label="Open the website">Open</a> : null)}
+            <div className="vlt2-fields pw-grp">
+              {plainRow(username?.label === 'User name' ? 'Username' : username?.label ?? 'Username', username?.value || '—', 'username', username?.value ? <button type="button" className="pw-link" aria-label="Copy the username" onClick={copyPlain('Username', username.value)}>Copy</button> : null, 'mono')}
               {password ? secretRow(password) : plainRow('Password', '—', 'password', null)}
-              {totp ? <TotpField key={totp.key} itemId={id} label="2FA code" needsStepUp={d.needsStepUp} lockEpoch={lockEpoch} policy={policy} onApproval={() => setAsking(true)} v2 />
-                : plainRow('2FA code', 'Not set', 'totp', null)}
-              {notes ? secretRow(notes) : plainRow('Notes', '—', 'note', null)}
+              {totp ? <TotpField key={totp.key} itemId={id} label="Verification code" needsStepUp={d.needsStepUp} lockEpoch={lockEpoch} policy={policy} onApproval={() => setAsking(true)} v2 />
+                : plainRow('Verification code', 'Not set', 'totp', null, 'dim')}
+              {plainRow('Website', href ? <a href={href} target="_blank" rel="noopener noreferrer nofollow" referrerPolicy="no-referrer">{it.url}</a> : '—', 'url', null)}
+              {notes ? secretRow(notes) : plainRow('Notes', '—', 'note', null, 'dim')}
               {rest.map((f) => f.type === 'totp' ? null : f.secret ? secretRow(f)
-                : <div key={f.key} className="vlt2-field" data-field={f.key}><span className="vlt2-label">{f.label}</span><div className="vlt2-value"><PlainValue label={f.label} type={f.type} value={f.value ?? ''} /></div></div>)}
+                : <div key={f.key} className="vlt2-field pw-f" data-field={f.key}><span className="vlt2-label pw-l">{f.label}</span><div className="vlt2-value pw-v"><PlainValue label={f.label} type={f.type} value={f.value ?? ''} /></div></div>)}
             </div>
-            <p className="vlt2-foot">Copy asks for your passkey · the clipboard clears in {policy.clipboardSeconds}s · every view is logged · <code>aes256gcm</code></p>
 
-            {shareOpen && !binned && (
-              <div className="vlt2-share" data-testid="share-choices">
-                <h3>Share {it.title}</h3>
-                <div className="vlt2-ways" role="radiogroup" aria-label="How to share">
-                  {([['person', 'Person', 'Ongoing access', canGrant], ['time', 'For a time', 'Ends automatically', canGrant], ['link', 'One-time link', 'Opens once, then gone', canLink]] as const).map(([w, label, hint, ok]) => (
-                    <button key={w} type="button" role="radio" aria-checked={pick === w} className={`vlt2-way${pick === w ? ' on' : ''}`} disabled={!ok} onClick={() => setWay(w)}>
-                      <b>{label}</b><small>{ok ? hint : w === 'link' ? 'Needs view access' : collection?.kind === 'Personal' ? 'Personal items stay yours' : 'Only its managers can share it'}</small>
-                    </button>
-                  ))}
-                </div>
-                <div className="vlt2-share-acts">
-                  {!canGrant && approval && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAsking(true)}>Ask for access instead</button>}
-                  <button type="button" className="btn btn-primary" disabled={pick === 'link' ? !canLink : !canGrant} onClick={share}>{pick === 'person' ? 'Choose a person' : pick === 'time' ? 'Pick dates' : 'Create link'}</button>
-                </div>
+            {!binned && (canLink || d.canManage) && (
+              <div className={`pw-cols${d.canManage ? '' : ' one'}`}>
+                {canLink ? (
+                  <div className="pw-sharefor">
+                    <h3>Share for…</h3>
+                    <div className="pw-opt" role="radiogroup" aria-label="Share for" data-testid="share-choices">
+                      {SHARE_FOR.map((o) => (
+                        <button key={o.id} type="button" role="radio" aria-checked={shareFor === o.id} className={shareFor === o.id ? 'on' : ''}
+                          onClick={() => { setShareFor(o.id); setSending({ hours: o.hours, views: o.views }); }}>
+                          <b>{o.label}</b><small>{o.hint}</small>
+                        </button>
+                      ))}
+                    </div>
+                    <SharedPeople collection={collection} canManage={canGrant} onChanged={onChanged} />
+                  </div>
+                ) : <div />}
+                {d.canManage && <AccessLog id={id} />}
+              </div>
+            )}
+            {insight && !binned && (
+              <div className="pw-ai" role="note"><span className="pw-orb" aria-hidden="true" /><span>{insight.text}</span><button type="button" className="pw-btn white" onClick={insight.act}>Change it</button></div>
+            )}
+            {d.links.length > 0 && (
+              <div className="pw-used">
+                <h3>Used by</h3>
+                <ul>{d.links.map((l) => <li key={l.kind + l.id}><b>{l.label}</b><small>{l.kind === 'work' ? 'Work item' : l.kind[0].toUpperCase() + l.kind.slice(1)}</small></li>)}</ul>
               </div>
             )}
           </>
         )}
-        {sending && <SendLinkModal source={{ kind: 'guarded', item: d }} clipboardSeconds={policy.clipboardSeconds} onClose={() => setSending(false)} />}
+        {sending && <SendLinkModal source={{ kind: 'guarded', item: d }} clipboardSeconds={policy.clipboardSeconds} initial={sending === true ? undefined : sending} onClose={() => setSending(false)} />}
         {rotating && <RequestRotationModal item={{ id, title: it.title }} onClose={() => setRotating(false)} onDone={() => { void q.refetch(); onChanged(); }} />}
         {asking && <RequestAccessModal target={{ kind: 'item', id, title: it.title }} onClose={() => setAsking(false)} onDone={() => void refetchGrant()} />}
       </section>
@@ -268,7 +281,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
             ))}
           {d.fields.some((f) => f.secret && f.type !== 'totp') && d.canCopy && !binned && (
             <p className="vlt-small muted vlt-copy-only"><Icon name="lock" size={13} /> {d.canManage && d.canReveal
-              ? 'Values are never shown here. Copy them, or open Edit to see one.'
+              ? 'Values stay hidden; copy them. Reveal asks for your password and a two-step code or passkey.'
               : 'Values are never shown. Copy one into a sign-in form; the clipboard clears itself.'}
               <span className="vlt-policy-line">{[d.needsStepUp ? 'copy needs a two-step check' : null, `clipboard clears after ${policy.clipboardSeconds}s`].filter(Boolean).join(' · ')}</span></p>
           )}
@@ -361,14 +374,15 @@ function TotpField({ itemId, label, needsStepUp, lockEpoch, policy, onApproval, 
   }, [code, load]);
   const pretty = code ? (code.code.length === 6 ? `${code.code.slice(0, 3)} ${code.code.slice(3)}` : code.code) : '';
   if (v2) return (
-    <div className="vlt2-field" data-field="totp">
-      <span className="vlt2-label">{label}</span>
+    <div className="vlt2-field pw-f" data-field="totp">
+      <span className="vlt2-label pw-l">{label}</span>
       {code ? <>
-        <code className="vlt2-value vlt-totp" aria-live="polite" data-state="revealed">{pretty} <span className="vlt-ring" style={{ ['--p' as string]: String(left / code.period) }} aria-label={`${left} seconds left`}><b>{left}</b></span></code>
-        <button type="button" className="vlt2-act" aria-label="Copy the code" onClick={() => void copySecret(code.code, Math.min(policy.clipboardSeconds, 30)).then((ok) => toast(ok ? 'Code copied.' : 'The browser did not allow copying.', ok ? 'success' : 'error'))}>Copy</button>
+        <code className="vlt2-value pw-v pw-otp vlt-totp" aria-live="polite" data-state="revealed">{pretty}</code>
+        <span className="pw-hide pw-otp-ring" aria-label={`${left} seconds left`}><CountRing left={left} total={code.period} size={22} stroke={3} tone="green" />{left}s</span>
+        <button type="button" className="pw-link" aria-label="Copy the code" onClick={() => void copySecret(code.code, Math.min(policy.clipboardSeconds, 30)).then((ok) => toast(ok ? 'Code copied.' : 'The browser did not allow copying.', ok ? 'success' : 'error'))}>Copy</button>
       </> : <>
-        <code className="vlt2-value vlt-secret" data-state="masked" aria-label={`${label}, hidden`}>••• •••</code>
-        <button type="button" className="vlt2-act" disabled={busy} onClick={() => { refreshes.current = 0; void load(); }}>{busy ? <Spinner /> : 'Show code'}</button>
+        <code className="vlt2-value pw-v pw-otp vlt-secret" data-state="masked" aria-label={`${label}, hidden`}>••• •••</code>
+        <button type="button" className="pw-btn" disabled={busy} onClick={() => { refreshes.current = 0; void load(); }}>{busy ? <Spinner /> : 'Show code'}</button>
       </>}
     </div>
   );

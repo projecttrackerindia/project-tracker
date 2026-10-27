@@ -54,7 +54,8 @@ export function DefinitionModal({ documentId, existing, onClose, onSaved }: { do
 }
 
 /** Bring in an OpenAPI 3 file (JSON or YAML), a Postman collection or pasted cURL commands: check it first, then import it. */
-export function ImportModal({ documentId, definitions, onClose, onDone }: { documentId: string; definitions: ApiDefinition[]; onClose: () => void; onDone: (o: ApiOverview | null) => void }) {
+export function ImportModal({ documentId, definitions, onClose, onDone, initialCurl }: { documentId: string; definitions: ApiDefinition[]; onClose: () => void; onDone: (o: ApiOverview | null) => void;
+  /** cURL commands pasted or dropped elsewhere (Library's Paste a cURL): opens on the cURL tab with them filled in. */ initialCurl?: string }) {
   const wid = useWorkspaceId();
   const [file, setFile] = useState<{ name: string; text: string; size: number } | null>(null);
   const [target, setTarget] = useState('');
@@ -63,8 +64,8 @@ export function ImportModal({ documentId, definitions, onClose, onDone }: { docu
   const [result, setResult] = useState<ApiImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [over, setOver] = useState(false);
-  const [source, setSource] = useState<'file' | 'curl'>('file');
-  const [pasted, setPasted] = useState('');
+  const [source, setSource] = useState<'file' | 'curl'>(initialCurl ? 'curl' : 'file');
+  const [pasted, setPasted] = useState(initialCurl ?? '');
   const input = useRef<HTMLInputElement>(null);
   const run = useMutation({
     mutationFn: (dryRun: boolean) => apiDocApi.import(documentId, { content: file!.text, fileName: file!.name, definitionId: target || null, newDefinitionName: target ? null : newName.trim() || null, mode, dryRun }),

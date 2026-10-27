@@ -5,12 +5,29 @@ import { Modal } from '../../components/ui';
 import { Link } from 'react-router-dom';
 import { passkeysSupported, requestPasskey, wasCancelled } from '../../lib/passkeys';
 import { vaultApi } from './api';
+import { RevealSheet, type RevealGrant } from './RevealSheet';
 import { StepUpContext, type StepUpApi } from './stepUpContext';
 
 /** The token lives only in memory, for the few minutes the server gives it, and never in storage or an address. */
 export function StepUpProvider({ mfaEnabled, hasPasskeys = false, children }: { mfaEnabled: boolean; hasPasskeys?: boolean; children: ReactNode }) {
   const token = useRef<{ value: string; until: number } | null>(null);
   const [asking, setAsking] = useState<{ resolve: (t: string | null) => void; reason: string } | null>(null);
+  // The reveal grant (password and a second factor) is separate from the two-step token: it is what lets a value be shown on screen.
+  const grant = useRef<{ value: string; until: number } | null>(null);
+  const [revealing, setRevealing] = useState<{ resolve: (g: string | null) => void; anchor: HTMLElement | null } | null>(null);
+  const currentGrant = () => (grant.current && grant.current.until > Date.now() ? grant.current.value : undefined);
+  const askReveal = useCallback((anchor: HTMLElement | null) => new Promise<string | null>((resolve) => setRevealing({ resolve, anchor })), []);
+  const reveal = useCallback(async <T,>(fn: (g: string) => Promise<T>, anchor: HTMLElement | null = null): Promise<T | null> => {
+    const g = currentGrant() ?? (await askReveal(anchor));
+    if (!g) return null;
+    try { return await fn(g); }
+    catch (e) {
+      if (!(e instanceof ApiError) || e.code !== 'REVEAL_VERIFY_REQUIRED') throw e;
+      grant.current = null;
+      const fresh = await askReveal(anchor);
+      return fresh ? await fn(fresh) : null;
+    }
+  }, [askReveal]);
   const current = () => (token.current && token.current.until > Date.now() ? token.current.value : undefined);
   const prompt = useCallback((reason: string) => new Promise<string | null>((resolve) => setAsking({ resolve, reason })), []);
 
@@ -30,13 +47,19 @@ export function StepUpProvider({ mfaEnabled, hasPasskeys = false, children }: { 
     }
   }, [prompt]);
 
-  const value = useMemo<StepUpApi>(() => ({ run, forget: () => { token.current = null; }, fresh: () => !!current() }), [run]);
+  const value = useMemo<StepUpApi>(() => ({ run, reveal, forget: () => { token.current = null; grant.current = null; }, fresh: () => !!current() }), [run, reveal]);
   return (
     <StepUpContext.Provider value={value}>
       {children}
       {asking && <StepUpModal reason={asking.reason} mfaEnabled={mfaEnabled} hasPasskeys={hasPasskeys}
         onClose={() => { asking.resolve(null); setAsking(null); }}
         onDone={(t) => { token.current = { value: t.token, until: Date.parse(t.expiresAt) - 5000 }; asking.resolve(t.token); setAsking(null); }} />}
+      {revealing && <RevealSheet mfaEnabled={mfaEnabled} hasPasskeys={hasPasskeys} anchor={revealing.anchor}
+        onClose={() => { revealing.resolve(null); setRevealing(null); }}
+        onDone={(g: RevealGrant) => {
+          grant.current = { value: g.token, until: Date.parse(g.expiresAt) - 5000 };
+          revealing.resolve(g.token); setRevealing(null);
+        }} />}
     </StepUpContext.Provider>
   );
 }
