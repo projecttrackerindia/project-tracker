@@ -188,48 +188,42 @@ try {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
     if (theme === 'dark') { await page.goto(`${origin}/preview-org/work`); assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark'); }
 
-    // ---------------------------------------------------------------- My work: one list of every kind, on /work-items
+    // ---------------------------------------------------------------- My Work: the Focus Stack, today's ring, one suggestion, Today / This week / Later
     await page.goto(`${origin}/preview-org/work`);
-    await page.getByRole('heading', { level: 1, name: 'Work' }).waitFor();
-    await page.getByText('Tasks, issues, actions and tickets — one list').waitFor();
+    await page.getByRole('heading', { level: 1, name: 'My Work' }).waitFor();
     const tabs = page.getByRole('tablist', { name: 'Work' });
-    assert.deepEqual((await tabs.getByRole('tab').allInnerTexts()).map((t) => t.trim()), ['My work', 'Team', 'Tickets', 'Automations']);
-    assert.equal(await tabs.getByRole('tab', { name: 'My work' }).getAttribute('aria-selected'), 'true');
-    // Projects › is a link that leaves Work, not a tab.
-    const projectsLink = page.locator('main').getByRole('link', { name: /^Projects/ });
-    assert.equal(await projectsLink.getAttribute('href'), '/preview-org/work/projects');
+    assert.deepEqual((await tabs.getByRole('tab').allInnerTexts()).map((t) => t.trim()), ['Mine', 'Team', 'Automations']);
+    assert.equal(await tabs.getByRole('tab', { name: 'Mine' }).getAttribute('aria-selected'), 'true');
+    if (width === 1440) assert.equal(await page.locator('.v2-tb [role="tablist"][aria-label="Work"]').count(), 1, 'the segmented control sits in the toolbar');
+    await waitFor(() => state.lists.some((l) => l.mine === 'true' && (l.status ?? 'open') === 'open'), 'My Work asks /work-items for mine');
+    await page.locator('.mw-eyebrow', { hasText: '12 open · 1 overdue' }).waitFor();
+    // The front card: the overdue item, with why it is next, Start, due, project and owner; two cards behind it.
+    const stack = page.getByRole('region', { name: 'Do this now' });
+    const front = stack.locator('.mw-fc.front');
+    await front.locator('.mw-ti', { hasText: 'Refund webhook retries twice' }).waitFor();
+    assert.match(await front.locator('.mw-why').innerText(), /^Next because it is 3 days overdue/);
+    await front.getByRole('button', { name: 'Start' }).waitFor();
+    assert.match(await front.locator('.mw-meta').innerText(), /Due[\s\S]*Payments Core/);
+    assert.equal(await front.locator('.mw-av .avatar').count(), 1);
+    assert.equal(await stack.locator('.mw-fc.behind').count(), 2);
+    await page.locator('.mw-ring .mw-n', { hasText: /^0 of \d+$/ }).waitFor();
+    await page.locator('.mw-ai .mw-orb').waitFor();
     const list = page.getByRole('region', { name: 'Work list' });
-    const rows = list.locator('.wk-row');
-    await rows.first().waitFor();
-    assert.equal(await rows.count(), 12, 'every open item assigned to me');
-    await waitFor(() => state.lists.some((l) => l.mine === 'true' && (l.status ?? 'open') === 'open'), 'My work asks /work-items for mine');
-    // Each row: priority dot, key, title, kind chip, owner, due (red when late).
-    const wt5 = rows.filter({ hasText: 'MuleSoft production server' });
-    assert.equal(await wt5.locator('.wk-kind').innerText(), 'Ticket');
-    assert.equal(await wt5.locator('.wk-dot.p-Critical').count(), 1);
-    assert.equal(await wt5.locator('.wk-key').innerText(), 'WT-5');
-    assert.equal(await wt5.locator('.wk-due').innerText(), 'Today');
-    assert.equal(await wt5.locator('.wk-owner .avatar').count(), 1);
-    const late = rows.filter({ hasText: 'Refund webhook retries twice' });
-    assert.match(await late.locator('.wk-due').getAttribute('class'), /late/);
-    assert.equal(await late.locator('.wk-due').innerText(), '3d late');
-    const red = await late.locator('.wk-due').evaluate((e) => getComputedStyle(e).color);
-    const [r0, g0, b0] = red.match(/\d+/g).map(Number); assert.ok(r0 > 180 && g0 < 130 && b0 < 130, `late due is red (${red})`);
-    for (const k of ['Task', 'Issue', 'Action', 'Ticket']) await list.locator('.wk-kind', { hasText: new RegExp(`^${k}$`) }).first().waitFor();
-    // Grouped by due date (Overdue first), sorted by priority.
-    assert.deepEqual((await list.locator('.wk-group-head span').allInnerTexts()).slice(0, 2), ['Overdue', 'Today']);
-    // More than 10 items: the filters show. The kind chips narrow the list.
-    await list.getByRole('searchbox', { name: 'Search work' }).waitFor();
-    await list.getByRole('button', { name: /^Issue/ }).click();
-    assert.equal(await rows.count(), 1);
-    await list.getByRole('button', { name: /^All$/ }).click();
-    assert.equal(await rows.count(), 12);
-    // Group and sort.
-    await list.getByLabel('Group by').selectOption('kind');
-    await list.locator('.wk-group-head', { hasText: 'Tickets' }).waitFor();
-    await list.getByLabel('Group by').selectOption('due');
-    if (width === 390) await fitsPhone(page, 'Work list', assert);
+    assert.deepEqual((await list.locator('.mw-grp h2').allInnerTexts()).map((t) => t.replace(/\s+\d+$/, '')), ['Today', 'This week', 'Later']);
+    const lateRow = list.locator('.mw-r', { hasText: 'Refund webhook retries twice' });
+    assert.equal(await lateRow.locator('.od').innerText(), 'overdue 3d');
+    const red = await lateRow.locator('.od').evaluate((e) => getComputedStyle(e).color);
+    const [r0, g0, b0] = red.match(/\d+/g).map(Number); assert.ok(r0 > 180 && g0 < 130 && b0 < 130, `overdue is red (${red})`);
+    assert.equal(await lateRow.locator('.mw-flag').innerText(), '!');
+    await list.getByRole('button', { name: '＋ Add item' }).waitFor();
+    if (width === 390) await fitsPhone(page, 'My Work', assert);
     await shot(page, `work-${tag}.png`);
+    // Ticking a row completes it through the Work API and strikes it through.
+    const bank = list.locator('.mw-r', { hasText: 'Get the bank' });
+    await bank.getByRole('button', { name: /^Complete/ }).click();
+    await waitFor(() => state.writes.some((w) => w.method === 'PATCH' && w.b.status === 'Completed'), 'the completion');
+    await list.locator('.mw-r.done', { hasText: 'Get the bank' }).waitFor();
+    const wt5 = list.locator('.mw-r-main', { hasText: 'MuleSoft production server' });
     checks.push(`list-${tag}`);
 
     // ---------------------------------------------------------------- the side panel, deep-linked
@@ -341,8 +335,8 @@ try {
     await page.getByRole('link', { name: /Capacity & cost/ }).waitFor();
     await page.getByRole('button', { name: 'Work · Team' }).click();
     await page.waitForURL((u) => u.searchParams.get('tab') === 'team' && !u.searchParams.has('s'));
-    await tabs.getByRole('tab', { name: 'Tickets' }).click();
-    await page.waitForURL(/tab=tickets/);
+    // Tickets moved to Desk in the sidebar; /work?tab=tickets still opens the ticket list.
+    await page.goto(`${origin}/preview-org/work?tab=tickets`);
     await list.locator('.wk-row', { hasText: 'Printer on floor 2 jams' }).waitFor();
     await waitFor(() => state.lists.some((l) => l.kind === 'ticket'), 'Tickets asks for tickets');
     assert.equal(await list.locator('.wk-kchip').count(), 0, 'one kind: no kind chips');
@@ -403,7 +397,7 @@ try {
 
     // ---------------------------------------------------------------- + New: a ticket from words, with chips, opened in the panel
     await page.goto(`${origin}/preview-org/work`);
-    await rows.first().waitFor();
+    await list.locator('.mw-r').first().waitFor();
     await page.evaluate(() => document.querySelector(window.innerWidth < 769 ? '.v2-phone-new' : '.v2-new')?.click());
     const sheet = page.getByRole('dialog', { name: 'New' });
     await sheet.getByLabel('What to create').fill('VPN down for collections team, critical, give to Ravi');
@@ -433,7 +427,7 @@ try {
     if (tag === '1440') {
       const kept = errors.length;
       const newSheet = async (words, tile) => {
-        await page.goto(`${origin}/preview-org/work`); await rows.first().waitFor();
+        await page.goto(`${origin}/preview-org/work`); await page.locator('.mw-r').first().waitFor();
         await page.locator('.v2-tb-new').click();
         await sheet.getByLabel('What to create').fill(words);
         if (tile) await sheet.getByRole('radio', { name: tile }).click();
@@ -453,7 +447,7 @@ try {
       await page.getByRole('dialog', { name: /New project/ }).waitFor();
       await page.keyboard.press('Escape');
       // A task needs its project: the Project chip asks for one, then it is made through /work-items too.
-      await page.goto(`${origin}/preview-org/work`); await rows.first().waitFor();
+      await page.goto(`${origin}/preview-org/work`); await page.locator('.mw-r').first().waitFor();
       await page.locator('.v2-tb-new').click();
       await sheet.getByLabel('What to create').fill('Write the settlement runbook');
       await sheet.getByRole('radio', { name: 'Task' }).click();
