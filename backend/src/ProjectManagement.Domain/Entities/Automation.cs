@@ -4,9 +4,13 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Domain.Enums
 {
     public enum SprintStatus { Planned, Active, Completed }
-    /// <summary>Event triggers run when a task changes; DueSoon, Overdue and Stale are checked on a schedule (with <c>TriggerDays</c>).</summary>
-    public enum AutomationTrigger { TaskCreated, StatusChanged, PriorityChanged, DueSoon, Overdue, Stale }
-    public enum AutomationAction { SetPriority, SetAssignee, MoveToStatus, AddLabel, Notify, AddComment }
+    /// <summary>
+    /// Event triggers run when a task changes; DueSoon, Overdue and Stale are checked on a schedule (with <c>TriggerDays</c>). TicketCreated and
+    /// TicketChanged (created or updated) run on Desk tickets (operational work) and are workspace rules only. New values go at the end: stored as text.
+    /// </summary>
+    public enum AutomationTrigger { TaskCreated, StatusChanged, PriorityChanged, DueSoon, Overdue, Stale, TicketCreated, TicketChanged }
+    /// <summary>PostToChannel posts a line in a Messages channel; TellCustomer (Desk tickets only) adds a customer-facing reply to the ticket.</summary>
+    public enum AutomationAction { SetPriority, SetAssignee, MoveToStatus, AddLabel, Notify, AddComment, PostToChannel, TellCustomer }
     /// <summary>Who an action refers to: a chosen person, or whoever reported / is assigned the task.</summary>
     public enum AutomationTarget { User, Reporter, Assignee }
 }
@@ -70,7 +74,10 @@ namespace ProjectManagement.Domain.Entities
         public AutomationTarget ActionTarget { get; set; } = AutomationTarget.User;
         public Guid? ActionUserId { get; set; }
         public string? ActionText { get; set; }
-        /// <summary>The second and later actions, as JSON (the same fields as the first).</summary>
+        /// <summary>
+        /// The second and later actions as a JSON array (the original format), or - for rules with conditions, a draft flag or channel steps - a JSON
+        /// object <c>{"v":2,"steps":[every step],"conditions":[...],"draft":bool}</c>. Both are read; see <c>AutomationService.ExtrasOf</c>.
+        /// </summary>
         public string? MoreActionsJson { get; set; }
 
         public int RunCount { get; set; }

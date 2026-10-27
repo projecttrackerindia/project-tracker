@@ -416,22 +416,33 @@ export interface ProjectTime { totalMinutes: number; estimatedHours: number | nu
 
 // ---- automation
 /** Event triggers run when a task changes; DueSoon, Overdue and Stale are checked every few minutes (with `triggerDays`). */
-export type AutomationTrigger = 'TaskCreated' | 'StatusChanged' | 'PriorityChanged' | 'DueSoon' | 'Overdue' | 'Stale';
-export type AutomationAction = 'SetPriority' | 'SetAssignee' | 'MoveToStatus' | 'AddLabel' | 'Notify' | 'AddComment';
+export type AutomationTrigger = 'TaskCreated' | 'StatusChanged' | 'PriorityChanged' | 'DueSoon' | 'Overdue' | 'Stale' | 'TicketCreated' | 'TicketChanged';
+/** PostToChannel: a line in a Messages channel. TellCustomer: a reply to the customer (Desk tickets only). */
+export type AutomationAction = 'SetPriority' | 'SetAssignee' | 'MoveToStatus' | 'AddLabel' | 'Notify' | 'AddComment' | 'PostToChannel' | 'TellCustomer';
+/** One "If" condition; a rule's conditions are ANDed. `noReply` (minutes) is for Desk tickets. */
+export type AutomationConditionField = 'priority' | 'status' | 'unassigned' | 'businessHours' | 'noReply';
+export interface AutomationCondition { field: AutomationConditionField; value?: string | null; minutes?: number | null }
 export type AutomationTarget = 'User' | 'Reporter' | 'Assignee';
 /** One thing a rule does. Workspace rules name a status by category (the project's first status in it). */
 export interface AutomationStep {
   action: AutomationAction; actionPriority: string | null; actionStatusId: string | null; actionStatusCategory: StatusCategory | null; actionLabelId: string | null;
   actionTarget: AutomationTarget; actionUserId: string | null; actionText: string | null;
+  /** PostToChannel: the Messages channel (group or project conversation). */
+  actionConversationId?: string | null;
 }
 export interface AutomationRule extends AutomationStep {
   id: string; projectId: string | null; name: string; isEnabled: boolean; trigger: AutomationTrigger; whenStatusId: string | null; whenPriority: string | null;
   whenStatusCategory: StatusCategory | null; triggerDays: number | null; moreActions: AutomationStep[];
   summary: string; runCount: number; lastRunAt: string | null;
+  conditions?: AutomationCondition[]; isDraft?: boolean; conversationName?: string | null;
 }
-export type AutomationInput = Omit<AutomationRule, 'id' | 'projectId' | 'summary' | 'runCount' | 'lastRunAt'>;
+export type AutomationInput = Omit<AutomationRule, 'id' | 'projectId' | 'summary' | 'runCount' | 'lastRunAt' | 'conversationName'>;
+/** A backtest over the last 7 days: nothing is changed or sent. */
+export interface AutomationBacktest {
+  total: number; days: { date: string; count: number }[]; items: { id: string; key: string; title: string; at: string; isTicket: boolean }[]; note: string;
+}
 /** A dry run: the trigger, then each action; pass false = stopped there (trigger) or would be skipped (action). */
-export interface AutomationTest { taskKey: string; taskTitle: string; wouldRun: boolean; steps: { step: 'When' | 'Then'; pass: boolean; note: string }[] }
+export interface AutomationTest { taskKey: string; taskTitle: string; wouldRun: boolean; steps: { step: 'When' | 'If' | 'Then'; pass: boolean; note: string }[] }
 export interface AutomationRunEntry { at: string; taskId: string | null; summary: string }
 export interface AutomationDraft {
   name: string; trigger: AutomationTrigger; triggerDays: number | null; whenPriority: string | null; whenStatusCategory: StatusCategory | null; reason: string;

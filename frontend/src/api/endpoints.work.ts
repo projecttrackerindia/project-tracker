@@ -1,5 +1,5 @@
 import { del, download, fetchBlobUrl, get, patch, post, put, uploadFile, create } from './client';
-import type { WeekDraft,ParsedTime,LogTimeWordsEntry,LogTimeWordsResult,EffectiveAccessList,AutomationInput,AutomationRule,AutomationTest,AutomationRunEntry,AutomationDraft,ProjectTime,TaskTime,TimeEntry,Timesheet,AccessMatrix,DependencyType,Milestone,MilestoneInput,TaskDependencies,ActionItem,ActionItemInput,ActionItemStatus,Attachment,AttachmentLimits,ProjectGroup,ProjectStatusReport,StatusGroup,Issue,IssueDetail,IssueInput,DevEmail,OrgRole,OrgStructure,TimesheetWeek,Approvals,BulkReviewResult,TimesheetGrid,GridCellChange,SaveGridResult,TimesheetInsights } from './types';
+import type { WeekDraft,ParsedTime,LogTimeWordsEntry,LogTimeWordsResult,EffectiveAccessList,AutomationInput,AutomationRule,AutomationTest,AutomationRunEntry,AutomationBacktest,AutomationDraft,ProjectTime,TaskTime,TimeEntry,Timesheet,AccessMatrix,DependencyType,Milestone,MilestoneInput,TaskDependencies,ActionItem,ActionItemInput,ActionItemStatus,Attachment,AttachmentLimits,ProjectGroup,ProjectStatusReport,StatusGroup,Issue,IssueDetail,IssueInput,DevEmail,OrgRole,OrgStructure,TimesheetWeek,Approvals,BulkReviewResult,TimesheetGrid,GridCellChange,SaveGridResult,TimesheetInsights } from './types';
 
 export const devApi = { emails: () => get<DevEmail[]>('/dev/emails', undefined, { auth: false }) };
 
@@ -147,6 +147,8 @@ export const workspaceAutomationApi = {
   test: (rule: AutomationInput, taskId: string) => post<AutomationTest>('/automations/test', { rule, taskId }),
   /** The latest times the rule did something (newest first). */
   runs: (id: string) => get<AutomationRunEntry[]>(`/automations/${id}/runs`),
+  /** The rule replayed over the last 7 days: how often it would have fired, per day, and on what. Nothing is changed or sent. */
+  backtest: (rule: AutomationInput) => post<AutomationBacktest>('/automations/backtest', rule),
   /** A sentence to a rule draft (AI; nothing is saved). */
   draft: (text: string) => post<AutomationDraft>('/ai/automation-draft', { text }),
 };
