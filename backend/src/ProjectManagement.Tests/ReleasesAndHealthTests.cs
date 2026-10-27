@@ -83,4 +83,23 @@ public class ReleasesAndHealthTests(ApiFactory factory)
         Assert.Null(cleared.Data!["override"]);
         Assert.Equal(S(cleared.Data["calculated"]), S(cleared.Data["health"]));
     }
+
+    [Fact]
+    public async Task The_weekly_report_is_written_from_the_projects_data()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Wren Weekly");
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("BUSINESS");
+        var project = await owner.CreateProjectAsync("Customer App");
+        await owner.CreateTaskAsync(project, "Onboarding screens", new { dueDate = DateTime.UtcNow.AddDays(3).ToString("yyyy-MM-dd") });
+        var r = await owner.Get($"/api/v1/project-status/projects/{project}/weekly");
+        Assert.True(r.Ok, r.ToString());
+        var text = S(r.Data!["text"]);
+        Assert.Contains("Customer App", text);
+        Assert.Contains("What moved", text);
+        Assert.Contains("Next week", text);
+        Assert.Contains("Onboarding screens", text);
+        Assert.Equal(1, r.Data["next"]!.GetValue<int>());
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Post($"/api/v1/project-status/projects/{project}/weekly/send", new { text = " " })).Status);
+    }
 }

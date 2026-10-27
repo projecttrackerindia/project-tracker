@@ -12,8 +12,9 @@ import { toast } from '../../stores/ui';
 import { commonCause, evidenceLines, releaseOf, runHeading, stepsOf } from './qualityLogic';
 import '../desk/dq.css';
 import './quality.css';
+import { Releases } from './Releases';
 
-type Tab = 'runs' | 'cases' | 'bugs';
+type Tab = 'runs' | 'cases' | 'bugs' | 'releases';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const STATUS_LABEL: Record<ResultStatus, string> = { Pass: 'Passed', Fail: 'Failed', Blocked: 'Blocked', NotRun: 'Not run' };
 const DOT: Record<ResultStatus, string> = { Pass: 'p', Fail: 'x', Blocked: 'b', NotRun: 's' };
@@ -66,7 +67,7 @@ export function QualityPage() {
     <div className="dq-page qa">
       <ToolbarSeg className="dq-tb">
         <div className="dq-seg" role="tablist" aria-label="Quality views">
-          {(['runs', 'cases', 'bugs'] as Tab[]).map((t) => (
+          {(['runs', 'cases', 'bugs', 'releases'] as Tab[]).map((t) => (
             <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t[0].toUpperCase() + t.slice(1)}</button>
           ))}
         </div>
@@ -81,7 +82,7 @@ export function QualityPage() {
         </div>
       </div>
 
-      {matrix.isLoading ? <p className="dq-empty">Loading…</p> : empty ? (
+      {tab === 'releases' ? <Releases /> : matrix.isLoading ? <p className="dq-empty">Loading…</p> : empty ? (
         <div className="dq-card qa-empty">
           <span className="qa-empty-ic" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M9 3h6M10 3v6.5L5.2 18a2 2 0 0 0 1.7 3h10.2a2 2 0 0 0 1.7-3L14 9.5V3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
           <h2 className="dq-h3">No test cases yet</h2>

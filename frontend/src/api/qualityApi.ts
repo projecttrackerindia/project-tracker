@@ -1,5 +1,5 @@
 // Quality (testers): test cases, runs, the cases × runs matrix, results, readiness and filing a bug, through /api/v1/quality.
-import { create, get, put } from './client';
+import { create, del, get, post, put } from './client';
 import type { UserRef } from './types';
 import type { WorkItemDetail } from './workItemsApi';
 
@@ -40,4 +40,26 @@ export const qualityApi = {
   readiness: (q: { runId?: string; projectId?: string } = {}) => get<Readiness>('/quality/readiness', q),
   fileBug: (resultId: string, b: { title?: string; assigneeId?: string | null } = {}) =>
     create<{ result: TestResult; workItem: WorkItemDetail }>(`/quality/results/${resultId}/bug`, b),
+};
+
+// ---- releases: the work going out together, the runs that check it, the go/no-go (/api/v1/releases)
+export interface Release {
+  id: string; name: string; projectId: string | null; projectName: string | null; targetDate: string | null; status: 'Planned' | 'Approved' | 'Shipped'; notes: string | null;
+  items: number; runs: number; approvedBy: UserRef | null; approvedAt: string | null; shippedAt: string | null; createdAt: string;
+}
+export interface ReleaseItem { id: string; kind: string; key: string; title: string; status: string; category: 'Todo' | 'Active' | 'Done' | 'Cancelled'; assignee: UserRef | null; dueDate: string | null; bug: boolean }
+export interface ReleaseCheck { key: 'work' | 'bugs' | 'tests'; label: string; ok: boolean; detail: string }
+export interface ReleaseState {
+  release: Release; items: ReleaseItem[]; runs: TestRun[]; tests: Readiness | null; done: number; open: number; openBugs: number; checks: ReleaseCheck[]; go: boolean; canApprove: boolean;
+}
+export const releaseApi = {
+  list: (projectId?: string) => get<Release[]>('/releases', { projectId }),
+  create: (b: { name: string; projectId?: string | null; targetDate?: string | null; notes?: string | null }) => create<Release>('/releases', b),
+  update: (id: string, b: { name: string; targetDate?: string | null; notes?: string | null }) => put<Release>(`/releases/${id}`, b),
+  get: (id: string) => get<ReleaseState>(`/releases/${id}`),
+  items: (id: string, b: { add?: string[]; remove?: string[] }) => put<ReleaseState>(`/releases/${id}/items`, b),
+  attachRun: (id: string, runId: string) => put<ReleaseState>(`/releases/${id}/runs/${runId}`, {}),
+  detachRun: (id: string, runId: string) => del<ReleaseState>(`/releases/${id}/runs/${runId}`),
+  approve: (id: string, reason?: string) => post<ReleaseState>(`/releases/${id}/approve`, { reason: reason ?? null }),
+  ship: (id: string) => post<ReleaseState>(`/releases/${id}/ship`, {}),
 };

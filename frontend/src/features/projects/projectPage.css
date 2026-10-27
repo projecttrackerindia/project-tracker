@@ -199,3 +199,20 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 }
 @media (prefers-reduced-motion: reduce) { .pp-done, .pp-nd-c, .pp-nd.s .pp-nd-c { transition: none; } }
 .pp-box[aria-label='Risks'] .pp-tx b { white-space: normal; }
+
+/* A status set by hand: one quiet line under the header; the sheet's three-way choice. */
+.ph-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: -4px 0 14px; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; background: var(--ds-fill); animation: ph-in .35s cubic-bezier(.32, .72, 0, 1) both; }
+@keyframes ph-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.ph-banner b { font-weight: 700; } .ph-banner span { color: var(--ds-text-2); flex: 1; min-width: 200px; }
+.ph-banner.ok { background: rgba(40, 205, 65, .1); } .ph-banner.ok b { color: #127a26; }
+.ph-banner.risk { background: rgba(255, 159, 10, .12); } .ph-banner.risk b { color: #a35c00; }
+.ph-banner.late { background: rgba(255, 59, 48, .1); } .ph-banner.late b { color: #c11b10; }
+.ph-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
+.ph-seg button { height: 40px; border: 0; border-radius: 10px; background: var(--ds-fill); color: var(--ds-text); font: inherit; font-weight: 600; cursor: pointer; transition: background .2s, box-shadow .2s; }
+.ph-seg button.on.ok { background: rgba(40, 205, 65, .18); box-shadow: inset 0 0 0 1.5px #28cd41; }
+.ph-seg button.on.risk { background: rgba(255, 159, 10, .2); box-shadow: inset 0 0 0 1.5px #ff9f0a; }
+.ph-seg button.on.late { background: rgba(255, 59, 48, .14); box-shadow: inset 0 0 0 1.5px #ff3b30; }
+.ph-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 12.5px; color: var(--ds-text-2); }
+.ph-field textarea, .ph-field input { padding: 8px 10px; border: 0; border-radius: 9px; background: var(--ds-fill); color: var(--ds-text); font: inherit; font-size: 14px; }
+.ph-hint { margin: 0; font-size: 12.5px; color: var(--ds-text-2); line-height: 1.45; }
+@media (prefers-reduced-motion: reduce) { .ph-banner { animation: none; } }

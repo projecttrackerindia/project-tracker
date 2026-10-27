@@ -13,6 +13,7 @@ import { portfolioApi, type DecisionOption, type PortfolioDecision, type Portfol
 import { useDecisionActions, type DecisionItem } from './portfolioDecisions';
 import { dayMonth } from './projectParts';
 import { ProjectFacts } from './PortfolioFacts';
+import { HealthSheet } from './ProjectHealth';
 import type { PortfolioBrief, PortfolioRisk } from '../ai/aiApi';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -165,7 +166,9 @@ function DropSheet({ p, from, to, item, filter, onClose, onFlagged }: { p: Timel
   const [reason, setReason] = useState('');
   const [due, setDue] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); });
   const [busy, setBusy] = useState(false);
-  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
+  const [byHand, setByHand] = useState(false);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !byHand) onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose, byHand]);
+  if (byHand) return <HealthSheet projectId={p.id} projectName={p.name} initial={to === 'ok' ? 'OnTrack' : to === 'risk' ? 'AtRisk' : 'Delayed'} onClose={onClose} />;
   const flag = async () => {
     if (!reason.trim()) return;
     setBusy(true);
@@ -186,13 +189,14 @@ function DropSheet({ p, from, to, item, filter, onClose, onFlagged }: { p: Timel
           <div className="pf-drop-acts">
             {item?.acceptOpt && item.forecast && <button type="button" className="pf-btn pri" disabled={!a.canAct || a.busy !== null} onClick={() => void a.accept().then(onClose)}>{a.busy ? 'Setting…' : `Make ${dayMonth(item.forecast)} the new due date`}</button>}
             <button type="button" className="pf-btn" onClick={() => navigate(`/work/projects/${p.id}`)}>Replan in the project</button>
+            <button type="button" className="pf-btn" onClick={() => setByHand(true)}>Set it on track by hand…</button>
             <button type="button" className="pf-btn" onClick={onClose}>Cancel</button>
           </div>
         ) : (
           <form onSubmit={(e) => { e.preventDefault(); void flag(); }} className="pf-drop-form">
             <label>What is the risk?<textarea autoFocus rows={3} maxLength={180} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Bank sandbox keys not shared; UAT cannot start" /></label>
             <label>Follow up by<input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></label>
-            <div className="pf-drop-acts"><button type="submit" className="pf-btn pri" disabled={busy || !reason.trim()}>{busy ? 'Flagging…' : 'Flag it'}</button><button type="button" className="pf-btn" onClick={onClose}>Cancel</button></div>
+            <div className="pf-drop-acts"><button type="button" className="pf-btn" onClick={() => setByHand(true)}>Set status by hand…</button><button type="submit" className="pf-btn pri" disabled={busy || !reason.trim()}>{busy ? 'Flagging…' : 'Flag it'}</button><button type="button" className="pf-btn" onClick={onClose}>Cancel</button></div>
           </form>
         )}
       </section>

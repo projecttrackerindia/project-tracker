@@ -192,6 +192,7 @@ public static class DependencyInjection
         services.AddScoped<DueDateHistory>();
         services.AddScoped<ProjectGroupService>();
         services.AddScoped<ProjectStatusService>();
+        services.AddScoped<WeeklyReportService>();
         services.AddScoped<ActionItemService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTypeService>();
         services.AddScoped<ProjectManagement.Application.Features.Quality.QualityService>();
