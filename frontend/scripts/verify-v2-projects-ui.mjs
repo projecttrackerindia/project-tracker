@@ -303,7 +303,7 @@ try {
   await page.getByRole('menu', { name: 'More on this project' }).getByRole('menuitem', { name: /^Add work/ }).click();
   await page.locator('.v2-new-sheet').waitFor();
   assert.equal(await page.locator('.v2-new-type.on').innerText(), 'Task');
-  assert.ok((await page.locator('.v2-new-chip').allInnerTexts()).some((t) => /Project\s*Razor pay/.test(t)), 'the project chip');
+  { const t = await page.locator('.v2-new-chip').allTextContents(); assert.ok(t.some((x) => /Project\s*Razor pay/.test(x)), `the project chip: ${t}`); }
   assert.match(await page.locator('.v2-understood p').innerText(), /Adds it to Razor pay/);
   await page.keyboard.press('Escape'); await page.locator('.v2-new-sheet').waitFor({ state: 'detached' });
   checks.push('add-work');

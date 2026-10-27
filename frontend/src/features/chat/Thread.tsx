@@ -22,6 +22,7 @@ import '../meet/meet.css';
 import { StartCallButton } from '../calls/StartCall';
 import { insertIntoComposer, LinkedChips, MakeFromMessage, PollCard, putMessage, SeenByDialog, SmartReplies, TranslateLine, UnfurlCards, UnfurlContext, useUnfurls, VoiceNote } from './MessageExtras';
 import { DotsMenu } from '../talk/DotsMenu';
+import { flyToMyWork } from '../talk/flyTask';
 import { AskChatDialog, CatchUpDialog, COMPOSER_AI, PollDialog, ScheduleDialog, useVoiceRecorder } from './ChatTools';
 import type { ChatExtract } from '../../api/types';
 import { haptic } from '../../lib/mobile';
@@ -263,18 +264,23 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
       {variant === 'talk' ? (
         <header className="chat-head talk-head">
           <button className="btn-icon chat-back" onClick={onBack} aria-label="Back to conversations"><Icon name="arrowLeft" /></button>
-          <ConversationAvatar conversation={conversation} status={otherStatus} />
+          {conversation.type === 'Direct' ? <ConversationAvatar conversation={conversation} status={otherStatus} /> : <span className="talk-head-gl" aria-hidden="true">#</span>}
           <div className="chat-head-text">
             <h2>{conversation.name}</h2>
             <div className="chat-sub" aria-live="polite">{typingNames.length ? status : sub ?? status}</div>
           </div>
-          <StartCallButton conversationId={conversation.id} label={conversation.type === 'Direct' ? 'Call' : 'Group call'} className="btn btn-soft btn-sm talk-call" />
-          <DotsMenu label="Conversation actions" items={[
+          {conversation.type !== 'Direct' && (
+            <span className="talk-ppl" aria-label={`${conversation.members.length} members`}>
+              {others.slice(0, 4).map((m) => <Avatar key={m.userId} name={m.name} size="sm" userId={m.userId} />)}
+            </span>
+          )}
+          <StartCallButton conversationId={conversation.id} label={conversation.type === 'Direct' ? 'Call' : 'Group call'} compact className="talk-ib talk-call" />
+          <DotsMenu label="Conversation actions" className="talk-info" icon="info" items={[
+            { label: 'Details', hint: 'People, mute, leave', icon: 'info', onSelect: () => onInfo?.(), hidden: !onInfo },
             { label: 'Catch me up', hint: 'Decisions, questions and actions in this chat', icon: 'sparkle', onSelect: () => setDialog('catchup') },
             { label: 'Ask this conversation', icon: 'search', onSelect: () => setDialog('ask') },
             { label: `Pinned messages${pinCount ? ` (${pinCount})` : ''}`, icon: 'flag', onSelect: () => setSide((v) => (v === 'pins' ? null : 'pins')) },
             { label: 'Files', icon: 'folder', onSelect: () => onFiles?.(), hidden: !onFiles },
-            { label: 'Details', hint: 'People, mute, leave', icon: 'info', onSelect: () => onInfo?.(), hidden: !onInfo },
           ]} />
         </header>
       ) : (
@@ -327,12 +333,14 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
             <div key={m.id} className="chat-row-wrap">
               {newDay && <div className="day-sep"><span>{dayLabel(m.createdAt)}</span></div>}
               {m.kind === 'System'
-                ? <div className="sys-line" data-msg={m.id}>{m.body}</div>
+                ? (decisionOf(m.body)
+                    ? <DecisionCapsule id={m.id} d={decisionOf(m.body)!} />
+                    : <div className="sys-line" data-msg={m.id}>{m.body}</div>)
                 : m.kind === 'Meeting' && conversation.projectId
                 ? <MeetingCardMessage body={m.body} projectId={conversation.projectId} />
                 : <MessageRow m={m} mine={mine} grouped={grouped} tail={tail} showName={conversation.type !== 'Direct'} canModerate={conversation.canManage}
                     ticks={conversation.type !== 'Project'} aboutMe={!mine && mentionsUser(m.body, me)}
-                    read={mine && isRead(m)} conversation={conversation} onThread={() => setOpenThread(m.id)}
+                    read={mine && isRead(m)} conversation={conversation} onThread={() => setOpenThread(m.id)} talk={variant === 'talk'}
                     onReply={() => { setEditing(null); setReplyTo(m); }}
                     onEdit={() => { setReplyTo(null); setEditing(m); }} onDelete={() => void remove(m)} onJump={jumpTo} />}
             </div>
@@ -344,7 +352,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
       {newBelow > 0 && <button className="new-below" onClick={() => toBottom(true)}><Icon name="chevronD" size={14} /> {newBelow} new {newBelow === 1 ? 'message' : 'messages'}</button>}
 
       <Composer key={`${id}:${editing?.id ?? ''}`} conversation={conversation} replyTo={replyTo} editing={editing} onPoll={() => setDialog('poll')}
-        placeholder={variant === 'talk' ? 'Message — or ✦ draft a reply' : undefined} draftReply={variant === 'talk' ? draftReply : undefined}
+        placeholder={variant === 'talk' ? `Message ${conversation.type === 'Direct' ? conversation.name : `#${conversation.name.replace(/^#/, '')}`}` : undefined} draftReply={variant === 'talk' ? draftReply : undefined} talk={variant === 'talk'}
         mentionable={conversation.type === 'Project' ? conversation.members.filter((m) => m.userId !== me).map((m) => ({ userId: m.userId, name: m.name })) : []}
         onCancel={() => { setReplyTo(null); setEditing(null); }}
         onSent={(m) => {
@@ -439,6 +447,21 @@ function PinsPanel({ conversation, onClose, onJump }: { conversation: Conversati
   );
 }
 
+/** A closed poll's decision line ("Decision: X — “question” (N voted, closed by W)"), or null for any other system line. */
+export function decisionOf(body: string): { text: string; by: string | null; agreed: number | null } | null {
+  const m = /^Decision:\s*(.+?)(?:\s+—\s+“[^”]*”)?\s*(?:\((\d+) voted, closed by ([^)]+)\))?$/.exec(body.trim());
+  return m ? { text: m[1], by: m[3] ?? null, agreed: m[2] ? Number(m[2]) : null } : null;
+}
+
+function DecisionCapsule({ id, d }: { id: string; d: NonNullable<ReturnType<typeof decisionOf>> }) {
+  return (
+    <div className="decision-cap" data-msg={id} role="note" aria-label={`Decision: ${d.text}`}>
+      <span className="decision-tag">DECISION</span><b>{d.text}</b>
+      {(d.by || d.agreed) && <span className="decision-by">— {[d.by?.split(' ')[0], d.agreed ? `agreed by ${d.agreed}` : null].filter(Boolean).join(' · ')}</span>}
+    </div>
+  );
+}
+
 const utcMs = (iso: string) => new Date(/[zZ]|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`).getTime();
 
 /** A single grey check for sent, a double check — coloured once read — matching the familiar messaging-app convention. */
@@ -510,10 +533,11 @@ const remindAbout = (m: ChatMessage) =>
  * One message. Time, "edited" and the read ticks sit inside the bubble; the avatar shows once, beside the last message of a run. With a
  * mouse, a small toolbar appears on hover; on a phone, a long press opens the actions as a sheet and a swipe to the right replies.
  */
-function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, aboutMe, read, onReply, onEdit, onDelete, onJump, conversation, onThread, inThread = false }: {
+function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, aboutMe, read, onReply, onEdit, onDelete, onJump, conversation, onThread, inThread = false, talk = false }: {
   m: ChatMessage; mine: boolean; grouped: boolean; tail: boolean; showName: boolean; canModerate: boolean; ticks: boolean; aboutMe: boolean; read: boolean;
   onReply: () => void; onEdit: () => void; onDelete: () => void; onJump: (id: string) => void;
   conversation: Conversation; onThread?: () => void; inThread?: boolean;
+  /** Talk: Make task · Remind me · ↩ beside the bubble, and a made task flies to My Work. */ talk?: boolean;
 }) {
   const wid = useWorkspaceId();
   const [more, setMore] = useState(false);
@@ -600,7 +624,7 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
           onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}
           onContextMenu={(e) => { if (touch.current?.long) e.preventDefault(); }}>
           {swipe > 0 && <span className={`swipe-reply ${swipe >= 48 ? 'ready' : ''}`} aria-hidden><Icon name="undo" size={14} /></span>}
-          <div className="bubble">
+          <div className={`bubble${!m.body && (m.attachments?.length ?? 0) > 0 && !isPoll ? ' files-only' : ''}`}>
             {m.replyTo && !m.isDeleted && (
               <button className="reply-quote" onClick={() => onJump(m.replyTo!.id)} type="button">
                 <b>{m.replyTo.senderName ?? 'Former member'}</b>
@@ -638,8 +662,14 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
         {!m.isDeleted && (
           // Beside the bubble, never on it: the two things people do most, and everything else under ···.
           <div className="msg-actions" role="group" aria-label="Message actions">
+            {talk ? <>
+              <button type="button" className="msg-act make" onClick={() => setMaking('task')}><Icon name="tick" size={13} />Make task</button>
+              <button type="button" className="msg-act" onClick={() => remindAbout(m)}><Icon name="clock" size={13} />Remind me</button>
+              <button type="button" className="msg-act" onClick={onReply} aria-label="Reply" title="Reply"><Icon name="undo" size={13} /></button>
+            </> : <>
             <button type="button" className="msg-act" onClick={onReply}>Reply</button>
             <button type="button" className="msg-act" onClick={() => setMaking('task')}>Make task</button>
+            </>}
             <div className="react-wrap" ref={moreRef}>
               <button type="button" className="msg-act dots" onClick={() => setMore((v) => !v)} aria-label="More actions" aria-expanded={more} title="More"><Icon name="more" size={14} /></button>
               {more && (
@@ -650,7 +680,7 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
                     ))}
                   </div>
                   {canThread && <button type="button" role="menuitem" onClick={() => { setMore(false); onThread!(); }}><Icon name="message" size={15} />Reply in thread</button>}
-                  <button type="button" role="menuitem" onClick={() => { setMore(false); remindAbout(m); }}><Icon name="alarm" size={15} />Remind me</button>
+                  {!talk && <button type="button" role="menuitem" onClick={() => { setMore(false); remindAbout(m); }}><Icon name="alarm" size={15} />Remind me</button>}
                   <button type="button" role="menuitem" onClick={() => { setMore(false); void save(); }}><Icon name="star" size={15} />{m.saved ? 'Remove from saved' : 'Save for later'}</button>
                   {m.body && <button type="button" role="menuitem" onClick={() => { setMore(false); copy(); }}><Icon name="copy" size={15} />Copy text</button>}
                   <button type="button" role="menuitem" onClick={() => { setMore(false); void pin(); }}><Icon name="flag" size={15} />{m.pinnedAt ? 'Unpin' : 'Pin to the conversation'}</button>
@@ -662,7 +692,8 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
             </div>
           </div>
         )}
-        {making && <MakeFromMessage m={m} conversation={conversation} kind={making} onClose={() => setMaking(null)} />}
+        {making && <MakeFromMessage m={m} conversation={conversation} kind={making} onClose={() => setMaking(null)}
+          onMade={talk ? (made) => flyToMyWork(document.querySelector(`[data-msg="${m.id}"] .bubble`), made) : undefined} />}
         {seen && <SeenByDialog m={m} onClose={() => setSeen(false)} />}
       </div>
       {sheet && createPortal(
@@ -693,7 +724,8 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
 }
 
 // ------------------------------------------------------------------ writing
-function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSent, threadRootId = null, onPoll, placeholder, draftReply }: {
+function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSent, threadRootId = null, onPoll, placeholder, draftReply, talk = false }: {
+  /** Talk: ＋ · 📎 · the box · "Draft reply" · send (voice notes under ＋; no Aa or emoji buttons). */ talk?: boolean;
   conversation: Conversation; replyTo: ChatMessage | null; editing: ChatMessage | null; mentionable: { userId: string; name: string }[];
   onCancel: () => void; onSent: (m: ChatMessage) => void;
   /** Writing in a thread: the reply goes under this message. */ threadRootId?: string | null;
@@ -984,6 +1016,8 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
                 <div className="more-pop up" role="menu" aria-label="More">
                   {onPoll && <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); onPoll(); }}><Icon name="chart" size={15} />Poll</button>}
                   <button type="button" role="menuitem" disabled={!text.trim()} onClick={() => { setPlusOpen(false); setLater(true); }}><Icon name="clock" size={15} />Send later{!text.trim() ? ' (write first)' : ''}</button>
+                  {talk && <button type="button" role="menuitem" aria-pressed={formatting} onClick={() => { setPlusOpen(false); setFormatting((v) => !v); }}><span className="aa" aria-hidden="true">Aa</span>Formatting</button>}
+                  {talk && canAttach && voice.supported && <button type="button" role="menuitem" disabled={voice.state !== 'idle'} onClick={() => { setPlusOpen(false); void voice.start(); }}><Icon name="mic" size={15} />Voice note</button>}
                 </div>
               )}
             </div>
@@ -1004,7 +1038,11 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
             onMouseUp={() => { updateMarks(); detectMention(); }}
             onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} />
           <div className="emoji-wrap" ref={aiRef}>
-            {isEmpty && draftReply && !editing
+            {isEmpty && draftReply && !editing && talk
+              ? <button type="button" className="talk-draft" onMouseDown={keepFocus} disabled={drafting}
+                  onClick={async () => { setDrafting(true); try { const t = await draftReply(); if (t) insertIntoComposer(conversation.id, t, threadRootId); } finally { setDrafting(false); } }}
+                  aria-label="Draft a reply with AI" title="Draft a reply with AI">{drafting ? <Spinner /> : <span className="talk-orb sm" aria-hidden="true" />}Draft reply</button>
+              : isEmpty && draftReply && !editing
               ? <button type="button" className="btn-icon pill-btn ai" onMouseDown={keepFocus} disabled={drafting}
                   onClick={async () => { setDrafting(true); try { const t = await draftReply(); if (t) insertIntoComposer(conversation.id, t, threadRootId); } finally { setDrafting(false); } }}
                   aria-label="Draft a reply with AI" title="Draft a reply with AI">{drafting ? <Spinner /> : <Icon name="sparkle" size={16} />}</button>
@@ -1016,9 +1054,9 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
               </div>
             )}
           </div>
-          <button type="button" className={`btn-icon pill-btn ${formatting ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setFormatting((v) => !v)}
-            aria-label="Formatting" aria-pressed={formatting} title="Formatting"><span className="aa">Aa</span></button>
-          <div className="emoji-wrap" ref={emojiRef}>
+          {!talk && <button type="button" className={`btn-icon pill-btn ${formatting ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setFormatting((v) => !v)}
+            aria-label="Formatting" aria-pressed={formatting} title="Formatting"><span className="aa">Aa</span></button>}
+          {!talk && <div className="emoji-wrap" ref={emojiRef}>
             <button type="button" className={`btn-icon pill-btn ${emojiOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setEmojiOpen((v) => !v)}
               aria-label="Add emoji" aria-expanded={emojiOpen} aria-haspopup="true" title="Emoji"><Icon name="smile" size={17} /></button>
             {emojiOpen && (
@@ -1029,12 +1067,12 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
                 ))}
               </div>
             )}
-          </div>
+          </div>}
         </div>
-        {isEmpty && !editing && pending.length === 0 && canAttach && voice.supported && voice.state === 'idle'
+        {isEmpty && !editing && pending.length === 0 && !talk && canAttach && voice.supported && voice.state === 'idle'
           ? <button className="send-btn ready mic" onMouseDown={keepFocus} onClick={() => void voice.start()} aria-label="Record a voice note" title="Record a voice note (Telugu, Hindi or English)"><Icon name="mic" size={17} /></button>
           : <button className={`send-btn ${ready ? 'ready' : ''}`} onMouseDown={keepFocus} onClick={submit} disabled={!ready} aria-label={editing ? 'Save' : 'Send'}>
-              {send.isPending ? <Spinner /> : <Icon name={editing ? 'tick' : 'send'} size={17} />}
+              {send.isPending ? <Spinner /> : <Icon name={editing ? 'tick' : talk ? 'arrowUp' : 'send'} size={17} />}
             </button>}
       </div>
       {later && <ScheduleDialog conversation={conversation} body={text.trim()} threadRootId={threadRootId} onClose={() => setLater(false)}

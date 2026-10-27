@@ -256,6 +256,8 @@ export interface AdminMembership { tenantId: string; tenantName: string; type: W
 export interface AdminUser {
   id: string; email: string; displayName: string; emailVerified: boolean; isActive: boolean; isPlatformAdmin: boolean;
   createdAt: string; lastLoginAt: string | null; workspaces: number; memberships: AdminMembership[];
+  /** Two-step verification is on (a platform admin can reset it for someone who lost their phone and recovery codes). */
+  mfaEnabled?: boolean;
 }
 export interface AdminUserDetail { user: AdminUser; activeSessions: number }
 export interface AdminTenantMember { userId: string; displayName: string; email: string; role: Role; joinedAt: string }

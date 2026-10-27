@@ -5,7 +5,7 @@ import './dots.css';
 export interface DotsItem { label: string; icon?: IconName; onSelect: () => void; hint?: string; danger?: boolean; hidden?: boolean }
 
 /** "···": the less-used actions of a screen, in one small list. Closes on choosing, on a click outside and on Escape. */
-export function DotsMenu({ label, items, className = '', align = 'right' }: { label: string; items: DotsItem[]; className?: string; align?: 'left' | 'right' }) {
+export function DotsMenu({ label, items, className = '', align = 'right', icon = 'more' }: { label: string; items: DotsItem[]; className?: string; align?: 'left' | 'right'; icon?: IconName }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -20,7 +20,7 @@ export function DotsMenu({ label, items, className = '', align = 'right' }: { la
   return (
     <div className={`v2-dots ${className}`} ref={ref}>
       <button type="button" className="v2-dots-btn" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <Icon name="more" size={16} />
+        <Icon name={icon} size={16} />
       </button>
       {open && (
         <ul className={`v2-dots-list ${align}`} role="menu" aria-label={label}>

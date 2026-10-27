@@ -1,7 +1,7 @@
 import { get } from '../../api/client';
 
 export type TalkKind = 'chat' | 'mail' | 'meeting';
-export type TalkFilter = 'all' | 'chat' | 'mail' | 'meetings';
+export type TalkFilter = 'all' | 'unread' | 'chat' | 'mail' | 'meetings';
 export interface TalkAvatar { initials: string; userId: string | null; hasAvatar: boolean; square: boolean }
 /** One row of Talk. A chat's id is its conversation id; mail is "mail:{message id}"; a meeting "meet:{p|w}:{id}". */
 export interface TalkRow {

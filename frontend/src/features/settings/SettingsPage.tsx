@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { WorkspaceLogoCard } from './WorkspaceLogo';
 import { ProfilePhotoCard } from './ProfilePhoto';
 import { ThemeSwitch } from '../../components/ThemeSwitch';
@@ -8,7 +9,10 @@ import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } 
 import { ApiError } from '../../api/client';
 import { authApi, meApi, workspaceApi } from '../../api/endpoints';
 import { Icon, type IconName } from '../../components/Icon';
-import { Badge, Embedded, Field, Modal, PageHead, PageLoader, SectionLayout, Segmented, SubmitButton } from '../../components/ui';
+import { Badge, Embedded, Field, Modal, PageHead, PageLoader, Segmented, SubmitButton } from '../../components/ui';
+import { SGroup, SPaneHead, SRow, STile } from './Grouped';
+import { NotificationsOverview } from './NotificationsOverview';
+import './settings-mac.css';
 import { leafHref, PLACE_LEAVES, PLACE_OF, useWorkspaceSections, type SettingsPlace, type WorkspaceSection } from './sections';
 import { NotificationCenterPage } from '../notifications/NotificationCenter';
 import { AiSettings, type AiTab } from './AiControlCentre';
@@ -87,20 +91,40 @@ const PLACE_IDS = new Set<string>(['profile', 'notifications', ...WORKSPACE_PLAC
 
 interface SubTab { id: string; label: string }
 
+type NavId = 'profile' | 'workspace' | 'people' | 'ai' | 'notifications' | 'mail' | 'integrations' | 'security' | 'billing' | 'appearance';
+/** The left list of the macOS System Settings layout: coloured icon tiles, in three groups (apple/s-settings). */
+const NAV: { id: NavId; label: string; color: string; glyph: string; sub: string }[] = [
+  { id: 'profile', label: 'Profile', color: '#8e8e93', glyph: '☺', sub: PLACE_INFO.profile.sub },
+  { id: 'workspace', label: 'Workspace', color: '#0071e3', glyph: '▦', sub: 'Name, logo, time zone, fields and types, timelines and automation.' },
+  { id: 'people', label: 'People & roles', color: '#5856d6', glyph: '⚇', sub: PLACE_INFO.people.sub },
+  { id: 'ai', label: 'AI', color: 'linear-gradient(135deg,#5e5ce6,#bf5af2)', glyph: '✦', sub: PLACE_INFO.ai.sub },
+  { id: 'notifications', label: 'Notifications', color: '#ff3b30', glyph: '◉', sub: 'Choose where things reach you. Project Tracker only interrupts for what matters.' },
+  { id: 'mail', label: 'Mail accounts', color: '#30b0c7', glyph: '✉', sub: '' },
+  { id: 'integrations', label: 'Integrations', color: '#28cd41', glyph: '⇄', sub: PLACE_INFO.integrations.sub },
+  { id: 'security', label: 'Security', color: '#636366', glyph: '⚿', sub: 'Your password, passkeys, two-step verification and devices; the workspace’s sign-in rules, single sign-on, roles, audit log and retention.' },
+  { id: 'billing', label: 'Billing', color: '#ff9500', glyph: '₹', sub: PLACE_INFO.billing.sub },
+  { id: 'appearance', label: 'Appearance', color: '#1d1d1f', glyph: '◐', sub: 'Light or dark, and whose work your lists and numbers show.' },
+];
+const NAV_GAP_AFTER = new Set<NavId>(['ai', 'integrations']);
+const WORKSPACE_LEAVES: WorkspaceSection[] = [...PLACE_LEAVES.general, ...PLACE_LEAVES.fields, ...PLACE_LEAVES.timelines];
+
 /**
- * Settings: one page with ten sections. Each section opens on its first tab; the tab is in the address (/settings/security/sso), so a link, a search result
- * or Back lands on it. Addresses of the old pages (/settings/sso, /settings/labels …) move to the section and tab that hold them now.
+ * Settings (macOS System Settings layout): a left list with search, your profile card and ten sections with coloured icon tiles; the right
+ * pane holds grouped inset rows. The sections map onto the existing pages and addresses: a section with several pages shows them as tabs
+ * under its header, and each tab is in the address (/settings/security/sso), so a link, a search result or Back lands on it. Addresses of
+ * the old pages (/settings/sso, /settings/labels …) move to the section and tab that hold them now.
  */
 export function SettingsPage() {
   const { section, sub: asked } = useParams();
   const loc = useLocation();
   const nav = useNavigate();
   const leaves = useWorkspaceSections();
-  const isPlatformAdmin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  const ctx = useAuth((s) => s.ctx);
+  const isPlatformAdmin = !!ctx?.user.isPlatformAdmin;
   useSettingJump();
-  if (!section || (section !== 'profile' && isPlatformAdmin)) return <Navigate to={`/settings/profile${loc.search}${loc.hash}`} replace />;
+  if (!section || (section !== 'profile' && section !== 'appearance' && !(section === 'security' && asked === 'account') && isPlatformAdmin)) return <Navigate to={`/settings/profile${loc.search}${loc.hash}`} replace />;
   // An old section id: its new section and tab, keeping anything else in the address.
-  if (!PLACE_IDS.has(section)) {
+  if (!PLACE_IDS.has(section) && section !== 'appearance') {
     const leaf = section as WorkspaceSection;
     if (!PLACE_OF[leaf]) return <Navigate to="/settings/profile" replace />;
     const [path, query] = leafHref(leaf).split('?');
@@ -109,51 +133,130 @@ export function SettingsPage() {
     const s = q.toString();
     return <Navigate to={`${path}${s ? `?${s}` : ''}${loc.hash}`} replace />;
   }
-  const place = section as SettingsPlace;
   const open = new Set(leaves.map((l) => l.id));
   const places = WORKSPACE_PLACES.filter((p) => PLACE_LEAVES[p].some((l) => open.has(l)));
-  if (place !== 'profile' && place !== 'notifications' && !places.includes(place)) return <Navigate to="/settings/profile" replace />;
+  if (section === 'appearance') return <SettingsShell nav={nav} places={places} current="appearance" isPlatformAdmin={isPlatformAdmin}><AppearancePane /></SettingsShell>;
+  const place = section as SettingsPlace;
+  // Your own sign-in security moved from Profile to the top-level Security section.
+  if (place === 'profile' && asked === 'security') return <Navigate to={`/settings/security/account${loc.search}${loc.hash}`} replace />;
+  if (place !== 'profile' && place !== 'notifications' && place !== 'security' && !places.includes(place)) return <Navigate to="/settings/profile" replace />;
+  const wsSecurity = places.includes('security');
 
+  const inWorkspace = place === 'general' || place === 'fields' || place === 'timelines';
+  const notifTabs: SubTab[] = [{ id: 'delivery', label: 'Every event' }, { id: 'device', label: 'This device' }, { id: 'schedule', label: 'Schedule & time zone' }, { id: 'history', label: 'History' },
+    ...leaves.filter((l) => PLACE_LEAVES.notifications.includes(l.id)).map((l) => ({ id: l.id, label: l.id === 'notifications' ? 'Member defaults' : l.label }))];
   const tabs: SubTab[] = place === 'profile'
-    ? [{ id: 'profile', label: 'Profile' }, { id: 'security', label: 'Sign-in & security' },
+    ? [{ id: 'profile', label: 'Profile' },
       ...(!isPlatformAdmin ? [{ id: 'mobile', label: 'Mobile app' }, { id: 'accounts', label: 'Connected accounts' }, { id: 'assistant', label: 'Assistant' }] : [])]
-    : place === 'notifications'
-      ? [{ id: 'delivery', label: 'Delivery' }, { id: 'device', label: 'This device' }, { id: 'schedule', label: 'Schedule & time zone' }, { id: 'history', label: 'History' },
-        ...leaves.filter((l) => PLACE_LEAVES.notifications.includes(l.id)).map((l) => ({ id: l.id, label: l.id === 'notifications' ? 'Member defaults' : l.label }))]
-      : place === 'ai' ? [] : leaves.filter((l) => PLACE_LEAVES[place].includes(l.id)).sort((a, b) => PLACE_LEAVES[place].indexOf(a.id) - PLACE_LEAVES[place].indexOf(b.id)).map((l) => ({ id: l.id, label: l.label }));
+    : place === 'notifications' ? [{ id: 'overview', label: 'Overview' }, ...notifTabs]
+      : place === 'ai' ? []
+      : place === 'security' ? [{ id: 'account', label: 'Your account' }, ...(wsSecurity ? leaves.filter((l) => PLACE_LEAVES.security.includes(l.id)).sort((a, b) => PLACE_LEAVES.security.indexOf(a.id) - PLACE_LEAVES.security.indexOf(b.id)).map((l) => ({ id: l.id, label: l.label })) : [])]
+      : inWorkspace ? leaves.filter((l) => WORKSPACE_LEAVES.includes(l.id)).sort((a, b) => WORKSPACE_LEAVES.indexOf(a.id) - WORKSPACE_LEAVES.indexOf(b.id)).map((l) => ({ id: l.id, label: l.label }))
+      : leaves.filter((l) => PLACE_LEAVES[place].includes(l.id)).sort((a, b) => PLACE_LEAVES[place].indexOf(a.id) - PLACE_LEAVES[place].indexOf(b.id)).map((l) => ({ id: l.id, label: l.label }));
   // AI: the control centre, usage and the tracker are for admins; Project agent for whoever leads a project.
   const aiAdmin = open.has('ai'), aiAgent = open.has('project-agent');
   const aiFirst = aiAdmin ? 'control' : 'project-agent';
-  const sub = place === 'ai' ? ((asked === 'usage' || asked === 'tracker') && aiAdmin ? asked : asked === 'project-agent' && aiAgent ? asked : aiFirst) : tabs.find((t) => t.id === asked)?.id ?? tabs[0]?.id;
-  const first = place === 'ai' ? aiFirst : tabs[0]?.id;
-  const choose = (v: string) => nav(v === first ? `/settings/${place}` : `/settings/${place}/${v}`);
+  const placeFirst = inWorkspace ? PLACE_LEAVES[place].find((l) => open.has(l)) : undefined;
+  const sub = place === 'ai' ? ((asked === 'usage' || asked === 'tracker') && aiAdmin ? asked : asked === 'project-agent' && aiAgent ? asked : aiFirst)
+    : inWorkspace ? tabs.find((t) => t.id === (asked ?? placeFirst))?.id ?? tabs[0]?.id
+    : place === 'security' ? tabs.find((t) => t.id === asked)?.id ?? (wsSecurity ? 'security' : 'account')
+    : tabs.find((t) => t.id === asked)?.id ?? tabs[0]?.id;
+  const first = place === 'ai' ? aiFirst : place === 'security' ? (wsSecurity ? 'security' : 'account') : tabs[0]?.id;
+  const choose = (v: string) => (inWorkspace ? nav(leafHref(v as WorkspaceSection)) : nav(v === first ? `/settings/${place}` : `/settings/${place}/${v}`));
 
-  const groups = [
-    { title: 'You', items: (['profile', 'notifications'] as const).filter((p) => p === 'profile' || !isPlatformAdmin).map((p) => ({ to: `/settings/${p}`, label: PLACE_INFO[p].label, icon: PLACE_INFO[p].icon, end: false })) },
-    { title: 'Workspace', items: places.map((p) => ({ to: `/settings/${p}`, label: PLACE_INFO[p].label, icon: PLACE_INFO[p].icon, end: false })) },
-  ];
+  const current: NavId = place === 'profile' ? (sub === 'accounts' ? 'mail' : 'profile')
+    : inWorkspace ? 'workspace' : (place as NavId);
   const body = place === 'profile' ? <ProfileTab sub={sub} />
-    : place === 'notifications' ? <NotificationsTab sub={sub} />
+    : place === 'notifications' ? (sub === 'overview' ? <NotificationsOverview more={notifTabs} /> : <NotificationsTab sub={sub} />)
+    : place === 'security' && sub === 'account' ? <SecuritySection head={tabs.length <= 1} />
     : place === 'ai' ? <AiSettings tab={sub as AiTab} onTab={choose} admin={aiAdmin} agent={aiAgent} />
     : <SettingsSection id={sub as WorkspaceSection} />;
+  const info = NAV.find((n) => n.id === (current === 'mail' ? 'profile' : current))!;
+  const headTitle = place === 'profile' ? PLACE_INFO.profile.label : info.label;
   return (
-    <SectionLayout title="Settings" groups={groups} navTop={leaves.length > 0 ? <SettingsSearch compact /> : undefined}>
-      {tabs.length > 1 ? (
+    <SettingsShell nav={nav} places={places} current={current} isPlatformAdmin={isPlatformAdmin}>
+      {place === 'notifications' && sub === 'overview' ? body : tabs.length > 1 ? (
         <div className="set-place">
           <div className="set-place-head">
-            <div><h2>{PLACE_INFO[place].label}</h2><p>{PLACE_INFO[place].sub}</p></div>
+            <SPaneHead icon={info.glyph} color={info.color} title={headTitle} sub={info.sub || PLACE_INFO[place].sub} />
             <Segmented label={`${PLACE_INFO[place].label} sections`} value={sub} onChange={choose} options={tabs} />
           </div>
           <Embedded>{body}</Embedded>
         </div>
       ) : body}
-    </SectionLayout>
+    </SettingsShell>
+  );
+}
+
+/** The window: "Settings" in the toolbar row, the left list and the pane. */
+function SettingsShell({ nav, places, current, isPlatformAdmin, children }: { nav: (to: string) => void; places: readonly string[]; current: NavId; isPlatformAdmin: boolean; children: React.ReactNode }) {
+  const me = useAuth((s) => s.ctx?.user);
+  const ws = useAuth((s) => s.ctx?.current);
+  const has = (p: string) => places.includes(p);
+  const target: Record<NavId, string | null> = {
+    profile: '/settings/profile',
+    workspace: has('general') ? '/settings/general' : has('fields') ? '/settings/fields' : has('timelines') ? '/settings/timelines' : null,
+    people: has('people') ? '/settings/people' : null,
+    ai: has('ai') ? '/settings/ai' : null,
+    notifications: isPlatformAdmin ? null : '/settings/notifications',
+    mail: isPlatformAdmin ? null : '/settings/profile/accounts',
+    integrations: has('integrations') ? '/settings/integrations' : null,
+    security: '/settings/security/account',
+    billing: has('billing') ? '/settings/billing' : null,
+    appearance: '/settings/appearance',
+  };
+  const initials = (me?.displayName ?? '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  return (
+    <div className="set-mac">
+      <h1 className="set-mac-title">Settings</h1>
+      <ToolbarTitle>Settings</ToolbarTitle>
+      <nav className="set-mac-nav" aria-label="Settings sections">
+        <SettingsSearch compact />
+        <Link to="/settings/profile" className="set-mac-me">
+          <span className="set-mac-av" aria-hidden="true">{initials}</span>
+          <span><b>{me?.displayName}</b><small>{[ws?.role === 'Owner' || ws?.role === 'Admin' ? 'Admin' : ws?.role, ws?.name].filter(Boolean).join(' · ')}</small></span>
+        </Link>
+        {NAV.filter((n) => target[n.id]).map((n) => (
+          <span key={n.id} className={NAV_GAP_AFTER.has(n.id) ? 'set-mac-gap' : undefined}>
+            <a href={target[n.id]!} className={`set-mac-item${current === n.id ? ' on' : ''}`} aria-current={current === n.id ? 'page' : undefined}
+              onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); nav(target[n.id]!); }}>
+              <STile color={n.color} size={20}>{n.glyph}</STile><span>{n.label}</span>
+            </a>
+          </span>
+        ))}
+      </nav>
+      <div className="set-mac-pane"><Embedded>{children}</Embedded></div>
+    </div>
+  );
+}
+
+/** The page's name in the toolbar row on wide screens (as the macOS window title). */
+function ToolbarTitle({ children }: { children: string }) {
+  const [host, setHost] = useState<Element | null>(null);
+  useEffect(() => { setHost(document.querySelector('.v2-tb')); }, []);
+  return host ? createPortal(<span className="v2-tb-title" aria-hidden="true">{children}</span>, host) : null;
+}
+
+/** Appearance: light or dark, and the team view (moved out of Profile into its own section). */
+function AppearancePane() {
+  const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  return (
+    <div className="sg-pane" data-setting="me.appearance">
+      <SPaneHead icon="◐" color="#1d1d1f" title="Appearance" sub="Light or dark, and whose work your lists and numbers show." />
+      <SGroup label="Theme">
+        <SRow icon={<STile color="#1d1d1f"><Icon name="moon" size={14} /></STile>} title="Dark mode" sub="Follows this device until you choose."><ThemeSwitch className="theme-toggle" /></SRow>
+      </SGroup>
+      {!admin && (
+        <SGroup label="Team view">
+          <SRow icon={<STile color="#5856d6"><Icon name="users" size={14} /></STile>} title="Team view" sub="Whose work lists and numbers show."><span className="v2-lens"><TeamLensPicker /></span></SRow>
+        </SGroup>
+      )}
+    </div>
   );
 }
 
 function ProfileTab({ sub }: { sub: string }) {
   switch (sub) {
-    case 'security': return <SecuritySection />;
     case 'mobile': return <MobileAppSection />;
     case 'accounts': return <ConnectedAccountsSection />;
     case 'assistant': return <><PageHead title="Assistant" sub="How the assistant works with you: what it learned, your own notes, and the organisation’s AI account." /><div data-setting="account.ai"><AiProfileCard /><MyAiProviderCard /></div></>;
@@ -196,23 +299,8 @@ function ProfileSection() {
           </form>
         </div>
       </div>
-      <AppearanceCard />
       <DeleteAccountCard />
     </>
-  );
-}
-
-/** Appearance (dark mode) and Team view: moved here from the avatar menu. */
-function AppearanceCard() {
-  const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
-  return (
-    <div className="card mb-22" data-setting="me.appearance">
-      <div className="card-head"><h3>Appearance &amp; team view</h3></div>
-      <div className="card-body set-appearance">
-        <div className="set-appearance-row"><Icon name="moon" size={16} /><span className="grow"><b>Dark mode</b><small className="muted"> · Follows this device until you choose.</small></span><ThemeSwitch className="theme-toggle" /></div>
-        {!admin && <div className="set-appearance-row v2-lens"><Icon name="users" size={16} /><span className="grow"><b>Team view</b><small className="muted"> · Whose work lists and numbers show.</small></span><TeamLensPicker /></div>}
-      </div>
-    </div>
   );
 }
 
@@ -248,7 +336,7 @@ function DeleteAccountCard() {
   );
 }
 
-function SecuritySection() {
+function SecuritySection({ head = true }: { head?: boolean }) {
   const logout = useAuth((s) => s.logout);
   const wid = useWorkspaceId();
   const [params, setParams] = useSearchParams();
@@ -257,45 +345,47 @@ function SecuritySection() {
   const sessions = useWsQuery(['sessions'], meApi.sessions);
   return (
     <>
-      <PageHead title="Sign-in & security" sub="Your password, two-step verification and the devices you are signed in on." />
-      <div className="card mb-22">
-        <div className="card-body">
-          <div className="setting-row">
-            <div className="setting-info"><h4>Password</h4><p>Changing your password signs you out of your other devices.</p></div>
-            <button className="btn btn-ghost" onClick={() => setPwOpen(true)}><Icon name="lock" /> Change password</button>
-          </div>
-          <PasskeysRow />
-          <TwoStepRow />
-          <SignInMethods />
-          <PrivacyRow />
-          <div className="setting-row" style={{ alignItems: 'flex-start' }}>
-            <div className="setting-info" style={{ flex: 1 }}>
-              <h4>Active sessions</h4><p>Devices currently signed in to your account.</p>
-              {sessions.isLoading ? <PageLoader /> : (
-                <div className="member-list" style={{ marginTop: 12 }}>
-                  {sessions.data?.map((s) => (
-                    <div className="member-item" key={s.id}>
-                      <Icon name="monitor" />
-                      <div className="member-main"><div className="member-name">{browserOf(s.userAgent)} {s.isCurrent && <Badge tone="success">This device</Badge>}</div><div className="member-role">{s.ipAddress ?? 'Unknown IP'} · {signedInWith(s.authMethod)}active {timeAgo(s.lastSeenAt)}</div></div>
-                      {!s.isCurrent && <button className="btn btn-ghost btn-sm" onClick={async () => { await meApi.revokeSession(s.id); toast('Session signed out.', 'warning'); invalidateWorkspace(wid); }}>Sign out</button>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="setting-row" style={{ alignItems: 'flex-start' }}>
-            <div className="setting-info" style={{ flex: 1 }}>
-              <h4>Sign-in history</h4><p>Every sign-in of the last 90 days. A new browser or network is marked, and you were told about it. Not you? End it here.</p>
-              <SignInHistory />
-            </div>
-          </div>
-          <div className="setting-row">
-            <div className="setting-info"><h4>Sign out everywhere</h4><p>End every session on every device, including this one.</p></div>
-            <button className="btn btn-danger" onClick={async () => { if (await confirmDialog({ title: 'Sign out everywhere?', confirmText: 'Sign out everywhere', message: 'You will need to sign in again on all your devices.' })) { await authApi.logoutAll(); await logout(); } }}><Icon name="logout" /> Sign out everywhere</button>
+      {head && <SPaneHead icon="⚿" color="#636366" title="Security" sub="Your password, passkeys, two-step verification, sign-in methods and the devices you are signed in on." />}
+      <SGroup label="Sign-in">
+        <div className="setting-row" data-setting="account.password">
+          <div className="setting-info"><h4>Password</h4><p>Changing your password signs you out of your other devices.</p></div>
+          <button className="btn btn-ghost" onClick={() => setPwOpen(true)}><Icon name="lock" /> Change password</button>
+        </div>
+        <PasskeysRow />
+        <TwoStepRow />
+        <SignInMethods />
+      </SGroup>
+      <SGroup label="Devices">
+        <div className="setting-row" style={{ alignItems: 'flex-start' }}>
+          <div className="setting-info" style={{ flex: 1 }}>
+            <h4>Active sessions</h4><p>Devices currently signed in to your account.</p>
+            {sessions.isLoading ? <PageLoader /> : (
+              <div className="member-list" style={{ marginTop: 12 }}>
+                {sessions.data?.map((s) => (
+                  <div className="member-item" key={s.id}>
+                    <Icon name="monitor" />
+                    <div className="member-main"><div className="member-name">{browserOf(s.userAgent)} {s.isCurrent && <Badge tone="success">This device</Badge>}</div><div className="member-role">{s.ipAddress ?? 'Unknown IP'} · {signedInWith(s.authMethod)}active {timeAgo(s.lastSeenAt)}</div></div>
+                    {!s.isCurrent && <button className="btn btn-ghost btn-sm" onClick={async () => { await meApi.revokeSession(s.id); toast('Session signed out.', 'warning'); invalidateWorkspace(wid); }}>Sign out</button>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      </div>
+        <div className="setting-row">
+          <div className="setting-info"><h4>Sign out everywhere</h4><p>End every session on every device, including this one.</p></div>
+          <button className="btn btn-danger" onClick={async () => { if (await confirmDialog({ title: 'Sign out everywhere?', confirmText: 'Sign out everywhere', message: 'You will need to sign in again on all your devices.' })) { await authApi.logoutAll(); await logout(); } }}><Icon name="logout" /> Sign out everywhere</button>
+        </div>
+      </SGroup>
+      <SGroup label="Privacy & history">
+        <PrivacyRow />
+        <div className="setting-row" style={{ alignItems: 'flex-start' }}>
+          <div className="setting-info" style={{ flex: 1 }}>
+            <h4>Sign-in history</h4><p>Every sign-in of the last 90 days. A new browser or network is marked, and you were told about it. Not you? End it here.</p>
+            <SignInHistory />
+          </div>
+        </div>
+      </SGroup>
       {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
     </>
   );

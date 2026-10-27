@@ -10,26 +10,23 @@ import { Icon } from '../../components/Icon';
 import { EmptyState, PageLoader, Spinner } from '../../components/ui';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useIsPersonal, useWorkspaceId } from '../../stores/auth';
-import { toast } from '../../stores/ui';
-import { StartCallButton } from '../calls/StartCall';
 import { listTime } from '../chat/chatFormat';
 import { chatKeys, useChat } from '../chat/chatStore';
 import { AskChatDialog, CatchUpDialog, QuestionsBox, SavedPanel, ScheduledPanel, StatusButton } from '../chat/ChatTools';
-import { insertIntoComposer } from '../chat/MessageExtras';
 import { FilesPanel, InfoPanel, NewChatModal } from '../chat/Panels';
-import { fallbackStatus } from '../chat/Presence';
-import { ConversationAvatar, Thread } from '../chat/Thread';
+import { Thread } from '../chat/Thread';
 import { ConnectModal, Reader, useMailAccounts } from '../mailbox/MailParts';
 import { mailboxApi } from '../mailbox/mailboxApi';
 import { MeetingDetail } from '../meet/MeetingDetail';
 import { parseRef } from '../meet/meetApi';
 import { DotsMenu } from './DotsMenu';
+import { ToolbarSlot } from './ToolbarSlot';
 import { WhileAway } from '../chat/ChatPage';
 import { talkApi, type TalkFilter, type TalkRow } from './talkApi';
 import './talk.css';
 
-const FILTERS: { id: TalkFilter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'chat', label: 'Chat' }, { id: 'mail', label: 'Mail' }, { id: 'meetings', label: 'Meetings' }];
-const KIND_OF: Record<TalkFilter, TalkRow['kind'] | null> = { all: null, chat: 'chat', mail: 'mail', meetings: 'meeting' };
+const FILTERS: { id: TalkFilter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'chat', label: 'Chats' }, { id: 'mail', label: 'Mail' }, { id: 'meetings', label: 'Meetings' }];
+const KIND_OF: Record<TalkFilter, TalkRow['kind'] | null> = { all: null, unread: null, chat: 'chat', mail: 'mail', meetings: 'meeting' };
 const NO_CONVERSATIONS: Conversation[] = [];
 const DAY = 86_400_000;
 
@@ -107,7 +104,8 @@ function TalkHome() {
   }, [talk.data, live, me]);
   const kind = KIND_OF[filter];
   const needle = search.trim().toLowerCase();
-  const shown = rows.filter((r) => (!kind || r.kind === kind) && (!needle || `${r.title} ${r.last ?? ''} ${r.sub ?? ''}`.toLowerCase().includes(needle)));
+  const unreadCount = rows.filter((r) => r.unread > 0).length;
+  const shown = rows.filter((r) => (!kind || r.kind === kind) && (filter !== 'unread' || r.unread > 0) && (!needle || `${r.title} ${r.last ?? ''} ${r.sub ?? ''}`.toLowerCase().includes(needle)));
   const mailState = talk.data?.mail?.state;
   const company = mail.imap.data?.company;
   const [connectDismissed, setConnectDismissed] = useState(() => { try { return localStorage.getItem('pm_talk_connect_dismissed') === '1'; } catch { return false; } });
@@ -139,9 +137,12 @@ function TalkHome() {
   return (
     <div className={`talk-shell${opened ? ' is-open' : ''}`} data-testid="talk">
       <h1 className="sr-only">Talk</h1>
+      <ToolbarSlot title={<span className="tb-big" aria-hidden="true">Talk</span>} />
       <aside className="talk-list" aria-label="Conversations">
-        <div className="talk-list-head">
-          <h2>Talk</h2>
+        <div className="talk-list-top">
+          <label className="talk-search"><Icon name="search" size={14} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats, mail, meetings" aria-label="Search Talk" />
+          </label>
           {chatUsable && <StatusButton />}
           <DotsMenu label="More in Talk" items={[
             { label: 'New conversation', hint: 'Message a colleague or start a group', icon: 'plus', onSelect: () => setDialog('new'), hidden: !chatUsable },
@@ -156,19 +157,13 @@ function TalkHome() {
             { label: 'Schedule a meeting', icon: 'calendar', onSelect: () => navigate('/talk?f=meetings&new=schedule') },
             { label: 'All meetings', hint: 'Upcoming, series, past and the notetaker', icon: 'video', onSelect: () => navigate('/talk?f=meetings&s=upcoming') },
           ]} />
-          <StartCallButton label="Start call" className="btn btn-primary btn-sm talk-start" />
         </div>
-        <div className="ds-chips talk-filters" role="group" aria-label="Show">
+        <div className="talk-filters" role="group" aria-label="Show">
           {FILTERS.map((x) => (
-            <button key={x.id} type="button" className={`ds-chip${filter === x.id ? ' on' : ''}`} aria-pressed={filter === x.id}
-              onClick={() => setParam({ f: x.id === 'all' ? null : x.id })}>{x.label}</button>
+            <button key={x.id} type="button" className={`ds-chip talk-chip${filter === x.id ? ' on' : ''}`} aria-pressed={filter === x.id}
+              onClick={() => setParam({ f: x.id === 'all' ? null : x.id })}>{x.label}{x.id === 'unread' && unreadCount > 0 ? ` ${unreadCount}` : ''}</button>
           ))}
         </div>
-        {rows.length > 10 && (
-          <label className="talk-search"><Icon name="search" size={15} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search people, mail and meetings" aria-label="Search Talk" />
-          </label>
-        )}
         <div className="talk-scroll">
           {talk.isError && <div className="talk-note" role="alert">{talk.error instanceof ApiError ? talk.error.message : 'Talk could not be loaded.'} <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></div>}
           {/* Questions colleagues asked you in chat and are waiting on (cleared by replying). */}
@@ -182,7 +177,7 @@ function TalkHome() {
             </div>
           )}
           <ul className="talk-rows">
-            {shown.map((r) => <Row key={r.id} r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} me={me} active={r.id === activeId} onOpen={() => open(r)} />)}
+            {shown.map((r) => <Row key={r.id} r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} source={r.kind === 'mail' ? mailSource(mail.accounts.find((a) => a.key === r.account)?.label ?? talk.data?.mail?.provider ?? '') : null} active={r.id === activeId} onOpen={() => open(r)} />)}
             {(filter === 'all' || filter === 'mail') && mailState === 'unavailable' && (
               <li className="talk-note">Your mailbox did not answer in time. <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></li>
             )}
@@ -200,7 +195,7 @@ function TalkHome() {
         {chatId ? (
           current
             ? <Thread key={current.id} variant="talk" conversation={current} onBack={back}
-                banner={<SummaryStrip key={current.id} conversation={current} me={me} onCatchUp={() => setDialog('catchup')} />}
+                banner={<SummaryStrip key={current.id} conversation={current} onCatchUp={() => setDialog('catchup')} />}
                 infoOpen={panel === 'info'} onInfo={() => setPanel((p) => (p === 'info' ? null : 'info'))}
                 filesOpen={panel === 'files'} onFiles={() => setPanel((p) => (p === 'files' ? null : 'files'))} />
             : conversations.isLoading || conversations.isFetching ? <PageLoader />
@@ -255,23 +250,46 @@ function chatRow(c: Conversation, me: string, base: TalkRow | null): TalkRow {
   };
 }
 
-function Row({ r, conversation, me, active, onOpen }: { r: TalkRow; conversation?: Conversation; me: string; active: boolean; onOpen: () => void }) {
-  const statuses = useChat((s) => s.status);
-  const other = conversation?.type === 'Direct' ? conversation.members.find((m) => m.userId !== me) : null;
-  const presence = other ? (statuses[other.userId] ?? fallbackStatus(other)) : 'offline';
-  const kindLabel = r.kind === 'chat' ? (r.group ? (r.sub === 'Project chat' ? 'Project chat' : 'Chat · group') : 'Chat') : r.kind === 'mail' ? 'Mail' : null;
-  const second = r.kind === 'meeting' ? r.sub ?? 'Meeting' : [kindLabel, r.last].filter(Boolean).join(' · ');
-  const when = r.kind === 'meeting' ? meetingTime(r) : r.at ? listTime(r.at) : '';
+/** The list's time, as Messages: "10:38" today (no AM/PM), "Yesterday", the weekday this week, else "14 Oct". */
+function shortTime(iso: string) {
+  const t = listTime(iso);
+  return /\d:\d\d/.test(t) ? new Date(iso).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s?[ap]m$/i, '') : t;
+}
+
+/** Which mailbox a mail row came from: Gmail (M), Rediffmail (R), or the first letter of the account. */
+function mailSource(label: string): { name: string; glyph: string } {
+  const l = label.toLowerCase();
+  if (l.includes('gmail') || l.includes('google')) return { name: 'Gmail', glyph: 'M' };
+  if (l.includes('rediff')) return { name: 'Rediffmail', glyph: 'R' };
+  return { name: label || 'Mail', glyph: (label || 'M').charAt(0).toUpperCase() };
+}
+
+/** A Messages-style row: avatar with its source glyph (chat ●, mail M/R, meeting ▶), unread dot, name and time, two lines of preview. */
+function Row({ r, conversation, source, active, onOpen }: { r: TalkRow; conversation?: Conversation; source: { name: string; glyph: string } | null; active: boolean; onOpen: () => void }) {
+  const channel = r.kind === 'chat' && (conversation ? conversation.type !== 'Direct' : r.group);
+  const recording = r.kind === 'meeting' && !r.upcoming && !r.live && !!r.sessionStart && Date.parse(r.sessionStart) < Date.now();
+  const title = r.kind === 'mail' && source && !r.title.includes(source.name) ? `${r.title} · ${source.name}` : channel && !r.title.startsWith('#') ? `#${r.title}` : r.title;
+  const iso = r.kind === 'meeting' ? r.sessionStart ?? r.at : r.at;
+  const when = r.live ? 'Now' : iso ? shortTime(iso) : meetingTime(r);
+  const initials = r.avatar.initials || r.title.replace(/^#/, '').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  const second = r.kind === 'meeting' ? (r.live ? 'Live now' : r.sub ?? 'Meeting') : r.last;
   return (
     <li>
       <button type="button" className={`talk-row k-${r.kind}${active ? ' active' : ''}${r.unread > 0 ? ' unread' : ''}`} onClick={onOpen} aria-current={active ? 'true' : undefined} data-row={r.title}>
-        {conversation
-          ? <span className={`talk-av conv-av av-c${hue(r.title)}`}><ConversationAvatar conversation={conversation} status={presence} /></span>
-          : <span className={`talk-av av-c${hue(r.title)}${r.avatar.square ? ' square' : ''}`} aria-hidden="true">{r.avatar.initials}</span>}
+        {r.unread > 0 && <span className="talk-dot" aria-label={`${r.unread} unread`} />}
+        <span className="talk-gl">
+          {r.kind === 'meeting'
+            ? <span className={`talk-av square ${recording ? 'rec' : 'cal'}`} aria-hidden="true">{recording ? <Icon name="play" size={16} /> : <Icon name="calendar" size={18} />}</span>
+            : channel
+              ? <span className={`talk-av square av-c${hue(r.title)}`} aria-hidden="true">#</span>
+              : <span className={`talk-av av-c${hue(r.title)}`} aria-hidden="true">{initials}</span>}
+          <span className={`talk-src s-${r.kind}`} title={r.kind === 'mail' ? source?.name : r.kind === 'meeting' ? 'Meeting' : 'Chat'} aria-hidden="true">
+            {r.kind === 'mail' ? source?.glyph ?? 'M' : r.kind === 'meeting' ? <Icon name="play" size={8} /> : null}
+          </span>
+        </span>
         <span className="talk-text">
-          <span className="talk-top"><b>{r.title}</b>{r.live && <span className="talk-live">Live</span>}<time>{when}</time></span>
-          <span className="talk-bottom"><span className="talk-preview">{second || <em>No messages yet</em>}</span>
-            {r.unread > 0 && <span className="unread-badge" aria-label={`${r.unread} unread`}>{r.unread > 99 ? '99+' : r.unread}</span>}</span>
+          <span className="talk-top"><b>{title}</b>{r.live && <span className="talk-live">Live</span>}<time>{when}</time></span>
+          <span className="talk-preview">{second || <em>No messages yet</em>}</span>
         </span>
       </button>
     </li>
@@ -279,44 +297,30 @@ function Row({ r, conversation, me, active, onOpen }: { r: TalkRow; conversation
 }
 
 /**
- * ✦ at the top of a chat: what it is about in one line (the catch-up AI, asked for when there is something to catch up on, or on request), and
- * one action: go to the question waiting for you, draft a reply, or the full catch-up.
+ * Pinned at the top of a chat: "While you were away · N messages" and up to three decisions from the catch-up AI. The AI is asked when there is
+ * something to catch up on (3+ unread) or on request, as before; until then the card offers to read it.
  */
-function SummaryStrip({ conversation, me, onCatchUp }: { conversation: Conversation; me: string; onCatchUp: () => void }) {
-  const navigate = useNavigate();
+function SummaryStrip({ conversation, onCatchUp }: { conversation: Conversation; onCatchUp: () => void }) {
   const [asked, setAsked] = useState(conversation.unread >= 3);
-  const [drafting, setDrafting] = useState(false);
+  const [missed] = useState(conversation.unread);
   const lastId = conversation.lastMessage?.at ?? '';
   const q = useWsQuery(['chat', 'summary', conversation.id, lastId], () => chatApi.catchUp(conversation.id), { enabled: asked && !!conversation.lastMessage, staleTime: 10 * 60_000, retry: false });
   if (!conversation.lastMessage) return null;
   const d = q.data;
-  const question = d?.questions.find((x) => x.messageId);
-  const theirs = !conversation.lastMessage.isMine && !conversation.lastMessage.isSystem;
-  const draft = async () => {
-    setDrafting(true);
-    try {
-      const page = await chatApi.messages(conversation.id);
-      const last = [...page.items].reverse().find((m) => m.kind === 'User' && !m.isDeleted && m.senderId !== me && !!m.body);
-      if (!last) { toast('Nothing to reply to yet.', 'info'); return; }
-      const r = await chatApi.replies(last.id);
-      if (r.replies[0]) insertIntoComposer(conversation.id, r.replies[0]); else toast('No reply to suggest right now.', 'info');
-    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not draft a reply right now.', 'error'); }
-    finally { setDrafting(false); }
-  };
+  const lines = d ? (d.decisions.length ? d.decisions : d.actions).slice(0, 3).map((x) => (x.owner && !x.text.includes(x.owner.split(' ')[0]) ? `${x.text} (${x.owner.split(' ')[0]})` : x.text)) : [];
+  const count = d?.messages ?? missed;
   return (
-    <div className="talk-strip" role="note" aria-label="Summary" data-testid="summary-strip">
-      <span className="talk-strip-mark"><Icon name="sparkle" size={13} /> Summary</span>
-      <span className="talk-strip-text">
-        {!asked ? 'The gist of this chat in one line.'
-          : q.isLoading ? <><Spinner /> Reading the conversation…</>
-            : q.isError ? (q.error instanceof ApiError ? q.error.message : 'No summary right now.')
-              : d?.summary || 'Nothing new to sum up.'}
-      </span>
-      {!asked ? <button type="button" className="talk-strip-act" onClick={() => setAsked(true)}>Summarize</button>
-        : question ? <button type="button" className="talk-strip-act" onClick={() => navigate(`/talk/${conversation.id}?m=${question.messageId}`)}>Answer {question.conversationName ? 'the question' : 'it'}</button>
-          : theirs ? <button type="button" className="talk-strip-act" disabled={drafting} onClick={() => void draft()}>{drafting ? <Spinner /> : null}Draft a reply</button>
-            : d ? <button type="button" className="talk-strip-act" onClick={onCatchUp}>See actions</button> : null}
-    </div>
+    <section className="talk-away" aria-label="While you were away" data-testid="summary-strip">
+      <span className="talk-orb" aria-hidden="true" />
+      <div className="talk-away-body">
+        <div className="talk-away-hd"><b>While you were away{count > 0 ? ` · ${count} message${count === 1 ? '' : 's'}` : ''}</b><span className="talk-away-pin">📌 Pinned</span></div>
+        {!asked ? <button type="button" className="talk-away-act" onClick={() => setAsked(true)}>Show what was decided</button>
+          : q.isLoading ? <p className="talk-away-note"><Spinner /> Reading the conversation…</p>
+            : q.isError ? <p className="talk-away-note">{q.error instanceof ApiError ? q.error.message : 'No summary right now.'}</p>
+              : lines.length ? <ul>{lines.map((l) => <li key={l}>{l}</li>)}</ul>
+                : <p className="talk-away-note">{d?.summary || 'Nothing decided since you were last here.'} {d && <button type="button" className="link-btn" onClick={onCatchUp}>See actions</button>}</p>}
+      </div>
+    </section>
   );
 }
 

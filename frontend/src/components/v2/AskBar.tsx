@@ -6,7 +6,7 @@ import { PageLoader } from '../ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useAi, useAssistant } from '../../features/ai/Assistant';
 import { SidePanel } from './SidePanel';
-import { openNew, pageContext, useCopilot } from './state';
+import { openNew, pageContext, useAskPanel, useCopilot } from './state';
 import { openPalette } from '../CommandPalette';
 import './v2.css';
 
@@ -45,25 +45,22 @@ function useScrollingAway(): boolean {
   return away;
 }
 
-/** Sends a question to the copilot with where the person is (the floating Ask bar and the toolbar's field share it). */
-function useAskSubmit() {
-  const { pathname, search } = useLocation();
-  const nav = useNavigate();
-  const show = useCopilot((s) => s.show);
-  const where = pageContext(pathname, search);
-  return (text: string) => {
-    show(null);
-    nav(`${pathname}${search}`, { state: { ask: where && where !== 'Home' ? `${text}\n\n(I am looking at ${where}.)` : text, ts: Date.now() } });
-  };
-}
-
 /**
  * The toolbar at the top of the main area on wide screens (1100px and up): the Ask field (orb, "Ask or find anything", ⌘K) and + New on the
  * right. The field asks the assistant like the Ask bar; with the assistant off it opens the command palette (go to, find, create).
  */
 export function Toolbar() {
   const ai = useAi();
-  const submit = useAskSubmit();
+  const { pathname, search } = useLocation();
+  const showAsk = useAskPanel((s) => s.show);
+  const field = useRef<HTMLFormElement>(null);
+  /** The question opens the Ask panel, springing out of this field (the copilot panel stays for the floating bar and project pages). */
+  const submit = (text: string) => {
+    const where = pageContext(pathname, search);
+    const r = field.current?.getBoundingClientRect();
+    input.current?.blur();
+    showAsk(text, where && where !== 'Home' ? where : null, r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null);
+  };
   const [q, setQ] = useState('');
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -79,7 +76,7 @@ export function Toolbar() {
   return (
     <div className="v2-tb" role="toolbar" aria-label="Ask and create">
       <span className="v2-tb-sp" />
-      <form className="v2-tb-ask" role="search" aria-label="Ask the assistant" onSubmit={(e) => { e.preventDefault(); const t = q.trim(); if (!t) return; setQ(''); submit(t); }}
+      <form ref={field} className="v2-tb-ask" role="search" aria-label="Ask the assistant" onSubmit={(e) => { e.preventDefault(); const t = q.trim(); if (!t) return; setQ(''); submit(t); }}
         onMouseDown={(e) => { if (!ai) { e.preventDefault(); openPalette(); } }}>
         <span className="v2-orb" aria-hidden="true" />
         <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask or find anything" aria-label="Ask or find anything" readOnly={!ai}

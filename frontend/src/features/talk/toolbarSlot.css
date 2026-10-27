@@ -1,0 +1,17 @@
+/* A page's title and tools in the shell toolbar (wide screens): title first, then the spacer, then the tools before Ask and + New. */
+.v2-tb .tb-slot-title { order: -2; display: flex; align-items: center; min-width: 0; }
+.v2-tb .tb-slot-title h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--ds-text); line-height: 1.2; }
+.v2-tb .tb-slot-title .tb-big { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.v2-tb:has(.tb-slot-title) .v2-tb-sp { order: -1; }
+.v2-tb .tb-slot-tools { order: -1; display: flex; align-items: center; gap: 10px; }
+.tb-seg { display: inline-flex; background: rgba(118, 118, 128, .12); border-radius: 9px; padding: 2px; gap: 2px; }
+.tb-seg button { height: 26px; padding: 0 14px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: var(--ds-text); background: transparent; }
+.tb-seg button[aria-selected='true'] { background: var(--ds-surface); box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .04); }
+html[data-theme='dark'] .tb-seg button[aria-selected='true'] { background: #636366; }
+@media (min-width: 1100px) { .tb-wide-hide { display: none !important; } }
+
+/* The Undo capsule (Talk: task made; Calendar: meeting moved): dark, centred over the pane, 4 s */
+.talk-toast { position: fixed; z-index: 1002; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 16px; background: rgba(29, 29, 31, .9); color: #fff; font-size: 12.5px; white-space: nowrap; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+.talk-toast .ok { color: #5de06f; }
+.talk-toast button { margin-left: 6px; font: inherit; font-weight: 700; color: #5de06f; background: none; padding: 0; }
+.talk-toast button:focus-visible { outline: 2px solid #5de06f; outline-offset: 2px; border-radius: 4px; }

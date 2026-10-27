@@ -40,7 +40,7 @@ export function SettingsSearch({ autoFocus, compact }: { autoFocus?: boolean; co
   return (
     <div className={`set-search ${compact ? 'compact' : ''}`} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false); }}>
       <Icon name="search" size={15} />
-      <input className="input" type="search" name="settings-find" autoComplete="off" data-1p-ignore="true" data-lpignore="true" data-form-type="other" value={q} autoFocus={autoFocus} placeholder={compact ? 'Find a setting' : 'Find a setting: “MFA”, “logo”, “Slack”, “retention”…'}
+      <input className="input" type="search" name="settings-find" autoComplete="off" data-1p-ignore="true" data-lpignore="true" data-form-type="other" value={q} autoFocus={autoFocus} placeholder={compact ? 'Search' : 'Find a setting: “MFA”, “logo”, “Slack”, “retention”…'}
         aria-label="Find a setting" role="combobox" aria-expanded={open && results.length > 0} aria-controls={listId} aria-autocomplete="list"
         aria-activedescendant={open && results[active] ? `${listId}-${active}` : undefined}
         onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
