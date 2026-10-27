@@ -2,7 +2,7 @@ import { Face } from '../../components/Face';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { insightApi, meetingApi } from '../../api/endpoints';
+import { insightApi, meetingApi, timeApi } from '../../api/endpoints';
 import type { CalendarEvent } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { ErrorState, Segmented } from '../../components/ui';
@@ -37,7 +37,7 @@ const TINTS = ['i', 'o', 't', 'p', 'b', 'r'] as const;
 const DOT: Record<string, string> = { i: '#5856d6', o: '#ff9500', t: '#30b0c7', p: '#af52de', b: '#0071e3', r: '#ff2d55', g: '#28cd41' };
 
 type View = 'day' | 'week' | 'month';
-type Layer = 'meetings' | 'focus' | 'deadlines' | 'reminders';
+type Layer = 'meetings' | 'logged' | 'focus' | 'deadlines' | 'reminders';
 interface Meet { key: string; e: CalendarEvent; day: string; start: number; end: number; feed: MeetItem | null }
 interface Focus { day: string; start: number; end: number; label: string }
 
@@ -94,7 +94,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const [view, setView] = useState<View>(() => (typeof window !== 'undefined' && window.innerWidth < 760 ? 'day' : 'week'));
   const [anchor, setAnchor] = useState(today);
   const [mini, setMini] = useState(() => { const d = dateOf(today); return { y: d.getFullYear(), m: d.getMonth() }; });
-  const [layers, setLayers] = useState<Record<Layer, boolean>>({ meetings: true, focus: true, deadlines: true, reminders: true });
+  const [layers, setLayers] = useState<Record<Layer, boolean>>({ meetings: true, logged: true, focus: true, deadlines: true, reminders: true });
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
   const [moved, setMoved] = useState<Record<string, { day: string; start: number }>>({});
@@ -110,6 +110,9 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const q = useWsQuery(['calendar', 'week', monday, 'me'], () => insightApi.calendar(monday, sunday, undefined, true), { placeholderData: (p) => p });
   const feed = useWsQuery(['meet', 'feed', monday], () => meetApi.feed({ from: `${monday}T00:00:00`, to: `${addDays(sunday, 1)}T00:00:00` }), { staleTime: 60_000, retry: false });
   const rem = useWsQuery(['reminders', 'list'], reminderApi.list, { staleTime: 60_000, retry: false });
+  // Time this person logged this week: timer entries sit at the hours they ran; typed-in entries are totalled on the day.
+  const logged = useWsQuery(['time', 'sheet', monday, 'me'], () => timeApi.timesheet({ from: monday, to: sunday }), { staleTime: 60_000, retry: false, placeholderData: (p) => p });
+  const loggedEntries = Array.isArray(logged.data?.entries) ? logged.data!.entries : [];
 
   const events = useMemo(() => (q.data ?? []).filter((e) => e.category !== 'Cancelled' && e.status !== 'Cancelled'), [q.data]);
   const projects = useMemo(() => [...new Set(events.map((e) => e.projectName).filter((n): n is string => !!n))].slice(0, 6), [events]);
@@ -232,7 +235,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
           onShift={(n) => setMini(({ y, m }) => { const d = new Date(y, m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; })} />
         <div className="wp-filters">
           <div className="wp-ft">Show</div>
-          {([['meetings', 'Meetings'], ['focus', 'Focus blocks'], ['deadlines', 'Deadlines'], ['reminders', 'Reminders']] as const).map(([k, label]) => (
+          {([['meetings', 'Meetings'], ['logged', 'Logged time'], ['focus', 'Focus blocks'], ['deadlines', 'Deadlines'], ['reminders', 'Reminders']] as const).map(([k, label]) => (
             <label key={k} className={`wp-fr${layers[k] ? '' : ' off'}`}><input type="checkbox" className="sr-only" checked={layers[k]} onChange={(e) => setLayers((s) => ({ ...s, [k]: e.target.checked }))} /><i className={`k-${k}`} aria-hidden="true" />{label}</label>
           ))}
           {projects.length > 0 && <div className="wp-ft">Projects</div>}
@@ -270,6 +273,14 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                   return (
                     <div key={d} className={`wp-dh${d === today ? ' tdy' : ''}`}>
                       {DOW3[dateOf(d).getDay()]}<b>{dateOf(d).getDate()}</b>
+                      {layers.logged && (() => {
+                        const ents = loggedEntries.filter((t) => t.workDate === d);
+                        const mins = ents.reduce((n, t) => n + t.minutes, 0);
+                        if (!mins) return null;
+                        const h = Math.floor(mins / 60), mm = mins % 60;
+                        const tip = ents.map((t) => `${t.taskKey ? `${t.taskKey} ` : ''}${t.taskTitle} · ${Math.round(t.minutes / 6) / 10}h${t.note ? ` — ${t.note}` : ''}`).join('\n');
+                        return <button type="button" className="wp-logged" data-testid="wp-logged" title={`Logged ${h}h${mm ? ` ${mm}m` : ''}\n${tip}`} aria-label={`${h ? `${h}h` : ''}${mm ? `${h ? ' ' : ''}${mm}m` : ''} logged`} onClick={() => navigate('/insights?tab=time')}>⏱ {h ? `${h}h` : ''}{mm ? `${h ? ' ' : ''}${mm}m` : ''}</button>;
+                      })()}
                       {flag && <button type="button" className="wp-flag" title={`${flag.title}${flag.projectName ? ` · ${flag.projectName}` : ''} — due`} onClick={() => navigate(hrefOf(flag))}>⚑ {flag.title}</button>}
                     </div>
                   );
@@ -289,6 +300,17 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                   return (
                     <div key={d} className="wp-col" data-day={d}>
                       {d === today && nowH >= START && nowH <= END && <div className="wp-now" style={{ top: (nowH - START) * HR }} aria-label={`Now, ${clockH(nowH)}`} />}
+                      {layers.logged && loggedEntries.filter((t) => t.startedAt && t.workDate === d).map((t) => {
+                        const st = new Date(t.startedAt!); const h0 = st.getHours() + st.getMinutes() / 60; const h1 = h0 + (t.isRunning ? Math.max(.25, (Date.now() - st.getTime()) / 3.6e6) : t.minutes / 60);
+                        if (h1 <= START || h0 >= END) return null;
+                        const top = Math.max(h0, START), bot = Math.min(h1, END);
+                        return (
+                          <button key={t.id} type="button" className={`wp-e lg${t.isRunning ? ' run' : ''}`} style={{ top: (top - START) * HR, height: Math.max(20, (bot - top) * HR - 2) }}
+                            title={`Logged · ${t.taskKey ? `${t.taskKey} ` : ''}${t.taskTitle}`} onClick={() => navigate(t.workTaskId ? `/work?item=${t.workTaskId}` : t.taskId ? `/work?item=${t.taskId}` : '/insights?tab=time')}>
+                            {t.isRunning ? 'Running · ' : 'Logged · '}{t.taskTitle}<small>{clockH(h0)}{t.isRunning ? '' : ` – ${clockH(h1)}`}</small>
+                          </button>
+                        );
+                      })}
                       {focus.filter((f) => f.day === d).map((f) => (
                         <div key={`f${f.start}`} className={`wp-e f${drag ? ' dim' : ''}`} style={{ top: (f.start - START) * HR, height: (f.end - f.start) * HR - 2 }} title="A suggested focus block">
                           Focus · {f.label}<small>{f.end - f.start >= 1.5 ? `${clockH(f.start)} – ${clockH(f.end)}` : clockH(f.start)}</small>

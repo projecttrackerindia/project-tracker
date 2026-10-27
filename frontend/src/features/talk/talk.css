@@ -39,6 +39,9 @@ html[data-theme='dark'] .talk-src { border-color: var(--ds-bg); }
 .talk-src.s-chat { background: #28cd41; }
 .talk-src.s-chat::after { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #fff; }
 .talk-src.s-mail { background: #d93025; }
+.talk-src.s-presence { width: 13px; height: 13px; right: -1px; bottom: -1px; background: #28cd41; }
+.talk-src.s-presence.away { background: #ff9f0a; }
+.talk-src.s-presence.busy, .talk-src.s-presence.dnd { background: #ff3b30; }
 .talk-src.s-meeting { background: #0071e3; }
 .talk-row.active .talk-src { border-color: var(--talk-tint); }
 .talk-text { flex: 1; min-width: 0; display: block; }

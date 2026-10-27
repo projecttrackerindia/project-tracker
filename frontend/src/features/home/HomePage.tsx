@@ -10,7 +10,7 @@ import { WeekPlanner } from '../calendar/WeekPlanner';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
-import { insightApi, integrationsApi, projectApi, workItemApi } from '../../api/endpoints';
+import { insightApi, integrationsApi, projectApi, workItemApi, timeApi } from '../../api/endpoints';
 import type { CalendarEvent } from '../../api/types';
 import { EmptyState, ErrorState, Modal, PageLoader, Segmented } from '../../components/ui';
 import { useAi, useAssistant } from '../ai/Assistant';
@@ -266,6 +266,10 @@ function YourDay({ team }: { team: boolean }) {
   const today = todayISO();
   const { list } = useMeetings(today, today, team);
   const inbox = useWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { staleTime: 30_000 });
+  // Time I logged today: the total in the heading; timer entries drawn at the hours they ran.
+  const logged = useWsQuery(['time', 'sheet', today, 'me'], () => timeApi.timesheet({ from: today, to: today }), { staleTime: 60_000, retry: false, enabled: !team });
+  const loggedEntries = Array.isArray(logged.data?.entries) ? logged.data!.entries : [];
+  const loggedMin = loggedEntries.reduce((n, t) => n + t.minutes, 0);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const t = window.setInterval(() => setNow(new Date()), 60_000); return () => window.clearInterval(t); }, []);
   const nowH = hourOf(now);
@@ -304,7 +308,7 @@ function YourDay({ team }: { team: boolean }) {
   return (
     <section className="hm-card hm-yday" aria-label="Your day">
       <div className="hm-day-hd"><h2 className="hm-h3">Your day</h2>
-        <span className="hm-faint">{n} meeting{n === 1 ? '' : 's'} · {focus.length} focus block{focus.length === 1 ? '' : 's'} · {dur(free)} free</span></div>
+        <span className="hm-faint">{n} meeting{n === 1 ? '' : 's'} · {focus.length} focus block{focus.length === 1 ? '' : 's'} · {dur(free)} free{loggedMin > 0 && <> · <Link to="/insights?tab=time" className="hm-logged">{dur(loggedMin)} logged</Link></>}</span></div>
       <div className="hm-day-track">
         <div className="hm-lane a" /><div className="hm-lane b" />
         {meetings.map((m, i) => (
@@ -318,6 +322,15 @@ function YourDay({ team }: { team: boolean }) {
             {r.title}<small>since {since}</small>
           </Link>
         ))}
+        {loggedEntries.filter((t) => t.startedAt).map((t) => {
+          const st = new Date(t.startedAt!); const a = hourOf(st); const b = a + (t.isRunning ? Math.max(.25, nowH - a) : t.minutes / 60);
+          if (b <= DAY_START || a >= DAY_START + DAY_COLS) return null;
+          return (
+            <Link key={t.id} to={t.workTaskId ? `/work?item=${t.workTaskId}` : t.taskId ? `/work?item=${t.taskId}` : '/insights?tab=time'} className="hm-cap logged" style={{ left: pct(a), width: width(a, b), top: 46 }} title={`Logged · ${t.taskTitle}`}>
+              {t.isRunning ? 'Running · ' : 'Logged · '}{t.taskTitle}<small>{span(a)}{t.isRunning ? '' : ` – ${span(b)}`}</small>
+            </Link>
+          );
+        })}
         {focus.map((f) => (
           <span key={f.start} className="hm-cap focus" style={{ left: pct(f.start), width: width(f.start, f.end), top: 46 }} title="A suggested focus block">
             Focus · {f.label}<small>{span(f.start)} – {span(f.end)}</small>

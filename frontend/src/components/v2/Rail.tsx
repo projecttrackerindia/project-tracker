@@ -80,12 +80,13 @@ export function pickPinned(items: Project[], recent: string[], n = 3, skip: stri
   return [...first, ...rest].slice(0, n);
 }
 
-/** The sidebar's project list: explicit pins first (in their order); while there are fewer than 3, recent projects fill up to 3. */
-export function sidebarProjects(items: Project[], recent: string[], pinned: string[], hidden: string[]): { project: Project; pinned: boolean }[] {
+/**
+ * The sidebar's project list: only the projects this person pinned, in their order. Nothing is filled in automatically, so an unpinned
+ * project leaves and nothing takes its place (recent projects are in Projects and in ⌘K instead).
+ */
+export function sidebarProjects(items: Project[], _recent: string[], pinned: string[], _hidden: string[]): { project: Project; pinned: boolean }[] {
   const byId = new Map(items.map((p) => [p.id, p]));
-  const mine = pinned.map((id) => byId.get(id)).filter(Boolean) as Project[];
-  const fill = mine.length < 3 ? pickPinned(items, recent, 3 - mine.length, [...pinned, ...hidden]) : [];
-  return [...mine.map((project) => ({ project, pinned: true })), ...fill.map((project) => ({ project, pinned: false }))];
+  return (pinned.map((id) => byId.get(id)).filter(Boolean) as Project[]).map((project) => ({ project, pinned: true }));
 }
 
 /** The sidebar's sections, built only from places and pages the person may open (the same definitions as the palette). */
@@ -192,6 +193,12 @@ export function Rail() {
             ))}
           </div>
         ))}
+        {canProjects && !admin && pinned.length === 0 && (
+          <div className="v2-side-group v2-side-pins" role="group" aria-label="Pinned projects">
+            <div className="v2-side-sl">Pinned projects</div>
+            <p className="v2-side-pin-empty" data-testid="pins-empty">Pin a project from its ··· menu to keep it here.</p>
+          </div>
+        )}
         {pinned.length > 0 && (
           <div className="v2-side-group v2-side-pins" role="group" aria-label="Pinned projects">
             <div className="v2-side-sl">Pinned projects</div>

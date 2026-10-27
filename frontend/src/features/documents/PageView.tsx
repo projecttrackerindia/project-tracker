@@ -363,7 +363,13 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
             { label: pdf.busy ? 'Preparing the PDF…' : 'Export PDF', icon: 'download', onSelect: () => { if (!pdf.busy) void pdf.run(); } },
             { label: 'Delete', hint: 'Recoverable for 30 days; pages inside move up', icon: 'trash', danger: true, hidden: !detail.can.delete, onSelect: async () => {
               if (!(await confirmDialog({ title: 'Delete this page?', message: `“${d.title}” disappears for everyone. Pages inside it move up a level. You can bring it back for 30 days.`, confirmText: 'Delete' }))) return;
-              try { await documentApi.remove(id); invalidateWorkspace(wid, 'documents'); toast('Page deleted.', 'warning'); nav(trail.length ? `/library/docs/${trail[trail.length - 1].id}` : '/library'); }
+              try { await documentApi.remove(id); invalidateWorkspace(wid, 'documents'); toast('Page deleted.', 'warning'); {
+                // Stay where the person was: the parent page, else the project's documentation (its own space, or General), never the hub.
+                const space = `/library/p/${d.projectId ?? 'general'}`;
+                const inSpace = window.location.pathname.includes('/library/p/');
+                const parent = trail.length ? trail[trail.length - 1].id : null;
+                nav(parent ? (inSpace ? `${space}/d/${parent}` : `/library/docs/${parent}`) : space);
+              } }
               catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete.', 'error'); }
             } },
           ]} />

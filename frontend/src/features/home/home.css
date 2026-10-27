@@ -195,3 +195,6 @@ a.hm-row-title:hover { color: var(--ds-accent); }
   .hm-evs { flex-basis: 100%; }
   .hm-day.weekend:not(.today) .hm-evs:empty { display: none; }
 }
+.hm-cap.logged { background: rgba(40, 205, 65, .16); color: #127a26; box-shadow: inset 3px 0 0 #28cd41; }
+html[data-theme='dark'] .hm-cap.logged { color: #7ee08e; }
+.hm-logged { color: #1a9e33; font-weight: 600; text-decoration: none; } .hm-logged:hover { text-decoration: underline; }

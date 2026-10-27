@@ -49,6 +49,10 @@ try{
   if(ep===`/api/v1/portfolio/decisions/${pay}/apply`&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data={proposals:2,message:'2 proposals are waiting in PAY › Agent for approval.'};}
   else if(ep==='/api/v1/portfolio/summary'&&method==='POST'){writes.push({ep,q:url.search});data={text:'Payments is the one project at risk: it is likely to land six days late because Ravi is on leave. Moving Jyothsna onto it for a week brings it to one day late.',model:'gemini-synthetic',at:new Date().toISOString(),cached:false};}
   else if(ep==='/api/v1/me/ui/sidebar')data={key:'sidebar',value:null,updatedAt:null};
+  // Present › project facts: the room's actions save at once.
+  else if(ep==='/api/v1/tasks/t-pay-1/move'&&method==='PATCH'){writes.push({ep,b:req.postDataJSON()});data={id:'t-pay-1'};}
+  else if(ep==='/api/v1/tasks/t-pay-2/comments'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data={id:'c1'};}
+  else if(ep===`/api/v1/projects/${pay}/action-items`&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data={id:'a1'};}
   else{
    assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
    if(ep.endsWith('/auth/refresh'))data={accessToken:token,expiresAt:'2099-01-01T00:00:00Z',user};
@@ -56,6 +60,11 @@ try{
    else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};
    else if(ep==='/api/v1/portfolio/board'){boardQueries.push(url.search);data=board();}
    else if(ep==='/api/v1/portfolio/timeline')data=timeline;
+   else if(ep===`/api/v1/project-status/projects/${pay}`){const t=(id,n,title,extra)=>({id,key:'PAY-'+n,title,parentTaskId:null,startDate:'2026-10-01',dueDate:'2026-10-20',originalDueDate:'2026-10-15',delayedDays:5,statusName:'In progress',statusCategory:'Active',statusColor:'#0a84ff',assignee:{id:'u2',name:'Siva Reddy'},overdueDays:0,revisions:1,blockedBy:[],...extra});
+     data={project:{id:pay,key:'PAY',name:'Payments',description:null,groupName:'Delivery',startDate:'2026-09-01',dueDate:'2026-11-02',originalDueDate:'2026-10-25',delayedDays:8,status:'Active',health:'AtRisk',progress:40,owner:{id:'u1',name:'Prasanna Krishna'},stats:{},projectType:'Delivery'},
+       tasks:[t('t-pay-1',1,'Bulk payout API',{overdueDays:7}),t('t-pay-2',2,'Bank sandbox certification',{blockedBy:[{key:'OPS-4',title:'Sandbox keys from the bank',statusName:'Waiting'}]}),t('t-pay-3',3,'Reconciliation report',{assignee:null,delayedDays:0})],
+       changes:[{id:'ch1',scope:'Project',taskId:null,taskKey:null,title:'Payments',previous:'2026-10-25',revised:'2026-11-02',daysShifted:8,reason:'Ravi on leave for a week',dependency:null,changedBy:{id:'u1',name:'Prasanna Krishna'},changedAt:'2026-10-20T10:00:00Z',currentStatus:'Active',currentCategory:null}],delayedTasks:2,blockedTasks:1};}
+   else if(ep===`/api/v1/projects/${pay}`)data={project:{id:pay},statuses:[{id:'s-todo',name:'To do',order:0,category:'Todo',color:'#8e8e93'},{id:'s-done',name:'Done',order:2,category:'Done',color:'#30d158'}],stages:[],members:[{userId:'u1',name:'Prasanna Krishna',email:'p@example.com',role:null},{userId:'u2',name:'Siva Reddy',email:'s@example.com',role:null}]};
    else if(ep==='/api/v1/project-status/groups')data=[{id:'g1',name:'Delivery',isActive:true,count:2,projects:[{id:pay,name:'Payments',health:'AtRisk',progress:40,active:10},{id:web,name:'Website',health:'OnTrack',progress:20,active:0}]}];
    else if(ep==='/api/v1/ai/portfolio/brief')data=brief;
    else if(ep.endsWith('/ai/status'))data={enabled:true,configured:true,entitled:true,allowedHere:true};
@@ -155,6 +164,24 @@ try{
  await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Present'}).click();
  const pres=page.getByRole('dialog',{name:'Present decisions'});await pres.waitFor();
  assert.ok(await pres.getByText(/^1 of \d+$/).isVisible());
+ // A project slide: lead, dates, open work with owners, dependencies and the reason the date moved — and live actions.
+ const payTab=pres.getByRole('tab').filter({hasText:'Payments'});
+ if(await payTab.count()){await payTab.first().click();
+  const facts=pres.getByRole('complementary',{name:'Payments details'});await facts.waitFor();
+  const ft=await facts.innerText();assert.match(ft,/Lead[\s\S]*Prasanna Krishna/i);assert.match(ft,/Started[\s\S]*1 Sep/i);assert.match(ft,/was 25 Oct/);
+  assert.match(ft,/PAY-1[\s\S]*Siva Reddy[\s\S]*7d overdue/);assert.match(ft,/Waiting on OPS-4/);assert.match(ft,/Ravi on leave/);
+  await shot(page,'present-facts-1440.png');
+  await facts.getByRole('button',{name:'Mark PAY-1 done'}).click();await facts.getByText('PAY-1').waitFor({state:'detached'});
+  assert.ok(writes.some(w=>w.ep==='/api/v1/tasks/t-pay-1/move'&&w.b.statusId==='s-done'),'done moves the task to Done');
+  await facts.locator('li',{hasText:'PAY-2'}).getByRole('button',{name:'Remark'}).click();
+  await facts.getByRole('textbox',{name:'Remark on PAY-2'}).fill('Bank to share keys by Thursday');await facts.getByRole('button',{name:'Save'}).click();
+  await page.waitForFunction(()=>true);await facts.getByRole('textbox',{name:'Remark on PAY-2'}).waitFor({state:'detached'});
+  assert.ok(writes.some(w=>w.ep==='/api/v1/tasks/t-pay-2/comments'&&/Bank to share keys/.test(w.b.body)),'remark saved as a task comment');
+  await facts.getByRole('textbox',{name:'Follow-up'}).fill('Escalate sandbox keys');await facts.getByRole('combobox',{name:'Owner'}).selectOption('u2');
+  await facts.getByRole('button',{name:'Add',exact:true}).click();
+  await page.waitForFunction(()=>!document.querySelector('[aria-label="Follow-up"]')?.value);
+  assert.ok(writes.some(w=>w.ep===`/api/v1/projects/${pay}/action-items`&&w.b.assigneeId==='u2'),'follow-up saved with its owner');
+  checks.push('present-facts-actions');}
  await page.keyboard.press('Escape');await pres.waitFor({state:'detached'});
  await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Board'}).click();
  assert.ok(await page.getByRole('region',{name:'Board'}).isVisible());
