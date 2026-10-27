@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ApiError, get, uploadFile } from '../../api/client';
+import { ApiError, uploadFile } from '../../api/client';
 import { attachmentApi, opsApi, projectApi, workApi, workspaceApi } from '../../api/endpoints';
 import type { Priority } from '../../api/types';
 import { workItemsApi, type WorkKind } from '../../api/workItemsApi';
@@ -127,9 +127,6 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const projects = useWsQuery(['projects', 'new-sheet'], () => projectApi.list({ pageSize: 200, sort: 'name' }), { enabled: work, staleTime: 60_000 });
   const activeTypes = (types.data ?? []).filter((t) => t.isActive);
   // Tickets: WhatsApp updates (only when the workspace's WhatsApp is connected and can send), who is on call, and similar open tickets.
-  const wa = useWsQuery(['whatsapp', 'status'], () => get<{ connected: boolean; messagingEnabled: boolean }>('/integrations/whatsapp/status'), { enabled: type === 'ticket', staleTime: 5 * 60_000, retry: false });
-  const waReady = type === 'ticket' && wa.data?.connected === true && wa.data.messagingEnabled === true;
-  const [notifyWa, setNotifyWa] = useState(true);
   const ops = useWsQuery(['ops', 'settings'], opsApi.settings, { enabled: type === 'ticket', staleTime: 5 * 60_000, retry: false });
   const [triageText, setTriageText] = useState('');
   useEffect(() => { const t = window.setTimeout(() => setTriageText(type === 'ticket' ? text.trim() : ''), 600); return () => window.clearTimeout(t); }, [text, type]);
@@ -194,7 +191,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
     const body: Parameters<typeof workItemsApi.create>[0] = { kind: 'task', title, priority: pr, assigneeId: owner?.id ?? null, dueDate: parsed.dueDate ?? null };
     if (type === 'ticket') {
       if (!chosenType) { toast('Add a work type first (Settings › Fields & types).', 'error'); return; }
-      k = 'ticket'; Object.assign(body, { kind: 'ticket', workTypeId: chosenType.id, projectId: projectId ?? null, ...(waReady ? { notifyWhatsApp: notifyWa } : {}) });
+      k = 'ticket'; Object.assign(body, { kind: 'ticket', workTypeId: chosenType.id, projectId: projectId ?? null });
     } else {
       if (!project) { toast('Choose the project it belongs to.', 'error'); return; }
       k = pkind; Object.assign(body, { kind: pkind, projectId: project.id, estimatedHours: pkind === 'task' ? parsed.estimatedHours ?? null : undefined });
@@ -320,13 +317,6 @@ function NewSheet({ onProject }: { onProject: () => void }) {
           </div>
           <p>{understood ? why : 'Type a sentence: what it is, how urgent, who and when.'}</p>
         </div>
-        {waReady && (
-          <label className="v2-new-wa" data-testid="notify-whatsapp">
-            <span className="v2-new-wa-ico" aria-hidden="true">◉</span>
-            <span className="v2-new-wa-t"><b>Notify on WhatsApp</b><small>The reporter gets updates on WhatsApp</small></span>
-            <input type="checkbox" role="switch" checked={notifyWa} onChange={(e) => setNotifyWa(e.target.checked)} aria-label="Notify on WhatsApp" />
-          </label>
-        )}
         <div className="v2-new-types" role="radiogroup" aria-label="Type">
           {TYPES.filter((t) => t.tile !== false).map((t) => (
             <button key={t.id} type="button" role="radio" aria-checked={type === t.id} className={`v2-new-type ${type === t.id ? 'on' : ''}`} disabled={!allowed(t.id)}

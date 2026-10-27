@@ -226,13 +226,12 @@ try {
     await acts.evaluate((el) => el.scrollIntoView({ block: 'center' }));
     await page.screenshot({ path: path.join(out, `desk-actions-${tag}.png`) }); shots.push(path.join(out, `desk-actions-${tag}.png`));
 
-    // + New › Ticket: Notify on WhatsApp (the workspace's WhatsApp can send), who is on call, similar open tickets.
+    // + New › Ticket: who is on call, similar open tickets.
     await page.goto(`${origin}/preview-org/work?new=1`);
     await page.getByLabel('What to create').fill('Receipts not posting at the branch');
-    await page.locator('[data-testid="notify-whatsapp"]').waitFor();
+    assert.equal(await page.locator('[data-testid="notify-whatsapp"]').count(), 0, 'no WhatsApp switch in + New');
     await page.locator('.v2-understood p').filter({ hasText: 'similar tickets open' }).waitFor();
     assert.match(await page.locator('.v2-understood p').innerText(), /^Incident · .*Ivo is on call · 2 similar tickets open$/);
-    assert.equal(await page.getByRole('switch', { name: 'Notify on WhatsApp' }).isChecked(), true);
     await page.waitForTimeout(300);
     await page.screenshot({ path: path.join(out, `new-ticket-${tag}.png`) }); shots.push(path.join(out, `new-ticket-${tag}.png`));
     await ctx.close();
