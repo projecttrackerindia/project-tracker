@@ -86,6 +86,8 @@ export interface WorkItemDetail {
   detail: Record<string, unknown>;
   /** Newest first. */
   activity: WorkActivity[];
+  /** Tickets: where it came from (app, email, whatsapp, phone, webhook, ai); null for other kinds. */
+  channel?: string | null;
 }
 
 export interface CreateWorkItemInput {
@@ -126,6 +128,9 @@ export interface WorkItemPatch {
   estimatedHours?: number | null;
   actualHours?: number | null;
   milestoneId?: string | null;
+  /** A task's due date moved later (or cleared) needs a reason; the dependency causing it is optional. */
+  dueDateReason?: string;
+  dueDateDependency?: string;
 }
 
 export interface WorkCommentResult { comment: WorkActivity; time: WorkActivity | null; timeProblem: string | null }

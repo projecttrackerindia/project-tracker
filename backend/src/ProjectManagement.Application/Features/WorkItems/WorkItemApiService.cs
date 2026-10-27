@@ -32,10 +32,12 @@ public record WorkActivityItemDto(string Type, Guid Id, DateTime At, UserRefDto?
 /// <summary>
 /// One work item of any kind with the fields every kind shares, the kind's own full record in <see cref="Detail"/> (the same shape its
 /// own endpoint returns: TaskDto, IssueDto, ActionItemDto or WorkTaskDto), and one merged activity stream, newest first.
+/// <see cref="Channel"/>: where a ticket came from (app, email, whatsapp, phone, webhook); null for the other kinds.
 /// </summary>
 public record WorkItemDetailDto(string Kind, Guid Id, string Key, string Title, string? Description, Guid? ProjectId, string? ProjectKey, string? ProjectName,
     string Status, StatusCategory Category, Priority Priority, DateOnly? StartDate, DateOnly? DueDate, bool IsOverdue, UserRefDto? Assignee, UserRefDto? Reporter,
-    int Version, DateTime CreatedAt, DateTime? UpdatedAt, DateTime? CompletedAt, int LoggedMinutes, object Detail, IReadOnlyList<WorkActivityItemDto> Activity);
+    int Version, DateTime CreatedAt, DateTime? UpdatedAt, DateTime? CompletedAt, int LoggedMinutes, object Detail, IReadOnlyList<WorkActivityItemDto> Activity,
+    string? Channel = null);
 
 /// <summary>
 /// + New: one request for every kind. Task: project and title (status, stage, estimate, parent, milestone, labels optional). Issue:
@@ -216,13 +218,23 @@ public class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock 
                 var cat = WorkItemService.CategoryOf(w.Status);
                 dto = new WorkItemDetailDto("ticket", w.Id, w.Key, w.Title, w.Description, w.RelatedProject?.Id, w.RelatedProject?.Key, w.RelatedProject?.Name,
                     WorkItemService.WorkLabel(w.Status), cat, w.Priority, w.StartDate, w.DueDate, w.IsOverdue, w.Assignee, w.Reporter, w.Version, w.CreatedAt,
-                    item.UpdatedAt, w.CompletedAt, w.LoggedMinutes, w, []);
+                    item.UpdatedAt, w.CompletedAt, w.LoggedMinutes, w, [], await ChannelAsync(w.Id, w.Description, ct));
                 break;
             }
         }
         var activity = await ActivityAsync(item, ct);
         var logged = activity.Where(a => a.Type == "time").Sum(a => a.Minutes ?? 0);
         return dto with { Activity = activity, LoggedMinutes = logged, IsOverdue = dto.IsOverdue || (dto.DueDate is { } d && d < today && dto.Category is StatusCategory.Todo or StatusCategory.Active) };
+    }
+
+    /// <summary>Where a ticket came from: a WhatsApp chat or a call that raised it, an incoming webhook, an e-mail to the work mailbox, else the app.</summary>
+    private async Task<string> ChannelAsync(Guid id, string? description, CancellationToken ct)
+    {
+        if (await db.SupportConversations.AsNoTracking().AnyAsync(c => c.WorkTaskId == id, ct)) return "whatsapp";
+        if (await db.VoiceCalls.AsNoTracking().AnyAsync(c => c.WorkTaskId == id, ct)) return "phone";
+        if (await db.IncomingWebhookEvents.AsNoTracking().AnyAsync(e => e.TargetId == id, ct)) return "webhook";
+        if (description?.Contains("— Raised by email from", StringComparison.Ordinal) == true) return "email";
+        return "app";
     }
 
     private async Task<(string Key, string Name)?> ProjectRefAsync(Guid? projectId, CancellationToken ct)

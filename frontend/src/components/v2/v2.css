@@ -105,6 +105,19 @@
 .v2-panel-close:hover { background: var(--ds-fill-strong, var(--ds-fill)); color: var(--ds-text); }
 .v2-panel-body { flex: 1; min-height: 0; overflow: auto; padding: 18px 20px 24px; }
 .v2-panel-body.flush { padding: 0; display: flex; flex-direction: column; }
+.v2-panel-state.error { color: var(--ds-danger); }
+.v2-panel-actions { flex: none; display: flex; align-items: center; gap: 6px; }
+/* docked: beside the page, never over it. On a wide screen it is a floating card and the page makes room; narrower, it slides over the
+   right edge without dimming the page; on a phone it fills the screen. */
+.v2-panel.docked { z-index: 58; }
+@media (min-width: 1100px) {
+  .v2-panel.docked { top: 16px; right: 16px; bottom: 16px; width: min(var(--panel-w, 520px), 42vw); border-radius: var(--ds-r-card); overflow: hidden;
+    box-shadow: var(--ds-e3), 0 0 0 1px var(--ds-line); }
+  html.v2-panel-docked .v2-shell > .main.v2-main > .content { padding-right: calc(min(var(--v2-docked-w, 520px), 42vw) + 32px); transition: padding-right .22s var(--ds-ease); }
+  html.v2-panel-docked .v2-ask:not(.corner) { left: calc(var(--rail-w, 0px) + (100vw - var(--rail-w, 0px) - min(var(--v2-docked-w, 520px), 42vw) - 16px) / 2);
+    width: min(520px, calc(100vw - var(--rail-w, 0px) - min(var(--v2-docked-w, 520px), 42vw) - 64px)); }
+}
+.m-shell .v2-panel.docked { z-index: 92; }
 
 /* the copilot inside a side panel: the assistant's conversation, compact */
 .v2-copilot .ai-page, .v2-copilot .ai-home { min-height: 0; height: 100%; }
@@ -138,9 +151,16 @@
 .v2-ai-card-main { flex: 1; min-width: 0; display: grid; gap: 3px; }
 .v2-ai-card-main b { font-size: 13.5px; font-weight: 600; color: var(--ds-text); }
 .v2-ai-card-main span { font-size: 13px; color: var(--ds-text-2); line-height: 1.45; }
-.v2-ai-card .btn-ai { flex: none; border-radius: var(--ds-r-pill); background: var(--ds-violet); color: #fff; border: 0; }
-.v2-ai-card .btn-ai:hover:not(:disabled) { background: color-mix(in srgb, var(--ds-violet) 88%, #000); color: #fff; }
+.v2-ai-card .btn.btn-ai:not(#_) { flex: none; border-radius: var(--ds-r-pill); background: var(--ds-violet); color: #fff; border: 0; box-shadow: none; }
+.v2-ai-card .btn.btn-ai:not(#_):hover:not(:disabled) { background: color-mix(in srgb, var(--ds-violet) 88%, #000); color: #fff; }
 .v2-ai-card .v2-ai-dismiss { flex: none; border: 0; background: transparent; color: var(--ds-text-3); cursor: pointer; padding: 4px; border-radius: 8px; }
+.v2-ai-card.stacked { display: block; padding: 16px 18px; background: linear-gradient(135deg, color-mix(in srgb, var(--ds-violet) 9%, var(--ds-surface)), color-mix(in srgb, var(--ds-violet) 3%, var(--ds-surface))); }
+.v2-ai-card.stacked .v2-ai-card-main b { color: var(--ds-violet); font-size: 14px; }
+.v2-ai-card.stacked .v2-ai-card-main > span { font-size: 14px; color: var(--ds-text); line-height: 1.5; }
+.v2-ai-card-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.v2-ai-card-acts .btn { height: 34px; padding: 0 16px; }
+.v2-ai-card .btn.v2-ai-later:not(#_) { border-radius: var(--ds-r-pill); background: var(--ds-surface); color: var(--ds-text); border: 0; box-shadow: 0 0 0 1px var(--ds-line); }
+.v2-ai-card .btn.v2-ai-later:not(#_):hover { background: var(--ds-fill); }
 
 /* ------------------------------------------------------------------ + New */
 .v2-new-scrim { position: fixed; inset: 0; z-index: 95; background: rgba(0, 0, 0, .32); display: grid; place-items: start center; padding: 10vh 16px 16px; overflow: auto; animation: ds-fade .16s var(--ds-ease) both; }
@@ -165,6 +185,10 @@
 .v2-new-chip b { font-weight: 500; color: var(--ds-text); }
 .v2-new-chip select, .v2-new-chip input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; font-size: 16px; }
 .v2-new-chip:focus-within { box-shadow: 0 0 0 2px var(--ds-accent); }
+.v2-new-chip.tap { cursor: pointer; transition: box-shadow .15s var(--ds-ease), background .15s var(--ds-ease); }
+.v2-new-chip.tap:hover { background: var(--ds-fill); }
+.v2-new-chip.warn { box-shadow: 0 0 0 1px var(--ds-warning); color: var(--ds-warning); }
+.v2-new-chip.warn b { color: var(--ds-warning); }
 .v2-understood p { margin: 10px 0 0; font-size: 12px; color: var(--ds-text-3); }
 .v2-new-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
 .v2-new-foot span { font-size: 12px; color: var(--ds-text-3); }

@@ -59,7 +59,7 @@ export function UnfurlCards({ body }: { body: string }) {
 // ------------------------------------------------------------------ what was made from a message
 
 const LINK_ICON: Record<ChatLink['kind'], IconName> = { task: 'checkCircle', ticket: 'tag', reminder: 'alarm', page: 'note' };
-const linkTo = (l: ChatLink) => l.kind === 'task' ? `/tasks/${l.id}` : l.kind === 'ticket' ? `/operations?task=${l.id}` : l.kind === 'page' ? `/documents/${l.id}` : '/reminders';
+const linkTo = (l: ChatLink) => l.kind === 'task' || l.kind === 'ticket' ? `/work?item=${l.id}` : l.kind === 'page' ? `/documents/${l.id}` : '/reminders';
 
 export function LinkedChips({ links }: { links: ChatLink[] | null | undefined }) {
   if (!links?.length) return null;
@@ -259,11 +259,11 @@ export function MakeFromMessage({ m, conversation, kind, onClose }: { m: ChatMes
       if (kind === 'task') {
         if (!projectId) { toast('Choose the project.', 'error'); setBusy(false); return; }
         const t = await taskApi.create(projectId, { title: title.trim(), description: description || null, priority, dueDate: due || null, assigneeId: assigneeId || null });
-        made = { id: t.id, open: `/projects/${projectId}?task=${t.id}` };
+        made = { id: t.id, open: `/work?item=${t.id}` };
       } else if (kind === 'ticket') {
         if (!workTypeId) { toast('Choose the kind of work.', 'error'); setBusy(false); return; }
         const w = await workApi.create({ title: title.trim(), description: description || null, workTypeId, priority, dueDate: due || null, assigneeId: assigneeId || null, relatedProjectId: conversation.projectId });
-        made = { id: w.id, open: `/operations?task=${w.id}` };
+        made = { id: w.id, open: `/work?item=${w.id}` };
       } else if (kind === 'reminder') {
         const at = due ? new Date(`${due}T${time || '09:00'}:00`).toISOString() : new Date(Date.now() + 60 * 60_000).toISOString();
         const r = await reminderApi.create({ title: title.trim(), note: description || null, targetType: 'ChatMessage', targetId: m.id, when: { at, timeZone: deviceZone() } });

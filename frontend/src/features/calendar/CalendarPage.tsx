@@ -38,7 +38,7 @@ export function CalendarPage() {
           <CalendarSubscribe />
         </div>
       </PageHead>
-      <CalendarView mine={mine} userId={userId || undefined} onOpenTask={(taskId, projectId) => { if (projectId) nav(`/projects/${projectId}?task=${taskId}`); else setModal({ id: taskId }); }} onOpenWork={setWork} />
+      <CalendarView mine={mine} userId={userId || undefined} onOpenTask={(taskId, projectId) => { if (projectId) nav(`/work?item=${taskId}`); else setModal({ id: taskId }); }} onOpenWork={setWork} />
       <CalendarPlanning />
       {modal && <TaskModal taskId={modal.id} onClose={() => setModal(null)} />}
       {work && <WorkTaskModal taskId={work} onClose={() => setWork(null)} />}

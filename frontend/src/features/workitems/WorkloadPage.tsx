@@ -43,7 +43,7 @@ const KIND_KEYS: { kind: WorkItemKind; count: keyof NonNullable<WorkloadPerson['
 /** v2: Workload is Work › Team; Capacity & cost is its second view (?s=capacity), which a NavLink cannot tell apart from the first. */
 const WorkloadTabs = ({ current }: { current: 'workload' | 'capacity' }) => (
   <nav className="tabs route-tabs" aria-label="Workload">
-    <Link to="/work?tab=team" className={`tab ${current === 'workload' ? 'active' : ''}`} aria-current={current === 'workload' ? 'page' : undefined}><Icon name="users" />Open work</Link>
+    <Link to="/work?tab=team&s=workload" className={`tab ${current === 'workload' ? 'active' : ''}`} aria-current={current === 'workload' ? 'page' : undefined}><Icon name="users" />Open work</Link>
     <Link to="/work?tab=team&s=capacity" className={`tab ${current === 'capacity' ? 'active' : ''}`} aria-current={current === 'capacity' ? 'page' : undefined}><Icon name="gauge" />Capacity &amp; cost</Link>
   </nav>
 );
@@ -78,7 +78,7 @@ function OpenWork() {
 
   if (q.isLoading) return <PageLoader />;
   // A scope from an old link or bookmark that this person cannot use: fall back to their default view.
-  if (q.isError && wanted) return <Navigate to="/work?tab=team" replace />;
+  if (q.isError && wanted) return <Navigate to="/work?tab=team&s=workload" replace />;
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const t = q.data;
   const setScope = (s: WorkloadScope) => { const n = new URLSearchParams(params); n.set('scope', s); setParams(n, { replace: true }); };

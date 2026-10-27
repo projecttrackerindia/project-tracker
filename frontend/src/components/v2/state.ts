@@ -7,13 +7,15 @@ import { create } from 'zustand';
 /** The eight things + New makes. Task, Ticket (and in wave 2 every work kind) go to work items; the rest to their own places. */
 export type NewType = 'task' | 'ticket' | 'project' | 'doc' | 'secret' | 'meeting' | 'reminder' | 'time';
 
-export const useNewSheet = create<{ open: boolean; type: NewType | null; text: string; show: (type?: NewType | null, text?: string) => void; close: () => void }>((set) => ({
-  open: false, type: null, text: '',
-  show: (type = null, text = '') => set({ open: true, type, text }),
+/** Where the new thing belongs, when the page knows (a project's Work tab), and which kind of project work (a task, an issue, an action item). */
+export interface NewContext { projectId?: string; kind?: 'task' | 'issue' | 'action' }
+export const useNewSheet = create<{ open: boolean; type: NewType | null; text: string; context: NewContext; show: (type?: NewType | null, text?: string, context?: NewContext) => void; close: () => void }>((set) => ({
+  open: false, type: null, text: '', context: {},
+  show: (type = null, text = '', context = {}) => set({ open: true, type, text, context }),
   close: () => set({ open: false }),
 }));
 /** Opens + New from anywhere (the rail, the phone bar, the command palette, a page's own "New" button), optionally on a type and with words. */
-export const openNew = (type?: NewType | null, text?: string) => useNewSheet.getState().show(type ?? null, text ?? '');
+export const openNew = (type?: NewType | null, text?: string, context?: NewContext) => useNewSheet.getState().show(type ?? null, text ?? '', context ?? {});
 
 /** What kind of thing the words describe, when nobody picked a type: the cheap rules first; the person can always tap another tile. */
 export function guessType(text: string, allowed: (t: NewType) => boolean): NewType | null {

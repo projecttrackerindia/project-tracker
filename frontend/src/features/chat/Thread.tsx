@@ -27,12 +27,12 @@ import type { ChatExtract } from '../../api/types';
 import { haptic } from '../../lib/mobile';
 
 /** The stand-up summary posted after each session of a project's scrum call. */
-function StandupCardMessage({ card, projectId }: { card: StandupCard; projectId: string }) {
+function StandupCardMessage({ card }: { card: StandupCard; projectId?: string }) {
   const section = (title: string, items: StandupItem[], total: number, due?: boolean) => total > 0 && (
     <div className="su-sec">
       <h5>{title}</h5>
       <ul>{items.map((i) => (
-        <li key={i.taskId}><code>{i.key}</code><Link className="link" to={`/projects/${projectId}?task=${i.taskId}`}><span>{i.title}</span></Link><em>{due && i.due ? `due ${formatDate(i.due)}` : i.who ?? ''}</em></li>
+        <li key={i.taskId}><code>{i.key}</code><Link className="link" to={`/work?item=${i.taskId}`}><span>{i.title}</span></Link><em>{due && i.due ? `due ${formatDate(i.due)}` : i.who ?? ''}</em></li>
       ))}</ul>
       {total > items.length && <div className="su-more">and {total - items.length} more</div>}
     </div>

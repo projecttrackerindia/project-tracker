@@ -78,7 +78,7 @@ export function WorkReportsPage() {
             <Stat icon="clock" tone="amber" value={s.dueThisWeek} label="Due in the next 7 days" />
             <Stat icon="checkCircle" tone="green" value={s.completedInPeriod} label="Completed" foot={`${formatDate(s.from)} – ${formatDate(s.to)}`} />
             <Stat icon="plus" tone="cyan" value={s.createdInPeriod} label="Raised" foot="In the same period" />
-            <Stat icon="user" tone="purple" value={s.mineOpen} label="Assigned to me" foot={`${s.mineOverdue} overdue`} to="/my-work?kind=Operational" />
+            <Stat icon="user" tone="purple" value={s.mineOpen} label="Assigned to me" foot={`${s.mineOverdue} overdue`} to="/work?tab=tickets" />
           </div>
 
           {s.sla && (s.sla.tracked > 0 || s.sla.responseTracked > 0 || s.sla.openBreached > 0 || s.sla.openAtRisk > 0) && (

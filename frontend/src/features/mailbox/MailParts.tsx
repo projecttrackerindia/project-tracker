@@ -180,7 +180,7 @@ const STATUS_LABEL: Record<string, string> = { ToDo: 'To do', InProgress: 'In pr
 
 export function TaskSuggestion({ s, wid, trigger = 0 }: { s: MailTaskSuggestion; wid: string | null; trigger?: number }) {
   const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
-  const [link, setLink] = useState<string | null>(s.kind === 'update' ? (s.taskKind === 'task' && s.projectId ? `/projects/${s.projectId}?task=${s.taskId}` : `/operations?task=${s.taskId}`) : null);
+  const [link, setLink] = useState<string | null>(s.kind === 'update' ? `/work?item=${s.taskId}` : null);
   const types = useWsQuery(['work-types'], () => workApi.types(), { enabled: s.kind === 'create', staleTime: 300_000 });
   const [typeId, setTypeId] = useState('');
   const type = typeId || types.data?.find(t => t.isActive !== false)?.id || '';
@@ -191,7 +191,7 @@ export function TaskSuggestion({ s, wid, trigger = 0 }: { s: MailTaskSuggestion;
         if (!type) throw new Error('Add a work type in Operations first.');
         const created = await workApi.create({ title: s.title, description: [s.detail, s.reason ? `From email: ${s.reason}` : ''].filter(Boolean).join('\n\n'), workTypeId: type,
           priority: s.priority ?? 'Medium', dueDate: s.due, assigneeId: useAuth.getState().ctx?.user.id ?? null });
-        setLink(`/operations?task=${created.id}`);
+        setLink(`/work?item=${created.id}`);
         void invalidateWorkspace(wid, 'work');
       } else if (s.taskId) {
         const note = [s.detail, s.reason].filter(Boolean).join('\n\n') || 'Update from email.';

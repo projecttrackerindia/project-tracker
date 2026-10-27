@@ -21,14 +21,9 @@ export function useVisibleKinds(): WorkItemKind[] {
   return ALL_KINDS.filter((k) => (k === 'Task' ? lv('tasks') > 0 : k === 'Issue' ? lv('tasks') > 0 && lv('projects') > 0 : k === 'ActionItem' ? lv('projects') > 0 : lv('work') > 0));
 }
 
-/** Where an item lives: its project's board, Issues or Actions tab, or the Operations list. */
+/** Where an item opens: every kind opens in the Work side panel (v2), whatever page links to it. */
 export function workItemLink(i: { kind: WorkItemKind; id: string; projectId: string | null }): string {
-  switch (i.kind) {
-    case 'Task': return `/projects/${i.projectId}?task=${i.id}`;
-    case 'Issue': return `/projects/${i.projectId}?tab=issues&issue=${i.id}`;
-    case 'ActionItem': return `/projects/${i.projectId}?tab=actions&action=${i.id}`;
-    default: return `/operations?task=${i.id}`;
-  }
+  return `/work?item=${i.id}`;
 }
 
 export function KindIcon({ kind }: { kind: WorkItemKind }) {

@@ -265,7 +265,7 @@ function CallDetail({ id }: { id: string }) {
         {c.ticketKey && <span className="va-flag"><Icon name="tag" size={12} /> {c.ticketKey}</span>}
         {c.transferred && <span className="va-flag warn"><Icon name="users" size={12} /> Handed over</span>}
         {c.archiveKey && <span className="va-flag" title={c.archiveKey}><Icon name="database" size={12} /> Archived</span>}
-        {c.workTaskId && <Link className="btn btn-sm" to={`/operations?task=${c.workTaskId}`}>Open ticket</Link>}
+        {c.workTaskId && <Link className="btn btn-sm" to={`/work?tab=tickets&item=${c.workTaskId}`}>Open ticket</Link>}
       </div>
       {c.summary && <p className="va-summary"><b>Summary</b>{c.summary}</p>}
       <Transcript turns={c.turns} />

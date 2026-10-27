@@ -44,7 +44,7 @@ function TrackedTime({ projectId }: { projectId: string }) {
               {d.topTasks.map((t) => (
                 <div className="time-row" key={t.taskId}>
                   <span className="time-min">{formatMinutes(t.minutes)}</span>
-                  <span className="time-what"><Link className="link" to={`/projects/${projectId}?task=${t.taskId}`}>{t.key}</Link> {t.title}
+                  <span className="time-what"><Link className="link" to={`/work?item=${t.taskId}`}>{t.key}</Link> {t.title}
                     {t.estimatedHours ? <span className="muted"> · est. {formatMinutes(Math.round(t.estimatedHours * 60))}</span> : null}</span>
                 </div>
               ))}

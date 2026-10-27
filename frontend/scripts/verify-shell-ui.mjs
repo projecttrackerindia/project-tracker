@@ -6,7 +6,7 @@ import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
 // The v2 shell: the 84px rail (logo, + New, the five places, the avatar menu), old addresses landing on their new places with query and
-// #anchor kept, + New ("I understood this as a ticket" with chips, creating through the existing endpoint), the Ask bar (and "Ask about
+// #anchor kept, + New ("I understood this as a ticket" with chips, creating through /work-items and opening it), the Ask bar (and "Ask about
 // <project>" on a project page, opening the copilot panel), the phone's bottom bar, and Settings: ten sections and the AI control centre
 // (agent levels, "Draft it from my projects"). Built frontend with synthetic API fixtures only.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/shell-ui');
@@ -19,6 +19,9 @@ const project = { id: '00000000-0000-0000-0000-0000000000a1', key: 'RP', name: '
   owner: { id: '00000000-0000-0000-0000-000000000001', name: 'Asha Rao' }, stats: { total: 5, done: 2, inProgress: 2, cancelled: 0, todo: 1, overdue: 0 } };
 const token = `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`;
 const writes = [], errors = [], checks = [];
+const ticket = (title) => ({ kind: 'ticket', id: '00000000-0000-0000-0000-0000000000f1', key: 'WT-9', title, description: null, projectId: null, projectKey: null, projectName: null, status: 'To Do', category: 'Todo',
+  priority: 'Critical', startDate: null, dueDate: null, isOverdue: false, assignee: { id: '00000000-0000-0000-0000-0000000000b2', name: 'Priya Nair' }, reporter: null, version: 1, createdAt: '2026-10-27T05:00:00Z',
+  updatedAt: null, completedAt: null, loggedMinutes: 0, detail: { id: '00000000-0000-0000-0000-0000000000f1', status: 'ToDo', workType: 'Incident', workTypeId: '00000000-0000-0000-0000-0000000000c1', sla: null, can: { edit: true, delete: true } }, activity: [], channel: 'app' });
 let levels = { project: 'suggest', notetaker: 'askFirst', mail: 'askFirst', triage: 'suggest', timesheet: 'suggest' };
 const agentNames = { project: 'Project agent', notetaker: 'Meeting notetaker', mail: 'Mail agent', triage: 'Ticket triage', timesheet: 'Timesheet helper' };
 const control = () => ({ agents: Object.entries(levels).map(([id, level]) => ({ id, name: agentNames[id], description: `${agentNames[id]} does its job`, level })), contextLength: 0, contextLimit: 4000, automations: 2, people: 5, aiOn: true, canEdit: true });
@@ -40,7 +43,7 @@ try {
     const agent = /^\/api\/v1\/ai\/control\/agents\/([a-z]+)$/.exec(ep);
     if (agent && method === 'PUT') { const b = req.postDataJSON(); writes.push({ ep, b }); levels = { ...levels, [agent[1]]: b.level }; data = control(); }
     else if (ep === '/api/v1/ai/control/context/draft' && method === 'POST') { writes.push({ ep }); data = { text: 'We are Preview Workspace.\nActive projects:\n- RP Razor pay' }; }
-    else if (ep === '/api/v1/work-tasks' && method === 'POST') { const b = req.postDataJSON(); writes.push({ ep, b }); data = { id: '00000000-0000-0000-0000-0000000000f1', key: 'WT-9', title: b.title }; }
+    else if (ep === '/api/v1/work-items' && method === 'POST') { const b = req.postDataJSON(); writes.push({ ep, b }); data = ticket(b.title); }
     else {
       assert.ok(method === 'GET' || ep.endsWith('/auth/refresh'), `Unexpected write: ${method} ${ep}`);
       if (ep.endsWith('/auth/refresh')) data = { accessToken: token, expiresAt: '2099-01-01T00:00:00Z', user };
@@ -48,6 +51,8 @@ try {
       else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
       else if (ep === '/api/v1/workspace/members') data = [{ userId: user.id, displayName: 'Asha Rao', email: user.email, role: 'Owner' }, { userId: '00000000-0000-0000-0000-0000000000b2', displayName: 'Priya Nair', email: 'priya@example.test', role: 'Member' }];
       else if (ep === '/api/v1/work-types') data = [{ id: '00000000-0000-0000-0000-0000000000c1', name: 'Incident', description: null, order: 1, isActive: true, taskCount: 0 }, { id: '00000000-0000-0000-0000-0000000000c2', name: 'Bug fix', description: null, order: 2, isActive: true, taskCount: 0 }];
+      else if (ep === '/api/v1/work-items') data = { items: [], offset: 0, limit: 200, hasMore: false };
+      else if (ep === '/api/v1/work-items/00000000-0000-0000-0000-0000000000f1') data = ticket('VPN down for collections team');
       else if (ep === `/api/v1/projects/${project.id}`) data = { project, stages: [], statuses: [{ id: project.id, name: 'To Do', order: 0, category: 'Todo', color: '#4f46e5' }], members: [{ userId: user.id, name: user.displayName, email: user.email, role: 'Owner' }] };
       else if (ep.endsWith('/projects') || ep.endsWith('/tasks') || ep.endsWith('/work-tasks')) data = { items: [], page: 1, totalPages: 0, totalItems: 0 };
       else if (ep === '/api/v1/ai/control') data = control();
@@ -100,7 +105,8 @@ try {
 
   // Old addresses: their new place, with the query and #anchor kept.
   const moved = [
-    ['/projects/' + project.id + '?task=7#c-1', `/work/projects/${project.id}?task=7#c-1`], ['/operations?task=12', '/work?task=12&tab=tickets'], ['/my-work', '/work'],
+    ['/projects/' + project.id + '?task=7#c-1', '/work?item=7#c-1'], ['/projects/' + project.id + '?tab=issues&issue=8', '/work?item=8'], ['/projects/' + project.id + '?tab=board', `/work/projects/${project.id}?tab=board`],
+    ['/operations?task=12', '/work?tab=tickets&item=12'], ['/operations?project=p1', '/work?project=p1&tab=tickets&view=queue'], ['/tasks/7', '/work?item=7'], ['/my-work', '/work'],
     ['/chat', '/talk?f=chat'], ['/mailbox', '/talk?f=mail'], ['/meet/past', '/talk?f=meetings&s=past'], ['/calendar', '/?tab=calendar'], ['/reminders', '/?tab=reminders'],
     ['/agents', '/'], ['/project-agent/assigned', '/?tab=given'], ['/ai/operations', '/insights?tab=workflows'], ['/agent-tracker', '/settings/ai/tracker'],
     ['/doctracker?p=1&t=documents', '/library/docs?p=1&t=documents'], ['/vault', '/library/vault'], ['/timesheet/approvals', '/insights?tab=time&s=approvals'],
@@ -135,7 +141,7 @@ try {
   assert.ok(await page.locator('.aic-model.on', { hasText: 'Google Gemini' }).isVisible(), 'Gemini until a Claude key is added');
   await shot(page, 'ai-control-centre-1440.png'); checks.push('ai-control-centre');
 
-  // + New: words in, "I understood this as a ticket" with chips, created through the work-task endpoint.
+  // + New: words in, "I understood this as a ticket" with chips, created through the one Work API and opened in the side panel.
   await page.goto(`${origin}/preview-org/`); await page.locator('.v2-new').click();
   await page.locator('.v2-new-input input').fill('VPN down for collections team, critical, give to Priya');
   await page.waitForTimeout(300);
@@ -145,9 +151,10 @@ try {
   assert.ok(chips.includes('Critical') && chips.includes('Priya Nair'), `chips: ${chips}`);
   await shot(page, 'new-ticket-1440.png');
   await page.getByRole('button', { name: 'Create ticket' }).click(); await page.waitForTimeout(500);
-  const made = writes.find((w) => w.ep === '/api/v1/work-tasks');
-  assert.equal(made.b.priority, 'Critical'); assert.equal(made.b.assigneeId, '00000000-0000-0000-0000-0000000000b2'); assert.equal(made.b.workTypeId, '00000000-0000-0000-0000-0000000000c1');
-  assert.equal(await page.locator('.v2-new-sheet').count(), 0); checks.push('new-sheet');
+  const made = writes.find((w) => w.ep === '/api/v1/work-items');
+  assert.equal(made.b.kind, 'ticket'); assert.equal(made.b.priority, 'Critical'); assert.equal(made.b.assigneeId, '00000000-0000-0000-0000-0000000000b2'); assert.equal(made.b.workTypeId, '00000000-0000-0000-0000-0000000000c1');
+  assert.equal(await page.locator('.v2-new-sheet').count(), 0);
+  await page.locator('.v2-panel').getByText('WT-9 · Ticket').waitFor(); assert.equal(at(), '/work?item=00000000-0000-0000-0000-0000000000f1'); checks.push('new-sheet');
   await page.keyboard.press('Control+k'); assert.ok(await page.locator('.v2-ask input').evaluate((el) => el === document.activeElement), 'Ctrl K puts the cursor in the Ask bar');
   await page.keyboard.press('Control+k'); await page.locator('.cmdk').waitFor(); await page.keyboard.press('Escape'); checks.push('ctrl-k');
 

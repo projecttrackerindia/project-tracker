@@ -32,7 +32,7 @@ export function RunningTimer() {
   return (
     <div className="timer-chip" role="status" aria-label="Timer running">
       <span className="live-dot" />
-      <Link to={t.kind === 'work' ? `/operations?task=${t.workTaskId}` : `/projects/${t.projectId}?task=${t.taskId}`} title={t.taskTitle}>{t.taskKey}</Link>
+      <Link to={`/work?item=${t.kind === 'work' ? t.workTaskId : t.taskId}`} title={t.taskTitle}>{t.taskKey}</Link>
       <b>{clock(now - new Date(t.startedAt!).getTime())}</b>
       <button type="button" className="icon-btn" onClick={() => void stop()} title="Stop timer" aria-label="Stop timer"><Icon name="pause" size={14} /></button>
     </div>

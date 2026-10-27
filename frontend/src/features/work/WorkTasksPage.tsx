@@ -19,7 +19,8 @@ import { VoiceAgentPanel } from './VoiceAgent';
 import { WhatsAppSupportPanel } from './WhatsAppSupport';
 import { get, put } from '../../api/client';
 
-type Tab = 'queue' | 'board' | 'insights' | 'whatsapp' | 'voice' | 'settings';
+export type OpsView = 'queue' | 'board' | 'insights' | 'whatsapp' | 'voice' | 'settings';
+type Tab = OpsView;
 /** The page's three places (the queue and board are one place shown two ways; WhatsApp and the voice agent are the channels tickets come from). */
 type Place = 'tickets' | 'insights' | 'channels' | 'settings';
 const placeOf = (t: Tab): Place => (t === 'queue' || t === 'board' ? 'tickets' : t === 'whatsapp' || t === 'voice' ? 'channels' : t);
@@ -45,10 +46,11 @@ export function WorkStatusBadge({ status }: { status: WorkTask['status'] }) {
 }
 
 /**
- * Operations: operational work (bug fixes, support, analysis, data preparation ...) that is not a project task, everyone's. Search, filter,
- * sort and page; create and edit in a dialog. What is assigned to me, of every kind, is on My work.
+ * The ticket desk: operational work (bug fixes, support, analysis, data preparation ...) that is not a project task, everyone's, with its
+ * queue (SLA views, saved views, bulk edit), board, insights, channels and settings. In v2 it is Work › Tickets › ··· (`embedded`): its
+ * view is always in the address (?view=) and a ticket opens in the Work side panel (`onOpenItem`) instead of a pop-up.
  */
-export function WorkTasksPage() {
+export function WorkTasksPage({ embedded = false, onOpenItem }: { embedded?: boolean; onOpenItem?: (id: string) => void } = {}) {
   const mine = false;
   const [params, setParams] = useSearchParams();
   const permWork = useCan('work.create'), modWork = useModule('work');
@@ -71,7 +73,9 @@ export function WorkTasksPage() {
   const [unassigned, setUnassigned] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
   const [tab, setTabState] = useState<Tab>((params.get('view') as Tab) ?? 'queue');
-  const setTab = (t: Tab) => { setTabState(t); const n = new URLSearchParams(params); if (t === 'queue') n.delete('view'); else n.set('view', t); setParams(n, { replace: true }); };
+  const wantedView = params.get('view') as Tab | null;
+  useEffect(() => { if (embedded && wantedView && wantedView !== tab) setTabState(wantedView); }, [embedded, wantedView]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setTab = (t: Tab) => { setTabState(t); const n = new URLSearchParams(params); if (t === 'queue' && !embedded) n.delete('view'); else n.set('view', t); setParams(n, { replace: true }); };
   const [naming, setNaming] = useState<string | null>(null);
   const navigate = useNavigate();
   const [showFilters, setShowFilters] = useState(false);
@@ -98,7 +102,7 @@ export function WorkTasksPage() {
     setCreating(true);
     const n = new URLSearchParams(params); n.delete('new'); setParams(n, { replace: true });
   }, [params, setParams]);
-  const openTask = (id: string | null) => { const n = new URLSearchParams(params); if (id) n.set('task', id); else n.delete('task'); setParams(n, { replace: true }); };
+  const openTask = (id: string | null) => { if (id && onOpenItem) { onOpenItem(id); return; } const n = new URLSearchParams(params); if (id) n.set('task', id); else n.delete('task'); setParams(n, { replace: true }); };
 
   const on = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
   const hasFilters = !!(mineOnly || unassigned || q || typeId || projectId || assigneeId || priority || status || dueFrom || dueTo || overdue || sla || (view !== (mine ? 'open' : 'all')));
@@ -157,7 +161,7 @@ export function WorkTasksPage() {
   const showDue = items.some((t) => t.dueDate);
   return (
     <div className="ops-page">
-      <PageHead title="Operations" sub="Tickets, bug fixes and requests, with service levels.">
+      <PageHead title={embedded ? 'Ticket desk' : 'Operations'} sub="Tickets, bug fixes and requests, with service levels.">
         <Menu label="Export" icon="download" items={[
           { label: 'CSV (this list, now)', icon: 'download', onSelect: exportCsv },
           { label: 'Excel or PDF report', icon: 'download', onSelect: () => navigate('/reports?kind=WorkTasks'), hidden: !canReports },
