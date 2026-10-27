@@ -4,6 +4,8 @@ export type AiProviderId = 'anthropic' | 'openai';
 export interface AiProviderSettings {
   configured: boolean; provider: AiProviderId; providerName: string; keyHint: string | null; quickModel: string; standardModel: string; deepModel: string;
   enabled: boolean; fallbackToPlatform: boolean; lastCheckedAt: string | null; lastError: string | null; peopleAgreed: number; version: number;
+  /** Who last saved the key or its settings, and when (older servers leave these out). */
+  updatedByName?: string | null; updatedAt?: string | null;
 }
 export interface AiKeyCheck { ok: boolean; models: string[]; error: string | null }
 export interface AiProviderStatus { active: boolean; provider: AiProviderId | null; providerName: string | null; agreed: boolean; agreedAt: string | null; fallbackToPlatform: boolean; notice: string | null }

@@ -1,19 +1,17 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { projectApi } from '../../api/endpoints';
 import { aiControlApi, type AgentLevel, type AiControl } from './aiControlApi';
-import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { Embedded, EmptyState, Kpi, PageHead, PageLoader, Segmented } from '../../components/ui';
 import { ProjectAgentSettings } from '../agent/ProjectAgentTab';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { aiWorkspaceApi } from '../ai/aiApi';
+import { aiWorkspaceApi, type AiWorkspaceReport } from '../ai/aiApi';
 import { useAiStatus, AiWorkspaceSwitch } from '../ai/Assistant';
 import { AiOwnKeyCard } from '../ai/OwnAiKey';
-import { aiProviderApi } from '../ai/providerApi';
 import { AiUsageCard } from '../ai/AiUsageCard';
 import { LastChanged } from './SettingsCenter';
 import './aiControl.css';
@@ -21,7 +19,7 @@ import './aiControl.css';
 const AgentTrackerPage = lazy(() => import('../ai/AgentTrackerPage').then((m) => ({ default: m.AgentTrackerPage })));
 
 const LEVELS: { id: AgentLevel; label: string }[] = [
-  { id: 'off', label: 'Off' }, { id: 'suggest', label: 'Suggest' }, { id: 'askFirst', label: 'Ask first' }, { id: 'auto', label: 'Auto' },
+  { id: 'off', label: 'Off' }, { id: 'suggest', label: 'Suggest' }, { id: 'askFirst', label: 'Ask first' }, { id: 'auto', label: 'Act and tell me' },
 ];
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -94,7 +92,7 @@ function ControlCentre({ control, loading }: { control?: AiControl; loading: boo
   // The control centre serves this month's answers and credits itself; the usage and report endpoints are read only when it does not.
   const f = control?.figures ?? undefined;
   const usage = useWsQuery(['ai', 'usage'], aiWorkspaceApi.usage, { enabled: !f && !!status?.enabled, staleTime: 30_000 });
-  const report = useWsQuery(['ai', 'report', thisMonth()], () => aiWorkspaceApi.report(thisMonth()), { enabled: !f && !!status?.configured && !!status?.entitled, staleTime: 30_000 });
+  const report = useWsQuery(['ai', 'report', thisMonth()], () => aiWorkspaceApi.report(thisMonth()), { enabled: !!status?.configured && !!status?.entitled, staleTime: 30_000 });
   if (loading) return <PageLoader />;
   // Each part stands on its own: one figure that cannot be read does not hide the others (or the model and the key).
   const c = control?.agents ? control : undefined;
@@ -112,15 +110,21 @@ function ControlCentre({ control, loading }: { control?: AiControl; loading: boo
         <Kpi label="Organisation context" value={!c ? '—' : ctxEmpty ? 'Empty' : 'Written'} tone={!c ? undefined : ctxEmpty ? 'danger' : 'success'} caption={c ? `${c.contextLength.toLocaleString()} / ${c.contextLimit.toLocaleString()} characters` : undefined} />
         <Kpi label="Automations" value={c ? c.automations : '—'} caption={<Link to="/settings/timelines/automation">rules running ›</Link>} />
       </div>
+      <section className="aic-card aic-wide" data-setting="ai.ownKey" aria-labelledby="aic-conn">
+        <h3 id="aic-conn">AI provider</h3>
+        <p className="aic-sub">Which AI answers the assistant, the key it uses, and which model handles which kind of question.</p>
+        <AiOwnKeyCard />
+      </section>
+      <UsageThisMonth report={report.data} figures={f} />
       <div className="aic-grid">
         <section className="aic-card" aria-labelledby="aic-agents">
-          <h3 id="aic-agents">What each agent may do</h3>
-          <p className="aic-sub">Pick a level per agent. “Ask first” puts its work in the Inbox for one-tap approval.</p>
+          <h3 id="aic-agents">Agents &amp; permissions</h3>
+          <p className="aic-sub">Pick a level per agent. “Ask first” puts its work in the Inbox for one-tap approval; “Act and tell me” acts and reports what it did.</p>
           {c ? <AgentLevels control={c} /> : <p className="muted">The agents' levels could not be loaded.</p>}
         </section>
         <div className="aic-side">
-          <ModelCard />
           <TeachCard limit={c?.contextLimit ?? 4000} />
+          <PrivacyCard />
           <section className="aic-card">
             <h3>Outside AI apps</h3>
             <p className="aic-sub">Claude or ChatGPT can work here as you, with your permissions.</p>
@@ -157,44 +161,56 @@ function AgentLevels({ control }: { control: AiControl }) {
   );
 }
 
-/** One model answers everyone: the organisation's own Claude key (for everyone who agreed), or the included Gemini. */
-function ModelCard() {
-  const wid = useWorkspaceId();
-  const q = useWsQuery(['ai', 'provider'], aiProviderApi.get, { staleTime: 30_000, retry: false });
-  const keyCard = useRef<HTMLDivElement>(null);
-  const [busy, setBusy] = useState(false);
-  const s = q.data;
-  if (q.isLoading) return <section className="aic-card"><PageLoader /></section>;
-  if (!s) return null;
-  const claude = s.configured && s.enabled && s.provider === 'anthropic';
-  const save = async (enabled: boolean) => {
-    setBusy(true);
-    try {
-      await aiProviderApi.save({ provider: s.provider, quickModel: s.quickModel, standardModel: s.standardModel, deepModel: s.deepModel, enabled, fallbackToPlatform: s.fallbackToPlatform });
-      void invalidateWorkspace(wid, 'ai'); toast(enabled ? 'Answers come from your organisation’s Claude for everyone who agreed.' : 'Answers come from the included Gemini.');
-    } catch (e) { toast(errText(e, 'Could not change the model.'), 'error'); }
-    finally { setBusy(false); }
-  };
-  const pickClaude = () => { if (claude) return; if (s.configured && s.provider === 'anthropic') void save(true); else keyCard.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
-  const pickGemini = async () => {
-    if (!claude) return;
-    if (await confirmDialog({ title: 'Answer with Gemini?', message: 'Everyone’s questions go to the included Gemini and use AI credits. Your Claude key stays saved.', confirmText: 'Use Gemini' })) void save(false);
-  };
+const FEATURE_NAMES: Record<string, string> = { ask: 'Ask', assistant: 'Ask', briefing: 'Briefing', morning_briefing: 'Briefing', triage: 'Triage', docs: 'Docs', documents: 'Docs' };
+const featureName = (f: string) => FEATURE_NAMES[f.toLowerCase()] ?? f.replaceAll('_', ' ').replace(/^\w/, (x) => x.toUpperCase());
+
+/** This month's requests and credits, split by feature (the assistant's answers by level, then the other AI features), as small bars. */
+function UsageThisMonth({ report, figures }: { report?: AiWorkspaceReport; figures?: AiControl['figures'] }) {
+  const used = report?.creditsUsed ?? figures?.creditsUsed;
+  const limit = report?.creditsLimit ?? figures?.creditsLimit;
+  const unlimited = report?.unlimited ?? figures?.unlimited;
+  const answers = report?.answers ?? figures?.answers;
+  const rows = [
+    ...(report?.byTier ?? []).filter((t) => t.answers > 0).map((t) => ({ name: `Ask · ${t.tier}`, answers: t.answers, credits: t.credits })),
+    ...(report?.features ?? []).map((x) => ({ name: featureName(x.feature), answers: x.answers, credits: x.credits })),
+  ];
+  const max = Math.max(1, ...rows.map((r) => r.credits || r.answers));
   return (
-    <section className="aic-card" data-setting="ai.ownKey">
-      <h3>Model</h3>
-      <p className="aic-sub">One model answers everyone{s.peopleAgreed ? ` · ${s.peopleAgreed} agreed to the organisation’s Claude` : ''}.</p>
-      <div className="aic-models" role="radiogroup" aria-label="Model">
-        <button type="button" role="radio" aria-checked={claude} disabled={busy} className={`aic-model ${claude ? 'on' : ''}`} onClick={pickClaude}>
-          <b>Claude (your organisation)</b><span>{s.configured && s.provider === 'anthropic' ? `Own Anthropic account · key …${s.keyHint ?? ''}` : 'Own Anthropic account · data stays under your contract'}</span>
-        </button>
-        <button type="button" role="radio" aria-checked={!claude} disabled={busy} className={`aic-model ${!claude ? 'on' : ''}`} onClick={() => void pickGemini()}>
-          <b>Google Gemini</b><span>Included credits{claude && s.fallbackToPlatform ? ' · used only when Claude cannot answer' : ''}</span>
-        </button>
+    <section className="aic-card aic-wide" data-setting="ai.usage" aria-labelledby="aic-usage-h">
+      <h3 id="aic-usage-h">Usage this month</h3>
+      <p className="aic-sub">Counts only, never what anyone asked. Answers on your own key are billed by the provider; credits apply to Project Tracker&rsquo;s AI.</p>
+      <div className="aic-usage-top">
+        <div><span>Requests</span><b>{answers === undefined ? '—' : answers.toLocaleString()}</b></div>
+        <div><span>Credits used</span><b>{used === undefined ? '—' : used.toLocaleString()}</b></div>
+        <div><span>Limit</span><b>{unlimited ? 'Unlimited' : limit === undefined ? '—' : limit.toLocaleString()}</b></div>
       </div>
-      {s.lastError && <p className="aic-warn" role="alert"><Icon name="alert" size={14} /> {s.lastError}</p>}
-      {/* The organisation's key: add, check, change models or remove it (also how to switch between Claude and ChatGPT). */}
-      <div className="aic-key" ref={keyCard}><AiOwnKeyCard /></div>
+      {!unlimited && used !== undefined && limit ? <span className="ds-meter aic-usage-meter"><i style={{ width: `${Math.min(100, (used / Math.max(1, limit)) * 100)}%` }} /></span> : null}
+      {rows.length === 0 ? <p className="muted aic-usage-empty">No AI use yet this month.</p> : (
+        <ul className="aic-bars" aria-label="Usage by feature">
+          {rows.map((r) => (
+            <li key={r.name}><span className="aic-bar-name">{r.name}</span>
+              <span className="aic-bar"><i style={{ width: `${Math.max(3, ((r.credits || r.answers) / max) * 100)}%` }} /></span>
+              <span className="aic-bar-val">{r.answers.toLocaleString()} req · {r.credits.toLocaleString()} cr</span></li>
+          ))}
+        </ul>
+      )}
+      <Link className="aic-link" to="/settings/ai/usage">By person and budgets ›</Link>
+    </section>
+  );
+}
+
+/** Privacy: what leaves Project Tracker when someone asks, and what is kept. */
+function PrivacyCard() {
+  return (
+    <section className="aic-card" data-setting="ai.privacy">
+      <h3>Privacy</h3>
+      <ul className="aic-privacy">
+        <li><b>What is sent</b><span>The question, and only the records the person asking can already see that are needed to answer it, plus your organisation context.</span></li>
+        <li><b>Where it goes</b><span>To your own Claude or ChatGPT account for people who agreed; otherwise to Project Tracker&rsquo;s AI (Gemini).</span></li>
+        <li><b>Keys</b><span>Stored encrypted on the server; only the last four characters are ever shown.</span></li>
+        <li><b>Kept here</b><span>Conversations stay in the workspace; admins see counts, never questions or answers.</span></li>
+      </ul>
+      <Link className="aic-link" to="/settings/security">Security and data settings ›</Link>
     </section>
   );
 }

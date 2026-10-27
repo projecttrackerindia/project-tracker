@@ -145,13 +145,13 @@ try {
   const kpis = await page.locator('.aic-kpis .ds-kpi').allInnerTexts();
   assert.ok(kpis[0].includes('351') && kpis[0].includes('1,500'), kpis[0]); assert.ok(kpis[1].includes('79%') && kpis[1].includes('34 failed'), kpis[1]); assert.ok(kpis[2].includes('Empty'));
   assert.equal(await page.locator('.aic-agent').count(), 5);
-  await page.locator('.aic-agent', { hasText: 'Ticket triage' }).getByRole('tab', { name: 'Auto' }).click(); await page.waitForTimeout(400);
+  await page.locator('.aic-agent', { hasText: 'Ticket triage' }).getByRole('tab', { name: 'Act and tell me' }).click(); await page.waitForTimeout(400);
   assert.deepEqual(writes.at(-1), { ep: '/api/v1/ai/control/agents/triage', b: { level: 'auto' } });
-  assert.equal(await page.locator('.aic-agent', { hasText: 'Ticket triage' }).locator('[role="tab"][aria-selected="true"]').innerText(), 'Auto');
+  assert.equal(await page.locator('.aic-agent', { hasText: 'Ticket triage' }).locator('[role="tab"][aria-selected="true"]').innerText(), 'Act and tell me');
   await page.getByRole('button', { name: 'Draft it from my projects' }).click(); await page.waitForTimeout(400);
   assert.ok((await page.locator('.aic-teach textarea').inputValue()).includes('RP Razor pay'));
   assert.ok((await page.locator('.aic-mcp code').innerText()).endsWith('/api/v1/mcp'));
-  assert.ok(await page.locator('.aic-model.on', { hasText: 'Google Gemini' }).isVisible(), 'Gemini until a Claude key is added');
+  assert.ok(await page.getByTestId('own-key-status').filter({ hasText: 'Gemini' }).isVisible(), 'Gemini until a Claude key is added');
   await shot(page, 'ai-control-centre-1440.png'); checks.push('ai-control-centre');
 
   // + New: words in, "I understood this as a ticket" with chips, created through the one Work API and opened in the side panel.

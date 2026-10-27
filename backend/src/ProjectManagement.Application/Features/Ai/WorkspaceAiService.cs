@@ -33,7 +33,8 @@ public interface IWorkspaceAiClients
 }
 
 public sealed record AiProviderSettingsDto(bool Configured, string Provider, string ProviderName, string? KeyHint, string QuickModel, string StandardModel, string DeepModel,
-    bool Enabled, bool FallbackToPlatform, DateTime? LastCheckedAt, string? LastError, int PeopleAgreed, int Version);
+    bool Enabled, bool FallbackToPlatform, DateTime? LastCheckedAt, string? LastError, int PeopleAgreed, int Version,
+    string? UpdatedByName = null, DateTime? UpdatedAt = null);
 public sealed record SaveAiProviderRequest(string Provider, string? ApiKey, string? QuickModel, string? StandardModel, string? DeepModel, bool Enabled, bool FallbackToPlatform);
 public sealed record CheckAiKeyRequest(string Provider, string? ApiKey);
 public sealed record AiKeyCheckDto(bool Ok, IReadOnlyList<string> Models, string? Error);
@@ -80,8 +81,11 @@ public class WorkspaceAiService(IAppDbContext db, ICurrentContext ctx, AppClock 
             return new AiProviderSettingsDto(false, "anthropic", NameOf("anthropic"), null, d.Quick, d.Standard, d.Deep, false, true, null, null, 0, 0);
         }
         var agreed = await db.AiProviderConsents.AsNoTracking().CountAsync(c => c.Provider == row.Provider && c.Version == row.Version && c.WithdrawnAt == null, ct);
+        // Who last set it up, and when: shown in Settings › AI so admins can see the key is there and whose it is.
+        var byId = row.UpdatedBy ?? row.CreatedBy;
+        var byName = byId is null ? null : await db.Users.AsNoTracking().Where(u => u.Id == byId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct);
         return new AiProviderSettingsDto(true, row.Provider, NameOf(row.Provider), row.KeyHint, row.QuickModel, row.StandardModel, row.DeepModel, row.Enabled, row.FallbackToPlatform,
-            row.LastCheckedAt, row.LastError, agreed, row.Version);
+            row.LastCheckedAt, row.LastError, agreed, row.Version, byName, row.UpdatedAt ?? row.CreatedAt);
     }
 
     /// <summary>Asks the provider which models the key may use - the proof that the key works. With no key given, the saved one is checked.</summary>

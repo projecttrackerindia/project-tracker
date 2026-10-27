@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
 import { Modal } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
-import { useAuth, useWorkspaceId } from '../../stores/auth';
+import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { aiProviderApi, type AiKeyCheck, type AiProviderId, type AiProviderStatus } from './providerApi';
+import { aiProviderApi, type AiKeyCheck, type AiProviderId, type AiProviderSettings, type AiProviderStatus } from './providerApi';
 import './ownKey.css';
 
 const PROVIDERS: { id: AiProviderId; name: string; where: string; console: string }[] = [
@@ -24,9 +24,28 @@ function suggest(models: string[], provider: AiProviderId) {
   return { quick: find(/^gpt-5(\.\d+)?-mini$/) ?? find(/mini|nano/) ?? standard, standard, deep: find(/^gpt-5(\.\d+)?-pro$/) ?? find(/^o3$/) ?? standard };
 }
 
+const ROUTES = [
+  { k: 'quick', label: 'Quick answers', hint: 'short lookups and small talk', speed: 'Fastest', cost: '$' },
+  { k: 'standard', label: 'Most questions', hint: 'the everyday model', speed: 'Fast', cost: '$$' },
+  { k: 'deep', label: 'Deep analysis', hint: 'plans, risks, long reports', speed: 'Thorough', cost: '$$$' },
+] as const;
+
+/** The state of the saved key in one word, from the last check's error text: connected, a key problem, out of credit, or off. */
+function stateOf(s: { enabled: boolean; lastError: string | null }) {
+  if (s.lastError) {
+    const e = s.lastError.toLowerCase();
+    if (/credit|quota|billing|rate|limit|balance|429/.test(e)) return { tone: 'warn', word: 'Out of credit or rate limited' } as const;
+    if (/invalid|revoked|expired|401|403|unauthori|permission|refused/.test(e)) return { tone: 'bad', word: 'Key not accepted' } as const;
+    return { tone: 'warn', word: 'Last check failed' } as const;
+  }
+  return s.enabled ? { tone: 'ok', word: 'Connected' } as const : { tone: 'off', word: 'Saved, switched off' } as const;
+}
+
 /**
- * Settings › Assistant (owners and admins): answer the assistant on the organization's own Claude or ChatGPT account. The key is checked
- * with the provider (its model list is the proof it works) before it is saved; afterwards only its last four characters are shown.
+ * Settings › AI (owners and admins): answer the assistant on the organization's own Claude or ChatGPT account. The status sits at the top
+ * (provider, key ending, who added it, last check and its latency, any error in the provider's words); below, the provider, the key and
+ * which model answers which kind of question. The key is checked with the provider before it is saved; afterwards only its last four
+ * characters are shown.
  */
 export function AiOwnKeyCard() {
   const wid = useWorkspaceId();
@@ -41,7 +60,9 @@ export function AiOwnKeyCard() {
   const [models, setModels] = useState({ quick: '', standard: '', deep: '' });
   const [enabled, setEnabled] = useState(true);
   const [fallback, setFallback] = useState(true);
-  const [busy, setBusy] = useState<'check' | 'save' | 'remove' | null>(null);
+  const [busy, setBusy] = useState<'check' | 'test' | 'save' | 'remove' | null>(null);
+  const [latency, setLatency] = useState<number | null>(null);
+  const keyBox = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!s) return;
@@ -59,6 +80,11 @@ export function AiOwnKeyCard() {
   if (!admin || !s) return null;
   const info = PROVIDERS.find((p) => p.id === provider)!;
   const needsKey = !s.configured || switching;
+  /** Re-read the saved state from the server (and everything that depends on it) - the answer of a save is put in place straight away. */
+  const refresh = async (fresh?: AiProviderSettings) => {
+    if (fresh && typeof fresh === 'object' && 'configured' in fresh) queryClient.setQueryData([wid, 'ai', 'provider'], fresh);
+    await invalidateWorkspace(wid, 'ai');
+  };
 
   const runCheck = async () => {
     setBusy('check');
@@ -79,12 +105,25 @@ export function AiOwnKeyCard() {
     finally { setBusy(null); }
   };
 
+  /** "Test now": checks the saved key with the provider; the server records the time and any error. */
+  const testNow = async () => {
+    setBusy('test');
+    const t0 = performance.now();
+    try {
+      const r = await aiProviderApi.check(s.provider, null);
+      setLatency(Math.round(performance.now() - t0));
+      toast(r.ok ? `${s.providerName} answered: the key works.` : r.error ?? 'The key did not work.', r.ok ? undefined : 'error');
+      await refresh();
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not test the key.', 'error'); }
+    finally { setBusy(null); }
+  };
+
   const save = async () => {
     setBusy('save');
     try {
-      await aiProviderApi.save({ provider, apiKey: key.trim() || null, quickModel: models.quick, standardModel: models.standard, deepModel: models.deep, enabled, fallbackToPlatform: fallback });
+      const fresh = await aiProviderApi.save({ provider, apiKey: key.trim() || null, quickModel: models.quick, standardModel: models.standard, deepModel: models.deep, enabled, fallbackToPlatform: fallback });
       setKey(''); setCheck(null);
-      void invalidateWorkspace(wid, 'ai');
+      await refresh(fresh);
       toast(needsKey || key ? 'Saved. Each person is asked once before their questions go to ' + info.where + '.' : 'Saved.');
     } catch (e) { toast(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not save it.', 'error'); }
     finally { setBusy(null); }
@@ -93,71 +132,112 @@ export function AiOwnKeyCard() {
   const remove = async () => {
     if (!(await confirmDialog({ title: 'Remove your own AI key?', message: 'Everyone goes back to Project Tracker\'s AI, which uses the workspace\'s AI credits. The key is deleted here; revoke it with the provider too if you no longer need it.', confirmText: 'Remove key', danger: true }))) return;
     setBusy('remove');
-    try { await aiProviderApi.remove(); void invalidateWorkspace(wid, 'ai'); toast('Removed. The assistant uses Project Tracker\'s AI again.'); }
+    try { await aiProviderApi.remove(); queryClient.removeQueries({ queryKey: [wid, 'ai', 'provider'] }); await refresh(); toast('Removed. The assistant uses Project Tracker\'s AI again.'); }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Could not remove it.', 'error'); }
     finally { setBusy(null); }
   };
 
+  const replace = () => { keyBox.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); keyBox.current?.focus(); };
+  const st = s.configured ? stateOf(s) : null;
   const ready = !!models.quick && !!models.standard && !!models.deep && (!needsKey || (!!key.trim() && !!check?.ok)) && (!key.trim() || !!check?.ok);
   return (
-    <div className="card own-key" style={{ marginTop: 18 }} data-testid="own-ai-key"><div className="card-body">
-      <div className="setting-info" style={{ marginBottom: 12 }}>
-        <h4><Icon name="key" size={14} /> Use your own Claude or ChatGPT</h4>
-        <p>Answer the assistant on your organization's own AI account. Usage is billed by the provider to you and uses no AI credits here. Each person agrees once before their questions go to it, and can withdraw. Scheduled work (digests, the project agent) keeps using Project Tracker's AI.</p>
-      </div>
-
-      {s.configured && (
-        <div className={`own-key-state ${s.enabled ? 'on' : ''}`}>
-          <b>{s.enabled ? 'On' : 'Off'}</b> · {s.providerName} · key ending <code>{s.keyHint}</code> · {s.peopleAgreed} {s.peopleAgreed === 1 ? 'person has' : 'people have'} agreed
-          {s.lastCheckedAt && <> · checked {formatDateTime(s.lastCheckedAt)}</>}
-          {s.lastError && <div className="own-key-error" role="alert"><Icon name="alert" size={13} /> Last problem: {s.lastError}</div>}
-        </div>
-      )}
-
-      <div className="own-key-providers" role="radiogroup" aria-label="Provider">
-        {PROVIDERS.map((p) => (
-          <label key={p.id} className={`own-key-provider ${provider === p.id ? 'on' : ''}`}>
-            <input type="radio" name="own-key-provider" checked={provider === p.id} onChange={() => { setProvider(p.id); setCheck(null); }} />
-            <span><b>{p.name}</b><small>Key from {p.console}</small></span>
-          </label>
-        ))}
-      </div>
-
-      <div className="field">
-        <label htmlFor="own-key-input">{needsKey ? 'API key' : `New API key (leave empty to keep the key ending ${s.keyHint})`}</label>
-        <div className="row" style={{ gap: 8 }}>
-          <input id="own-key-input" className="input" type="password" autoComplete="new-password" name="own-ai-api-key" data-1p-ignore="true" data-lpignore="true" data-form-type="other" spellCheck={false} value={key} placeholder={provider === 'anthropic' ? 'sk-ant-…' : 'sk-…'}
-            onChange={(e) => { setKey(e.target.value); setCheck(null); }} />
-          <button type="button" className="btn" disabled={busy !== null || (needsKey && !key.trim())} onClick={() => void runCheck()} data-testid="own-key-check">
-            {busy === 'check' ? 'Checking…' : 'Check key'}
-          </button>
-        </div>
-        {check && !check.ok && <p className="own-key-error" role="alert"><Icon name="alert" size={13} /> {check.error}</p>}
-        {check?.ok && <p className="own-key-ok"><Icon name="checkCircle" size={13} /> Accepted. {check.models.length} models available to this key.</p>}
-      </div>
-
-      {list.length > 0 && (
-        <div className="own-key-models">
-          {([['quick', 'Quick answers', 'short lookups and small talk'], ['standard', 'Most questions', 'the everyday model'], ['deep', 'Deep analysis', 'plans, risks, long reports']] as const).map(([k, label, hint]) => (
-            <div className="field" key={k}>
-              <label htmlFor={`own-key-${k}`}>{label} <small className="muted">· {hint}</small></label>
-              <select id={`own-key-${k}`} className="input" value={models[k]} onChange={(e) => setModels((m) => ({ ...m, [k]: e.target.value }))}>
-                {!models[k] && <option value="">Choose a model</option>}
-                {list.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
+    <div className="own-key" data-testid="own-ai-key">
+      {/* 1. Status: what answers the assistant right now. */}
+      {s.configured && st ? (
+        <div className={`own-key-state on tone-${st.tone}`} data-testid="own-key-status">
+          <span className={`own-key-logo ${s.provider}`} aria-hidden="true">{s.provider === 'anthropic' ? 'A' : 'O'}</span>
+          <div className="own-key-state-main">
+            <div className="own-key-state-title"><b>{s.providerName}</b><span className={`own-key-pill ${st.tone}`}><i />{st.word}</span></div>
+            <div className="own-key-state-meta">
+              <span>key ending <code>{s.keyHint}</code></span>
+              {s.updatedByName && <span>added by {s.updatedByName}{s.updatedAt ? ` · ${formatDateTime(s.updatedAt)}` : ''}</span>}
+              {s.lastCheckedAt && <span>{s.lastError ? 'checked' : 'last good check'} {formatDateTime(s.lastCheckedAt)}{latency !== null ? ` · ${latency} ms` : ''}</span>}
+              <span>{s.peopleAgreed} {s.peopleAgreed === 1 ? 'person has' : 'people have'} agreed</span>
             </div>
-          ))}
+            {s.lastError && <div className="own-key-error" role="alert"><Icon name="alert" size={13} /> {s.lastError}</div>}
+            {!s.enabled && <p className="own-key-note">The key is saved but switched off: everyone is answered by Project Tracker&rsquo;s AI (Gemini, AI credits).</p>}
+            {s.enabled && s.lastError && <p className="own-key-note">{s.fallbackToPlatform ? 'Until it works again, questions are answered by Project Tracker’s AI (Gemini) and use AI credits.' : 'Until it works again, people see this error instead of an answer.'}</p>}
+          </div>
+          <div className="own-key-state-actions">
+            <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void testNow()} data-testid="own-key-test">{busy === 'test' ? 'Testing…' : 'Test now'}</button>
+            <button type="button" className="btn btn-sm" onClick={replace}>Replace key</button>
+            <button type="button" className="btn btn-sm btn-ghost danger" disabled={busy !== null} onClick={() => void remove()}>Remove key</button>
+          </div>
+        </div>
+      ) : (
+        <div className="own-key-state tone-off" data-testid="own-key-status">
+          <span className="own-key-logo gemini" aria-hidden="true">G</span>
+          <div className="own-key-state-main">
+            <div className="own-key-state-title"><b>Project Tracker&rsquo;s AI (Gemini)</b><span className="own-key-pill off"><i />No own key</span></div>
+            <div className="own-key-state-meta"><span>Answers use the workspace&rsquo;s AI credits. Add a Claude or ChatGPT key below to answer on your own account.</span></div>
+          </div>
         </div>
       )}
 
-      <label className="own-key-toggle"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> <span><b>On for everyone who agrees</b><small>Turn it off to go back to Project Tracker's AI without removing the key.</small></span></label>
-      <label className="own-key-toggle"><input type="checkbox" checked={fallback} onChange={(e) => setFallback(e.target.checked)} /> <span><b>If the key cannot answer, use Project Tracker's AI</b><small>For example when the account is out of credit. Those answers use AI credits. Off: people see what went wrong instead.</small></span></label>
+      <div className="own-key-group">
+        <div className="setting-info own-key-intro">
+          <h4><Icon name="key" size={14} /> Use your own Claude or ChatGPT</h4>
+          <p>Answer the assistant on your organization's own AI account. Usage is billed by the provider to you and uses no AI credits here. Each person agrees once before their questions go to it, and can withdraw. Scheduled work (digests, the project agent) keeps using Project Tracker's AI.</p>
+        </div>
 
-      <div className="row" style={{ justifyContent: 'space-between', marginTop: 14, gap: 8, flexWrap: 'wrap' }}>
-        {s.configured ? <button type="button" className="btn btn-ghost danger" disabled={busy !== null} onClick={() => void remove()}><Icon name="trash" size={14} /> Remove key</button> : <span />}
-        <button type="button" className="btn btn-primary" disabled={busy !== null || !ready} onClick={() => void save()} data-testid="own-key-save">{busy === 'save' ? 'Saving…' : 'Save'}</button>
+        {/* 2. Provider: two large cards, each saying whether it is connected. */}
+        <div className="own-key-providers" role="radiogroup" aria-label="Provider">
+          {PROVIDERS.map((p) => {
+            const connected = s.configured && s.provider === p.id;
+            return (
+              <label key={p.id} className={`own-key-provider ${provider === p.id ? 'on' : ''}`}>
+                <input type="radio" name="own-key-provider" checked={provider === p.id} onChange={() => { setProvider(p.id); setCheck(null); }} />
+                <span className={`own-key-logo ${p.id}`} aria-hidden="true">{p.id === 'anthropic' ? 'A' : 'O'}</span>
+                <span className="own-key-provider-text"><b>{p.name}</b><small>Key from {p.console}</small>
+                  <em className={connected ? 'yes' : ''}>{connected ? `Connected · •••• ${s.keyHint ?? ''}` : 'Not connected'}</em></span>
+              </label>
+            );
+          })}
+        </div>
+        <div className="own-key-fallback-card"><span className="own-key-logo gemini" aria-hidden="true">G</span>
+          <span><b>Gemini (included)</b><small>{!s.configured || !s.enabled ? 'Answering now · uses AI credits' : fallback ? 'Fallback when your key cannot answer' : 'Not used: fallback is off'}</small></span></div>
+
+        <div className="field">
+          <label htmlFor="own-key-input">{needsKey ? 'API key' : `New API key (leave empty to keep the key ending ${s.keyHint})`}</label>
+          <div className="row" style={{ gap: 8 }}>
+            <input ref={keyBox} id="own-key-input" className="input" type="password" autoComplete="new-password" name="own-ai-api-key" data-1p-ignore="true" data-lpignore="true" data-form-type="other" spellCheck={false} value={key} placeholder={provider === 'anthropic' ? 'sk-ant-…' : 'sk-…'}
+              onChange={(e) => { setKey(e.target.value); setCheck(null); }} />
+            <button type="button" className="btn" disabled={busy !== null || (needsKey && !key.trim())} onClick={() => void runCheck()} data-testid="own-key-check">
+              {busy === 'check' ? 'Checking…' : 'Check key'}
+            </button>
+          </div>
+          {check && !check.ok && <p className="own-key-error" role="alert"><Icon name="alert" size={13} /> {check.error}</p>}
+          {check?.ok && <p className="own-key-ok"><Icon name="checkCircle" size={13} /> Accepted. {check.models.length} models available to this key.</p>}
+        </div>
       </div>
-    </div></div>
+
+      {/* 3. Model routing: which model answers which kind of question. */}
+      {list.length > 0 && (
+        <div className="own-key-group">
+          <h5 className="own-key-label">Model routing</h5>
+          <div className="own-key-routes" role="table" aria-label="Model routing">
+            {ROUTES.map((r) => (
+              <div className="own-key-route" role="row" key={r.k}>
+                <div role="cell" className="own-key-route-what"><label htmlFor={`own-key-${r.k}`}><b>{r.label}</b></label><small>{r.hint}</small></div>
+                <div role="cell" className="own-key-route-pills"><span className="own-key-chip">{r.speed}</span><span className="own-key-chip cost" title="Relative cost">{r.cost}</span></div>
+                <div role="cell"><select id={`own-key-${r.k}`} className="input" value={models[r.k]} onChange={(e) => setModels((m) => ({ ...m, [r.k]: e.target.value }))}>
+                  {!models[r.k] && <option value="">Choose a model</option>}
+                  {list.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="own-key-group">
+        <label className="own-key-toggle"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> <span><b>On for everyone who agrees</b><small>Turn it off to go back to Project Tracker's AI without removing the key.</small></span></label>
+        <label className="own-key-toggle"><input type="checkbox" checked={fallback} onChange={(e) => setFallback(e.target.checked)} /> <span><b>If the key cannot answer, use Project Tracker's AI</b><small>For example when the account is out of credit. Those answers use AI credits. Off: people see what went wrong instead.</small></span></label>
+        <div className="row own-key-foot">
+          <button type="button" className="btn btn-primary" disabled={busy !== null || !ready} onClick={() => void save()} data-testid="own-key-save">{busy === 'save' ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
