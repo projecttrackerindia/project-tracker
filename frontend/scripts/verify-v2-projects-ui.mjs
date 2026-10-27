@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
-// Projects (v2). /work/projects: the Projects · Portfolio switch, status counts that are also the filter, simple cards (name, status,
+// Projects (Apple design: passes, Passes · List, one Filter, the violet duplicate line with Merge…; the project page's Journey and
+// Overview cards). Before: (v2). /work/projects: the Projects · Portfolio switch, status counts that are also the filter, simple cards (name, status,
 // group · owner, one bar, % · due, no chat button), filters only past 10 projects, the likely-duplicate card ("Darwin box Api" / "Darwin Box
 // api": Close one, Not a duplicate). Portfolio: the AI summary and a decision card, old date → new date, whose Accept moves the date and shows
 // "✓ team told". One project: Overview · Work · Docs · Time · Activity, "+ Add work" (+ New in this project) and ··· (Meet, Chat, Settings,
@@ -141,99 +142,82 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${origin}/preview-org/work/projects`);
-  await page.locator('.pj2-card').first().waitFor();
-  const sw = page.getByRole('tablist', { name: 'Projects or portfolio' });
-  assert.deepEqual(await sw.getByRole('tab').allInnerTexts(), ['Projects', 'Portfolio']);
-  assert.equal(await sw.getByRole('tab', { name: 'Projects' }).getAttribute('aria-selected'), 'true');
-  assert.ok(await page.locator('.pj2-back', { hasText: 'Work' }).isVisible(), '‹ Work above the title');
-  checks.push('switch');
+  await page.locator('.pa-pass').first().waitFor();
+  // Apple design: the count eyebrow over the large title; no Projects · Portfolio switch here (Portfolio is in the sidebar).
+  assert.equal(await page.getByTestId('projects-count').innerText(), '9 active · 6 need attention');
+  assert.equal(await page.locator('.pa-title').innerText(), 'Projects');
+  assert.equal(await page.getByRole('tablist', { name: 'Projects or portfolio' }).count(), 0);
+  const showAs = page.getByRole('tablist', { name: 'Show as' });
+  assert.deepEqual(await showAs.getByRole('tab').allInnerTexts(), ['Passes', 'List']);
+  checks.push('head');
 
-  // Status counts, which are the filter.
-  const stats = page.getByRole('group', { name: 'Status' });
-  assert.deepEqual(await stats.locator('.pj2-stat').evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim())), ['12 All', '3 On track', '3 At risk', '3 Delayed', '3 Completed']);
-  assert.equal(await stats.locator('.pj2-stat.on').innerText().then((t) => t.replace(/\s+/g, ' ')), '12 All');
-  assert.equal(await page.locator('.pj2-card').count(), 12);
-  await stats.locator('.pj2-stat', { hasText: 'At risk' }).click();
-  await page.waitForFunction(() => document.querySelectorAll('.pj2-card').length === 3);
-  assert.deepEqual((await page.locator('.pj2-card .pj2-pill').allInnerTexts()).sort(), ['At risk', 'At risk', 'At risk']);
-  assert.ok(at(page).includes('status=AtRisk'), 'the filter is in the address');
-  await stats.locator('.pj2-stat', { hasText: 'Completed' }).click();
-  await page.waitForFunction(() => location.search.includes('status=Completed') && [...document.querySelectorAll('.pj2-card .pj2-pill')].every((p) => !/At risk/.test(p.textContent ?? '')) && document.querySelectorAll('.pj2-card').length === 3);
-  assert.deepEqual((await page.locator('.pj2-card .pj2-name').allInnerTexts()).sort(), ['Darwin Box api', 'Insurance', 'Razor pay']);
-  await stats.locator('.pj2-stat', { hasText: 'All' }).click();
-  await page.waitForFunction(() => document.querySelectorAll('.pj2-card').length === 12);
-  checks.push('status-filters');
+  // Passes: key, owner, ring %, due + one line, stage dots, one state pill. No chat button.
+  assert.equal(await page.locator('.pa-pass').count(), 12);
+  const card = page.locator('.pa-pass[data-project="s-internal-api"]');
+  assert.equal(await card.locator('.pa-name').innerText(), 's-internal-api');
+  assert.equal(await card.locator('.pa-key').innerText(), 'SIA');
+  assert.equal(await card.locator('.pa-state').innerText(), 'At risk');
+  assert.equal(await card.locator('.pa-own').innerText(), 'Prasanna');
+  assert.equal(await card.locator('.pa-arc b').innerText(), '33%');
+  assert.match(await card.locator('.pa-lbl').innerText(), /^due \d{1,2} [A-Z][a-z]{2}$/i);
+  assert.equal(await page.locator('.pa-pass[data-project="SBI bulk payments"] .pa-state').innerText(), 'Late');
+  assert.equal(await page.locator('.pa-pass[data-project="Insurance"] .pa-state').innerText(), 'Done');
+  assert.equal(await page.locator('.pa-pass .pchat-btn, .pa-pass [aria-label*="chat" i]').count(), 0, 'no chat button on the passes');
+  checks.push('passes');
 
-  // A simple card: name and status, group · owner, one bar, % · due. No chat button on a card.
-  const card = page.locator('.pj2-card[data-project="s-internal-api"]');
-  assert.equal(await card.locator('.pj2-name').innerText(), 's-internal-api');
-  assert.equal(await card.locator('.pj2-pill').innerText(), 'At risk');
-  assert.equal(await card.locator('.pj2-sub').innerText(), 'Mule Soft · Prasanna');
-  assert.equal(await card.locator('.pj2-bar').count(), 1);
-  assert.match(await card.locator('.pj2-foot').innerText(), /^33% · due \d{1,2} [A-Z][a-z]{2}$/);
-  assert.equal(await page.locator('.pj2-card .pchat-btn, .pj2-card [aria-label*="chat" i]').count(), 0, 'no chat button on the cards');
-  checks.push('cards');
-
-  // Past 10 projects the filters show: search narrows the cards.
-  // v2: search is always there; the one Filter chip appears past 10 projects.
+  // One Filter button (status lives in it) and search.
   const filters = page.getByRole('group', { name: 'Search and filter' });
-  assert.ok(await filters.locator('.pj2-filter-chip').isVisible(), 'Filter chip with 12 projects');
+  await filters.locator('.pj2-filter-chip').click();
+  await page.getByRole('dialog', { name: 'Filter projects' }).locator('label', { hasText: 'Status' }).locator('select').selectOption('AtRisk');
+  await page.waitForFunction(() => document.querySelectorAll('.pa-pass').length === 3);
+  assert.ok(at(page).includes('status=AtRisk'), 'the filter is in the address');
+  await page.getByRole('dialog', { name: 'Filter projects' }).getByRole('button', { name: 'Clear filters' }).click();
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelectorAll('.pa-pass').length === 12);
   await filters.getByLabel('Search projects').fill('darwin');
-  await page.waitForFunction(() => document.querySelectorAll('.pj2-card').length === 2);
+  await page.waitForFunction(() => document.querySelectorAll('.pa-pass').length === 2);
   await filters.getByLabel('Search projects').fill('');
-  await page.waitForFunction(() => document.querySelectorAll('.pj2-card').length === 12);
-  checks.push('filters-past-10');
+  await page.waitForFunction(() => document.querySelectorAll('.pa-pass').length === 12);
+  checks.push('filter-and-search');
 
-  // The likely duplicate: "Darwin box Api" and "Darwin Box api".
-  const dupe = page.locator('.pj2-dupe');
+  // The likely duplicate as one violet line with Merge….
+  const dupe = page.getByTestId('duplicate-line');
   assert.equal(await dupe.count(), 1);
-  assert.match(await dupe.innerText(), /Likely duplicate: “Darwin box Api” and “Darwin Box api”/);
-  assert.match(await dupe.innerText(), /Merge or close/);
-  assert.equal(await dupe.locator('.v2-spark').count(), 1, 'an AI card (✦, violet)');
+  assert.match(await dupe.innerText(), /Darwin box Api and Darwin Box api look like the same project/);
   await shot(page, 'projects-1440-light.png', true);
-  await dupe.getByRole('button', { name: 'Close one' }).click();
+  await dupe.getByRole('button', { name: 'Merge…' }).click();
   await dupe.getByRole('button', { name: /Close “Darwin box Api”/ }).click();
   await page.locator('.modal').getByRole('button', { name: 'Close it' }).click();
   const closed = await waitWrite((w) => w.ep === `/api/v1/projects/${pid(6)}/move`);
   assert.equal(closed.body.status, 'Archived');
-  await page.waitForFunction(() => document.querySelectorAll('.pj2-card').length === 11);
-  assert.equal(await page.locator('.pj2-dupe').count(), 0, 'closing one clears the flag');
+  await page.waitForFunction(() => document.querySelectorAll('.pa-pass').length === 11);
+  assert.equal(await page.getByTestId('duplicate-line').count(), 0, 'closing one clears the flag');
   checks.push('duplicate-close-one');
-  // "Not a duplicate" is remembered for the workspace.
   projects = all.map((x) => ({ ...x, status: x.health === 'Completed' ? 'Completed' : 'Active' }));
-  await page.reload(); await page.locator('.pj2-dupe').waitFor();
-  await page.locator('.pj2-dupe').getByRole('button', { name: 'Not a duplicate' }).click();
-  await page.locator('.pj2-dupe').waitFor({ state: 'detached' });
-  await page.reload(); await page.locator('.pj2-card').first().waitFor(); await page.waitForTimeout(300);
-  assert.equal(await page.locator('.pj2-dupe').count(), 0, 'not flagged again after a reload');
+  await page.reload(); await page.getByTestId('duplicate-line').waitFor();
+  await page.getByTestId('duplicate-line').getByRole('button', { name: 'Merge…' }).click();
+  await page.getByTestId('duplicate-line').getByRole('button', { name: 'Not a duplicate' }).click();
+  await page.getByTestId('duplicate-line').waitFor({ state: 'detached' });
+  await page.reload(); await page.locator('.pa-pass').first().waitFor(); await page.waitForTimeout(300);
+  assert.equal(await page.getByTestId('duplicate-line').count(), 0, 'not flagged again after a reload');
   checks.push('duplicate-not-a-duplicate');
 
-  // The list view is still there (···), and New project.
-  await page.getByRole('button', { name: 'More on Projects' }).click();
-  const menu = page.getByRole('menu', { name: 'More on Projects' });
-  assert.deepEqual(await menu.getByRole('menuitem').locator('b').allInnerTexts(), ['New project', 'Show as cards', 'Show as a list', 'Show as a board']);
-  await menu.getByRole('menuitem', { name: /Show as a list/ }).click();
+  // List: the existing table.
+  await page.getByRole('tablist', { name: 'Show as' }).getByRole('tab', { name: 'List' }).click();
   await page.locator('.pj2-list tbody tr').first().waitFor();
   assert.equal(await page.locator('.pj2-list tbody tr').count(), 12);
-  await page.getByRole('button', { name: 'More on Projects' }).click();
-  await page.getByRole('menu', { name: 'More on Projects' }).getByRole('menuitem', { name: /Show as cards/ }).click();
-  await page.locator('.pj2-card').first().waitFor();
-  await page.getByRole('button', { name: 'More on Projects' }).click();
-  await page.getByRole('menu', { name: 'More on Projects' }).getByRole('menuitem', { name: /New project/ }).click();
-  await page.getByRole('dialog').waitFor(); await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({ state: 'detached' });
-  checks.push('list-view-and-new-project');
+  await page.getByRole('tablist', { name: 'Show as' }).getByRole('tab', { name: 'Passes' }).click();
+  await page.locator('.pa-pass').first().waitFor();
+  checks.push('list-view');
 
-  // Ten or fewer projects: no filters.
-  projects = few;
-  await page.reload(); await page.locator('.pj2-card').first().waitFor();
-  assert.equal(await page.getByRole('group', { name: 'Filters' }).count(), 0, 'no filters with 6 projects');
-  assert.equal(await page.locator('.pj2-dupe').count(), 0);
-  projects = all.map((x) => ({ ...x }));
-  checks.push('no-filters-under-10');
+  // Opening a pass goes to the project (shared-element motion).
+  await page.locator('.pa-pass[data-project="Razor pay"]').click();
+  await page.locator('.pp-head h1').waitFor();
+  assert.ok(at(page).startsWith(`/work/projects/${rp.id}`));
+  checks.push('open-pass');
 
   // ---------------------------------------------------------------- Portfolio
-  await page.goto(`${origin}/preview-org/work/projects`); await page.locator('.pj2-card').first().waitFor();
-  await page.getByRole('tablist', { name: 'Projects or portfolio' }).getByRole('tab', { name: 'Portfolio' }).click();
+  await page.goto(`${origin}/preview-org/work/projects?view=portfolio`);
   await waitUrl(page, (u) => u === '/work/projects?view=portfolio', 'the switch keeps the view in the address');
   const summary = page.getByRole('region', { name: 'Summary' });
   await summary.waitFor();
@@ -272,23 +256,26 @@ try {
   await page.goto(`${origin}/preview-org/work/projects/${rp.id}`);
   await page.locator('.pp-head h1').waitFor();
   assert.equal(await page.locator('.pp-head h1').innerText(), 'Razor pay');
-  assert.ok(await page.locator('.pp-head .pj2-back', { hasText: 'Projects' }).isVisible());
-  assert.match(await page.locator('.pp-meta').innerText(), /RP · Mule Soft[\s\S]*Completed[\s\S]*Prasanna · 4 people/);
+  assert.equal(await page.locator('.pp-keytile').innerText(), 'RP');
+  assert.match(await page.locator('.pp-eyebrow').innerText(), /^Mule Soft · Was due \d{1,2} [A-Z][a-z]{2}$/);
+  assert.equal(await page.locator('.pp-honest').innerText(), 'Done');
+  assert.ok(await page.locator('.pp-head').getByRole('button', { name: 'Share' }).isVisible());
   const tabs = page.getByRole('tablist', { name: 'Project' });
   assert.deepEqual(await tabs.getByRole('tab').allInnerTexts(), ['Overview', 'Work', 'Docs', 'Time', 'Activity']);
   assert.equal(await tabs.getByRole('tab', { name: 'Overview' }).getAttribute('aria-selected'), 'true');
   // The six old header buttons are gone; their jobs are under ···.
   for (const old of ['Meet', 'Chat', 'Settings', 'Schedule studio', 'Delay risk', 'Add task']) assert.equal(await page.locator('.pp-head').getByRole('button', { name: old, exact: true }).count(), 0, `no ${old} button in the head`);
   checks.push('project-head');
-  // Overview: the AI summary, the completion ring, the stage chips and the key numbers.
-  const ov = page.getByRole('region', { name: 'Summary' });
-  assert.equal(await ov.locator('.v2-ai-card').count(), 1);
-  assert.match(await ov.innerText(), /Razorpay integration is live in production[\s\S]*All 8 tasks done/);
-  assert.deepEqual(await ov.locator('.pp-chips .ds-pill').allInnerTexts(), ['API doc · published', 'BRD · approved']);
-  assert.equal(await page.locator('.pp-ring .ds-ring').getAttribute('aria-label'), '100% of the tasks done');
-  assert.match(await page.locator('.pp-ring').innerText(), /100%[\s\S]*8 of 8 tasks[\s\S]*Completed/);
-  assert.deepEqual(await page.locator('.pp-stage').allInnerTexts(), ['✓ Created', '✓ Requirements', '✓ Development', '✓ Code review', '✓ Testing', '✓ UAT', '✓ Production', '✓ Completed']);
-  assert.deepEqual(await page.locator('.pp-kpis .ds-kpi .l').allInnerTexts(), ['Open work', 'Overdue', 'Open issues', 'People']);
+  // The Journey (every stage signed off), the AI line, and Overview: Key numbers, People, What's next, Risks, Docs.
+  const journey = page.getByRole('region', { name: 'Journey' });
+  assert.equal(await journey.locator('.pp-nd.s').count(), 8);
+  assert.deepEqual(await journey.locator('.pp-nd b').allInnerTexts(), ['Created', 'Requirements', 'Development', 'Code review', 'Testing', 'UAT', 'Production', 'Completed']);
+  assert.match(await journey.innerText(), /Every stage is signed off/);
+  assert.match(await page.locator('.pp-ai').innerText(), /All 8 tasks done/);
+  assert.match(await page.getByRole('region', { name: 'Key numbers' }).innerText(), /8 \/ 8[\s\S]*Work items done[\s\S]*Sign-offs pending/);
+  assert.match(await page.getByRole('region', { name: 'People' }).innerText(), /Prasanna[\s\S]*Owner[\s\S]*Siva Reddy/);
+  const docsBox = page.getByRole('region', { name: 'Docs' }); await docsBox.locator('.pp-docrow').first().waitFor();
+  assert.deepEqual(await docsBox.locator('.pp-tx span').allInnerTexts(), ['API doc · published', 'BRD · approved']);
   await shot(page, 'project-overview-1440-light.png', true);
   checks.push('tab-overview');
 
@@ -296,7 +283,7 @@ try {
   await page.getByRole('button', { name: 'More on this project' }).click();
   const more = page.getByRole('menu', { name: 'More on this project' });
   const items = await more.getByRole('menuitem').locator('b').allInnerTexts();
-  assert.deepEqual(items.slice(0, 4), ['Meet', 'Chat', 'Settings', 'Delay risk'], items.join(', '));
+  assert.deepEqual(items.slice(0, 5), ['Add work', 'Meet', 'Chat', 'Settings', 'Delay risk'], items.join(', '));
   for (const want of ['Edit details', 'Import tasks from CSV', 'Delete project']) assert.ok(items.includes(want), `··· has ${want}`);
   await more.getByRole('menuitem', { name: /^Settings/ }).click();
   await page.getByRole('dialog').waitFor(); assert.ok(at(page).includes('settings=members'));
@@ -312,7 +299,8 @@ try {
   checks.push('dots-menu');
 
   // + Add work: + New, already in this project.
-  await page.getByRole('button', { name: 'Add work' }).click();
+  await page.getByRole('button', { name: 'More on this project' }).click();
+  await page.getByRole('menu', { name: 'More on this project' }).getByRole('menuitem', { name: /^Add work/ }).click();
   await page.locator('.v2-new-sheet').waitFor();
   assert.equal(await page.locator('.v2-new-type.on').innerText(), 'Task');
   assert.ok((await page.locator('.v2-new-chip').allInnerTexts()).some((t) => /Project\s*Razor pay/.test(t)), 'the project chip');
@@ -408,22 +396,22 @@ try {
   projects = all.map((x) => ({ ...x }));
   ctx = await make('dark'); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto(`${origin}/preview-org/work/projects`); await page.locator('.pj2-card').first().waitFor();
+  await page.goto(`${origin}/preview-org/work/projects`); await page.locator('.pa-pass').first().waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark');
-  const bg = await page.locator('.pj2-card').first().evaluate((e) => getComputedStyle(e).backgroundColor);
-  const [r, g, b] = bg.match(/\d+/g).map(Number); assert.ok(r + g + b < 150, `dark cards: ${bg}`);
-  const text = await page.locator('.pj2-card .pj2-name').first().evaluate((e) => getComputedStyle(e).color);
+  const bg = await page.locator('.pa-search').evaluate((e) => getComputedStyle(e).backgroundColor);
+  const [r, g, b] = bg.match(/\d+/g).map(Number); assert.ok(r + g + b < 150, `dark search field: ${bg}`);
+  const text = await page.locator('.pa-title').evaluate((e) => getComputedStyle(e).color);
   assert.ok(text.match(/\d+/g).map(Number).slice(0, 3).reduce((a, c) => a + c) > 600, `light text on dark: ${text}`);
   await shot(page, 'projects-1440-dark.png', true);
   await page.goto(`${origin}/preview-org/work/projects?view=portfolio`); await page.locator('.pf-dec').first().waitFor(); await shot(page, 'portfolio-1440-dark.png', true);
-  await page.goto(`${origin}/preview-org/work/projects/${rp.id}`); await page.locator('.pp-ring').waitFor(); await shot(page, 'project-1440-dark.png', true);
+  await page.goto(`${origin}/preview-org/work/projects/${rp.id}`); await page.locator('.pp-journey').waitFor(); await shot(page, 'project-1440-dark.png', true);
   checks.push('dark-mode');
   await ctx.close();
 
   // ---------------------------------------------------------------- phone, 390
   ctx = await make('light'); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${origin}/preview-org/work/projects`); await page.locator('.pj2-card').first().waitFor(); await page.waitForTimeout(400);
+  await page.goto(`${origin}/preview-org/work/projects`); await page.locator('.pa-pass').first().waitFor(); await page.waitForTimeout(400);
   await fitsPhone(page, 'projects', assert); await shot(page, 'projects-390.png', true);
   await page.goto(`${origin}/preview-org/work/projects?view=portfolio`); await page.locator('.pf-dec').first().waitFor(); await page.waitForTimeout(400);
   await fitsPhone(page, 'portfolio', assert); await shot(page, 'portfolio-390.png', true);
@@ -438,7 +426,7 @@ try {
     });
     assert.equal(covered, false, 'the Ask pill does not cover the head');
   }
-  await page.goto(`${origin}/preview-org/work/projects/${rp.id}`); await page.locator('.pp-ring').waitFor(); await shot(page, 'project-390.png', true);
+  await page.goto(`${origin}/preview-org/work/projects/${rp.id}`); await page.locator('.pp-journey').waitFor(); await shot(page, 'project-390.png', true);
   checks.push('phone-390');
   await ctx.close();
 
