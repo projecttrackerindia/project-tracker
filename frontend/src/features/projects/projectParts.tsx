@@ -104,9 +104,10 @@ export function DuplicateFlags({ projects }: { projects: Project[] }) {
 
 /** The one status a pass, the list and the project page show: At risk · Late · On track · Done. 100% work with stages unsigned reads At risk. */
 export type PassTone = 'ok' | 'risk' | 'late' | 'done';
-export function passStatus(p: Pick<Project, 'health' | 'pendingSignOffs' | 'progress' | 'status'>): { label: string; tone: PassTone } {
+export function passStatus(p: Pick<Project, 'health' | 'pendingSignOffs' | 'progress' | 'status'> & { healthByHand?: boolean }): { label: string; tone: PassTone } {
   const pending = p.pendingSignOffs ?? 0;
-  if ((p.health === 'Completed' || p.progress >= 100) && pending > 0 && p.health !== 'Delayed') return { label: 'At risk', tone: 'risk' };
+  // A status set by hand stands: the sign-off gap only colours a health the arithmetic chose.
+  if (!p.healthByHand && (p.health === 'Completed' || p.progress >= 100) && pending > 0 && p.health !== 'Delayed') return { label: 'At risk', tone: 'risk' };
   switch (p.health) {
     case 'OnTrack': return { label: 'On track', tone: 'ok' };
     case 'AtRisk': return { label: 'At risk', tone: 'risk' };

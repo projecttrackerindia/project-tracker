@@ -114,6 +114,8 @@ export interface Project {
   id: string; key: string; name: string; description: string | null; status: ProjectStatus; priority: Priority;
   owner: UserRef | null; teamId: string | null; teamName: string | null; startDate: string | null; dueDate: string | null;
   progress: number; health: ProjectHealth; stats: ProjectStats;
+  /** The health is a status set by hand (in force), so nothing on the page second-guesses it. */
+  healthByHand?: boolean;
   /** Timeline stages, and how many are not signed off yet (stage status not Completed). */
   stageCount?: number; pendingSignOffs?: number; memberCount: number; version: number; position: number; enforceDependencies: boolean;
   projectGroupId: string | null; projectGroupName: string | null; projectType: ProjectType; deliveryMethod: DeliveryMethod;

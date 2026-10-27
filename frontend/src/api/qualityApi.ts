@@ -13,7 +13,7 @@ export interface TestCase {
 }
 export interface TestRun {
   id: string; name: string; environment: string | null; build: string | null; status: RunStatus; projectId: string | null;
-  createdAt: string; startedAt: string | null; completedAt: string | null;
+  createdAt: string; startedAt: string | null; completedAt: string | null; releaseId?: string | null;
 }
 export interface TestResult {
   id: string; runId: string; caseId: string; status: ResultStatus; actual: string | null; evidence: string | null; runBy: UserRef | null;
@@ -46,6 +46,8 @@ export const qualityApi = {
 export interface Release {
   id: string; name: string; projectId: string | null; projectName: string | null; targetDate: string | null; status: 'Planned' | 'Approved' | 'Shipped'; notes: string | null;
   items: number; runs: number; approvedBy: UserRef | null; approvedAt: string | null; shippedAt: string | null; createdAt: string;
+  /** The Library document with the notes written when it shipped. */
+  notesDocumentId?: string | null; notesDocumentKey?: string | null;
 }
 export interface ReleaseItem { id: string; kind: string; key: string; title: string; status: string; category: 'Todo' | 'Active' | 'Done' | 'Cancelled'; assignee: UserRef | null; dueDate: string | null; bug: boolean }
 export interface ReleaseCheck { key: 'work' | 'bugs' | 'tests' | 'signoffs'; label: string; ok: boolean; detail: string }

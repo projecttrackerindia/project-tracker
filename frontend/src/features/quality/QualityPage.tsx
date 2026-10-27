@@ -1,10 +1,10 @@
 import { ToolbarSeg } from '../../components/v2/ToolbarSeg';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { projectApi, workspaceApi } from '../../api/endpoints';
-import { qualityApi, type CasePriority, type ResultStatus, type TestCase, type TestMatrix, type TestResult, type TestRun } from '../../api/qualityApi';
+import { qualityApi, releaseApi, type CasePriority, type ResultStatus, type TestCase, type TestMatrix, type TestResult, type TestRun } from '../../api/qualityApi';
 import { Field, Modal } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
@@ -20,7 +20,9 @@ const STATUS_LABEL: Record<ResultStatus, string> = { Pass: 'Passed', Fail: 'Fail
 const DOT: Record<ResultStatus, string> = { Pass: 'p', Fail: 'x', Blocked: 'b', NotRun: 's' };
 
 export function QualityPage() {
-  const [tab, setTab] = useState<Tab>('runs');
+  const [params] = useSearchParams();
+  const deepRelease = params.get('release');
+  const [tab, setTab] = useState<Tab>(deepRelease ? 'releases' : 'runs');
   const [selected, setSelected] = useState<string | null>(null);
   const [onlyFailed, setOnlyFailed] = useState(false);
   const [dialog, setDialog] = useState<'case' | 'run' | null>(null);
@@ -82,7 +84,7 @@ export function QualityPage() {
         </div>
       </div>
 
-      {tab === 'releases' ? <Releases /> : matrix.isLoading ? <p className="dq-empty">Loading…</p> : empty ? (
+      {tab === 'releases' ? <Releases initial={deepRelease} /> : matrix.isLoading ? <p className="dq-empty">Loading…</p> : empty ? (
         <div className="dq-card qa-empty">
           <span className="qa-empty-ic" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M9 3h6M10 3v6.5L5.2 18a2 2 0 0 0 1.7 3h10.2a2 2 0 0 0 1.7-3L14 9.5V3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
           <h2 className="dq-h3">No test cases yet</h2>
@@ -187,6 +189,9 @@ function Readiness({ run, r, results, onShow, showing, onNewRun }: { run: TestRu
 /** The selected case: steps, expected against actual, the evidence and File bug. */
 function Detail({ c, run, result, onFiled }: { c: TestCase; run: TestRun | null; result: TestResult | null; onFiled: () => void }) {
   const nav = useNavigate();
+  const releases = useWsQuery(['quality', 'releases'], () => releaseApi.list(), { staleTime: 20_000, enabled: !!run?.releaseId });
+  const release = run?.releaseId ? releases.data?.find((x) => x.id === run.releaseId) ?? null : null;
+  const open = release && release.status !== 'Shipped' ? release : null;
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
   const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 5 * 60_000, enabled: picking });
@@ -198,7 +203,7 @@ function Detail({ c, run, result, onFiled }: { c: TestCase; run: TestRun | null;
     setBusy(true);
     try {
       const r = await qualityApi.fileBug(result.id, { assigneeId: assigneeId ?? null });
-      toast(`Filed ${r.workItem.key}.`);
+      toast(open ? `Filed ${r.workItem.key} into ${open.name}.` : `Filed ${r.workItem.key}.`);
       onFiled();
     } catch (e) { toast(errText(e, 'Could not file the bug.'), 'error'); }
     finally { setBusy(false); setPicking(false); }
@@ -226,7 +231,8 @@ function Detail({ c, run, result, onFiled }: { c: TestCase; run: TestRun | null;
           </select>
         ) : <button type="button" className="dq-btn" disabled={!canFile || busy || !!result?.linkedWorkItemId} onClick={() => setPicking(true)}>Assign to…</button>}
       </div>
-      <div className="dq-faint qa-note">{result?.linkedWorkItemId ? 'A bug is filed for this result.' : `Creates a work item${c.projectName ? ` in ${c.projectName}` : ''}, linked to this run.`}</div>
+      <div className="dq-faint qa-note">{result?.linkedWorkItemId ? 'A bug is filed for this result.' : `Creates a work item${c.projectName ? ` in ${c.projectName}` : ''}, linked to this run${open ? ` and to release ${open.name}, where it blocks the go until fixed` : ''}.`}
+        {open && <> <Link to={`/quality?release=${encodeURIComponent(open.id)}`} className="qa-rel">Open {open.name} ›</Link></>}</div>
     </aside>
   );
 }

@@ -71,7 +71,7 @@ function quality(empty) {
   const runs = [
     { id: g(400), name: 'DEV #212', environment: 'DEV', build: '212', status: 'Done', createdAt: ago(5000), startedAt: ago(5000), completedAt: ago(4900) },
     { id: g(401), name: 'DEV #213', environment: 'DEV', build: '213', status: 'Done', createdAt: ago(3000), startedAt: ago(3000), completedAt: ago(2900) },
-    { id: g(402), name: 'UAT 1.4', environment: 'UAT', build: '214', status: 'Running', createdAt: ago(60), startedAt: ago(40), completedAt: null },
+    { id: g(402), name: 'UAT 1.4', environment: 'UAT', build: '214', status: 'Running', createdAt: ago(60), startedAt: ago(40), completedAt: null, releaseId: g(470) },
     { id: g(403), name: 'PROD-like', environment: 'PROD-like', build: null, status: 'Open', createdAt: ago(30), startedAt: null, completedAt: null },
   ].map((r) => ({ ...r, projectId: pid }));
   const S = { p: 'Pass', x: 'Fail', b: 'Blocked' };
@@ -176,6 +176,7 @@ const make = async (theme, state) => {
     else if (m && !m[2]) data = detailOf(find(m[1]));
     else if (ep === '/api/v1/quality/matrix') data = { runs: q.runs, cases: q.cases.map(caseDto), results: q.results };
     else if (ep === '/api/v1/quality/readiness') data = readiness(q, sp.get('runId'));
+    else if (ep === '/api/v1/releases') data = [{ id: g(470), name: 'v1.4', projectId: pid, projectName: 'SIA Internal API', targetDate: null, status: 'Planned', notes: null, items: 3, runs: 1, approvedBy: null, approvedAt: null, shippedAt: null, createdAt: ago(9000) }];
     else if (ep === '/api/v1/projects') data = { items: [project], page: 1, pageSize: 100, totalItems: 1, totalPages: 1 };
     else if (ep === '/api/v1/work-types') data = [{ id: g(81), name: 'Bug Fix', description: null, isActive: true, order: 0 }];
     else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
@@ -308,7 +309,9 @@ try {
     await det.getByText('POST /sia/v1/loan/dispatch with PAN ABCPK1234F').waitFor();
     await det.getByText('502 · CRIF token expired').waitFor();
     await det.locator('.qa-pre .r', { hasText: '502 Bad Gateway' }).waitFor();
-    await det.getByText('Creates a work item in SIA Internal API, linked to this run.').waitFor();
+    // The run tests release v1.4: the bug goes into that release (and blocks its go), with a link to it.
+    await det.getByText('Creates a work item in SIA Internal API, linked to this run and to release v1.4, where it blocks the go until fixed.').waitFor();
+    assert.match(await det.getByRole('link', { name: 'Open v1.4 ›' }).getAttribute('href'), /\/quality\?release=/);
     await shot(page, `quality-${tag}.png`);
     checks.push('quality-matrix');
 

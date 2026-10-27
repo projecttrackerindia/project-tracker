@@ -21,7 +21,7 @@ const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0
 const plus = (days) => { const d = new Date(); d.setDate(d.getDate() + days); return iso(d); };
 const pid = g(50);
 const rel = { id: g(60), name: 'v2.4', projectId: pid, projectName: 'Loan Origination', targetDate: plus(18), status: 'Planned', notes: null, items: 4, runs: 2, approvedBy: null, approvedAt: null, shippedAt: null, createdAt: '2026-10-01T00:00:00Z' };
-const prev = { ...rel, id: g(61), name: 'v2.3', status: 'Shipped', targetDate: '2026-10-17', shippedAt: '2026-10-17T10:00:00Z' };
+const prev = { ...rel, id: g(61), name: 'v2.3', status: 'Shipped', targetDate: '2026-10-17', shippedAt: '2026-10-17T10:00:00Z', notesDocumentId: g(65), notesDocumentKey: 'DOC-41' };
 const item = (n, key, title, category, bug) => ({ id: g(n), kind: bug ? 'issue' : 'task', key, title, status: category === 'Done' ? 'Done' : 'In Progress', category, assignee: null, dueDate: null, bug });
 function state() {
   return {
@@ -71,6 +71,7 @@ const make = async (theme, st) => {
     else if (ep === '/api/v1/quality/runs') data = st.s.runs;
     else if (ep === '/api/v1/releases') data = [rel, prev];
     else if (ep === `/api/v1/releases/${rel.id}`) data = st.s;
+    else if (ep === `/api/v1/releases/${prev.id}`) data = { ...state(), release: prev, previous: null, canApprove: false, go: true };
     else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
     else if (ep.endsWith('/ai/status')) data = { enabled: false, configured: false, entitled: true, allowedHere: false };
     else if (ep.endsWith('/workspace/logo')) data = { hasLogo: false };
@@ -120,6 +121,13 @@ try {
       await main.getByText(/2 people sign off/).waitFor().catch(() => undefined);
       assert.ok(st.writes.some((x) => x.ep.endsWith('/signoffs/sign')));
       checks.push('remind+sign');
+      // A link to one release (from the Journey or a filed bug) opens it; a shipped one links its release notes in the Library.
+      await page.goto(`${origin}/preview-org/quality?release=${prev.id}`);
+      const notes = page.getByRole('link', { name: 'Release notes · DOC-41' });
+      await notes.waitFor();
+      assert.match(await notes.getAttribute('href'), new RegExp(`/documents/${prev.id.slice(0, 8)}|/documents/${g(65)}`));
+      await shot(page, 'release-shipped-notes-1440.png');
+      checks.push('deep-link+notes');
     }
     checks.push(`${theme}-${w}`);
     await ctx.close();

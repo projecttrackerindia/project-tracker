@@ -156,3 +156,6 @@ button.qa-d:focus-visible { outline: 2px solid #af52de; outline-offset: 3px; }
   .rl-checks li { grid-template-columns: 20px minmax(0, 1fr); } .rl-checks small { grid-column: 2; }
 }
 @media (prefers-reduced-motion: reduce) { .rl-top { animation: none; } }
+.qa-rel { color: var(--ds-accent-text); font-weight: 500; text-decoration: none; white-space: nowrap; }
+.qa-rel:hover { text-decoration: underline; }
+.rl-notes { text-decoration: none; display: inline-flex; align-items: center; }
