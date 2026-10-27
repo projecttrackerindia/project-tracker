@@ -24,4 +24,12 @@ public class ProjectStatusController(ProjectStatusService status, WeeklyReportSe
     /// <summary>Posts the (edited) weekly report in the project chat.</summary>
     [HttpPost("projects/{id:guid}/weekly/send")]
     public async Task<IActionResult> SendWeekly(Guid id, [FromBody] SendWeeklyReportRequest req, CancellationToken ct) { await weekly.SendAsync(id, req, ct); return Ok(new { sent = true }); }
+
+    /// <summary>"Every Friday 5 PM · you approve first": a repeating reminder for me that opens the report page.</summary>
+    [HttpPost("projects/{id:guid}/weekly/schedule")]
+    public async Task<IActionResult> ScheduleWeekly(Guid id, [FromBody] ScheduleWeeklyReportRequest req, CancellationToken ct) => Ok(await weekly.ScheduleAsync(id, req, ct));
+
+    /// <summary>Stops my Friday reminder for this project's report.</summary>
+    [HttpDelete("projects/{id:guid}/weekly/schedule")]
+    public async Task<IActionResult> UnscheduleWeekly(Guid id, CancellationToken ct) { await weekly.UnscheduleAsync(id, ct); return Ok(new { scheduled = false }); }
 }

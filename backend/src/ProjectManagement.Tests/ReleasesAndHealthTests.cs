@@ -102,4 +102,47 @@ public class ReleasesAndHealthTests(ApiFactory factory)
         Assert.Equal(1, r.Data["next"]!.GetValue<int>());
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Post($"/api/v1/project-status/projects/{project}/weekly/send", new { text = " " })).Status);
     }
+
+    [Fact]
+    public async Task The_weekly_report_page_has_sourced_sections_a_friday_reminder_and_a_history_of_sends()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Pia Pager");
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("BUSINESS");
+        var project = await owner.CreateProjectAsync("Payments Hub");
+        await owner.CreateTaskAsync(project, "Refund API", new { title = "Refund API", dueDate = DateTime.UtcNow.AddDays(2).ToString("yyyy-MM-dd") });
+        var r = await owner.Get($"/api/v1/project-status/projects/{project}/weekly");
+        Assert.True(r.Ok, r.ToString());
+        Assert.NotNull(r.Data!["sources"]);
+        Assert.False(string.IsNullOrWhiteSpace(S(r.Data["verdict"])));
+        var next = r.Data["nextItems"]!.AsArray();
+        Assert.Single(next);
+        Assert.Contains("Refund API", S(next[0]!["text"]));
+        Assert.StartsWith($"/projects/{project}?task=", S(next[0]!["link"]));
+        Assert.Contains(r.Data["people"]!.AsArray(), p => S(p!["id"]) == owner.UserId.ToString());
+        Assert.Empty(r.Data["history"]!.AsArray());
+        Assert.Null(r.Data["schedule"]);
+
+        // Every Friday 5 PM: a repeating reminder that opens the report page; asking twice keeps one.
+        var s1 = await owner.Post($"/api/v1/project-status/projects/{project}/weekly/schedule", new { timeZone = "Asia/Kolkata" });
+        Assert.True(s1.Ok, s1.ToString());
+        var s2 = await owner.Post($"/api/v1/project-status/projects/{project}/weekly/schedule", new { timeZone = "Asia/Kolkata" });
+        Assert.Equal(S(s1.Data!["reminderId"]), S(s2.Data!["reminderId"]));
+        var list = await owner.Get("/api/v1/reminders");
+        Assert.Contains(list.Data!["open"]!.AsArray(), x => S(x!["id"]) == S(s1.Data["reminderId"]) && S(x["link"]) == $"/work/projects/{project}/report");
+        Assert.NotNull((await owner.Get($"/api/v1/project-status/projects/{project}/weekly")).Data!["schedule"]);
+
+        // Mail only, to a person on the project; then the history strip shows it.
+        var sent = await owner.Post($"/api/v1/project-status/projects/{project}/weekly/send", new { text = "**Payments Hub**\n- Refund API", chat = false, mail = true, recipients = new[] { owner.UserId } });
+        Assert.True(sent.Ok, sent.ToString());
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Post($"/api/v1/project-status/projects/{project}/weekly/send", new { text = "x", chat = false, mail = true, recipients = new[] { Guid.NewGuid() } })).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Post($"/api/v1/project-status/projects/{project}/weekly/send", new { text = "x", chat = false, mail = false })).Status);
+        var after = await owner.Get($"/api/v1/project-status/projects/{project}/weekly");
+        var hist = after.Data!["history"]!.AsArray();
+        Assert.Single(hist);
+        Assert.Contains(hist[0]!["channels"]!.AsArray(), c => S(c) == "mail");
+
+        Assert.True((await owner.Delete($"/api/v1/project-status/projects/{project}/weekly/schedule")).Ok);
+        Assert.Null((await owner.Get($"/api/v1/project-status/projects/{project}/weekly")).Data!["schedule"]);
+    }
 }

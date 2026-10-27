@@ -65,6 +65,7 @@ const DeskPage = page(() => import('./features/desk/DeskPage'), 'DeskPage');
 const QualityPage = page(() => import('./features/quality/QualityPage'), 'QualityPage');
 const ProjectsHome = page(() => import('./features/projects/ProjectsHome'), 'ProjectsHome');
 const ProjectPage = page(() => import('./features/projects/ProjectPage'), 'ProjectPage');
+const WeeklyReportPage = page(() => import('./features/projects/WeeklyReport'), 'WeeklyReportPage');
 const TalkPage = page(() => import('./features/talk/TalkPage'), 'TalkPage');
 const MailPage = page(() => import('./features/mail/MailPage'), 'MailPage');
 const LibraryPage = page(() => import('./features/library/LibraryPage'), 'LibraryPage');
@@ -402,6 +403,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="desk" element={<Guard allow={mWork}><DeskPage /></Guard>} />
         <Route path="quality" element={<Guard allow={mWork}><QualityPage /></Guard>} />
         <Route path="work/projects/:id" element={<Guard allow={mProjects}><ProjectPage /></Guard>} />
+        <Route path="work/projects/:id/report" element={<Guard allow={mProjects}><WeeklyReportPage /></Guard>} />
         <Route path="work/projects/:id/:tab" element={<ProjectTabMoved />} />
         <Route path="mail" element={<MailPage />} />
         <Route path="messages" element={<TalkPage />} />

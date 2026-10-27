@@ -40,12 +40,25 @@ export const actionItemApi = {
   remove: (projectId: string, id: string) => del<void>(`/projects/${projectId}/action-items/${id}`),
 };
 
+export interface WeeklyItem { text: string; owner: string | null; source: string | null; link: string | null; external: boolean }
+export interface WeeklySchedule { reminderId: string; nextAt: string | null; timeZone: string }
+export interface WeeklySent { sentAt: string; by: string | null; health: string | null; done: number; slipped: number; channels: string[] }
+export interface WeeklyReportData {
+  projectId: string; projectName: string; from: string; to: string; health: string; text: string; moved: number; slipped: number; risks: number; next: number; canSend: boolean;
+  projectKey?: string | null; week?: number; verdict?: string; sources?: { updates: number; meetings: number; commits: number } | null; scopeChange?: number; progress?: number;
+  forecastDays?: number | null; forecastDate?: string | null; movedItems?: WeeklyItem[] | null; slippedItems?: WeeklyItem[] | null; riskItems?: WeeklyItem[] | null; nextItems?: WeeklyItem[] | null;
+  people?: { id: string; name: string }[] | null; history?: WeeklySent[] | null; schedule?: WeeklySchedule | null; writtenAt?: string | null;
+}
+
 /** The Project Status presentation page. */
 export const statusApi = {
   groups: (teamId?: string | null) => get<StatusGroup[]>('/project-status/groups', { teamId: teamId ?? undefined }),
   report: (projectId: string) => get<ProjectStatusReport>(`/project-status/projects/${projectId}`),
-  weekly: (projectId: string) => get<{ projectId: string; projectName: string; from: string; to: string; health: string; text: string; moved: number; slipped: number; risks: number; next: number; canSend: boolean }>(`/project-status/projects/${projectId}/weekly`),
-  sendWeekly: (projectId: string, text: string) => post<{ sent: boolean }>(`/project-status/projects/${projectId}/weekly/send`, { text }),
+  weekly: (projectId: string) => get<WeeklyReportData>(`/project-status/projects/${projectId}/weekly`),
+  sendWeekly: (projectId: string, text: string, opts?: { chat?: boolean; mail?: boolean; pdf?: boolean; recipients?: string[] }) =>
+    post<{ sent: boolean }>(`/project-status/projects/${projectId}/weekly/send`, { text, ...opts }),
+  scheduleWeekly: (projectId: string, timeZone: string) => post<WeeklySchedule>(`/project-status/projects/${projectId}/weekly/schedule`, { timeZone }),
+  unscheduleWeekly: (projectId: string) => del<{ scheduled: boolean }>(`/project-status/projects/${projectId}/weekly/schedule`),
 };
 
 /** Issues found in a project's stages (Observed / Failed → In progress → Fixed → Resolved). */
