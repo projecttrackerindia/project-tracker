@@ -47,7 +47,7 @@ try{
    else if(ep===`/api/v1/projects/${pid}`)data={project:{...card(0,project.name,'DEMO',project.description,'Delivery','AtRisk',3,1,33,'High','NewProject',owner(2,'Prasanna Krishna'),'2027-07-09'),id:pid},
     stages:['Requirements and Planning','Code Review','User Acceptance Testing','Production Deployment'].map((name,i)=>({id:`50000000-0000-0000-0000-00000000000${i}`,name,order:i,plannedStart:null,plannedEnd:null,actualStart:null,actualEnd:null,status:i?'Pending':'InProgress',effectiveStatus:i?'Pending':'InProgress',owner:null,assignee:null,description:null,taskTotal:1,taskDone:0,locked:i>0,lockedBy:null,openIssues:0,totalIssues:0})),
     statuses:[],members:[{userId:user.id,name:user.displayName,email:user.email,role:'Owner'}]};
-   else if(ep==='/api/v1/calendar')data=['Requirements and Planning','Code Review','User Acceptance Testing','Production Deployment'].map((title,i)=>({id:`20000000-0000-0000-0000-00000000000${i}`,type:'stage',title,date:today,status:'Pending',category:'Todo',overdue:false,projectId:pid,projectName:'Long integration project name with a descriptive delivery title',priority:'Medium'}));
+   else if(ep==='/api/v1/calendar')data=[['Requirements and Planning workshop with every delivery stakeholder','10:00',60],['Code Review','10:30',45],['User Acceptance Testing sign-off with the business owners','13:00',90],['Production Deployment readiness','15:30',30]].map(([title,hm,mins],i)=>({id:`20000000-0000-0000-0000-00000000000${i}`,type:'meeting',title,date:today,startsAt:`${today}T${hm}:00+05:30`,durationMinutes:mins,status:null,category:null,overdue:false,projectId:pid,projectName:'Long integration project name with a descriptive delivery title',priority:null}));
    else if(ep==='/api/v1/ai/status')data={enabled:true,configured:true,entitled:true,allowedHere:true,model:'synthetic',provider:'Gemini'};
    else if(ep==='/api/v1/ai/portfolio/brief')data={ranked:[{projectId:pid,key:'DEMO',name:project.name,group:'Delivery',health:'AtRisk',progress:33,owner:null,startDate:'2026-10-01',dueDate:'2027-07-09',delayedDays:0,openTasks:2,overdueTasks:0,blockedTasks:0,openActionItems:0,overdueActionItems:1,finishedLast28Days:0,inProgressTasks:2,projectedFinish:null,projectedSlipDays:null,confidence:'none',score:5,level:'High',reasons:['Nothing has finished in the last 4 weeks, and 2 tasks are still open.','1 action item is overdue.']}],projects:1,totals:{}};
    else if(ep==='/api/v1/ai/usage')data=usage;
@@ -79,11 +79,11 @@ try{
   assert.equal(inside,true,'Stage chips stay inside their card');await capture('project-page-'+width);
  }
  for(const width of [1440,390]){
-  // v2: /calendar is Home › Calendar, one calm week (the month agenda and its "Show" filters are gone). Long titles stay inside their day.
+  // v2: /calendar is Home › Calendar, the week planner. Timed meetings (long titles, overlapping ones in lanes) stay inside their day column.
   await open('/preview-org/calendar','[data-testid="week-planner"]',width);assert.match(new URL(page.url()).search,/tab=calendar/);
-  await page.locator('.wp-col .wp-e').nth(3).waitFor();
+  await page.locator(`.wp-col[data-day="${today}"] .wp-e:not(.f)`).nth(3).waitFor();
   await page.evaluate(()=>scrollTo(0,0));await capture('calendar-top-'+width);
-  const inside=await page.locator('.wp-col .wp-e').evaluateAll(items=>items.map(el=>{const day=el.closest('.wp-col').getBoundingClientRect(),box=el.getBoundingClientRect();return box.left>=day.left-1&&box.right<=day.right+1;}));
+  const inside=await page.locator('.wp-col .wp-e:not(.f)').evaluateAll(items=>items.map(el=>{const day=el.closest('.wp-col').getBoundingClientRect(),box=el.getBoundingClientRect();return box.left>=day.left-1&&box.right<=day.right+1&&box.bottom<=day.bottom+1;}));
   assert.ok(inside.length===4&&inside.every(Boolean),'Calendar entries stay inside their day');await page.locator('[data-testid="week-planner"]').scrollIntoViewIfNeeded();await capture('calendar-'+width);
  }
  await open('/preview-org/settings/ai/usage','.ai-budgets',1440);
@@ -93,7 +93,7 @@ try{
  // v2: the full timesheet (with planned leave) is Insights › Time › Full timesheet.
  await open('/preview-org/insights?tab=time&s=week','.planned-leave',1440);await page.getByRole('button',{name:'Plan leave',exact:true}).click();await page.getByLabel('First day').fill(plannedDate);await page.getByLabel('Last day').fill(plannedDate);await page.getByLabel('Note (optional)').fill('Handover prepared. HR approval requested separately.');await page.getByRole('button',{name:'Review leave',exact:true}).click();assert.equal(writes.length,1,'Review does not write');await page.getByRole('button',{name:'Confirm planned leave',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(writes.length,2);await page.locator('.planned-leave .leave-list').waitFor();assert.equal(await page.locator('.planned-leave .leave-list').getByText('Handover prepared. HR approval requested separately.',{exact:true}).count(),1);assert.ok(leaveQueries.some(q=>q.from<=plannedDate&&q.to>=plannedDate),'Saving future leave opens its week');assert.doesNotMatch(await page.locator('body').innerText(),/Invalid Date|NaN/);await capture('timesheet-leave-1440');
  await open('/preview-org/insights?tab=time&s=week&week='+plannedDate,'.planned-leave',390);await page.locator('.planned-leave .leave-list').waitFor();await capture('timesheet-leave-390');
- await open('/preview-org/support','.page-title',390);await page.getByRole('tab',{name:'Tickets',selected:true}).waitFor();assert.ok(/\/work\?tab=tickets$/.test(page.url()),'Old support links land on Work › Tickets');
+ await open('/preview-org/support','.page-title',390);await page.waitForURL(/\/work\?tab=tickets$/);/* v2: Tickets left the Work toolbar (Desk in the sidebar), but /work?tab=tickets still opens the ticket list */assert.ok(/\/work\?tab=tickets$/.test(page.url()),'Old support links land on Work › Tickets');
  assert.equal(await page.getByRole('link',{name:'Support center',exact:true}).count(),0);
  await open('/preview-org/portfolio?project='+pid,'.pp-head h1',1440);assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0);
  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.v2-ask .v2-orb').count(),1,'v2: the Ask bar replaces the animated agent mark');
@@ -102,14 +102,14 @@ try{
   card(2,'Payment Engine Disaster Recovery (DR) Setup','PEDR','Payment Engine Disaster Recovery (DR) setup in the AWS Hyderabad region, including failover runbooks and quarterly drills.','Mule Soft','AtRisk',1,0,0,'High','NewProject',owner(2,'Prasanna Krishna'),'2026-11-21'),
   card(3,'TCN Call Recording API','TCRA','TCN Call Recording API request implementation, sharing Postman collections with the vendor.','Mule Soft','OnTrack',1,1,100,'Medium','Integration',owner(2,'Prasanna Krishna'),'2026-12-20'),
   card(4,'GEN AI','GA2',null,'Mule Soft','OnTrack',1,1,100,'Medium','NewProject',owner(2,'Prasanna Krishna'),'2027-02-14')];
- await ctx.addInitScript(()=>{try{localStorage.setItem('pm_projects_view','cards');}catch{}});
- await open('/preview-org/projects','.pj2-grid',1440);await page.locator('.pj2-card').nth(3).waitFor();
+ await ctx.addInitScript(()=>{try{localStorage.setItem('pm_projects_view','passes');}catch{}});
+ await open('/preview-org/projects','.pa-grid',1440);await page.locator('.pa-pass').nth(3).waitFor();
  for(const width of [1440,1100]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(200);
-  // v2: four facts per card, at the same height whatever the name: status, group · owner, one bar, % · due (no boxed numbers, tag row or chat button).
-  const cards=await page.evaluate(()=>[...document.querySelectorAll('.pj2-card')].map(c=>({row:Math.round(c.getBoundingClientRect().top),parts:['.pj2-pill','.pj2-sub','.pj2-bar','.pj2-foot'].map(s=>Math.round(c.querySelector(s)?.getBoundingClientRect().top??-1))})));
-  assert.equal(await page.locator('.pj2-card .pc-stats, .pj2-card .task-meta, .pj2-card .pchat-btn').count(),0,'no boxed numbers, tag row or chat button');
+  // Apple design: Wallet-style passes; owner, progress ring, due line and the stage/state foot sit at the same height whatever the name.
+  const cards=await page.evaluate(()=>[...document.querySelectorAll('.pa-pass')].map(c=>({row:Math.round(c.getBoundingClientRect().top),parts:['.pa-own','.pa-arc','.pa-when','.pa-foot'].map(s=>Math.round(c.querySelector(s)?.getBoundingClientRect().top??-1))})));
+  assert.equal(await page.locator('.pa-pass .pc-stats, .pa-pass .task-meta, .pa-pass .pchat-btn').count(),0,'no boxed numbers, tag row or chat button');
   for(const row of new Set(cards.map(c=>c.row))){const same=cards.filter(c=>c.row===row);if(same.length<2)continue;
-   for(const part of [0,1,2,3]){const tops=same.map(c=>c.parts[part]);assert.ok(Math.max(...tops)-Math.min(...tops)<=1,`project cards misaligned at ${width}px (${['status','group and owner','bar','% and due'][part]}): ${tops.join(', ')}`);}}}
+   for(const part of [0,1,2,3]){const tops=same.map(c=>c.parts[part]);assert.ok(Math.max(...tops)-Math.min(...tops)<=1,`project cards misaligned at ${width}px (${['owner','progress ring','due','stages and state'][part]}): ${tops.join(', ')}`);}}}
  await page.setViewportSize({width:1440,height:1000});
  await capture('project-cards-1440');
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'project-cards-dark-1440.png'),animations:'disabled'});

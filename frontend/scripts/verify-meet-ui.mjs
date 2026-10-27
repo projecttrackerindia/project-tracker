@@ -151,7 +151,11 @@ try{
   // 7. The Calendar (Home › Calendar in v2) shows meetings and opens them in Talk; it has no meeting button of its own.
   await page.goto(origin+'/preview-org/calendar');await page.locator('[data-testid="week-planner"]').waitFor();
   assert.equal(await page.getByRole('button',{name:/Scrum call|Schedule/}).count(),0);
-  await page.locator('.wp-e',{hasText:'Atlas review'}).click();await page.locator('.wp-insp [title^="The notetaker is set"]').click();await page.waitForURL(/[?&](open|meeting)=p(:|%3A)/);
+  // Clicking a planner event selects it and shows the inspector; the meeting opens in Talk from the inspector.
+  const ev=page.locator('.wp-e',{hasText:'Atlas review'});await ev.click();assert.equal(await ev.getAttribute('aria-pressed'),'true','the clicked event is selected');
+  await page.locator('.wp-insp').getByRole('heading',{name:'Atlas review'}).waitFor();
+  // The notes switch is aria-disabled (the notetaker is set on the meeting), so Playwright will not click it; dispatch the click it handles.
+  await page.locator('.wp-insp [title^="The notetaker is set"]').dispatchEvent('click');await page.waitForURL(/[?&](open|meeting)=p(:|%3A)/);
   await page.locator('.mt-inline').getByRole('heading',{name:'Atlas review'}).waitFor();checks.push('calendar-opens-meet');
 
   // 8. Old addresses lead to Meet.
