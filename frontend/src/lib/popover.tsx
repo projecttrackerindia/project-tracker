@@ -66,25 +66,29 @@ function Floating({ onClose, anchorRef, children, className = '', role, side = '
       const bounds = boundsFor(anchor, within);
       // Scrolled away: the trigger is no longer inside the box it lives in.
       if (a.bottom < bounds.top || a.top > bounds.bottom || a.right < bounds.left || a.left > bounds.right) { close.current(); return; }
+      const keep = el.scrollTop;   // re-placing must not throw a scrolled menu back to its top
       el.style.maxHeight = '';
       const size = { width: el.offsetWidth, height: el.scrollHeight };
       let p = placeFloating(a, size, bounds, { side, align, gap });
       // Too little room inside a short scroll box (a pinned card above it, a small window): let it rise over the header rather than
       // shrink to a few rows, but keep its bottom inside the box, so it never covers the composer below.
-      if (p.maxHeight !== undefined && within) p = placeFloating(a, size, { ...bounds, top: 0 }, { side, align, gap });
+      if (p.maxHeight !== undefined && within) p = placeFloating(a, size, { ...bounds, top: 8 }, { side, align, gap });
       el.style.top = `${p.top}px`; el.style.left = `${p.left}px`;
-      if (p.maxHeight !== undefined) { el.style.maxHeight = `${p.maxHeight}px`; el.style.overflowY = 'auto'; }
+      if (p.maxHeight !== undefined) { el.style.maxHeight = `${p.maxHeight}px`; el.style.overflowY = 'auto'; el.style.overscrollBehavior = 'contain'; el.scrollTop = keep; }
       el.dataset.side = p.side; el.dataset.align = p.align;
       el.style.visibility = '';
     };
     place();
     let frame = 0;
     const later = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(place); };
-    window.addEventListener('scroll', later, true);
+    // Scrolling inside the popover itself must not re-place it: that reset its height and threw the list back to the top, so a long
+    // menu could not be scrolled.
+    const onScroll = (e: Event) => { if (e.target instanceof Node && el.contains(e.target)) return; later(); };
+    window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', later);
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(later) : null;
     ro?.observe(el);
-    return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', later, true); window.removeEventListener('resize', later); ro?.disconnect(); };
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', later); ro?.disconnect(); };
   }, [anchorRef, within, side, align, gap]);
 
   // Outside click, Escape, focus in and back out.

@@ -153,7 +153,7 @@ try {
     await fileCard.waitFor();
     await fileCard.locator('.pl-card-preview').waitFor();
     assert.match(await fileCard.innerText(), /crif-uat-response\.json/);
-    assert.match(await fileCard.innerText(), /lines/);
+    await fileCard.locator('.pl-card-meta em', { hasText: 'lines' }).waitFor();   // the line count shows once the file is read
     const sent = [...files.values()].at(-1);
     assert.ok(!sent.body.includes('sk-live-SECRET') && !sent.body.includes('hunter2'), 'secrets were masked in the uploaded file');
     assert.ok(sent.body.startsWith('{\n  "headers"'), 'the JSON was pretty-printed');

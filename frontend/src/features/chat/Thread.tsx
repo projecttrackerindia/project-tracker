@@ -694,14 +694,24 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
                           <button key={emoji} type="button" role="menuitem" className={m.reactions?.find((r) => r.emoji === emoji)?.mine ? 'on' : ''} aria-label={`React ${emoji}`} onClick={() => { setMore(false); toggleReaction(emoji); }}>{emoji}</button>
                         ))}
                       </div>
-                      {canThread && <button type="button" role="menuitem" onClick={() => { setMore(false); onThread!(); }}><Icon name="message" size={15} />Reply in thread</button>}
+                      {/* Compact by design: the four everyday actions as tiles, "Create" and the rest as short rows, Edit and Delete side by side. */}
+                      <div className="more-tiles" role="group" aria-label="Quick actions">
+                        {canThread && <button type="button" role="menuitem" aria-label="Reply in thread" onClick={() => { setMore(false); onThread!(); }}><Icon name="message" size={16} /><span aria-hidden="true">Thread</span></button>}
+                        {m.body && <button type="button" role="menuitem" aria-label="Copy text" onClick={() => { setMore(false); copy(); }}><Icon name="copy" size={16} /><span aria-hidden="true">Copy</span></button>}
+                        <button type="button" role="menuitem" aria-pressed={!!m.pinnedAt} aria-label={m.pinnedAt ? 'Unpin' : 'Pin to the conversation'} onClick={() => { setMore(false); void pin(); }}><Icon name="flag" size={16} /><span aria-hidden="true">{m.pinnedAt ? 'Unpin' : 'Pin'}</span></button>
+                        <button type="button" role="menuitem" aria-pressed={!!m.saved} aria-label={m.saved ? 'Remove from saved' : 'Save for later'} onClick={() => { setMore(false); void save(); }}><Icon name="star" size={16} /><span aria-hidden="true">{m.saved ? 'Saved' : 'Save'}</span></button>
+                      </div>
+                      <div className="more-sec">Create</div>
                       {!talk && <button type="button" role="menuitem" onClick={() => { setMore(false); remindAbout(m); }}><Icon name="alarm" size={15} />Remind me</button>}
-                      <button type="button" role="menuitem" onClick={() => { setMore(false); void save(); }}><Icon name="star" size={15} />{m.saved ? 'Remove from saved' : 'Save for later'}</button>
-                      {m.body && <button type="button" role="menuitem" onClick={() => { setMore(false); copy(); }}><Icon name="copy" size={15} />Copy text</button>}
-                      <button type="button" role="menuitem" onClick={() => { setMore(false); void pin(); }}><Icon name="flag" size={15} />{m.pinnedAt ? 'Unpin' : 'Pin to the conversation'}</button>
-                      {moreItems.filter((x) => !x.hidden && x.label !== 'Make a task').map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { setMore(false); x.run(); }}><Icon name={x.icon} size={15} />{x.label}</button>)}
-                      {mine && !isPoll && <button type="button" role="menuitem" onClick={() => { setMore(false); onEdit(); }}><Icon name="edit" size={15} />Edit</button>}
-                      {(mine || canModerate) && <button type="button" role="menuitem" className="danger" onClick={() => { setMore(false); onDelete(); }}><Icon name="trash" size={15} />Delete</button>}
+                      {moreItems.filter((x) => !x.hidden && ['Make a ticket', 'Make a reminder', 'Make a page'].includes(x.label)).map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { setMore(false); x.run(); }}><Icon name={x.icon} size={15} />{(([w]) => w.charAt(0).toUpperCase() + w.slice(1))([x.label.replace('Make a ', '')])}</button>)}
+                      {moreItems.some((x) => !x.hidden && ['Translate', 'Suggest replies', 'Seen by'].includes(x.label)) && <div className="more-sec" aria-hidden="true" />}
+                      {moreItems.filter((x) => !x.hidden && ['Translate', 'Suggest replies', 'Seen by'].includes(x.label)).map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { setMore(false); x.run(); }}><Icon name={x.icon} size={15} />{x.label}</button>)}
+                      {((mine && !isPoll) || mine || canModerate) && (
+                        <div className="more-foot" role="group" aria-label="Change">
+                          {mine && !isPoll && <button type="button" role="menuitem" onClick={() => { setMore(false); onEdit(); }}><Icon name="edit" size={14} />Edit</button>}
+                          {(mine || canModerate) && <button type="button" role="menuitem" className="danger" onClick={() => { setMore(false); onDelete(); }}><Icon name="trash" size={14} />Delete</button>}
+                        </div>
+                      )}
                     </div>
                   </Popover>
                 </div>
