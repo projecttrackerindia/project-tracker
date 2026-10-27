@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { AgentPage, type AgentSection } from '../agent/AgentPage';
 import { AiPage } from '../ai/AiPage';
 import { RemindersPage } from '../reminders/RemindersPage';
 import { CommandCenterPage } from '../command/CommandCenterPage';
 import { ReviewQueueCard } from '../github/GitHubApp';
 import { CalendarPlanning } from '../calendar/CalendarPage';
+import { WeekPlanner } from '../calendar/WeekPlanner';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { insightApi, integrationsApi, projectApi, workItemApi } from '../../api/endpoints';
 import type { CalendarEvent } from '../../api/types';
-import { Icon } from '../../components/Icon';
-import { EmptyState, ErrorState, Modal, PageHead, PageLoader, Segmented } from '../../components/ui';
+import { EmptyState, ErrorState, Modal, PageLoader, Segmented } from '../../components/ui';
 import { useAi, useAssistant } from '../ai/Assistant';
 import { useIsMobile } from '../../lib/mobile';
-import { DOW, MONTHS, formatTime, initials, todayISO } from '../../lib/format';
+import { MONTHS, initials, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -34,7 +34,6 @@ const dateOf = (s: string) => new Date(`${s}T00:00:00`);
 const longDay = (s: string) => { const d = dateOf(s); return `${d.toLocaleDateString(undefined, { weekday: 'long' })} ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
 /** "Tuesday, 27 October" (shown in capitals above the greeting) */
 const headDay = (s: string) => { const d = dateOf(s); return `${d.toLocaleDateString('en-GB', { weekday: 'long' })}, ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'long' })}`; };
-const mondayOf = (s: string) => { const d = dateOf(s); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return iso(d); };
 const addDays = (s: string, n: number) => { const d = dateOf(s); d.setDate(d.getDate() + n); return iso(d); };
 /** "9:30", "12:00" — the day card's 12-hour clock without AM/PM. */
 const clock = (d: Date) => `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -71,9 +70,6 @@ export function HomePage() {
   return tab === 'calendar' ? <WeekCalendar onTab={setTab} /> : <ForYou view={view} onTab={setTab} />;
 }
 
-function Tabs({ value, onTab }: { value: Tab; onTab: (t: Tab) => void }) {
-  return <Segmented label="Home" value={value} onChange={onTab} options={[{ id: 'for-you', label: 'For me' }, { id: 'calendar', label: 'Calendar' }]} />;
-}
 
 // ------------------------------------------------------------------------------------------------------------------------- For you
 
@@ -395,10 +391,6 @@ function HomeNumbers() {
 
 // ------------------------------------------------------------------------------------------------------------------------ Calendar
 
-/** Three colours only: meetings blue, deadlines red, stages violet. */
-function colourOf(e: CalendarEvent): 'meeting' | 'deadline' | 'stage' {
-  return e.type === 'meeting' ? 'meeting' : e.type === 'stage' || e.type === 'milestone' ? 'stage' : 'deadline';
-}
 
 function hrefOf(e: CalendarEvent): string {
   // Talk opens a meeting from ?meeting= (Meet's old ?open=), and a series' occurrence from ?at=.
@@ -408,88 +400,8 @@ function hrefOf(e: CalendarEvent): string {
 }
 
 function WeekCalendar({ onTab }: { onTab: (t: Tab) => void }) {
-  const today = todayISO();
-  const [monday, setMonday] = useState(() => mondayOf(today));
-  const [who, setWho] = useState<'me' | 'team'>('me');
-  const [focus, setFocus] = useState<string | null>(null);
-  const sunday = addDays(monday, 6);
-  const q = useWsQuery(['calendar', 'week', monday, who], () => insightApi.calendar(monday, sunday, undefined, who === 'me'), { placeholderData: (p) => p });
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(monday, i)), [monday]);
-  const byDay = useMemo(() => {
-    const m = new Map<string, CalendarEvent[]>();
-    for (const e of q.data ?? []) if (e.category !== 'Cancelled') m.set(e.date, [...(m.get(e.date) ?? []), e]);
-    for (const list of m.values()) list.sort((a, b) => (a.startsAt ?? 'z').localeCompare(b.startsAt ?? 'z'));
-    return m;
-  }, [q.data]);
-  const a = dateOf(monday), b = dateOf(sunday);
-  const range = a.getMonth() === b.getMonth() ? `${a.getDate()} – ${b.getDate()} ${MONTHS[b.getMonth()]} ${b.getFullYear()}` : `${a.getDate()} ${MONTHS[a.getMonth()]} – ${b.getDate()} ${MONTHS[b.getMonth()]} ${b.getFullYear()}`;
-
-  // ✦ The week in one line, from the calendar itself: how many deadlines and meetings, and the first working day still clear.
-  const events = q.data ?? [];
-  const deadlines = events.filter((e) => colourOf(e) === 'deadline' && e.category !== 'Done').length;
-  const meetings = events.filter((e) => e.type === 'meeting').length;
-  const clear = days.slice(0, 5).find((d) => d >= today && !(byDay.get(d)?.length));
-  const clearName = clear ? dateOf(clear).toLocaleDateString(undefined, { weekday: 'long' }) : null;
-
-  return (
-    <div className="hm">
-      <PageHead eyebrow={range} title="Calendar">
-        <div className="hm-heads">
-          <Tabs value="calendar" onTab={onTab} />
-          <Segmented label="Whose calendar" value={who} onChange={setWho} options={[{ id: 'me', label: 'Me' }, { id: 'team', label: 'Team' }]} />
-        </div>
-      </PageHead>
-      <div className="hm-cal-grid">
-        <section className="hm-card hm-week" aria-label={`Week of ${range}`}>
-          <div className="hm-week-nav">
-            <button type="button" className="icon-btn" aria-label="Previous week" onClick={() => setMonday(addDays(monday, -7))}><Icon name="chevronL" /></button>
-            <button type="button" className="btn btn-soft btn-sm" onClick={() => setMonday(mondayOf(today))} disabled={monday === mondayOf(today)}>This week</button>
-            <button type="button" className="icon-btn" aria-label="Next week" onClick={() => setMonday(addDays(monday, 7))}><Icon name="chevronR" /></button>
-          </div>
-          {q.isError ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : (
-            <div className="hm-days">
-              {days.map((d) => {
-                const date = dateOf(d);
-                const list = byDay.get(d) ?? [];
-                return (
-                  <div key={d} className={`hm-day ${d === today ? 'today' : ''} ${focus === d ? 'focus' : ''} ${date.getDay() % 6 === 0 ? 'weekend' : ''}`} aria-label={longDay(d)}>
-                    <span className="hm-dow">{DOW[date.getDay()]}</span>
-                    <b className="hm-dnum">{date.getDate()}</b>
-                    <div className="hm-evs">
-                      {list.slice(0, 6).map((e) => (
-                        <Link key={`${e.type}:${e.id}:${e.startsAt ?? ''}`} to={hrefOf(e)} className={`hm-ev c-${colourOf(e)} ${e.category === 'Done' ? 'done' : ''}`} title={e.projectName ? `${e.title} · ${e.projectName}` : e.title}>
-                          {e.type === 'meeting' && e.startsAt ? `${formatTime(e.startsAt)} ` : ''}{e.title}{colourOf(e) === 'deadline' ? ' due' : ''}
-                        </Link>
-                      ))}
-                      {list.length > 6 && <span className="hm-more">+{list.length - 6} more</span>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-        <aside className="hm-side" aria-label="About this week">
-          <section className="hm-card hm-ai" aria-label="This week">
-            <b>✦ This week</b>
-            <p>{q.isLoading ? 'Reading the week…' : `${deadlines} deadline${deadlines === 1 ? '' : 's'} and ${meetings} meeting${meetings === 1 ? '' : 's'}.${clearName ? ` ${clearName} is clear — a good day for focused work.` : ' No clear working day left this week.'}`}</p>
-            {clear && <button type="button" className="btn btn-ai btn-sm" onClick={() => setFocus(focus === clear ? null : clear)}>{focus === clear ? 'Done' : `Show ${clearName?.slice(0, 3)}`}</button>}
-          </section>
-          <section className="hm-card hm-legend" aria-label="Colours">
-            <b>Colours</b>
-            <ul>
-              <li><i className="c-meeting" />Meeting</li>
-              <li><i className="c-deadline" />Deadline</li>
-              <li><i className="c-stage" />Stage</li>
-            </ul>
-            <SubscribeLink />
-          </section>
-        </aside>
-      </div>
-      {/* Planning with your own calendars (Outlook free/busy, Google time blocks): shown only when the administrator set it up. */}
-      <CalendarPlanning />
-    </div>
-  );
+  // The week planner (s-calendar); planning with your own calendars (Outlook free/busy, Google time blocks) follows when set up.
+  return <><WeekPlanner onTab={onTab} extra={<SubscribeLink />} /><CalendarPlanning /></>;
 }
 
 /** "Subscribe in Google / Outlook ›": the private calendar address for work with a due date. */
