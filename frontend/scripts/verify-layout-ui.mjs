@@ -42,7 +42,7 @@ try{
    else if(ep.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
    else if(ep.endsWith('/workspace/members'))data=[{userId:user.id,displayName:user.displayName,email:user.email,role:'Owner'}];
    else if(ep.endsWith('/project-status/groups'))data=[{id:pid,name:'Delivery',isActive:true,count:1,projects:[project]}];
-   else if(ep==='/api/v1/time'){const at=(h,m)=>{const d=new Date(today+'T00:00:00');d.setHours(h,m,0,0);return d.toISOString();};
+   else if(ep==='/api/v1/time'){const at=(h,m)=>new Date(`${today}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00+05:30`).toISOString();   // the browser runs in Asia/Kolkata, whatever the machine's zone
      data={from:today,to:today,user:{id:'u',name:'Me'},totalMinutes:270,billableMinutes:0,byDay:[{date:today,minutes:270}],entries:[
        {id:'te1',taskId:null,taskKey:'OPS-12',taskTitle:'MuleSoft production server got disconnected',projectId:null,user:{id:'u',name:'Me'},workDate:today,minutes:90,note:'Restarted the runtime',isRunning:false,startedAt:at(14,0),canEdit:true,workTaskId:'w12',kind:'work',billable:false,locked:false},
        {id:'te2',taskId:'t3',taskKey:'PAY-3',taskTitle:'Reconciliation report',projectId:null,user:{id:'u',name:'Me'},workDate:today,minutes:180,note:null,isRunning:false,startedAt:null,canEdit:true,workTaskId:null,kind:'task',billable:false,locked:false}]};}

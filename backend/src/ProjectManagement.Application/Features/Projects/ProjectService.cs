@@ -506,7 +506,7 @@ public partial class ProjectService(
         var today = clock.Today;
         var inForce = project.HealthOverride is not null && (project.HealthUntil is not { } u || today <= u);
         var by = inForce && project.HealthSetById is { } b ? await db.Users.AsNoTracking().Where(x => x.Id == b).Select(x => new UserRefDto(x.Id, x.DisplayName)).FirstOrDefaultAsync(ct) : null;
-        return new ProjectHealthDto(Health(project, stats, today).ToString(), CalculatedHealth(project, stats, today).ToString(),
+        return new ProjectHealthDto(ProjectMetrics.Health(project, stats, today).ToString(), ProjectMetrics.CalculatedHealth(project, stats, today).ToString(),
             inForce ? project.HealthOverride : null, inForce ? project.HealthNote : null, inForce ? project.HealthUntil : null, by, inForce ? project.HealthSetAt : null);
     }
 
