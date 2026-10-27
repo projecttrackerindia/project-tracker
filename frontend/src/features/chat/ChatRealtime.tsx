@@ -150,13 +150,13 @@ export function ChatRealtime() {
       if (conversation?.isMuted) return;
       const text = message.body.length > 120 ? `${message.body.slice(0, 119)}…` : message.body;
       const title = conversation && conversation.type === 'Group' ? `${message.senderName} in ${conversation.name}` : (message.senderName ?? 'New message');
-      const open = () => { window.focus(); navigate.current(`/chat/${conversationId}`); };
+      const open = () => { window.focus(); navigate.current(`/messages/${conversationId}`); };
       if (!firstTime(`chat-${message.id}`)) return;
       getAttention({ kind: 'message' });
       // In another tab, another window or another app (not only a hidden tab): the system shows it. When push is on for this device the
       // server's push already brings it (and respects the person's "Chat messages" choice), so the page does not add a second one.
-      if (away()) { if (!pushCoversThisDevice()) void systemNotification(title, text, `chat-${conversationId}`, `/chat/${conversationId}`, { sticky: false }); }
-      else if (!appPath(useAuth.getState().ctx?.current?.slug).startsWith('/chat')) {
+      if (away()) { if (!pushCoversThisDevice()) void systemNotification(title, text, `chat-${conversationId}`, `/messages/${conversationId}`, { sticky: false }); }
+      else if (!appPath(useAuth.getState().ctx?.current?.slug).startsWith('/messages')) {
         toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
       }
     };
@@ -169,7 +169,7 @@ export function ChatRealtime() {
       const open = () => { window.focus(); useProjectChat.getState().openChat(projectId, projectName); };
       if (!firstTime(`chat-${message.id}`)) return;
       getAttention({ kind: 'message' });
-      if (away()) { if (!pushCoversThisDevice()) void systemNotification(title, text, `pchat-${projectId}`, '/chat', { sticky: false }); }
+      if (away()) { if (!pushCoversThisDevice()) void systemNotification(title, text, `pchat-${projectId}`, '/messages', { sticky: false }); }
       else toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
     };
 

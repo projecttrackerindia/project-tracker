@@ -1,4 +1,5 @@
 import { ToolbarSeg } from '../../components/v2/ToolbarSeg';
+import { openNew } from '../../components/v2/state';
 import { Face } from '../../components/Face';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
@@ -120,7 +121,7 @@ export function DeskPage() {
 
       <div className="dq-hd">
         <div>
-          <div className="dq-eyebrow">{openRows.length} open · {breaching} breaching within 1h</div>
+          <div className={`dq-eyebrow${breaching > 0 ? ' hot' : ''}`}>{openRows.length === 0 ? 'All clear' : `${openRows.length} open`}{breaching > 0 ? ` · ${breaching} breaching within 1h` : openRows.length ? ' · none breaching' : ''}</div>
           <h1 className="dq-h1">Desk</h1>
         </div>
         <div className="dq-legend" aria-label="SLA colours">
@@ -153,7 +154,7 @@ export function DeskPage() {
           </div>
         </section>
 
-        {current ? <Conversation key={current.id} row={current} me={me?.id ?? null} /> : <section className="dq-card dq-conv dq-conv-empty"><p className="dq-empty">Pick a ticket from the queue.</p></section>}
+        {current ? <Conversation key={current.id} row={current} me={me?.id ?? null} /> : <AllClear tab={tab} onSolved={() => { setTab('solved'); setSelected(null); }} />}
         {current ? <Context key={`c-${current.id}`} row={current} /> : <div className="dq-ctx" />}
       </div>
     </div>
@@ -329,3 +330,30 @@ function Context({ row }: { row: WorkRow }) {
     </aside>
   );
 }
+
+/** The right side when there is nothing to open: how the desk did lately, and the next useful step — not an empty panel. */
+function AllClear({ tab, onSolved }: { tab: Tab; onSolved: () => void }) {
+  const solved = useWsQuery(['desk', 'list', 'solved'], () => workItemsApi.list({ kind: ['ticket'], status: 'closed', limit: 200 }), { staleTime: 60_000 });
+  const items = solved.data?.items ?? [];
+  const since = (days: number) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - days); return d.getTime(); };
+  const today = items.filter((r) => Date.parse(r.updatedAt) >= since(0)).length;
+  const week = items.filter((r) => Date.parse(r.updatedAt) >= since(6)).length;
+  const last = items.slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  return (
+    <section className="dq-card dq-conv dq-allclear" aria-label="All clear">
+      <div className="dq-allclear-mark" aria-hidden="true">✓</div>
+      <h2>{tab === 'mine' ? 'Nothing assigned to you' : tab === 'solved' ? 'Nothing solved yet' : 'The queue is clear'}</h2>
+      <p>New tickets from mail, WhatsApp, the portal and chat land here with their SLA clock.</p>
+      <dl className="dq-allclear-stats">
+        <div><dt>Solved today</dt><dd>{solved.isLoading ? '…' : today}</dd></div>
+        <div><dt>This week</dt><dd>{solved.isLoading ? '…' : week}</dd></div>
+        <div><dt>Last solved</dt><dd>{last ? <span title={last.title}>{last.key}</span> : '—'}</dd></div>
+      </dl>
+      <div className="dq-allclear-acts">
+        <button type="button" className="dq-btn pri" onClick={() => openNew('ticket')}>New ticket</button>
+        {tab !== 'solved' && <button type="button" className="dq-btn" onClick={onSolved}>See solved</button>}
+      </div>
+    </section>
+  );
+}
+

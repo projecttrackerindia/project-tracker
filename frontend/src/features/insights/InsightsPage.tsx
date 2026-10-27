@@ -135,7 +135,13 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
   const live = (projects.data?.items ?? []).filter((p) => p.status === 'Planning' || p.status === 'Active' || p.status === 'OnHold');
   const onTrack = live.filter((p) => p.health === 'OnTrack').length;
   const delayed = live.filter((p) => p.health === 'Delayed');
-  const everyone = workload.data?.members ?? [];
+  // "Your team" is the people who report to you; your own time counts too, so the ring and Today never disagree.
+  const mine = useWsQuery(['workload', 'Me'], () => workItemApi.workload('Me'), { staleTime: 60_000, retry: false, enabled: workload.data?.scope === 'Reports' });
+  const everyone = useMemo(() => {
+    const base = workload.data?.members ?? [];
+    const me = mine.data?.members?.[0];
+    return me && !base.some((m) => m.userId === me.userId) ? [me, ...base] : base;
+  }, [workload.data, mine.data]);
   const members = useMemo(() => [...(workload.data?.members ?? [])].filter((m) => m.open > 0 || m.overdue > 0).sort((a, b) => b.open - a.open || b.overdue - a.overdue), [workload.data]);
   const total = workload.data?.totals.open ?? 0;
   const top = members[0];
@@ -198,7 +204,7 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
       <PageHead eyebrow={`${scope} · as of ${dayMonth(today)}`} title="Insights">{tabs}</PageHead>
       <div className="ins-rings">
         <Ring index={0} tone="pink" label="Delivery on time" value={delivery} to="/work/projects"
-          sub={projects.data ? `${onTrack} of ${live.length} projects on track` : projects.isLoading ? 'Reading…' : 'No projects yet'}
+          sub={projects.data ? `${onTrack} of ${live.length} projects on track` : projects.isLoading ? 'Reading…' : projects.isError ? 'Projects could not be loaded — open to retry' : 'No projects yet'}
           foot={projects.data && live.length ? (delayed.length ? <><span aria-hidden="true">↓ </span>{delayed.length} delayed</> : 'None delayed') : undefined} />
         <Ring index={1} tone="orange" label="Load balance" value={balance} to="/work?tab=team&s=workload"
           sub={top ? `Spread across ${members.length} ${members.length === 1 ? 'person' : 'people'} — ${top.name.split(' ')[0]} carries ${total ? Math.round((top.open / total) * 100) : 0}%` : workload.isLoading ? 'Reading…' : 'No open work'}

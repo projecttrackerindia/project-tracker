@@ -11,7 +11,8 @@
 .dq-tm { font: 600 15px var(--font); font-variant-numeric: tabular-nums; background: rgba(0, 0, 0, .14); padding: 4px 10px; border-radius: 8px; flex: none; }
 .dq-war { height: 30px; padding: 0 14px; border-radius: 15px; background: #fff; color: #ff3b30; font: 600 12px var(--font); border: 0; cursor: pointer; flex: none; }
 .dq-war:disabled { opacity: .7; }
-.dq-desk .dq-eyebrow { color: #ff3b30; }
+.dq-desk .dq-eyebrow { color: var(--ds-text-2, #6e6e73); }
+.dq-desk .dq-eyebrow.hot { color: #ff3b30; }
 .dq-legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--ds-text-3); font-weight: 500; }
 .dq-legend span { display: flex; align-items: center; gap: 6px; }
 .dq-legend i { width: 8px; height: 8px; border-radius: 50%; }
@@ -81,3 +82,16 @@
   .dq-inc { height: auto; flex-wrap: wrap; padding: 10px 12px; gap: 8px 10px; }
   .dq-inc b, .dq-inc-sub { white-space: normal; }
 }
+
+/* Desk › all clear: a calm check, the last week at a glance and the next step. */
+.dq-allclear { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; padding: 48px 32px; }
+.dq-allclear-mark { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 26px; font-weight: 700; color: #fff;
+  background: linear-gradient(180deg, #5de06f, #28cd41); box-shadow: 0 8px 24px rgba(40, 205, 65, .3); animation: dq-pop .5s cubic-bezier(.2, .9, .3, 1.3) both; }
+@keyframes dq-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dq-allclear-mark { animation: none; } }
+.dq-allclear h2 { margin: 6px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.dq-allclear p { margin: 0; max-width: 40ch; font-size: 14px; line-height: 1.45; color: var(--ds-text-2, #6e6e73); }
+.dq-allclear-stats { display: grid; grid-template-columns: repeat(3, minmax(90px, auto)); gap: 22px; margin: 14px 0 6px; }
+.dq-allclear-stats dt { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ds-text-3, #86868b); }
+.dq-allclear-stats dd { margin: 4px 0 0; font-size: 24px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.dq-allclear-acts { display: flex; gap: 8px; }

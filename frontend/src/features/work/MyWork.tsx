@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion, type Transition } from 'framer-motion';
-import { ApiError } from '../../api/client';
+import { ApiError, get, put } from '../../api/client';
 import { insightApi, projectApi } from '../../api/endpoints';
 import { workItemsApi, type WorkRow } from '../../api/workItemsApi';
 import { Avatar } from '../../components/ui';
@@ -98,8 +98,28 @@ async function moveTo(w: WorkRow, to: 'Done' | 'Active') {
 
 /* ------------------------------------------------------------------ the page */
 
+/**
+ * "Later": items the person put off, saved with their account (/me/ui/mywork, per workspace) so it follows them to every device, each
+ * until a date (a week on) after which it comes back by itself. The old per-browser list is carried over once.
+ */
 const LATER_KEY = 'pm_mywork_later';
-const readLater = (): string[] => { try { return JSON.parse(localStorage.getItem(LATER_KEY) ?? '[]') as string[]; } catch { return []; } };
+const LATER_DAYS = 7;
+type LaterMap = Record<string, string>;   // work item id → ISO date it comes back
+type LaterStore = Record<string, { later?: LaterMap }>;
+const readOldLater = (): string[] => { try { return JSON.parse(localStorage.getItem(LATER_KEY) ?? '[]') as string[]; } catch { return []; } };
+function useLater(wid: string, today: string) {
+  const q = useWsQuery(['ui', 'mywork'], async () => { try { return (await get<{ value: LaterStore | null }>('/me/ui/mywork'))?.value ?? {}; } catch { return null; } }, { staleTime: 5 * 60_000, retry: false });
+  const until = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
+  const mine: LaterMap = q.data?.[wid]?.later ?? Object.fromEntries(readOldLater().map((id) => [id, until(LATER_DAYS)]));
+  const ids = Object.entries(mine).filter(([, d]) => d > today).map(([id]) => id);
+  const save = (next: LaterMap) => {
+    const live = Object.fromEntries(Object.entries(next).filter(([, d]) => d > today).slice(-100));   // the account copy holds 8,000 characters
+    const all: LaterStore = { ...(q.data ?? {}), [wid]: { later: live } };
+    queryClient.setQueryData([wid, 'ui', 'mywork'], all);
+    if (q.data) { void put('/me/ui/mywork', { value: all }).then(() => { try { localStorage.removeItem(LATER_KEY); } catch { /* blocked */ } }).catch(() => toast('Could not save “Later” to your account.', 'error')); }
+  };
+  return { ids, add: (id: string) => save({ ...mine, [id]: until(LATER_DAYS) }), remove: (id: string) => { const n = { ...mine }; delete n[id]; save(n); } };
+}
 
 /**
  * My Work (Mine): the Focus Stack — one "Do this now" card with why it is next and the following items stacked behind it — today's
@@ -118,7 +138,8 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   /** Ticked here: struck through in the list and flown off the stack before the server's list catches up. */
   const [ticked, setTicked] = useState<Record<string, WorkRow>>({});
   const [drawing, setDrawing] = useState<string | null>(null);
-  const [later, setLater] = useState<string[]>(readLater);
+  const laterStore = useLater(wid ?? '', todayISO());
+  const later = laterStore.ids;
   const [kept, setKept] = useState<string[]>([]);
   const timers = useRef<number[]>([]);
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
@@ -169,7 +190,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
     onOpen(w.id);
     if (w.category === 'Todo') moveTo(w, 'Active').then(() => { refreshWork(wid); toast(`Started ${w.key}.`); }).catch((e: unknown) => toast(e instanceof Error ? e.message : 'Could not start it.', 'error'));
   };
-  const moveLater = (id: string) => setLater((l) => { const n = [...l, id]; try { localStorage.setItem(LATER_KEY, JSON.stringify(n)); } catch { /* private window */ } return n; });
+  const moveLater = (id: string) => { laterStore.add(id); toast(`Moved to Later for a week. It comes back on its own.`, 'info'); };
 
   const fly: Transition = reduce ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 26 };
   const POS = [{ y: 0, scale: 1, opacity: 1 }, { y: 17, scale: 0.955, opacity: 0.9 }, { y: 32, scale: 0.91, opacity: 0.7 }];
@@ -284,7 +305,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
         {([['today', 'Today'], ['week', 'This week'], ['later', 'Later']] as const).map(([id, title]) => (
           <div key={id} className={`mw-grp g-${id}`} role="group" aria-label={title}>
             <h2>{title} <span>{cols[id].length}</span></h2>
-            {cols[id].map((w) => <Row key={w.id} w={w} done={!isOpen(w)} onTick={() => tickRow(w)} onOpen={() => onOpen(w.id)} />)}
+            {cols[id].map((w) => <Row key={w.id} w={w} done={!isOpen(w)} onTick={() => tickRow(w)} onOpen={() => onOpen(w.id)} onBack={later.includes(w.id) ? () => laterStore.remove(w.id) : undefined} />)}
             {id === 'later' && <button type="button" className="mw-add" onClick={() => openNew('task')}>＋ Add item</button>}
           </div>
         ))}
@@ -293,7 +314,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   );
 }
 
-function Row({ w, done, onTick, onOpen }: { w: WorkRow; done: boolean; onTick: () => void; onOpen: () => void }) {
+function Row({ w, done, onTick, onOpen, onBack }: { w: WorkRow; done: boolean; onTick: () => void; onOpen: () => void; onBack?: () => void }) {
   const dot = projectDot(w.projectId);
   const late = w.isOverdue && w.dueDate ? Math.abs(daysUntil(w.dueDate) ?? 0) : 0;
   const when = done ? 'just now' : late ? null : dayText(w.dueDate);
@@ -305,6 +326,7 @@ function Row({ w, done, onTick, onOpen }: { w: WorkRow; done: boolean; onTick: (
         <small>{dot && !done && <i className="mw-pd" style={{ background: dot }} />}{[w.projectName, when].filter(Boolean).join(' · ')}{late > 0 && !done && <>{w.projectName ? ' · ' : ''}<span className="od">overdue {late}d</span></>}</small>
       </button>
       {!done && (w.priority === 'High' || w.priority === 'Critical') && <span className="mw-flag" title={`${w.priority} priority`} aria-label={`${w.priority} priority`}>!</span>}
+      {onBack && !done && <button type="button" className="mw-back" onClick={onBack} aria-label={`Bring ${w.title} back`} title="Bring it back now">↩</button>}
     </div>
   );
 }

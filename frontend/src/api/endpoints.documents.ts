@@ -140,5 +140,9 @@ export const docTrackerApi = {
   catalog: () => get<DtCatalog>('/doctracker/catalog'),
   architecture: (projectId: string | null) => get<DtArchitecture>('/doctracker/architecture', { projectId: projectId ?? undefined }),
   saveArchitecture: (projectId: string | null, b: { diagrams: DtDiagram[]; notes: string | null }) => put<DtArchitecture>(`/doctracker/architecture${projectId ? `?projectId=${projectId}` : ''}`, b),
+  /** AI: a diagram drawn from a sentence, or `current` changed as described. */
+  aiDiagram: (prompt: string, current?: unknown, context?: string[]) => post<{ data: { nodes: unknown[]; edges: unknown[] }; summary: string; model: string }>('/documents/ai/diagram', { prompt, current: current ?? null, context: context ?? null }),
+  /** AI: a screen mock-up (cleaned static HTML) from a prompt. */
+  aiDesign: (prompt: string, device: 'phone' | 'tablet' | 'desktop', brand?: string) => post<{ html: string; title: string; model: string }>('/documents/ai/design', { prompt, device, brand: brand ?? null }),
   apiHome: (projectId: string | null) => post<{ documentId: string; definitionId: string }>(`/doctracker/api-home${projectId ? `?projectId=${projectId}` : ''}`, {}),
 };

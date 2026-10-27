@@ -133,7 +133,8 @@ function Briefing({ q }: { q: UseQueryResult<InboxBriefing, Error> }) {
   const ai = useAi();
   const ask = useAssistant((s) => s.ask);
   if (q.isLoading) return <div className="hm-brief loading" aria-busy="true"><span className="hm-orb" aria-hidden="true" /><p>Reading your work…</p></div>;
-  if (q.isError || !q.data) return null;
+  if (q.isError) return <div className="hm-brief" role="status"><span className="hm-orb" aria-hidden="true" /><p>The briefing could not be read just now. <button type="button" className="link-btn" onClick={() => void q.refetch()}>Try again</button></p></div>;
+  if (!q.data) return null;
   const b = q.data;
   return (
     <section className="hm-brief" aria-label="Briefing" title={b.sources ? `From ${b.sources}` : undefined}>

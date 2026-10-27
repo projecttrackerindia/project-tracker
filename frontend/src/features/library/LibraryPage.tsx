@@ -1,4 +1,7 @@
 import { Navigate, useLocation, useParams } from 'react-router-dom';
+import { documentApi } from '../../api/endpoints';
+import { PageLoader } from '../../components/ui';
+import { useWsQuery } from '../../lib/hooks';
 import { DocumentPage } from '../documents/DocumentPage';
 import { DocsHub } from './docs/DocsHub';
 import { legacyTarget } from './docs/nav';
@@ -22,6 +25,18 @@ export function LibraryPage({ tab }: { tab?: LibraryTab } = {}) {
   if (tab === 'vault' || section === 'vault' || new URLSearchParams(loc.search).get('tab') === 'vault') return <LibraryVault />;
   if (loc.pathname.startsWith('/library/p/')) return <ProjectDocs />;
   if (section === 'security') return <SecurityCenter />;
-  if (section === 'docs' && id) return <DocumentPage />;
+  if (section === 'docs' && id) return <DocInSpace id={id} />;
   return <DocsHub />;
+}
+
+/**
+ * /library/docs/{id}: every document opens inside its project's documentation (General when it has no project), so the navigator, the
+ * breadcrumb and Back always belong to the space it lives in. A document that cannot be loaded shows its own error page.
+ */
+function DocInSpace({ id }: { id: string }) {
+  const loc = useLocation();
+  const q = useWsQuery(['documents', id], () => documentApi.get(id), { retry: false });
+  if (q.isLoading) return <PageLoader />;
+  if (!q.data) return <DocumentPage />;
+  return <Navigate replace state={loc.state} to={`/library/p/${q.data.item.projectId ?? 'general'}/d/${id}${loc.search}${loc.hash}`} />;
 }

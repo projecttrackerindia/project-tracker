@@ -103,7 +103,7 @@ export function ChatPage() {
             <EmptyState icon="message" title="No conversations yet" text="Message a colleague or start a group."
               action={<button className="btn btn-primary" onClick={() => setCreating(true)}>Start a conversation</button>} />
           )}
-          <ul>{shown.map((c) => <ConversationRow key={c.id} c={c} me={me ?? ''} active={c.id === id} onOpen={() => navigate(`/chat/${c.id}`)} />)}</ul>
+          <ul>{shown.map((c) => <ConversationRow key={c.id} c={c} me={me ?? ''} active={c.id === id} onOpen={() => navigate(`/messages/${c.id}`)} />)}</ul>
           {search && shown.length === 0 && !hits.data?.length && !hits.isFetching && <p className="chat-note">Nothing found for “{search.trim()}”.</p>}
 
           {term.length >= 2 && !!hits.data?.length && (
@@ -111,7 +111,7 @@ export function ChatPage() {
               <div className="info-title">Messages</div>
               <ul>{hits.data.map((h) => (
                 <li key={h.messageId}>
-                  <button className="hit-row" onClick={() => { setSearch(''); navigate(`/chat/${h.conversationId}`); }}>
+                  <button className="hit-row" onClick={() => { setSearch(''); navigate(`/messages/${h.conversationId}`); }}>
                     <b>{h.conversationName}</b>
                     <span>{h.senderName ? `${h.senderName}: ` : ''}{h.snippet}</span>
                     <time>{listTime(h.at)}</time>
@@ -126,7 +126,7 @@ export function ChatPage() {
       <section className={`chat-main ${!id || missing ? 'hide-narrow' : ''}`}>
         {current
           ? <Thread key={current.id} conversation={current} infoOpen={panel === 'info'} onInfo={() => setPanel((p) => (p === 'info' ? null : 'info'))}
-              filesOpen={panel === 'files'} onFiles={() => setPanel((p) => (p === 'files' ? null : 'files'))} onBack={() => navigate('/chat')} />
+              filesOpen={panel === 'files'} onFiles={() => setPanel((p) => (p === 'files' ? null : 'files'))} onBack={() => navigate('/messages')} />
           : id && !missing
             ? <PageLoader />   // the list is still catching up with a conversation that was just opened
             : <WhileAway missing={missing} list={list} onCatchUp={() => setDialog('catchup')} onNew={() => setCreating(true)} />}
@@ -217,7 +217,7 @@ export function WhileAway({ missing, list, onCatchUp, onNew }: { missing: boolea
           </button>
         )}
         {file && (
-          <button type="button" className="chat-away-tile" onClick={() => navigate(`/chat/${file.id}`)}>
+          <button type="button" className="chat-away-tile" onClick={() => navigate(`/messages/${file.id}`)}>
             <small>Files</small><b>{fileText}</b>
           </button>
         )}

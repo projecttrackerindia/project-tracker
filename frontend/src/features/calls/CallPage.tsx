@@ -102,7 +102,7 @@ function CallHeader({ call, onBack, live = false, onEnd }: { call: Call; onBack:
       <button type="button" className="call-icon-btn" onClick={onBack} aria-label="Back"><Icon name="arrowLeft" size={18} /></button>
       <div className="call-head-title">
         <b>{call.title}</b>
-        <small>{call.projectKey ? <Link to={`/projects/${call.projectId}`}>{call.projectKey}</Link> : call.kind === 'chat' ? 'Chat call' : 'Call'} · started {formatDateTime(call.startedAt)}</small>
+        <small>{call.projectKey ? <Link to={`/work/projects/${call.projectId}`}>{call.projectKey}</Link> : call.kind === 'chat' ? 'Chat call' : 'Call'} · started {formatDateTime(call.startedAt)}</small>
       </div>
       {live && <InCallCount />}
       {live && <AgentBadge />}
@@ -124,7 +124,7 @@ function CallOver({ call, rejoin }: { call: Call; rejoin?: () => void }) {
       {call.agentEnabled && call.projectId && <p className="call-agent-note"><Icon name="sparkle" size={14} /><span>The agent's notes, minutes and follow-ups will be in the project's <Link to={`/projects/${call.projectId}?tab=agent`}>Agent</Link> tab shortly.</span></p>}
       <div className="call-over-actions">
         {rejoin && <button type="button" className="btn btn-primary" onClick={rejoin}><Icon name="video" size={14} /> Rejoin</button>}
-        <Link className="btn" to={call.projectId ? `/projects/${call.projectId}` : call.conversationId ? `/chat/${call.conversationId}` : '/'}>Back to {call.projectId ? 'the project' : call.conversationId ? 'the chat' : 'Home'}</Link>
+        <Link className="btn" to={call.projectId ? `/work/projects/${call.projectId}` : call.conversationId ? `/messages/${call.conversationId}` : '/'}>Back to {call.projectId ? 'the project' : call.conversationId ? 'the chat' : 'Home'}</Link>
       </div>
     </div>
   );

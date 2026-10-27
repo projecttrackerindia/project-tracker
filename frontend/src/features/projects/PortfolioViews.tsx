@@ -39,7 +39,7 @@ export function DecisionCard({ item, filter, owner }: { item: DecisionItem; filt
     <article className={`pf-dec ${a.done ?? ''}`} data-project={item.key} aria-label={`${item.name}: due ${dayMonth(item.due)}, forecast ${item.forecast ? dayMonth(item.forecast) : 'none yet'}`}>
       <h4><Link to={`/work/projects/${item.projectId}`}>{item.name}</Link> <span className="pf-sr">{item.key} · {late}</span></h4>
       <p className="pf-dec-dates">
-        Due <s>{dayMonth(item.due)}</s> → {item.forecast ? <>Forecast <b className={tone}>{dayMonth(item.forecast)}</b></> : <em>No forecast yet</em>}
+        Due <s>{dayMonth(item.due)}</s> → {item.forecast ? <>Forecast <b className={tone}>{dayMonth(item.forecast)}</b></> : <em title="Nothing in this project has been finished yet, so there is no pace to forecast from">No pace yet · nothing finished</em>}
         {owner && <> · <Face byName name={owner} className="pf-own-av" />{owner}</>}
       </p>
       <div className="pf-dec-acts">

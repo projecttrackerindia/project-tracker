@@ -19,17 +19,19 @@ export const docsPath = {
   apiIndex: (p: string | null) => `${docsPath.project(p)}/api`,
   endpoint: (p: string | null, ep: string) => `${docsPath.project(p)}/api/${encodeURIComponent(ep)}`,
   architecture: (p: string | null) => `${docsPath.project(p)}/architecture`,
+  designs: (p: string | null) => `${docsPath.project(p)}/designs`,
   guide: (p: string | null, doc: string) => `${docsPath.project(p)}/d/${encodeURIComponent(doc)}`,
   doc: (doc: string) => `/library/docs/${encodeURIComponent(doc)}`,
 };
 
 /** The topic a project address points at. */
-export type Topic = { kind: 'overview' } | { kind: 'api' } | { kind: 'endpoint'; id: string } | { kind: 'architecture' } | { kind: 'guide'; id: string };
+export type Topic = { kind: 'overview' } | { kind: 'api' } | { kind: 'endpoint'; id: string } | { kind: 'architecture' } | { kind: 'designs' } | { kind: 'guide'; id: string };
 export function topicOf(rest: string): Topic {
   const [a, b] = rest.split('/').filter(Boolean);
   if (a === 'api' && b) return { kind: 'endpoint', id: decodeURIComponent(b) };
   if (a === 'api') return { kind: 'api' };
   if (a === 'architecture') return { kind: 'architecture' };
+  if (a === 'designs') return { kind: 'designs' };
   if (a === 'd' && b) return { kind: 'guide', id: decodeURIComponent(b) };
   return { kind: 'overview' };
 }

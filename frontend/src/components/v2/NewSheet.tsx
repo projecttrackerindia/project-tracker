@@ -44,8 +44,10 @@ const PRIORITIES: Priority[] = ['Critical', 'High', 'Medium', 'Low'];
 type ProjectKind = 'task' | 'issue' | 'action';
 const PROJECT_KINDS: { id: ProjectKind; label: string }[] = [{ id: 'task', label: 'Task' }, { id: 'issue', label: 'Issue' }, { id: 'action', label: 'Action item' }];
 const LAST_PROJECT = 'pm_new_last_project';
-const readLast = () => { try { return localStorage.getItem(LAST_PROJECT); } catch { return null; } };
-const writeLast = (id: string) => { try { localStorage.setItem(LAST_PROJECT, id); } catch { /* private window */ } };
+// Per workspace, so another workspace's project is never offered as the default.
+const lastKey = () => `${LAST_PROJECT}:${useAuth.getState().ctx?.current?.id ?? ''}`;
+const readLast = () => { try { return localStorage.getItem(lastKey()); } catch { return null; } };
+const writeLast = (id: string) => { try { localStorage.setItem(lastKey(), id); } catch { /* private window */ } };
 /** A service-level target in words: 240 → "4 hours", 1440 → "1 day", 2160 → "1d 12h", 30 → "30 min". */
 const spell = (min: number) => {
   if (min % 1440 === 0) return `${min / 1440} day${min === 1440 ? '' : 's'}`;

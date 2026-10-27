@@ -20,7 +20,7 @@ public record DtDocument(Guid Id, string Key, string Title, string TypeCode, str
     Guid? ParentId = null, int PageOrder = 0, string? Icon = null, Guid? TeamId = null);
 /// <summary>A team's space: the company-wide (no project) pages kept for one team. Mine: the person is in the team (they can add pages to it).</summary>
 public record DtTeam(Guid Id, string Name, bool Mine, int Pages);
-public record DtProject(Guid? Id, string? Key, string Name, IReadOnlyList<DtEndpoint> Endpoints, IReadOnlyList<DtDefinition> Definitions, IReadOnlyList<DtDocument> Documents, int Diagrams);
+public record DtProject(Guid? Id, string? Key, string Name, IReadOnlyList<DtEndpoint> Endpoints, IReadOnlyList<DtDefinition> Definitions, IReadOnlyList<DtDocument> Documents, int Diagrams, int Designs = 0);
 public record DtCatalog(IReadOnlyList<DtProject> Projects, bool CanCreate, bool IsAdmin, int Truncated, IReadOnlyList<DtTeam>? Teams = null);
 public record DtDiagram(string Key, string Title, string Kind, JsonNode Data);
 public record DtArchitecture(Guid? ProjectId, IReadOnlyList<DtDiagram> Diagrams, string? Notes, bool CanEdit, DateTime? UpdatedAt, string? UpdatedBy);
@@ -83,7 +83,13 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
         }
 
         var diagramCounts = await db.ProjectArchitectures.AsNoTracking().Select(a => new { a.ProjectId, a.DiagramsJson }).ToListAsync(ct);
-        int Diagrams(Guid pid) => diagramCounts.FirstOrDefault(a => a.ProjectId == pid) is { } a ? (JsonNode.Parse(a.DiagramsJson) as JsonArray)?.Count ?? 0 : 0;
+        // Diagrams and designs share one store per project; each is counted apart (an entry with kind "design" is a design).
+        (int Diagrams, int Designs) Visuals(Guid pid)
+        {
+            if (diagramCounts.FirstOrDefault(a => a.ProjectId == pid) is not { } a || JsonNode.Parse(a.DiagramsJson) is not JsonArray all) return (0, 0);
+            var designs = all.Count(n => n?["kind"]?.GetValue<string>() == "design");
+            return (all.Count - designs, designs);
+        }
 
         DtProject Build(Guid? pid, string? key, string name)
         {
@@ -93,7 +99,7 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
                 endpoints.Where(e => mineIds.Contains(e.Doc)).Select(ToEp).OrderBy(e => e.Tag ?? "~").ThenBy(e => e.Path).ToList(),
                 defs.Where(x => mineIds.Contains(x.DocumentId)).Select(x => new DtDefinition(x.Id, x.DocumentId, x.Name, x.Version, x.Stage.ToString(), x.Auth.ToString(), ApiJson.ReadServers(x.ServersJson))).ToList(),
                 mine.OrderByDescending(d => d.Updated).Select(d => new DtDocument(d.Id, DocumentService.KeyOf(d.Number), d.Title, d.Code, d.Name, d.Color, d.Status, d.Classification, d.Updated, apiDocIds.Contains(d.Id), d.ParentId, d.PageOrder, d.Icon, d.ProjectId is null ? d.TeamId : null)).ToList(),
-                Diagrams(pid ?? Guid.Empty));
+                Visuals(pid ?? Guid.Empty).Diagrams, Visuals(pid ?? Guid.Empty).Designs);
         }
         var list = projects.Select(p => Build(p.Id, p.Key, p.Name)).ToList();
         list.Add(Build(null, null, "General"));
@@ -150,12 +156,16 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
         await RequireProjectAsync(projectId, ct);
         if (!await CanEditArchitectureAsync(ct)) throw new ForbiddenException("You can't change this project's architecture.", "PERMISSION_DENIED");
         var diagrams = new List<DtDiagram>(); var keys = new HashSet<string>();
-        foreach (var d in (req.Diagrams ?? []).Take(12))
+        // Diagrams (architecture, request flows) and designs (Figma links, pictures, AI screens) share the project's visual store.
+        if ((req.Diagrams?.Count(d => d.Kind == "design") ?? 0) > 40) throw new ValidationException("diagrams", "A project keeps up to 40 designs.");
+        if ((req.Diagrams?.Count(d => d.Kind != "design") ?? 0) > 12) throw new ValidationException("diagrams", "A project keeps up to 12 diagrams.");
+        foreach (var d in req.Diagrams ?? [])
         {
             var key = (d.Key ?? "").Trim().ToLowerInvariant();
             if (!DiagramKey.IsMatch(key) || !keys.Add(key)) throw new ValidationException("diagrams", "Each diagram needs its own short key.");
-            var title = (d.Title ?? "").Trim(); if (title.Length == 0) title = d.Kind == "flow" ? "Request flow" : "Architecture"; if (title.Length > 120) title = title[..120];
-            diagrams.Add(new DtDiagram(key, title, d.Kind == "flow" ? "flow" : "architecture", ArchDiagram.Clean(d.Data)));
+            var design = d.Kind == "design";
+            var title = (d.Title ?? "").Trim(); if (title.Length == 0) title = design ? "Design" : d.Kind == "flow" ? "Request flow" : "Architecture"; if (title.Length > 120) title = title[..120];
+            diagrams.Add(new DtDiagram(key, title, design ? "design" : d.Kind == "flow" ? "flow" : "architecture", design ? DesignData.Clean(d.Data) : ArchDiagram.Clean(d.Data)));
         }
         var notes = (req.Notes ?? "").Trim(); if (notes.Length > 8000) throw new ValidationException("notes", "Keep the notes under 8,000 characters.");
         var pid = projectId ?? Guid.Empty;
@@ -163,9 +173,9 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
         if (row is null) { row = new ProjectArchitecture { TenantId = ctx.RequireTenantId(), ProjectId = pid, CreatedAt = clock.Now, CreatedBy = ctx.UserId }; db.ProjectArchitectures.Add(row); }
         else { row.UpdatedAt = clock.Now; row.UpdatedBy = ctx.UserId; }
         row.DiagramsJson = JsonSerializer.Serialize(diagrams, Json);
-        if (row.DiagramsJson.Length > 600_000) throw new ValidationException("diagrams", "These diagrams are too large. Split them or remove some boxes.");
+        if (row.DiagramsJson.Length > 600_000) throw new ValidationException("diagrams", "These diagrams and designs are too large. Remove some, or split them.");
         row.Notes = notes.Length == 0 ? null : notes;
-        recorder.Audit("doctracker.architecture_saved", "ProjectArchitecture", row.Id, null, new { project = projectId, diagrams = diagrams.Select(d => new { d.Key, nodes = d.Data["nodes"]?.AsArray().Count ?? 0 }) });
+        recorder.Audit("doctracker.architecture_saved", "ProjectArchitecture", row.Id, null, new { project = projectId, diagrams = diagrams.Select(d => new { d.Key, d.Kind, nodes = d.Data["nodes"]?.AsArray().Count ?? 0 }) });
         await db.SaveChangesAsync(ct);
         return await ArchitectureAsync(projectId, ct);
     }

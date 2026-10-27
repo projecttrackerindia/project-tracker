@@ -18,6 +18,7 @@ import { pageTree, useNewPage } from '../../documents/pages';
 import { ApiSymbol } from './ApiSymbol';
 import { Reading } from './Reading';
 import { Architecture } from './Architecture';
+import { Designs } from './Designs';
 import { docsPath, GENERAL, topicOf, type Topic } from './nav';
 import { avgScore, HealthRing, MethodPill, pidOf, plural, PopMenu, ProjectMark, tone, useApiActions } from './shared';
 import { dropZone, planDrop, planStep, type DropWhere } from './treeDrag';
@@ -75,6 +76,7 @@ function Topic({ p, catalog, topic }: { p: DtProject; catalog: DtCatalog; topic:
     return e ? <ApiSymbol project={p} endpoint={e} /> : <Reading p={p} title="Endpoint"><EmptyState icon="code" title="This endpoint is not here any more" action={<Link className="dx-btn" to={docsPath.apiIndex(p.id)}>API reference</Link>} /></Reading>;
   }
   if (topic.kind === 'architecture') return <Reading p={p} title="Architecture" wide><Architecture projectId={p.id} projectName={p.name} /></Reading>;
+  if (topic.kind === 'designs') return <Reading p={p} title="Designs" wide><Designs projectId={p.id} projectName={p.name} /></Reading>;
   if (topic.kind === 'api') return <ApiIndex p={p} catalog={catalog} />;
   return <Overview p={p} catalog={catalog} />;
 }
@@ -132,6 +134,7 @@ function Navigator({ p, catalog, topic }: { p: DtProject; catalog: DtCatalog; to
       </NavGroup>
       <ul className="dx-nav-list">
         <NavRow to={docsPath.architecture(p.id)} on={on('architecture')} icon="workflow" count={p.diagrams}>Architecture</NavRow>
+        <NavRow to={docsPath.designs(p.id)} on={on('designs')} icon="layers" count={p.designs ?? 0}>Designs</NavRow>
       </ul>
       <NavGroup id={`r:${pidOf(p)}`} title="Release notes" count={releases.length}>
         {releases.filter(match).map((d) => <NavRow key={d.id} to={docsPath.guide(p.id, d.id)} on={on('guide', d.id)} icon="flag">{d.title}</NavRow>)}
@@ -228,6 +231,7 @@ function Overview({ p, catalog }: { p: DtProject; catalog: DtCatalog }) {
         { label: 'Endpoint', hint: 'Describe one by hand', icon: 'code', onSelect: actions.newEndpoint },
         { label: 'Import', hint: 'OpenAPI, Postman or cURL', icon: 'upload', onSelect: actions.importFile },
         { label: 'Architecture diagram', hint: 'Open the studio', icon: 'workflow', onSelect: () => navigate(docsPath.architecture(p.id)) },
+        { label: 'Design', hint: 'Figma link, picture or an AI screen', icon: 'layers', onSelect: () => navigate(docsPath.designs(p.id)) },
         { label: 'Page written by AI', hint: 'From a line, a meeting, this project’s work or files', icon: 'sparkle', onSelect: () => setModal('ai'), hidden: !catalog.canCreate },
         { label: 'Document', hint: 'Requirements, runbook, test plan…', icon: 'note', onSelect: () => setModal('wizard'), hidden: !catalog.canCreate },
       ]} />}
@@ -296,6 +300,11 @@ function Overview({ p, catalog }: { p: DtProject; catalog: DtCatalog }) {
       <section className="dx-reveal" data-outline="Architecture">
         <h2 className="dx-h2">Architecture</h2>
         <Link to={docsPath.architecture(p.id)} className="dx-teaser"><Icon name="workflow" size={22} /><span>{p.diagrams ? `${plural(p.diagrams, 'diagram')}: how the system fits together and how requests flow.` : 'Draw how the system fits together and how a request flows.'}</span><Icon name="chevronR" size={14} /></Link>
+      </section>
+
+      <section className="dx-reveal" data-outline="Designs">
+        <h2 className="dx-h2">Designs</h2>
+        <Link to={docsPath.designs(p.id)} className="dx-teaser"><Icon name="layers" size={22} /><span>{p.designs ? `${plural(p.designs, 'screen')} from Figma, pictures and AI drafts.` : 'Link Figma, upload screens, or describe one and let AI draft it.'}</span><Icon name="chevronR" size={14} /></Link>
       </section>
       {actions.modal}
       {modal === 'ai' && <AiDraftDialog projects={catalog.projects.filter((x): x is DtProject & { id: string } => !!x.id).map((x) => ({ id: x.id, name: x.name }))} projectId={p.id} useLabel="Create the page"

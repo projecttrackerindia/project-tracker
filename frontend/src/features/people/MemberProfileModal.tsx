@@ -21,7 +21,7 @@ export function MemberProfileModal({ userId, onClose }: { userId: string; onClos
     try {
       const c = await chatApi.openDirect(userId);
       onClose();
-      navigate(`/chat/${c.id}`);
+      navigate(`/messages/${c.id}`);
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Could not open the chat.', 'error');
     }

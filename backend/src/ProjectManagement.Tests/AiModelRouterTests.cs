@@ -66,6 +66,10 @@ public class AiModelRouterTests
         Assert.Equal("low", ProjectManagement.Application.Features.Ai.AiPortfolio.Forecast(4, 2, today, null).Confidence);
         Assert.Null(ProjectManagement.Application.Features.Ai.AiPortfolio.Forecast(4, 0, today, today).Finish);                 // nothing finished lately: no forecast, not a made-up one
         Assert.Equal(today, ProjectManagement.Application.Features.Ai.AiPortfolio.Forecast(0, 0, today, today.AddDays(3)).Finish);   // nothing left: done
+        // Stalled lately but work was finished since the start: the lifetime pace gives a low-confidence date (6 done in 60 days = 0.1 a day; 3 left take 30 days).
+        var stalled = ProjectManagement.Application.Features.Ai.AiPortfolio.Forecast(3, 0, today, today.AddDays(10), 6, today.AddDays(-60));
+        Assert.Equal(today.AddDays(30), stalled.Finish); Assert.Equal(20, stalled.SlipDays); Assert.Equal("low", stalled.Confidence);
+        Assert.Null(ProjectManagement.Application.Features.Ai.AiPortfolio.Forecast(3, 0, today, today, 0, today.AddDays(-60)).Finish);   // nothing ever finished: still no date
     }
 
     [Theory]

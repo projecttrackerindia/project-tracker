@@ -15,7 +15,7 @@ import { listTime, plainText } from './chatFormat';
 
 /** Opens a message where it was said: its conversation (and its thread), scrolled to it. */
 export const messageLink = (conversationId: string, messageId: string | null, threadRootId?: string | null) =>
-  `/chat/${conversationId}${threadRootId ? `?thread=${threadRootId}&m=${messageId ?? ''}` : messageId ? `?m=${messageId}` : ''}`;
+  `/messages/${conversationId}${threadRootId ? `?thread=${threadRootId}&m=${messageId ?? ''}` : messageId ? `?m=${messageId}` : ''}`;
 
 // ------------------------------------------------------------------ catch me up
 

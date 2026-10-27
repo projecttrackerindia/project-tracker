@@ -84,7 +84,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
       ) : (
         <>
           <div className="pf-big">
-            <div className="pf-tile ok"><b>{b.onTrack}</b><span><strong>On track</strong><small>of {projectsN} projects</small></span></div>
+            <div className="pf-tile ok"><b>{b.onTrack}</b><span><strong>On track</strong><small>of {b.projects} projects{b.projects > projectsN ? ` · ${b.projects - projectsN} without a health yet` : ''}</small></span></div>
             <div className="pf-tile risk"><b>{b.atRisk}</b><span><strong>At risk</strong><small>{keysOf('AtRisk') || 'None at risk'}</small></span></div>
             <div className="pf-tile late"><b>{b.delayed}</b><span><strong>Late</strong><small>{keysOf('Delayed') || 'None late'}</small></span></div>
             <Summary summary={b.headlines[0] ?? board.summary} filter={filter} ai={ai} />

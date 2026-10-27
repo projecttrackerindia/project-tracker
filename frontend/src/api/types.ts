@@ -890,9 +890,11 @@ export interface DtDocument { id: string; key: string; title: string; typeCode: 
   /** A company page kept in a team's space. */ teamId?: string | null }
 /** A team's space: company pages kept for one team; mine = the person is in it. */
 export interface DtTeam { id: string; name: string; mine: boolean; pages: number }
-export interface DtProject { id: string | null; key: string | null; name: string; endpoints: DtEndpoint[]; definitions: DtDefinition[]; documents: DtDocument[]; diagrams: number }
+export interface DtProject { id: string | null; key: string | null; name: string; endpoints: DtEndpoint[]; definitions: DtDefinition[]; documents: DtDocument[]; diagrams: number; designs?: number }
 export interface DtCatalog { projects: DtProject[]; canCreate: boolean; isAdmin: boolean; truncated: number; teams?: DtTeam[] }
-export interface DtDiagram { key: string; title: string; kind: 'architecture' | 'flow'; data: { nodes: unknown[]; edges: unknown[] } }
+export interface DtDiagram { key: string; title: string; kind: 'architecture' | 'flow' | 'design'; data: { nodes: unknown[]; edges: unknown[] } }
+/** A design kept in a project's documentation (stored beside its diagrams, kind "design"). */
+export interface DesignData { source: 'figma' | 'image' | 'ai'; device: 'phone' | 'tablet' | 'desktop'; state: 'draft' | 'review' | 'approved'; url?: string; fileId?: string; html?: string; prompt?: string; note?: string; group?: string }
 export interface DtArchitecture { projectId: string | null; diagrams: DtDiagram[]; notes: string | null; canEdit: boolean; updatedAt: string | null; updatedBy: string | null }
 export interface SaveEndpoint { definitionId: string; method: string; path: string; summary: string; tag: string | null; deprecated: boolean; ownerId: string | null; details: EndpointDetails }
 export interface SaveDefinition { name: string; description: string | null; basePath: string | null; version: string | null; auth: ApiAuthScheme; authNote: string | null; servers: string[]; stage?: ApiStage }
