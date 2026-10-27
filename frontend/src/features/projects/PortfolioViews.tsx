@@ -1,3 +1,4 @@
+import { Face } from '../../components/Face';
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useWsQuery } from '../../lib/hooks';
@@ -38,7 +39,7 @@ export function DecisionCard({ item, filter, owner }: { item: DecisionItem; filt
       <h4><Link to={`/work/projects/${item.projectId}`}>{item.name}</Link> <span className="pf-sr">{item.key} · {late}</span></h4>
       <p className="pf-dec-dates">
         Due <s>{dayMonth(item.due)}</s> → {item.forecast ? <>Forecast <b className={tone}>{dayMonth(item.forecast)}</b></> : <em>No forecast yet</em>}
-        {owner && <> · {owner}</>}
+        {owner && <> · <Face byName name={owner} className="pf-own-av" />{owner}</>}
       </p>
       <div className="pf-dec-acts">
         {a.done ? <span className="ds-pill success" role="status">{a.done === 'accepted' ? '✓ team told' : '✓ proposed'}</span> : <>

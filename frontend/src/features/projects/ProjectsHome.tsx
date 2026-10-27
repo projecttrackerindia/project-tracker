@@ -1,3 +1,5 @@
+import { pinItem, useContextMenu, usePins } from '../../components/v2/pins';
+import { Face } from '../../components/Face';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -14,7 +16,7 @@ import { PortfolioView } from './PortfolioView';
 import { duplicateGroups, groupKey, readDismissed, writeDismissed } from './duplicates';
 import { usePortfolioBrief } from './PortfolioInsights';
 import { ProjectFormModal } from './ProjectFormModal';
-import { dayMonth, errText, HEALTH, HealthPill, initials, isFinished, passGradient, passStatus, useAllProjects } from './projectParts';
+import { dayMonth, errText, HEALTH, HealthPill, isFinished, passGradient, passStatus, useAllProjects } from './projectParts';
 import './projects.css';
 import './projectsHome.css';
 
@@ -118,6 +120,8 @@ function ProjectsView() {
   const all = useAllProjects(filters);
   const brief = usePortfolioBrief();
   const items = useMemo(() => [...(all.data?.items ?? [])].sort(byDue), [all.data]);
+  const pins = usePins();
+  const passMenu = useContextMenu();
   const dupes = useMemo(() => new Set(duplicateGroups(items.filter((p) => p.status !== 'Archived')).flat().map((p) => p.id)), [items]);
   const activeFilters = [ownerId, groupId, type, priority].filter(Boolean).length + (status !== 'all' ? 1 : 0) + (archived ? 1 : 0) + (showCompleted ? 0 : 1);
   const narrowed = !!dq || activeFilters > 0;
@@ -221,7 +225,9 @@ function ProjectsView() {
         ) : (
           <div className={`pa-grid ${opening ? 'opening' : ''}`}>
             {shown.map((p) => <Pass key={p.id} p={p} still={!!still} opening={opening} duplicate={dupes.has(p.id)}
-              risk={brief.data?.ranked?.find((r) => r.projectId === p.id)} onOpen={openPass} />)}
+              risk={brief.data?.ranked?.find((r) => r.projectId === p.id)} onOpen={openPass}
+              onMenu={(e) => passMenu.open(e, [{ label: 'Open', icon: 'arrowRight', onSelect: () => openPass(p.id) }, pinItem(pins, p.id)])} />)}
+            {passMenu.menu}
           </div>
         )}
       {(all.data?.total ?? 0) > items.length && <p className="muted pj-note">Showing the first {items.length} of {all.data!.total} projects. Search or filter to find the others.</p>}
@@ -248,8 +254,9 @@ function passLine(p: Project, r?: { projectedFinish: string | null; projectedSli
 
 const R = 26, C = 2 * Math.PI * R;
 /** One project as a Wallet pass. */
-function Pass({ p, still, opening, duplicate, risk, onOpen }: {
+function Pass({ p, still, opening, duplicate, risk, onOpen, onMenu }: {
   p: Project; still: boolean; opening: string | null; duplicate: boolean; risk?: { projectedFinish: string | null; projectedSlipDays: number | null }; onOpen: (id: string) => void;
+  onMenu?: (e: React.MouseEvent) => void;
 }) {
   const [from, to] = passGradient(p);
   const st = passStatus(p);
@@ -264,10 +271,11 @@ function Pass({ p, still, opening, duplicate, risk, onOpen }: {
       aria-label={`${p.name}, ${st.label}, ${p.progress}% done${p.dueDate ? `, due ${dayMonth(p.dueDate)}` : ''}, ${signed} of ${stages} stages signed off`}
       animate={still ? undefined : me ? { scale: 1.04, y: -8, opacity: 1 } : { scale: 1, y: 0, opacity: other ? 0.6 : 1 }}
       transition={{ type: 'spring', duration: 0.45, bounce: 0.15 }}
-      onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); onOpen(p.id); }}>
+      onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); onOpen(p.id); }}
+      onContextMenu={onMenu}>
       <span className="pa-top">
         <motion.span className="pa-key" layoutId={still ? undefined : `pkey-${p.id}`}>{p.key}</motion.span>
-        <span className="pa-owner-av" title={p.owner?.name ?? 'No owner'}>{p.owner ? initials(p.owner.name) : '–'}</span>
+        {p.owner ? <Face className="pa-owner-av" userId={p.owner.id} name={p.owner.name} title={p.owner.name} /> : <span className="pa-owner-av" title="No owner">–</span>}
       </span>
       <motion.b className="pa-name" layoutId={still ? undefined : `pname-${p.id}`} title={p.name}>{p.name}</motion.b>
       <span className="pa-own">{p.owner?.name ?? 'No owner'}</span>

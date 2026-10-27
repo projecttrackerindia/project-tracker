@@ -1,3 +1,4 @@
+import { ToolbarSeg } from '../../components/v2/ToolbarSeg';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -63,13 +64,13 @@ export function QualityPage() {
 
   return (
     <div className="dq-page qa">
-      <div className="dq-tb">
+      <ToolbarSeg className="dq-tb">
         <div className="dq-seg" role="tablist" aria-label="Quality views">
           {(['runs', 'cases', 'bugs'] as Tab[]).map((t) => (
             <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t[0].toUpperCase() + t.slice(1)}</button>
           ))}
         </div>
-      </div>
+      </ToolbarSeg>
       <div className="dq-hd qa-hd">
         <div>
           <div className="dq-eyebrow">{[project, current ? releaseOf(current.name) : null].filter(Boolean).join(' · ') || 'Test cases and runs'}</div>

@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { appCsp } from './lib/csp.mjs';
+import { assertFills, assertFillsMain, assertInToolbar } from './lib/fit.mjs';
 
 // Release 1 Desk (/desk) and Quality (/quality). Desk: the red incident strip for an open Critical ticket (timer, War room), the live queue
 // sorted by SLA with rings and channel icons, j/k moving through it, the open ticket as a conversation with a reply box (⌘↵ posts a
@@ -207,6 +208,14 @@ try {
     // ---------------------------------------------------------------- Desk
     await page.goto(`${origin}/preview-org/desk`);
     await page.getByRole('heading', { level: 1, name: 'Desk' }).waitFor();
+    for (const w of [1920, 1440, 1366]) {
+      await page.setViewportSize({ width: w, height: 900 }); await page.waitForTimeout(150);
+      if (w < 1680) await assertFills(page, '#main-content .dq-cols', `Desk ${w}`);
+      await assertFillsMain(page, '#main-content .dq-cols', `Desk ${w}`);
+      await assertInToolbar(page, '.v2-tb [role="tablist"][aria-label="Desk views"]', `Desk ${w}`);
+      if (w === 1366 && theme === 'light' && process.env.PM_SHOT_DIR) { await page.locator('.dq-q-row, .dq-row').first().waitFor().catch(() => undefined); await page.waitForTimeout(300); await page.screenshot({ path: path.join(process.env.PM_SHOT_DIR, 'fix-desk-1366.png') }); }
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
     const strip = page.locator('.dq-inc');
     await strip.getByText('Critical incident · WT-5 Payout server disconnected').waitFor();
     await strip.getByText(/Payouts to 1,284 borrowers paused · Siva and Shiva on it/).waitFor();

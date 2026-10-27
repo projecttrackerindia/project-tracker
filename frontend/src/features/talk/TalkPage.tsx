@@ -1,3 +1,4 @@
+import { Face } from '../../components/Face';
 import { useMemo, useState } from 'react';
 import { MeetPage } from '../meet/MeetPage';
 import { MailboxPage } from '../mailbox/MailboxPage';
@@ -282,7 +283,7 @@ function Row({ r, conversation, source, active, onOpen }: { r: TalkRow; conversa
             ? <span className={`talk-av square ${recording ? 'rec' : 'cal'}`} aria-hidden="true">{recording ? <Icon name="play" size={16} /> : <Icon name="calendar" size={18} />}</span>
             : channel
               ? <span className={`talk-av square av-c${hue(r.title)}`} aria-hidden="true">#</span>
-              : <span className={`talk-av av-c${hue(r.title)}`} aria-hidden="true">{initials}</span>}
+              : <Face userId={r.avatar.userId} hasAvatar={r.avatar.hasAvatar || undefined} className={`talk-av av-c${hue(r.title)}`} text={initials} />}
           <span className={`talk-src s-${r.kind}`} title={r.kind === 'mail' ? source?.name : r.kind === 'meeting' ? 'Meeting' : 'Chat'} aria-hidden="true">
             {r.kind === 'mail' ? source?.glyph ?? 'M' : r.kind === 'meeting' ? <Icon name="play" size={8} /> : null}
           </span>

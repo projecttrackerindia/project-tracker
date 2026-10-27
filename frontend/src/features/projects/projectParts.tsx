@@ -1,3 +1,4 @@
+import { Face } from '../../components/Face';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -134,6 +135,6 @@ export const initials = (name: string | null | undefined) => {
 const AVATAR = ['#5856d6', '#0a84ff', '#ff9500', '#af52de', '#34c759', '#ff2d55', '#30b0c7', '#a2845e'];
 export const avatarColor = (seed: string | null | undefined) => AVATAR[hash(seed ?? '') % AVATAR.length];
 /** A round initials avatar (the projects pages draw people this way). */
-export function Initials({ name, seed, className = '' }: { name: string | null | undefined; seed?: string | null; className?: string }) {
-  return <span className={`pa-av ${className}`} style={{ background: avatarColor(seed ?? name) }} aria-hidden="true">{initials(name)}</span>;
+export function Initials({ name, seed, userId, className = '' }: { name: string | null | undefined; seed?: string | null; userId?: string | null; className?: string }) {
+  return <Face userId={userId} name={name} text={initials(name)} className={`pa-av ${className}`} style={{ background: avatarColor(seed ?? name) }} />;
 }

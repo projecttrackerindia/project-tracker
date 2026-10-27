@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
+import { assertFills, assertFillsMain, assertInToolbar } from './lib/fit.mjs';
 
 // v2 Work: My work · Team · Tickets with Projects › as a link; one list on /work-items (kind chip, priority dot, owner, due in red when
 // late, group and sort; filters only past 10 items); the side panel deep-linked by ?item= (four tiles saved as you go with the version,
@@ -195,6 +196,18 @@ try {
     assert.deepEqual((await tabs.getByRole('tab').allInnerTexts()).map((t) => t.trim()), ['Mine', 'Team', 'Automations']);
     assert.equal(await tabs.getByRole('tab', { name: 'Mine' }).getAttribute('aria-selected'), 'true');
     if (width === 1440) assert.equal(await page.locator('.v2-tb [role="tablist"][aria-label="Work"]').count(), 1, 'the segmented control sits in the toolbar');
+    if (width === 1440) {
+      // The page fills the main area at laptop widths (no empty band on the right) and the toolbar control is whole and centred.
+      for (const w of [1920, 1440, 1366]) {
+        await page.setViewportSize({ width: w, height: 1000 }); await page.waitForTimeout(150);
+        await page.locator('.mw-r').first().waitFor().catch(() => undefined);
+        if (w < 1680) await assertFills(page, '#main-content .mw', `My Work ${w}`);
+        await assertFillsMain(page, '#main-content .mw', `My Work ${w}`);
+        await assertInToolbar(page, '.v2-tb [role="tablist"][aria-label="Work"]', `My Work ${w}`);
+        if (w === 1366 && theme === 'light' && process.env.PM_SHOT_DIR) await page.screenshot({ path: path.join(process.env.PM_SHOT_DIR, 'fix-mywork-1366.png') });
+      }
+      await page.setViewportSize({ width, height: 1000 });
+    }
     await waitFor(() => state.lists.some((l) => l.mine === 'true' && (l.status ?? 'open') === 'open'), 'My Work asks /work-items for mine');
     await page.locator('.mw-eyebrow', { hasText: '12 open · 1 overdue' }).waitFor();
     // The front card: the overdue item, with why it is next, Start, due, project and owner; two cards behind it.

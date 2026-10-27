@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { ToolbarSeg as ToolbarSlot } from '../../components/v2/ToolbarSeg';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { projectApi, teamApi, workApi, workItemApi, workspaceApi } from '../../api/endpoints';
@@ -198,14 +198,3 @@ function TeamLoadLine() {
   );
 }
 
-/** Puts the page's Mine · Team · Automations control at the left of the app toolbar (as in the design); inline where there is no toolbar (phone). */
-function ToolbarSlot({ children }: { children: ReactNode }) {
-  const [host, setHost] = useState<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    const find = () => { const el = document.querySelector<HTMLElement>('.v2-tb'); setHost(el && getComputedStyle(el).display !== 'none' ? el : null); };
-    find();
-    window.addEventListener('resize', find);
-    return () => window.removeEventListener('resize', find);
-  }, []);
-  return host ? createPortal(<div className="mw-tbslot">{children}</div>, host) : <div className="mw-tbslot inline">{children}</div>;
-}

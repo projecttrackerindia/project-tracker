@@ -1,3 +1,4 @@
+import { Face } from '../../components/Face';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AgentPage, type AgentSection } from '../agent/AgentPage';
 import { AiPage } from '../ai/AiPage';
@@ -14,7 +15,7 @@ import type { CalendarEvent } from '../../api/types';
 import { EmptyState, ErrorState, Modal, PageLoader, Segmented } from '../../components/ui';
 import { useAi, useAssistant } from '../ai/Assistant';
 import { useIsMobile } from '../../lib/mobile';
-import { MONTHS, initials, todayISO } from '../../lib/format';
+import { MONTHS, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -356,7 +357,7 @@ function UpNext({ team }: { team: boolean }) {
       <h3 className="hm-h3 hm-next-t">{next.e.title}</h3>
       <div className="hm-faint hm-next-time">{clock(next.start)} – {clock(end)}{next.e.notes ? ' · Notes by Project Tracker' : next.e.projectName ? ` · ${next.e.projectName}` : ''}</div>
       <div className="hm-next-row">
-        <div className="hm-ppl">{people.slice(0, 4).map((p, i) => <span key={`${p}${i}`} className="hm-av" style={{ background: AV_TINTS[i % AV_TINTS.length] }} title={p}>{initials(p)}</span>)}</div>
+        <div className="hm-ppl">{people.slice(0, 4).map((p, i) => <Face key={`${p}${i}`} byName name={p} className="hm-av" style={{ background: AV_TINTS[i % AV_TINTS.length] }} title={p} />)}</div>
         {join ? <a className="hm-pill join" href={join} target="_blank" rel="noreferrer">Join</a> : <Link className="hm-pill join" to={hrefOf(next.e)}>Join</Link>}
       </div>
       {ai && (

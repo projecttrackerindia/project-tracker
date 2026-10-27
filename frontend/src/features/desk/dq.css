@@ -2,10 +2,11 @@
    pill buttons, the AI orb. Colours follow the mockups (ds.css) and switch with the theme through the --ds tokens. */
 .dq-page { --dq-tint: var(--ds-accent-fill); --dq-green: #34c759; --dq-orange: #ff9f0a; --dq-red: #ff3b30; --dq-blue: #0071e3; --dq-purple: #af52de;
   --dq-ring-track: rgba(0, 0, 0, .07); --dq-fill: rgba(118, 118, 128, .12); --dq-fill2: rgba(118, 118, 128, .08); --dq-line: rgba(0, 0, 0, .08);
-  margin: -32px -6px 0; letter-spacing: -.01em; color: var(--ds-text); }
+  margin: 0 -6px; letter-spacing: -.01em; color: var(--ds-text); }
 [data-theme='dark'] .dq-page { --dq-ring-track: rgba(255, 255, 255, .12); --dq-fill: rgba(118, 118, 128, .24); --dq-fill2: rgba(118, 118, 128, .16); --dq-line: rgba(255, 255, 255, .1); }
-@media (max-width: 1280px) { .dq-page { margin-top: -28px; } }
-.dq-tb { height: 52px; display: flex; align-items: center; gap: 12px; }
+.dq-tb { display: flex; align-items: center; gap: 12px; }
+.v2-tb .dq-tb .dq-seg { --dq-fill: rgba(118, 118, 128, .12); }
+[data-theme='dark'] .v2-tb .dq-tb .dq-seg { --dq-fill: rgba(118, 118, 128, .24); }
 .dq-seg { display: inline-flex; background: var(--dq-fill); border-radius: 9px; padding: 2px; gap: 2px; }
 .dq-seg button { height: 26px; padding: 0 14px; border-radius: 7px; font: 500 12.5px var(--font); color: var(--ds-text); background: transparent; border: 0; cursor: pointer; }
 .dq-seg button.on { background: var(--ds-surface); box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .04); }
@@ -32,3 +33,4 @@
 .dq-ai-line { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45; }
 .dq-ai-line .dq-orb { margin-top: 2px; }
 .dq-empty { color: var(--ds-text-4); font-size: 13px; padding: 16px; margin: 0; }
+.dq-own-av { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 6px; border-radius: 50%; vertical-align: -4px; background: var(--dq-fill); color: var(--ds-text-2); font-size: 8px; font-weight: 600; }

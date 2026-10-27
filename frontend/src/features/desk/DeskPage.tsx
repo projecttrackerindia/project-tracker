@@ -1,3 +1,5 @@
+import { ToolbarSeg } from '../../components/v2/ToolbarSeg';
+import { Face } from '../../components/Face';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -104,7 +106,7 @@ export function DeskPage() {
 
   return (
     <div className="dq-page dq-desk">
-      <div className="dq-tb">
+      <ToolbarSeg className="dq-tb">
         <div className="dq-seg" role="tablist" aria-label="Desk views">
           {(['queue', 'mine', 'solved'] as Tab[]).map((t) => (
             <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setSelected(null); }}>
@@ -112,7 +114,7 @@ export function DeskPage() {
             </button>
           ))}
         </div>
-      </div>
+      </ToolbarSeg>
 
       {critical && <Incident row={critical} now={now} />}
 
@@ -300,11 +302,11 @@ function Context({ row }: { row: WorkRow }) {
     <aside className="dq-ctx" aria-label="Context">
       <div className="dq-card dq-cc">
         <div className="dq-row" style={{ gap: 10, marginBottom: 10 }}>
-          <span className="dq-av" aria-hidden="true">{initials(reporter)}</span>
+          <Face userId={w?.reporter?.id} name={reporter} byName className="dq-av" text={initials(reporter)} />
           <div style={{ minWidth: 0 }}><b className="dq-name">{reporter}</b><div className="dq-faint dq-s12">{[type, w ? `since ${new Date(w.createdAt).getFullYear()}` : null].filter(Boolean).join(' · ')}</div></div>
         </div>
         <div className="dq-kv"><span>Ticket</span><b>{row.key}</b></div>
-        <div className="dq-kv"><span>Owner</span><b>{row.assignee?.name ?? 'unassigned'}</b></div>
+        <div className="dq-kv"><span>Owner</span><b>{row.assignee && <Face userId={row.assignee.id} name={row.assignee.name} className="dq-own-av" />}{row.assignee?.name ?? 'unassigned'}</b></div>
         <div className="dq-kv"><span>Status</span><b>{row.status}</b></div>
       </div>
       <div className="dq-card dq-cc">

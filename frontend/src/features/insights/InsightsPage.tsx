@@ -1,3 +1,4 @@
+import { Face } from '../../components/Face';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AgentWorkflowsPage } from '../ai/AgentWorkflowsPage';
 import { TimesheetPage, type TimesheetSection } from '../time/TimesheetPage';
@@ -220,7 +221,7 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
             <ul className="ins-bars">
               {members.slice(0, 7).map((m, i) => (
                 <li key={m.userId}>
-                  <Link to={`/work?tab=team&person=${m.userId}`} className="ins-name">{m.name}</Link>
+                  <Link to={`/work?tab=team&person=${m.userId}`} className="ins-name"><Face userId={m.userId} name={m.name} className="ins-av" />{m.name}</Link>
                   <span className="ins-bar" role="img" aria-label={`${m.open} open, ${m.overdue} overdue`}>
                     <i className="open" style={{ width: `${((m.open - m.overdue) / capPos) * 100}%`, animationDelay: `${i * 40}ms` }} />
                     <i className="late" style={{ width: `${(m.overdue / capPos) * 100}%`, animationDelay: `${i * 40}ms` }} />

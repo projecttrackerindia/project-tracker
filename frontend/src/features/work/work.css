@@ -253,10 +253,8 @@ html[data-theme='dark'] .wk-ai-line { color: #A5A3FF; }
    My Work (Apple, s-work): the Focus Stack, today's ring, one suggestion, and the Today / This week / Later lists.
    ===================================================================================================================== */
 .mw { --mw-tint: #ff9500; --mw-green: #34c759; --mw-red: #ff3b30; --mw-sh: 0 1px 2px rgba(0, 0, 0, .04), 0 0 0 .5px rgba(0, 0, 0, .06);
-  color: var(--ds-text); max-width: 1180px; }
+  color: var(--ds-text); }
 [data-theme='dark'] .mw { --mw-sh: 0 0 0 .5px rgba(255, 255, 255, .08); }
-.mw-tbslot { order: -1; display: flex; align-items: center; }
-.mw-tbslot.inline { margin: 0 0 14px; }
 html .mw-tbslot .mw-seg.ds-seg { min-height: 30px; height: 30px; background: rgba(118, 118, 128, .12); border-radius: 9px; padding: 2px; gap: 2px; }
 html .mw-tbslot .mw-seg.ds-seg button { height: 26px; min-height: 26px; padding: 0 14px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: var(--ds-text); }
 html .mw-tbslot .mw-seg .ds-seg-thumb { border-radius: 7px; top: 2px; bottom: 2px; box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .04); }
