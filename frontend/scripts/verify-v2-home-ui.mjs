@@ -114,9 +114,10 @@ try {
     assert.match(await brief.innerText(), /OPS-5 Payout server disconnected/);
     assert.equal(await page.getByRole('tab', { name: 'For you' }).getAttribute('aria-selected'), 'true');
 
-    // The inbox: four filters with counts, each row one primary action and Later.
+    // The inbox: each row one primary action and Later. With 10 rows or fewer there is nothing to sort, so no filter chips (v2 rule).
     const inbox = page.getByRole('region', { name: 'Inbox' });
-    for (const [label, n] of [['All', 6], ['Assigned', 3], ['Decisions', 2], ['Mentions', 1]]) await inbox.getByRole('button', { name: new RegExp(`^${label}\\s?${n}$`) }).waitFor();
+    await inbox.locator('.hm-row').first().waitFor();
+    assert.equal(await inbox.getByRole('button', { name: /^Decisions\s?2$/ }).count(), 0, 'no filter chips at 6 rows');
     const items = inbox.locator('.hm-row');
     assert.equal(await items.count(), 6);
     for (let i = 0; i < 6; i++) {
@@ -133,10 +134,6 @@ try {
     if (width === 390) await fitsPhone(page, 'Home', assert);
     await shot(page, `home-${tag}.png`);
 
-    // A filter shows one group.
-    await inbox.getByRole('button', { name: /^Decisions\s?2$/ }).click();
-    await page.waitForFunction(() => document.querySelectorAll('.hm-row').length === 2);
-    assert.equal(await inbox.getByRole('button', { name: /^Decisions\s?2$/ }).getAttribute('aria-pressed'), 'true');
     // The row's own action runs in place (approve a timesheet), and Later moves a row to tomorrow.
     await inbox.locator('.hm-row', { hasText: 'Ravi Kumar · timesheet' }).getByRole('button', { name: 'Approve' }).click();
     await page.locator('.hm-row.done', { hasText: 'Ravi Kumar · timesheet' }).waitFor();
