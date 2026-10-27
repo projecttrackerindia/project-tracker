@@ -1,72 +1,69 @@
 import { useMemo, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { projectApi } from '../../api/endpoints';
-import type { Paged, Project, ProjectStatus } from '../../api/types';
-import { Icon } from '../../components/Icon';
-import { activeShare, Avatar, HealthBadge, PriorityBadge, Progress } from '../../components/ui';
-import { dueLabel } from '../../lib/format';
+import type { Project, ProjectStatus } from '../../api/types';
+import { Face } from '../../components/Face';
 import { invalidateWorkspace } from '../../lib/hooks';
 import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { ProjectChatButton } from '../chat/ProjectChat';
+import { dayMonth, isFinished, passGradient, passStatus } from './projectParts';
 
-const COLUMNS: { status: ProjectStatus; label: string; color: string }[] = [
-  { status: 'Planning', label: 'Planning', color: '#38bdf8' },
-  { status: 'Active', label: 'Active', color: '#8b5cf6' },
-  { status: 'OnHold', label: 'On Hold', color: '#fbbf24' },
-  { status: 'Completed', label: 'Completed', color: '#34d399' },
-  { status: 'Cancelled', label: 'Cancelled', color: '#9aa0b5' },
-];
-const ARCHIVED = { status: 'Archived' as ProjectStatus, label: 'Archived', color: '#94a3b8' };
+export type BoardColumnId = 'notStarted' | 'inProgress' | 'atRisk' | 'late' | 'done';
 
 /**
- * Projects board. Columns are project statuses.
- *  - Dropping a card in a different column changes the project's status.
- *  - Dropping it inside its own column only re-orders it (status is untouched).
- * Order is persisted (Project.Position), so it survives a reload.
+ * The five board columns. Status comes from the one source the passes and the list use (passStatus); "Not started" is an on-track project
+ * still in Planning. `moveTo` is the project status a drop sets; At risk and Late are worked out by the server from dates and work, so
+ * nothing can be dropped there (the same moves the old status board allowed: Planning, Active, Completed).
  */
-export function ProjectBoard({ projects, cacheKey, includeArchived, canEditAll, meId, onOpen }: {
-  projects: Project[]; cacheKey: unknown[]; includeArchived: boolean; canEditAll: boolean; meId: string; onOpen: (id: string) => void;
+export const BOARD_COLUMNS: { id: BoardColumnId; label: string; tone: string; moveTo?: ProjectStatus }[] = [
+  { id: 'notStarted', label: 'Not started', tone: 'idle', moveTo: 'Planning' },
+  { id: 'inProgress', label: 'In progress', tone: 'ok', moveTo: 'Active' },
+  { id: 'atRisk', label: 'At risk', tone: 'risk' },
+  { id: 'late', label: 'Late', tone: 'late' },
+  { id: 'done', label: 'Done', tone: 'done', moveTo: 'Completed' },
+];
+
+export function boardColumn(p: Project): BoardColumnId {
+  const tone = passStatus(p).tone;
+  if (tone === 'done' || isFinished(p)) return 'done';
+  if (tone === 'late') return 'late';
+  if (tone === 'risk') return 'atRisk';
+  return p.status === 'Planning' ? 'notStarted' : 'inProgress';
+}
+
+/**
+ * Projects board (Apple design): status columns with compact cards — key chip, name, owner photo, progress bar, due.
+ * Dragging a card to Not started / In progress / Done changes the project's status through the same move API and permission as the old
+ * board (whole-org editors, or the project's owner), with the same sign-off warning when a project is marked Completed too early.
+ */
+export function ProjectBoard({ projects, cacheKey, canEditAll, meId, onOpen }: {
+  projects: Project[]; cacheKey: unknown[]; canEditAll: boolean; meId: string; onOpen: (id: string) => void;
 }) {
   const wid = useWorkspaceId();
   const [dragId, setDragId] = useState<string | null>(null);
-  const [overCol, setOverCol] = useState<ProjectStatus | null>(null);
-  const [overCard, setOverCard] = useState<string | null>(null);
+  const [overCol, setOverCol] = useState<BoardColumnId | null>(null);
 
-  const columns = useMemo(() => {
-    const cols = includeArchived ? [...COLUMNS, ARCHIVED] : COLUMNS;
-    return cols.map((c) => ({ ...c, items: projects.filter((p) => p.status === c.status).sort((a, b) => a.position - b.position) }));
-  }, [projects, includeArchived]);
-
+  const columns = useMemo(() => BOARD_COLUMNS.map((c) => ({ ...c, items: projects.filter((p) => boardColumn(p) === c.id) })), [projects]);
   const canMove = (p: Project) => canEditAll || p.owner?.id === meId;
+  const dragged = projects.find((p) => p.id === dragId);
+  const accepts = (c: typeof BOARD_COLUMNS[number]) => !!dragged && !!c.moveTo && c.moveTo !== dragged.status;
+  const reset = () => { setDragId(null); setOverCol(null); };
 
-  const reset = () => { setDragId(null); setOverCol(null); setOverCard(null); };
-
-  const drop = async (status: ProjectStatus, beforeId?: string) => {
-    const project = projects.find((p) => p.id === dragId);
+  const drop = async (col: typeof BOARD_COLUMNS[number]) => {
+    const project = dragged;
     reset();
-    if (!project || !canMove(project)) return;
-
-    const column = projects.filter((p) => p.status === status && p.id !== project.id).sort((a, b) => a.position - b.position);
-    let position: number;
-    if (beforeId) {
-      const idx = column.findIndex((p) => p.id === beforeId);
-      const next = column[idx]; const prev = column[idx - 1];
-      position = !next ? (column.at(-1)?.position ?? 0) + 1024 : prev ? (prev.position + next.position) / 2 : next.position - 512;
-    } else position = (column.at(-1)?.position ?? 0) + 1024;
-    if (project.status === status && project.position === position) return;
-
-    // Optimistic update; rolled back if the server refuses (permission, plan limit...).
-    const previous = queryClient.getQueryData<Paged<Project>>(cacheKey);
-    queryClient.setQueryData<Paged<Project>>(cacheKey, (old) => old && ({
-      ...old, items: old.items.map((p) => (p.id === project.id ? { ...p, status, position } : p)),
+    if (!project || !col.moveTo || !canMove(project) || project.status === col.moveTo) return;
+    const status = col.moveTo;
+    const previous = queryClient.getQueryData(cacheKey);
+    queryClient.setQueryData<{ items: Project[]; total: number }>(cacheKey, (old) => old && ({
+      ...old, items: old.items.map((p) => (p.id === project.id ? { ...p, status, health: status === 'Completed' ? 'Completed' : p.health === 'Completed' ? 'OnTrack' : p.health } : p)),
     }));
     try {
-      const res = await projectApi.move(project.id, { status, position });
+      const res = await projectApi.move(project.id, { status });
       const pending = res?.pendingSignOffs ?? 0;
-      if (project.status !== status && status === 'Completed' && pending > 0)
+      if (status === 'Completed' && pending > 0)
         toast(`“${project.name}” marked Completed, but ${pending} stage sign-off${pending === 1 ? ' is' : 's are'} still pending.`, 'warning');
-      else if (project.status !== status) toast(`“${project.name}” moved to ${[...COLUMNS, ARCHIVED].find((c) => c.status === status)?.label}.`);
+      else toast(`“${project.name}” moved to ${col.label}.`);
       void invalidateWorkspace(wid, 'projects');
     } catch (e) {
       queryClient.setQueryData(cacheKey, previous);
@@ -75,42 +72,47 @@ export function ProjectBoard({ projects, cacheKey, includeArchived, canEditAll, 
   };
 
   return (
-    <div className="kanban" role="list" aria-label="Projects by status">
-      {columns.map((col) => (
-        <div key={col.status} role="listitem" className={`kb-col ${overCol === col.status ? 'drag-over' : ''}`}>
-          <div className="kb-head">
-            <div className="kb-head-left"><span className="kb-dot" style={{ background: col.color, color: col.color }} /><span className="kb-title">{col.label}</span></div>
-            <span className="kb-count">{col.items.length}</span>
-          </div>
-          <div className="kb-body"
-            onDragOver={(e) => { if (dragId) { e.preventDefault(); setOverCol(col.status); } }}
+    <div className="pb-board" role="list" aria-label="Projects by status" data-testid="projects-board">
+      {columns.map((col) => {
+        const ok = accepts(col);
+        return (
+          <section key={col.id} role="listitem" aria-label={col.label} data-column={col.id}
+            className={`pb-col ${dragId ? (ok ? 'can-drop' : 'no-drop') : ''} ${overCol === col.id && ok ? 'over' : ''}`}
+            onDragOver={(e) => { if (ok) { e.preventDefault(); setOverCol(col.id); } }}
             onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOverCol(null); }}
-            onDrop={(e) => { e.preventDefault(); void drop(col.status, overCard ?? undefined); }}>
-            {col.items.length === 0 && <div className="kb-empty">Drop projects here</div>}
-            {col.items.map((p) => (
-              <div key={p.id} role="button" tabIndex={0} draggable={canMove(p)}
-                className={`kb-card ${dragId === p.id ? 'dragging' : ''} ${overCard === p.id && dragId !== p.id ? 'drop-before' : ''}`}
-                onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', p.id); } catch { /* ignore */ } }}
-                onDragEnd={reset}
-                onDragOver={(e) => { if (dragId && dragId !== p.id) { e.preventDefault(); e.stopPropagation(); setOverCol(col.status); setOverCard(p.id); } }}
-                onClick={() => onOpen(p.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(p.id); }}>
-                <div className="task-key">{p.key}{p.teamName ? ` · ${p.teamName}` : ''}</div>
-                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
-                  <div className="kb-card-title">{p.name}</div><ProjectChatButton projectId={p.id} name={p.name} />
-                </div>
-                <div className="row" style={{ marginBottom: 9 }}>
-                  <div style={{ flex: 1 }}><Progress value={p.progress} active={activeShare(p.stats)} /></div><b style={{ fontSize: 11.5 }}>{p.progress}%</b>
-                </div>
-                <div className="kb-card-meta"><PriorityBadge priority={p.priority} /><HealthBadge health={p.health} /></div>
-                <div className="kb-card-meta" style={{ marginTop: 9 }}>
-                  <span className="row" style={{ gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}><Avatar name={p.owner?.name} size="sm" userId={p.owner?.id} />{p.owner?.name ?? 'Unassigned'}</span>
-                  <span className="meta-line"><Icon name="clock" /> {dueLabel(p.dueDate)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+            onDrop={(e) => { e.preventDefault(); void drop(col); }}>
+            <header className="pb-head">
+              <span className={`pb-dot ${col.tone}`} aria-hidden="true" />
+              <b>{col.label}</b>
+              <span className="pb-count">{col.items.length}</span>
+            </header>
+            <div className="pb-body">
+              {col.items.length === 0 && <div className="pb-empty">{col.moveTo ? 'Drop projects here' : 'None'}</div>}
+              {col.items.map((p) => {
+                const [from, to] = passGradient(p);
+                const pct = Math.max(0, Math.min(100, p.progress));
+                const movable = canMove(p);
+                return (
+                  <div key={p.id} role="button" tabIndex={0} draggable={movable} data-testid="board-card" data-project={p.name}
+                    className={`pb-card ${dragId === p.id ? 'dragging' : ''}`}
+                    aria-label={`${p.name}, ${pct}% done${p.dueDate ? `, due ${dayMonth(p.dueDate)}` : ''}`}
+                    onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', p.id); } catch { /* ignore */ } }}
+                    onDragEnd={reset}
+                    onClick={() => onOpen(p.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(p.id); }}>
+                    <span className="pb-top">
+                      <span className="pb-key" style={{ background: `linear-gradient(150deg, ${from}, ${to})` }}>{p.key}</span>
+                      {p.owner ? <Face className="pb-av" userId={p.owner.id} name={p.owner.name} title={p.owner.name} /> : <span className="pb-av" title="No owner">–</span>}
+                    </span>
+                    <b className="pb-name" title={p.name}>{p.name}</b>
+                    <span className="pb-bar" aria-hidden="true"><i className={col.tone} style={{ width: `${pct}%` }} /></span>
+                    <span className="pb-meta"><span>{pct}%</span><span>{p.dueDate ? `Due ${dayMonth(p.dueDate)}` : 'No due date'}</span></span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

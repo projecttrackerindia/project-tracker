@@ -27,15 +27,15 @@ import { AccessModal } from './DocumentSharing';
 import { DocumentIdContext } from './DocImage';
 import { DocumentSecrets } from './DocumentSecrets';
 import { LinkedWork } from './LinkedWork';
-import { DocStatusBadge } from './docUi';
+import { Inspector, ReaderCrumb, ReaderRail, readingTime, useOutline, wordsIn, type InspectorPart } from './DocReader';
 import { EditorLookupsContext, pageSchema, removeCommentMark, RichEditor, type CommentRequest } from './RichEditor';
 import type { EditorLookups } from './editor/extensions';
 import { ancestors, PAGE_BODY, pageTree, useNewPage } from './pages';
 import { useExportPdf } from './ExportPdf';
 import './documents-ds.css';
 
+const STATUS_LABEL: Record<string, string> = { Draft: 'Draft', InReview: 'In review', ChangesRequested: 'Changes asked', Approved: 'Approved', Published: 'Published', Archived: 'Archived' };
 const ICONS = ['📄', '📘', '📗', '📕', '📒', '📝', '📌', '📎', '📊', '📈', '🗂️', '🗒️', '✅', '⚠️', '💡', '🔒', '🔑', '🧭', '🚀', '🛠️', '⚙️', '🧪', '🐞', '💬', '📣', '🎯', '🏦', '💸', '🧾', '👥', '🤝', '📅', '⏱️', '🌐', '📦', '🔌', '🧩', '⭐', '🔥', '🌱'];
-type Tab = 'page' | 'related' | 'activity';
 /** How long a page waits for the live connection before it is edited on its own. */
 const JOIN_WAIT_MS = 2500;
 
@@ -103,13 +103,15 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
   const fresh = !!(loc.state as { fresh?: boolean } | null)?.fresh;
   const newPage = useNewPage();
   const pdf = useExportPdf(id);
-  const [tab, setTab] = useState<Tab>('page');
+  const [inspector, setInspector] = useState<string | null>('notes');
+  const colRef = useRef<HTMLDivElement>(null);
   const [panel, setPanel] = useState<null | 'history' | 'access' | 'publish' | 'ai'>(null);
   const [iconOpen, setIconOpen] = useState(false);
   const [threads, setThreads] = useState<{ focus: string | null } | null>(null);
   const [pendingComment, setPendingComment] = useState<CommentRequest | null>(null);
   const editorRef = useRef<Editor | null>(null);
   const [editorReady, setEditorReady] = useState(0);
+  const outline = useOutline(colRef, [editorReady]);
   const freshness = useFreshness(id);
 
   // The page's own copy of its text: what the editor shows is never replaced by the server's echo while someone types.
@@ -302,18 +304,38 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
     input.click();
   }), [id, wid]);
 
-  const where = d.projectId ? d.projectName ?? 'Project' : d.teamName ?? 'General';
   const saveLabel = state === 'saving' ? 'Saving…' : state === 'dirty' ? 'Editing…' : state === 'error' ? 'Not saved' : state === 'stale' ? 'Changed elsewhere' : `Saved · ${timeAgo(d.updatedAt)}`;
   const others = collab?.others ?? [];
 
+  const notes = threadsOf(comments.data ?? []).filter((t) => !t.root.resolvedAt);
+  const inspectorParts: InspectorPart[] = [
+    { id: 'notes', label: 'Margin notes', count: openThreads || undefined, body: (
+      <div className="rd-notes">
+        {notes.length === 0 ? <p className="rd-note">No open notes. Select text in the page and choose Comment to leave one in the margin.</p> : (
+          <ul className="rd-mnotes">{notes.slice(0, 12).map((t) => (
+            <li key={t.root.id}><button type="button" onClick={() => { setThreads({ focus: t.root.anchorId ?? null }); if (t.root.anchorId) jumpToComment(t.root.anchorId); }}>
+              {t.root.quote && <q>{t.root.quote}</q>}<span><b>{t.root.user.name}</b> {t.root.body}</span><small>{timeAgo(t.root.createdAt)}{t.replies.length ? ` · ${t.replies.length} repl${t.replies.length === 1 ? 'y' : 'ies'}` : ''}</small>
+            </button></li>
+          ))}</ul>
+        )}
+        <button type="button" className="rd-btn sm" onClick={() => setThreads({ focus: null })}>All notes</button>
+      </div>
+    ) },
+    { id: 'related', label: 'Related docs & work', count: (inside.length + (backlinks.data?.length ?? 0)) || undefined, body: (
+      <div className="dv-related">
+        <LinkedWork documentId={id} canLink={detail.can.link} />
+        <DocumentFiles documentId={id} canEdit={canEdit} />
+        <DocumentSecrets documentId={id} canEdit={canEdit} />
+      </div>
+    ) },
+    { id: 'activity', label: 'Activity', body: <ActivityCard id={id} title={`${d.key} · ${d.title}`} /> },
+  ];
+
   return (
-    <div className="pg doc-scope" style={{ '--dc': d.typeColor } as CSSProperties}>
-      <div className="pg-top">
-        <nav className="dv-crumb pg-crumb" aria-label="Breadcrumb">
-          <Link to={`/doctracker?p=${d.projectId ?? 'general'}`}>{where}</Link>
-          {trail.map((a) => <span key={a.id} className="pg-crumb-step"><Icon name="chevronR" size={12} /><Link to={`/documents/${a.id}`}>{a.icon ? `${a.icon} ` : ''}{a.title}</Link></span>)}
-        </nav>
-        <div className="pg-actions">
+    <div className="rd-page pg doc-scope" style={{ '--dc': d.typeColor } as CSSProperties} data-testid="doc-reader">
+      <div className="rd-bar pg-top">
+        <ReaderCrumb d={d} trail={trail} />
+        <div className="rd-tools pg-actions" role="toolbar" aria-label="Page actions">
           {collab && (
             <span className={`pg-live${collab.online ? '' : ' off'}`} title={collab.online ? (others.length ? `Editing now: ${others.map((o) => o.name).join(', ')}` : 'Live: others who open this page edit it with you') : 'Reconnecting… your changes are kept and sent when the connection is back'}>
               <span className="pg-live-dot" aria-hidden="true" />
@@ -325,102 +347,96 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
               ) : collab.online ? 'Live' : 'Offline'}
             </span>
           )}
-          <span className={`pg-save ${state}`} title={formatDateTime(d.updatedAt)}>{collab && !collab.isLeader && state === 'saved' ? 'Saved automatically' : saveLabel}</span>
-          <button type="button" className={`btn btn-ghost btn-sm pg-cmt-btn${threads ? ' on' : ''}`} aria-pressed={!!threads} onClick={() => setThreads((t) => (t ? null : { focus: null }))}>
+          <span className={`rd-save pg-save ${state}`} title={formatDateTime(d.updatedAt)}>{collab && !collab.isLeader && state === 'saved' ? 'Saved automatically' : saveLabel}</span>
+          <button type="button" className={`rd-btn pg-cmt-btn${threads ? ' on' : ''}`} aria-pressed={!!threads} onClick={() => setThreads((t) => (t ? null : { focus: null }))}>
             <Icon name="message" size={14} /> {openThreads > 0 ? openThreads : ''}<span className="sr-only">Comments</span>
           </button>
-          {detail.can.share && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPanel('access')}><Icon name="users" size={14} /> Share</button>}
+          {detail.can.share && <button type="button" className="rd-btn" onClick={() => setPanel('access')}><Icon name="users" size={14} /> Share</button>}
           <Menu label="" icon="more" items={[
             { label: 'Write with AI', hint: empty ? 'A whole page from a line, a voice note, a meeting, work or files' : 'Add an AI-written part at the end', icon: 'sparkle', onSelect: () => setPanel('ai'), hidden: !canEdit },
             { label: 'Add a page inside', icon: 'plus', onSelect: () => void newPage.create({ parentId: id }), hidden: !canEdit },
             { label: 'Publish a version', hint: 'Freeze this text as the version readers see', icon: 'upload', onSelect: () => setPanel('publish'), hidden: !canEdit || !detail.can.publish },
-            { label: 'History', hint: 'Versions and changes', icon: 'clock', onSelect: () => setPanel('history') },
-            { label: pdf.busy ? 'Preparing the PDF…' : 'Download PDF', icon: 'download', onSelect: () => { if (!pdf.busy) void pdf.run(); } },
+            { label: 'Versions', hint: 'History, compare and restore', icon: 'clock', onSelect: () => setPanel('history') },
+            { label: 'Related docs & work', icon: 'link', onSelect: () => setInspector('related') },
+            { label: 'Activity', icon: 'activity', onSelect: () => setInspector('activity') },
+            { label: 'Access', hint: 'Who can open it', icon: 'users', onSelect: () => setPanel('access'), hidden: detail.can.share },
+            { label: pdf.busy ? 'Preparing the PDF…' : 'Export PDF', icon: 'download', onSelect: () => { if (!pdf.busy) void pdf.run(); } },
             { label: 'Delete', hint: 'Recoverable for 30 days; pages inside move up', icon: 'trash', danger: true, hidden: !detail.can.delete, onSelect: async () => {
               if (!(await confirmDialog({ title: 'Delete this page?', message: `“${d.title}” disappears for everyone. Pages inside it move up a level. You can bring it back for 30 days.`, confirmText: 'Delete' }))) return;
-              try { await documentApi.remove(id); invalidateWorkspace(wid, 'documents'); toast('Page deleted.', 'warning'); nav(trail.length ? `/documents/${trail[trail.length - 1].id}` : `/doctracker?p=${d.projectId ?? 'general'}`); }
+              try { await documentApi.remove(id); invalidateWorkspace(wid, 'documents'); toast('Page deleted.', 'warning'); nav(trail.length ? `/library/docs/${trail[trail.length - 1].id}` : '/library'); }
               catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete.', 'error'); }
             } },
           ]} />
         </div>
       </div>
 
-      {state === 'stale' && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{collab ? 'This page was changed outside live editing (a restored version or an approved draft) while you were writing.' : 'Someone else changed this page while you were writing.'} Your text is still here: copy anything you need, then <button className="link-btn" onClick={() => window.location.reload()}>reload to see their version</button>.</div></div>}
+      <div className="rd-col" ref={colRef}>
+        {state === 'stale' && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{collab ? 'This page was changed outside live editing (a restored version or an approved draft) while you were writing.' : 'Someone else changed this page while you were writing.'} Your text is still here: copy anything you need, then <button className="link-btn" onClick={() => window.location.reload()}>reload to see their version</button>.</div></div>}
 
-      <header className="pg-head">
-        <div className="pg-icon-wrap">
-          {d.icon ? <button type="button" className="pg-icon" onClick={() => canEdit && setIconOpen((o) => !o)} aria-label="Change icon" disabled={!canEdit}>{d.icon}</button>
-            : canEdit && <button type="button" className="pg-add-icon" onClick={() => setIconOpen((o) => !o)}><Icon name="smile" size={14} /> Add icon</button>}
-          {iconOpen && (
-            <div className="pg-icons" role="dialog" aria-label="Choose an icon">
-              {ICONS.map((e) => <button key={e} type="button" onClick={() => void setIcon(e)} aria-label={`Icon ${e}`}>{e}</button>)}
-              {d.icon && <button type="button" className="pg-icons-clear" onClick={() => void setIcon(null)}>Remove</button>}
-            </div>
+        <header className="rd-head pg-head rd-skip-outline">
+          <div className="pg-icon-wrap">
+            {d.icon ? <button type="button" className="pg-icon" onClick={() => canEdit && setIconOpen((o) => !o)} aria-label="Change icon" disabled={!canEdit}>{d.icon}</button>
+              : canEdit && <button type="button" className="pg-add-icon" onClick={() => setIconOpen((o) => !o)}><Icon name="smile" size={14} /> Add icon</button>}
+            {iconOpen && (
+              <div className="pg-icons" role="dialog" aria-label="Choose an icon">
+                {ICONS.map((e) => <button key={e} type="button" onClick={() => void setIcon(e)} aria-label={`Icon ${e}`}>{e}</button>)}
+                {d.icon && <button type="button" className="pg-icons-clear" onClick={() => void setIcon(null)}>Remove</button>}
+              </div>
+            )}
+          </div>
+          <textarea ref={titleRef} className="rd-title pg-title" rows={1} value={title} maxLength={200} readOnly={!canEdit} aria-label="Page title" placeholder="Untitled"
+            onChange={(e) => setTitle(e.target.value.replace(/\n/g, ''))} onBlur={() => void saveTitle()}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLTextAreaElement).blur(); document.querySelector<HTMLElement>('.pg-body .ProseMirror')?.focus(); } }} />
+          <div className="rd-meta pg-meta" data-testid="doc-meta">
+            <span className="rd-owner">{d.owner.name}</span>
+            <span className={`rd-pill ${d.status === 'Published' || d.status === 'Approved' ? 'ok' : d.status === 'InReview' ? 'review' : d.status === 'ChangesRequested' ? 'changes' : ''}`}>{STATUS_LABEL[d.status] ?? d.status}</span>
+            <span title={formatDateTime(d.updatedAt)}>Updated {timeAgo(d.updatedAt)}</span>
+            <span className="sep">·</span><span>{readingTime(wordsIn(body))}</span>
+            {detail.hasUnpublishedChanges && detail.publishedLabel && <span className="rd-pill review" title="Readers see the published version">Draft ahead of v{detail.publishedLabel}</span>}
+            <VerifiedBadge f={freshness.data} />
+          </div>
+        </header>
+        <FreshnessBanner id={id} />
+
+        {canEdit && empty && mode !== 'joining' && (
+          <div className="pg-start-ai">
+            <span className="pg-start-ai-label"><Icon name="sparkle" size={15} /> Start with AI</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPanel('ai')}>Write this page</button>
+            <span className="muted">or type <kbd>/</kbd> for blocks</span>
+          </div>
+        )}
+        <article className={`pg-body doc-body${collab?.waiting ? ' pg-waiting' : ''}`} aria-label={d.title} aria-busy={mode === 'joining' || !!collab?.waiting}>
+          <DocumentIdContext.Provider value={id}>
+            <EditorLookupsContext.Provider value={lookups}>
+              <EditorAiContext.Provider value={aiCtx}>
+                <PageProjectContext.Provider value={projectsCtx}>
+                  <RichEditor key={`${id}-${mode}`} minimal value={body} onChange={canEdit && mode !== 'joining' ? onBody : undefined}
+                    readOnly={!canEdit || mode === 'joining' || !!collab?.waiting} label={`${d.title} text`} onPickImage={canEdit ? pickImage : undefined}
+                    collab={collab} me={me} onComment={startComment} onOpenComment={openComment} onEditor={onEditor} liveTasks={projectsCtx.projects.length > 0} />
+                </PageProjectContext.Provider>
+              </EditorAiContext.Provider>
+            </EditorLookupsContext.Provider>
+          </DocumentIdContext.Provider>
+          {collab?.waiting && <p className="pg-wait-note" role="status"><span className="spinner" /> Opening the page with the others editing it…</p>}
+        </article>
+
+        <section className="pg-under rd-skip-outline" aria-label="Pages inside">
+          <header><h3>Pages inside</h3>{canEdit && <button type="button" className="mb-link" onClick={() => void newPage.create({ parentId: id })}><Icon name="plus" size={13} /> Add a page</button>}</header>
+          {inside.length === 0 ? <p className="pg-none">None yet.</p> : (
+            <ul className="pg-list">{inside.map((c) => <li key={c.id}><Link to={`/library/docs/${c.id}`}><span className="pg-list-icon">{c.icon ?? <Icon name="note" size={16} />}</span>{c.title}<time>{timeAgo(c.updatedAt)}</time></Link></li>)}</ul>
           )}
-        </div>
-        <textarea ref={titleRef} className="pg-title" rows={1} value={title} maxLength={200} readOnly={!canEdit} aria-label="Page title" placeholder="Untitled"
-          onChange={(e) => setTitle(e.target.value.replace(/\n/g, ''))} onBlur={() => void saveTitle()}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLTextAreaElement).blur(); document.querySelector<HTMLElement>('.pg-body .ProseMirror')?.focus(); } }} />
-        <div className="pg-meta">
-          <span>{d.owner.name}</span><span>·</span><span>{d.key}</span><DocStatusBadge status={d.status} />
-          {detail.hasUnpublishedChanges && detail.publishedLabel && <span className="badge badge-info" title="Readers see the published version">Draft ahead of v{detail.publishedLabel}</span>}
-          <VerifiedBadge f={freshness.data} />
-        </div>
-      </header>
-      <FreshnessBanner id={id} />
-
-      <div className="tabs pg-tabs" role="tablist" aria-label="Page">
-        {([['page', 'Page'], ['related', 'Related'], ['activity', 'Activity']] as [Tab, string][]).map(([t, label]) => (
-          <button key={t} type="button" role="tab" aria-selected={tab === t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{label}</button>
-        ))}
+        </section>
+        {(backlinks.data?.length ?? 0) > 0 && (
+          <section className="pg-under rd-skip-outline" aria-label="Linked from">
+            <header><h3>Linked from</h3></header>
+            <ul className="pg-list">{backlinks.data!.map((b) => <li key={b.id}><Link to={`/library/docs/${b.id}`}><span className="pg-list-icon">{b.icon ?? <Icon name="note" size={16} />}</span>{b.title}<small>{b.key}</small></Link></li>)}</ul>
+          </section>
+        )}
       </div>
 
-      {tab === 'page' && (
-        <>
-          {canEdit && empty && mode !== 'joining' && (
-            <div className="pg-start-ai">
-              <span className="pg-start-ai-label"><Icon name="sparkle" size={15} /> Start with AI</span>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPanel('ai')}>Write this page</button>
-              <span className="muted">or type <kbd>/</kbd> for blocks</span>
-            </div>
-          )}
-          <article className={`pg-body doc-body${collab?.waiting ? ' pg-waiting' : ''}`} aria-label={d.title} aria-busy={mode === 'joining' || !!collab?.waiting}>
-            <DocumentIdContext.Provider value={id}>
-              <EditorLookupsContext.Provider value={lookups}>
-                <EditorAiContext.Provider value={aiCtx}>
-                  <PageProjectContext.Provider value={projectsCtx}>
-                    <RichEditor key={`${id}-${mode}`} minimal value={body} onChange={canEdit && mode !== 'joining' ? onBody : undefined}
-                      readOnly={!canEdit || mode === 'joining' || !!collab?.waiting} label={`${d.title} text`} onPickImage={canEdit ? pickImage : undefined}
-                      collab={collab} me={me} onComment={startComment} onOpenComment={openComment} onEditor={onEditor} liveTasks={projectsCtx.projects.length > 0} />
-                  </PageProjectContext.Provider>
-                </EditorAiContext.Provider>
-              </EditorLookupsContext.Provider>
-            </DocumentIdContext.Provider>
-            {collab?.waiting && <p className="pg-wait-note" role="status"><span className="spinner" /> Opening the page with the others editing it…</p>}
-          </article>
-
-          <section className="pg-under" aria-label="Pages inside">
-            <header><h3>Pages inside</h3>{canEdit && <button type="button" className="mb-link" onClick={() => void newPage.create({ parentId: id })}><Icon name="plus" size={13} /> Add a page</button>}</header>
-            {inside.length === 0 ? <p className="pg-none">None yet.</p> : (
-              <ul className="pg-list">{inside.map((c) => <li key={c.id}><Link to={`/documents/${c.id}`}><span className="pg-list-icon">{c.icon ?? <Icon name="note" size={16} />}</span>{c.title}<time>{timeAgo(c.updatedAt)}</time></Link></li>)}</ul>
-            )}
-          </section>
-          {(backlinks.data?.length ?? 0) > 0 && (
-            <section className="pg-under" aria-label="Linked from">
-              <header><h3>Linked from</h3></header>
-              <ul className="pg-list">{backlinks.data!.map((b) => <li key={b.id}><Link to={`/documents/${b.id}`}><span className="pg-list-icon">{b.icon ?? <Icon name="note" size={16} />}</span>{b.title}<small>{b.key}</small></Link></li>)}</ul>
-            </section>
-          )}
-        </>
-      )}
-      {tab === 'related' && (
-        <div className="dv-related">
-          <LinkedWork documentId={id} canLink={detail.can.link} />
-          <DocumentFiles documentId={id} canEdit={canEdit} />
-          <DocumentSecrets documentId={id} canEdit={canEdit} />
-        </div>
-      )}
-      {tab === 'activity' && <ActivityCard id={id} title={`${d.key} · ${d.title}`} />}
+      <ReaderRail outline={outline}>
+        <Inspector parts={inspectorParts} open={inspector} onOpen={setInspector} />
+      </ReaderRail>
 
       {panel === 'history' && <HistoryModal detail={detail} onClose={() => setPanel(null)} />}
       {panel === 'access' && <AccessModal detail={detail} onClose={() => setPanel(null)} />}
