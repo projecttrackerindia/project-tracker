@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { onRinging, ringingCalls } from './incomingCalls';
 import { Link, useLocation } from 'react-router-dom';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth } from '../../stores/auth';
@@ -12,8 +13,9 @@ export function LiveCallsBar() {
   const status = useWsQuery(['calls', 'status'], callsApi.status, { staleTime: 600_000, retry: false });
   const live = useWsQuery(['calls', 'live'], callsApi.live, { enabled: !!status.data?.available, refetchInterval: 30_000, retry: false });
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const ringing = useSyncExternalStore(onRinging, ringingCalls);   // a call ringing for me has its own card
   if (pathname.startsWith('/calls/')) return null;
-  const call = (live.data ?? []).find((c) => !hidden.has(c.id) && !c.people.some((p) => p.userId === me && p.inCall) && c.people.some((p) => p.inCall));
+  const call = (live.data ?? []).find((c) => !hidden.has(c.id) && !ringing.some((r) => r.callId === c.id) && !c.people.some((p) => p.userId === me && p.inCall) && c.people.some((p) => p.inCall));
   if (!call) return null;
   const inCall = call.people.filter((p) => p.inCall);
   return (

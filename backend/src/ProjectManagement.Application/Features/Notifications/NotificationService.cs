@@ -32,6 +32,7 @@ public static class NotificationLanes
         NotificationType.TaskAssigned, NotificationType.Mention, NotificationType.Approval, NotificationType.Overdue, NotificationType.DueSoon,
         NotificationType.Reminder, NotificationType.Nudge, NotificationType.Invitation, NotificationType.Security, NotificationType.ServiceLevel,
         NotificationType.Message, NotificationType.Support, NotificationType.AgentAlert, NotificationType.CertificationExpiry, NotificationType.TimesheetReminder,
+        NotificationType.Call,
     ];
     public static bool IsNeedsYou(NotificationType t) => Array.IndexOf(NeedsYou, t) >= 0;
 }
@@ -57,7 +58,8 @@ public static class QuietHours
 {
     /// <summary>Security alerts, reminders the person set for a chosen time, service-level breaches and invitations go out at once.</summary>
     public static bool NeverHeld(NotificationType type) =>
-        NotificationCatalog.For(type).Locked || type is NotificationType.Security or NotificationType.Reminder or NotificationType.ServiceLevel or NotificationType.Invitation or NotificationType.Briefing;
+        NotificationCatalog.For(type).Locked || type is NotificationType.Security or NotificationType.Reminder or NotificationType.ServiceLevel or NotificationType.Invitation or NotificationType.Briefing
+        || type is NotificationType.Call;   // a call rings now or never: holding it for later would only deliver a dead call
 
     /// <summary>The next moment (UTC) the local clock shows <paramref name="at"/>: later today, or tomorrow when that time has passed.</summary>
     public static DateTime NextAt(TimeOnly at, NodaTime.DateTimeZone tz, DateTime nowUtc)
@@ -147,7 +149,7 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
         if ((n.EmailPending || n.PushPending || n.SlackPending) && options.Value.HoldNotificationsInQuietHours && !QuietHours.NeverHeld(n.Type))
             n.DeliverAfter = await QuietUntilAsync(n.UserId, n.TenantId, ct);
         // Do not disturb (set in chat): nothing pops up on the screen, and e-mail and push wait until it ends. Security alerts still go out.
-        if (!QuietHours.NeverHeld(n.Type) && !NotificationCatalog.For(n.Type).Locked && await DndUntilAsync(n.UserId, n.TenantId, ct) is { } dnd)
+        if ((!QuietHours.NeverHeld(n.Type) || n.Type == NotificationType.Call) && !NotificationCatalog.For(n.Type).Locked && await DndUntilAsync(n.UserId, n.TenantId, ct) is { } dnd)
         {
             n.Browser = false;
             if ((n.EmailPending || n.PushPending || n.SlackPending) && (n.DeliverAfter is null || n.DeliverAfter < dnd)) n.DeliverAfter = dnd;

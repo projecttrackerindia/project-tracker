@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Features.Calls;
 using ProjectManagement.Domain.Enums;
 using ProjectManagement.Tests.Infrastructure;
@@ -132,6 +134,66 @@ public class CallTests(ApiFactory factory)
         Assert.Contains(room, factory.LiveKit.Closed);
         Assert.Equal(HttpStatusCode.Conflict, (await manager.Post($"/api/v1/calls/{id}/join")).Status);
         Assert.DoesNotContain((await manager.Get("/api/v1/calls/live")).Data!.AsArray(), c => S(c!["id"]) == id);
+    }
+
+    private async Task<string> SubscribeDeviceAsync(TestClient who)
+    {
+        using var device = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var dp = device.ExportParameters(false);
+        byte[] uaPublic = [0x04, .. dp.Q.X!, .. dp.Q.Y!];
+        var endpoint = $"https://push.example.test/send/{Guid.NewGuid():N}";
+        var sub = await who.Post("/api/v1/push/subscriptions", new { endpoint, keys = new { p256dh = Base64Url.Encode(uaPublic), auth = Base64Url.Encode(RandomNumberGenerator.GetBytes(16)) } });
+        Assert.True(sub.Ok, sub.ToString());
+        return endpoint;
+    }
+
+    [Fact]
+    public async Task An_incoming_call_rings_its_own_kind_and_is_pushed_at_once_with_high_urgency_and_a_short_life()
+    {
+        var (owner, manager, project) = await SetupAsync();
+        var endpoint = await SubscribeDeviceAsync(manager);
+        // Calls ring on devices (their own kind, on by default; set explicitly here as a person would).
+        Assert.True((await manager.Put("/api/v1/me/notification-preferences", new { items = new[] { new { type = "Call", inApp = true, email = false, browser = true } } })).Ok);
+
+        var id = S((await owner.Post("/api/v1/calls", new { projectId = project, invite = new[] { manager.UserId } })).Data!["id"]);
+        var ring = factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Single(n => n.UserId == manager.UserId && n.Link == $"/calls/{id}"));
+        Assert.Equal(NotificationType.Call, ring.Type);
+        Assert.Equal("Call Owner is calling", ring.Title);
+        Assert.True(ring.PushPending);
+        Assert.Null(ring.DeliverAfter);
+
+        await factory.Services.GetRequiredService<PushDispatcher>().RunAsync();
+        var sent = factory.Push.Sent.Single(s => s.Url.ToString() == endpoint);
+        Assert.Equal("high", sent.Headers["Urgency"]);
+        Assert.Equal("45", sent.Headers["TTL"]);
+
+        Assert.True(PushDispatcher.IsRing(ring));
+        await owner.Post($"/api/v1/calls/{id}/end");
+    }
+
+    [Fact]
+    public async Task A_call_nobody_answered_leaves_a_missed_call_in_the_inbox_but_a_declined_one_does_not()
+    {
+        var (owner, manager, project) = await SetupAsync();
+        var missed = S((await owner.Post("/api/v1/calls", new { projectId = project, invite = new[] { manager.UserId } })).Data!["id"]);
+        var declined = S((await owner.Post("/api/v1/calls", new { projectId = project, invite = new[] { manager.UserId } })).Data!["id"]);
+        Assert.Equal(HttpStatusCode.NoContent, (await manager.Post($"/api/v1/calls/{declined}/decline")).Status);
+        await owner.Post($"/api/v1/calls/{missed}/end");
+        await owner.Post($"/api/v1/calls/{declined}/end");
+
+        using (var scope = factory.Services.CreateScope())
+            Assert.True(await CallService.NotifyMissedAsync(scope.ServiceProvider, CancellationToken.None) >= 1);
+        using (var scope = factory.Services.CreateScope())
+            await CallService.NotifyMissedAsync(scope.ServiceProvider, CancellationToken.None);   // written once
+
+        var notes = factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == manager.UserId && n.Type == NotificationType.Call).ToList());
+        var miss = Assert.Single(notes, n => n.Link == $"/calls/{missed}" && n.Title.StartsWith("Missed call", StringComparison.Ordinal));
+        Assert.Equal("Missed call from Call Owner", miss.Title);
+        Assert.True(miss.InApp);
+        Assert.DoesNotContain(notes, n => n.Link == $"/calls/{declined}" && n.Title.StartsWith("Missed call", StringComparison.Ordinal));
+        // The ringing notice is put away once the call is missed.
+        Assert.NotNull(notes.Single(n => n.Link == $"/calls/{missed}" && n.Title.EndsWith("is calling", StringComparison.Ordinal)).ReadAt);
+        Assert.Contains((await manager.Get("/api/v1/notifications")).Data!["items"]!.AsArray(), n => S(n!["title"]) == "Missed call from Call Owner");
     }
 
     private static string Pad(string s) { s = s.Replace('-', '+').Replace('_', '/'); return s.PadRight(s.Length + (4 - s.Length % 4) % 4, '='); }

@@ -20,6 +20,8 @@ export const callsApi = {
   get: (id: string) => get<Call>(`/calls/${id}`),
   join: (id: string) => post<CallJoin>(`/calls/${id}/join`),
   end: (id: string) => post<Call>(`/calls/${id}/end`),
+  /** Turns down a call that is ringing for you (it stops ringing on your other devices; the caller is told). */
+  decline: (id: string) => post<void>(`/calls/${id}/decline`),
   /** A meeting held as a Project Tracker call: joins its live call, or starts it (inviting the meeting's people, with the agent if it is on). */
   openMeeting: (meetingId: string, workspace = false) => post<Call>(`/calls/meeting/${workspace ? 'w/' : ''}${meetingId}`),
 };

@@ -30,6 +30,11 @@ let status = 'live';
 const call = () => ({ id: 'c1', title: 'Atlas stand-up', kind: 'project', projectId: pid, projectKey: 'ATL', conversationId: null, status, startedAt: iso(-5), endedAt: status === 'ended' ? iso(0) : null,
   startedBy: user.id, startedByName: 'Asha Rao', agentEnabled: true, agentStatus: 'in_call_recording', canEnd: true,
   people: [{ userId: user.id, name: 'Asha Rao', role: 'host', inCall: true, joinedAt: iso(-5) }, { userId: 'u2', name: 'Ravi Kumar', role: 'member', inCall: status === 'live', joinedAt: iso(-4) }] });
+// Someone else calling Asha: she is invited and not in it yet, and it started a moment ago.
+let ringing = false;
+const incoming = () => ({ id: 'c9', title: 'Design review', kind: 'adhoc', projectId: null, projectKey: null, conversationId: null, status: 'live', startedAt: new Date().toISOString(), endedAt: null,
+  startedBy: 'u2', startedByName: 'Ravi Kumar', agentEnabled: false, agentStatus: null, canEnd: false,
+  people: [{ userId: 'u2', name: 'Ravi Kumar', role: 'host', inCall: true, joinedAt: new Date().toISOString() }, { userId: user.id, name: 'Asha Rao', role: 'member', inCall: false, joinedAt: null }] });
 const writes = [], errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true,
   // The test media server listens on this machine while the page pretends to be a public site: the browser's guard against public pages
@@ -52,6 +57,7 @@ try {
       let data = [];
       if (ep === '/api/v1/calls/c1/join' && method === 'POST') { writes.push(ep); data = { callId: 'c1', url: lk ?? 'wss://calls.invalid', token: pass(identity, name), room, identity, title: 'Atlas stand-up', agentEnabled: true, expiresAt: iso(360) }; }
       else if (ep === '/api/v1/calls/c1/end' && method === 'POST') { writes.push(ep); status = 'ended'; data = call(); }
+      else if (ep === '/api/v1/calls/c9/decline' && method === 'POST') { writes.push(ep); data = null; }
       else if (ep === '/api/v1/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };
       else {
         assert.ok(method === 'GET' || ep.endsWith('/auth/refresh'), `Unexpected write: ${method} ${ep}`);
@@ -59,7 +65,8 @@ try {
         else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['projects.view', 'projects.edit', 'tasks.view', 'tasks.edit', 'org.manage'], modules: { projects: 3, tasks: 3, calendar: 3, work: 3, ai: 3, activity: 3, documents: 3, people: 3, reports: 3, billing: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { AI_ASSISTANT: 3 } } };
         else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
         else if (ep === '/api/v1/calls/status') data = { available: true, maxParticipants: 50 };
-        else if (ep === '/api/v1/calls/live') data = [];
+        else if (ep === '/api/v1/calls/live') data = ringing ? [incoming()] : [];
+        else if (ep === '/api/v1/calls/c9') data = incoming();
         else if (ep === '/api/v1/calls/c1') data = call();
         else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
         else if (ep.endsWith('/ai/status')) data = { enabled: true, configured: true, entitled: true, allowedHere: true };
@@ -200,6 +207,30 @@ try {
   assert.match(await page.locator('[data-testid="call-over"]').innerText(), /This call has ended/);
   assert.match(await page.locator('[data-testid="call-over"]').innerText(), /Agent/);   // where the notes will be
   await shot(page, 'ended-1440.png'); checks.push('ended');
+
+  // An incoming call rings on any page: the card with who is calling, Answer and Decline. (Here it is found by the safety-net check of
+  // live calls; the live connection brings the same card at once.) Declining tells the server and the card goes.
+  ringing = true;
+  await page.goto(`${origin}/preview-org/`);
+  const card = page.locator('[data-testid="incoming-call"]');
+  await card.waitFor({ timeout: 15_000 });
+  assert.match(await card.innerText(), /Ravi Kumar is calling/);
+  assert.match(await card.innerText(), /Design review/);
+  await shot(page, 'incoming-1440.png');
+  await page.locator('[data-testid="incoming-call-decline"]').click();
+  await card.waitFor({ state: 'detached' });
+  assert.ok(writes.includes('/api/v1/calls/c9/decline'), 'declining tells the server');
+  checks.push('incoming-call-decline');
+  // On a phone (another tab, so it rings afresh): the card fits, and Answer opens the call.
+  const ringPhone = await ctx.newPage(); ringPhone.on('pageerror', (e) => errors.push(e.message)); await ringPhone.setViewportSize({ width: 390, height: 844 });
+  await ringPhone.goto(`${origin}/preview-org/`);
+  await ringPhone.locator('[data-testid="incoming-call"]').waitFor({ timeout: 15_000 });
+  await fitsPhone(ringPhone, 'the incoming call on a phone', assert);
+  await shot(ringPhone, 'incoming-390.png');
+  await ringPhone.locator('[data-testid="incoming-call-answer"]').click();
+  await ringPhone.waitForURL(/\/preview-org\/calls\/c9$/);
+  await ringPhone.locator('[data-testid="incoming-call"]').waitFor({ state: 'detached' });
+  await ringPhone.close(); ringing = false; checks.push('incoming-call-answer');
   await ctx.close();
 } finally { await browser.close(); }
 const serious = errors.filter((e) => !/WebSocket|wss:\/\/calls\.invalid|could not establish|ConnectionError/i.test(e));
