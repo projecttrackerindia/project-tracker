@@ -19,6 +19,7 @@ import { useProjectChat } from '../chat/projectChatStore';
 import { ImportModal } from '../import/ImportModal';
 import { IssueDetailModal, ReportIssueModal } from '../issues/IssueModals';
 import { DotsMenu } from '../talk/DotsMenu';
+import { pinItem, usePins } from '../../components/v2/pins';
 import { TaskModal } from '../tasks/TaskModal';
 import { ProjectTime } from '../time/ProjectTime';
 import { ProjectWorkTab } from '../work/ProjectWorkTab';
@@ -72,6 +73,7 @@ export function movedTab(tab: string, search: URLSearchParams): URLSearchParams 
 export function ProjectPage() {
   const { id = '' } = useParams();
   const nav = useNavigate();
+  const pins = usePins();
   const loc = useLocation();
   const wid = useWorkspaceId();
   const [params, setParams] = useSearchParams();
@@ -171,6 +173,7 @@ export function ProjectPage() {
             { label: 'Schedule studio', icon: 'calendar', hint: 'Stage lengths and the project end', hidden: !(p.deliveryMethod === 'Agile' && canEdit && !archived), onSelect: () => setScheduling(true) },
             { label: 'Import tasks from CSV', icon: 'upload', hidden: !addWork, onSelect: () => setImporting(true) },
             { label: 'Related operational work', icon: 'bolt', hint: 'Tickets that refer to this project', hidden: !seeWork, onSelect: () => nav(`/work?tab=tickets&project=${p.id}`) },
+            pinItem(pins, p.id),
             { label: 'Delete project', icon: 'trash', danger: true, hidden: !canDelete, onSelect: () => void remove() },
           ]} />
         </div>
@@ -333,7 +336,7 @@ function Journey({ detail, still, canSign, meId, plan, onPlan, signOff }: { deta
                     data-stage={s.name} aria-label={`${s.name}: ${isDone ? `signed off ${sub}` : isCur ? sub : `stage ${i + 1}, ${sub}`}`}>
                     <span className="pp-nd-c">
                       {isDone ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg> : i + 1}
-                      {isDone && who && <Initials name={who.name} seed={who.id} className="pp-nd-av" />}
+                      {isDone && who && <Initials name={who.name} seed={who.id} userId={who.id} className="pp-nd-av" />}
                     </span>
                     <b>{s.name}</b>
                     <small>{sub}</small>
@@ -431,7 +434,7 @@ function Overview({ detail, canSign, meId, seeTime, onSettings, signOff }: { det
           <div className="pp-hd"><h3>People</h3><button type="button" className="pp-faint pp-linkish" onClick={onSettings}>{people.length}</button></div>
           <div className="pp-people-grid">
             {people.slice(0, 8).map((m) => (
-              <span key={m.userId} className="pp-person"><Initials name={m.name} seed={m.userId} /><span><b>{m.name}</b><span className="pp-faint">{m.userId === p.owner?.id ? 'Owner' : m.role ?? 'Member'}</span></span></span>
+              <span key={m.userId} className="pp-person"><Initials name={m.name} seed={m.userId} userId={m.userId} /><span><b>{m.name}</b><span className="pp-faint">{m.userId === p.owner?.id ? 'Owner' : m.role ?? 'Member'}</span></span></span>
             ))}
             {people.length === 0 && <span className="pp-faint">No one yet.</span>}
           </div>

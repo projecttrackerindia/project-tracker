@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { chatApi, insightApi, projectApi } from '../../api/endpoints';
 import type { Project } from '../../api/types';
+import { usePins, useContextMenu } from './pins';
 import { Icon, type IconName } from '../Icon';
 import { BrandMark } from '../BrandMark';
 import { useAvatarUrl } from '../ui';
@@ -69,13 +70,21 @@ export function readRecentProjects(wid: string): string[] {
 function rememberProject(wid: string, id: string) {
   try { localStorage.setItem(recentKey(wid), JSON.stringify([id, ...readRecentProjects(wid).filter((x) => x !== id)].slice(0, 10))); } catch { /* storage blocked: pins fall back to recently updated */ }
 }
-/** Pinned projects: the ones opened most recently here first, then the most recently updated, open projects only. */
-export function pickPinned(items: Project[], recent: string[], n = 3): Project[] {
-  const live = items.filter((p) => p.status !== 'Completed' && p.status !== 'Cancelled' && p.status !== 'Archived');
+/** Recent projects: the ones opened most recently here first, then the most recently updated, open projects only (minus `skip`). */
+export function pickPinned(items: Project[], recent: string[], n = 3, skip: string[] = []): Project[] {
+  const live = items.filter((p) => p.status !== 'Completed' && p.status !== 'Cancelled' && p.status !== 'Archived' && !skip.includes(p.id));
   const byId = new Map(live.map((p) => [p.id, p]));
   const first = recent.map((id) => byId.get(id)).filter(Boolean) as Project[];
   const rest = live.filter((p) => !recent.includes(p.id)).sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
   return [...first, ...rest].slice(0, n);
+}
+
+/** The sidebar's project list: explicit pins first (in their order); while there are fewer than 3, recent projects fill up to 3. */
+export function sidebarProjects(items: Project[], recent: string[], pinned: string[], hidden: string[]): { project: Project; pinned: boolean }[] {
+  const byId = new Map(items.map((p) => [p.id, p]));
+  const mine = pinned.map((id) => byId.get(id)).filter(Boolean) as Project[];
+  const fill = mine.length < 3 ? pickPinned(items, recent, 3 - mine.length, [...pinned, ...hidden]) : [];
+  return [...mine.map((project) => ({ project, pinned: true })), ...fill.map((project) => ({ project, pinned: false }))];
 }
 
 /** The sidebar's sections, built only from places and pages the person may open (the same definitions as the palette). */
@@ -136,7 +145,8 @@ function usePinned(enabled: boolean) {
     setRecent(readRecentProjects(wid));
   }, [pathname, wid]);
   const q = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false, enabled });
-  return pickPinned(q.data?.items ?? [], recent);
+  const pins = usePins();
+  return { list: sidebarProjects(q.data?.items ?? [], recent, pins.pinned, pins.hidden), pins };
 }
 
 /**
@@ -151,7 +161,9 @@ export function Rail() {
   const places = usePlaces();
   const groups = useSideGroups();
   const canProjects = (ctx?.current?.modules?.projects ?? 0) > 0;
-  const pinned = usePinned(!admin && canProjects);
+  const { list: pinned, pins } = usePinned(!admin && canProjects);
+  const ctxMenu = useContextMenu();
+  const [drag, setDrag] = useState<string | null>(null);
   return (
     <aside className="v2-rail v2-side" aria-label="Main">
       <div className="v2-side-ws">
@@ -180,11 +192,21 @@ export function Rail() {
         {pinned.length > 0 && (
           <div className="v2-side-group v2-side-pins" role="group" aria-label="Pinned projects">
             <div className="v2-side-sl">Pinned projects</div>
-            {pinned.map((p, n) => (
-              <Link key={p.id} to={`/work/projects/${p.id}`} className={`v2-side-pin ${pathname === `/work/projects/${p.id}` ? 'on' : ''}`} title={p.name}>
-                <i style={{ background: PIN_DOTS[n] }} /><span>{p.name}</span>
-              </Link>
+            {pinned.map(({ project: p, pinned: explicit }, n) => (
+              <div key={p.id} className={`v2-side-pin-row${drag === p.id ? ' dragging' : ''}`} data-pin={p.id} data-pinned={explicit ? 'true' : 'false'}
+                draggable={explicit} onDragStart={(e) => { if (!explicit) return; setDrag(p.id); e.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => setDrag(null)}
+                onDragOver={(e) => { if (drag && explicit && drag !== p.id) e.preventDefault(); }}
+                onDrop={(e) => { e.preventDefault(); if (drag && explicit) pins.move(drag, pins.pinned.indexOf(p.id)); setDrag(null); }}
+                onContextMenu={(e) => ctxMenu.open(e, [explicit ? { label: 'Unpin from sidebar', icon: 'pinOff', onSelect: () => pins.unpin(p.id) } : { label: 'Pin to sidebar', icon: 'pin', onSelect: () => pins.pin(p.id) },
+                  ...(!explicit ? [{ label: 'Hide from recents', icon: 'eyeOff' as const, onSelect: () => pins.unpin(p.id) }] : [])])}>
+                <Link to={`/work/projects/${p.id}`} className={`v2-side-pin ${pathname === `/work/projects/${p.id}` ? 'on' : ''}`} title={p.name}>
+                  <i style={{ background: PIN_DOTS[n % PIN_DOTS.length] }} /><span>{p.name}</span>
+                </Link>
+                <button type="button" className="v2-side-unpin" aria-label={explicit ? `Unpin ${p.name}` : `Hide ${p.name} from recents`} title={explicit ? 'Unpin' : 'Hide from recents'}
+                  onClick={() => pins.unpin(p.id)}><Icon name="pinOff" size={12} /></button>
+              </div>
             ))}
+            {ctxMenu.menu}
           </div>
         )}
       </nav>

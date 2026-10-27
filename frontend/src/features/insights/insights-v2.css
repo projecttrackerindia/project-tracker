@@ -151,3 +151,4 @@ a.ins-ring:hover, a.ins-ring:focus-visible { box-shadow: 0 4px 16px rgba(0,0,0,.
   .ins-types .ds-choice { padding: 14px; }
   .ins-types .ds-choice > span:last-child { display: none; }
 }
+.ins-av { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 7px; border-radius: 50%; vertical-align: middle; background: var(--ds-fill, rgba(118, 118, 128, .12)); color: var(--ds-text-2); font-size: 8.5px; font-weight: 600; }

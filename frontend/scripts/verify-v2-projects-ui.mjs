@@ -69,6 +69,8 @@ const docs = [
 ];
 const files = [{ id: 'a1', projectId: rp.id, taskId: null, taskKey: null, taskTitle: null, fileName: 'razorpay-postman-collection.json', contentType: 'application/json', sizeBytes: 18000, uploadedBy: { id: user.id, name: 'Prasanna' }, createdAt: `${day(-30)}T10:00:00Z`, canDelete: true, isImage: false, issueId: null }];
 const writes = [], errors = [], checks = [];
+let pinStore = null;
+const PHOTO = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 const make = async (theme = 'light') => {
@@ -77,6 +79,8 @@ const make = async (theme = 'light') => {
   await ctx.route('**/*', async (route) => {
     const req = route.request(), url = new URL(req.url()), ep = url.pathname, method = req.method();
     if (url.origin !== origin || ep.startsWith('/hubs/')) { await route.abort(); return; }
+    // Prasanna has a profile photo: every face of theirs (Journey signer, pass owner) shows it instead of initials.
+    if (ep === `/api/v1/workspace/members/${user.id}/avatar`) { await route.fulfill({ status: 200, contentType: 'image/png', body: PHOTO }); return; }
     if (ep.endsWith('/avatar') || ep.endsWith('/logo/file') || ep.includes('/brand/')) { await route.fulfill({ status: 404, body: '' }); return; }
     if (!ep.startsWith('/api/')) {
       const file = path.resolve(dist, ep.startsWith('/assets/') ? ep.slice(1) : 'index.html'); assert.ok(file.startsWith(dist + path.sep));
@@ -92,6 +96,9 @@ const make = async (theme = 'light') => {
     if (ep.endsWith('/auth/refresh')) data = { accessToken: token, expiresAt: '2099-01-01T00:00:00Z', user };
     else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['projects.view', 'projects.edit', 'projects.create', 'projects.delete', 'tasks.view', 'tasks.create', 'tasks.edit', 'tasks.comment', 'reports.view', 'reports.broad', 'org.manage', 'work.view', 'work.create', 'documents.view', 'workflow.manage'], modules: { projects: 3, tasks: 3, work: 3, documents: 3, activity: 3, ai: 3, reports: 3, calendar: 3, people: 3, members: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { AI_ASSISTANT: 3 } } };
     else if (ep === '/api/v1/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };
+    else if (ep === '/api/v1/me/ui/pins' && method === 'PUT') { pinStore = body.value; data = { key: 'pins', value: pinStore, updatedAt: new Date().toISOString() }; }
+    else if (ep === '/api/v1/me/ui/pins') data = { key: 'pins', value: pinStore, updatedAt: null };
+    else if (ep === '/api/v1/workspace/avatars') data = [{ userId: user.id, version: '1' }];
     else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
     else if (ep === '/api/v1/workspace/members') data = [{ userId: user.id, displayName: 'Prasanna', email: user.email, role: 'Owner' }, { userId: siva.id, displayName: siva.name, email: 'siva@example.test', role: 'Member' }];
     else if (ep === '/api/v1/projects' && method === 'GET') { const ps = Number(url.searchParams.get('pageSize') ?? 25), pg = Number(url.searchParams.get('page') ?? 1); const items = projects.slice((pg - 1) * ps, pg * ps); data = { items, page: pg, pageSize: ps, totalItems: projects.length, totalPages: Math.ceil(projects.length / ps) }; }
@@ -164,6 +171,13 @@ try {
   assert.equal(await page.locator('.pa-pass[data-project="Insurance"] .pa-state').innerText(), 'Done');
   assert.equal(await page.locator('.pa-pass .pchat-btn, .pa-pass [aria-label*="chat" i]').count(), 0, 'no chat button on the passes');
   checks.push('passes');
+  // Owners with a profile photo show it on the pass; right-clicking a pass offers Pin to sidebar.
+  await page.locator('.pa-pass .pa-owner-av img').first().waitFor();
+  await page.locator('.pa-pass').first().click({ button: 'right' });
+  assert.equal(await page.getByRole('menu', { name: 'Project actions' }).getByRole('menuitem', { name: 'Pin to sidebar' }).count(), 1);
+  await page.keyboard.press('Escape');
+  await page.getByRole('menu', { name: 'Project actions' }).waitFor({ state: 'detached' });
+  checks.push('pass-photo-and-menu');
 
   // One Filter button (status lives in it) and search.
   const filters = page.getByRole('group', { name: 'Search and filter' });
@@ -266,6 +280,38 @@ try {
   // The six old header buttons are gone; their jobs are under ···.
   for (const old of ['Meet', 'Chat', 'Settings', 'Schedule studio', 'Delay risk', 'Add task']) assert.equal(await page.locator('.pp-head').getByRole('button', { name: old, exact: true }).count(), 0, `no ${old} button in the head`);
   checks.push('project-head');
+  // The Journey's nodes and signer photos sit fully inside their scroller (it clips vertically too); the signer has a photo, so it is an <img>.
+  await page.locator('.pp-nd-av img').first().waitFor();
+  const clip = await page.evaluate(() => { const box = document.querySelector('.pp-jl-scroll').getBoundingClientRect();
+    return [...document.querySelectorAll('.pp-nd-c, .pp-nd-av')].map((e) => e.getBoundingClientRect()).filter((r) => r.top < box.top - 0.5 || r.bottom > box.bottom + 0.5).length; });
+  assert.equal(clip, 0, 'no Journey node or signer avatar is cut off');
+  checks.push('journey-not-clipped-photo');
+  // Pin to sidebar from ···; the pin shows first in the sidebar, is saved per workspace, and the hover button unpins it (and keeps it out of recents).
+  await page.getByRole('button', { name: 'More on this project' }).click();
+  await page.getByRole('menu', { name: 'More on this project' }).getByRole('menuitem', { name: /^Pin to sidebar/ }).click();
+  const pinRow = page.locator(`.v2-side-pin-row[data-pin="${rp.id}"]`);
+  await page.locator(`.v2-side-pin-row[data-pin="${rp.id}"][data-pinned="true"]`).waitFor();
+  assert.equal(await page.locator('.v2-side-pin-row').first().getAttribute('data-pin'), rp.id, 'an explicit pin comes first');
+  const pinPut = await waitWrite((w) => w.ep === '/api/v1/me/ui/pins' && w.body?.value?.[ws.id]?.pinned?.includes(rp.id));
+  assert.ok(pinPut, 'the pin is saved to /me/ui/pins for this workspace');
+  await page.getByRole('button', { name: 'More on this project' }).click();
+  assert.equal(await page.getByRole('menu', { name: 'More on this project' }).getByRole('menuitem', { name: /^Unpin from sidebar/ }).count(), 1);
+  await page.keyboard.press('Escape');
+  await pinRow.hover();
+  await pinRow.getByRole('button', { name: `Unpin ${rp.name}` }).click();
+  await pinRow.waitFor({ state: 'detached' });
+  assert.ok(pinStore[ws.id].hidden.includes(rp.id) && !pinStore[ws.id].pinned.includes(rp.id), 'unpinned and kept out of recents');
+  // Right-click a sidebar project: Pin to sidebar.
+  const recentRow = page.locator('.v2-side-pin-row').first();
+  const recentId = await recentRow.getAttribute('data-pin');
+  await recentRow.click({ button: 'right' });
+  await page.getByRole('menu', { name: 'Project actions' }).getByRole('menuitem', { name: 'Pin to sidebar' }).click();
+  await page.locator(`.v2-side-pin-row[data-pin="${recentId}"][data-pinned="true"]`).waitFor();
+  await page.locator(`.v2-side-pin-row[data-pin="${recentId}"]`).click({ button: 'right' });
+  await page.getByRole('menu', { name: 'Project actions' }).getByRole('menuitem', { name: 'Unpin from sidebar' }).click();
+  await page.locator(`.v2-side-pin-row[data-pin="${recentId}"]`).waitFor({ state: 'detached' });
+  pinStore = null;
+  checks.push('pin-unpin');
   // The Journey (every stage signed off), the AI line, and Overview: Key numbers, People, What's next, Risks, Docs.
   const journey = page.getByRole('region', { name: 'Journey' });
   assert.equal(await journey.locator('.pp-nd.s').count(), 8);

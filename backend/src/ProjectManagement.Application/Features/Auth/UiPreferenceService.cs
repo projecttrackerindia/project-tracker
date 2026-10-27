@@ -12,7 +12,7 @@ public record UiPreferenceDto(string Key, JsonElement? Value, DateTime? UpdatedA
 /// <summary>A person's own app layout (the sidebar), saved with their account: the app reads it at start and writes it as they change it.</summary>
 public class UiPreferenceService(IAppDbContext db, ICurrentContext ctx, AppClock clock)
 {
-    public static readonly string[] Keys = ["sidebar", "operations"];
+    public static readonly string[] Keys = ["sidebar", "operations", "pins"];
     public const int MaxLength = 8000;
 
     private static string Check(string key)

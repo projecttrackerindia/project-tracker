@@ -56,6 +56,14 @@
   .v2-side-pin i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
   .v2-side-pin span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .v2-side-pin:hover, .v2-side-pin.on { background: var(--ds-fill-strong); }
+  .v2-side-pin-row { position: relative; }
+  .v2-side-pin-row .v2-side-pin { padding-right: 30px; }
+  .v2-side-pin-row.dragging { opacity: .5; }
+  .v2-side-pin-row:hover .v2-side-pin { background: var(--ds-fill-strong); }
+  .v2-side-unpin { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 6px;
+    background: transparent; color: var(--ds-text-2); cursor: pointer; opacity: 0; transition: opacity .12s; }
+  .v2-side-pin-row:hover .v2-side-unpin, .v2-side-unpin:focus-visible { opacity: 1; }
+  .v2-side-unpin:hover { background: rgba(118, 118, 128, .18); color: var(--ds-text); }
   .v2-side .v2-rail-foot { flex-direction: row; align-items: center; justify-content: space-between; padding: 8px 4px 0; }
   .v2-side .v2-rail-foot .timer-chip { flex-direction: row; width: auto; }
 }
@@ -264,6 +272,9 @@ html .v2-ai-card .btn.btn-ai:not(#_):hover:not(:disabled) { background: color-mi
 .v2-side-me > span { display: none; }
 /* The toolbar (wide layout): Ask field + "+ New" at the top of the main area; replaces the floating Ask bar and the sidebar's + New. */
 .v2-tb { display: none; }
+/* A page's segmented control portalled into the toolbar (ToolbarSeg): first in the bar, centred on its 52px height. */
+.mw-tbslot { order: -1; display: flex; align-items: center; flex: none; }
+.mw-tbslot.inline { margin: 0 0 14px; }
 @media (min-width: 1100px) {
   .v2-tb { display: flex; position: sticky; top: 0; z-index: 40; height: 52px; flex: none; align-items: center; gap: 12px; padding: 0 22px;
     background: color-mix(in srgb, var(--ds-bg) 82%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
@@ -281,6 +292,12 @@ html .v2-ai-card .btn.btn-ai:not(#_):hover:not(:disabled) { background: color-mi
   .v2-shell .v2-ask:not(.corner) { display: none; }
   .v2-side .v2-new { display: none; }
   html .v2-shell > .main.v2-main > .content { padding: 6px 34px 40px; }
+}
+/* Very wide windows: the page keeps a readable width and sits centred; below 1680px it fills the main area edge to edge (34px gutters). */
+@media (min-width: 1680px) {
+  html .v2-shell > .main.v2-main > .content { padding-left: max(34px, calc((100% - 1640px) / 2)); padding-right: max(34px, calc((100% - 1640px) / 2)); }
+}
+@media (min-width: 1100px) {
   /* the sidebar, as the design's side.js: translucent grey with blur, grey counts, name in the footer */
   .v2-rail.v2-side { background: rgba(236, 236, 240, .78); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-right: .5px solid rgba(0, 0, 0, .08); }
   [data-theme='dark'] .v2-rail.v2-side { background: rgba(30, 30, 32, .78); border-right-color: rgba(255, 255, 255, .08); }

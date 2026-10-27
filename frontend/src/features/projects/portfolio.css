@@ -463,3 +463,4 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
   .pf-g-fc, .pf-g-ms, .pf-present, .pf-slide.on, .pf-hover { animation: none; }
   .pf-slide, .pf-slide.on, .pf-card, .pf-tip, .pf-summary .btn-ai { transition: none; }
 }
+.pf-own-av { display: inline-grid; place-items: center; width: 18px; height: 18px; margin: 0 5px 0 2px; border-radius: 50%; vertical-align: -4px; background: var(--ds-fill, rgba(118, 118, 128, .12)); color: var(--ds-text-2); font-size: 8px; font-weight: 600; font-style: normal; }

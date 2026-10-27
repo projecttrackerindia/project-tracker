@@ -31,4 +31,15 @@ public class UiPreferenceTests(ApiFactory factory)
         Assert.True((await asha.Put("/api/v1/me/ui/sidebar", new { value = (object?)null })).Ok);
         Assert.Null((await asha.Get("/api/v1/me/ui/sidebar")).Data!["value"]);
     }
+
+    [Fact]
+    public async Task Sidebar_project_pins_are_saved_per_person()
+    {
+        var asha = await TestClient.RegisterAsync(factory, "Asha Pins");
+        Assert.Null((await asha.Get("/api/v1/me/ui/pins")).Data!["value"]);
+        var pins = new Dictionary<string, object> { ["w1"] = new { pinned = new[] { "p1", "p2" }, hidden = new[] { "p3" } } };
+        var saved = await asha.Put("/api/v1/me/ui/pins", new { value = pins });
+        Assert.True(saved.Ok, saved.ToString());
+        Assert.Equal("p2", (await asha.Get("/api/v1/me/ui/pins")).Data!["value"]!["w1"]!["pinned"]![1]!.GetValue<string>());
+    }
 }

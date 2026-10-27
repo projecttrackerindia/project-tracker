@@ -114,11 +114,12 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 
 /* the Journey */
 .pp-journey { padding: 18px 26px; margin-bottom: 16px; }
-.pp-journey-head { margin-bottom: 12px; }
+.pp-journey-head { margin-bottom: 0; }
 .pp-journey-head h3 { font-size: 17px; }
 .pp-journey-note { display: inline-flex; align-items: baseline; gap: 12px; font-size: 12.5px; color: var(--ds-text-3); text-align: right; }
 .pp-journey-note .link-btn { font-size: 12.5px; }
-.pp-jl-scroll { overflow-x: auto; scrollbar-width: none; }
+/* overflow-x: auto also clips vertically, so the scroller keeps room above the 46px nodes for their ring, glow and the signer's photo. */
+.pp-jl-scroll { overflow-x: auto; scrollbar-width: none; padding: 14px 0 6px; }
 .pp-jl-scroll::-webkit-scrollbar { display: none; }
 .pp-jl { position: relative; height: 108px; margin: 4px 40px 0; min-width: calc(var(--n) * 64px); }
 .pp-jl ol { list-style: none; margin: 0; padding: 0; }

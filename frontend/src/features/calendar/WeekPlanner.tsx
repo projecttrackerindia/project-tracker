@@ -1,3 +1,4 @@
+import { Face } from '../../components/Face';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -400,7 +401,7 @@ function Inspector({ m, events, nowH, today, onOpen }: { m: Meet | null; events:
         <div>
           <div className="wp-lab">Attendees · {f?.invited ?? people.length}</div>
           {people.map((p, i) => (
-            <div key={p} className="wp-att"><span className={`wp-av c${i % 5}`} aria-hidden="true">{p.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}</span>{p}<em>{i === 0 ? 'organiser' : 'invited'}</em></div>
+            <div key={p} className="wp-att"><Face byName name={p} className={`wp-av c${i % 5}`} text={p.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()} />{p}<em>{i === 0 ? 'organiser' : 'invited'}</em></div>
           ))}
         </div>
       )}
