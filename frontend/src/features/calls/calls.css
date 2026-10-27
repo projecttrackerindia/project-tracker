@@ -150,7 +150,7 @@
   background: #3c4043; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); animation: cs-rise-in .18s ease-out; z-index: 5; }
 .cs .cs-react-bar button { width: 42px; height: 42px; border: 0; border-radius: 50%; background: transparent; font-size: 24px; line-height: 1; cursor: pointer; transition: transform .12s ease, background-color .12s ease; }
 .cs .cs-react-bar button:hover, .cs .cs-react-bar button:focus-visible { background: rgba(255, 255, 255, .12); transform: scale(1.18); outline: none; }
-@media (max-width: 420px) { .cs .cs-react-bar { max-width: calc(100vw - 24px); flex-wrap: wrap; justify-content: center; } .cs .cs-react-bar button { width: 36px; height: 36px; font-size: 20px; } }
+@media (max-width: 420px) { .cs .cs-react-bar { position: fixed; left: 12px; right: 12px; bottom: calc(96px + env(safe-area-inset-bottom)); transform: none; flex-wrap: wrap; justify-content: center; } .cs .cs-react-bar button { width: 36px; height: 36px; font-size: 20px; } }
 .cs .cs-react-bar button:active { transform: scale(.92); }
 .cs .cs-main { position: relative; }
 .cs .cs-reactions { position: absolute; left: 24px; bottom: 40px; top: 0; width: 160px; pointer-events: none; z-index: 3; overflow: hidden; }
