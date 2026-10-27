@@ -72,13 +72,13 @@ function VoiceNote({ value, onChange }: { value: Blob | null; onChange: (b: Blob
  * A page written by AI from whatever is at hand: a line, a voice note, a meeting, a project's work, files, or a template's sections. The draft is
  * shown first; nothing is saved until "Use this".
  */
-export function AiDraftDialog({ projects, projectId: initialProject, onUse, onClose, useLabel = 'Use this page' }: {
-  projects: { id: string; name: string }[]; projectId?: string | null;
+export function AiDraftDialog({ projects, projectId: initialProject, onUse, onClose, useLabel = 'Use this page', initialPrompt }: {
+  projects: { id: string; name: string }[]; projectId?: string | null; /** What to write about, when it is already known (+ New › Doc). */ initialPrompt?: string;
   /** The draft, and the project it was written from (a meeting, its work or a template filled from it), if any. */
   onUse: (draft: DocDraft, from: { projectId: string | null }) => Promise<void> | void; onClose: () => void; useLabel?: string;
 }) {
   const [source, setSource] = useState<DraftSource>('prompt');
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(initialPrompt ?? '');
   const [projectId, setProjectId] = useState<string>(initialProject ?? projects[0]?.id ?? '');
   const [meetingId, setMeetingId] = useState('');
   const [templateId, setTemplateId] = useState('');

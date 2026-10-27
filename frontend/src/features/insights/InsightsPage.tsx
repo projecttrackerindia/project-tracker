@@ -144,7 +144,7 @@ function TimeTab({ tabs }: { tabs: React.ReactNode }) {
   const status = useWsQuery(['time', 'week', week], () => timeApi.week(week));
   const g = grid.data;
   const draft = useWsQuery(['time', 'draft', week], () => timeApi.draft(week), { enabled: !!g?.editable && !g.locked, staleTime: 60_000, retry: false });
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => params.get('log') ?? '');   // + New › Time arrives with the words (?log=)
   const [parsed, setParsed] = useState<ParsedTime | null>(null);
   const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState(false);

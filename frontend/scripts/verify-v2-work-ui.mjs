@@ -416,6 +416,43 @@ try {
     assert.ok(new URL(page.url()).searchParams.get('item'), 'the new ticket is open in the panel');
     checks.push(`new-ticket-${tag}`);
 
+    // The other six types keep their own places: each opens where it is made, with the words carried over (their pages have their own
+    // checks; only the hand-over is checked here, so what those unmocked pages log is set aside).
+    if (tag === '1440') {
+      const kept = errors.length;
+      const newSheet = async (words, tile) => {
+        await page.goto(`${origin}/preview-org/work`); await rows.first().waitFor();
+        await page.locator('.v2-new').click();
+        await sheet.getByLabel('What to create').fill(words);
+        if (tile) await sheet.getByRole('radio', { name: tile }).click();
+        await sheet.getByRole('button', { name: /^Create / }).click();
+        await sheet.waitFor({ state: 'detached' });
+      };
+      await newSheet('Payout runbook for the bank', 'Doc');
+      await page.waitForURL((u) => u.pathname === '/preview-org/library/docs');
+      await newSheet('Meeting with the bank on Friday', 'Meeting');
+      await page.waitForURL((u) => u.pathname === '/preview-org/talk' && u.searchParams.get('f') === 'meetings');
+      await newSheet('2h on WT-5 today', 'Time');
+      await page.waitForURL((u) => u.pathname === '/preview-org/insights' && u.searchParams.get('tab') === 'time' && u.searchParams.get('log') === '2h on WT-5 today');
+      await newSheet('Remind me to call Ravi tomorrow at 10', 'Reminder');
+      await page.locator('.rm-composer, [role="dialog"]').first().waitFor();
+      await page.keyboard.press('Escape');
+      await newSheet('Collections revamp', 'Project');
+      await page.getByRole('dialog', { name: /New project/ }).waitFor();
+      await page.keyboard.press('Escape');
+      // A task needs its project: the Project chip asks for one, then it is made through /work-items too.
+      await page.goto(`${origin}/preview-org/work`); await rows.first().waitFor();
+      await page.locator('.v2-new').click();
+      await sheet.getByLabel('What to create').fill('Write the settlement runbook');
+      await sheet.getByRole('radio', { name: 'Task' }).click();
+      await sheet.getByLabel('Change project').selectOption(pid);
+      await sheet.getByLabel('Change type').selectOption('issue');
+      await sheet.getByText('✦ I understood this as an issue').waitFor();
+      await page.keyboard.press('Escape');
+      errors.splice(kept);
+      checks.push('new-every-type');
+    }
+
     // Dark mode: the panel and list read on dark surfaces.
     if (theme === 'dark') {
       const bg = await panel.evaluate((e) => getComputedStyle(e).backgroundColor);

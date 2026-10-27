@@ -79,6 +79,12 @@ function VaultTab({ switcher }: { switcher: ReactNode }) {
   const q = useDebounced(search, 250);
   const [lockEpoch, setLockEpoch] = useState(0);
   const [editing, setEditing] = useState<VaultItem | SealedEdit | 'new' | null>(null);
+  // + New › Secret (?new=item): the new-item editor, once; the address is left clean so a reload does not open it again.
+  useEffect(() => {
+    if (params.get('new') !== 'item') return;
+    setEditing('new');
+    setParams((p) => { const n = new URLSearchParams(p); n.delete('new'); n.delete('title'); return n; }, { replace: true });
+  }, [params, setParams]);
   const [sharing, setSharing] = useState<{ c: VaultCollection; start?: 'person' | 'time' } | null>(null);
   const [importing, setImporting] = useState(false);
   const [generator, setGenerator] = useState(false);
