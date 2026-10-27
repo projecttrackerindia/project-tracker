@@ -17,6 +17,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { DotsMenu } from '../talk/DotsMenu';
 import { useAi } from '../ai/Assistant';
 import { DevLinks } from '../settings/IntegrationSettings';
+import { PrChips, usePrStatus } from '../github/PrChips';
 import { formatMinutes } from '../time/time';
 import { IncidentStrip, ReplyHelper, TriageChips } from './Desk';
 import { SlaChip } from './Sla';
@@ -215,6 +216,7 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
           <input type="date" aria-label="Due date" value={w.dueDate ?? ''} disabled={!editable} onChange={(e) => setDue(e.target.value || null)} />
         </Tile>
       </div>
+      {(w.kind === 'task' || w.kind === 'ticket') && <PanelPrs id={w.id} />}
       {dueAsk && <DueReason from={w.dueDate} to={dueAsk.to} onCancel={() => setDueAsk(null)} onSave={async (reason) => { if (await save({ dueDate: dueAsk.to, dueDateReason: reason })) setDueAsk(null); }} />}
 
       <Copilot w={w} me={me?.id ?? null} save={save} onDueAsk={(to) => setDueAsk({ to })} onStatus={setStatus} statuses={statuses} refetch={refetch} />
@@ -498,3 +500,10 @@ function Composer({ w, onPosted }: { w: WorkItemDetail; onPosted: () => void }) 
   );
 }
 
+
+/** Pull request and build status under the tiles: "#412 Open · Checks failing" chips, opening the pull request. Nothing without one. */
+function PanelPrs({ id }: { id: string }) {
+  const pulls = usePrStatus([id]).get(id);
+  if (!pulls?.length) return null;
+  return <div className="wkp-prs" data-testid="panel-prs"><span>Pull requests</span><PrChips pulls={pulls} /></div>;
+}

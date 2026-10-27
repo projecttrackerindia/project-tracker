@@ -32,8 +32,9 @@ let scheduled=null;
 const writes=[],errors=[],checks=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
- const make=async(theme)=>{
+ const make=async(theme,mailLinked=false)=>{
   const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
+  if(mailLinked)await ctx.addInitScript(([k,v])=>localStorage.setItem(k,v),[`pt.mail.${ws.id}.${user.id}`,JSON.stringify({projects:{'imap:m1|inbox|msg1':P}})]);
   await ctx.addInitScript((t)=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme',t);localStorage.setItem('pm_home_mode','classic');window.print=()=>{window.__printed=(window.__printed||0)+1;};},theme);
   await ctx.route('**/*',async route=>{
    const req=route.request(),url=new URL(req.url()),ep=url.pathname,method=req.method();
@@ -55,6 +56,11 @@ try{
     else if(ep===W)data={...weekly,schedule:scheduled};
     else if(ep===`/api/v1/projects/${P}`)data={project:{id:P,key:'PH',name:'Payments Hub',status:'Active',health:'AtRisk'},members:[],stages:[]};
     else if(ep.endsWith('/projects')||ep.endsWith('/tasks')||ep.endsWith('/work-tasks'))data={items:[],page:1,totalPages:0,totalItems:0};
+    else if(ep==='/api/v1/me/mailbox/accounts')data={imap:[{id:'m1',name:'Work mail',email:'asha@fictive.test',lastError:null}],presets:[],company:null,canManageCompany:false,myEmail:null};
+    else if(ep==='/api/v1/me/mailbox/messages'){const f=url.searchParams.get('folder');data={account:'imap:m1',email:'asha@fictive.test',folder:f,cursor:null,messages:f==='inbox'?[
+      {id:'msg1',threadId:'th1',subject:'Bank sandbox down again',from:'Ruth Mensah <ruth@bank.fictive.test>',to:'asha@fictive.test',cc:'',date:'2026-10-23T09:00:00Z',unread:false,hasAttachments:false},
+      {id:'msg2',threadId:'th1',subject:'Re: Bank sandbox down again',from:'Ruth Mensah <ruth@bank.fictive.test>',to:'asha@fictive.test',cc:'',date:'2026-10-24T09:00:00Z',unread:true,hasAttachments:false},
+      {id:'msg3',threadId:'th9',subject:'Lunch on Friday',from:'Leo Park <leo@fictive.test>',to:'asha@fictive.test',cc:'',date:'2026-10-24T10:00:00Z',unread:true,hasAttachments:false}]:[]};}
     else if(ep==='/api/v1/timer')data=null;
     else if(ep.endsWith('/me/fingerprint'))data={fingerprint:'preview'};
     else if(ep.endsWith('/ai/status'))data={enabled:true,configured:true,entitled:true,allowedHere:true};
@@ -104,6 +110,17 @@ try{
  assert.equal(await page.locator('.wrp-edit textarea').inputValue(),'(formal) Payments Hub is at risk.');
  assert.equal(writes.find(w=>w.ep.endsWith('/transform')).b.action,'formal');checks.push('tone');
  await shot(page,'weekly-light-1440-edit.png');
+ await ctx.close();
+
+ // Mail as a source: a thread linked to this project in Mail is counted in the source line and cited with its sender.
+ ctx=await make('light',true);page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
+ scheduled=null;await page.goto(url);await page.getByTestId('report-mail').waitFor();
+ assert.match(await page.locator('.wrp-sourceline').innerText(),/Written from 64 updates, 3 meetings, 2 mails and 41 commits/);
+ assert.equal(await page.getByTestId('report-mail').locator('li').count(),1,'only the linked thread');
+ assert.match(await page.getByTestId('report-mail').locator('li').innerText(),/Bank sandbox down again/);
+ await page.getByTestId('report-mail').locator('a.wrp-src',{hasText:'Mail · Ruth'}).waitFor();
+ await shot(page,'weekly-mail-1440.png');checks.push('mail-source');
+ await page.setViewportSize({width:390,height:844});await page.waitForTimeout(200);await fitsPhone(page,'weekly with mail',assert);await shot(page,'weekly-mail-390.png');
  await ctx.close();
 
  ctx=await make('dark');page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});

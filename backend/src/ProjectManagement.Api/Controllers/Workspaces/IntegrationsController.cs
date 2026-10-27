@@ -129,6 +129,11 @@ public class IntegrationsController(InboundEmailService inbound, GitLinkService 
     [HttpGet("tasks/{taskId:guid}/dev-links"), RequireModule(Modules.Tasks)]
     public async Task<IActionResult> TaskLinks(Guid taskId, CancellationToken ct) => Ok(await git.ForTaskAsync(taskId, ct));
 
+    /// <summary>Pull request and checks status for many tasks and tickets at once (comma-separated ids), for My Work's chips.</summary>
+    [HttpGet("dev-links/status")]
+    public async Task<IActionResult> DevStatus([FromQuery] string? ids, CancellationToken ct) =>
+        Ok(await git.StatusAsync((ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList(), ct));
+
     [HttpGet("work-tasks/{workTaskId:guid}/dev-links")]
     public async Task<IActionResult> WorkTaskLinks(Guid workTaskId, CancellationToken ct) => Ok(await git.ForWorkTaskAsync(workTaskId, ct));
 

@@ -116,6 +116,9 @@ public static class DependencyInjection
         services.AddHttpClient("pwned-passwords", c => c.Timeout = TimeSpan.FromSeconds(5));
         services.AddHttpClient("github-oidc", c => c.Timeout = TimeSpan.FromSeconds(5));   // GitHub Actions' published signing keys (vault machine access)
         services.AddHttpClient("github-app", c => c.Timeout = TimeSpan.FromSeconds(20));
+        // API drift "Check against live": no redirects (an answer cannot send the call on to another host), no request logging (headers carry the stored credential).
+        services.AddHttpClient("api-live", c => c.Timeout = TimeSpan.FromSeconds(10))
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddHttpClient("meetbot", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddHttpClient("whatsapp-installation", c => c.Timeout = TimeSpan.FromSeconds(20))

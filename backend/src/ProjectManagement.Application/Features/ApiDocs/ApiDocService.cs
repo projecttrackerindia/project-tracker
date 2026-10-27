@@ -18,7 +18,7 @@ public record ApiOverviewDto(IReadOnlyList<DefinitionDto> Definitions, int Endpo
 public record EndpointItemDto(Guid Id, Guid DefinitionId, string Definition, string Method, string Path, string Summary, string? Tag, bool Deprecated, UserRefDto? Owner);
 public record EndpointPageDto(IReadOnlyList<EndpointItemDto> Items, string? NextCursor, int? Total);
 /// <param name="MaskedCount">Personal or secret values masked in this copy (0 for a revealed one).</param>
-public record EndpointDto(EndpointItemDto Item, EndpointDetails Details, bool ReadOnly, int MaskedCount = 0, bool Revealed = false, int RevealSeconds = 0, bool CanReveal = false);
+public record EndpointDto(EndpointItemDto Item, EndpointDetails Details, bool ReadOnly, int MaskedCount = 0, bool Revealed = false, int RevealSeconds = 0, bool CanReveal = false, LiveCheckDto? LiveCheck = null);
 public record EndpointHitDto(Guid DocumentId, string DocumentKey, string DocumentTitle, string Definition, string Method, string Path, string Summary);
 public record SaveDefinitionRequest(string Name, string? Description, string? BasePath, string? Version, ApiAuthScheme Auth, string? AuthNote, IReadOnlyList<string>? Servers, ApiStage? Stage = null);
 public record SaveEndpointRequest(Guid DefinitionId, string Method, string Path, string? Summary, string? Tag, bool Deprecated, Guid? OwnerId, EndpointDetails? Details);
@@ -175,7 +175,7 @@ public class ApiDocService(IAppDbContext db, ICurrentContext ctx, AppClock clock
         var masker = reveal ? null : await masking.MaskerAsync(ct);
         if (masker is not null) details = EndpointMasking.Mask(details, masker);
         var canReveal = r.Edit || await permissions.HasAsync(Permissions.DocsSecrets, ct);
-        return new EndpointDto((await ToItemsAsync(documentId, src, [row], ct))[0], details, !src.Live || !r.Edit, masker?.Count ?? 0, reveal, revealSeconds, canReveal);
+        return new EndpointDto((await ToItemsAsync(documentId, src, [row], ct))[0], details, !src.Live || !r.Edit, masker?.Count ?? 0, reveal, revealSeconds, canReveal, src.Live ? ApiDriftService.Read(json) : null);
     }
 
     /// <summary>Published endpoints whose path, summary or group contains the text, in documents the person may open. Drafts are not searched: they are read in their document.</summary>

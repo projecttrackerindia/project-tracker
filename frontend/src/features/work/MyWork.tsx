@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion, type Transition } from 'fram
 import { ApiError, get, put } from '../../api/client';
 import { insightApi, projectApi } from '../../api/endpoints';
 import { workItemsApi, type WorkRow } from '../../api/workItemsApi';
+import type { PullChip } from '../../api/types';
 import { Avatar } from '../../components/ui';
 import { openNew } from '../../components/v2/state';
 import { DOW, daysUntil, formatDateShort, todayISO } from '../../lib/format';
@@ -11,6 +12,7 @@ import { spring } from '../../lib/motion';
 import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { PRIORITY_ORDER, refreshWork, useWorkList } from './workUi';
+import { PrChips, usePrStatus } from '../github/PrChips';
 
 /* ------------------------------------------------------------------ rules */
 
@@ -167,6 +169,8 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   const todayTotal = cols.today.length;
   const done = doneToday.length;
 
+  // Pull request + checks chips for tasks and tickets on the page (one request for all of them).
+  const prs = usePrStatus(openItems.filter((w) => w.kind === 'task' || w.kind === 'ticket').map((w) => w.id));
   const detail = useWsQuery(['work-items', 'detail', front?.id], () => workItemsApi.get(front!.id), { enabled: !!front, staleTime: 60_000, retry: false });
   const est = front && detail.data?.id === front.id ? (detail.data.detail as { estimatedHours?: number | null }).estimatedHours ?? null : null;
   const focus = blocks[0] ?? null;
@@ -239,7 +243,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
                   aria-hidden={isFront ? undefined : true}>
                   {isFront && (
                     <div className="mw-fc-in">
-                      <div className="mw-lab"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor" /></svg>Do this now</div>
+                      <div className="mw-lab"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor" /></svg>Do this now<PrChips pulls={prs.get(w.id)} compact /></div>
                       <button type="button" className="mw-bigchk" aria-label={`Complete ${w.title}`} onClick={() => complete(w)} disabled={!!drawing}>
                         <svg viewBox="0 0 34 34" width="34" height="34" aria-hidden="true">
                           <circle cx="17" cy="17" r="15" />
@@ -305,7 +309,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
         {([['today', 'Today'], ['week', 'This week'], ['later', 'Later']] as const).map(([id, title]) => (
           <div key={id} className={`mw-grp g-${id}`} role="group" aria-label={title}>
             <h2>{title} <span>{cols[id].length}</span></h2>
-            {cols[id].map((w) => <Row key={w.id} w={w} done={!isOpen(w)} onTick={() => tickRow(w)} onOpen={() => onOpen(w.id)} onBack={later.includes(w.id) ? () => laterStore.remove(w.id) : undefined} />)}
+            {cols[id].map((w) => <Row key={w.id} w={w} pulls={prs.get(w.id)} done={!isOpen(w)} onTick={() => tickRow(w)} onOpen={() => onOpen(w.id)} onBack={later.includes(w.id) ? () => laterStore.remove(w.id) : undefined} />)}
             {id === 'later' && <button type="button" className="mw-add" onClick={() => openNew('task')}>＋ Add item</button>}
           </div>
         ))}
@@ -314,7 +318,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   );
 }
 
-function Row({ w, done, onTick, onOpen, onBack }: { w: WorkRow; done: boolean; onTick: () => void; onOpen: () => void; onBack?: () => void }) {
+function Row({ w, pulls, done, onTick, onOpen, onBack }: { w: WorkRow; pulls?: PullChip[]; done: boolean; onTick: () => void; onOpen: () => void; onBack?: () => void }) {
   const dot = projectDot(w.projectId);
   const late = w.isOverdue && w.dueDate ? Math.abs(daysUntil(w.dueDate) ?? 0) : 0;
   const when = done ? 'just now' : late ? null : dayText(w.dueDate);
@@ -325,6 +329,7 @@ function Row({ w, done, onTick, onOpen, onBack }: { w: WorkRow; done: boolean; o
         <b>{w.title}</b>
         <small>{dot && !done && <i className="mw-pd" style={{ background: dot }} />}{[w.projectName, when].filter(Boolean).join(' · ')}{late > 0 && !done && <>{w.projectName ? ' · ' : ''}<span className="od">overdue {late}d</span></>}</small>
       </button>
+      {!done && <PrChips pulls={pulls} compact />}
       {!done && (w.priority === 'High' || w.priority === 'Critical') && <span className="mw-flag" title={`${w.priority} priority`} aria-label={`${w.priority} priority`}>!</span>}
       {onBack && !done && <button type="button" className="mw-back" onClick={onBack} aria-label={`Bring ${w.title} back`} title="Bring it back now">↩</button>}
     </div>

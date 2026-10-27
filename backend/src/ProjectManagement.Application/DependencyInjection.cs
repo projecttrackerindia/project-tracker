@@ -184,6 +184,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentSecurityService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentInboxService>();
         services.AddScoped<ProjectManagement.Application.Features.ApiDocs.ApiDocService>();
+        services.AddScoped<ProjectManagement.Application.Features.ApiDocs.ApiDriftService>();
+        services.AddSingleton<ProjectManagement.Application.Features.ApiDocs.ApiLiveResolver>();
         services.AddScoped<ProjectManagement.Application.Features.ApiDocs.ApiTransferService>();
         services.AddScoped<ProjectManagement.Application.Features.DocTracker.DocTrackerService>();
         services.AddScoped<OrgService>();

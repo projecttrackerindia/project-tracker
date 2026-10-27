@@ -14,10 +14,12 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.DocTracker;
 
 public record DtEndpoint(Guid Id, Guid DocumentId, Guid DefinitionId, string Definition, string Method, string Path, string Summary, string? Tag, bool Deprecated,
-    int Score, IReadOnlyList<string> Gaps, string Stage, DateTime? UpdatedAt);
+    int Score, IReadOnlyList<string> Gaps, string Stage, DateTime? UpdatedAt, DtDrift? Drift = null);
+/// <summary>The endpoint's last "Check against live": shape only (counts of missing, extra and changed-type fields), the environment's label, never its address.</summary>
+public record DtDrift(DateTime CheckedAt, string Env, bool Differs, int Missing, int Extra, int Changed, string? Error);
 public record DtDefinition(Guid Id, Guid DocumentId, string Name, string? Version, string Stage, string Auth, IReadOnlyList<string> Servers);
 public record DtDocument(Guid Id, string Key, string Title, string TypeCode, string TypeName, string TypeColor, DocumentStatus Status, DocumentClassification Classification, DateTime UpdatedAt, bool IsApi,
-    Guid? ParentId = null, int PageOrder = 0, string? Icon = null, Guid? TeamId = null);
+    Guid? ParentId = null, int PageOrder = 0, string? Icon = null, Guid? TeamId = null, DateTime? VerifiedAt = null, DateTime? StaleSince = null);
 /// <summary>A team's space: the company-wide (no project) pages kept for one team. Mine: the person is in the team (they can add pages to it).</summary>
 public record DtTeam(Guid Id, string Name, bool Mine, int Pages);
 public record DtProject(Guid? Id, string? Key, string Name, IReadOnlyList<DtEndpoint> Endpoints, IReadOnlyList<DtDefinition> Definitions, IReadOnlyList<DtDocument> Documents, int Diagrams, int Designs = 0);
@@ -49,7 +51,7 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var docs = await (from d in db.Documents.AsNoTracking()
                           join t in db.DocumentTypes.AsNoTracking() on d.TypeId equals t.Id
                           where d.Status != DocumentStatus.Archived
-                          select new { d.Id, d.Number, d.Title, d.ProjectId, d.Status, d.Classification, Updated = d.UpdatedAt ?? d.CreatedAt, t.Code, t.Name, t.Color, d.ParentId, d.PageOrder, d.Icon, d.TeamId }).Take(5000).ToListAsync(ct);
+                          select new { d.Id, d.Number, d.Title, d.ProjectId, d.Status, d.Classification, Updated = d.UpdatedAt ?? d.CreatedAt, t.Code, t.Name, t.Color, d.ParentId, d.PageOrder, d.Icon, d.TeamId, d.VerifiedAt, d.StaleSince }).Take(5000).ToListAsync(ct);
         var docIds = docs.Select(d => d.Id).ToList();
         var defs = await db.ApiDefinitions.AsNoTracking().Where(x => docIds.Contains(x.DocumentId)).OrderBy(x => x.SortOrder).ToListAsync(ct);
         var apiDocIds = defs.Select(x => x.DocumentId).Distinct().ToList();
@@ -79,7 +81,7 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
             var d = details.GetValueOrDefault(e.Item.Id);
             var (score, gaps) = Score(e.Item, d is null ? new EndpointDetails() : ApiJson.Read(d.DetailsJson), def?.Auth ?? ApiAuthScheme.None);
             return new DtEndpoint(e.Item.Id, e.Doc, e.Item.DefinitionId, e.Item.Definition, e.Item.Method, e.Item.Path, e.Item.Summary, e.Item.Tag, e.Item.Deprecated, score, gaps,
-                (def?.Stage ?? ApiStage.Draft).ToString(), d?.Updated);
+                (def?.Stage ?? ApiStage.Draft).ToString(), d?.Updated, DriftOf(d?.DetailsJson));
         }
 
         var diagramCounts = await db.ProjectArchitectures.AsNoTracking().Select(a => new { a.ProjectId, a.DiagramsJson }).ToListAsync(ct);
@@ -98,7 +100,7 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
             return new DtProject(pid, key, name,
                 endpoints.Where(e => mineIds.Contains(e.Doc)).Select(ToEp).OrderBy(e => e.Tag ?? "~").ThenBy(e => e.Path).ToList(),
                 defs.Where(x => mineIds.Contains(x.DocumentId)).Select(x => new DtDefinition(x.Id, x.DocumentId, x.Name, x.Version, x.Stage.ToString(), x.Auth.ToString(), ApiJson.ReadServers(x.ServersJson))).ToList(),
-                mine.OrderByDescending(d => d.Updated).Select(d => new DtDocument(d.Id, DocumentService.KeyOf(d.Number), d.Title, d.Code, d.Name, d.Color, d.Status, d.Classification, d.Updated, apiDocIds.Contains(d.Id), d.ParentId, d.PageOrder, d.Icon, d.ProjectId is null ? d.TeamId : null)).ToList(),
+                mine.OrderByDescending(d => d.Updated).Select(d => new DtDocument(d.Id, DocumentService.KeyOf(d.Number), d.Title, d.Code, d.Name, d.Color, d.Status, d.Classification, d.Updated, apiDocIds.Contains(d.Id), d.ParentId, d.PageOrder, d.Icon, d.ProjectId is null ? d.TeamId : null, d.VerifiedAt, d.StaleSince)).ToList(),
                 Visuals(pid ?? Guid.Empty).Diagrams, Visuals(pid ?? Guid.Empty).Designs);
         }
         var list = projects.Select(p => Build(p.Id, p.Key, p.Name)).ToList();
@@ -114,6 +116,11 @@ public class DocTrackerService(IAppDbContext db, ICurrentContext ctx, AppClock c
     }
 
     /// <summary>How well an endpoint is documented (0-100) and what is missing, the way DocTracker scores it.</summary>
+    /// <summary>The endpoint's last live check, reduced to what lists need.</summary>
+    public static DtDrift? DriftOf(string? detailsJson) => ApiDriftService.Read(detailsJson) is { } c
+        ? new DtDrift(c.CheckedAt, c.Env, c.Differs, c.Fields.Count(f => f.Kind == "missing"), c.Fields.Count(f => f.Kind == "extra"), c.Fields.Count(f => f.Kind == "type"), c.Error)
+        : null;
+
     public static (int Score, IReadOnlyList<string> Gaps) Score(EndpointItemDto item, EndpointDetails d, ApiAuthScheme apiAuth)
     {
         var gaps = new List<string>(); var score = 0;

@@ -45,7 +45,7 @@ await ctx.route('**/*', async (route) => {
   else if (ep === '/api/v1/doctracker/architecture' && method === 'PUT') { store = body.diagrams; data = { projectId: pid, diagrams: store, notes: body.notes, canEdit: true, updatedAt: new Date().toISOString(), updatedBy: 'Asha Rao' }; }
   else if (ep === '/api/v1/doctracker/architecture') data = { projectId: pid, diagrams: store, notes: null, canEdit: true, updatedAt: null, updatedBy: null };
   else if (ep === '/api/v1/documents/ai/design') data = { html: screen.replace('Paid', 'Account linked'), title: 'Bank account linked', model: 'synthetic' };
-  else if (ep === '/api/v1/documents/ai/diagram') data = { data: { nodes: [...body.current.nodes, { id: 'f', kind: 'icon', icon: 'firewall', label: 'Fraud check', x: 345, y: 140, w: 150, h: 64 }], edges: body.current.edges }, summary: 'Added a fraud check.', model: 'synthetic' };
+  else if (ep === '/api/v1/documents/ai/diagram') data = { data: { nodes: [...body.current.nodes, { id: 'f', kind: 'icon', icon: 'api', ctype: 'api', level: 'containers', tech: 'Rules engine', label: 'Fraud check', x: 345, y: 140, w: 150, h: 64 }], edges: body.current.edges }, summary: 'Added a fraud check.', model: 'synthetic' };
   else if (ep === `/api/v1/projects/${pid}`) data = { project: { id: pid, key: 'PAY', name: 'Payments', owner: { id: 'u-felix', name: 'Felix Moreau' }, stats: { total: 0, done: 0, inProgress: 0, todo: 0, cancelled: 0, overdue: 0 } }, statuses: [], stages: [], members: [] };
   else if (ep === '/api/v1/chat/conversations/direct') data = { id: 'c-felix', name: 'Felix Moreau', members: [] };
   else if (ep === '/api/v1/chat/conversations/c-felix/messages') data = { id: 'm1', body: body?.body ?? '' };
@@ -141,8 +141,10 @@ try {
   assert.equal(await studio.locator('.react-flow__node:visible').count(), 5);
   assert.match(await studio.locator('.arch-c4', { hasText: 'Payout service' }).innerText(), /API[\s\S]*Payout service[\s\S]*\.NET 9/);
   assert.ok(await studio.locator('.react-flow__edge-text', { hasText: 'HTTPS · 40 rps' }).count(), 'arrows show protocol and throughput');
+  assert.match(await studio.locator('.arch-c4', { hasText: 'Fraud check' }).innerText(), /API[\s\S]*Fraud check[\s\S]*Rules engine/, 'the drawn box has its C4 type and tech');
   await studio.getByRole('tab', { name: 'Context' }).click();
-  assert.equal(await studio.locator('.react-flow__node:visible').count(), 4, 'a Containers box is hidden on Context');
+  assert.equal(ask.body.level, 'containers', 'the tab the person is on goes with the request');
+  assert.equal(await studio.locator('.react-flow__node:visible').count(), 3, 'Containers boxes (the drawn one too) are hidden on Context');
   await studio.getByRole('tab', { name: 'Containers' }).click();
   for (const g of ['People & systems', 'Containers', 'Boundaries']) assert.ok(await studio.locator('.arch-palette h5', { hasText: g }).count(), g);
   // Inspector: details and connections.
@@ -166,7 +168,7 @@ try {
   assert.match(await card.innerText(), /everything holds/);
   await studio.getByRole('button', { name: 'Share' }).click();
   await page.getByText('Link copied').first().waitFor();
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), page.url());
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), `${page.url()}?diagram=d-1`, 'Share in the studio copies the link to this one diagram');
   await studio.getByRole('button', { name: 'Stop' }).click();
   assert.equal(await studio.locator('.arch-simcard').count(), 0);
   await studio.locator('.arch-prow', { hasText: 'API service' }).click();

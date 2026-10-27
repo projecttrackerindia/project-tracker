@@ -26,6 +26,11 @@ public record DevLinkDto(Guid Id, GitProvider Provider, string Kind, string Exte
     string? Branch = null, string? ChecksState = null, string? ReviewState = null, bool Draft = false, int? Additions = null, int? Deletions = null, int? ChangedFiles = null,
     int? RiskScore = null, IReadOnlyList<string>? RiskReasons = null, DateTime? MergedAt = null, bool AwaitingReview = false);
 
+/// <summary>A pull request as a chip: its number, state (open, merged, closed, draft) and checks (success, failure, pending).</summary>
+public record PullChipDto(string Number, string State, string? Checks, string Url, string Title, string? Repository);
+/// <summary>The pull requests of one task or ticket, newest first (at most three).</summary>
+public record DevStatusDto(Guid ItemId, IReadOnlyList<PullChipDto> Pulls);
+
 /// <summary>One commit or pull request, whatever the provider.</summary>
 public record GitChange(string Kind, string ExternalId, string Title, string Message, string Url, string? Repository, string? Author, string? AuthorEmail,
     string? State, bool Completes, DateTime OccurredAt);
@@ -115,6 +120,33 @@ public class GitLinkService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             : w.RelatedProjectId is { } pid && await access.VisibleProjects().AnyAsync(p => p.Id == pid, ct);
         if (!visible) throw new NotFoundException("Work task not found.");
         return (await db.DevLinks.AsNoTracking().Where(l => l.WorkTaskId == workTaskId).OrderByDescending(l => l.OccurredAt).Take(100).ToListAsync(ct)).Select(ToDto).ToList();
+    }
+
+    public const int MaxStatusItems = 200;
+
+    /// <summary>
+    /// Pull request and build status for many work items at once (My Work's list): only tasks the person can see and tickets they may open;
+    /// the rest are left out silently. Items without a pull request are not listed.
+    /// </summary>
+    public async Task<IReadOnlyList<DevStatusDto>> StatusAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default)
+    {
+        ctx.RequireTenantId();
+        var want = ids.Distinct().Take(MaxStatusItems).ToList();
+        if (want.Count == 0) return [];
+        var tasks = await access.VisibleTasks().Where(t => want.Contains(t.Id)).Select(t => t.Id).ToListAsync(ct);
+        var work = await db.WorkTasks.AsNoTracking().Where(w => want.Contains(w.Id)).Select(w => new { w.Id, w.Kind, w.RelatedProjectId }).ToListAsync(ct);
+        var canWork = work.Any(w => w.Kind == WorkTaskKind.Operational) && await permissions.LevelAsync(Modules.Work, ct) > 0;
+        var projectIds = work.Where(w => w.RelatedProjectId != null).Select(w => w.RelatedProjectId!.Value).Distinct().ToList();
+        List<Guid> visibleProjects = projectIds.Count == 0 ? new List<Guid>() : await access.VisibleProjects().Where(p => projectIds.Contains(p.Id)).Select(p => p.Id).ToListAsync(ct);
+        var works = work.Where(w => w.Kind == WorkTaskKind.Operational ? canWork : w.RelatedProjectId is { } pid && visibleProjects.Contains(pid)).Select(w => w.Id).ToList();
+        if (tasks.Count + works.Count == 0) return [];
+        var rows = await db.DevLinks.AsNoTracking()
+            .Where(l => l.Kind == "pull_request" && ((l.TaskId != null && tasks.Contains(l.TaskId.Value)) || (l.WorkTaskId != null && works.Contains(l.WorkTaskId.Value))))
+            .OrderByDescending(l => l.OccurredAt).Take(MaxStatusItems * 3).ToListAsync(ct);
+        return rows.GroupBy(l => l.TaskId ?? l.WorkTaskId!.Value)
+            .Select(g => new DevStatusDto(g.Key, g.GroupBy(l => (l.Repository, l.ExternalId)).Select(x => x.First()).Take(3)
+                .Select(l => new PullChipDto(l.ExternalId, l.Draft && l.State == "open" ? "draft" : l.State ?? "open", l.ChecksState, l.Url, l.Title, l.Repository)).ToList()))
+            .ToList();
     }
 
     // ------------------------------------------------------------------ receiving events

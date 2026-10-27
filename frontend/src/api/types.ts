@@ -476,6 +476,9 @@ export interface DevLink {
   branch?: string | null; checksState?: 'success' | 'failure' | 'pending' | null; reviewState?: 'approved' | 'changes_requested' | null; draft?: boolean;
   additions?: number | null; deletions?: number | null; changedFiles?: number | null; riskScore?: number | null; riskReasons?: string[] | null; mergedAt?: string | null; awaitingReview?: boolean;
 }
+/** A pull request as a chip on a work item: state (open, draft, merged, closed) and checks (success, failure, pending). */
+export interface PullChip { number: string; state: 'open' | 'draft' | 'merged' | 'closed' | string; checks: 'success' | 'failure' | 'pending' | string | null; url: string; title: string; repository: string | null }
+export interface DevStatus { itemId: string; pulls: PullChip[] }
 /** The ProjectTracker GitHub App in this workspace. */
 export interface GitHubStatusRules { opened: string | null; approved: string | null; merged: string | null; reopenOnRevert: boolean }
 export interface GitHubAppStatus {
@@ -904,14 +907,20 @@ export interface ApiDefinition {
 export interface ApiOverview { definitions: ApiDefinition[]; endpoints: number; live: boolean; reading: string; versionId: string | null; canEdit: boolean; limit: number; used: number }
 export interface EndpointItem { id: string; definitionId: string; definition: string; method: ApiMethod; path: string; summary: string; tag: string | null; deprecated: boolean; owner: UserRef | null }
 export interface EndpointPage { items: EndpointItem[]; nextCursor: string | null; total: number | null }
-export interface EndpointDetail { item: EndpointItem; details: EndpointDetails; readOnly: boolean; maskedCount?: number; revealed?: boolean; revealSeconds?: number; canReveal?: boolean }
+export interface EndpointDetail { item: EndpointItem; details: EndpointDetails; readOnly: boolean; maskedCount?: number; revealed?: boolean; revealSeconds?: number; canReveal?: boolean; liveCheck?: LiveCheck | null }
+/** API drift: one field that differs between the documented sample response and the live one (names and JSON types only, never values). */
+export interface DriftField { path: string; kind: 'missing' | 'extra' | 'type'; documented: string | null; live: string | null }
+/** The last "Check against live": the environment by label (never its address), what was compared and what differs. */
+export interface LiveCheck { checkedAt: string; env: string; source: 'live' | 'pasted'; status: number | null; comparedWith: string | null; differs: boolean; fields: DriftField[]; error: string | null }
+export interface DtDrift { checkedAt: string; env: string; differs: boolean; missing: number; extra: number; changed: number; error: string | null }
 
 // ---- DocTracker: every project's APIs (scored), documents and architecture
-export interface DtEndpoint { id: string; documentId: string; definitionId: string; definition: string; method: ApiMethod; path: string; summary: string; tag: string | null; deprecated: boolean; score: number; gaps: string[]; stage: ApiStage; updatedAt: string | null }
+export interface DtEndpoint { id: string; documentId: string; definitionId: string; definition: string; method: ApiMethod; path: string; summary: string; tag: string | null; deprecated: boolean; score: number; gaps: string[]; stage: ApiStage; updatedAt: string | null; drift?: DtDrift | null }
 export interface DtDefinition { id: string; documentId: string; name: string; version: string | null; stage: ApiStage; auth: ApiAuthScheme; servers: string[] }
 export interface DtDocument { id: string; key: string; title: string; typeCode: string; typeName: string; typeColor: string; status: DocumentStatus; classification: DocumentClassification; updatedAt: string; isApi: boolean;
   parentId?: string | null; pageOrder?: number; icon?: string | null;
-  /** A company page kept in a team's space. */ teamId?: string | null }
+  /** A company page kept in a team's space. */ teamId?: string | null;
+  /** Confirmed still right on this date; out of date since this moment. */ verifiedAt?: string | null; staleSince?: string | null }
 /** A team's space: company pages kept for one team; mine = the person is in it. */
 export interface DtTeam { id: string; name: string; mine: boolean; pages: number }
 export interface DtProject { id: string | null; key: string | null; name: string; endpoints: DtEndpoint[]; definitions: DtDefinition[]; documents: DtDocument[]; diagrams: number; designs?: number }

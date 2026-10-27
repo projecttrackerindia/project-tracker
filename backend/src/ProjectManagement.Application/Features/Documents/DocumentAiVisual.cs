@@ -5,7 +5,8 @@ using ProjectManagement.Application.Exceptions;
 
 namespace ProjectManagement.Application.Features.Documents;
 
-public record DiagramDraftRequest(string Prompt, JsonNode? Current = null, IReadOnlyList<string>? Context = null);
+/// <param name="Level">The C4 level tab the person is on (context, containers, components, deployment): boxes the model leaves without a level go there.</param>
+public record DiagramDraftRequest(string Prompt, JsonNode? Current = null, IReadOnlyList<string>? Context = null, string? Level = null);
 public record DiagramDraftDto(JsonObject Data, string Summary, string Model);
 public record DesignDraftRequest(string Prompt, string? Device = null, string? Brand = null);
 public record DesignDraftDto(string Html, string Title, string Model);
@@ -34,7 +35,10 @@ public partial class DocumentAiService
             + "\"edges\":[{\"id\":\"e1\",\"source\":\"a\",\"target\":\"b\",\"label\":\"HTTPS\",\"line\":\"solid\",\"animated\":true}]}. "
             + "kind is icon (a component), frame (a boundary that groups others: give it x,y,w,h around them and set parentId on the boxes inside) or shape. "
             + $"icon is one of: {IconKeys}. Lay the main request path left to right on one row, 230 px apart; data stores below, events above; keep every box on the grid. "
-            + "Label arrows with the protocol or the call (\"GET /balance\", \"enqueue\"). Ids are short letters. Never invent real hostnames, IPs, keys or people.";
+            + "Label arrows with the protocol or the call (\"GET /balance\", \"enqueue\"). Ids are short letters. Never invent real hostnames, IPs, keys or people. "
+            + "Every component box also has C4 details: \"level\" (context for people and outside systems, containers for apps, services, queues and stores, components for parts inside one service, deployment for servers and clusters), "
+            + "\"ctype\" (one of person, external, web, api, queue, db, cache; zone or group for frames) and \"tech\" (the technology in a few words, like \"React SPA\", \".NET 9 API\", \"PostgreSQL 16\", \"Redis\", \"MuleSoft 4\"). "
+            + $"Put boxes on the {ArchDiagram.LevelOr(req.Level)} level unless the request is clearly about another one.";
         var user = (current.Length > 0 ? $"The current diagram (change it; keep ids that stay):\n{current}\n\n" : "")
             + (context.Length > 0 ? $"What this project has (use the real names where they fit):\n{context}\n\n" : "")
             + $"Request: {prompt}";
@@ -45,7 +49,7 @@ public partial class DocumentAiService
         JsonNode? parsed;
         try { parsed = JsonNode.Parse(json[start..(end + 1)]); }
         catch (JsonException) { throw new ConflictException("The assistant did not return a diagram. Try describing it differently.", "AI_BAD_DIAGRAM"); }
-        var data = ArchDiagram.Clean(parsed);
+        var data = ArchDiagram.ApplyC4(ArchDiagram.Clean(parsed), req.Level);
         if (data["nodes"]!.AsArray().Count == 0) throw new ConflictException("The assistant did not return any boxes. Try describing it differently.", "AI_BAD_DIAGRAM");
         var summary = parsed?["summary"] is JsonValue s && s.TryGetValue<string>(out var t) ? Cut(t.Trim(), 300) : "Drawn from your description.";
         recorder.Audit("ai.used", "Document", null, null, new { feature = "diagram_draft", nodes = data["nodes"]!.AsArray().Count });
