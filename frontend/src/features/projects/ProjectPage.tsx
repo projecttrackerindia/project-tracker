@@ -162,7 +162,7 @@ export function ProjectPage() {
         <div className="pp-actions">
           <ProjectStatePill p={p} />
           <button type="button" className="pa-btn pp-share" onClick={() => void share()}>Share</button>
-          <DotsMenu label="More on this project" items={[
+          <DotsMenu label="More on this project" listClassName="wide" items={[
             { label: 'Add work', icon: 'plus', hint: '+ New, in this project', hidden: !addWork, onSelect: () => openNew('task', '', { id: p.id, name: p.name }) },
             { label: 'Meet', icon: 'video', hint: 'The project’s calls and meetings', onSelect: () => nav(`/talk?f=meetings&s=upcoming&project=${p.id}`) },
             { label: 'Chat', icon: 'message', hint: 'The project’s team chat', hidden: !chatOn, onSelect: () => openChat(p.id, p.name) },

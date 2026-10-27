@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject, type SyntheticEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -10,7 +10,7 @@ import { Avatar, Badge, PageLoader, Spinner } from '../../components/ui';
 import { formatDate, formatDateTime } from '../../lib/format';
 import { queryClient, useAuth, useEntitlement, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { COMMON_EMOJI, dayKey, dayLabel, domToBody, markdownToHtml, mentionChipHtml, mentionsUser, plainText, renderBody, timeOf } from './chatFormat';
+import { COMMON_EMOJI, dayKey, dayLabel, domToBody, markdownToHtml, mentionChipHtml, mentionsUser, plainText, timeOf } from './chatFormat';
 import { markAnswered } from './chatCache';
 import { chatKeys, PRESENCE_LABEL, useChat, useTypingNames } from './chatStore';
 import type { PresenceStatus } from '../../api/types';
@@ -26,6 +26,9 @@ import { flyToMyWork } from '../talk/flyTask';
 import { AskChatDialog, CatchUpDialog, COMPOSER_AI, PollDialog, ScheduleDialog, useVoiceRecorder } from './ChatTools';
 import type { ChatExtract } from '../../api/types';
 import { haptic } from '../../lib/mobile';
+import { Popover } from '../../lib/popover';
+import { MessageBody } from './CodeBlock';
+import { isCodeOnly } from './codeDetect';
 
 /** The stand-up summary posted after each session of a project's scrum call. */
 function StandupCardMessage({ card }: { card: StandupCard; projectId?: string }) {
@@ -80,15 +83,6 @@ const MAX_FILES = 5;
 const REACTIONS = ['👍', '❤️', '😂', '🎉', '🙏', '👀', '✅', '🚀'];
 const GROUP_WITHIN_MS = 5 * 60_000;
 const drafts = new Map<string, string>();   // what was typed and not sent, per conversation, until the tab is closed
-
-/** Closes a popover (the emoji picker) on an outside click. */
-function useClickOutside(ref: RefObject<HTMLElement | null>, onOutside: () => void) {
-  useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onOutside(); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  });
-}
 
 /** Keeps the composer's selection intact when a toolbar button is clicked (mousedown would otherwise blur it first). */
 const keepFocus = (e: SyntheticEvent) => e.preventDefault();
@@ -542,7 +536,40 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
   const wid = useWorkspaceId();
   const [more, setMore] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
-  useClickOutside(moreRef, () => setMore(false));
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const actsRef = useRef<HTMLDivElement>(null);
+  const unhook = useRef<(() => void) | null>(null);
+  /**
+   * The hover actions sit against the bubble's top edge, on its outer side. On a bubble taller than the visible list they follow the
+   * visible part of it (sticky) and never go below the bottom of the list, so the composer stays clear.
+   */
+  const placeActs = useCallback(() => {
+    const wrap = wrapRef.current, bar = actsRef.current;
+    if (!wrap || !bar) return;
+    const w = wrap.getBoundingClientRect();
+    const list = wrap.closest('.chat-messages')?.getBoundingClientRect();
+    const box = list ?? { top: 0, bottom: window.innerHeight };
+    const h = bar.offsetHeight || 32;
+    const lowest = Math.min(w.height - h, box.bottom - 8 - h - w.top);
+    const top = Math.max(Math.min(0, w.height - h), Math.min(Math.max(0, box.top + 8 - w.top), lowest));
+    // A wide bubble in a narrow pane leaves no room beside it: then the bar sits just above the bubble's top edge, or, when that edge
+    // is scrolled out of view (a tall bubble), tucks inside the bubble's visible top corner.
+    const room = mine ? w.left - (list?.left ?? 0) : (list?.right ?? window.innerWidth) - w.right;
+    const beside = room >= bar.offsetWidth + 12, above = !beside && w.top - h - 4 >= box.top;
+    bar.classList.toggle('above', above);
+    bar.classList.toggle('inside', !beside && !above);
+    bar.style.top = `${Math.round(above ? -(h + 4) : top)}px`;
+  }, [mine]);
+  const onHover = () => {
+    placeActs();
+    if (unhook.current) return;
+    const list = wrapRef.current?.closest('.chat-messages');
+    if (!list) return;
+    list.addEventListener('scroll', placeActs, { passive: true });
+    unhook.current = () => list.removeEventListener('scroll', placeActs);
+  };
+  const onUnhover = () => { if (!more) { unhook.current?.(); unhook.current = null; } };
+  useEffect(() => () => unhook.current?.(), []);
   const [extra, setExtra] = useState<null | 'translate' | 'replies'>(null);
   const [making, setMaking] = useState<ChatExtract['kind'] | null>(null);
   const [seen, setSeen] = useState(false);
@@ -609,7 +636,8 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
   );
 
   return (
-    <div className={`msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''} ${tail ? 'tail' : ''} ${aboutMe ? 'mentions-me' : ''}`} data-msg={m.id}>
+    <div className={`msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''} ${tail ? 'tail' : ''} ${aboutMe ? 'mentions-me' : ''} ${more ? 'menu-open' : ''}`} data-msg={m.id}
+      onMouseEnter={onHover} onMouseLeave={onUnhover} onFocus={onHover}>
       {!mine && (tail ? <Avatar name={m.senderName} size="sm" userId={m.senderId ?? undefined} /> : <span className="avatar-gap" />)}
       <div className="msg-col">
         {(!grouped || m.pinnedAt || m.asksMe) && ((!mine && showName && !grouped) || (aboutMe && !m.isDeleted) || m.pinnedAt || m.asksMe) && (
@@ -620,11 +648,11 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
             {m.pinnedAt && <span className="pin-flag" title={m.pinnedBy ? `Pinned by ${m.pinnedBy}` : 'Pinned'}><Icon name="flag" size={12} /> Pinned</span>}
           </div>
         )}
-        <div className="bubble-wrap" style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}
+        <div className="bubble-wrap" ref={wrapRef} style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}
           onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}
           onContextMenu={(e) => { if (touch.current?.long) e.preventDefault(); }}>
           {swipe > 0 && <span className={`swipe-reply ${swipe >= 48 ? 'ready' : ''}`} aria-hidden><Icon name="undo" size={14} /></span>}
-          <div className={`bubble${!m.body && (m.attachments?.length ?? 0) > 0 && !isPoll ? ' files-only' : ''}`}>
+          <div className={`bubble${!m.body && (m.attachments?.length ?? 0) > 0 && !isPoll ? ' files-only' : ''}${!m.isDeleted && !isPoll && isCodeOnly(m.body) ? ' code-only' : ''}`}>
             {m.replyTo && !m.isDeleted && (
               <button className="reply-quote" onClick={() => onJump(m.replyTo!.id)} type="button">
                 <b>{m.replyTo.senderName ?? 'Former member'}</b>
@@ -638,9 +666,42 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
                     <div className="chat-files">{m.attachments!.map((f) => (f.isVoice ? <VoiceNote key={f.id} file={f} /> : f.isImage ? <ChatImage key={f.id} file={f} /> : <ChatFile key={f.id} file={f} />))}</div>
                   )}
                   {isPoll && m.poll ? <><PollCard poll={m.poll} onChanged={update} /><div className="msg-text">{meta}</div></>
-                    : <div className="msg-text">{m.body ? renderBody(m.body) : null}{meta}</div>}
+                    : <div className="msg-text">{m.body ? <MessageBody body={m.body} /> : null}{meta}</div>}
                 </>}
           </div>
+            {!m.isDeleted && (
+              // Beside the bubble, never on it: the two things people do most, and everything else under ···.
+              <div className="msg-actions" ref={actsRef} role="group" aria-label="Message actions">
+                {talk ? <>
+                  <button type="button" className="msg-act make" onClick={() => setMaking('task')}><Icon name="tick" size={13} />Make task</button>
+                  <button type="button" className="msg-act" onClick={() => remindAbout(m)}><Icon name="clock" size={13} />Remind me</button>
+                  <button type="button" className="msg-act" onClick={onReply} aria-label="Reply" title="Reply"><Icon name="undo" size={13} /></button>
+                </> : <>
+                <button type="button" className="msg-act" onClick={onReply}>Reply</button>
+                <button type="button" className="msg-act" onClick={() => setMaking('task')}>Make task</button>
+                </>}
+                <div className="react-wrap" ref={moreRef}>
+                  <button type="button" className="msg-act dots" onClick={() => setMore((v) => !v)} aria-label="More actions" aria-expanded={more} title="More"><Icon name="more" size={14} /></button>
+                  <Popover open={more} onClose={() => { setMore(false); unhook.current?.(); unhook.current = null; }} anchorRef={moreRef} side="bottom" align={mine ? 'end' : 'start'} within=".chat-messages">
+                    <div className="more-pop" role="menu" aria-label="More actions">
+                      <div className="more-reacts" role="group" aria-label="React">
+                        {REACTIONS.slice(0, 6).map((emoji) => (
+                          <button key={emoji} type="button" role="menuitem" className={m.reactions?.find((r) => r.emoji === emoji)?.mine ? 'on' : ''} aria-label={`React ${emoji}`} onClick={() => { setMore(false); toggleReaction(emoji); }}>{emoji}</button>
+                        ))}
+                      </div>
+                      {canThread && <button type="button" role="menuitem" onClick={() => { setMore(false); onThread!(); }}><Icon name="message" size={15} />Reply in thread</button>}
+                      {!talk && <button type="button" role="menuitem" onClick={() => { setMore(false); remindAbout(m); }}><Icon name="alarm" size={15} />Remind me</button>}
+                      <button type="button" role="menuitem" onClick={() => { setMore(false); void save(); }}><Icon name="star" size={15} />{m.saved ? 'Remove from saved' : 'Save for later'}</button>
+                      {m.body && <button type="button" role="menuitem" onClick={() => { setMore(false); copy(); }}><Icon name="copy" size={15} />Copy text</button>}
+                      <button type="button" role="menuitem" onClick={() => { setMore(false); void pin(); }}><Icon name="flag" size={15} />{m.pinnedAt ? 'Unpin' : 'Pin to the conversation'}</button>
+                      {moreItems.filter((x) => !x.hidden && x.label !== 'Make a task').map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { setMore(false); x.run(); }}><Icon name={x.icon} size={15} />{x.label}</button>)}
+                      {mine && !isPoll && <button type="button" role="menuitem" onClick={() => { setMore(false); onEdit(); }}><Icon name="edit" size={15} />Edit</button>}
+                      {(mine || canModerate) && <button type="button" role="menuitem" className="danger" onClick={() => { setMore(false); onDelete(); }}><Icon name="trash" size={15} />Delete</button>}
+                    </div>
+                  </Popover>
+                </div>
+              </div>
+            )}
         </div>
         {!m.isDeleted && m.kind === 'User' && <UnfurlCards body={m.body} />}
         {!m.isDeleted && <LinkedChips links={m.linked} />}
@@ -657,39 +718,6 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
               <button key={r.emoji} type="button" className={`react-chip ${r.mine ? 'on' : ''}`} onClick={() => onReact(r.emoji, !r.mine)}
                 title={r.names.join(', ')} aria-pressed={r.mine} aria-label={`${r.emoji} ${r.count}${r.mine ? ', you reacted' : ''}`}>{r.emoji}<span>{r.count}</span></button>
             ))}
-          </div>
-        )}
-        {!m.isDeleted && (
-          // Beside the bubble, never on it: the two things people do most, and everything else under ···.
-          <div className="msg-actions" role="group" aria-label="Message actions">
-            {talk ? <>
-              <button type="button" className="msg-act make" onClick={() => setMaking('task')}><Icon name="tick" size={13} />Make task</button>
-              <button type="button" className="msg-act" onClick={() => remindAbout(m)}><Icon name="clock" size={13} />Remind me</button>
-              <button type="button" className="msg-act" onClick={onReply} aria-label="Reply" title="Reply"><Icon name="undo" size={13} /></button>
-            </> : <>
-            <button type="button" className="msg-act" onClick={onReply}>Reply</button>
-            <button type="button" className="msg-act" onClick={() => setMaking('task')}>Make task</button>
-            </>}
-            <div className="react-wrap" ref={moreRef}>
-              <button type="button" className="msg-act dots" onClick={() => setMore((v) => !v)} aria-label="More actions" aria-expanded={more} title="More"><Icon name="more" size={14} /></button>
-              {more && (
-                <div className="more-pop" role="menu" aria-label="More actions">
-                  <div className="more-reacts" role="group" aria-label="React">
-                    {REACTIONS.slice(0, 6).map((emoji) => (
-                      <button key={emoji} type="button" role="menuitem" className={m.reactions?.find((r) => r.emoji === emoji)?.mine ? 'on' : ''} aria-label={`React ${emoji}`} onClick={() => { setMore(false); toggleReaction(emoji); }}>{emoji}</button>
-                    ))}
-                  </div>
-                  {canThread && <button type="button" role="menuitem" onClick={() => { setMore(false); onThread!(); }}><Icon name="message" size={15} />Reply in thread</button>}
-                  {!talk && <button type="button" role="menuitem" onClick={() => { setMore(false); remindAbout(m); }}><Icon name="alarm" size={15} />Remind me</button>}
-                  <button type="button" role="menuitem" onClick={() => { setMore(false); void save(); }}><Icon name="star" size={15} />{m.saved ? 'Remove from saved' : 'Save for later'}</button>
-                  {m.body && <button type="button" role="menuitem" onClick={() => { setMore(false); copy(); }}><Icon name="copy" size={15} />Copy text</button>}
-                  <button type="button" role="menuitem" onClick={() => { setMore(false); void pin(); }}><Icon name="flag" size={15} />{m.pinnedAt ? 'Unpin' : 'Pin to the conversation'}</button>
-                  {moreItems.filter((x) => !x.hidden && x.label !== 'Make a task').map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { setMore(false); x.run(); }}><Icon name={x.icon} size={15} />{x.label}</button>)}
-                  {mine && !isPoll && <button type="button" role="menuitem" onClick={() => { setMore(false); onEdit(); }}><Icon name="edit" size={15} />Edit</button>}
-                  {(mine || canModerate) && <button type="button" role="menuitem" className="danger" onClick={() => { setMore(false); onDelete(); }}><Icon name="trash" size={15} />Delete</button>}
-                </div>
-              )}
-            </div>
           </div>
         )}
         {making && <MakeFromMessage m={m} conversation={conversation} kind={making} onClose={() => setMaking(null)}
@@ -741,8 +769,6 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   const [later, setLater] = useState(false);
   const aiRef = useRef<HTMLDivElement>(null);
   const plusRef = useRef<HTMLDivElement>(null);
-  useClickOutside(aiRef, () => setAiOpen(false));
-  useClickOutside(plusRef, () => setPlusOpen(false));
   const [text, setText] = useState(() => editing?.body ?? drafts.get(draftKey) ?? '');
   const [isEmpty, setIsEmpty] = useState(() => !text);
   const [marks, setMarks] = useState({ bold: false, italic: false, underline: false });
@@ -752,7 +778,6 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   const emojiRef = useRef<HTMLDivElement>(null);
   const lastTyping = useRef(0);
   const composing = useRef(false);
-  useClickOutside(emojiRef, () => setEmojiOpen(false));
 
   // ---- files and pictures: uploaded as soon as they are chosen (so a big one is ready by the time the message is), sent with the message
   type Pending = { localId: string; name: string; size: number; status: 'uploading' | 'ready' | 'error'; attachment?: ChatAttachment; error?: string };
@@ -1012,14 +1037,14 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
           {!editing && !threadRootId && (
             <div className="emoji-wrap" ref={plusRef}>
               <button type="button" className={`btn-icon pill-btn ${plusOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setPlusOpen((v) => !v)} aria-label="More: poll, send later" aria-expanded={plusOpen} title="Poll, send later"><Icon name="plus" size={17} /></button>
-              {plusOpen && (
+              <Popover open={plusOpen} onClose={() => setPlusOpen(false)} anchorRef={plusRef} side="top" align="start" focusOnOpen={false} restoreFocus={false}>
                 <div className="more-pop up" role="menu" aria-label="More">
                   {onPoll && <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); onPoll(); }}><Icon name="chart" size={15} />Poll</button>}
                   <button type="button" role="menuitem" disabled={!text.trim()} onClick={() => { setPlusOpen(false); setLater(true); }}><Icon name="clock" size={15} />Send later{!text.trim() ? ' (write first)' : ''}</button>
                   {talk && <button type="button" role="menuitem" aria-pressed={formatting} onClick={() => { setPlusOpen(false); setFormatting((v) => !v); }}><span className="aa" aria-hidden="true">Aa</span>Formatting</button>}
                   {talk && canAttach && voice.supported && <button type="button" role="menuitem" disabled={voice.state !== 'idle'} onClick={() => { setPlusOpen(false); void voice.start(); }}><Icon name="mic" size={15} />Voice note</button>}
                 </div>
-              )}
+              </Popover>
             </div>
           )}
           {!editing && (
@@ -1048,25 +1073,25 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
                   aria-label="Draft a reply with AI" title="Draft a reply with AI">{drafting ? <Spinner /> : <Icon name="sparkle" size={16} />}</button>
               : <button type="button" className={`btn-icon pill-btn ai ${aiOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setAiOpen((v) => !v)} disabled={isEmpty || aiBusy}
               aria-label="Rewrite or translate with AI" aria-expanded={aiOpen} title="Rewrite or translate with AI">{aiBusy ? <Spinner /> : <Icon name="sparkle" size={16} />}</button>}
-            {aiOpen && (
+            <Popover open={aiOpen} onClose={() => setAiOpen(false)} anchorRef={aiRef} side="top" align="start" focusOnOpen={false} restoreFocus={false}>
               <div className="more-pop up" role="menu" aria-label="Rewrite with AI">
                 {COMPOSER_AI.map((a) => <button key={a.label} type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => void rewrite(a.id, a.language)}>{a.label}</button>)}
               </div>
-            )}
+            </Popover>
           </div>
           {!talk && <button type="button" className={`btn-icon pill-btn ${formatting ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setFormatting((v) => !v)}
             aria-label="Formatting" aria-pressed={formatting} title="Formatting"><span className="aa">Aa</span></button>}
           {!talk && <div className="emoji-wrap" ref={emojiRef}>
             <button type="button" className={`btn-icon pill-btn ${emojiOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setEmojiOpen((v) => !v)}
               aria-label="Add emoji" aria-expanded={emojiOpen} aria-haspopup="true" title="Emoji"><Icon name="smile" size={17} /></button>
-            {emojiOpen && (
+            <Popover open={emojiOpen} onClose={() => setEmojiOpen(false)} anchorRef={emojiRef} side="top" align="end" focusOnOpen={false} restoreFocus={false}>
               <div className="emoji-popover" role="menu" aria-label="Emoji">
                 {COMMON_EMOJI.map((emoji) => (
                   <button key={emoji} type="button" className="emoji-item" role="menuitem" onMouseDown={keepFocus}
                     onClick={() => { insertEmoji(emoji); setEmojiOpen(false); }} aria-label={emoji}>{emoji}</button>
                 ))}
               </div>
-            )}
+            </Popover>
           </div>}
         </div>
         {isEmpty && !editing && pending.length === 0 && !talk && canAttach && voice.supported && voice.state === 'idle'
