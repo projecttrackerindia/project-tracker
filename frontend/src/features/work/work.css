@@ -353,3 +353,5 @@ html .mw-tbslot .mw-seg .ds-seg-thumb { border-radius: 7px; top: 2px; bottom: 2p
   .mw-ti { font-size: 22px; }
   .mw-ft { flex-wrap: wrap; gap: 10px; }
 }
+.mw-back { flex: none; width: 26px; height: 26px; border: 0; border-radius: 13px; background: transparent; color: var(--ds-text-3, #86868b); font-size: 14px; cursor: pointer; }
+.mw-back:hover { background: var(--ds-fill-strong, rgba(118,118,128,.16)); color: var(--ds-text, #1d1d1f); }

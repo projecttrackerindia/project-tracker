@@ -76,7 +76,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
     queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid), (old) => [c, ...(old ?? []).filter((x) => x.id !== c.id)]);
     void queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid) });
     onClose();
-    navigate(`/chat/${c.id}`);
+    navigate(`/messages/${c.id}`);
   };
   const open = useMutation({ mutationFn: (userId: string) => chatApi.openDirect(userId), onSuccess: done, onError: (e) => toast(errorText(e, 'Could not open the chat.'), 'error') });
   const create = useMutation({
@@ -231,7 +231,7 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
       await chatApi.removeMember(conversation.id, me);
       queryClient.removeQueries({ queryKey: chatKeys.thread(wid, conversation.id) });
       void queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid) });
-      navigate('/chat', { replace: true });
+      navigate('/messages', { replace: true });
     } catch (e) { toast(errorText(e, 'Could not leave the group.'), 'error'); }
   };
   const kick = async (userId: string, who: string) => {

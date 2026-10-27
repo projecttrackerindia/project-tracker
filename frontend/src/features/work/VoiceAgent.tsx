@@ -442,7 +442,7 @@ function TestCall({ s, onClose }: { s: VoiceSettings; onClose: () => void }) {
             </div>
             : <form className="va-say" onSubmit={(e) => { e.preventDefault(); void send(); }}>
               <input value={text} onChange={(e) => setText(e.target.value)} placeholder="नमस्ते, मेरी EMI कब है? / నా లోన్ బ్యాలెన్స్ ఎంత? / What is my loan balance?" aria-label="What the caller says" autoFocus disabled={busy} />
-              <button className="btn btn-primary" disabled={busy || !text.trim()}><Icon name="send" size={14} /></button>
+              <button className="btn btn-primary" aria-label="Send" title="Send" disabled={busy || !text.trim()}><Icon name="send" size={14} /></button>
             </form>}
         </div>
       )}

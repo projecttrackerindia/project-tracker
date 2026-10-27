@@ -131,7 +131,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
   useEffect(() => {
     if (!(thread.error instanceof ApiError && thread.error.status === 404)) return;
     if (variant === 'panel') { toast('You no longer have access to this chat.', 'info'); onClose?.(); }
-    else navigate(variant === 'talk' ? '/messages' : '/chat', { replace: true });
+    else navigate('/messages', { replace: true });
   }, [thread.error, navigate, variant, onClose]);
 
   // ---- keep the view where the person expects it

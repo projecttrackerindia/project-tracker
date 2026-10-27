@@ -204,7 +204,7 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
       <PageHead eyebrow={`${scope} · as of ${dayMonth(today)}`} title="Insights">{tabs}</PageHead>
       <div className="ins-rings">
         <Ring index={0} tone="pink" label="Delivery on time" value={delivery} to="/work/projects"
-          sub={projects.data ? `${onTrack} of ${live.length} projects on track` : projects.isLoading ? 'Reading…' : 'No projects yet'}
+          sub={projects.data ? `${onTrack} of ${live.length} projects on track` : projects.isLoading ? 'Reading…' : projects.isError ? 'Projects could not be loaded — open to retry' : 'No projects yet'}
           foot={projects.data && live.length ? (delayed.length ? <><span aria-hidden="true">↓ </span>{delayed.length} delayed</> : 'None delayed') : undefined} />
         <Ring index={1} tone="orange" label="Load balance" value={balance} to="/work?tab=team&s=workload"
           sub={top ? `Spread across ${members.length} ${members.length === 1 ? 'person' : 'people'} — ${top.name.split(' ')[0]} carries ${total ? Math.round((top.open / total) * 100) : 0}%` : workload.isLoading ? 'Reading…' : 'No open work'}

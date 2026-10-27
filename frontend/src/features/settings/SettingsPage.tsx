@@ -298,7 +298,8 @@ function ProfileSection() {
         <div className="card-body">
           <form className="form-grid" onSubmit={(e) => { e.preventDefault(); if (name.trim()) profile.mutate(); }}>
             <Field label="Full name" required><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} /></Field>
-            <Field label="Email" hint={ctx.user.emailVerified ? 'Verified' : 'Not verified'}><input className="input" value={ctx.user.email} disabled /></Field>
+            <Field label="Email" hint={ctx.user.emailVerified ? 'Verified' : 'Not verified yet'}><div style={{ display: 'flex', gap: 8 }}><input className="input" value={ctx.user.email} disabled />
+              {!ctx.user.emailVerified && <button type="button" className="btn btn-sm" onClick={() => void authApi.resendVerification(ctx.user.email).then(() => toast(`We sent a new link to ${ctx.user.email}.`, 'success')).catch(() => toast('Could not send the link. Try again in a minute.', 'error'))}>Send link again</button>}</div></Field>
             <Field label="Time zone" hint="Every date, due date, reminder and chart follows it."><div className="input input-static">{ctx.user.timeZone} <Link className="link" to="/settings/notifications/schedule">Change</Link></div></Field>
             <div className="full"><SubmitButton busy={profile.isPending}>Save profile</SubmitButton></div>
           </form>
