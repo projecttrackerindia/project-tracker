@@ -9,10 +9,10 @@ public class ArchDiagramTests
     private const string Doc = """
         {"type":"doc","content":[{"type":"archDiagram","attrs":{"title":"Loan balance flow","data":{
           "nodes":[{"id":"a","kind":"icon","icon":"mobile","label":"Customer app","x":0,"y":0,"w":150,"h":64,"onclick":"alert(1)"},
-                   {"id":"b","kind":"icon","icon":"mulesoft","label":"MuleSoft API (support 9876543210)","x":260,"y":0,"color":"#00a0df"},
+                   {"id":"b","kind":"icon","icon":"mulesoft","label":"MuleSoft API (support 9876543210)","x":260,"y":0,"color":"#00a0df","ctype":"api","level":"containers","tech":".NET 9","replicas":3,"capacity":150},
                    {"id":"c","kind":"icon","icon":"database","label":"Loan DB","x":520,"y":0,"color":"red; background:url(x)"},
                    {"id":"bad id <script>","kind":"icon","label":"dropped"}],
-          "edges":[{"id":"e1","source":"a","target":"b","label":"GET /balance","line":"dashed","animated":true},
+          "edges":[{"id":"e1","source":"a","target":"b","label":"GET /balance","line":"dashed","animated":true,"protocol":"REST","rps":120},
                    {"id":"e2","source":"b","target":"c","label":"SQL"},{"id":"e3","source":"b","target":"nowhere"}]}}}]}
         """;
 
@@ -29,6 +29,12 @@ public class ArchDiagramTests
         Assert.Null(data["nodes"]![2]!["color"]);   // not a colour: dropped
         Assert.Equal("#00a0df", data["nodes"]![1]!["color"]!.GetValue<string>());
         Assert.True(data["edges"]![0]!["animated"]!.GetValue<bool>());
+        Assert.Equal("api", data["nodes"]![1]!["ctype"]!.GetValue<string>());
+        Assert.Equal("containers", data["nodes"]![1]!["level"]!.GetValue<string>());
+        Assert.Equal(3, data["nodes"]![1]!["replicas"]!.GetValue<double>());
+        Assert.Equal("REST", data["edges"]![0]!["protocol"]!.GetValue<string>());
+        Assert.Equal(120, data["edges"]![0]!["rps"]!.GetValue<double>());
+        Assert.Null(data["nodes"]![0]!["ctype"]);
 
         var masked = new PiiMasker().MaskRichText(clean.ToJsonString());
         Assert.DoesNotContain("9876543210", masked);

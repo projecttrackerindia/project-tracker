@@ -19,6 +19,7 @@ public static class ArchDiagram
     private static readonly HashSet<string> LineStyles = ["solid", "dashed", "dotted"];
     private static readonly Regex Id = new("^[A-Za-z0-9_\\-]{1,40}$", RegexOptions.Compiled);
     private static readonly Regex Color = new("^#[0-9a-fA-F]{3,8}$", RegexOptions.Compiled);
+    private static readonly HashSet<string> Levels = ["context", "containers", "components", "deployment"];
     private static readonly Regex IconKey = new("^[a-z0-9\\-]{1,30}$", RegexOptions.Compiled);
 
     private static string Str(JsonNode? n, int max) => n is JsonValue v && v.TryGetValue<string>(out var s) ? (s.Length > max ? s[..max] : s) : "";
@@ -46,6 +47,12 @@ public static class ArchDiagram
             var color = Str(n["color"], 9); if (Color.IsMatch(color)) o["color"] = color;
             var notes = Str(n["notes"], 500); if (notes.Length > 0) o["notes"] = notes;
             var parent = Str(n["parentId"], 40); if (Id.IsMatch(parent)) o["parentId"] = parent;
+            // C4 details (Architecture Studio): level tab, element type, tech/owner/repo/runs-on, replicas and capacity for the load simulation.
+            var level = Str(n["level"], 12); if (Levels.Contains(level)) o["level"] = level;
+            var ctype = Str(n["ctype"], 20); if (IconKey.IsMatch(ctype)) o["ctype"] = ctype;
+            foreach (var (k, max) in new[] { ("tech", 120), ("owner", 80), ("repo", 200), ("runsOn", 120) }) { var v = Str(n[k], max).Trim(); if (v.Length > 0) o[k] = v; }
+            if (n["replicas"] is not null) o["replicas"] = Num(n["replicas"], 1, 1000, 1);
+            if (n["capacity"] is not null && Num(n["capacity"], 0, 10_000_000, 0) > 0) o["capacity"] = Num(n["capacity"], 0, 10_000_000, 0);
             nodes.Add(o);
         }
         foreach (var o in nodes.OfType<JsonObject>()) if (o["parentId"] is JsonValue p && !ids.Contains(p.ToString())) o.Remove("parentId");
@@ -61,6 +68,8 @@ public static class ArchDiagram
             var sh = Str(e["sourceHandle"], 10); if (sh is "t" or "r" or "b" or "l") o["sourceHandle"] = sh;
             var th = Str(e["targetHandle"], 10); if (th is "t" or "r" or "b" or "l") o["targetHandle"] = th;
             var color = Str(e["color"], 9); if (Color.IsMatch(color)) o["color"] = color;
+            var protocol = Str(e["protocol"], 40).Trim(); if (protocol.Length > 0) o["protocol"] = protocol;
+            if (e["rps"] is not null && Num(e["rps"], 0, 10_000_000, 0) > 0) o["rps"] = Num(e["rps"], 0, 10_000_000, 0);
             edges.Add(o);
         }
         return new JsonObject { ["nodes"] = nodes, ["edges"] = edges };

@@ -92,7 +92,7 @@
 .arch-full { position: fixed; inset: 0; z-index: 1300; display: grid; grid-template-rows: 52px 1fr; background: var(--arch-bg); }
 .arch-full-head { display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--arch-line); background: var(--arch-panel); }
 @media (max-width: 900px) {
-  .arch-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+  .arch-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; }
   .arch-palette { max-height: 150px; border-right: 0; border-bottom: 1px solid var(--arch-line); }
   .arch-tiles { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .arch-inspector { max-height: 220px; border-left: 0; border-top: 1px solid var(--arch-line); }
@@ -116,3 +116,59 @@
 .react-flow__node.sim-hit { opacity: 1; box-shadow: 0 0 0 2px #0a84ff, 0 0 22px rgba(10, 132, 255, .35); border-radius: 12px; }
 @keyframes arch-flow { to { stroke-dashoffset: -28; } }
 @media (prefers-reduced-motion: reduce) { .arch-ask.busy .arch-orb, .react-flow__edge.sim-now path.react-flow__edge-path { animation: none; } }
+
+/* C4 level tabs, palette rows, element cards, inspector details and the load simulation. */
+.arch-levels { display: inline-flex; flex: none; padding: 2px; border-radius: 9px; background: color-mix(in srgb, var(--arch-text) 7%, transparent); }
+.arch-levels button { height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: none; color: var(--arch-text-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.arch-levels button.on { background: var(--arch-panel); color: var(--arch-text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.arch-plist { display: grid; gap: 2px; }
+.arch-prow { display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 8px; border: 0; border-radius: 8px; background: none; color: var(--arch-text); font: inherit; font-size: 13px; text-align: left; cursor: grab; }
+.arch-prow:hover { background: var(--hover-bg, rgba(0,0,0,.05)); }
+.arch-prow i { width: 18px; height: 18px; border-radius: 5px; flex: none; }
+.arch-c4 { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 10px 13px; border-radius: 13px; background: var(--arch-panel);
+  box-shadow: 0 0 0 .5px color-mix(in srgb, var(--arch-text) 18%, transparent), 0 8px 22px -8px rgba(0,0,0,.28); }
+.arch-c4.sel { box-shadow: 0 0 0 2px var(--arch-accent), 0 10px 28px -6px color-mix(in srgb, var(--arch-accent) 45%, transparent); }
+.arch-c4-tag { position: absolute; top: -8px; right: 10px; padding: 2px 6px; border-radius: 5px; background: var(--c); color: #fff; font-size: 9.5px; font-weight: 700; letter-spacing: .03em; }
+.arch-c4-name { font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
+.arch-c4-tech { font-size: 11px; font-weight: 500; color: var(--arch-muted); }
+.arch-c4-load { position: absolute; bottom: -9px; left: 10px; padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 700; color: #fff; background: #30d158; }
+.arch-c4.load-warn .arch-c4-load { background: #ff9f0a; }
+.arch-c4.load-hot { box-shadow: 0 0 0 2px #ff453a, 0 0 26px rgba(255, 69, 58, .45); }
+.arch-c4.load-hot .arch-c4-load { background: #ff453a; }
+.arch-frame.zone { border-style: solid; border-width: 1px; border-color: color-mix(in srgb, var(--c) 45%, transparent); background: color-mix(in srgb, var(--c) 4%, transparent); }
+.react-flow__edge.sim-flow path.react-flow__edge-path { stroke-dasharray: 6 5; animation: arch-flow 1s linear infinite; }
+.react-flow__edge.sim-hot path.react-flow__edge-path { stroke: #bf5af2 !important; stroke-width: 2.6; stroke-dasharray: 6 5; animation: arch-flow .6s linear infinite; }
+.arch-simcard { position: absolute; top: 14px; right: 14px; z-index: 6; width: min(320px, calc(100% - 28px)); display: grid; gap: 8px; padding: 12px 14px; border-radius: 14px; font-size: 13px;
+  background: color-mix(in srgb, var(--arch-panel) 94%, transparent); backdrop-filter: blur(20px); box-shadow: 0 16px 40px -10px rgba(0,0,0,.3), 0 0 0 .5px color-mix(in srgb, var(--arch-text) 15%, transparent); }
+.arch-simcard p, .arch-simnote p { margin: 0; line-height: 1.45; color: var(--arch-text-2); }
+.arch-simcard .arch-btn, .arch-simnote .arch-btn { justify-self: start; }
+.arch-simhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.arch-insp-head { display: flex; gap: 10px; align-items: center; }
+.arch-insp-head small { display: block; color: var(--arch-muted); font-size: 12px; }
+.arch-insp-glyph { width: 30px; height: 30px; flex: none; border-radius: 8px; display: grid; place-items: center; }
+.arch-k { margin-top: 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--arch-muted); }
+.arch-kv { display: grid; gap: 8px; }
+.arch-conn { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: .5px solid var(--arch-line); }
+.arch-conn span { color: var(--arch-muted); } .arch-conn b { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.arch-simnote { display: grid; gap: 8px; padding: 10px; border-radius: 10px; background: color-mix(in srgb, #bf5af2 9%, transparent); }
+@media (max-width: 900px) {
+  .arch-studio .arch-top { flex-wrap: wrap; height: auto; padding: 8px 12px; row-gap: 8px; }
+  .arch-top-actions { flex: 1 1 100%; margin-left: 0; }
+  .arch-studio { grid-template-rows: auto minmax(0, 1fr); }
+  .arch-levels { order: 3; width: 100%; overflow-x: auto; } .arch-levels button { flex: 1; }
+  .arch-title { max-width: none; }
+  .arch-top-actions { overflow-x: auto; max-width: 100%; }
+  .arch-c4pal .arch-plist { grid-auto-flow: column; overflow-x: auto; }
+  .arch-inspector { border-radius: 16px 16px 0 0; box-shadow: 0 -8px 24px rgba(0,0,0,.12); }
+  .arch-simcard { top: 10px; right: 10px; }
+  .arch-ask { bottom: 10px; }
+}
+.arch-top { min-width: 0; } .arch-title { min-width: 80px; }
+@media (max-width: 1560px) { .arch-wide { display: none; } }
+.arch-studio { overflow: clip; }
+@media (max-width: 900px) {
+  .arch-body { min-height: 0; overflow: clip; }
+  .arch-top { overflow: visible; }
+  .arch-studio .react-flow__minimap { display: none; }
+  .arch-palette { max-height: 128px; }
+}

@@ -10,14 +10,24 @@ import { docTrackerApi } from '../../../../api/endpoints';
 import { Icon } from '../../../../components/Icon';
 import { confirmDialog, toast } from '../../../../stores/ui';
 import { ARCH_ICONS, CATEGORIES, SWATCHES, iconByKey } from './archIcons';
-import { ArchCanvas, edgeFor, fromFlow, IconGlyph, toFlow, type ArchData, type ArchEdgeData, type ArchFlowEdge, type ArchFlowNode, type ArchNodeData } from './ArchCanvas';
+import { ArchCanvas, CTYPES, edgeFor, fromFlow, IconGlyph, toFlow, type ArchData, type ArchLevel, type ArchEdgeData, type ArchFlowEdge, type ArchFlowNode, type ArchNodeData } from './ArchCanvas';
 import { TEMPLATES } from './archTemplates';
+import { capacityOf, fmtSeconds, simulate as runSim, type SimResult } from './archSim';
 import './arch.css';
 
 let seq = 0;
 const newId = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
 const DRAG_TYPE = 'application/x-arch-item';
-type PaletteItem = { kind: ArchNodeData['kind']; icon?: string; shape?: string; label: string };
+type PaletteItem = { kind: ArchNodeData['kind']; icon?: string; shape?: string; label: string; ctype?: string };
+const LEVELS: { key: ArchLevel; label: string }[] = [{ key: 'context', label: 'Context' }, { key: 'containers', label: 'Containers' }, { key: 'components', label: 'Components' }, { key: 'deployment', label: 'Deployment' }];
+const C4_PALETTE: { group: string; items: PaletteItem[] }[] = [
+  { group: 'People & systems', items: [{ kind: 'icon', ctype: 'person', icon: 'user', label: 'Person' }, { kind: 'icon', ctype: 'external', icon: 'partner', label: 'External system' }] },
+  { group: 'Containers', items: [
+    { kind: 'icon', ctype: 'web', icon: 'web', label: 'Web app' }, { kind: 'icon', ctype: 'api', icon: 'api', label: 'API service' }, { kind: 'icon', ctype: 'queue', icon: 'queue', label: 'Queue' },
+    { kind: 'icon', ctype: 'db', icon: 'database', label: 'Database' }, { kind: 'icon', ctype: 'cache', icon: 'cache', label: 'Cache' }] },
+  { group: 'Boundaries', items: [{ kind: 'frame', ctype: 'zone', label: 'Network zone' }, { kind: 'frame', ctype: 'group', label: 'Group' }] },
+];
+const MULTS = [1, 3, 10];
 
 /**
  * Architecture Studio: draw a system on a canvas - drag components from the library, join them with arrows (drag from a dot on a box's
@@ -74,29 +84,55 @@ function Studio({ title: initialTitle, data, onDone, onClose, context }: { title
     finally { setDrawing(false); }
   };
 
-  // ▶ Simulate: a request travels the diagram, one arrow at a time from where traffic enters (boxes nothing points to), lighting each
-  // box it reaches. Nothing is saved; Stop or Esc ends it.
-  const [sim, setSim] = useState<{ step: number; order: string[] } | null>(null);
+  // C4 level tabs: a box with no level (older diagrams) shows on every tab; new boxes belong to the tab they were drawn on.
+  const [level, setLevel] = useState<ArchLevel>('containers');
+  const visible = (n: ArchFlowNode) => !n.data.level || n.data.level === level;
+
+  // ▶ Simulate: load at 1×/3×/10× traffic, from the arrows' throughput against each box's capacity × replicas. Nothing is saved.
+  const [simMult, setSimMult] = useState<number | null>(null);
+  const sim: SimResult | null = useMemo(() => (simMult ? runSim(fromFlow(nodes, edges), simMult) : null), [simMult, nodes, edges]);
   const simulate = () => {
-    if (sim) { setSim(null); return; }
-    const es = flow.getEdges(); if (!es.length) { toast('Draw some arrows first.', 'info'); return; }
-    const into = new Set(es.map((e) => e.target));
-    const queue = flow.getNodes().filter((n) => !into.has(n.id) && es.some((e) => e.source === n.id)).map((n) => n.id);
-    const seen = new Set<string>(); const order: string[] = [];
-    while (queue.length) { const id = queue.shift()!; for (const e of es.filter((x) => x.source === id && !seen.has(x.id))) { seen.add(e.id); order.push(e.id); queue.push(e.target); } }
-    for (const e of es) if (!seen.has(e.id)) order.push(e.id);
-    setSim({ step: 0, order });
+    if (simMult) { setSimMult(null); return; }
+    if (!flow.getEdges().length) { toast('Draw some arrows first.', 'info'); return; }
+    setSimMult(3);
   };
-  useEffect(() => {
-    if (!sim) { setEdges((es) => es.map((e) => (e.className?.includes('sim') ? { ...e, className: undefined } : e))); setNodes((ns) => ns.map((n) => (n.className?.includes('sim') ? { ...n, className: undefined } : n))); return; }
-    const lit = new Set(sim.order.slice(0, sim.step + 1));
-    const cur = sim.order[sim.step];
-    const reached = new Set(flow.getEdges().filter((e) => lit.has(e.id)).flatMap((e) => [e.source, e.target]));
-    setEdges((es) => es.map((e) => ({ ...e, className: e.id === cur ? 'sim sim-now' : lit.has(e.id) ? 'sim sim-done' : 'sim sim-wait' })));
-    setNodes((ns) => ns.map((n) => ({ ...n, className: reached.has(n.id) ? 'sim sim-hit' : 'sim' })));
-    const t = window.setTimeout(() => setSim((s) => (s ? (s.step + 1 < s.order.length ? { ...s, step: s.step + 1 } : { ...s, step: 0 }) : s)), 900);
-    return () => window.clearTimeout(t);
-  }, [sim]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const shownNodes = useMemo(() => nodes.map((n) => {
+    const hidden = !visible(n); const r = sim?.nodes.get(n.id);
+    return hidden === !!n.hidden && !r ? n : { ...n, hidden, data: r ? { ...n.data, load: { pct: r.pct, hot: sim?.bottleneck?.id === n.id } } : n.data };
+  }), [nodes, level, sim]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const shownEdges = useMemo(() => {
+    const show = new Set(shownNodes.filter((n) => !n.hidden).map((n) => n.id));
+    return edges.map((e) => {
+      const hidden = !show.has(e.source) || !show.has(e.target);
+      const className = sim ? (sim.hotEdges.has(e.id) ? 'sim-hot' : 'sim-flow') : undefined;
+      return hidden === !!e.hidden && className === e.className ? e : { ...e, hidden, className };
+    });
+  }, [edges, shownNodes, sim]);
+  const applyFix = () => {
+    const b = sim?.bottleneck; const fix = sim?.fix; if (!b || !fix) return;
+    const target = flow.getNode(b.id); if (!target) return;
+    if (fix.kind === 'replicas') {
+      const r = Math.max(1, target.data.replicas ?? 1); patchNode(b.id, { replicas: Math.min(1000, Math.ceil((r * b.pct) / 75)) });
+      window.setTimeout(commit, 0); return;
+    }
+    const ctype = fix.kind === 'queue' ? 'queue' : 'cache'; const ct = CTYPES[ctype];
+    const id = newId('n');
+    const n: ArchNodeData = { id, kind: 'icon', ctype, icon: ct.icon, level: target.data.level, label: fix.kind === 'queue' ? `Retry queue · ${b.name}` : `${b.name} cache`, tech: fix.kind === 'queue' ? 'Durable queue' : 'Redis',
+      x: Math.round(target.position.x - 230), y: Math.round(target.position.y + 110), w: 180, h: 72 };
+    const [fn] = toFlow({ nodes: [n], edges: [] }).nodes;
+    const incoming = flow.getEdges().filter((e) => e.target === b.id);
+    const drain = Math.max(1, Math.floor((capacityOf(target.data) * 0.8) / (sim?.mult ?? 1)));
+    setNodes((ns) => [...ns, fn]);
+    setEdges((es) => [...es.map((e) => (e.target === b.id ? edgeFor({ ...fromFlow([], [e]).edges[0], target: id, targetHandle: undefined }) : e)),
+      edgeFor(fix.kind === 'queue' ? { id: newId('e'), source: id, target: b.id, label: 'retries', protocol: 'drain', rps: drain, line: 'dashed' }
+        : { id: newId('e'), source: id, target: b.id, label: 'on miss', rps: Math.max(1, Math.round(incoming.reduce((t, e) => t + (e.data?.rps ?? 0), 0) * 0.2)), line: 'solid' })]);
+    window.setTimeout(commit, 30);
+    toast(fix.kind === 'queue' ? 'Added a retry queue in front of it. Undo with Ctrl+Z.' : 'Added a cache in front of it. Undo with Ctrl+Z.', 'success');
+  };
+  const share = async () => {
+    try { await navigator.clipboard.writeText(window.location.href); toast('Link copied. People with access to this project can open it.', 'success'); }
+    catch { toast('Could not copy the link.', 'error'); }
+  };
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -112,8 +148,8 @@ function Studio({ title: initialTitle, data, onDone, onClose, context }: { title
 
   const add = (item: PaletteItem, at?: { x: number; y: number }) => {
     const pos = at ?? flow.screenToFlowPosition({ x: (wrap.current?.getBoundingClientRect().left ?? 0) + (wrap.current?.clientWidth ?? 800) / 2, y: (wrap.current?.getBoundingClientRect().top ?? 0) + (wrap.current?.clientHeight ?? 600) / 2 });
-    const size = item.kind === 'frame' ? { w: 360, h: 240 } : item.kind === 'text' ? { w: 160, h: 32 } : item.kind === 'shape' ? { w: 150, h: 70 } : { w: 160, h: 64 };
-    const n: ArchNodeData = { id: newId('n'), kind: item.kind, label: item.label, x: pos.x - size.w / 2, y: pos.y - size.h / 2, ...size, icon: item.icon, shape: item.shape };
+    const size = item.ctype && item.kind !== 'frame' ? { w: 180, h: 72 } : item.kind === 'frame' ? { w: 360, h: 240 } : item.kind === 'text' ? { w: 160, h: 32 } : item.kind === 'shape' ? { w: 150, h: 70 } : { w: 160, h: 64 };
+    const n: ArchNodeData = { id: newId('n'), kind: item.kind, label: item.label, x: pos.x - size.w / 2, y: pos.y - size.h / 2, ...size, icon: item.icon, shape: item.shape, level, ...(item.ctype ? { ctype: item.ctype } : {}) };
     const [fn] = toFlow({ nodes: [n], edges: [] }).nodes;
     setNodes((ns) => [...ns.map((x) => ({ ...x, selected: false })), { ...fn, selected: true }]);
     setSel({ node: fn });
@@ -220,7 +256,8 @@ function Studio({ title: initialTitle, data, onDone, onClose, context }: { title
   return (
     <div className="arch-studio" role="dialog" aria-modal="true" aria-label="Architecture Studio">
       <header className="arch-top">
-        <span className="arch-brand"><Icon name="layers" size={16} /> Architecture Studio</span>
+        <span className="arch-brand"><Icon name="layers" size={16} /> <span className="arch-wide">Architecture Studio</span></span>
+        <div className="arch-levels" role="tablist" aria-label="C4 level">{LEVELS.map((l) => <button key={l.key} type="button" role="tab" aria-selected={level === l.key} className={level === l.key ? 'on' : ''} onClick={() => { setLevel(l.key); setSel({}); }}>{l.label}</button>)}</div>
         <input className="arch-title" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Diagram title" maxLength={120} />
         <div className="arch-top-actions">
           <select className="arch-select" aria-label="Start from a template" value="" onChange={(e) => void applyTemplate(e.target.value)}>
@@ -228,10 +265,11 @@ function Studio({ title: initialTitle, data, onDone, onClose, context }: { title
           </select>
           <button type="button" className="arch-ibtn" onClick={undo} disabled={past.current.length < 2} title="Undo (Ctrl+Z)" aria-label="Undo"><Icon name="undo" size={15} /></button>
           <button type="button" className="arch-ibtn" onClick={redo} disabled={future.current.length === 0} title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><Icon name="undo" size={15} style={{ transform: 'scaleX(-1)' }} /></button>
-          <button type="button" className="arch-btn" onClick={tidy} title="Arrange the boxes left to right"><Icon name="grid" size={14} /> Tidy up</button>
-          <button type="button" className={`arch-btn${sim ? ' primary' : ''}`} onClick={simulate} aria-pressed={!!sim} title="Watch a request travel the diagram"><Icon name={sim ? 'close' : 'play'} size={14} /> {sim ? 'Stop' : 'Simulate'}</button>
+          <button type="button" className="arch-btn" onClick={tidy} title="Tidy up: arrange the boxes left to right" aria-label="Tidy up"><Icon name="grid" size={14} /> <span className="arch-wide">Tidy up</span></button>
+          <button type="button" className={`arch-btn${simMult ? ' primary' : ''}`} onClick={simulate} aria-pressed={!!simMult} title="Load the design with more traffic and find the bottleneck"><Icon name={simMult ? 'close' : 'play'} size={14} /> {simMult ? 'Stop' : 'Simulate'}</button>
+          <button type="button" className="arch-btn" onClick={() => void share()} title="Copy a link to this diagram"><Icon name="link" size={14} /> Share</button>
           <details className="arch-menu">
-            <summary className="arch-btn"><Icon name="download" size={14} /> Export</summary>
+            <summary className="arch-btn"><Icon name="download" size={14} /> <span className="arch-wide">Export</span></summary>
             <div className="arch-menu-pop">
               <button type="button" onClick={() => void exportImage('png')}>Picture (PNG)</button>
               <button type="button" onClick={() => void exportImage('svg')}>Vector (SVG)</button>
@@ -246,6 +284,16 @@ function Studio({ title: initialTitle, data, onDone, onClose, context }: { title
       <div className="arch-body">
         <aside className="arch-palette" aria-label="Components">
           <div className="arch-search"><Icon name="search" size={13} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search components…" aria-label="Search components" /></div>
+          {!q.trim() && C4_PALETTE.map((g) => (
+            <section key={g.group} className="arch-c4pal">
+              <h5>{g.group}</h5>
+              <div className="arch-plist">{g.items.map((i) => (
+                <button key={i.ctype} type="button" className="arch-prow" draggable onDragStart={(e) => dragStart(e, i)} onClick={() => add(i)} title={`Drag onto the canvas, or click to add: ${i.label}`}>
+                  <i style={{ background: CTYPES[i.ctype!].color }} />{i.label}
+                </button>))}
+              </div>
+            </section>
+          ))}
           {!q.trim() && (
             <section>
               <h5>Shapes & grouping</h5>
@@ -272,15 +320,25 @@ function Studio({ title: initialTitle, data, onDone, onClose, context }: { title
           {filtered.length === 0 && <p className="arch-muted">No component matches “{q}”.</p>}
         </aside>
         <div className="arch-canvas" ref={wrap} onDrop={onDrop} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}>
-          <ArchCanvas nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onSelectionChange={onSelection}
+          <ArchCanvas nodes={shownNodes} edges={shownEdges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onSelectionChange={onSelection}
             onNodeDragStop={() => commit()} onNodesDelete={() => window.setTimeout(commit, 0)} onEdgesDelete={() => window.setTimeout(commit, 0)}
             fitView fitViewOptions={{ padding: 0.25, maxZoom: 1.2 }} minimap deleteKeyCode={['Delete', 'Backspace']} />
+          {sim && (
+            <div className="arch-simcard" role="status" aria-live="polite">
+              <div className="arch-simhead"><b>Simulation</b>
+                <div className="arch-seg" aria-label="Traffic">{MULTS.map((m) => <button key={m} type="button" className={simMult === m ? 'on' : ''} onClick={() => setSimMult(m)}>{m}×</button>)}</div>
+              </div>
+              <SimText sim={sim} />
+              {sim.bottleneck && sim.fix && <button type="button" className="arch-btn primary" onClick={applyFix}>{sim.fix.label}</button>}
+            </div>
+          )}
           <form className={`arch-ask${drawing ? ' busy' : ''}`} onSubmit={(e) => { e.preventDefault(); void draw(); }}>
             <span className="arch-orb" aria-hidden="true" />
             <input value={ask} onChange={(e) => setAsk(e.target.value)} disabled={drawing} maxLength={1500} aria-label="Describe the system or a change"
               placeholder={nodes.length ? 'Describe a change — “Add a fraud check between the gateway and payouts”' : 'Describe the system — “Mobile app → gateway → loan service → core banking, with a cache”'} />
             <button type="submit" className="arch-btn primary" disabled={drawing || !ask.trim()}>{drawing ? 'Drawing…' : 'Draw it'}</button>
           </form>
+          {nodes.length > 0 && !shownNodes.some((n) => !n.hidden) && <div className="arch-empty"><b>Nothing on the {LEVELS.find((l) => l.key === level)?.label} level yet</b><span>Drag elements from the left; they belong to this level.</span></div>}
           {nodes.length === 0 && (
             <div className="arch-empty">
               <Icon name="layers" size={28} />
@@ -291,7 +349,7 @@ function Studio({ title: initialTitle, data, onDone, onClose, context }: { title
           )}
         </div>
         <aside className="arch-inspector" aria-label="Properties">
-          {sel.node ? <NodeInspector n={sel.node} onChange={(d) => patchNode(sel.node!.id, d)} onDelete={remove} onDuplicate={duplicate} />
+          {sel.node ? <NodeInspector n={sel.node} all={nodes} edges={edges} sim={sim} onFix={applyFix} onChange={(d) => patchNode(sel.node!.id, d)} onDelete={remove} onDuplicate={duplicate} />
             : sel.edge ? <EdgeInspector e={sel.edge} onChange={(d) => patchEdge(sel.edge!.id, d)} onDelete={remove} />
             : (
               <div className="arch-help">
@@ -311,13 +369,64 @@ function Studio({ title: initialTitle, data, onDone, onClose, context }: { title
   );
 }
 
-function NodeInspector({ n, onChange, onDelete, onDuplicate }: { n: ArchFlowNode; onChange: (d: Partial<ArchFlowNode['data']>) => void; onDelete: () => void; onDuplicate: () => void }) {
+function SimText({ sim }: { sim: SimResult }) {
+  if (sim.noThroughput) return <p>Add throughput to the arrows (select one, set requests per second) to see where load builds up.</p>;
+  if (sim.bottleneck) return <p>At {sim.mult}× traffic <b>{sim.bottleneck.name}</b> becomes the bottleneck ({sim.bottleneck.pct}% of capacity) — p95 rises to ~{fmtSeconds(sim.bottleneck.p95)}.</p>;
+  return <p>At {sim.mult}× traffic everything holds.{sim.busiest ? <> The busiest is <b>{sim.busiest.name}</b> at {sim.busiest.pct}% (p95 ~{fmtSeconds(sim.busiest.p95)}).</> : null}</p>;
+}
+
+function NodeInspector({ n, all, edges, sim, onFix, onChange, onDelete, onDuplicate }: { n: ArchFlowNode; all: ArchFlowNode[]; edges: ArchFlowEdge[]; sim: SimResult | null; onFix: () => void; onChange: (d: Partial<ArchFlowNode['data']>) => void; onDelete: () => void; onDuplicate: () => void }) {
   const kind = n.type ?? 'icon';
-  const current = n.data.color ?? iconByKey.get(n.data.icon ?? '')?.color;
+  const ct = n.data.ctype ? CTYPES[n.data.ctype] : undefined;
+  const current = n.data.color ?? ct?.color ?? iconByKey.get(n.data.icon ?? '')?.color;
+  const name = (id: string) => all.find((x) => x.id === id)?.data.label || 'Untitled';
+  const ins = [...new Set(edges.filter((e) => e.target === n.id).map((e) => name(e.source)))];
+  const outs = [...new Set(edges.filter((e) => e.source === n.id).map((e) => name(e.target)))];
+  const r = sim?.nodes.get(n.id);
+  const boxy = kind === 'icon' || kind === 'shape';
   return (
     <div className="arch-insp">
-      <b>{kind === 'frame' ? 'Group' : kind === 'text' ? 'Text' : kind === 'shape' ? 'Shape' : iconByKey.get(n.data.icon ?? '')?.label ?? 'Component'}</b>
-      <label>Label<textarea rows={2} value={n.data.label} onChange={(e) => onChange({ label: e.target.value })} autoFocus /></label>
+      <div className="arch-insp-head">
+        <span className="arch-insp-glyph" style={{ background: current }}><IconGlyph icon={ct?.icon ?? n.data.icon} size={16} color="#fff" /></span>
+        <div><b>{n.data.label || ct?.name || 'Untitled'}</b>
+          <small>{ct ? `${ct.group}${ct.group === 'Container' ? ` · ${ct.name}` : ''}` : kind === 'frame' ? 'Group' : kind === 'text' ? 'Text' : kind === 'shape' ? 'Shape' : iconByKey.get(n.data.icon ?? '')?.label ?? 'Component'}</small></div>
+      </div>
+      <label>Name<textarea rows={2} value={n.data.label} onChange={(e) => onChange({ label: e.target.value })} autoFocus /></label>
+      {kind !== 'text' && (
+        <label>Type<select className="arch-select" value={n.data.ctype ?? ''} onChange={(e) => onChange({ ctype: e.target.value || undefined })}>
+          <option value="">Plain {kind === 'frame' ? 'group' : 'box'}</option>
+          {Object.entries(CTYPES).filter(([, c]) => (kind === 'frame') === (c.group === 'Boundary')).map(([k, c]) => <option key={k} value={k}>{c.name}</option>)}
+        </select></label>
+      )}
+      <label>Level<select className="arch-select" value={n.data.level ?? ''} onChange={(e) => onChange({ level: (e.target.value || undefined) as ArchLevel | undefined })}>
+        <option value="">Every level</option>{LEVELS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+      </select></label>
+      {boxy && (
+        <>
+          <div className="arch-k">Details</div>
+          <div className="arch-kv">
+            <label>Tech<input value={n.data.tech ?? ''} onChange={(e) => onChange({ tech: e.target.value.slice(0, 120) || undefined })} placeholder=".NET 9, gRPC" /></label>
+            <label>Owner<input value={n.data.owner ?? ''} onChange={(e) => onChange({ owner: e.target.value.slice(0, 80) || undefined })} placeholder="Team" /></label>
+            <label>Repo<input value={n.data.repo ?? ''} onChange={(e) => onChange({ repo: e.target.value.slice(0, 200) || undefined })} placeholder="repository name or URL" /></label>
+            <label>Runs on<input value={n.data.runsOn ?? ''} onChange={(e) => onChange({ runsOn: e.target.value.slice(0, 120) || undefined })} placeholder="k8s · 3 pods" /></label>
+            <label>Replicas<input type="number" min={1} max={1000} value={n.data.replicas ?? ''} onChange={(e) => onChange({ replicas: e.target.value ? Math.min(1000, Math.max(1, Math.round(+e.target.value))) : undefined })} placeholder="1" /></label>
+            <label>Capacity (req/s each)<input type="number" min={0} value={n.data.capacity ?? ''} onChange={(e) => onChange({ capacity: e.target.value ? Math.max(0, +e.target.value) : undefined })} placeholder={ct && Number.isFinite(ct.cap) ? String(ct.cap) : '300'} /></label>
+          </div>
+          <div className="arch-k">Connections</div>
+          <div className="arch-conn"><span>In</span><b>{ins.length ? ins.join(', ') : '—'}</b></div>
+          <div className="arch-conn"><span>Out</span><b>{outs.length ? outs.join(', ') : '—'}</b></div>
+        </>
+      )}
+      {sim && boxy && (
+        <>
+          <div className="arch-k">Simulation</div>
+          <div className="arch-simnote">
+            {r && r.load > 0 ? <p>At {sim.mult}× traffic: {r.load} req/s of {Number.isFinite(r.cap) ? `${Math.round(r.cap)}` : '∞'} ({r.pct}%), p95 ~{fmtSeconds(r.p95)}.</p> : <p>No traffic reaches this box.</p>}
+            <SimText sim={sim} />
+            {sim.bottleneck && sim.fix && <button type="button" className="arch-btn primary" onClick={onFix}>{sim.fix.label}</button>}
+          </div>
+        </>
+      )}
       {kind === 'shape' && (
         <label>Shape<select className="arch-select" value={n.data.shape ?? 'rounded'} onChange={(e) => onChange({ shape: e.target.value })}>
           <option value="rounded">Rounded box</option><option value="rect">Box</option><option value="ellipse">Ellipse</option><option value="diamond">Decision</option><option value="cylinder">Store</option>
@@ -326,7 +435,7 @@ function NodeInspector({ n, onChange, onDelete, onDuplicate }: { n: ArchFlowNode
       <div className="arch-field">Colour
         <div className="arch-swatches">{SWATCHES.map((c) => <button key={c} type="button" className={current === c ? 'on' : ''} style={{ background: c }} aria-label={`Colour ${c}`} onClick={() => onChange({ color: c })} />)}</div>
       </div>
-      {kind !== 'text' && <label>Notes<textarea rows={3} value={n.data.notes ?? ''} onChange={(e) => onChange({ notes: e.target.value })} placeholder="What it does, owner, version, URL…" /></label>}
+      {kind !== 'text' && <label>Notes<textarea rows={3} value={n.data.notes ?? ''} onChange={(e) => onChange({ notes: e.target.value })} placeholder="What it does, version, URL…" /></label>}
       <div className="arch-insp-actions">
         <button type="button" className="arch-btn" onClick={onDuplicate}><Icon name="copy" size={13} /> Duplicate</button>
         <button type="button" className="arch-btn danger" onClick={onDelete}><Icon name="trash" size={13} /> Delete</button>
@@ -340,7 +449,10 @@ function EdgeInspector({ e, onChange, onDelete }: { e: ArchFlowEdge; onChange: (
   return (
     <div className="arch-insp">
       <b>Arrow</b>
-      <label>Label<input value={typeof e.label === 'string' ? e.label : ''} onChange={(ev) => onChange({ label: ev.target.value })} placeholder="e.g. GET /balance, HTTPS, JMS" autoFocus /></label>
+      <label>Label<input value={e.data?.label ?? (typeof e.label === 'string' ? e.label : '')} onChange={(ev) => onChange({ label: ev.target.value })} placeholder="e.g. Uses, publishes, GET /balance" autoFocus /></label>
+      <label>Protocol<input value={e.data?.protocol ?? ''} onChange={(ev) => onChange({ protocol: ev.target.value.slice(0, 40) || undefined })} placeholder="HTTPS, REST, gRPC, SQL, Kafka" list="arch-protocols" /></label>
+      <datalist id="arch-protocols">{['HTTPS', 'REST', 'gRPC', 'SQL', 'Kafka', 'AMQP', 'SOAP', 'WebSocket', 'SFTP'].map((p) => <option key={p} value={p} />)}</datalist>
+      <label>Throughput (requests/s)<input type="number" min={0} value={e.data?.rps ?? ''} onChange={(ev) => onChange({ rps: ev.target.value ? Math.max(0, Math.round(+ev.target.value)) : undefined })} placeholder="e.g. 120" /></label>
       <div className="arch-field">Line
         <div className="arch-seg">{(['solid', 'dashed', 'dotted'] as const).map((l) => <button key={l} type="button" className={line === l ? 'on' : ''} onClick={() => onChange({ line: l })}>{l}</button>)}</div>
       </div>
