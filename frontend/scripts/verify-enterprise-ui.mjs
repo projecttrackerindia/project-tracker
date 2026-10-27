@@ -135,8 +135,8 @@ try {
  assert.equal(await page.locator('.outlook-result').count(),0);assert.equal(await page.locator('.outlook-planning-grid').count(),0);assert.equal(calendarReads,beforeCalendarDisabled);
  checks.push({name:'outlook-calendar-disabled-gate-clears-private-state-without-reads',passed:true});
  await capture('connected-accounts-desktop','/account/integrations','.ca-grid',1440,1000);
- // Each use of an account is its own switch: Google Calendar and inbox on, transcripts off; Outlook mail, inbox and availability on, Teams off.
- assert.equal(await page.locator('.ca-toggle.on').count(),5);
+ // Each use of an account is its own switch: Google Calendar on, transcripts off; Outlook availability on, Teams off. Mail uses live in Integrations › Mail now.
+ assert.equal(await page.locator('.ca-toggle.on').count(),2);await page.getByTestId('ca-mail-moved').waitFor();
  assert.equal(await page.getByRole('radio',{name:/Automatic/}).getAttribute('aria-checked'),'true');
  assert.equal(await page.locator('.personal-inbox').count(),0,'Mail lives in Mailbox, not in settings');
  await capture('connected-accounts-mobile','/account/integrations','.ca-grid',390,844);
