@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Exceptions;
+using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.WorkItems;
 using ProjectManagement.Application.Services;
@@ -14,7 +15,18 @@ public record ReleaseDto(Guid Id, string Name, Guid? ProjectId, string? ProjectN
 public record ReleaseItemDto(Guid Id, string Kind, string Key, string Title, string Status, StatusCategory Category, UserRefDto? Assignee, DateOnly? DueDate, bool Bug);
 public record ReleaseCheckDto(string Key, string Label, bool Ok, string Detail);
 public record ReleaseGoNoGoDto(ReleaseDto Release, IReadOnlyList<ReleaseItemDto> Items, IReadOnlyList<TestRunDto> Runs, QualityReadinessDto? Tests,
-    int Done, int Open, int OpenBugs, IReadOnlyList<ReleaseCheckDto> Checks, bool Go, bool CanApprove);
+    int Done, int Open, int OpenBugs, IReadOnlyList<ReleaseCheckDto> Checks, bool Go, bool CanApprove,
+    IReadOnlyList<ReleaseSignOffDto>? SignOffs = null, ReleaseTestGridDto? Grid = null, ReleaseDto? Previous = null, ReleaseForecastDto? Forecast = null);
+public record ReleaseSignOffDto(Guid Id, UserRefDto User, string Role, string Status, string? Note, DateTime? SignedAt, DateTime? RemindedAt);
+public record ReleaseGridCellDto(string Environment, int Passed, int Total, bool Running);
+public record ReleaseGridRowDto(string Suite, IReadOnlyList<ReleaseGridCellDto> Cells);
+/// <summary>Suites (a case's first tag) × environments (a run's environment): the latest run per environment, passed of results.</summary>
+public record ReleaseTestGridDto(IReadOnlyList<string> Environments, IReadOnlyList<ReleaseGridRowDto> Rows);
+/// <summary>When the open bugs should close at the recent close rate (bugs closed in the last 14 days); null date when nothing closed lately.</summary>
+public record ReleaseForecastDto(int OpenBlockers, double ClosedPerDay, DateOnly? BlockersClearBy);
+public record SignOffPerson(Guid UserId, string? Role);
+public record SetSignOffsRequest(IReadOnlyList<SignOffPerson>? People);
+public record SignRequest(bool Signed = true, string? Note = null);
 public record UpsertReleaseRequest(string? Name, Guid? ProjectId = null, DateOnly? TargetDate = null, string? Notes = null);
 public record ReleaseItemsRequest(IReadOnlyList<Guid>? Add = null, IReadOnlyList<Guid>? Remove = null);
 
@@ -23,9 +35,11 @@ public record ReleaseItemsRequest(IReadOnlyList<Guid>? Add = null, IReadOnlyList
 /// items or filed from the release's test runs, and the latest run ready (Quality's pass rate with no blockers). Approving records who
 /// and when; it can be approved against a "no go" only with a reason, which is kept in the notes. Shipped closes it.
 /// </summary>
-public class ReleaseService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, WorkItemApiService work, QualityService quality)
+public class ReleaseService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, WorkItemApiService work, QualityService quality,
+    NotificationService notifications)
 {
     public const int MaxItems = 150;
+    public const int MaxSignOffs = 20;
 
     private static string? Clean(string? s, int max, string field)
     {
@@ -141,8 +155,116 @@ public class ReleaseService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             new("tests", "Tests ready", tests?.Ready == true, tests is null ? "Run the tests for this release (tie a test run to it)."
                 : tests.Ready ? $"{tests.Run!.Name}: {tests.PassPercent}% passed, no blockers." : $"{tests.Run!.Name}: {tests.PassPercent}% passed{(tests.Blockers.Count > 0 ? $", {tests.Blockers.Count} blocker{(tests.Blockers.Count == 1 ? "" : "s")}" : "")}{(tests.NotRun > 0 ? $", {tests.NotRun} not run" : "")}."),
         };
+        var signOffs = await SignOffsAsync(id, ct);
+        if (signOffs.Count > 0)
+        {
+            var pending = signOffs.Count(x => x.Status != "Signed");
+            var declined = signOffs.Count(x => x.Status == "Declined");
+            checks.Add(new("signoffs", "Signed off", pending == 0, pending == 0 ? $"All {signOffs.Count} people signed off."
+                : declined > 0 ? $"{declined} declined, {pending - declined} pending of {signOffs.Count}." : $"{pending} of {signOffs.Count} sign-off{(signOffs.Count == 1 ? "" : "s")} pending."));
+        }
         var go = checks.All(c => c.Ok);
-        return new ReleaseGoNoGoDto((await ToDtosAsync([r], ct))[0], items, runs.Select(QualityService.ToDto).ToList(), tests, done, open, openBugs, checks, go, r.Status == "Planned");
+        var grid = await GridAsync(runs, ct);
+        var prevRow = await db.Releases.AsNoTracking().Where(x => x.Id != id && x.ProjectId == r.ProjectId && x.Status == "Shipped").OrderByDescending(x => x.ShippedAt).FirstOrDefaultAsync(ct);
+        var previous = prevRow is null ? null : (await ToDtosAsync([prevRow], ct))[0];
+        var forecast = await ForecastAsync(r.ProjectId, openBugs, ct);
+        return new ReleaseGoNoGoDto((await ToDtosAsync([r], ct))[0], items, runs.Select(QualityService.ToDto).ToList(), tests, done, open, openBugs, checks, go, r.Status == "Planned",
+            signOffs, grid, previous, forecast);
+    }
+
+    private async Task<List<ReleaseSignOffDto>> SignOffsAsync(Guid id, CancellationToken ct)
+    {
+        var rows = await db.ReleaseSignOffs.AsNoTracking().Where(x => x.ReleaseId == id).OrderBy(x => x.CreatedAt).ToListAsync(ct);
+        var uids = rows.Select(x => x.UserId).Distinct().ToList();
+        var names = await db.Users.AsNoTracking().Where(u => uids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        return rows.Select(x => new ReleaseSignOffDto(x.Id, new UserRefDto(x.UserId, names.GetValueOrDefault(x.UserId) ?? "Former member"), x.Role, x.Status, x.Note, x.SignedAt, x.RemindedAt)).ToList();
+    }
+
+    private async Task<ReleaseTestGridDto> GridAsync(List<TestRun> runs, CancellationToken ct)
+    {
+        // The latest run per environment (runs are ordered oldest first).
+        var latest = runs.GroupBy(x => string.IsNullOrWhiteSpace(x.Environment) ? "Other" : x.Environment!.Trim()).Select(g => (Env: g.Key, Run: g.Last())).ToList();
+        if (latest.Count == 0) return new ReleaseTestGridDto([], []);
+        var runIds = latest.Select(x => x.Run.Id).ToList();
+        var results = await db.TestResults.AsNoTracking().Where(x => runIds.Contains(x.RunId)).Select(x => new { x.RunId, x.CaseId, x.Status }).ToListAsync(ct);
+        var caseIds = results.Select(x => x.CaseId).Distinct().ToList();
+        var tags = await db.TestCases.AsNoTracking().Where(c => caseIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Tags, ct);
+        string Suite(Guid c) => tags.GetValueOrDefault(c)?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "General";
+        var suites = results.Select(x => Suite(x.CaseId)).Distinct().OrderBy(x => x).Take(30).ToList();
+        var rows = suites.Select(s => new ReleaseGridRowDto(s, latest.Select(l =>
+        {
+            var mine = results.Where(x => x.RunId == l.Run.Id && Suite(x.CaseId) == s).ToList();
+            return new ReleaseGridCellDto(l.Env, mine.Count(x => x.Status == "Pass"), mine.Count, l.Run.Status == "Running");
+        }).ToList())).ToList();
+        return new ReleaseTestGridDto(latest.Select(x => x.Env).ToList(), rows);
+    }
+
+    private async Task<ReleaseForecastDto> ForecastAsync(Guid? projectId, int openBugs, CancellationToken ct)
+    {
+        var since = clock.Now.AddDays(-14);
+        var q = db.WorkItems.AsNoTracking().OfType<StageIssue>().Where(w => w.CompletedAt != null && w.CompletedAt >= since);
+        if (projectId is { } p) q = q.Where(w => w.ScopeProjectId == p);
+        var closed = await q.CountAsync(ct);
+        var perDay = Math.Round(closed / 14.0, 2);
+        DateOnly? by = openBugs == 0 ? DateOnly.FromDateTime(clock.Now) : closed == 0 ? null : DateOnly.FromDateTime(clock.Now).AddDays((int)Math.Ceiling(openBugs / (closed / 14.0)));
+        return new ReleaseForecastDto(openBugs, perDay, by);
+    }
+
+    /// <summary>Sets who signs off and in which role. People kept keep their state (a changed role resets it to Pending); people removed go.</summary>
+    public async Task<ReleaseGoNoGoDto> SetSignOffsAsync(Guid id, SetSignOffsRequest req, CancellationToken ct = default)
+    {
+        var r = await FindAsync(id, ct);
+        if (r.Status == "Shipped") throw new ConflictException("This release has shipped. Start a new one.", "RELEASE_SHIPPED");
+        var people = (req.People ?? []).GroupBy(p => p.UserId).Select(g => g.Last()).ToList();
+        if (people.Count > MaxSignOffs) throw new ValidationException("people", $"Ask at most {MaxSignOffs} people to sign off.");
+        var tid = ctx.RequireTenantId();
+        var existing = await db.ReleaseSignOffs.Where(x => x.ReleaseId == id).ToListAsync(ct);
+        foreach (var gone in existing.Where(e => people.All(p => p.UserId != e.UserId))) db.ReleaseSignOffs.Remove(gone);
+        foreach (var p in people)
+        {
+            var role = Clean(p.Role, 60, "role") ?? throw new ValidationException("role", "Give each person the role they sign off for, such as QA or Product.");
+            if (!await db.TenantMembers.AnyAsync(m => m.TenantId == tid && m.UserId == p.UserId, ct)) throw new ValidationException("userId", "That person is not in this workspace.");
+            var row = existing.FirstOrDefault(e => e.UserId == p.UserId);
+            if (row is null)
+                db.ReleaseSignOffs.Add(new ReleaseSignOff { TenantId = tid, ReleaseId = id, UserId = p.UserId, Role = role, Status = "Pending", CreatedAt = clock.Now, CreatedBy = ctx.UserId });
+            else if (row.Role != role) { row.Role = role; row.Status = "Pending"; row.SignedAt = null; row.Note = null; row.UpdatedAt = clock.Now; row.UpdatedBy = ctx.UserId; }
+        }
+        recorder.Audit("release.signoffs_set", "Release", id, null, new { people = people.Select(p => new { p.UserId, p.Role }) });
+        await db.SaveChangesAsync(ct);
+        return await GoNoGoAsync(id, ct);
+    }
+
+    /// <summary>The caller signs (or declines, which needs a note) their own sign-off on the release.</summary>
+    public async Task<ReleaseGoNoGoDto> SignAsync(Guid id, SignRequest req, CancellationToken ct = default)
+    {
+        var r = await FindAsync(id, ct);
+        if (r.Status == "Shipped") throw new ConflictException("This release has shipped. Start a new one.", "RELEASE_SHIPPED");
+        var me = ctx.RequireUserId();
+        var row = await db.ReleaseSignOffs.FirstOrDefaultAsync(x => x.ReleaseId == id && x.UserId == me, ct)
+            ?? throw new ForbiddenException("You are not asked to sign off this release.", "SIGNOFF_NOT_ASKED");
+        var note = Clean(req.Note, 500, "note");
+        if (!req.Signed && note is null) throw new ValidationException("note", "Say why you are declining.");
+        row.Status = req.Signed ? "Signed" : "Declined"; row.Note = note; row.SignedAt = clock.Now; row.UpdatedAt = clock.Now; row.UpdatedBy = me;
+        recorder.Audit(req.Signed ? "release.signed" : "release.signoff_declined", "Release", id, null, new { r.Name, row.Role, note });
+        await db.SaveChangesAsync(ct);
+        return await GoNoGoAsync(id, ct);
+    }
+
+    /// <summary>Nudges everyone still pending (a notification each); returns how many were reminded with the new state.</summary>
+    public async Task<ReleaseGoNoGoDto> RemindAsync(Guid id, CancellationToken ct = default)
+    {
+        var r = await FindAsync(id, ct);
+        var pending = await db.ReleaseSignOffs.Where(x => x.ReleaseId == id && x.Status == "Pending").ToListAsync(ct);
+        if (pending.Count == 0) throw new ConflictException("Nobody is waiting to sign off.", "SIGNOFF_NONE_PENDING");
+        foreach (var p in pending)
+        {
+            await notifications.AddAsync(p.UserId, NotificationType.Approval, $"Sign off release {r.Name}", $"You are asked to sign off as {p.Role}{(r.TargetDate is { } d ? $" · target {d:dd MMM}" : "")}.",
+                "/quality", $"release-signoff:{id:N}:{clock.Now:yyyyMMddHH}", ct: ct);
+            p.RemindedAt = clock.Now;
+        }
+        recorder.Audit("release.signoffs_reminded", "Release", id, null, new { r.Name, count = pending.Count });
+        await db.SaveChangesAsync(ct);
+        return await GoNoGoAsync(id, ct);
     }
 
     /// <summary>Approves the release. Against a "no go" it needs a reason, which is added to the notes with who decided.</summary>
@@ -152,7 +274,8 @@ public class ReleaseService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var r = await FindAsync(id, ct);
         if (r.Status != "Planned") throw new ConflictException("This release is already approved.", "RELEASE_APPROVED");
         var why = Clean(reason, 500, "reason");
-        if (!state.Go && why is null) throw new ValidationException("reason", "The checks say no go. Give the reason for going anyway.");
+        if (!state.Go && why is null) throw new ValidationException("reason", (state.SignOffs ?? []).Any(x => x.Status != "Signed") && state.Checks.Where(c => c.Key != "signoffs").All(c => c.Ok)
+            ? "Not everyone has signed off. Wait for the sign-offs or give the reason for going anyway." : "The checks say no go. Give the reason for going anyway.");
         r.Status = "Approved"; r.ApprovedById = ctx.UserId; r.ApprovedAt = clock.Now;
         if (why is not null) r.Notes = Clean($"{r.Notes}\n\nApproved against the checks: {why}".Trim(), 4000, "notes");
         r.UpdatedAt = clock.Now; r.UpdatedBy = ctx.UserId;

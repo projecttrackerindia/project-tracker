@@ -34,6 +34,17 @@ public class ReleasesController(ReleaseService releases) : ApiControllerBase
     [HttpDelete("{id:guid}/runs/{runId:guid}"), RequireModule(Modules.Work, AccessLevel.Edit)]
     public async Task<IActionResult> DetachRun(Guid id, Guid runId, CancellationToken ct) => Ok(await releases.SetRunAsync(id, runId, false, ct));
 
+    /// <summary>Who signs off and in which role (the whole list).</summary>
+    [HttpPut("{id:guid}/signoffs"), RequireModule(Modules.Work, AccessLevel.Edit)]
+    public async Task<IActionResult> SignOffs(Guid id, [FromBody] SetSignOffsRequest req, CancellationToken ct) => Ok(await releases.SetSignOffsAsync(id, req, ct));
+
+    /// <summary>The caller signs or declines (with a note) their own sign-off.</summary>
+    [HttpPost("{id:guid}/signoffs/sign")]
+    public async Task<IActionResult> Sign(Guid id, [FromBody] SignRequest req, CancellationToken ct) => Ok(await releases.SignAsync(id, req, ct));
+
+    [HttpPost("{id:guid}/signoffs/remind"), RequireModule(Modules.Work, AccessLevel.Edit)]
+    public async Task<IActionResult> Remind(Guid id, CancellationToken ct) => Ok(await releases.RemindAsync(id, ct));
+
     public record ApproveRequest(string? Reason);
 
     [HttpPost("{id:guid}/approve"), RequireModule(Modules.Work, AccessLevel.Edit)]

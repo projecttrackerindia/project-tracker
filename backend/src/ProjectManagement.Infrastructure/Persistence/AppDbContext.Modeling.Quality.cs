@@ -43,6 +43,13 @@ public partial class AppDbContext
             e.HasIndex(x => new { x.TenantId, x.ReleaseId, x.WorkItemId }).IsUnique();
             e.HasIndex(x => new { x.TenantId, x.WorkItemId });
         });
+        b.Entity<ReleaseSignOff>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.ReleaseId, x.UserId }).IsUnique();
+            e.Property(x => x.Role).HasMaxLength(60);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Note).HasMaxLength(500);
+        });
         b.Entity<TestResult>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.RunId, x.CaseId }).IsUnique();

@@ -48,10 +48,14 @@ export interface Release {
   items: number; runs: number; approvedBy: UserRef | null; approvedAt: string | null; shippedAt: string | null; createdAt: string;
 }
 export interface ReleaseItem { id: string; kind: string; key: string; title: string; status: string; category: 'Todo' | 'Active' | 'Done' | 'Cancelled'; assignee: UserRef | null; dueDate: string | null; bug: boolean }
-export interface ReleaseCheck { key: 'work' | 'bugs' | 'tests'; label: string; ok: boolean; detail: string }
+export interface ReleaseCheck { key: 'work' | 'bugs' | 'tests' | 'signoffs'; label: string; ok: boolean; detail: string }
 export interface ReleaseState {
   release: Release; items: ReleaseItem[]; runs: TestRun[]; tests: Readiness | null; done: number; open: number; openBugs: number; checks: ReleaseCheck[]; go: boolean; canApprove: boolean;
+  signOffs?: ReleaseSignOff[] | null; grid?: ReleaseGrid | null; previous?: Release | null; forecast?: ReleaseForecast | null;
 }
+export interface ReleaseSignOff { id: string; user: UserRef; role: string; status: 'Pending' | 'Signed' | 'Declined'; note: string | null; signedAt: string | null; remindedAt: string | null }
+export interface ReleaseGrid { environments: string[]; rows: { suite: string; cells: { environment: string; passed: number; total: number; running: boolean }[] }[] }
+export interface ReleaseForecast { openBlockers: number; closedPerDay: number; blockersClearBy: string | null }
 export const releaseApi = {
   list: (projectId?: string) => get<Release[]>('/releases', { projectId }),
   create: (b: { name: string; projectId?: string | null; targetDate?: string | null; notes?: string | null }) => create<Release>('/releases', b),
@@ -62,4 +66,7 @@ export const releaseApi = {
   detachRun: (id: string, runId: string) => del<ReleaseState>(`/releases/${id}/runs/${runId}`),
   approve: (id: string, reason?: string) => post<ReleaseState>(`/releases/${id}/approve`, { reason: reason ?? null }),
   ship: (id: string) => post<ReleaseState>(`/releases/${id}/ship`, {}),
+  setSignOffs: (id: string, people: { userId: string; role: string }[]) => put<ReleaseState>(`/releases/${id}/signoffs`, { people }),
+  sign: (id: string, signed: boolean, note?: string | null) => post<ReleaseState>(`/releases/${id}/signoffs/sign`, { signed, note: note ?? null }),
+  remind: (id: string) => post<ReleaseState>(`/releases/${id}/signoffs/remind`, {}),
 };

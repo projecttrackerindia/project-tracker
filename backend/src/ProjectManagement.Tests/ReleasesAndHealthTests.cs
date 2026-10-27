@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json.Nodes;
+using ProjectManagement.Domain.Enums;
 using ProjectManagement.Tests.Infrastructure;
 
 namespace ProjectManagement.Tests;
@@ -53,6 +54,49 @@ public class ReleasesAndHealthTests(ApiFactory factory)
         var shipped = await owner.Post($"/api/v1/releases/{id}/ship", new { });
         Assert.Equal("Shipped", S(shipped.Data!["release"]!["status"]));
         Assert.Equal(HttpStatusCode.Conflict, (await owner.Put($"/api/v1/releases/{id}/items", new { add = Array.Empty<string>() })).Status);
+    }
+
+    [Fact]
+    public async Task Sign_offs_gate_the_release_and_pending_people_can_be_reminded()
+    {
+        var owner = await TestClient.RegisterAsync(factory, "Sana Signoff");
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("BUSINESS");
+        var qa = await owner.AddMemberAsync(factory, TenantRole.Member, "Quinn QA");
+        var project = await owner.CreateProjectAsync("Loan Origination");
+        var created = await owner.Post("/api/v1/releases", new { name = "v3.0", projectId = project });
+        var id = S(created.Data!["id"]);
+
+        // No sign-offs asked: no sign-off check.
+        var plain = await owner.Get($"/api/v1/releases/{id}");
+        Assert.DoesNotContain(plain.Data!["checks"]!.AsArray(), c => S(c!["key"]) == "signoffs");
+        Assert.NotNull(plain.Data["grid"]);
+        Assert.NotNull(plain.Data["forecast"]);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put($"/api/v1/releases/{id}/signoffs", new { people = new[] { new { userId = qa.UserId, role = " " } } })).Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await owner.Put($"/api/v1/releases/{id}/signoffs", new { people = new[] { new { userId = Guid.NewGuid(), role = "QA" } } })).Status);
+        var set = await owner.Put($"/api/v1/releases/{id}/signoffs", new { people = new[] { new { userId = qa.UserId, role = "QA" }, new { userId = owner.UserId, role = "Product" } } });
+        Assert.True(set.Ok, set.ToString());
+        Assert.Equal(2, set.Data!["signOffs"]!.AsArray().Count);
+        var check = set.Data["checks"]!.AsArray().First(c => S(c!["key"]) == "signoffs")!;
+        Assert.False(B(check["ok"]));
+        Assert.Contains("2 of 2", S(check["detail"]));
+
+        // The owner signs their own; someone not asked cannot sign; declining needs a note.
+        Assert.True((await owner.Post($"/api/v1/releases/{id}/signoffs/sign", new { signed = true })).Ok);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await qa.Post($"/api/v1/releases/{id}/signoffs/sign", new { signed = false })).Status);
+
+        // Remind pending: QA gets a notification.
+        var reminded = await owner.Post($"/api/v1/releases/{id}/signoffs/remind", new { });
+        Assert.True(reminded.Ok, reminded.ToString());
+        Assert.NotNull(reminded.Data!["signOffs"]!.AsArray().First(x => S(x!["role"]) == "QA")!["remindedAt"]);
+        var bell = await qa.Get("/api/v1/notifications?page=1&pageSize=20");
+        Assert.Contains("Sign off release v3.0", bell.ToString());
+
+        var signed = await qa.Post($"/api/v1/releases/{id}/signoffs/sign", new { signed = true, note = "Regression clean on UAT." });
+        Assert.True(signed.Ok, signed.ToString());
+        Assert.True(B(signed.Data!["checks"]!.AsArray().First(c => S(c!["key"]) == "signoffs")!["ok"]));
+        Assert.Equal(HttpStatusCode.Conflict, (await owner.Post($"/api/v1/releases/{id}/signoffs/remind", new { })).Status);
     }
 
     [Fact]

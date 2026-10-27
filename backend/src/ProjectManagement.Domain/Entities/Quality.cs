@@ -71,3 +71,15 @@ public class ReleaseItem : TenantEntity, ITenantScoped
     public Guid ReleaseId { get; set; }
     public Guid WorkItemId { get; set; }
 }
+
+/// <summary>One person asked to sign off a release, in a role (QA, Product, Engineering...): Pending until they sign or decline, with a note.</summary>
+public class ReleaseSignOff : TenantEntity, ITenantScoped
+{
+    public Guid ReleaseId { get; set; }
+    public Guid UserId { get; set; }
+    public string Role { get; set; } = "";
+    public string Status { get; set; } = "Pending";
+    public string? Note { get; set; }
+    public DateTime? SignedAt { get; set; }
+    public DateTime? RemindedAt { get; set; }
+}
