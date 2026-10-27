@@ -25,21 +25,21 @@ const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical'];
 /** The sheet itself; mounted once in the layout. */
 export function NewSheetHost() {
   const open = useNewSheet((s) => s.open);
-  const [making, setMaking] = useState<{ kind: 'task' | 'project'; title: string; priority?: Priority; assigneeId?: string; dueDate?: string } | null>(null);
+  const [making, setMaking] = useState<{ kind: 'task' | 'project'; title: string; priority?: Priority; assigneeId?: string; dueDate?: string; projectId?: string } | null>(null);
   const nav = useNavigate();
   return (
     <>
       {open && <NewSheet onMake={setMaking} />}
       <Suspense fallback={null}>
-        {making?.kind === 'task' && <TaskModal initial={{ title: making.title, priority: making.priority, assigneeId: making.assigneeId, dueDate: making.dueDate }} onClose={() => setMaking(null)} />}
+        {making?.kind === 'task' && <TaskModal projectId={making.projectId} initial={{ title: making.title, priority: making.priority, assigneeId: making.assigneeId, dueDate: making.dueDate }} onClose={() => setMaking(null)} />}
         {making?.kind === 'project' && <ProjectFormModal onClose={() => setMaking(null)} onSaved={(id: string) => { setMaking(null); nav(`/work/projects/${id}`); }} />}
       </Suspense>
     </>
   );
 }
 
-function NewSheet({ onMake }: { onMake: (m: { kind: 'task' | 'project'; title: string; priority?: Priority; assigneeId?: string; dueDate?: string }) => void }) {
-  const { type: presetType, text: presetText, close } = useNewSheet();
+function NewSheet({ onMake }: { onMake: (m: { kind: 'task' | 'project'; title: string; priority?: Priority; assigneeId?: string; dueDate?: string; projectId?: string }) => void }) {
+  const { type: presetType, text: presetText, project: inProject, close } = useNewSheet();
   const nav = useNavigate();
   const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx?.user);
@@ -82,7 +82,7 @@ function NewSheet({ onMake }: { onMake: (m: { kind: 'task' | 'project'; title: s
     const q = (k: string, v: string) => (v ? `${k}=${encodeURIComponent(v)}` : '');
     const join = (base: string, ...parts: string[]) => { const s = parts.filter(Boolean).join('&'); return s ? `${base}${base.includes('?') ? '&' : '?'}${s}` : base; };
     switch (type) {
-      case 'task': close(); onMake({ kind: 'task', title, priority: pr, assigneeId: owner?.id, dueDate: parsed.dueDate }); return;
+      case 'task': close(); onMake({ kind: 'task', title, priority: pr, assigneeId: owner?.id, dueDate: parsed.dueDate, projectId: inProject?.id }); return;
       case 'project': close(); onMake({ kind: 'project', title }); return;
       case 'reminder': close(); openReminderComposer({ text: words }); return;
       case 'doc': close(); nav(join('/library/docs?new=1', q('title', title))); return;
@@ -111,7 +111,7 @@ function NewSheet({ onMake }: { onMake: (m: { kind: 'task' | 'project'; title: s
   };
   const goes = type === 'doc' ? 'Opens Library to write it.' : type === 'secret' ? 'Opens the Vault to fill in the secret.' : type === 'meeting' ? 'Opens the meeting form in Talk.'
     : type === 'time' ? 'Opens your timesheet with this entry.' : type === 'project' ? 'Opens the project form.' : type === 'reminder' ? 'Opens the reminder with the time it understood.'
-    : type === 'task' ? 'Opens the task to pick its project.' : 'Tap any chip to change it. Everything else can be added later.';
+    : type === 'task' ? (inProject ? `Adds it to ${inProject.name}.` : 'Opens the task to pick its project.') :'Tap any chip to change it. Everything else can be added later.';
 
   return (
     <div className="v2-new-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
@@ -144,6 +144,7 @@ function NewSheet({ onMake }: { onMake: (m: { kind: 'task' | 'project'; title: s
                 <span className="v2-new-chip">Owner <b>{owner?.name ?? 'Nobody yet'}</b>
                   <select aria-label="Owner" value={owner?.id ?? ''} onChange={(e) => setOwnerId(e.target.value)}><option value="">Nobody yet</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></span>
                 {parsed.dueDate && <span className="v2-new-chip">Due <b>{parsed.dueLabel ?? parsed.dueDate}</b></span>}
+                {type === 'task' && inProject && <span className="v2-new-chip">Project <b>{inProject.name}</b></span>}
               </div>
             )}
             <p>{goes}</p>

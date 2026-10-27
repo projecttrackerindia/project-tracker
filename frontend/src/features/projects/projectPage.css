@@ -1,0 +1,92 @@
+/* =====================================================================================================================
+   v2 project page (V2-SPEC §3.5, screen V2Project): ‹ Projects, the name, key · group, status and people; "+ Add work" and ···;
+   Overview · Work · Docs · Time · Activity as one segmented control. Tokens only; violet only inside AI cards.
+   ===================================================================================================================== */
+
+.pp { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; min-width: 0; }
+.pp-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; margin-bottom: 22px; }
+.pp-head-main { min-width: 0; flex: 1 1 380px; display: grid; gap: 6px; }
+.pp-head .page-title { font-size: clamp(32px, 3.2vw, 44px); overflow-wrap: anywhere; margin: 2px 0 0; }
+.pp-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 6px; font-size: 14px; color: var(--ds-text-3); }
+.pp-key { font-family: var(--mono); font-size: 13px; color: var(--ds-text-3); letter-spacing: .02em; }
+.pp-people { color: var(--ds-text-3); }
+.pp-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-pill); font-size: 15px; font-weight: 500; gap: 6px; }
+.pp-actions .v2-dots-btn { width: 44px; height: 44px; background: var(--ds-surface); color: var(--ds-text-2); box-shadow: var(--ds-e2), 0 0 0 1px var(--ds-line); border: 0; cursor: pointer; }
+.pp-actions .v2-dots-btn:hover, .pp-actions .v2-dots-btn[aria-expanded='true'] { background: var(--ds-surface); color: var(--ds-text); box-shadow: var(--ds-hover-lift); }
+.pp-actions .v2-dots-list { min-width: 280px; }
+.pp-tabs { display: flex; margin-bottom: 22px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.pp-tabs::-webkit-scrollbar { display: none; }
+.pp > .form-warn { margin-bottom: 18px; }
+.pp-body { min-width: 0; }
+
+/* ------------------------------------------------------------------ Overview */
+.pp-overview { display: grid; gap: 18px; }
+.pp-cards { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(280px, 1fr); gap: 18px; align-items: stretch; }
+.pp-summary { display: grid; min-width: 0; }
+.pp-summary .v2-ai-card { padding: 22px 24px; border-radius: var(--ds-r-card); height: 100%; box-sizing: border-box; }
+.pp-summary .v2-ai-card-main > span { display: grid; gap: 14px; }
+.pp-summary .v2-ai-card-main > b { color: var(--ds-violet); font-size: 14.5px; }
+.v2-ai-card .pp-summary-text { font-size: 16.5px; line-height: 1.6; color: var(--ds-text); max-width: 72ch; }
+.v2-ai-card .pp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pp-chips .ds-pill { text-decoration: none; background: var(--ds-surface); box-shadow: 0 0 0 1px var(--ds-line); color: var(--ds-text-2); font-size: 13px; }
+.pp-chips .ds-pill:hover { color: var(--ds-text); box-shadow: 0 0 0 1px var(--ds-outline); }
+.pp-ring { display: flex; align-items: center; gap: 22px; padding: 24px 26px; }
+.pp-ring-text { display: grid; gap: 6px; min-width: 0; font-size: 14.5px; color: var(--ds-text-2); }
+.pp-ring-text b { font-size: 15px; font-weight: 600; color: var(--ds-text); }
+.pp-ring-text em { font-style: normal; font-weight: 600; color: var(--ds-text-2); }
+.pp-ring-text em.ok { color: var(--ds-success); } .pp-ring-text em.risk { color: var(--ds-warning); } .pp-ring-text em.late { color: var(--ds-danger); }
+.pp-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.pp-kpis .ds-kpi { padding: 16px 18px; border: 0; text-align: left; font: inherit; cursor: pointer; }
+.pp-kpis .ds-kpi > .v { font-size: 26px; margin-top: 6px; }
+.pp-kpis .ds-kpi:hover { background: var(--ds-fill-strong); }
+.pp-stages { padding: 20px 24px 22px; }
+.pp-stages-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.pp-stages-head h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--ds-text); }
+.pp-stages-head .link-btn { border: 0; background: none; cursor: pointer; font-size: 14px; padding: 4px 0; }
+.pp-stage-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.pp-stage { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--ds-r-pill); background: var(--ds-fill); color: var(--ds-text-3); font-size: 14px; font-weight: 500; }
+.pp-stage.done { background: var(--ds-success-bg); color: var(--ds-success); }
+.pp-stage.now { background: var(--ds-accent-soft); color: var(--ds-accent-text); }
+.pp-stage.late { background: var(--ds-danger-bg); color: var(--ds-danger); }
+.pp-stage em { font-style: normal; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--ds-danger); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+.pp-none { margin: 0; font-size: 14px; }
+.pp-late-note { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13.5px; color: var(--ds-text-2); }
+.pp-late-note svg { color: var(--ds-danger); }
+
+/* ------------------------------------------------------------------ Docs */
+.pp-docs { display: grid; gap: 18px; }
+.pp-docs-card { padding: 18px 20px; }
+.pp-docs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.pp-docs-head h3 { margin: 0; }
+.pp-new-btn { border-radius: var(--ds-r-pill); }
+.pp-docs-filters { margin-bottom: 4px; }
+.pp-docs-search { position: relative; flex: 0 1 260px; }
+.pp-docs-search > svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--ds-text-3); pointer-events: none; }
+.pp-docs-search .input { padding-left: 38px; border-radius: var(--ds-r-pill); }
+.pp-doc-li { display: flex; align-items: center; gap: 4px; }
+.pp-doc-li > .lib-row { flex: 1; min-width: 0; }
+.pp-doc-remove { flex: none; opacity: .55; }
+.pp-doc-li:hover .pp-doc-remove, .pp-doc-remove:focus-visible { opacity: 1; }
+
+/* ------------------------------------------------------------------ Activity */
+.pp-activity { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.pp-proposals { padding: 20px 22px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.pp-proposals > h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--ds-text); }
+.pp-proposals > h3 span { color: var(--ds-text-3); font-weight: 500; }
+
+/* ------------------------------------------------------------------ narrow screens */
+@media (max-width: 1080px) { .pp-cards { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 768px) {
+  .pp-head { align-items: stretch; margin-bottom: 16px; }
+  .pp-head .page-title { font-size: 32px; }
+  .pp-actions { width: 100%; }
+  html .pp-add.btn { flex: 1; justify-content: center; }
+  .pp-tabs { margin-bottom: 16px; }
+  .pp-tabs .ds-seg { flex: 1; }
+  .pp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .pp-ring { padding: 18px; gap: 16px; }
+  .v2-ai-card .pp-summary-text { font-size: 15.5px; }
+  .pp-stages { padding: 18px; }
+  .pp-doc-remove { opacity: 1; }
+}

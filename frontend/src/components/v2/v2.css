@@ -140,6 +140,9 @@
 .v2-ai-card-main span { font-size: 13px; color: var(--ds-text-2); line-height: 1.45; }
 .v2-ai-card .btn-ai { flex: none; border-radius: var(--ds-r-pill); background: var(--ds-violet); color: #fff; border: 0; }
 .v2-ai-card .btn-ai:hover:not(:disabled) { background: color-mix(in srgb, var(--ds-violet) 88%, #000); color: #fff; }
+/* the design system's white secondary button (html .btn:not(…)) outranks the two rules above: the AI's own action stays violet */
+html .v2-ai-card .btn.btn-ai:not(#_) { background: var(--ds-violet); color: #fff; border: 1px solid transparent; }
+html .v2-ai-card .btn.btn-ai:not(#_):hover:not(:disabled) { background: color-mix(in srgb, var(--ds-violet) 88%, #000); color: #fff; }
 .v2-ai-card .v2-ai-dismiss { flex: none; border: 0; background: transparent; color: var(--ds-text-3); cursor: pointer; padding: 4px; border-radius: 8px; }
 
 /* ------------------------------------------------------------------ + New */

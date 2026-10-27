@@ -1,0 +1,127 @@
+/* =====================================================================================================================
+   v2 Projects / Portfolio (V2-SPEC §3.4) and the shared project pieces: status counts that filter, simple cards, the AI summary,
+   decision cards (old date → new date, Accept) and the likely-duplicate flag. Tokens only, so the dark theme follows.
+   Status colours: on track green, at risk amber, delayed red, completed blue. Violet only inside AI cards.
+   ===================================================================================================================== */
+
+.pj2 { display: grid; gap: 20px; min-width: 0; }
+.pj2 > .page-head { margin-bottom: 4px; }
+.pj2-back { display: inline-flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 500; color: var(--ds-accent); text-decoration: none; border: 0; background: none; padding: 0; cursor: pointer; font-family: inherit; }
+.pj2-back:hover { text-decoration: underline; text-underline-offset: 3px; }
+.pj2-heads { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ------------------------------------------------------------------ status counts (also the filter) */
+.pj2-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.pj2-stat { display: grid; gap: 6px; justify-items: start; padding: 22px 24px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); color: var(--ds-text);
+  font: inherit; text-align: left; cursor: pointer; box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow .18s var(--ds-ease), transform .18s var(--ds-ease); }
+.pj2-stat:hover { box-shadow: var(--ds-hover-lift); }
+.pj2-stat:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.pj2-stat.on, .pj2-stat[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--ds-text); }
+.pj2-stat b { font-size: clamp(28px, 2.6vw, 38px); font-weight: 700; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--ds-text); }
+.pj2-stat b.ok { color: var(--ds-success); } .pj2-stat b.risk { color: var(--ds-warning); } .pj2-stat b.late { color: var(--ds-danger); } .pj2-stat b.done { color: var(--ds-accent); }
+.pj2-stat span { font-size: 15px; color: var(--ds-text-3); }
+
+/* ------------------------------------------------------------------ filters (only past 10 projects) */
+.pj2-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+.pj2-filters .select { width: auto; min-width: 150px; }
+.pj2-filters .pj-search { flex: 0 1 280px; }
+
+/* ------------------------------------------------------------------ simple cards */
+.pj2-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.pj2-card { display: grid; gap: 10px; padding: 22px 24px 20px; border-radius: var(--ds-r-card); background: var(--ds-surface); color: var(--ds-text); text-decoration: none; min-width: 0;
+  box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow .18s var(--ds-ease), transform .18s var(--ds-ease); }
+.pj2-card:hover { box-shadow: var(--ds-hover-lift); transform: translateY(-1px); }
+.pj2-card:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.pj2-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
+.pj2-name { font-size: 17px; font-weight: 600; letter-spacing: -.01em; line-height: 1.3; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj2-sub { font-size: 14px; color: var(--ds-text-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj2-foot { font-size: 14px; color: var(--ds-text-3); font-variant-numeric: tabular-nums; }
+.pj2-foot .late { color: var(--ds-danger); }
+.pj2-bar { display: block; height: 6px; border-radius: 3px; background: var(--ds-fill); overflow: hidden; margin-top: 6px; }
+.pj2-bar > i { display: block; height: 100%; border-radius: 3px; background: var(--ds-text-4); max-width: 100%; transition: width .5s var(--ds-ease); }
+.pj2-bar.ok > i { background: var(--ds-success); } .pj2-bar.risk > i { background: #E8A33D; } .pj2-bar.late > i { background: var(--ds-danger); } .pj2-bar.done > i { background: var(--ds-accent-fill); }
+.pj2-pill { flex: none; display: inline-flex; align-items: center; padding: 3px 10px; border-radius: var(--ds-r-pill); font-size: 12.5px; font-weight: 600; white-space: nowrap; background: var(--ds-fill); color: var(--ds-text-2); }
+.pj2-pill.ok { background: var(--ds-success-bg); color: var(--ds-success); }
+.pj2-pill.risk { background: var(--ds-warning-bg); color: var(--ds-warning); }
+.pj2-pill.late { background: var(--ds-danger-bg); color: var(--ds-danger); }
+.pj2-pill.done { background: var(--ds-info-bg); color: var(--ds-info); }
+.pj2-empty { padding: 12px 0; }
+.pj2-list .td-title { font-weight: 600; }
+.pj2-rowbar { display: flex; align-items: center; gap: 10px; }
+.pj2-rowbar .pj2-bar { flex: 1; margin: 0; }
+.pj2-rowbar b { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------ likely duplicate (an AI card) */
+.pj2-dupes { display: grid; gap: 12px; }
+.pj2-dupe .v2-ai-card-main > span { display: grid; gap: 10px; }
+.v2-ai-card .pj2-dupe-text { color: var(--ds-text-2); }
+.v2-ai-card .pj2-dupe-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.pj2-dupe-acts .btn { border-radius: var(--ds-r-pill); }
+.pj2-dupe-acts .btn small { margin-left: 4px; color: var(--ds-text-3); font-weight: 500; }
+
+/* ------------------------------------------------------------------ Portfolio */
+.pj2-pfilters .pb-filters { margin: 0; }
+.pj2-section { display: grid; gap: 12px; min-width: 0; }
+.pj2-section > .ds-section-title { margin: 6px 0 0; }
+.pj2-summary .v2-ai-card { padding: 20px 22px; border-radius: var(--ds-r-card); }
+.pj2-summary .v2-ai-card-main > span { font-size: 16px; line-height: 1.55; color: var(--ds-text); display: grid; gap: 8px; }
+.pj2-summary .v2-ai-card-main > span .pj2-summary-by { font-size: 12.5px; color: var(--ds-text-3); }
+.pj2-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; font-size: 13.5px; color: var(--ds-text-2); }
+.pj2-status .ds-statusbar { flex: 1 1 100%; }
+.pj2-status > span > i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.pj2-status > span > i.ok { background: var(--ds-success); } .pj2-status > span > i.risk { background: #E8A33D; } .pj2-status > span > i.late { background: var(--ds-danger); }
+.pj2-calm { margin: 0; padding: 18px 22px; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); color: var(--ds-text-2); font-size: 14.5px; }
+.pj2-decisions { display: grid; gap: 14px; }
+.pj2-decision h3 { margin: 0; }
+.pj2-decision h3 a { color: inherit; text-decoration: none; }
+.pj2-decision h3 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.pj2-key { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--ds-text-3); letter-spacing: .02em; }
+.pj2-decision .acts .btn { border-radius: var(--ds-r-pill); min-width: 96px; justify-content: center; }
+.pj2-told { font-size: 14px; padding: 8px 16px; font-weight: 600; }
+.pj2-decision.accepted .ds-shift b { color: var(--ds-success); }
+.pj2-waiting, .pj2-options { grid-column: 1 / -1; }
+.pj2-waiting { justify-self: start; font-size: 13.5px; font-weight: 500; color: var(--ds-accent); text-decoration: none; }
+.pj2-options { list-style: none; margin: 0; padding: 14px 0 0; border-top: 1px solid var(--ds-line); display: grid; gap: 10px; }
+.pj2-options > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px 14px; padding: 12px 14px; border-radius: var(--ds-r-tile); background: var(--ds-surface-2); box-shadow: 0 0 0 1px var(--ds-line); }
+.pj2-option-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; font-size: 14px; }
+.pj2-effect { font-size: 13px; font-weight: 500; }
+.pj2-effect.ok { color: var(--ds-success); } .pj2-effect.late { color: var(--ds-warning); }
+.pj2-option-main .link-btn { font-size: 13px; border: 0; background: none; cursor: pointer; padding: 0; }
+.pj2-option-detail { grid-column: 1 / -1; font-size: 13px; color: var(--ds-text-2); }
+.pj2-option-detail ul { margin: 0 0 6px; padding-left: 18px; }
+.pj2-option-detail p { margin: 0; }
+.pj2-attention { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.pj2-attention a { display: grid; gap: 4px; padding: 16px 18px; border-radius: var(--ds-r-tile); background: var(--ds-surface); color: var(--ds-text); text-decoration: none; box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.pj2-attention a:hover { box-shadow: var(--ds-hover-lift); }
+.pj2-att-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.pj2-att-head b { font-size: 15px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj2-attention small { font-size: 12.5px; color: var(--ds-text-3); }
+.pj2-att-why { font-size: 13px; color: var(--ds-text-2); }
+.pj2-slips { list-style: none; margin: 0; padding: 4px 20px; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
+.pj2-slips li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; padding: 12px 0; border-top: 1px solid var(--ds-line); font-size: 14px; }
+.pj2-slips li:first-child { border-top: 0; }
+.pj2-slips a { color: var(--ds-text); text-decoration: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj2-slips small { grid-column: 1 / -1; color: var(--ds-text-3); font-size: 12.5px; }
+.pj2-shift s { color: var(--ds-text-3); }
+.pj2-note { margin: 0; font-size: 13.5px; color: var(--ds-text-2); }
+.pj2-portfolio .pb-money, .pj2-portfolio .pb-capacity { margin: 0; }
+
+/* ------------------------------------------------------------------ narrow screens */
+@media (max-width: 1080px) { .pj2-stats { gap: 12px; } .pj2-stat { padding: 18px; } }
+@media (max-width: 768px) {
+  .pj2 { gap: 16px; }
+  .pj2 > .page-head .page-actions { width: 100%; }
+  .pj2-heads { justify-content: space-between; width: 100%; }
+  .pj2-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .pj2-stat { padding: 14px 14px 12px; border-radius: 18px; }
+  .pj2-stat b { font-size: 26px; }
+  .pj2-stat span { font-size: 13px; }
+  .pj2-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .pj2-card { padding: 18px 18px 16px; }
+  .pj2-filters .pj-search { flex: 1 1 100%; }
+  .pj2-filters .select { flex: 1 1 calc(50% - 6px); min-width: 0; width: calc(50% - 6px); }
+  .pj2-options > li { grid-template-columns: minmax(0, 1fr); }
+  .pj2-decision .acts { justify-content: stretch; }
+  .pj2-decision .acts .btn { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .pj2-card, .pj2-stat, .pj2-bar > i { transition: none; } .pj2-card:hover { transform: none; } }

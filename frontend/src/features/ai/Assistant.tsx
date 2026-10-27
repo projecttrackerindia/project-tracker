@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { ApiError, get, post, put } from '../../api/client';
 import { actionItemApi } from '../../api/endpoints';
@@ -97,33 +97,39 @@ function Thinking({ label }: { label: string }) {
 export function RiskButton({ projectId }: { projectId: string }) {
   const enabled = useAi();
   const [open, setOpen] = useState(false);
-  const [risk, setRisk] = useState<AiRisk | null>(null);
-  const [error, setError] = useState<string | null>(null);
   if (!enabled) return null;
-  const run = async () => {
-    setOpen(true); setRisk(null); setError(null);
-    try { setRisk(await aiApi.risk(projectId)); } catch (e) { setError(errText(e, 'The assistant could not answer.')); }
-  };
   return (
     <>
-      <button type="button" className="btn btn-ghost btn-sm asst-ghost" onClick={() => void run()} title="Ask the assistant how likely this project is to be late"><Sparkle size={14} /> Delay risk</button>
-      {open && (
-        <Modal title="Delay risk" subtitle="Read from the project's dates, progress, slipped tasks and blockers." onClose={() => setOpen(false)}
-          footer={<button type="button" className="btn btn-primary" onClick={() => setOpen(false)}>Close</button>}>
-          {error ? <div className="form-error" role="alert">{error}</div> : !risk ? <Thinking label="Assessing the project…" /> : (
-            <div className="asst-risk">
-              <div className={`asst-risk-gauge ${risk.risk}`} style={{ ['--p' as string]: risk.score }}><b>{risk.score}</b><span>{risk.risk} risk</span></div>
-              <div className="asst-risk-main">
-                <h4>{risk.headline}</h4>
-                {risk.reasons.length > 0 && <><div className="asst-section-title">Why</div><ul>{risk.reasons.map((r) => <li key={r}>{r}</li>)}</ul></>}
-                {risk.actions.length > 0 && <><div className="asst-section-title">What to do</div><ul className="asst-todo">{risk.actions.map((r) => <li key={r}><Icon name="arrowRight" size={13} />{r}</li>)}</ul></>}
-                <div className="asst-foot-note">Generated {formatDateTime(risk.generatedAt)}. A planning aid - check it against what you know.</div>
-              </div>
-            </div>
-          )}
-        </Modal>
-      )}
+      <button type="button" className="btn btn-ghost btn-sm asst-ghost" onClick={() => setOpen(true)} title="Ask the assistant how likely this project is to be late"><Sparkle size={14} /> Delay risk</button>
+      {open && <RiskModal projectId={projectId} onClose={() => setOpen(false)} />}
     </>
+  );
+}
+
+/** "Delay risk": the assistant reads the project's dates, progress, slipped tasks and blockers, and says how likely it is to be late. */
+export function RiskModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const [risk, setRisk] = useState<AiRisk | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    aiApi.risk(projectId).then((r) => { if (live) setRisk(r); }, (e: unknown) => { if (live) setError(errText(e, 'The assistant could not answer.')); });
+    return () => { live = false; };
+  }, [projectId]);
+  return (
+    <Modal title="Delay risk" subtitle="Read from the project's dates, progress, slipped tasks and blockers." onClose={onClose}
+      footer={<button type="button" className="btn btn-primary" onClick={onClose}>Close</button>}>
+      {error ? <div className="form-error" role="alert">{error}</div> : !risk ? <Thinking label="Assessing the project…" /> : (
+        <div className="asst-risk">
+          <div className={`asst-risk-gauge ${risk.risk}`} style={{ ['--p' as string]: risk.score }}><b>{risk.score}</b><span>{risk.risk} risk</span></div>
+          <div className="asst-risk-main">
+            <h4>{risk.headline}</h4>
+            {risk.reasons.length > 0 && <><div className="asst-section-title">Why</div><ul>{risk.reasons.map((r) => <li key={r}>{r}</li>)}</ul></>}
+            {risk.actions.length > 0 && <><div className="asst-section-title">What to do</div><ul className="asst-todo">{risk.actions.map((r) => <li key={r}><Icon name="arrowRight" size={13} />{r}</li>)}</ul></>}
+            <div className="asst-foot-note">Generated {formatDateTime(risk.generatedAt)}. A planning aid - check it against what you know.</div>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 

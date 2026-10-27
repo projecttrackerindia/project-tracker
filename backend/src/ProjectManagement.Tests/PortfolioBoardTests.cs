@@ -51,9 +51,12 @@ public class PortfolioBoardTests(ApiFactory factory)
         var applied = await c.Post($"/api/v1/portfolio/decisions/{project}/apply", new { option = "accept_date" });
         Assert.True(applied.Ok, applied.ToString());
         Assert.Equal(1, applied.Data!["proposals"]!.GetValue<int>());
+        var made = applied.Data!["findingIds"]!.AsArray();   // so "Accept" on the portfolio can approve what it proposed, in one tap
+        Assert.Single(made);
         Assert.Equal(409, (int)(await c.Post($"/api/v1/portfolio/decisions/{project}/apply", new { option = "cut_scope" })).Status);   // one set at a time
         var findings = (await c.Get($"/api/v1/projects/{project}/agent/findings?status=Proposed")).Data!["items"]!.AsArray();
         var date = findings.Single(f => S(f!["kind"]) == "Decision")!;
+        Assert.Equal(S(made[0]), S(date["id"]));
         Assert.True((await c.Post($"/api/v1/agent/findings/{date["id"]}/approve")).Ok);
         Assert.Equal(S(accept["finish"]), S((await c.Get($"/api/v1/projects/{project}")).Data!["project"]!["dueDate"]));
 

@@ -1,207 +1,23 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon } from '../../components/Icon';
-import { toast } from '../../stores/ui';
-import { Kpi, Modal, PageLoader } from '../../components/ui';
+import { Modal, PageLoader } from '../../components/ui';
 import { useQuery } from '@tanstack/react-query';
 import { formatDate } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { useTeamLens } from '../../lib/teamLens';
-import { aiWorkspaceApi, type PortfolioRisk, type ScenarioOutcome } from '../ai/aiApi';
-import { PortfolioActionItems } from './PortfolioActionItems';
-import { Sparkle, useAi } from '../ai/Assistant';
-import { CapacitySection, DecisionsSection, ExportMenu, filterCount, MoneySection, PortfolioFilters, SummaryCard, TimelineView } from './PortfolioBoard';
-import { portfolioApi, type PortfolioFilter } from './portfolioApi';
+import { aiWorkspaceApi, type ScenarioOutcome } from '../ai/aiApi';
 
-/** The portfolio worked out by rules over the projects the person may open: no model, no credits, every plan. Shared by the page and each project. */
+/** The portfolio worked out by rules over the projects the person may open: no model, no credits, every plan. Shared by Portfolio and each project. */
 export function usePortfolioBrief() {
   const { teamId } = useTeamLens();
   return useWsQuery(['project-status', 'brief', teamId], () => aiWorkspaceApi.portfolioBrief(teamId), { refetchInterval: 120_000, staleTime: 60_000, placeholderData: (prev) => prev });
-}
-
-/** Opens the AI workspace with a question ready (the assistant then reads the same figures through its own tool and reasons from them). */
-function useAsk() {
-  const nav = useNavigate();
-  return (ask: string) => nav('/ai', { state: { ask, ts: Date.now() } });
-}
-
-const days = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
-
-function Forecast({ r }: { r: PortfolioRisk }) {
-  if (r.projectedFinish === null) return <span className="pi-forecast none">{r.openTasks === 0 ? 'Nothing left to do' : 'No forecast: nothing finished in the last 4 weeks'}</span>;
-  const late = r.projectedSlipDays ?? 0;
-  return (
-    <span className={`pi-forecast ${late > 0 ? 'late' : 'ok'}`} title="Remaining open tasks at the pace of the last 28 days. An estimate, not a commitment.">
-      Likely finish {formatDate(r.projectedFinish)}{r.projectedSlipDays !== null && <> · {late > 0 ? `${days(late)} late` : late < 0 ? `${days(-late)} early` : 'on time'}</>} · {r.confidence} confidence
-    </span>
-  );
-}
-
-function RiskCard({ r, onPick }: { r: PortfolioRisk; onPick: (id: string) => void }) {
-  return (
-    <button type="button" className={`pi-card ${r.level.toLowerCase()}`} onClick={() => onPick(r.projectId)}>
-      <span className="pi-card-head"><b>{r.name}</b><em className={`pi-level ${r.level.toLowerCase()}`}>{r.level}</em></span>
-      <span className="pi-card-meta">{r.key} · {r.progress}% done{r.inProgressTasks > 0 ? ` · ${r.inProgressTasks} in progress` : ''} · due {formatDate(r.dueDate)}{r.owner ? ` · ${r.owner}` : ''}</span>
-      <Forecast r={r} />
-      <ul>{r.reasons.slice(0, 3).map((x) => <li key={x}>{x}</li>)}</ul>
-    </button>
-  );
-}
-
-/** The Portfolio page's front: where the projects stand, which need attention and why, what moved, and who is stretched. */
-export function PortfolioBriefPanel({ onPick }: { onPick: (id: string) => void }) {
-  const ai = useAi();
-  const ask = useAsk();
-  const [itemsOpen, setItemsOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const { teamId } = useTeamLens();
-  const [params, setParams] = useSearchParams();
-  const filter: PortfolioFilter = { teamId, ownerId: params.get('owner'), groupId: params.get('group'), health: params.get('health'), dueFrom: params.get('from'), dueTo: params.get('to') };
-  const view = params.get('view') === 'timeline' ? 'timeline' : 'board';
-  const setFilter = (f: PortfolioFilter) => {
-    const n = new URLSearchParams(params);
-    for (const [k, v] of [['owner', f.ownerId], ['group', f.groupId], ['health', f.health], ['from', f.dueFrom], ['to', f.dueTo]] as const) { if (v) n.set(k, v); else n.delete(k); }
-    setParams(n, { replace: true });
-  };
-  // v2: view=portfolio is the board (Projects › Portfolio), view=timeline the timeline.
-  const setView = (v: 'board' | 'timeline') => { const n = new URLSearchParams(params); n.set('view', v === 'board' ? 'portfolio' : v); setParams(n, { replace: true }); };
-  const q = useWsQuery(['portfolio', 'board', filter], () => portfolioApi.board(filter), { refetchInterval: 120_000, staleTime: 60_000, placeholderData: (prev) => prev });
-  const [sending, setSending] = useState(false);
-  const sendBrief = async () => {
-    setSending(true);
-    try { const r = await aiWorkspaceApi.sendBrief(teamId); toast(r.sent ? 'The brief is on its way to you, in the app and by e-mail.' : r.reason ?? 'Nothing was sent.', r.sent ? 'success' : 'info'); }
-    catch { toast('Could not send the brief.', 'error'); }
-    finally { setSending(false); }
-  };
-  const exportAs = async (format: 'xlsx' | 'pdf') => {
-    try { await portfolioApi.export(filter, format); } catch { toast('The export could not be made.', 'error'); }
-  };
-  if (q.isLoading) return <PageLoader />;
-  const board = q.data;
-  const b = board?.brief;
-  if (!board || !b || (b.projects === 0 && !filter.ownerId && !filter.groupId && !filter.health && !filter.dueFrom && !filter.dueTo)) {
-    return (
-      <div className="ps-placeholder"><Icon name="monitor" size={40} /><h2>Portfolio</h2><p>Open a group on the left and choose a project to see where it stands. Once there are active projects, this page also shows which need attention, and why.</p></div>
-    );
-  }
-  const attention = b.ranked.filter((r) => r.score >= 2).slice(0, 6);
-  const nFilters = filterCount(filter);
-  const showFilters = filtersOpen || nFilters > 0;
-  return (
-    <div className="pi">
-      <header className="pi-head">
-        <div>
-          <span className="eyebrow">As of {formatDate(b.asOf)} · {b.projects} active project{b.projects === 1 ? '' : 's'}</span>
-          <h1 className="pi-title">Portfolio today</h1>
-        </div>
-        <div className="pi-ask">
-          <nav className="seg pb-views" aria-label="Portfolio view">
-            <button type="button" className={view === 'board' ? 'on' : ''} aria-pressed={view === 'board'} onClick={() => setView('board')}>Board</button>
-            <button type="button" className={view === 'timeline' ? 'on' : ''} aria-pressed={view === 'timeline'} onClick={() => setView('timeline')}>Timeline</button>
-          </nav>
-          <button type="button" className="btn btn-ghost" aria-expanded={showFilters} aria-controls="pb-filters" onClick={() => setFiltersOpen((v) => !v)}>Filters · {nFilters}</button>
-          <ExportMenu onExport={(f) => void exportAs(f)} />
-          <button type="button" className="btn btn-ghost" onClick={() => setItemsOpen(true)}>Action items{b.openActionItems > 0 && <span className="ps-count">{b.openActionItems}</span>}</button>
-          <button type="button" className="btn btn-ghost" disabled={sending} onClick={() => void sendBrief()} title="Send this brief to you as a notice, in the app and by e-mail">Send me this</button>
-          {ai && <button type="button" className="btn btn-dark" onClick={() => ask('Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.')}>Risk review</button>}
-        </div>
-      </header>
-
-      {showFilters && <div id="pb-filters"><PortfolioFilters board={board} filter={filter} onChange={setFilter} /></div>}
-      {view === 'timeline' ? <TimelineView filter={filter} onPick={onPick} /> : <>
-      <div className="ds-kpis pi-kpis-row">
-        <Kpi label="On track" value={b.onTrack} tone={b.onTrack ? 'success' : undefined} />
-        <Kpi label="At risk" value={b.atRisk} tone={b.atRisk ? 'warning' : undefined} />
-        <Kpi label="Delayed" value={b.delayed} tone={b.delayed ? 'danger' : undefined} />
-        <Kpi label="Overdue tasks" value={b.overdueTasks} tone={b.overdueTasks ? 'danger' : undefined} />
-        <Kpi label="Blocked tasks" value={b.blockedTasks} tone={b.blockedTasks ? 'warning' : undefined} />
-        <Kpi label="Action items overdue" value={b.overdueActionItems} tone={b.overdueActionItems ? 'danger' : undefined} caption={`of ${b.openActionItems} open`} />
-      </div>
-      <SummaryCard board={board} filter={filter} ai={!!ai} />
-
-      <DecisionsSection decisions={board.decisions} filter={filter} />
-      <MoneySection m={board.money} />
-      <CapacitySection c={board.capacity} />
-
-      {b.headlines.length > 0 && <ul className="pi-headlines">{b.headlines.map((h) => <li key={h}>{h}</li>)}</ul>}
-
-      <section aria-label="Projects that need attention">
-        <h3>Needs attention <em>{attention.length}</em></h3>
-        {attention.length === 0 ? <p className="ps-ok"><Icon name="checkCircle" size={14} /> Nothing needs attention right now.</p> : (
-          <div className="pi-cards">{attention.map((r) => <RiskCard key={r.projectId} r={r} onPick={onPick} />)}</div>
-        )}
-      </section>
-
-      {b.recentSlips.length > 0 && (
-        <section aria-label="Delivery dates that moved">
-          <h3>Delivery dates moved in the last 30 days <em>{b.dateChangesLast30Days}</em></h3>
-          <ul className="pi-slips">
-            {b.recentSlips.slice(0, 5).map((s) => (
-              <li key={`${s.projectId}-${s.at}`}>
-                <b>{s.project}</b> {formatDate(s.previous)} → {formatDate(s.revised)}{s.daysShifted !== null && <em className={s.daysShifted > 0 ? 'late' : 'early'}>{s.daysShifted > 0 ? '+' : ''}{s.daysShifted}d</em>}
-                <span>{s.reason ?? 'No reason given'}{s.dependency ? ` · waiting on ${s.dependency}` : ''}{s.by ? ` · ${s.by}` : ''}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {b.stretched.length > 0 && (
-        <section aria-label="People carrying several troubled projects">
-          <h3>Carrying several projects in trouble</h3>
-          <p className="pi-people">{b.stretched.map((p) => `${p.name}: ${p.projects} projects, ${p.openTasks} open tasks, ${p.overdueTasks} overdue`).join('  ·  ')}</p>
-        </section>
-      )}
-      </>}
-      {itemsOpen && <PortfolioActionItems onClose={() => setItemsOpen(false)} />}
-    </div>
-  );
-}
-
-/** One project's place in the portfolio, kept to one line: its risk and forecast. "Why" opens the reasons and the shortcuts to ask the assistant. */
-export function ProjectInsight({ projectId, onActionItems }: { projectId: string; onActionItems: () => void }) {
-  const q = usePortfolioBrief();
-  const ai = useAi();
-  const ask = useAsk();
-  const [open, setOpen] = useState(false);
-  const [whatIf, setWhatIf] = useState(false);
-  const r = q.data?.ranked.find((x) => x.projectId === projectId);
-  if (!r) return null;
-  const more = r.reasons.length > 0 || ai;
-  // The risk banner (design p18): an icon tile, the level and the forecast in one bold line, the first reason under it, and Why? / What if…
-  const tone = r.level === 'Critical' || r.level === 'High' ? 'risk' : r.level === 'Medium' ? 'warn' : 'ok';
-  const late = r.projectedSlipDays ?? 0;
-  const forecast = r.projectedFinish === null ? (r.openTasks === 0 ? 'nothing left to do' : 'no forecast possible')
-    : `likely ${formatDate(r.projectedFinish)}${r.projectedSlipDays !== null ? (late > 0 ? `, ${days(late)} late` : late < 0 ? `, ${days(-late)} early` : ', on time') : ''}`;
-  return (
-    <section className={`pi-project ds-banner ${tone} ${r.level.toLowerCase()} ${open ? 'open' : ''}`} aria-label="Risk and forecast">
-      <span className="ico" aria-hidden="true">{tone === 'ok' ? <Icon name="check" size={22} /> : '!'}</span>
-      <div className="txt">
-        <b><span className={`pi-level ${r.level.toLowerCase()}`}>{r.level} risk</span> — {forecast}</b>
-        <span>{r.reasons[0] ?? (r.projectedFinish ? `At the pace of the last 4 weeks · ${r.confidence} confidence.` : 'Nothing has finished in the last 4 weeks.')}</span>
-      </div>
-      <div className="acts">
-        {r.overdueActionItems > 0 && <button type="button" className="btn btn-ghost pi-chip" onClick={onActionItems}>{r.overdueActionItems} overdue action item{r.overdueActionItems === 1 ? '' : 's'}</button>}
-        {more && <button type="button" className="btn btn-ghost pi-why" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'Why?'}</button>}
-        <button type="button" className={`btn ${tone === 'risk' ? 'btn-risk' : 'btn-dark'} pi-whatif-btn`} onClick={() => setWhatIf(true)} title="See when it would finish if the work slipped, people joined or scope was cut">What if…</button>
-      </div>
-      {open && r.reasons.length > 0 && <ul className="pi-reasons">{r.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
-      {open && ai && (
-        <div className="pi-ask">
-          <button type="button" className="btn btn-soft btn-sm" onClick={() => ask(`Analyse ${r.name} (${r.key}): why is it ${r.health === 'OnTrack' ? 'where it is' : r.health === 'Delayed' ? 'delayed' : 'at risk'}, when will it really finish, and what should I do about it? Include its action items.`)}><Sparkle size={14} /> Analyse with AI</button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => ask(`Prepare the changes to get ${r.name} (${r.key}) back on track: reassign overloaded work, set reminders on its overdue action items, and propose realistic dates. Show me what you would change.`)}>Plan the recovery</button>
-        </div>
-      )}
-      {whatIf && <WhatIf projectId={r.projectId} name={r.name} onClose={() => setWhatIf(false)} />}
-    </section>
-  );
 }
 
 const outcome = (o: ScenarioOutcome) => o.finish ? formatDate(o.finish) : 'Cannot be forecast';
 const lateness = (o: ScenarioOutcome) => o.slipDays == null ? null : o.slipDays > 0 ? `${o.slipDays} day${o.slipDays === 1 ? '' : 's'} after the due date` : o.slipDays < 0 ? `${-o.slipDays} day${o.slipDays === -1 ? '' : 's'} before the due date` : 'on the due date';
 
 /** "What if": when the project would finish if the work started later, more people joined or some tasks were cut. Arithmetic over its own pace; nothing is changed. */
-function WhatIf({ projectId, name, onClose }: { projectId: string; name: string; onClose: () => void }) {
+export function WhatIf({ projectId, name, onClose }: { projectId: string; name: string; onClose: () => void }) {
   const { teamId } = useTeamLens();
   const [slip, setSlip] = useState(0); const [add, setAdd] = useState(0); const [cut, setCut] = useState(0);
   const q = useQuery({

@@ -30,40 +30,47 @@ const SOURCES: { key: Source; icon: IconName; title: string; text: string; show?
 ];
 const LANGUAGE = Object.fromEntries(CAPTION_LANGUAGES);
 
-/** The Agent tab of a project: switch the agent on, choose what it reads, give it a transcript, and review what it found. */
+/**
+ * A project's agent, in two parts since v2: what it proposed (the review queue, on the project's Activity tab beside one on/off switch) and
+ * how it behaves (what it reads, the meeting bot and its four levels, minutes, morning updates, the Google account, accuracy, credits), set in
+ * Settings › AI › Project agent. `ProjectAgentTab` shows both together.
+ */
 export function ProjectAgentTab({ projectId, archived }: { projectId: string; archived: boolean }) {
+  return (
+    <div className="ag-layout">
+      <section className="ag-main"><ProjectAgentQueue projectId={projectId} archived={archived} /></section>
+      <aside className="ag-side"><ProjectAgentSettings projectId={projectId} archived={archived} /></aside>
+    </div>
+  );
+}
+
+function useAgent(projectId: string) {
   const wid = useWorkspaceId();
   const q = useWsQuery(['agent', 'project', projectId], () => agentApi.get(projectId));
-  const [view, setView] = useState<View>('proposed');
-  const findings = useWsQuery(['agent', 'findings', projectId, view], () => agentApi.findings(projectId, view), { enabled: !!q.data });
   const [busy, setBusy] = useState<string | null>(null);
-  const [transcript, setTranscript] = useState(false);
-  const [tuning, setTuning] = useState(false);
   const refresh = () => { void invalidateWorkspace(wid, 'agent'); };
-
-  // A failed background refresh keeps what is on screen (and any open dialog); only a first load that fails shows the error.
-  if (!q.data) return q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : <PageLoader />;
-  const a = q.data;
-  const manage = a.canManage && !archived;
-
   const save = async (patch: AgentSettingsPatch & { enabled?: boolean }) => {
+    if (!q.data) return;
     setBusy(Object.keys(patch)[0]);
     try {
-      await agentApi.save(projectId, { enabled: a.enabled, ...patch });
+      await agentApi.save(projectId, { enabled: q.data.enabled, ...patch });
       refresh();
       if (patch.enabled) toast('The project agent is on. It reads new mail, chat and meetings from now on.');
+      else if (patch.enabled === false) toast('The project agent is off. Nothing it found is lost.');
     } catch (e) { toast(errText(e, 'Could not save.'), 'error'); }
     finally { setBusy(null); }
   };
-  const run = async () => {
-    setBusy('run');
-    try {
-      const r = await agentApi.run(projectId);
-      toast(r?.status === 'failed' ? r.error ?? 'The reading failed.' : r ? `Read ${r.signalCount} new source${r.signalCount === 1 ? '' : 's'}: ${r.findingCount} to review.` : 'Nothing new to read.', r?.status === 'failed' ? 'error' : undefined);
-      refresh();
-    } catch (e) { toast(errText(e, 'Could not run the agent.'), 'error'); }
-    finally { setBusy(null); }
-  };
+  return { q, busy, setBusy, refresh, save, wid };
+}
+
+/** The agent's proposals for one project: to review, approved, dismissed or all, with Approve all. */
+export function ProjectAgentQueue({ projectId, archived }: { projectId: string; archived: boolean }) {
+  const { q, busy, setBusy, refresh, wid } = useAgent(projectId);
+  const [view, setView] = useState<View>('proposed');
+  const findings = useWsQuery(['agent', 'findings', projectId, view], () => agentApi.findings(projectId, view), { enabled: !!q.data?.enabled });
+  if (!q.data) return q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : <PageLoader />;
+  const a = q.data;
+  if (!a.enabled) return null;
   const approveAll = async () => {
     if (!(await confirmDialog({ title: 'Approve the new items and notes?', message: 'New tasks, tickets and action items are created as you, and notes are recorded. Changes to existing work (status, owner, dates) stay here to approve one by one. Anything that cannot be done stays with the reason.', confirmText: 'Approve all' }))) return;
     setBusy('all');
@@ -75,6 +82,47 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
     } catch (e) { toast(errText(e, 'Could not approve them.'), 'error'); }
     finally { setBusy(null); }
   };
+  const items = findings.data?.items ?? [];
+  const last = a.runs[0];
+  return (
+    <div className="ag-queue" aria-label="The agent's proposals">
+      <div className="ag-queue-head">
+        <div className="seg" role="tablist" aria-label="Proposals">
+          {VIEWS.map((v) => <button key={v.id} type="button" role="tab" aria-selected={view === v.id} className={view === v.id ? 'on' : ''} onClick={() => setView(v.id)}>
+            {v.label}{v.id === 'proposed' && a.pending > 0 && <em className="ag-count">{a.pending}</em>}</button>)}
+        </div>
+        {view === 'proposed' && a.pending > 1 && findings.data?.canDecide && !archived &&
+          <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => void approveAll()}>{busy === 'all' ? <span className="spinner" /> : <Icon name="checks" size={14} />}Approve all</button>}
+      </div>
+      {last?.summary && view === 'proposed' && <p className="ag-summary"><Icon name="sparkle" size={14} />{last.summary}</p>}
+      {findings.isLoading ? <PageLoader /> : findings.isError ? <ErrorState error={findings.error} retry={() => findings.refetch()} />
+        : items.length === 0 ? <EmptyState icon="checkCircle" title={view === 'proposed' ? 'Nothing to review' : 'Nothing here yet'}
+            text={view === 'proposed' ? 'New mail, chat and meetings are read as they come in.' : undefined} />
+        : <div className="ag-list">{items.map((f) => <FindingCard key={f.id} f={f} canDecide={!!findings.data?.canDecide && !archived} />)}</div>}
+    </div>
+  );
+}
+
+/** How the agent behaves on one project: on or off, what it reads, the meeting bot, minutes, morning updates, autonomy, accuracy and credits. */
+export function ProjectAgentSettings({ projectId, archived }: { projectId: string; archived: boolean }) {
+  const { q, busy, setBusy, refresh, save } = useAgent(projectId);
+  const [transcript, setTranscript] = useState(false);
+  const [tuning, setTuning] = useState(false);
+
+  // A failed background refresh keeps what is on screen (and any open dialog); only a first load that fails shows the error.
+  if (!q.data) return q.isError ? <ErrorState error={q.error} retry={() => q.refetch()} /> : <PageLoader />;
+  const a = q.data;
+  const manage = a.canManage && !archived;
+
+  const run = async () => {
+    setBusy('run');
+    try {
+      const r = await agentApi.run(projectId);
+      toast(r?.status === 'failed' ? r.error ?? 'The reading failed.' : r ? `Read ${r.signalCount} new source${r.signalCount === 1 ? '' : 's'}: ${r.findingCount} to review.` : 'Nothing new to read.', r?.status === 'failed' ? 'error' : undefined);
+      refresh();
+    } catch (e) { toast(errText(e, 'Could not run the agent.'), 'error'); }
+    finally { setBusy(null); }
+  };
   const copy = async () => {
     if (!a.mailboxAddress) return;
     try { await navigator.clipboard.writeText(a.mailboxAddress); toast('Address copied.'); } catch { toast(a.mailboxAddress); }
@@ -84,7 +132,7 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
     try { await agentApi.resetMailbox(projectId); refresh(); } catch (e) { toast(errText(e, 'Could not change the address.'), 'error'); }
   };
   const allowTranscripts = async () => {
-    try { const { url } = await integrationsApi.googleConnectUrl(`/projects/${projectId}?tab=agent`, false, false, false, true); window.location.assign(url); }
+    try { const { url } = await integrationsApi.googleConnectUrl(`/settings/ai/project-agent?project=${projectId}`, false, false, false, true); window.location.assign(url); }
     catch (e) { toast(errText(e, 'Could not open Google.'), 'error'); }
   };
   const sendMinutes = async (runId: string, again: boolean) => {
@@ -116,116 +164,122 @@ export function ProjectAgentTab({ projectId, archived }: { projectId: string; ar
     );
   }
 
-  const items = findings.data?.items ?? [];
-  const last = a.runs[0];
   return (
-    <div className="ag-layout">
-      <section className="ag-main">
-        <div className="ag-queue-head">
-          <div className="seg" role="tablist" aria-label="Proposals">
-            {VIEWS.map((v) => <button key={v.id} type="button" role="tab" aria-selected={view === v.id} className={view === v.id ? 'on' : ''} onClick={() => setView(v.id)}>
-              {v.label}{v.id === 'proposed' && a.pending > 0 && <em className="ag-count">{a.pending}</em>}</button>)}
-          </div>
-          {view === 'proposed' && a.pending > 1 && findings.data?.canDecide && !archived &&
-            <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => void approveAll()}>{busy === 'all' ? <span className="spinner" /> : <Icon name="checks" size={14} />}Approve all</button>}
+    <div className="ag-settings">
+      <div className="card ag-panel">
+        <div className="ag-panel-head">
+          <h3><Icon name="agent" size={16} /> Project agent</h3>
+          {manage && <button type="button" className="switch on" role="switch" aria-checked aria-label="Project agent on" disabled={busy !== null} onClick={() => void save({ enabled: false })} />}
         </div>
-        {last?.summary && view === 'proposed' && <p className="ag-summary"><Icon name="sparkle" size={14} />{last.summary}</p>}
-        {findings.isLoading ? <PageLoader /> : findings.isError ? <ErrorState error={findings.error} retry={() => findings.refetch()} />
-          : items.length === 0 ? <EmptyState icon="checkCircle" title={view === 'proposed' ? 'Nothing to review' : 'Nothing here yet'}
-              text={view === 'proposed' ? 'New mail, chat and meetings are read as they come in. Add a transcript or run the agent to read what is new now.' : undefined} />
-          : <div className="ag-list">{items.map((f) => <FindingCard key={f.id} f={f} canDecide={!!findings.data?.canDecide && !archived} />)}</div>}
-      </section>
-
-      <aside className="ag-side">
-        <div className="card ag-panel">
-          <div className="ag-panel-head">
-            <h3><Icon name="agent" size={16} /> Project agent</h3>
-            {manage && <button type="button" className="switch on" role="switch" aria-checked aria-label="Project agent on" disabled={busy !== null} onClick={() => void save({ enabled: false })} />}
-          </div>
-          {a.lastError && <div className="form-error" role="alert">{a.lastError}</div>}
-          <div className="ag-actions">
-            {manage && <button type="button" className="btn btn-primary btn-sm" onClick={() => setTranscript(true)}><Icon name="note" size={14} />Add transcript</button>}
-            {manage && <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => void run()}>{busy === 'run' ? <span className="spinner" /> : <Icon name="refresh" size={14} />}Read new now</button>}
-            {a.liveBotAvailable && a.readMeetings && <Link className="btn btn-ghost btn-sm" to={`/meet/notetaker?project=${projectId}`}><Icon name="video" size={14} />Send to a call</Link>}
-          </div>
-          <p className="ag-meta">{a.lastRunAt ? `Last read ${timeAgo(a.lastRunAt)}` : 'Has not read anything yet'} · {a.runsThisMonth}/{a.monthlyRunLimit} readings this month
-            {a.actingUserName && <> · acts as {a.actingUserName}</>}</p>
-          <CreditMeter a={a} manage={manage} save={save} />
+        {a.lastError && <div className="form-error" role="alert">{a.lastError}</div>}
+        <div className="ag-actions">
+          {manage && <button type="button" className="btn btn-primary btn-sm" onClick={() => setTranscript(true)}><Icon name="note" size={14} />Add transcript</button>}
+          {manage && <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => void run()}>{busy === 'run' ? <span className="spinner" /> : <Icon name="refresh" size={14} />}Read new now</button>}
+          {a.liveBotAvailable && a.readMeetings && <Link className="btn btn-ghost btn-sm" to={`/talk?f=meetings&s=notetaker&project=${projectId}`}><Icon name="video" size={14} />Send to a call</Link>}
         </div>
+        <p className="ag-meta">{a.lastRunAt ? `Last read ${timeAgo(a.lastRunAt)}` : 'Has not read anything yet'} · {a.runsThisMonth}/{a.monthlyRunLimit} readings this month
+          {a.actingUserName && <> · acts as {a.actingUserName}</>}</p>
+        <CreditMeter a={a} manage={manage} save={save} />
+      </div>
 
-        {a.mailboxAddress && (
-          <div className="card ag-panel">
-            <h4 className="ag-panel-title"><Icon name="mail" size={14} /> Project email address</h4>
-            <div className="ag-address"><code>{a.mailboxAddress}</code><button type="button" className="btn btn-ghost btn-sm" onClick={() => void copy()} aria-label="Copy the address"><Icon name="copy" size={14} /></button></div>
-            <p className="ag-hint">Copy it on client and team emails, or forward mail to it. Anyone can write to it, so the agent treats what it says as information only.
-              {manage && <> <button type="button" className="ag-link" onClick={() => void resetMailbox()}>New address</button></>}</p>
-          </div>
-        )}
-
+      {a.mailboxAddress && (
         <div className="card ag-panel">
-          <h4 className="ag-panel-title"><Icon name="layers" size={14} /> What it reads</h4>
-          <ul className="ag-sources">
-            {SOURCES.filter((s) => !s.show || s.show(a)).map((s) => {
-              const on = a[s.key];
-              const blocked = s.key === 'liveBot' && !a.liveBotAvailable;
-              return (
-                <li key={s.key}>
-                  <Icon name={s.icon} size={15} />
-                  <span><b>{s.title}</b><small>{blocked ? 'The meeting bot is not running on this installation yet' : s.text}</small></span>
-                  <button type="button" className={`switch ${on && !blocked ? 'on' : ''}`} role="switch" aria-checked={on && !blocked} aria-label={s.title}
-                    disabled={!manage || busy !== null || blocked} onClick={() => void save({ [s.key]: !on })} />
-                </li>
-              );
-            })}
+          <h4 className="ag-panel-title"><Icon name="mail" size={14} /> Project email address</h4>
+          <div className="ag-address"><code>{a.mailboxAddress}</code><button type="button" className="btn btn-ghost btn-sm" onClick={() => void copy()} aria-label="Copy the address"><Icon name="copy" size={14} /></button></div>
+          <p className="ag-hint">Copy it on client and team emails, or forward mail to it. Anyone can write to it, so the agent treats what it says as information only.
+            {manage && <> <button type="button" className="ag-link" onClick={() => void resetMailbox()}>New address</button></>}</p>
+        </div>
+      )}
+
+      <div className="card ag-panel">
+        <h4 className="ag-panel-title"><Icon name="layers" size={14} /> What it reads</h4>
+        <ul className="ag-sources">
+          {SOURCES.filter((s) => !s.show || s.show(a)).map((s) => {
+            const on = a[s.key];
+            const blocked = s.key === 'liveBot' && !a.liveBotAvailable;
+            return (
+              <li key={s.key}>
+                <Icon name={s.icon} size={15} />
+                <span><b>{s.title}</b><small>{blocked ? 'The meeting bot is not running on this installation yet' : s.text}</small></span>
+                <button type="button" className={`switch ${on && !blocked ? 'on' : ''}`} role="switch" aria-checked={on && !blocked} aria-label={s.title}
+                  disabled={!manage || busy !== null || blocked} onClick={() => void save({ [s.key]: !on })} />
+              </li>
+            );
+          })}
+        </ul>
+        {a.readMeetings && (a.autoTranscriptAccess
+          ? <p className="ag-hint"><Icon name="checkCircle" size={13} /> Google Meet transcribes your meetings automatically, with your own Google account - no bot or mailbox needed.</p>
+          : <p className="ag-hint"><Icon name="info" size={13} /> Let Google Meet transcribe your meetings itself, with your own Google account - no bot to let in, no mailbox for it.
+            <button type="button" className="ag-link" onClick={() => void allowTranscripts()}>Use my Google account</button></p>)}
+        <p className="ag-hint"><Link to="/?tab=mail-agent">Let it look in my own inbox too</Link></p>
+      </div>
+
+      <AutonomyPanel a={a} manage={manage} busy={busy !== null} save={save} />
+      {manage && <TrustPanel projectId={projectId} onChanged={refresh} />}
+
+      <div className="card ag-panel ag-tune">
+        <h4 className="ag-panel-title"><Icon name="target" size={14} /> Accuracy</h4>
+        <dl>
+          <dt>Notes</dt><dd>{a.instructions ? a.instructions.split('\n')[0] : manage ? 'None yet' : 'Set by the lead'}</dd>
+          <dt>Names</dt><dd>{a.speakerAliases ? `${a.speakerAliases.split('\n').length} matched to people` : 'None yet'}</dd>
+          <dt>Language</dt><dd>{a.captionLanguage ? LANGUAGE[a.captionLanguage] ?? a.captionLanguage : 'Meeting default'}</dd>
+          {a.slackAvailable && <><dt>Slack</dt><dd>{a.slackChannelId ?? 'No channel'}</dd></>}
+        </dl>
+        <p className="ag-hint">Tell it your project's words and who is who in calls; it also learns from what you approve, change and dismiss.</p>
+        {manage && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTuning(true)}><Icon name="edit" size={14} />Notes and names</button>}
+      </div>
+
+      {a.runs.length > 0 && (
+        <div className="card ag-panel">
+          <h4 className="ag-panel-title"><Icon name="clock" size={14} /> Recent readings</h4>
+          <ul className="ag-runs">
+            {a.runs.map((r) => (
+              <li key={r.id} className={r.status === 'failed' ? 'bad' : ''}>
+                <span>{TRIGGER[r.trigger] ?? r.trigger}</span>
+                <small>{r.status === 'failed' ? r.error ?? 'Failed' : `${r.signalCount} source${r.signalCount === 1 ? '' : 's'} · ${r.findingCount} found`}
+                  {r.meeting && r.minutesSentAt && <> · MOM sent</>}</small>
+                <time>{timeAgo(r.startedAt)}</time>
+                {r.meeting && r.status === 'done' && manage && (
+                  <button type="button" className="ag-link ag-mom" disabled={busy !== null} onClick={() => void sendMinutes(r.id, !!r.minutesSentAt)}>
+                    {busy === `mom-${r.id}` ? <span className="spinner" /> : <Icon name="mail" size={12} />}{r.minutesSentAt ? 'Resend MOM' : 'E-mail MOM'}</button>
+                )}
+              </li>
+            ))}
           </ul>
-          {a.readMeetings && (a.autoTranscriptAccess
-            ? <p className="ag-hint"><Icon name="checkCircle" size={13} /> Google Meet transcribes your meetings automatically, with your own Google account - no bot or mailbox needed.</p>
-            : <p className="ag-hint"><Icon name="info" size={13} /> Let Google Meet transcribe your meetings itself, with your own Google account - no bot to let in, no mailbox for it.
-              <button type="button" className="ag-link" onClick={() => void allowTranscripts()}>Use my Google account</button></p>)}
-          <p className="ag-hint"><Link to="/project-agent/my-inbox">Let it look in my own inbox too</Link></p>
         </div>
-
-        <AutonomyPanel a={a} manage={manage} busy={busy !== null} save={save} />
-        {manage && <TrustPanel projectId={projectId} onChanged={refresh} />}
-
-        <div className="card ag-panel ag-tune">
-          <h4 className="ag-panel-title"><Icon name="target" size={14} /> Accuracy</h4>
-          <dl>
-            <dt>Notes</dt><dd>{a.instructions ? a.instructions.split('\n')[0] : manage ? 'None yet' : 'Set by the lead'}</dd>
-            <dt>Names</dt><dd>{a.speakerAliases ? `${a.speakerAliases.split('\n').length} matched to people` : 'None yet'}</dd>
-            <dt>Language</dt><dd>{a.captionLanguage ? LANGUAGE[a.captionLanguage] ?? a.captionLanguage : 'Meeting default'}</dd>
-            {a.slackAvailable && <><dt>Slack</dt><dd>{a.slackChannelId ?? 'No channel'}</dd></>}
-          </dl>
-          <p className="ag-hint">Tell it your project's words and who is who in calls; it also learns from what you approve, change and dismiss.</p>
-          {manage && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTuning(true)}><Icon name="edit" size={14} />Notes and names</button>}
-        </div>
-
-        {a.runs.length > 0 && (
-          <div className="card ag-panel">
-            <h4 className="ag-panel-title"><Icon name="clock" size={14} /> Recent readings</h4>
-            <ul className="ag-runs">
-              {a.runs.map((r) => (
-                <li key={r.id} className={r.status === 'failed' ? 'bad' : ''}>
-                  <span>{TRIGGER[r.trigger] ?? r.trigger}</span>
-                  <small>{r.status === 'failed' ? r.error ?? 'Failed' : `${r.signalCount} source${r.signalCount === 1 ? '' : 's'} · ${r.findingCount} found`}
-                    {r.meeting && r.minutesSentAt && <> · MOM sent</>}</small>
-                  <time>{timeAgo(r.startedAt)}</time>
-                  {r.meeting && r.status === 'done' && manage && (
-                    <button type="button" className="ag-link ag-mom" disabled={busy !== null} onClick={() => void sendMinutes(r.id, !!r.minutesSentAt)}>
-                      {busy === `mom-${r.id}` ? <span className="spinner" /> : <Icon name="mail" size={12} />}{r.minutesSentAt ? 'Resend MOM' : 'E-mail MOM'}</button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </aside>
+      )}
 
       {tuning && <TuneModal a={a} onClose={() => setTuning(false)} onSave={async (patch) => { await agentApi.save(projectId, { enabled: a.enabled, ...patch }); refresh(); setTuning(false); toast('Saved. The next reading uses it.'); }} />}
-      {transcript && <TranscriptModal projectId={projectId} onClose={() => setTranscript(false)} onDone={() => { setTranscript(false); setView('proposed'); refresh(); }} />}
+      {transcript && <TranscriptModal projectId={projectId} onClose={() => setTranscript(false)} onDone={() => { setTranscript(false); refresh(); }} />}
     </div>
   );
 }
+
+/**
+ * The project agent as one switch (the project's Activity tab): on or off, how many proposals wait, and where its behaviour is set.
+ * Switching it on the first time keeps the settings it had (or the defaults); everything else is in Settings › AI › Project agent.
+ */
+export function ProjectAgentSwitch({ projectId, archived }: { projectId: string; archived: boolean }) {
+  const { q, busy, save } = useAgent(projectId);
+  if (!q.data) return q.isError ? null : <div className="card ag-switch"><PageLoader /></div>;
+  const a = q.data;
+  const manage = a.canManage && !archived;
+  return (
+    <section className="card ag-switch" aria-label="Project agent">
+      <span className="ag-switch-mark" aria-hidden="true"><Icon name="agent" size={18} /></span>
+      <div className="ag-switch-text">
+        <b>Project agent</b>
+        <span>{!a.aiAvailable && !a.enabled ? 'Needs the AI assistant, which is off or not on this plan.'
+          : a.enabled ? `Reads this project's mail, chat and meetings and proposes updates${a.pending ? ` · ${a.pending} to review` : ''}${a.lastRunAt ? ` · last read ${timeAgo(a.lastRunAt)}` : ''}.`
+          : 'Off. Switch it on to have it read the project’s mail, chat and meetings and propose updates. Nothing changes until someone approves.'}</span>
+        <Link className="ag-switch-link" to={`/settings/ai/project-agent?project=${projectId}`}>Set how the agent behaves ›</Link>
+      </div>
+      <button type="button" className={`switch ${a.enabled ? 'on' : ''}`} role="switch" aria-checked={a.enabled} aria-label="Project agent"
+        disabled={!manage || busy !== null || (!a.enabled && !a.aiAvailable)} title={manage ? undefined : 'Someone who can edit this project can switch it'} onClick={() => void save({ enabled: !a.enabled })} />
+    </section>
+  );
+}
+
 
 /** The lead's notes for the agent, who is who in calls, the meetings' language and the Slack channel. */
 function TuneModal({ a, onClose, onSave }: { a: ProjectAgent; onClose: () => void; onSave: (patch: AgentSettingsPatch) => Promise<void> }) {

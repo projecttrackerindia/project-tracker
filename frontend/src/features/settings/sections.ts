@@ -3,7 +3,7 @@ import { useAuth, useIsPersonal, useModule } from '../../stores/auth';
 
 export type WorkspaceSection = 'general' | 'members' | 'access' | 'visibility' | 'security' | 'sso' | 'billing' | 'audit' | 'data'
   | 'project-groups' | 'timeline-templates' | 'labels' | 'priorities' | 'custom-fields' | 'work-types' | 'automation'
-  | 'notifications' | 'reminders' | 'ai' | 'api-keys' | 'connected-apps' | 'webhooks' | 'slack' | 'whatsapp' | 'email' | 'git';
+  | 'notifications' | 'reminders' | 'ai' | 'project-agent' | 'api-keys' | 'connected-apps' | 'webhooks' | 'slack' | 'whatsapp' | 'email' | 'git';
 
 /**
  * The ten sections of Settings (v2): two about you, eight about the workspace. Each workspace section holds one or more of the pages above
@@ -19,7 +19,7 @@ export const PLACE_LEAVES: Record<Exclude<SettingsPlace, 'profile'>, WorkspaceSe
   timelines: ['timeline-templates', 'project-groups', 'automation'],
   security: ['security', 'sso', 'access', 'audit', 'data'],
   integrations: ['slack', 'whatsapp', 'git', 'webhooks', 'api-keys', 'email', 'connected-apps'],
-  ai: ['ai'],
+  ai: ['ai', 'project-agent'],
   billing: ['billing'],
 };
 export const PLACE_OF = Object.fromEntries(Object.entries(PLACE_LEAVES).flatMap(([place, leaves]) => leaves.map((l) => [l, place]))) as Record<WorkspaceSection, SettingsPlace>;
@@ -74,11 +74,15 @@ export function useWorkspaceSections(): SectionDef[] {
     { id: 'api-keys', group: 'Integrations', to: leafHref('api-keys'), label: 'API keys', icon: 'key', blurb: 'Access for scripts and other tools.', show: isAdmin },
 
     { id: 'ai', group: 'AI', to: leafHref('ai'), label: 'AI control centre', icon: 'sparkle', blurb: 'What the AI knows, what each agent may do, the model, credits and outside AI apps.', show: isAdmin },
+    // A project's agent is set by whoever can edit the project (its lead), not only admins (v2: moved here from the project's Agent tab).
+    { id: 'project-agent', group: 'AI', to: leafHref('project-agent'), label: 'Project agent', icon: 'agent', blurb: 'Per project: what the agent reads, the meeting bot, minutes, morning updates, autonomy and accuracy.',
+      show: mProjects > 0 && ctx.current.role !== 'Guest' && (isAdmin || has('projects.edit') || has('projects.create')) },
     { id: 'connected-apps', group: 'AI', to: leafHref('connected-apps'), label: 'Connected AI apps', icon: 'bolt', blurb: 'Claude, ChatGPT and other assistants working here.', show: true },
 
     { id: 'billing', group: 'Billing', to: leafHref('billing'), label: 'Plan & billing', icon: 'card', blurb: 'Plan, seats, invoices, payment.', show: mBilling > 0 },
   ];
   const visible = all.filter((s) => s.show);
-  // General and connected apps alone are not worth a settings area for someone who administers nothing.
-  return visible.every((s) => s.id === 'general' || s.id === 'connected-apps') && !has('org.manage') ? [] : visible;
+  // General and connected apps alone are not worth a settings area for someone who administers nothing; a project lead still sets their
+  // projects' agent (Settings › AI › Project agent).
+  return visible.every((s) => s.id === 'general' || s.id === 'connected-apps' || s.id === 'project-agent') && !has('org.manage') ? visible.filter((s) => s.id === 'project-agent') : visible;
 }

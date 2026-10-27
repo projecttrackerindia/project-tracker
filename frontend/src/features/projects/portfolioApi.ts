@@ -36,7 +36,7 @@ const q = (f: PortfolioFilter) => Object.fromEntries(Object.entries(f).filter(([
 export const portfolioApi = {
   board: (f: PortfolioFilter) => get<PortfolioBoard>('/portfolio/board', q(f)),
   timeline: (f: PortfolioFilter) => get<PortfolioTimeline>('/portfolio/timeline', q(f)),
-  apply: (projectId: string, option: string, filter: PortfolioFilter) => post<{ proposals: number; message: string }>(`/portfolio/decisions/${projectId}/apply`, { option, filter: { teamId: filter.teamId ?? null } }),
+  apply: (projectId: string, option: string, filter: PortfolioFilter) => post<{ proposals: number; message: string; findingIds?: string[] | null }>(`/portfolio/decisions/${projectId}/apply`, { option, filter: { teamId: filter.teamId ?? null } }),
   summary: (f: PortfolioFilter, fresh = false) => post<PortfolioAiSummary>(`/portfolio/summary?${new URLSearchParams({ ...q(f), ...(fresh ? { fresh: 'true' } : {}) })}`),
   export: (f: PortfolioFilter, format: 'xlsx' | 'pdf') =>
     download(`/portfolio/export?${new URLSearchParams({ ...q(f), format })}`, `portfolio-${new Date().toISOString().slice(0, 10)}.${format}`),

@@ -119,8 +119,11 @@ export function SettingsPage() {
       ? [{ id: 'delivery', label: 'Delivery' }, { id: 'device', label: 'This device' }, { id: 'schedule', label: 'Schedule & time zone' }, { id: 'history', label: 'History' },
         ...leaves.filter((l) => PLACE_LEAVES.notifications.includes(l.id)).map((l) => ({ id: l.id, label: l.id === 'notifications' ? 'Member defaults' : l.label }))]
       : place === 'ai' ? [] : leaves.filter((l) => PLACE_LEAVES[place].includes(l.id)).sort((a, b) => PLACE_LEAVES[place].indexOf(a.id) - PLACE_LEAVES[place].indexOf(b.id)).map((l) => ({ id: l.id, label: l.label }));
-  const sub = place === 'ai' ? (asked === 'usage' || asked === 'tracker' ? asked : 'control') : tabs.find((t) => t.id === asked)?.id ?? tabs[0]?.id;
-  const first = place === 'ai' ? 'control' : tabs[0]?.id;
+  // AI: the control centre, usage and the tracker are for admins; Project agent for whoever leads a project.
+  const aiAdmin = open.has('ai'), aiAgent = open.has('project-agent');
+  const aiFirst = aiAdmin ? 'control' : 'project-agent';
+  const sub = place === 'ai' ? ((asked === 'usage' || asked === 'tracker') && aiAdmin ? asked : asked === 'project-agent' && aiAgent ? asked : aiFirst) : tabs.find((t) => t.id === asked)?.id ?? tabs[0]?.id;
+  const first = place === 'ai' ? aiFirst : tabs[0]?.id;
   const choose = (v: string) => nav(v === first ? `/settings/${place}` : `/settings/${place}/${v}`);
 
   const groups = [
@@ -129,7 +132,7 @@ export function SettingsPage() {
   ];
   const body = place === 'profile' ? <ProfileTab sub={sub} />
     : place === 'notifications' ? <NotificationsTab sub={sub} />
-    : place === 'ai' ? <AiSettings tab={sub as AiTab} onTab={choose} />
+    : place === 'ai' ? <AiSettings tab={sub as AiTab} onTab={choose} admin={aiAdmin} agent={aiAgent} />
     : <SettingsSection id={sub as WorkspaceSection} />;
   return (
     <SectionLayout title="Settings" groups={groups} navTop={leaves.length > 0 ? <SettingsSearch compact /> : undefined}>

@@ -78,7 +78,7 @@ export function PortfolioActionItems({ onClose }: { onClose: () => void }) {
               <section key={g.id}>
                 <h4>{g.name}{g.key && <em>{g.key}</em>}<span>{g.items.length}</span></h4>
                 {g.items.map((i) => (
-                  <button key={i.id} type="button" className={`pai-row ${isDone(i) ? 'done' : ''}`} onClick={() => { onClose(); nav(`/portfolio?project=${i.projectId}&actions=1`); }}>
+                  <button key={i.id} type="button" className={`pai-row ${isDone(i) ? 'done' : ''}`} onClick={() => { onClose(); nav(`/work/projects/${i.projectId}?tab=work&kind=action&action=${i.id}`); }}>
                     <span className="task-key">{i.key}</span>
                     <span className="pai-title">{i.title}</span>
                     <PriorityBadge priority={i.priority} />

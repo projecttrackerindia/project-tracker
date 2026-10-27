@@ -36,7 +36,8 @@ public record TimelineProjectDto(Guid Id, string Key, string Name, string Health
     IReadOnlyList<TimelineMilestoneDto> Milestones, IReadOnlyList<Guid> DependsOn);
 public record PortfolioTimelineDto(DateOnly From, DateOnly To, IReadOnlyList<TimelineProjectDto> Projects);
 public record ApplyDecisionRequest(string Option, PortfolioFilter? Filter = null);
-public record ApplyDecisionResult(int Proposals, string Message);
+/// <summary>FindingIds: the proposals made, so a caller that is itself the decision ("Accept" on the portfolio) can approve them at once.</summary>
+public record ApplyDecisionResult(int Proposals, string Message, IReadOnlyList<Guid>? FindingIds = null);
 public record PortfolioAiSummaryDto(string Text, string Model, DateTime At, bool Cached);
 
 /// <summary>
@@ -265,7 +266,7 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         run.FindingCount = findings.Count;
         recorder.Audit("portfolio.decision_proposed", "Project", projectId, null, new { option.Kind, option.Title, findings = findings.Count });
         await db.SaveChangesAsync(ct);
-        return new ApplyDecisionResult(findings.Count, $"{Plural(findings.Count, "proposal is", "proposals are")} waiting in {project.Key} › Agent for approval.");
+        return new ApplyDecisionResult(findings.Count, $"{Plural(findings.Count, "proposal is", "proposals are")} waiting in {project.Key} › Agent for approval.", findings.Select(f => f.Id).ToList());
     }
 
     private static string? Cut(string? s, int max) => s is null ? null : s.Length <= max ? s : s[..(max - 1)] + "…";

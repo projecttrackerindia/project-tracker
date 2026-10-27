@@ -1,9 +1,12 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
+import { projectApi } from '../../api/endpoints';
 import { aiControlApi, type AgentLevel, type AiControl } from './aiControlApi';
 import { Icon } from '../../components/Icon';
-import { Embedded, Kpi, PageHead, PageLoader, Segmented } from '../../components/ui';
+import { Select } from '../../components/Select';
+import { Embedded, EmptyState, Kpi, PageHead, PageLoader, Segmented } from '../../components/ui';
+import { ProjectAgentSettings } from '../agent/ProjectAgentTab';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
@@ -24,18 +27,26 @@ const thisMonth = () => new Date().toISOString().slice(0, 7);
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const MCP = `${typeof window === 'undefined' ? '' : window.location.origin}/api/v1/mcp`;
 
-export type AiTab = 'control' | 'usage' | 'tracker';
+export type AiTab = 'control' | 'usage' | 'tracker' | 'project-agent';
 
-/** Settings › AI: the control centre, the month's usage by person, and the agent tracker (moved here from Agents). */
-export function AiSettings({ tab, onTab }: { tab: AiTab; onTab: (t: AiTab) => void }) {
-  const control = useWsQuery(['ai', 'control'], aiControlApi.get, { staleTime: 30_000, retry: false });
+/**
+ * Settings › AI: the control centre, the month's usage by person, the agent tracker (moved here from Agents), and each project's agent
+ * (moved here from the project's Agent tab). Admins see all four; a project lead sees Project agent.
+ */
+export function AiSettings({ tab, onTab, admin = true, agent = true }: { tab: AiTab; onTab: (t: AiTab) => void; admin?: boolean; agent?: boolean }) {
+  const control = useWsQuery(['ai', 'control'], aiControlApi.get, { staleTime: 30_000, retry: false, enabled: admin });
   const people = control.data?.people ?? 0;
+  const tabs: { id: AiTab; label: string }[] = [
+    ...(admin ? [{ id: 'control' as const, label: 'Control centre' }, { id: 'usage' as const, label: 'Usage' }, { id: 'tracker' as const, label: 'Agent tracker' }] : []),
+    ...(agent ? [{ id: 'project-agent' as const, label: 'Project agent' }] : []),
+  ];
   return (
     <div className="aic">
-      <PageHead eyebrow="Settings › AI" title="AI control centre" sub="One place to decide what the AI knows, what it may do, and what it costs.">
-        {control.data?.agents && <span className={`ds-pill ${control.data.aiOn ? 'success' : ''}`}><i className="aic-dot" />{control.data.aiOn ? `AI on for ${people} ${people === 1 ? 'person' : 'people'}` : 'AI is off here'}</span>}
+      <PageHead eyebrow="Settings › AI" title={admin ? 'AI control centre' : 'Project agent'} sub={admin ? 'One place to decide what the AI knows, what it may do, and what it costs.' : 'How the agent behaves on the projects you lead.'}>
+        {admin && control.data?.agents && <span className={`ds-pill ${control.data.aiOn ? 'success' : ''}`}><i className="aic-dot" />{control.data.aiOn ? `AI on for ${people} ${people === 1 ? 'person' : 'people'}` : 'AI is off here'}</span>}
       </PageHead>
-      <Segmented label="AI settings" value={tab} onChange={onTab} options={[{ id: 'control', label: 'Control centre' }, { id: 'usage', label: 'Usage' }, { id: 'tracker', label: 'Agent tracker' }]} />
+      {tabs.length > 1 && <Segmented label="AI settings" value={tab} onChange={onTab} options={tabs} />}
+      {tab === 'project-agent' && <ProjectAgentPicker />}
       {tab === 'control' && <ControlCentre control={control.data} loading={control.isLoading} />}
       {tab === 'usage' && (
         <div className="aic-usage">
@@ -44,6 +55,36 @@ export function AiSettings({ tab, onTab }: { tab: AiTab; onTab: (t: AiTab) => vo
         </div>
       )}
       {tab === 'tracker' && <Embedded><Suspense fallback={<PageLoader />}><AgentTrackerPage /></Suspense></Embedded>}
+    </div>
+  );
+}
+
+/**
+ * Settings › AI › Project agent: pick a project, then everything its agent does - what it reads, the meeting bot and its four levels, minutes,
+ * morning updates, the Google account for transcripts, accuracy, credits and its readings. On the project itself it is one on/off switch.
+ */
+function ProjectAgentPicker() {
+  const [params, setParams] = useSearchParams();
+  const projects = useWsQuery(['projects', 'list', 'agent-picker'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000 });
+  const items = [...(projects.data?.items ?? [])].filter((p) => p.status !== 'Archived').sort((a, b) => a.name.localeCompare(b.name));
+  const id = params.get('project') ?? items[0]?.id ?? null;
+  const chosen = items.find((p) => p.id === id);
+  const pick = (v: string) => setParams((p) => { const n = new URLSearchParams(p); n.set('project', v); return n; }, { replace: true });
+  if (projects.isLoading) return <PageLoader />;
+  return (
+    <div className="aic-pagent">
+      <div className="aic-pagent-pick">
+        <label className="aic-pagent-label">Project
+          <Select className="select" value={id ?? ''} onChange={(e) => pick(e.target.value)} aria-label="Project">
+            {id && !chosen && <option value={id}>This project</option>}
+            {items.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </Select>
+        </label>
+        {id && <Link className="aic-link" to={`/work/projects/${id}?tab=activity`}>Open the project ›</Link>}
+      </div>
+      <p className="aic-sub">Each project has its own agent. It is switched on or off on the project’s Activity tab; here is how it behaves.</p>
+      {id ? <div className="aic-pagent-settings"><ProjectAgentSettings key={id} projectId={id} archived={chosen?.status === 'Archived'} /></div>
+        : <EmptyState icon="folder" title="No projects yet" text="Once there is a project, its agent is set up here." />}
     </div>
   );
 }

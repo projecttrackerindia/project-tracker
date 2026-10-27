@@ -278,6 +278,18 @@ function SectionMoved({ to, rename }: { to: string; rename?: Record<string, stri
   return <Moved to={`${to}&s=${encodeURIComponent(s)}`} rename={rename} />;
 }
 
+/**
+ * A project's tab as a path (/work/projects/7/board, /projects/7/issues …, from before v2): the project page with ?tab=, which then opens the
+ * tab that holds it now (Board → Work, Files → Docs, Agent → Activity …), keeping the query and the #anchor.
+ */
+function ProjectTabMoved() {
+  const { id = '', tab = '' } = useParams();
+  const loc = useLocation();
+  const q = new URLSearchParams(loc.search);
+  if (!q.has('tab')) q.set('tab', tab);
+  return <Navigate to={`/work/projects/${encodeURIComponent(id)}?${q.toString()}${loc.hash}`} replace state={loc.state} />;
+}
+
 /** /ai/<conversation> from before v2: the conversation now lives on Home (?c=). */
 function AiConversationMoved() {
   const { id = '' } = useParams();
@@ -362,6 +374,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="work" element={<Guard allow={work}><WorkPage /></Guard>} />
         <Route path="work/projects" element={<Guard allow={mProjects}><ProjectsHome /></Guard>} />
         <Route path="work/projects/:id" element={<Guard allow={mProjects}><ProjectPage /></Guard>} />
+        <Route path="work/projects/:id/:tab" element={<ProjectTabMoved />} />
         <Route path="talk" element={<TalkPage />} />
         <Route path="talk/:conversationId" element={<TalkPage />} />
         <Route path="library" element={<Guard allow={mDocuments || canVault}><LibraryPage /></Guard>} />

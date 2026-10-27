@@ -340,6 +340,15 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
                 var project = await db.Projects.AsNoTracking().FirstAsync(p => p.Id == f.ProjectId, ct);
                 await projects.UpdateAsync(project.Id, new UpdateProjectRequest(project.Name, project.Description, project.Priority, project.Status, project.OwnerId, project.TeamId,
                     project.StartDate, newDue, project.Version, null, project.ProjectGroupId, AgentAnalysisService.Cut($"Portfolio decision: {f.Title}", 480), null), ct);
+                // The team is told the new date (everyone on the project and its owner; not the person who decided it).
+                if (project.DueDate != newDue)
+                {
+                    var team = await db.ProjectMembers.AsNoTracking().Where(m => m.ProjectId == project.Id).Select(m => m.UserId).ToListAsync(ct);
+                    var was = project.DueDate is { } old ? $" (was {old:d MMM})" : "";
+                    foreach (var who in team.Append(project.OwnerId).Distinct())
+                        await notifications.AddAsync(who, NotificationType.ProjectUpdated, Text.Truncate($"{project.Key} is now due {newDue:d MMM yyyy}", 200)!,
+                            Text.Truncate($"\"{project.Name}\" has a new delivery date{was}: {f.Title}.", 500), $"/work/projects/{project.Id}", $"project-due:{project.Id}:{newDue:yyyy-MM-dd}", ct: ct);
+                }
                 return (project.Id, project.Key);
             }
             default:

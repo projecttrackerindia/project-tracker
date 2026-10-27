@@ -12,6 +12,11 @@
 .aic-card h3 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; color: var(--ds-text); }
 .aic-sub { margin: 4px 0 14px; font-size: 13px; color: var(--ds-text-3); line-height: 1.45; }
 .aic-agents { list-style: none; margin: 0; padding: 0; }
+/* Project agent: one project at a time, its settings in tiles */
+.aic-pagent { display: grid; gap: 4px; min-width: 0; }
+.aic-pagent-pick { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 18px; }
+.aic-pagent-label { display: grid; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ds-text-3); min-width: min(320px, 100%); }
+.aic-pagent-pick .aic-link { margin: 0 0 12px; }
 .aic-agent { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid var(--ds-line); }
 .aic-agent:first-child { border-top: 0; }
 .aic-agent-info { display: grid; gap: 2px; min-width: 0; }
