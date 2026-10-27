@@ -91,7 +91,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
           </div>
 
           <div className="pf-lay">
-            <BoardColumns filter={filter} brief={b} />
+            <BoardColumns filter={filter} brief={b} items={items} />
             <section aria-label="Decisions this week" className="pf-rail">
               <h3 className="pf-rail-head">Decisions this week <em>{items.length}</em></h3>
               {items.length === 0 ? <p className="pf-calm">No project is forecast to miss its date.</p>

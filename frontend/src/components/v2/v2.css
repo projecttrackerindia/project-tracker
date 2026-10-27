@@ -338,3 +338,9 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
   .v2-side-me > span { display: inline; font-size: 13px; font-weight: 500; color: var(--ds-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 @media (min-width: 1100px) { .v2-side .v2-side-me .v2-avatar { width: 28px; height: 28px; font-size: 11px; background: linear-gradient(135deg, #0a84ff, #5e5ce6); } }
+/* With the full sidebar, the account menu opens straight above the avatar (like macOS), not out beside the page. */
+@media (min-width: 1100px) {
+  .v2-side .v2-menu { left: 10px; bottom: 62px; width: min(288px, calc(100vw - 20px)); transform-origin: 20px 100%; animation: v2-menu-up .22s cubic-bezier(.32, .72, 0, 1) both; }
+}
+@keyframes v2-menu-up { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .v2-side .v2-menu { animation: none; } }
