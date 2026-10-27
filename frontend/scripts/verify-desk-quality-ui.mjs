@@ -263,7 +263,7 @@ try {
     // ---------------------------------------------------------------- Quality
     await page.goto(`${origin}/preview-org/quality`);
     await page.getByRole('heading', { level: 1, name: 'Quality' }).waitFor();
-    assert.equal(await page.locator('.dq-eyebrow').innerText(), 'SIA Internal API · Release 1.4');
+    await page.locator('.dq-eyebrow', { hasText: 'SIA Internal API · Release 1.4' }).waitFor();
     await page.getByText('UAT 1.4 · 86% passing · 3 blockers').waitFor();
     await page.getByText('Not ready to ship. Ship needs 95% and zero blockers when the run ends.').waitFor();
     assert.equal(await page.locator('.qa-ring span').innerText(), '86%');
