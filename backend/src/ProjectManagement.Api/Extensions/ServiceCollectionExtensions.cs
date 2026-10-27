@@ -207,6 +207,10 @@ public static class ServiceCollectionExtensions
         services.Configure<ForwardedHeadersOptions>(o =>
         {
             o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+            // Production has two proxies in front of the API (Caddy, then the web container's nginx). With the default of 1 hop the API saw
+            // Caddy's internal address as every visitor's address, so the per-address limits (sign-in 10/min, anonymous 60/min) were shared
+            // by everyone. Caddy replaces any X-Forwarded-For a visitor sends, so reading 2 hops back stays spoof-safe.
+            o.ForwardLimit = config.GetValue("Proxy:Hops", 2);
             o.KnownNetworks.Clear();
             o.KnownProxies.Clear();
         });
