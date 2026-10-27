@@ -167,11 +167,12 @@ export function AgentPanel({ assist, busy, wid, onReply }: { assist: MailAssist 
       </div>}
       {assist.tasks.length > 0 && <div className="mb-agent-tasks">
         <div className="mb-agent-tasks-head"><h4>Suggested task updates</h4>
-          {assist.tasks.length > 1 && <button type="button" className="btn btn-sm" onClick={() => setApplyAll((n) => n + 1)}><Icon name="checks" size={13} /> Apply all</button>}</div>
+          {assist.tasks.filter(t => !t.state || t.state === 'suggested').length > 1 && <button type="button" className="btn btn-sm" onClick={() => setApplyAll((n) => n + 1)}><Icon name="checks" size={13} /> Apply all</button>}</div>
         {assist.tasks.map((t, i) => <TaskSuggestion key={i} s={t} wid={wid} trigger={applyAll} />)}</div>}
       {assist.replies.length > 0 && <div className="mb-agent-replies"><h4>Suggested replies</h4>
         <div className="mb-reply-chips">{assist.replies.map((r, i) => <button key={i} onClick={() => onReply(r.body)} title={r.body}><Icon name="edit" size={13} /> {r.label}</button>)}</div></div>}
-      <small className="mb-agent-foot">Suggestions only. Nothing is sent or changed until you choose it.</small>
+      <small className="mb-agent-foot">{assist.tasks.some(t => t.state === 'applied') ? 'The mail agent made the new work marked done. Nothing is sent, and other changes wait for you.'
+        : 'Suggestions only. Nothing is sent or changed until you choose it.'}</small>
     </section>
   );
 }
@@ -179,8 +180,9 @@ export function AgentPanel({ assist, busy, wid, onReply }: { assist: MailAssist 
 const STATUS_LABEL: Record<string, string> = { ToDo: 'To do', InProgress: 'In progress', OnHold: 'On hold', Completed: 'Completed', Cancelled: 'Cancelled' };
 
 export function TaskSuggestion({ s, wid, trigger = 0 }: { s: MailTaskSuggestion; wid: string | null; trigger?: number }) {
-  const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
-  const [link, setLink] = useState<string | null>(s.kind === 'update' ? (s.taskKind === 'task' && s.projectId ? `/projects/${s.projectId}?task=${s.taskId}` : `/operations?task=${s.taskId}`) : null);
+  // At "Auto" the mail agent has already done it and at "Ask first" it is waiting in the Home inbox: neither may be applied again here.
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'inbox'>(s.state === 'applied' ? 'done' : s.state === 'inbox' ? 'inbox' : 'idle');
+  const [link, setLink] = useState<string | null>(s.state === 'applied' && s.appliedId ? `/work?item=${s.appliedId}` : s.kind === 'update' && s.taskId ? `/work?item=${s.taskId}` : null);
   const types = useWsQuery(['work-types'], () => workApi.types(), { enabled: s.kind === 'create', staleTime: 300_000 });
   const [typeId, setTypeId] = useState('');
   const type = typeId || types.data?.find(t => t.isActive !== false)?.id || '';
@@ -191,7 +193,7 @@ export function TaskSuggestion({ s, wid, trigger = 0 }: { s: MailTaskSuggestion;
         if (!type) throw new Error('Add a work type in Operations first.');
         const created = await workApi.create({ title: s.title, description: [s.detail, s.reason ? `From email: ${s.reason}` : ''].filter(Boolean).join('\n\n'), workTypeId: type,
           priority: s.priority ?? 'Medium', dueDate: s.due, assigneeId: useAuth.getState().ctx?.user.id ?? null });
-        setLink(`/operations?task=${created.id}`);
+        setLink(`/work?item=${created.id}`);
         void invalidateWorkspace(wid, 'work');
       } else if (s.taskId) {
         const note = [s.detail, s.reason].filter(Boolean).join('\n\n') || 'Update from email.';
@@ -221,7 +223,8 @@ export function TaskSuggestion({ s, wid, trigger = 0 }: { s: MailTaskSuggestion;
         )}
       </div>
       <div className="mb-task-actions">
-        {state === 'done' ? <><span className="mb-done"><Icon name="check" size={13} /> Done</span>{link && <Link className="btn btn-sm btn-ghost" to={link}>Open</Link>}</>
+        {state === 'done' ? <><span className="mb-done"><Icon name="check" size={13} /> {s.state === 'applied' ? 'Done by the mail agent' : 'Done'}</span>{link && <Link className="btn btn-sm btn-ghost" to={link}>Open</Link>}</>
+          : state === 'inbox' ? <><span className="mb-done"><Icon name="clock" size={13} /> Waiting in your inbox</span><Link className="btn btn-sm btn-ghost" to="/">Review</Link></>
           : <><button className="btn btn-sm btn-primary" disabled={state === 'busy'} onClick={() => void apply()}>{state === 'busy' ? <Spinner /> : s.kind === 'create' ? 'Create task' : s.status ? 'Apply update' : 'Add note'}</button>
             {link && <Link className="btn btn-sm btn-ghost" to={link}>View</Link>}</>}
       </div>

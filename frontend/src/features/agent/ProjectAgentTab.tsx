@@ -10,6 +10,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { FindingCard } from './FindingCard';
+import { aiControlApi } from '../settings/aiControlApi';
 import './agent.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -385,6 +386,10 @@ function AutonomyPanel({ a, manage, busy, save }: { a: ProjectAgent; manage: boo
   const level = LEVELS.find((l) => l.n === a.autonomyLevel) ?? LEVELS[1];
   const kinds = a.autoApplyKinds ?? [];
   const toggle = (k: AgentFindingKind) => void save({ autoApplyKinds: kinds.includes(k) ? kinds.filter((x) => x !== k) : [...kinds, k] });
+  // The project's level is capped by the workspace's level for the project agent (Settings › AI): level 4 only acts by itself at "Auto".
+  const control = useWsQuery(['ai', 'control'], aiControlApi.get, { staleTime: 30_000, retry: false });
+  const ws = control.data?.agents?.find?.((x) => x.id === 'project')?.level;
+  const WS_LABEL = { off: 'Off', suggest: 'Suggest', askFirst: 'Ask first', auto: 'Auto' } as const;
   return (
     <div className="card ag-panel">
       <h4 className="ag-panel-title"><Icon name="shield" size={14} /> Autonomy</h4>
@@ -395,6 +400,12 @@ function AutonomyPanel({ a, manage, busy, save }: { a: ProjectAgent; manage: boo
         ))}
       </div>
       <p className="ag-level-text">{level.text}</p>
+      {ws && ws !== 'auto' && (level.n === 4 || ws === 'off') && (
+        <p className="ag-hint" role="note"><Icon name="info" size={12} />
+          {ws === 'off' ? 'The project agent is Off for the whole workspace, so it does nothing here until an admin turns it back on.'
+            : `Level 4 only acts by itself when the workspace sets the project agent to Auto. It is ${WS_LABEL[ws]} now, so ${ws === 'suggest' ? 'it only suggests' : 'its changes wait in the inbox'}.`}
+          {' '}<Link to="/settings/ai">Settings › AI</Link></p>
+      )}
       {level.n === 4 && (
         <>
           <div className="ag-kinds" aria-label="May carry out by itself">

@@ -14,7 +14,9 @@ export interface MailSendInput { account: string; replyToId?: string | null; fol
 export interface MailSendResult { accepted: boolean; to: string; cc: string; subject: string }
 export interface MailForwardInput { account: string; folder?: MailFolder; messageId: string; to: string; cc?: string; note?: string; confirmed: boolean }
 export interface MailReplySuggestion { label: string; body: string }
-export interface MailTaskSuggestion { kind: 'create' | 'update'; taskId: string | null; taskKind: 'task' | 'work' | null; taskRef: string | null; projectId: string | null; title: string; detail: string | null; priority: string | null; status: string | null; reason: string; due: string | null }
+export interface MailTaskSuggestion { kind: 'create' | 'update'; taskId: string | null; taskKind: 'task' | 'work' | null; taskRef: string | null; projectId: string | null; title: string; detail: string | null; priority: string | null; status: string | null; reason: string; due: string | null;
+  /** What the mail agent already did at the workspace's level: suggested (only shown here), inbox (waiting in the Home inbox, "Ask first") or applied ("Auto"; appliedId is the work it created). */
+  state?: 'suggested' | 'inbox' | 'applied'; appliedId?: string | null }
 export interface MailAssist { summary: string; intent: string; urgency: 'low' | 'medium' | 'high'; actionItems: string[]; replies: MailReplySuggestion[]; tasks: MailTaskSuggestion[]; keyFacts: string[]; model: string | null }
 export type ComposeMode = 'reply' | 'improve' | 'shorter' | 'formal' | 'friendly' | 'complete';
 
