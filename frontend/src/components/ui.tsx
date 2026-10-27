@@ -1,5 +1,7 @@
 import { cloneElement, createContext, forwardRef, isValidElement, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactElement, type ReactNode } from 'react';
 import { useSheetDrag } from './Sheet';
+import { animate, motion, useReducedMotion } from 'framer-motion';
+import { reveal } from '../lib/motion';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
 import type { Priority, ProjectHealth, ProjectStatus, ProjectType, Role, StageDisplayStatus, StatusCategory } from '../api/types';
@@ -90,9 +92,16 @@ export function Progress({ value, tone = 'auto', large, active = 0 }: { value: n
     <div className={`progress ${large ? 'progress-lg' : ''}`} role="progressbar" aria-valuenow={p} aria-valuemin={0} aria-valuemax={100}
       aria-valuetext={a > 0 ? `${p}% done, ${a}% in progress` : `${p}% done`} title={a > 0 ? `${p}% done · ${a}% in progress` : undefined}>
       {a > 0 && <div className="progress-active" style={{ left: `${p}%`, width: `${a}%` }} />}
-      <div className={`progress-bar ${cls}`} style={{ width: `${p}%` }} />
+      <ProgressFill cls={cls} p={p} />
     </div>
   );
+}
+
+/** The bar grows to its value the first time it scrolls into view (at once under prefers-reduced-motion). */
+function ProgressFill({ cls, p }: { cls: string; p: number }) {
+  const still = useReducedMotion();
+  if (still || import.meta.env.MODE === 'test') return <div className={`progress-bar ${cls}`} style={{ width: `${p}%` }} />;
+  return <motion.div className={`progress-bar ${cls}`} initial={{ width: 0 }} whileInView={{ width: `${p}%` }} viewport={{ once: true }} transition={reveal} />;
 }
 
 /** userId -> the photo as an object URL, and when it was fetched (so a photo someone changed shows up again after a while). */
@@ -284,11 +293,29 @@ export function Segmented<T extends string>({ options, value, onChange, label, s
 export function Kpi({ label, value, tone, caption, small, tile, onClick, to, className = '' }: {
   label: ReactNode; value: ReactNode; tone?: 'success' | 'warning' | 'danger'; caption?: ReactNode; small?: boolean; tile?: boolean; onClick?: () => void; to?: string; className?: string;
 }) {
-  const body = <><span className="l">{label}</span><span className={`v ${small ? 'sm' : ''}`}>{value}</span>{caption && <span className="c">{caption}</span>}</>;
+  const body = <><span className="l">{label}</span><span className={`v ${small ? 'sm' : ''}`}>{typeof value === 'number' ? <CountUp value={value} /> : value}</span>{caption && <span className="c">{caption}</span>}</>;
   const cls = `ds-kpi ${tone ?? ''} ${tile ? 'tile' : ''} ${className}`;
   if (to) return <NavLink to={to} className={cls}>{body}</NavLink>;
   if (onClick) return <button type="button" className={cls} onClick={onClick}>{body}</button>;
   return <div className={cls}>{body}</div>;
+}
+
+/**
+ * A number that counts up from 0 the first time it is shown (once per mount; later changes just show the new value). Shows the value at
+ * once under prefers-reduced-motion, and in tests.
+ */
+export function CountUp({ value }: { value: number }) {
+  const still = useReducedMotion();
+  const skip = still || import.meta.env.MODE === 'test' || !Number.isFinite(value) || !Number.isInteger(value);
+  const done = useRef(false);
+  const [shown, setShown] = useState(skip ? value : 0);
+  useEffect(() => {
+    if (skip || done.current) { setShown(value); return; }
+    const c = animate(0, value, { ...reveal, duration: Math.min(0.9, 0.35 + Math.log10(Math.abs(value) + 1) * 0.2),
+      onUpdate: (v) => setShown(Math.round(v)), onComplete: () => { done.current = true; } });
+    return () => c.stop();
+  }, [value, skip]);
+  return <>{shown.toLocaleString()}</>;
 }
 
 /** A completion ring: 8px stroke, round caps, the number in the middle. */

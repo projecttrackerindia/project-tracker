@@ -11,7 +11,7 @@ import { useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { DocumentWizard } from '../documents/DocumentWizard';
-import { TargetDocuments } from '../documents/LinkedWork';
+import { LinkDocumentButton, TargetDocuments } from '../documents/LinkedWork';
 import { ProjectCodeTab } from '../github/GitHubApp';
 import { useGitHubApp } from '../github/github';
 import { errText } from './projectParts';
@@ -101,6 +101,7 @@ export function ProjectDocs({ projectId, canEdit, archived }: { projectId: strin
       <section className="lib-card pp-docs-card" aria-label="Docs">
         <div className="pp-docs-head">
           <h3>Docs{rows.length > 0 && <span> · {rows.length}</span>}</h3>
+          {seeDocs && <LinkDocumentButton targetType="Project" targetId={projectId} />}
           {(writeDocs || canUpload) && <NewMenu doc={writeDocs} file={canUpload} busy={busy} onDoc={() => setWriting(true)} onFile={() => input.current?.click()} />}
           <input ref={input} type="file" multiple hidden aria-label="Upload a file" onChange={(e) => void upload(e.target.files)} accept={limits.data?.allowedExtensions.map((x) => `.${x}`).join(',')} />
         </div>
@@ -135,7 +136,7 @@ export function ProjectDocs({ projectId, canEdit, archived }: { projectId: strin
             </ul>
           )}
       </section>
-      {seeDocs && filter !== 'Code' && <TargetDocuments targetType="Project" targetId={projectId} title="Documents elsewhere about this project" />}
+      {seeDocs && filter !== 'Code' && <TargetDocuments targetType="Project" targetId={projectId} title="Documents elsewhere about this project" hideWhenEmpty />}
       {writing && <DocumentWizard projectId={projectId} onClose={() => setWriting(false)} onCreated={(id) => nav(`/library/docs/${id}`)} />}
     </div>
   );

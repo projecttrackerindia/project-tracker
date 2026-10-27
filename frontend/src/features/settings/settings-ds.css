@@ -196,3 +196,7 @@ html .hook-check { accent-color: var(--ds-accent-fill); }
 .set-place-head h2 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.02em; color: var(--ds-text); }
 .set-place-head p { margin: 4px 0 0; font-size: 14px; color: var(--ds-text-3); max-width: 60ch; }
 .set-place-head .ds-seg { max-width: 100%; }
+
+.set-appearance { display: grid; gap: 12px; }
+.set-appearance-row { display: flex; align-items: center; gap: 10px; }
+.set-appearance-row .grow { flex: 1; min-width: 0; }
