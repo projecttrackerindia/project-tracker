@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AgentWorkflowsPage } from '../ai/AgentWorkflowsPage';
 import { TimesheetPage, type TimesheetSection } from '../time/TimesheetPage';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -6,7 +6,7 @@ import { ApiError, del, get, post } from '../../api/client';
 import { opsApi, projectApi, timeApi, workItemApi } from '../../api/endpoints';
 import type { GridKind, GridRow, ParsedTime, ReportKind, TimesheetGrid } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
-import { EmptyState, ErrorState, Kpi, PageHead, PageLoader, Segmented } from '../../components/ui';
+import { EmptyState, ErrorState, PageHead, PageLoader, Segmented } from '../../components/ui';
 import { MONTHS, formatDate, timeAgo, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useModule, useWorkspaceId } from '../../stores/auth';
@@ -53,12 +53,80 @@ export function InsightsPage() {
 
 // ------------------------------------------------------------------------------------------------------------------------ Overview
 
+const SCOPE_TEXT: Record<string, string> = { Reports: 'Your team', Everyone: 'Everyone', Me: 'Just you' };
+const reduceMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+/** Spring-like curve with a ~7% overshoot (the rings and the numbers share it). */
+const springy = (t: number) => { const c = 1.25; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+
+/** Counts a number up from 0 with the rings' curve; reduced motion shows it at once. */
+function useCountUp(target: number | null, delay = 0) {
+  const [v, setV] = useState<number | null>(() => (target == null || reduceMotion() ? target : 0));
+  useEffect(() => {
+    if (target == null || reduceMotion()) { setV(target); return; }
+    let raf = 0; const t0 = performance.now() + delay;
+    const step = (now: number) => {
+      const t = Math.min(1, Math.max(0, (now - t0) / 900));
+      setV(Math.round(target * Math.min(1.07, springy(t))));
+      if (t < 1) raf = requestAnimationFrame(step); else setV(target);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, delay]);
+  return v;
+}
+
+function Ring({ label, value, tone, sub, foot, index, to }: { label: string; value: number | null; tone: 'pink' | 'orange' | 'green'; sub: React.ReactNode; foot?: React.ReactNode; index: number; to?: string }) {
+  const shown = useCountUp(value, index * 80);
+  const v = value == null ? 0 : Math.max(0, Math.min(100, value)) / 100;
+  const body = (
+    <>
+      <svg className="ins-ring-svg" viewBox="0 0 120 120" aria-hidden="true">
+        <circle className="trk" cx="60" cy="60" r="50" />
+        <circle className="arc" cx="60" cy="60" r="50" style={{ '--v': v, animationDelay: `${index * 80}ms` } as React.CSSProperties} />
+      </svg>
+      <div className="ins-ring-text">
+        <span className="ins-ring-l">{label}</span>
+        <b className="ins-ring-n">{shown == null ? '—' : shown}{shown != null && <small>%</small>}</b>
+        <span className="ins-ring-s">{sub}</span>
+        {foot && <span className="ins-ring-d">{foot}</span>}
+      </div>
+    </>
+  );
+  return to
+    ? <Link to={to} className={`ins-ring ${tone}`} aria-label={`${label}: ${value == null ? 'no data' : `${value}%`}`}>{body}</Link>
+    : <div className={`ins-ring ${tone}`} role="group" aria-label={`${label}: ${value == null ? 'no data' : `${value}%`}`}>{body}</div>;
+}
+
+/** Done vs planned, 12 weeks: work finished (pink, filled) against work that came in (grey, dashed), from the operations weeks. */
+function Trend({ weeks }: { weeks: { weekStart: string; created: number; completed: number }[] }) {
+  const W = 560, H = 190, padX = 8, top = 16, bottom = 160;
+  if (weeks.length < 2) return <p className="ins-p ins-trend-empty">Not enough weeks yet to draw a trend.</p>;
+  const max = Math.max(1, ...weeks.flatMap((w) => [w.created, w.completed])) * 1.15;
+  const x = (i: number) => padX + (i / (weeks.length - 1)) * (W - padX * 2);
+  const y = (n: number) => bottom - (n / max) * (bottom - top);
+  const line = (k: 'created' | 'completed') => weeks.map((w, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(w[k]).toFixed(1)}`).join(' ');
+  const last = weeks[weeks.length - 1];
+  const ticks = [0, Math.round((weeks.length - 1) / 3), Math.round(((weeks.length - 1) * 2) / 3), weeks.length - 1];
+  return (
+    <svg className="ins-trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Done vs planned over ${weeks.length} weeks: last week ${last.completed} done of ${last.created} planned`}>
+      {[0.25, 0.5, 0.75].map((f) => <line key={f} className="grid" x1={padX} x2={W - padX} y1={top + (bottom - top) * f} y2={top + (bottom - top) * f} />)}
+      <path className="area" d={`${line('completed')} L${x(weeks.length - 1)},${bottom} L${x(0)},${bottom} Z`} />
+      <path className="plan" d={line('created')} />
+      <path className="done" d={line('completed')} pathLength={1} />
+      <circle className="end" cx={x(weeks.length - 1)} cy={y(last.completed)} r="5" />
+      {ticks.map((i) => <text key={i} x={x(i)} y={H - 4} textAnchor={i === 0 ? 'start' : i === weeks.length - 1 ? 'end' : 'middle'}>{dayMonth(weeks[i].weekStart)}</text>)}
+    </svg>
+  );
+}
+
+type Note = { id: string; lead: string; rest: string; action: React.ReactNode };
+
 function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job: string) => void }) {
   const today = todayISO();
   const seeWork = useModule('work') > 0;
   const projects = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false });
   const workload = useWsQuery(['workload', 'default'], () => workItemApi.workload(), { staleTime: 60_000, retry: false });
-  const ops = useWsQuery(['ops', 'insights', 30], () => opsApi.insights(30), { enabled: seeWork, staleTime: 60_000, retry: false });
+  const ops = useWsQuery(['ops', 'insights', 84], () => opsApi.insights(84), { enabled: seeWork, staleTime: 60_000, retry: false });
   const { busy, rebalance } = useRebalance(onReports);
   const [reminded, setReminded] = useState(false);
   const [reminding, setReminding] = useState(false);
@@ -66,29 +134,27 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
   const live = (projects.data?.items ?? []).filter((p) => p.status === 'Planning' || p.status === 'Active' || p.status === 'OnHold');
   const onTrack = live.filter((p) => p.health === 'OnTrack').length;
   const delayed = live.filter((p) => p.health === 'Delayed');
+  const everyone = workload.data?.members ?? [];
   const members = useMemo(() => [...(workload.data?.members ?? [])].filter((m) => m.open > 0 || m.overdue > 0).sort((a, b) => b.open - a.open || b.overdue - a.overdue), [workload.data]);
-  const max = Math.max(1, ...members.map((m) => m.open));
-  const v = (n: number | undefined, loading: boolean) => (n === undefined ? (loading ? '…' : '—') : n);
-
-  // ✦ What stands out, found from the numbers above: who carries the most, which projects are late, whether time is being logged.
-  const notes: string[] = [];
   const total = workload.data?.totals.open ?? 0;
   const top = members[0];
-  if (top && total >= 4 && top.open / total >= 0.35) notes.push(`${top.name} holds ${Math.round((top.open / total) * 100)}% of the team's open work${top.overdue ? `, ${top.overdue} of it overdue` : ''}.`);
-  if (delayed.length) notes.push(`${delayed.length === 1 ? '1 project is' : `${delayed.length} projects are`} delayed: ${delayed.slice(0, 3).map((p) => p.name).join(', ')}${delayed.length > 3 ? '…' : ''}.`);
-  const idle = members.filter((m) => m.open === 0).length;
-  const overdueTotal = workload.data?.totals.overdue ?? 0;
-  if (overdueTotal > 0 && !notes.some((n) => n.includes('overdue'))) notes.push(`${overdueTotal} item${overdueTotal === 1 ? ' is' : 's are'} overdue across the team.`);
-  if (workload.data && workload.data.members.length > 0 && workload.data.members.every((m) => m.loggedMinutesLast7Days === 0)) notes.push('Nobody has logged time in the last 7 days.');
-  if (!notes.length && workload.data) notes.push(idle ? 'Work is spread evenly; nothing stands out.' : 'Nothing stands out this week.');
+  const avg = members.length ? total / members.length : 0;
 
-  const noTime = 'Nobody has logged time in the last 7 days.';
+  // The three rings, from the data already on the page.
+  const delivery = projects.data && live.length ? Math.round((onTrack / live.length) * 100) : null;
+  const balance = top && top.open > 0 ? Math.round((avg / top.open) * 100) : null;
+  const logged = everyone.reduce((a, m) => a + m.loggedMinutesLast7Days, 0);
+  const expected = everyone.length * 40 * 60;
+  const timePct = workload.data && expected ? Math.round((logged / expected) * 100) : null;
+  const notLogged = everyone.filter((m) => m.loggedMinutesLast7Days === 0);
+  const capPos = Math.max(1, ...members.map((m) => m.open), avg * 1.6);
+
   const remindTeam = async () => {
-    const people = workload.data?.members ?? [];
+    const people = notLogged.length ? notLogged : everyone;
     if (!people.length) return;
     setReminding(true);
     const results = await Promise.allSettled(people.map((m) => reminderApi.create({
-      title: 'Log your time for this week', note: 'Nobody on the team has logged time in the last 7 days. Please fill in your timesheet.',
+      title: 'Log your time for this week', note: 'Your timesheet has no time in the last 7 days. Please fill it in.',
       forUserId: m.userId, when: { at: new Date().toISOString() },
     })));
     setReminding(false);
@@ -97,44 +163,84 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
     else { const first = results.find((r): r is PromiseRejectedResult => r.status === 'rejected'); toast(errText(first?.reason, 'Could not send the reminders.'), 'error'); }
   };
 
+  // ✦ What stands out: up to three sentences, each with one action.
+  const notes: Note[] = [];
+  if (top && total >= 4 && members.length > 1 && (top.open / total >= 0.35 || top.open >= avg * 1.5)) notes.push({
+    id: 'load', lead: top.name, rest: ` holds ${Math.round((top.open / total) * 100)}% of the team's open work${top.overdue ? `, ${top.overdue} of it overdue` : ''}.`,
+    action: members.length > 1 ? <button type="button" className="ins-act" disabled={busy} onClick={() => void rebalance()}>{busy && <span className="spinner" />}Suggest a rebalance</button> : null,
+  });
+  if (workload.data && everyone.length > 0 && notLogged.length > 0) notes.push({
+    id: 'time', lead: notLogged.length === everyone.length ? 'Nobody' : `${notLogged.length} ${notLogged.length === 1 ? 'person hasn’t' : 'people haven’t'}`,
+    rest: notLogged.length === everyone.length ? ' has logged time in the last 7 days.' : ' logged time in the last 7 days.',
+    action: <button type="button" className="ins-act" disabled={reminded || reminding} onClick={() => void remindTeam()}>{reminding && <span className="spinner" />}{reminded ? 'Reminded' : 'Remind team'}</button>,
+  });
+  if (delayed.length) notes.push({
+    id: 'late', lead: delayed.length === 1 ? '1 project is' : `${delayed.length} projects are`, rest: ` delayed: ${delayed.slice(0, 3).map((p) => p.name).join(', ')}${delayed.length > 3 ? '…' : ''}.`,
+    action: <Link className="ins-act" to={`/work/projects/${delayed[0].id}`}>Review {delayed[0].key}</Link>,
+  });
+  const overdueTotal = workload.data?.totals.overdue ?? 0;
+  if (notes.length < 3 && overdueTotal > 0 && !notes.some((n) => n.id === 'load' && n.rest.includes('overdue'))) notes.push({
+    id: 'overdue', lead: `${overdueTotal} item${overdueTotal === 1 ? ' is' : 's are'} overdue`, rest: ' across the team.',
+    action: <Link className="ins-act" to="/work?tab=team&s=workload">Review overdue work</Link>,
+  });
+  if (!notes.length && workload.data) notes.push({ id: 'calm', lead: 'Nothing stands out', rest: ' this week.', action: null });
+
+  const weeks = (ops.data?.weeks ?? []).slice(-12);
+  const lastW = weeks[weeks.length - 1];
+  const half = Math.floor(weeks.length / 2);
+  const gap = (ws: typeof weeks) => ws.reduce((a, w) => a + (w.created - w.completed), 0) / Math.max(1, ws.length);
+  const trendLine = lastW ? `${weeks.length >= 4 ? (gap(weeks.slice(half)) <= gap(weeks.slice(0, half)) ? 'Gap narrowing' : 'Gap widening') + ' — ' : ''}${lastW.completed} of ${lastW.created} items last week` : '';
+  const scope = workload.data ? SCOPE_TEXT[workload.data.scope] ?? 'Your team' : 'Your team';
+
   return (
     <>
-      <PageHead eyebrow={`As of ${dayMonth(today)}`} title="Insights">{tabs}</PageHead>
-      <div className="ds-kpis ins-kpis">
-        <Kpi label="Projects on track" value={projects.data ? <>{onTrack} <small className="ins-of">of {live.length}</small></> : v(undefined, projects.isLoading)} tone={projects.data ? 'success' : undefined} to="/work/projects" />
-        <Kpi label="Delayed" value={projects.data ? delayed.length : v(undefined, projects.isLoading)} tone={delayed.length ? 'danger' : undefined} to="/work/projects" />
-        <Kpi label="Open work · team" value={v(workload.data?.totals.open, workload.isLoading)} to="/work?tab=team&s=workload" />
-        {seeWork && <Kpi label="Tickets · SLA breached" value={v(ops.data?.breached, ops.isLoading)} tone={ops.data?.breached ? 'danger' : undefined} to="/work?tab=tickets" />}
+      <PageHead eyebrow={`${scope} · as of ${dayMonth(today)}`} title="Insights">{tabs}</PageHead>
+      <div className="ins-rings">
+        <Ring index={0} tone="pink" label="Delivery on time" value={delivery} to="/work/projects"
+          sub={projects.data ? `${onTrack} of ${live.length} projects on track` : projects.isLoading ? 'Reading…' : 'No projects yet'}
+          foot={projects.data && live.length ? (delayed.length ? <><span aria-hidden="true">↓ </span>{delayed.length} delayed</> : 'None delayed') : undefined} />
+        <Ring index={1} tone="orange" label="Load balance" value={balance} to="/work?tab=team&s=workload"
+          sub={top ? `Spread across ${members.length} ${members.length === 1 ? 'person' : 'people'} — ${top.name.split(' ')[0]} carries ${total ? Math.round((top.open / total) * 100) : 0}%` : workload.isLoading ? 'Reading…' : 'No open work'}
+          foot={workload.data ? `${total} open · ${overdueTotal} overdue` : undefined} />
+        <Ring index={2} tone="green" label="Time logged" value={timePct} to="/insights?tab=time"
+          sub={workload.data ? `${Math.round(logged / 60)}h of ${Math.round(expected / 60)}h expected this week` : workload.isLoading ? 'Reading…' : '—'}
+          foot={workload.data ? (notLogged.length ? `${notLogged.length} not logged yet` : 'Everyone logged') : undefined} />
       </div>
-      <div className="ins-row">
+      <div className="ins-two">
+        <section className="ins-card ins-trendcard" aria-label="Done vs planned">
+          <div className="ins-card-head"><b>Done vs planned · {weeks.length || 12} weeks</b><span className="ins-lg"><span><i className="done" />Done</span><span><i className="plan" />Planned</span></span></div>
+          {trendLine && <p className="ins-sub">{trendLine}</p>}
+          {!seeWork ? <p className="ins-p ins-trend-empty">Weekly work isn’t open to you.</p> : ops.isLoading ? <PageLoader /> : <Trend weeks={weeks} />}
+        </section>
         <section className="ins-card ins-load" aria-label="Workload">
-          <div className="ins-card-head"><b>Workload</b><span>open · overdue</span></div>
+          <div className="ins-card-head"><Link to="/work?tab=team&s=workload" className="ins-card-title">Workload</Link><span className="ins-lg"><span><i className="open" />Open items</span><span><i className="late" />Overdue</span><span className="cap">Team average</span></span></div>
           {workload.isLoading ? <PageLoader /> : workload.isError ? <ErrorState error={workload.error} retry={() => void workload.refetch()} /> : members.length === 0 ? (
             <EmptyState icon="users" title="No open work" text="Nobody you can see has open work right now." />
           ) : (
             <ul className="ins-bars">
-              {members.slice(0, 12).map((m) => (
+              {members.slice(0, 7).map((m, i) => (
                 <li key={m.userId}>
                   <Link to={`/work?tab=team&person=${m.userId}`} className="ins-name">{m.name}</Link>
                   <span className="ins-bar" role="img" aria-label={`${m.open} open, ${m.overdue} overdue`}>
-                    <i className="open" style={{ width: `${((m.open - m.overdue) / max) * 100}%` }} />
-                    <i className="late" style={{ width: `${(m.overdue / max) * 100}%` }} />
+                    <i className="open" style={{ width: `${((m.open - m.overdue) / capPos) * 100}%`, animationDelay: `${i * 40}ms` }} />
+                    <i className="late" style={{ width: `${(m.overdue / capPos) * 100}%`, animationDelay: `${i * 40}ms` }} />
+                    <b className="cap" style={{ left: `${(avg / capPos) * 100}%` }} />
                   </span>
-                  <span className="ins-num">{m.open} · <em className={m.overdue ? 'late' : ''}>{m.overdue}</em></span>
+                  <span className="ins-num">{m.open} open{m.overdue > 0 && <> · <em className="late">{m.overdue} late</em></>}</span>
                 </li>
               ))}
             </ul>
           )}
-          <p className="ins-foot">A planning aid, not a performance score. Click a name to see their work.</p>
-        </section>
-        <section className="ins-card ins-ai" aria-label="What stands out">
-          <b>✦ What stands out</b>
-          {workload.isLoading || projects.isLoading ? <p>Reading the numbers…</p> : notes.map((n) => n === noTime ? (
-            <p key={n} className="ins-note-act">{n} <button type="button" className="btn btn-ghost btn-sm" disabled={reminded || reminding} onClick={() => void remindTeam()}>{reminding && <span className="spinner" />}{reminded ? 'Reminded' : 'Remind team'}</button></p>
-          ) : <p key={n}>{n}</p>)}
-          {members.length > 1 && <button type="button" className="btn btn-ai" disabled={busy} onClick={() => void rebalance()}>{busy && <span className="spinner" />}Suggest a rebalance</button>}
         </section>
       </div>
+      <section className="ins-card ins-ai" aria-label="What stands out">
+        <b className="ins-ai-h"><span className="ins-orb" aria-hidden="true" />What stands out</b>
+        {workload.isLoading || projects.isLoading ? <p>Reading the numbers…</p> : (
+          <div className="ins-so">
+            {notes.slice(0, 3).map((n) => <div key={n.id}><p><b>{n.lead}</b>{n.rest}</p>{n.action}</div>)}
+          </div>
+        )}
+      </section>
     </>
   );
 }

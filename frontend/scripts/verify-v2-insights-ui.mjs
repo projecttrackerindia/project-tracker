@@ -112,9 +112,15 @@ try {
     await page.goto(`${origin}/preview-org/insights`);
     await page.getByRole('heading', { level: 1, name: 'Insights' }).waitFor();
     for (const t of ['Overview', 'Time', 'Reports']) await page.getByRole('tab', { name: t }).waitFor();
-    for (const label of ['Projects on track', 'Delayed', 'Open work · team', 'Tickets · SLA breached']) await page.locator('.ds-kpi', { hasText: label }).first().waitFor();
-    assert.match(await page.locator('.ds-kpi', { hasText: 'Projects on track' }).innerText(), /5\s*of 8/);
-    assert.equal((await page.locator('.ds-kpi', { hasText: /^Delayed/ }).locator('.v').innerText()).trim(), '2');
+    // Three rings: Delivery on time, Load balance, Time logged.
+    for (const label of ['Delivery on time', 'Load balance', 'Time logged']) await page.locator('.ins-ring', { hasText: label }).first().waitFor();
+    assert.equal(await page.locator('.ins-ring').count(), 3);
+    const deliveryRing = page.locator('.ins-ring', { hasText: 'Delivery on time' });
+    assert.match(await deliveryRing.innerText(), /5 of 8 projects on track/);
+    assert.match(await deliveryRing.innerText(), /2 delayed/);
+    await deliveryRing.getByText(/^63\s*%$/).waitFor();
+    assert.match(await page.locator('.ins-ring', { hasText: 'Time logged' }).innerText(), /0h of 160h expected this week/);
+    await page.getByRole('region', { name: 'Done vs planned' }).waitFor();
     const load = page.getByRole('region', { name: 'Workload' });
     assert.equal(await load.locator('.ins-bars li').count(), 4);
     assert.equal(await load.locator('.ins-bars li').first().locator('.ins-name').innerText(), 'Siva Reddy');
