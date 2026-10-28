@@ -310,9 +310,15 @@ public class CurrentContextMiddleware(RequestDelegate next)
         var membership = await (from m in db.TenantMembers
                                 join t in db.Tenants on m.TenantId equals t.Id
                                 where m.UserId == userId && m.TenantId == workspaceId && t.Status == TenantStatus.Active
-                                select new { m.Role, t.Type, t.ProjectVisibility, t.TimeZone }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+                                select new { m.Role, m.Status, t.Type, t.ProjectVisibility, t.TimeZone }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
         if (membership is null) return;
         zone.WorkspaceZoneId = membership.TimeZone;
+        // A suspended member keeps their place but cannot open the workspace: every workspace request is refused with MEMBER_SUSPENDED.
+        if (membership.Status == MemberStatus.Suspended)
+        {
+            ctx.BlockedWorkspace = (workspaceId, "MEMBER_SUSPENDED", "Your access to this workspace has been suspended. Contact an administrator of the workspace.");
+            return;
+        }
 
         var blocked = await orgSecurity.CheckAccessAsync(workspaceId, mfaEnabled, ctx.IpAddress, http.RequestAborted, signIn);
         if (blocked is not null) { ctx.BlockedWorkspace = (workspaceId, blocked.Code, blocked.Message); return; }

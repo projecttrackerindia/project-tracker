@@ -253,6 +253,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         builder.Properties<WorkspaceType>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<TenantStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<TenantRole>().HaveConversion<string>().HaveMaxLength(32);
+        builder.Properties<MemberStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<ProjectStatus>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<Priority>().HaveConversion<string>().HaveMaxLength(32);
         builder.Properties<SprintStatus>().HaveConversion<string>().HaveMaxLength(32);

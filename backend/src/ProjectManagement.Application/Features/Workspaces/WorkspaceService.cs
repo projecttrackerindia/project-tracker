@@ -27,7 +27,8 @@ public record UpdateWorkspaceRequest(string Name, string? Description);
 public record SetWorkspaceTimeZoneRequest(string? TimeZone);
 public record SwitchResult(string AccessToken, DateTime ExpiresAt);
 
-public record MemberDto(Guid UserId, string DisplayName, string Email, TenantRole Role, DateTime JoinedAt, string? JobRole = null, bool HasAvatar = false);
+public record MemberDto(Guid UserId, string DisplayName, string Email, TenantRole Role, DateTime JoinedAt, string? JobRole = null, bool HasAvatar = false,
+    MemberStatus Status = MemberStatus.Active, bool IsActive = true, Guid? OrgRoleId = null, Guid? ReportsToUserId = null, IReadOnlyList<Guid>? TeamIds = null);
 public record UpdateMemberRoleRequest(TenantRole Role);
 /// <summary>Creates the account directly: the administrator picks the first password, which the person must replace at first sign-in.</summary>
 public record CreateMemberRequest(string Email, string DisplayName, TenantRole Role, string Password, Guid? OrgRoleId = null, Guid? ReportsToUserId = null);
@@ -202,16 +203,21 @@ public class WorkspaceService(
 
     // ---------------------------------------------------------------- members
 
-    public async Task<IReadOnlyList<MemberDto>> GetMembersAsync(CancellationToken ct = default)
+    /// <param name="assignable">Only people who can be given work now: suspended members and accounts deactivated on the platform are left out.</param>
+    public async Task<IReadOnlyList<MemberDto>> GetMembersAsync(CancellationToken ct = default, bool assignable = false)
     {
         var tid = ctx.RequireTenantId();
         var hideEmail = ctx.Role == TenantRole.Guest;
-        var rows = await db.TenantMembers.AsNoTracking().Include(m => m.User)
-            .Where(m => m.TenantId == tid).OrderByDescending(m => m.Role).ThenBy(m => m.User!.DisplayName).ToListAsync(ct);
+        var query = db.TenantMembers.AsNoTracking().Include(m => m.User).Where(m => m.TenantId == tid);
+        if (assignable) query = query.Where(m => m.Status == MemberStatus.Active && m.User!.IsActive);
+        var rows = await query.OrderByDescending(m => m.Role).ThenBy(m => m.User!.DisplayName).ToListAsync(ct);
+        var teamsOf = (await db.TeamMembers.AsNoTracking().Where(t => t.TenantId == tid).Select(t => new { t.UserId, t.TeamId }).ToListAsync(ct))
+            .GroupBy(t => t.UserId).ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(t => t.TeamId).ToList());
         var roleIds = rows.Where(m => m.OrgRoleId != null).Select(m => m.OrgRoleId!.Value).Distinct().ToList();
         var roleNames = await db.OrgRoles.AsNoTracking().Where(r => roleIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Name, ct); // deleted roles are filtered out
         return rows.Select(m => new MemberDto(m.UserId, m.User!.DisplayName, hideEmail ? "" : m.User.Email, m.Role, m.CreatedAt,
-            m.OrgRoleId is { } rid && roleNames.TryGetValue(rid, out var jobRole) ? jobRole : null, m.User.AvatarKey is not null)).ToList();
+            m.OrgRoleId is { } rid && roleNames.TryGetValue(rid, out var jobRole) ? jobRole : null, m.User.AvatarKey is not null,
+            m.Status, m.Status == MemberStatus.Active && m.User.IsActive, m.OrgRoleId, m.ReportsToUserId, teamsOf.GetValueOrDefault(m.UserId) ?? [])).ToList();
     }
 
     /// <summary>

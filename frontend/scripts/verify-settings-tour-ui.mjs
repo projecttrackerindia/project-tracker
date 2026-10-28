@@ -44,7 +44,7 @@ const ROUTES = [
   ['slack', '/settings/slack'], ['whatsapp', '/settings/whatsapp'], ['email', '/settings/email'], ['git', '/settings/git'], ['webhooks', '/settings/webhooks'],
   ['api-keys', '/settings/api-keys'], ['connected-apps', '/settings/connected-apps'], ['billing', '/settings/billing'],
   ['account-security', '/account/security'], ['account-mobile', '/account/mobile'],
-  ['people', '/people'], ['people-invitations', '/people/invitations'], ['teams', '/people/teams'], ['org-chart', '/people/org-chart'],
+  ['people', '/people'], ['people-invitations', '/people/invitations'], ['teams', '/people/teams'], ['org-chart', '/people/org-chart'], ['people-org', '/people/org'], ['people-roles', '/people/roles'], ['people-role', '/people/roles/job/r3'],
   ['notifications', '/notifications'], ['notification-delivery', '/notifications/preferences'], ['notification-device', '/notifications/devices'], ['notification-schedule', '/notifications/schedule'],
 ];
 const only = process.env.TOUR_ONLY ? process.env.TOUR_ONLY.split(',') : null;

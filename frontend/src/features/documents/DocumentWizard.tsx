@@ -156,7 +156,7 @@ export function DocumentWizard({ onClose, projectId, onCreated, typeId: startTyp
               {!personal && (
                 <Field label="Collaborators" hint="Editor access, in addition to whoever this is already visible to.">
                   <div className="wiz-collabs">
-                    {(members.data ?? []).filter((m) => m.userId !== myId).map((m) => (
+                    {(members.data ?? []).filter((m) => m.userId !== myId && m.isActive !== false).map((m) => (
                       <label key={m.userId} className="check-row">
                         <input type="checkbox" checked={collaborators.includes(m.userId)}
                           onChange={(e) => setCollaborators((c) => e.target.checked ? [...c, m.userId] : c.filter((x) => x !== m.userId))} />

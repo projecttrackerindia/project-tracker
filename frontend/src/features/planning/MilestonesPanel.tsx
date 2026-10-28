@@ -111,7 +111,7 @@ function MilestoneModal({ projectId, milestone, stages, onClose, onSaved }: { pr
         <Field label="Start date"><input className="input" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
         <Field label="Due date"><input className="input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
         <Field label="Status"><Select className="select" value={status} onChange={(e) => setStatus(e.target.value as StageStatus)}>{STAGE_STATUSES.map((s) => <option key={s} value={s}>{labelize(s)}</option>)}</Select></Field>
-        <Field label="Owner"><Select className="select" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}><option value="">— Nobody —</option>{members.data?.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></Field>
+        <Field label="Owner"><Select className="select" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}><option value="">— Nobody —</option>{members.data?.filter((m) => m.isActive !== false || m.userId === ownerId).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></Field>
         {stages.length > 0 && (
           <Field label="Marks the stage" full hint="Optional: the timeline stage this milestone is a checkpoint of, such as “Design approved” at the end of Design.">
             <Select className="select" value={stageId} onChange={(e) => setStageId(e.target.value)} aria-label="Stage">

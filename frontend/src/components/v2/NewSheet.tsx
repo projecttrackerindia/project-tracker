@@ -117,7 +117,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   useEffect(() => { void sheetAnim.start({ opacity: 1, y: 0, scale: 1 }, still ? { duration: 0 } : spring.panel); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 5 * 60_000 });
-  const people: QuickPerson[] = useMemo(() => (members.data ?? []).filter((m) => m.role !== 'Guest').map((m) => ({ id: m.userId, name: m.displayName })), [members.data]);
+  const people: QuickPerson[] = useMemo(() => (members.data ?? []).filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => ({ id: m.userId, name: m.displayName })), [members.data]);
   const mePerson = me ? { id: me.id, name: me.displayName } : undefined;
   const parsed = useMemo(() => parseQuickTask(text.replace(/\b(?:give|hand|pass)\s+(?:it\s+)?to\b|\bowner:?(?=\s)/gi, 'assign to'), people, new Date(), mePerson), [text, people, mePerson?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const guessed = useMemo(() => guessType(text, allowed), [text]); // eslint-disable-line react-hooks/exhaustive-deps

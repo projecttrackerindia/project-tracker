@@ -26,7 +26,6 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from '../auth/passwordPolicy';
 import { AuditPage } from '../activity/ActivityPages';
 import { BillingPage } from '../billing/BillingPage';
-import { RolesAccessPage } from '../organization/RolesAccess';
 import { OrgSecurityPanel } from '../organization/OrgSecurityPanel';
 import { MemberSecurityPanel } from '../organization/MemberSecurityPanel';
 import { SignInHistory } from './SignInHistory';
@@ -126,6 +125,8 @@ export function SettingsPage() {
   useSettingJump();
   // Mail is connected in one place: Integrations › Mail (the old "Mail accounts" address lands there).
   if (section === 'mail') return <Navigate to={`/settings/integrations/mail${loc.search}${loc.hash}`} replace />;
+  // Roles & access moved to People & Roles (the old ?view= keeps working there).
+  if (section === 'access' || (section === 'security' && asked === 'access')) return <Navigate to={`/people/roles${loc.search}${loc.hash}`} replace />;
   if (!section || (section !== 'profile' && section !== 'appearance' && !(section === 'security' && asked === 'account') && isPlatformAdmin)) return <Navigate to={`/settings/profile${loc.search}${loc.hash}`} replace />;
   // An old section id: its new section and tab, keeping anything else in the address.
   if (!PLACE_IDS.has(section) && section !== 'appearance') {
@@ -493,9 +494,9 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
   switch (id) {
     case 'general': return <GeneralSection />;
     case 'members': return <MembersSection />;
-    case 'access': return <><RolesAccessPage /><SectionHistory section="access" /></>;
+    case 'access': return <Navigate to="/people/roles" replace />;
     case 'visibility': return <><PageHead title="Project visibility" sub="Whether everyone sees every project, or each team sees its own." /><div data-setting="access.projectVisibility"><ProjectVisibilityPanel /><LastChanged k="access.projectVisibility" section="visibility" /></div><SectionHistory section="visibility" /></>;
-    case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><OrgSecurityPanel /><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
+    case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><RolesMovedCard /><OrgSecurityPanel /><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
     case 'sso': return <><SsoSettings /><SectionHistory section="sso" /></>;
     case 'billing': return <><BillingPage /><SectionHistory section="billing" /></>;
     case 'audit': return <AuditPage />;
@@ -616,5 +617,18 @@ function GeneralSection() {
       {!personal && <div data-setting="workspace.logo"><WorkspaceLogoCard canEdit={isAdmin} /><LastChanged k="workspace.logo" section="general" /></div>}
       <SectionHistory section="general" />
     </>
+  );
+}
+
+/** Settings › Security: roles and access now live in People & Roles. */
+function RolesMovedCard() {
+  const can = useAuth((s) => s.ctx?.current?.permissions ?? []);
+  if (!['org.manage', 'access.manage', 'permissions.manage'].some((p) => can.includes(p))) return null;
+  return (
+    <Link to="/people/roles" className="card pr-moved-card" data-testid="roles-moved">
+      <Icon name="shield" size={18} />
+      <span><b>Roles &amp; access moved to People &amp; Roles</b><small>Access levels, job roles, who can do what, with a preview of every change.</small></span>
+      <Icon name="arrowRight" size={16} />
+    </Link>
   );
 }

@@ -285,7 +285,7 @@ export function StepEditor({ n, step: f, workspace, statuses, canRemove, onChang
           </Field>
           {f.actionTarget === 'User' && (
             <Field label="Person"><Select className="select" value={f.actionUserId ?? ''} onChange={(e) => set('actionUserId', e.target.value || null)}>
-              <option value="">Choose…</option>{members.data?.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></Field>
+              <option value="">Choose…</option>{members.data?.filter((m) => m.isActive !== false).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></Field>
           )}
         </>
       )}

@@ -67,7 +67,7 @@ export function RolesAccessPage() {
 }
 
 /** Every person, what they can open in each area, and which rule decided it. A row opens to list their individual permissions. */
-function EffectiveAccessTable() {
+export function EffectiveAccessTable() {
   const q = useWsQuery(['org', 'access', 'effective'], orgApi.effectiveAccess);
   const [term, setTerm] = useState('');
   const [source, setSource] = useState<'' | AccessSource>('');

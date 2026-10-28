@@ -24,7 +24,7 @@ export function QuickAdd({ projectId }: { projectId: string }) {
   const [skip, setSkip] = useState<Set<QuickPart>>(new Set());
   const [busy, setBusy] = useState(false);
   const [full, setFull] = useState<null | Parameters<typeof TaskModal>[0]['initial']>(null);
-  const people = useMemo(() => (members.data ?? []).filter((m) => m.role !== 'Guest').map((m) => ({ id: m.userId, name: m.displayName })), [members.data]);
+  const people = useMemo(() => (members.data ?? []).filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => ({ id: m.userId, name: m.displayName })), [members.data]);
   const me = meUser ? { id: meUser.id, name: meUser.displayName } : undefined;
   const t = useMemo(() => parseQuickTask(text, people, new Date(), me, skip), [text, people, me?.id, skip]); // eslint-disable-line react-hooks/exhaustive-deps
 

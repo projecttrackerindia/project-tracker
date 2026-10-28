@@ -119,7 +119,7 @@ export function FindingCard({ f, canDecide, showProject }: { f: AgentFinding; ca
                   onChange={(e) => setEdits((x) => e.target.value ? { ...x, assigneeId: e.target.value, clearAssignee: undefined } : { ...x, assigneeId: undefined, clearAssignee: true })}>
                   <option value="">Nobody yet</option>
                   {f.assignee && !people.data?.some((p) => p.userId === f.assignee!.id) && <option value={f.assignee.id}>{f.assignee.name}</option>}
-                  {(people.data ?? []).filter((p) => p.role !== 'Guest').map((p) => <option key={p.userId} value={p.userId}>{p.displayName}</option>)}
+                  {(people.data ?? []).filter((p) => p.role !== 'Guest' && p.isActive !== false).map((p) => <option key={p.userId} value={p.userId}>{p.displayName}</option>)}
                 </select>
               </Field>
               <Field label="Priority">
