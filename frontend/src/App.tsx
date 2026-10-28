@@ -80,6 +80,15 @@ const ApprovePage = page(() => import('./features/auth/ApprovePage'), 'ApprovePa
 const ReminderActionPage = page(() => import('./features/reminders/ActionPage'), 'ReminderActionPage');
 const SecretLinkPage = page(() => import('./features/vault/SecretLinkPage'), 'SecretLinkPage');
 const PublicStatusPage = page(() => import('./features/platform/PublicStatusPage'), 'PublicStatusPage');
+/** The public landing page: "/" for someone signed out, and /welcome for anyone. */
+const LandingPage = lazy(() => import('./features/landing/LandingPage'));
+const landingFallback = <div style={{ minHeight: '100vh', background: '#000' }} />;
+const Landing = () => <Suspense fallback={landingFallback}><LandingPage /></Suspense>;
+/** "Try it free" on the website: the sign-up page, with whatever the link carried. */
+function SignupLink() {
+  const loc = useLocation();
+  return <Navigate to={`/register${loc.search}`} replace />;
+}
 const ActivityPage = page(() => import('./features/activity/ActivityPages'), 'ActivityPage');
 import { toast } from './stores/ui';
 import { useAuth, useCan, useIsPersonal, useModule } from './stores/auth';
@@ -238,11 +247,13 @@ function RequireAuth() {
   const status = useAuth((s) => s.status);
   const ctx = useAuth((s) => s.ctx);
   const loc = useLocation();
+  // Someone signed out who opened the home address sees the public landing page, not the sign-in form; while the session is still being
+  // checked it shows too (index.html decided from this device's sign-in flag), and a confirmed session switches straight to the app.
+  const landing = loc.pathname === '/' && document.documentElement.classList.contains('landing');
+  if (landing && (status === 'loading' || status === 'anonymous')) return <Landing />;
   if (status === 'loading') return <AppSplash />;
   if (status === 'offline') return <OfflineWork />;
   if (status === 'anonymous') {
-    // Someone signed out who opened the home address sees the public page (index.html), not the sign-in form.
-    if (document.documentElement.classList.contains('landing')) return null;
     return <Navigate to={`/login?redirect=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
   }
   // Terms first: accepting them works while the password is still temporary, but the password change is a write that the terms gate
@@ -355,7 +366,7 @@ function OrgRedirect() {
 
 const OrgGateContext = createContext<() => void>(() => undefined);
 
-const PUBLIC_PAGES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'unsubscribe', 'auth', 'security', 'download', 'r', 's', 'dev']);
+const PUBLIC_PAGES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'unsubscribe', 'auth', 'security', 'download', 'r', 's', 'dev', 'welcome', 'signup']);
 
 function AppRoutes({ scoped }: { scoped: boolean }) {
   const loc = useLocation();
@@ -381,6 +392,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/signup" element={<SignupLink />} />
+      <Route path="/welcome" element={<Landing />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />

@@ -1,0 +1,65 @@
+/* =====================================================================================================================
+   Sign-in, sign-up and the other account screens in the website's look (loaded after ds-auth.css): the landing page's typefaces
+   (Bricolage Grotesque headlines, Geist text), its blue (#0A84FF) and the hero's blue-violet glow on the black panel. Light and dark
+   both work; with no saved choice they follow the system (layouts/AuthLayout). Only the look changes: fields, options and logic are the same.
+   ===================================================================================================================== */
+.auth-shell {
+  --primary-fill: #0A84FF; --primary-hover: #0077ED; --ds-accent: #0A84FF;
+  --lp-display: "Bricolage Grotesque", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --lp-body: "Geist", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  font-family: var(--lp-body);
+  background: #F5F5F7;
+  font-optical-sizing: none; font-variation-settings: "opsz" 12;   /* Bricolage at its text cut, as the website draws it */
+}
+html[data-theme='dark'] .auth-shell { --ds-accent: #409CFF; background: #000; }
+.auth-shell :is(input, button, select, textarea) { font-family: var(--lp-body); }
+
+/* the headline type */
+.auth-shell .auth-title { font-family: var(--lp-display); font-weight: 800; font-size: 36px; letter-spacing: -.035em; line-height: 1.02; }
+.auth-visual { font-optical-sizing: none; font-variation-settings: "opsz" 12; }
+.auth-visual .av-copy h2 { font-family: var(--lp-display); font-weight: 800; letter-spacing: -.04em; line-height: .98; }
+.auth-visual .av-copy h2 .av-quiet { background: linear-gradient(90deg, #fff 0%, #C9C2FF 45%, #7FB8FF 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.auth-visual .av-eyebrow { color: #8E7CFF; font-weight: 600; }
+.auth-visual .av-features li svg, .auth-visual .kb-prog i, .auth-visual .av-bars .today span { color: #0A84FF; }
+.auth-visual .kb-prog i, .auth-visual .av-bars .today span { background: #0A84FF; }
+
+/* the brand: the website's white tick square */
+.auth-shell .auth-brand .brand-mark { border-radius: 8px; }
+.auth-shell .auth-brand strong { font-family: var(--lp-body); }
+
+/* the black panel: the hero's drifting blue-violet glow */
+@media (min-width: 1040px) {
+  .auth-split > .auth-visual { position: relative; overflow: hidden; isolation: isolate; }
+  .auth-split > .auth-visual::before {
+    background:
+      radial-gradient(42% 38% at 22% 30%, rgba(10, 132, 255, .42), transparent 70%),
+      radial-gradient(40% 36% at 78% 40%, rgba(142, 124, 255, .40), transparent 70%),
+      radial-gradient(30% 28% at 50% 68%, rgba(100, 210, 255, .22), transparent 70%);
+    filter: blur(40px); opacity: .75; animation: la-drift 18s ease-in-out infinite; z-index: -1;
+  }
+}
+@keyframes la-drift { 0%, 100% { transform: translate(0, 0) scale(1); } 33% { transform: translate(4%, -3%) scale(1.06); } 66% { transform: translate(-3%, 3%) scale(.96); } }
+
+/* the card */
+.auth-shell .auth-card { border-radius: 28px; background: #fff; box-shadow: 0 40px 100px -40px rgba(0, 0, 0, .25), 0 0 0 1px rgba(0, 0, 0, .04); }
+html[data-theme='dark'] .auth-shell .auth-card { background: #0E0F12; box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 60px 120px -40px rgba(10, 132, 255, .35); }
+html[data-theme='dark'] .auth-shell .auth-field, html[data-theme='dark'] .auth-shell .auth-field:hover { background: #1A1C21; border-color: rgba(255, 255, 255, .1); }
+.auth-shell .auth-field:focus-within { border-color: #0A84FF; box-shadow: 0 0 0 4px rgba(10, 132, 255, .18); }
+html[data-theme='dark'] .auth-shell .input { background: #1A1C21; border-color: rgba(255, 255, 255, .1); }
+.auth-shell .input:focus { border-color: #0A84FF; box-shadow: 0 0 0 4px rgba(10, 132, 255, .18); }
+
+/* buttons: the blue pill, quiet pills for the alternatives */
+.auth-shell .auth-submit, .auth-shell .auth-form .btn-primary { background: #0A84FF; border-radius: 999px; font-family: var(--lp-body); font-weight: 500; transition: transform .25s, background .25s; }
+.auth-shell .auth-submit:hover:not(:disabled), .auth-shell .auth-form .btn-primary:hover:not(:disabled) { background: #0077ED; transform: scale(1.01); }
+.auth-shell .auth-alt, .auth-shell .auth-social { border-radius: 999px; min-height: 44px; }
+html[data-theme='dark'] .auth-shell .auth-alt, html[data-theme='dark'] .auth-shell .auth-social { background: #1A1C21; border-color: rgba(255, 255, 255, .1); color: #F5F5F7; }
+html[data-theme='dark'] .auth-shell .auth-alt:hover, html[data-theme='dark'] .auth-shell .auth-social:hover { background: #24262C; }
+.auth-shell .auth-remember input:checked { background: #0A84FF; border-color: #0A84FF; }
+.auth-shell .link, .auth-shell .auth-foot a, .auth-shell .auth-help a { color: var(--ds-accent); }
+
+/* phones: the card is the page, with the glow behind the headline */
+@media (max-width: 1039px) {
+  .auth-shell { background: radial-gradient(90% 40% at 50% 0%, rgba(10, 132, 255, .14), transparent 70%), radial-gradient(70% 30% at 90% 6%, rgba(142, 124, 255, .14), transparent 70%), #F5F5F7; }
+  html[data-theme='dark'] .auth-shell { background: radial-gradient(90% 40% at 50% 0%, rgba(10, 132, 255, .28), transparent 70%), radial-gradient(70% 30% at 90% 6%, rgba(142, 124, 255, .26), transparent 70%), #000; }
+}
+@media (prefers-reduced-motion: reduce) { .auth-split > .auth-visual::before { animation: none; } }

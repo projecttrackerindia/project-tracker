@@ -156,7 +156,8 @@ export function LoginPage() {
   const [code, setCode] = useState('');
   const nav = useNavigate();
   const [error, setError] = useState<string | null>(() => params.get('sso_error') ? params.get('message') ?? 'Sign-in could not be completed.' : null);
-  const [sso, setSso] = useState(false);
+  // "Single sign-on" on the website opens this page at the SSO step.
+  const [sso, setSso] = useState(() => params.get('sso') === '1');
   const [phoneEmail, setPhoneEmail] = useState<string | null>(null);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [unverified, setUnverified] = useState(false);
