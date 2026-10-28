@@ -47,7 +47,8 @@ public sealed record AiProviderStatusDto(bool Active, string? Provider, string? 
 /// While it is on, people who agreed are answered on the organization's own account - no AI credits are used for them. Background work
 /// (scheduled digests, the project agent) keeps using Project Tracker's own AI: nobody is there to have agreed.
 /// </summary>
-public class WorkspaceAiService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ISecretProtector protector, IWorkspaceAiClients clients, Recorder recorder)
+public class WorkspaceAiService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ISecretProtector protector, IWorkspaceAiClients clients, Recorder recorder,
+    ProjectManagement.Application.Features.Platform.DataLocationService dataLocation)
 {
     public static readonly string[] Providers = ["anthropic", "openai"];
     public static string NameOf(string provider) => provider == "openai" ? "ChatGPT (OpenAI)" : "Claude (Anthropic)";
@@ -118,6 +119,8 @@ public class WorkspaceAiService(IAppDbContext db, ICurrentContext ctx, AppClock 
     {
         await RequireAdminAsync(ct);
         var provider = ProviderOf(req.Provider);
+        // An organization that keeps its data in India cannot switch on a provider that processes it elsewhere.
+        if (req.Enabled) await dataLocation.EnsureAllowedAsync(provider, ct);
         var row = await db.AiWorkspaceProviders.FirstOrDefaultAsync(ct);
         var newKey = req.ApiKey?.Trim();
         if (string.IsNullOrEmpty(newKey) && (row is null || row.Provider != provider))

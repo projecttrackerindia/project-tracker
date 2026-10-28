@@ -22,6 +22,7 @@ import { Designs } from './Designs';
 import { docsPath, GENERAL, topicOf, type Topic } from './nav';
 import { avgScore, HealthRing, MethodPill, pidOf, plural, PopMenu, ProjectMark, tone, useApiActions } from './shared';
 import { dropZone, planDrop, planStep, type DropWhere } from './treeDrag';
+import { docFresh, DriftPill, FreshPill, freshOf, freshOfMany } from './Fresh';
 import './docs.css';
 
 const store = {
@@ -70,15 +71,24 @@ export function ProjectDocs() {
 }
 
 function Topic({ p, catalog, topic }: { p: DtProject; catalog: DtCatalog; topic: Topic }) {
-  if (topic.kind === 'guide') return <div className="dx-guide"><DocumentPage id={topic.id} /></div>;
+  if (topic.kind === 'guide') {
+    const d = p.documents.find((x) => x.id === topic.id);
+    return <div className="dx-guide">{d && <div className="dx-guide-fresh"><FreshPill state={docFresh(d)} /></div>}<DocumentPage id={topic.id} /></div>;
+  }
   if (topic.kind === 'endpoint') {
     const e = p.endpoints.find((x) => x.id === topic.id);
     return e ? <ApiSymbol project={p} endpoint={e} /> : <Reading p={p} title="Endpoint"><EmptyState icon="code" title="This endpoint is not here any more" action={<Link className="dx-btn" to={docsPath.apiIndex(p.id)}>API reference</Link>} /></Reading>;
   }
-  if (topic.kind === 'architecture') return <Reading p={p} title="Architecture" wide><Architecture projectId={p.id} projectName={p.name} /></Reading>;
-  if (topic.kind === 'designs') return <Reading p={p} title="Designs" wide><Designs projectId={p.id} projectName={p.name} /></Reading>;
+  if (topic.kind === 'architecture') return <ArchReading p={p} />;
+  if (topic.kind === 'designs') return <Reading p={p} title="Designs" wide fresh={<FreshPill state={freshOfMany(p.documents)} />}><Designs projectId={p.id} projectName={p.name} /></Reading>;
   if (topic.kind === 'api') return <ApiIndex p={p} catalog={catalog} />;
   return <Overview p={p} catalog={catalog} />;
+}
+
+/** Architecture with its freshness: the diagrams' last save is when someone last stood behind them. */
+function ArchReading({ p }: { p: DtProject }) {
+  const arch = useWsQuery(['documents', 'doctracker', 'architecture', p.id ?? 'general'], () => docTrackerApi.architecture(p.id));
+  return <Reading p={p} title="Architecture" wide fresh={arch.data?.updatedAt ? <FreshPill state={freshOf({ updatedAt: arch.data.updatedAt })} /> : undefined}><Architecture projectId={p.id} projectName={p.name} /></Reading>;
 }
 
 // ---- navigator
@@ -244,7 +254,7 @@ function Overview({ p, catalog }: { p: DtProject; catalog: DtCatalog }) {
     </>
   );
   return (
-    <Reading p={p} tools={tools}>
+    <Reading p={p} tools={tools} fresh={<><FreshPill state={freshOfMany(p.documents)} />{p.endpoints.some((e) => e.drift?.differs) && <DriftPill drift={p.endpoints.find((e) => e.drift?.differs)!.drift} />}</>}>
       <header className="dx-hero-p dx-reveal">
         <p className="dx-eyebrow">Collection</p>
         <h1 className="dx-title">{p.name}</h1>
@@ -329,7 +339,7 @@ function ApiIndex({ p, catalog }: { p: DtProject; catalog: DtCatalog }) {
   }, [p.endpoints, q, sort]);
   const canWrite = catalog.canCreate || p.definitions.length > 0;
   return (
-    <Reading p={p} title="API Reference" tools={canWrite ? <><button type="button" className="dx-btn" onClick={actions.importFile}>Import</button><button type="button" className="dx-btn tint" onClick={actions.newEndpoint}>New endpoint</button></> : undefined}>
+    <Reading p={p} title="API Reference" fresh={<FreshPill state={freshOfMany(p.documents.filter((d) => d.isApi))} />} tools={canWrite ? <><button type="button" className="dx-btn" onClick={actions.importFile}>Import</button><button type="button" className="dx-btn tint" onClick={actions.newEndpoint}>New endpoint</button></> : undefined}>
       <header className="dx-hero-p dx-reveal"><p className="dx-eyebrow">API Reference</p><h1 className="dx-title">{p.name} API</h1>
         <p className="dx-lede">{plural(p.endpoints.length, 'endpoint')}, grouped by resource.</p></header>
       {p.endpoints.length === 0 ? <EmptyState icon="code" title="No endpoints yet" text="Describe an endpoint by hand, or import an OpenAPI file, a Postman collection or cURL commands." /> : (
@@ -343,7 +353,7 @@ function ApiIndex({ p, catalog }: { p: DtProject; catalog: DtCatalog }) {
               <h2 className="dx-h2">{tag || 'Ungrouped'}</h2>
               <ul className="dx-list">{eps.map((e) => (
                 <li key={e.id}><Link className={`dx-li${e.deprecated ? ' dep' : ''}`} to={docsPath.endpoint(p.id, e.id)}>
-                  <MethodPill m={e.method} /><code>{e.path}</code><span className="dx-li-proj">{e.summary || 'No summary'}</span>{e.deprecated && <span className="dx-tag warn">Deprecated</span>}<HealthRing score={e.score} size={26} />
+                  <MethodPill m={e.method} /><code>{e.path}</code><span className="dx-li-proj">{e.summary || 'No summary'}</span>{e.deprecated && <span className="dx-tag warn">Deprecated</span>}{e.drift?.differs && <span className="dx-tag warn" title="Docs differ from live API">Differs from live</span>}<HealthRing score={e.score} size={26} />
                 </Link></li>
               ))}</ul>
             </section>

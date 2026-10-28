@@ -4,7 +4,7 @@ import { generatePassphrase, generatePassword, parseCsv, randomBelow, readExport
 describe('strength (same rules as the server)', () => {
   it.each([
     ['password', 0], ['Password@123', 0], ['qwerty1234', 0], ['aaaaaaaaaaaa', 0], ['Summer@2024', 0], ['Sunshine', 0], ['password1', 0], ['Welcome@123', 0],
-    ['Fivestar2024', 1], ['k8#Vq!2mZ@t9Lw$e', 4], ['orbit lantern mango river', 4], ['Tq7#vLm2!pZx9@Rk', 4], ['N3w!Passw0rd#Ax7q', 4],
+    ['Northwind2024', 1], ['k8#Vq!2mZ@t9Lw$e', 4], ['orbit lantern mango river', 4], ['Tq7#vLm2!pZx9@Rk', 4], ['N3w!Passw0rd#Ax7q', 4],
   ])('%s scores %i', (p, s) => expect(strength(p)).toBe(s));
 });
 

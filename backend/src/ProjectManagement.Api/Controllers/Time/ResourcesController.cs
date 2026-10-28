@@ -8,7 +8,7 @@ namespace ProjectManagement.Api.Controllers.Time;
 
 /// <summary>Capacity and cost: people's weekly capacity and rates, utilisation, and project budgets.</summary>
 [Route("api/v1/resources"), RequireWorkspace]
-public class ResourcesController(CapacityService capacity) : ApiControllerBase
+public class ResourcesController(CapacityService capacity, CapacityPlanService plan) : ApiControllerBase
 {
     /// <summary>Everyone's capacity, cost rate and bill rate (Owners and Admins).</summary>
     [HttpGet("rates")]
@@ -24,6 +24,11 @@ public class ResourcesController(CapacityService capacity) : ApiControllerBase
     [HttpGet("utilisation")]
     public async Task<IActionResult> Utilisation([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] WorkloadScope? scope, CancellationToken ct) =>
         Ok(await capacity.UtilisationAsync(from, to, scope, ct));
+
+    /// <summary>Person x week capacity plan for the weeks ahead: capacity after leave, booked open work, and a suggested move.</summary>
+    [HttpGet("plan")]
+    public async Task<IActionResult> Plan([FromQuery] DateOnly? from, [FromQuery] int? weeks, [FromQuery] WorkloadScope? scope, CancellationToken ct) =>
+        Ok(await plan.GetAsync(from, weeks, scope, ct));
 
     [HttpGet("projects/{projectId:guid}"), RequireModule(Modules.Projects)]
     public async Task<IActionResult> Project(Guid projectId, CancellationToken ct) => Ok(await capacity.ProjectAsync(projectId, ct));

@@ -530,3 +530,33 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 .pf-drop-form textarea, .pf-drop-form input { padding: 8px 10px; border: 0; border-radius: 9px; background: var(--ds-fill); color: var(--ds-text); font: inherit; font-size: 14px; resize: vertical; }
 .pf-drop-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 @media (prefers-reduced-motion: reduce) { .pf-drop, .pf-drop-back { animation: none; } .pf-board .pf-card[draggable='true'] { transition: none; } }
+
+/* Present · weekly report slides (the toggle in the top bar adds one after each project's decision). */
+.pf-wk-tg { border: 0; background: rgba(255,255,255,.08); color: #d1d1d6; font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 980px; cursor: pointer; }
+.pf-wk-tg:hover, .pf-wk-tg:focus-visible { outline: none; background: rgba(255,255,255,.14); color: #f5f5f7; }
+.pf-wk-tg.on { background: rgba(48,176,199,.28); color: #64d2ff; box-shadow: inset 0 0 0 1px rgba(48,176,199,.6); }
+.pf-wk-cols ul { margin: 0; padding: 0 0 0 18px; display: grid; gap: 6px; }
+.pf-wk-cols li { font-size: 16px; }
+.pf-wk-none { font-style: normal; color: #8e8e93; }
+.pf-wk-foot { margin: 0; font-size: 13px; color: #8e8e93; }
+.pf-th.wk { background: #1c2a2e; }
+.pf-th i.ok { background: #30d158; }
+@media (max-width: 760px) {
+  .pf-wk-cols { grid-template-columns: 1fr; gap: 10px; margin: 20px 0; }
+  .pf-wk-cols li { font-size: 14px; }
+  .pf-wk-tg { padding: 4px 10px; font-size: 12px; }
+}
+.pf-views { margin: -6px 0 6px; } .pf-views .pv-views { padding: 0; }
+
+/* Present on a phone: the slide fills the screen, swipe between slides, a compact top bar with ⋯, the app's bars, Ask and toasts hidden. */
+html.pf-presenting .v2-phone-bar, html.pf-presenting .v2-ask, html.pf-presenting .m-top, html.pf-presenting .toast-root, html.pf-presenting .v2-live { display: none !important; }
+.pf-present.phone { z-index: 3000; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+.pf-present.phone .pf-present-top { position: relative; height: 52px; gap: 8px; padding: 0 8px 0 16px; font-size: 14px; }
+.pf-present.phone .pf-ph-count { font-variant-numeric: tabular-nums; }
+.pf-present.phone .pf-ph-sp { flex: 1; }
+.pf-present.phone .pf-ph-more, .pf-present.phone .pf-exit { min-width: 44px; min-height: 44px; border: 0; border-radius: 22px; background: rgba(255, 255, 255, .1); color: #f5f5f7; font: inherit; font-size: 15px; font-weight: 600; padding: 0 14px; }
+.pf-ph-menu { position: absolute; right: 60px; top: 50px; z-index: 5; min-width: 200px; padding: 6px; border-radius: 14px; background: #2c2c2e; box-shadow: 0 12px 40px rgba(0, 0, 0, .5); }
+.pf-ph-menu button { display: block; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: #f5f5f7; font: inherit; font-size: 15px; text-align: left; }
+.pf-present.phone .pf-stage { flex: 1; min-height: 0; touch-action: pan-y; padding: 0 12px 12px; }
+.pf-present.phone .pf-count { display: none; }
+.pf-present.phone .pf-strip { display: none; }

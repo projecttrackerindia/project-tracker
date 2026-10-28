@@ -1,5 +1,5 @@
 /* =====================================================================================================================
-   FiveStar v2 shell: the 84px rail, the phone bar, + New, the Ask bar, the side panel, inbox rows and AI cards.
+   Northwind v2 shell: the 84px rail, the phone bar, + New, the Ask bar, the side panel, inbox rows and AI cards.
    Blue (--ds-accent) is the one accent; violet (--ds-violet, #5E5CE6) is used only where the AI speaks or acts.
    ===================================================================================================================== */
 
@@ -344,3 +344,60 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
 }
 @keyframes v2-menu-up { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .v2-side .v2-menu { animation: none; } }
+
+/* Phone tab bar (iPhone and Android alike): four places and More, solid frosted glass, a hairline, nothing showing through. */
+.v2-phone-bar.m-tabs { padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--ds-surface, #fff) 95%, transparent);
+  backdrop-filter: saturate(180%) blur(28px); -webkit-backdrop-filter: saturate(180%) blur(28px); box-shadow: 0 -.5px 0 var(--ds-line); }
+.v2-phone-tab { min-height: 49px; justify-content: center; gap: 2px; font-size: 10.5px; letter-spacing: .01em; -webkit-tap-highlight-color: transparent; }
+.v2-phone-tab .v2-phone-ic { position: relative; display: grid; place-items: center; width: 52px; height: 28px; border-radius: 14px; transition: background .25s, transform .2s; }
+.v2-phone-tab.on { color: var(--ds-accent); font-weight: 600; }
+.v2-phone-tab.on .v2-phone-ic { background: color-mix(in srgb, var(--ds-accent) 13%, transparent); }   /* the Material 3 pill, quiet enough for iOS too */
+.v2-phone-tab:active .v2-phone-ic { transform: scale(.92); }
+.v2-phone-tab .v2-phone-ic .v2-badge { position: absolute; top: -3px; left: calc(50% + 7px); }
+.m-icon.m-new { background: var(--ds-accent); color: #fff; border-radius: 50%; width: 32px; height: 32px; }
+.v2-more-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 8px; padding: 6px 2px 14px; }
+.v2-more-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0; border: 0; background: none; color: var(--ds-text); font: inherit; font-size: 12px; cursor: pointer; animation: v2-tile-in .35s cubic-bezier(.32, .72, 0, 1) both; }
+.v2-more-tile:nth-child(2) { animation-delay: 30ms; } .v2-more-tile:nth-child(3) { animation-delay: 60ms; } .v2-more-tile:nth-child(4) { animation-delay: 90ms; } .v2-more-tile:nth-child(n+5) { animation-delay: 120ms; }
+@keyframes v2-tile-in { from { opacity: 0; transform: translateY(8px) scale(.94); } to { opacity: 1; transform: none; } }
+.v2-more-tile .v2-tile.lg { width: 54px; height: 54px; border-radius: 14px; color: #fff; display: grid; place-items: center; box-shadow: 0 6px 16px rgba(0, 0, 0, .12); }
+.v2-more-tile:active .v2-tile.lg { transform: scale(.94); }
+.v2-more-tile.on span:last-of-type { font-weight: 600; }
+.v2-more-tile .v2-badge { position: absolute; top: 0; right: calc(50% - 34px); }
+.v2-more-pins { border-top: .5px solid var(--ds-line); padding-top: 6px; }
+.v2-more-pin { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--ds-text); font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
+.v2-more-pin i { width: 10px; height: 10px; border-radius: 50%; flex: none; } .v2-more-pin svg { margin-left: auto; color: var(--ds-text-3); }
+@media (prefers-reduced-motion: reduce) { .v2-more-tile { animation: none; } }
+
+/* ------------------------------------------------------------------ phone: nothing hides under the bars */
+/* Pages end above the tab bar, the Ask bar and the home indicator, so the last row can always be scrolled into view. */
+@media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
+  :root { --m-ask: 64px; }
+  html .m-shell.v2-shell .m-main > .content { padding-bottom: calc(var(--m-tab, 62px) + var(--m-ask) + env(safe-area-inset-bottom, 0px) + 20px); }
+  html .m-shell.m-conversation .m-main > .content { padding-bottom: 0; }
+  /* toasts and live banners sit just above the Ask bar, never over a page's header */
+  html .m-shell .toast-root, html .toast-root { top: auto !important; bottom: calc(var(--m-tab, 62px) + var(--m-ask) + env(safe-area-inset-bottom, 0px) + 8px) !important; }
+  html .m-shell.m-conversation .toast-root { bottom: calc(var(--m-tab, 62px) + 72px + env(safe-area-inset-bottom, 0px)) !important; }
+  html .m-shell .toast { animation-name: v2-toast-rise; }
+  html .m-shell ~ .v2-live, html .v2-live { top: auto; right: 12px; left: 12px; width: auto; bottom: calc(var(--m-tab, 62px) + var(--m-ask) + env(safe-area-inset-bottom, 0px) + 8px); flex-direction: column-reverse; }
+  /* the Ask bar folds into a small pill while the page scrolls down, and opens again on a tap or a scroll up */
+  .m-shell .v2-ask:not(.corner) { transition: width .28s var(--ds-spring), opacity .2s var(--ds-ease), padding .28s var(--ds-spring); }
+  .m-shell .v2-ask.away:not(.corner):not(:focus-within) { opacity: 1; translate: none; pointer-events: auto; width: 92px; padding: 7px 14px 7px 8px; cursor: pointer; }
+  .m-shell .v2-ask.away:not(.corner):not(:focus-within) input,
+  .m-shell .v2-ask.away:not(.corner):not(:focus-within) .v2-ask-send { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .v2-ask-pill { display: none; font-size: 14px; font-weight: 600; color: var(--ds-text); }
+  .m-shell .v2-ask.away:not(.corner):not(:focus-within) .v2-ask-pill { display: inline; }
+  .m-shell .v2-ask.corner.away { opacity: 1; translate: none; pointer-events: auto; }
+}
+@keyframes v2-toast-rise { from { transform: translateY(24px) scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* + New › Ticket: Notify on WhatsApp (only when the workspace's WhatsApp can send) */
+.v2-new-wa { display: flex; align-items: center; gap: 12px; margin: 4px 0 12px; padding: 10px 14px; min-height: 52px; border-radius: 14px; background: var(--ds-fill); cursor: pointer; }
+.v2-new-wa-ico { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: #25d366; color: #fff; font-size: 14px; flex: none; }
+.v2-new-wa-t { flex: 1; min-width: 0; display: grid; }
+.v2-new-wa-t b { font-size: 14px; font-weight: 600; color: var(--ds-text); }
+.v2-new-wa-t small { font-size: 12px; color: var(--ds-text-3); }
+.v2-new-wa input { appearance: none; -webkit-appearance: none; width: 51px; height: 31px; border-radius: 16px; background: var(--ds-fill-strong); position: relative; flex: none; margin: 0; cursor: pointer; transition: background .2s; }
+.v2-new-wa input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .2); transition: transform .2s var(--ds-spring); }
+.v2-new-wa input:checked { background: #34c759; }
+.v2-new-wa input:checked::after { transform: translateX(20px); }
+.v2-new-wa input:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }

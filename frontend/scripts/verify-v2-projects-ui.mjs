@@ -17,12 +17,12 @@ const out = path.resolve(process.env.PM_UI_ARTIFACTS || 'test-results/enterprise
 await fs.mkdir(out, { recursive: true });
 const csp = await appCsp();
 const day = (n) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
-const user = { id: '00000000-0000-0000-0000-000000000001', displayName: 'Prasanna K', email: 'prasanna@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
+const user = { id: '00000000-0000-0000-0000-000000000001', displayName: 'Maya C', email: 'maya@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
 const siva = { id: '00000000-0000-0000-0000-0000000000b2', name: 'Siva Reddy' };
 const ws = { id: '00000000-0000-0000-0000-000000000002', slug: 'preview-org', name: 'Preview Workspace', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 4 };
 const token = `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`;
 const pid = (n) => `00000000-0000-0000-0000-0000000000${String(n).padStart(2, '0')}`;
-const mk = (n, key, name, health, progress, due, group = 'Mule Soft', owner = { id: user.id, name: 'Prasanna' }) => ({
+const mk = (n, key, name, health, progress, due, group = 'Mule Soft', owner = { id: user.id, name: 'Maya' }) => ({
   id: pid(n), key, name, description: null, status: health === 'Completed' ? 'Completed' : 'Active', priority: 'High', health, progress, owner, teamId: null, teamName: null,
   startDate: day(-60), dueDate: due, memberCount: 4, version: 1, position: n * 1024, enforceDependencies: false, projectGroupId: group === 'Other' ? 'g2' : 'g1', projectGroupName: group,
   projectType: 'NewProject', deliveryMethod: 'Hybrid', stageScheduleMode: 'Manual', stats: { total: 8, done: Math.round(progress * 8 / 100), inProgress: progress && progress < 100 ? 1 : 0, todo: 2, cancelled: 0, overdue: health === 'Delayed' ? 2 : 0 },
@@ -37,37 +37,41 @@ const all = [
 const few = all.filter((p) => !['Darwin box Api', 'Darwin Box api'].includes(p.name)).slice(0, 6);
 let projects = all;
 const rp = all.find((p) => p.key === 'RP');
+Object.assign(rp, { stageCount: 8, pendingSignOffs: 0 });
+// The project's releases on the Journey: one shipped, one approved, one planned (its go/no-go read from the release).
+const rel = (id, name, status, targetDate, shippedAt = null) => ({ id, name, projectId: null, projectName: 'Razor pay', targetDate, status, notes: null, items: 4, runs: 1, approvedBy: null, approvedAt: null, shippedAt, createdAt: '2026-09-01T00:00:00Z' });
+const rpReleases = [rel('rel-1', 'v1.0', 'Shipped', '2026-09-20', '2026-09-21T10:00:00Z'), rel('rel-2', 'v1.1', 'Approved', '2026-11-04'), rel('rel-3', 'v1.2', 'Planned', '2026-11-25')];
 const stages = ['Created', 'Requirements', 'Development', 'Code review', 'Testing', 'UAT', 'Production', 'Completed'].map((name, i) => ({ id: `st${i}`, name, order: i, plannedStart: null, plannedEnd: null, actualStart: null, actualEnd: null,
   status: 'Completed', effectiveStatus: 'Completed', owner: null, assignee: null, description: null, taskTotal: 1, taskDone: 1, locked: false, lockedBy: null, openIssues: 0, totalIssues: 0 }));
 const detail = (p) => ({ project: { ...p, description: p.key === 'RP' ? 'Razorpay integration is live in production (v1.0.1): create order and payment status APIs, UPI, card and netbanking.' : null },
   stages: p.key === 'RP' ? stages : [], statuses: [{ id: 's1', name: 'To Do', order: 0, category: 'Todo', color: '#4f46e5' }, { id: 's2', name: 'Done', order: 1, category: 'Done', color: '#34d399' }],
-  members: [{ userId: user.id, name: 'Prasanna', email: user.email, role: 'Owner' }, { userId: siva.id, name: siva.name, email: 'siva@example.test', role: 'Member' }] });
+  members: [{ userId: user.id, name: 'Maya', email: user.email, role: 'Owner' }, { userId: siva.id, name: siva.name, email: 'siva@example.test', role: 'Member' }] });
 const sia = all[0];
 const decision = { projectId: sia.id, key: 'SIA', name: 's-internal-api', headline: 'SIA finishes 47 days late.', causes: ['2 of 3 tasks are overdue', 'both wait on the LMS team'], slipDays: 47, dueDate: day(6), finish: day(53), confidence: 'medium', waitingProposals: 0,
   options: [{ id: 'move_person', kind: 'move_person', title: 'Move Siva Reddy onto SIA for a week', effect: '30 days late', finish: day(36), slipDays: 30, steps: ['Give SIA-4 “Separate QR transactions” to Siva Reddy'], why: 'Siva is at 30%.', personId: siva.id },
     { id: 'accept_date', kind: 'accept_date', title: 'Accept the new date', effect: 'on time against the new date', finish: day(53), slipDays: 0, steps: ['Move SIA’s delivery date'], why: '', personId: null }] };
 const brief = { asOf: day(0), projects: 9, onTrack: 3, atRisk: 3, delayed: 3, onHold: 0, overdueTasks: 6, blockedTasks: 1, openActionItems: 2, overdueActionItems: 0, dateChangesLast30Days: 1, headlines: [],
-  ranked: [{ projectId: sia.id, key: 'SIA', name: 's-internal-api', group: 'Mule Soft', health: 'AtRisk', progress: 33, owner: 'Prasanna', startDate: day(-60), dueDate: day(6), delayedDays: 0, openTasks: 2, overdueTasks: 2, blockedTasks: 0,
+  ranked: [{ projectId: sia.id, key: 'SIA', name: 's-internal-api', group: 'Mule Soft', health: 'AtRisk', progress: 33, owner: 'Maya', startDate: day(-60), dueDate: day(6), delayedDays: 0, openTasks: 2, overdueTasks: 2, blockedTasks: 0,
     openActionItems: 0, overdueActionItems: 0, finishedLast28Days: 1, inProgressTasks: 1, projectedFinish: day(53), projectedSlipDays: 47, confidence: 'medium', score: 6, level: 'High', reasons: ['2 of 3 tasks are overdue and both wait on the LMS team'] }],
   recentSlips: [], stretched: [] };
 const board = () => ({ asOf: day(0), filter: {}, brief, decisions: [decision], summary: '9 active projects: 3 on track, 3 at risk, 3 delayed. 1 decision this week, the biggest: SIA finishes 47 days late.',
-  owners: [{ id: user.id, name: 'Prasanna' }], groups: [{ id: 'g1', name: 'Mule Soft' }], money: { entitled: false, showMoney: false, currency: 'INR', budget: 0, spent: 0, forecast: 0, overrunning: 0, projects: [], burn: [], notes: [] },
+  owners: [{ id: user.id, name: 'Maya' }], groups: [{ id: 'g1', name: 'Mule Soft' }], money: { entitled: false, showMoney: false, currency: 'INR', budget: 0, spent: 0, forecast: 0, overrunning: 0, projects: [], burn: [], notes: [] },
   capacity: { from: day(0), to: day(27), people: 4, over: [], projectsAtRisk: [], notes: [] } });
 const finding = { id: 'f-date', projectId: sia.id, projectKey: 'SIA', projectName: 's-internal-api', runId: 'run-p', kind: 'Decision', status: 'Proposed', title: 'Move SIA’s delivery date', detail: null, evidence: null, sourceLabel: 'Portfolio', source: null,
   taskId: null, taskKey: null, taskTitle: null, issueId: null, issueKey: null, assignee: null, dueDate: day(53), priority: null, newStatus: 'project_due', comment: null, confidence: 100, createdAt: new Date().toISOString(), decidedBy: null, decidedAt: null,
   appliedEntityId: null, appliedKey: null, error: null, grounded: true, edits: null, ownerResponse: null, ownerNote: null, ownerRespondedAt: null };
 let agent = { projectId: rp.id, enabled: true, readMailbox: true, readChat: true, readMeetings: true, liveBot: false, dailyUpdates: true, mailboxAddress: 'agent+rp@inbound.example.test', liveBotAvailable: true, aiAvailable: true,
-  pending: 1, lastRunAt: new Date().toISOString(), lastError: null, runsThisMonth: 3, monthlyRunLimit: 300, canManage: true, actingUserName: 'Prasanna', runs: [], transcriptAccess: false, instructions: null, speakerAliases: null,
+  pending: 1, lastRunAt: new Date().toISOString(), lastError: null, runsThisMonth: 3, monthlyRunLimit: 300, canManage: true, actingUserName: 'Maya', runs: [], transcriptAccess: false, instructions: null, speakerAliases: null,
   autoTranscriptAccess: false, captionLanguage: null, autoJoinCalendar: false, sendMinutes: true, slackChannelId: null, slackAvailable: false, readWhatsApp: false, whatsAppAvailable: false,
   autonomyLevel: 2, autoApplyConfidence: 90, autoApplyKinds: [], followUps: true, meetingBriefs: true, monthlyCreditCap: 0, creditsThisMonth: 12 };
 const rpFinding = { ...finding, id: 'f-rp', projectId: rp.id, projectKey: 'RP', projectName: 'Razor pay', kind: 'Suggestion', title: 'Add a reconciliation report for refunds', newStatus: null, dueDate: null, sourceLabel: 'Project chat · today', source: 'Chat', confidence: 80 };
 const docs = [
   { id: 'd1', key: 'DOC-1', number: 1, title: 'Razorpay Payments API v1.0.1', typeId: 't1', typeCode: 'API', typeName: 'API documentation', typeColor: '#0ea5e9', typeIcon: 'file', projectId: rp.id, projectKey: 'RP', projectName: 'Razor pay', teamId: null, teamName: null,
-    owner: { id: user.id, name: 'Prasanna' }, status: 'Published', visibility: 'Workspace', classification: 'Internal', tags: [], updatedAt: `${day(-34)}T10:00:00Z`, createdAt: `${day(-40)}T10:00:00Z`, linkedCount: 0, versionLabel: '1.0', sharedCount: 0 },
+    owner: { id: user.id, name: 'Maya' }, status: 'Published', visibility: 'Workspace', classification: 'Internal', tags: [], updatedAt: `${day(-34)}T10:00:00Z`, createdAt: `${day(-40)}T10:00:00Z`, linkedCount: 0, versionLabel: '1.0', sharedCount: 0 },
   { id: 'd2', key: 'DOC-2', number: 2, title: 'Business requirements (BRD)', typeId: 't2', typeCode: 'BRD', typeName: 'Business requirement document', typeColor: '#7c3aed', typeIcon: 'file', projectId: rp.id, projectKey: 'RP', projectName: 'Razor pay', teamId: null, teamName: null,
-    owner: { id: user.id, name: 'Prasanna' }, status: 'Approved', visibility: 'Workspace', classification: 'Internal', tags: [], updatedAt: `${day(-50)}T10:00:00Z`, createdAt: `${day(-55)}T10:00:00Z`, linkedCount: 0, versionLabel: '1.0', sharedCount: 0 },
+    owner: { id: user.id, name: 'Maya' }, status: 'Approved', visibility: 'Workspace', classification: 'Internal', tags: [], updatedAt: `${day(-50)}T10:00:00Z`, createdAt: `${day(-55)}T10:00:00Z`, linkedCount: 0, versionLabel: '1.0', sharedCount: 0 },
 ];
-const files = [{ id: 'a1', projectId: rp.id, taskId: null, taskKey: null, taskTitle: null, fileName: 'razorpay-postman-collection.json', contentType: 'application/json', sizeBytes: 18000, uploadedBy: { id: user.id, name: 'Prasanna' }, createdAt: `${day(-30)}T10:00:00Z`, canDelete: true, isImage: false, issueId: null }];
+const files = [{ id: 'a1', projectId: rp.id, taskId: null, taskKey: null, taskTitle: null, fileName: 'razorpay-postman-collection.json', contentType: 'application/json', sizeBytes: 18000, uploadedBy: { id: user.id, name: 'Maya' }, createdAt: `${day(-30)}T10:00:00Z`, canDelete: true, isImage: false, issueId: null }];
 const writes = [], errors = [], checks = [];
 let pinStore = null;
 const PHOTO = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -79,7 +83,7 @@ const make = async (theme = 'light') => {
   await ctx.route('**/*', async (route) => {
     const req = route.request(), url = new URL(req.url()), ep = url.pathname, method = req.method();
     if (url.origin !== origin || ep.startsWith('/hubs/')) { await route.abort(); return; }
-    // Prasanna has a profile photo: every face of theirs (Journey signer, pass owner) shows it instead of initials.
+    // Maya has a profile photo: every face of theirs (Journey signer, pass owner) shows it instead of initials.
     if (ep === `/api/v1/workspace/members/${user.id}/avatar`) { await route.fulfill({ status: 200, contentType: 'image/png', body: PHOTO }); return; }
     if (ep.endsWith('/avatar') || ep.endsWith('/logo/file') || ep.includes('/brand/')) { await route.fulfill({ status: 404, body: '' }); return; }
     if (!ep.startsWith('/api/')) {
@@ -100,7 +104,7 @@ const make = async (theme = 'light') => {
     else if (ep === '/api/v1/me/ui/pins') data = { key: 'pins', value: pinStore, updatedAt: null };
     else if (ep === '/api/v1/workspace/avatars') data = [{ userId: user.id, version: '1' }];
     else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
-    else if (ep === '/api/v1/workspace/members') data = [{ userId: user.id, displayName: 'Prasanna', email: user.email, role: 'Owner' }, { userId: siva.id, displayName: siva.name, email: 'siva@example.test', role: 'Member' }];
+    else if (ep === '/api/v1/workspace/members') data = [{ userId: user.id, displayName: 'Maya', email: user.email, role: 'Owner' }, { userId: siva.id, displayName: siva.name, email: 'siva@example.test', role: 'Member' }];
     else if (ep === '/api/v1/projects' && method === 'GET') { const ps = Number(url.searchParams.get('pageSize') ?? 25), pg = Number(url.searchParams.get('page') ?? 1); const items = projects.slice((pg - 1) * ps, pg * ps); data = { items, page: pg, pageSize: ps, totalItems: projects.length, totalPages: Math.ceil(projects.length / ps) }; }
     else if (proj && proj[2] === '/move' && method === 'PATCH') { const x = { ...projects.find((y) => y.id === proj[1]), status: body.status }; projects = projects.filter((y) => y.id !== x.id || x.status !== 'Archived'); data = x; }
     else if (proj && !proj[2] && p) data = detail(p);
@@ -108,18 +112,20 @@ const make = async (theme = 'light') => {
     else if (proj && proj[2] === '/agent') data = { ...agent, projectId: proj[1], pending: agent.enabled ? 1 : 0 };
     else if (proj && proj[2] === '/agent/findings') data = proj[1] === sia.id ? { items: [finding], pending: 1, canDecide: true } : { items: agent.enabled ? [rpFinding] : [], pending: 1, canDecide: true };
     else if (proj && proj[2] === '/agent/autonomy') data = { projectId: proj[1], level: 2, minDecisions: 30, minRate: 95, kinds: [], hints: [] };
-    else if (proj && proj[2] === '/activity') data = { items: [{ id: 'act1', action: 'project.due_changed', summary: 'moved the due date to 23 Sep', actor: { id: user.id, name: 'Prasanna' }, createdAt: new Date().toISOString() }], page: 1, pageSize: 20, totalItems: 1, totalPages: 1 };
+    else if (proj && proj[2] === '/activity') data = { items: [{ id: 'act1', action: 'project.due_changed', summary: 'moved the due date to 23 Sep', actor: { id: user.id, name: 'Maya' }, createdAt: new Date().toISOString() }], page: 1, pageSize: 20, totalItems: 1, totalPages: 1 };
     else if (proj && proj[2] === '/attachments') data = proj[1] === rp.id ? files : [];
-    else if (proj && proj[2] === '/time') data = { totalMinutes: 1260, estimatedHours: 40, byPerson: [{ userId: user.id, name: 'Prasanna', minutes: 900 }, { userId: siva.id, name: siva.name, minutes: 360 }], topTasks: [{ taskId: 't1', key: 'RP-1', title: 'Create order API', minutes: 600, estimatedHours: 12 }] };
+    else if (proj && proj[2] === '/time') data = { totalMinutes: 1260, estimatedHours: 40, byPerson: [{ userId: user.id, name: 'Maya', minutes: 900 }, { userId: siva.id, name: siva.name, minutes: 360 }], topTasks: [{ taskId: 't1', key: 'RP-1', title: 'Create order API', minutes: 600, estimatedHours: 12 }] };
     else if (proj && (proj[2] === '/tasks')) data = { items: [], page: 1, pageSize: 500, totalItems: 0, totalPages: 0 };
     else if (proj && proj[2] === '/issues') data = [];
     else if (ep === '/api/v1/documents') data = { items: url.searchParams.get('projectId') === rp.id ? docs : [], nextCursor: null, total: url.searchParams.get('projectId') === rp.id ? docs.length : 0 };
     else if (ep === '/api/v1/linked-documents') data = { items: [], restricted: 0 };
+    else if (ep === '/api/v1/releases') data = url.searchParams.get('projectId') === rp.id ? rpReleases : [];
+    else if (ep === '/api/v1/releases/rel-3') data = { release: rpReleases[2], items: [], runs: [], tests: null, done: 3, open: 1, openBugs: 1, checks: [], go: false, canApprove: true };
     else if (ep === '/api/v1/attachments/limits') data = { maxFileBytes: 10_000_000, allowedExtensions: ['json', 'pdf', 'png'], storageUsedBytes: 0, storageLimitBytes: -1 };
     else if (ep === '/api/v1/portfolio/board') data = board();
     else if (ep === '/api/v1/portfolio/timeline') data = { from: day(-60), to: day(60), projects: [] };
     else if (ep === `/api/v1/portfolio/decisions/${sia.id}/apply`) data = { proposals: 1, message: '1 proposal is waiting in SIA › Agent for approval.', findingIds: [finding.id] };
-    else if (ep === `/api/v1/agent/findings/${finding.id}/approve`) data = { ...finding, status: 'Applied', decidedBy: { id: user.id, name: 'Prasanna' }, appliedKey: 'SIA' };
+    else if (ep === `/api/v1/agent/findings/${finding.id}/approve`) data = { ...finding, status: 'Applied', decidedBy: { id: user.id, name: 'Maya' }, appliedKey: 'SIA' };
     else if (ep === '/api/v1/portfolio/summary') data = { text: 'SIA is the one to watch: two tasks wait on the LMS team.', model: 'synthetic', at: new Date().toISOString(), cached: false };
     else if (ep === '/api/v1/ai/portfolio/brief') data = brief;
     else if (ep === '/api/v1/project-groups') data = [{ id: 'g1', name: 'Mule Soft' }, { id: 'g2', name: 'Other' }];
@@ -164,7 +170,7 @@ try {
   assert.equal(await card.locator('.pa-name').innerText(), 's-internal-api');
   assert.equal(await card.locator('.pa-key').innerText(), 'SIA');
   assert.equal(await card.locator('.pa-state').innerText(), 'At risk');
-  assert.equal(await card.locator('.pa-own').innerText(), 'Prasanna');
+  assert.equal(await card.locator('.pa-own').innerText(), 'Maya');
   assert.equal(await card.locator('.pa-arc b').innerText(), '33%');
   assert.match(await card.locator('.pa-lbl').innerText(), /^due \d{1,2} [A-Z][a-z]{2}$/i);
   assert.equal(await page.locator('.pa-pass[data-project="SBI bulk payments"] .pa-state').innerText(), 'Late');
@@ -198,6 +204,10 @@ try {
   const dupe = page.getByTestId('duplicate-line');
   assert.equal(await dupe.count(), 1);
   assert.match(await dupe.innerText(), /Darwin box Api and Darwin Box api look like the same project/);
+  // Stage names under the pass dots (read from the project when the pointer rests on the pass).
+  const rpPass = page.getByTestId('project-pass').filter({ hasText: rp.name }).first();
+  await rpPass.hover(); const gn = rpPass.getByTestId('pass-stage-names'); await gn.waitFor();
+  assert.match(await gn.innerText(), /Created[\s\S]*Requirements[\s\S]*Completed/); checks.push('pass-stage-names');
   await shot(page, 'projects-1440-light.png', true);
   await dupe.getByRole('button', { name: 'Merge…' }).click();
   await dupe.getByRole('button', { name: /Close “Darwin box Api”/ }).click();
@@ -321,9 +331,18 @@ try {
   assert.equal(await journey.locator('.pp-nd.s').count(), 8);
   assert.deepEqual(await journey.locator('.pp-nd b').allInnerTexts(), ['Created', 'Requirements', 'Development', 'Code review', 'Testing', 'UAT', 'Production', 'Completed']);
   assert.match(await journey.innerText(), /Every stage is signed off/);
+  const lane = journey.getByLabel('Releases');
+  await lane.getByText('No go').waitFor();
+  assert.deepEqual(await lane.locator('.pp-rel b').allInnerTexts(), ['v1.0', 'v1.1', 'v1.2']);
+  assert.match(await lane.locator('.pp-rel.done').innerText(), /Shipped 21 Sep/);
+  assert.match(await lane.locator('.pp-rel.ok').innerText(), /Approved · 4 Nov/);
+  assert.match(await lane.locator('.pp-rel.nogo').innerText(), /No go · 25 Nov/);
+  assert.match(await lane.getByRole('link', { name: /Release v1\.2: No go/ }).getAttribute('href'), /\/quality\?release=rel-3$/);
+  await journey.screenshot({ path: path.join(out, 'journey-releases-1440.png') });
+  checks.push('journey-releases');
   assert.match(await page.locator('.pp-ai').innerText(), /All 8 tasks done/);
   assert.match(await page.getByRole('region', { name: 'Key numbers' }).innerText(), /8 \/ 8[\s\S]*Work items done[\s\S]*Sign-offs pending/);
-  assert.match(await page.getByRole('region', { name: 'People' }).innerText(), /Prasanna[\s\S]*Owner[\s\S]*Siva Reddy/);
+  assert.match(await page.getByRole('region', { name: 'People' }).innerText(), /Maya[\s\S]*Owner[\s\S]*Siva Reddy/);
   const docsBox = page.getByRole('region', { name: 'Docs' }); await docsBox.locator('.pp-docrow').first().waitFor();
   assert.deepEqual(await docsBox.locator('.pp-tx span').allInnerTexts(), ['API doc · published', 'BRD · approved']);
   await shot(page, 'project-overview-1440-light.png', true);
@@ -374,7 +393,7 @@ try {
   checks.push('tab-docs');
   // Time.
   await tabs.getByRole('tab', { name: 'Time' }).click();
-  await page.locator('.pp-body[data-tab="time"]').getByText('Prasanna').first().waitFor();
+  await page.locator('.pp-body[data-tab="time"]').getByText('Maya').first().waitFor();
   checks.push('tab-time');
   // Activity: the project agent as one switch with a link to its settings, its proposals, and the history.
   await tabs.getByRole('tab', { name: 'Activity' }).click();

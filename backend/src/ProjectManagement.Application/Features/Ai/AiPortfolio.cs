@@ -220,14 +220,19 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             if (truncated) { finish = null; slip = null; conf = "none"; }
 
             var reasons = new List<string>(); var score = 0.0;
-            if (health == ProjectHealth.Delayed) { score += 5; reasons.Add($"Past its due date ({Day(r.DueDate)}) with {progress}% done"); }
+            // A status set by hand decides the health, and its reason is the one given (not the arithmetic's).
+            var byHand = ProjectMetrics.HealthByHand(r.Project, today);
+            var handNote = string.IsNullOrWhiteSpace(r.Project.HealthNote) ? "" : $": {r.Project.HealthNote!.Trim()}";
+            if (byHand && health == ProjectHealth.Delayed) { score += 5; reasons.Add($"Set to late by hand{handNote}"); }
+            else if (byHand && health == ProjectHealth.AtRisk) { score += 3; reasons.Add($"Set at risk by hand{handNote}"); }
+            else if (health == ProjectHealth.Delayed) { score += 5; reasons.Add($"Past its due date ({Day(r.DueDate)}) with {progress}% done"); }
             else if (health == ProjectHealth.AtRisk) { score += 3; reasons.Add("Marked at risk by its own progress against the plan"); }
             if (overdue > 0) { score += Math.Min(overdue, 6); reasons.Add($"{overdue} overdue task{(overdue == 1 ? "" : "s")} of {open} open"); }
             if (blockedN > 0) { score += Math.Min(blockedN * 2, 4); reasons.Add($"{blockedN} task{(blockedN == 1 ? " is" : "s are")} waiting on unfinished work"); }
             if (delayed > 0) { score += Math.Min(delayed / 3.0, 4); reasons.Add($"Delivery date already moved by {delayed} day{(delayed == 1 ? "" : "s")}"); }
             if (slip is > 0 && r.DueDate is not null) { score += Math.Min(slip.Value / 7.0, 4) * (conf == "low" ? 0.5 : 1); reasons.Add($"At the pace of the last 4 weeks it finishes about {Day(finish)}, {slip} day{(slip == 1 ? "" : "s")} after its due date ({conf} confidence)"); }
             else if (conf == "none" && open > 0) { score += 2; reasons.Add($"{open} open task{(open == 1 ? "" : "s")}{(st.InProgress > 0 ? $" ({st.InProgress} in progress)" : "")} and nothing finished in the last 4 weeks"); }
-            if (r.StartDate is { } s0 && r.DueDate is { } d0 && d0 > s0 && health != ProjectHealth.Delayed)
+            if (r.StartDate is { } s0 && r.DueDate is { } d0 && d0 > s0 && health != ProjectHealth.Delayed && !(byHand && health == ProjectHealth.OnTrack))
             {
                 var span = d0.DayNumber - s0.DayNumber; var elapsed = Math.Clamp((today.DayNumber - s0.DayNumber) / (double)span, 0, 1);
                 if (elapsed > 0.3 && elapsed - progress / 100.0 > 0.2) { score += 2; reasons.Add($"{Num(elapsed * 100)}% of the time has passed and {progress}% is done"); }

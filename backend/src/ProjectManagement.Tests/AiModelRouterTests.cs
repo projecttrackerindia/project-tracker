@@ -30,7 +30,7 @@ public class AiModelRouterTests
     [Theory]
     [InlineData("Create a task for Max")]
     [InlineData("Invite shiva@example.com to the workspace")]
-    [InlineData("assign it to prasanna krishna")]
+    [InlineData("assign it to maya krishna")]
     public void Asking_for_a_change_is_at_least_Standard(string q) =>
         Assert.Equal(AiTier.Standard, AiModelRouter.Heuristic(new AiRouteRequest(q, 0, 0, AiMode.Auto, AiTier.Deep)).Tier);
 

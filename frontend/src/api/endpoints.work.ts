@@ -1,5 +1,5 @@
 import { del, download, fetchBlobUrl, get, patch, post, put, uploadFile, create } from './client';
-import type { WeekDraft,ParsedTime,LogTimeWordsEntry,LogTimeWordsResult,EffectiveAccessList,AutomationInput,AutomationRule,AutomationTest,AutomationRunEntry,AutomationDraft,ProjectTime,TaskTime,TimeEntry,Timesheet,AccessMatrix,DependencyType,Milestone,MilestoneInput,TaskDependencies,ActionItem,ActionItemInput,ActionItemStatus,Attachment,AttachmentLimits,ProjectGroup,ProjectStatusReport,StatusGroup,Issue,IssueDetail,IssueInput,DevEmail,OrgRole,OrgStructure,TimesheetWeek,Approvals,BulkReviewResult,TimesheetGrid,GridCellChange,SaveGridResult,TimesheetInsights } from './types';
+import type { WeekDraft,ParsedTime,LogTimeWordsEntry,LogTimeWordsResult,EffectiveAccessList,AutomationInput,AutomationRule,AutomationTest,AutomationRunEntry,AutomationBacktest,AutomationDraft,ProjectTime,TaskTime,TimeEntry,Timesheet,AccessMatrix,DependencyType,Milestone,MilestoneInput,TaskDependencies,ActionItem,ActionItemInput,ActionItemStatus,Attachment,AttachmentLimits,ProjectGroup,ProjectStatusReport,StatusGroup,Issue,IssueDetail,IssueInput,DevEmail,OrgRole,OrgStructure,TimesheetWeek,Approvals,BulkReviewResult,TimesheetGrid,GridCellChange,SaveGridResult,TimesheetInsights } from './types';
 
 export const devApi = { emails: () => get<DevEmail[]>('/dev/emails', undefined, { auth: false }) };
 
@@ -40,10 +40,25 @@ export const actionItemApi = {
   remove: (projectId: string, id: string) => del<void>(`/projects/${projectId}/action-items/${id}`),
 };
 
+export interface WeeklyItem { text: string; owner: string | null; source: string | null; link: string | null; external: boolean }
+export interface WeeklySchedule { reminderId: string; nextAt: string | null; timeZone: string }
+export interface WeeklySent { sentAt: string; by: string | null; health: string | null; done: number; slipped: number; channels: string[] }
+export interface WeeklyReportData {
+  projectId: string; projectName: string; from: string; to: string; health: string; text: string; moved: number; slipped: number; risks: number; next: number; canSend: boolean;
+  projectKey?: string | null; week?: number; verdict?: string; sources?: { updates: number; meetings: number; commits: number } | null; scopeChange?: number; progress?: number;
+  forecastDays?: number | null; forecastDate?: string | null; movedItems?: WeeklyItem[] | null; slippedItems?: WeeklyItem[] | null; riskItems?: WeeklyItem[] | null; nextItems?: WeeklyItem[] | null;
+  people?: { id: string; name: string }[] | null; history?: WeeklySent[] | null; schedule?: WeeklySchedule | null; writtenAt?: string | null;
+}
+
 /** The Project Status presentation page. */
 export const statusApi = {
   groups: (teamId?: string | null) => get<StatusGroup[]>('/project-status/groups', { teamId: teamId ?? undefined }),
   report: (projectId: string) => get<ProjectStatusReport>(`/project-status/projects/${projectId}`),
+  weekly: (projectId: string) => get<WeeklyReportData>(`/project-status/projects/${projectId}/weekly`),
+  sendWeekly: (projectId: string, text: string, opts?: { chat?: boolean; mail?: boolean; pdf?: boolean; recipients?: string[] }) =>
+    post<{ sent: boolean }>(`/project-status/projects/${projectId}/weekly/send`, { text, ...opts }),
+  scheduleWeekly: (projectId: string, timeZone: string) => post<WeeklySchedule>(`/project-status/projects/${projectId}/weekly/schedule`, { timeZone }),
+  unscheduleWeekly: (projectId: string) => del<{ scheduled: boolean }>(`/project-status/projects/${projectId}/weekly/schedule`),
 };
 
 /** Issues found in a project's stages (Observed / Failed → In progress → Fixed → Resolved). */
@@ -132,6 +147,8 @@ export const workspaceAutomationApi = {
   test: (rule: AutomationInput, taskId: string) => post<AutomationTest>('/automations/test', { rule, taskId }),
   /** The latest times the rule did something (newest first). */
   runs: (id: string) => get<AutomationRunEntry[]>(`/automations/${id}/runs`),
+  /** The rule replayed over the last 7 days: how often it would have fired, per day, and on what. Nothing is changed or sent. */
+  backtest: (rule: AutomationInput) => post<AutomationBacktest>('/automations/backtest', rule),
   /** A sentence to a rule draft (AI; nothing is saved). */
   draft: (text: string) => post<AutomationDraft>('/ai/automation-draft', { text }),
 };

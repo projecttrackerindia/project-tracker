@@ -12,7 +12,7 @@ namespace ProjectManagement.Application.Features.Quality;
 
 public record TestCaseDto(Guid Id, string Key, string Title, string? Steps, string? Expected, string Priority, string? Tags, Guid? ProjectId, string? ProjectName,
     DateTime CreatedAt, DateTime? UpdatedAt);
-public record TestRunDto(Guid Id, string Name, string? Environment, string? Build, string Status, Guid? ProjectId, DateTime CreatedAt, DateTime? StartedAt, DateTime? CompletedAt);
+public record TestRunDto(Guid Id, string Name, string? Environment, string? Build, string Status, Guid? ProjectId, DateTime CreatedAt, DateTime? StartedAt, DateTime? CompletedAt, Guid? ReleaseId = null);
 public record TestResultDto(Guid Id, Guid RunId, Guid CaseId, string Status, string? Actual, string? Evidence, UserRefDto? RunBy, DateTime? At, Guid? LinkedWorkItemId);
 public record TestMatrixDto(IReadOnlyList<TestRunDto> Runs, IReadOnlyList<TestCaseDto> Cases, IReadOnlyList<TestResultDto> Results);
 public record QualityBlockerDto(Guid CaseId, string Key, string Title, string Priority);
@@ -68,7 +68,7 @@ public class QualityService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     private static TestCaseDto ToDto(TestCase c, IReadOnlyDictionary<Guid, string> projects) =>
         new(c.Id, c.Key, c.Title, c.Steps, c.Expected, c.Priority, c.Tags, c.ProjectId, c.ProjectId is { } p ? projects.GetValueOrDefault(p) : null, c.CreatedAt, c.UpdatedAt);
 
-    private static TestRunDto ToDto(TestRun r) => new(r.Id, r.Name, r.Environment, r.Build, r.Status, r.ProjectId, r.CreatedAt, r.StartedAt, r.CompletedAt);
+    public static TestRunDto ToDto(TestRun r) => new(r.Id, r.Name, r.Environment, r.Build, r.Status, r.ProjectId, r.CreatedAt, r.StartedAt, r.CompletedAt, r.ReleaseId);
 
     private async Task<List<TestResultDto>> ToDtosAsync(IReadOnlyList<TestResult> results, CancellationToken ct)
     {
@@ -253,7 +253,15 @@ public class QualityService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var item = await work.CreateAsync(new CreateWorkItemRequest("ticket", title, description, c.ProjectId ?? run.ProjectId, req.AssigneeId, priority, WorkTypeId: type.Id), ct);
         result.LinkedWorkItemId = item.Id;
         result.UpdatedAt = clock.Now; result.UpdatedBy = ctx.UserId;
-        recorder.Audit("quality.bug.filed", "TestResult", result.Id, null, new { CaseKey = c.Key, WorkItemKey = item.Key });
+        // A run that tests a release files its bug into that release (while it is still open), so the go/no-go counts it as a blocker.
+        Guid? releaseId = null;
+        if (run.ReleaseId is { } rid && await db.Releases.AnyAsync(r => r.Id == rid && r.Status != "Shipped", ct)
+            && !await db.ReleaseItems.AnyAsync(i => i.ReleaseId == rid && i.WorkItemId == item.Id, ct))
+        {
+            db.ReleaseItems.Add(new ReleaseItem { TenantId = ctx.RequireTenantId(), ReleaseId = rid, WorkItemId = item.Id, CreatedAt = clock.Now, CreatedBy = ctx.UserId });
+            releaseId = rid;
+        }
+        recorder.Audit("quality.bug.filed", "TestResult", result.Id, null, new { CaseKey = c.Key, WorkItemKey = item.Key, ReleaseId = releaseId });
         await db.SaveChangesAsync(ct);
         return new FiledBugDto((await ToDtosAsync([result], ct))[0], item);
     }

@@ -8,6 +8,7 @@ import { BrandMark } from '../components/BrandMark';
 import { Sheet } from '../components/Sheet';
 import { openPalette } from '../components/CommandPalette';
 import { AvatarMenu } from '../components/v2';
+import { openNew } from '../components/v2/state';
 import { initials, timeAgo } from '../lib/format';
 import { haptic } from '../lib/mobile';
 import { useTeamLens } from '../lib/teamLens';
@@ -56,6 +57,7 @@ export function MobileTopBar() {
             {team ? <span className="lens-chip" style={{ '--h': hue(team.name) } as React.CSSProperties}>{initials(team.name)}</span> : <Icon name="users" size={21} />}
           </button>
         )}
+        {!admin && <button type="button" className="m-icon m-new" onClick={() => { haptic(12); openNew(); }} aria-label="New"><Icon name="plus" size={20} /></button>}
         <button type="button" className="m-icon" onClick={() => { haptic(); openPalette(); }} aria-label="Search"><Icon name="search" size={21} /></button>
         {!admin && (
           <button type="button" className="m-icon" onClick={() => { haptic(); setSheet('notes'); }} aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>

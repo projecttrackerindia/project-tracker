@@ -186,10 +186,17 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
 
         var was = ToApi(item.Status);
         var reassigned = req.AssigneeId != item.AssigneeId;
+        var oldTitle = item.Title; var oldDetails = item.Description; var oldAssignee = item.AssigneeId; var oldDue = item.DueDate; var oldPriority = item.Priority;
         item.Title = title; item.Description = details; item.AssigneeId = req.AssigneeId; item.DueDate = req.DueDate; item.Priority = req.Priority;
         ApplyStatus(item, req.Status);
         item.Version++; item.UpdatedAt = clock.Now; item.UpdatedBy = ctx.UserId;
         var now = ToApi(item.Status);
+        var people = await ProjectManagement.Application.Features.Platform.FieldDiff.NamesAsync(db, [oldAssignee, item.AssigneeId], ct);
+        new ProjectManagement.Application.Features.Platform.FieldDiff()
+            .Add("Title", oldTitle, item.Title).Add("Status", was.ToString(), now.ToString())
+            .Add("Assignee", ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldAssignee), ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, item.AssigneeId))
+            .Add("Priority", oldPriority.ToString(), item.Priority.ToString()).Add("Due date", oldDue, item.DueDate).Add("Description", oldDetails, item.Description, 60)
+            .Record(recorder, "actionitem", "ActionItem", id);
         recorder.Activity("actionitem.updated", "ActionItem", id, was != now ? $"Action item “{title}”: {was} → {now}" : $"Updated action item “{title}”", projectId,
             was.ToString(), now.ToString());
         if (reassigned) await NotifyAssignedAsync(project, item, ct);
@@ -210,6 +217,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         ApplyStatus(item, req.Status);
         item.Version++; item.UpdatedAt = clock.Now; item.UpdatedBy = ctx.UserId;
         recorder.Activity("actionitem.status", "ActionItem", id, $"Action item “{item.Title}”: {was} → {req.Status}", projectId, was.ToString(), req.Status.ToString());
+        new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", was.ToString(), req.Status.ToString()).Record(recorder, "actionitem", "ActionItem", id);
         await db.SaveChangesAsync(ct);
         return await OneAsync(project, item, ct);
     }

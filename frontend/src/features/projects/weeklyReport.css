@@ -1,0 +1,97 @@
+/* Weekly report page (design s-report). Tokens only, so dark mode follows the theme. */
+.wrp { max-width: 1180px; margin: 0 auto; padding: 18px 24px 40px; color: var(--ds-text); }
+.wrp-top { display: flex; align-items: center; gap: 10px; }
+.wrp-sp { flex: 1; }
+.wrp-back { border: 0; background: none; color: var(--ds-accent); font: inherit; font-size: 14px; font-weight: 600; padding: 4px 0; cursor: pointer; }
+.wrp-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+.wrp-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ds-text-3); }
+.wrp-h1 { font-size: 30px; font-weight: 700; letter-spacing: -.02em; margin: 2px 0 0; }
+.wrp-sourceline { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ds-text-2); }
+.wrp-orb { flex: none; width: 16px; height: 16px; border-radius: 50%; background: conic-gradient(from 200deg, #5e5ce6, #bf5af2, #64d2ff, #5e5ce6); box-shadow: 0 0 10px rgba(94, 92, 230, .35); }
+.wrp-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; margin-top: 14px; align-items: start; }
+.wrp-doc, .wrp-card { background: var(--ds-surface); border-radius: var(--ds-r-card, 16px); box-shadow: var(--ds-e1); }
+.wrp-doc { padding: 26px 34px; min-width: 0; }
+.wrp-verdict { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wrp-line { font-size: 15px; line-height: 1.45; }
+.wrp-pill { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: var(--ds-r-pill, 999px); font-size: 13px; font-weight: 600; white-space: nowrap; background: var(--ds-fill); color: var(--ds-text-2); }
+.wrp-pill.sm { height: 24px; font-size: 12px; }
+.wrp-pill.ok { background: var(--ds-success-bg); color: var(--ds-success); }
+.wrp-pill.warn { background: var(--ds-warning-bg); color: var(--ds-warning); }
+.wrp-pill.bad { background: var(--ds-danger-bg); color: var(--ds-danger); }
+.wrp-kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.wrp-kpi > div { background: var(--ds-fill); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.wrp-kpi b { display: block; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wrp-kpi b.warn { color: var(--ds-warning); } .wrp-kpi b.bad { color: var(--ds-danger); } .wrp-kpi b.ok { color: var(--ds-success); }
+.wrp-kpi span { font-size: 11.5px; color: var(--ds-text-2); }
+.wrp-sec { margin-top: 20px; }
+.wrp-sec h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.wrp-sec h4 i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.wrp-sec.moved h4 { color: var(--ds-success); } .wrp-sec.slipped h4 { color: var(--ds-danger); }
+.wrp-sec.risks h4 { color: var(--ds-warning); } .wrp-sec.next h4 { color: var(--ds-accent); }
+.wrp-sec ul { margin: 0; padding: 0 0 0 18px; }
+.wrp-sec li { font-size: 14px; line-height: 1.5; margin: 0 0 6px; color: var(--ds-text); overflow-wrap: anywhere; }
+.wrp-sec li b { font-weight: 600; }
+.wrp-who { color: var(--ds-text-3); }
+.wrp-src { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 5px; font-size: 11px; font-weight: 600; color: var(--ds-accent); background: var(--ds-accent-soft); text-decoration: none; vertical-align: 1px; }
+a.wrp-src:hover { text-decoration: underline; }
+.wrp-none { margin: 0; font-size: 13.5px; color: var(--ds-text-3); }
+.wrp-note { margin: 14px 0 0; font-size: 13px; color: var(--ds-text-2); }
+.wrp-link { border: 0; background: none; padding: 0; font: inherit; color: var(--ds-accent); cursor: pointer; }
+.wrp-edit { margin-top: 18px; }
+.wrp-edit textarea { width: 100%; box-sizing: border-box; min-height: 340px; border: 1px solid var(--ds-line); border-radius: 12px; padding: 12px 14px; font: 13.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--ds-surface-2); color: var(--ds-text); resize: vertical; }
+.wrp-edit-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--ds-text-3); flex-wrap: wrap; }
+.wrp-edit-bar span { flex: 1; min-width: 160px; }
+.wrp-side { min-width: 0; }
+.wrp-card { padding: 16px 18px; margin-bottom: 14px; }
+.wrp-card h3 { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
+.wrp-to { list-style: none; margin: 0; padding: 0; }
+.wrp-to li { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; min-width: 0; }
+.wrp-to .pa-av { width: 26px; height: 26px; font-size: 10.5px; flex: none; }
+.wrp-chatav { display: inline-grid; place-items: center; border-radius: 50%; background: var(--ds-accent); color: #fff; font-weight: 700; }
+.wrp-to-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wrp-x { border: 0; background: none; color: var(--ds-text-3); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; border-radius: 6px; }
+.wrp-x:hover { background: var(--ds-fill); color: var(--ds-text); }
+.wrp-add { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--ds-text-3); cursor: pointer; }
+.wrp-add:hover:not(:disabled) { color: var(--ds-accent); }
+.wrp-add-select { width: 100%; height: 32px; border-radius: 8px; border: 1px solid var(--ds-line); background: var(--ds-surface-2); color: var(--ds-text); font: inherit; font-size: 13px; }
+.wrp-seg { display: flex; margin-top: 10px; padding: 2px; border-radius: 10px; background: var(--ds-fill); }
+.wrp-seg button { flex: 1; height: 28px; border: 0; border-radius: 8px; background: none; color: var(--ds-text-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.wrp-seg button.on { background: var(--ds-surface); color: var(--ds-text); box-shadow: var(--ds-e1); }
+.wrp-approve-side { width: 100%; justify-content: center; margin-top: 12px; height: 36px; border-radius: 12px; }
+.wrp-why { margin: 6px 0 0; font-size: 11.5px; color: var(--ds-text-3); text-align: center; }
+.wrp-sched { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 8px; border: 0; background: none; font: inherit; font-size: 11.5px; color: var(--ds-text-3); cursor: pointer; padding: 4px; border-radius: 8px; }
+.wrp-sched:hover { background: var(--ds-fill); }
+.wrp-sched .wrp-dot { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid currentColor; }
+.wrp-sched.on { color: var(--ds-accent); }
+.wrp-sched.on .wrp-dot { background: currentColor; }
+.wrp-ai { box-shadow: var(--ds-e1), inset 0 0 0 .5px rgba(94, 92, 230, .3); }
+.wrp-ai p { display: flex; gap: 10px; margin: 0; font-size: 13px; line-height: 1.45; }
+.wrp-ai .wrp-orb { margin-top: 1px; }
+.wrp-ai-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0 26px; }
+.wrp-weeks { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+@media (max-width: 960px) {
+  .wrp-wrap { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .wrp { padding: 10px 16px calc(110px + env(safe-area-inset-bottom)); }
+  .wrp-approve-top { display: none; }
+  .wrp-h1 { font-size: 26px; }
+  .wrp-doc { padding: 18px 16px; }
+  .wrp-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* The send card reads as a bottom sheet under the report: grabber, rounded top, a full-width 44pt button. */
+  .wrp-side > .wrp-card:first-child { border-radius: 22px; padding-top: 22px; position: relative; }
+  .wrp-side > .wrp-card:first-child::before { content: ''; position: absolute; top: 8px; left: 50%; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: var(--ds-fill-strong, var(--ds-line)); }
+  .wrp-approve-side { height: 44px; }
+}
+@media print {
+  body * { visibility: hidden !important; }
+  .wrp-doc, .wrp-doc * { visibility: visible !important; }
+  .wrp-doc { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; }
+  .wrp-src { background: none; }
+}
+/* Mail as a source: threads linked to the project in Mail */
+.wrp-mail { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; }
+.wrp-mail li { display: flex; align-items: baseline; gap: 6px; font-size: 13px; min-width: 0; }
+.wrp-mail-s { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ds-text); }
+.wrp-mail .wrp-src { flex: none; }

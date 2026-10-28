@@ -21,7 +21,7 @@ public record ProjectListItemDto(Guid Id, string Key, string Name, string? Descr
     UserRefDto? Owner, Guid? TeamId, string? TeamName, DateOnly? StartDate, DateOnly? DueDate, int Progress, ProjectHealth Health,
     ProjectStatsDto Stats, int MemberCount, int Version, double Position, bool EnforceDependencies, Guid? ProjectGroupId = null, string? ProjectGroupName = null, ProjectType ProjectType = ProjectType.Other,
     DeliveryMethod DeliveryMethod = DeliveryMethod.Hybrid, StageScheduleMode StageScheduleMode = StageScheduleMode.Manual,
-    int StageCount = 0, int PendingSignOffs = 0, DateTime? UpdatedAt = null);
+    int StageCount = 0, int PendingSignOffs = 0, DateTime? UpdatedAt = null, bool HealthByHand = false);
 public record StatusDto(Guid Id, string Name, int Order, StatusCategory Category, string Color);
 public record StageDto(Guid Id, string Name, int Order, DateOnly? PlannedStart, DateOnly? PlannedEnd, DateOnly? ActualStart, DateOnly? ActualEnd,
     StageStatus Status, StageStatus EffectiveStatus, UserRefDto? Owner, UserRefDto? Assignee, string? Description,
@@ -41,6 +41,10 @@ public record ProjectQuery(string? Q, ProjectStatus? Status, Priority? Priority,
 public record AddProjectMemberRequest(Guid UserId);
 /// <summary>Board move: a new status (column) and/or a new order inside it.</summary>
 public record MoveProjectRequest(ProjectStatus Status, double? Position);
+/// <summary>A status set by hand: OnTrack, AtRisk or Delayed (empty clears it), why, and until when (optional).</summary>
+public record SetProjectHealthRequest(string? Health, string? Note = null, DateOnly? Until = null);
+/// <summary>The status shown (Health), the one from dates and progress (Calculated), and the hand-set one when in force.</summary>
+public record ProjectHealthDto(string Health, string Calculated, string? Override, string? Note, DateOnly? Until, UserRefDto? SetBy, DateTime? SetAt);
 public record UpsertStatusRequest(string Name, StatusCategory Category, string? Color, int? Order);
 /// <summary>The whole workflow in its new order: every status of the project exactly once.</summary>
 public record ReorderStatusesRequest(IReadOnlyList<Guid> StatusIds);
@@ -67,6 +71,27 @@ public static partial class ProjectMetrics
 
     /// <summary>Automatically calculated health (progress vs. elapsed time, deadline).</summary>
     public static ProjectHealth Health(Project p, ProjectStatsDto s, DateOnly today)
+    {
+        switch (p.Status)
+        {
+            case ProjectStatus.Completed: return ProjectHealth.Completed;
+            case ProjectStatus.Cancelled: return ProjectHealth.Cancelled;
+            case ProjectStatus.Archived: return ProjectHealth.Archived;
+        }
+        // A status set by hand stands until its date (or until cleared): the person who knows the project overrides the arithmetic.
+        if (p.HealthOverride is { } manual && (p.HealthUntil is not { } until || today <= until) && Enum.TryParse<ProjectHealth>(manual, out var set)
+            && set is ProjectHealth.OnTrack or ProjectHealth.AtRisk or ProjectHealth.Delayed) return set;
+        return CalculatedHealth(p, s, today);
+    }
+
+    /// <summary>Whether a status set by hand is in force (its date not passed) and decides the health shown.</summary>
+    public static bool HealthByHand(Project p, DateOnly today) =>
+        p.Status is not (ProjectStatus.Completed or ProjectStatus.Cancelled or ProjectStatus.Archived)
+        && p.HealthOverride is { } manual && (p.HealthUntil is not { } until || today <= until) && Enum.TryParse<ProjectHealth>(manual, out var set)
+        && set is ProjectHealth.OnTrack or ProjectHealth.AtRisk or ProjectHealth.Delayed;
+
+    /// <summary>The status from dates and progress alone, ignoring a status set by hand.</summary>
+    public static ProjectHealth CalculatedHealth(Project p, ProjectStatsDto s, DateOnly today)
     {
         switch (p.Status)
         {
@@ -162,7 +187,7 @@ public partial class ProjectService(
         new(p.Id, p.Key, p.Name, p.Description, p.Status, p.Priority,
             ownerName is null ? null : new UserRefDto(p.OwnerId, ownerName), p.TeamId, teamName, p.StartDate, p.DueDate,
             ProjectMetrics.Progress(stats), ProjectMetrics.Health(p, stats, clock.Today), stats, memberCount, p.Version, p.Position, p.EnforceDependencies, p.ProjectGroupId, groupName, p.ProjectType,
-            p.DeliveryMethod, p.StageScheduleMode, signOffs.Total, signOffs.Pending, p.UpdatedAt ?? p.CreatedAt);
+            p.DeliveryMethod, p.StageScheduleMode, signOffs.Total, signOffs.Pending, p.UpdatedAt ?? p.CreatedAt, ProjectMetrics.HealthByHand(p, clock.Today));
 
     // ---------------------------------------------------------------- queries
 
@@ -390,6 +415,7 @@ public partial class ProjectService(
         if ((req.StageScheduleMode ?? project.StageScheduleMode) != StageScheduleMode.FollowSchedule || req.DueDate != project.DueDate)
             ValidateDates(req.StartDate, req.DueDate);
         var oldStart = project.StartDate;
+        var oldOwner = project.OwnerId; var oldMethod = project.DeliveryMethod; var oldType = project.ProjectType;
         if (req.ProjectType is { } newType) project.ProjectType = newType;
         if (req.DeliveryMethod is { } method && method != project.DeliveryMethod)
         {
@@ -417,6 +443,8 @@ public partial class ProjectService(
 
         var oldStatus = project.Status;
         var oldDue = project.DueDate;
+        var oldName = project.Name; var oldDescription = project.Description; var oldPriority = project.Priority; var oldTeam = project.TeamId;
+        var oldStartDate = project.StartDate;
         project.Name = req.Name.Trim();
         project.Description = req.Description?.Trim();
         project.Priority = req.Priority;
@@ -439,6 +467,19 @@ public partial class ProjectService(
         SetStatus(project, req.Status);
         project.Version++;
 
+        {
+            var people = await ProjectManagement.Application.Features.Platform.FieldDiff.NamesAsync(db, [oldOwner, project.OwnerId], ct);
+            var teamIds = new[] { oldTeam, project.TeamId }.Where(x => x is not null).Select(x => x!.Value).ToList();
+            var teams = teamIds.Count == 0 ? new Dictionary<Guid, string>() : await db.Teams.AsNoTracking().Where(t => teamIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
+            new ProjectManagement.Application.Features.Platform.FieldDiff()
+                .Add("Name", oldName, project.Name).Add("Status", oldStatus.ToString(), project.Status.ToString())
+                .Add("Owner", ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldOwner), ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, project.OwnerId))
+                .Add("Priority", oldPriority.ToString(), project.Priority.ToString()).Add("Start date", oldStartDate, project.StartDate).Add("Due date", oldDue, project.DueDate)
+                .Add("Team", oldTeam is { } a ? teams.GetValueOrDefault(a) : null, project.TeamId is { } b2 ? teams.GetValueOrDefault(b2) : null)
+                .Add("Delivery method", oldMethod.ToString(), project.DeliveryMethod.ToString()).Add("Type", oldType.ToString(), project.ProjectType.ToString())
+                .Add("Description", oldDescription, project.Description, 60)
+                .Record(recorder, "project", "Project", id);
+        }
         if (oldStatus != req.Status)
         {
             recorder.Activity("project.status_changed", "Project", id, $"Changed project \"{project.Name}\" status: {oldStatus} → {req.Status}", id, oldStatus.ToString(), req.Status.ToString());
@@ -470,6 +511,59 @@ public partial class ProjectService(
         project.ArchivedBy = next == ProjectStatus.Archived ? project.ArchivedBy ?? ctx.UserId : null;
     }
 
+    // ------------------------------------------------------------------ status set by hand
+
+    public static readonly string[] ManualHealth = ["OnTrack", "AtRisk", "Delayed"];
+
+    /// <summary>The calculated status and, when one is set and still in force, the one set by hand (why, until when, who, when).</summary>
+    public async Task<ProjectHealthDto> GetHealthAsync(Guid id, CancellationToken ct = default)
+    {
+        var project = await access.GetProjectAsync(id, ct);
+        return await HealthDtoAsync(project, ct);
+    }
+
+    private async Task<ProjectHealthDto> HealthDtoAsync(Project project, CancellationToken ct)
+    {
+        var stats = (await GetStatsAsync([project.Id], ct)).GetValueOrDefault(project.Id) ?? new ProjectStatsDto(0, 0, 0, 0, 0, 0);
+        var today = clock.Today;
+        var inForce = project.HealthOverride is not null && (project.HealthUntil is not { } u || today <= u);
+        var by = inForce && project.HealthSetById is { } b ? await db.Users.AsNoTracking().Where(x => x.Id == b).Select(x => new UserRefDto(x.Id, x.DisplayName)).FirstOrDefaultAsync(ct) : null;
+        return new ProjectHealthDto(ProjectMetrics.Health(project, stats, today).ToString(), ProjectMetrics.CalculatedHealth(project, stats, today).ToString(),
+            inForce ? project.HealthOverride : null, inForce ? project.HealthNote : null, inForce ? project.HealthUntil : null, by, inForce ? project.HealthSetAt : null);
+    }
+
+    /// <summary>
+    /// Sets the project's status by hand (OnTrack, AtRisk or Delayed) with a reason and an optional end date, or clears it (null). Recorded
+    /// in the project's activity. Needs the right to edit the project.
+    /// </summary>
+    public async Task<ProjectHealthDto> SetHealthAsync(Guid id, SetProjectHealthRequest req, CancellationToken ct = default)
+    {
+        var project = await access.GetProjectAsync(id, ct);
+        await access.RequireProjectEditAsync(project, ct);
+        var before = project.HealthOverride;
+        if (string.IsNullOrWhiteSpace(req.Health))
+        {
+            project.HealthOverride = null; project.HealthNote = null; project.HealthUntil = null; project.HealthSetById = null; project.HealthSetAt = null;
+            recorder.Activity("project.health_cleared", "Project", id, $"Cleared the status set by hand on \"{project.Name}\"", id, before, null);
+        }
+        else
+        {
+            var h = ManualHealth.FirstOrDefault(x => string.Equals(x, req.Health.Trim(), StringComparison.OrdinalIgnoreCase))
+                ?? throw new ValidationException("health", "Choose OnTrack, AtRisk or Delayed.");
+            var note = (req.Note ?? "").Trim();
+            if (note.Length == 0) throw new ValidationException("note", "Say why, so everyone reading the status knows.");
+            if (note.Length > 300) throw new ValidationException("note", "Keep the reason under 300 characters.");
+            if (req.Until is { } until && until < clock.Today) throw new ValidationException("until", "Pick today or a later date.");
+            project.HealthOverride = h; project.HealthNote = note; project.HealthUntil = req.Until; project.HealthSetById = ctx.UserId; project.HealthSetAt = clock.Now;
+            recorder.Activity("project.health_set", "Project", id, $"Set \"{project.Name}\" to {h}: {note}", id, before, h);
+        }
+        recorder.Audit("project.health_set", "Project", id, before, project.HealthOverride);
+        new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Health", before, project.HealthOverride).Record(recorder, "project", "Project", id);
+        project.Version++;
+        await db.SaveChangesAsync(ct);
+        return await HealthDtoAsync(project, ct);
+    }
+
     /// <summary>
     /// Projects board: dropping a card in another column changes its status; dropping it inside its own column only re-orders it.
     /// </summary>
@@ -490,6 +584,7 @@ public partial class ProjectService(
             SetStatus(project, req.Status);
             recorder.Activity("project.status_changed", "Project", id, $"Changed project \"{project.Name}\" status: {old} → {req.Status}", id, old.ToString(), req.Status.ToString());
             recorder.Audit("project.status_changed", "Project", id, old.ToString(), req.Status.ToString());
+            new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", old.ToString(), req.Status.ToString()).Record(recorder, "project", "Project", id);
         }
         project.Position = req.Position ?? await NextPositionAsync(ct);
         project.Version++;

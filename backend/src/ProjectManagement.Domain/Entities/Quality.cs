@@ -31,6 +31,8 @@ public class TestRun : TenantEntity, ITenantScoped
     public string Status { get; set; } = "Open";
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
+    /// <summary>The release this run tests (null: not tied to one).</summary>
+    public Guid? ReleaseId { get; set; }
 }
 
 /// <summary>What one case did in one run: NotRun, Pass, Fail or Blocked, with what actually happened and the evidence (a cURL response).</summary>
@@ -45,4 +47,39 @@ public class TestResult : TenantEntity, ITenantScoped
     public DateTime? At { get; set; }
     /// <summary>The bug filed from this result (a work item).</summary>
     public Guid? LinkedWorkItemId { get; set; }
+}
+
+/// <summary>
+/// A release ("v2.4 · 14 Nov"): the work items going out together, the test runs that check them, and a go/no-go decision. Planned until
+/// someone approves it (recorded with who and when), then Shipped.
+/// </summary>
+public class Release : TenantEntity, ITenantScoped
+{
+    public Guid? ProjectId { get; set; }
+    public string Name { get; set; } = "";
+    public DateOnly? TargetDate { get; set; }
+    public string Status { get; set; } = "Planned";
+    public string? Notes { get; set; }
+    public Guid? ApprovedById { get; set; }
+    public DateTime? ApprovedAt { get; set; }
+    public DateTime? ShippedAt { get; set; }
+}
+
+/// <summary>One work item (task, ticket, bug, action item) in a release.</summary>
+public class ReleaseItem : TenantEntity, ITenantScoped
+{
+    public Guid ReleaseId { get; set; }
+    public Guid WorkItemId { get; set; }
+}
+
+/// <summary>One person asked to sign off a release, in a role (QA, Product, Engineering...): Pending until they sign or decline, with a note.</summary>
+public class ReleaseSignOff : TenantEntity, ITenantScoped
+{
+    public Guid ReleaseId { get; set; }
+    public Guid UserId { get; set; }
+    public string Role { get; set; } = "";
+    public string Status { get; set; } = "Pending";
+    public string? Note { get; set; }
+    public DateTime? SignedAt { get; set; }
+    public DateTime? RemindedAt { get; set; }
 }

@@ -34,6 +34,8 @@ public partial class AppDbContext
             e.Property(x => x.BudgetHours).HasPrecision(10, 2);
             e.Property(x => x.BudgetAmount).HasPrecision(14, 2);
             e.Property(x => x.BillRate).HasPrecision(12, 2);
+            e.Property(x => x.HealthOverride).HasMaxLength(16);
+            e.Property(x => x.HealthNote).HasMaxLength(300);
         });
         b.Entity<ProjectMember>(e =>
         {
@@ -899,6 +901,7 @@ public partial class AppDbContext
             e.HasIndex(x => x.CreatedAt);
             // The chain: one position per workspace. Two writers that both read the same last row cannot both win (the loser tries again).
             e.HasIndex(x => new { x.TenantId, x.Seq }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.EntityId });   // an item's or a project's History
             e.Property(x => x.PrevHash).HasMaxLength(64);
             e.Property(x => x.Hash).HasMaxLength(64);
             e.Property(x => x.Action).HasMaxLength(60);

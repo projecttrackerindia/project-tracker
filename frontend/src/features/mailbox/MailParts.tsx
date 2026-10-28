@@ -580,7 +580,7 @@ export function CompanyMailDialog({ accounts, onClose, onSaved }: { accounts: Ma
           <label className="mbc-field"><span>Mail provider</span>
             <Select className="select" value={provider} onChange={e => { setProvider(e.target.value); fill(e.target.value, incoming); setChecks(null); }} aria-label="Mail provider">
               {accounts.presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
-          <label className="mbc-field"><span>Company domains</span><input className="input" value={domains} onChange={e => setDomains(e.target.value)} placeholder="fivestargroup.in" /></label>
+          <label className="mbc-field"><span>Company domains</span><input className="input" value={domains} onChange={e => setDomains(e.target.value)} placeholder="northwindgroup.in" /></label>
         </div>
         <fieldset className="mbc-group"><legend>Incoming mail</legend>
           <div className="seg mbc-seg" role="radiogroup" aria-label="Incoming protocol">

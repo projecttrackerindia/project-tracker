@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ReactFlowProvider } from '@xyflow/react';
+import { useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../../api/client';
 import { docTrackerApi } from '../../../api/endpoints';
 import type { DtDiagram } from '../../../api/types';
@@ -15,6 +16,7 @@ import { ArchCanvas, EMPTY, toFlow, type ArchData } from './arch/ArchCanvas';
 import { ArchStudio } from './arch/ArchStudio';
 import { TEMPLATES } from './arch/archTemplates';
 import { plural } from './shared';
+import { docsPath } from './nav';
 import './arch/arch.css';
 
 const asData = (d: DtDiagram['data']) => (d && Array.isArray(d.nodes) ? (d as unknown as ArchData) : EMPTY);
@@ -30,13 +32,22 @@ function Preview({ data }: { data: ArchData }) {
  * A project's architecture: system diagrams and request flows drawn in the studio (components, frames, labelled arrows; start empty or from
  * a template), shown as a gallery to read, with the project's architecture notes under them. Saved together for the project.
  */
+/** The diagram being edited, kept across a remount of this page (e.g. the window crossing the phone breakpoint). */
+let openStudio: { pid: string; index: number; diagram: DtDiagram } | null = null;
+
 export function Architecture({ projectId, projectName }: { projectId: string | null; projectName: string }) {
   const wid = useWorkspaceId();
   const q = useWsQuery(['documents', 'doctracker', 'architecture', projectId ?? 'general'], () => docTrackerApi.architecture(projectId));
   const [diagrams, setDiagrams] = useState<DtDiagram[] | null>(null);
   const [notes, setNotes] = useState('');
-  const [editing, setEditing] = useState<{ index: number; diagram: DtDiagram } | null>(null);
-  const [focus, setFocus] = useState<string | null>(null);
+  const pidKey = projectId ?? 'general';
+  const [editing, setEditingState] = useState<{ index: number; diagram: DtDiagram } | null>(() => (openStudio?.pid === pidKey ? { index: openStudio.index, diagram: openStudio.diagram } : null));
+  const setEditing = (e: { index: number; diagram: DtDiagram } | null) => { openStudio = e && { pid: pidKey, ...e }; setEditingState(e); };
+  const onDraft = useCallback((data: ArchData, title: string) => { if (openStudio) openStudio = { ...openStudio, diagram: { ...openStudio.diagram, title, data: data as unknown as DtDiagram['data'] } }; }, []);
+  // ?diagram=key opens that one diagram (the link Share copies); focusing one writes it to the address, so the address is always shareable.
+  const [params, setParams] = useSearchParams();
+  const focus = params.get('diagram');
+  const setFocus = (key: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (key) n.set('diagram', key); else n.delete('diagram'); return n; }, { replace: true });
   const [walk, setWalk] = useState<DtDiagram | null>(null);
   // What the project has, for the assistant to use real names when it draws (endpoints and pages).
   const catalog = useWsQuery(['documents', 'doctracker', 'catalog'], docTrackerApi.catalog, { staleTime: 20_000 });
@@ -59,7 +70,8 @@ export function Architecture({ projectId, projectName }: { projectId: string | n
   const add = (kind: DtDiagram['kind'], template?: ArchData) => setEditing({ index: -1, diagram: { key: newKey(), title: kind === 'flow' ? 'Request flow' : 'System architecture', kind, data: (template ?? EMPTY) as unknown as DtDiagram['data'] } });
   const remove = async (i: number) => { if (await confirmDialog({ title: `Delete “${diagrams[i].title}”?`, message: 'The diagram is removed from this project.', confirmText: 'Delete' })) commit(diagrams.filter((_, j) => j !== i)); };
   const notesChanged = notes !== (q.data?.notes ?? '');
-  const shown = focus ? diagrams.filter((d) => d.key === focus) : diagrams;
+  const linked = focus ? diagrams.find((d) => d.key === focus) ?? null : null;
+  const shown = linked ? [linked] : diagrams;
 
   return (
     <div className="dx-arch" data-testid="architecture">
@@ -83,7 +95,9 @@ export function Architecture({ projectId, projectName }: { projectId: string | n
           {canEdit && <button type="button" className="dx-btn pri" onClick={() => add('architecture')}>Open the studio</button>}
         </div>
       ) : (
-        <div className={`dx-gallery${focus ? ' one' : ''}`}>
+        <>
+        {focus && !linked && <p className="dx-note" role="status">That diagram is not here any more. Showing all of them.</p>}
+        <div className={`dx-gallery${linked ? ' one' : ''}`} data-testid="arch-gallery">
           {shown.map((d, n) => {
             const i = diagrams.indexOf(d);
             return (
@@ -94,7 +108,8 @@ export function Architecture({ projectId, projectName }: { projectId: string | n
                   <b>{d.title}</b>
                   <span className="dx-fig-tools">
                     {asData(d.data).edges.length > 0 && <button type="button" className="dx-ibtn" aria-label={`Walk through ${d.title}`} title="Walk through, step by step" onClick={() => setWalk(d)}><Icon name="play" size={13} /></button>}
-                    <button type="button" className="dx-ibtn" aria-label={focus ? 'Back to all diagrams' : `Focus on ${d.title}`} onClick={() => setFocus(focus ? null : d.key)}><Icon name={focus ? 'close' : 'eye'} size={13} /></button>
+                    <button type="button" className="dx-ibtn" aria-label={`Copy a link to ${d.title}`} title="Copy a link to this diagram" onClick={() => void shareDiagram(projectId, d.key)}><Icon name="link" size={13} /></button>
+                    <button type="button" className="dx-ibtn" aria-label={linked ? 'Back to all diagrams' : `Focus on ${d.title}`} onClick={() => setFocus(linked ? null : d.key)}><Icon name={linked ? 'close' : 'eye'} size={13} /></button>
                     {canEdit && <button type="button" className="dx-ibtn" aria-label={`Edit ${d.title}`} onClick={() => setEditing({ index: i, diagram: d })}><Icon name="edit" size={13} /></button>}
                     {canEdit && <button type="button" className="dx-ibtn" aria-label={`Delete ${d.title}`} onClick={() => void remove(i)}><Icon name="trash" size={13} /></button>}
                   </span>
@@ -103,6 +118,7 @@ export function Architecture({ projectId, projectName }: { projectId: string | n
             );
           })}
         </div>
+        </>
       )}
 
       <section className="dx-notes" data-outline="Notes">
@@ -112,7 +128,7 @@ export function Architecture({ projectId, projectName }: { projectId: string | n
       </section>
 
       {editing && (
-        <ArchStudio title={editing.diagram.title} data={asData(editing.diagram.data)} context={context} onClose={() => setEditing(null)}
+        <ArchStudio title={editing.diagram.title} data={asData(editing.diagram.data)} context={context} shareUrl={editing.index >= 0 ? diagramUrl(projectId, editing.diagram.key) : undefined} onDraft={onDraft} onClose={() => setEditing(null)}
           onDone={(data, title) => {
             const d: DtDiagram = { ...editing.diagram, title: title.trim() || editing.diagram.title, data: data as unknown as DtDiagram['data'] };
             commit(editing.index < 0 ? [...diagrams, d] : diagrams.map((x, j) => (j === editing.index ? d : x)));
@@ -122,6 +138,18 @@ export function Architecture({ projectId, projectName }: { projectId: string | n
       {walk && <Walkthrough diagram={walk} onClose={() => setWalk(null)} />}
     </div>
   );
+}
+
+/** The address that opens one diagram of a project's architecture. */
+export const diagramUrl = (projectId: string | null, key: string) => {
+  // Keep the workspace's part of the address (/acme/library/…): the page's own path when it is the architecture page, else built from it.
+  const here = window.location.pathname;
+  const base = /\/architecture\/?$/.test(here) ? here.replace(/\/$/, '') : `${here.match(/^\/[^/]+(?=\/library\/)/)?.[0] ?? ''}${docsPath.architecture(projectId)}`;
+  return `${window.location.origin}${base}?diagram=${encodeURIComponent(key)}`;
+};
+async function shareDiagram(projectId: string | null, key: string) {
+  try { await navigator.clipboard.writeText(diagramUrl(projectId, key)); toast('Link copied. It opens this diagram for people with access to the project.', 'success'); }
+  catch { toast('Could not copy the link.', 'error'); }
 }
 
 type Node = ArchData['nodes'][number];

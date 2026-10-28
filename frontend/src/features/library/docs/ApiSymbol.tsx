@@ -4,7 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../../api/client';
 import { apiDocApi } from '../../../api/endpoints';
-import { API_STAGES, type ApiDefinition, type ApiParam, type DtEndpoint, type DtProject, type EndpointDetail } from '../../../api/types';
+import { API_STAGES, type ApiDefinition, type ApiParam, type DtEndpoint, type DtProject, type EndpointDetail, type LiveCheck } from '../../../api/types';
 import { Icon } from '../../../components/Icon';
 import { ErrorState, PageLoader } from '../../../components/ui';
 import { invalidateWorkspace, useWsQuery } from '../../../lib/hooks';
@@ -18,6 +18,8 @@ import { LinkedWork } from '../../documents/LinkedWork';
 import { docsPath, envLabels } from './nav';
 import { Reading } from './Reading';
 import { HealthRing, MethodPill, PopMenu, RevealSheet, SwaggerSheet } from './shared';
+import { docFresh, DriftPill, FreshPill } from './Fresh';
+import { timeAgo } from '../../../lib/format';
 
 const pretty = (text: string | null | undefined) => { if (!text) return ''; try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
 const joinUrl = (base: string, basePath: string | null, path: string) => `${base.replace(/\/$/, '')}${(basePath ?? '').replace(/\/$/, '')}${path.startsWith('/') ? '' : '/'}${path}`;
@@ -125,6 +127,12 @@ export function ApiSymbol({ project: p, endpoint: e }: { project: DtProject; end
   const related = p.endpoints.filter((x) => x.id !== e.id && (x.tag ?? '') === (e.tag ?? '')).slice(0, 6);
 
   const title = data?.item.summary || `${e.method} ${e.path}`;
+  // Freshness of the API document this endpoint lives in, and the last live check (this page's copy is newer than the catalog's).
+  const [checked, setChecked] = useState<LiveCheck | null>(null);
+  useEffect(() => { setChecked(null); }, [e.id]);
+  const live = checked ?? q.data?.liveCheck ?? null;
+  const drift = live ? { differs: live.differs, env: live.env, checkedAt: live.checkedAt, missing: live.fields.filter((f) => f.kind === 'missing').length, extra: live.fields.filter((f) => f.kind === 'extra').length, changed: live.fields.filter((f) => f.kind === 'type').length } : e.drift;
+  const fresh = <><FreshPill state={docFresh(p.documents.find((x) => x.id === doc))} /><DriftPill drift={drift} /></>;
   const tools = (
     <>
       {overview.data && <span className={`dx-live${overview.data.live ? ' on' : ''}`} title={overview.data.live ? 'Showing the working copy' : `Reading ${overview.data.reading}`}>{overview.data.live ? 'Live' : overview.data.reading}</span>}
@@ -138,8 +146,8 @@ export function ApiSymbol({ project: p, endpoint: e }: { project: DtProject; end
     </>
   );
 
-  if (q.isLoading) return <Reading p={p} title={e.path}><PageLoader /></Reading>;
-  if (q.isError || !data) return <Reading p={p} title={e.path}><ErrorState error={q.error} retry={() => void q.refetch()} /></Reading>;
+  if (q.isLoading) return <Reading p={p} title={e.path} fresh={fresh}><PageLoader /></Reading>;
+  if (q.isError || !data) return <Reading p={p} title={e.path} fresh={fresh}><ErrorState error={q.error} retry={() => void q.refetch()} /></Reading>;
   const d = data.details;
   const auth = d.auth === 'inherit' ? (def ? AUTH_LABEL[def.auth] : '') : d.auth === 'none' ? 'No authentication' : AUTH_LABEL[d.auth as keyof typeof AUTH_LABEL] ?? d.auth;
   const fromSchema = schemaRows(d.requestBody?.schema ?? null, d.requestBody?.example ?? null);
@@ -159,7 +167,7 @@ export function ApiSymbol({ project: p, endpoint: e }: { project: DtProject; end
   const responseTabs = d.responses.filter((r) => r.example || r.schema).map((r) => ({ id: r.status, label: r.status, code: pretty(r.example || r.schema), hint: r.contentType ?? undefined }));
 
   return (
-    <Reading p={p} title={title} tools={tools}>
+    <Reading p={p} title={title} tools={tools} fresh={fresh}>
       <header className="dx-sym dx-reveal" data-testid="api-symbol">
         <p className="dx-eyebrow">{[e.definition, e.tag].filter(Boolean).join(' · ')}</p>
         <h1 className="dx-title">{title}</h1>
@@ -213,6 +221,9 @@ export function ApiSymbol({ project: p, endpoint: e }: { project: DtProject; end
         {responseTabs.length > 0 && <section className="dx-reveal" data-outline="Response"><h2 className="dx-h2">Response</h2><CodeTabs label="Response examples" tabs={responseTabs} /></section>}
 
         <TryIt def={def} ep={data} base={base} envLabel={envs[Math.min(env, envs.length - 1)]?.label ?? ''} />
+
+        <LiveCheckSection doc={doc} ep={data} live={live} canRun={canEdit} env={Math.min(env, envs.length - 1)} envLabel={envs[Math.min(env, envs.length - 1)]?.label ?? ''} hasServers={!!def?.servers?.length}
+          onDone={(r) => { setChecked(r); invalidateWorkspace(wid, 'documents'); }} />
 
         {(d.responses.length > 0 || d.errors.length > 0) && (
           <section className="dx-reveal" data-outline="Status codes">
@@ -300,6 +311,63 @@ function TryIt({ def, ep, base, envLabel }: { def: ApiDefinition | undefined; ep
           </motion.div>
         )}
       </AnimatePresence>
+    </section>
+  );
+}
+
+const KIND_LABEL: Record<string, string> = { missing: 'Missing', extra: 'Extra', type: 'Type' };
+
+/**
+ * API drift: the documented sample response against the live API. "Check against live" asks the server to call the chosen environment with
+ * the document's stored credential (nothing leaves the browser, and only field names and types come back); "Paste a response" compares one
+ * from Postman or the logs. Shows what is missing, extra or of another type. Readers see the last result.
+ */
+function LiveCheckSection({ doc, ep, live, canRun, env, envLabel, hasServers, onDone }: {
+  doc: string; ep: EndpointDetail; live: LiveCheck | null; canRun: boolean; env: number; envLabel: string; hasServers: boolean; onDone: (r: LiveCheck) => void;
+}) {
+  const sample = ep.details.responses.find((r) => r.status.startsWith('2') && r.example);
+  const [busy, setBusy] = useState(false);
+  const [paste, setPaste] = useState<string | null>(null);
+  if (!sample && !live) return null;
+  const run = async (liveBody?: string) => {
+    setBusy(true);
+    try {
+      const values: Record<string, string> = {};
+      for (const x of ep.details.parameters) if (x.in === 'path' && x.example) values[`path:${x.name}`] = x.example;
+      const r = await apiDocApi.liveCheck(doc, ep.item.id, liveBody ? { liveBody } : { env, values });
+      onDone(r); setPaste(null);
+      toast(r.error ? r.error : r.differs ? `${r.fields.length} field${r.fields.length === 1 ? '' : 's'} differ from the docs.` : 'The docs match the live API.', r.error ? 'warning' : r.differs ? 'warning' : 'success');
+    } catch (err) { toast(err instanceof ApiError ? err.message : 'Could not check it.', 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <section className="dx-reveal" data-outline="Live check" data-testid="live-check">
+      <div className="dx-sect-h"><h2 className="dx-h2">Live check</h2>
+        {canRun && sample && <div className="dx-row">
+          <button type="button" className="dx-btn sm" onClick={() => setPaste(paste === null ? '' : null)}>{paste === null ? 'Paste a response' : 'Cancel'}</button>
+          {hasServers && ep.item.method === 'GET' && <button type="button" className="dx-btn sm tint" disabled={busy} onClick={() => void run()}>{busy && <span className="spinner" />}Check against live{envLabel ? ` · ${envLabel}` : ''}</button>}
+        </div>}
+      </div>
+      <div className="dx-drift">
+        {paste !== null && (
+          <>
+            <textarea className="textarea mono" rows={6} value={paste} onChange={(ev) => setPaste(ev.target.value)} placeholder="Paste a real JSON response for this call" aria-label="Live response" spellCheck={false} />
+            <div className="dx-row"><button type="button" className="dx-btn pri sm" disabled={busy || !paste.trim()} onClick={() => void run(paste)}>Compare</button><span className="dx-note">Only field names and types are kept, never the values.</span></div>
+          </>
+        )}
+        {!live ? <p className="dx-note">Compares the documented {sample?.status} response with what the API really answers. {!canRun ? 'Editors can run it.' : ep.item.method === 'GET' ? 'Credentials stay on the server.' : 'Only GET calls are made live; paste a real response for this one.'}</p> : (
+          <>
+            <div className="dx-drift-h">
+              {live.error ? <span className="dx-drift-err">{live.error}</span> : live.differs ? <b>Docs differ from live API</b> : <span className="dx-drift-ok">Matches the docs</span>}
+              <p className="dx-note">{live.source === 'pasted' ? 'Pasted response' : live.env} · against the documented {live.comparedWith ?? ''} · {timeAgo(live.checkedAt)}</p>
+            </div>
+            {live.fields.length > 0 && <ul aria-label="Differences">{live.fields.map((f) => (
+              <li key={`${f.kind}:${f.path}`}><span className={`k ${f.kind}`}>{KIND_LABEL[f.kind] ?? f.kind}</span><code>{f.path}</code>
+                <small>{f.kind === 'missing' ? `documented ${f.documented}, not returned` : f.kind === 'extra' ? `returned ${f.live}, not documented` : `${f.documented} in docs → ${f.live} live`}</small></li>
+            ))}</ul>}
+          </>
+        )}
+      </div>
     </section>
   );
 }

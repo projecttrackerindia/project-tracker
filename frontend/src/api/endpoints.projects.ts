@@ -31,6 +31,8 @@ export interface ProjectSchedulePreview {
   stages: { id: string; name: string; durationDays: number; start: string | null; end: string | null; completed: boolean; changed: boolean }[];
   fingerprint?: string | null;
 }
+export interface ProjectHealthInfo { health: string; calculated: string; override: string | null; note: string | null; until: string | null; setBy: { id: string; name: string } | null; setAt: string | null }
+
 export const projectApi = {
   list: (f: ProjectFilters = {}) => get<Paged<Project>>('/projects', { pageSize: 25, ...f }),
   get: (id: string) => get<ProjectDetail>(`/projects/${id}`),
@@ -49,6 +51,9 @@ export const projectApi = {
   remove: (id: string) => del(`/projects/${id}`),
   /** Projects board: a different status moves the card to another column; the same status only re-orders it. */
   move: (id: string, b: { status: string; position?: number }) => patch<Project>(`/projects/${id}/move`, b),
+  /** The status shown, the calculated one, and the one set by hand (with why, until when, who). */
+  health: (id: string) => get<ProjectHealthInfo>(`/projects/${id}/health`),
+  setHealth: (id: string, b: { health: 'OnTrack' | 'AtRisk' | 'Delayed' | null; note?: string; until?: string | null }) => put<ProjectHealthInfo>(`/projects/${id}/health`, b),
   addMember: (id: string, userId: string) => post<ProjectMember[]>(`/projects/${id}/members`, { userId }),
   removeMember: (id: string, userId: string) => del(`/projects/${id}/members/${userId}`),
   createStatus: (id: string, b: { name: string; category: string; color?: string }) => post<WorkflowStatus[]>(`/projects/${id}/statuses`, b),

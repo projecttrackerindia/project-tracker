@@ -375,7 +375,7 @@ export function RegisterPage() {
           </div>
         )}
         {!invited && kind === 'organization' && (
-          <Field label="Organisation name" error={errors.organizationName?.message}><input className="input" autoComplete="organization" placeholder="e.g. Five Star Business Finance" {...register('organizationName')} /></Field>
+          <Field label="Organisation name" error={errors.organizationName?.message}><input className="input" autoComplete="organization" placeholder="e.g. Northwind Business Finance" {...register('organizationName')} /></Field>
         )}
         <Field label="Full name" error={errors.displayName?.message}><input className="input" autoComplete="name" autoFocus {...register('displayName')} /></Field>
         <Field label="Email" error={errors.email?.message}><input className="input" type="email" autoComplete="email" {...register('email')} /></Field>

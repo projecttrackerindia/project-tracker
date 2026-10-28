@@ -80,8 +80,8 @@ public class ProjectAgentTests(ApiFactory factory)
             Assert.Matches("^agent\\+[0-9a-f]{24}@inbound\\.test$", on.Data!["mailboxAddress"]!.GetValue<string>());
             Assert.Null((await ravi.Get($"/api/v1/projects/{project}/agent")).Data!["mailboxAddress"]);   // only editors see the address
 
-            var text = "Prasanna: Morning all.\nRavi: I started the gateway integration yesterday, sandbox keys are in.\nClient: can you send the go-live checklist by Friday?\n" +
-                "Ravi: we should retry failed payments.\nPrasanna: who is doing refunds?";
+            var text = "Maya: Morning all.\nRavi: I started the gateway integration yesterday, sandbox keys are in.\nClient: can you send the go-live checklist by Friday?\n" +
+                "Ravi: we should retry failed payments.\nMaya: who is doing refunds?";
             Assert.Equal(HttpStatusCode.Forbidden, (await ravi.Post($"/api/v1/projects/{project}/agent/transcript", new { title = "Stand-up", text })).Status);
             var read = await owner.Post($"/api/v1/projects/{project}/agent/transcript", new { title = "Stand-up 18 Oct", text });
             Assert.Equal(HttpStatusCode.Created, read.Status);

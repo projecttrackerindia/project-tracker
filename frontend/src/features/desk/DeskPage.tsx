@@ -2,10 +2,11 @@ import { ToolbarSeg } from '../../components/v2/ToolbarSeg';
 import { openNew } from '../../components/v2/state';
 import { Face } from '../../components/Face';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { chatApi, opsApi } from '../../api/endpoints';
-import { workItemsApi, type WorkActivity, type WorkItemDetail, type WorkRow } from '../../api/workItemsApi';
+import { deskApi, workItemsApi, type DeskReplyTemplate, type WorkActivity, type WorkItemDetail, type WorkRow } from '../../api/workItemsApi';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -15,6 +16,8 @@ import { fillMacro, MACROS } from '../work/deskLogic';
 import { useWarRoom } from '../work/Desk';
 import { clock, deskRing, firstLine, initials, leftLabel, type DeskTone } from './deskPageLogic';
 import './desk-page.css';
+import { BulkEditBar } from '../platform/BulkEditBar';
+import { SavedViewsBar } from '../platform/SavedViews';
 
 type Tab = 'queue' | 'mine' | 'solved';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -55,11 +58,43 @@ const WhatsAppGlyph = () => (
   <svg className="dq-ch" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#25d366" /><path d="M8.2 7.3c.3-.4.8-.4 1-.1l1 1.9c.1.3 0 .6-.2.8l-.6.6c.6 1.3 1.6 2.3 2.9 2.9l.6-.6c.2-.2.5-.3.8-.2l1.9 1c.3.2.3.7-.1 1-.9.8-2.1.9-3.2.4-2-1-3.6-2.6-4.6-4.6-.5-1.1-.4-2.3.5-3.1z" fill="#fff" /></svg>
 );
 
+/** Account facts a customer usually writes in: loan / account numbers, amounts, phone and mail. */
+function accountFacts(text: string): { label: string; value: string }[] {
+  const out: { label: string; value: string }[] = [];
+  const acct = text.match(/\b(?:loan|a\/c|account|acct|agreement)\s*(?:no\.?|number|#|:)?\s*([A-Z]{0,5}[-‑]?\d{5,})\b/i) ?? text.match(/\b([A-Z]{2,5}[-‑]\d{5,})\b/);
+  if (acct) out.push({ label: /loan/i.test(acct[0]) || /^[A-Z]{2,5}[-‑]/.test(acct[1]) ? 'Loan' : 'Account', value: acct[1] });
+  const amt = text.match(/(?:₹|rs\.?|inr)\s?([\d,]+(?:\.\d+)?)/i);
+  if (amt) out.push({ label: /emi/i.test(text) ? 'EMI' : 'Amount', value: `₹${amt[1]}` });
+  const phone = text.match(/(?:\+91[\s-]?)?\b[6-9]\d{9}\b/);
+  if (phone) out.push({ label: 'Phone', value: phone[0] });
+  const mail = text.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+  if (mail) out.push({ label: 'Mail', value: mail[0] });
+  return out;
+}
+
+/**
+ * A Desk reply: on the ticket's own channel (its WhatsApp chat or the e-mail that raised it) through the Desk API, which keeps it on the ticket;
+ * a ticket raised in the app gets a comment. Returns the toast to show.
+ */
+async function sendReply(w: WorkItemDetail, text: string): Promise<{ ok: boolean; msg: string }> {
+  if (w.channel === 'whatsapp' || w.channel === 'email') {
+    const r = await deskApi.tell(w.id, text);
+    const where = r.channel === 'whatsapp' ? 'WhatsApp' : r.channel === 'email' ? 'mail' : 'the ticket';
+    return r.sent ? { ok: true, msg: `Sent on ${where}.` } : { ok: false, msg: r.channel === 'comment' ? 'Kept on the ticket.' : `Not sent on ${where}: ${r.note}. Kept on the ticket.` };
+  }
+  await workItemsApi.comment(w.id, text);
+  return { ok: true, msg: 'Reply sent.' };
+}
+
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
 export function DeskPage() {
   const [tab, setTab] = useState<Tab>('queue');
   const [selected, setSelected] = useState<string | null>(null);
+  const [prio, setPrio] = useState<'all' | 'urgent'>('all');
+  const [unassigned, setUnassigned] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const now = useNow(true);
   const me = useAuth((s) => s.ctx?.user);
   const wid = useWorkspaceId();
@@ -70,16 +105,33 @@ export function DeskPage() {
   const open = useWsQuery(['desk', 'list', 'queue'], () => workItemsApi.list({ kind: ['ticket'], status: 'open', limit: 200 }), { refetchInterval: 30_000 });
 
   const rows = useMemo(() => {
-    const items = [...(list.data?.items ?? [])];
+    const items = (list.data?.items ?? []).filter((r) => (prio === 'all' || r.priority === 'Critical' || r.priority === 'High') && (!unassigned || !r.assignee));
     const due = (r: WorkRow) => (r.slaDueAt ? Date.parse(r.slaDueAt) : Number.POSITIVE_INFINITY);
     return tab === 'solved' ? items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)) : items.sort((a, b) => due(a) - due(b) || a.key.localeCompare(b.key));
-  }, [list.data, tab]);
+  }, [list.data, tab, prio, unassigned]);
+  const pickedRows = rows.filter((r) => picked.has(r.id));
+  const togglePick = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const viewConfig = { tab, priority: prio === 'all' ? undefined : prio, unassigned: unassigned || undefined };
+  const applyView = (c: Record<string, unknown>) => {
+    setTab(c.tab === 'mine' || c.tab === 'solved' ? c.tab : 'queue'); setPrio(c.priority === 'urgent' ? 'urgent' : 'all'); setUnassigned(c.unassigned === true);
+    setSelected(null); setPicked(new Set());
+  };
 
   // The first tickets' details (who raised it, where from) for the queue rows; the same queries serve the open ticket.
   const shown = rows.slice(0, 12);
   const details = useQueries({ queries: shown.map((r) => ({ queryKey: [wid, 'desk', 'item', r.id], queryFn: () => workItemsApi.get(r.id), staleTime: 30_000, enabled: !!wid })) });
   const detailOf = (id: string) => details[shown.findIndex((r) => r.id === id)]?.data as WorkItemDetail | undefined;
 
+  const qc = useQueryClient();
+  const [busyRow, setBusyRow] = useState<string | null>(null);
+  // Assign / Resolve from the queue row: the same PATCH as the open ticket, with its current version.
+  const [actsFor, setActsFor] = useState<string | null>(null);
+  const quick = async (r: WorkRow, f: { assigneeId?: string; status?: string }, done: string) => {
+    setBusyRow(r.id);
+    try { const w = detailOf(r.id) ?? await workItemsApi.get(r.id); await workItemsApi.update(r.id, { version: w.version, ...f }); toast(done); }
+    catch (e) { toast(errText(e, 'Could not save the change.'), 'error'); }
+    finally { setBusyRow(null); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }
+  };
   const current = rows.find((r) => r.id === selected) ?? rows[0] ?? null;
   useEffect(() => { if (!selected && rows[0]) setSelected(rows[0].id); }, [rows, selected]);
 
@@ -110,7 +162,7 @@ export function DeskPage() {
       <ToolbarSeg className="dq-tb">
         <div className="dq-seg" role="tablist" aria-label="Desk views">
           {(['queue', 'mine', 'solved'] as Tab[]).map((t) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setSelected(null); }}>
+            <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setSelected(null); setPicked(new Set()); }}>
               {t === 'queue' ? 'Queue' : t === 'mine' ? 'Mine' : 'Solved'}
             </button>
           ))}
@@ -133,7 +185,13 @@ export function DeskPage() {
 
       <div className="dq-cols">
         <section className="dq-card dq-q" aria-label="Live queue">
-          <div className="dq-qh"><h2 className="dq-h3">{tab === 'solved' ? 'Solved' : tab === 'mine' ? 'Mine' : 'Live queue'}</h2><span className="dq-faint">{tab === 'solved' ? 'latest first' : 'by SLA left'}</span></div>
+          <div className="dq-qh"><h2 className="dq-h3">{tab === 'solved' ? 'Solved' : tab === 'mine' ? 'Mine' : 'Live queue'}</h2><span className="dq-faint">{tab === 'solved' ? 'latest first' : 'by SLA left'}</span>
+            {rows.length > 0 && <button type="button" className="pv-select-btn dq-select" aria-pressed={selecting} onClick={() => { setSelecting((v) => !v); setPicked(new Set()); }}>{selecting ? 'Done' : 'Select'}</button>}</div>
+          <div className="dq-filters" role="group" aria-label="Narrow the queue">
+            <button type="button" className={`pv-chip dq-fchip${prio === 'urgent' ? ' on' : ''}`} aria-pressed={prio === 'urgent'} onClick={() => setPrio((p) => (p === 'urgent' ? 'all' : 'urgent'))}><span>Critical & high</span></button>
+            <button type="button" className={`pv-chip dq-fchip${unassigned ? ' on' : ''}`} aria-pressed={unassigned} onClick={() => setUnassigned((v) => !v)}><span>Unassigned</span></button>
+          </div>
+          <SavedViewsBar scope="desk" current={viewConfig} onApply={applyView} />
           <div className="dq-qlist" ref={listRef} role="listbox" aria-label="Tickets" tabIndex={0}
             onKeyDown={(e: ReactKeyboardEvent) => { if (e.key === 'Enter' && current) setSelected(current.id); }}>
             {list.isLoading && <p className="dq-empty">Loading…</p>}
@@ -142,12 +200,25 @@ export function DeskPage() {
               const d = detailOf(r.id);
               const who = [d?.reporter?.name, r.assignee?.name.split(' ')[0] ?? 'unassigned'].filter(Boolean).join(' · ');
               return (
-                <div key={r.id} data-id={r.id} role="option" aria-selected={current?.id === r.id} className={`dq-t ${current?.id === r.id ? 'on' : ''}`} onClick={() => setSelected(r.id)}>
+                <div key={r.id} data-id={r.id} role="option" aria-selected={current?.id === r.id} className={`dq-t ${current?.id === r.id ? 'on' : ''}${selecting ? ' selecting' : ''}${picked.has(r.id) ? ' picked' : ''}`}
+                  onClick={() => (selecting ? togglePick(r.id) : setSelected(r.id))}>
+                  {selecting && <label className="pv-check" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={picked.has(r.id)} onChange={() => togglePick(r.id)} aria-label={`Select ${r.key} ${r.title}`} /></label>}
                   <DeskRing row={r} now={now} />
                   <div className="dq-tx">
+                    <span className="dq-tmeta" data-testid="dq-row-meta"><span className={`dq-pill p-${r.priority.toLowerCase()}`}>{r.priority}</span>{[r.key, d?.channel ? `via ${CHANNEL[d.channel] ?? d.channel}` : null, r.typeName].filter(Boolean).join(' · ')}</span>
                     <b>{r.title}</b>
                     <small><ChannelIcon channel={d?.channel} />{who}</small>
                   </div>
+                  {tab !== 'solved' && !selecting && (
+                    <button type="button" className="dq-more" aria-label={`Actions for ${r.key}`} aria-expanded={actsFor === r.id}
+                      onClick={(e) => { e.stopPropagation(); setActsFor((v) => (v === r.id ? null : r.id)); }}>⋯</button>
+                  )}
+                  {tab !== 'solved' && !selecting && (
+                    <span className={`dq-tacts${actsFor === r.id ? ' open' : ''}`} onClick={(e) => e.stopPropagation()}>
+                      {me && r.assignee?.id !== me.id && <button type="button" className="dq-btn sm white" disabled={busyRow === r.id} onClick={() => void quick(r, { assigneeId: me.id }, 'Assigned to you.')}>Assign</button>}
+                      <button type="button" className="dq-btn sm" disabled={busyRow === r.id} onClick={() => void quick(r, { status: 'Completed' }, 'Resolved.')}>Resolve</button>
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -157,6 +228,7 @@ export function DeskPage() {
         {current ? <Conversation key={current.id} row={current} me={me?.id ?? null} /> : <AllClear tab={tab} onSolved={() => { setTab('solved'); setSelected(null); }} />}
         {current ? <Context key={`c-${current.id}`} row={current} /> : <div className="dq-ctx" />}
       </div>
+      {selecting && <BulkEditBar rows={pickedRows} onClear={() => setPicked(new Set())} onDone={() => { setSelecting(false); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }} />}
     </div>
   );
 }
@@ -191,6 +263,7 @@ function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
   const d = useWsQuery(['desk', 'item', row.id], () => workItemsApi.get(row.id), { staleTime: 30_000 });
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const w = d.data;
   const reload = () => { void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); };
@@ -205,7 +278,7 @@ function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
   const send = async () => {
     if (!text.trim() || !w) return;
     setBusy(true);
-    try { await workItemsApi.comment(w.id, text.trim()); setText(''); reload(); }
+    try { const r = await sendReply(w, text.trim()); setText(''); if (!r.ok) toast(r.msg, 'warning'); reload(); }
     catch (e) { toast(errText(e, 'Could not send the reply.'), 'error'); }
     finally { setBusy(false); }
   };
@@ -243,14 +316,80 @@ function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
         {items.map((a, i) => <Bubble key={a.id} a={a} prev={i > 0 ? items[i - 1] : null} reporter={reporter} channel={channel} />)}
         {w && !w.description && items.length === 0 && <p className="dq-empty">No messages yet.</p>}
       </div>
+      {saved && w && <SavedReplies w={w} onClose={() => setSaved(false)} onUse={(t) => { setText(t); setSaved(false); setTimeout(() => box.current?.focus(), 0); }} />}
       <form className="dq-comp" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         <span className="dq-orb" aria-hidden="true" />
         <textarea ref={box} rows={1} value={text} maxLength={4000} aria-label="Reply" placeholder={`Reply on ${channel === 'whatsapp' ? 'WhatsApp' : channel === 'email' ? 'mail' : 'the ticket'}…`}
           onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }} />
+        <button type="button" className={`dq-sr-btn${saved ? ' on' : ''}`} aria-label="Saved replies" aria-expanded={saved} title="Saved replies" disabled={!w}
+          onClick={() => setSaved((x) => !x)} data-testid="dq-saved-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16l-7-4-7 4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
+        </button>
         <button type="submit" className="dq-kbd" disabled={busy || !text.trim()} aria-label="Send (⌘ Enter)">⌘↵</button>
       </form>
     </section>
   );
+}
+
+/**
+ * Saved replies over the reply box: the Desk's own and every WhatsApp number's. Insert fills in what the ticket knows (customer, key, status,
+ * ETA, account); AI fill also lets the AI complete what is left and smooth it into one natural message.
+ */
+function SavedReplies({ w, onUse, onClose }: { w: WorkItemDetail; onUse: (text: string) => void; onClose: () => void }) {
+  const ai = useAi();
+  const list = useWsQuery(['desk', 'templates'], deskApi.templates, { staleTime: 5 * 60_000 });
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node) && !(e.target as HTMLElement).closest('[data-testid="dq-saved-btn"]')) onClose(); };
+    window.addEventListener('keydown', onKey); window.addEventListener('mousedown', onDown);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onDown); };
+  }, [onClose]);
+  const items = (list.data ?? []).filter((t) => !q.trim() || `${t.title} ${t.text}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const use = async (t: DeskReplyTemplate, withAi: boolean) => {
+    setBusy(`${t.id}-${withAi ? 'ai' : 'in'}`);
+    try {
+      const filled = await deskApi.fill(w.id, t.text);
+      let text = filled.text;
+      if (withAi) {
+        const a = await chatApi.ask(`Rewrite this support reply for ticket ${w.key} "${w.title}" as one natural, friendly message. Fill any {placeholder} left `
+          + `(${filled.missing.join(', ') || 'none'}) from the ticket details, or leave the sentence out when the details do not say. Keep every fact already in it. `
+          + `Reply text only.\n\nReply: ${text}${w.description ? `\n\nTicket details: ${w.description.slice(0, 1200)}` : ''}`);
+        if (a.found !== false && a.answer?.trim()) text = a.answer.trim();
+      }
+      onUse(text);
+    } catch (e) { toast(errText(e, 'Could not fill in the reply.'), 'error'); }
+    finally { setBusy(null); }
+  };
+  // On a phone it is a bottom sheet over the whole screen, so it is drawn outside the page's scrolling and transformed boxes.
+  const phone = typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches;
+  const sheet = (
+    <div className="dq-sr" ref={ref} role="dialog" aria-label="Saved replies" data-testid="dq-saved">
+      <div className="dq-sr-h">
+        <b>Saved replies</b>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search saved replies" autoFocus />
+        <button type="button" className="dq-sr-x" aria-label="Close" onClick={onClose}>×</button>
+      </div>
+      <div className="dq-sr-list">
+        {list.isLoading && <p className="dq-empty">Loading…</p>}
+        {!list.isLoading && items.length === 0 && <p className="dq-empty">No saved replies match.</p>}
+        {items.map((t) => (
+          <div key={t.id} className="dq-sr-i">
+            <div className="dq-sr-t"><b>{t.title}</b>{t.source !== 'built-in' && <span className="dq-faint"> · {t.source}</span>}
+              <div className="dq-sr-p">{t.text}</div></div>
+            <div className="dq-sr-a">
+              <button type="button" className="dq-btn sm" disabled={!!busy} onClick={() => void use(t, false)}>{busy === `${t.id}-in` ? '…' : 'Insert'}</button>
+              {ai && <button type="button" className="dq-btn sm dq-sr-ai" disabled={!!busy} onClick={() => void use(t, true)}><span className="dq-orb" aria-hidden="true" />{busy === `${t.id}-ai` ? 'Filling…' : 'AI fill'}</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="dq-sr-f dq-faint">Fills in {'{name} {key} {status} {eta} {account}'} from this ticket.</div>
+    </div>
+  );
+  return phone ? createPortal(<div className="dq-page dq-sr-portal"><div className="dq-sr-scrim" aria-hidden="true" onClick={onClose} />{sheet}</div>, document.body) : sheet;
 }
 
 function Bubble({ a, prev, reporter, channel }: { a: WorkActivity; prev: WorkActivity | null; reporter: string | null; channel: string | null }) {
@@ -291,10 +430,19 @@ function Context({ row }: { row: WorkRow }) {
   const related = (w?.detail as { relatedProject?: { id: string; name: string; key?: string } | null } | undefined)?.relatedProject ?? null;
   const project = w?.projectName ? { name: w.projectName, key: w.projectKey } : related ? { name: related.name, key: related.key ?? null } : null;
 
+  // The customer's account facts, read from what they wrote; past tickets from the same person among recent ones.
+  const facts = accountFacts(w?.description ?? '');
+  const recent = useWsQuery(['desk', 'list', 'all-recent'], () => workItemsApi.list({ kind: ['ticket'], status: 'all', limit: 60 }), { staleTime: 60_000 });
+  const others = (recent.data?.items ?? []).filter((x) => x.id !== row.id).slice(0, 40);
+  const pastQ = useQueries({ queries: others.map((x) => ({ queryKey: [wid, 'desk', 'item', x.id], queryFn: () => workItemsApi.get(x.id), staleTime: 5 * 60_000, enabled: !!wid && !!w?.reporter })) });
+  const past = w?.reporter ? others.filter((_, i) => (pastQ[i]?.data as WorkItemDetail | undefined)?.reporter?.id === w.reporter!.id) : [];
+  const pastLoading = recent.isLoading || pastQ.some((x) => x.isLoading);
+  const pastCount = past.length;
+
   const send = async () => {
     if (!w) return;
     setSending(true);
-    try { await workItemsApi.comment(w.id, reply); toast('Reply sent.'); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }
+    try { const r = await sendReply(w, reply); toast(r.msg, r.ok ? undefined : 'warning'); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }
     catch (e) { toast(errText(e, 'Could not send the reply.'), 'error'); }
     finally { setSending(false); }
   };
@@ -309,6 +457,14 @@ function Context({ row }: { row: WorkRow }) {
         <div className="dq-kv"><span>Ticket</span><b>{row.key}</b></div>
         <div className="dq-kv"><span>Owner</span><b>{row.assignee && <Face userId={row.assignee.id} name={row.assignee.name} className="dq-own-av" />}{row.assignee?.name ?? 'unassigned'}</b></div>
         <div className="dq-kv"><span>Status</span><b>{row.status}</b></div>
+      </div>
+      <div className="dq-card dq-cc" data-testid="dq-customer">
+        <div className="dq-lbl">Account</div>
+        {facts.length === 0 && pastCount === 0 ? <div className="dq-faint dq-s12">No account details in the ticket.</div> : <>
+          {facts.map((f) => <div key={f.label + f.value} className="dq-kv"><span>{f.label}</span><b>{f.value}</b></div>)}
+          <div className="dq-kv"><span>Past tickets</span><b>{pastLoading ? '…' : past.length === 0 ? 'None' : `${past.length} · ${past.filter((x) => x.category === 'Done').length} solved`}</b></div>
+          {past.slice(0, 3).map((x) => <div key={x.id} className="dq-sim"><span className="dq-ok" aria-hidden="true">{x.category === 'Done' ? '✓' : '•'}</span><span>{x.title} · <span className="dq-faint">{x.key}</span></span></div>)}
+        </>}
       </div>
       <div className="dq-card dq-cc">
         <div className="dq-lbl">Linked</div>

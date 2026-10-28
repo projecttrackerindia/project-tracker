@@ -1150,10 +1150,65 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         catch (Exception e) when (e is AppException or HttpRequestException) { messages.Add(new("system", $"Ticket {key} is {english}; telling the customer failed: {e.Message}", clock.Now)); }
         Save(c, messages);
         if (sent) c.LastMessageAt = clock.Now;
+        // Kept on the ticket too, so the Desk shows what the customer was told (or why not).
+        var note = messages.LastOrDefault();
+        if (note is not null)
+            db.WorkTaskComments.Add(new WorkTaskComment
+            {
+                TenantId = c.TenantId, WorkTaskId = taskId, AuthorId = task.AssigneeId ?? channel.ConnectedBy, CreatedAt = clock.Now, CreatedBy = ctx.UserId,
+                Body = sent ? $"📣 Told the customer on WhatsApp: {note.Text}" : $"📣 Not told on WhatsApp: {note.Text}",
+            });
         if (what is "resolved" or "cancelled" && sent) { c.Status = "closed"; c.NeedsReply = false; c.WaitingSince = null; await AskRatingAsync(c, ct); }
         await db.SaveChangesAsync(ct);
         await PushAsync(c, ct);
         return sent;
+    }
+
+    /// <summary>
+    /// Sends one line from the Desk (an agent's reply or an automation's "Tell the customer") to the customer of the WhatsApp chat that raised
+    /// this ticket, keeping it in the chat. Inside 24 hours of their last message it is a plain message; after that only the number's approved
+    /// update template may go out (ticket key and the line). Null when no WhatsApp chat raised the ticket. The caller saves.
+    /// </summary>
+    public async Task<(bool Sent, string Note)?> TellTicketCustomerAsync(Guid workTaskId, string text, string by, CancellationToken ct)
+    {
+        var c = await db.SupportConversations.Where(x => x.WorkTaskId == workTaskId).OrderByDescending(x => x.LastMessageAt).FirstOrDefaultAsync(ct);
+        if (c is null) return null;
+        var channel = await db.SupportChannels.AsNoTracking().FirstOrDefaultAsync(x => x.Id == c.ChannelId, ct);
+        if (channel is null || !channel.Enabled) return (false, "the WhatsApp number is switched off");
+        var number = await db.WorkTasks.AsNoTracking().Where(t => t.Id == workTaskId).Select(t => t.Number).FirstOrDefaultAsync(ct);
+        var key = $"WT-{number}";
+        var line = text.Length > 1000 ? text[..1000] : text;
+        var messages = Messages(c);
+        var to = secrets.Unprotect(c.ContactProtected);
+        (bool Sent, string Note) result;
+        try
+        {
+            if (c.LastInboundAt is { } at && at > clock.Now.AddHours(-24))
+            {
+                await SendAsync(channel, to, line, ct);
+                messages.Add(new("agent", line, clock.Now, by));
+                result = (true, "sent");
+            }
+            else if (channel.UpdateTemplate is { Length: > 0 } template)
+            {
+                await SendTemplateAsync(channel, to, template, channel.UpdateTemplateLanguage, [key, line.Length > 900 ? line[..900] : line], ct);
+                messages.Add(new("update", $"{line} (template {template})", clock.Now, by));
+                result = (true, "sent with the update template");
+            }
+            else
+            {
+                messages.Add(new("system", $"Not sent: more than 24 hours since they wrote and this number has no update template. “{line}”", clock.Now));
+                result = (false, "more than 24 hours since they wrote and the number has no update template");
+            }
+        }
+        catch (Exception e) when (e is AppException or HttpRequestException)
+        {
+            messages.Add(new("system", $"Not sent: {e.Message}", clock.Now));
+            result = (false, e.Message);
+        }
+        Save(c, messages);
+        if (result.Sent) { c.LastMessageAt = clock.Now; c.NeedsReply = false; c.WaitingSince = null; }
+        return result;
     }
 
     private async Task SendTemplateAsync(SupportChannel channel, string to, string template, string language, IReadOnlyList<string> values, CancellationToken ct)

@@ -19,6 +19,7 @@ import { RunningTimer } from '../../features/time/RunningTimer';
 import { inRail, useMainNav, type NavDef } from '../../layouts/navigation';
 import { CreateOrganizationModal } from '../../layouts/parts';
 import { supportMailto } from '../../lib/support';
+import { Sheet } from '../Sheet';
 import { openNew } from './state';
 import { useMailUnread } from '../../features/mail/useMail';
 import './v2.css';
@@ -304,24 +305,80 @@ export function AvatarMenu() {
   );
 }
 
-/** The phone's bottom bar: the same five places, and + New in the middle. The avatar (and its menu) sits in the phone's top bar. */
+/**
+ * The phone's tab bar, the same on iPhone and Android: four places (Today, My Work, Messages, Projects) and More, which opens every other
+ * place as a grid of app tiles with your pinned projects. + New lives in the top bar, so the tabs stay calm and equal. A solid frosted
+ * bar with a hairline: nothing scrolls visibly through it.
+ */
 export function PhoneBar() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  const nav = useNavigate();
   const places = usePlaces();
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
-  const shown = admin ? places.slice(0, 5) : places;
-  const left = shown.slice(0, admin ? 5 : 2), right = admin ? [] : shown.slice(2);
-  const tab = (i: NavDef & { calm?: boolean }) => (
-    <NavLink key={i.id ?? i.to} to={i.to} end={i.end} className={() => `v2-phone-tab ${isOn(i, pathname) ? 'on' : ''}`} aria-label={i.label} onClick={() => haptic(6)}>
-      <Icon name={i.icon} size={22} /><span className="v2-rail-label">{i.label}</span>
-      {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`}>{i.badge > 99 ? '99+' : i.badge}</em>}
-    </NavLink>
-  );
+  const groups = useSideGroups();
+  const [more, setMore] = useState(false);
+  useEffect(() => setMore(false), [pathname, search]);
+  const all = groups.flatMap((g) => g.items);
+  const pick = (key: string) => all.find((i) => i.key === key);
+  const primary = admin ? [] : (['home', 'work', 'talk', 'projects'].map(pick).filter(Boolean) as SideItem[]);
+  const rest = all.filter((i) => !primary.includes(i));
+  const moreOn = !admin && rest.some((i) => i.on);
+  const restBadge = rest.reduce((n, i) => n + (i.calm ? 0 : i.badge ?? 0), 0);
+  if (admin) {
+    return (
+      <nav className="v2-phone-bar m-tabs" aria-label="Main" style={{ gridTemplateColumns: `repeat(${Math.min(5, places.length)}, 1fr)` }}>
+        {places.slice(0, 5).map((i) => (
+          <NavLink key={i.id ?? i.to} to={i.to} end={i.end} className={() => `v2-phone-tab ${isOn(i, pathname) ? 'on' : ''}`} onClick={() => haptic(6)}>
+            <Icon name={i.icon} size={24} /><span className="v2-rail-label">{i.label}</span>
+          </NavLink>
+        ))}
+      </nav>
+    );
+  }
   return (
-    <nav className="v2-phone-bar m-tabs" aria-label="Main" style={{ gridTemplateColumns: `repeat(${shown.length + (admin ? 0 : 1)}, 1fr)` }}>
-      {left.map(tab)}
-      {!admin && <button type="button" className="v2-phone-new" aria-label="New" onClick={() => { haptic(12); openNew(); }}><Icon name="plus" size={24} /></button>}
-      {right.map(tab)}
-    </nav>
+    <>
+      <nav className="v2-phone-bar m-tabs" aria-label="Main" style={{ gridTemplateColumns: `repeat(${primary.length + 1}, 1fr)` }}>
+        {primary.map((i) => (
+          <Link key={i.key} to={i.to} className={`v2-phone-tab ${i.on && !more ? 'on' : ''}`} aria-current={i.on ? 'page' : undefined} onClick={() => haptic(6)}>
+            <span className="v2-phone-ic"><Icon name={i.icon} size={24} />{!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`}>{i.badge > 99 ? '99+' : i.badge}</em>}</span>
+            <span className="v2-rail-label">{i.label === 'My Work' ? 'Work' : i.label}</span>
+          </Link>
+        ))}
+        <button type="button" className={`v2-phone-tab ${moreOn || more ? 'on' : ''}`} aria-expanded={more} aria-haspopup="dialog" onClick={() => { haptic(6); setMore(true); }}>
+          <span className="v2-phone-ic"><Icon name="grid" size={24} />{restBadge > 0 && <em className="v2-badge">{restBadge > 99 ? '99+' : restBadge}</em>}</span>
+          <span className="v2-rail-label">More</span>
+        </button>
+      </nav>
+      {more && (
+        <Sheet title="Everything" onClose={() => setMore(false)} label="All places">
+          <div className="v2-more-grid">
+            {rest.map((i) => (
+              <button key={i.key} type="button" className={`v2-more-tile${i.on ? ' on' : ''}`} onClick={() => { haptic(6); setMore(false); nav(i.to); }}>
+                <span className="v2-tile lg" style={{ background: i.tint }}><Icon name={i.icon} size={22} /></span>
+                <span>{i.label}</span>
+                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`}>{i.badge > 99 ? '99+' : i.badge}</em>}
+              </button>
+            ))}
+          </div>
+          <PinnedInMore onGo={(to) => { setMore(false); nav(to); }} />
+        </Sheet>
+      )}
+    </>
+  );
+}
+
+/** Your pinned projects at the bottom of More, like the sidebar's. */
+function PinnedInMore({ onGo }: { onGo: (to: string) => void }) {
+  const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  const canProjects = (useAuth((s) => s.ctx?.current?.modules?.projects) ?? 0) > 0;
+  const { list } = usePinned(!admin && canProjects);
+  if (list.length === 0) return null;
+  return (
+    <div className="v2-more-pins">
+      <div className="v2-side-sl">Pinned projects</div>
+      {list.map(({ project: p }, n) => (
+        <button key={p.id} type="button" className="v2-more-pin" onClick={() => onGo(`/work/projects/${p.id}`)}><i style={{ background: PIN_DOTS[n % PIN_DOTS.length] }} />{p.name}<Icon name="chevronR" size={14} /></button>
+      ))}
+    </div>
   );
 }

@@ -37,12 +37,12 @@ public class WelcomeMailer(IEmailSender email, IOptions<AppOptions> app, ILogger
                 $"<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"margin:0 0 10px\">{list}</table>" +
                 "<p class=\"tx2\" style=\"margin:0 0 22px;font-size:15px;line-height:25px;color:#4a4268\">Your data is hosted in India, you can export it at any time, and you can delete your account whenever you choose. " +
                 "If anything is unclear, just reply to this e-mail: a person reads every reply.</p>" +
-                "<p class=\"tx2\" style=\"margin:0 0 22px;font-size:15px;line-height:25px;color:#4a4268\">Welcome aboard,<br><b class=\"tx\" style=\"color:#221a3a\">Prasanna Krishna Daddala</b><br>Founder, Project Tracker</p>";
+                "<p class=\"tx2\" style=\"margin:0 0 22px;font-size:15px;line-height:25px;color:#4a4268\">Welcome aboard,<br><b class=\"tx\" style=\"color:#221a3a\">Maya Chen</b><br>Founder, Project Tracker</p>";
             var html = EmailTemplates.Rich("Welcome to Project Tracker", $"Hi {Enc(user.DisplayName)},", body, "Open your workspace", web + "/",
                 "You receive this once, because you created a Project Tracker account.", "Your account is ready: five first steps, each takes a few minutes.", EmailKind.Welcome);
             var text = $"Hi {user.DisplayName},\n\nYour Project Tracker account is ready. The Free plan has no time limit.\n\n" +
                 string.Join("\n", steps.Select((s, i) => $"{i + 1}. {s.Title}: {s.Text} {web}{s.Path}")) +
-                $"\n\nIf anything is unclear, reply to this e-mail: a person reads every reply.\n\nWelcome aboard,\nPrasanna Krishna Daddala\nFounder, Project Tracker\n{web}";
+                $"\n\nIf anything is unclear, reply to this e-mail: a person reads every reply.\n\nWelcome aboard,\nMaya Chen\nFounder, Project Tracker\n{web}";
             await email.SendAsync(new EmailMessage(user.Email, "Welcome to Project Tracker — your first five steps", html, text, "welcome", ReplyTo: EmailTemplates.SupportEmail), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "The welcome e-mail could not be sent to user {User}", user.Id); }

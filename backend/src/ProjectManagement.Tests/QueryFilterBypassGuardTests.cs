@@ -13,6 +13,7 @@ public class QueryFilterBypassGuardTests
     [
         "ProjectManagement.Application/Features/Time/PlannedLeaveService.cs", // exact tenant/request tombstone check after person authorization; no cross-tenant read
         "ProjectManagement.Api/Middleware/Middleware.cs",
+        "ProjectManagement.Application/Features/Platform/StatusPageService.cs", // the public status page is opened without signing in: found by its unique slug, then only that page's workspace (named in every query); a slug's uniqueness across workspaces is an existence check
         "ProjectManagement.Application/Features/Vault/VaultService.Sealed.cs", // who has access to a sealed collection now: memberships of the whole workspace (named explicitly), so people outside the caller's project view never look like they lost access
         "ProjectManagement.Application/Features/Vault/SecretLinkPublic.cs", // a self-destructing link is opened without signing in: found by the hash of its token (unique across workspaces); its workspace's name and the sender's name only
         "ProjectManagement.Application/Features/Vault/VaultService.Links.cs", // a new link's token hash must be unique across workspaces: existence check only
@@ -40,6 +41,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Auth/AuthService.cs",
         "ProjectManagement.Application/Features/Auth/DeviceLoginService.cs",
         "ProjectManagement.Application/Features/Automation/AutomationService.cs",
+        "ProjectManagement.Application/Features/Automation/AutomationConditions.cs", // scheduled Desk ticket rules: finds enabled rules of every active workspace (ids only), then runs each as that workspace
         "ProjectManagement.Application/Features/Billing/BillingService.cs", // personal certification destinations and bounded expired-summary ID deletion only; no employer reads or decrypted email retrieval
         "ProjectManagement.Application/Features/Billing/BillingWebhookService.cs",
         "ProjectManagement.Application/Features/Billing/SubscriptionActivator.cs",

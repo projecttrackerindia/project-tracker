@@ -55,7 +55,8 @@ public record WorkSummaryDto(DateOnly From, DateOnly To, int Open, int Overdue, 
 /// </summary>
 public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access,
     NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log, SlaService sla, WorkRouting routing,
-    TicketTriage triage)
+    TicketTriage triage, ProjectManagement.Application.Features.Automation.TicketAutomationEngine automations,
+    ProjectManagement.Application.Features.Support.TicketCustomerMessenger customers)
 {
     private const int MaxPageSize = 100;
     private const int MaxFilesPerTask = 50;
@@ -315,6 +316,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         // Work activity belongs to the workspace, not to the related project: the project's own history stays about the project.
         recorder.Activity("worktask.created", "WorkTask", task.Id, $"Created work task {KeyOf(task.Number)} “{title}” ({type.Name})", null);
         await NotifyAssignedAsync(task, ct);
+        await RunAutomationsAsync(task, true, ct);
         await db.SaveChangesAsync(ct);
         return await GetAsync(task.Id, ct);
     }
@@ -344,6 +346,9 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (task.StartDate != req.StartDate) changes.Add("start date");
         if (task.Description != description) changes.Add("description");
 
+        var history = new ProjectManagement.Application.Features.Platform.FieldDiff();
+        var oldTitle = task.Title; var oldDescription = task.Description; var oldType = task.WorkTypeId; var oldProject = task.RelatedProjectId;
+        var oldAssignee = task.AssigneeId; var oldPriority = task.Priority; var oldStart = task.StartDate; var oldDue = task.DueDate;
         var reprioritized=task.Priority!=req.Priority;
         var retarget = task.Priority != req.Priority || task.WorkTypeId != type.Id;
         task.Title = title; task.Description = description; task.WorkTypeId = type.Id; task.RelatedProjectId = req.RelatedProjectId;
@@ -354,6 +359,20 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         task.Version++;
         task.UpdatedAt = clock.Now; task.UpdatedBy = ctx.UserId;
 
+        {
+            var people = await ProjectManagement.Application.Features.Platform.FieldDiff.NamesAsync(db, [oldAssignee, task.AssigneeId], ct);
+            var typeIds = new[] { oldType, task.WorkTypeId }.Where(x => x is not null).Select(x => x!.Value).ToList();
+            var typeNames = await db.WorkTypes.AsNoTracking().Where(t => typeIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
+            var projectIds = new[] { oldProject, task.RelatedProjectId }.Where(x => x is not null).Select(x => x!.Value).ToList();
+            var projectNames = await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name, ct);
+            history.Add("Title", oldTitle, task.Title).Add("Status", Label(was), Label(task.Status))
+                .Add("Assignee", ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldAssignee), ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, task.AssigneeId))
+                .Add("Priority", oldPriority.ToString(), task.Priority.ToString()).Add("Start date", oldStart, task.StartDate).Add("Due date", oldDue, task.DueDate)
+                .Add("Type", oldType is { } ot ? typeNames.GetValueOrDefault(ot) : null, task.WorkTypeId is { } nt ? typeNames.GetValueOrDefault(nt) : null)
+                .Add("Project", oldProject is { } op ? projectNames.GetValueOrDefault(op) : null, task.RelatedProjectId is { } np ? projectNames.GetValueOrDefault(np) : null)
+                .Add("Description", oldDescription, task.Description, 60)
+                .Record(recorder, "worktask", "WorkTask", id);
+        }
         if (was != task.Status) recorder.Activity("worktask.status", "WorkTask", id, $"{key}: {Label(was)} → {Label(task.Status)}", null, was.ToString(), task.Status.ToString());
         if (changes.Count > 0) recorder.Activity("worktask.updated", "WorkTask", id, $"{key}: changed {string.Join(", ", changes)}", null);
         if (reassigned) await NotifyAssignedAsync(task, ct);
@@ -363,9 +382,31 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (otherChanges.Count > 0)
             foreach (var who in new[] { task.AssigneeId, (Guid?)task.ReporterId }.Where(x => x is not null).Select(x => x!.Value).Distinct())
                 await notifications.AddAsync(who, NotificationType.TaskUpdated, $"{key} updated", string.Join(" · ", otherChanges), LinkOf(id), ct: ct);
+        await RunAutomationsAsync(task, false, ct);
+        await customers.StatusChangedAsync(task, was, ct);
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }
+
+    /// <summary>Desk: tells the ticket's customer on its channel (WhatsApp or e-mail) and keeps it on the ticket; without a channel, a plain comment.</summary>
+    public async Task<ProjectManagement.Application.Features.Support.TicketTellResultDto> TellCustomerAsync(Guid id, ProjectManagement.Application.Features.Support.TicketTellRequest req, CancellationToken ct = default)
+    {
+        var task = await FindAsync(id, ct);
+        if (await permissions.LevelAsync(Modules.Work, ct) < AccessLevel.Edit) throw new ForbiddenException("You cannot reply on work tasks.", "PERMISSION_DENIED");
+        var text = CleanBody(req.Text);
+        var me = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId).Select(u => u.DisplayName).FirstOrDefaultAsync(ct);
+        var told = await customers.TellAsync(task, text, me ?? "Agent", ct);
+        if (told is null) { await AddCommentAsync(id, new WorkCommentRequest(text), ct); return new("comment", false, "this ticket has no customer channel, so it was kept as a comment"); }
+        sla.OnComment(task, ctx.RequireUserId());
+        recorder.Activity("worktask.customer_reply", "WorkTask", id, $"Replied to the customer on {KeyOf(task.Number)}", null);
+        await db.SaveChangesAsync(ct);
+        return told;
+    }
+
+    /// <summary>Desk: a saved reply with what this ticket knows filled in.</summary>
+    public async Task<ProjectManagement.Application.Features.Support.DeskFillDto> FillReplyAsync(Guid id, ProjectManagement.Application.Features.Support.DeskFillRequest req,
+        ProjectManagement.Application.Features.Support.DeskReplies replies, CancellationToken ct = default) =>
+        await replies.FillAsync(await FindAsync(id, ct), req.Text, ct);
 
     public async Task<WorkTaskDto> SetStatusAsync(Guid id, SetWorkTaskStatusRequest req, CancellationToken ct = default)
     {
@@ -377,9 +418,19 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             await ApplyStatusAsync(task, req.Status, ct);
             task.Version++; task.UpdatedAt = clock.Now; task.UpdatedBy = ctx.UserId;
             recorder.Activity("worktask.status", "WorkTask", id, $"{KeyOf(task.Number)}: {Label(was)} → {Label(task.Status)}", null, was.ToString(), task.Status.ToString());
+            new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", Label(was), Label(task.Status)).Record(recorder, "worktask", "WorkTask", id);
+            await RunAutomationsAsync(task, false, ct);
+            await customers.StatusChangedAsync(task, was, ct);
             await db.SaveChangesAsync(ct);
         }
         return await GetAsync(id, ct);
+    }
+
+    /// <summary>Desk automation rules on this ticket (Work › Automations). A failing rule never stops the ticket being saved.</summary>
+    private async Task RunAutomationsAsync(WorkTask task, bool created, CancellationToken ct)
+    {
+        try { await automations.RunAsync(task, created, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Desk automation failed for {Key}", KeyOf(task.Number)); }
     }
 
     private async Task ApplyStatusAsync(WorkTask task, WorkTaskStatus status, CancellationToken ct)

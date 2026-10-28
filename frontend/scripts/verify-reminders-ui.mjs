@@ -19,7 +19,7 @@ const R=(id,title,state,extra)=>({id,source:'Personal',state,title,note:null,tar
 const full={
  open:[
   R('rm1','Call the bank about the EMI file','Fired',{lastFiredAt:iso(-20),fireCount:1}),
-  R('rm2','Submit my timesheet','Scheduled',{nextFireAt:iso(60*26),recurrence:'FREQ=WEEKLY;BYDAY=FR',recurrenceText:'Every Friday'}),
+  R('rm2','Submit my timesheet','Scheduled',{nextFireAt:(()=>{const ist=new Date(Date.now()+330*60000);return new Date(Date.UTC(ist.getUTCFullYear(),ist.getUTCMonth(),ist.getUTCDate()+1,6,30)).toISOString();})()/* tomorrow noon in Kolkata, the page's zone */,recurrence:'FREQ=WEEKLY;BYDAY=FR',recurrenceText:'Every Friday'}),
   R('rm3','Review the release notes','Scheduled',{source:'DueDate',nextFireAt:iso(60*50),targetType:'Task',targetId:'t1',targetKey:'PAY-12',targetTitle:'Release notes',link:'/tasks/t1'}),
   R('rm4','Send Meena the vendor contract','Scheduled',{source:'Nudge',nextFireAt:iso(60*24*4),from:{id:'u2',name:'Ravi Kumar'}}),
  ],

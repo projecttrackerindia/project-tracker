@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
-import { automationApi, labelApi, workspaceAutomationApi, workspaceApi } from '../../api/endpoints';
-import type { AutomationAction, AutomationInput, AutomationRule, AutomationStep, AutomationTarget, AutomationTrigger, StatusCategory, WorkflowStatus } from '../../api/types';
+import { automationApi, chatApi, labelApi, workspaceAutomationApi, workspaceApi } from '../../api/endpoints';
+import type { AutomationAction, AutomationCondition, AutomationConditionField, AutomationInput, AutomationRule, AutomationStep, AutomationTarget, AutomationTrigger, StatusCategory, WorkflowStatus } from '../../api/types';
+import { CONDITIONS, flowToInput, newCondition, ruleToFlow, step as makeStep, TASK_CATEGORIES } from '../work/automationFlow';
 import { Icon } from '../../components/Icon';
 import { Badge, EmptyState, Field, Modal, SubmitButton, PriorityOptions } from '../../components/ui';
 import { timeAgo as timeAgoOr } from '../../lib/format';
@@ -27,6 +28,7 @@ const ACTIONS: { id: AutomationAction; label: string }[] = [
   { id: 'AddLabel', label: 'Add a label' },
   { id: 'Notify', label: 'Send a notification' },
   { id: 'AddComment', label: 'Post a comment' },
+  { id: 'PostToChannel', label: 'Post in a Messages channel' },
 ];
 const CATEGORIES: { id: StatusCategory; label: string }[] = [
   { id: 'Todo', label: 'A to-do status' }, { id: 'Active', label: 'An in-progress status' }, { id: 'Done', label: 'A done status' }, { id: 'Cancelled', label: 'A cancelled status' },
@@ -34,7 +36,7 @@ const CATEGORIES: { id: StatusCategory; label: string }[] = [
 const scheduled = (t: AutomationTrigger) => t === 'DueSoon' || t === 'Overdue' || t === 'Stale';
 const MAX_STEPS = 5;
 
-const blankStep = (): AutomationStep => ({ action: 'Notify', actionPriority: 'High', actionStatusId: null, actionStatusCategory: null, actionLabelId: null, actionTarget: 'Assignee', actionUserId: null, actionText: '' });
+const blankStep = (): AutomationStep => makeStep({ actionPriority: 'High', actionText: '' });
 
 /** "When this happens, do that" rules for one project. Rules never trigger each other, so they cannot loop. */
 export function AutomationPanel({ projectId, statuses, canEdit }: { projectId: string; statuses: WorkflowStatus[]; canEdit: boolean }) {
@@ -63,7 +65,8 @@ function RulesCard({ projectId, statuses, canEdit }: { projectId: string | null;
   };
 
   const toggle = async (r: AutomationRule) => {
-    try { await api.update(r.id, { ...toInput(r), isEnabled: !r.isEnabled }); refresh(); }
+    // Turning a draft on publishes it; pausing keeps its conditions, steps and channel as they are.
+    try { await api.update(r.id, { ...toInput(r), isEnabled: !r.isEnabled, isDraft: r.isEnabled ? !!r.isDraft : false }); refresh(); }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Could not update the rule.', 'error'); }
   };
   const remove = async (r: AutomationRule) => {
@@ -92,13 +95,13 @@ function RulesCard({ projectId, statuses, canEdit }: { projectId: string | null;
             {rules.map((r) => (
               <div className={`rule ${r.isEnabled ? '' : 'off'}`} key={r.id}>
                 <div className="rule-main">
-                  <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><b>{r.name}</b>{!r.isEnabled && <Badge>Paused</Badge>}{scheduled(r.trigger) && <Badge tone="info">Scheduled</Badge>}{r.moreActions.length > 0 && <Badge tone="purple">{r.moreActions.length + 1} actions</Badge>}</div>
+                  <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><b>{r.name}</b>{r.isDraft ? <Badge tone="warning">Draft</Badge> : !r.isEnabled && <Badge>Paused</Badge>}{scheduled(r.trigger) && <Badge tone="info">Scheduled</Badge>}{r.moreActions.length > 0 && <Badge tone="purple">{r.moreActions.length + 1} actions</Badge>}</div>
                   <div className="rule-sentence">{r.summary}</div>
                   <div className="muted" style={{ fontSize: 12 }}>{r.runCount ? `Ran ${r.runCount} time${r.runCount === 1 ? '' : 's'}${r.lastRunAt ? ` · last ${timeAgoOr(r.lastRunAt)}` : ''}` : 'Has not run yet'}</div>
                 </div>
                 {canEdit && (
                   <div className="td-actions">
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => void toggle(r)}>{r.isEnabled ? 'Pause' : 'Resume'}</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => void toggle(r)}>{r.isEnabled ? 'Pause' : r.isDraft ? 'Turn on' : 'Resume'}</button>
                     <button type="button" className="btn-icon" title="Edit" aria-label={`Edit ${r.name}`} onClick={() => setModal({ rule: r })}><Icon name="edit" /></button>
                     <button type="button" className="btn-icon danger" title="Delete" aria-label={`Delete ${r.name}`} onClick={() => void remove(r)}><Icon name="trash" /></button>
                   </div>
@@ -113,13 +116,12 @@ function RulesCard({ projectId, statuses, canEdit }: { projectId: string | null;
   );
 }
 
-const stepOf = (r: AutomationStep): AutomationStep => ({
-  action: r.action, actionPriority: r.actionPriority, actionStatusId: r.actionStatusId, actionStatusCategory: r.actionStatusCategory, actionLabelId: r.actionLabelId,
-  actionTarget: r.actionTarget, actionUserId: r.actionUserId, actionText: r.actionText,
-});
-const toInput = (r: AutomationRule): AutomationInput => ({
-  name: r.name, isEnabled: r.isEnabled, trigger: r.trigger, whenStatusId: r.whenStatusId, whenPriority: r.whenPriority, whenStatusCategory: r.whenStatusCategory,
-  triggerDays: r.triggerDays, ...stepOf(r), moreActions: r.moreActions.map(stepOf),
+/**
+ * The rule as the API takes it, through the same model as the workspace builder (Work › Automations): every step (with its Messages channel),
+ * the "If" conditions and the draft flag survive a save. A project rule also keeps the exact status it waits for.
+ */
+export const toInput = (r: AutomationRule): AutomationInput => ({
+  ...flowToInput(ruleToFlow(r)), isEnabled: r.isEnabled, whenStatusId: r.trigger === 'StatusChanged' ? r.whenStatusId : null,
 });
 
 function RuleModal({ workspace, statuses, rule, save, onClose, onSaved }: {
@@ -131,7 +133,9 @@ function RuleModal({ workspace, statuses, rule, save, onClose, onSaved }: {
   const [whenStatusCategory, setWhenStatusCategory] = useState<StatusCategory | null>(rule?.whenStatusCategory ?? null);
   const [whenPriority, setWhenPriority] = useState<string | null>(rule?.whenPriority ?? null);
   const [days, setDays] = useState<string>(rule?.triggerDays?.toString() ?? '1');
-  const [steps, setSteps] = useState<AutomationStep[]>(rule ? [stepOf(rule), ...rule.moreActions.map(stepOf)] : [{ ...blankStep(), actionTarget: 'Reporter' }]);
+  const [steps, setSteps] = useState<AutomationStep[]>(rule ? ruleToFlow(rule).steps : [{ ...blankStep(), actionTarget: 'Reporter' }]);
+  const [conditions, setConditions] = useState<AutomationCondition[]>(rule ? ruleToFlow(rule).conditions : []);
+  const [isDraft, setIsDraft] = useState<boolean>(!!rule?.isDraft);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -141,9 +145,9 @@ function RuleModal({ workspace, statuses, rule, save, onClose, onSaved }: {
     try {
       const [first, ...more] = steps.map((s) => ({ ...s, actionText: s.actionText?.trim() || null }));
       await save({
-        name: name.trim(), isEnabled: rule?.isEnabled ?? true, trigger, whenStatusId: trigger === 'StatusChanged' ? whenStatusId : null,
+        name: name.trim(), isEnabled: isDraft ? false : rule ? rule.isEnabled || !!rule.isDraft : true, isDraft, trigger, whenStatusId: trigger === 'StatusChanged' ? whenStatusId : null,
         whenStatusCategory: trigger === 'StatusChanged' ? whenStatusCategory : null, whenPriority: trigger === 'PriorityChanged' ? whenPriority : null,
-        triggerDays: scheduled(trigger) ? Number(days) : null, ...first, moreActions: more,
+        triggerDays: scheduled(trigger) ? Number(days) : null, conditions: conditions.filter((c) => c.field !== 'noReply'), ...first, moreActions: more,
       });
       toast(rule ? 'Rule updated.' : 'Rule added.');
       onSaved(); onClose();
@@ -193,13 +197,50 @@ function RuleModal({ workspace, statuses, rule, save, onClose, onSaved }: {
         </Field>
       )}
 
+      <div className="rule-step"><span>If</span></div>
+      <ConditionsEditor conditions={conditions} onChange={setConditions} />
+
       <div className="rule-step"><span>Then</span></div>
       {steps.map((s, i) => (
         <StepEditor key={i} n={i} step={s} workspace={workspace} statuses={sorted} canRemove={steps.length > 1}
           onChange={(next) => setSteps(steps.map((x, k) => (k === i ? next : x)))} onRemove={() => setSteps(steps.filter((_, k) => k !== i))} />
       ))}
       {steps.length < MAX_STEPS && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSteps([...steps, blankStep()])}><Icon name="plus" size={14} /> And also…</button>}
+      <label className="row" style={{ gap: 8, marginTop: 12, fontSize: 13 }}>
+        <input type="checkbox" checked={isDraft} onChange={(e) => setIsDraft(e.target.checked)} data-testid="rule-draft" />
+        Keep as a draft (saved, does not run)
+      </label>
     </Modal>
+  );
+}
+
+const TASK_CONDITIONS = CONDITIONS.filter((c) => !c.ticketOnly);
+
+/** The rule's "If" conditions (all must hold), the same ones the workspace builder offers for tasks. */
+function ConditionsEditor({ conditions, onChange }: { conditions: AutomationCondition[]; onChange: (c: AutomationCondition[]) => void }) {
+  const unused = TASK_CONDITIONS.filter((c) => !conditions.some((x) => x.field === c.field));
+  const up = (i: number, p: Partial<AutomationCondition>) => onChange(conditions.map((c, k) => (k === i ? { ...c, ...p } : c)));
+  return (
+    <div className="rule-conditions" data-testid="rule-conditions">
+      {conditions.length === 0 && <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>Always — no conditions.</p>}
+      {conditions.map((c, i) => (
+        <div className="row" key={c.field} style={{ gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
+          <span style={{ minWidth: 150, fontSize: 13 }}>{TASK_CONDITIONS.find((x) => x.field === c.field)?.label ?? c.field}</span>
+          {c.field === 'priority' && <Select className="select" aria-label="Priority" value={c.value ?? 'High'} onChange={(e) => up(i, { value: e.target.value })}><PriorityOptions /></Select>}
+          {c.field === 'status' && (
+            <Select className="select" aria-label="Status" value={c.value ?? 'Todo'} onChange={(e) => up(i, { value: e.target.value })}>
+              {TASK_CATEGORIES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </Select>
+          )}
+          <button type="button" className="btn-icon danger" title="Remove this condition" aria-label="Remove this condition" onClick={() => onChange(conditions.filter((_, k) => k !== i))}><Icon name="trash" /></button>
+        </div>
+      ))}
+      {unused.length > 0 && (
+        <Select className="select" aria-label="Add a condition" value="" onChange={(e) => e.target.value && onChange([...conditions, newCondition(e.target.value as AutomationConditionField, 'task')])} style={{ maxWidth: 240 }}>
+          <option value="">+ Add a condition…</option>{unused.map((c) => <option key={c.field} value={c.field}>{c.label}</option>)}
+        </Select>
+      )}
+    </div>
   );
 }
 
@@ -208,6 +249,7 @@ export function StepEditor({ n, step: f, workspace, statuses, canRemove, onChang
 }) {
   const members = useWsQuery(['members'], workspaceApi.members);
   const labels = useWsQuery(['labels'], labelApi.list);
+  const convs = useWsQuery(['chat', 'conversations'], chatApi.conversations, { enabled: f.action === 'PostToChannel', staleTime: 60_000 });
   const set = <K extends keyof AutomationStep>(k: K, v: AutomationStep[K]) => onChange({ ...f, [k]: v });
   const person = f.action === 'SetAssignee' || f.action === 'Notify';
   return (
@@ -247,8 +289,12 @@ export function StepEditor({ n, step: f, workspace, statuses, canRemove, onChang
           )}
         </>
       )}
-      {(f.action === 'Notify' || f.action === 'AddComment') && (
-        <Field label={f.action === 'Notify' ? 'Message (optional)' : 'Comment'} required={f.action === 'AddComment'}>
+      {f.action === 'PostToChannel' && (
+        <Field label="Messages channel"><Select className="select" value={f.actionConversationId ?? ''} onChange={(e) => set('actionConversationId', e.target.value || null)}>
+          <option value="">Choose…</option>{(convs.data ?? []).filter((c) => c.type !== 'Direct').map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</Select></Field>
+      )}
+      {(f.action === 'Notify' || f.action === 'AddComment' || f.action === 'PostToChannel') && (
+        <Field label={f.action === 'AddComment' ? 'Comment' : 'Message (optional)'} required={f.action === 'AddComment'}>
           <textarea className="textarea" rows={2} maxLength={500} value={f.actionText ?? ''} onChange={(e) => set('actionText', e.target.value)} />
         </Field>
       )}

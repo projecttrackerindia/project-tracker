@@ -22,7 +22,7 @@ import { AskDocs } from '../LibraryAsk';
 import { ContinueShelf } from '../LibraryShelf';
 import { chipOf, inFilter, KIND_FILTERS, type KindFilter } from '../libraryKinds';
 import { docsPath } from './nav';
-import { avgScore, HealthRing, MethodPill, pidOf, plural, PopMenu, ProjectMark } from './shared';
+import { avgScore, MethodPill, pidOf, plural, PopMenu, ProjectMark } from './shared';
 import { TextHits } from './TextHits';
 import './docs.css';
 
@@ -38,8 +38,6 @@ const updated = (iso: string) => {
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '?';
 const hue = (s: string) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 
-/** When a collection last changed: its newest document or endpoint. */
-const lastChange = (p: DtProject) => [...p.documents.map((d) => d.updatedAt), ...p.endpoints.map((e) => e.updatedAt ?? '')].filter(Boolean).sort().pop() ?? null;
 
 /**
  * Library's documentation hub (developer.apple.com-style): one search that also asks, a collection per project with its health, what you
@@ -73,32 +71,37 @@ export function DocsHub() {
 
   return (
     <div className="page dx dx-hub">
-      <header className="dx-hub-head">
-        <div>
+      <section className="dx-hero dx-hero-big" aria-label="Search and ask">
+        <div className="dx-hero-top">
           <p className="dx-eyebrow">Documentation</p>
-          <h1 className="dx-h1">Library</h1>
+          <div className="dx-hub-tools">
+            {canCreate && <NewDocMenu onAi={() => setModal('ai')} onBlank={() => void newPage.create()} onTemplate={() => setModal('wizard')} />}
+            <DotsMenu label="More in Library" items={[
+              { label: 'Security Center', hint: 'Masking, reveals, access requests and the audit trail', icon: 'shield', onSelect: () => navigate(docsPath.security()) },
+              { label: 'Approval workflows', hint: 'Who reviews before a document is published', icon: 'checks', onSelect: () => setModal('flows') },
+              { label: 'Required documents', hint: 'Documents every project must have', icon: 'flag', onSelect: () => setModal('required'), hidden: !c?.isAdmin },
+            ]} />
+          </div>
         </div>
-        <div className="dx-hub-tools">
-          {canCreate && <NewDocMenu onAi={() => setModal('ai')} onBlank={() => void newPage.create()} onTemplate={() => setModal('wizard')} />}
-          <DotsMenu label="More in Library" items={[
-            { label: 'Security Center', hint: 'Masking, reveals, access requests and the audit trail', icon: 'shield', onSelect: () => navigate(docsPath.security()) },
-            { label: 'Approval workflows', hint: 'Who reviews before a document is published', icon: 'checks', onSelect: () => setModal('flows') },
-            { label: 'Required documents', hint: 'Documents every project must have', icon: 'flag', onSelect: () => setModal('required'), hidden: !c?.isAdmin },
-          ]} />
-        </div>
-      </header>
-
-      <section className="dx-hero" aria-label="Search and ask">
-        <AskDocs hero typeOf={(id) => types.get(id)} onAsking={onAsking} onQuery={setQ} onAsked={setAsked} placeholder="Search the documentation, or ask a question" />
+        <h1 className="dx-display"><span className="sr-only">Library — </span>Everything your team knows,<br />in one place.</h1>
+        <AskDocs hero typeOf={(id) => types.get(id)} onAsking={onAsking} onQuery={setQ} onAsked={setAsked} placeholder="Search pages, endpoints and diagrams — or ask a question" />
+        {canCreate && (
+          <div className="dx-quick" role="group" aria-label="Quick actions">
+            <button type="button" className="dx-chip primary" onClick={() => void newPage.create()}>New page</button>
+            <button type="button" className="dx-chip" onClick={() => navigate(docsPath.architecture(projects[0]?.id ?? null))}>New architecture</button>
+            <button type="button" className="dx-chip" onClick={() => navigate(docsPath.designs(projects[0]?.id ?? null))}>Attach a Figma design</button>
+            <button type="button" className="dx-chip" onClick={() => document.querySelector<HTMLElement>('[data-testid="paste-curl"]')?.click()}>Paste a cURL → API page</button>
+          </div>
+        )}
       </section>
 
       {searching && c ? <SearchResults catalog={c} q={q} /> : (
         <div className={`dx-hub-grid${asking ? ' dim' : ''}`}>
           <div className="dx-hub-main">
-            <section aria-label="Collections" className="dx-sect">
-              <div className="dx-sect-h"><h2>Collections</h2>{c && <CollectionsNote catalog={c} />}</div>
+            <section aria-label="Spaces" className="dx-sect">
+              <div className="dx-sect-h"><h2>Spaces</h2><span className="dx-note">One space per project · health shows how complete its docs are</span></div>
               {catalog.isLoading ? <PageLoader /> : catalog.isError || !c ? <ErrorState error={catalog.error} retry={() => void catalog.refetch()} /> : c.projects.length === 0
-                ? <EmptyState icon="layers" title="No collections yet" text="Every project gets a collection of guides, API reference and architecture." />
+                ? <EmptyState icon="layers" title="No spaces yet" text="Every project gets a space of guides, API reference and architecture." />
                 : <ul className="dx-colls">{c.projects.map((p, i) => <CollectionCard key={pidOf(p)} p={p} i={i} />)}</ul>}
               {(c?.teams?.length ?? 0) > 0 && (
                 <p className="dx-teams">Team spaces: {c!.teams!.map((t, i) => <span key={t.id}>{i > 0 && ' · '}<Link to={docsPath.project(null)}>{t.name}</Link> <small>{t.pages}</small></span>)}</p>
@@ -151,6 +154,7 @@ export function DocsHub() {
 
           <aside className="dx-hub-side" aria-label="Review and import">
             <NeedsReview canCreate={canCreate} projects={projects} onChanged={() => void invalidateWorkspace(wid, 'documents')} />
+            <OutOfDate docs={all} catalog={c} />
             <PasteCurl projectId={null} canCreate={canCreate} />
             {attention > 0 && c && (
               <section className="dx-card dx-attn" aria-label="Needs attention">
@@ -173,26 +177,24 @@ export function DocsHub() {
   );
 }
 
-function CollectionsNote({ catalog }: { catalog: DtCatalog }) {
-  const eps = catalog.projects.flatMap((p) => p.endpoints);
-  if (!eps.length) return null;
-  const weak = eps.filter((e) => e.score < 70).length;
-  return <span className="dx-note">{plural(eps.length, 'endpoint')} · average health {avgScore(eps)}{weak ? ` · ${weak} need work` : ''}{catalog.truncated > 0 ? ` · ${catalog.truncated.toLocaleString()} more not scored` : ''}</span>;
+function completeness(p: DtProject) {
+  const guides = p.documents.filter((d) => !d.isApi).length;
+  const parts = [Math.min(guides, 3) / 3, p.diagrams > 0 ? 1 : 0, p.endpoints.length ? avgScore(p.endpoints) / 100 : guides > 0 ? 1 : 0, (p.designs ?? 0) > 0 || guides >= 5 ? 1 : 0];
+  return Math.round((parts.reduce((x, y) => x + y, 0) / parts.length) * 100);
 }
 
 function CollectionCard({ p, i }: { p: DtProject; i: number }) {
   const guides = p.documents.filter((d) => !d.isApi).length;
-  const last = lastChange(p);
+  const pct = completeness(p);
+  const h = hue(p.name);
+  const counts = [guides && plural(guides, 'page'), p.endpoints.length && plural(p.endpoints.length, 'endpoint'), p.diagrams && plural(p.diagrams, 'diagram'), p.designs && plural(p.designs, 'design')].filter(Boolean).join(' · ');
   return (
-    <li className="dx-coll" style={{ '--i': i } as CSSProperties}>
+    <li className="dx-coll dx-space" style={{ '--i': i, '--h1': `hsl(${h} 70% 58%)`, '--h2': `hsl(${(h + 40) % 360} 65% 55%)` } as CSSProperties}>
       <Link to={docsPath.project(p.id)} data-testid="collection">
-        <div className="dx-coll-top">
-          <ProjectMark p={p} />
-          {p.endpoints.length > 0 && <HealthRing score={avgScore(p.endpoints)} />}
-        </div>
+        <span className="dx-cover" aria-hidden="true">{p.diagrams > 0 && <span className="dx-cover-flow"><i /><i /><i /></span>}</span>
         <b>{p.name}</b>
-        <small>{[guides && plural(guides, 'doc'), p.endpoints.length && plural(p.endpoints.length, 'endpoint'), p.diagrams && plural(p.diagrams, 'diagram')].filter(Boolean).join(' · ') || 'Nothing yet'}</small>
-        <span className="dx-coll-foot">{last ? `Updated ${timeAgo(last)}` : p.key ?? 'General'}</span>
+        <small>{counts || 'Nothing yet'}</small>
+        <span className={`dx-bar t-${pct >= 75 ? 'good' : pct >= 45 ? 'ok' : 'low'}`} role="img" aria-label={`Docs ${pct}% complete`}><span style={{ "--w": `${pct}%` } as CSSProperties} /><em>{pct}%</em></span>
       </Link>
     </li>
   );
@@ -351,4 +353,24 @@ function NewDocFromLink({ projects, canCreate }: { projects: { id: string; name:
   if (!ai) return null;
   return <AiDraftDialog projects={projects} projectId={null} initialPrompt={prompt} useLabel="Create the page" onClose={() => { setAi(false); setPrompt(''); }}
     onUse={async (d, from) => { await newPage.create({ title: d.title, body: d.body, projectId: from.projectId }); setAi(false); }} />;
+}
+
+/** Pages whose linked work changed after they were written, and endpoints whose docs differ from the live API; one click opens each to update it. */
+function OutOfDate({ docs, catalog }: { docs: { id: string; title: string; projectId: string | null; staleSince?: string | null }[]; catalog?: DtCatalog }) {
+  const stale = docs.filter((d) => d.staleSince).sort((a, b) => b.staleSince!.localeCompare(a.staleSince!)).slice(0, 3);
+  const drifting = (catalog?.projects ?? []).flatMap((p) => p.endpoints.filter((e) => e.drift?.differs).map((e) => ({ p, e })))
+    .sort((a, b) => b.e.drift!.checkedAt.localeCompare(a.e.drift!.checkedAt)).slice(0, 3);
+  if (stale.length === 0 && drifting.length === 0) return null;
+  return (
+    <section className="dx-card dx-stale" aria-label="Out of date" data-testid="out-of-date">
+      <h3>Out of date</h3>
+      {drifting.map(({ p, e }) => {
+        const n = e.drift!.missing + e.drift!.extra + e.drift!.changed;
+        return <p key={e.id}><b>{e.method} {e.path}</b> — Docs differ from live API ({n} field{n === 1 ? '' : 's'} on {e.drift!.env}). <Link to={docsPath.endpoint(p.id, e.id)}>Review it ›</Link></p>;
+      })}
+      {stale.map((d) => (
+        <p key={d.id}><b>{d.title}</b> — its linked work changed {timeAgo(d.staleSince!)}. <Link to={d.projectId ? docsPath.guide(d.projectId, d.id) : docsPath.doc(d.id)}>Update it ›</Link></p>
+      ))}
+    </section>
+  );
 }

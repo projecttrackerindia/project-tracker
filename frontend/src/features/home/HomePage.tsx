@@ -14,7 +14,8 @@ import { insightApi, integrationsApi, projectApi, workItemApi, timeApi } from '.
 import type { CalendarEvent } from '../../api/types';
 import { EmptyState, ErrorState, Modal, PageLoader, Segmented } from '../../components/ui';
 import { useAi, useAssistant } from '../ai/Assistant';
-import { useIsMobile } from '../../lib/mobile';
+import { useIsMobile, useIsSmallPhone } from '../../lib/mobile';
+import { PhoneToday } from './PhoneToday';
 import { MONTHS, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
@@ -68,7 +69,14 @@ export function HomePage() {
     if (t === 'for-you' && v === 'team') n.set('view', 'team'); else n.delete('view');
     return n;
   }, { replace: true });
-  return tab === 'calendar' ? <WeekCalendar onTab={setTab} /> : <ForYou view={view} onTab={setTab} />;
+  if (tab === 'calendar') return <WeekCalendar onTab={setTab} />;
+  return <ForYouOrPhone view={view} onTab={setTab} />;
+}
+
+/** A phone held upright gets the phone's own Today (apple/s-mobile, s-phone); My team stays the full view. */
+function ForYouOrPhone({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) => void }) {
+  const small = useIsSmallPhone();
+  return small && view === 'me' ? <PhoneToday /> : <ForYou view={view} onTab={onTab} />;
 }
 
 

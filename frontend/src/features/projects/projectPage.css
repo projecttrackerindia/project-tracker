@@ -74,6 +74,10 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 .pp-proposals { padding: 20px 22px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .pp-proposals > h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--ds-text); }
 .pp-proposals > h3 span { color: var(--ds-text-3); font-weight: 500; }
+.pp-history { padding: 20px 22px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.pp-history > h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--ds-text); }
+.pp-history > .pp-faint { margin: 0 0 6px; font-size: 13px; }
+@media (max-width: 720px) { .pp-history { padding: 16px; } }
 
 /* ------------------------------------------------------------------ narrow screens */
 @media (max-width: 1080px) { .pp-cards { grid-template-columns: minmax(0, 1fr); } }
@@ -199,3 +203,47 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 }
 @media (prefers-reduced-motion: reduce) { .pp-done, .pp-nd-c, .pp-nd.s .pp-nd-c { transition: none; } }
 .pp-box[aria-label='Risks'] .pp-tx b { white-space: normal; }
+
+/* A status set by hand: one quiet line under the header; the sheet's three-way choice. */
+.ph-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: -4px 0 14px; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; background: var(--ds-fill); animation: ph-in .35s cubic-bezier(.32, .72, 0, 1) both; }
+@keyframes ph-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.ph-banner b { font-weight: 700; } .ph-banner span { color: var(--ds-text-2); flex: 1; min-width: 200px; }
+.ph-banner.ok { background: rgba(40, 205, 65, .1); } .ph-banner.ok b { color: #127a26; }
+.ph-banner.risk { background: rgba(255, 159, 10, .12); } .ph-banner.risk b { color: #a35c00; }
+.ph-banner.late { background: rgba(255, 59, 48, .1); } .ph-banner.late b { color: #c11b10; }
+.ph-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
+.ph-seg button { height: 40px; border: 0; border-radius: 10px; background: var(--ds-fill); color: var(--ds-text); font: inherit; font-weight: 600; cursor: pointer; transition: background .2s, box-shadow .2s; }
+.ph-seg button.on.ok { background: rgba(40, 205, 65, .18); box-shadow: inset 0 0 0 1.5px #28cd41; }
+.ph-seg button.on.risk { background: rgba(255, 159, 10, .2); box-shadow: inset 0 0 0 1.5px #ff9f0a; }
+.ph-seg button.on.late { background: rgba(255, 59, 48, .14); box-shadow: inset 0 0 0 1.5px #ff3b30; }
+.ph-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 12.5px; color: var(--ds-text-2); }
+.ph-field textarea, .ph-field input { padding: 8px 10px; border: 0; border-radius: 9px; background: var(--ds-fill); color: var(--ds-text); font: inherit; font-size: 14px; }
+.ph-hint { margin: 0; font-size: 12.5px; color: var(--ds-text-2); line-height: 1.45; }
+@media (prefers-reduced-motion: reduce) { .ph-banner { animation: none; } }
+.wr-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.wr-chip { padding: 6px 12px; border-radius: 14px; background: var(--ds-fill); font-size: 13px; color: var(--ds-text-2); } .wr-chip b { color: var(--ds-text); margin-right: 3px; }
+.wr-chip.ok { background: rgba(40, 205, 65, .12); } .wr-chip.warn { background: rgba(255, 159, 10, .14); } .wr-chip.bad { background: rgba(255, 59, 48, .1); }
+.wr-text { width: 100%; box-sizing: border-box; padding: 14px; border: 0; border-radius: 12px; background: var(--ds-fill); color: var(--ds-text); font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+
+/* Releases on the Journey: a lane under the stages; a flag per release at its date, its go/no-go under the name. */
+.pp-jr { position: relative; height: 74px; margin: 2px 40px 0; min-width: calc(var(--n) * 64px); }
+.pp-jr ol { list-style: none; margin: 0; padding: 0; }
+.pp-jr-rail { position: absolute; left: 0; right: 0; top: 21px; border-top: 1.5px dashed var(--ds-fill-strong); }
+.pp-rel { position: absolute; top: 0; width: 112px; margin-left: -56px; text-align: center; }
+.pp-rel a { display: flex; flex-direction: column; align-items: center; gap: 2px; text-decoration: none; color: inherit; border-radius: 10px; padding: 2px 4px 4px; }
+.pp-rel a:hover b { text-decoration: underline; }
+.pp-rel a:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.pp-rel-flag { width: 14px; height: 14px; margin: 13px 0 4px; transform: rotate(45deg); border-radius: 3px; background: var(--ds-surface); box-shadow: inset 0 0 0 2px var(--ds-text-3), 0 0 0 3px var(--ds-surface); }
+.pp-rel b { font-size: 12.5px; font-weight: 600; color: var(--ds-text); line-height: 1.2; white-space: nowrap; }
+.pp-rel small { font-size: 11px; color: var(--ds-text-3); white-space: nowrap; }
+.pp-rel small i { font-style: normal; font-weight: 600; }
+.pp-rel.go .pp-rel-flag { background: var(--ds-success); box-shadow: 0 0 0 3px var(--ds-surface); } .pp-rel.go small i { color: var(--ds-success); }
+.pp-rel.nogo .pp-rel-flag { background: var(--ds-danger); box-shadow: 0 0 0 3px var(--ds-surface); } .pp-rel.nogo small i { color: var(--ds-danger); }
+.pp-rel.ok .pp-rel-flag { box-shadow: inset 0 0 0 2px var(--ds-accent), 0 0 0 3px var(--ds-surface); } .pp-rel.ok small i { color: var(--ds-accent-text); }
+.pp-rel.done .pp-rel-flag { background: var(--ds-text-3); box-shadow: 0 0 0 3px var(--ds-surface); }
+.pp-rel.low b { margin-top: 30px; }
+.pp-jr:has(.pp-rel.low) { height: 104px; }
+@media (max-width: 700px) { .pp-jr { margin: 2px 30px 0; min-width: calc(var(--n) * 84px); } }
+/* At the ends of the lane the label hangs inward so it is never cut off by the scroller. */
+.pp-rel.start { margin-left: -11px; text-align: left; } .pp-rel.start a { align-items: flex-start; }
+.pp-rel.end { margin-left: -101px; text-align: right; } .pp-rel.end a { align-items: flex-end; }

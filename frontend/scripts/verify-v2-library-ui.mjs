@@ -117,7 +117,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${origin}/preview-org/library`);
   await page.locator('.dx-li[data-doc="Razorpay API"]').waitFor();
-  assert.equal(await page.locator('.dx-h1').innerText(), 'Library');
+  assert.ok((await page.locator('.dx-display').innerText()).includes('Everything your team knows'));
   assert.equal(await page.getByRole('tab', { name: 'Vault' }).count(), 0, 'Vault is its own place in the sidebar, not a Library tab');
   assert.deepEqual(await page.getByRole('tablist', { name: 'Kind' }).getByRole('tab').allInnerTexts(), ['All', 'API docs', 'Specs', 'Runbooks', 'Tests']);
   assert.ok(await page.getByRole('searchbox', { name: 'Ask your docs' }).isVisible(), 'the question field');

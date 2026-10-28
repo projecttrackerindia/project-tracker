@@ -147,6 +147,12 @@ const make = async (theme, state) => {
       data = { items: list.slice(offset, offset + limit), offset, limit, hasMore: list.length > offset + limit };
     }
     else if (m && !m[2]) { const w = find(m[1]); if (!w) return json({ message: 'Work item not found.', errors: [{ code: 'WORK_ITEM_NOT_FOUND', message: 'Work item not found.' }] }, 404); data = detailOf(w); }
+    else if (ep === '/api/v1/dev-links/status') {
+      // Pull request + checks chips: the overdue task has an open pull request with failing checks, CreditVision a merged one.
+      const ids = (sp.get('ids') ?? '').split(','); state.prAsks = (state.prAsks ?? 0) + 1;
+      const pr = (key, number, st, checks) => { const w = items.find((x) => x.key === key); return w && ids.includes(w.id) ? [{ itemId: w.id, pulls: [{ number, state: st, checks, url: `https://github.com/fictive/payments/pull/${number}`, title: w.title, repository: 'fictive/payments' }] }] : []; };
+      data = [...pr('PAY-7', '412', 'open', 'failure'), ...pr('PAY-2', '398', 'merged', 'success')];
+    }
     else if (ep === '/api/v1/work-types') data = [{ id: g(81), name: 'Bug fix', description: null, isActive: true, order: 0 }, { id: g(82), name: 'Access request', description: null, isActive: true, order: 1 }];
     else if (ep === '/api/v1/work/sla') data = { entitled: true, canManage: true, defaults: [{ priority: 'Critical', responseMinutes: 30, resolutionMinutes: 240 }, { priority: 'High', responseMinutes: 120, resolutionMinutes: 1440 }, { priority: 'Medium', responseMinutes: 480, resolutionMinutes: 4320 }, { priority: 'Low', responseMinutes: 1440, resolutionMinutes: 10080 }], overrides: [] };
     else if (/^\/api\/v1\/work-tasks\/[0-9a-f-]{36}\/resolution$/.test(ep)) data = { workTaskId: ep.split('/')[4], workVersion: 3, note: null, proposedAt: null, acceptedAt: null, current: true, canPropose: false, canAccept: false, documentId: null, documentVersion: null };
@@ -180,13 +186,13 @@ const at = (page) => { const u = new URL(page.url()); return `${u.pathname.repla
 const waitFor = async (fn, what) => { for (let i = 0; i < 40; i++) { if (fn()) return; await new Promise((r) => setTimeout(r, 100)); } assert.fail(`timed out waiting for ${what}`); };
 
 try {
-  for (const [theme, width] of [['light', 1440], ['dark', 1440], ['light', 390]]) {
+  for (const [theme, width] of [['light', 1440], ['dark', 1440], ['light', 640]]) {   // at 390 My Work is the phone's FOCUS NOW: verify-phone-parity-ui
     const tag = `${width}${theme === 'dark' ? '-dark' : ''}`;
     const state = { items: seed(), writes: [], lists: [], bump: false };
     const ctx = await make(theme, state);
     const page = await ctx.newPage();
     watch(page);
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+    await page.setViewportSize({ width, height: width < 700 ? 844 : 1000 });
     if (theme === 'dark') { await page.goto(`${origin}/preview-org/work`); assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark'); }
 
     // ---------------------------------------------------------------- My Work: the Focus Stack, today's ring, one suggestion, Today / This week / Later
@@ -229,7 +235,12 @@ try {
     const [r0, g0, b0] = red.match(/\d+/g).map(Number); assert.ok(r0 > 180 && g0 < 130 && b0 < 130, `overdue is red (${red})`);
     assert.equal(await lateRow.locator('.mw-flag').innerText(), '!');
     await list.getByRole('button', { name: '＋ Add item' }).waitFor();
-    if (width === 390) await fitsPhone(page, 'My Work', assert);
+    if (width < 700) await fitsPhone(page, 'My Work', assert);
+    // Pull request and build status as small chips: on the front card and in the list, one request for the page.
+    await front.getByTestId('pr-chips').getByRole('link', { name: 'Pull request 412, Open, checks failing' }).waitFor();
+    await list.locator('.mw-r', { hasText: 'CreditVision score API' }).getByRole('link', { name: 'Pull request 398, Merged, checks passing' }).waitFor();
+    assert.equal(await list.locator('.mw-r', { hasText: 'Settlement report part 1' }).getByTestId('pr-chips').count(), 0, 'no chip without a pull request');
+    checks.push(`pr-chips-${tag}`);
     await shot(page, `work-${tag}.png`);
     // Ticking a row completes it through the Work API and strikes it through.
     const bank = list.locator('.mw-r', { hasText: 'Get the bank' });
@@ -320,7 +331,7 @@ try {
     await panel.getByTestId('wkp-file-input').setInputFiles({ name: 'vpn-log.txt', mimeType: 'text/plain', buffer: Buffer.from('VPN dropped.') });
     await panel.locator('.wkp-file', { hasText: 'vpn-log.txt' }).waitFor();
     await waitFor(() => state.writes.some((w) => w.ep.endsWith('/attachments')), 'the upload');
-    if (width === 390) { await fitsPhone(page, 'Work panel', assert); const pb = await panel.boundingBox(); assert.ok(pb.width >= 389, 'the panel fills a phone'); }
+    if (width < 700) { await fitsPhone(page, 'Work panel', assert); const pb = await panel.boundingBox(); assert.ok(pb.width >= 360, 'the panel is a full-height sheet'); }
     await shot(page, `panel-after-${tag}.png`);
     // An issue cannot take time: the comment posts and says why.
     await page.goto(`${origin}/preview-org/work?item=${state.items[1].id}`);
@@ -332,6 +343,12 @@ try {
     await page.keyboard.press('Escape');
     await panel.waitFor({ state: 'detached' });
     assert.equal(new URL(page.url()).searchParams.get('item'), null);
+    // The panel shows the same chips under its tiles.
+    await page.goto(`${origin}/preview-org/work?item=${state.items[3].id}`);
+    await panel.getByTestId('panel-prs').getByText('Checks failing').waitFor();
+    if (width === 390) await fitsPhone(page, 'Work panel with pull requests', assert);
+    await shot(page, `panel-prs-${tag}.png`);
+    await page.keyboard.press('Escape'); await panel.waitFor({ state: 'detached' });
     checks.push(`panel-${tag}`);
 
     // ---------------------------------------------------------------- Team and Tickets; Team's capacity view stays reachable
@@ -404,14 +421,14 @@ try {
     assert.equal(await show.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected'), 'true');
     await page.locator('.wk-timeline').getByText('Development').first().waitFor();
     await page.goto(`${origin}/preview-org/work?project=${pid}`);
-    if (width === 390) await fitsPhone(page, 'Project work', assert);
+    if (width < 700) await fitsPhone(page, 'Project work', assert);
     await page.keyboard.press('Escape');
     checks.push(`project-${tag}`);
 
     // ---------------------------------------------------------------- + New: a ticket from words, with chips, opened in the panel
     await page.goto(`${origin}/preview-org/work`);
     await list.locator('.mw-r').first().waitFor();
-    await page.evaluate(() => document.querySelector(window.innerWidth < 769 ? '.v2-phone-new' : '.v2-new')?.click());
+    await page.evaluate(() => document.querySelector(window.innerWidth < 769 ? '.m-new' : '.v2-new')?.click());
     const sheet = page.getByRole('dialog', { name: 'New' });
     await sheet.getByLabel('What to create').fill('VPN down for collections team, critical, give to Ravi');
     await sheet.locator('.v2-understood-label', { hasText: /Understood as\s*a ticket/ }).waitFor();
@@ -424,7 +441,7 @@ try {
     // Tap a chip to change it: the work type is picked from the kind chip.
     await sheet.getByLabel('Change type').selectOption({ label: 'Ticket · Access request' });
     await sheet.locator('.v2-understood p', { hasText: 'Access request' }).waitFor();
-    if (width === 390) await fitsPhone(page, 'New sheet', assert);
+    if (width < 700) await fitsPhone(page, 'New sheet', assert);
     await shot(page, `new-${tag}.png`);
     await sheet.getByRole('button', { name: 'Create ticket' }).click();
     await waitFor(() => state.writes.some((w) => w.ep === '/api/v1/work-items'), 'the create');

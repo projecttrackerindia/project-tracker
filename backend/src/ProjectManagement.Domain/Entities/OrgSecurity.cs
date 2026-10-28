@@ -24,6 +24,9 @@ public class TenantSecuritySettings : TenantEntity, ITenantScoped
     /// <summary>How long a revealed secret stays on screen before it is masked again (10, 15, 30, 60 or a custom 5-300). Business plans can change it; others use the default.</summary>
     public int RevealSeconds { get; set; } = 15;
 
+    /// <summary>Keep data in India: integrations and AI providers that would process the workspace's data outside India cannot be turned on.</summary>
+    public bool KeepDataInIndia { get; set; }
+
     // The password vault's workspace rules.
     /// <summary>Every reveal, copy or one-time code from the vault needs a two-step check made in the last few minutes.</summary>
     public bool VaultStepUpAlways { get; set; }

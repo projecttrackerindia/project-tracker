@@ -17,3 +17,13 @@ export function useIsMobile(): boolean {
 export function haptic(ms: number | number[] = 8) {
   try { navigator.vibrate?.(ms); } catch { /* not supported */ }
 }
+
+/** A phone held upright (599px and narrower): the screens drawn for the phone (apple/s-mobile, s-phone) replace the desk layouts. */
+const SMALL_PHONE = '(max-width: 599px)';
+export function useIsSmallPhone(): boolean {
+  return useSyncExternalStore(
+    (notify) => { const m = matchMedia(SMALL_PHONE); m.addEventListener('change', notify); return () => m.removeEventListener('change', notify); },
+    () => typeof matchMedia !== 'undefined' && matchMedia(SMALL_PHONE).matches,
+    () => false,
+  );
+}

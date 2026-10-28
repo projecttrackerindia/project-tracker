@@ -184,6 +184,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentSecurityService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentInboxService>();
         services.AddScoped<ProjectManagement.Application.Features.ApiDocs.ApiDocService>();
+        services.AddScoped<ProjectManagement.Application.Features.ApiDocs.ApiDriftService>();
+        services.AddSingleton<ProjectManagement.Application.Features.ApiDocs.ApiLiveResolver>();
         services.AddScoped<ProjectManagement.Application.Features.ApiDocs.ApiTransferService>();
         services.AddScoped<ProjectManagement.Application.Features.DocTracker.DocTrackerService>();
         services.AddScoped<OrgService>();
@@ -192,9 +194,16 @@ public static class DependencyInjection
         services.AddScoped<DueDateHistory>();
         services.AddScoped<ProjectGroupService>();
         services.AddScoped<ProjectStatusService>();
+        services.AddScoped<WeeklyReportService>();
         services.AddScoped<ActionItemService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTypeService>();
         services.AddScoped<ProjectManagement.Application.Features.Quality.QualityService>();
+        services.AddScoped<ProjectManagement.Application.Features.Quality.ReleaseService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.HistoryService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.SavedViewService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.HolidayService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.StatusPageService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.DataLocationService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTaskService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.SlaService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkRouting>();
@@ -218,6 +227,7 @@ public static class DependencyInjection
         services.AddScoped<TimesheetInsightsService>();
         services.AddScoped<TimesheetNudgeMonitor>();
         services.AddScoped<CapacityService>();
+        services.AddScoped<CapacityPlanService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.CalendarFeedService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.InboundEmailService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.GitLinkService>();
@@ -302,6 +312,10 @@ public static class DependencyInjection
         services.AddScoped<SprintService>();
         services.AddScoped<AutomationService>();
         services.AddScoped<AutomationEngine>();
+        services.AddScoped<TicketAutomationEngine>();
+        services.AddScoped<TicketRuleScheduler>();
+        services.AddScoped<ProjectManagement.Application.Features.Support.TicketCustomerMessenger>();
+        services.AddScoped<ProjectManagement.Application.Features.Support.DeskReplies>();
         services.AddScoped<AttachmentService>();
         services.AddScoped<AttachmentJanitor>();
         services.AddScoped<NotificationRouter>();

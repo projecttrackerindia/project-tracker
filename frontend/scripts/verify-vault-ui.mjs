@@ -37,7 +37,7 @@ const summary = (o) => ({ id: o.id, collectionId: o.c, collectionName: collectio
   class: o.cls ?? 'Secret', useOnly: !!o.useOnly, owner: { id: user.id, name: user.displayName }, hasTotp: !!o.totp, strength: o.strength ?? 4, breached: !!o.breached, reused: false, expiresAt: null, expired: false,
   rotationReason: o.reason ?? null, valueChangedAt: now, lastUsedAt: null, myAccess: o.access ?? 'Manage', health: o.health ?? [] });
 const items = [
-  summary({ id: 'i1', c: 'c1', title: 'Bank portal', url: 'https://netbanking.example.in', hint: 'r***@fivestar.in', tags: ['finance'] }),
+  summary({ id: 'i1', c: 'c1', title: 'Bank portal', url: 'https://netbanking.example.in', hint: 'r***@northwind.in', tags: ['finance'] }),
   summary({ id: 'i4', c: 'c1', title: 'Old router', hint: 'a***n', strength: 0, breached: true, totp: true, health: ['weak', 'breached'] }),
   summary({ id: 'i2', c: 'c2', title: 'AWS root account', url: 'console.aws.amazon.com', cls: 'Confidential', hint: 'o***s' }),
   summary({ id: 'i3', c: 'c2', title: 'Payments DB', kind: 'Database', useOnly: true, access: 'Manage', hint: 'p***r' }),
@@ -45,7 +45,7 @@ const items = [
 const fields = (id) => {
   const s = items.find((i) => i.id === id);
   if (s.kind === 'Database') return [{ key: 'host', label: 'Host', type: 'text', secret: false, value: 'db.payments.internal' }, { key: 'username', label: 'User name', type: 'text', secret: false, value: 'payuser' }, { key: 'password', label: 'Password', type: 'password', secret: true, value: null }];
-  const f = [{ key: 'username', label: 'User name', type: 'text', secret: false, value: id === 'i1' ? 'ravi@fivestar.in' : 'admin' }, { key: 'password', label: 'Password', type: 'password', secret: true, value: null }];
+  const f = [{ key: 'username', label: 'User name', type: 'text', secret: false, value: id === 'i1' ? 'ravi@northwind.in' : 'admin' }, { key: 'password', label: 'Password', type: 'password', secret: true, value: null }];
   if (id === 'i4') f.push({ key: 'totp', label: 'One-time code (2FA)', type: 'totp', secret: true, value: null });
   if (id === 'i1') f.push({ key: 'note', label: 'Notes', type: 'note', secret: true, value: null },
     { key: 'statements', label: 'Statements portal', type: 'url', secret: false, value: 'https://statements.bank.example/login' },
@@ -259,7 +259,7 @@ try {
   await page.locator('.lib-vault-item[data-item="Bank portal"]').click();
   await page.locator('.vlt-panel[data-item="Bank portal"]').waitFor();
   assert.equal(await page.locator('[data-field="password"] .vlt-secret').getAttribute('data-state'), 'masked');
-  assert.ok(await page.getByText('ravi@fivestar.in').isVisible(), 'non-secret user name shown');
+  assert.ok(await page.getByText('ravi@northwind.in').isVisible(), 'non-secret user name shown');
   assert.ok(!(await html(page)).includes(SECRETS.i1.password));
   // Reveal is offered only to people who manage the item (they could already see it in Edit); nothing is shown until they ask.
   assert.ok(await page.locator('.vlt-panel').getByRole('button', { name: 'Reveal Password' }).isVisible(), 'Reveal for a manager');
@@ -402,7 +402,7 @@ try {
   await page.getByLabel('New field name').fill('Admin console');
   await page.getByLabel('New field type').selectOption('url');
   await page.locator('.vlt-add-field').getByRole('button', { name: 'Add', exact: true }).click();
-  await page.locator('#vf-adminConsole').fill('https://github.com/organizations/fivestar/settings');
+  await page.locator('#vf-adminConsole').fill('https://github.com/organizations/northwind/settings');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/items' && w.body), 'create');
   const created = writes.find((w) => w.ep === '/api/v1/vault/items' && w.body).body;
@@ -410,7 +410,7 @@ try {
   assert.deepEqual(created.fields.find((f) => f.key === 'password'), { key: 'password', label: 'Password', type: 'password', secret: true, value: generated });
   assert.equal(created.fields.find((f) => f.key === 'totp').value, 'JBSW Y3DP EHPK 3PXP');
   assert.deepEqual(created.fields.find((f) => f.key === 'remarks'), { key: 'remarks', label: 'Remarks', type: 'remark', secret: false, value: 'Org owner account. Ask in #platform before changing.' });
-  assert.deepEqual(created.fields.find((f) => f.key === 'adminConsole'), { key: 'adminConsole', label: 'Admin console', type: 'url', secret: false, value: 'https://github.com/organizations/fivestar/settings' });
+  assert.deepEqual(created.fields.find((f) => f.key === 'adminConsole'), { key: 'adminConsole', label: 'Admin console', type: 'url', secret: false, value: 'https://github.com/organizations/northwind/settings' });
   checks.push('create-with-generator');
 
   // Edit: the one place a value shows — fetched only when asked for (recorded as for the edit screen), masked again when the window is
@@ -476,12 +476,12 @@ try {
   await page.getByRole('button', { name: 'Access', exact: true }).click();
   await page.getByTestId('machines').waitFor();
   await page.getByRole('button', { name: 'Allow a GitHub Actions pipeline' }).click();
-  await page.getByLabel('Repository').fill('https://github.com/fivestar/payments-api');
+  await page.getByLabel('Repository').fill('https://github.com/northwind/payments-api');
   await page.getByLabel('Environment').fill('production');
   await page.getByRole('button', { name: 'Allow this pipeline' }).click();
   await waitFor(() => writes.some((w) => w.ep.endsWith('/c2/machines') && w.body), 'pipeline allowed');
   const mBody = writes.find((w) => w.ep.endsWith('/c2/machines')).body;
-  assert.equal(mBody.repository, 'https://github.com/fivestar/payments-api'); assert.equal(mBody.refPattern, 'main'); assert.equal(mBody.environment, 'production');
+  assert.equal(mBody.repository, 'https://github.com/northwind/payments-api'); assert.equal(mBody.refPattern, 'main'); assert.equal(mBody.environment, 'production');
   await page.getByTestId('workflow-snippet').waitFor();
   const snippet = await page.getByTestId('workflow-snippet').innerText();
   assert.match(snippet, /id-token: write/); assert.match(snippet, new RegExp(`audience=projecttracker-vault:${ws.id}`)); assert.match(snippet, /::add-mask::/); assert.match(snippet, /environment: production/);
@@ -675,13 +675,13 @@ try {
   await openCollection('Root secrets');
   await page.getByRole('button', { name: 'New secret' }).first().click();
   await page.locator('#vi-title').fill('Cloud root');
-  await page.locator('#vf-username').fill('root@fivestar.in');
+  await page.locator('#vf-username').fill('root@northwind.in');
   await page.locator('#vf-password').fill('Se@led!Root#2026x');
   assert.match(await page.locator('.modal-head p').innerText(), /encrypted on this device/);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/sealed-items'), 'sealed item');
   const sent = writes.find((w) => w.ep === '/api/v1/vault/sealed-items').body;
-  for (const secret of ['Cloud root', 'Se@led!Root#2026x', 'root@fivestar.in']) assert.ok(!JSON.stringify(sent).includes(secret), `"${secret}" never reaches the server`);
+  for (const secret of ['Cloud root', 'Se@led!Root#2026x', 'root@northwind.in']) assert.ok(!JSON.stringify(sent).includes(secret), `"${secret}" never reaches the server`);
   assert.match(sent.id, /^[0-9a-f-]{36}$/, 'the id is made in the browser (it is bound into the encryption)');
   await page.locator('.vlt-panel-sealed[data-item="Cloud root"]').waitFor();
   const revealsBefore = writes.filter((w) => w.ep.endsWith('/reveal')).length;

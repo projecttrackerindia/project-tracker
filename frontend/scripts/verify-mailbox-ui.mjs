@@ -47,7 +47,7 @@ try{
    else if(ep==='/api/v1/me/mailbox/agent/assist'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data=assist;}
    else if(ep==='/api/v1/me/mailbox/agent/compose'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={body:b.draft.trim()+'\n\nImproved.',model:'test'};}
    else if(ep==='/api/v1/me/mailbox/company/test'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});data={ok:false,checks:[{server:`POP ${b.settings.incomingHost}:${b.settings.incomingPort}`,ok:true,detail:'Signed in.'},{server:`SMTP ${b.settings.smtpHost}:${b.settings.smtpPort}`,ok:false,detail:'The server could not be reached on this port.'}]};}
-   else if(ep==='/api/v1/me/mailbox/company'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});data={provider:b.provider,name:'Rediffmail Pro',domains:['fivestar.test'],incoming:b.incoming,incomingHost:b.incomingHost,incomingPort:b.incomingPort,smtpHost:b.smtpHost,smtpPort:b.smtpPort,custom:true};}
+   else if(ep==='/api/v1/me/mailbox/company'&&method==='PUT'){const b=req.postDataJSON();writes.push({ep,b});data={provider:b.provider,name:'Rediffmail Pro',domains:['northwind.test'],incoming:b.incoming,incomingHost:b.incomingHost,incomingPort:b.incomingPort,smtpHost:b.smtpHost,smtpPort:b.smtpPort,custom:true};}
    else if(ep==='/api/v1/me/mailbox/accounts/imap'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});const a={id:'00000000-0000-0000-0000-0000000000bb',provider:b.provider,name:'Rediffmail Pro',email:b.email,connectedAt:iso(0),lastSyncedAt:iso(0),lastError:null};imap=[...imap,a];data=a;}
    else if(/\/api\/v1\/work-tasks\/w\d+\/status/.test(ep)&&method==='PUT'){writes.push({ep,b:req.postDataJSON()});data={id:'w2'};}
    else if(/\/api\/v1\/work-tasks\/w\d+\/comments/.test(ep)&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data={id:'c1'};}
@@ -62,7 +62,7 @@ try{
     else if(ep==='/api/v1/integrations/google/status'&&noMail)data={connected:false,googleEmail:null,lastError:null,calendarAccess:false,mailEnabled:true,mailSendAccess:false,inboxEnabled:true,inboxAccess:false};
     else if(ep==='/api/v1/integrations/google/status')data={connected:true,googleEmail:'asha@example.test',connectedAt:iso(-9000),lastError:null,calendarAccess:true,mailEnabled:true,mailSendAccess:true,inboxEnabled:true,inboxAccess:true};
     else if(ep==='/api/v1/integrations/microsoft/status')data={enabled:false,configured:false,connected:false,email:null,mailSendAccess:false,inboxEnabled:false,inboxAccess:false,calendarsEnabled:true,calendarAccess:false};
-    else if(ep==='/api/v1/me/mailbox/accounts')data={imap:noMail?[]:imap,presets,company:{provider:'rediffpro',name:'Rediffmail Pro',domains:['fivestar.test'],incoming:'imap',incomingHost:'imap.rediffmailpro.com',incomingPort:993,smtpHost:'smtp.rediffmailpro.com',smtpPort:465,custom:false},canManageCompany:true,myEmail:'asha@fivestar.test'};
+    else if(ep==='/api/v1/me/mailbox/accounts')data={imap:noMail?[]:imap,presets,company:{provider:'rediffpro',name:'Rediffmail Pro',domains:['northwind.test'],incoming:'imap',incomingHost:'imap.rediffmailpro.com',incomingPort:993,smtpHost:'smtp.rediffmailpro.com',smtpPort:465,custom:false},canManageCompany:true,myEmail:'asha@northwind.test'};
     else if(ep==='/api/v1/me/mailbox/agent/options')data={available:!aiOff,credits:1};
     else if(ep==='/api/v1/me/mailbox/messages'){const acc=p.get('account');const list=p.get('folder')==='sent'?(acc==='google'?sent:[]):acc==='google'?gmail:acc.startsWith('imap:')?rediff:[];data={account:acc,email:acc==='google'?'asha@example.test':'asha@rediffmail.com',folder:p.get('folder'),messages:list.map(({body,...m})=>m),cursor:null};}
     else if(ep==='/api/v1/me/mailbox/thread'){const acc=p.get('account');const m=[...gmail,...rediff,...sent].find(x=>x.id===p.get('messageId'));data={account:acc,email:'asha@example.test',folder:'inbox',threadId:m.id,messages:[m],truncated:false};}
@@ -91,7 +91,12 @@ try{
  const railMail=page.locator('.v2-rail-item.on',{hasText:'Mail'});await railMail.waitFor();assert.match(await railMail.innerText(),/2/);
  await page.goto(origin+'/preview-org/talk?f=mail');await page.waitForURL(/\/mail$/);await page.locator('[data-testid="ml-row"]').first().waitFor();checks.push('routes');
 
- assert.equal(await page.locator('[data-testid="ml-row"]').count(),3);
+ // Focused / Other: the no-reply payslip goes to Other; the subtitle counts unread mail, sorted by the assistant (needs-reply first).
+ assert.equal(await page.locator('[data-testid="ml-row"]').count(),2);
+ assert.equal(await page.getByTestId('ml-subtitle').innerText(),'2 unread · sorted by AI');
+ await page.getByTestId('ml-lanes').getByRole('tab',{name:/^Other/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
+ assert.match(await page.locator('[data-testid="ml-row"]').first().innerText(),/Payroll/);assert.equal(await page.getByTestId('ml-subtitle').innerText(),'0 unread · sorted by AI');
+ await page.getByTestId('ml-lanes').getByRole('tab',{name:'Focused'}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);checks.push('focused-other');
  assert.match(await page.locator('[data-testid="ml-row"]').first().innerText(),/Ravi Kumar[\s\S]*Needs reply/);
  assert.match(await page.locator('[data-testid="ml-row"]').nth(1).innerText(),/Kiran[\s\S]*Invoice/);
  assert.equal(await page.locator('.ml-row.unread').count(),2);
@@ -102,12 +107,14 @@ try{
  await page.locator('.ml-side').getByRole('button',{name:/^Needs reply/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
  await page.locator('.ml-side').getByRole('button',{name:/^Waiting on others/}).click();await page.locator('[data-testid="ml-row"]',{hasText:'CRIF'}).waitFor();
  await page.locator('[data-testid="ml-row"]').first().click();await page.getByTestId('ml-followup').waitFor();assert.match(await page.getByTestId('ml-followup').innerText(),/No reply from CRIF Ops in 5 days — remind\?/);
- await page.locator('.ml-side').getByRole('button',{name:/^Inbox/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===3);checks.push('mailboxes');
+ await page.locator('.ml-side').getByRole('button',{name:/^Inbox/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);checks.push('mailboxes');
  // Reading renders mail as text, never HTML; the assistant reads it on opening: summary, action items, three reply chips.
  await page.locator('[data-testid="ml-row"]').first().click();await page.locator('.ml-msg-body').waitFor();
  assert.match(await page.locator('.ml-msg-body').innerText(),/<script>/);assert.equal(await page.evaluate(()=>window.mailUnsafe),undefined);
  await page.getByTestId('ml-summary').waitFor();assert.match(await page.getByTestId('ml-summary').innerText(),/Ravi needs confirmation[\s\S]*Urgent/);
  assert.match(await page.getByRole('list',{name:'Action items'}).innerText(),/Confirm the release date/);
+ // Each action item carries an owner and a due day read from its wording, and Make task (no linked project: the New sheet, prefilled).
+ const act=page.getByRole('list',{name:'Action items'}).getByRole('listitem').first();assert.match(await act.innerText(),/You/);assert.ok(await act.getByRole('button',{name:'Make task'}).isVisible());checks.push('action-items');
  assert.deepEqual(await page.getByRole('group',{name:'Suggested replies'}).getByRole('button').allInnerTexts().then(t=>t.map(x=>x.replace(/\s+/g,' ').trim())),['CONCISE Confirm Friday','WARM Ask for details']);
  await shot(page,'read-1440.png');checks.push('read-assistant');
  await page.locator('.mb-task',{hasText:'W-2'}).getByRole('button',{name:'Apply update'}).click();
@@ -129,7 +136,7 @@ try{
  assert.equal(sentReply.b.account,'google');assert.equal(sentReply.b.replyToId,'a1');assert.equal(sentReply.b.replyAll,true);assert.equal(sentReply.b.confirmed,true);assert.match(sentReply.b.body,/> Hi Asha/);
  checks.push('reply-all');
  // Archive takes it out of the inbox (and Archive holds it).
- await page.getByTestId('ml-reader').getByRole('button',{name:'Archive',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);
+ await page.getByTestId('ml-reader').getByRole('button',{name:'Archive',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
  await page.locator('.ml-side').getByRole('button',{name:/^Archive/}).click();await page.locator('[data-testid="ml-row"]',{hasText:'Ravi'}).waitFor();checks.push('archive');
  // Natural-language search: what it understood, then the matches.
  await page.getByLabel('Search mail').fill('mails from kiran about invoice');await page.getByLabel('Search mail').press('Enter');
@@ -185,9 +192,9 @@ try{
  const con=await waitWrite(w=>w.ep==='/api/v1/me/mailbox/accounts/imap');assert.deepEqual(Object.keys(con.b).sort(),['email','password','provider']);assert.equal(con.b.provider,'rediffpro');
  await pane.getByText('asha@company.in').waitFor();checks.push('connect-rediff');
  // Company mail: the address is known, just the password.
- await pane.locator('.mb-company').waitFor();assert.match(await pane.locator('.mb-company').innerText(),/asha@fivestar.test/);
+ await pane.locator('.mb-company').waitFor();assert.match(await pane.locator('.mb-company').innerText(),/asha@northwind.test/);
  await pane.locator('.mb-company input[type=password]').fill('company-pass-for-test');await pane.locator('.mb-company').getByRole('button',{name:'Connect'}).click();
- const cc=await waitWrite(w=>w.ep==='/api/v1/me/mailbox/accounts/imap'&&w.b.email==='asha@fivestar.test');assert.equal(cc.b.provider,'rediffpro');checks.push('company-mail');
+ const cc=await waitWrite(w=>w.ep==='/api/v1/me/mailbox/accounts/imap'&&w.b.email==='asha@northwind.test');assert.equal(cc.b.provider,'rediffpro');checks.push('company-mail');
  // Organisation mail server (owners and admins): POP like Outlook, the SMTP server, a test with one's own mailbox, then save for everyone.
  await page.getByTestId('mail-company-setup').click();await page.locator('.mbc').waitFor();
  const dlg=page.getByRole('dialog').filter({has:page.locator('.mbc')});await dlg.getByRole('radio',{name:/POP/}).click();

@@ -31,8 +31,10 @@ public class AiAgentLevelUpgradeTests
         {
             var connection = new NpgsqlConnectionStringBuilder(configured) { Database = databaseName, Pooling = false };
             var context = new CurrentContext();
-            await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connection.ConnectionString).Options, context, TimeProvider.System);
-            await db.GetService<IMigrator>().MigrateAsync(Before);
+            var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connection.ConnectionString).Options;
+            // Migrations belong to AppDbContext itself; the rows are written with the older model (without the columns added later).
+            await using (var migrator = new AppDbContext(options, context, TimeProvider.System)) await migrator.GetService<IMigrator>().MigrateAsync(Before);
+            await using var db = new BeforeReleasesDb(options, context, TimeProvider.System);
 
             // Every column these rows use exists at the migration before (only the AiAgentActions table is new).
             var user = new User { Email = "levels@example.test", NormalizedEmail = "LEVELS@EXAMPLE.TEST", DisplayName = "Lead", PasswordHash = "fixture-hash", IsActive = true };
@@ -54,8 +56,9 @@ public class AiAgentLevelUpgradeTests
             await db.SaveChangesAsync();
             db.ChangeTracker.Clear();
 
-            await db.Database.MigrateAsync();
-            Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+            await using var current = new AppDbContext(options, context, TimeProvider.System);
+            await current.Database.MigrateAsync();
+            Assert.Empty(await current.Database.GetPendingMigrationsAsync());
             var levels = await db.Tenants.AsNoTracking().ToDictionaryAsync(t => t.Slug, t => AiControlCentre.Parse(t.AiAgentLevels));
             Assert.Equal(AiAgentLevel.Auto, levels["delegating"][AiAgents.Project]);
             Assert.Equal(AiAgentLevel.AskFirst, levels["delegating"][AiAgents.Notetaker]);
@@ -72,6 +75,17 @@ public class AiAgentLevelUpgradeTests
             NpgsqlConnection.ClearAllPools();
             await using var drop = new NpgsqlCommand($"DROP DATABASE \"{databaseName}\" WITH (FORCE)", admin);
             await drop.ExecuteNonQueryAsync();
+        }
+    }
+
+    /// <summary>The model as it was before 20261113001000_ReleasesAndHealth: the rows here are written at an older migration, so the
+    /// Project columns added later (status set by hand) must not be in the INSERTs.</summary>
+    private sealed class BeforeReleasesDb(DbContextOptions<AppDbContext> options, CurrentContext current, TimeProvider clock) : AppDbContext(options, current, clock)
+    {
+        protected override void OnModelCreating(ModelBuilder b)
+        {
+            base.OnModelCreating(b);
+            b.Entity<Project>().Ignore(x => x.HealthOverride).Ignore(x => x.HealthNote).Ignore(x => x.HealthUntil).Ignore(x => x.HealthSetById).Ignore(x => x.HealthSetAt);
         }
     }
 }

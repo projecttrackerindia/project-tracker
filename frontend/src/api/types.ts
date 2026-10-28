@@ -114,6 +114,8 @@ export interface Project {
   id: string; key: string; name: string; description: string | null; status: ProjectStatus; priority: Priority;
   owner: UserRef | null; teamId: string | null; teamName: string | null; startDate: string | null; dueDate: string | null;
   progress: number; health: ProjectHealth; stats: ProjectStats;
+  /** The health is a status set by hand (in force), so nothing on the page second-guesses it. */
+  healthByHand?: boolean;
   /** Timeline stages, and how many are not signed off yet (stage status not Completed). */
   stageCount?: number; pendingSignOffs?: number; memberCount: number; version: number; position: number; enforceDependencies: boolean;
   projectGroupId: string | null; projectGroupName: string | null; projectType: ProjectType; deliveryMethod: DeliveryMethod;
@@ -389,6 +391,19 @@ export interface UtilisationPerson {
   userId: string; name: string; capacityMinutes: number; loggedMinutes: number; billableMinutes: number; projectMinutes: number; operationalMinutes: number;
   utilisation: number | null; billableShare: number | null; cost: number | null; billableValue: number | null;
 }
+/** Portfolio › Capacity: person × week plan (capacity after leave vs booked open estimates). */
+export interface CapacityPlanCell { weekStart: string; capacityMinutes: number; bookedMinutes: number; leaveDays: number; workingDays: number; onLeave: boolean; over: boolean; /** Public holidays on weekdays that week (Settings › Holidays). */ holidayDays?: number }
+export interface CapacityPlanPerson { userId: string; name: string; weeklyCapacityMinutes: number; weeks: CapacityPlanCell[] }
+export interface CapacityPlanSuggestion {
+  fromUserId: string; fromName: string; toUserId: string; toName: string; firstWeek: string; lastWeek: string; overMinutes: number; freeMinutes: number;
+  tasks: { id: string; title: string; minutes: number; dueDate: string | null }[];
+}
+export interface CapacityPlan {
+  from: string; weeks: number; scope: WorkloadScope; available: WorkloadScope[]; entitled: boolean; weekStarts: string[]; people: CapacityPlanPerson[];
+  totals: { capacityMinutes: number; bookedMinutes: number; booked: number | null; overWeeks: number; leaveWeeks: number; publicHolidays: number };
+  suggestion: CapacityPlanSuggestion | null;
+}
+
 export interface Utilisation {
   from: string; to: string; scope: WorkloadScope; available: WorkloadScope[]; currency: string; showMoney: boolean; entitled: boolean; workingDays: number;
   people: UtilisationPerson[]; totals: UtilisationPerson;
@@ -403,22 +418,33 @@ export interface ProjectTime { totalMinutes: number; estimatedHours: number | nu
 
 // ---- automation
 /** Event triggers run when a task changes; DueSoon, Overdue and Stale are checked every few minutes (with `triggerDays`). */
-export type AutomationTrigger = 'TaskCreated' | 'StatusChanged' | 'PriorityChanged' | 'DueSoon' | 'Overdue' | 'Stale';
-export type AutomationAction = 'SetPriority' | 'SetAssignee' | 'MoveToStatus' | 'AddLabel' | 'Notify' | 'AddComment';
+export type AutomationTrigger = 'TaskCreated' | 'StatusChanged' | 'PriorityChanged' | 'DueSoon' | 'Overdue' | 'Stale' | 'TicketCreated' | 'TicketChanged' | 'TicketWaiting' | 'TicketResolved';
+/** PostToChannel: a line in a Messages channel. TellCustomer: a reply to the customer (Desk tickets only). */
+export type AutomationAction = 'SetPriority' | 'SetAssignee' | 'MoveToStatus' | 'AddLabel' | 'Notify' | 'AddComment' | 'PostToChannel' | 'TellCustomer' | 'CloseTicket';
+/** One "If" condition; a rule's conditions are ANDed. `noReply` (minutes) is for Desk tickets. */
+export type AutomationConditionField = 'priority' | 'status' | 'unassigned' | 'businessHours' | 'noReply';
+export interface AutomationCondition { field: AutomationConditionField; value?: string | null; minutes?: number | null }
 export type AutomationTarget = 'User' | 'Reporter' | 'Assignee';
 /** One thing a rule does. Workspace rules name a status by category (the project's first status in it). */
 export interface AutomationStep {
   action: AutomationAction; actionPriority: string | null; actionStatusId: string | null; actionStatusCategory: StatusCategory | null; actionLabelId: string | null;
   actionTarget: AutomationTarget; actionUserId: string | null; actionText: string | null;
+  /** PostToChannel: the Messages channel (group or project conversation). */
+  actionConversationId?: string | null;
 }
 export interface AutomationRule extends AutomationStep {
   id: string; projectId: string | null; name: string; isEnabled: boolean; trigger: AutomationTrigger; whenStatusId: string | null; whenPriority: string | null;
   whenStatusCategory: StatusCategory | null; triggerDays: number | null; moreActions: AutomationStep[];
   summary: string; runCount: number; lastRunAt: string | null;
+  conditions?: AutomationCondition[]; isDraft?: boolean; conversationName?: string | null;
 }
-export type AutomationInput = Omit<AutomationRule, 'id' | 'projectId' | 'summary' | 'runCount' | 'lastRunAt'>;
+export type AutomationInput = Omit<AutomationRule, 'id' | 'projectId' | 'summary' | 'runCount' | 'lastRunAt' | 'conversationName'>;
+/** A backtest over the last 7 days: nothing is changed or sent. */
+export interface AutomationBacktest {
+  total: number; days: { date: string; count: number }[]; items: { id: string; key: string; title: string; at: string; isTicket: boolean }[]; note: string;
+}
 /** A dry run: the trigger, then each action; pass false = stopped there (trigger) or would be skipped (action). */
-export interface AutomationTest { taskKey: string; taskTitle: string; wouldRun: boolean; steps: { step: 'When' | 'Then'; pass: boolean; note: string }[] }
+export interface AutomationTest { taskKey: string; taskTitle: string; wouldRun: boolean; steps: { step: 'When' | 'If' | 'Then'; pass: boolean; note: string }[] }
 export interface AutomationRunEntry { at: string; taskId: string | null; summary: string }
 export interface AutomationDraft {
   name: string; trigger: AutomationTrigger; triggerDays: number | null; whenPriority: string | null; whenStatusCategory: StatusCategory | null; reason: string;
@@ -452,6 +478,9 @@ export interface DevLink {
   branch?: string | null; checksState?: 'success' | 'failure' | 'pending' | null; reviewState?: 'approved' | 'changes_requested' | null; draft?: boolean;
   additions?: number | null; deletions?: number | null; changedFiles?: number | null; riskScore?: number | null; riskReasons?: string[] | null; mergedAt?: string | null; awaitingReview?: boolean;
 }
+/** A pull request as a chip on a work item: state (open, draft, merged, closed) and checks (success, failure, pending). */
+export interface PullChip { number: string; state: 'open' | 'draft' | 'merged' | 'closed' | string; checks: 'success' | 'failure' | 'pending' | string | null; url: string; title: string; repository: string | null }
+export interface DevStatus { itemId: string; pulls: PullChip[] }
 /** The ProjectTracker GitHub App in this workspace. */
 export interface GitHubStatusRules { opened: string | null; approved: string | null; merged: string | null; reopenOnRevert: boolean }
 export interface GitHubAppStatus {
@@ -880,14 +909,20 @@ export interface ApiDefinition {
 export interface ApiOverview { definitions: ApiDefinition[]; endpoints: number; live: boolean; reading: string; versionId: string | null; canEdit: boolean; limit: number; used: number }
 export interface EndpointItem { id: string; definitionId: string; definition: string; method: ApiMethod; path: string; summary: string; tag: string | null; deprecated: boolean; owner: UserRef | null }
 export interface EndpointPage { items: EndpointItem[]; nextCursor: string | null; total: number | null }
-export interface EndpointDetail { item: EndpointItem; details: EndpointDetails; readOnly: boolean; maskedCount?: number; revealed?: boolean; revealSeconds?: number; canReveal?: boolean }
+export interface EndpointDetail { item: EndpointItem; details: EndpointDetails; readOnly: boolean; maskedCount?: number; revealed?: boolean; revealSeconds?: number; canReveal?: boolean; liveCheck?: LiveCheck | null }
+/** API drift: one field that differs between the documented sample response and the live one (names and JSON types only, never values). */
+export interface DriftField { path: string; kind: 'missing' | 'extra' | 'type'; documented: string | null; live: string | null }
+/** The last "Check against live": the environment by label (never its address), what was compared and what differs. */
+export interface LiveCheck { checkedAt: string; env: string; source: 'live' | 'pasted'; status: number | null; comparedWith: string | null; differs: boolean; fields: DriftField[]; error: string | null }
+export interface DtDrift { checkedAt: string; env: string; differs: boolean; missing: number; extra: number; changed: number; error: string | null }
 
 // ---- DocTracker: every project's APIs (scored), documents and architecture
-export interface DtEndpoint { id: string; documentId: string; definitionId: string; definition: string; method: ApiMethod; path: string; summary: string; tag: string | null; deprecated: boolean; score: number; gaps: string[]; stage: ApiStage; updatedAt: string | null }
+export interface DtEndpoint { id: string; documentId: string; definitionId: string; definition: string; method: ApiMethod; path: string; summary: string; tag: string | null; deprecated: boolean; score: number; gaps: string[]; stage: ApiStage; updatedAt: string | null; drift?: DtDrift | null }
 export interface DtDefinition { id: string; documentId: string; name: string; version: string | null; stage: ApiStage; auth: ApiAuthScheme; servers: string[] }
 export interface DtDocument { id: string; key: string; title: string; typeCode: string; typeName: string; typeColor: string; status: DocumentStatus; classification: DocumentClassification; updatedAt: string; isApi: boolean;
   parentId?: string | null; pageOrder?: number; icon?: string | null;
-  /** A company page kept in a team's space. */ teamId?: string | null }
+  /** A company page kept in a team's space. */ teamId?: string | null;
+  /** Confirmed still right on this date; out of date since this moment. */ verifiedAt?: string | null; staleSince?: string | null }
 /** A team's space: company pages kept for one team; mine = the person is in it. */
 export interface DtTeam { id: string; name: string; mine: boolean; pages: number }
 export interface DtProject { id: string | null; key: string | null; name: string; endpoints: DtEndpoint[]; definitions: DtDefinition[]; documents: DtDocument[]; diagrams: number; designs?: number }

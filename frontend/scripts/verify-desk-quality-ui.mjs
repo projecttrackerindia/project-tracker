@@ -14,12 +14,12 @@ const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'
 await fs.mkdir(out, { recursive: true });
 const csp = await appCsp();
 const g = (n) => `91000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
-const user = { id: g(1), displayName: 'Prasanna K', email: 'prasanna@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
+const user = { id: g(1), displayName: 'Maya C', email: 'maya@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };
 const me = { id: user.id, name: user.displayName };
 const p = (n, name) => ({ id: g(n), name });
 const shiva = p(2, 'Shiva Kumar'), siva = p(3, 'Siva Rao'), ravi = p(4, 'Ravi Teja'), priya = p(5, 'Priya S'), rakshit = p(6, 'Rakshit M');
 const ramesh = p(20, 'Ramesh Naidu'), lakshmi = p(21, 'Lakshmi P'), kavya = p(22, 'Kavya R'), nellore = p(23, 'Branch Nellore'), anil = p(24, 'Anil Kumar'), hrops = p(25, 'HR Ops'), sujatha = p(26, 'Sujatha M');
-const ws = { id: g(9), slug: 'preview-org', name: 'FiveStar Finance', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 6 };
+const ws = { id: g(9), slug: 'preview-org', name: 'Northwind Finance', type: 'Organization', role: 'Owner', planCode: 'BUSINESS', memberCount: 6 };
 const members = [me, shiva, siva, ravi].map((x, i) => ({ userId: x.id, displayName: x.name, email: `${x.name.split(' ')[0].toLowerCase()}@example.test`, role: i ? 'Member' : 'Owner', joinedAt: '2026-01-01T00:00:00Z', jobRole: null }));
 const ago = (min) => new Date(Date.now() - min * 60e3).toISOString();
 const ahead = (min) => new Date(Date.now() + min * 60e3).toISOString();
@@ -71,7 +71,7 @@ function quality(empty) {
   const runs = [
     { id: g(400), name: 'DEV #212', environment: 'DEV', build: '212', status: 'Done', createdAt: ago(5000), startedAt: ago(5000), completedAt: ago(4900) },
     { id: g(401), name: 'DEV #213', environment: 'DEV', build: '213', status: 'Done', createdAt: ago(3000), startedAt: ago(3000), completedAt: ago(2900) },
-    { id: g(402), name: 'UAT 1.4', environment: 'UAT', build: '214', status: 'Running', createdAt: ago(60), startedAt: ago(40), completedAt: null },
+    { id: g(402), name: 'UAT 1.4', environment: 'UAT', build: '214', status: 'Running', createdAt: ago(60), startedAt: ago(40), completedAt: null, releaseId: g(470) },
     { id: g(403), name: 'PROD-like', environment: 'PROD-like', build: null, status: 'Open', createdAt: ago(30), startedAt: null, completedAt: null },
   ].map((r) => ({ ...r, projectId: pid }));
   const S = { p: 'Pass', x: 'Fail', b: 'Blocked' };
@@ -122,6 +122,18 @@ const make = async (theme, state) => {
         const c = { type: 'comment', id: g(800 + state.writes.length), at: new Date().toISOString(), actor: me, summary: 'commented', body: b.body };
         w.activity.push(c);
         return json({ comment: c, time: null, timeProblem: null }, 201);
+      }
+      // Desk replies on the ticket's channel, and saved replies filled in from the ticket.
+      const tell = ep.match(/^\/api\/v1\/work-tasks\/([0-9a-f-]{36})\/(tell-customer|fill-reply)$/);
+      if (tell && tell[2] === 'tell-customer') {
+        const w = find(tell[1]);
+        w.activity.push({ type: 'comment', id: g(850 + state.writes.length), at: new Date().toISOString(), actor: me, summary: 'commented', body: `📣 Told the customer on WhatsApp: ${b.text}` });
+        return json({ channel: w.channel === 'email' ? 'email' : 'whatsapp', sent: true, note: 'sent' });
+      }
+      if (tell && tell[2] === 'fill-reply') {
+        const w = find(tell[1]);
+        const text = b.text.replace(/\{name\}/g, w.reporter.name.split(' ')[0]).replace(/\{key\}/g, w.key).replace(/\{eta\}/g, '28 Oct, 18:00 UTC');
+        return json({ text, missing: [...text.matchAll(/\{(\w+)\}/g)].map((x) => x[1]) });
       }
       if (m && !m[2] && method === 'PATCH') {
         const w = find(m[1]);
@@ -174,8 +186,14 @@ const make = async (theme, state) => {
       data = { items: list, offset: 0, limit: 200, hasMore: false };
     }
     else if (m && !m[2]) data = detailOf(find(m[1]));
+    else if (ep === '/api/v1/desk/reply-templates') data = [
+      { id: 'ack', title: 'Acknowledge', text: 'Hi {name}, thanks for reaching out. We have logged this as {key} and will update you by {eta}.', source: 'built-in' },
+      { id: 'account', title: 'Account check', text: 'Hi {name}, we are checking account {account} for you under {key}.', source: 'built-in' },
+      { id: 'wa-1', title: 'Refund timeline', text: 'Refunds reach your bank in 5-7 working days.', source: 'Loans care line' },
+    ];
     else if (ep === '/api/v1/quality/matrix') data = { runs: q.runs, cases: q.cases.map(caseDto), results: q.results };
     else if (ep === '/api/v1/quality/readiness') data = readiness(q, sp.get('runId'));
+    else if (ep === '/api/v1/releases') data = [{ id: g(470), name: 'v1.4', projectId: pid, projectName: 'SIA Internal API', targetDate: null, status: 'Planned', notes: null, items: 3, runs: 1, approvedBy: null, approvedAt: null, shippedAt: null, createdAt: ago(9000) }];
     else if (ep === '/api/v1/projects') data = { items: [project], page: 1, pageSize: 100, totalItems: 1, totalPages: 1 };
     else if (ep === '/api/v1/work-types') data = [{ id: g(81), name: 'Bug Fix', description: null, isActive: true, order: 0 }];
     else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
@@ -234,6 +252,8 @@ try {
     assert.equal(await opts.nth(3).locator('.dq-ring.t-ok').count(), 1);
     await opts.first().getByText('Ramesh Naidu · Shiva').waitFor();
     assert.equal(await opts.nth(2).locator('svg[aria-label="E-mail"]').count(), 1);
+    // Each row: priority · key · channel · category (s-desk), with Assign / Resolve inline.
+    assert.match(await opts.first().getByTestId('dq-row-meta').innerText(), /High\s*ST-2291 · via WhatsApp · Loans/);
     checks.push('queue');
 
     const conv = page.getByRole('region', { name: 'Ticket' });
@@ -249,6 +269,9 @@ try {
     await ctxCol.getByText('Razorpay Payments').waitFor();
     await ctxCol.getByText('Double NACH debit, refund via Razorpay').waitFor();
     await ctxCol.getByRole('button', { name: 'Send' }).waitFor();
+    // The customer card: account facts read from what they wrote, and their past tickets.
+    const cust = ctxCol.getByTestId('dq-customer');
+    await cust.getByText('₹8,450').waitFor(); await cust.getByText('EMI', { exact: true }).waitFor(); await cust.getByText('Past tickets').waitFor();
     await shot(page, `desk-${tag}.png`);
     checks.push('conversation');
 
@@ -264,10 +287,45 @@ try {
     assert.match(await box.inputValue(), /Hi Ramesh/);
     await box.fill('Refund is initiated today.');
     await box.press('Control+Enter');
-    await waitFor(() => state.writes.some((x) => x.ep.endsWith('/comments') && x.b.body === 'Refund is initiated today.'), 'the reply posted');
+    // A WhatsApp ticket: the reply goes to the customer on WhatsApp (and is kept on the ticket), not only as a comment.
+    await waitFor(() => state.writes.some((x) => x.ep.endsWith('/tell-customer') && x.b.text === 'Refund is initiated today.'), 'the reply sent on WhatsApp');
+    checks.push('reply-on-channel');
+
+    // Saved replies: Insert fills in the customer's name, the ticket key and the ETA.
+    await conv.getByRole('button', { name: 'Saved replies' }).click();
+    const sr = page.getByTestId('dq-saved');
+    await sr.getByText('Acknowledge').waitFor();
+    await sr.getByText('· Loans care line').waitFor();
+    assert.equal(await sr.getByRole('button', { name: 'AI fill' }).count(), 0, 'no AI fill while AI is off');
+    if (theme === 'light') await shot(page, 'desk-saved-replies-1440.png');
+    await sr.locator('.dq-sr-i', { hasText: 'Acknowledge' }).getByRole('button', { name: 'Insert' }).click();
+    await waitFor(() => state.writes.some((x) => x.ep.endsWith('/fill-reply')), 'template filled');
+    await sr.waitFor({ state: 'detached' });
+    assert.equal(await box.inputValue(), 'Hi Ramesh, thanks for reaching out. We have logged this as ST-2291 and will update you by 28 Oct, 18:00 UTC.');
+    await box.fill('');
+    checks.push('saved-replies');
     await conv.getByRole('button', { name: 'Assign' }).click();
     await waitFor(() => state.writes.some((x) => x.method === 'PATCH' && x.b.assigneeId === user.id), 'assigned to me');
     checks.push('keyboard-reply-assign');
+    const lastRow = opts.last(); await lastRow.hover();
+    const lastId = await lastRow.getAttribute('data-id');
+    await lastRow.getByRole('button', { name: 'Resolve' }).click();
+    await waitFor(() => state.writes.some((x) => x.method === 'PATCH' && x.ep.endsWith(lastId) && x.b.status === 'Completed'), 'resolved from the queue row');
+    checks.push('row-resolve');
+    if (theme === 'light') {
+      await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'desk 390 scrolls sideways');
+      await shot(page, 'desk-390.png');
+      await conv.getByRole('button', { name: 'Saved replies' }).click();
+      await page.getByTestId('dq-saved').getByText('Acknowledge').waitFor();
+      const sheet = await page.getByTestId('dq-saved').boundingBox();
+      const vw = await page.evaluate(() => document.querySelector('#main-content').getBoundingClientRect().right);
+      assert.ok(sheet && sheet.x <= 1 && sheet.width >= vw - 1 && Math.abs(sheet.y + sheet.height - 844) <= 2, `saved replies is a bottom sheet on a phone (${JSON.stringify(sheet)})`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'saved replies 390 scrolls sideways');
+      await shot(page, 'desk-saved-replies-390.png');
+      await page.keyboard.press('Escape');
+      await page.setViewportSize({ width: 1440, height: 900 }); checks.push('desk-390');
+    }
 
     // ---------------------------------------------------------------- Quality
     await page.goto(`${origin}/preview-org/quality`);
@@ -293,7 +351,9 @@ try {
     await det.getByText('POST /sia/v1/loan/dispatch with PAN ABCPK1234F').waitFor();
     await det.getByText('502 · CRIF token expired').waitFor();
     await det.locator('.qa-pre .r', { hasText: '502 Bad Gateway' }).waitFor();
-    await det.getByText('Creates a work item in SIA Internal API, linked to this run.').waitFor();
+    // The run tests release v1.4: the bug goes into that release (and blocks its go), with a link to it.
+    await det.getByText('Creates a work item in SIA Internal API, linked to this run and to release v1.4, where it blocks the go until fixed.').waitFor();
+    assert.match(await det.getByRole('link', { name: 'Open v1.4 ›' }).getAttribute('href'), /\/quality\?release=/);
     await shot(page, `quality-${tag}.png`);
     checks.push('quality-matrix');
 

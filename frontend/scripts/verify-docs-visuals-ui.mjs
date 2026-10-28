@@ -17,13 +17,13 @@ const token = `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).
 const pid = '00000000-0000-0000-0000-0000000000a1';
 const diagram = { key: 'd-1', title: 'Payout flow', kind: 'flow', data: {
   nodes: [{ id: 'a', kind: 'icon', icon: 'mobile', label: 'Customer app', x: 0, y: 0, w: 150, h: 64 }, { id: 'b', kind: 'icon', icon: 'gateway', label: 'API gateway', x: 230, y: 0, w: 150, h: 64 },
-    { id: 'c', kind: 'icon', icon: 'server', label: 'Payout service', x: 460, y: 0, w: 150, h: 64 }, { id: 'd', kind: 'icon', icon: 'bank', label: 'Bank', x: 690, y: 0, w: 150, h: 64 }],
-  edges: [{ id: 'e2', source: 'b', target: 'c', label: 'gRPC', line: 'solid' }, { id: 'e1', source: 'a', target: 'b', label: 'HTTPS', line: 'solid' }, { id: 'e3', source: 'c', target: 'd', label: 'ISO 20022', line: 'solid' }] } };
+    { id: 'c', kind: 'icon', icon: 'server', label: 'Payout service', x: 460, y: 0, w: 150, h: 64, ctype: 'api', tech: '.NET 9', owner: 'Team Ledger', level: 'containers' }, { id: 'd', kind: 'icon', icon: 'bank', label: 'Bank', x: 690, y: 0, w: 150, h: 64, ctype: 'external' }],
+  edges: [{ id: 'e2', source: 'b', target: 'c', label: 'gRPC', line: 'solid' }, { id: 'e1', source: 'a', target: 'b', label: 'HTTPS', line: 'solid', rps: 40 }, { id: 'e3', source: 'c', target: 'd', label: 'ISO 20022', line: 'solid', rps: 30 }] } };
 const screen = '<div style="padding:32px;display:flex;flex-direction:column;gap:12px"><h1 style="margin:0;font-size:28px">Paid</h1><p>₹2,400 sent to •••• 4821</p><button style="height:44px">Done</button></div>';
 let store = [diagram, { key: 'g-1', title: 'Welcome', kind: 'design', data: { source: 'ai', device: 'phone', state: 'review', html: screen, group: 'Onboarding' } }];
 const writes = [], errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
-const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
+const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', permissions: ['clipboard-read', 'clipboard-write'] });
 await ctx.addInitScript(() => { try { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', 'light'); } catch { /* the sandboxed screen frames have no storage */ } });
 await ctx.route('**/*', async (route) => {
   const req = route.request(), url = new URL(req.url()), ep = url.pathname, method = req.method();
@@ -45,7 +45,10 @@ await ctx.route('**/*', async (route) => {
   else if (ep === '/api/v1/doctracker/architecture' && method === 'PUT') { store = body.diagrams; data = { projectId: pid, diagrams: store, notes: body.notes, canEdit: true, updatedAt: new Date().toISOString(), updatedBy: 'Asha Rao' }; }
   else if (ep === '/api/v1/doctracker/architecture') data = { projectId: pid, diagrams: store, notes: null, canEdit: true, updatedAt: null, updatedBy: null };
   else if (ep === '/api/v1/documents/ai/design') data = { html: screen.replace('Paid', 'Account linked'), title: 'Bank account linked', model: 'synthetic' };
-  else if (ep === '/api/v1/documents/ai/diagram') data = { data: { nodes: [...body.current.nodes, { id: 'f', kind: 'icon', icon: 'firewall', label: 'Fraud check', x: 345, y: 140, w: 150, h: 64 }], edges: body.current.edges }, summary: 'Added a fraud check.', model: 'synthetic' };
+  else if (ep === '/api/v1/documents/ai/diagram') data = { data: { nodes: [...body.current.nodes, { id: 'f', kind: 'icon', icon: 'api', ctype: 'api', level: 'containers', tech: 'Rules engine', label: 'Fraud check', x: 345, y: 140, w: 150, h: 64 }], edges: body.current.edges }, summary: 'Added a fraud check.', model: 'synthetic' };
+  else if (ep === `/api/v1/projects/${pid}`) data = { project: { id: pid, key: 'PAY', name: 'Payments', owner: { id: 'u-felix', name: 'Felix Moreau' }, stats: { total: 0, done: 0, inProgress: 0, todo: 0, cancelled: 0, overdue: 0 } }, statuses: [], stages: [], members: [] };
+  else if (ep === '/api/v1/chat/conversations/direct') data = { id: 'c-felix', name: 'Felix Moreau', members: [] };
+  else if (ep === '/api/v1/chat/conversations/c-felix/messages') data = { id: 'm1', body: body?.body ?? '' };
   else if (ep === '/api/v1/ai/status') data = { enabled: true, configured: true, entitled: true, allowedHere: true };
   else if (ep === '/api/v1/timer') data = null;
   else if (ep.endsWith('/workspace/logo')) data = { hasLogo: false };
@@ -65,6 +68,24 @@ try {
   await page.getByTestId('designs').waitFor();
   assert.match(await page.locator('.dx-title').innerText(), /What Payments looks like/);
   assert.equal(await page.locator('.dz-grid li').count(), 1);
+  // s-designs: breadcrumb, state chips with counts, AI strip with Nudge (a direct chat message to the reviewer), source/state badges.
+  assert.match(await page.locator('#main-content').innerText(), /Library\s*›\s*Payments\s*›\s*Designs/);
+  assert.deepEqual((await page.getByTestId('dz-states').getByRole('button').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()), ['All 1', 'Draft 0', 'In review 1', 'Approved 0']);
+  const strip = page.getByTestId('dz-aistrip'); await strip.waitFor();
+  assert.match(await strip.innerText(), /1 design waits on Felix’s review/);
+  assert.match(await page.locator('.dz-grid li').first().innerText(), /✦ AI draft[\s\S]*AI[\s\S]*In review/);
+  await shot(page, 'designs-1440.png');
+  await strip.getByRole('button', { name: 'Nudge Felix' }).click();
+  await strip.getByRole('button', { name: 'Nudged' }).waitFor();
+  const nudge = writes.find((w) => w.ep === '/api/v1/chat/conversations/c-felix/messages');
+  assert.match(nudge.body.body, /1 design is waiting on your review in Payments/);
+  await page.getByTestId('dz-states').getByRole('button', { name: /^Approved/ }).click();
+  assert.equal(await page.locator('.dz-grid li').count(), 0);
+  await page.getByTestId('dz-states').getByRole('button', { name: /^All/ }).click();
+  await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'designs 390 scrolls sideways');
+  await shot(page, 'designs-390.png'); await page.setViewportSize({ width: 1440, height: 900 });
+  checks.push('design-filter-strip-nudge');
   const frame = page.locator('.dz-ai iframe').first();
   assert.equal(await frame.getAttribute('sandbox'), '', 'a generated screen runs in a frame that can run nothing');
   await page.getByRole('button', { name: 'Add a design' }).first().click();
@@ -115,12 +136,61 @@ try {
   const ask = writes.find((w) => w.ep === '/api/v1/documents/ai/diagram');
   assert.equal(ask.body.current.nodes.length, 4, 'the current diagram is sent');
   assert.ok(ask.body.context.some((c) => c.includes('POST /payouts')), 'the project’s endpoints are offered by name');
+  // C4: level tabs (boxes with no level show everywhere; the Containers box hides on Context), cards with TYPE + name + tech, arrows with throughput.
+  assert.equal(await studio.getByRole('tab', { name: 'Containers' }).getAttribute('aria-selected'), 'true');
+  assert.equal(await studio.locator('.react-flow__node:visible').count(), 5);
+  assert.match(await studio.locator('.arch-c4', { hasText: 'Payout service' }).innerText(), /API[\s\S]*Payout service[\s\S]*\.NET 9/);
+  assert.ok(await studio.locator('.react-flow__edge-text', { hasText: 'HTTPS · 40 rps' }).count(), 'arrows show protocol and throughput');
+  assert.match(await studio.locator('.arch-c4', { hasText: 'Fraud check' }).innerText(), /API[\s\S]*Fraud check[\s\S]*Rules engine/, 'the drawn box has its C4 type and tech');
+  await studio.getByRole('tab', { name: 'Context' }).click();
+  assert.equal(ask.body.level, 'containers', 'the tab the person is on goes with the request');
+  assert.equal(await studio.locator('.react-flow__node:visible').count(), 3, 'Containers boxes (the drawn one too) are hidden on Context');
+  await studio.getByRole('tab', { name: 'Containers' }).click();
+  for (const g of ['People & systems', 'Containers', 'Boundaries']) assert.ok(await studio.locator('.arch-palette h5', { hasText: g }).count(), g);
+  // Inspector: details and connections.
+  await studio.locator('.react-flow__node', { hasText: 'Payout service' }).click();
+  const insp = studio.locator('.arch-inspector');
+  assert.equal(await insp.getByLabel('Owner').inputValue(), 'Team Ledger');
+  assert.match(await insp.locator('.arch-conn').first().innerText(), /In\s+API gateway/);
+  assert.match(await insp.locator('.arch-conn').nth(1).innerText(), /Out\s+Bank/);
+  // Simulate at 3×: the bank (external, 60 req/s) gets 90 req/s and is the bottleneck; the fix inserts a retry queue.
   await studio.getByRole('button', { name: 'Simulate' }).click();
-  await studio.locator('.react-flow__edge.sim-now').waitFor();
+  const card = studio.locator('.arch-simcard');
+  await card.waitFor();
+  assert.match(await card.innerText(), /At 3× traffic Bank becomes the bottleneck \(150% of capacity\) — p95 rises to ~\d+(\.\d)?s/);
+  assert.equal(await studio.locator('.arch-c4.load-hot').innerText().then((t) => /Bank/.test(t)), true);
   await shot(page, 'studio-simulate-1440.png');
+  await card.getByRole('button', { name: '10×' }).click();
+  assert.match(await card.innerText(), /At 10× traffic/);
+  await card.getByRole('button', { name: '3×' }).click();
+  await card.getByRole('button', { name: 'Add retry queue?' }).click();
+  await studio.locator('.arch-c4', { hasText: 'Retry queue' }).waitFor();
+  assert.match(await card.innerText(), /everything holds/);
+  await studio.getByRole('button', { name: 'Share' }).click();
+  await page.getByText('Link copied').first().waitFor();
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), `${page.url()}?diagram=d-1`, 'Share in the studio copies the link to this one diagram');
   await studio.getByRole('button', { name: 'Stop' }).click();
-  await page.waitForFunction(() => !document.querySelector('.react-flow__edge.sim-now'));
+  assert.equal(await studio.locator('.arch-simcard').count(), 0);
+  await studio.locator('.arch-prow', { hasText: 'API service' }).click();
+  assert.ok(await studio.locator('.arch-c4-tag', { hasText: /^API$/ }).count() >= 2);
+  await studio.getByRole('button', { name: 'Done' }).click();
+  await page.waitForFunction(() => !document.querySelector('.arch-studio'));
+  await page.waitForTimeout(300);
+  const saved = writes.filter((w) => w.ep === '/api/v1/doctracker/architecture').at(-1)?.body.diagrams.find((d) => d.key === 'd-1')?.data;
+  assert.ok(saved, 'the diagram is saved');
+  assert.ok(saved.nodes.some((n) => n.ctype === 'queue' && n.tech), 'the retry queue is kept with its C4 details');
+  assert.ok(saved.nodes.some((n) => n.id === 'c' && n.owner === 'Team Ledger' && n.level === 'containers'));
+  assert.ok(saved.edges.some((e) => e.id === 'e1' && e.rps === 40 && e.label === 'HTTPS'), 'throughput and label are kept apart');
   checks.push('studio-describe-simulate');
+  // Phone: the Studio as a full screen with the palette strip on top and the inspector as a bottom sheet.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Edit Payout flow' }).click();
+  await studio.waitFor();
+  await studio.locator('.react-flow__node', { hasText: 'Payout service' }).click();
+  await shot(page, 'studio-390.png');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no horizontal scroll on a phone');
+  await studio.getByRole('button', { name: 'Cancel' }).click();
+  await page.setViewportSize({ width: 1440, height: 900 });
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ ok: true, checks, artifacts: out }));
 } finally {

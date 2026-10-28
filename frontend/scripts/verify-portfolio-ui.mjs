@@ -61,12 +61,14 @@ try{
    else if(ep==='/api/v1/portfolio/board'){boardQueries.push(url.search);data=board();}
    else if(ep==='/api/v1/portfolio/timeline')data=timeline;
    else if(ep===`/api/v1/project-status/projects/${pay}`){const t=(id,n,title,extra)=>({id,key:'PAY-'+n,title,parentTaskId:null,startDate:'2026-10-01',dueDate:'2026-10-20',originalDueDate:'2026-10-15',delayedDays:5,statusName:'In progress',statusCategory:'Active',statusColor:'#0a84ff',assignee:{id:'u2',name:'Siva Reddy'},overdueDays:0,revisions:1,blockedBy:[],...extra});
-     data={project:{id:pay,key:'PAY',name:'Payments',description:null,groupName:'Delivery',startDate:'2026-09-01',dueDate:'2026-11-02',originalDueDate:'2026-10-25',delayedDays:8,status:'Active',health:'AtRisk',progress:40,owner:{id:'u1',name:'Prasanna Krishna'},stats:{},projectType:'Delivery'},
+     data={project:{id:pay,key:'PAY',name:'Payments',description:null,groupName:'Delivery',startDate:'2026-09-01',dueDate:'2026-11-02',originalDueDate:'2026-10-25',delayedDays:8,status:'Active',health:'AtRisk',progress:40,owner:{id:'u1',name:'Maya Chen'},stats:{},projectType:'Delivery'},
        tasks:[t('t-pay-1',1,'Bulk payout API',{overdueDays:7}),t('t-pay-2',2,'Bank sandbox certification',{blockedBy:[{key:'OPS-4',title:'Sandbox keys from the bank',statusName:'Waiting'}]}),t('t-pay-3',3,'Reconciliation report',{assignee:null,delayedDays:0})],
-       changes:[{id:'ch1',scope:'Project',taskId:null,taskKey:null,title:'Payments',previous:'2026-10-25',revised:'2026-11-02',daysShifted:8,reason:'Ravi on leave for a week',dependency:null,changedBy:{id:'u1',name:'Prasanna Krishna'},changedAt:'2026-10-20T10:00:00Z',currentStatus:'Active',currentCategory:null}],delayedTasks:2,blockedTasks:1};}
-   else if(ep===`/api/v1/projects/${pay}`)data={project:{id:pay},statuses:[{id:'s-todo',name:'To do',order:0,category:'Todo',color:'#8e8e93'},{id:'s-done',name:'Done',order:2,category:'Done',color:'#30d158'}],stages:[],members:[{userId:'u1',name:'Prasanna Krishna',email:'p@example.com',role:null},{userId:'u2',name:'Siva Reddy',email:'s@example.com',role:null}]};
+       changes:[{id:'ch1',scope:'Project',taskId:null,taskKey:null,title:'Payments',previous:'2026-10-25',revised:'2026-11-02',daysShifted:8,reason:'Ravi on leave for a week',dependency:null,changedBy:{id:'u1',name:'Maya Chen'},changedAt:'2026-10-20T10:00:00Z',currentStatus:'Active',currentCategory:null}],delayedTasks:2,blockedTasks:1};}
+   else if(ep===`/api/v1/projects/${pay}`)data={project:{id:pay},statuses:[{id:'s-todo',name:'To do',order:0,category:'Todo',color:'#8e8e93'},{id:'s-done',name:'Done',order:2,category:'Done',color:'#30d158'}],stages:[],members:[{userId:'u1',name:'Maya Chen',email:'p@example.com',role:null},{userId:'u2',name:'Siva Reddy',email:'s@example.com',role:null}]};
    else if(ep==='/api/v1/project-status/groups')data=[{id:'g1',name:'Delivery',isActive:true,count:2,projects:[{id:pay,name:'Payments',health:'AtRisk',progress:40,active:10},{id:web,name:'Website',health:'OnTrack',progress:20,active:0}]}];
    else if(ep==='/api/v1/ai/portfolio/brief')data=brief;
+   else if(ep===`/api/v1/project-status/projects/${pay}/weekly`)data={projectId:pay,projectName:'Payments',from:day(-6),to:day(0),health:'At risk',text:'',moved:2,slipped:1,risks:1,next:2,canSend:true,projectKey:'PAY',week:44,
+     verdict:'Set at risk by hand: the bank has not shared the sandbox keys.',progress:40,movedItems:[{text:'PAY-7 Payout retries'},{text:'PAY-9 Webhook signatures'}],slippedItems:[{text:'PAY-2 Bank sandbox certification · to 2 Nov'}],riskItems:[],nextItems:[{text:'PAY-1 Bulk payout API'},{text:'PAY-3 Reconciliation report'}]};
    else if(ep.endsWith('/ai/status'))data={enabled:true,configured:true,entitled:true,allowedHere:true};
    else if(ep==='/api/v1/notifications/counts')data={unread:0,needsYou:0,forInfo:0,snoozed:0};
    else if(ep==='/api/v1/notifications')data={items:[],page:1,pageSize:20,totalPages:0,totalItems:0};
@@ -177,7 +179,7 @@ try{
  const payTab=pres.getByRole('tab').filter({hasText:'Payments'});
  if(await payTab.count()){await payTab.first().click();
   const facts=pres.getByRole('complementary',{name:'Payments details'});await facts.waitFor();
-  const ft=await facts.innerText();assert.match(ft,/Lead[\s\S]*Prasanna Krishna/i);assert.match(ft,/Started[\s\S]*1 Sep/i);assert.match(ft,/was 25 Oct/);
+  const ft=await facts.innerText();assert.match(ft,/Lead[\s\S]*Maya Chen/i);assert.match(ft,/Started[\s\S]*1 Sep/i);assert.match(ft,/was 25 Oct/);
   assert.match(ft,/PAY-1[\s\S]*Siva Reddy[\s\S]*7d overdue/);assert.match(ft,/Waiting on OPS-4/);assert.match(ft,/Ravi on leave/);
   await shot(page,'present-facts-1440.png');
   await facts.getByRole('button',{name:'Mark PAY-1 done'}).click();await facts.getByText('PAY-1').waitFor({state:'detached'});
@@ -190,7 +192,31 @@ try{
   await facts.getByRole('button',{name:'Add',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('[aria-label="Follow-up"]')?.value);
   assert.ok(writes.some(w=>w.ep===`/api/v1/projects/${pay}/action-items`&&w.b.assigneeId==='u2'),'follow-up saved with its owner');
-  checks.push('present-facts-actions');}
+  checks.push('present-facts-actions');
+  // Weekly reports: each project's latest weekly report joins as the slide after its decision; its health is the one shown everywhere (set by hand included).
+  const before=await pres.getByRole('tab').count();
+  await pres.getByRole('button',{name:'+ Weekly reports'}).click();
+  assert.equal(await pres.getByRole('button',{name:'✓ Weekly reports'}).getAttribute('aria-pressed'),'true');
+  assert.equal(await pres.getByRole('tab').count(),before*2-1,'one weekly slide per decision');
+  assert.equal(await pres.getByRole('tab',{selected:true}).innerText().then(t=>/Payments/.test(t)&&!/Weekly/.test(t)),true,'stays on the same project');
+  await pres.getByRole('tab').filter({hasText:'Weekly · Payments'}).click();
+  const wk=pres.getByRole('region',{name:'Weekly report: Payments'});
+  await wk.getByText('Set at risk by hand: the bank has not shared the sandbox keys.').waitFor();
+  assert.match(await wk.locator('.pf-slide-ey').innerText(),/Weekly report · Week 44 · At risk/i);
+  assert.match(await wk.locator('.pf-slide-ey').getAttribute('class'),/\brisk\b/);
+  const wt=await wk.innerText();assert.match(wt,/Moved · 2[\s\S]*PAY-7 Payout retries/i);assert.match(wt,/Slipped · 1[\s\S]*PAY-2/i);assert.match(wt,/Next week · 2[\s\S]*PAY-3/i);
+  await shot(page,'present-weekly-1440.png');
+  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'present fits the phone');
+  // Phone: a compact top bar (Week, n / N, ⋯, Done), no thumbnail strip, the app's bars hidden, and a swipe moves to the next slide.
+  await pres.getByRole('button',{name:'Done'}).waitFor();assert.equal(await pres.locator('.pf-strip').isVisible(),false);
+  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.v2-phone-bar,.v2-ask,.toast-root')].some(e=>e.getBoundingClientRect().height>0)),false,'bars hidden while presenting');
+  await pres.getByRole('button',{name:'More'}).click();await pres.getByRole('menuitemcheckbox',{name:/Weekly reports/}).waitFor();await shot(page,'present-phone-menu-390.png');await pres.getByRole('button',{name:'More'}).click();
+  const cnt=async()=>pres.locator('.pf-ph-count').innerText();const was=await cnt();
+  await page.locator('[data-testid="pf-stage"]').evaluate(el=>{const mk=(x)=>new Touch({identifier:1,target:el,clientX:x,clientY:300});el.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,touches:[mk(320)],changedTouches:[mk(320)]}));el.dispatchEvent(new TouchEvent('touchend',{bubbles:true,touches:[],changedTouches:[mk(80)]}));});
+  await page.waitForTimeout(200);assert.notEqual(await cnt(),was,'a swipe left moves to the next slide');
+  await shot(page,'present-weekly-390.png');await page.setViewportSize({width:1440,height:900});
+  checks.push('present-weekly-report');}
  await page.keyboard.press('Escape');await pres.waitFor({state:'detached'});
  await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Board'}).click();
  assert.ok(await page.getByRole('region',{name:'Board'}).isVisible());

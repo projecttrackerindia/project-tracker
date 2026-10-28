@@ -91,7 +91,7 @@ public class ProjectAgentAccuracyTests(ApiFactory factory)
             Assert.Contains("bank's test", on.Data["instructions"]!.GetValue<string>());
             Assert.Null((await ravi.Get($"/api/v1/projects/{project}/agent")).Data!["instructions"]);   // the lead's notes are for the people who set it up
 
-            var text = "Prasanna: Morning.\nRK: I started the gateway integration.\nClient: can you send the go-live checklist by Friday?\nRK: we should retry failed payments.\nPrasanna: who is doing refunds?";
+            var text = "Maya: Morning.\nRK: I started the gateway integration.\nClient: can you send the go-live checklist by Friday?\nRK: we should retry failed payments.\nMaya: who is doing refunds?";
             var read = await owner.Post($"/api/v1/projects/{project}/agent/transcript", new { title = "Stand-up 19 Oct", text });
             Assert.Equal(HttpStatusCode.Created, read.Status);
             Assert.Contains(factory.Ai.Prompts, p => p.User.Contains("TEAM NOTES") && p.User.Contains("bank's test environment") && p.User.Contains("\"RK\" = Ravi Kumar"));
@@ -137,13 +137,13 @@ public class ProjectAgentAccuracyTests(ApiFactory factory)
             var mom = (await owner.Get("/api/v1/dev/emails")).Data!.AsArray().Where(m => m!["subject"]!.GetValue<string>().StartsWith("MOM: Stand-up 19 Oct")).ToList();
             var toOwner = Assert.Single(mom, m => string.Equals(m!["to"]!.GetValue<string>(), owner.Email, StringComparison.OrdinalIgnoreCase))!;
             Assert.Contains("Send the go-live checklist", toOwner["text"]!.GetValue<string>());
-            Assert.Contains("Prasanna: who is doing refunds?", toOwner["text"]!.GetValue<string>());   // the transcript
+            Assert.Contains("Maya: who is doing refunds?", toOwner["text"]!.GetValue<string>());   // the transcript
             Assert.Equal(owner.Email, toOwner["replyTo"]!.GetValue<string>(), ignoreCase: true);
             Assert.Equal("Accuracy Desk Owner via Project Tracker", toOwner["fromName"]!.GetValue<string>());
             Assert.Contains(mom, m => string.Equals(m!["to"]!.GetValue<string>(), ravi.Email, StringComparison.OrdinalIgnoreCase));
 
             // The next reading is told how the team decided.
-            var again = await owner.Post($"/api/v1/projects/{project}/agent/transcript", new { title = "Stand-up 20 Oct", text = text + "\nPrasanna: and the settlement report is late." });
+            var again = await owner.Post($"/api/v1/projects/{project}/agent/transcript", new { title = "Stand-up 20 Oct", text = text + "\nMaya: and the settlement report is late." });
             Assert.Equal(HttpStatusCode.Created, again.Status);
             Assert.Contains(factory.Ai.Prompts, p => p.User.Contains("HOW THE TEAM DECIDED BEFORE") && p.User.Contains("dismissed Decision: Refunds ship next sprint")
                 && p.User.Contains("\"Prepare the go-live checklist\" became \"Send the go-live checklist\"") && p.User.Contains("said it was not theirs")

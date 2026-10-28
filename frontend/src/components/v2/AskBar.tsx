@@ -8,6 +8,7 @@ import { useAi, useAssistant } from '../../features/ai/Assistant';
 import { SidePanel } from './SidePanel';
 import { openNew, pageContext, useAskPanel, useCopilot } from './state';
 import { openPalette } from '../CommandPalette';
+import { useIsMobile } from '../../lib/mobile';
 import './v2.css';
 
 const AiPage = lazy(() => import('../../features/ai/AiPage').then((m) => ({ default: m.AiPage })));
@@ -24,7 +25,7 @@ const projectIdOf = (pathname: string) => /^\/work\/projects\/([0-9a-f-]{8,})/i.
  * True while the person scrolls down through a page, so the floating bar steps aside instead of covering the rows they are reading; it
  * comes back the moment they stop (450 ms) or scroll up. Listens on capture so page-level scroll containers count too.
  */
-function useScrollingAway(): boolean {
+function useScrollingAway(sticky = false): boolean {
   const [away, setAway] = useState(false);
   useEffect(() => {
     const last = new WeakMap<EventTarget, number>();
@@ -37,11 +38,12 @@ function useScrollingAway(): boolean {
       last.set(t, y);
       if (y > prev + 4) setAway(true); else if (y < prev - 4) setAway(false);
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => setAway(false), 450);
+      if (y <= 8) setAway(false);
+      if (!sticky) timer = window.setTimeout(() => setAway(false), 450);
     };
     document.addEventListener('scroll', onScroll, { capture: true, passive: true });
     return () => { document.removeEventListener('scroll', onScroll, { capture: true }); window.clearTimeout(timer); };
-  }, []);
+  }, [sticky]);
   return away;
 }
 
@@ -90,7 +92,9 @@ export function Toolbar() {
 }
 
 export function AskBar() {
-  const away = useScrollingAway();
+  // On a phone the bar folds into a pill while scrolling down and stays folded until a scroll up or a tap (useIsMobile: the phone shell).
+  const phone = useIsMobile();
+  const away = useScrollingAway(phone);
   const ai = useAi();
   const { pathname, search } = useLocation();
   const nav = useNavigate();
@@ -131,8 +135,9 @@ export function AskBar() {
     nav(`${pathname}${search}`, { state: { ask: where && where !== 'Home' ? `${text}\n\n(I am looking at ${where}.)` : text, ts: Date.now() } });
   };
   return (
-    <form className={`v2-ask${away ? ' away' : ''}`} role="search" aria-label="Ask the assistant" onSubmit={(e) => { e.preventDefault(); ask(); }}>
-      <span className="v2-orb" aria-hidden="true" />
+    <form className={`v2-ask${away ? ' away' : ''}`} role="search" aria-label="Ask the assistant" onSubmit={(e) => { e.preventDefault(); ask(); }}
+      onClick={() => { if (away) input.current?.focus(); }}>
+      <span className="v2-orb" aria-hidden="true" /><span className="v2-ask-pill" aria-hidden="true">Ask</span>
       <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask, find, or tell it what to do…" aria-label="Ask, find, or tell it what to do"
         onKeyDown={(e) => { if (e.key === 'Escape') { setQ(''); input.current?.blur(); } }} />
       <kbd>⌘K</kbd>

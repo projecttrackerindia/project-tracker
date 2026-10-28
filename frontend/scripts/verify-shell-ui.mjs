@@ -184,8 +184,14 @@ try {
 
   // Phone: the five places and + New at the bottom, nothing cut off.
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto(`${origin}/preview-org/work`); await page.locator('.v2-phone-bar').waitFor(); await page.waitForTimeout(500);
-  assert.deepEqual(await page.locator('.v2-phone-tab span').allTextContents(), ['Home', 'Work', 'Messages', 'Library', 'Insights']);
-  assert.equal(await page.locator('.v2-phone-new').count(), 1);
+  // Four places and More (the same on iPhone and Android); + New is in the top bar; More opens every other place as tiles.
+  assert.deepEqual(await page.locator('.v2-phone-tab .v2-rail-label').allTextContents(), ['Today', 'Work', 'Messages', 'Projects', 'More']);
+  assert.equal(await page.getByRole('button', { name: 'New', exact: true }).count(), 1);
+  await page.locator('.v2-phone-tab', { hasText: 'More' }).click();
+  const more = page.getByRole('dialog', { name: 'All places' }); await more.waitFor();
+  assert.ok((await more.locator('.v2-more-tile').allInnerTexts()).some((t) => /Library/.test(t)), 'Library is under More');
+  await page.waitForTimeout(400); await shot(page, 'phone-more-390.png');
+  await page.keyboard.press('Escape'); await more.waitFor({ state: 'detached' }).catch(() => undefined);
   await fitsPhone(page, 'work', assert); await shot(page, 'phone-390.png'); checks.push('phone-bar');
 
   await page.close(); await ctx.close();

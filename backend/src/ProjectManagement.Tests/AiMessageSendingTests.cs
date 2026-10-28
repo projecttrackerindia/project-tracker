@@ -25,7 +25,7 @@ public sealed partial class AiMessageSendingTests(ApiFactory factory)
         {
             options.PrimaryProvider = "local"; factory.Chat.Reset(); factory.Chat.Configured = true;
             factory.Chat.ModelOverride = "qwen2.5:7b";
-            var sender = await TestClient.RegisterAsync(factory, "Prasanna"); await sender.CreateOrgAsync(); await sender.UpgradeAsync("BUSINESS");
+            var sender = await TestClient.RegisterAsync(factory, "Maya"); await sender.CreateOrgAsync(); await sender.UpgradeAsync("BUSINESS");
             var recipient = await sender.AddMemberAsync(factory, TenantRole.Member, recipientName);
             await test(sender, recipient);
         }
@@ -119,7 +119,7 @@ public sealed partial class AiMessageSendingTests(ApiFactory factory)
     public Task Model_cannot_embellish_an_explicit_requested_message() => Run(async (sender, recipient) =>
     {
         // Exercise the tool directly: its canonical body comes from the user command, never the model's expanded draft.
-        factory.Chat.Script.Enqueue(_ => FakeAiChat.UseTool(AiToolbox.SendMessage, new { recipient = "Sivareddy", body = "Hello Sivareddy, Hi! From Prasanna" }));
+        factory.Chat.Script.Enqueue(_ => FakeAiChat.UseTool(AiToolbox.SendMessage, new { recipient = "Sivareddy", body = "Hello Sivareddy, Hi! From Maya" }));
         var uploaded = await sender.Upload("/api/v1/ai/files", "context.txt", "An unrelated note."u8.ToArray());
         var proposal = await Ask(sender, "Please send \"Hi\" message to Sivareddy?", attachment: Guid.Parse(uploaded.Data!["id"]!.GetValue<string>()));
         Assert.Equal("Hi", proposal["actions"]![0]!["preview"]!.GetValue<string>());

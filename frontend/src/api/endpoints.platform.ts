@@ -1,6 +1,6 @@
 import { providerConnectionUrl } from './providerConnection';
 import { del, download, fetchBlobUrl, fetchText, get, post, put, uploadFile, create, qs } from './client';
-import type { ChatAttachment,ChatThreadView,ChatSavedItem,ChatSeenBy,ChatQuestion,ChatStatus,ChatScheduled,ChatLink,ChatUnfurl,ChatCatchUp,ChatAskAnswer,ChatExtract,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,GitHubAppStatus,GitHubStatusRules,GitHubBranch,ReviewQueue,ReleaseNotes,DeliveryMetrics,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,MeetingProvider,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
+import type { ChatAttachment,ChatThreadView,ChatSavedItem,ChatSeenBy,ChatQuestion,ChatStatus,ChatScheduled,ChatLink,ChatUnfurl,ChatCatchUp,ChatAskAnswer,ChatExtract,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,CapacityPlan,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DevStatus,GitHubAppStatus,GitHubStatusRules,GitHubBranch,ReviewQueue,ReleaseNotes,DeliveryMetrics,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,MeetingProvider,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
 export const platformApi = {
   billing: () => get<PlatformBilling>('/admin/billing'),
   usage: (p: { q?: string; sort?: string; warningsOnly?: boolean; page?: number }) => get<Paged<AdminUsage>>('/admin/usage', { pageSize: 25, ...p }),
@@ -122,6 +122,8 @@ export const integrationsApi = {
   removeGit: (id: string) => del(`/integrations/git/${id}`),
   taskLinks: (taskId: string) => get<DevLink[]>(`/tasks/${taskId}/dev-links`),
   workTaskLinks: (workTaskId: string) => get<DevLink[]>(`/work-tasks/${workTaskId}/dev-links`),
+  /** Pull request + checks chips for many tasks and tickets at once (items without a pull request are left out). */
+  devStatus: (ids: string[]) => get<DevStatus[]>('/dev-links/status', { ids: ids.join(',') }),
   /** The ProjectTracker GitHub App: install with one click, then branches, checks, reviews, risk, release notes and delivery metrics. */
   gitHubApp: () => get<GitHubAppStatus>('/integrations/github-app'),
   gitHubInstall: () => post<{ url: string }>('/integrations/github-app/install'),
@@ -211,6 +213,7 @@ export const resourcesApi = {
   setRates: (userId: string, b: { weeklyCapacityHours: number | null; costRate: number | null; billRate: number | null }) => put<Rates>(`/resources/rates/${userId}`, b),
   setCurrency: (currency: string) => put<Rates>('/resources/currency', { currency }),
   utilisation: (p: { from?: string; to?: string; scope?: WorkloadScope }) => get<Utilisation>('/resources/utilisation', p),
+  plan: (p: { from?: string; weeks?: number; scope?: WorkloadScope }) => get<CapacityPlan>('/resources/plan', p),
   project: (projectId: string) => get<ProjectFinancials>(`/resources/projects/${projectId}`),
   setBudget: (projectId: string, b: { isBillable: boolean; budgetHours: number | null; budgetAmount: number | null; billRate: number | null }) => put<ProjectFinancials>(`/resources/projects/${projectId}/budget`, b),
 };

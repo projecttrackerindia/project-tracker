@@ -9,15 +9,17 @@ import { aiWorkspaceApi } from '../ai/aiApi';
 import { useAi, useAssistant } from '../ai/Assistant';
 import { DotsMenu } from '../talk/DotsMenu';
 import { PortfolioActionItems } from './PortfolioActionItems';
+import { CapacityPlanView } from './CapacityPlan';
 import { CapacitySection, filterCount, MoneySection, PortfolioFilters } from './PortfolioBoard';
 import { BoardColumns, DecisionCard, Gantt, PresentOverlay, isoWeek, TimelineLegend } from './PortfolioViews';
 import { decisionItems, type DecisionItem } from './portfolioDecisions';
 import { portfolioApi, type PortfolioAiSummary, type PortfolioFilter } from './portfolioApi';
 import { errText } from './projectParts';
 import './portfolio.css';
+import { SavedViewsBar } from '../platform/SavedViews';
 import './projectsHome.css';
 
-type Mode = 'board' | 'timeline' | 'present';
+type Mode = 'board' | 'timeline' | 'capacity' | 'present';
 const sentences = (t: string) => t.trim().split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
 
 /**
@@ -38,7 +40,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   };
   // ?view=portfolio&mode=timeline|present (the rail keys Portfolio on view=portfolio); old ?view=timeline|present links still open.
   const v = params.get('mode') ?? params.get('view');
-  const mode: Mode = v === 'timeline' ? 'timeline' : v === 'present' ? 'present' : 'board';
+  const mode: Mode = v === 'timeline' ? 'timeline' : v === 'capacity' ? 'capacity' : v === 'present' ? 'present' : 'board';
   const setMode = (m: Mode) => { const n = new URLSearchParams(params); n.set('view', 'portfolio'); if (m === 'board') n.delete('mode'); else n.set('mode', m); setParams(n, { replace: true }); };
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [itemsOpen, setItemsOpen] = useState(false);
@@ -57,14 +59,14 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   const rankedOwner = useMemo(() => new Map((b?.ranked ?? []).map((r) => [r.projectId, r.owner])), [b]);
   const projectsN = b ? b.onTrack + b.atRisk + b.delayed + b.onHold : 0;
   const keysOf = (h: string) => (b?.ranked ?? []).filter((r) => r.health === h).slice(0, 2).map((r) => r.key).join(' · ');
-  const eyebrow = mode === 'timeline' && timelineRange ? timelineRange : `${b?.projects ?? projectsN} projects · Week ${isoWeek(asOf ? new Date(asOf) : new Date())}`;
+  const eyebrow = mode === 'capacity' ? 'Next 6 weeks' : mode === 'timeline' && timelineRange ? timelineRange : `${b?.projects ?? projectsN} projects · Week ${isoWeek(asOf ? new Date(asOf) : new Date())}`;
   return (
     <div className="pj2 pj2-portfolio pf">
-      <PageHead eyebrow={eyebrow} title="Portfolio">
+      <PageHead eyebrow={eyebrow} title={mode === 'capacity' ? 'Capacity' : 'Portfolio'}>
         <div className="pj2-heads pf-heads">
           {mode === 'timeline' && <TimelineLegend />}
           <Segmented<Mode> label="Portfolio view" value={mode} onChange={setMode}
-            options={[{ id: 'board', label: 'Board' }, { id: 'timeline', label: 'Timeline' }, { id: 'present', label: 'Present' }]} />
+            options={[{ id: 'board', label: 'Board' }, { id: 'timeline', label: 'Timeline' }, { id: 'capacity', label: 'Capacity' }, { id: 'present', label: 'Present' }]} />
           <DotsMenu label="More on Portfolio" items={[
             { label: nFilters ? `Filters · ${nFilters}` : 'Filters', icon: 'search', hint: 'Owner, group, health and due dates', onSelect: () => setFiltersOpen((x) => !x) },
             { label: 'Export to Excel', icon: 'download', onSelect: () => void exportAs('xlsx') },
@@ -77,9 +79,23 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
         </div>
       </PageHead>
 
+      {mode !== 'present' && (
+        <div className="pf-views">
+          <SavedViewsBar scope="portfolio" current={{ mode: mode === 'board' ? undefined : mode, owner: filter.ownerId ?? undefined, group: filter.groupId ?? undefined,
+            health: filter.health ?? undefined, from: filter.dueFrom ?? undefined, to: filter.dueTo ?? undefined }}
+            onApply={(c) => {
+              const n = new URLSearchParams(params);
+              n.set('view', 'portfolio');
+              for (const k of ['mode', 'owner', 'group', 'health', 'from', 'to']) { const val = c[k]; if (typeof val === 'string' && val) n.set(k, val); else n.delete(k); }
+              setParams(n, { replace: true });
+            }} />
+        </div>
+      )}
       {board && (filtersOpen || nFilters > 0) && <div className="pj2-pfilters"><PortfolioFilters board={board} filter={filter} onChange={setFilter} /></div>}
 
-      {q.isLoading ? <PageLoader /> : q.isError || !board || !b ? <ErrorState error={q.error} retry={() => q.refetch()} /> : mode === 'timeline' ? (
+      {q.isLoading ? <PageLoader /> : q.isError || !board || !b ? <ErrorState error={q.error} retry={() => q.refetch()} /> : mode === 'capacity' ? (
+        <CapacityPlanView />
+      ) : mode === 'timeline' ? (
         <Gantt filter={filter} brief={b} decisions={board.decisions} onRange={setTimelineRange} />
       ) : (
         <>

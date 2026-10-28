@@ -1,18 +1,20 @@
 import { Face } from '../../components/Face';
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useIsMobile } from '../../lib/mobile';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { actionItemApi } from '../../api/endpoints';
+import { actionItemApi, chatApi, projectApi, statusApi } from '../../api/endpoints';
 import { invalidateWorkspace } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth } from '../../stores/auth';
 import { portfolioApi, type DecisionOption, type PortfolioDecision, type PortfolioFilter, type TimelineProject } from './portfolioApi';
-import { useDecisionActions, type DecisionItem } from './portfolioDecisions';
+import { decisionTone, useDecisionActions, type DecisionItem } from './portfolioDecisions';
 import { dayMonth } from './projectParts';
 import { ProjectFacts } from './PortfolioFacts';
+import { HealthSheet } from './ProjectHealth';
 import type { PortfolioBrief, PortfolioRisk } from '../ai/aiApi';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -41,6 +43,23 @@ export function DecisionCard({ item, filter, owner }: { item: DecisionItem; filt
   const tone = item.slipDays > 14 ? 'late' : 'risk';
   const late = item.slipDays > 0 ? `${plural(item.slipDays, 'day')} late` : 'On the edge';
   const causes = item.decision?.causes.length ? item.decision.causes.map(cap) : item.changes.length ? item.changes : [item.why];
+  // Late only because of sign-offs: every task is done, but stages are still unsigned. Then the move is asking for the sign-offs.
+  const detail = useWsQuery(['project', item.projectId], () => projectApi.get(item.projectId), { staleTime: 60_000, retry: false });
+  const pendingStages = (detail.data?.stages ?? []).filter((s) => s.effectiveStatus !== 'Completed');
+  const pr = detail.data?.project;
+  const signOnly = !!pr && pendingStages.length > 0 && pr.stats.total > 0 && (pr.progress >= 100 || pr.stats.total - pr.stats.cancelled <= pr.stats.done);
+  const [asked, setAsked] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const requestSignOffs = async () => {
+    setAsking(true);
+    try {
+      const c = await chatApi.openProject(item.projectId);
+      const who = (s: (typeof pendingStages)[number]) => s.owner?.name ?? s.assignee?.name ?? pr?.owner?.name ?? 'the owner';
+      await chatApi.send(c.id, `All work on ${item.name} is done; it is late only on sign-offs. Please sign off:\n${pendingStages.map((s) => `• ${s.name} — ${who(s)}`).join('\n')}`);
+      setAsked(true); toast(`Asked for ${plural(pendingStages.length, 'sign-off')} in ${item.key}’s chat.`, 'success');
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not request the sign-offs.', 'error'); }
+    finally { setAsking(false); }
+  };
   return (
     <article className={`pf-dec ${a.done ?? ''}`} data-project={item.key} aria-label={`${item.name}: due ${dayMonth(item.due)}, forecast ${item.forecast ? dayMonth(item.forecast) : 'none yet'}`}>
       <h4><Link to={`/work/projects/${item.projectId}`}>{item.name}</Link> <span className="pf-sr">{item.key} · {late}</span></h4>
@@ -50,7 +69,8 @@ export function DecisionCard({ item, filter, owner }: { item: DecisionItem; filt
       </p>
       <div className="pf-dec-acts">
         {a.done ? <span className="ds-pill success" role="status">{a.done === 'accepted' ? '✓ team told' : '✓ proposed'}</span> : <>
-          {a.canAct
+          {signOnly && <button type="button" className="pf-btn pri" data-testid="request-signoffs" disabled={asking || asked} title={pendingStages.map((s) => s.name).join(', ')} onClick={() => void requestSignOffs()}>{asked ? '✓ Sign-offs requested' : asking ? 'Requesting…' : `Request ${plural(pendingStages.length, 'sign-off')}`}</button>}
+          {signOnly ? null : a.canAct
             ? <button type="button" className="pf-btn pri" aria-label={`Propose ${dayMonth(item.forecast)}`} title={`Propose ${dayMonth(item.forecast)} as the new due date`} disabled={a.busy !== null || a.waiting > 0} onClick={() => void a.propose(item.acceptOpt!.id)}>{a.busy === item.acceptOpt!.id ? 'Proposing…' : 'Propose date'}</button>
             : <Link className="pf-btn pri" to={`/work/projects/${item.projectId}`}>Open project</Link>}
           <button type="button" className="pf-btn" aria-expanded={open} onClick={() => setOpen((v) => !v)}>Add people</button>
@@ -165,7 +185,9 @@ function DropSheet({ p, from, to, item, filter, onClose, onFlagged }: { p: Timel
   const [reason, setReason] = useState('');
   const [due, setDue] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); });
   const [busy, setBusy] = useState(false);
-  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
+  const [byHand, setByHand] = useState(false);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !byHand) onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose, byHand]);
+  if (byHand) return <HealthSheet projectId={p.id} projectName={p.name} initial={to === 'ok' ? 'OnTrack' : to === 'risk' ? 'AtRisk' : 'Delayed'} onClose={onClose} />;
   const flag = async () => {
     if (!reason.trim()) return;
     setBusy(true);
@@ -186,13 +208,14 @@ function DropSheet({ p, from, to, item, filter, onClose, onFlagged }: { p: Timel
           <div className="pf-drop-acts">
             {item?.acceptOpt && item.forecast && <button type="button" className="pf-btn pri" disabled={!a.canAct || a.busy !== null} onClick={() => void a.accept().then(onClose)}>{a.busy ? 'Setting…' : `Make ${dayMonth(item.forecast)} the new due date`}</button>}
             <button type="button" className="pf-btn" onClick={() => navigate(`/work/projects/${p.id}`)}>Replan in the project</button>
+            <button type="button" className="pf-btn" onClick={() => setByHand(true)}>Set it on track by hand…</button>
             <button type="button" className="pf-btn" onClick={onClose}>Cancel</button>
           </div>
         ) : (
           <form onSubmit={(e) => { e.preventDefault(); void flag(); }} className="pf-drop-form">
             <label>What is the risk?<textarea autoFocus rows={3} maxLength={180} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Bank sandbox keys not shared; UAT cannot start" /></label>
             <label>Follow up by<input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></label>
-            <div className="pf-drop-acts"><button type="submit" className="pf-btn pri" disabled={busy || !reason.trim()}>{busy ? 'Flagging…' : 'Flag it'}</button><button type="button" className="pf-btn" onClick={onClose}>Cancel</button></div>
+            <div className="pf-drop-acts"><button type="button" className="pf-btn" onClick={() => setByHand(true)}>Set status by hand…</button><button type="submit" className="pf-btn pri" disabled={busy || !reason.trim()}>{busy ? 'Flagging…' : 'Flag it'}</button><button type="button" className="pf-btn" onClick={onClose}>Cancel</button></div>
           </form>
         )}
       </section>
@@ -310,11 +333,13 @@ function Slide({ item, filter, active }: { item: DecisionItem; filter: Portfolio
   const a = useDecisionActions(item, filter);
   const reasons = labelled(item.decision?.causes.length ? item.decision.causes.map(cap) : item.changes.length ? item.changes : [item.why]);
   const b = otherOptions(item.decision)[0];
-  const tone = item.slipDays > 14 ? 'late' : 'risk';
+  const tone = decisionTone(item);
+  const status = item.health === 'OnTrack' ? 'On track' : item.health === 'AtRisk' ? 'At risk' : item.health === 'Delayed' ? 'Late' : null;
+  const lead = item.slipDays > 0 ? (tone === 'ok' ? `Forecast ${plural(item.slipDays, 'day')} past due` : `Late by ${plural(item.slipDays, 'day')}`) : 'On the edge';
   return (
     <section className={`pf-slide pf-slide-split ${active ? 'on' : ''}`} aria-hidden={!active} aria-label={item.name}>
       <div className="pf-slide-main">
-      <p className={`pf-slide-ey ${tone}`}>Decision · {item.slipDays > 0 ? `Late by ${plural(item.slipDays, 'day')}` : 'On the edge'}</p>
+      <p className={`pf-slide-ey ${tone}`}>Decision · {lead}{status && tone === 'ok' ? ` · ${status}` : ''}</p>
       <h2>{item.name}</h2>
       <p className="pf-slide-dates">Due <b>{dayMonth(item.due)}</b> <span aria-hidden="true">→</span> Forecast {item.forecast ? <span className={`fc ${tone}`}>{dayMonth(item.forecast)}</span> : <em>not yet</em>}</p>
       <div className="pf-slide-why">{reasons.map((r) => <div key={r.label}><span>{r.label}</span>{r.text}</div>)}</div>
@@ -352,15 +377,59 @@ function Overview({ brief, n, active }: { brief: PortfolioBrief; n: number; acti
 
 const clock = (ms: number) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
-/** Present: full window, dark, one decision per slide (Overview first), a presenter strip with thumbnails, notes and the elapsed time. ← → / space, Esc. */
+const HEALTH_WORD: Record<string, string> = { OnTrack: 'On track', AtRisk: 'At risk', Delayed: 'Late', 'On track': 'On track', 'At risk': 'At risk', Late: 'Late' };
+const healthTone = (h: string) => (/delay|late/i.test(h) ? 'late' : /risk/i.test(h) ? 'risk' : 'ok');
+
+/** The project's latest weekly report (the one Reports writes from its data) as a slide: health, the verdict, what moved, slipped and comes next. */
+function WeeklySlide({ item, active, near }: { item: DecisionItem; active: boolean; near: boolean }) {
+  const q = useWsQuery(['project-status', 'weekly', item.projectId], () => statusApi.weekly(item.projectId), { enabled: near, staleTime: 5 * 60_000, retry: false });
+  const w = q.data;
+  const cols: { label: string; n: number; items: { text: string }[] }[] = w ? [
+    { label: 'Moved', n: w.moved, items: w.movedItems ?? [] }, { label: 'Slipped', n: w.slipped, items: w.slippedItems ?? [] }, { label: 'Next week', n: w.next, items: w.nextItems ?? [] },
+  ] : [];
+  const health = w ? HEALTH_WORD[w.health] ?? w.health : null;
+  return (
+    <section className={`pf-slide pf-wk ${active ? 'on' : ''}`} aria-hidden={!active} aria-label={`Weekly report: ${item.name}`}>
+      <p className={`pf-slide-ey ${health ? healthTone(health) : 'ok'}`}>Weekly report{w?.week ? ` · Week ${w.week}` : ''}{health ? ` · ${health}` : ''}</p>
+      <h2>{item.name}</h2>
+      {q.isLoading ? <p className="pf-slide-dates">Reading the week…</p> : !w ? <p className="pf-slide-dates">No weekly report for this project.</p> : <>
+        <p className="pf-slide-dates">{w.verdict || `${w.progress ?? 0}% done`}</p>
+        <div className="pf-slide-why pf-wk-cols">
+          {cols.map((c) => (
+            <div key={c.label}><span>{c.label} · {c.n}</span>
+              {c.items.length === 0 ? <em className="pf-wk-none">Nothing</em> : <ul>{c.items.slice(0, 3).map((x, k) => <li key={k}>{x.text}</li>)}</ul>}
+            </div>
+          ))}
+        </div>
+        <p className="pf-wk-foot">{dayMonth(w.from)} – {dayMonth(w.to)} · written from the project&rsquo;s data{w.risks > 0 ? ` · ${plural(w.risks, 'risk')}` : ''}</p>
+      </>}
+    </section>
+  );
+}
+
+type PresentSlide = { kind: 'overview' } | { kind: 'decision'; item: DecisionItem } | { kind: 'weekly'; item: DecisionItem };
+
+/**
+ * Present: full window, dark, one decision per slide (Overview first), a presenter strip with thumbnails, notes and the elapsed time. ← → / space, Esc.
+ * "Weekly reports" adds each project's latest weekly report as the slide after its decision.
+ */
 export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items: DecisionItem[]; filter: PortfolioFilter; brief: PortfolioBrief; asOf: string | null; onClose: () => void }) {
   const [i, setI] = useState(0);
+  const [weekly, setWeekly] = useState(false);
   const [startedAt] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
   const who = useAuth((s) => s.ctx?.user.displayName);
   const role = useAuth((s) => s.ctx?.current?.role);
-  const n = items.length + 1;
+  const slides = useMemo<PresentSlide[]>(() => [{ kind: 'overview' }, ...items.flatMap((item): PresentSlide[] => weekly ? [{ kind: 'decision', item }, { kind: 'weekly', item }] : [{ kind: 'decision', item }])], [items, weekly]);
+  const n = slides.length;
   const go = useCallback((d: number) => setI((v) => Math.min(Math.max(0, v + d), n - 1)), [n]);
+  const toggleWeekly = () => {
+    // Stay on the same project's decision when the slides change around it.
+    const at = slides[i];
+    const next = !weekly;
+    setWeekly(next);
+    if (at.kind !== 'overview') { const k = items.indexOf(at.item); setI(next ? 1 + k * 2 : 1 + k); }
+  };
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(t); }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -372,26 +441,49 @@ export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items:
     const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
   }, [go, onClose]);
-  const cur = i === 0 ? null : items[i - 1];
-  const note = cur ? cur.why : brief.headlines[0] ?? 'Every project in one view.';
+  // Phones: the slide fills the screen, a swipe moves between slides, the app's bars and toasts step aside, the top bar is compact.
+  const phone = useIsMobile();
+  const [menu, setMenu] = useState(false);
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => { document.documentElement.classList.add('pf-presenting'); return () => document.documentElement.classList.remove('pf-presenting'); }, []);
+  const cur = slides[Math.min(i, n - 1)];
+  const note = cur.kind === 'decision' ? cur.item.why : cur.kind === 'weekly' ? `${cur.item.name}: the latest weekly report.` : brief.headlines[0] ?? 'Every project in one view.';
   const week = isoWeek(asOf ? new Date(asOf) : new Date());
   return (
-    <div className="pf-present" role="dialog" aria-modal="true" aria-label="Present decisions">
+    <div className={`pf-present${phone ? ' phone' : ''}`} role="dialog" aria-modal="true" aria-label="Present decisions">
+      {phone ? (
+        <div className="pf-present-top">
+          <b>Week {week}</b><span className="pf-ph-count">{i + 1} / {n}</span>
+          <span className="pf-ph-sp" />
+          {items.length > 0 && <button type="button" className="pf-ph-more" aria-label="More" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>⋯</button>}
+          <button type="button" className="pf-exit" onClick={onClose} autoFocus>Done</button>
+          {menu && (
+            <div className="pf-ph-menu" role="menu">
+              <button type="button" role="menuitemcheckbox" aria-checked={weekly} onClick={() => { setMenu(false); toggleWeekly(); }}>{weekly ? '✓ ' : ''}Weekly reports</button>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="pf-present-top">
         <b>Portfolio review · Week {week}</b>{who && <span>with {who}{role ? `, ${role}` : ''}</span>}
+        {items.length > 0 && <button type="button" className={`pf-wk-tg ${weekly ? 'on' : ''}`} aria-pressed={weekly} onClick={toggleWeekly}>{weekly ? '✓ ' : '+ '}Weekly reports</button>}
         <button type="button" className="pf-exit" onClick={onClose} autoFocus>Esc to exit</button>
       </div>
-      <div className="pf-stage">
+      )}
+      <div className="pf-stage" data-testid="pf-stage"
+        onTouchStart={(e) => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY }; }}
+        onTouchEnd={(e) => { const s0 = touch.current; touch.current = null; if (!s0) return; const t = e.changedTouches[0]; const dx = t.clientX - s0.x, dy = t.clientY - s0.y;
+          if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) go(dx < 0 ? 1 : -1); }}>
         <span className="pf-count" aria-live="polite"><b>{i + 1}</b> of {n}</span>
-        <Overview brief={brief} n={items.length} active={i === 0} />
-        {items.map((it, k) => <Slide key={it.projectId} item={it} filter={filter} active={k + 1 === i} />)}
+        {slides.map((sl, k) => sl.kind === 'overview' ? <Overview key="overview" brief={brief} n={items.length} active={i === k} />
+          : sl.kind === 'decision' ? <Slide key={sl.item.projectId} item={sl.item} filter={filter} active={i === k} />
+          : <WeeklySlide key={`wk-${sl.item.projectId}`} item={sl.item} active={i === k} near={Math.abs(i - k) <= 2} />)}
       </div>
       <div className="pf-strip">
         <div className="pf-thumbs" role="tablist" aria-label="Slides">
-          <button type="button" role="tab" aria-selected={i === 0} className={`pf-th ${i === 0 ? 'on' : ''}`} onClick={() => setI(0)}>1<b>Overview</b><i className="none" /></button>
-          {items.map((it, k) => (
-            <button key={it.projectId} type="button" role="tab" aria-selected={i === k + 1} className={`pf-th ${i === k + 1 ? 'on' : ''}`} onClick={() => setI(k + 1)}>
-              {k + 2}<b>{it.name}</b><i className={it.slipDays > 14 ? 'late' : 'risk'} />
+          {slides.map((sl, k) => (
+            <button key={sl.kind === 'overview' ? 'overview' : `${sl.kind}-${sl.item.projectId}`} type="button" role="tab" aria-selected={i === k} className={`pf-th ${i === k ? 'on' : ''} ${sl.kind === 'weekly' ? 'wk' : ''}`} onClick={() => setI(k)}>
+              {k + 1}<b>{sl.kind === 'overview' ? 'Overview' : sl.kind === 'weekly' ? `Weekly · ${sl.item.name}` : sl.item.name}</b><i className={sl.kind === 'overview' ? 'none' : decisionTone(sl.item)} />
             </button>
           ))}
         </div>

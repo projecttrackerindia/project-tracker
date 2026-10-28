@@ -47,5 +47,5 @@ export function originOf(selector: string): { x: number; y: number } | undefined
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 }
 
-/** "Prasanna Krishna" -> "Prasanna"; empty when there is nothing usable. */
+/** "Maya Chen" -> "Maya"; empty when there is nothing usable. */
 export const firstName = (displayName?: string | null) => (displayName ?? '').trim().split(/\s+/)[0] ?? '';

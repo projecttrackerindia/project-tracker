@@ -79,7 +79,7 @@ describe('timeAgo', () => {
 
 describe('initials', () => {
   it('takes the first letter of up to two words, uppercased', () => {
-    expect(initials('Prasanna Krishna')).toBe('PK');
+    expect(initials('Maya Chen')).toBe('MC');
     expect(initials('Cher')).toBe('C');
     expect(initials('a b c d')).toBe('AB');
   });

@@ -15,6 +15,7 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
     {
         services.Configure<AppOptions>(config.GetSection(AppOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Platform.DataLocationOptions>(config.GetSection(ProjectManagement.Application.Features.Platform.DataLocationOptions.Section));
         services.Configure<ResumeImportOptions>(config.GetSection(ResumeImportOptions.Section));
         services.AddSingleton<ProjectManagement.Application.Features.Resumes.IResumeDocumentExtractor,IsolatedResumeDocumentExtractor>();
         services.Configure<ProjectManagement.Application.Features.Billing.PricingOptions>(config.GetSection(ProjectManagement.Application.Features.Billing.PricingOptions.Section));
@@ -116,6 +117,9 @@ public static class DependencyInjection
         services.AddHttpClient("pwned-passwords", c => c.Timeout = TimeSpan.FromSeconds(5));
         services.AddHttpClient("github-oidc", c => c.Timeout = TimeSpan.FromSeconds(5));   // GitHub Actions' published signing keys (vault machine access)
         services.AddHttpClient("github-app", c => c.Timeout = TimeSpan.FromSeconds(20));
+        // API drift "Check against live": no redirects (an answer cannot send the call on to another host), no request logging (headers carry the stored credential).
+        services.AddHttpClient("api-live", c => c.Timeout = TimeSpan.FromSeconds(10))
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddHttpClient("meetbot", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddHttpClient("whatsapp-installation", c => c.Timeout = TimeSpan.FromSeconds(20))

@@ -3,7 +3,7 @@ import { hasPermission, entitlementOf, moduleLevelOf, isPersonalCtx } from './au
 import type { AppContext, CurrentWorkspace } from '../api/types';
 
 const current = (over: Partial<CurrentWorkspace> = {}): CurrentWorkspace => ({
-  id: 'w1', name: 'Fivestar', slug: 'fivestar', type: 'Organization', role: 'Owner', description: null,
+  id: 'w1', name: 'Northwind', slug: 'northwind', type: 'Organization', role: 'Owner', description: null,
   permissions: ['tasks.create', 'projects.edit'], plan: { code: 'BUSINESS', name: 'Business', status: 'Active', trialEnd: null, periodEnd: null, cancelAtPeriodEnd: false, downgraded: false },
   entitlements: { PROJECT_LIMIT: 10, AUDIT_LOG: 1 }, modules: { tasks: 2, work: 0 },
   ...over,

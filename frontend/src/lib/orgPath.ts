@@ -13,7 +13,7 @@ export const RESERVED_SEGMENTS: ReadonlySet<string> = new Set([
   'login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'auth', 'security', 'r', 'dev', 'logout', 'sso',
   'my-work', 'ai', 'reminders', 'timesheet', 'calendar', 'chat', 'projects', 'portfolio', 'operations', 'workload', 'reports', 'activity', 'people',
   'settings', 'account', 'notifications', 'admin', 'work', 'my-team', 'project-status', 'project-groups', 'members', 'teams', 'organization', 'billing', 'audit',
-  'dashboard', 'home', 'tasks', 'issues', 'api', 'hubs', 'scim', 'health', 'assets', 'icons', 'static',
+  'dashboard', 'home', 'tasks', 'issues', 'status', 'api', 'hubs', 'scim', 'health', 'assets', 'icons', 'static',
 ]);
 
 export const firstSegment = (pathname: string) => pathname.split('/')[1]?.toLowerCase() ?? '';

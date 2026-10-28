@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { projectApi } from '../../api/endpoints';
+import { projectApi, taskApi } from '../../api/endpoints';
+import { ApiError } from '../../api/client';
 import { Icon, type IconName } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { Spinner } from '../../components/ui';
@@ -16,6 +17,7 @@ import { addressOf, displayName, mailboxApi, type MailMessage } from '../mailbox
 import { Composer, type ComposeInit } from './Composer';
 import { TAG_LABEL, daysSince, describeSearch, matchesSearch, parseSearch, serverQuery, type MailSearch } from './mailSmart';
 import { useMailData, useMailLocal, type MailRow } from './useMail';
+import { actionMeta, isBulk, aiRank } from './mailFocus';
 import './mail.css';
 
 type Box = 'inbox' | 'needs' | 'waiting' | 'snoozed' | 'sent' | 'drafts' | 'archive';
@@ -39,6 +41,7 @@ export function MailPage() {
   const [query, setQuery] = useState<MailSearch | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [compose, setCompose] = useState<ComposeInit | null>(null);
+  const [lane, setLane] = useState<'focused' | 'other'>('focused');
   const data = useMailData({ sent: true, q: query ? serverQuery(query) : '' });
   const [local, update] = useMailLocal();
   const agentOpts = useWsQuery(['mailbox', 'agent-options'], mailboxApi.agentOptions, { staleTime: 300_000 });
@@ -81,6 +84,14 @@ export function MailPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.rows, local]);
+  // Focused / Other: people you write to, or anyone who is not a newsletter, no-reply sender or bulk mail, are Focused.
+  const known = useMemo(() => {
+    const k = new Set<string>();
+    for (const r of data.rows) if (r.folder === 'sent') for (const a of (r.to ?? '').split(',')) { const x = addressOf(a).toLowerCase(); if (x) k.add(x); }
+    return k;
+  }, [data.rows]);
+  const isOther = (r: MailRow) => !known.has(addressOf(r.from).toLowerCase()) && isBulk(r);
+  const waitingThreads = new Set(waiting.map((r) => `${r.account}|${r.threadId}`));
   const projectList = (projects.data?.items ?? []).filter((p) => p.status !== 'Archived' && p.status !== 'Cancelled');
   const inProject = (r: MailRow, p: { id: string; name: string; key: string }) => {
     if (local.projects[r.key] === p.id) return true;
@@ -99,7 +110,9 @@ export function MailPage() {
     : box === 'archive' ? data.rows.filter(isArchived)
     : accountKey ? inbox.filter((r) => r.account === accountKey)
     : projectId ? smart.find((x) => x.p.id === projectId)?.rows ?? []
-    : inbox;
+    : inbox.filter((r) => (lane === 'other') === isOther(r)).sort((a, b) => aiRank(a) - aiRank(b) || Date.parse(b.date ?? '') - Date.parse(a.date ?? ''));
+  const laneInbox = !query && box === 'inbox';
+  const otherCount = inbox.filter(isOther).length;
   const counts: Partial<Record<Box, number>> = {
     inbox: inbox.filter((r) => r.unread).length, needs: inbox.filter((r) => r.tags.includes('needs-reply')).length, waiting: waiting.length,
     snoozed: data.rows.filter(isSnoozed).length, drafts: local.drafts.length + local.scheduled.length,
@@ -183,8 +196,14 @@ export function MailPage() {
         </div>
         <header className="ml-list-h">
           <b>{query ? 'Search' : BOX_IDS.has(box) ? BOXES.find((b) => b.id === box)!.label : accountKey ? data.accounts.find((a) => a.key === accountKey)?.label ?? 'Account' : smart.find((x) => x.p.id === projectId)?.p.name ?? 'Inbox'}</b>
-          <small>{box === 'drafts' && !query ? `${local.drafts.length + local.scheduled.length}` : `${list.length} message${list.length === 1 ? '' : 's'}`}</small>
+          <small data-testid="ml-subtitle">{laneInbox ? `${list.filter((r) => r.unread).length} unread · sorted by AI` : box === 'drafts' && !query ? `${local.drafts.length + local.scheduled.length}` : `${list.length} message${list.length === 1 ? '' : 's'}`}</small>
         </header>
+        {laneInbox && (
+          <div className="ml-lanes" role="tablist" aria-label="Inbox" data-testid="ml-lanes">
+            {(['focused', 'other'] as const).map((l) => <button key={l} type="button" role="tab" aria-selected={lane === l} className={lane === l ? 'on' : ''} onClick={() => { setLane(l); setSelected(null); }}>
+              {l === 'focused' ? 'Focused' : 'Other'}{l === 'other' && otherCount > 0 && <em>{otherCount}</em>}</button>)}
+          </div>
+        )}
         {data.errors.map(({ account: a, error }) => <div key={a.key} className="ml-banner" role="alert"><Icon name="alert" size={13} /> {a.label}: {errText(error, 'Could not sync this mailbox.')}</div>)}
         {!query && box === 'inbox' && nudges.map((r) => (
           <div key={r.key} className="ml-nudge" data-testid="ml-nudge"><span className="ml-orb" aria-hidden="true" />
@@ -209,6 +228,7 @@ export function MailPage() {
                 {r.snippet && <span className="ml-row-prev">{r.snippet}</span>}
                 <span className="ml-row-tags">
                   {r.tags.filter((t) => t !== 'fyi' || r.tags.length === 1).slice(0, 3).map((t) => <span key={t} className={`ml-tag t-${t}`}>{TAG_LABEL[t]}</span>)}
+                  {box !== 'waiting' && waitingThreads.has(`${r.account}|${r.threadId}`) && <span className="ml-tag t-waiting">Waiting</span>}
                   {data.accounts.length > 1 && <span className="ml-tag t-acct" style={{ color: KIND_COLOR[r.kind] }}>{r.accountLabel}</span>}
                 </span>
               </button>
@@ -284,6 +304,8 @@ function MailReader({ row, account, agent, projects, linkedProject, archived, sn
   const other = last ? displayName(lastFromMe ? last.to : last.from).split(',')[0] : '';
   const a = assist.data;
   const workText = `${subject}${a?.summary ? ` — ${a.summary}` : ''}`;
+  const people = useMemo(() => Array.from(new Set((thread?.messages ?? []).flatMap((m) => [m.from, ...(m.to ?? '').split(','), ...(m.cc ?? '').split(',')])
+    .filter((x) => x && addressOf(x).toLowerCase() !== account.email.toLowerCase()).map((x) => displayName(x).trim()).filter(Boolean))), [thread, account.email]);
 
   return (
     <div className="ml-read" data-testid="ml-reader">
@@ -308,7 +330,8 @@ function MailReader({ row, account, agent, projects, linkedProject, archived, sn
             : a && <>
               <p className="ml-ai-line" data-testid="ml-summary"><span className="ml-orb" aria-hidden="true" /><span>{a.summary}</span>
                 {a.urgency === 'high' && <span className="ml-tag t-escalation">Urgent</span>}</p>
-              {a.actionItems.length > 0 && <ul className="ml-ai-actions" aria-label="Action items">{a.actionItems.slice(0, 4).map((x, i) => <li key={i} className="ml-fade" style={{ ['--i' as string]: i }}>{x}</li>)}</ul>}
+              {a.actionItems.length > 0 && <div className="ml-acts" role="list" aria-label="Action items" data-testid="ml-actions"><p className="ml-acts-h">Action items</p>
+                {a.actionItems.slice(0, 4).map((x, i) => <ActionItem key={i} i={i} text={x} people={people} meName={account.email} projectId={linkedProject} subject={subject} />)}</div>}
               {a.replies.length > 0 && account.canSend && (
                 <div className="ml-ai-replies" role="group" aria-label="Suggested replies">
                   {a.replies.slice(0, 3).map((r, i) => <button key={i} type="button" className="ml-chip ml-fade" style={{ ['--i' as string]: i }} title={r.body} onClick={() => setReply({ all: false, body: r.body })}>
@@ -367,6 +390,26 @@ function MailReader({ row, account, agent, projects, linkedProject, archived, sn
           </>}
       </div>
       {forwarding && <ForwardModal account={account} folder={row.folder} message={forwarding} onClose={() => setForwarding(null)} onSent={onSent} />}
+    </div>
+  );
+}
+
+/** One action item: the task, who owns it and when it is due (read from the line), and Make task. */
+function ActionItem({ i, text, people, projectId, subject }: { i: number; text: string; people: string[]; meName: string; projectId: string | null; subject: string }) {
+  const m = actionMeta(text, people);
+  const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
+  const make = async () => {
+    if (!projectId) { openNew('task', `${m.title} (from mail: ${subject})`); return; }
+    setState('busy');
+    try { await taskApi.create(projectId, { title: m.title.slice(0, 200), description: `From mail: ${subject}`, priority: 'Medium', dueDate: m.dueIso }); setState('done'); toast('Task added to the linked project.', 'success'); }
+    catch (e) { setState('idle'); toast(e instanceof ApiError ? e.message : 'Could not make the task.', 'error'); }
+  };
+  return (
+    <div role="listitem" className="ml-act ml-fade" style={{ ['--i' as string]: i }}>
+      <span className="ml-act-box" aria-hidden="true" />
+      <span className="ml-act-t">{m.title}</span>
+      <span className="ml-act-meta">{[m.owner, m.due].filter(Boolean).join(' · ')}</span>
+      <button type="button" className="ml-act-mk" disabled={state !== 'idle'} onClick={() => void make()}>{state === 'done' ? '✓ Task' : state === 'busy' ? 'Making…' : 'Make task'}</button>
     </div>
   );
 }

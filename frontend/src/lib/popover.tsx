@@ -53,6 +53,8 @@ export function Popover({ open, ...rest }: PopoverProps) {
 
 function Floating({ onClose, anchorRef, children, className = '', role, side = 'bottom', align = 'end', gap = 6, within, focusOnOpen = true, restoreFocus = true, style, ...aria }: Omit<PopoverProps, 'open'>) {
   const ref = useRef<HTMLDivElement>(null);
+  // On a phone (iPhone and Android alike) a menu is a bottom sheet: thumb-reachable, full width, never clipped by the top of the screen.
+  const sheet = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 599px)').matches && (role === 'menu' || className.includes('as-sheet'));
   const close = useRef(onClose);
   useEffect(() => { close.current = onClose; });
 
@@ -60,6 +62,7 @@ function Floating({ onClose, anchorRef, children, className = '', role, side = '
   useLayoutEffect(() => {
     const el = ref.current, anchor = anchorRef.current;
     if (!el || !anchor) return;
+    if (sheet) { el.style.visibility = ''; return; }
     const place = () => {
       const a = anchor.getBoundingClientRect();
       if (a.width === 0 && a.height === 0) { close.current(); return; }   // the trigger was hidden or removed
@@ -89,7 +92,7 @@ function Floating({ onClose, anchorRef, children, className = '', role, side = '
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(later) : null;
     ro?.observe(el);
     return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', later); ro?.disconnect(); };
-  }, [anchorRef, within, side, align, gap]);
+  }, [anchorRef, within, side, align, gap, sheet]);
 
   // Outside click, Escape, focus in and back out.
   useEffect(() => {
@@ -137,9 +140,13 @@ function Floating({ onClose, anchorRef, children, className = '', role, side = '
   };
 
   return (
-    <div ref={ref} className={`floating ${className}`} role={role} aria-label={aria['aria-label']} tabIndex={-1} onKeyDown={onKeyDown}
-      style={{ position: 'fixed', top: 0, left: 0, right: 'auto', bottom: 'auto', margin: 0, visibility: 'hidden', ...style }}>
-      {children}
-    </div>
+    <>
+      {sheet && <div className="floating-scrim" aria-hidden="true" onMouseDown={() => close.current()} onTouchStart={(e) => { e.preventDefault(); close.current(); }} />}
+      <div ref={ref} className={`floating ${className}${sheet ? ' floating-sheet' : ''}`} role={role} aria-label={aria['aria-label']} tabIndex={-1} onKeyDown={onKeyDown}
+        style={sheet ? { position: 'fixed', left: 0, right: 0, bottom: 0, top: 'auto', margin: 0, ...style } : { position: 'fixed', top: 0, left: 0, right: 'auto', bottom: 'auto', margin: 0, visibility: 'hidden', ...style }}>
+        {sheet && <span className="floating-grab" aria-hidden="true" />}
+        {children}
+      </div>
+    </>
   );
 }
