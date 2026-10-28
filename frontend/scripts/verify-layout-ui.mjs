@@ -93,6 +93,10 @@ try{
   assert.ok(apart,'Month card does not overlap the week grid at '+width);
   const inside=await page.locator('.wp-col .wp-e:not(.f):not(.lg)').evaluateAll(items=>items.map(el=>{const day=el.closest('.wp-col').getBoundingClientRect(),box=el.getBoundingClientRect();return box.left>=day.left-1&&box.right<=day.right+1&&box.bottom<=day.bottom+1;}));
   assert.ok(inside.length===4&&inside.every(Boolean),'Calendar entries stay inside their day');await page.locator('[data-testid="week-planner"]').scrollIntoViewIfNeeded();await capture('calendar-'+width);
+  // A block opens its detail card (beside it on a desktop, a sheet on a phone) inside the window, and Esc closes it.
+  await page.locator(`.wp-col[data-day="${today}"] .wp-e:not(.f):not(.lg)`).first().click();const det=page.locator('[data-testid="event-detail"]');await det.waitFor();await page.waitForTimeout(400);
+  const box=await det.boundingBox();assert.ok(box&&box.x>=-.5&&box.x+box.width<=width+.5,'the detail card stays inside the window');assert.equal(await det.getAttribute('data-kind'),'meeting');
+  await capture('calendar-detail-'+width);await page.keyboard.press('Escape');await det.waitFor({state:'detached'});
  }
  await open('/preview-org/settings/ai/usage','.ai-budgets',1440);
  await page.locator('.ai-budgets').scrollIntoViewIfNeeded();await capture('credit-budgets-1440');
