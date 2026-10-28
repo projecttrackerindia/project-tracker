@@ -52,6 +52,8 @@ public static class FileRules
         ["rtf"] = ("application/rtf", FileKind.Text), ["java"] = ("text/x-java-source", FileKind.Text), ["py"] = ("text/x-python", FileKind.Text),
         // Short screen recordings and demos
         ["mp4"] = ("video/mp4", FileKind.Video), ["mov"] = ("video/quicktime", FileKind.Video),
+        // WebM (a page's video block: muted loop or with controls)
+        ["webm"] = ("video/webm", FileKind.Video),
         // Voice notes recorded in chat (plain WAV: what every phone and browser can record the same way)
         ["wav"] = ("audio/wav", FileKind.Wav),
     };
@@ -107,7 +109,8 @@ public static class FileRules
         FileKind.Rar => h.StartsWith("Rar!"u8),
         FileKind.Gzip => h.StartsWith((ReadOnlySpan<byte>)[0x1F, 0x8B]),
         FileKind.Video => h.Length >= 12 && (h[4..8].SequenceEqual("ftyp"u8) || h[4..8].SequenceEqual("moov"u8) || h[4..8].SequenceEqual("mdat"u8)
-            || h[4..8].SequenceEqual("wide"u8) || h[4..8].SequenceEqual("free"u8)),
+            || h[4..8].SequenceEqual("wide"u8) || h[4..8].SequenceEqual("free"u8))
+            || h.StartsWith((ReadOnlySpan<byte>)[0x1A, 0x45, 0xDF, 0xA3]),   // WebM / Matroska (EBML)
         // An unrecognized extension has no fixed shape to check the bytes against; the SHA-256 integrity hash and the size cap are the checks it gets.
         FileKind.Binary => true,
         FileKind.Wav => h.Length >= 12 && h[..4].SequenceEqual("RIFF"u8) && h[8..12].SequenceEqual("WAVE"u8),

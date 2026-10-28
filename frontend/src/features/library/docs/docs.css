@@ -632,3 +632,10 @@ html[data-theme='dark'] .dz-aitag { color: #a5a3ff; }
   .dx-drift li { grid-template-columns: 64px minmax(0, 1fr); }
   .dx-drift li small { grid-column: 2; }
 }
+
+/* Page design (Library settings) */
+.dx-design { display: grid; gap: 14px; }
+.dx-design-row { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.dx-design-row input { margin-top: 4px; accent-color: var(--ds-accent); }
+.dx-design-row span { display: grid; gap: 2px; }
+.dx-design-row small { color: var(--ds-text-2); font-size: 13px; }

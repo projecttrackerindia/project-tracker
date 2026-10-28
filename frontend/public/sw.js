@@ -25,6 +25,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
   if (/^\/(api|hubs|scim|health)(\/|$)/.test(url.pathname)) return;   // live data: always the network
+  if (url.pathname.startsWith('/embed/')) return;   // a page's sandboxed embed frame: never the app shell
   // The public website (Features, Pricing, Security, sitemap ...) is its own set of pages, not the app: never answer them with the app shell.
   if (/^\/(features|pricing|security|download)(\/|$)|^\/(sitemap\.xml|robots\.txt|favicon\.ico|og-image\.png|\.well-known\/)/.test(url.pathname)) return;
   if (req.mode === 'navigate') {

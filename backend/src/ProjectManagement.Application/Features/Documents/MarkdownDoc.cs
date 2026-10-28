@@ -260,6 +260,7 @@ public static partial class MarkdownDoc
                 foreach (var r in rows.Skip(1)) t.Append("| ").Append(string.Join(" | ", r)).Append(" |\n");
                 return t.ToString().TrimEnd('\n');
             case "liveTasks": return "(live task list)";
+            case "motionLottie" or "motionSvg" or "motionVideo" or "sandboxEmbed": return "_" + DocumentDiff.MotionStill(b) + "_";
             default: return InlineText(kids);
         }
     }
