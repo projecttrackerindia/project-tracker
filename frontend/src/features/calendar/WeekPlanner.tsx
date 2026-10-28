@@ -1,9 +1,9 @@
 import { Face } from '../../components/Face';
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { insightApi, meetingApi, timeApi } from '../../api/endpoints';
-import type { CalendarEvent, TimeEntry } from '../../api/types';
+import { meetingApi } from '../../api/endpoints';
+import type { CalendarEvent, TimelineEvent } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { ErrorState, Segmented } from '../../components/ui';
 import { todayISO } from '../../lib/format';
@@ -12,16 +12,16 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { meetApi } from '../meet/meetApi';
-import { reminderApi } from '../reminders/api';
 import { ToolbarSlot } from '../talk/ToolbarSlot';
 import { undoToast } from '../talk/flyTask';
 import { CalendarView } from './CalendarView';
 import { EventDetail, type DetailActions } from './EventDetail';
 import { AttendanceRow } from '../attendance/AttendanceCalendar';
 import {
-  DOW3, END, HR, MEETING_MIN, MONTHS, SNAP, START, addDays, clockH, dateOf, dayOf, fmtMins, hourOf, hrefOf, isDeadline, iso, lanes, mondayOf, planFocus, planKey, RANK,
-  type Detail, type Focus, type Meet, type PlanOverrides, type Reminder,
+  DOW3, HR, MONTHS, SNAP, addDays, clockH, dateOf, fmtMins, hourOf, hrefOf, isDeadline, iso, lanes, mondayOf, planKey, RANK,
+  type Detail, type Focus, type Meet, type PlanOverrides,
 } from './plannerModel';
+import { buildWeek, daySignature, focusLabel, hoursOf, readPlan, useTimeline, weekRange, writePlan, type DayView } from './timeline';
 import './planner.css';
 
 /** ISO week number. */
@@ -31,21 +31,21 @@ const weekNo = (s: string) => { const d = dateOf(s); d.setDate(d.getDate() + 3 -
 const TINTS = ['i', 'o', 't', 'p', 'b', 'r'] as const;
 const DOT: Record<string, string> = { i: '#5856d6', o: '#ff9500', t: '#30b0c7', p: '#af52de', b: '#0071e3', r: '#ff2d55', g: '#28cd41' };
 
-type View = 'day' | 'week' | 'month';
-type Layer = 'meetings' | 'logged' | 'focus' | 'deadlines' | 'reminders';
+/** The grid shows the whole day (midnight to midnight) and scrolls to the first thing on it, or 8 AM. */
+const G0 = 0, G1 = 24, FIRST_HOUR = 8;
+const hourLabel = (h: number) => (h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`);
 
-/** Your changes to the suggested plan live on this device (there is no shared day plan on the server). */
-const planStore = (wid: string | null) => `pt.calendar.plan.${wid ?? 'none'}`;
-function readPlan(wid: string | null): PlanOverrides { try { return JSON.parse(localStorage.getItem(planStore(wid)) ?? '{}') as PlanOverrides; } catch { return {}; } }
-function writePlan(wid: string | null, p: PlanOverrides) { try { localStorage.setItem(planStore(wid), JSON.stringify(p)); } catch { /* private window: the change lasts for this visit */ } }
+type View = 'day' | 'week' | 'month';
+type Layer = 'meetings' | 'calls' | 'logged' | 'done' | 'focus' | 'deadlines' | 'reminders';
+const LAYERS: [Layer, string][] = [['meetings', 'Meetings'], ['calls', 'Calls'], ['logged', 'Logged time'], ['done', 'Done'], ['focus', 'Focus'], ['deadlines', 'Deadlines'], ['reminders', 'Reminders']];
 
 // ------------------------------------------------------------------------------------------------------------------------ page
 /**
- * Calendar (the sidebar's Calendar): the mini month, layer and project filters and the ✦ week line on the left; the work week from 9 to 6
- * with meetings at their real lengths, focus blocks from your day plan (one per open item, on or before its due day), deadline flags and
- * logged time on the day headers, reminder capsules and the now line; and the selected meeting on the right. Any block opens a card that
- * says what it is and why it is there, with what can be done about it (Join, Start focus, Mark done, Move …). Enter opens, Esc closes,
- * the arrow keys walk the blocks. A meeting you organise can be dragged to a new time (15-minute steps; Alt+↑/↓ with the keyboard), with Undo.
+ * Calendar (the sidebar's Calendar): the mini month, layer and project filters and the ✦ week line on the left; the whole day with meetings
+ * and calls at their real lengths, time logged as quiet green bars, finished work as check pills at the minute it was finished, focus blocks
+ * from your day plan, deadline flags and logged totals on the day headers, reminder rings and the now line; the selected meeting on the right.
+ * Everything comes from the one timeline (GET /timeline) that Today reads too. Any block opens a card that says what it is and what can be
+ * done with it. Enter opens, Esc closes, the arrow keys walk the blocks. A meeting you organise can be dragged to a new time, with Undo.
  */
 export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calendar') => void; /** Under the ✦ line (Subscribe in Google / Outlook). */ extra?: ReactNode }) {
   const navigate = useNavigate();
@@ -54,7 +54,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const [view, setView] = useState<View>(() => (typeof window !== 'undefined' && window.innerWidth < 760 ? 'day' : 'week'));
   const [anchor, setAnchor] = useState(today);
   const [mini, setMini] = useState(() => { const d = dateOf(today); return { y: d.getFullYear(), m: d.getMonth() }; });
-  const [layers, setLayers] = useState<Record<Layer, boolean>>({ meetings: true, logged: true, focus: true, deadlines: true, reminders: true });
+  const [layers, setLayers] = useState<Record<Layer, boolean>>({ meetings: true, calls: true, logged: true, done: true, focus: true, deadlines: true, reminders: true });
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
   const [moved, setMoved] = useState<Record<string, { day: string; start: number }>>({});
@@ -73,44 +73,35 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const week = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(monday, i)), [monday]);
   const days = useMemo(() => (view === 'day' ? [anchor] : week), [view, anchor, week]);
 
-  const q = useWsQuery(['calendar', 'week', monday, 'me'], () => insightApi.calendar(monday, sunday, undefined, true), { placeholderData: (p) => p });
-  const feed = useWsQuery(['meet', 'feed', monday], () => meetApi.feed({ from: `${monday}T00:00:00`, to: `${addDays(sunday, 1)}T00:00:00` }), { staleTime: 60_000, retry: false });
-  const rem = useWsQuery(['reminders', 'list'], reminderApi.list, { staleTime: 60_000, retry: false });
-  // Time this person logged this week: timer entries sit at the hours they ran; typed-in entries are totalled on the day.
-  const logged = useWsQuery(['time', 'sheet', monday, 'me'], () => timeApi.timesheet({ from: monday, to: sunday }), { staleTime: 60_000, retry: false, placeholderData: (p) => p });
-  // Leave days from the timesheet week: shown on the day header, and no focus is planned on them.
-  const grid = useWsQuery(['time', 'grid', monday], () => timeApi.grid(monday), { staleTime: 5 * 60_000, retry: false });
-  const loggedEntries = useMemo(() => (Array.isArray(logged.data?.entries) ? logged.data!.entries : []), [logged.data]);
-  const leave = useMemo(() => new Map((Array.isArray(grid.data?.days) ? grid.data!.days : []).filter((d) => d.leave).map((d) => [d.date, d.leaveNote])), [grid.data]);
-
-  const events = useMemo(() => (q.data ?? []).filter((e) => e.category !== 'Cancelled' && e.status !== 'Cancelled' && !doneIds.has(e.id)), [q.data, doneIds]);
-  const projects = useMemo(() => [...new Set(events.map((e) => e.projectName).filter((n): n is string => !!n))].slice(0, 6), [events]);
+  // One request for the visible week (the same one Today makes for this week), and the meeting feed for what only Meet knows (who may move it).
+  const tl = useTimeline(weekRange(anchor), { enabled: view !== 'month' });
+  const feed = useWsQuery(['meet', 'feed', monday], () => meetApi.feed({ from: `${monday}T00:00:00`, to: `${addDays(sunday, 1)}T00:00:00` }), { staleTime: 60_000, retry: false, enabled: view !== 'month' });
+  const raw = useMemo(() => (tl.data?.events ?? []).filter((t) => !(t.type === 'due' && doneIds.has(t.sourceId))), [tl.data, doneIds]);
+  const projects = useMemo(() => [...new Set(raw.map((e) => e.projectName).filter((n): n is string => !!n))].slice(0, 6), [raw]);
   const tintOf = useCallback((name: string | null) => (name && projects.includes(name) ? TINTS[projects.indexOf(name) % TINTS.length] : 'g'), [projects]);
-  const shown = useCallback((e: CalendarEvent) => !e.projectName || !hidden.has(e.projectName), [hidden]);
+  const timeline = useMemo(() => raw.filter((t) => !t.projectName || !hidden.has(t.projectName)), [raw, hidden]);
+  const wv = useMemo(() => buildWeek(timeline, week, today, nowQ, plan), [timeline, week, today, nowQ, plan]);
+  const events = useMemo(() => wv.days.flatMap((d) => [...d.meets.map((m) => m.e), ...d.due]), [wv]);
 
   const meets: Meet[] = useMemo(() => {
     const byStart = new Map((feed.data?.items ?? []).map((f) => [`${f.id}|${Date.parse(f.start)}`, f]));
     const byId = new Map((feed.data?.items ?? []).map((f) => [f.id, f]));
-    return events.filter((e) => e.type === 'meeting' && e.startsAt).map((e) => {
-      const s = new Date(e.startsAt!);
-      const f = byStart.get(`${e.id}|${s.getTime()}`) ?? byId.get(e.id) ?? null;
-      const len = (e.durationMinutes ?? (f ? (Date.parse(f.end) - Date.parse(f.start)) / 60_000 : MEETING_MIN)) / 60;
-      const key = `${e.id}|${e.startsAt}`;
-      const mv = moved[key];
-      const start = mv ? mv.start : hourOf(s);
-      return { key, e, day: mv ? mv.day : dayOf(s), start, end: start + len, feed: f };
+    return wv.days.flatMap((d) => d.meets).map((m) => {
+      const f = byStart.get(`${m.e.id}|${Date.parse(m.e.startsAt!)}`) ?? byId.get(m.e.id) ?? null;
+      const mv = moved[m.key];
+      const len = m.end - m.start;
+      return mv ? { ...m, day: mv.day, start: mv.start, end: mv.start + len, feed: f } : { ...m, feed: f };
     });
-  }, [events, feed.data, moved]);
+  }, [wv, feed.data, moved]);
 
   // ---- drag to reschedule
   const [drag, setDrag] = useState<{ key: string; day: string; start: number; moved: boolean } | null>(null);
   const justDragged = useRef(false);
   const dragRef = useRef<{ key: string; x: number; y: number; day: string; start: number; colW: number; dayIdx: number } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const placed = useMemo(() => meets.map((m) => (drag && drag.key === m.key && drag.moved ? { ...m, day: drag.day, start: drag.start, end: drag.start + (m.end - m.start) } : m)), [meets, drag]);
-  // The day plan: planned around the meetings where they are (not where one is being dragged), and never on a day of leave.
-  const planAll = useMemo(() => planFocus(week.filter((d) => !leave.has(d)), meets.filter((m) => shown(m.e)), events.filter(shown), today, nowQ, plan), [week, leave, meets, events, shown, today, nowQ, plan]);
-  const focus = useMemo(() => (layers.focus ? planAll.filter((f) => days.includes(f.day)) : []), [layers.focus, planAll, days]);
+  const focus = useMemo(() => (layers.focus ? wv.focus.filter((f) => days.includes(f.day)) : []), [layers.focus, wv, days]);
 
   const canMove = useCallback((m: Meet): string | null => {
     if (!m.feed) return 'Open the meeting in Messages to move it';
@@ -128,6 +119,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
       const body = { startTime: at(day, start).toISOString(), endTime: at(day, start + len).toISOString() };
       if (m.e.projectId) await meetingApi.reschedule(m.e.id, body); else await meetingApi.workspaceReschedule(m.e.id, body);
       void invalidateWorkspace(wid, 'meet');
+      void invalidateWorkspace(wid, 'timeline');
       if (undo) { toast('Moved back.', 'info'); return; }
       const before = focus.filter((f) => f.day === day && f.end > start && f.start < start + len);
       const label = `${m.e.title} moved to ${DOW3[dateOf(day).getDay()]} ${clockH(start)}${before.length ? ' · focus replanned' : ''}`;
@@ -154,7 +146,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     const dy = ev.clientY - d.y, dx = ev.clientX - d.x;
     if (!drag && Math.hypot(dx, dy) < 5) return;
     const len = m.end - m.start;
-    const start = Math.min(END - len, Math.max(START, Math.round((d.start + dy / HR) / SNAP) * SNAP));
+    const start = Math.min(G1 - len, Math.max(G0, Math.round((d.start + dy / HR) / SNAP) * SNAP));
     const idx = Math.min(days.length - 1, Math.max(0, d.dayIdx + Math.round(dx / d.colW)));
     if (!drag || drag.day !== days[idx] || drag.start !== start) setDrag({ key: m.key, day: days[idx], start, moved: true });
   };
@@ -169,7 +161,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     if (day !== m.day || Math.abs(start - m.start) > 1e-6) void reschedule(m, day, start);
   };
   live.current.onCancel = () => { dragRef.current = null; setDrag(null); };
-  live.current.onAltMove = (m, up) => { if (!canMove(m)) void reschedule(m, m.day, Math.min(END - (m.end - m.start), Math.max(START, m.start + (up ? -SNAP : SNAP)))); };
+  live.current.onAltMove = (m, up) => { if (!canMove(m)) void reschedule(m, m.day, Math.min(G1 - (m.end - m.start), Math.max(G0, m.start + (up ? -SNAP : SNAP)))); };
   live.current.onOpen = (d, el) => {
     if (justDragged.current || drag?.moved) return;
     if (d.kind === 'meeting') setSelected(d.m.key);
@@ -187,12 +179,12 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     moveFocus: (f, day, start) => {
       const before = plan;
       savePlan({ ...plan, [planKey(f.e)]: { day, start, len: f.end - f.start } });
-      undoToast(`Focus on ${f.e.title} moved to ${DOW3[dateOf(day).getDay()]} ${clockH(start)}`, () => savePlan(before), gridRef.current, 46);
+      undoToast(`Focus on ${focusLabel(f.e)} moved to ${DOW3[dateOf(day).getDay()]} ${clockH(start)}`, () => savePlan(before), gridRef.current, 46);
     },
     removeFocus: (f) => {
       const before = plan;
       savePlan({ ...plan, [planKey(f.e)]: 'removed' });
-      undoToast(`${f.e.title} taken out of your plan`, () => savePlan(before), gridRef.current, 46);
+      undoToast(`${focusLabel(f.e)} taken out of your plan`, () => savePlan(before), gridRef.current, 46);
     },
     done: (e) => setDoneIds((s) => new Set(s).add(e.id)),
     moveMeeting: (m, day, start) => void reschedule(meets.find((x) => x.key === m.key) ?? m, day, start),
@@ -200,16 +192,18 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   };
   // ---- the blocks of each day, laid out once per data change (not per render)
   const cols = useMemo(() => days.map((d) => {
-    const ms = placed.filter((m) => layers.meetings && shown(m.e) && m.day === d);
+    const dv: DayView | undefined = wv.byDay.get(d) ?? buildWeek(timeline, [d], today, nowQ, plan).byDay.get(d);
+    const ms = placed.filter((m) => layers.meetings && m.day === d);
+    const calls = layers.calls ? dv?.calls ?? [] : [];
+    const spans = [...ms.map((m) => ({ key: m.key, start: m.start, end: m.end })), ...calls.map((c) => { const h = hoursOf(c); return { key: c.id, start: h.start, end: Math.max(h.end, h.start + .25) }; })];
     return {
-      d,
-      meets: ms,
-      lanes: lanes(ms),
+      d, meets: ms, calls, lanes: lanes(spans),
       focus: focus.filter((f) => f.day === d),
-      logged: layers.logged ? loggedEntries.filter((t) => t.startedAt && t.workDate === d) : [],
-      reminders: layers.reminders ? (rem.data?.open ?? []).filter((r) => r.nextFireAt && dayOf(new Date(r.nextFireAt)) === d).slice(0, 3) as Reminder[] : [],
+      logged: layers.logged ? dv?.time ?? [] : [],
+      done: layers.done ? dv?.done ?? [] : [],
+      reminders: layers.reminders ? dv?.reminders ?? [] : [],
     };
-  }), [days, placed, layers, shown, focus, loggedEntries, rem.data]);
+  }), [days, wv, timeline, today, nowQ, plan, placed, layers, focus]);
   const origByKey = useMemo(() => new Map(meets.map((m) => [m.key, m])), [meets]);
   // The card follows its block when the data refreshes (or closes when the block is gone, e.g. after Mark done).
   useEffect(() => {
@@ -219,6 +213,24 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     if (el !== open?.el) setOpen((o) => (o ? { ...o, el } : o));
   }, [openKey, open?.el, cols]);
 
+  // ---- the whole day is on the grid; it opens at the first thing on the shown days, or 8 AM (once per range, not on every refresh)
+  const earliest = useMemo(() => {
+    let h = FIRST_HOUR;
+    for (const c of cols) {
+      for (const m of c.meets) h = Math.min(h, m.start);
+      for (const t of [...c.calls, ...c.logged, ...c.done, ...c.reminders]) h = Math.min(h, hoursOf(t).start);
+      for (const f of c.focus) h = Math.min(h, f.start);
+    }
+    return Math.max(G0, Math.floor(h));
+  }, [cols]);
+  const scrolledFor = useRef<string | null>(null);
+  const rangeKey = `${view}:${days[0]}:${days.length}:${tl.data ? 'y' : 'n'}`;
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || scrolledFor.current === rangeKey) return;
+    scrolledFor.current = rangeKey;
+    el.scrollTop = Math.max(0, (earliest - G0) * HR - 12);
+  }, [rangeKey, earliest]);
 
   // ---- arrows walk the blocks: ↑/↓ within a day, ←/→ to the nearest block of the next day; Enter opens (a button); Esc closes
   const onGridKey = (ev: ReactKeyboardEvent) => {
@@ -247,10 +259,13 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const nextUp = upcoming.find((m) => m.day > today || (m.day === today && m.end > nowH)) ?? upcoming[0] ?? null;
   const sel = meets.find((m) => m.key === selected) ?? nextUp;
 
-  // ---- ✦ the week in one line
+  // ---- ✦ the week in one line, from the same days the grid draws
   const weekMeets = meets.filter((m) => week.includes(m.day));
   const meetH = weekMeets.reduce((n, m) => n + (m.end - m.start), 0);
-  const focusH = planAll.reduce((n, f) => n + (f.end - f.start), 0);
+  const focusH = wv.focus.filter((f) => week.includes(f.day)).reduce((n, f) => n + (f.end - f.start), 0);
+  const callsN = wv.days.reduce((n, d) => n + d.calls.length, 0);
+  const loggedM = wv.days.reduce((n, d) => n + d.loggedMin, 0);
+  const doneN = wv.days.reduce((n, d) => n + d.done.length, 0);
   const perDay = week.map((d) => ({ d, h: weekMeets.filter((m) => m.day === d).reduce((n, m) => n + (m.end - m.start), 0) }));
   const busiest = perDay.reduce((a, b) => (b.h > a.h ? b : a), perDay[0]);
   const longest = weekMeets.filter((m) => m.day === busiest?.d).sort((a, b) => (b.end - b.start) - (a.end - a.start))[0];
@@ -278,21 +293,21 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
       <aside className="wp-left" aria-label="Month and filters">
         <MiniMonth y={mini.y} m={mini.m} today={today} week={view === 'day' ? [anchor] : week} onPick={(d) => setAnchor(d)}
           onShift={(n) => setMini(({ y, m }) => { const d = new Date(y, m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; })} />
-        <div className="wp-filters">
+        <div className="wp-filters" data-testid="wp-layers">
           <div className="wp-ft">Show</div>
-          {([['meetings', 'Meetings'], ['logged', 'Logged time'], ['focus', 'Focus blocks'], ['deadlines', 'Deadlines'], ['reminders', 'Reminders']] as const).map(([k, label]) => (
-            <label key={k} className={`wp-fr${layers[k] ? '' : ' off'}`}><input type="checkbox" className="sr-only" checked={layers[k]} onChange={(e) => setLayers((s) => ({ ...s, [k]: e.target.checked }))} /><i className={`k-${k}`} aria-hidden="true" />{label}</label>
+          {LAYERS.map(([k, label]) => (
+            <label key={k} className={`wp-fr${layers[k] ? '' : ' off'}`} data-layer={k}><input type="checkbox" className="sr-only" checked={layers[k]} onChange={(e) => setLayers((s) => ({ ...s, [k]: e.target.checked }))} /><i className={`k-${k}`} aria-hidden="true" />{label}</label>
           ))}
           {projects.length > 0 && <div className="wp-ft">Projects</div>}
           {projects.map((p) => (
             <label key={p} className={`wp-fr${hidden.has(p) ? ' off' : ''}`}><input type="checkbox" className="sr-only" checked={!hidden.has(p)} onChange={() => setHidden((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; })} /><i style={{ background: DOT[tintOf(p)] }} aria-hidden="true" />{p}</label>
           ))}
         </div>
-        <section className="wp-ai" aria-label="This week">
+        <section className="wp-ai" aria-label="This week" data-testid="wp-week-summary">
           <span className="wp-orb" aria-hidden="true" />
-          <p>{q.isLoading ? 'Reading the week…' : <>This week: <b>{fmtH(meetH)} meetings</b>, {fmtH(focusH)} focus.{' '}
-            {busiest && busiest.h >= 4 && longest ? <>{dateOf(busiest.d).toLocaleDateString('en-GB', { weekday: 'long' })} is overbooked — move {longest.e.title.toLowerCase().startsWith('sprint') ? longest.e.title.toLowerCase() : longest.e.title}?</>
-              : <>{dateOf(perDay.reduce((a, b) => (b.h < a.h ? b : a), perDay[0]).d).toLocaleDateString('en-GB', { weekday: 'long' })} is clearest for focused work.</>}</>}</p>
+          <p>{tl.isLoading ? 'Reading the week…' : <>This week: <b>{fmtH(meetH)} meetings</b>{callsN > 0 && <>, {callsN} call{callsN === 1 ? '' : 's'}</>}, {fmtH(focusH)} focus{loggedM > 0 && <>, {fmtMins(loggedM)} logged</>}{doneN > 0 && <>, {doneN} done</>}.{' '}
+            {busiest && busiest.h >= 4 && longest ? <>{dateOf(busiest.d).toLocaleDateString('en-GB', { weekday: 'long' })} is overbooked — move {longest.e.title}?</>
+              : perDay.length > 0 && <>{dateOf(perDay.reduce((a, b) => (b.h < a.h ? b : a), perDay[0]).d).toLocaleDateString('en-GB', { weekday: 'long' })} is clearest for focused work.</>}</>}</p>
         </section>
         {extra && <div className="wp-extra">{extra}</div>}
       </aside>
@@ -308,20 +323,21 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
             <button type="button" className="wp-today" onClick={() => { setAnchor(today); const d = dateOf(today); setMini({ y: d.getFullYear(), m: d.getMonth() }); }}>Today</button>
             <button type="button" className="wp-nav" aria-label={view === 'day' ? 'Next day' : 'Next week'} onClick={() => setAnchor(addDays(anchor, view === 'day' ? 1 : 7))}><Icon name="chevronR" size={14} /></button>
           </div>
-          {q.isError ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : (
+          {tl.isError ? <ErrorState error={tl.error} retry={() => void tl.refetch()} /> : (
             <div className={`wp-cal${open ? ' has-open' : ''}`} ref={gridRef} style={{ ['--cols' as string]: days.length }} onKeyDown={onGridKey}>
               <div className="wp-days">
                 <span />
                 {days.map((d) => {
-                  const due = layers.deadlines ? events.filter((e) => e.date === d && isDeadline(e) && shown(e))
-                    .sort((a, b) => ['project', 'milestone', 'stage'].indexOf(b.type) - ['project', 'milestone', 'stage'].indexOf(a.type) || (RANK[a.priority ?? ''] ?? 4) - (RANK[b.priority ?? ''] ?? 4)) : [];
+                  const dv = wv.byDay.get(d);
+                  const due = layers.deadlines ? (dv?.due ?? []).filter((e) => isDeadline(e) || e.overdue)
+                    .sort((a, b) => Number(b.overdue) - Number(a.overdue) || ['project', 'milestone', 'stage'].indexOf(b.type) - ['project', 'milestone', 'stage'].indexOf(a.type) || (RANK[a.priority ?? ''] ?? 4) - (RANK[b.priority ?? ''] ?? 4)) : [];
                   const flag = due[0];
-                  const ents = layers.logged ? loggedEntries.filter((t) => t.workDate === d) : [];
-                  const mins = ents.reduce((n, t) => n + t.minutes, 0);
-                  const lv = leave.has(d);
+                  const ents = layers.logged ? dv?.time ?? [] : [];
+                  const mins = ents.reduce((n, t) => n + (t.minutes ?? 0), 0);
+                  const lv = dv?.off[0] ?? null;
                   const fk = flag ? `deadline:${d}:${flag.type}:${flag.id}` : '', lk = `loggedDay:${d}`, vk = `leave:${d}`;
                   return (
-                    <div key={d} className={`wp-dh${d === today ? ' tdy' : ''}`}>
+                    <div key={d} className={`wp-dh${d === today ? ' tdy' : ''}`} data-day={d} data-sig={dv ? daySignature(dv) : ''}>
                       {DOW3[dateOf(d).getDay()]}<b>{dateOf(d).getDate()}</b>
                       {mins > 0 && (
                         <button type="button" className={`wp-logged${openKey === lk ? ' open' : ''}`} data-testid="wp-logged" data-block={lk} data-day={d} data-start={-2}
@@ -331,12 +347,12 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                         </button>
                       )}
                       {lv && <button type="button" className={`wp-leave${openKey === vk ? ' open' : ''}`} data-block={vk} data-day={d} data-start={-3} aria-expanded={openKey === vk}
-                        onClick={(ev) => handlers.open({ kind: 'leave', key: vk, day: d, note: leave.get(d) ?? null }, ev.currentTarget)}>Leave</button>}
+                        onClick={(ev) => handlers.open({ kind: 'leave', key: vk, day: d, note: lv.type === 'holiday' ? lv.title : lv.note }, ev.currentTarget)}>{lv.type === 'holiday' ? 'Holiday' : 'Leave'}</button>}
                       {flag && (
-                        <button type="button" className={`wp-flag${openKey === fk ? ' open' : ''}`} data-block={fk} data-day={d} data-start={-1} aria-expanded={openKey === fk}
-                          title={`${flag.title}${flag.projectName ? ` · ${flag.projectName}` : ''} — due${due.length > 1 ? ` (+${due.length - 1} more)` : ''}`}
+                        <button type="button" className={`wp-flag${flag.overdue ? ' late' : ''}${openKey === fk ? ' open' : ''}`} data-block={fk} data-day={d} data-start={-1} aria-expanded={openKey === fk} data-testid="wp-flag"
+                          title={`${flag.key ? `${flag.key} ` : ''}${flag.title}${flag.projectName ? ` · ${flag.projectName}` : ''} — ${flag.overdue ? 'overdue' : 'due'}${due.length > 1 ? ` (+${due.length - 1} more)` : ''}`}
                           onClick={(ev) => handlers.open({ kind: 'deadline', key: fk, e: flag, others: due.slice(1) }, ev.currentTarget)}>
-                          <Icon name="flag" size={9} />{flag.title}{due.length > 1 && <em>+{due.length - 1}</em>}
+                          <Icon name="flag" size={9} />{flag.key ?? flag.title}{due.length > 1 && <em>+{due.length - 1}</em>}
                         </button>
                       )}
                     </div>
@@ -344,20 +360,22 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                 })}
               </div>
               <AttendanceRow days={days} today={today} />
-              <div className="wp-body" style={{ height: (END - START) * HR }}>
-                <div className="wp-lines" aria-hidden="true" />
-                <div className="wp-hrs" aria-hidden="true">
-                  {Array.from({ length: END - START }, (_, i) => START + i).map((h) => (
-                    <span key={h} style={{ top: (h - START) * HR, opacity: h === START ? 0 : 1 }}>{h === 12 ? '12 PM' : h === 10 ? '10 AM' : h > 12 ? h - 12 : h}</span>
+              <div className="wp-scroll" ref={scrollRef} data-testid="wp-scroll">
+                <div className="wp-body" style={{ height: (G1 - G0) * HR }}>
+                  <div className="wp-lines" aria-hidden="true" />
+                  <div className="wp-hrs" aria-hidden="true">
+                    {Array.from({ length: G1 - G0 }, (_, i) => G0 + i).map((h) => (
+                      <span key={h} data-hour={h} style={{ top: (h - G0) * HR, opacity: h === G0 ? 0 : 1 }}>{hourLabel(h)}</span>
+                    ))}
+                    {days.includes(today) && <span className="wp-nowl" style={{ top: (nowH - G0) * HR - 7 }}>{clockH(nowH)}</span>}
+                  </div>
+                  {cols.map((c) => (
+                    <DayCol key={c.d} col={c} nowTop={c.d === today ? (nowH - G0) * HR : null} nowLabel={clockH(nowH)}
+                      openKey={openKey?.includes(`:${c.d}:`) ? openKey : null}
+                      selKey={sel && sel.day === c.d ? sel.key : null} drag={drag && drag.moved && c.meets.some((m) => m.key === drag.key) ? drag.key : null} dragging={!!drag?.moved}
+                      tintOf={tintOf} origByKey={origByKey} canMove={canMove} h={handlers} />
                   ))}
-                  {days.includes(today) && nowH >= START && nowH <= END && <span className="wp-nowl" style={{ top: (nowH - START) * HR - 7 }}>{clockH(nowH)}</span>}
                 </div>
-                {cols.map((c) => (
-                  <DayCol key={c.d} col={c} nowTop={c.d === today && nowH >= START && nowH <= END ? (nowH - START) * HR : null} nowLabel={clockH(nowH)}
-                    openKey={openKey?.includes(`:${c.d}:`) ? openKey : null}
-                    selKey={sel && sel.day === c.d ? sel.key : null} drag={drag && drag.moved && c.meets.some((m) => m.key === drag.key) ? drag.key : null} dragging={!!drag?.moved}
-                    tintOf={tintOf} origByKey={origByKey} canMove={canMove} h={handlers} />
-                ))}
               </div>
             </div>
           )}
@@ -375,7 +393,11 @@ interface ColHandlers {
   down: (e: ReactPointerEvent, m: Meet) => void; move: (e: ReactPointerEvent, m: Meet) => void; up: (m: Meet) => void; cancel: () => void;
   alt: (m: Meet, up: boolean) => void; open: (d: Detail, el: HTMLElement) => void;
 }
-interface ColData { d: string; meets: Meet[]; lanes: Map<string, { lane: number; of: number }>; focus: Focus[]; logged: TimeEntry[]; reminders: Reminder[] }
+interface ColData {
+  d: string; meets: Meet[]; calls: TimelineEvent[]; lanes: Map<string, { lane: number; of: number }>; focus: Focus[];
+  logged: TimelineEvent[]; done: TimelineEvent[]; reminders: TimelineEvent[];
+}
+const top = (h: number) => (h - G0) * HR;
 
 /** One day of the week. Memoised: hover is pure CSS, and a column re-renders only when its own blocks, the now line or the open card on it change. */
 const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, selKey, drag, dragging, tintOf, origByKey, canMove, h }: {
@@ -385,35 +407,40 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, selKey, dr
   const { d } = col;
   return (
     <div className="wp-col" data-day={d}>
-      {nowTop != null && <div className="wp-now" style={{ top: nowTop }} aria-label={`Now, ${nowLabel}`} />}
+      {nowTop != null && <div className="wp-now" style={{ top: nowTop }} aria-label={`Now, ${nowLabel}`} data-testid="wp-now" />}
       {col.logged.map((t) => {
-        const st = new Date(t.startedAt!); const h0 = hourOf(st); const h1 = h0 + (t.isRunning ? Math.max(.25, (Date.now() - st.getTime()) / 3.6e6) : t.minutes / 60);
-        if (h1 <= START || h0 >= END) return null;
-        const top = Math.max(h0, START), bot = Math.min(h1, END);
-        const key = `logged:${d}:${t.id}`;
+        const sp = hoursOf(t);
+        const key = `time:${d}:${t.id}`;
+        // Under a meeting, call or focus block the entry is a slim green bar at the column's edge (still a button), so nothing is drawn twice.
+        const end = Math.max(sp.end, sp.start + .25);
+        const under = [...col.meets, ...col.focus].some((m) => m.start < end && m.end > sp.start) || col.calls.some((c) => { const x = hoursOf(c); return x.start < end && Math.max(x.end, x.start + .25) > sp.start; });
         return (
-          <button key={t.id} type="button" className={`wp-e lg${t.isRunning ? ' run' : ''}${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={top} aria-expanded={openKey === key}
-            style={{ top: (top - START) * HR, height: Math.max(20, (bot - top) * HR - 2) }}
-            onClick={(ev) => h.open({ kind: 'logged', key, entry: t }, ev.currentTarget)}>
-            {t.isRunning ? 'Running · ' : 'Logged · '}{t.taskTitle}<small>{clockH(h0)}{t.isRunning ? '' : ` – ${clockH(h1)}`}</small>
+          <button key={t.id} type="button" className={`wp-e lg${under ? ' thin' : ''}${t.running ? ' run' : ''}${t.approximated ? ' ap' : ''}${openKey === key ? ' open' : ''}`} aria-label={`Logged ${fmtMins(t.minutes ?? 0)} · ${t.title}`} data-block={key} data-day={d} data-start={sp.start} data-type="time"
+            aria-expanded={openKey === key} style={{ top: top(sp.start), height: Math.max(16, (Math.max(sp.end, sp.start + .25) - sp.start) * HR - 2) }}
+            title={`${t.approximated ? 'Logged (typed in, placed on the day)' : 'Logged'} · ${t.title}`}
+            onClick={(ev) => h.open({ kind: 'time', key, t }, ev.currentTarget)}>
+            {t.running ? 'Running · ' : ''}{t.title}<small>{t.approximated ? '≈ ' : ''}{clockH(sp.start)}{t.running ? '' : ` – ${clockH(sp.end)}`}</small>
           </button>
         );
       })}
       {col.focus.map((f) => (
-        <button key={f.key} type="button" className={`wp-e f${dragging ? ' dim' : ''}${openKey === f.key ? ' open' : ''}`} data-block={f.key} data-day={d} data-start={f.start} aria-expanded={openKey === f.key}
-          style={{ top: (f.start - START) * HR, height: (f.end - f.start) * HR - 2 }} title={`Focus · ${f.e.title}`}
+        <button key={f.key} type="button" className={`wp-e f${dragging ? ' dim' : ''}${openKey === f.key ? ' open' : ''}`} data-block={f.key} data-day={d} data-start={f.start} data-type="focus" aria-expanded={openKey === f.key}
+          style={{ top: top(f.start), height: (f.end - f.start) * HR - 2 }} title={`Focus · ${focusLabel(f.e)}`}
           onClick={(ev) => h.open({ kind: 'focus', key: f.key, f }, ev.currentTarget)}>
-          <span className="wp-f-k">Focus</span>{f.e.title}<small>{f.end - f.start >= 1.5 ? `${clockH(f.start)} – ${clockH(f.end)}` : clockH(f.start)}</small>
+          <span className="wp-f-k">Focus</span>{focusLabel(f.e)}<small>{clockH(f.start)} – {clockH(f.end)}</small>
         </button>
       ))}
-      {col.reminders.map((r) => {
-        const hr = hourOf(new Date(r.nextFireAt!));
-        const key = `reminder:${d}:${r.id}`;
+      {col.calls.map((t) => {
+        const sp = hoursOf(t);
+        const end = Math.max(sp.end, sp.start + .25);
+        const l = col.lanes.get(t.id) ?? { lane: 0, of: 1 };
+        const key = `call:${d}:${t.id}`;
+        const xs = end - sp.start <= .3;
         return (
-          <button key={r.id} type="button" className={`wp-rem${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={hr} aria-expanded={openKey === key}
-            style={{ top: Math.max(.2, Math.min(END - START - .2, hr - START)) * HR - 9 }} title={`Reminder · ${clockH(hr)}`}
-            onClick={(ev) => h.open({ kind: 'reminder', key, r }, ev.currentTarget)}>
-            <i aria-hidden="true" />{r.title}
+          <button key={t.id} type="button" className={`wp-e c${xs ? ' xs' : ''}${t.running ? ' run' : ''}${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={sp.start} data-type="call"
+            aria-expanded={openKey === key} style={{ top: top(sp.start), height: (end - sp.start) * HR - 2, left: `calc(${(l.lane / l.of) * 100}% + 3px)`, width: `calc(${100 / l.of}% - 6px)` }}
+            title={`Call · ${t.title}`} onClick={(ev) => h.open({ kind: 'call', key, t }, ev.currentTarget)}>
+            <Icon name="phone" size={10} />{t.title}{!xs && <small>{clockH(sp.start)}{t.running ? ' · live' : ` – ${clockH(sp.end)}`}{t.people.length ? ` · ${t.people.length} people` : ''}</small>}
           </button>
         );
       })}
@@ -426,15 +453,14 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, selKey, dr
         const isDrag = drag === m.key;
         const people = (m.e.people ?? []).slice(1, 3).map((p) => p.split(' ')[0]).join(', ');
         const sub = len >= 1.25 ? `${clockH(m.start)} – ${clockH(m.end)}` : `${clockH(m.start)}${people ? ` · ${people}` : m.e.projectName ? ` · ${m.e.projectName}` : ''}`;
-        const top = (Math.max(m.start, START) - START) * HR;
         const key = `meeting:${d}:${m.key}`;
         return (
           <div key={m.key} className="wp-slot">
-            {isDrag && <div className="wp-ghost" style={{ top: (orig.start - START) * HR, height: len * HR - 2 }} aria-hidden="true" />}
-            {isDrag && <span className="wp-snap" style={{ top: top - 22 }}>{clockH(m.start)}</span>}
+            {isDrag && <div className="wp-ghost" style={{ top: top(orig.start), height: len * HR - 2 }} aria-hidden="true" />}
+            {isDrag && <span className="wp-snap" style={{ top: top(m.start) - 22 }}>{clockH(m.start)}</span>}
             <button type="button" className={`wp-e ${tintOf(m.e.projectName)}${xs ? ' xs' : ''}${selKey === m.key ? ' sel' : ''}${isDrag ? ' lift' : ''}${why ? '' : ' movable'}${openKey === key ? ' open' : ''}`}
-              data-block={key} data-day={d} data-start={m.start} aria-expanded={openKey === key}
-              style={{ top, height: Math.max(.25, len) * HR - 2, left: `calc(${(l.lane / l.of) * 100}% + 3px)`, width: `calc(${100 / l.of}% - 6px)` }}
+              data-block={key} data-day={d} data-start={m.start} data-type="meeting" aria-expanded={openKey === key}
+              style={{ top: top(m.start), height: Math.max(.25, len) * HR - 2, left: `calc(${(l.lane / l.of) * 100}% + 3px)`, width: `calc(${100 / l.of}% - 6px)` }}
               title={why ? `${m.e.title} · ${why}` : `${m.e.title} · drag to move (Alt+↑/↓)`} aria-pressed={selKey === m.key}
               onClick={(ev) => h.open({ kind: 'meeting', key, m: orig }, ev.currentTarget)}
               onPointerDown={(ev) => h.down(ev, orig)} onPointerMove={(ev) => h.move(ev, orig)} onPointerUp={() => h.up(orig)} onPointerCancel={h.cancel}
@@ -442,6 +468,28 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, selKey, dr
               {m.e.title}{!xs && <small>{sub}</small>}
             </button>
           </div>
+        );
+      })}
+      {col.done.map((t) => {
+        const at = hoursOf(t).start;
+        const key = `done:${d}:${t.id}`;
+        return (
+          <button key={t.id} type="button" className={`wp-done${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={at} data-type="done" aria-expanded={openKey === key}
+            style={{ top: Math.max(2, top(at) - 9) }} title={`Done ${clockH(at)} · ${t.key ? `${t.key} ` : ''}${t.title}`}
+            onClick={(ev) => h.open({ kind: 'done', key, t }, ev.currentTarget)}>
+            <Icon name="check" size={9} />{t.key ?? t.title}
+          </button>
+        );
+      })}
+      {col.reminders.map((t) => {
+        const hr = hoursOf(t).start;
+        const key = `reminder:${d}:${t.id}`;
+        return (
+          <button key={t.id} type="button" className={`wp-rem${t.status !== 'scheduled' ? ' fired' : ''}${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={hr} data-type="reminder" aria-expanded={openKey === key}
+            style={{ top: Math.max(2, top(hr) - 9) }} title={`Reminder · ${clockH(hr)}`}
+            onClick={(ev) => h.open({ kind: 'reminder', key, t }, ev.currentTarget)}>
+            <i aria-hidden="true" />{t.title}
+          </button>
         );
       })}
     </div>

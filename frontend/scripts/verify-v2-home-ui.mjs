@@ -48,6 +48,18 @@ const projects = [project(1, 'Razorpay Payments', 'Delayed'), project(2, 'SIA In
 const dashboard = { counts: { myDueToday: 1, myCompletedToday: 0, myOpen: 9, myOverdue: 2, activeProjects: 4, completedProjects: 0, totalProjects: 4, openTasks: 20, overdueTasks: 3, members: 4, overallProgress: 40, myLoggedMinutesThisWeek: 250 }, myTasks: [], projects: [], activity: [], myWork: [] };
 const workload = { scope: 'Everyone', available: ['Everyone'], members: [], totals: { people: 4, open: 10, overdue: 2 } };
 
+// The one timeline (GET /timeline) Today and the Calendar both read, from the same records as the calendar above and the reminder.
+const tev = (o) => ({ end: null, allDay: false, link: null, projectId: null, projectName: null, people: [], status: null, colour: '', key: null, approximated: false, overdue: false, priority: null,
+  minutes: null, note: null, joinUrl: null, notes: false, userId: user.id, mode: null, running: false, ...o });
+const timeline = (from, to) => ({ from, to, timeZone: 'Asia/Kolkata', scope: 'me', generatedAt: new Date().toISOString(), events: [
+  ...calendar.filter((e) => e.type !== 'project').map((e) => (e.type === 'meeting'
+    ? tev({ id: `meeting:${e.id}:${e.startsAt}`, type: 'meeting', title: e.title, start: e.startsAt, end: new Date(Date.parse(e.startsAt) + (e.durationMinutes ?? 30) * 60e3).toISOString(), date: e.date,
+      sourceType: e.projectId ? 'projectMeeting' : 'workspaceMeeting', sourceId: e.id, projectId: e.projectId, projectName: e.projectName, people: e.people, status: e.status, joinUrl: e.joinUrl, notes: e.notes })
+    : tev({ id: `due:${e.type}:${e.id}`, type: 'due', title: e.title, key: e.type === 'work' ? e.title : null, allDay: true, start: at(e.date, 0, 0), date: e.date, sourceType: e.type, sourceId: e.id, projectId: e.projectId,
+      projectName: e.projectName, status: e.status, priority: e.priority }))),
+  tev({ id: `reminder:${g(7)}`, type: 'reminder', title: 'Rotate CRIF token', start: at(today, 15, 15), date: today, sourceType: 'reminder', sourceId: g(7), status: 'scheduled' }),
+].filter((t) => t.date >= from && t.date <= to) });
+
 const errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 const make = async (theme, writes, opts = {}) => {
@@ -81,6 +93,7 @@ const make = async (theme, writes, opts = {}) => {
       data = { rows: list, counts: opts.empty ? { all: 0, assigned: 0, decisions: 0, mentions: 0 } : counts, later: 0 };
     }
     else if (ep === '/api/v1/inbox/briefing') data = opts.empty ? { count: 0, headline: "You're all caught up.", reasons: [], sources: 'read your work', stats: { overdue: 0, dueToday: 0, decisions: 0, approvals: 0, mentions: 0, reminders: 0 } } : briefing;
+    else if (ep === '/api/v1/timeline') data = timeline(url.searchParams.get('from'), url.searchParams.get('to'));
     else if (ep === '/api/v1/calendar') { const from = url.searchParams.get('from'), to = url.searchParams.get('to'); data = calendar.filter((e) => e.date >= from && e.date <= to && (url.searchParams.get('mine') === 'true' ? e.type !== 'project' : true)); }
     else if (ep === '/api/v1/meet') data = { items: calendar.filter((e) => e.type === 'meeting').map((e) => ({ ref: `p:${e.id}`, kind: 'project', id: e.id, title: e.title, description: e.title === 'CRIF UAT sign-off' ? '1. Open defects\n2. Token rotation status' : null, start: e.startsAt,
       end: new Date(Date.parse(e.startsAt) + (e.durationMinutes ?? 30) * 60_000).toISOString(), timeZone: 'Asia/Kolkata', projectId: e.projectId, projectName: e.projectName, projectKey: null, provider: 'google', providerName: 'Google Meet', joinUrl: e.joinUrl ?? '',
@@ -129,8 +142,10 @@ try {
     const yday = page.getByRole('region', { name: 'Your day' });
     await yday.locator('.hm-cap', { hasText: 'CRIF UAT sign-off' }).waitFor();
     assert.match(await yday.locator('.hm-day-hd').innerText(), /3 meetings · 2 focus blocks · .+ free/);
-    await yday.locator('.hm-cap.inc', { hasText: 'since 9:12' }).waitFor();
+    // Focus blocks are named after the work they are for (here the critical ticket first), never a generic "Deep work".
     assert.equal(await yday.locator('.hm-cap.focus').count(), 2);
+    assert.match(await yday.locator('.hm-cap.focus').first().innerText(), /^Focus · WT-5/);
+    assert.equal(await yday.locator('.hm-cap.focus', { hasText: 'Deep work' }).count(), 0);
     assert.equal((await yday.locator('.hm-now').innerText()).trim(), '10:42');
     assert.equal((await yday.locator('.hm-hours span').allInnerTexts()).join(' '), '9 AM 10 11 12 PM 1 2 3 4 5 6 7');
     const w = async (t) => (await yday.locator('.hm-cap', { hasText: t }).boundingBox()).width;

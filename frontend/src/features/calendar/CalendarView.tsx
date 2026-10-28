@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { insightApi } from '../../api/endpoints';
-import type { CalendarEvent } from '../../api/types';
+import type { CalendarEvent, TimelineEvent } from '../../api/types';
+import { toCalendarEvent, useTimeline } from './timeline';
 import { Icon } from '../../components/Icon';
 import { EmptyState } from '../../components/ui';
 import { DOW, MONTHS_FULL, formatDate, formatTime, toISODate, todayISO } from '../../lib/format';
@@ -15,6 +16,15 @@ const cls = (e: CalendarEvent) =>
   e.type === 'project' || e.type === 'milestone' ? 'purple' : e.type === 'stage' ? 'amber' : e.type === 'meeting' ? 'teal' : e.category === 'Done' ? 'green' : e.overdue ? 'red' : e.type === 'action' ? 'cyan' : e.type === 'work' ? 'orange' : 'blue';
 const TYPE_LABEL: Record<CalendarEvent['type'], string> = { task: 'Task', action: 'Action item', work: 'Operational', issue: 'Issue', project: 'Deadline', milestone: 'Milestone', stage: 'Stage', meeting: 'Meeting' };
 const PREFIX: Partial<Record<CalendarEvent['type'], string>> = { project: '⚑ ', milestone: '⚑ ', stage: '◆ ', action: '✓ ', work: '⚡ ', meeting: '☉ ' };
+
+/** A timeline event as a month cell entry: meetings and open work as they are, finished work green, calls as a meeting-like entry. */
+function monthEvent(t: TimelineEvent): CalendarEvent[] {
+  if (t.type === 'meeting' || t.type === 'due') return [toCalendarEvent(t)];
+  if (t.type === 'done') return [{ ...toCalendarEvent({ ...t, type: 'due' }), category: 'Done', status: t.status ?? 'Done', overdue: false }];
+  if (t.type === 'call') return [{ type: 'meeting', id: t.sourceId, title: `Call · ${t.title}`, date: t.date, status: t.status, category: null, overdue: false, projectId: t.projectId,
+    projectName: t.projectName, priority: null, startsAt: t.start, people: t.people }];
+  return [];
+}
 
 /** Month calendar of task, action item and operational work deadlines, project deadlines and lifecycle stage ends. Days can be picked one at a time,
  *  as a range (click a start then an end), or as a scattered multi-select — whichever the "Dates" mode is set to. */
@@ -40,7 +50,13 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
 
   const from = toISODate(cells[0].date);
   const to = toISODate(cells[cells.length - 1].date);
-  const q = useWsQuery(['calendar', from, to, projectId, mine, userId], () => insightApi.calendar(from, to, projectId, mine, userId), { placeholderData: (p) => p });
+  // My own month reads the one timeline (the Calendar's week and Today read it too); a project's or someone else's month keeps the calendar feed.
+  const own = !!mine && !projectId && !userId;
+  const tl = useTimeline({ from, to }, { enabled: own });
+  const legacy = useWsQuery(['calendar', from, to, projectId, mine, userId], () => insightApi.calendar(from, to, projectId, mine, userId), { placeholderData: (p) => p, enabled: !own });
+  const links = useMemo(() => new Map((tl.data?.events ?? []).filter((t) => t.type === 'call').map((t) => [t.sourceId, t.link ?? '/?tab=calendar'])), [tl.data]);
+  const ownData = useMemo(() => (tl.data?.events ?? []).flatMap(monthEvent), [tl.data]);
+  const q = own ? { data: tl.data ? ownData : undefined } : legacy;
 
   const byDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -67,6 +83,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
   const changeMode = (m: SelectMode) => { setMode(m); setRangeAnchor(null); setSelected(m === 'single' ? [today] : []); };
 
   const open = (e: CalendarEvent) => {
+    if (links.has(e.id)) { nav(links.get(e.id)!); return; }
     if (e.type === 'task') onOpenTask(e.id, e.projectId);
     else if (e.type === 'action') nav(`/work?item=${e.id}`);
     else if (e.type === 'work') { if (onOpenWork) onOpenWork(e.id); else nav(`/work?item=${e.id}`); }

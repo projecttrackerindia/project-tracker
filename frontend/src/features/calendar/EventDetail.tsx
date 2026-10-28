@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { actionItemApi, opsApi, projectApi, taskApi, timeApi, workApi } from '../../api/endpoints';
-import type { CalendarEvent, Task, TimeEntry, WorkTask } from '../../api/types';
+import type { CalendarEvent, Task, TimelineEvent, WorkTask } from '../../api/types';
 import { Face } from '../../components/Face';
 import { Icon } from '../../components/Icon';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
@@ -15,7 +15,7 @@ import './eventDetail.css';
 
 const KIND_NAME: Record<string, string> = { task: 'Task', action: 'Action item', work: 'Ticket', project: 'Project', milestone: 'Milestone', stage: 'Stage' };
 const longDay = (day: string) => { const d = dateOf(day); return `${d.toLocaleDateString('en-GB', { weekday: 'long' })} ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
-const keyOf = (e: CalendarEvent, task?: Task | null, work?: WorkTask | null) => task?.key ?? work?.key ?? /^[A-Z][A-Z0-9]+-\d+/.exec(e.title)?.[0] ?? null;
+const keyOf = (e: CalendarEvent, task?: Task | null, work?: WorkTask | null) => task?.key ?? work?.key ?? e.key ?? /^[A-Z][A-Z0-9]+-\d+/.exec(e.title)?.[0] ?? null;
 const ago = (s: string | null | undefined) => {
   if (!s) return null;
   const m = Math.round((Date.now() - Date.parse(s)) / 60_000);
@@ -151,9 +151,11 @@ function Body({ detail, today, nowH, days, actions, onClose }: { detail: Detail;
     case 'meeting': return <MeetingBody m={detail.m} today={today} nowH={nowH} days={days} actions={actions} onClose={onClose} />;
     case 'focus': return <WorkBody e={detail.f.e} focus={detail.f} today={today} days={days} actions={actions} onClose={onClose} />;
     case 'deadline': return <WorkBody e={detail.e} others={detail.others} today={today} days={days} actions={actions} onClose={onClose} />;
-    case 'logged': return <LoggedBody entries={[detail.entry]} day={detail.entry.workDate} single today={today} onClose={onClose} />;
+    case 'time': return <LoggedBody entries={[detail.t]} day={detail.t.date} single today={today} onClose={onClose} />;
     case 'loggedDay': return <LoggedBody entries={detail.entries} day={detail.day} today={today} onClose={onClose} />;
-    case 'reminder': return <ReminderBody r={detail.r} today={today} onClose={onClose} />;
+    case 'done': return <DoneBody t={detail.t} today={today} onClose={onClose} />;
+    case 'call': return <CallBody t={detail.t} today={today} onClose={onClose} />;
+    case 'reminder': return <ReminderBody t={detail.t} today={today} onClose={onClose} />;
     case 'leave': return (
       <Head kind="leave" title={detail.note || 'On leave'} when={<>{longDay(detail.day)} · all day</>} why="Leave recorded on your timesheet for this day — no focus time is planned on it." />
     );
@@ -188,7 +190,7 @@ function WorkBody({ e, focus, others, today, days, actions, onClose }: { e: Cale
 
   const run = async (name: string, fn: () => Promise<unknown>, ok: string, after?: () => void) => {
     setBusy(name);
-    try { await fn(); toast(ok, 'success'); after?.(); void invalidateWorkspace(wid, 'calendar'); void invalidateWorkspace(wid, 'time'); }
+    try { await fn(); toast(ok, 'success'); after?.(); void invalidateWorkspace(wid, 'calendar'); void invalidateWorkspace(wid, 'time'); void invalidateWorkspace(wid, 'timeline'); }
     catch (err) { toast(err instanceof ApiError ? err.message : 'That could not be saved.', 'error'); }
     finally { setBusy(null); }
   };
@@ -336,24 +338,31 @@ function MeetingBody({ m, today, nowH, days, actions, onClose }: { m: Meet; toda
   );
 }
 
-function LoggedBody({ entries, day, single, today, onClose }: { entries: TimeEntry[]; day: string; single?: boolean; today: string; onClose: () => void }) {
+const span = (t: TimelineEvent) => {
+  const s = hourOf(new Date(t.start));
+  return { s, e: t.end ? s + (Date.parse(t.end) - Date.parse(t.start)) / 3.6e6 : s };
+};
+const minsOf = (t: TimelineEvent) => t.minutes ?? (t.end ? Math.round((Date.parse(t.end) - Date.parse(t.start)) / 60_000) : 0);
+
+function LoggedBody({ entries, day, single, today, onClose }: { entries: TimelineEvent[]; day: string; single?: boolean; today: string; onClose: () => void }) {
   const navigate = useNavigate();
-  const total = entries.reduce((n, t) => n + t.minutes, 0);
+  const total = entries.reduce((n, t) => n + minsOf(t), 0);
   const first = entries[0];
-  const st = first?.startedAt ? hourOf(new Date(first.startedAt)) : null;
-  const when = single && st != null ? <>{longDay(day)} · {clockAP(st)}{first.isRunning ? ' – now' : ` – ${clockAP(st + first.minutes / 60)}`}</> : <>{longDay(day)}</>;
+  const sp = first ? span(first) : null;
+  const when = single && sp ? <>{longDay(day)} · {first.approximated ? 'about ' : ''}{clockAP(sp.s)}{first.running ? ' – now' : ` – ${clockAP(sp.e)}`}</> : <>{longDay(day)}</>;
   const why = single
-    ? first.isRunning ? <>Your timer is running on <b>{first.taskKey || first.taskTitle}</b></> : <>Time you logged on <b>{first.taskKey || first.taskTitle}</b>{first.startedAt ? ' with the timer' : ''}</>
+    ? first.running ? <>Your timer is running on <b>{first.key || first.title}</b></>
+      : <>Time logged on <b>{first.key || first.title}</b>{first.approximated ? ' — typed in as minutes, so it is placed from the start of your day' : ' with the timer'}</>
     : <>Logged {fmtMins(total)} {day === today ? 'today' : `on ${dayLabel(day, today)}`} across {entries.length} {entries.length === 1 ? 'entry' : 'entries'}</>;
   return (
     <>
-      <Head kind={single ? 'logged' : 'loggedDay'} title={single ? first.taskTitle : `${fmtMins(total)} logged`} when={when} why={why} sub={single ? (first.taskKey ? <code>{first.taskKey}</code> : null) : null} />
+      <Head kind={single ? 'time' : 'loggedDay'} title={single ? first.title : `${fmtMins(total)} logged`} when={when} why={why} sub={single && first.projectName ? first.projectName : null} />
       <ul className="ed-entries" data-testid="ed-entries">
         {entries.map((t) => (
           <li key={t.id}>
-            <button type="button" onClick={() => { onClose(); navigate(t.workTaskId ? `/work?item=${t.workTaskId}` : t.taskId ? `/work?item=${t.taskId}` : '/insights?tab=time'); }}>
-              <span className="ed-ent-t">{t.taskKey && <code>{t.taskKey}</code>}{t.taskTitle}{t.note && <small>{t.note}</small>}</span>
-              <span className="ed-ent-m">{t.isRunning ? 'running' : fmtMins(t.minutes)}{t.billable ? <small>billable</small> : null}</span>
+            <button type="button" onClick={() => { onClose(); navigate(t.link ?? '/insights?tab=time'); }}>
+              <span className="ed-ent-t">{t.title}{t.note && <small>{t.note}</small>}</span>
+              <span className="ed-ent-m">{t.running ? 'running' : fmtMins(minsOf(t))}{t.approximated ? <small>approx.</small> : null}</span>
             </button>
           </li>
         ))}
@@ -363,15 +372,62 @@ function LoggedBody({ entries, day, single, today, onClose }: { entries: TimeEnt
   );
 }
 
-function ReminderBody({ r, today, onClose }: { r: { id: string; title: string; nextFireAt: string | null }; today: string; onClose: () => void }) {
+const DONE_KIND: Record<string, string> = { task: 'Task', issue: 'Test issue', action: 'Action item', work: 'Ticket' };
+
+function DoneBody({ t, today, onClose }: { t: TimelineEvent; today: string; onClose: () => void }) {
   const navigate = useNavigate();
-  const at = r.nextFireAt ? new Date(r.nextFireAt) : null;
-  const day = at ? `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}` : today;
+  const at = hourOf(new Date(t.start));
   return (
     <>
-      <Head kind="reminder" title={r.title} when={<>{longDay(day)}{at ? ` · ${clockAP(hourOf(at))}` : ''}</>} why="A reminder you set — it pings you at this time." />
-      <div className="ed-acts"><div className="ed-main-acts"><button type="button" className="ed-btn" onClick={() => { onClose(); navigate('/?tab=reminders'); }}><Icon name="alarm" size={13} />Open reminders</button></div></div>
+      <Head kind="done" title={t.title} when={<>{longDay(t.date)} · finished at {clockAP(at)}</>} sub={t.key ? <code>{t.key}</code> : DONE_KIND[t.sourceType] ?? 'Item'}
+        why={<>{DONE_KIND[t.sourceType] ?? 'Work'} marked done{t.date === today ? ' today' : ` on ${dayLabel(t.date, today)}`}{t.people[0] ? ` by ${t.people[0]}` : ''}{t.projectName ? <> in <b>{t.projectName}</b></> : null}</>} />
+      <div className="ed-pills">{t.status && <Pill tone="green">{t.status}</Pill>}{t.priority && <Pill tone={priTone(t.priority)}>{t.priority}</Pill>}</div>
+      <div className="ed-acts"><div className="ed-main-acts"><button type="button" className="ed-btn primary" data-testid="ed-open" onClick={() => { onClose(); navigate(t.link ?? '/work'); }}><Icon name="arrowRight" size={13} />Open</button></div></div>
     </>
   );
 }
 
+function CallBody({ t, today, onClose }: { t: TimelineEvent; today: string; onClose: () => void }) {
+  const navigate = useNavigate();
+  const sp = span(t);
+  const mins = Math.max(1, Math.round((sp.e - sp.s) * 60));
+  const live = t.running;
+  return (
+    <>
+      <Head kind="call" title={t.title} when={<>{longDay(t.date)} · {clockAP(sp.s)}{live ? ' – now' : ` – ${clockAP(sp.e)}`}</>}
+        sub={live ? <span className="ed-cd live">live</span> : fmtMins(mins)}
+        why={<>{live ? 'A call going on now' : `A call you were in ${t.date === today ? 'today' : dayLabel(t.date, today).toLowerCase()}`}{t.projectName ? <> · <b>{t.projectName}</b></> : null}{t.notes ? ' · notes by Project Tracker' : ''}</>} />
+      <div className="ed-rows">
+        {t.people.length > 0 && (
+          <Row label={`People · ${t.people.length}`}>
+            <span className="ed-faces">{t.people.slice(0, 6).map((p) => <Face key={p} byName name={p} className="ed-av" title={p} text={p.split(/\s+/).map((x) => x[0]).join('').slice(0, 2).toUpperCase()} />)}</span>
+            <span className="ed-faint"> {t.people.slice(0, 3).join(', ')}{t.people.length > 3 ? ` +${t.people.length - 3}` : ''}</span>
+          </Row>
+        )}
+        <Row label="Length">{fmtMins(mins)}</Row>
+      </div>
+      {t.link && (
+        <div className="ed-acts"><div className="ed-main-acts">
+          <button type="button" className="ed-btn primary" data-testid="ed-open" onClick={() => { onClose(); navigate(t.link!); }}><Icon name={live ? 'phone' : 'note'} size={13} />{live ? 'Rejoin' : t.notes ? 'Open notes' : 'Open'}</button>
+        </div></div>
+      )}
+    </>
+  );
+}
+
+function ReminderBody({ t, today, onClose }: { t: TimelineEvent; today: string; onClose: () => void }) {
+  const navigate = useNavigate();
+  const at = hourOf(new Date(t.start));
+  const fired = t.status !== 'scheduled';
+  return (
+    <>
+      <Head kind="reminder" title={t.title} when={<>{longDay(t.date)} · {clockAP(at)}</>} sub={t.key ? <code>{t.key}</code> : fired ? 'went off' : null}
+        why={fired ? 'A reminder you set — it went off at this time.' : `A reminder you set — it pings you ${t.date === today ? 'today' : dayLabel(t.date, today).toLowerCase()} at this time.`} />
+      {t.note && <p className="ed-foot">{t.note}</p>}
+      <div className="ed-acts"><div className="ed-main-acts">
+        {t.link && t.link !== '/?tab=reminders' && <button type="button" className="ed-btn" onClick={() => { onClose(); navigate(t.link!); }}><Icon name="arrowRight" size={13} />Open item</button>}
+        <button type="button" className="ed-btn" onClick={() => { onClose(); navigate('/?tab=reminders'); }}><Icon name="alarm" size={13} />Open reminders</button>
+      </div></div>
+    </>
+  );
+}

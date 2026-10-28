@@ -77,7 +77,7 @@ export function useWorkList(f: WorkListFilters, enabled = true) {
 /** After any change to work: every list and item of the new API, and the older views that show the same work. */
 export function refreshWork(wid: string | null | undefined) {
   if (!wid) return;
-  for (const k of ['work-items', 'work', 'my-work', 'workload', 'inbox', 'dashboard', 'calendar', 'reminders']) void queryClient.invalidateQueries({ queryKey: [wid, k] });
+  for (const k of ['work-items', 'work', 'my-work', 'workload', 'inbox', 'dashboard', 'calendar', 'reminders', 'timeline']) void queryClient.invalidateQueries({ queryKey: [wid, k] });
   void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === wid && q.queryKey[1] === 'project' && q.queryKey[3] === 'tasks' });
 }
 

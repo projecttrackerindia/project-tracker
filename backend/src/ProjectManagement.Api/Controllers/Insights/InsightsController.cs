@@ -21,6 +21,12 @@ public class InsightsController(DashboardService dashboard, CalendarService cale
         [FromQuery] bool mine = false, [FromQuery] Guid? userId = null, CancellationToken ct = default) =>
         Ok(await calendar.GetAsync(from, to, projectId, mine, userId, ct));
 
+    /// <summary>The one day/week timeline Today and the Calendar both draw (meetings, calls, time, done, due, reminders, attendance, days off).</summary>
+    [HttpGet("timeline"), RequireModule(Modules.Calendar)]
+    public async Task<IActionResult> Timeline([FromServices] TimelineService timeline, [FromQuery] DateOnly from, [FromQuery] DateOnly to,
+        [FromQuery] string? scope = null, [FromQuery] Guid? userId = null, CancellationToken ct = default) =>
+        Ok(await timeline.GetAsync(from, to, scope, userId, ct));
+
     [HttpGet("search")]
     public async Task<IActionResult> Search([FromQuery] string q, CancellationToken ct) => Ok(await search.SearchAsync(q ?? "", ct));
 

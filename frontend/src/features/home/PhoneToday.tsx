@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
-import { insightApi, integrationsApi, timeApi } from '../../api/endpoints';
+import { integrationsApi, timeApi } from '../../api/endpoints';
+import { toCalendarEvent, useTimeline } from '../calendar/timeline';
+import { YourDayList } from '../calendar/YourDay';
 import type { ApprovalRow, DevLink, TimesheetGrid } from '../../api/types';
 import { Face } from '../../components/Face';
 import { invalidateWorkspace, useCachedWsQuery, useWsQuery } from '../../lib/hooks';
@@ -92,6 +94,7 @@ export function PhoneToday() {
         </section>
       )}
       <PhoneUpNext />
+      <YourDayList />
       {pending.slice(0, 1).map((p) => <TimesheetApprovalCard key={p.id} row={p} />)}
     </div>
   );
@@ -114,10 +117,9 @@ function OutagePill({ row }: { row: InboxRow }) {
 function PhoneUpNext() {
   const today = todayISO();
   const to = iso(new Date(Date.now() + 14 * 864e5));
-  const q = useWsQuery(['calendar', 'range', today, to, 'me'], () => insightApi.calendar(today, to, undefined, true), { staleTime: 60_000 });
+  const q = useTimeline({ from: today, to });
   const now = useNow(30_000);
-  const next = useMemo(() => (q.data ?? []).filter((e) => e.type === 'meeting' && e.startsAt && e.category !== 'Cancelled' && e.status !== 'Cancelled')
-    .map((e) => ({ e, start: new Date(e.startsAt!), mins: e.durationMinutes ?? 30 }))
+  const next = useMemo(() => (q.data?.events ?? []).filter((t) => t.type === 'meeting').map((t) => ({ e: toCalendarEvent(t), start: new Date(t.start), mins: t.end ? Math.round((Date.parse(t.end) - Date.parse(t.start)) / 60_000) : 30 }))
     .sort((a, b) => a.start.getTime() - b.start.getTime())
     .find((m) => m.start.getTime() + m.mins * 60_000 > now) ?? null, [q.data, now]);
   if (!next) return null;

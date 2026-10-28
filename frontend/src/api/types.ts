@@ -232,8 +232,23 @@ export interface Dashboard {
   /** My next open work of every kind (project tasks, issues, action items, operational work). */
   myWork: WorkItem[];
 }
+/** One thing on a day of the shared timeline (GET /timeline). Instants are UTC; `date` is the day it falls on in the person's zone. */
+export type TimelineType = 'meeting' | 'call' | 'time' | 'done' | 'due' | 'reminder' | 'attendance' | 'leave' | 'holiday';
+export interface TimelineEvent {
+  id: string; type: TimelineType; title: string; start: string; end: string | null; allDay: boolean; date: string;
+  /** What it is underneath (task, issue, action, work, project, milestone, stage, projectMeeting, workspaceMeeting, call, timeEntry, reminder, attendance, plannedLeave, holiday). */
+  sourceType: string; sourceId: string; link: string | null; projectId: string | null; projectName: string | null; people: string[]; status: string | null;
+  colour: string; key: string | null;
+  /** A time entry typed in as minutes only, placed on its day by the server. */
+  approximated: boolean; overdue: boolean; priority: Priority | null; minutes: number | null; note: string | null; joinUrl: string | null; notes: boolean;
+  userId: string | null; mode: string | null; running: boolean;
+}
+export interface Timeline { from: string; to: string; timeZone: string; scope: 'me' | 'user' | 'team'; generatedAt: string; events: TimelineEvent[] }
+
 export interface CalendarEvent {
-  type: 'task' | 'action' | 'work' | 'issue' | 'project' | 'stage' | 'milestone' | 'meeting'; id: string; title: string; date: string; status: string | null; category: StatusCategory | null;
+  type: 'task' | 'action' | 'work' | 'issue' | 'project' | 'stage' | 'milestone' | 'meeting'; id: string; title: string; date: string;
+  /** INFRA-4, WT-12 … when the source knows it (the timeline does). */
+  key?: string | null; status: string | null; category: StatusCategory | null;
   overdue: boolean; projectId: string | null; projectName: string | null; priority: Priority | null;
   /** When a meeting session starts (UTC); null for anything that only has a date. */
   startsAt?: string | null;

@@ -51,6 +51,25 @@ const work = { id: ids.w1, key: 'OPS-21', number: 21, title: 'Integration runtim
   startDate: null, dueDate: today, isOverdue: false, completedAt: null, createdAt: at(mon, '08:00'), version: 2, commentCount: 1, attachmentCount: 0, can: { edit: true, delete: false }, loggedMinutes: 90,
   sla: { response: null, resolution: { dueAt: at(today, '18:00'), metAt: null, state: 'AtRisk' }, state: 'AtRisk' } };
 
+// The one timeline (GET /timeline) the Calendar reads, made from the same records: meetings and open work as scheduled, the finished ticket
+// where it was finished, time entries at their hours (the typed-in one placed on the day), the reminder and the day of leave.
+const tev = (o) => ({ end: null, allDay: false, link: null, projectId: null, projectName: null, people: [], status: null, colour: '', key: null, approximated: false, overdue: false, priority: null,
+  minutes: null, note: null, joinUrl: null, notes: false, userId: user.id, mode: null, running: false, ...o });
+const KEYS = { [ids.w1]: 'OPS-21', [ids.w2]: 'OPS-19', [ids.t1]: 'PAY-7', [ids.t3]: 'PAY-9' };
+const timeline = (from, to) => ({ from, to, timeZone: 'Asia/Kolkata', scope: 'me', generatedAt: NOW.toISOString(), events: [
+  ...calendar().map((e) => (e.type === 'meeting'
+    ? tev({ id: `meeting:${e.id}`, type: 'meeting', title: e.title, start: e.startsAt, end: new Date(Date.parse(e.startsAt) + e.durationMinutes * 60e3).toISOString(), date: e.date, sourceType: e.projectId ? 'projectMeeting' : 'workspaceMeeting',
+      sourceId: e.id, projectId: e.projectId, projectName: e.projectName, people: e.people, status: e.status, joinUrl: e.joinUrl, notes: !!e.notes })
+    : e.category === 'Done'
+      ? tev({ id: `done:${e.type}:${e.id}`, type: 'done', title: e.title.replace(/^[A-Z]+-\d+ · /, ''), key: KEYS[e.id], start: at(e.date, '17:00'), date: e.date, sourceType: e.type, sourceId: e.id, status: e.status, priority: e.priority })
+      : tev({ id: `due:${e.type}:${e.id}`, type: 'due', title: e.title.replace(/^[A-Z]+-\d+ · /, ''), key: KEYS[e.id], allDay: true, start: at(e.date, '00:00'), date: e.date, sourceType: e.type, sourceId: e.id,
+        projectId: e.projectId, projectName: e.projectName, status: e.status, priority: e.priority, overdue: e.overdue }))),
+  tev({ id: 'time:te1', type: 'time', title: 'Integration runtime disconnected', start: at(today, '09:00'), end: at(today, '10:30'), date: today, sourceType: 'timeEntry', sourceId: 'te1', minutes: 90, note: 'Restarted the runtime' }),
+  tev({ id: 'time:te2', type: 'time', title: 'Settlement report export', start: at(today, '10:30'), end: at(today, '12:30'), date: today, sourceType: 'timeEntry', sourceId: 'te2', minutes: 120, approximated: true, projectId: pid, projectName: 'Payments revamp' }),
+  tev({ id: 'reminder:r1', type: 'reminder', title: 'Send the vendor follow-up', start: at(today, '16:30'), date: today, sourceType: 'reminder', sourceId: 'r1', status: 'scheduled' }),
+  tev({ id: 'leave:l1', type: 'leave', title: 'Leave', allDay: true, start: at(fri, '00:00'), date: fri, sourceType: 'plannedLeave', sourceId: 'l1', note: 'Family function' }),
+].filter((t) => t.date >= from && t.date <= to) });
+
 const errors = [], checks = [], writes = [];
 const doneIds = new Set();
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
@@ -82,6 +101,7 @@ try {
       else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['org.manage', 'work.view', 'work.edit', 'work.create', 'reports.view'], modules: { projects: 3, tasks: 3, calendar: 3, work: 3, ai: 3, activity: 3, documents: 3, people: 3, reports: 3, billing: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: {} } };
       else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
       else if (ep === '/api/v1/calendar') data = calendar();
+      else if (ep === '/api/v1/timeline') data = timeline(url.searchParams.get('from'), url.searchParams.get('to'));
       else if (ep === '/api/v1/meet') data = feed();
       else if (ep === '/api/v1/reminders') data = { open: [{ id: 'r1', title: 'Send the vendor follow-up', nextFireAt: at(today, '16:30') }], done: [] };
       else if (ep === '/api/v1/time') data = timesheet;
@@ -126,6 +146,8 @@ try {
   assert.equal(await page.locator('.wp-flag', { hasText: 'OPS-19' }).count(), 0, 'no deadline flag for a finished ticket');
   const titles = await page.locator('.wp-e.f').evaluateAll((els) => els.map((e) => e.textContent));
   assert.equal(new Set(titles).size, titles.length, 'no identical focus blocks repeated');
+  // Focus blocks are named after their item (key and title), never a generic "Deep work".
+  assert.ok(titles.every((t) => /^Focus(OPS|PAY)-\d+ /.test(t)), titles.join(' | '));
   // Focus: not hatched any more
   assert.equal(await focusOf('OPS-21').evaluate((el) => getComputedStyle(el).backgroundImage), 'none', 'the focus block is a tinted block, not stripes');
 
@@ -195,7 +217,7 @@ try {
   checks.push('keyboard');
 
   // deadline flag: Ask for more time moves the date with a reason
-  await page.locator('.wp-flag', { hasText: 'Settlement report export' }).click();
+  await page.locator('.wp-flag', { hasText: 'PAY-7' }).click();
   await card().waitFor();
   assert.equal(await card().getAttribute('data-kind'), 'deadline');
   assert.match(await page.locator('[data-testid="ed-why"]').innerText(), /Deadline of PAY-7 in Payments revamp · High priority/);

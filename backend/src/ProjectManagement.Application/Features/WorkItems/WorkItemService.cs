@@ -21,7 +21,9 @@ public record WorkItemDto(WorkItemKind Kind, Guid Id, string Key, string Title, 
 /// <summary>Filters for a list of work items. With no kinds given, every kind the caller can see is included.</summary>
 public record WorkItemQuery(IReadOnlyList<WorkItemKind>? Kinds = null, Guid? AssigneeId = null, bool Mine = false, bool OpenOnly = true,
     Guid? ProjectId = null, DateOnly? DueFrom = null, DateOnly? DueTo = null, bool Overdue = false, string? Q = null, int Limit = 200, bool Unassigned = false, int Offset = 0,
-    IReadOnlyCollection<Guid>? AssigneeIds = null, Guid? ReporterId = null);
+    IReadOnlyCollection<Guid>? AssigneeIds = null, Guid? ReporterId = null,
+    /// <summary>Finished in [CompletedFrom, CompletedTo) (UTC): the timeline's "done" items. Either bound alone works too.</summary>
+    DateTime? CompletedFrom = null, DateTime? CompletedTo = null);
 
 public record WorkKindCounts(int Tasks, int Issues, int ActionItems, int Operational)
 {
@@ -134,6 +136,8 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (query.ProjectId is { } pid) tq = tq.Where(t => t.ProjectId == pid);
             if (query.DueFrom is { } f) tq = tq.Where(t => t.DueDate != null && t.DueDate >= f);
             if (query.DueTo is { } to) tq = tq.Where(t => t.DueDate != null && t.DueDate <= to);
+            if (query.CompletedFrom is { } cf) tq = tq.Where(t => t.CompletedAt != null && t.CompletedAt >= cf);
+            if (query.CompletedTo is { } ctu) tq = tq.Where(t => t.CompletedAt != null && t.CompletedAt < ctu);
             if (query.Overdue) tq = tq.Where(t => t.DueDate != null && t.DueDate < today && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled);
             if (q is not null) tq = tq.Where(t => EF.Functions.Like(t.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (t.Description != null && EF.Functions.Like(t.Description.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || t.Number == number);
             var tasks = await tq.OrderBy(t => t.Status!.Category == StatusCategory.Done || t.Status.Category == StatusCategory.Cancelled)
@@ -157,6 +161,8 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (query.OpenOnly) iq = iq.Where(i => i.Status != IssueStatus.Resolved);
             if (query.DueFrom is { } f) iq = iq.Where(i => i.DueDate != null && i.DueDate >= f);
             if (query.DueTo is { } to) iq = iq.Where(i => i.DueDate != null && i.DueDate <= to);
+            if (query.CompletedFrom is { } cf) iq = iq.Where(i => i.ResolvedAt != null && i.ResolvedAt >= cf);
+            if (query.CompletedTo is { } ctu) iq = iq.Where(i => i.ResolvedAt != null && i.ResolvedAt < ctu);
             if (query.Overdue) iq = iq.Where(i => i.DueDate != null && i.DueDate < today && i.Status != IssueStatus.Resolved);
             if (query.ProjectId is { } pid) iq = iq.Where(i => i.ProjectId == pid);
             if (q is not null) iq = iq.Where(i => EF.Functions.Like(i.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (i.Details != null && EF.Functions.Like(i.Details.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || i.Number == number);
@@ -183,6 +189,8 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (query.ProjectId is { } pid) wq = wq.Where(w => w.RelatedProjectId == pid);
             if (query.DueFrom is { } f) wq = wq.Where(w => w.DueDate != null && w.DueDate >= f);
             if (query.DueTo is { } to) wq = wq.Where(w => w.DueDate != null && w.DueDate <= to);
+            if (query.CompletedFrom is { } cf) wq = wq.Where(w => w.CompletedAt != null && w.CompletedAt >= cf);
+            if (query.CompletedTo is { } ctu) wq = wq.Where(w => w.CompletedAt != null && w.CompletedAt < ctu);
             if (query.Overdue) wq = wq.Where(w => w.DueDate != null && w.DueDate < today && (w.Status == WorkTaskStatus.ToDo || w.Status == WorkTaskStatus.InProgress || w.Status == WorkTaskStatus.OnHold));
             if (q is not null) wq = wq.Where(w => EF.Functions.Like(w.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (w.Description != null && EF.Functions.Like(w.Description.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || w.Number == number);
             var work = await wq.OrderBy(w => w.DueDate == null).ThenBy(w => w.DueDate).Take(limit)

@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { cutOff } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
+import { timelineFor } from './lib/timeline.mjs';
 
 // Phone parity (apple/s-mobile, apple/s-phone): Today (needs-you list with one tap, UP NEXT with Join, the outage pill with its running clock,
 // one-tap timesheet approval with the reconciliation line), My Work's FOCUS NOW (Start 2h focus, Log time), Desk rows' ⋯ (Assign / Resolve),
@@ -100,6 +101,7 @@ const make = async (device, theme) => {
     else if (ep === '/api/v1/inbox') data = { rows, counts: { all: 6, assigned: 2, decisions: 2, mentions: 1 }, later: 0 };
     else if (ep === '/api/v1/inbox/briefing') data = briefing;
     else if (ep === '/api/v1/calendar') data = calendar;
+    else if (ep === '/api/v1/timeline') data = timelineFor(url, calendar);
     else if (ep === '/api/v1/time/approvals') data = approvals;
     else if (ep === '/api/v1/time/grid') data = url.searchParams.get('userId') ? grid : { ...grid, user: { id: user.id, name: user.displayName }, mine: true, editable: true, locked: false, status: 'NotSubmitted', rows: [] };
     else if (ep === '/api/v1/time/week') data = { weekStart: monday, weekEnd: shift(monday, 6), userId: user.id, status: 'NotSubmitted', totalMinutes: 0, billableMinutes: 0, note: null, submittedAt: null, reviewer: null, reviewedAt: null, reviewNote: null, locked: false, canSubmit: true, canWithdraw: false, canReview: false, id: null, entitled: true };
@@ -173,6 +175,7 @@ try {
     const pill = page.locator('[data-testid="outage-pill"]');
     assert.match(await pill.innerText(), /OPS-5 outage[\s\S]*1h 34m/);
     assert.match(await page.locator('.pt-brief').innerText(), /^6 things need you\. Bureau sign-off/);
+    await page.locator('[data-testid="timesheet-approval"]').waitFor();   // the approval card takes over the timesheet's row once it is read
     assert.equal(await page.locator('.pt-li').count(), 3, 'the outage and the timesheet are not listed twice');
     assert.match(await page.locator('[data-testid="phone-up-next"]').innerText(), /UP NEXT · IN 18 MIN[\s\S]*Bureau UAT sign-off[\s\S]*Join/);
     const ts = page.locator('[data-testid="timesheet-approval"]');

@@ -175,3 +175,33 @@ html[data-theme='dark'] .wp-pill { color: #7fd7e6; }
 html[data-theme='dark'] .wp-e.lg { color: #7ee08e; }
 .wp-logged { position: absolute; right: 6px; top: 6px; max-width: calc(100% - 40px); padding: 0 6px; display: inline-flex; align-items: center; gap: 3px; height: 18px; border-radius: 9px; font: 600 10.5px/18px inherit; font-family: inherit; color: #127a26; background: rgba(40, 205, 65, .14); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 html[data-theme='dark'] .wp-logged { color: #7ee08e; }
+
+/* The whole day scrolls inside the card (the headers, attendance band and day flags stay put); it opens at the first thing or 8 AM. */
+.wp-scroll { position: relative; max-height: max(420px, calc(100vh - 248px)); overflow-y: auto; overscroll-behavior: contain; padding-top: 8px; scrollbar-width: thin; }
+.wp-body { margin-bottom: 8px; }
+/* Calls held in the app: a solid teal block with a phone glyph, beside meetings in the same lanes. */
+.wp-fr i.k-calls { background: #34c759; border-radius: 50%; box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .55); }
+.wp-e.c { z-index: 2; background: rgba(52, 199, 89, .16); color: #0f6a28; border-color: #34c759; }
+.wp-e.c svg { display: inline-block; vertical-align: -1px; margin-right: 4px; }
+.wp-e.c.run { box-shadow: 0 0 0 1.5px rgba(52, 199, 89, .6); }
+html[data-theme='dark'] .wp-e.c { background: rgba(52, 199, 89, .22); color: #7fe39a; }
+/* Typed-in time: placed on its day by the server, so drawn with a dashed edge (≈ in the time). */
+.wp-e.lg.ap { background: rgba(40, 205, 65, .08); box-shadow: inset 3px 0 0 rgba(40, 205, 65, .55), inset 0 0 0 1px rgba(40, 205, 65, .25); }
+.wp-e.lg { opacity: .92; }
+/* Finished work: a small check pill at the minute it was finished. */
+.wp-fr i.k-done { background: #28cd41; border-radius: 50%; position: relative; }
+.wp-done { position: absolute; right: 5px; height: 18px; max-width: calc(100% - 10px); padding: 0 7px 0 5px; border-radius: 9px; z-index: 4; display: flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 600; line-height: 18px; font-family: inherit; color: #fff; background: #28cd41; box-shadow: 0 2px 6px rgba(40, 205, 65, .3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+html[data-theme='dark'] .wp-done { background: #30d158; color: #062b10; }
+.wp-done.open { box-shadow: 0 0 0 2px var(--ds-surface), 0 0 0 3.5px rgba(0, 113, 227, .55); }
+.wp-done:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
+.wp-rem.fired i { background: #ff9500; }
+.wp-flag.late { color: #fff; background: var(--wp-red); }
+@media (hover: hover) { .wp-done:hover { filter: brightness(.95) saturate(1.2); } }
+/* Logged time is the quiet bottom layer; meetings, calls and focus sit above it (a block on top takes the click). */
+.wp-e.lg { z-index: 0; }
+.wp-e.f, .wp-col .wp-e.i, .wp-col .wp-e.o, .wp-col .wp-e.t, .wp-col .wp-e.p, .wp-col .wp-e.b, .wp-col .wp-e.r, .wp-col .wp-e.g { z-index: 2; }
+.wp-e.lg.thin { left: auto; right: 1px; width: 6px; padding: 0; border-radius: 3px; color: transparent; font-size: 0; z-index: 3; box-shadow: none; background: #28cd41; opacity: .55; }
+.wp-e.lg.thin.ap { background: repeating-linear-gradient(to bottom, #28cd41 0 4px, transparent 4px 7px); }
+.wp-e.lg.thin small { display: none; }
+@media (hover: hover) { .wp-e.lg.thin:hover { opacity: 1; transform: none; box-shadow: none; } }

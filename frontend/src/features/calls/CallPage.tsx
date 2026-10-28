@@ -7,8 +7,8 @@ import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
 import { ErrorState, PageLoader } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
-import { useWsQuery } from '../../lib/hooks';
-import { useAuth } from '../../stores/auth';
+import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { callsApi, isAgent, type Call, type CallJoin } from './callsApi';
 import { CallStage } from './CallStage';
@@ -24,6 +24,7 @@ const FullScreen = ({ children }: { children: ReactNode }) => createPortal(child
  */
 export function CallPage({ id }: { id: string }) {
   const nav = useNavigate();
+  const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx?.user.displayName ?? '');
   const info = useWsQuery(['calls', id], () => callsApi.get(id), { refetchInterval: 15_000 });
   const [join, setJoin] = useState<CallJoin | null>(null);
@@ -40,7 +41,7 @@ export function CallPage({ id }: { id: string }) {
 
   const endForAll = async () => {
     if (!(await confirmDialog({ title: 'End the call for everyone?', message: 'Everyone is disconnected. The agent, if it is here, writes up its notes.', confirmText: 'End call', danger: true }))) return;
-    try { await callsApi.end(id); setJoin(null); setLeft(true); void info.refetch(); }
+    try { await callsApi.end(id); setJoin(null); setLeft(true); void info.refetch(); void invalidateWorkspace(wid, 'calls'); }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Could not end the call.', 'error'); }
   };
 

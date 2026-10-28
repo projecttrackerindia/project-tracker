@@ -140,6 +140,7 @@ function useSideGroups(): SideGroup[] {
       mk('/mail', 'mail', 'Mail', 'mail', TINT.blue, pathname === '/mail' || pathname.startsWith('/mail/'), { badge: mailUnread, calm: true }),
       mk('/library', 'library', 'Library', 'note', TINT.amber, (pathname === '/library' || pathname.startsWith('/library/')) && !vault),
       mk('/library/vault', 'vault', 'Vault', 'key', TINT.gray, vault),
+      mk('/people', 'people', 'People & Roles', 'users', 'linear-gradient(180deg,#7d7bff,#5e5ce6)', pathname === '/people' || pathname.startsWith('/people/')),
       mk('/insights', 'insights', 'Insights', 'chart', TINT.pink, pathname === '/insights' || pathname.startsWith('/insights/') || pathname === '/activity'),
     ] as SideItem[] }),
   ].filter((g) => g.items.length > 0);
