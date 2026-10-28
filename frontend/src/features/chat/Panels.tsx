@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CatchUpDialog } from './ChatTools';
@@ -246,14 +247,50 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
     if (await confirmDialog({ title: 'Remove from group', message: `${who} will no longer see this group.`, confirmText: 'Remove' })) remove.mutate(userId);
   };
 
-  return (
-    <aside className="chat-info" aria-label="Conversation details">
+  // Phone: a full-screen sheet above everything (tab bar hidden), its own scroll, Done, swipe down to close. Desktop: the side panel.
+  const sheet = usePhoneSheet();
+  const modalOpen = adding || summary || !!viewProfile;
+  const panelRef = useRef<HTMLElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ y: number; dy: number; active: boolean } | null>(null);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented && !modalOpen) { e.preventDefault(); onClose(); } };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [onClose, modalOpen]);
+  useEffect(() => {
+    if (!sheet) return;
+    document.documentElement.classList.add('info-sheet-open');
+    return () => document.documentElement.classList.remove('info-sheet-open');
+  }, [sheet]);
+  const onTouchStart = (e: ReactTouchEvent) => {
+    if (!sheet) return;
+    const inBody = bodyRef.current?.contains(e.target as Node);
+    drag.current = { y: e.touches[0].clientY, dy: 0, active: !inBody || (bodyRef.current?.scrollTop ?? 0) <= 0 };
+  };
+  const onTouchMove = (e: ReactTouchEvent) => {
+    const d = drag.current, el = panelRef.current;
+    if (!d || !d.active || !el) return;
+    d.dy = Math.max(0, e.touches[0].clientY - d.y);
+    if (d.dy > 0 && (bodyRef.current?.scrollTop ?? 0) <= 0) { el.style.transition = 'none'; el.style.transform = `translateY(${d.dy}px)`; }
+  };
+  const onTouchEnd = () => {
+    const d = drag.current, el = panelRef.current; drag.current = null;
+    if (!d || !el) return;
+    if (d.dy > 110) { onClose(); return; }
+    el.style.transition = 'transform .22s cubic-bezier(.2,.9,.25,1)'; el.style.transform = '';
+  };
+
+  const panel = (
+    <aside ref={panelRef} className={`chat-info${sheet ? ' as-phone-sheet' : ''}`} aria-label="Conversation details" role={sheet ? 'dialog' : undefined} aria-modal={sheet ? true : undefined}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
       <div className="chat-info-head">
         <h3>{group ? 'Group details' : 'Details'}</h3>
-        <button className="btn-icon" onClick={onClose} aria-label="Close details"><Icon name="close" /></button>
+        <button className="btn-icon chat-info-x" onClick={onClose} aria-label="Close details" title="Close (Esc)"><Icon name="close" /></button>
+        <button type="button" className="chat-info-done" onClick={onClose} aria-label="Done, close details">Done</button>
       </div>
 
-      <div className="chat-info-body">
+      <div className="chat-info-body" ref={bodyRef}>
         <div className="info-hero">
           {group ? <span className="avatar lg group-avatar"><Icon name="users" size={22} /></span>
             : conversation.otherUserId
@@ -327,4 +364,16 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
       {viewProfile && <MemberProfileModal userId={viewProfile} onClose={() => setViewProfile(null)} />}
     </aside>
   );
+  return sheet ? createPortal(panel, document.body) : panel;
+}
+
+/** True on a phone-width screen (Details becomes a full-screen sheet there). */
+function usePhoneSheet() {
+  const q = '(max-width: 860px)';
+  const [on, setOn] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(q).matches);
+  useEffect(() => {
+    const m = window.matchMedia?.(q); if (!m) return;
+    const f = () => setOn(m.matches); m.addEventListener('change', f); return () => m.removeEventListener('change', f);
+  }, []);
+  return on;
 }

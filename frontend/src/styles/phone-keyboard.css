@@ -1,0 +1,58 @@
+/* ============================================================
+   PHONE + ON-SCREEN KEYBOARD (see lib/keyboardViewport.ts for --vvh / --vvtop / --kb and html.kb-open / html.composing)
+   ============================================================ */
+
+/* A menu sheet (the composer ✦ list, "+" apps, ···) sits on top of the keyboard instead of behind it. */
+.floating.floating-sheet { bottom: var(--kb, 0px) !important; max-height: min(72vh, calc(var(--vvh, 100dvh) - 24px)); }
+
+@media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
+  /* While a conversation is open the page itself never scrolls or bounces; only the message list does. */
+  html.conv-lock, html.conv-lock body { overflow: hidden; overscroll-behavior: none; height: 100%; }
+
+  /* Typing anywhere: the tab bar and the floating Ask bar step aside so the field is never covered. */
+  html.kb-open .m-tabs, html.composing .m-tabs { display: none !important; }
+  html.kb-open .v2-ask:not(:focus-within), html.composing .v2-ask { display: none !important; }
+  html.kb-open .m-shell .content { padding-bottom: 16px; }
+  html.kb-open .toast-root { bottom: calc(var(--kb, 0px) + 8px) !important; }
+
+  /* The conversation: header / scrolling messages / composer, sized to the visible viewport, composer right on the keyboard. */
+  html .m-shell.m-conversation { top: var(--vvtop, var(--conversation-offset-top, 0px)); height: var(--vvh, var(--conversation-viewport-height, 100dvh)); }
+  html .m-shell.m-conversation .talk-shell, html .m-shell.m-conversation .talk-pane, html .m-shell.m-conversation .talk-thread { min-height: 0; }
+  html .m-shell.m-conversation .talk-shell.is-open .talk-pane { display: flex; flex-direction: column; height: 100%; }
+  html .m-shell.m-conversation .talk-thread { flex: 1; display: flex; flex-direction: column; height: 100%; }
+  html .m-shell.m-conversation .talk-thread .chat-messages { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  html .m-shell.m-conversation .talk-thread .talk-head, html .m-shell.m-conversation .talk-thread .composer { flex-shrink: 0; }
+  /* The tab bar under the conversation owns the home-indicator inset; with the keyboard up there is no inset at all. */
+  html .m-shell.m-conversation .talk-thread .composer, html .m-shell.m-conversation .composer { padding-bottom: 8px; }
+  html .m-shell.m-conversation.keyboard-open .m-top, html.kb-open .m-shell.m-conversation .m-top { display: none; }
+  html .m-shell.m-conversation.keyboard-open .content, html.kb-open .m-shell.m-conversation .content { padding: 0; }
+  html .m-shell.m-conversation.keyboard-open .talk-shell, html.kb-open .m-shell.m-conversation .talk-shell { border-radius: 0; }
+  html.composing .m-shell.m-conversation .m-tabs { display: none; }
+
+  /* No zoom-on-focus on iPhone: every field is at least 16px. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select, [contenteditable="true"] { font-size: max(16px, 1em) !important; }
+
+  /* Bottom sheets and dialogs stay above the keyboard and scroll to their last field. */
+  html.kb-open .modal-backdrop, html.kb-open .sheet-backdrop { bottom: var(--kb, 0px); }
+  html.kb-open .modal, html.kb-open .sheet { max-height: calc(var(--vvh, 100dvh) - 12px); }
+}
+
+/* ---- Details (conversation info) — on a phone a full-screen sheet above everything, with its own scroll and a Done button */
+.chat-info-done { display: none; }
+@media (max-width: 860px) {
+  .chat-info.as-phone-sheet {
+    position: fixed; z-index: 1200; left: 0; right: 0; top: var(--vvtop, 0px); bottom: auto; width: 100% !important; max-width: none;
+    height: var(--vvh, 100dvh); border-radius: 0; box-shadow: none; display: flex; flex-direction: column; background: var(--ds-surface, var(--panel-solid));
+    animation: infoSheetUp .32s cubic-bezier(.2, .9, .25, 1) both; touch-action: pan-y; will-change: transform;
+  }
+  .chat-info.as-phone-sheet .chat-info-head { position: relative; flex-shrink: 0; min-height: 52px; padding: calc(env(safe-area-inset-top, 0px) + 14px) 12px 10px; justify-content: center; touch-action: none; }
+  .chat-info.as-phone-sheet .chat-info-head::before { content: ''; position: absolute; top: calc(env(safe-area-inset-top, 0px) + 5px); left: 50%; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: var(--ds-line, rgba(0,0,0,.15)); }
+  .chat-info.as-phone-sheet .chat-info-head h3 { font-size: 17px; font-weight: 600; text-align: center; }
+  .chat-info.as-phone-sheet .chat-info-head .chat-info-x { display: none; }
+  .chat-info.as-phone-sheet .chat-info-done { display: inline-flex; position: absolute; right: 8px; bottom: 6px; height: 36px; padding: 0 10px; align-items: center; font-size: 17px; font-weight: 600; color: #0a84ff; background: none; border: 0; border-radius: 8px; }
+  .chat-info.as-phone-sheet .chat-info-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+  html.info-sheet-open .m-tabs, html.info-sheet-open .v2-ask { display: none !important; }
+}
+@keyframes infoSheetUp { from { transform: translateY(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .chat-info.as-phone-sheet { animation: none; } }

@@ -370,8 +370,9 @@ export function useVoiceRecorder(conversationId: string, onReady: (attachmentId:
 
 // ------------------------------------------------------------------ rewrite what I am writing
 
+/** The composer's ✦ menu with text in the box. Only actions the server's /chat/ai/transform accepts (DocumentAi.Actions). */
 export const COMPOSER_AI: { id: string; label: string; language?: string }[] = [
-  { id: 'fix', label: 'Fix spelling and grammar' }, { id: 'shorten', label: 'Make it shorter' }, { id: 'formal', label: 'More formal' },
-  { id: 'friendly', label: 'More friendly' }, { id: 'rewrite', label: 'Rewrite it clearly' },
-  { id: 'translate', label: 'Translate to English', language: 'en' }, { id: 'translate', label: 'Translate to Telugu', language: 'te' }, { id: 'translate', label: 'Translate to Hindi', language: 'hi' },
+  { id: 'rewrite', label: 'Improve writing' }, { id: 'fix', label: 'Fix grammar' }, { id: 'shorten', label: 'Make shorter' },
+  { id: 'formal', label: 'More formal' }, { id: 'friendly', label: 'Friendlier' },
 ];
+export const COMPOSER_LANGUAGES: { code: string; label: string }[] = [{ code: 'en', label: 'English' }, { code: 'te', label: 'Telugu' }, { code: 'hi', label: 'Hindi' }];
