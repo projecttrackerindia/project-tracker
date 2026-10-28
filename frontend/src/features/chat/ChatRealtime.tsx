@@ -8,6 +8,7 @@ import { appPath } from '../../lib/orgPath';
 import { firstTime, getAttention } from '../../lib/attention';
 import { trackIdle } from '../../lib/idle';
 import { CHECK_NOTIFICATIONS } from '../notifications/events';
+import { readFromServer } from '../notifications/centre/readSync';
 import { pushCoversThisDevice, systemNotification } from '../reminders/device';
 import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -196,7 +197,12 @@ export function ChatRealtime() {
     // Somebody just created a notification for me (a mention): refresh the bell now instead of at the next poll.
     // A WhatsApp support chat changed (a message came in or went out, someone took it): the desk refreshes at once.
     connection.on('support', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'support'] }); });
-    connection.on('notification', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] }); window.dispatchEvent(new Event(CHECK_NOTIFICATIONS)); });
+    // Or some were read (opened here, on another tab or another device): they leave the centre, the badges and the OS notifications now.
+    connection.on('notification', (e?: { read?: string[]; links?: string[] }) => {
+      if (e?.read?.length) readFromServer(wid, e.read, e.links ?? []);
+      void queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] });
+      if (!e?.read?.length) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));
+    });
     connection.on('message.updated', (e: { conversationId: string; message: ChatMessage }) => {
       putMessage(wid, e.message);
       putInThread(e.conversationId, e.message, true);

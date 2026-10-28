@@ -91,14 +91,15 @@ public partial class ChatService
         var (tenant, me) = Require();
         var mine = await MembershipAsync(conversationId, me, ct);
         var now = clock.Now;
-        // Reading the conversation clears its notice in the bell (on this person's other tabs too).
-        var link = $"/chat/{conversationId}";
-        var notices = await db.Notifications.Where(n => n.UserId == me && n.Type == NotificationType.Message && n.Link == link && n.ReadAt == null).ToListAsync(ct);
-        foreach (var n in notices) { n.ReadAt = now; n.EmailPending = false; }   // read: no e-mail about it either
-        if (mine.LastReadAt >= now && notices.Count == 0) return;
-        mine.LastReadAt = now;
+        var moved = mine.LastReadAt < now;
+        if (moved) mine.LastReadAt = now;
+        // Reading the conversation clears every notice about it in this person's bell - messages, @mentions, thread replies, and the project
+        // chat's own link - on all their tabs and devices (NotificationService saves the read position with them).
+        var cleared = await notifications.MarkReadForTargetAsync(me, NotificationTargets.Conversation, conversationId, ct);
+        var projectId = await db.Conversations.AsNoTracking().Where(c => c.Id == conversationId && c.Type == ConversationType.Project).Select(c => c.ProjectId).FirstOrDefaultAsync(ct);
+        if (projectId is { } pid && pid != Guid.Empty) cleared += await notifications.MarkReadForTargetAsync(me, NotificationTargets.ProjectChat, pid, ct);
+        if (!moved && cleared == 0) return;
         await db.SaveChangesAsync(ct);
-        if (notices.Count > 0) await PushAsync(tenant, [me], ChatEvents.Notification, new { }, ct);
         await PushAsync(tenant, await RecipientsAsync(tenant, conversationId, ct), ChatEvents.Read, new { conversationId, userId = me, at = now }, ct);
     }
 

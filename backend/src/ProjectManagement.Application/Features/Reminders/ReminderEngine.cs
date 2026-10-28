@@ -759,7 +759,7 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
 }
 
 /// <summary>Done and snooze from the links in e-mails and push notifications, which carry a one-time key instead of a sign-in.</summary>
-public class ReminderActionService(IAppDbContext db, AppClock clock)
+public class ReminderActionService(IAppDbContext db, AppClock clock, ProjectManagement.Application.Features.Notifications.NotificationService notifications)
 {
     private async Task<Reminder?> FindAsync(string token, CancellationToken ct)
     {
@@ -801,6 +801,8 @@ public class ReminderActionService(IAppDbContext db, AppClock clock)
         // One use: the link now only shows where the reminder stands.
         r.ActionTokenExpiresAt = now;
         await db.SaveChangesAsync(ct);
+        // Done (or put off) from the notification itself: that notification and any other about this reminder are read everywhere.
+        await notifications.MarkReadForTargetAsync(r.UserId, ProjectManagement.Application.Features.Notifications.NotificationTargets.Reminder, r.Id, ct, r.TenantId);
         return await InfoAsync(r, ct);
     }
 }

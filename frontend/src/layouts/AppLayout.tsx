@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react';
+import { isViewing } from '../features/notifications/centre/readSync';
 import { prefetchPages } from '../lib/prefetchPages';
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import { openNew } from '../components/v2/state';
@@ -63,7 +64,7 @@ function DesktopNotifier() {
         const last = read();
         const newest = Math.max(last, ...times, 0);
         if (last === 0) { write(newest || Date.now()); return; } // first run: do not replay history
-        const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type) && !isRingNotice(x) && firstTime(`dn-${x.id}`, 120_000)).reverse();
+        const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type) && !isRingNotice(x) && !isViewing(x.link) && firstTime(`dn-${x.id}`, 120_000)).reverse();
         for (const n of fresh) {
           const kind = kindForType(n.type);
           announce(n);

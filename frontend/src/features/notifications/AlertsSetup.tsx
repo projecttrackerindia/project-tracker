@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isViewing } from './centre/readSync';
 import { Icon } from '../../components/Icon';
 import { canPlaySound, playSound, unlockSound, type AttentionKind } from '../../lib/attention';
 import type { NotificationCategory, NotificationType } from '../../api/types';
@@ -41,6 +42,8 @@ export function AlertsSetup() {
     const onMessage = (e: MessageEvent<PushMessage>) => {
       if (e.data?.type !== 'pm-push') return;
       if (e.data.call) return;   // a ringing call: the incoming-call card rings and answers the worker itself
+      // The person is looking at that conversation: the worker shows nothing (and nothing sounds) - it is read already.
+      if (isViewing(e.data.link)) { e.ports[0]?.postMessage({ played: true, viewing: true }); return; }
       // Its own cue, unless this category is muted here; the same alert can also arrive from the live connection or the check: ring once.
       const type = (e.data.notificationType || (e.data.kind === 'message' ? 'Message' : e.data.kind === 'urgent' ? 'Reminder' : 'TaskUpdated')) as NotificationType;
       const played = canPlaySound() ? announce({ id: e.data.tag || null, type, link: e.data.link ?? null, category: e.data.category }) : false;

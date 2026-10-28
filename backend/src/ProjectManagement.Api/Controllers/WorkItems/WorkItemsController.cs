@@ -11,7 +11,7 @@ namespace ProjectManagement.Api.Controllers.WorkItems;
 /// see <see cref="WorkItemService"/>; there is no module requirement here because the result only ever contains kinds the caller may open.
 /// </summary>
 [Route("api/v1"), RequireWorkspace]
-public class WorkItemsController(WorkItemService items, WorkloadService workload, WorkItemApiService work) : ApiControllerBase
+public class WorkItemsController(WorkItemService items, WorkloadService workload, WorkItemApiService work, ProjectManagement.Application.Features.Notifications.NotificationService notifications) : ApiControllerBase
 {
     // ------------------------------------------------------------------ the one Work API (v2): every kind of work through one shape
 
@@ -27,7 +27,12 @@ public class WorkItemsController(WorkItemService items, WorkloadService workload
 
     /// <summary>One item with its activity stream (comments, time, files, changes, the agent's changes).</summary>
     [HttpGet("work-items/{id:guid}")]
-    public async Task<IActionResult> Get(Guid id, CancellationToken ct) => Ok(await work.GetAsync(id, ct));
+    public async Task<IActionResult> Get(Guid id, CancellationToken ct)
+    {
+        var item = await work.GetAsync(id, ct);
+        await notifications.MarkSeenAsync(ProjectManagement.Application.Features.Notifications.NotificationTargets.WorkItem, id, ct);   // opened: its notices are read
+        return Ok(item);
+    }
 
     [HttpPost("work-items")]
     public async Task<IActionResult> Create([FromBody] CreateWorkItemRequest req, CancellationToken ct) => Created(await work.CreateAsync(req, ct));

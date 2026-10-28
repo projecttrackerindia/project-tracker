@@ -262,8 +262,96 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
     }
 }
 
-public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock clock, NotificationRouter router, ProjectManagement.Application.Features.Integrations.WhatsAppDeliveryService whatsapp)
+/// <summary>What a notification can be about, for <see cref="NotificationService.MarkReadForTargetAsync"/>.</summary>
+public static class NotificationTargets
 {
+    /// <summary>A direct or group chat (links /chat/{id}, /chat/{id}?thread=...).</summary>
+    public const string Conversation = "conversation";
+    /// <summary>A project's team chat (link /projects/{projectId}?chat=1): the target id is the project's.</summary>
+    public const string ProjectChat = "project-chat";
+    public const string WorkTask = "task", WorkItem = "work-item", Issue = "issue", Reminder = "reminder", Meeting = "meeting", Call = "call";
+    public static readonly string[] All = [Conversation, ProjectChat, WorkTask, WorkItem, Issue, Reminder, Meeting, Call];
+}
+
+public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock clock, NotificationRouter router, ProjectManagement.Application.Features.Integrations.WhatsAppDeliveryService whatsapp,
+    ProjectManagement.Application.Features.Chat.IChatNotifier notifier, IServiceProvider services, ILogger<NotificationService> log)
+{
+    /// <summary>
+    /// The one place that clears what someone has seen: every unread notification of <paramref name="userId"/> (only theirs, only in this
+    /// workspace) about one thing - a conversation they read, a task they opened, a reminder they finished, a meeting they joined - is marked
+    /// read and taken off the e-mail / push queues. Matched by the thing's id in the notification's link (every link carries it: /chat/{id},
+    /// /projects/{p}?task={id}, /work?item={id}, /r/..., /calls/{id}) or its dedupe key. Saves, then tells the person's open tabs (the bell,
+    /// badges and the centre refresh at once) and their devices (the OS notifications close). Returns how many were marked.
+    /// </summary>
+    /// <param name="tenantId">The workspace, when there is no signed-in context (a reminder's one-time link from a notification).</param>
+    public async Task<int> MarkReadForTargetAsync(Guid userId, string targetType, Guid targetId, CancellationToken ct = default, Guid? tenantId = null)
+    {
+        if (userId == Guid.Empty || targetId == Guid.Empty) return 0;
+        var tenant = tenantId ?? ctx.RequireTenantId();
+        var id = targetId.ToString();
+        var q = db.Notifications.IgnoreQueryFilters().Where(n => n.TenantId == tenant && n.UserId == userId && n.ReadAt == null);
+        if (targetType == NotificationTargets.ProjectChat)
+        {
+            var link = $"/projects/{id}?chat=1";
+            q = q.Where(n => n.Link == link);
+        }
+        else
+        {
+            var compact = targetId.ToString("N");   // dedupe keys carry ids without dashes ("rem:{id:N}:2"), links with them
+            q = q.Where(n => (n.Link != null && n.Link.Contains(id)) || (n.DedupeKey != null && (n.DedupeKey.Contains(id) || n.DedupeKey.Contains(compact))));
+        }
+        var rows = await q.Take(500).ToListAsync(ct);
+        var now = clock.Now;
+        var shown = new List<Notification>();
+        foreach (var n in rows)
+        {
+            if (n.Browser && !n.PushPending && (n.DeliverAfter == null || n.DeliverAfter <= now)) shown.Add(n);   // already on their devices
+            n.ReadAt = now; n.EmailPending = false; n.PushPending = false; n.SlackPending = false;
+        }
+        await db.SaveChangesAsync(ct);
+        if (rows.Count == 0) return 0;
+        var ids = rows.Select(n => n.Id).ToList();
+        var links = rows.Select(n => n.Link).Where(l => !string.IsNullOrEmpty(l)).Distinct().ToList();
+        await notifier.ToUsersAsync(tenant, [userId], ProjectManagement.Application.Features.Chat.ChatEvents.Notification,
+            new { read = ids, links, targetType, targetId }, ct);
+        if (shown.Count > 0) await PushReadAsync(tenant, userId, shown.Select(n => n.Id.ToString()).ToList(), links, ct);
+        return rows.Count;
+    }
+
+    /// <summary>
+    /// The signed-in person opened / finished something: their own notifications about it are read. Never fails the request it rides on
+    /// (opening a task still works if this does not).
+    /// </summary>
+    public async Task<int> MarkSeenAsync(string targetType, Guid targetId, CancellationToken ct = default)
+    {
+        if (ctx.UserId is not { } me || ctx.TenantId is null) return 0;
+        try { return await MarkReadForTargetAsync(me, targetType, targetId, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogDebug(ex, "Could not mark notifications about {Target} read", targetType); return 0; }
+    }
+
+    /// <summary>A silent "read" data push to the person's devices: their service worker closes those OS notifications and corrects the icon badge.</summary>
+    private async Task PushReadAsync(Guid tenant, Guid userId, List<string> tags, List<string?> links, CancellationToken ct)
+    {
+        try
+        {
+            var subs = await db.PushSubscriptions.Where(s => s.UserId == userId && s.Failures < 20).ToListAsync(ct);
+            if (subs.Count == 0) return;
+            if (services.GetService(typeof(IWebPushSender)) is not IWebPushSender sender || services.GetService(typeof(ISecretProtector)) is not ISecretProtector protector) return;
+            var push = (services.GetService(typeof(IOptions<PushOptions>)) as IOptions<PushOptions>)?.Value ?? new PushOptions();
+            var app = (services.GetService(typeof(IOptions<AppOptions>)) as IOptions<AppOptions>)?.Value ?? new AppOptions();
+            var keys = await PushService.KeysAsync(db, protector, PushService.SubjectOf(push, app), ct);
+            var now = clock.Now;
+            var badge = await db.Notifications.IgnoreQueryFilters().CountAsync(n => n.TenantId == tenant && n.UserId == userId && n.InApp && n.ReadAt == null && n.ArchivedAt == null && (n.SnoozedUntil == null || n.SnoozedUntil <= now), ct);
+            var payload = System.Text.Json.JsonSerializer.Serialize(new { kind = "read", tags, links, badge });
+            foreach (var s in subs)
+            {
+                try { await sender.SendAsync(s, payload, keys, new PushDelivery(3600, "low"), ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { log.LogDebug(ex, "Read push to a device failed"); }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogDebug(ex, "Could not push the read notice"); }
+    }
+
     /// <summary>
     /// Queues a notification in the current unit of work (caller saves), honouring the recipient's channel preferences.
     /// People are not notified about their own actions unless <paramref name="toSelf"/> (security alerts).
