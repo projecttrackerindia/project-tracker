@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion, type Transition } from 'framer-motion';
 import { ApiError, get, put } from '../../api/client';
-import { insightApi, projectApi, timeApi } from '../../api/endpoints';
+import { projectApi, timeApi } from '../../api/endpoints';
 import type { TimeEntry } from '../../api/types';
 import { useNavigate } from 'react-router-dom';
 import { useIsSmallPhone } from '../../lib/mobile';
@@ -17,7 +17,7 @@ import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { PRIORITY_ORDER, refreshWork, useWorkList } from './workUi';
 import { PrChips, usePrStatus } from '../github/PrChips';
-import { focusBlocks, hourOf } from '../calendar/plannerModel';
+import { useTodayFocus } from '../calendar/useToday';
 import { shiftIsoDate } from '../../lib/zone';
 import { completedClock, completedToday, myWorkBucket, weekEndOf } from './myWorkRules';
 import { SavedViewsBar } from '../platform/SavedViews';
@@ -70,21 +70,6 @@ function reasonFor(w: WorkRow, rest: WorkRow[], focus: { start: number; end: num
   let s = `Next because ${parts.join(' and ')}`;
   if (focus) s += `, and you have a focus block ${hm(focus.start)} – ${hm(focus.end)} today that fits it`;
   return `${s}.`;
-}
-
-/** Free gaps of an hour or more between today's meetings, from now to 7 PM: the shared rule (calendar/plannerModel focusBlocks), in the app's zone. */
-function useFocusBlocks() {
-  const today = todayISO();
-  const q = useWsQuery(['calendar', 'range', today, today, 'me'], () => insightApi.calendar(today, today, undefined, true), { staleTime: 60_000, retry: false });
-  return useMemo(() => {
-    const busy = (q.data ?? []).filter((e) => e.type === 'meeting' && e.startsAt && e.status !== 'Cancelled')
-      .map((e) => { const h = hourOf(new Date(e.startsAt!)); return [h, h + (e.durationMinutes ?? 30) / 60] as const; });
-    const END = 19;
-    const from = Math.max(9, Math.ceil(hourOf(new Date()) * 4) / 4);
-    if (from >= END) return { blocks: [], minutes: 0 };
-    const { blocks } = focusBlocks(busy, from, END, { max: 2, maxLen: 1.5 });
-    return { blocks, minutes: blocks.reduce((s, b) => s + (b.end - b.start) * 60, 0) };
-  }, [q.data]);
 }
 
 /** Done or started: a task moves to its project's first column of that category, the others to their own status. */
@@ -140,7 +125,8 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   const [filter, setFilter] = useState<'all' | 'overdue' | 'raised' | string>('all');
   // "Raised by me": what I reported, whoever it is assigned to (the server filters on the reporter).
   const raised = useWorkList({ raisedByMe: true }, filter === 'raised');
-  const { blocks, minutes } = useFocusBlocks();
+  // Today's focus blocks: the same plan (and the same blocks) Today's "Your day" and the Calendar draw.
+  const { blocks, minutes } = useTodayFocus();
   const [sort, setSort] = useState<Sort>('smart');
   const [filterOpen, setFilterOpen] = useState(false);
   /** Ticked here: struck through in the list and flown off the stack before the server's list catches up. */
@@ -375,7 +361,7 @@ function FocusNow({ w, onOpen }: { w: WorkRow | null; onOpen: (id: string) => vo
     if (busy) return;
     if (on) {
       setBusy(true);
-      try { await timeApi.stop(); setFocus(null); try { localStorage.removeItem(FOCUS_KEY); } catch { /* private */ } toast('Focus ended. Time logged.'); void queryClient.invalidateQueries({ queryKey: [wid, 'timer'] }); }
+      try { await timeApi.stop(); setFocus(null); try { localStorage.removeItem(FOCUS_KEY); } catch { /* private */ } toast('Focus ended. Time logged.'); void queryClient.invalidateQueries({ queryKey: [wid, 'timer'] }); void queryClient.invalidateQueries({ queryKey: [wid, 'timeline'] }); }
       catch (e) { toast(e instanceof Error ? e.message : 'Could not stop the timer.', 'error'); }
       finally { setBusy(false); }
       return;

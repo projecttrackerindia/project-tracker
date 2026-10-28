@@ -212,9 +212,8 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var work = new List<WorkItemDto>();
         if (assignees is null)
             work.AddRange(await workItems.ListAsync(new WorkItemQuery(workKinds, OpenOnly: false, ProjectId: projectId, DueFrom: from, DueTo: to, Limit: 500), workScope, ct));
-        else
-            foreach (var person in assignees)
-                work.AddRange(await workItems.ListAsync(new WorkItemQuery(workKinds, AssigneeId: person, OpenOnly: false, ProjectId: projectId, DueFrom: from, DueTo: to, Limit: 200), workScope, ct));
+        else   // one batched read for everyone in view (it used to be one read per person)
+            work.AddRange(await workItems.ListAsync(new WorkItemQuery(workKinds, OpenOnly: false, ProjectId: projectId, DueFrom: from, DueTo: to, Limit: 500, AssigneeIds: assignees), workScope, ct));
         events.AddRange(work.Where(w => w.DueDate is not null).Select(w => new CalendarEventDto(w.Kind == WorkItemKind.ActionItem ? "action" : w.Kind == WorkItemKind.Issue ? "issue" : "work", w.Id, w.Title, w.DueDate!.Value,
             w.Status, w.Category, w.IsOverdue, w.ProjectId, w.ProjectName, w.Priority)));
 

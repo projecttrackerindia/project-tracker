@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
+import { timelineFor } from './lib/timeline.mjs';
 
 // Meet, the one place for meetings and calls: the sidebar entry, the upcoming list with replies and Join, one meeting's detail (opened from a
 // link as reminders and notifications do), the notetaker chosen on the schedule form (with the reason when voice is not possible), past
@@ -68,6 +69,7 @@ try{
   else if(ep==='/api/v1/meetings/participants')data=[{userId:'u2',name:'Ravi Kumar',email:'ravi@example.test',role:'Member',rsvpStatus:'NeedsAction'}];
   else if(ep==='/api/v1/projects')data={items:[project],page:1,totalPages:1,totalItems:1};
   else if(ep==='/api/v1/calendar')data=[{type:'meeting',id:ids.ours,title:'Atlas review',date:istDate(at(5)),startsAt:at(5),projectId:project.id,projectName:project.name,category:null,overdue:false,status:null,priority:null}];
+  else if(ep==='/api/v1/timeline')data=timelineFor(url,[{type:'meeting',id:ids.ours,title:'Atlas review',date:istDate(at(5)),startsAt:at(5),projectId:project.id,projectName:project.name,category:null,overdue:false,status:null,priority:null}]);
   else if(ep==='/api/v1/calls/status')data={available:true,maxParticipants:50};
   else if(ep==='/api/v1/calls/live')data=[];
   else if(ep==='/api/v1/workspace')data={...ws,aiDisabled:false};

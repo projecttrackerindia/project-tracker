@@ -198,3 +198,21 @@ a.hm-row-title:hover { color: var(--ds-accent); }
 .hm-cap.logged { background: rgba(40, 205, 65, .16); color: #127a26; box-shadow: inset 3px 0 0 #28cd41; }
 html[data-theme='dark'] .hm-cap.logged { color: #7ee08e; }
 .hm-logged { color: #1a9e33; font-weight: 600; text-decoration: none; } .hm-logged:hover { text-decoration: underline; }
+/* "Your day" from the one timeline: a third row for finished work (green check pills) and reminders (rings); calls beside meetings. */
+.hm-day-track.tl { height: 112px; }
+.hm-lane.m { top: 92px; height: 20px; background: none; border-top: .5px dashed var(--fill); border-radius: 0; }
+.hm-day-track button.hm-cap { border: 0; text-align: left; font-family: inherit; cursor: pointer; }
+.hm-day-track button.hm-cap:hover { transform: translateY(-1px); }
+.hm-cap.call { background: rgba(52, 199, 89, .16); color: #0f6a28; box-shadow: inset 3px 0 0 #34c759; }
+html[data-theme='dark'] .hm-cap.call { color: #7fe39a; }
+.hm-cap.focus { background: rgba(88, 86, 214, .1); box-shadow: inset 3px 0 0 #5856d6; color: #3634a3; }   /* the Calendar's focus colour */
+html[data-theme='dark'] .hm-cap.focus { background: rgba(94, 92, 230, .2); color: #b3b2ff; }
+.hm-cap.logged.ap { background: rgba(40, 205, 65, .08); box-shadow: inset 3px 0 0 rgba(40, 205, 65, .55), inset 0 0 0 1px rgba(40, 205, 65, .25); }
+.hm-pin { position: absolute; top: 93px; height: 18px; max-width: 140px; padding: 0 7px 0 5px; border: 0; border-radius: 9px; display: inline-flex; align-items: center; gap: 3px; transform: translateX(-9px);
+  font-size: 10px; font-weight: 600; line-height: 18px; font-family: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; z-index: 1; }
+.hm-pin.done { background: #28cd41; color: #fff; }
+html[data-theme='dark'] .hm-pin.done { background: #30d158; color: #062b10; }
+.hm-pin.rem { background: var(--ds-surface); color: var(--ds-text); box-shadow: 0 0 0 .5px var(--fill), 0 2px 8px rgba(0, 0, 0, .06); }
+.hm-pin.rem i { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid #ff9500; flex: none; }
+.hm-yday-cal { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; font-weight: 500; color: var(--ds-accent); text-decoration: none; }
+.hm-yday-cal:hover { text-decoration: underline; }

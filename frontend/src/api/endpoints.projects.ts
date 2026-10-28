@@ -104,6 +104,8 @@ export const insightApi = {
   dashboard: (teamId?: string | null) => get<Dashboard>('/dashboard', { teamId: teamId ?? undefined }),
   lensTeams: () => get<LensTeam[]>('/lens/teams'),
   calendar: (from: string, to: string, projectId?: string, mine?: boolean, userId?: string) => get<CalendarEvent[]>('/calendar', { from, to, projectId, mine, userId }),
+  /** The one day/week timeline Today and the Calendar both draw (see features/calendar/timeline). */
+  timeline: (from: string, to: string, scope: 'me' | 'user' | 'team' = 'me', userId?: string) => get<import('./types').Timeline>('/timeline', { from, to, scope, userId }),
   search: (q: string) => get<{ hits: SearchHit[] }>('/search', { q }),
   activity: (page = 1) => get<Paged<Activity>>('/activity', { page, pageSize: 25 }),
   audit: (action: string | undefined, page = 1) => get<Paged<AuditLog>>('/audit-logs', { action, page, pageSize: 25 }),

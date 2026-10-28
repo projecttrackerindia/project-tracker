@@ -15,8 +15,12 @@ export function useWsQuery<T>(key: unknown[], fn: () => Promise<T>, opts?: Omit<
 /** Refetch everything for the current workspace after a mutation. */
 export function invalidateWorkspace(wid: string | null | undefined, ...keyPrefix: unknown[]) {
   if (!wid) return Promise.resolve();
+  // Anything that changes what happened or is scheduled on a day changes the one timeline (Today and the Calendar) too.
+  if (typeof keyPrefix[0] === 'string' && TIMELINE_SOURCES.has(keyPrefix[0])) void queryClient.invalidateQueries({ queryKey: [wid, 'timeline'] });
   return queryClient.invalidateQueries({ queryKey: keyPrefix.length ? [wid, ...keyPrefix] : [wid] });
 }
+/** Query families whose changes show on the timeline (GET /timeline): work, meetings, calls, time, reminders, attendance, leave. */
+export const TIMELINE_SOURCES = new Set(['calendar', 'work', 'work-items', 'my-work', 'tasks', 'task', 'meet', 'meetings', 'calls', 'time', 'reminders', 'attendance', 'inbox', 'timer']);
 
 /** Debounce a rapidly changing value (e.g. a search box). */
 export function useDebounced<T>(value: T, ms = 300) {

@@ -332,6 +332,7 @@ public static class DependencyInjection
         services.AddScoped<ActivityService>();
         services.AddScoped<DashboardService>();
         services.AddScoped<CalendarService>();
+        services.AddScoped<TimelineService>();
         services.AddScoped<SearchService>();
         services.AddScoped<ReportService>();
         services.AddScoped<BillingService>();

@@ -75,3 +75,20 @@
 .pw-start { background: var(--ds-accent-fill); color: #fff; }
 .pw-start.running { background: var(--ds-dark); color: var(--ds-on-dark); font-variant-numeric: tabular-nums; }
 .pw-log { background: var(--ds-fill); color: var(--ds-accent); }
+
+/* Your day on a phone: the same day the Calendar and the desktop Today show, as an Up Next list. */
+.pt-day { padding: 12px 16px 6px; }
+.pt-day .pt-eyebrow { color: var(--ds-text-3); font-weight: 700; }
+.pt-day-counts { margin: 2px 0 6px; font-size: 13px; color: var(--ds-text-2); }
+.pt-quiet { margin: 8px 0; font-size: 13px; color: var(--ds-text-3); }
+.pt-day-list { list-style: none; margin: 0; padding: 0; }
+.pt-day-list li + li { border-top: .5px solid var(--ds-separator); }
+.pt-day-row { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 0; border: 0; background: none; color: var(--ds-text); font: inherit; text-align: left; cursor: pointer; }
+.pt-day-row.past { opacity: .6; }
+.pt-day-t { width: 40px; flex: none; font-size: 12px; font-weight: 600; color: var(--ds-text-3); font-variant-numeric: tabular-nums; }
+.pt-day-row > i { width: 4px; align-self: stretch; border-radius: 2px; flex: none; background: var(--ds-fill); }
+.pt-day-row.t-meeting > i { background: #30b0c7; } .pt-day-row.t-call > i { background: #34c759; } .pt-day-row.t-time > i { background: rgba(40, 205, 65, .55); }
+.pt-day-row.t-done > i { background: #28cd41; } .pt-day-row.t-reminder > i { background: #ff9500; } .pt-day-row.t-focus > i { background: #5856d6; }
+.pt-day-m { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.pt-day-m b { font-weight: 500; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-day-m small { font-size: 12px; color: var(--ds-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

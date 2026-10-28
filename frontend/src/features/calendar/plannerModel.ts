@@ -1,4 +1,4 @@
-import type { CalendarEvent, TimeEntry } from '../../api/types';
+import type { CalendarEvent, TimelineEvent } from '../../api/types';
 import type { IconName } from '../../components/Icon';
 import type { MeetItem } from '../meet/meetApi';
 import { hourIn, isoDateIn } from '../../lib/zone';
@@ -96,37 +96,6 @@ export function windowOf(e: CalendarEvent, day: string): [number, number] | null
   return [h, h + (e.durationMinutes ?? 60) / 60];
 }
 
-/**
- * The day plan. Each open item of yours due this week gets ONE focus block (not one a day): the first free gap of an hour or more between
- * meetings from today up to its due day, most urgent first (priority, then due date), at most two blocks a day and two hours each. Past days
- * get none (nothing was planned there), finished items drop out, and an item you moved or took out of the plan follows your choice.
- * This replaces the old rule that cycled every task title through every free gap, which painted the same "Focus · <title>" on every day of
- * the week whether or not it was still open or already past due.
- */
-export function planFocus(days: string[], meets: Pick<Meet, 'day' | 'start' | 'end'>[], events: CalendarEvent[], today: string, nowH: number, overrides: PlanOverrides): Focus[] {
-  const out: Focus[] = [];
-  const items = events.filter((e) => isWorkItem(e) && !isDone(e) && e.date >= today)
-    .sort((a, b) => (RANK[a.priority ?? ''] ?? 4) - (RANK[b.priority ?? ''] ?? 4) || a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
-  const busyOf = (day: string) => [...meets.filter((m) => m.day === day), ...out.filter((f) => f.day === day)].map((m) => [m.start, m.end] as const).sort((a, b) => a[0] - b[0]);
-  // the ones you placed yourself go first, so the suggestions fit around them
-  for (const e of items) {
-    const o = overrides[planKey(e)];
-    if (o && o !== 'removed' && days.includes(o.day) && o.day >= today) out.push({ key: `focus:${o.day}:${planKey(e)}`, day: o.day, start: o.start, end: o.start + o.len, e, pinned: true });
-  }
-  for (const e of items) {
-    if (overrides[planKey(e)]) continue;
-    for (const day of days) {
-      if (day < today || day > e.date) continue;
-      if (out.filter((f) => f.day === day && !f.pinned).length >= 2) continue;
-      const from = day === today ? Math.max(START, Math.ceil(nowH * 4) / 4) : START;
-      const first = focusBlocks(busyOf(day), from, END, { max: 1, maxLen: 2 }).blocks[0];
-      const slot: [number, number] | null = first ? [first.start, first.end] : null;
-      if (slot) { out.push({ key: `focus:${day}:${planKey(e)}`, day, start: slot[0], end: slot[1], e, pinned: false }); break; }
-    }
-  }
-  return out;
-}
-
 /** Side-by-side lanes for blocks that overlap on one day. */
 export function lanes(list: { key: string; start: number; end: number }[]) {
   const sorted = [...list].sort((a, b) => a.start - b.start || b.end - a.end);
@@ -148,14 +117,15 @@ export const hrefOf = (e: CalendarEvent) => (e.type === 'meeting'
   : isWorkItem(e) ? `/work?item=${e.id}` : e.projectId ? `/work/projects/${e.projectId}` : '/work/projects');
 
 // ------------------------------------------------------------------------------------------------------------------------ what a click opens
-export interface Reminder { id: string; title: string; nextFireAt: string | null }
 export type Detail =
   | { kind: 'meeting'; key: string; m: Meet }
   | { kind: 'focus'; key: string; f: Focus }
   | { kind: 'deadline'; key: string; e: CalendarEvent; others: CalendarEvent[] }
-  | { kind: 'logged'; key: string; entry: TimeEntry }
-  | { kind: 'loggedDay'; key: string; day: string; entries: TimeEntry[] }
-  | { kind: 'reminder'; key: string; r: Reminder }
+  | { kind: 'time'; key: string; t: TimelineEvent }
+  | { kind: 'loggedDay'; key: string; day: string; entries: TimelineEvent[] }
+  | { kind: 'done'; key: string; t: TimelineEvent }
+  | { kind: 'call'; key: string; t: TimelineEvent }
+  | { kind: 'reminder'; key: string; t: TimelineEvent }
   | { kind: 'leave'; key: string; day: string; note: string | null };
 
 /** Colour and icon of each kind of block, shared with the grid. */
@@ -163,8 +133,10 @@ export const KIND: Record<Detail['kind'], { icon: IconName; tint: string; label:
   meeting: { icon: 'video', tint: 'var(--ed-meet)', label: 'Meeting' },
   focus: { icon: 'target', tint: 'var(--ed-focus)', label: 'Focus' },
   deadline: { icon: 'flag', tint: 'var(--ed-red)', label: 'Deadline' },
-  logged: { icon: 'timer', tint: 'var(--ed-green)', label: 'Logged time' },
+  time: { icon: 'timer', tint: 'var(--ed-green)', label: 'Logged time' },
   loggedDay: { icon: 'timer', tint: 'var(--ed-green)', label: 'Logged time' },
+  done: { icon: 'check', tint: 'var(--ed-green)', label: 'Done' },
+  call: { icon: 'phone', tint: 'var(--ed-meet)', label: 'Call' },
   reminder: { icon: 'alarm', tint: 'var(--ed-orange)', label: 'Reminder' },
   leave: { icon: 'sun', tint: 'var(--ed-gray)', label: 'Leave' },
 };

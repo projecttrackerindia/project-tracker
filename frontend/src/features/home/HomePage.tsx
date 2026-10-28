@@ -10,7 +10,7 @@ import { WeekPlanner } from '../calendar/WeekPlanner';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
-import { insightApi, integrationsApi, projectApi, workItemApi, timeApi } from '../../api/endpoints';
+import { insightApi, integrationsApi, projectApi, workItemApi } from '../../api/endpoints';
 import type { CalendarEvent } from '../../api/types';
 import { EmptyState, ErrorState, Modal, PageLoader, Segmented } from '../../components/ui';
 import { useAi, useAssistant } from '../ai/Assistant';
@@ -20,7 +20,8 @@ import { MONTHS, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useCachedWsQuery, useWsQuery } from '../../lib/hooks';
 import { refreshWork } from '../work/workUi';
 import { hourIn, isoDateIn, zonedParts } from '../../lib/zone';
-import { RANK, clockH, focusForItems, isDone, isWorkItem, windowOf } from '../calendar/plannerModel';
+import { YourDay } from '../calendar/YourDay';
+import { toCalendarEvent, useTimeline } from '../calendar/timeline';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { DotsMenu } from '../talk/DotsMenu';
@@ -260,104 +261,17 @@ function InboxCard() {
 
 // ------------------------------------------------------------------------------------------------------------------------ Your day
 
-/** The day runs 9 AM to 7 PM; the scale shows eleven hour columns (9 … 7), as the design's ruler. A meeting without an end reads as 30 min. */
-const DAY_START = 9, DAY_END = 19, DAY_COLS = 11, MEETING_MIN = 30;
-const MEET_TINTS = ['m-green', 'm-teal', 'm-indigo'];
-const hourOf = (d: Date) => hourIn(d);   // in the app's zone
+// "Your day" is the Calendar's own day (features/calendar/YourDay): one timeline, one layout, so the two always agree.
+
 type Meeting = { e: CalendarEvent; start: Date; h: number; end: number };
 
+/** Meetings from the one timeline (scheduled meetings, including those synced from Google and Outlook), soonest first. */
 function useMeetings(from: string, to: string, team: boolean) {
-  const q = useWsQuery(['calendar', 'range', from, to, team ? 'team' : 'me'], () => insightApi.calendar(from, to, undefined, !team), { staleTime: 60_000 });
-  const list: Meeting[] = (q.data ?? []).filter((e) => e.type === 'meeting' && e.startsAt && e.category !== 'Cancelled' && e.status !== 'Cancelled')
-    .map((e) => { const start = new Date(e.startsAt!); const h = hourOf(start); return { e, start, h, end: h + (e.durationMinutes ?? MEETING_MIN) / 60 }; })
+  const q = useTimeline({ from, to, scope: team ? 'team' : 'me' });
+  const list: Meeting[] = (q.data?.events ?? []).filter((t) => t.type === 'meeting')
+    .map((t) => { const e = toCalendarEvent(t); const start = new Date(t.start); const h = hourIn(start); return { e, start, h, end: h + (e.durationMinutes ?? 30) / 60 }; })
     .sort((a, b) => a.start.getTime() - b.start.getTime());
   return { q, list };
-}
-
-/**
- * Today from 9 to 7 on two lanes: meetings (tinted capsules, real lengths) above; open incidents (red) and focus blocks (orange, solid as on the Calendar)
- * below — suggested in the free gaps of an hour or more after now, for the work that needs you most. A red line marks now.
- */
-function YourDay({ team }: { team: boolean }) {
-  const today = todayISO();
-  const { q: dayQ, list } = useMeetings(today, today, team);
-  const events = dayQ.data ?? [];
-  const inbox = useWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { staleTime: 30_000 });
-  // Time I logged today: the total in the heading; timer entries drawn at the hours they ran.
-  const logged = useWsQuery(['time', 'sheet', today, 'me'], () => timeApi.timesheet({ from: today, to: today }), { staleTime: 60_000, retry: false, enabled: !team });
-  const loggedEntries = Array.isArray(logged.data?.entries) ? logged.data!.entries : [];
-  const loggedMin = loggedEntries.reduce((n, t) => n + t.minutes, 0);
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => { const t = window.setInterval(() => setNow(new Date()), 60_000); return () => window.clearInterval(t); }, []);
-  const nowH = hourOf(now);
-  const meetings = list.filter((m) => m.end > DAY_START && m.h < DAY_END);
-  const rows = inbox.data?.rows ?? [];
-  const incidents = rows.filter((r) => r.kind === 'ticket' && r.urgent).slice(0, 2).map((r) => {
-    const at = new Date(r.at);
-    const sameDay = dayOfInstant(at) === today;
-    const ap = zonedParts(at);
-    return { r, start: sameDay ? Math.max(DAY_START, hourOf(at)) : DAY_START, since: sameDay ? clock(at) : `${ap.day} ${MONTHS[ap.month - 1]}` };
-  });
-  // Focus blocks: free gaps of 60 min or more between meetings from now (rounded up to the quarter) to 7 PM; up to two, at most 90 min each.
-  const topics = rows.filter((r) => !(r.kind === 'ticket' && r.urgent)).map((r) => r.title);
-  const cursor0 = Math.max(DAY_START, Math.ceil(nowH * 4) / 4);
-  const focus: { start: number; end: number; label: string }[] = [];
-  let free = 0;
-  if (cursor0 < DAY_END) {
-    // The same focus rule as the Calendar planner and My Work (calendar/plannerModel): your open work due by today, most urgent first,
-    // each block inside the item's own time window when it has one; then the inbox's topics; then plain "Deep work".
-    const work = events.filter((e) => isWorkItem(e) && !isDone(e) && e.date <= today)
-      .sort((a, b) => (RANK[a.priority ?? ''] ?? 4) - (RANK[b.priority ?? ''] ?? 4) || a.date.localeCompare(b.date));
-    const named = [...work.map((e) => ({ item: e.title, window: windowOf(e, today) })), ...topics.map((t) => ({ item: t, window: null })),
-      { item: 'Deep work', window: null }, { item: 'Reviews', window: null }];
-    const plan = focusForItems(named, meetings.map((m) => [m.h, m.end] as const), cursor0, DAY_END, { max: 2, maxLen: 1.5 });
-    plan.blocks.forEach((b) => focus.push({ start: b.start, end: b.end, label: b.item }));
-    free = plan.free;
-  }
-  const pct = (h: number) => `${(Math.min(DAY_COLS, Math.max(0, h - DAY_START)) / DAY_COLS) * 100}%`;
-  const width = (a: number, b: number) => `${(Math.max(.25, Math.min(b, DAY_START + DAY_COLS) - Math.max(a, DAY_START)) / DAY_COLS) * 100}%`;
-  const hours = Array.from({ length: DAY_COLS }, (_, i) => DAY_START + i);
-  const label = (h: number) => (h === 9 ? '9 AM' : h === 12 ? '12 PM' : String(h > 12 ? h - 12 : h));
-  const span = (h: number) => clockH(h);
-  const n = meetings.length;
-  return (
-    <section className="hm-card hm-yday" aria-label="Your day">
-      <div className="hm-day-hd"><h2 className="hm-h3">Your day</h2>
-        <span className="hm-faint">{n} meeting{n === 1 ? '' : 's'} · {focus.length} focus block{focus.length === 1 ? '' : 's'} · {dur(free)} free{loggedMin > 0 && <> · <Link to="/insights?tab=time" className="hm-logged">{dur(loggedMin)} logged</Link></>}</span></div>
-      <div className="hm-day-track">
-        <div className="hm-lane a" /><div className="hm-lane b" />
-        {meetings.map((m, i) => (
-          <Link key={`${m.e.id}:${m.e.startsAt}`} to={hrefOf(m.e)} className={`hm-cap ${MEET_TINTS[i % MEET_TINTS.length]}`} style={{ left: pct(m.h), width: width(m.h, m.end), top: 0 }}
-            title={`${clock(m.start)} · ${m.e.title}`}>
-            {m.e.title}<small>{clock(m.start)}{m.e.joinUrl ? ' · Meet' : ''}</small>
-          </Link>
-        ))}
-        {incidents.map(({ r, start, since }) => (
-          <Link key={r.id} to={r.href ?? '/work'} className="hm-cap inc" style={{ left: pct(start), width: width(start, Math.max(nowH, start + .75)), top: 46 }} title={r.sub}>
-            {r.title}<small>since {since}</small>
-          </Link>
-        ))}
-        {loggedEntries.filter((t) => t.startedAt).map((t) => {
-          const st = new Date(t.startedAt!); const a = hourOf(st); const b = a + (t.isRunning ? Math.max(.25, nowH - a) : t.minutes / 60);
-          if (b <= DAY_START || a >= DAY_START + DAY_COLS) return null;
-          return (
-            <Link key={t.id} to={t.workTaskId ? `/work?item=${t.workTaskId}` : t.taskId ? `/work?item=${t.taskId}` : '/insights?tab=time'} className="hm-cap logged" style={{ left: pct(a), width: width(a, b), top: 46 }} title={`Logged · ${t.taskTitle}`}>
-              {t.isRunning ? 'Running · ' : 'Logged · '}{t.taskTitle}<small>{span(a)}{t.isRunning ? '' : ` – ${span(b)}`}</small>
-            </Link>
-          );
-        })}
-        {focus.map((f) => (
-          <span key={f.start} className="hm-cap focus" style={{ left: pct(f.start), width: width(f.start, f.end), top: 46 }} title="A suggested focus block">
-            Focus · {f.label}<small>{span(f.start)} – {span(f.end)}</small>
-          </span>
-        ))}
-        {nowH >= DAY_START && nowH <= DAY_START + DAY_COLS && (
-          <div className="hm-now" style={{ left: pct(nowH) }} aria-label={`Now, ${clock(now)}`}><span>{clock(now)}</span></div>
-        )}
-      </div>
-      <div className="hm-hours" aria-hidden="true">{hours.map((h) => <span key={h}>{label(h)}</span>)}</div>
-    </section>
-  );
 }
 
 const AV_TINTS = ['#30b0c7', '#ff9500', '#5856d6', '#28cd41', '#ff2d55'];

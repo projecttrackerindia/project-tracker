@@ -1,0 +1,44 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { todayISO } from '../../lib/format';
+import { useWorkspaceId } from '../../stores/auth';
+import { hourOf, type PlanOverrides } from './plannerModel';
+import { buildWeek, focusLabel, readPlan, useTimeline, weekRange, writePlan, type DayView } from './timeline';
+
+/** The clock, refreshed every minute (shared by Today's pieces so they agree with the Calendar's now line). */
+export function useNow(ms = 60_000) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const t = window.setInterval(() => setNow(new Date()), ms); return () => window.clearInterval(t); }, [ms]);
+  return now;
+}
+
+/**
+ * Today from the one timeline: the same request as the Calendar's current week (Monday to Sunday) and the same layout (buildWeek), so Today and
+ * the Calendar show the same meetings, calls, logged time, finished work, reminders and focus blocks. `team` reads the team's day (no focus plan).
+ */
+export function useToday(team = false) {
+  const wid = useWorkspaceId();
+  const today = todayISO();
+  const now = useNow();
+  const nowQ = Math.ceil(hourOf(now) * 4) / 4;
+  const [plan, setPlan] = useState<PlanOverrides>(() => readPlan(wid));
+  useEffect(() => { setPlan(readPlan(wid)); }, [wid]);
+  // the Calendar may change the plan in another tab or a moment ago: read it again when the window comes back
+  useEffect(() => { const f = () => setPlan(readPlan(wid)); window.addEventListener('focus', f); window.addEventListener('storage', f); return () => { window.removeEventListener('focus', f); window.removeEventListener('storage', f); }; }, [wid]);
+  const q = useTimeline({ ...weekRange(today), scope: team ? 'team' : 'me' });
+  const day: DayView | null = useMemo(() => {
+    if (!q.data) return null;
+    const d = buildWeek(q.data.events, [today], today, nowQ, team ? {} : plan).byDay.get(today)!;
+    return team ? { ...d, focus: [] } : d;
+  }, [q.data, today, nowQ, plan, team]);
+  const savePlan = useCallback((p: PlanOverrides) => { setPlan(p); writePlan(wid, p); }, [wid]);
+  return { q, day, today, now, plan, savePlan };
+}
+
+/** My Work's focus card: today's focus blocks from the same plan Today and the Calendar draw. */
+export function useTodayFocus() {
+  const { day } = useToday(false);
+  return useMemo(() => {
+    const blocks = (day?.focus ?? []).map((f) => ({ start: f.start, end: f.end, label: focusLabel(f.e), id: f.e.id }));
+    return { blocks, minutes: blocks.reduce((s, b) => s + (b.end - b.start) * 60, 0) };
+  }, [day]);
+}
