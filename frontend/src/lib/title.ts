@@ -6,17 +6,21 @@ import { useEffect } from 'react';
 
 let org: string | null = null;
 let unread = 0;
+/** The Notification Centre's badge (unread notifications, messages included): when known it is the number in the title. */
+let badge: number | null = null;
 let page: string | null = null;
 
 function render() {
   if (document.documentElement.classList.contains('landing')) return;   // the public page keeps its own title
   const alarm = document.title.startsWith('⏰ ');
   const base = org ? `${org} · Project Tracker` : page ? `${page} | Project Tracker` : 'Project Tracker';
-  document.title = `${alarm ? '⏰ ' : ''}${unread > 0 ? `(${unread > 99 ? '99+' : unread}) ` : ''}${base}`;
+  const n = badge ?? unread;
+  document.title = `${alarm ? '⏰ ' : ''}${n > 0 ? `(${n > 99 ? '99+' : n}) ` : ''}${base}`;
 }
 
-export function setTitleParts(parts: { org?: string | null; unread?: number }) {
+export function setTitleParts(parts: { org?: string | null; unread?: number; badge?: number | null }) {
   if ('org' in parts) org = parts.org ?? null;
+  if ('badge' in parts) badge = parts.badge ?? null;
   if ('unread' in parts) unread = parts.unread ?? 0;
   render();
 }

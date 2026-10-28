@@ -231,12 +231,13 @@ try{
  assert.ok(await waitWrite(w=>w.ep==='/api/v1/notifications/n1/archive'&&writes.filter(x=>x.ep===w.ep).length>1));
  await page.waitForTimeout(5500);   // toasts gone before the picture
  await shot(page,'inbox-phone.png');
- // The phone's bell opens the list of notifications.
+ // The phone's bell opens the Notification Centre as a full-height sheet.
  await page.locator('.m-top').getByRole('button',{name:/^Notifications/}).click();
- await page.locator('.sheet .m-row.note').first().waitFor();
- assert.ok((await page.locator('.sheet .m-row.note').count())>=1);
- const sheet=await page.locator('.sheet').boundingBox();assert.ok(sheet&&sheet.height>200,'the sheet is open and readable');
+ await page.locator('.ncx-pop.phone .ncx-card').first().waitFor();
+ assert.ok((await page.locator('.ncx-pop.phone .ncx-card').count())>=1);
+ const sheet=await page.locator('.ncx-pop.phone').boundingBox();assert.ok(sheet&&sheet.height>200,'the sheet is open and readable');
  await shot(page,'bell-phone.png');await page.keyboard.press('Escape');
+ assert.equal(await page.locator('.ncx-pop').count(),0,'Escape closes it');
  checks.push('phone');
 
  assert.deepEqual(errors,[]);

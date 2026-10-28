@@ -195,10 +195,14 @@ export interface AuditLog { id: string; tenantId: string | null; tenantName: str
 export interface AppNotification { id: string; type: NotificationType; title: string; body: string | null; link: string | null; isRead: boolean; createdAt: string; browser: boolean; needsYou?: boolean; archived?: boolean;
   /** Snoozed until (UTC), while it waits to come back. */ snoozedUntil?: string | null;
   /** When it belongs in the inbox: arrival, or the end of its snooze. */ shownAt?: string | null;
-  /** What can be done from it without opening it. */ actions?: NotificationAction[] }
+  /** What can be done from it without opening it. */ actions?: NotificationAction[];
+  /** The Notification Centre filter it belongs to. */ category?: NotificationCategory;
+  /** A meeting's start (UTC) and where to join it, for meeting reminders. */ startsAt?: string | null; joinLink?: string | null }
+export type NotificationCategory = 'messages' | 'reminders' | 'meetings' | 'work';
 export type NotificationAction = 'done' | 'take' | 'reply' | 'approve' | 'reject' | 'snooze';
 /** Unread overall and in each lane of the inbox. */
-export interface NotificationCounts { unread: number; needsYou: number; forInfo: number; snoozed?: number }
+export interface NotificationCounts { unread: number; needsYou: number; forInfo: number; snoozed?: number;
+  /** Unread in each Notification Centre category (the bell's filters). */ messages?: number; reminders?: number; meetings?: number; work?: number }
 export interface NotificationPreference { type: NotificationType; label: string; description: string; inApp: boolean; email: boolean; browser: boolean; locked: boolean }
 export interface TestEmailResult { provider: string; delivered: boolean; message: string }
 

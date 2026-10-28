@@ -20,7 +20,10 @@ import { CommandPalette } from '../components/CommandPalette';
 import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
 import { AlertsSetup } from '../features/notifications/AlertsSetup';
 import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
-import { firstTime, getAttention, kindForType } from '../lib/attention';
+import { firstTime, kindForType } from '../lib/attention';
+import { announce } from '../features/notifications/centre/announce';
+import { getAlertPrefs, isMuted } from '../features/notifications/centre/prefs';
+import { BadgeSync, NotificationBell, NotificationCentreHost } from '../features/notifications/centre/NotificationCentre';
 import { pushCoversThisDevice, systemNotification } from '../features/reminders/device';
 import { useReminderComposer } from '../features/reminders/store';
 import { LiveCallsBar } from '../features/calls/LiveCallsBar';
@@ -59,10 +62,11 @@ function DesktopNotifier() {
         const last = read();
         const newest = Math.max(last, ...times, 0);
         if (last === 0) { write(newest || Date.now()); return; } // first run: do not replay history
-        const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type) && !isRingNotice(x) && firstTime(`n-${x.id}`, 120_000)).reverse();
+        const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type) && !isRingNotice(x) && firstTime(`dn-${x.id}`, 120_000)).reverse();
         for (const n of fresh) {
           const kind = kindForType(n.type);
-          getAttention({ kind });
+          announce(n);
+          if (isMuted() || getAlertPrefs().dnd) continue;   // muted here: it waits in the Notification Centre
           if (!pushCoversThisDevice()) void systemNotification(n.title, n.body, n.id, n.link ?? '/', { sticky: kind === 'urgent' });
         }
         write(newest);
@@ -132,6 +136,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           <div className="main v2-main">
             <PlatformBanner />
             {!admin && <Toolbar />}
+            {!admin && <NotificationBell variant="float" />}
             <main id="main-content" className="content" ref={main} tabIndex={-1}>{page}</main>
           </div>
         </>
@@ -155,6 +160,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {chatOn && <ChatRealtime />}
       {chatOn && <ProjectChatHost />}
       {!admin && <LiveBanners />}
+      {!admin && <BadgeSync />}
+      {!admin && <NotificationCentreHost />}
     </div>
     </MotionConfig>
   );

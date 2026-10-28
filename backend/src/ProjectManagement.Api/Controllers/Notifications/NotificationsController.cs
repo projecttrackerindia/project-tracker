@@ -12,8 +12,24 @@ public class NotificationsController(NotificationService notifications, Notifica
 {
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] bool unreadOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] string? lane = null,
-        [FromQuery] bool archived = false, CancellationToken ct = default) =>
-        Ok(await actions.DecorateAsync(await notifications.ListAsync(unreadOnly, page, pageSize, ct, lane, archived), ct));
+        [FromQuery] bool archived = false, [FromQuery] string? category = null, CancellationToken ct = default) =>
+        Ok(await actions.DecorateAsync(await notifications.ListAsync(unreadOnly, page, pageSize, ct, lane, archived, category), ct));
+
+    /// <summary>Back to unread.</summary>
+    [HttpPost("{id:guid}/unread")]
+    public async Task<IActionResult> MarkUnread(Guid id, CancellationToken ct) { await notifications.MarkUnreadAsync(id, ct); return NoContent(); }
+
+    /// <summary>Deletes it from this person's Notification Centre (a soft delete: put away, never removed for anyone else).</summary>
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { await notifications.SetArchivedAsync(id, true, ct); return NoContent(); }
+
+    /// <summary>Clears a stacked group (ids), a category, or everything.</summary>
+    [HttpPost("clear")]
+    public async Task<IActionResult> Clear([FromBody] NotificationClearRequest req, CancellationToken ct) => Ok(new { cleared = await notifications.ClearAsync(req, ct) });
+
+    /// <summary>Hides it until the given time; then it is back on top, unread, and pushed again. Null brings it back now.</summary>
+    [HttpPost("{id:guid}/snooze")]
+    public async Task<IActionResult> Snooze(Guid id, [FromBody] NotificationSnoozeRequest req, CancellationToken ct) { await notifications.SnoozeAsync(id, req.Until, ct); return NoContent(); }
 
     /// <summary>Does what the notification asks without opening it: done, take, reply, approve, reject (send back) or snooze.</summary>
     [HttpPost("{id:guid}/act")]
@@ -44,9 +60,9 @@ public class NotificationsController(NotificationService notifications, Notifica
     }
 
     [HttpPost("read-all")]
-    public async Task<IActionResult> MarkAllRead(CancellationToken ct)
+    public async Task<IActionResult> MarkAllRead([FromQuery] string? category, CancellationToken ct)
     {
-        await notifications.MarkAllReadAsync(ct);
+        await notifications.MarkAllReadAsync(ct, category);
         return NoContent();
     }
 }

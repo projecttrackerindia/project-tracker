@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { deepLinkToUrl, isInternal, unreadFromTitle, isNewer } = require('../src/links');
+const { deepLinkToUrl, isInternal, unreadFromTitle, isNewer, clampBadge } = require('../src/links');
 const { appUrl } = require('../src/config');
 
 test('deep links open the matching page of the app and nothing else', () => {
@@ -35,4 +35,14 @@ test('the app address is https (or localhost) and falls back safely', () => {
   assert.strictEqual(appUrl({ PT_APP_URL: 'http://evil.example.com' }, '/nonexistent'), 'https://projecttracker.in');
   assert.strictEqual(appUrl({ PT_APP_URL: 'javascript:alert(1)' }, '/nonexistent'), 'https://projecttracker.in');
   assert.strictEqual(appUrl({}, '/nonexistent'), 'https://projecttracker.in');
+});
+
+test('the badge number from the page is clamped to a safe whole number', () => {
+  assert.strictEqual(clampBadge(7), 7);
+  assert.strictEqual(clampBadge('12'), 12);
+  assert.strictEqual(clampBadge(3.9), 3);
+  assert.strictEqual(clampBadge(-2), 0);
+  assert.strictEqual(clampBadge('x'), 0);
+  assert.strictEqual(clampBadge(undefined), 0);
+  assert.strictEqual(clampBadge(50000), 999);
 });
