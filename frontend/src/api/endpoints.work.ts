@@ -109,6 +109,8 @@ export const timeApi = {
   project: (projectId: string) => get<ProjectTime>(`/projects/${projectId}/time`),
   /** A person's week (mine without a user) and where its approval stands. */
   week: (weekStart?: string, userId?: string) => get<TimesheetWeek>('/time/week', { weekStart, userId }),
+  /** The check before "Submit week": where the target comes from and what to fix (errors block, warnings are acknowledged). */
+  review: (weekStart: string) => get<import('./types').TimesheetReview>('/time/review', { weekStart }),
   submitWeek: (weekStart: string, note?: string) => post<TimesheetWeek>('/time/week/submit', { weekStart, note: note || null }),
   withdrawWeek: (weekStart: string) => post<TimesheetWeek>('/time/week/withdraw', { weekStart }),
   approvals: (weekStart?: string) => get<Approvals>('/time/approvals', { weekStart }),

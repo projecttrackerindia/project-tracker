@@ -13,6 +13,7 @@ import { todayISO } from '../../lib/format';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { KIND_LABEL, inboxApi, type InboxRow } from './inboxApi';
+import { SignalsSection, signalsLine, useTodaySignals } from './Signals';
 import './phoneToday.css';
 
 /*
@@ -66,6 +67,7 @@ export function PhoneToday() {
 
   const b = briefing.data;
   const n = b?.count ?? inbox.data?.counts?.all ?? rows.length;
+  const watch = signalsLine(useTodaySignals().data);
   return (
     <div className="pt" data-testid="phone-today">
       <div className="pt-date">{headDay(today)}</div>
@@ -74,6 +76,7 @@ export function PhoneToday() {
       <p className="pt-brief">
         {briefing.isLoading && inbox.isLoading ? 'Reading your work…'
           : n > 0 ? <><b>{n} thing{n === 1 ? '' : 's'} need{n === 1 ? 's' : ''} you.</b>{b?.reasons?.[0] ? ` ${b.reasons[0]}` : ''}</>
+          : watch ? <span data-testid="needs-you-empty"><b>Nothing needs you right now</b> · {watch} below.</span>
           : <b>Nothing needs you right now.</b>}
       </p>
       {list.length > 0 && (
@@ -94,6 +97,7 @@ export function PhoneToday() {
         </section>
       )}
       <PhoneUpNext />
+      <SignalsSection compact />
       <YourDayList />
       {pending.slice(0, 1).map((p) => <TimesheetApprovalCard key={p.id} row={p} />)}
     </div>

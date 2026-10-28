@@ -101,6 +101,10 @@ public class TimeController(TimeService time, TimesheetApprovalService approvals
     [HttpGet("time/week")]
     public async Task<IActionResult> Week([FromQuery] DateOnly? weekStart, [FromQuery] Guid? userId, CancellationToken ct) => Ok(await approvals.WeekAsync(weekStart, userId, ct));
 
+    /// <summary>The check before "Submit week": where the expected hours come from, and what to fix (errors block, warnings are acknowledged).</summary>
+    [HttpGet("time/review")]
+    public async Task<IActionResult> Review([FromServices] TimesheetReviewService review, [FromQuery] DateOnly? weekStart, CancellationToken ct) => Ok(await review.ReviewAsync(weekStart, ct));
+
     [HttpPost("time/week/submit")]
     public async Task<IActionResult> Submit([FromBody] SubmitTimesheetRequest req, CancellationToken ct) => Ok(await approvals.SubmitAsync(req, ct));
 

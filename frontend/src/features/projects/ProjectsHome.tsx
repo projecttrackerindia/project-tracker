@@ -1,3 +1,6 @@
+import { coverageText, useCoverage } from '../quality/coverage';
+import type { ProjectCoverage } from '../../api/qualityApi';
+import { Term } from '../../components/Term';
 import { pinItem, useContextMenu, usePins } from '../../components/v2/pins';
 import { Face } from '../../components/Face';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -121,6 +124,7 @@ function ProjectsView() {
   const filters = { mineOnly, includeArchived: archived };
   const all = useAllProjects(filters);
   const brief = usePortfolioBrief();
+  const coverage = useCoverage();
   const items = useMemo(() => [...(all.data?.items ?? [])].sort(byDue), [all.data]);
   const pins = usePins();
   const passMenu = useContextMenu();
@@ -225,10 +229,10 @@ function ProjectsView() {
         ) : view === 'board' ? (
           <ProjectBoard projects={shown} cacheKey={[wid, 'projects', 'list', 'all', filters]} canEditAll={canEdit} meId={meId} onOpen={open} />
         ) : view === 'list' ? (
-          <ProjectRows projects={shown} onOpen={open} canEdit={canEdit} canDelete={canDelete} meId={meId} onEdit={(p) => setModal({ project: p })} onDelete={(p) => void remove(p)} />
+          <ProjectRows projects={shown} coverage={coverage} onOpen={open} canEdit={canEdit} canDelete={canDelete} meId={meId} onEdit={(p) => setModal({ project: p })} onDelete={(p) => void remove(p)} />
         ) : (
           <div className={`pa-grid ${opening ? 'opening' : ''}`}>
-            {shown.map((p) => <Pass key={p.id} p={p} still={!!still} opening={opening} duplicate={dupes.has(p.id)}
+            {shown.map((p) => <Pass key={p.id} p={p} cov={coverage.get(p.id)} still={!!still} opening={opening} duplicate={dupes.has(p.id)}
               risk={brief.data?.ranked?.find((r) => r.projectId === p.id)} onOpen={openPass}
               onMenu={(e) => passMenu.open(e, [{ label: 'Open', icon: 'arrowRight', onSelect: () => openPass(p.id) }, pinItem(pins, p.id)])} />)}
             {passMenu.menu}
@@ -258,8 +262,8 @@ function passLine(p: Project, r?: { projectedFinish: string | null; projectedSli
 
 const R = 26, C = 2 * Math.PI * R;
 /** One project as a Wallet pass. */
-function Pass({ p, still, opening, duplicate, risk, onOpen, onMenu }: {
-  p: Project; still: boolean; opening: string | null; duplicate: boolean; risk?: { projectedFinish: string | null; projectedSlipDays: number | null }; onOpen: (id: string) => void;
+function Pass({ p, cov, still, opening, duplicate, risk, onOpen, onMenu }: {
+  p: Project; cov?: ProjectCoverage; still: boolean; opening: string | null; duplicate: boolean; risk?: { projectedFinish: string | null; projectedSlipDays: number | null }; onOpen: (id: string) => void;
   onMenu?: (e: React.MouseEvent) => void;
 }) {
   const [from, to] = passGradient(p);
@@ -287,7 +291,7 @@ function Pass({ p, still, opening, duplicate, risk, onOpen, onMenu }: {
         {p.owner ? <Face className="pa-owner-av" userId={p.owner.id} name={p.owner.name} title={p.owner.name} /> : <span className="pa-owner-av" title="No owner">–</span>}
       </span>
       <motion.b className="pa-name" layoutId={still ? undefined : `pname-${p.id}`} title={p.name}>{p.name}</motion.b>
-      <span className="pa-own">{p.owner?.name ?? 'No owner'}</span>
+      <span className="pa-own">{p.owner?.name ?? 'No owner'}{coverageText(cov) && <> · <span className="pa-cov" title={coverageText(cov)!.title} data-testid="pass-coverage">{coverageText(cov)!.label}</span></>}</span>
       <span className="pa-mid">
         <span className="pa-arc" role="img" aria-label={`${pct}% of the work done`}>
           <svg width="62" height="62" viewBox="0 0 62 62" aria-hidden="true">
@@ -356,14 +360,14 @@ function DuplicateLine({ projects }: { projects: Project[] }) {
 }
 
 /** The list view: the same projects in columns, with edit and delete where allowed. */
-function ProjectRows({ projects, onOpen, canEdit, canDelete, meId, onEdit, onDelete }: {
-  projects: Project[]; onOpen: (id: string) => void; canEdit: boolean; canDelete: boolean; meId: string; onEdit: (p: Project) => void; onDelete: (p: Project) => void;
+function ProjectRows({ projects, coverage, onOpen, canEdit, canDelete, meId, onEdit, onDelete }: {
+  projects: Project[]; coverage: Map<string, ProjectCoverage>; onOpen: (id: string) => void; canEdit: boolean; canDelete: boolean; meId: string; onEdit: (p: Project) => void; onDelete: (p: Project) => void;
 }) {
   return (
     <div className="card pj-list pj2-list">
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Project</th><th>Owner</th><th>Dates</th><th>Status</th><th>Progress</th><th aria-label="Actions" /></tr></thead>
+          <thead><tr><th>Project</th><th>Owner</th><th>Dates</th><th>Status</th><th>Progress</th><th><Term k="coverage">Tests</Term></th><th aria-label="Actions" /></tr></thead>
           <tbody>
             {projects.map((p) => (
               <tr key={p.id} className="clickable" onClick={() => onOpen(p.id)}>
@@ -372,6 +376,7 @@ function ProjectRows({ projects, onOpen, canEdit, canDelete, meId, onEdit, onDel
                 <td className="cell-muted">{dayMonth(p.startDate)} → {dayMonth(p.dueDate)}</td>
                 <td><HealthPill health={p.health} pendingSignOffs={p.pendingSignOffs} /></td>
                 <td style={{ minWidth: 150 }}><div className="pj2-rowbar"><span className={`pj2-bar ${HEALTH[p.health].tone}`}><i style={{ width: p.progress > 0 ? `max(8px, ${p.progress}%)` : '8px' }} /></span><b>{p.progress}%</b></div></td>
+                <td className="cell-muted" data-testid="row-coverage">{(() => { const t = coverageText(coverage.get(p.id)); return t ? <span className={`pj2-cov t-${t.tone}`} title={t.title}>{t.label.replace('Tests ', '')}</span> : '—'; })()}</td>
                 <td onClick={(e) => e.stopPropagation()}>
                   <div className="td-actions">
                     {(canEdit || p.owner?.id === meId) && <button type="button" className="btn-icon" title="Edit" aria-label={`Edit ${p.name}`} onClick={() => onEdit(p)}><Icon name="edit" /></button>}

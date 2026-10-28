@@ -152,3 +152,7 @@ a.ins-ring:hover, a.ins-ring:focus-visible { box-shadow: 0 4px 16px rgba(0,0,0,.
   .ins-types .ds-choice > span:last-child { display: none; }
 }
 .ins-av { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 7px; border-radius: 50%; vertical-align: middle; background: var(--ds-fill, rgba(118, 118, 128, .12)); color: var(--ds-text-2); font-size: 8.5px; font-weight: 600; }
+/* Long work-item names: a compact two-line label in the grid, the full name (with key and project) on hover. */
+.ins-table tbody th[scope='row'] { max-width: 280px; white-space: normal; }
+.ins-table tbody th .ins-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-weight: 500; }
+@media (max-width: 760px) { .ins-table tbody th[scope='row'] { max-width: 150px; } .ins-table tbody th .ins-title { -webkit-line-clamp: 2; font-size: 13px; } }

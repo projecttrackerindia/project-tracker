@@ -66,6 +66,8 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var daily = (int)Math.Round(capacity / 5m);
         var leave = await db.PlannedLeaves.AsNoTracking().Where(l => l.UserId == who && l.WorkDate >= week && l.WorkDate <= end)
             .Select(l => new { l.WorkDate, l.Note }).ToListAsync(ct);
+        // The workspace's holidays are days off for everyone, like planned leave (the target explained in the review counts the same way).
+        var holidays = await db.Holidays.AsNoTracking().Where(h => h.TenantId == tid && h.Date >= week && h.Date <= end).Select(h => new { h.Date, h.Name }).ToListAsync(ct);
         var meetings = await MeetingsAsync(who, week, end, ct);
 
         var done = sheet.Entries.Where(e => !e.IsRunning).ToList();
@@ -74,8 +76,10 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
         {
             var weekend = d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
             var off = leave.FirstOrDefault(l => l.WorkDate == d);
+            var holiday = holidays.FirstOrDefault(h => h.Date == d);
             var m = meetings.GetValueOrDefault(d);
-            days.Add(new GridDayDto(d, done.Where(e => e.WorkDate == d).Sum(e => e.Minutes), weekend || off is not null ? 0 : daily, weekend, off is not null, off?.Note,
+            days.Add(new GridDayDto(d, done.Where(e => e.WorkDate == d).Sum(e => e.Minutes), weekend || off is not null || holiday is not null ? 0 : daily, weekend,
+                off is not null || holiday is not null, off?.Note ?? holiday?.Name,
                 d > today, m.Count, m.Minutes));
         }
 

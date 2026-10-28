@@ -82,6 +82,9 @@ const make = async (theme, writes) => {
     else if (ep === '/api/v1/time/grid') data = gridOf(logged);
     else if (ep === '/api/v1/time/grid/draft') data = logged ? { ...draft, cells: [] } : draft;
     else if (ep === '/api/v1/time/week') data = week;
+    else if (ep === '/api/v1/time/review') data = { weekStart: monday, weekEnd: wday(6), totalMinutes: logged, errors: 0, warnings: 1, canSubmit: true,
+      target: { weeklyCapacityMinutes: 2400, isDefault: false, setBy: 'Asha Rao', setAt: ago(200), dailyMinutes: 480, workingDays: 5, daysOff: [], targetMinutes: 2400, explanation: '40h = 40h (your weekly capacity, set by Asha Rao in People) over 5 working days.' },
+      issues: [{ code: 'missing-day', severity: 'warning', message: `Nothing logged on ${wday(1)}, a working day.`, date: wday(1), entryId: null, fix: 'log', fixLabel: 'Log time', minutes: 480 }] };
     else if (ep === '/api/v1/reports/exports') data = exportsList;
     else if (ep === '/api/v1/ai/operations/jobs') data = jobs;
     else if (ep === `/api/v1/ai/operations/jobs/${g(60)}`) data = jobs[0];
@@ -155,7 +158,13 @@ try {
     // Use draft fills the grid, then the week is submitted.
     await page.locator('.ins-draft').getByRole('button', { name: 'Use draft' }).click();
     await page.getByText(/6h of 40h/).waitFor();
-    await page.getByRole('button', { name: 'Submit week' }).click();
+    // Submit week opens the review first: the target explained, one warning to acknowledge, then Submit.
+    await page.getByTestId('submit-week').click();
+    await page.getByTestId('review-drawer').waitFor();
+    await page.getByTestId('review-drawer').getByText(/set by Asha Rao in People/).waitFor();
+    assert.equal(await page.getByTestId('review-submit').isDisabled(), true, 'a warning must be acknowledged first');
+    await page.getByTestId('review-ack').check();
+    await page.getByTestId('review-submit').click();
     await page.getByText('Week submitted for approval.').waitFor();
     await page.getByRole('link', { name: 'Home inbox ›' }).waitFor();
 

@@ -21,6 +21,8 @@ import {
   DOW3, HR, MONTHS, SNAP, addDays, clockH, dateOf, fmtMins, hourOf, hrefOf, isDeadline, iso, lanes, mondayOf, planKey, RANK,
   type Detail, type Focus, type Meet, type PlanOverrides,
 } from './plannerModel';
+import { useTodaySignals } from '../home/Signals';
+import { Term } from '../../components/Term';
 import { buildWeek, daySignature, focusLabel, hoursOf, readPlan, useTimeline, weekRange, writePlan, type DayView } from './timeline';
 import './planner.css';
 
@@ -323,6 +325,15 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
             <button type="button" className="wp-today" onClick={() => { setAnchor(today); const d = dateOf(today); setMini({ y: d.getFullYear(), m: d.getMonth() }); }}>Today</button>
             <button type="button" className="wp-nav" aria-label={view === 'day' ? 'Next day' : 'Next week'} onClick={() => setAnchor(addDays(anchor, view === 'day' ? 1 : 7))}><Icon name="chevronR" size={14} /></button>
           </div>
+          {!tl.isLoading && !tl.isError && !meets.some((m) => days.includes(m.day)) && (
+            <NoMeetings scope={view === 'day' ? 'day' : 'week'} focusCount={wv.focus.filter((f) => days.includes(f.day)).length}
+              onPlanFocus={() => {
+                setLayers((l) => ({ ...l, focus: true }));
+                const n = wv.focus.filter((f) => days.includes(f.day) && (f.day > today || (f.day === today && f.end > nowH))).length;
+                toast(n ? `${n} focus block${n === 1 ? '' : 's'} planned from your open work. Drag one to move it.` : 'No open work with a date to plan focus for.', n ? 'success' : 'info');
+                window.setTimeout(() => scrollRef.current?.querySelector<HTMLElement>('[data-type="focus"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80);
+              }} />
+          )}
           {tl.isError ? <ErrorState error={tl.error} retry={() => void tl.refetch()} /> : (
             <div className={`wp-cal${open ? ' has-open' : ''}`} ref={gridRef} style={{ ['--cols' as string]: days.length }} onKeyDown={onGridKey}>
               <div className="wp-days">
@@ -580,5 +591,27 @@ function Inspector({ m, events, nowH, today, onOpen }: { m: Meet | null; events:
         </div>
       )}
     </aside>
+  );
+}
+
+/**
+ * The empty week (or day): no meetings, so offer what to do with the time — plan focus from open work, schedule a meeting, or open the
+ * riskiest project (the first of Today's "projects at risk" signals).
+ */
+function NoMeetings({ scope, focusCount, onPlanFocus }: { scope: 'day' | 'week'; focusCount: number; onPlanFocus: () => void }) {
+  const navigate = useNavigate();
+  const signals = useTodaySignals();
+  const risky = signals.data?.groups?.find((g) => g.kind === 'risk')?.items?.[0] ?? null;
+  return (
+    <div className="wp-empty" role="status" data-testid="calendar-empty">
+      <div className="wp-empty-t"><b>No meetings this {scope}.</b> <span><Term k="free time">Free time</Term> to protect{focusCount ? ` · ${focusCount} focus block${focusCount === 1 ? '' : 's'} suggested` : ''}.</span></div>
+      <div className="wp-empty-acts">
+        <button type="button" className="wp-empty-btn pri" onClick={onPlanFocus} data-testid="plan-focus">Plan focus</button>
+        <button type="button" className="wp-empty-btn" onClick={() => navigate('/messages?f=meetings&new=1')}>Schedule meeting</button>
+        {risky?.href
+          ? <button type="button" className="wp-empty-btn" title={`${risky.title} · ${risky.reason}`} onClick={() => navigate(risky.href!)}>Open riskiest project</button>
+          : <button type="button" className="wp-empty-btn" onClick={() => navigate('/work/projects?status=AtRisk')}>Projects at risk</button>}
+      </div>
+    </div>
   );
 }

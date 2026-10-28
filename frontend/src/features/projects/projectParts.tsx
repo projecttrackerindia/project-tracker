@@ -1,3 +1,4 @@
+import { Term } from '../../components/Term';
 import { Face } from '../../components/Face';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -34,7 +35,8 @@ export function HealthPill({ health, pendingSignOffs = 0 }: { health: ProjectHea
   if (health === 'Completed' && pendingSignOffs > 0)
     return <span className="pj2-pill risk" title="Every task is done; the remaining stages still need sign-off">100% work · {pendingSignOffs} sign-off{pendingSignOffs === 1 ? '' : 's'} pending</span>;
   const h = HEALTH[health];
-  return <span className={`pj2-pill ${h.tone}`}>{h.label}</span>;
+  // "At risk" carries the one definition (lib/glossary) on hover.
+  return <span className={`pj2-pill ${h.tone}`}>{health === 'AtRisk' ? <Term k="at risk" focusable={false}>{h.label}</Term> : h.label}</span>;
 }
 
 /** "‹ Work" (or another place): where this page belongs, as the blue line above its title. */

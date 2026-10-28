@@ -19,6 +19,11 @@ public class TestCase : TenantEntity, ITenantScoped
     public string Priority { get; set; } = "Medium";
     /// <summary>Comma-separated, e.g. "Loan dispatch, API".</summary>
     public string? Tags { get; set; }
+    /// <summary>
+    /// What the case verifies, as a JSON list: <c>[{"kind":"endpoint","id":"…","documentId":"…"},{"kind":"document","id":"…"}]</c>. An endpoint's
+    /// "Tests" and a project's test coverage read it. A link never grants access to what it points at.
+    /// </summary>
+    public string LinksJson { get; set; } = "[]";
 }
 
 /// <summary>One run of the cases on a build in an environment ("UAT 1.4" on UAT, build #214): Open, Running or Done.</summary>

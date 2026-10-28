@@ -1,0 +1,41 @@
+/* Time › the pre-submit review: target explained, issues to fix (errors) and check (warnings), each with its fix. */
+.trv { display: flex; flex-direction: column; gap: 18px; }
+.trv-sum { padding: 14px 16px; border-radius: 14px; background: var(--ds-fill); }
+.trv-big { display: flex; align-items: baseline; gap: 8px; }
+.trv-big b { font-size: 28px; font-weight: 700; letter-spacing: -.02em; color: var(--ds-text); }
+.trv-big span { color: var(--ds-text-2); font-size: 14px; }
+.trv-why { margin: 6px 0 0; font-size: 13px; line-height: 1.45; color: var(--ds-text-2); }
+.trv-clean { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ds-success, #1a9e33); font-weight: 500; }
+.trv-group h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--ds-text-2); text-transform: uppercase; letter-spacing: .03em; display: flex; align-items: center; gap: 6px; }
+.trv-group h3 em { font-style: normal; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; display: inline-grid; place-items: center; font-size: 11.5px; background: var(--ds-fill); color: var(--ds-text); }
+.trv-group.error h3 em { background: rgba(255, 59, 48, .14); color: var(--ds-danger, #ff3b30); }
+.trv-group ul { list-style: none; margin: 0; padding: 0; }
+.trv-issue { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--ds-line); }
+.trv-issue:first-child { border-top: 0; }
+.trv-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--ds-warning, #ff9500); }
+.trv-dot.error { background: var(--ds-danger, #ff3b30); }
+.trv-issue-main { flex: 1; min-width: 0; font-size: 14px; line-height: 1.4; color: var(--ds-text); overflow-wrap: anywhere; }
+.trv-fix { flex: none; white-space: nowrap; }
+.trv-note { display: flex; gap: 6px; margin-top: 8px; }
+.trv-note .input { flex: 1; min-width: 0; height: 34px; }
+.trv-foot { position: sticky; bottom: -24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 20px -20px -24px; padding: 14px 20px;
+  background: var(--ds-surface); border-top: 1px solid var(--ds-line); }
+.sheet-foot .trv-foot { position: static; margin: 0; padding: 0; border: 0; background: none; }
+.trv-ack { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; color: var(--ds-text); flex: 1; min-width: 200px; cursor: pointer; }
+.trv-ack input { margin-top: 3px; }
+.trv-block { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--ds-danger, #ff3b30); font-weight: 500; flex: 1; }
+.trv-ok { font-size: 13.5px; color: var(--ds-text-2); flex: 1; }
+.trv-submit { min-height: 40px; }
+/* the target with where it comes from */
+.trv-target { position: relative; display: inline-flex; }
+.trv-target-btn { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.trv-target-btn:hover { color: var(--ds-accent); }
+.trv-pop { position: absolute; z-index: 40; left: 0; bottom: calc(100% + 8px); width: min(320px, 86vw); display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px;
+  background: var(--ds-surface); color: var(--ds-text); box-shadow: var(--ds-e2, 0 10px 30px rgba(0, 0, 0, .16)), 0 0 0 1px var(--ds-line); font-size: 13px; line-height: 1.45; text-align: left; }
+.trv-pop b { font-size: 14px; }
+.trv-pop-row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 2px; font-size: 12.5px; }
+@media (max-width: 760px) {
+  .trv-issue { flex-wrap: wrap; }
+  .trv-fix { margin-left: 18px; min-height: 36px; }
+  .trv-submit { width: 100%; min-height: 44px; }
+}
