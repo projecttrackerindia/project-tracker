@@ -146,7 +146,8 @@ public class ActionItemTests(ApiFactory factory)
         var blocked = await w.Owner.Post(Url(w.Project), new { title = "After archiving" });
         Assert.Equal(409, (int)blocked.Status);
         Assert.Equal("PROJECT_ARCHIVED", blocked.ErrorCode);
-        Assert.Equal(409, (int)(await w.Owner.Put($"{Url(w.Project)}/{item}/status", new { status = "Completed" })).Status);
+        // Edits stay blocked; ticking an open follow-up off is allowed (audit P2-21, covered in WorkDataConsistencyTests).
+        Assert.Equal(409, (int)(await w.Owner.Put($"{Url(w.Project)}/{item}", new { title = "Edited after archiving", priority = "Low", status = "Open" })).Status);
         var listed = await List(w.Owner, w.Project);
         Assert.Single(listed);
         Assert.False(listed[0]!["can"]!["edit"]!.GetValue<bool>());

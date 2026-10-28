@@ -79,8 +79,8 @@ export function useCachedWsQuery<T>(key: unknown[], fn: () => Promise<T>, opts?:
   const q = useQuery<T, Error, T, unknown[]>({
     ...opts, queryKey: [wid, ...key], enabled: !!wid && (opts?.enabled ?? true),
     queryFn: async () => { const v = await fn(); if (store) { try { sessionStorage.setItem(store, JSON.stringify(v)); } catch { /* full or blocked */ } } return v; },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    placeholderData: ((prev: T | undefined) => prev ?? read()) as any,
+    // T is never a function here (query data is JSON), which is all NonFunctionGuard<T> asks for.
+    placeholderData: ((prev: T | undefined) => prev ?? read()) as never,
   });
   return q;
 }

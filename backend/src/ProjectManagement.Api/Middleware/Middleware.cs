@@ -19,8 +19,10 @@ public static class ErrorWriter
     {
         if (http.Response.HasStarted) return;
         var retryAfter = http.Response.Headers.RetryAfter;
-        http.Response.Clear();
+        var stale = http.Response.Headers[ApiExceptionMiddleware.ContextStaleHeader];
+        http.Response.Clear();   // drops anything a failed action set, but keeps the hints the client relies on
         if (retryAfter.Count > 0) http.Response.Headers.RetryAfter = retryAfter;
+        if (stale.Count > 0) http.Response.Headers[ApiExceptionMiddleware.ContextStaleHeader] = stale;
         http.Response.StatusCode = status;
         var options = http.RequestServices.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
         await http.Response.WriteAsJsonAsync(ApiResponse.Fail(message, errors, Activity.Current?.Id ?? http.TraceIdentifier), options);
@@ -121,7 +123,7 @@ public class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExceptionMi
             if (ex is ProjectManagement.Application.Features.Ai.AiRequestLimitException limited)
                 http.Response.Headers.RetryAfter = limited.RetryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
             // The person's access changed under them (or the app shows a button it should not): tell the client to reload /me.
-            if (ex.StatusCode == 403 && ex.Code is "PERMISSION_DENIED" or "MODULE_ACCESS_DENIED")
+            if (ex.StatusCode == 403 && ex.Code is ("PERMISSION_DENIED" or "MODULE_ACCESS_DENIED"))
                 http.Response.Headers[ContextStaleHeader] = "1";
             await ErrorWriter.WriteAsync(http, ex.StatusCode, ex.Message, ex.Errors);
         }

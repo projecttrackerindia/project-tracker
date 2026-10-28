@@ -95,7 +95,7 @@ public class SecurityAuditTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.Forbidden, (await Move(mia, roles["Boss"], roles["Dev"])).Status);    // a role outside her branch
         Assert.Equal(HttpStatusCode.Forbidden, (await Move(mia, roles["Dev"], null)).Status);             // out of her branch to the top
         Assert.Equal(HttpStatusCode.Forbidden, (await Move(mia, roles["Dev"], roles["Boss"])).Status);    // under someone else's branch
-        Assert.Equal(HttpStatusCode.NoContent, (await Move(mia, roles["Dev"], roles["DevOk"])).Status);   // within her branch
+        Assert.Equal(HttpStatusCode.OK, (await Move(mia, roles["Dev"], roles["DevOk"])).Status);   // within her branch
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class SecurityAuditTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.NoContent, (await ReportsTo(ada, ada.UserId, owner.UserId)).Status);
         Assert.Equal(HttpStatusCode.NoContent, (await Assign(owner, owner.UserId, roles["Boss"])).Status);
         Assert.Equal(HttpStatusCode.NoContent, (await Assign(ada, mia.UserId, roles["DevPower"])).Status);
-        Assert.Equal(HttpStatusCode.NoContent, (await Move(ada, roles["Dev"], null)).Status);
+        Assert.Equal(HttpStatusCode.OK, (await Move(ada, roles["Dev"], null)).Status);
     }
 
     // ---------------------------------------------------------------- P2-3 cross-tenant user ids

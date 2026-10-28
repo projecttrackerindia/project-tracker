@@ -33,7 +33,8 @@ public record SaveReminderRequest(string? Title, string? Note, ReminderTarget Ta
 public record SnoozeRequest(string? Preset, string? Until, string? TimeZone, DateTime? ExpectedNextFireAt = null, DateTime? ExpectedLastFiredAt = null, bool? Expect = null);
 /// <summary>What the caller saw when it pressed Done/Snooze: if the reminder has moved on since (fired again, already finished), the press is refused
 /// instead of finishing the next occurrence. <see cref="Expect"/> true means the two times below are given (null values included).</summary>
-public record ReminderExpectation(DateTime? ExpectedNextFireAt, DateTime? ExpectedLastFiredAt, bool? Expect = true);
+/// <summary>What the app saw when the person tapped Done. An empty body (e-mail links, older apps) carries no expectation and is not checked.</summary>
+public record ReminderExpectation(DateTime? ExpectedNextFireAt = null, DateTime? ExpectedLastFiredAt = null, bool? Expect = null);
 public record TimeZoneRequest(string? TimeZone);
 
 public record ReminderSettingsDto(int[] WorkDays, string WorkStart, string WorkEnd, string? QuietStart, string? QuietEnd, string DefaultTime,
@@ -217,7 +218,7 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     public async Task<ReminderDto> CompleteAsync(Guid id, ReminderExpectation? expect, CancellationToken ct = default)
     {
         var r = await OwnAsync(id, ct);
-        if (expect is not null && (expect.Expect ?? true)) EnsureCurrent(r, expect.ExpectedNextFireAt, expect.ExpectedLastFiredAt);
+        if (expect is not null && (expect.Expect == true || expect.ExpectedNextFireAt is not null || expect.ExpectedLastFiredAt is not null)) EnsureCurrent(r, expect.ExpectedNextFireAt, expect.ExpectedLastFiredAt);
         var wasOpen = r.State is ReminderState.Scheduled or ReminderState.Fired;
         var done = Complete(db, r, clock.Now);
         if (wasOpen && ProjectManagement.Application.Features.Integrations.ReminderWebhook.IsAboutWork(done))
