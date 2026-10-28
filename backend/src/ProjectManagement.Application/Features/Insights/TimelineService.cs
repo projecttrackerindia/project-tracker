@@ -123,7 +123,7 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
 
         // ---- time logged: timer entries at the hours they ran; typed-in minutes placed on their day (approximated)
         var entries = await (from t in db.TimeEntries.AsNoTracking()
-                             where people.Contains(t.UserId) && t.WorkDate >= from && t.WorkDate <= to
+                             where people.Contains(t.UserId) && t.WorkDate >= @from && t.WorkDate <= to
                              select new
                              {
                                  t.Id, t.UserId, t.WorkDate, t.Minutes, t.Note, t.StartedAt, t.EndedAt, t.CreatedAt, t.ProjectId, t.TaskId, t.WorkTaskId,
