@@ -11,6 +11,7 @@ import { haptic } from '../lib/mobile';
 import { useTeamLens } from '../lib/teamLens';
 import { useAuth } from '../stores/auth';
 import { toast } from '../stores/ui';
+import { AttendancePill } from '../features/attendance/AttendancePill';
 import { CreateOrganizationModal } from './parts';
 
 const hue = (name: string) => { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
@@ -48,6 +49,7 @@ export function MobileTopBar() {
         )}
         {!admin && <button type="button" className="m-icon m-new" onClick={() => { haptic(12); openNew(); }} aria-label="New"><Icon name="plus" size={20} /></button>}
         <button type="button" className="m-icon" onClick={() => { haptic(); openPalette(); }} aria-label="Search"><Icon name="search" size={21} /></button>
+        {!admin && <AttendancePill compact />}
         {!admin && <NotificationBell variant="phone" />}
         <AvatarMenu />
       </div>

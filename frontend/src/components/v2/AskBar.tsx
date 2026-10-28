@@ -10,6 +10,7 @@ import { openNew, pageContext, useAskPanel, useCopilot } from './state';
 import { openPalette } from '../CommandPalette';
 import { useIsMobile } from '../../lib/mobile';
 import { NotificationBell } from '../../features/notifications/centre/NotificationCentre';
+import { AttendancePill } from '../../features/attendance/AttendancePill';
 import './v2.css';
 
 const AiPage = lazy(() => import('../../features/ai/AiPage').then((m) => ({ default: m.AiPage })));
@@ -88,6 +89,7 @@ export function Toolbar() {
         <kbd>⌘K</kbd>
       </form>
       <NotificationBell />
+      <AttendancePill />
       <button type="button" className="v2-tb-new" title="New (N)" onClick={() => openNew()}><Icon name="plus" size={14} /> New</button>
     </div>
   );

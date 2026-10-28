@@ -197,6 +197,8 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<TestResult> TestResults => Set<TestResult>();
     public DbSet<SavedView> SavedViews => Set<SavedView>();
     public DbSet<Holiday> Holidays => Set<Holiday>();
+    public DbSet<AttendanceDay> AttendanceDays => Set<AttendanceDay>();
+    public DbSet<AttendancePolicy> AttendancePolicies => Set<AttendancePolicy>();
     public DbSet<StatusPage> StatusPages => Set<StatusPage>();
     public DbSet<AiSearchChunk> AiSearchChunks => Set<AiSearchChunk>();
     public DbSet<AiEvaluationRun> AiEvaluationRuns => Set<AiEvaluationRun>();
@@ -351,6 +353,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureVault(b);
         ConfigureQuality(b);
         ConfigurePlatformViews(b);
+        ConfigureAttendance(b);
         ApplyQueryFilters(b);
     }
 }

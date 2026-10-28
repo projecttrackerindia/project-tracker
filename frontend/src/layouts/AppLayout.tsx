@@ -32,6 +32,7 @@ import { IncomingCallHost } from '../features/calls/IncomingCall';
 import { isRingNotice } from '../features/calls/incomingCalls';
 import { AskBar, AskPanelHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
 import { MotionConfig } from 'framer-motion';
+import { AttendanceHost } from '../features/attendance/AttendanceHost';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -157,6 +158,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <ReminderAlerts />
       <AlertsSetup />
       <ComposerSlot />
+      {!admin && <AttendanceHost />}
       {chatOn && <ChatRealtime />}
       {chatOn && <ProjectChatHost />}
       {!admin && <LiveBanners />}
