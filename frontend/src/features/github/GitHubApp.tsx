@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { integrationsApi } from '../../api/endpoints';
@@ -25,6 +26,10 @@ const saveLastRepo = (r: string) => { try { localStorage.setItem(LAST_REPO, r); 
  * Settings → GitHub & Azure DevOps: install the ProjectTracker GitHub App with one click (no webhook or secret to paste). GitHub sends the
  * admin back here with the installation and a one-time code; the server checks the code's GitHub user can reach that installation.
  */
+// One completion per return from GitHub, even if the card mounts twice (the workspace context arriving remounts Settings):
+// the one-time code is spent on the first call, and a second call would report a failure over a connection that worked.
+const completed = new Set<string>();
+
 export function GitHubAppCard() {
   const wid = useWorkspaceId();
   const role = useAuth((s) => s.ctx?.current?.role);
@@ -34,6 +39,7 @@ export function GitHubAppCard() {
   const [busy, setBusy] = useState(false);
   const [requested, setRequested] = useState(false);
   const completing = useRef(false);
+  const qc = useQueryClient();
   const refresh = () => void invalidateWorkspace(wid, 'github-app');
 
   // Back from GitHub: ?installation_id=…&setup_action=install&code=…&state=…
@@ -42,11 +48,17 @@ export function GitHubAppCard() {
     if (!installation && action !== 'request') return;
     const clear = () => { const n = new URLSearchParams(params); ['installation_id', 'setup_action', 'code', 'state'].forEach((k) => n.delete(k)); setParams(n, { replace: true }); };
     if (action === 'request') { setRequested(true); clear(); return; }
-    if (completing.current || !installation || !state) { clear(); return; }
-    completing.current = true;
+    const once = `${installation}|${state}`;
+    if (completing.current || !installation || !state || completed.has(once)) { clear(); return; }
+    completing.current = true; completed.add(once);
     setBusy(true);
     integrationsApi.gitHubComplete({ installationId: Number(installation), setupAction: action, code: params.get('code'), state })
-      .then((s) => { toast(`GitHub connected: ${s.account ?? 'your account'}, ${s.repositories.length} repositor${s.repositories.length === 1 ? 'y' : 'ies'}.`); refresh(); })
+      .then((s) => { toast(`GitHub connected: ${s.account ?? 'your account'}, ${s.repositories.length} repositor${s.repositories.length === 1 ? 'y' : 'ies'}.`);
+        // Refresh every GitHub status copy, not only the one keyed by the workspace this first render saw (it may not have loaded yet).
+        // The answer is the new status: show it now (no refetch race with a status read that started before the install finished).
+        qc.setQueriesData({ predicate: (x) => x.queryKey.length === 2 && x.queryKey[1] === 'github-app' }, s);
+        if (wid) qc.setQueryData([wid, 'github-app'], s);
+        void qc.invalidateQueries({ predicate: (x) => x.queryKey.includes('github-app') }); })
       .catch((e) => toast(errText(e, 'GitHub could not be connected.'), 'error'))
       .finally(() => { setBusy(false); clear(); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
