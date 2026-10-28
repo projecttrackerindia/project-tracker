@@ -20,9 +20,13 @@ const STATUS_LABEL: Record<ResultStatus, string> = { Pass: 'Passed', Fail: 'Fail
 const DOT: Record<ResultStatus, string> = { Pass: 'p', Fail: 'x', Blocked: 'b', NotRun: 's' };
 
 export function QualityPage() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const deepRelease = params.get('release');
-  const [tab, setTab] = useState<Tab>(deepRelease ? 'releases' : 'runs');
+  // The tab lives in the address, so it survives a reload, a remount (workspace context arriving) and the Back button.
+  const TABS: Tab[] = ['runs', 'cases', 'bugs', 'releases'];
+  const q = params.get('tab') as Tab | null;
+  const tab: Tab = q && TABS.includes(q) ? q : deepRelease ? 'releases' : 'runs';
+  const setTab = (t: Tab) => setParams((p) => { const n = new URLSearchParams(p); if (t === 'runs') n.delete('tab'); else n.set('tab', t); return n; }, { replace: true });
   const [selected, setSelected] = useState<string | null>(null);
   const [onlyFailed, setOnlyFailed] = useState(false);
   const [dialog, setDialog] = useState<'case' | 'run' | null>(null);
