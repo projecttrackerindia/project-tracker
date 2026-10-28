@@ -40,7 +40,6 @@ public class TimesheetReviewTests(ApiFactory factory)
             db.Projects.IgnoreQueryFilters().First(p => p.Id == project).IsBillable = true;   // after logging: the Monday entry is not billable
             db.Holidays.Add(new Holiday { TenantId = tid, Date = mon.AddDays(2), Name = "Harvest Day" });
             db.TimeEntries.Add(new TimeEntry { TenantId = tid, TaskId = task, ProjectId = project, UserId = dev.UserId, WorkDate = mon.AddDays(3), Minutes = 13 * 60, Billable = true, Note = "Cutover" });
-            db.TimeEntries.Add(new TimeEntry { TenantId = tid, UserId = dev.UserId, WorkDate = mon.AddDays(4), Minutes = 30, Note = "Admin" });
             var fri = DateTime.SpecifyKind(mon.AddDays(4).ToDateTime(new TimeOnly(10, 0)), DateTimeKind.Utc);
             db.TimeEntries.Add(new TimeEntry { TenantId = tid, TaskId = task, ProjectId = project, UserId = dev.UserId, WorkDate = mon.AddDays(4), Minutes = 60, Billable = true, Note = "Pairing",
                 StartedAt = fri, EndedAt = fri.AddHours(1) });
@@ -67,7 +66,7 @@ public class TimesheetReviewTests(ApiFactory factory)
         var missing = Issues(r, "missing-day").Select(i => S(i["date"])).ToList();
         Assert.Equal(new[] { Iso(mon.AddDays(1)) }, missing);   // Tuesday only: Wednesday is the holiday, Thursday and Friday hold time
         Assert.Single(Issues(r, "long-day"));
-        Assert.Equal("link", S(Issues(r, "no-item").Single()["fix"]));
+        Assert.Empty(Issues(r, "no-item"));   // every entry is on a work item (the database requires one)
         var notBillable = Issues(r, "not-billable").Single();
         Assert.Equal("billable", S(notBillable["fix"]));
         Assert.Contains(Issues(r, "note-missing"), i => S(i["date"]) == Iso(mon));
