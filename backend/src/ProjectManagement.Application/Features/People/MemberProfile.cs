@@ -21,11 +21,27 @@ public record TeamRefDto(Guid Id, string Name, bool IsLead);
 /// </summary>
 public record MemberProfileDto(Guid UserId, string DisplayName, string Email, bool HasAvatar, TenantRole Role,
     string? JobRole, string? JobRoleColor, IReadOnlyList<TeamRefDto> Teams, UserRefDto? ReportsTo, DateTime JoinedAt,
-    int Open, int Overdue, int DoneLast30Days, int DoneTotal, bool IsMe, bool CanMessage, IReadOnlyList<CertificationBadgeDto>? CertificationBadges = null);
+    int Open, int Overdue, int DoneLast30Days, int DoneTotal, bool IsMe, bool CanMessage, IReadOnlyList<CertificationBadgeDto>? CertificationBadges = null, string? Theme = null);
 
 /// <summary>Reads a profile the caller may see: the target must be a member of the caller's current workspace.</summary>
 public class MemberProfileService(IAppDbContext db, ICurrentContext ctx, WorkItemService workItems)
 {
+    /// <summary>The card themes a person can choose for their own profile card (the app draws them); anything else is ignored.</summary>
+    public static readonly string[] Themes = ["indigo", "sunset", "ocean", "mint", "graphite", "rose", "aurora", "sand", "berry", "sky"];
+
+    private static string? ThemeOf(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            return doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("theme", out var t) && t.ValueKind == System.Text.Json.JsonValueKind.String
+                && Themes.Contains(t.GetString()) ? t.GetString() : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
     public async Task<MemberProfileDto> GetAsync(Guid userId, CancellationToken ct = default)
     {
         var tid = ctx.RequireTenantId();
@@ -51,12 +67,13 @@ public class MemberProfileService(IAppDbContext db, ICurrentContext ctx, WorkIte
         var badges = ctx.Role == TenantRole.Guest ? [] : await db.EmployeeCertifications.IgnoreQueryFilters().AsNoTracking()
             .Where(c=>c.UserId==userId&&c.ShowBadge&&!c.Archived)
             .OrderBy(c=>c.Name).Take(10).Select(c=>new CertificationBadgeDto(c.Name,c.Issuer,c.ExpiresOn,c.VerificationStatus)).ToListAsync(ct);
+        var themeJson = await db.UserUiPreferences.AsNoTracking().Where(p => p.UserId == userId && p.Key == "profile").Select(p => p.Value).FirstOrDefaultAsync(ct);
         var hideEmail = ctx.Role == TenantRole.Guest && userId != ctx.UserId;
         var me = ctx.UserId == userId;
         return new MemberProfileDto(row.User.Id, row.User.DisplayName, hideEmail ? "" : row.User.Email, row.User.AvatarKey is not null,
             row.Member.Role, jobRole?.Name, jobRole?.Color, teams, reportsTo is null ? null : new UserRefDto(reportsTo.Id, reportsTo.DisplayName),
             row.Member.CreatedAt, counts?.Open ?? 0, counts?.Overdue ?? 0, counts?.DoneLast30Days ?? 0, counts?.DoneTotal ?? 0,
-            me, !me && ctx.Role != TenantRole.Guest, badges);
+            me, !me && ctx.Role != TenantRole.Guest, badges, ThemeOf(themeJson));
     }
 }
 

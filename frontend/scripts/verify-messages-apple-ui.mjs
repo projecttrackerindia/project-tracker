@@ -52,6 +52,16 @@ const talk = () => ({
   mail: { state: 'not-connected', account: null, email: null, provider: null }, chatAvailable: true,
 });
 const errors = [], checks = [], writes = [];
+let serverConv = null, myTheme = null;
+const profileOf = (id) => {
+  const me = id === user.id, who = me ? user : { id: lena.userId, displayName: lena.name, email: 'lena@example.test' };
+  return { userId: who.id, displayName: who.displayName, email: who.email, hasAvatar: false, role: me ? 'Admin' : 'Member', jobRole: me ? 'Delivery lead' : 'Developer', jobRoleColor: null,
+    teams: [{ id: 't1', name: 'Orbit Platform', isLead: me }], reportsTo: me ? null : { id: user.id, name: user.displayName }, joinedAt: '2025-03-14T00:00:00Z',
+    open: 6, overdue: me ? 0 : 2, doneLast30Days: 11, doneTotal: 148, isMe: me, canMessage: !me, theme: me ? myTheme : null, certificationBadges: [] };
+};
+/** The app's deterministic default theme (FNV-1a of the id over ten palettes), recomputed here. */
+const THEMES = ['indigo', 'sunset', 'ocean', 'mint', 'graphite', 'rose', 'aurora', 'sand', 'berry', 'sky'];
+const defaultTheme = (id) => { let h = 0x811c9dc5; for (const ch of id.toLowerCase()) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; } return THEMES[h % THEMES.length]; };
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 const make = async (theme = 'light', opts = {}) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', ...opts });
@@ -71,6 +81,9 @@ const make = async (theme = 'light', opts = {}) => {
     if (ep.endsWith('/auth/refresh')) data = { accessToken: token, expiresAt: '2099-01-01T00:00:00Z', user };
     else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['org.manage', 'work.view', 'chat.view', 'projects.view', 'calendar.view'], modules: { projects: 3, work: 3, ai: 3, chat: 3, people: 3, documents: 3, calendar: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { AI_ASSISTANT: 3, CHAT_ATTACHMENTS: 3 } } };
     else if (ep === '/api/v1/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };
+    else if (ep === '/api/v1/me/ui/conversations') { if (method === 'PUT') serverConv = JSON.parse(req.postData() || '{}').value; data = { key: 'conversations', value: serverConv, updatedAt: null }; }
+    else if (ep === '/api/v1/me/ui/profile') { if (method === 'PUT') myTheme = JSON.parse(req.postData() || '{}').value?.theme ?? null; data = { key: 'profile', value: myTheme ? { theme: myTheme } : null, updatedAt: null }; }
+    else if (/^\/api\/v1\/workspace\/members\/[^/]+\/profile$/.test(ep)) data = profileOf(ep.split('/')[5]);
     else if (ep === '/api/v1/talk/conversations') data = talk();
     else if (ep === '/api/v1/chat/conversations') data = [direct, group];
     else if (ep === `/api/v1/chat/conversations/${direct.id}/messages` && method === 'GET') data = { items: messages, hasMore: false };
@@ -134,7 +147,11 @@ try {
   const pinBox = await page.locator('.talk-pins').boundingBox();
   assert.ok(pinBox.height < 110, `pinned avatars take one small row (${pinBox.height})`);
   await page.locator('.talk-row[data-row="Orbit Team"]').waitFor({ state: 'detached' });   // a pinned chat leaves the list (after its exit animation)
-  checks.push('pin-and-row-menu');
+  await new Promise((r) => setTimeout(r, 200));
+  const pinWrite = writes.filter((w) => w.ep === '/api/v1/me/ui/conversations' && w.method === 'PUT').at(-1);
+  assert.ok(pinWrite, 'the pin is saved with the account (/me/ui/conversations)');
+  assert.deepEqual(JSON.parse(pinWrite.body).value[ws.id].pinned, [group.id]);
+  checks.push('pin-and-row-menu', 'pin-synced');
 
   await page.locator('.talk-row[data-row="Lena Park"]').click();
   await page.locator('.talk-head').waitFor();
@@ -233,6 +250,67 @@ try {
   assert.deepEqual(errors, []);
   await ctx.close();
 
+  // ---- The person card: from a message avatar; cover, avatar over the banner, three stats, theme per id; my own card has a theme picker.
+  for (const theme of ['light', 'dark']) {
+    reset(); myTheme = null;
+    ctx = await make(theme); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${origin}/preview-org/messages/${direct.id}`);
+    await page.locator(`[data-msg="${ID(2)}"] .msg-av-btn`).click();
+    const card = page.getByTestId('profile-card');
+    await card.getByText('Lena Park').waitFor();
+    await page.waitForTimeout(500);
+    const cb = await card.boundingBox(), ban = await card.getByTestId('profile-banner').boundingBox(), av = await card.getByTestId('profile-avatar').boundingBox();
+    assert.ok(Math.abs(cb.width - 340) <= 2, `card ~340 wide (${cb.width})`);
+    assert.ok(Math.abs(ban.height - 120) <= 2, 'a 120px cover banner');
+    assert.ok(av.y < ban.y + ban.height && av.y + av.height > ban.y + ban.height && av.x < ban.x + ban.width / 3, 'the avatar overlaps the banner bottom-left');
+    assert.equal(await card.getByTestId('profile-stats').locator(':scope > div').count(), 3, 'three stats');
+    assert.match(await card.innerText(), /148 done in total/);
+    assert.match(await card.getByTestId('profile-pill').innerText(), /Orbit Platform/);
+    assert.equal(await card.getAttribute('data-theme-id'), defaultTheme(lena.userId), 'the theme is deterministic per person');
+    assert.equal(await card.getByTestId('profile-theme').count(), 0, 'no theme picker on someone else\'s card');
+    assert.ok(await card.getByRole('button', { name: 'Message' }).isVisible());
+    await shot(page, `profile-1440-${theme}.png`);
+    if (theme === 'light') {
+      await card.getByRole('button', { name: 'Asha Rao' }).click();   // Reports to → their card (my own)
+      await card.getByTestId('profile-theme').waitFor();
+      assert.equal(await card.getAttribute('data-theme-id'), defaultTheme(user.id));
+      await card.getByRole('radio', { name: 'Ocean' }).click();
+      await page.waitForFunction(() => document.querySelector('[data-testid="profile-card"]')?.getAttribute('data-theme-id') === 'ocean');
+      const tw = writes.filter((w) => w.ep === '/api/v1/me/ui/profile').at(-1);
+      assert.deepEqual(JSON.parse(tw.body), { value: { theme: 'ocean' } }, 'my card theme is saved at /me/ui/profile');
+      await shot(page, 'profile-own-1440-light.png');
+    }
+    await page.keyboard.press('Escape');
+    await card.waitFor({ state: 'detached' });
+    await ctx.close();
+  }
+  checks.push('profile-card');
+
+  // ---- Pin and Hide come from the account: a pinned chat on another device shows here; a hidden one stays hidden until something newer arrives.
+  reset();
+  serverConv = { [ws.id]: { pinned: [direct.id], hidden: { [group.id]: new Date(Date.now() + 3600_000).toISOString() } } };
+  ctx = await make('light'); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${origin}/preview-org/messages`);
+  await page.locator('.talk-pin[data-pin="Lena Park"]').waitFor();
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('.talk-row[data-row="Orbit Team"]').count(), 0, 'hidden on another device: hidden here');
+  await ctx.close();
+  serverConv = { [ws.id]: { pinned: [], hidden: { [group.id]: ago(500) } } };
+  ctx = await make('light'); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${origin}/preview-org/messages`);
+  await page.locator('.talk-row[data-row="Orbit Team"]').waitFor();   // a newer message arrived since it was hidden
+  await page.locator('.talk-row[data-row="Orbit Team"]').click({ button: 'right' });
+  await page.getByRole('menu', { name: 'Orbit Team actions' }).getByRole('menuitem', { name: 'Hide' }).click();
+  await page.locator('.talk-row[data-row="Orbit Team"]').waitFor({ state: 'detached' });
+  await new Promise((r) => setTimeout(r, 200));
+  assert.ok(JSON.parse(writes.filter((w) => w.ep === '/api/v1/me/ui/conversations').at(-1).body).value[ws.id].hidden[group.id], 'hide is saved with the account');
+  await ctx.close();
+  serverConv = null;
+  checks.push('hide-synced');
+
   // The dismissed chip stays dismissed for those messages.
   // ---- 1440 dark
   reset();
@@ -279,6 +357,18 @@ try {
     if (bottomBar) assert.ok(comp.y + comp.height <= bottomBar.y + 1, 'composer above the tab bar');
     await fitsPhone(page, `thread ${width} ${theme}`, assert);
     await shot(page, `thread-${width}-${theme}.png`);
+    if (width === 390) {
+      await page.locator(`[data-msg="${ID(2)}"] .msg-av-btn`).click();
+      const sheet = page.getByTestId('profile-card');
+      await sheet.getByText('Lena Park').waitFor();
+      await page.waitForTimeout(600);
+      const sb = await sheet.boundingBox();
+      assert.ok(Math.abs(sb.y + sb.height - 860) <= 2 && sb.width >= width - 1, 'a bottom sheet on a phone');
+      await fitsPhone(page, `profile ${width} ${theme}`, assert);
+      await shot(page, `profile-${width}-${theme}.png`);
+      await page.getByRole('button', { name: 'Close profile' }).click();
+      await sheet.waitFor({ state: 'detached' });
+    }
     await page.locator('.talk-head .chat-back').click();
     await page.locator('.talk-list').waitFor();
     await ctx.close();

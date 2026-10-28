@@ -8,7 +8,7 @@ import { haptic } from '../../lib/mobile';
 import { MeetPage } from '../meet/MeetPage';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ApiError } from '../../api/client';
+import { ApiError, get, put } from '../../api/client';
 import { chatApi } from '../../api/endpoints';
 import type { Conversation } from '../../api/types';
 import { Icon } from '../../components/Icon';
@@ -27,6 +27,7 @@ import { ToolbarSlot } from './ToolbarSlot';
 import { WhileAway } from '../chat/ChatPage';
 import { talkApi, type TalkFilter, type TalkRow } from './talkApi';
 import { usePresence } from '../chat/Presence';
+import { avatarBg, defaultTheme } from '../../lib/personTheme';
 import './talk.css';
 
 const FILTERS: { id: TalkFilter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'chat', label: 'Chats' }, { id: 'meetings', label: 'Meetings' }];
@@ -108,7 +109,7 @@ function TalkHome() {
   const needle = search.trim().toLowerCase();
   const unreadCount = rows.filter((r) => r.unread > 0).length;
   const matching = rows.filter((r) => (!kind || r.kind === kind) && (filter !== 'unread' || r.unread > 0) && (!needle || `${r.title} ${r.last ?? ''} ${r.sub ?? ''}`.toLowerCase().includes(needle))
-    && !(prefs.hidden[r.id] && prefs.hidden[r.id] === (r.at ?? '')));
+    && !stillHidden(prefs.hidden[r.id], r.at));
   // Pinned conversations sit as round avatars above the list (Messages), only in the plain list and only when there are any.
   const showPins = !needle && filter === 'all';
   const pinnedRows = showPins ? prefs.pinned.map((pid) => matching.find((r) => r.id === pid)).filter((r): r is TalkRow => !!r) : [];
@@ -266,13 +267,47 @@ function shortTime(iso: string) {
 
 type RowAction = { id: string; label: string; icon: import('../../components/Icon').IconName; run: () => void; danger?: boolean };
 
-/** Per-device list conveniences (Messages' Pin and Hide): which conversations are pinned, and which are hidden until something new arrives. */
+/** A hidden conversation stays hidden until a message newer than the one it was hidden at arrives. */
+const stillHidden = (hiddenAt: string | undefined, at: string | null) => {
+  if (hiddenAt === undefined) return false;
+  const a = Date.parse(at ?? ''), h = Date.parse(hiddenAt);
+  return Number.isNaN(a) || Number.isNaN(h) ? (at ?? '') === hiddenAt : a <= h;
+};
+type TalkPrefs = { pinned: string[]; hidden: Record<string, string> };
+type TalkPrefsAll = Record<string, TalkPrefs>;
+const EMPTY_PREFS: TalkPrefs = { pinned: [], hidden: {} };
+const clean = (v: Partial<TalkPrefs> | null | undefined): TalkPrefs => ({ pinned: Array.isArray(v?.pinned) ? v!.pinned : [], hidden: v?.hidden && typeof v.hidden === 'object' ? v.hidden : {} });
+
+/**
+ * Messages' Pin and Hide: which conversations are pinned, and which are hidden until something new arrives. Saved with the account
+ * (/me/ui/conversations, one entry per workspace) so they follow the person to every device; this device keeps a copy in
+ * localStorage as a cache and as the fallback when the server cannot be reached.
+ */
 function useTalkPrefs(wid: string) {
   const key = `pm_talk_prefs:${wid}`;
-  const read = () => { try { const v = JSON.parse(localStorage.getItem(key) ?? '{}') as { pinned?: string[]; hidden?: Record<string, string> }; return { pinned: v.pinned ?? [], hidden: v.hidden ?? {} }; } catch { return { pinned: [] as string[], hidden: {} as Record<string, string> }; } };
-  const [state, setState] = useState(read);
-  useEffect(() => { setState(read()); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  const save = (next: typeof state) => { setState(next); try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* private window: kept for this visit */ } };
+  const readLocal = (): TalkPrefs => { try { return clean(JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<TalkPrefs>); } catch { return EMPTY_PREFS; } };
+  const [state, setState] = useState(readLocal);
+  const server = useWsQuery(['ui', 'conversations'], async () => { try { return (await get<{ value: TalkPrefsAll | null }>('/me/ui/conversations'))?.value ?? {}; } catch { return null; } }, { staleTime: 5 * 60_000, retry: false });
+  useEffect(() => { setState(readLocal()); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // The account's copy wins once it arrives; a device that had local pins but nothing on the server uploads them once.
+    const all = server.data; if (!all) return;
+    const mine = all[wid];
+    if (mine) { const v = clean(mine); setState(v); try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* blocked */ } }
+    else { const local = readLocal(); if (local.pinned.length || Object.keys(local.hidden).length) void put('/me/ui/conversations', { value: { ...all, [wid]: local } }).catch(() => undefined); }
+  }, [server.data, wid]); // eslint-disable-line react-hooks/exhaustive-deps
+  const save = (next: TalkPrefs) => {
+    // Keep the newest 200 hidden chats so the saved value stays small.
+    const hidden = Object.fromEntries(Object.entries(next.hidden).sort((a, b) => b[1].localeCompare(a[1])).slice(0, 200));
+    const v = { pinned: next.pinned, hidden };
+    setState(v);
+    try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* private window: kept for this visit */ }
+    if (server.data) {
+      const all = { ...server.data, [wid]: v };
+      queryClient.setQueryData([wid, 'ui', 'conversations'], all);
+      void put('/me/ui/conversations', { value: all }).catch(() => toast('Could not save this to your account; it is kept on this device.', 'error'));
+    }
+  };
   return {
     ...state,
     togglePin: (id: string) => save({ ...state, pinned: state.pinned.includes(id) ? state.pinned.filter((x) => x !== id) : [...state.pinned, id].slice(-8) }),
@@ -288,7 +323,7 @@ function RowAvatar({ r, conversation }: { r: TalkRow; conversation?: Conversatio
     ? <span className={`talk-av square ${recording ? 'rec' : 'cal'}`} aria-hidden="true">{recording ? <Icon name="play" size={16} /> : <Icon name="calendar" size={18} />}</span>
     : channel
       ? <span className={`talk-av square av-c${hue(r.title)}`} aria-hidden="true">#</span>
-      : <Face userId={r.avatar.userId} hasAvatar={r.avatar.hasAvatar || undefined} className={`talk-av av-c${hue(r.title)}`} text={initials} />;
+      : <Face userId={r.avatar.userId} hasAvatar={r.avatar.hasAvatar || undefined} className={`talk-av av-c${hue(r.title)}`} style={r.avatar.userId ? { background: avatarBg(defaultTheme(r.avatar.userId)) } : undefined} text={initials} />;
 }
 
 const SWIPE_OPEN = 148;

@@ -22,6 +22,7 @@ import { openReminderComposer } from '../reminders/store';
 import { offerReminderAfterSend } from '../reminders/Suggestions';
 import '../meet/meet.css';
 import { StartCallButton } from '../calls/StartCall';
+import { MemberProfileModal } from '../people/MemberProfileModal';
 import { insertIntoComposer, LinkedChips, MakeFromMessage, PollCard, putMessage, SeenByDialog, SmartReplies, TranslateLine, UnfurlCards, UnfurlContext, useUnfurls, VoiceNote } from './MessageExtras';
 import { DotsMenu } from '../talk/DotsMenu';
 import { flyToMyWork } from '../talk/flyTask';
@@ -640,6 +641,7 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
 }) {
   const wid = useWorkspaceId();
   const [more, setMore] = useState(false);
+  const [profile, setProfile] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const actsRef = useRef<HTMLDivElement>(null);
@@ -775,7 +777,12 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
   return (
     <div className={`msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''} ${tail ? 'tail' : ''} ${aboutMe ? 'mentions-me' : ''} ${more || tapback ? 'menu-open' : ''}${tapback ? ' tapback-open' : ''}${fresh ? ' fresh' : ''}${talk && (m.reactions?.length ?? 0) > 0 && !m.isDeleted ? ' has-tapback' : ''}`} data-msg={m.id}
       onMouseEnter={onHover} onMouseLeave={onUnhover} onFocus={onHover}>
-      {!mine && (tail ? <Avatar name={m.senderName} size="sm" userId={m.senderId ?? undefined} /> : <span className="avatar-gap" />)}
+      {!mine && (tail
+        ? m.senderId
+          ? <button type="button" className="msg-av-btn" onClick={() => setProfile(true)} aria-label={`${m.senderName}'s profile`}><Avatar name={m.senderName} size="sm" userId={m.senderId} /></button>
+          : <Avatar name={m.senderName} size="sm" userId={undefined} />
+        : <span className="avatar-gap" />)}
+      {profile && m.senderId && <MemberProfileModal userId={m.senderId} onClose={() => setProfile(false)} />}
       <div className="msg-col">
         {(!grouped || m.pinnedAt || m.asksMe) && ((!mine && showName && !grouped) || (aboutMe && !m.isDeleted) || m.pinnedAt || m.asksMe) && (
           <div className="msg-meta">

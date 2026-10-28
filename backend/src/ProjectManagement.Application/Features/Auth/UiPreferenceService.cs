@@ -12,8 +12,10 @@ public record UiPreferenceDto(string Key, JsonElement? Value, DateTime? UpdatedA
 /// <summary>A person's own app layout (the sidebar), saved with their account: the app reads it at start and writes it as they change it.</summary>
 public class UiPreferenceService(IAppDbContext db, ICurrentContext ctx, AppClock clock)
 {
-    public static readonly string[] Keys = ["sidebar", "operations", "pins", "mywork"];
+    public static readonly string[] Keys = ["sidebar", "operations", "pins", "mywork", "profile", "conversations"];
     public const int MaxLength = 8000;
+    /// <summary>Keys that may hold more than <see cref="MaxLength"/>: Messages' pinned and hidden conversations (one id and time per hidden chat).</summary>
+    private static int LimitFor(string key) => key == "conversations" ? 32000 : MaxLength;
 
     private static string Check(string key)
     {
@@ -45,7 +47,8 @@ public class UiPreferenceService(IAppDbContext db, ICurrentContext ctx, AppClock
         }
         if (value.Value.ValueKind != JsonValueKind.Object) throw new ValidationException("value", "The layout must be an object.");
         var text = value.Value.GetRawText();
-        if (text.Length > MaxLength) throw new ValidationException("value", $"The layout is too large ({MaxLength:N0} characters at most).");
+        var max = LimitFor(k);
+        if (text.Length > max) throw new ValidationException("value", $"The layout is too large ({max:N0} characters at most).");
         if (row is null)
         {
             row = new UserUiPreference { UserId = uid, Key = k };
