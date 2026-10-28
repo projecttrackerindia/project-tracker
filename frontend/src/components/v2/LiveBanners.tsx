@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { notificationApi } from '../../api/endpoints';
+import { chatApi, notificationApi } from '../../api/endpoints';
 import type { AppNotification } from '../../api/types';
 import { CHECK_NOTIFICATIONS } from '../../features/notifications/events';
 import { isRingNotice } from '../../features/calls/incomingCalls';
@@ -10,6 +10,11 @@ import { useAuth } from '../../stores/auth';
 import { spring } from '../../lib/motion';
 import { Icon } from '../Icon';
 import { liveBannersOn } from './liveBannersPref';
+import { toast } from '../../stores/ui';
+import { playCue } from '../../lib/attention';
+import { announce } from '../../features/notifications/centre/announce';
+import { CATEGORY_META, categoryOf, conversationOf, iconOf } from '../../features/notifications/centre/model';
+import { mayBanner, maySound } from '../../features/notifications/centre/prefs';
 import './v2.css';
 
 const MAX = 3;
@@ -41,8 +46,11 @@ export function LiveBanners() {
       running = true;
       try {
         const page = await notificationApi.list(1, true);
-        const fresh = page.items.filter((n) => !seen.current.has(n.id) && !SKIP.has(n.type) && !isRingNotice(n) && Date.parse(n.createdAt) > since.current - 2000);
-        fresh.forEach((n) => seen.current.add(n.id));
+        const arrived = page.items.filter((n) => !seen.current.has(n.id) && !isRingNotice(n) && Date.parse(n.createdAt) > since.current - 2000);
+        arrived.forEach((n) => seen.current.add(n.id));
+        // Each new one is announced once with its own sound (unless muted here); reminders keep their own alert card, so no banner for them.
+        arrived.forEach((n) => { if (!SKIP.has(n.type)) announce(n); });
+        const fresh = arrived.filter((n) => !SKIP.has(n.type) && mayBanner(categoryOf(n)));
         if (fresh.length && liveBannersOn()) {
           setItems((cur) => [...fresh.reverse(), ...cur].slice(0, MAX));
           void qc.invalidateQueries({ queryKey: [wid, 'inbox'] });
@@ -68,23 +76,58 @@ function Banner({ n, onClose }: { n: AppNotification; onClose: () => void }) {
   const nav = useNavigate();
   const still = useReducedMotion();
   const [hover, setHover] = useState(false);
+  const [replying, setReplying] = useState(false);
+  const [text, setText] = useState('');
   const left = useRef(HIDE_MS);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const cat = categoryOf(n);
+  const meta = CATEGORY_META[cat];
+  const conv = conversationOf(n.link);
+  const canReply = cat === 'messages' && (!!conv || (n.actions ?? []).includes('reply'));
   useEffect(() => {
-    if (hover) return;
+    if (hover || replying) return;
     const started = Date.now();
     const t = window.setTimeout(() => closeRef.current(), left.current);
     return () => { window.clearTimeout(t); left.current = Math.max(800, left.current - (Date.now() - started)); };
-  }, [hover]);
+  }, [hover, replying]);
+  const open = () => { onClose(); void notificationApi.read(n.id).catch(() => undefined); if (n.link) nav(n.link); };
+  const send = async (e: FormEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const t = text.trim(); if (!t) return;
+    try {
+      if (conv) await chatApi.send(conv, t); else await notificationApi.act(n.id, 'reply', { text: t });
+      await notificationApi.read(n.id).catch(() => undefined);
+      if (maySound('messages')) playCue('sent');
+      onClose();
+    } catch { toast('Could not send your reply.', 'error'); }
+  };
   return (
-    <motion.div className="v2-live-card" role="status" layout={!still}
-      initial={still ? { opacity: 0 } : { opacity: 0, x: 32, scale: 0.98 }} animate={{ opacity: 1, x: 0, scale: 1 }}
-      exit={still ? { opacity: 0 } : { opacity: 0, x: 32, transition: { duration: 0.18 } }} transition={still ? { duration: 0 } : spring.snappy}
-      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)}>
-      <span className="v2-live-ico" aria-hidden="true"><Icon name="bell" size={15} /></span>
-      <div className="v2-live-text"><b>{n.title}</b>{n.body && <span>{n.body}</span>}</div>
-      {n.link && <button type="button" className="btn btn-primary btn-sm" onClick={() => { onClose(); nav(n.link!); }}>Open</button>}
+    <motion.div className="v2-live-card ncx-banner" role="status" layout={!still} data-cat={cat}
+      initial={still ? { opacity: 0 } : { opacity: 0, y: -16, scale: 0.98 }} animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+      exit={still ? { opacity: 0 } : { opacity: 0, x: 40, transition: { duration: 0.18 } }} transition={still ? { duration: 0 } : spring.snappy}
+      drag={still ? false : 'x'} dragConstraints={{ left: 0, right: 0 }} dragElastic={0.6}
+      onDragEnd={(_e, info) => { if (Math.abs(info.offset.x) > 80) onClose(); }}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)}
+      onClick={(e) => { if (!(e.target as HTMLElement).closest('button, input, form')) open(); }}>
+      <span className={`ncx-ico ${meta.tint}`} aria-hidden="true"><Icon name={iconOf(n)} size={15} /></span>
+      <div className="ncx-banner-main">
+        <span className="ncx-row1"><b>{n.title}</b><time>now</time></span>
+        {n.body && <span className="ncx-text">{n.body}</span>}
+        {canReply && !replying && (
+          <div className="ncx-quick">
+            <button type="button" className="ncx-btn" onClick={() => setReplying(true)}><Icon name="send" size={12} /> Reply</button>
+            <button type="button" className="ncx-btn ghost" onClick={open}>Open chat</button>
+          </div>
+        )}
+        {replying && (
+          <form className="ncx-reply" onSubmit={(e) => void send(e)}>
+            <input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Reply…" aria-label="Reply" maxLength={4000}
+              onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setReplying(false); } }} />
+            <button type="submit" className="ncx-send" aria-label="Send reply" disabled={!text.trim()}><Icon name="arrowUp" size={13} /></button>
+          </form>
+        )}
+      </div>
       <button type="button" className="v2-live-x" aria-label="Dismiss" onClick={onClose}><Icon name="close" size={13} /></button>
     </motion.div>
   );

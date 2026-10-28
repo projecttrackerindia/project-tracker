@@ -1,6 +1,6 @@
 /* Project Tracker service worker: the app shell for offline start, push notifications, and opening them.
  * Data from the API is never cached here - it belongs to whoever is signed in. */
-const SHELL = 'pm-shell-v8';
+const SHELL = 'pm-shell-v9';
 
 /** The page and the scripts and styles it names, so the app can start without a connection. */
 async function cacheShell() {
@@ -48,6 +48,21 @@ self.addEventListener('fetch', (event) => {
 const URGENT = ['Reminder', 'Nudge', 'DueSoon', 'Overdue', 'ServiceLevel', 'Support', 'Security', 'SignInRequest'];
 const CHAT = ['Message', 'Mention'];
 
+// ------------------------------------------------------------------ the app icon's badge
+// While signed in, the installed app's icon (desktop Chrome / Edge, Android, iOS 16.4+ home-screen apps) shows the unread count even with
+// no window open: every push carries it (`badge`), an open page keeps it exact (`pm-badge` messages), and opening a notification takes one off.
+let badgeCount = null;
+function setBadge(n) {
+  const count = Math.max(0, Math.floor(Number(n) || 0));
+  badgeCount = count;
+  const nav = self.navigator;
+  try {
+    if (count > 0 && nav && nav.setAppBadge) return nav.setAppBadge(count).catch(() => undefined);
+    if (count === 0 && nav && nav.clearAppBadge) return nav.clearAppBadge().catch(() => undefined);
+  } catch { /* not supported here */ }
+  return Promise.resolve();
+}
+
 /** Asks an open page to play its alert sound; resolves true if one did (a page that cannot make sound yet, or none, answers false). */
 function askPage(win, message) {
   return new Promise((resolve) => {
@@ -71,11 +86,12 @@ self.addEventListener('push', (event) => {
   const signIn = data.type === 'SignInRequest';
   const urgent = reminder || URGENT.includes(data.type);
   const kind = urgent ? 'urgent' : CHAT.includes(data.type) ? 'message' : 'update';
-  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (wins) => {
+  const badging = typeof data.badge === 'number' ? setBadge(data.badge) : Promise.resolve();
+  event.waitUntil(badging.then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true })).then(async (wins) => {
     const pages = wins.filter((w) => new URL(w.url).origin === self.location.origin);
     // An open page plays its own (distinct) alert sound, so the system notification stays silent - but only if the page really did: when
     // the page cannot make sound yet, or the app is closed, the notification makes the device's own sound instead.
-    const played = (await Promise.all(pages.map((w) => askPage(w, { type: 'pm-push', kind, notificationType: data.type || '', tag: data.tag || '', call, title: data.title || '' })))).some(Boolean);
+    const played = (await Promise.all(pages.map((w) => askPage(w, { type: 'pm-push', kind, notificationType: data.type || '', tag: data.tag || '', call, title: data.title || '', category: data.category || '', link: data.link || '' })))).some(Boolean);
     if (call) {
       return self.registration.showNotification(data.title || 'Incoming call', {
         body: data.body || '', tag: `call-${call}`, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
@@ -114,6 +130,8 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
   const link = new URL((event.notification.data && event.notification.data.link) || '/', self.location.origin).href;
+  // Opened: one fewer unread on the icon until the page (which marks it read) sends the exact number.
+  if (badgeCount !== null && badgeCount > 0) event.waitUntil(setBadge(badgeCount - 1));
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
     const open = wins.find((w) => new URL(w.url).origin === self.location.origin);
     if (open) { open.focus(); return open.navigate(link); }
@@ -126,4 +144,5 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data === 'clear') event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('pm-')).map((k) => caches.delete(k)))));
   if (event.data === 'skip-waiting') self.skipWaiting();
+  if (event.data && event.data.type === 'pm-badge') event.waitUntil(setBadge(event.data.count));
 });

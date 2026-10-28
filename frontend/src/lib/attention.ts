@@ -53,7 +53,7 @@ export function primeSound() {
   on();
 }
 
-interface Note { freq: number; at: number; length: number; type: OscillatorType; volume: number }
+interface Note { freq: number; at: number; length: number; type: OscillatorType; volume: number; /** Glide to this pitch over the note (a whoosh). */ to?: number }
 
 /** Two tones of the same pitch on top of each other would sound thin; every note is a pair slightly apart for a fuller sound. */
 function play(notes: Note[]) {
@@ -67,6 +67,7 @@ function play(notes: Note[]) {
       const gain = c.createGain();
       osc.type = n.type;
       osc.frequency.value = n.freq;
+      if (n.to) { osc.frequency.setValueAtTime(n.freq, start + n.at); osc.frequency.exponentialRampToValueAtTime(n.to, start + n.at + n.length); }
       osc.detune.value = detune;
       gain.gain.setValueAtTime(0.0001, start + n.at);
       gain.gain.exponentialRampToValueAtTime(n.volume / 2, start + n.at + 0.015);
@@ -96,6 +97,47 @@ export const SOUNDS: Record<AttentionKind, Note[]> = {
     { freq: 1568, at: burst + 0.39, length: 0.12, type: 'square' as const, volume: 0.22 },
   ]),
 };
+
+/**
+ * The Notification Centre's cues: short, quiet and told apart by shape, not loudness. All generated here (no audio files, nothing copyrighted).
+ *  - message:  a soft three-note pop, rising (chat messages)
+ *  - mention:  two bright notes, higher (someone @mentioned you)
+ *  - meeting:  a gentle four-note chime (a meeting is starting)
+ *  - reminder: two notes, falling (a reminder went off)
+ *  - critical: two short bursts of a two-tone alert (a critical ticket, an SLA breach, a security alert)
+ *  - sent:     a short upward whoosh (your reply went)
+ */
+export type Cue = 'message' | 'mention' | 'meeting' | 'reminder' | 'critical' | 'sent';
+export const CUES: Record<Cue, Note[]> = {
+  message: [
+    { freq: 880, at: 0, length: 0.09, type: 'triangle', volume: 0.2 },
+    { freq: 1108.73, at: 0.075, length: 0.09, type: 'triangle', volume: 0.2 },
+    { freq: 1318.51, at: 0.15, length: 0.22, type: 'triangle', volume: 0.2 },
+  ],
+  mention: [
+    { freq: 1318.51, at: 0, length: 0.12, type: 'sine', volume: 0.28 },
+    { freq: 1975.53, at: 0.1, length: 0.3, type: 'sine', volume: 0.26 },
+  ],
+  meeting: [
+    { freq: 523.25, at: 0, length: 0.5, type: 'sine', volume: 0.18 },
+    { freq: 659.25, at: 0.16, length: 0.5, type: 'sine', volume: 0.18 },
+    { freq: 783.99, at: 0.32, length: 0.5, type: 'sine', volume: 0.18 },
+    { freq: 1046.5, at: 0.48, length: 0.8, type: 'sine', volume: 0.18 },
+  ],
+  reminder: [
+    { freq: 987.77, at: 0, length: 0.22, type: 'sine', volume: 0.26 },
+    { freq: 783.99, at: 0.22, length: 0.4, type: 'sine', volume: 0.26 },
+  ],
+  critical: [0, 0.5].flatMap((burst) => [
+    { freq: 1046.5, at: burst, length: 0.11, type: 'square' as const, volume: 0.18 },
+    { freq: 1568, at: burst + 0.12, length: 0.11, type: 'square' as const, volume: 0.18 },
+    { freq: 1046.5, at: burst + 0.24, length: 0.11, type: 'square' as const, volume: 0.18 },
+  ]),
+  sent: [{ freq: 380, at: 0, length: 0.2, type: 'sine', volume: 0.12, to: 1400 }],
+};
+
+/** Plays one cue now, whatever the settings say (the settings' preview buttons; callers check the settings first). */
+export function playCue(cue: Cue) { play(CUES[cue]); }
 
 /** The ringtone of an incoming call: a two-tone ring, twice (about 2 seconds; the caller repeats it). */
 const RING: Note[] = [0, 0.45].flatMap((at) => [
@@ -172,6 +214,8 @@ export interface AttentionOptions {
   kind: AttentionKind;
   /** Skip the sound (a push that the browser already announces with its own sound). */
   silent?: boolean;
+  /** The Notification Centre's cue for it (message, mention, meeting, reminder, critical) instead of the kind's sound. */
+  cue?: Cue;
 }
 
 /** True when a sound would actually be heard right now: switched on, and the browser has let this page make sound. */
@@ -181,10 +225,10 @@ export const canPlaySound = () => soundOn() && audio?.state === 'running';
  * Gets the person's attention: sound (if they have it on), a buzz on phones, and a flashing title / taskbar button when they are elsewhere.
  * Returns whether the sound was played, so a caller that also shows a system notification knows whether that one has to make a sound itself.
  */
-export function getAttention({ kind, silent }: AttentionOptions): boolean {
+export function getAttention({ kind, silent, cue }: AttentionOptions): boolean {
   listenForReturn();
   const sound = !silent && canPlaySound();
-  if (!silent && soundOn()) playSound(kind);
+  if (!silent && soundOn()) { if (cue) playCue(cue); else playSound(kind); }
   if (away()) {
     flashTitle();
     desktopAttention(kind === 'urgent');

@@ -204,6 +204,10 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
             var now = DateTime.UtcNow;
             var tenantIds = pending.Select(n => n.TenantId).Distinct().ToList();
             var slugs = await db.Tenants.IgnoreQueryFilters().Where(t => tenantIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Slug, ct);
+            // The app icon's badge: what is unread for the person in that workspace, so an installed app shows it with no window open.
+            var badges = await db.Notifications.IgnoreQueryFilters()
+                .Where(x => users.Contains(x.UserId) && tenantIds.Contains(x.TenantId) && x.InApp && x.ReadAt == null && x.ArchivedAt == null && (x.SnoozedUntil == null || x.SnoozedUntil <= deliverableAt))
+                .GroupBy(x => new { x.UserId, x.TenantId }).Select(g => new { g.Key.UserId, g.Key.TenantId, Count = g.Count() }).ToListAsync(ct);
             foreach (var n in pending)
             {
                 var token = n.Link is { } l && l.StartsWith("/r/", StringComparison.Ordinal) ? l[3..] : null;
@@ -212,7 +216,8 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
                 var ring = IsRing(n);
                 if (ring && deliverableAt - n.CreatedAt > RingFor) continue;
                 var payload = JsonSerializer.Serialize(new { title = n.Title, body = n.Body, link = NotificationEmailService.OrgLink(slugs.GetValueOrDefault(n.TenantId), n.Link), tag = ring ? $"call-{CallIdOf(n)}" : n.Id.ToString(), type = n.Type.ToString(), token,
-                    call = ring ? CallIdOf(n) : null }, Json);
+                    call = ring ? CallIdOf(n) : null, badge = badges.FirstOrDefault(b => b.UserId == n.UserId && b.TenantId == n.TenantId)?.Count ?? 0,
+                    category = NotificationCategories.Of(n.Type, n.Link) }, Json);
                 foreach (var s in subs.Where(s => s.UserId == n.UserId && s.Failures < 20))
                 {
                     int? status;

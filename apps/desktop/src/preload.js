@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('ptDesktop', {
   platform: process.platform,
   openConnectedAccounts: (workspaceSlug) => ipcRenderer.send('open-connected-accounts', workspaceSlug),
   protectContent: (on) => { ipcRenderer.send('protect-content', on === true); },
+  setBadge: (count) => { ipcRenderer.send('badge', Number(count) || 0); },
   attention: (kind) => { ipcRenderer.send('attention', kind === 'urgent' ? 'urgent' : 'normal'); },
   windowControl: (action) => { if (action === 'minimize' || action === 'maximize' || action === 'close') ipcRenderer.send('win-control', action); },
   onMaximizeChange: (cb) => { ipcRenderer.on('win-maximized', (_e, maximized) => cb(!!maximized)); ipcRenderer.send('win-control', 'query'); },
