@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { cspFor } from './lib/csp.mjs';
 
 // The public website: the landing page, Features, the new feature pages and Pricing at desktop and phone width. Prices come from the
-// live price list (mocked here with the current catalog), the AI employee scene and the suite tiles render, nothing scrolls sideways.
+// live price list (mocked here with the current catalog), the AI employee scene renders on Features, nothing scrolls sideways.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/site-ui');
 await fs.mkdir(out, { recursive: true });
 const pageCsp = await cspFor(); const csp = pageCsp();
@@ -38,6 +38,25 @@ try {
       await page.screenshot({ path: path.join(out, `${name}-${w}.png`), fullPage: true });
     };
     await visit('/', 'landing');
+    // The home address is the landing page (src/features/landing, its own check: verify-landing-ui.mjs): the headline, the seven
+    // sections, the way in, and the live prices; the old static landing markup is gone from index.html (a <noscript> summary stays).
+    await page.locator('.lp-hero h1', { hasText: 'Work, on autopilot.' }).waitFor();
+    for (const id of ['how', 'places', 'create', 'ai', 'portfolio', 'trust', 'pricing', 'start']) assert.equal(await page.locator(`section#${id}`).count(), 1, `section #${id}`);
+    assert.equal(await page.locator('a[href="/signup"]').count() >= 2, true);
+    assert.equal(await page.locator('#site noscript').count(), 1, 'a summary for readers without scripts');
+    assert.ok((await page.locator('meta[name="description"]').getAttribute('content')).length > 40);
+    await page.locator('#pricing').scrollIntoViewIfNeeded(); await page.waitForTimeout(1200);
+    await page.locator('#pricing').screenshot({ path: path.join(out, `landing-pricing-${w}.png`) });
+    await page.locator('.lp-hero').screenshot({ path: path.join(out, `hero-${w}.png`) });
+    await page.locator('[data-price="PRO"]', { hasText: '449' }).first().waitFor();
+    await page.locator('[data-price="BUSINESS"]', { hasText: '999' }).first().waitFor();
+    checks.push(`landing-${w}`);
+    await visit('/pricing/', 'pricing');
+    await page.locator('.pt-matrix', { hasText: 'AI employee for calls and WhatsApp' }).waitFor();
+    await page.locator('.pt-matrix', { hasText: '300 per person' }).waitFor();
+    checks.push(`pricing-${w}`);
+    await visit('/features/', 'features');
+    // the scenes that used to be on the home page live on Features
     await page.locator('.pt-emp-stage').waitFor();
     await page.locator('.pt-ast-stage').waitFor();
     assert.ok(await page.locator('.pt-suite .pt-tile').count() === 3);
@@ -47,16 +66,6 @@ try {
     await page.locator('.pt-ast').screenshot({ path: path.join(out, `assist-${w}.png`) });
     await page.locator('.pt-suite').scrollIntoViewIfNeeded(); await page.waitForTimeout(2000);
     await page.locator('.pt-suite').screenshot({ path: path.join(out, `suite-${w}.png`) });
-    await page.locator('.pt-hero').screenshot({ path: path.join(out, `hero-${w}.png`) });
-    await page.locator('[data-price="PRO"]', { hasText: '449' }).first().waitFor();
-    await page.locator('[data-price="BUSINESS"]', { hasText: '999' }).first().waitFor();
-    checks.push(`landing-${w}`);
-    await visit('/pricing/', 'pricing');
-    await page.locator('.pt-matrix', { hasText: 'AI employee for calls and WhatsApp' }).waitFor();
-    await page.locator('.pt-matrix', { hasText: '300 per person' }).waitFor();
-    checks.push(`pricing-${w}`);
-    await visit('/features/', 'features');
-    await page.locator('.pt-emp-stage').waitFor();
     for (const p of ['/features/connect-ai/', '/features/ai-employee/', '/features/operations/', '/features/doctracker/', '/features/meeting-notetaker/']) {
       await visit(p, p.split('/')[2]);
       await page.locator('h1').first().waitFor();
