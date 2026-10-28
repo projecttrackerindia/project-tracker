@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { CatchUpDialog } from './ChatTools';
+import { plainText } from './chatFormat';
 import { chatApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
 import type { ChatFile, ChatPerson, Conversation, PresenceStatus } from '../../api/types';
@@ -214,7 +216,13 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState<string | null>(null);   // non-null while the group is being renamed
   const [viewProfile, setViewProfile] = useState<string | null>(null);
+  const [summary, setSummary] = useState(false);
+  const [, setParams] = useSearchParams();
   const group = conversation.type === 'Group';
+  // Messages keeps pinned messages, shared files and the AI summary here, in Details, instead of on top of the conversation.
+  const pins = useQuery({ queryKey: chatKeys.pins(wid, conversation.id), queryFn: () => chatApi.pins(conversation.id), staleTime: 15_000 });
+  const shared = useQuery({ queryKey: ['chat', 'info-files', wid, conversation.id], queryFn: () => chatApi.files(conversation.id), staleTime: 60_000 });
+  const goTo = (messageId: string) => setParams((p) => { const n = new URLSearchParams(p); n.set('m', messageId); return n; }, { replace: true });
 
   const refresh = () => { void queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid) }); void queryClient.invalidateQueries({ queryKey: chatKeys.thread(wid, conversation.id) }); };
   const rename = useMutation({ mutationFn: (n: string) => chatApi.rename(conversation.id, n), onSuccess: () => { setName(null); refresh(); }, onError: (e) => toast(errorText(e, 'Could not rename the group.'), 'error') });
@@ -273,6 +281,26 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
             aria-labelledby="mute-label" disabled={mute.isPending} onClick={() => mute.mutate(!conversation.isMuted)} />
         </div>
 
+        <button type="button" className="info-ai" onClick={() => setSummary(true)}><span aria-hidden="true">✦</span> Summarize this conversation</button>
+
+        <div className="info-section" data-testid="info-pinned">
+          <div className="info-title">Pinned{pins.data ? ` · ${pins.data.length}` : ''}</div>
+          {pins.data?.length === 0 && <p className="info-empty">Nothing pinned. Pin a message from its ··· menu to keep it here for everyone.</p>}
+          <ul className="info-pins">{(pins.data ?? []).slice(0, 20).map((m) => (
+            <li key={m.id}><button type="button" onClick={() => (m.threadRootId ? toast('That message is in a thread.', 'info') : goTo(m.id))}>
+              <b>{m.senderName ?? 'Decision'}</b><span>{plainText(m.body).slice(0, 140) || 'Attachment'}</span></button></li>
+          ))}</ul>
+        </div>
+
+        {(shared.data?.items.length ?? 0) > 0 && (
+          <div className="info-section">
+            <div className="info-title">Shared files · {shared.data!.items.length}{shared.data!.hasMore ? '+' : ''}</div>
+            <ul className="info-files">{shared.data!.items.slice(0, 6).map((f) => (
+              <li key={f.id}><button type="button" onClick={() => goTo(f.messageId)}><Icon name={f.isImage ? 'image' : 'paperclip'} size={14} /><span>{f.fileName}</span><time>{formatDateTime(f.createdAt)}</time></button></li>
+            ))}</ul>
+          </div>
+        )}
+
         <div className="info-section">
           <div className="info-title">{group ? `Members · ${conversation.members.length}` : 'People'}{group && conversation.canManage && <button className="link-btn" onClick={() => setAdding(true)}><Icon name="plus" size={13} /> Add</button>}</div>
           <ul className="member-list">
@@ -295,6 +323,7 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
         {!group && conversation.members.length < 2 && <EmptyState icon="user" title="Former member" text="This person is no longer in the conversation." />}
       </div>
       {adding && <AddPeopleModal conversation={conversation} onClose={() => setAdding(false)} />}
+      {summary && <CatchUpDialog conversationId={conversation.id} onClose={() => setSummary(false)} />}
       {viewProfile && <MemberProfileModal userId={viewProfile} onClose={() => setViewProfile(null)} />}
     </aside>
   );

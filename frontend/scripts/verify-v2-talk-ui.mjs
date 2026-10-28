@@ -7,7 +7,7 @@ import { appCsp } from './lib/csp.mjs';
 
 // Talk (v2, s-talk): chats and meetings in one list with All · Unread · Chats · Meetings (mail has its own place) and a source glyph per row, meetings and
 // channels as rounded squares, the "Connect your mailbox" banner, a chat thread with members, call and ⓘ, the pinned "While you were away"
-// card, actions BESIDE the bubble (Make task · Remind me · ↩ · ···), "Message …" with Draft reply, and a meeting opening in the same pane. 1440 light and dark, and a 390 phone. Synthetic API only.
+// card (now an inline chip, see verify-messages-apple-ui), actions BESIDE the bubble (Make task · Remind me · ↩ · ···), "Message …" with Draft reply, and a meeting opening in the same pane. 1440 light and dark, and a 390 phone. Synthetic API only.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist');
 const out = path.resolve(process.env.PM_UI_ARTIFACTS || 'test-results/enterprise-ui', 'v2-talk');
 await fs.mkdir(out, { recursive: true });
@@ -119,6 +119,7 @@ try {
 
   await page.locator('.talk-filters .talk-chip', { hasText: 'Meetings' }).click();
   await page.waitForFunction(() => location.search.includes('f=meetings'));
+  await page.waitForFunction(() => document.querySelectorAll('.talk-rows .talk-row').length === 1);   // the others glide out
   assert.deepEqual(await page.locator('.talk-rows .talk-row').evaluateAll((els) => els.map((e) => e.getAttribute('data-row'))), ['Daily status call']);
   // Mail moved out of Talk: the old Mail filter address opens Mail, and Talk asks only for chats and meetings.
   assert.ok(talkFilters.length > 0 && talkFilters.every((f) => f === 'talk'), `Talk asks for f=talk: ${talkFilters}`);
@@ -137,13 +138,16 @@ try {
   assert.ok(await page.locator('.talk-head').getByRole('button', { name: 'Call' }).isVisible(), 'Call in the thread header');
   assert.ok(await page.getByRole('button', { name: 'Conversation actions' }).isVisible(), 'ⓘ (details and more) in the thread header');
   assert.equal(await page.locator('.composer-editable').getAttribute('data-placeholder'), 'Message Devraj Kumar');
-  const strip = page.getByTestId('summary-strip');
-  await strip.getByText('While you were away').waitFor();
-  assert.match(await strip.innerText(), /Pinned/);
-  await strip.getByRole('button', { name: 'Show what was decided' }).click();
-  await strip.getByText('He agreed to the plan and asked for the doc by mail.').waitFor();
+  // No pinned card over the thread any more: with nothing unread there is no "while you were away" at all (the chip, its expand
+  // and dismiss are checked with unread messages in verify-messages-apple-ui); the summary stays one tap away in ··· → Catch me up.
+  assert.equal(await page.getByTestId('summary-strip').count(), 0, 'no pinned summary card');
+  assert.equal(await page.getByTestId('away-chip').count(), 0, 'no summary chip without unread messages');
+  await page.getByRole('button', { name: 'Conversation actions' }).click();
+  await page.getByRole('menuitem', { name: /Catch me up/ }).click();
+  await page.getByText('He agreed to the plan and asked for the doc by mail.').waitFor();
+  await page.keyboard.press('Escape');
   checks.push('while-you-were-away');
-  assert.equal((await page.getByRole('button', { name: 'Draft a reply with AI' }).innerText()).trim(), 'Draft reply');
+  assert.match((await page.getByRole('button', { name: 'Draft a reply with AI' }).innerText()).trim(), /Draft/);
   await page.getByRole('button', { name: 'Draft a reply with AI' }).click();
   await page.waitForFunction(() => document.querySelector('.composer-editable')?.textContent?.includes('Sending the doc by mail now.'));
   checks.push('composer-draft');
@@ -193,7 +197,7 @@ try {
   await last.locator('.msg-code').waitFor();
   const code = await last.locator('.msg-code').evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, font: getComputedStyle(e.querySelector('pre')).fontFamily, h: e.querySelector('.msg-code-body').getBoundingClientRect().height }));
   assert.match(code.font, /mono|Menlo|Consolas/i, 'code is monospace');
-  assert.notEqual(code.bg, await last.locator('.bubble').evaluate((e) => getComputedStyle(e).backgroundColor), 'code sits on a neutral ground, not the green bubble');
+  assert.notEqual(code.bg, await last.locator('.bubble').evaluate((e) => getComputedStyle(e).backgroundColor), 'code sits on a neutral ground, not the blue bubble');
   assert.ok(code.h <= 330, `long code folds (${code.h})`);
   assert.ok(await last.getByRole('button', { name: /Show more/ }).isVisible(), 'Show more');
   assert.ok(await last.getByRole('button', { name: 'Copy code' }).isVisible(), 'Copy');
@@ -201,6 +205,7 @@ try {
   assert.ok(col.width <= pane.width * 0.66, `bubble stays within ~64% (${col.width} of ${pane.width})`);
   await last.getByRole('button', { name: /Show more/ }).click();
   await page.locator('.chat-messages').evaluate((e) => { e.scrollTop = e.scrollHeight; });
+  await page.evaluate(() => (document.activeElement)?.blur?.());   // Show more keeps focus (and so the actions) on the row
   await page.mouse.move(5, 5); await last.locator('.bubble').hover({ position: { x: 40, y: 20 } });
   const list = await page.locator('.chat-messages').boundingBox(), composer = await page.locator('.composer-row').boundingBox();
   const lb = await last.locator('.bubble').boundingBox(), la = await last.locator('.msg-actions').boundingBox();

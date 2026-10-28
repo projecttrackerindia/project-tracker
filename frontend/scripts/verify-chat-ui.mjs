@@ -87,7 +87,7 @@ try {
  context=await make();page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1280,height:860});
  await page.goto(origin+'/preview-org/chat/'+conversation.id);await page.locator('.composer').waitFor();
  await page.locator('[data-msg$="103"] .bubble').hover();assert.ok(await page.locator('[data-msg$="103"] .msg-actions').isVisible());
- await page.getByRole('button',{name:'More: poll, send later'}).click();await page.getByRole('menuitem',{name:'Formatting'}).click();assert.ok(await page.locator('.composer-tools').isVisible());
+ await page.getByRole('button',{name:/^Apps/}).click();await page.getByRole('menuitem',{name:'Formatting'}).click();assert.ok(await page.locator('.composer-tools').isVisible());
  await page.screenshot({path:path.join(artifacts,'desktop.png')});checks.push('desktop-hover-and-format');
  // A question to Alex waits in the list and on the message; replying clears both at once, with no reload.
  questionOn=true;await page.goto(origin+'/preview-org/chat/'+conversation.id);await page.locator('.composer').waitFor();

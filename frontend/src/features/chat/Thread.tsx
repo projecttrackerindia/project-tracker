@@ -2,6 +2,7 @@ import { handToVault } from '../vault/vaultHandoff';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { chatApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
@@ -84,7 +85,10 @@ function MeetingCardMessage({ body, projectId }: { body: string; projectId: stri
 const MAX_LENGTH = 4000;
 const MAX_FILES = 5;
 const REACTIONS = ['👍', '❤️', '😂', '🎉', '🙏', '👀', '✅', '🚀'];
+/** Messages' tapbacks, in Apple's order; "+" offers the rest. */
+const TAPBACKS = ['❤️', '👍', '👎', '😂', '‼️', '❓'];
 const GROUP_WITHIN_MS = 5 * 60_000;
+const TIME_GAP_MS = 15 * 60_000;
 const drafts = new Map<string, string>();   // what was typed and not sent, per conversation, until the tab is closed
 
 /** Keeps the composer's selection intact when a toolbar button is clicked (mousedown would otherwise blur it first). */
@@ -256,15 +260,41 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
     catch (e) { toast(e instanceof ApiError ? e.message : 'Could not draft a reply right now.', 'error'); return null; }
   };
 
+  // ---- Messages (Apple) touches for the talk variant
+  const talk = variant === 'talk';
+  // Bubbles that arrive after the conversation first painted pop in (mine from the composer, theirs from the side).
+  const fresh = useRef(new Set<string>());
+  const known = useRef<Set<string> | null>(null);
+  if (thread.data && known.current === null) known.current = new Set(items.map((x) => x.id));
+  else if (known.current) items.forEach((x, i) => { if (!known.current!.has(x.id)) { known.current!.add(x.id); if (i >= items.length - 3) fresh.current.add(x.id); } });
+  // "✦ N new while you were away": at the first message that was unread when the conversation opened, once, unless dismissed.
+  const [awayCount] = useState(() => conversation.unread);
+  const [awayFrom, setAwayFrom] = useState<string | null>(null);
+  useEffect(() => {
+    if (!talk || !thread.data || awayFrom !== null || awayCount <= 0) return;
+    const theirs = items.filter((x) => x.kind === 'User' && x.senderId !== me && !x.isDeleted);
+    const first = theirs[Math.max(0, theirs.length - awayCount)];
+    if (first && !awaySeen(id, items.at(-1)?.id)) setAwayFrom(first.id);
+  }, [talk, thread.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // "Read 9:41 AM" / "Delivered" under my latest message (not in project chats, which have no receipts).
+  const lastMine = [...items].reverse().find((x) => x.kind === 'User' && x.senderId === me && !x.isDeleted);
+  const lastMineId = lastMine && items.slice(items.indexOf(lastMine) + 1).every((x) => x.senderId === me || x.kind !== 'User') ? lastMine.id : null;
+  const receipt = !lastMine || conversation.type === 'Project' ? null
+    : isRead(lastMine) ? `Read ${timeOf(new Date(Math.max(...others.map((o) => utcMs(o.lastReadAt)))).toISOString())}` : 'Delivered';
+
   return (
     <div className={`chat-thread${variant === 'talk' ? ' talk-thread' : ''}`}>
       {variant === 'talk' ? (
         <header className="chat-head talk-head">
-          <button className="btn-icon chat-back" onClick={onBack} aria-label="Back to conversations"><Icon name="arrowLeft" /></button>
-          {conversation.type === 'Direct' ? <ConversationAvatar conversation={conversation} status={otherStatus} /> : <span className="talk-head-gl" aria-hidden="true">#</span>}
-          <div className="chat-head-text">
-            <h2>{conversation.name}</h2>
-            <div className="chat-sub" aria-live="polite">{typingNames.length ? status : sub ?? status}</div>
+          <button className="btn-icon chat-back" onClick={onBack} aria-label="Back to conversations"><Icon name="chevronL" size={22} /><span className="talk-back-label" aria-hidden="true">Messages</span></button>
+          {/* Desktop: "To: name" on the left, as Messages on the Mac. Phone: the avatar and "name ›" centred, a tap opens Details. */}
+          <div className="talk-who">
+            <span className="talk-who-av">{conversation.type === 'Direct' ? <ConversationAvatar conversation={conversation} status={otherStatus} /> : <span className="talk-head-gl" aria-hidden="true">#</span>}</span>
+            <div className="chat-head-text">
+              <h2><span className="talk-to" aria-hidden="true">To: </span><span className="talk-who-name">{conversation.name}</span><Icon name="chevronR" size={11} className="talk-who-chev" /></h2>
+              <div className="chat-sub" aria-live="polite">{typingNames.length ? status : sub ?? status}</div>
+            </div>
+            {onInfo && <button type="button" className="talk-who-hit" onClick={onInfo} aria-label={`Details for ${conversation.name}`} />}
           </div>
           {conversation.type !== 'Direct' && (
             <span className="talk-ppl" aria-label={`${conversation.members.length} members`}>
@@ -272,11 +302,12 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
             </span>
           )}
           <StartCallButton conversationId={conversation.id} label={conversation.type === 'Direct' ? 'Call' : 'Group call'} compact className="talk-ib talk-call" />
-          <DotsMenu label="Conversation actions" className="talk-info" icon="info" items={[
-            { label: 'Details', hint: 'People, mute, leave', icon: 'info', onSelect: () => onInfo?.(), hidden: !onInfo },
+          {onInfo && <button type="button" className={`talk-ib talk-details${infoOpen ? ' on' : ''}`} onClick={onInfo} aria-label="Details" aria-pressed={infoOpen} title="Details"><Icon name="info" size={15} /></button>}
+          <DotsMenu label="Conversation actions" className="talk-info" items={[
+            { label: 'Details', hint: 'People, pinned, files, mute', icon: 'info', onSelect: () => onInfo?.(), hidden: !onInfo },
             { label: 'Catch me up', hint: 'Decisions, questions and actions in this chat', icon: 'sparkle', onSelect: () => setDialog('catchup') },
             { label: 'Ask this conversation', icon: 'search', onSelect: () => setDialog('ask') },
-            { label: `Pinned messages${pinCount ? ` (${pinCount})` : ''}`, icon: 'flag', onSelect: () => setSide((v) => (v === 'pins' ? null : 'pins')) },
+            { label: `Pinned messages${pinCount ? ` (${pinCount})` : ''}`, icon: 'flag', onSelect: () => (onInfo ? onInfo() : setSide((v) => (v === 'pins' ? null : 'pins'))) },
             { label: 'Files', icon: 'folder', onSelect: () => onFiles?.(), hidden: !onFiles },
           ]} />
         </header>
@@ -320,7 +351,9 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
         {items.map((m, i) => {
           const prev = items[i - 1];
           const newDay = !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt);
-          const grouped = !newDay && !!prev && prev.kind === 'User' && m.kind === 'User' && prev.senderId === m.senderId
+          // Messages (Apple): a centred "Today 9:39 AM" whenever 15 minutes or more pass between two messages.
+          const gap = !newDay && !!prev && utcMs(m.createdAt) - utcMs(prev.createdAt) >= TIME_GAP_MS;
+          const grouped = !newDay && !gap && !!prev && prev.kind === 'User' && m.kind === 'User' && prev.senderId === m.senderId
             && utcMs(m.createdAt) - utcMs(prev.createdAt) < GROUP_WITHIN_MS;
           const mine = m.senderId === me;
           const next = items[i + 1];
@@ -328,7 +361,10 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
             || utcMs(next.createdAt) - utcMs(m.createdAt) >= GROUP_WITHIN_MS;
           return (
             <div key={m.id} className="chat-row-wrap">
-              {newDay && <div className="day-sep"><span>{dayLabel(m.createdAt)}</span></div>}
+              {talk
+                ? (newDay || gap) && <div className="day-sep talk-time"><span><b>{dayLabel(m.createdAt)}</b> {timeOf(m.createdAt)}</span></div>
+                : newDay && <div className="day-sep"><span>{dayLabel(m.createdAt)}</span></div>}
+              {talk && awayFrom === m.id && <AwayChip conversation={conversation} count={awayCount} lastMsgId={items.at(-1)?.id} onCatchUp={() => setDialog('catchup')} />}
               {m.kind === 'System'
                 ? (decisionOf(m.body)
                     ? <DecisionCapsule id={m.id} d={decisionOf(m.body)!} />
@@ -336,13 +372,19 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
                 : m.kind === 'Meeting' && conversation.projectId
                 ? <MeetingCardMessage body={m.body} projectId={conversation.projectId} />
                 : <MessageRow m={m} mine={mine} grouped={grouped} tail={tail} showName={conversation.type !== 'Direct'} canModerate={conversation.canManage}
-                    ticks={conversation.type !== 'Project'} aboutMe={!mine && mentionsUser(m.body, me)}
-                    read={mine && isRead(m)} conversation={conversation} onThread={() => setOpenThread(m.id)} talk={variant === 'talk'}
+                    ticks={conversation.type !== 'Project'} aboutMe={!mine && mentionsUser(m.body, me)} fresh={talk && fresh.current.has(m.id)}
+                    read={mine && isRead(m)} conversation={conversation} onThread={() => setOpenThread(m.id)} talk={talk}
                     onReply={() => { setEditing(null); setReplyTo(m); }}
                     onEdit={() => { setReplyTo(null); setEditing(m); }} onDelete={() => void remove(m)} onJump={jumpTo} />}
+              {talk && m.id === lastMineId && receipt && <div className="talk-receipt" data-testid="receipt">{receipt}</div>}
             </div>
           );
         })}
+        {talk && typingNames.length > 0 && (
+          <div className="talk-typing" role="status" aria-label={`${typingNames[0].split(' ')[0]} is typing`}>
+            <span className="talk-typing-bubble"><i /><i /><i /></span>
+          </div>
+        )}
       </div>
       </UnfurlContext.Provider>
 
@@ -368,6 +410,63 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
       {dialog === 'ask' && <AskChatDialog conversationId={id} onClose={() => setDialog(null)} />}
       {dialog === 'poll' && <PollDialog conversation={conversation} onClose={() => setDialog(null)} />}
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ "while you were away", inline (Messages)
+const AWAY_KEY = 'pm_away_seen';
+/** Whether the person already read or dismissed the summary for messages up to this one (kept per device). */
+function awaySeen(conversationId: string, lastId: string | undefined) {
+  try { return !!lastId && (JSON.parse(localStorage.getItem(AWAY_KEY) ?? '{}') as Record<string, string>)[conversationId] === lastId; } catch { return false; }
+}
+function markAwaySeen(conversationId: string, lastId: string | undefined) {
+  if (!lastId) return;
+  try { const all = JSON.parse(localStorage.getItem(AWAY_KEY) ?? '{}') as Record<string, string>; all[conversationId] = lastId; localStorage.setItem(AWAY_KEY, JSON.stringify(all)); } catch { /* private window: it simply shows again */ }
+}
+
+/**
+ * A slim chip in the timeline where the unread messages begin: "✦ 12 new while you were away · Summarize". Tapping it asks the catch-up AI
+ * and unfolds the decisions (or the summary) in place; tapping again folds it. ✕ dismisses it for these messages for good.
+ */
+function AwayChip({ conversation, count, lastMsgId, onCatchUp }: { conversation: Conversation; count: number; lastMsgId?: string; onCatchUp: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [gone, setGone] = useState(false);
+  const reduce = useReducedMotion();
+  const lastId = conversation.lastMessage?.at ?? '';
+  const q = useQuery({ queryKey: ['chat', 'summary', conversation.id, lastId], queryFn: () => chatApi.catchUp(conversation.id), enabled: open, staleTime: 10 * 60_000, retry: false });
+  const d = q.data;
+  const lines = d ? (d.decisions.length ? d.decisions : d.actions).slice(0, 3).map((x) => (x.owner && !x.text.includes(x.owner.split(' ')[0]) ? `${x.text} (${x.owner.split(' ')[0]})` : x.text)) : [];
+  const dismiss = () => { markAwaySeen(conversation.id, lastMsgId); setGone(true); };
+  return (
+    <AnimatePresence initial={false}>
+      {!gone && (
+        <motion.div className={`talk-away-chip${open ? ' open' : ''}`} data-testid="away-chip" layout={!reduce}
+          initial={false} exit={reduce ? { opacity: 0 } : { opacity: 0, scale: .92, height: 0, marginTop: 0, marginBottom: 0 }} transition={{ type: 'spring', stiffness: 420, damping: 34 }}>
+          <div className="talk-away-row">
+            <button type="button" className="talk-away-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+              <span className="talk-away-spark" aria-hidden="true">✦</span>
+              <span>{count} new while you were away</span>
+              <span className="talk-away-sum">· {open ? 'Hide' : 'Summarize'}</span>
+            </button>
+            <button type="button" className="talk-away-x" onClick={dismiss} aria-label="Dismiss the summary"><Icon name="close" size={11} /></button>
+          </div>
+          <AnimatePresence initial={false}>
+            {open && (
+              <motion.div className="talk-away-body" key="body" initial={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} animate={reduce ? { opacity: 1 } : { opacity: 1, height: 'auto' }}
+                exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} transition={{ type: 'spring', stiffness: 380, damping: 36 }}>
+                <div className="talk-away-in">
+                  {q.isLoading ? <p className="talk-away-note"><Spinner /> Reading the conversation…</p>
+                    : q.isError ? <p className="talk-away-note">{q.error instanceof ApiError ? q.error.message : 'No summary right now.'}</p>
+                      : lines.length ? <ul>{lines.map((l) => <li key={l}>{l}</li>)}</ul>
+                        : <p className="talk-away-note">{d?.summary || 'Nothing decided since you were last here.'}</p>}
+                  {d && <button type="button" className="link-btn talk-away-more" onClick={onCatchUp}>See questions and actions</button>}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -532,7 +631,8 @@ const remindAbout = (m: ChatMessage) =>
  * One message. Time, "edited" and the read ticks sit inside the bubble; the avatar shows once, beside the last message of a run. With a
  * mouse, a small toolbar appears on hover; on a phone, a long press opens the actions as a sheet and a swipe to the right replies.
  */
-function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, aboutMe, read, onReply, onEdit, onDelete, onJump, conversation, onThread, inThread = false, talk = false }: {
+function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, aboutMe, read, onReply, onEdit, onDelete, onJump, conversation, onThread, inThread = false, talk = false, fresh = false }: {
+  /** Arrived after the conversation opened: it pops in. */ fresh?: boolean;
   m: ChatMessage; mine: boolean; grouped: boolean; tail: boolean; showName: boolean; canModerate: boolean; ticks: boolean; aboutMe: boolean; read: boolean;
   onReply: () => void; onEdit: () => void; onDelete: () => void; onJump: (id: string) => void;
   conversation: Conversation; onThread?: () => void; inThread?: boolean;
@@ -576,6 +676,10 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
   const onUnhover = () => { if (!more) { unhook.current?.(); unhook.current = null; } };
   useEffect(() => () => unhook.current?.(), []);
   const [extra, setExtra] = useState<null | 'translate' | 'replies'>(null);
+  /** Double-click (or ··· → React) on a bubble: Apple's tapback bar above it, the compact actions menu below it. */
+  const [tapback, setTapback] = useState(false);
+  const [allEmoji, setAllEmoji] = useState(false);
+  const reduce = useReducedMotion();
   const [making, setMaking] = useState<ChatExtract['kind'] | null>(null);
   const [seen, setSeen] = useState(false);
   const isPoll = m.kind === 'Poll';
@@ -632,6 +736,34 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
     touch.current = null;
   };
 
+  const menuBody = (close: () => void, reacts: boolean) => (
+                    <div className="more-pop" role="menu" aria-label="More actions">
+                      {reacts && <div className="more-reacts" role="group" aria-label="React">
+                        {(talk ? TAPBACKS : REACTIONS.slice(0, 6)).map((emoji) => (
+                          <button key={emoji} type="button" role="menuitem" className={m.reactions?.find((r) => r.emoji === emoji)?.mine ? 'on' : ''} aria-label={`React ${emoji}`} onClick={() => { close(); toggleReaction(emoji); }}>{emoji}</button>
+                        ))}
+                      </div>}
+                      {/* Compact by design: the four everyday actions as tiles, "Create" and the rest as short rows, Edit and Delete side by side. */}
+                      <div className="more-tiles" role="group" aria-label="Quick actions">
+                        {canThread && <button type="button" role="menuitem" aria-label="Reply in thread" onClick={() => { close(); onThread!(); }}><Icon name="message" size={16} /><span aria-hidden="true">Thread</span></button>}
+                        {m.body && <button type="button" role="menuitem" aria-label="Copy text" onClick={() => { close(); copy(); }}><Icon name="copy" size={16} /><span aria-hidden="true">Copy</span></button>}
+                        <button type="button" role="menuitem" aria-pressed={!!m.pinnedAt} aria-label={m.pinnedAt ? 'Unpin' : 'Pin to the conversation'} onClick={() => { close(); void pin(); }}><Icon name="flag" size={16} /><span aria-hidden="true">{m.pinnedAt ? 'Unpin' : 'Pin'}</span></button>
+                        <button type="button" role="menuitem" aria-pressed={!!m.saved} aria-label={m.saved ? 'Remove from saved' : 'Save for later'} onClick={() => { close(); void save(); }}><Icon name="star" size={16} /><span aria-hidden="true">{m.saved ? 'Saved' : 'Save'}</span></button>
+                      </div>
+                      <div className="more-sec">Create</div>
+                      {!talk && <button type="button" role="menuitem" onClick={() => { close(); remindAbout(m); }}><Icon name="alarm" size={15} />Remind me</button>}
+                      {moreItems.filter((x) => !x.hidden && ['Make a ticket', 'Make a reminder', 'Make a page'].includes(x.label)).map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { close(); x.run(); }}><Icon name={x.icon} size={15} />{(([w]) => w.charAt(0).toUpperCase() + w.slice(1))([x.label.replace('Make a ', '')])}</button>)}
+                      {moreItems.some((x) => !x.hidden && ['Translate', 'Suggest replies', 'Seen by'].includes(x.label)) && <div className="more-sec" aria-hidden="true" />}
+                      {moreItems.filter((x) => !x.hidden && ['Translate', 'Suggest replies', 'Seen by'].includes(x.label)).map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { close(); x.run(); }}><Icon name={x.icon} size={15} />{x.label}</button>)}
+                      {((mine && !isPoll) || mine || canModerate) && (
+                        <div className="more-foot" role="group" aria-label="Change">
+                          {mine && !isPoll && <button type="button" role="menuitem" onClick={() => { close(); onEdit(); }}><Icon name="edit" size={14} />Edit</button>}
+                          {(mine || canModerate) && <button type="button" role="menuitem" className="danger" onClick={() => { close(); onDelete(); }}><Icon name="trash" size={14} />Delete</button>}
+                        </div>
+                      )}
+                    </div>
+  );
+
   const meta = (
     <span className="bubble-meta">
       {m.editedAt && !m.isDeleted && <span>edited</span>}
@@ -641,7 +773,7 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
   );
 
   return (
-    <div className={`msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''} ${tail ? 'tail' : ''} ${aboutMe ? 'mentions-me' : ''} ${more ? 'menu-open' : ''}`} data-msg={m.id}
+    <div className={`msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''} ${tail ? 'tail' : ''} ${aboutMe ? 'mentions-me' : ''} ${more || tapback ? 'menu-open' : ''}${tapback ? ' tapback-open' : ''}${fresh ? ' fresh' : ''}${talk && (m.reactions?.length ?? 0) > 0 && !m.isDeleted ? ' has-tapback' : ''}`} data-msg={m.id}
       onMouseEnter={onHover} onMouseLeave={onUnhover} onFocus={onHover}>
       {!mine && (tail ? <Avatar name={m.senderName} size="sm" userId={m.senderId ?? undefined} /> : <span className="avatar-gap" />)}
       <div className="msg-col">
@@ -655,7 +787,30 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
         )}
         <div className="bubble-wrap" ref={wrapRef} style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}
           onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}
-          onContextMenu={(e) => { if (touch.current?.long) e.preventDefault(); }}>
+          onContextMenu={(e) => { if (touch.current?.long) e.preventDefault(); }}
+          onDoubleClick={talk && !m.isDeleted ? (e) => { if ((e.target as HTMLElement).closest('button, a, .msg-actions, .tapback-bar')) return; window.getSelection()?.removeAllRanges(); setMore(false); setAllEmoji(false); setTapback(true); } : undefined}>
+          <AnimatePresence>
+            {tapback && (
+              <motion.div className="tapback-bar" role="group" aria-label="Tapback" key="tb"
+                initial={reduce ? { opacity: 0 } : { opacity: 0, scale: .4, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={reduce ? { opacity: 0 } : { opacity: 0, scale: .6, y: 6 }}
+                transition={reduce ? { duration: .12 } : { type: 'spring', stiffness: 520, damping: 26 }} style={{ transformOrigin: mine ? '90% 100%' : '10% 100%' }}>
+                {(allEmoji ? [...TAPBACKS, ...REACTIONS.filter((x) => !TAPBACKS.includes(x))] : TAPBACKS).map((emoji, i) => (
+                  <motion.button key={emoji} type="button" className={m.reactions?.find((r) => r.emoji === emoji)?.mine ? 'on' : ''} aria-label={`Tapback ${emoji}`}
+                    initial={reduce ? false : { scale: .3, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 600, damping: 22, delay: i * .022 }}
+                    onClick={() => { setTapback(false); haptic(8); toggleReaction(emoji); }}>{emoji}</motion.button>
+                ))}
+                {!allEmoji && <button type="button" className="tapback-more" aria-label="More tapbacks" onClick={() => setAllEmoji(true)}><Icon name="plus" size={14} /></button>}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {talk && !m.isDeleted && (m.reactions?.length ?? 0) > 0 && (
+            <div className="tapbacks" role="group" aria-label="Reactions">
+              {m.reactions!.slice(0, 3).map((r) => (
+                <button key={r.emoji} type="button" className={`tapback ${r.mine ? 'on' : ''}`} onClick={() => onReact(r.emoji, !r.mine)}
+                  title={r.names.join(', ')} aria-pressed={r.mine} aria-label={`${r.emoji} ${r.count}${r.mine ? ', you reacted' : ''}`}>{r.emoji}{r.count > 1 && <span>{r.count}</span>}</button>
+              ))}
+            </div>
+          )}
           {swipe > 0 && <span className={`swipe-reply ${swipe >= 48 ? 'ready' : ''}`} aria-hidden><Icon name="undo" size={14} /></span>}
           <div className={`bubble${!m.body && (m.attachments?.length ?? 0) > 0 && !isPoll ? ' files-only' : ''}${!m.isDeleted && !isPoll && isCodeOnly(m.body) ? ' code-only' : ''}`}>
             {m.replyTo && !m.isDeleted && (
@@ -688,31 +843,10 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
                 <div className="react-wrap" ref={moreRef}>
                   <button type="button" className="msg-act dots" onClick={() => setMore((v) => !v)} aria-label="More actions" aria-expanded={more} title="More"><Icon name="more" size={14} /></button>
                   <Popover open={more} onClose={() => { setMore(false); unhook.current?.(); unhook.current = null; }} anchorRef={moreRef} side="bottom" align={mine ? 'end' : 'start'} within=".chat-messages">
-                    <div className="more-pop" role="menu" aria-label="More actions">
-                      <div className="more-reacts" role="group" aria-label="React">
-                        {REACTIONS.slice(0, 6).map((emoji) => (
-                          <button key={emoji} type="button" role="menuitem" className={m.reactions?.find((r) => r.emoji === emoji)?.mine ? 'on' : ''} aria-label={`React ${emoji}`} onClick={() => { setMore(false); toggleReaction(emoji); }}>{emoji}</button>
-                        ))}
-                      </div>
-                      {/* Compact by design: the four everyday actions as tiles, "Create" and the rest as short rows, Edit and Delete side by side. */}
-                      <div className="more-tiles" role="group" aria-label="Quick actions">
-                        {canThread && <button type="button" role="menuitem" aria-label="Reply in thread" onClick={() => { setMore(false); onThread!(); }}><Icon name="message" size={16} /><span aria-hidden="true">Thread</span></button>}
-                        {m.body && <button type="button" role="menuitem" aria-label="Copy text" onClick={() => { setMore(false); copy(); }}><Icon name="copy" size={16} /><span aria-hidden="true">Copy</span></button>}
-                        <button type="button" role="menuitem" aria-pressed={!!m.pinnedAt} aria-label={m.pinnedAt ? 'Unpin' : 'Pin to the conversation'} onClick={() => { setMore(false); void pin(); }}><Icon name="flag" size={16} /><span aria-hidden="true">{m.pinnedAt ? 'Unpin' : 'Pin'}</span></button>
-                        <button type="button" role="menuitem" aria-pressed={!!m.saved} aria-label={m.saved ? 'Remove from saved' : 'Save for later'} onClick={() => { setMore(false); void save(); }}><Icon name="star" size={16} /><span aria-hidden="true">{m.saved ? 'Saved' : 'Save'}</span></button>
-                      </div>
-                      <div className="more-sec">Create</div>
-                      {!talk && <button type="button" role="menuitem" onClick={() => { setMore(false); remindAbout(m); }}><Icon name="alarm" size={15} />Remind me</button>}
-                      {moreItems.filter((x) => !x.hidden && ['Make a ticket', 'Make a reminder', 'Make a page'].includes(x.label)).map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { setMore(false); x.run(); }}><Icon name={x.icon} size={15} />{(([w]) => w.charAt(0).toUpperCase() + w.slice(1))([x.label.replace('Make a ', '')])}</button>)}
-                      {moreItems.some((x) => !x.hidden && ['Translate', 'Suggest replies', 'Seen by'].includes(x.label)) && <div className="more-sec" aria-hidden="true" />}
-                      {moreItems.filter((x) => !x.hidden && ['Translate', 'Suggest replies', 'Seen by'].includes(x.label)).map((x) => <button key={x.label} type="button" role="menuitem" onClick={() => { setMore(false); x.run(); }}><Icon name={x.icon} size={15} />{x.label}</button>)}
-                      {((mine && !isPoll) || mine || canModerate) && (
-                        <div className="more-foot" role="group" aria-label="Change">
-                          {mine && !isPoll && <button type="button" role="menuitem" onClick={() => { setMore(false); onEdit(); }}><Icon name="edit" size={14} />Edit</button>}
-                          {(mine || canModerate) && <button type="button" role="menuitem" className="danger" onClick={() => { setMore(false); onDelete(); }}><Icon name="trash" size={14} />Delete</button>}
-                        </div>
-                      )}
-                    </div>
+                    {menuBody(() => setMore(false), true)}
+                  </Popover>
+                  <Popover open={tapback} onClose={() => { setTapback(false); unhook.current?.(); unhook.current = null; }} anchorRef={wrapRef} side="bottom" align={mine ? 'end' : 'start'} within=".chat-messages" focusOnOpen={false}>
+                    {menuBody(() => setTapback(false), false)}
                   </Popover>
                 </div>
               </div>
@@ -727,7 +861,7 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
         )}
         {extra === 'translate' && <TranslateLine m={m} onClose={() => setExtra(null)} />}
         {extra === 'replies' && <SmartReplies m={m} onClose={() => setExtra(null)} />}
-        {!m.isDeleted && (m.reactions?.length ?? 0) > 0 && (
+        {!talk && !m.isDeleted && (m.reactions?.length ?? 0) > 0 && (
           <div className="chat-reactions">
             {m.reactions!.map((r) => (
               <button key={r.emoji} type="button" className={`react-chip ${r.mine ? 'on' : ''}`} onClick={() => onReact(r.emoji, !r.mine)}
@@ -744,7 +878,7 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
           <div className="msg-sheet" role="dialog" aria-label="Message actions" onClickCapture={(e) => { if (performance.now() - sheetAt.current < 350) { e.preventDefault(); e.stopPropagation(); } }} onClick={(e) => e.stopPropagation()}>
             <div className="msg-sheet-preview">{plainText(m.body).replace(/\*\*|__/g, '').slice(0, 140) || 'Attachment'}</div>
             <div className="msg-sheet-reacts">
-              {REACTIONS.slice(0, 6).map((emoji) => (
+              {(talk ? TAPBACKS : REACTIONS.slice(0, 6)).map((emoji) => (
                 <button key={emoji} type="button" className={m.reactions?.find((r) => r.emoji === emoji)?.mine ? 'on' : ''} aria-label={`React ${emoji}`}
                   onClick={() => { setSheet(false); toggleReaction(emoji); }}>{emoji}</button>
               ))}
@@ -799,6 +933,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   const canAttach = useEntitlement('CHAT_ATTACHMENTS') > 0 && !editing;
   const [pending, setPending] = useState<Pending[]>([]);
   const picker = useRef<HTMLInputElement>(null);
+  const photoPicker = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const addFiles = (list: FileList | File[]) => {
     if (!canAttach) return;
@@ -1048,7 +1183,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   const over = text.length > MAX_LENGTH - 500;
   const ready = (!!text.trim() || readyIds.length > 0 || !!payload) && !send.isPending && !uploading && text.length <= MAX_LENGTH;
   return (
-    <div className={`composer ${dragging ? 'dragging' : ''}`}
+    <div className={`composer ${dragging ? 'dragging' : ''}${talk ? ' talk-composer' : ''}`}
       onDragOver={(e) => { if (canAttach && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } }}
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => { if (!canAttach) return; e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}>
@@ -1104,23 +1239,36 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
         <div className="composer-pill">
           {!editing && !threadRootId && (
             <div className="emoji-wrap" ref={plusRef}>
-              <button type="button" className={`btn-icon pill-btn ${plusOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setPlusOpen((v) => !v)} aria-label="More: poll, send later" aria-expanded={plusOpen} title="Poll, send later"><Icon name="plus" size={17} /></button>
-              <Popover open={plusOpen} onClose={() => setPlusOpen(false)} anchorRef={plusRef} side="top" align="start" focusOnOpen={false} restoreFocus={false}>
+              <button type="button" className={`btn-icon pill-btn talk-plus ${plusOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setPlusOpen((v) => !v)} aria-label={talk ? 'Apps: attach, photo, poll and more' : 'More: poll, send later'} aria-expanded={plusOpen} title={talk ? 'Attach, photo, draft, poll, meeting' : 'Poll, send later'}><Icon name="plus" size={17} /></button>
+              <Popover open={plusOpen} onClose={() => setPlusOpen(false)} anchorRef={plusRef} side="top" align="start" focusOnOpen={false} restoreFocus={false} className={talk ? 'as-sheet' : ''}>
+                {talk ? (
+                  // Messages' apps sheet: round tiles, the everyday ones first.
+                  <div className="more-pop up talk-apps" role="menu" aria-label="Apps">
+                    <button type="button" role="menuitem" aria-label="Attach a file" onClick={() => { setPlusOpen(false); if (canAttach) picker.current?.click(); else toast('Sending files in chat is not part of your plan. You can upgrade it under Settings → Billing.', 'info'); }} disabled={pending.length >= MAX_FILES}><span className="app-ic a-file"><Icon name="paperclip" size={17} /></span>Attach</button>
+                    <button type="button" role="menuitem" aria-label="Photo" onClick={() => { setPlusOpen(false); if (canAttach) photoPicker.current?.click(); else toast('Sending files in chat is not part of your plan. You can upgrade it under Settings → Billing.', 'info'); }} disabled={pending.length >= MAX_FILES}><span className="app-ic a-photo"><Icon name="image" size={17} /></span>Photos</button>
+                    {draftReply && <button type="button" role="menuitem" disabled={drafting} onClick={async () => { setPlusOpen(false); setDrafting(true); try { const t = await draftReply(); if (t) insertIntoComposer(conversation.id, t, threadRootId); } finally { setDrafting(false); } }}><span className="app-ic a-ai">✦</span>Draft reply</button>}
+                    {onPoll && <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); onPoll(); }}><span className="app-ic a-poll"><Icon name="chart" size={17} /></span>Poll</button>}
+                    <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); navigate('/messages?f=meetings&new=schedule'); }}><span className="app-ic a-meet"><Icon name="video" size={17} /></span>Meeting</button>
+                    <button type="button" role="menuitem" disabled={!text.trim()} onClick={() => { setPlusOpen(false); setLater(true); }}><span className="app-ic a-later"><Icon name="clock" size={17} /></span>Send later{!text.trim() ? ' (write first)' : ''}</button>
+                    {canAttach && voice.supported && <button type="button" role="menuitem" disabled={voice.state !== 'idle'} onClick={() => { setPlusOpen(false); void voice.start(); }}><span className="app-ic a-voice"><Icon name="mic" size={17} /></span>Voice note</button>}
+                    <button type="button" role="menuitem" aria-pressed={formatting} onClick={() => { setPlusOpen(false); setFormatting((v) => !v); }}><span className="app-ic a-fmt"><span className="aa" aria-hidden="true">Aa</span></span>Formatting</button>
+                  </div>
+                ) : (
                 <div className="more-pop up" role="menu" aria-label="More">
                   {onPoll && <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); onPoll(); }}><Icon name="chart" size={15} />Poll</button>}
                   <button type="button" role="menuitem" disabled={!text.trim()} onClick={() => { setPlusOpen(false); setLater(true); }}><Icon name="clock" size={15} />Send later{!text.trim() ? ' (write first)' : ''}</button>
-                  {talk && <button type="button" role="menuitem" aria-pressed={formatting} onClick={() => { setPlusOpen(false); setFormatting((v) => !v); }}><span className="aa" aria-hidden="true">Aa</span>Formatting</button>}
-                  {talk && canAttach && voice.supported && <button type="button" role="menuitem" disabled={voice.state !== 'idle'} onClick={() => { setPlusOpen(false); void voice.start(); }}><Icon name="mic" size={15} />Voice note</button>}
                 </div>
+                )}
               </Popover>
             </div>
           )}
           {!editing && (
             <>
               <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
-              <button type="button" className="btn-icon pill-btn" onMouseDown={keepFocus} disabled={pending.length >= MAX_FILES}
+              <input ref={photoPicker} type="file" accept="image/*" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
+              {(!talk || !!threadRootId) && <button type="button" className="btn-icon pill-btn" onMouseDown={keepFocus} disabled={pending.length >= MAX_FILES}
                 onClick={() => (canAttach ? picker.current?.click() : toast('Sending files in chat is not part of your plan. You can upgrade it under Settings → Billing.', 'info'))}
-                aria-label="Attach a file" title={canAttach ? 'Attach files or pictures' : 'Files in chat are not part of your plan'}><Icon name="paperclip" size={17} /></button>
+                aria-label="Attach a file" title={canAttach ? 'Attach files or pictures' : 'Files in chat are not part of your plan'}><Icon name="paperclip" size={17} /></button>}
             </>
           )}
           <div ref={box} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Write a message"
@@ -1134,7 +1282,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
             {isEmpty && draftReply && !editing && talk
               ? <button type="button" className="talk-draft" onMouseDown={keepFocus} disabled={drafting}
                   onClick={async () => { setDrafting(true); try { const t = await draftReply(); if (t) insertIntoComposer(conversation.id, t, threadRootId); } finally { setDrafting(false); } }}
-                  aria-label="Draft a reply with AI" title="Draft a reply with AI">{drafting ? <Spinner /> : <span className="talk-orb sm" aria-hidden="true" />}Draft reply</button>
+                  aria-label="Draft a reply with AI" title="Draft a reply with AI">{drafting ? <Spinner /> : <span className="talk-draft-spark" aria-hidden="true">✦</span>}<span className="talk-draft-label">Draft</span></button>
               : isEmpty && draftReply && !editing
               ? <button type="button" className="btn-icon pill-btn ai" onMouseDown={keepFocus} disabled={drafting}
                   onClick={async () => { setDrafting(true); try { const t = await draftReply(); if (t) insertIntoComposer(conversation.id, t, threadRootId); } finally { setDrafting(false); } }}
@@ -1149,7 +1297,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
           </div>
           {!talk && <button type="button" className={`btn-icon pill-btn ${formatting ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setFormatting((v) => !v)}
             aria-label="Formatting" aria-pressed={formatting} title="Formatting"><span className="aa">Aa</span></button>}
-          {!talk && <div className="emoji-wrap" ref={emojiRef}>
+          {(!talk || isEmpty) && <div className="emoji-wrap talk-emoji" ref={emojiRef}>
             <button type="button" className={`btn-icon pill-btn ${emojiOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setEmojiOpen((v) => !v)}
               aria-label="Add emoji" aria-expanded={emojiOpen} aria-haspopup="true" title="Emoji"><Icon name="smile" size={17} /></button>
             <Popover open={emojiOpen} onClose={() => setEmojiOpen(false)} anchorRef={emojiRef} side="top" align="end" focusOnOpen={false} restoreFocus={false}>
@@ -1162,9 +1310,10 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
             </Popover>
           </div>}
         </div>
-        {isEmpty && !editing && pending.length === 0 && !talk && canAttach && voice.supported && voice.state === 'idle'
+        {talk && !ready && !editing && !(isEmpty && canAttach && voice.supported && voice.state === 'idle') ? null
+        : isEmpty && !editing && pending.length === 0 && canAttach && voice.supported && voice.state === 'idle'
           ? <button className="send-btn ready mic" onMouseDown={keepFocus} onClick={() => void voice.start()} aria-label="Record a voice note" title="Record a voice note (Telugu, Hindi or English)"><Icon name="mic" size={17} /></button>
-          : <button className={`send-btn ${ready ? 'ready' : ''}`} onMouseDown={keepFocus} onClick={submit} disabled={!ready} aria-label={editing ? 'Save' : 'Send'}>
+          : <button className={`send-btn ${ready ? 'ready' : ''}${talk ? ' talk-send' : ''}`} onMouseDown={keepFocus} onClick={submit} disabled={!ready} aria-label={editing ? 'Save' : 'Send'}>
               {send.isPending ? <Spinner /> : <Icon name={editing ? 'tick' : talk ? 'arrowUp' : 'send'} size={17} />}
             </button>}
       </div>

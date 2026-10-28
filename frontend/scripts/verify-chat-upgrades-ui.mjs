@@ -152,7 +152,7 @@ try {
   assert.equal((await waitWrite((w) => w.ep === '/api/v1/chat/ai/transform', 'rewrite')).b.action, 'formal');
   await page.waitForFunction(() => document.querySelector('.chat-thread > .composer .composer-editable')?.textContent?.includes('Dear team'));
   checks.push('ai-rewrite');
-  await page.getByRole('button', { name: 'More: poll, send later' }).click();
+  await page.getByRole('button', { name: /^Apps/ }).click();
   await page.getByRole('menuitem', { name: /Send later/ }).click();
   await page.getByRole('button', { name: 'Monday 9 am' }).click();
   await page.getByRole('button', { name: 'Schedule' }).click();
