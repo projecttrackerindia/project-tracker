@@ -85,7 +85,7 @@ export interface TeamRef { id: string; name: string; isLead: boolean }
 export interface MemberProfile {
   userId: string; displayName: string; email: string; hasAvatar: boolean; role: Role;
   jobRole: string | null; jobRoleColor: string | null; teams: TeamRef[]; reportsTo: { id: string; name: string } | null;
-  joinedAt: string; open: number; overdue: number; doneLast30Days: number; doneTotal: number; isMe: boolean; canMessage: boolean; certificationBadges?: {name:string;issuer:string;expiresOn:string|null;verificationStatus:string}[];
+  joinedAt: string; open: number; overdue: number; doneLast30Days: number; doneTotal: number; isMe: boolean; canMessage: boolean; theme?: string | null; certificationBadges?: {name:string;issuer:string;expiresOn:string|null;verificationStatus:string}[];
 }
 export interface Invitation { id: string; email: string; role: Role; status: string; expiresAt: string; createdAt: string; invitedBy: string | null; jobRole: string | null; reportsTo: string | null }
 export interface InvitationLookup { workspaceName: string; email: string; role: Role; invitedBy: string | null; expired: boolean; accepted: boolean; jobRole: string | null }

@@ -8,8 +8,8 @@ import type { Plugin } from 'vite';
 import { DETAILS, FAQ, HOME, PAGES, PLANS, SITE, type StaticPage } from './content';
 import { CLIENT_SCRIPT } from './client';
 import { BLOG_INDEX, DOCS_INDEX, LIBRARY } from './library';
-import { landingCss, pageCss, scoped } from './css';
-import { esc, landing, staticMain } from './sections';
+import { pageCss, scoped } from './css';
+import { esc, staticMain } from './sections';
 
 const ORIGIN = (process.env.SITE_URL || 'https://projecttracker.in').replace(/\/$/, '');
 /** Proof of ownership for the search engines' webmaster tools, and the IndexNow key: set at build time, empty means not used. */
@@ -48,6 +48,13 @@ d.querySelectorAll('[data-period="yearly"] em').forEach(function(e){e.textConten
 var t=p.priceMonthly==null?'Custom':fmt(p.priceMonthly);d.querySelectorAll('[data-price="'+p.code+'"]').forEach(function(e){e.textContent=t});
 d.querySelectorAll('[data-per="'+p.code+'"]').forEach(function(e){e.style.display=p.priceMonthly==null||p.priceMonthly===0?'none':''})}});paint()}).catch(function(){})}catch(e){}})();
 </script>`;
+
+/** What the home address says to a reader without scripts: the headline, one line, and the plain pages that need none. */
+const NOSCRIPT = `<noscript><main style="max-width:720px;margin:0 auto;padding:64px 20px;font-family:system-ui,sans-serif;color:#f5f5f7;background:#000">
+<h1 style="font-size:48px;line-height:1;margin:0 0 16px">Work, on autopilot.</h1>
+<p style="font-size:19px;color:#a1a1a6">${esc(SITE.description)}</p>
+<p><a style="color:#0a84ff" href="/features/">Features</a> · <a style="color:#0a84ff" href="/pricing/">Pricing</a> · <a style="color:#0a84ff" href="/security/">Security</a> · <a style="color:#0a84ff" href="/login">Sign in</a> · <a style="color:#0a84ff" href="/register">Create account</a></p>
+</main></noscript>`;
 
 const orgLd = {
   '@context': 'https://schema.org', '@type': 'Organization', '@id': abs('/#organization'), name: SITE.name, url: abs('/'),
@@ -179,9 +186,9 @@ export function publicSite(): Plugin {
       order: 'pre',
       handler: (html) => html
         .replace('<!--site:head-->', meta(HOME, [siteLd, orgLd, appLd, faqLd]))
-        .replace('<!--site:css-->', landingCss())
-        .replace('<!--site:body-->', scoped(landing()))
-        .replace('<!--site:scripts-->', CLIENT_SCRIPT + PRICE_SCRIPT),
+        // The landing page itself is part of the app (src/features/landing); without scripts, a short plain summary and the static pages.
+        .replace('<!--site:body-->', NOSCRIPT)
+        .replace('<!--site:scripts-->', CLIENT_SCRIPT),
     },
     configureServer: serve,
     configurePreviewServer: serve,

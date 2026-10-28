@@ -1,0 +1,74 @@
+/* The person card (Messages, Members): a compact Apple-style card on a dimmed backdrop; a bottom sheet on a phone. */
+.pcard-overlay { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 16px; }
+.pcard-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .28); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.pcard {
+  --pc-bg: #fff; --pc-text: #1d1d1f; --pc-text-2: #6e6e73; --pc-line: rgba(0, 0, 0, .08); --pc-fill: #f2f2f5;
+  position: relative; width: 340px; max-width: 100%; max-height: calc(100dvh - 32px); overflow: auto; padding: 12px; border-radius: 28px;
+  background: var(--pc-bg); color: var(--pc-text); box-shadow: 0 30px 80px rgba(0, 0, 0, .22), 0 2px 8px rgba(0, 0, 0, .08); scrollbar-width: none;
+}
+[data-theme="dark"] .pcard { --pc-bg: #1c1c1e; --pc-text: #f5f5f7; --pc-text-2: #a1a1a6; --pc-line: rgba(255, 255, 255, .1); --pc-fill: #2c2c2e; box-shadow: 0 30px 80px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(255, 255, 255, .06); }
+.pcard-x { position: absolute; top: 20px; right: 20px; z-index: 3; width: 28px; height: 28px; border: 0; border-radius: 50%; display: grid; place-items: center;
+  color: #fff; background: rgba(0, 0, 0, .22); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); cursor: pointer; }
+.pcard-x:hover { background: rgba(0, 0, 0, .35); }
+.pcard-loading { min-height: 240px; display: grid; place-items: center; }
+.pcard-banner { position: relative; height: 120px; border-radius: 20px; overflow: hidden; isolation: isolate; }
+.pcard-mesh { position: absolute; inset: -12px; transform: translate(var(--px, 0), var(--py, 0)) scale(1.04); transition: transform .5s cubic-bezier(.2, .8, .2, 1); filter: saturate(1.1); }
+.pcard-mesh::after { content: ''; position: absolute; inset: 0; background: radial-gradient(60% 50% at 30% 70%, rgba(255, 255, 255, .28), transparent 70%); mix-blend-mode: soft-light; }
+.pcard-shine { position: absolute; inset: 0; background: linear-gradient(105deg, transparent calc(var(--sx, -40%) - 25%), rgba(255, 255, 255, .28) var(--sx, -40%), transparent calc(var(--sx, -40%) + 25%));
+  opacity: 0; transition: opacity .3s; pointer-events: none; }
+.pcard-banner:hover .pcard-shine { opacity: 1; }
+.pcard-pill { position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 5px; max-width: 60%; padding: 5px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; color: #fff; background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .35);
+  backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pcard-av-ring { position: relative; width: 80px; height: 80px; margin: -40px 0 0 14px; border-radius: 50%; background: #fff; padding: 4px; z-index: 2; }
+.pcard-av { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; overflow: hidden; color: #fff; font-size: 26px; font-weight: 600; letter-spacing: .5px; }
+.pcard-av .face-img { width: 100%; height: 100%; object-fit: cover; }
+.pcard-dot { position: absolute; right: 6px; bottom: 6px; width: 14px; height: 14px; border-radius: 50%; background: #34c759; border: 3px solid var(--pc-bg); }
+.pcard-id { display: flex; align-items: center; gap: 12px; padding: 8px 6px 0 8px; }
+.pcard-name { flex: 1; min-width: 0; }
+.pcard-name h3 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.2px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcard-name span { display: block; font-size: 13px; color: var(--pc-text-2); margin-top: 1px; }
+.pcard-round { flex: none; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--pc-line); background: var(--pc-fill); color: var(--pc-text); display: grid; place-items: center; cursor: pointer; transition: transform .15s, background .15s; }
+.pcard-round:hover { background: var(--pc-line); }
+.pcard-round:active { transform: scale(.94); }
+.pcard-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 14px 4px 0; padding: 10px 0; border-radius: 16px; background: var(--pc-fill); }
+.pcard-stats > div { display: grid; justify-items: center; gap: 2px; position: relative; }
+.pcard-stats > div + div::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 1px; background: var(--pc-line); }
+.pcard-stats b { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pcard-stats small { font-size: 11.5px; color: var(--pc-text-2); }
+.pcard-ico { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; }
+.i-open { color: #0a84ff; background: rgba(10, 132, 255, .14); }
+.i-late { color: var(--pc-text-2); background: var(--pc-line); }
+.pcard-stats .late .i-late { color: #ff3b30; background: rgba(255, 59, 48, .14); }
+.pcard-stats .late b { color: #ff3b30; }
+.i-done { color: #30b0c7; background: rgba(48, 176, 199, .15); }
+.pcard-total { margin: 6px 0 0; text-align: center; font-size: 11.5px; color: var(--pc-text-2); }
+.pcard-lines { list-style: none; margin: 10px 8px 0; padding: 0; display: grid; gap: 7px; font-size: 13px; color: var(--pc-text-2); }
+.pcard-lines li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pcard-lines a { color: inherit; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcard-lines a:hover, .pcard-link:hover { color: #0a84ff; }
+.pcard-link { border: 0; background: none; padding: 0; font: inherit; color: var(--pc-text); font-weight: 500; cursor: pointer; }
+.pcard-presence { width: 8px; height: 8px; border-radius: 50%; margin: 0 2.5px; background: #aeaeb2; }
+.pcard-presence.active { background: #34c759; }
+.pcard-presence.away { background: #ff9f0a; }
+.pcard-badges { flex-wrap: wrap; }
+.pcard-theme { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 8px 0; font-size: 12px; color: var(--pc-text-2); }
+.pcard-theme > div { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.pcard-swatch { width: 18px; height: 18px; border-radius: 50%; border: 0; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .1); transition: transform .15s; }
+.pcard-swatch:hover { transform: scale(1.15); }
+.pcard-swatch.on { box-shadow: 0 0 0 2px var(--pc-bg), 0 0 0 3.5px #0a84ff; }
+.pcard-actions { display: flex; gap: 8px; margin-top: 14px; }
+.pcard-actions .pcard-round { width: 44px; height: 44px; }
+.pcard-primary { flex: 1; height: 44px; border-radius: 22px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-size: 15px; font-weight: 600; cursor: pointer;
+  color: var(--pc-text); background: #fff; border: 1px solid rgba(0, 0, 0, .12); box-shadow: 0 1px 2px rgba(0, 0, 0, .06); transition: transform .15s, box-shadow .15s; }
+.pcard-primary:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, .1); }
+.pcard-primary:active { transform: scale(.98); }
+[data-theme="dark"] .pcard-primary { color: #fff; border: 0; background: linear-gradient(180deg, #2f8cff, #0a6cff); box-shadow: 0 6px 18px rgba(10, 108, 255, .35), inset 0 1px 0 rgba(255, 255, 255, .2); }
+/* Phone: the same card in a bottom sheet. */
+.pcard-overlay.pcard-sheet { place-items: end stretch; padding: 0; }
+.pcard-overlay.pcard-sheet .pcard { width: 100%; border-radius: 28px 28px 0 0; padding: 22px 12px calc(16px + env(safe-area-inset-bottom)); max-height: 92dvh; }
+.pcard-grabber { position: absolute; top: 8px; left: 50%; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: var(--pc-line); }
+.pcard-overlay.pcard-sheet .pcard-x { top: 30px; }
+@media (prefers-reduced-motion: reduce) { .pcard-mesh, .pcard-shine { transition: none; transform: none; } }
+.msg-av-btn { border: 0; padding: 0; background: none; border-radius: 50%; cursor: pointer; align-self: flex-end; display: inline-flex; }
+.msg-av-btn:focus-visible { outline: 2px solid #0a84ff; outline-offset: 2px; }

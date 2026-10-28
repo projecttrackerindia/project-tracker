@@ -1,13 +1,18 @@
 import { Face } from '../../components/Face';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'framer-motion';
+import { queryClient } from '../../stores/auth';
+import { toast } from '../../stores/ui';
+import { Popover } from '../../lib/popover';
+import { haptic } from '../../lib/mobile';
 import { MeetPage } from '../meet/MeetPage';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ApiError } from '../../api/client';
+import { ApiError, get, put } from '../../api/client';
 import { chatApi } from '../../api/endpoints';
 import type { Conversation } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { EmptyState, PageLoader, Spinner } from '../../components/ui';
+import { EmptyState, PageLoader } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { listTime } from '../chat/chatFormat';
@@ -22,6 +27,7 @@ import { ToolbarSlot } from './ToolbarSlot';
 import { WhileAway } from '../chat/ChatPage';
 import { talkApi, type TalkFilter, type TalkRow } from './talkApi';
 import { usePresence } from '../chat/Presence';
+import { avatarBg, defaultTheme } from '../../lib/personTheme';
 import './talk.css';
 
 const FILTERS: { id: TalkFilter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'chat', label: 'Chats' }, { id: 'meetings', label: 'Meetings' }];
@@ -98,10 +104,27 @@ function TalkHome() {
     for (const c of live) if (!seen.has(c.id)) out.push(chatRow(c, me, null));
     return out.sort((a, b) => sortKey(b, now) - sortKey(a, now));
   }, [talk.data, live, me]);
+  const prefs = useTalkPrefs(wid ?? '');
   const kind = KIND_OF[filter];
   const needle = search.trim().toLowerCase();
   const unreadCount = rows.filter((r) => r.unread > 0).length;
-  const shown = rows.filter((r) => (!kind || r.kind === kind) && (filter !== 'unread' || r.unread > 0) && (!needle || `${r.title} ${r.last ?? ''} ${r.sub ?? ''}`.toLowerCase().includes(needle)));
+  const matching = rows.filter((r) => (!kind || r.kind === kind) && (filter !== 'unread' || r.unread > 0) && (!needle || `${r.title} ${r.last ?? ''} ${r.sub ?? ''}`.toLowerCase().includes(needle))
+    && !stillHidden(prefs.hidden[r.id], r.at));
+  // Pinned conversations sit as round avatars above the list (Messages), only in the plain list and only when there are any.
+  const showPins = !needle && filter === 'all';
+  const pinnedRows = showPins ? prefs.pinned.map((pid) => matching.find((r) => r.id === pid)).filter((r): r is TalkRow => !!r) : [];
+  const shown = showPins ? matching.filter((r) => !prefs.pinned.includes(r.id)) : matching;
+  const rowActions = (r: TalkRow): RowAction[] => {
+    const c = r.kind === 'chat' ? live.find((x) => x.id === r.id) : undefined;
+    const pinned = prefs.pinned.includes(r.id);
+    return [
+      { id: 'pin', label: pinned ? 'Unpin' : 'Pin', icon: pinned ? 'pinOff' : 'pin', run: () => prefs.togglePin(r.id) },
+      ...(c ? [{ id: 'mute', label: c.isMuted ? 'Unmute' : 'Mute', icon: 'bell' as RowAction['icon'], run: () => void chatApi.mute(c.id, !c.isMuted).then(() => queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid ?? '') })).catch(() => toast('Could not change that.', 'error')) }] : []),
+      ...(c && c.unread > 0 ? [{ id: 'read', label: 'Mark as read', icon: 'checkCircle' as RowAction['icon'], run: () => void chatApi.markRead(c.id).then(() => queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid ?? ''), (old) => old?.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)))).catch(() => toast('Could not mark it read.', 'error')) }] : []),
+      { id: 'hide', label: 'Hide', icon: 'eyeOff', danger: true, run: () => { prefs.hide(r.id, r.at ?? ''); if (r.id === activeId) back(); toast(`${r.title} is hidden until something new arrives.`, 'info'); } },
+    ];
+  };
+  const reduce = useReducedMotion();
 
   const setParam = (patch: Record<string, string | null>, path?: string) => {
     const next = new URLSearchParams(params);
@@ -127,6 +150,7 @@ function TalkHome() {
       <h1 className="sr-only">Messages</h1>
       <ToolbarSlot title={<span className="tb-big" aria-hidden="true">Messages</span>} />
       <aside className="talk-list" aria-label="Conversations">
+        <div className="talk-large" aria-hidden="true">Messages</div>
         <div className="talk-list-top">
           <label className="talk-search"><Icon name="search" size={14} />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats and meetings" aria-label="Search Messages" />
@@ -143,19 +167,40 @@ function TalkHome() {
             { label: 'All meetings', hint: 'Upcoming, series, past and the notetaker', icon: 'video', onSelect: () => navigate('/messages?f=meetings&s=upcoming') },
           ]} />
         </div>
-        <div className="talk-filters" role="group" aria-label="Show">
+        {/* A small segmented control, as Messages' filters. */}
+        <div className="talk-filters talk-seg" role="group" aria-label="Show">
           {FILTERS.map((x) => (
             <button key={x.id} type="button" className={`ds-chip talk-chip${filter === x.id ? ' on' : ''}`} aria-pressed={filter === x.id}
-              onClick={() => setParam({ f: x.id === 'all' ? null : x.id })}>{x.label}{x.id === 'unread' && unreadCount > 0 ? ` ${unreadCount}` : ''}</button>
+              onClick={() => setParam({ f: x.id === 'all' ? null : x.id })}>
+              {filter === x.id && <motion.span className="talk-seg-thumb" layoutId={reduce ? undefined : 'talk-seg'} transition={{ type: 'spring', stiffness: 520, damping: 40 }} aria-hidden="true" />}
+              <span className="talk-seg-label">{x.label}{x.id === 'unread' && unreadCount > 0 ? ` ${unreadCount}` : ''}</span>
+            </button>
           ))}
         </div>
         <div className="talk-scroll">
           {talk.isError && <div className="talk-note" role="alert">{talk.error instanceof ApiError ? talk.error.message : 'Messages could not be loaded.'} <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></div>}
           {/* Questions colleagues asked you in chat and are waiting on (cleared by replying). */}
           {chatUsable && !needle && (filter === 'all' || filter === 'chat') && <QuestionsBox />}
-          <ul className="talk-rows">
-            {shown.map((r) => <Row key={r.id} r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} active={r.id === activeId} onOpen={() => open(r)} />)}
-          </ul>
+          {pinnedRows.length > 0 && (
+            <ul className="talk-pins" aria-label="Pinned conversations">
+              {pinnedRows.slice(0, 8).map((r) => (
+                <li key={r.id}>
+                  <button type="button" className={`talk-pin${r.id === activeId ? ' active' : ''}`} onClick={() => open(r)} aria-current={r.id === activeId ? 'true' : undefined} data-pin={r.title}
+                    onContextMenu={(e) => { e.preventDefault(); prefs.togglePin(r.id); }} title={`${r.title} (right-click to unpin)`}>
+                    <span className="talk-gl"><RowAvatar r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} />{r.unread > 0 && <span className="talk-pin-dot" aria-label={`${r.unread} unread`} />}</span>
+                    <span className="talk-pin-name">{r.title.replace(/^#/, '').split(' ')[0]}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <LayoutGroup>
+            <ul className="talk-rows">
+              <AnimatePresence initial={false}>
+                {shown.map((r) => <Row key={r.id} r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} active={r.id === activeId} onOpen={() => open(r)} actions={rowActions(r)} reduce={!!reduce} />)}
+              </AnimatePresence>
+            </ul>
+          </LayoutGroup>
           {shown.length === 0 && !talk.isLoading && (
             <EmptyState icon={filter === 'meetings' ? 'video' : 'message'}
               title={needle ? 'Nothing found' : filter === 'meetings' ? 'No meetings in the next two weeks' : 'No conversations yet'}
@@ -169,7 +214,6 @@ function TalkHome() {
         {chatId ? (
           current
             ? <Thread key={current.id} variant="talk" conversation={current} onBack={back}
-                banner={<SummaryStrip key={current.id} conversation={current} onCatchUp={() => setDialog('catchup')} />}
                 infoOpen={panel === 'info'} onInfo={() => setPanel((p) => (p === 'info' ? null : 'info'))}
                 filesOpen={panel === 'files'} onFiles={() => setPanel((p) => (p === 'files' ? null : 'files'))} />
             : conversations.isLoading || conversations.isFetching ? <PageLoader />
@@ -221,37 +265,128 @@ function shortTime(iso: string) {
   return /\d:\d\d/.test(t) ? new Date(iso).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s?[ap]m$/i, '') : t;
 }
 
-/** A Messages-style row: avatar with its source glyph (chat ●, meeting ▶), unread dot, name and time, two lines of preview. */
-function Row({ r, conversation, active, onOpen }: { r: TalkRow; conversation?: Conversation; active: boolean; onOpen: () => void }) {
+type RowAction = { id: string; label: string; icon: import('../../components/Icon').IconName; run: () => void; danger?: boolean };
+
+/** A hidden conversation stays hidden until a message newer than the one it was hidden at arrives. */
+const stillHidden = (hiddenAt: string | undefined, at: string | null) => {
+  if (hiddenAt === undefined) return false;
+  const a = Date.parse(at ?? ''), h = Date.parse(hiddenAt);
+  return Number.isNaN(a) || Number.isNaN(h) ? (at ?? '') === hiddenAt : a <= h;
+};
+type TalkPrefs = { pinned: string[]; hidden: Record<string, string> };
+type TalkPrefsAll = Record<string, TalkPrefs>;
+const EMPTY_PREFS: TalkPrefs = { pinned: [], hidden: {} };
+const clean = (v: Partial<TalkPrefs> | null | undefined): TalkPrefs => ({ pinned: Array.isArray(v?.pinned) ? v!.pinned : [], hidden: v?.hidden && typeof v.hidden === 'object' ? v.hidden : {} });
+
+/**
+ * Messages' Pin and Hide: which conversations are pinned, and which are hidden until something new arrives. Saved with the account
+ * (/me/ui/conversations, one entry per workspace) so they follow the person to every device; this device keeps a copy in
+ * localStorage as a cache and as the fallback when the server cannot be reached.
+ */
+function useTalkPrefs(wid: string) {
+  const key = `pm_talk_prefs:${wid}`;
+  const readLocal = (): TalkPrefs => { try { return clean(JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<TalkPrefs>); } catch { return EMPTY_PREFS; } };
+  const [state, setState] = useState(readLocal);
+  const server = useWsQuery(['ui', 'conversations'], async () => { try { return (await get<{ value: TalkPrefsAll | null }>('/me/ui/conversations'))?.value ?? {}; } catch { return null; } }, { staleTime: 5 * 60_000, retry: false });
+  useEffect(() => { setState(readLocal()); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // The account's copy wins once it arrives; a device that had local pins but nothing on the server uploads them once.
+    const all = server.data; if (!all) return;
+    const mine = all[wid];
+    if (mine) { const v = clean(mine); setState(v); try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* blocked */ } }
+    else { const local = readLocal(); if (local.pinned.length || Object.keys(local.hidden).length) void put('/me/ui/conversations', { value: { ...all, [wid]: local } }).catch(() => undefined); }
+  }, [server.data, wid]); // eslint-disable-line react-hooks/exhaustive-deps
+  const save = (next: TalkPrefs) => {
+    // Keep the newest 200 hidden chats so the saved value stays small.
+    const hidden = Object.fromEntries(Object.entries(next.hidden).sort((a, b) => b[1].localeCompare(a[1])).slice(0, 200));
+    const v = { pinned: next.pinned, hidden };
+    setState(v);
+    try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* private window: kept for this visit */ }
+    if (server.data) {
+      const all = { ...server.data, [wid]: v };
+      queryClient.setQueryData([wid, 'ui', 'conversations'], all);
+      void put('/me/ui/conversations', { value: all }).catch(() => toast('Could not save this to your account; it is kept on this device.', 'error'));
+    }
+  };
+  return {
+    ...state,
+    togglePin: (id: string) => save({ ...state, pinned: state.pinned.includes(id) ? state.pinned.filter((x) => x !== id) : [...state.pinned, id].slice(-8) }),
+    hide: (id: string, at: string) => save({ pinned: state.pinned.filter((x) => x !== id), hidden: { ...state.hidden, [id]: at } }),
+  };
+}
+
+function RowAvatar({ r, conversation }: { r: TalkRow; conversation?: Conversation }) {
   const channel = r.kind === 'chat' && (conversation ? conversation.type !== 'Direct' : r.group);
   const recording = r.kind === 'meeting' && !r.upcoming && !r.live && !!r.sessionStart && Date.parse(r.sessionStart) < Date.now();
+  const initials = r.avatar.initials || r.title.replace(/^#/, '').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  return r.kind === 'meeting'
+    ? <span className={`talk-av square ${recording ? 'rec' : 'cal'}`} aria-hidden="true">{recording ? <Icon name="play" size={16} /> : <Icon name="calendar" size={18} />}</span>
+    : channel
+      ? <span className={`talk-av square av-c${hue(r.title)}`} aria-hidden="true">#</span>
+      : <Face userId={r.avatar.userId} hasAvatar={r.avatar.hasAvatar || undefined} className={`talk-av av-c${hue(r.title)}`} style={r.avatar.userId ? { background: avatarBg(defaultTheme(r.avatar.userId)) } : undefined} text={initials} />;
+}
+
+const SWIPE_OPEN = 148;
+
+/**
+ * A Messages-style row: avatar with its source glyph (meeting ▶, a person's live status), unread blue dot on the left, name and time,
+ * two lines of preview. Right-click (desktop) opens Pin · Mute · Mark as read · Hide; on a phone the same actions sit under a swipe
+ * (right: Read and Pin; left: Mute and Hide). Rows glide to their new place when a conversation jumps to the top.
+ */
+function Row({ r, conversation, active, onOpen, actions, reduce }: { r: TalkRow; conversation?: Conversation; active: boolean; onOpen: () => void; actions: RowAction[]; reduce: boolean }) {
+  const channel = r.kind === 'chat' && (conversation ? conversation.type !== 'Direct' : r.group);
   const title = channel && !r.title.startsWith('#') ? `#${r.title}` : r.title;
   const iso = r.kind === 'meeting' ? r.sessionStart ?? r.at : r.at;
   const when = r.live ? 'Now' : iso ? shortTime(iso) : meetingTime(r);
-  const initials = r.avatar.initials || r.title.replace(/^#/, '').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
   const second = r.kind === 'meeting' ? (r.live ? 'Live now' : r.sub ?? 'Meeting') : r.last;
+  const [menu, setMenu] = useState(false);
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const anchor = useRef<HTMLDivElement>(null);
+  const t = useRef<{ x: number; y: number; base: number; horizontal: boolean | null } | null>(null);
+  const left = actions.filter((a) => a.id === 'read' || a.id === 'pin');     // revealed by swiping right
+  const right = actions.filter((a) => a.id === 'mute' || a.id === 'hide');   // revealed by swiping left
+  const run = (a: RowAction) => { setDx(0); setMenu(false); a.run(); };
   return (
-    <li>
-      <button type="button" className={`talk-row k-${r.kind}${active ? ' active' : ''}${r.unread > 0 ? ' unread' : ''}`} onClick={onOpen} aria-current={active ? 'true' : undefined} data-row={r.title}>
-        {r.unread > 0 && <span className="talk-dot" aria-label={`${r.unread} unread`} />}
-        <span className="talk-gl">
-          {r.kind === 'meeting'
-            ? <span className={`talk-av square ${recording ? 'rec' : 'cal'}`} aria-hidden="true">{recording ? <Icon name="play" size={16} /> : <Icon name="calendar" size={18} />}</span>
-            : channel
-              ? <span className={`talk-av square av-c${hue(r.title)}`} aria-hidden="true">#</span>
-              : <Face userId={r.avatar.userId} hasAvatar={r.avatar.hasAvatar || undefined} className={`talk-av av-c${hue(r.title)}`} text={initials} />}
-          {/* Meetings keep their ▶ badge. A person shows a dot only for their real status (green active, amber away, nothing when
-              offline or unknown), never a decorative green that reads as "available". */}
-          {r.kind === 'meeting'
-            ? <span className="talk-src s-meeting" title="Meeting" aria-hidden="true"><Icon name="play" size={8} /></span>
-            : !channel && <PeerStatus userId={conversation?.otherUserId ?? r.avatar.userId ?? null} />}
-        </span>
-        <span className="talk-text">
-          <span className="talk-top"><b>{title}</b>{r.live && <span className="talk-live">Live</span>}<time>{when}</time></span>
-          <span className="talk-preview">{second || <em>No messages yet</em>}</span>
-        </span>
-      </button>
-    </li>
+    <motion.li layout={reduce ? false : 'position'} transition={{ type: 'spring', stiffness: 500, damping: 42 }} exit={reduce ? undefined : { opacity: 0, height: 0 }}>
+      <div className={`talk-row-swipe${dx !== 0 ? ' swiping' : ''}`} ref={anchor}>
+        {dx > 0 && <div className="talk-swipe-acts l">{left.map((a) => <button key={a.id} type="button" className={`sw-${a.id}`} onClick={() => run(a)}><Icon name={a.icon} size={18} />{a.label}</button>)}</div>}
+        {dx < 0 && <div className="talk-swipe-acts r">{right.map((a) => <button key={a.id} type="button" className={`sw-${a.id}`} onClick={() => run(a)}><Icon name={a.icon} size={18} />{a.label}</button>)}</div>}
+        <button type="button" className={`talk-row k-${r.kind}${active ? ' active' : ''}${r.unread > 0 ? ' unread' : ''}`} onClick={() => { if (dx !== 0) { setDx(0); return; } onOpen(); }} aria-current={active ? 'true' : undefined} data-row={r.title}
+          style={dx ? { transform: `translateX(${dx}px)`, transition: dragging ? 'none' : undefined } : undefined}
+          onContextMenu={(e) => { e.preventDefault(); setMenu(true); }}
+          onTouchStart={(e) => { const p = e.touches[0]; t.current = { x: p.clientX, y: p.clientY, base: dx, horizontal: null }; }}
+          onTouchMove={(e) => {
+            const s = t.current; if (!s) return;
+            const mx = e.touches[0].clientX - s.x, my = e.touches[0].clientY - s.y;
+            if (s.horizontal === null && (Math.abs(mx) > 8 || Math.abs(my) > 8)) s.horizontal = Math.abs(mx) > Math.abs(my);
+            if (!s.horizontal) return;
+            setDragging(true);
+            const v = Math.max(right.length ? -SWIPE_OPEN - 24 : 0, Math.min(left.length ? SWIPE_OPEN + 24 : 0, s.base + mx));
+            setDx(v);
+          }}
+          onTouchEnd={() => { const s = t.current; t.current = null; setDragging(false); if (!s?.horizontal) return; setDx((v) => { const next = v > 56 ? (left.length > 1 ? SWIPE_OPEN : SWIPE_OPEN / 2) : v < -56 ? -(right.length > 1 ? SWIPE_OPEN : SWIPE_OPEN / 2) : 0; if (next) haptic(8); return next; }); }}>
+          {r.unread > 0 && <span className="talk-dot" aria-label={`${r.unread} unread`} />}
+          <span className="talk-gl">
+            <RowAvatar r={r} conversation={conversation} />
+            {/* Meetings keep their ▶ badge. A person shows a dot only for their real status (green active, amber away, nothing when
+                offline or unknown), never a decorative colour that reads as "available". */}
+            {r.kind === 'meeting'
+              ? <span className="talk-src s-meeting" title="Meeting" aria-hidden="true"><Icon name="play" size={8} /></span>
+              : !channel && <PeerStatus userId={conversation?.otherUserId ?? r.avatar.userId ?? null} />}
+          </span>
+          <span className="talk-text">
+            <span className="talk-top"><b>{title}</b>{r.live && <span className="talk-live">Live</span>}{conversation?.isMuted && <Icon name="bell" size={11} className="talk-muted" aria-label="Muted" />}<time>{when}<Icon name="chevronR" size={10} className="talk-chev" /></time></span>
+            <span className="talk-preview">{second || <em>No messages yet</em>}</span>
+          </span>
+        </button>
+      </div>
+      <Popover open={menu} onClose={() => setMenu(false)} anchorRef={anchor} side="bottom" align="start">
+        <ul className="v2-dots-list talk-row-menu" role="menu" aria-label={`${r.title} actions`}>
+          {actions.map((a) => <li key={a.id}><button type="button" role="menuitem" className={a.danger ? 'danger' : ''} onClick={() => run(a)}><Icon name={a.icon} size={15} />{a.label}</button></li>)}
+        </ul>
+      </Popover>
+    </motion.li>
   );
 }
 
@@ -260,34 +395,6 @@ function PeerStatus({ userId }: { userId: string | null }) {
   const status = usePresence(userId, 'offline');
   if (status === 'offline') return null;
   return <span className={`talk-src s-presence ${status}`} role="img" aria-label={status === 'away' ? 'Away' : 'Active'} title={status === 'away' ? 'Away' : 'Active now'} />;
-}
-
-/**
- * Pinned at the top of a chat: "While you were away · N messages" and up to three decisions from the catch-up AI. The AI is asked when there is
- * something to catch up on (3+ unread) or on request, as before; until then the card offers to read it.
- */
-function SummaryStrip({ conversation, onCatchUp }: { conversation: Conversation; onCatchUp: () => void }) {
-  const [asked, setAsked] = useState(conversation.unread >= 3);
-  const [missed] = useState(conversation.unread);
-  const lastId = conversation.lastMessage?.at ?? '';
-  const q = useWsQuery(['chat', 'summary', conversation.id, lastId], () => chatApi.catchUp(conversation.id), { enabled: asked && !!conversation.lastMessage, staleTime: 10 * 60_000, retry: false });
-  if (!conversation.lastMessage) return null;
-  const d = q.data;
-  const lines = d ? (d.decisions.length ? d.decisions : d.actions).slice(0, 3).map((x) => (x.owner && !x.text.includes(x.owner.split(' ')[0]) ? `${x.text} (${x.owner.split(' ')[0]})` : x.text)) : [];
-  const count = d?.messages ?? missed;
-  return (
-    <section className="talk-away" aria-label="While you were away" data-testid="summary-strip">
-      <span className="talk-orb" aria-hidden="true" />
-      <div className="talk-away-body">
-        <div className="talk-away-hd"><b>While you were away{count > 0 ? ` · ${count} message${count === 1 ? '' : 's'}` : ''}</b><span className="talk-away-pin">📌 Pinned</span></div>
-        {!asked ? <button type="button" className="talk-away-act" onClick={() => setAsked(true)}>Show what was decided</button>
-          : q.isLoading ? <p className="talk-away-note"><Spinner /> Reading the conversation…</p>
-            : q.isError ? <p className="talk-away-note">{q.error instanceof ApiError ? q.error.message : 'No summary right now.'}</p>
-              : lines.length ? <ul>{lines.map((l) => <li key={l}>{l}</li>)}</ul>
-                : <p className="talk-away-note">{d?.summary || 'Nothing decided since you were last here.'} {d && <button type="button" className="link-btn" onClick={onCatchUp}>See actions</button>}</p>}
-      </div>
-    </section>
-  );
 }
 
 function Gone({ text, onBack }: { text: string; onBack: () => void }) {
