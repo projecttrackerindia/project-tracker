@@ -34,7 +34,8 @@ public record ChangeIssueStatusRequest(IssueStatus Status, string? Note);
 /// (see <see cref="TaskCompletionService"/>), so a project only moves on once testing has passed.
 /// </summary>
 public class IssueService(IAppDbContext db, ICurrentContext ctx, PermissionService permissions, ProjectAccess access, Recorder recorder, AppClock clock,
-    NotificationService notifications, TaskCompletionService completion, IFileStorage storage, ILogger<IssueService> log)
+    NotificationService notifications, TaskCompletionService completion, IFileStorage storage, ILogger<IssueService> log,
+    ProjectManagement.Application.Features.Reminders.ReminderSync reminderSync)
 {
     public const string OpenIssuesCode = "STAGE_HAS_OPEN_ISSUES";
     public const int MaxFilesPerIssue = 20;
@@ -251,6 +252,7 @@ public class IssueService(IAppDbContext db, ICurrentContext ctx, PermissionServi
             recorder.Activity("issue.updated", "Issue", issue.Id, $"Edited issue {KeyOf(project.Key, issue.Number)} ({string.Join(", ", changes)})", projectId);
         }
         await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.Issue, issue.Id, ct);   // a new title shows on its reminders
         if (stageChanged) await completion.SyncStagesAsync([oldStage, issue.StageId], ct);
         return await DetailAsync(project, issue, ct);
     }
@@ -272,6 +274,7 @@ public class IssueService(IAppDbContext db, ICurrentContext ctx, PermissionServi
         recorder.Activity("issue.assigned", "Issue", issue.Id, who is null ? $"Unassigned issue {key}" : $"Assigned issue {key} to {who}", projectId);
         if (req.AssigneeId is not null) await NotifyAsync([req.AssigneeId], $"Issue {key} was assigned to you", issue.Title, project, issue, ct);
         await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.Issue, issue.Id, ct);
         return await DetailAsync(project, issue, ct);
     }
 
@@ -314,6 +317,7 @@ public class IssueService(IAppDbContext db, ICurrentContext ctx, PermissionServi
                 await NotifyAsync([issue.ReporterId], $"Work has started on issue {key}", issue.Title, project, issue, ct); break;
         }
         await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.Issue, issue.Id, ct);
         // The last open issue being resolved lets the stage complete; a reopened one puts a completed stage back in progress.
         await completion.SyncStagesAsync([issue.StageId], ct);
         return await DetailAsync(project, issue, ct);
@@ -333,6 +337,7 @@ public class IssueService(IAppDbContext db, ICurrentContext ctx, PermissionServi
         db.StageIssues.Remove(issue);
         recorder.Activity("issue.deleted", "Issue", issue.Id, $"Deleted issue {KeyOf(project.Key, issue.Number)} “{issue.Title}”", projectId);
         await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.Issue, issue.Id, ct);   // issues are removed outright: their reminders are orphaned
         foreach (var f in files)
         {
             try { await storage.DeleteAsync(f.StorageKey, ct); }

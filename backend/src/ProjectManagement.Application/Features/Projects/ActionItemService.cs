@@ -19,8 +19,9 @@ public record ActionItemDto(Guid Id, Guid ProjectId, string Title, string? Detai
 
 public record CreateActionItemRequest(string? Title, string? Details, Guid? AssigneeId, DateOnly? DueDate, Priority? Priority);
 /// <summary>All the editable fields at once: what is sent replaces what was there (an empty assignee or due date clears it).</summary>
-public record UpdateActionItemRequest(string? Title, string? Details, Guid? AssigneeId, DateOnly? DueDate, Priority Priority, ActionItemStatus Status);
-public record SetActionItemStatusRequest(ActionItemStatus Status);
+/// <param name="Version">The version the caller saw; when given, a save over someone else's newer change is refused (409).</param>
+public record UpdateActionItemRequest(string? Title, string? Details, Guid? AssigneeId, DateOnly? DueDate, Priority Priority, ActionItemStatus Status, int? Version = null);
+public record SetActionItemStatusRequest(ActionItemStatus Status, int? Version = null);
 
 /// <summary>
 /// Action items of a project: follow-ups with an owner, a due date and a priority. They are work tasks of the kind
@@ -28,7 +29,8 @@ public record SetActionItemStatusRequest(ActionItemStatus Status);
 /// and search with everything else - but they follow their project's rules: anyone who can see the project can read them; people who
 /// may create tasks can add them; the person who added an item, the person it is assigned to and managers can change it.
 /// </summary>
-public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access, NotificationService notifications)
+public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access, NotificationService notifications,
+    ProjectManagement.Application.Features.Reminders.ReminderSync reminderSync)
 {
     private const int MaxListed = 500;
 
@@ -130,8 +132,8 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         return rows.Select(r =>
         {
             var mine = r.CreatedBy == me; var assigned = r.AssigneeId == me;
-            var can = new ActionItemCan(Edit: !archived && (manager || mine || assigned), Delete: !archived && (manager || (mine && canCreate)), Complete: !archived && (manager || mine || assigned));
             var done = r.Status == WorkTaskStatus.Completed;
+            var can = new ActionItemCan(Edit: !archived && (manager || mine || assigned), Delete: !archived && (manager || (mine && canCreate)), Complete: (!archived || !done) && (manager || mine || assigned));   // archived: open ones can still be completed (not reopened)
             return new ActionItemDto(r.Id, project.Id, r.Title, r.Description, Ref(r.AssigneeId), r.DueDate, r.Priority, ToApi(r.Status),
                 !done && r.DueDate is { } d && d < today, r.CreatedAt, Ref(r.CreatedBy), r.CompletedAt, Ref(r.CompletedBy), can,
                 WorkItemService.KeyOf(WorkTaskKind.ActionItem, r.Number), r.Number);
@@ -167,8 +169,16 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         db.WorkTasks.Add(item);
         recorder.Activity("actionitem.created", "ActionItem", item.Id, $"Added action item “{title}” to \"{project.Name}\"", projectId);
         await NotifyAssignedAsync(project, item, ct);
-        await db.SaveChangesAsync(ct);
+        await WorkTaskService.SaveNewAsync(db, item, ct);   // retries on a number taken at the same moment
         return await OneAsync(project, item, ct);
+    }
+
+    /// <summary>The version the caller saw: refused when stale, and pinned so a save in between fails rather than being overwritten.</summary>
+    private void CheckVersion(WorkTask item, int? seen)
+    {
+        if (seen is not { } v) return;
+        if (item.Version != v) throw new ConflictException("This action item was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
+        db.WorkTasks.Entry(item).Property(x => x.Version).OriginalValue = v;
     }
 
     public async Task<ActionItemDto> UpdateAsync(Guid projectId, Guid id, UpdateActionItemRequest req, CancellationToken ct = default)
@@ -179,6 +189,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var manager = await IsManagerAsync(project, ct);
         if (!(manager || item.CreatedBy == ctx.UserId || item.AssigneeId == ctx.UserId))
             throw new ForbiddenException("Only the person who added an action item, the person it is assigned to, or a manager can change it.", "PERMISSION_DENIED");
+        CheckVersion(item, req.Version);
 
         var title = CleanTitle(req.Title);
         var details = CleanDetails(req.Details);
@@ -201,17 +212,20 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
             was.ToString(), now.ToString());
         if (reassigned) await NotifyAssignedAsync(project, item, ct);
         await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
         return await OneAsync(project, item, ct);
     }
 
     public async Task<ActionItemDto> SetStatusAsync(Guid projectId, Guid id, SetActionItemStatusRequest req, CancellationToken ct = default)
     {
         var project = await ViewableProjectAsync(projectId, ct);
-        RequireOpen(project);
+        // A closed (archived) project's follow-ups can still be ticked off - only completing is allowed there, nothing else.
+        if (!(project.Status == ProjectStatus.Archived && req.Status == ActionItemStatus.Completed)) RequireOpen(project);
         var item = await FindAsync(projectId, id, ct);
         var manager = await IsManagerAsync(project, ct);
         if (!(manager || item.CreatedBy == ctx.UserId || item.AssigneeId == ctx.UserId))
             throw new ForbiddenException("Only the person who added an action item, the person it is assigned to, or a manager can change it.", "PERMISSION_DENIED");
+        CheckVersion(item, req.Version);
         var was = ToApi(item.Status);
         if (was == req.Status) return await OneAsync(project, item, ct);
         ApplyStatus(item, req.Status);
@@ -219,6 +233,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         recorder.Activity("actionitem.status", "ActionItem", id, $"Action item “{item.Title}”: {was} → {req.Status}", projectId, was.ToString(), req.Status.ToString());
         new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", was.ToString(), req.Status.ToString()).Record(recorder, "actionitem", "ActionItem", id);
         await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
         return await OneAsync(project, item, ct);
     }
 
@@ -233,6 +248,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         item.IsDeleted = true; item.DeletedAt = clock.Now; item.DeletedBy = ctx.UserId;
         recorder.Activity("actionitem.deleted", "ActionItem", id, $"Deleted action item “{item.Title}”", projectId);
         await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
     }
 
     /// <summary>Brings a deleted action item back, for the person who deleted it or a manager of an open project. Used by Undo.</summary>
@@ -247,6 +263,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         item.IsDeleted = false; item.DeletedAt = null; item.DeletedBy = null;
         recorder.Activity("actionitem.restored", "ActionItem", id, $"Restored action item “{item.Title}”", projectId);
         await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
     }
 
     /// <summary>Completing stamps who and when; reopening clears it.</summary>

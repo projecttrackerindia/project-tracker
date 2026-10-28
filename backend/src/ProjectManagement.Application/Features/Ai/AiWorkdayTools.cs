@@ -78,17 +78,18 @@ public class AiWorkdayTools(ICurrentContext ctx, AppClock clock, AgentDelegation
     private async Task<AiToolOutcome> ScheduleAsync(JsonElement a, string? timeZone, CancellationToken ct)
     {
         var me = ctx.RequireUserId();
-        var zone = ZoneTime.Find(ZoneTime.IsKnown(timeZone) ? timeZone!.Trim() : "UTC");
+        // The person's zone as the app knows it (profile, else workspace) unless the tool was told one; never plain UTC.
+        var zone = ZoneTime.IsKnown(timeZone) ? ZoneTime.Find(timeZone!.Trim()) : clock.Zone;
         var from = Date(a, "from") ?? DateOnly.FromDateTime(ZoneTime.ToLocal(clock.Now, zone));
         var days = a.TryGetProperty("days", out var d) && d.TryGetInt32(out var n) ? Math.Clamp(n, 1, 14) : 1;
         var startUtc = ZoneTime.ToUtc(from.ToDateTime(TimeOnly.MinValue), zone);
         var meetings = await delegations.MyMeetingsAsync(startUtc, days * 24, ct);
         var due = await workItems.ListAsync(new WorkItemQuery(AssigneeId: me, DueFrom: from, DueTo: from.AddDays(days - 1), Limit: 60), WorkItemScope.Caller, ct);
-        IReadOnlyList<WorkItemDto> late = from <= DateOnly.FromDateTime(clock.Now) ? await workItems.ListAsync(new WorkItemQuery(AssigneeId: me, Overdue: true, Limit: 11), WorkItemScope.Caller, ct) : Array.Empty<WorkItemDto>();
+        IReadOnlyList<WorkItemDto> late = from <= DateOnly.FromDateTime(ZoneTime.ToLocal(clock.Now, zone)) ? await workItems.ListAsync(new WorkItemQuery(AssigneeId: me, Overdue: true, Limit: 11), WorkItemScope.Caller, ct) : Array.Empty<WorkItemDto>();
         string Local(DateTime utc) => ZoneTime.ToLocal(utc, zone).ToString("ddd d MMM HH:mm", CultureInfo.InvariantCulture);
         return new AiToolOutcome(Ser(new
         {
-            from = from, days, time_zone = timeZone ?? "UTC",
+            from = from, days, time_zone = ZoneTime.IsKnown(timeZone) ? timeZone : zone.Id,
             meetings = meetings.Select(m => new
             {
                 m.Title, start = Local(m.StartUtc), end = Local(m.EndUtc), project = m.ProjectKey, organizer = m.Organizer, clashes_with = m.OverlapsWith.Count == 0 ? null : m.OverlapsWith,
@@ -102,7 +103,7 @@ public class AiWorkdayTools(ICurrentContext ctx, AppClock clock, AgentDelegation
 
     private async Task<AiToolOutcome> TimeAsync(JsonElement a, CancellationToken ct)
     {
-        var today = DateOnly.FromDateTime(clock.Now);
+        var today = clock.Today;   // the person's own day, not the UTC one
         var from = Date(a, "from") ?? TimesheetApprovalService.WeekOf(today);
         var to = Date(a, "to") ?? from.AddDays(6);
         if (to < from || to.DayNumber - from.DayNumber > 92) throw new AiToolException("Ask for at most three months, with the start before the end.");

@@ -6,7 +6,7 @@ import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { reminderApi, type ReminderSubject, type ReminderWhen } from './api';
 import { openReminderComposer, refreshReminders } from './store';
-import { addDays, addMinutes, atTime, describeInstant, describeLocal, deviceZone, fromIso, iso, parseHm, relative, wall } from './time';
+import { addDays, addMinutes, atTime, describeInstant, describeLocal, fromIso, pickerZone, iso, parseHm, relative, wall } from './time';
 
 /**
  * "Remind me" on a piece of work: a few one-tap choices (in an hour, this evening, tomorrow, before it is due), the reminders already set
@@ -29,7 +29,8 @@ export function RemindMeButton({ subject, compact }: { subject: ReminderSubject;
     return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc, true); };
   }, [open]);
 
-  const zone = deviceZone();
+  const zone = pickerZone(settings.data?.followDeviceTimeZone);
+  const [saving, setSaving] = useState(false);
   const now = wall(new Date(), zone);
   const [dh, dm] = parseHm(settings.data?.defaultTime ?? '09:00');
   const soon = (() => { const n = addMinutes(now, 60); const r = n.getUTCMinutes() % 15; return addMinutes(n, r ? 15 - r : 0); })();
@@ -43,19 +44,23 @@ export function RemindMeButton({ subject, compact }: { subject: ReminderSubject;
     ...(due && atTime(due, dh, dm) > now ? [{ label: 'On the due date', when: { anchorDays: 0, anchorTime: `${String(dh).padStart(2, '0')}:${String(dm).padStart(2, '0')}`, timeZone: zone }, hint: describeLocal(atTime(due, dh, dm), now) }] : []),
   ];
 
+  // One reminder per tap: a second tap while the first is on its way does nothing (and the request carries an Idempotency-Key).
   const set = async (when: ReminderWhen) => {
+    if (saving) return;
+    setSaving(true);
     setOpen(false);
     try {
       const r = await reminderApi.create({ title: null, targetType: subject.type, targetId: subject.id, when });
       await refreshReminders(wid);
       toast(`Reminder set · ${r.nextFireAt ? describeInstant(r.nextFireAt) : ''}`, 'success', { label: 'Undo', onClick: () => { void reminderApi.remove(r.id).then(() => refreshReminders(wid)); } });
     } catch (e) { toast(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not set the reminder.', 'error'); }
+    finally { setSaving(false); }
   };
   const drop = async (id: string) => { await reminderApi.remove(id); await refreshReminders(wid); };
 
   return (
     <div className="rm-wrap" ref={box}>
-      <button type="button" className={`btn btn-ghost btn-sm rm-btn ${count ? 'has' : ''}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}
+      <button type="button" className={`btn btn-ghost btn-sm rm-btn ${count ? 'has' : ''}`} aria-haspopup="menu" aria-expanded={open} disabled={saving} onClick={() => setOpen((o) => !o)}
         title={count ? `${count} reminder${count === 1 ? '' : 's'} set` : 'Remind me about this'}>
         <Icon name="alarm" size={15} />{!compact && <span>Remind me</span>}{count > 0 && <em>{count}</em>}
       </button>
@@ -63,7 +68,7 @@ export function RemindMeButton({ subject, compact }: { subject: ReminderSubject;
         <div className="rm-menu" role="menu">
           <div className="rm-head">Remind me about <b>{subject.key ?? subject.title}</b></div>
           {choices.map((c) => (
-            <button key={c.label} type="button" role="menuitem" className="rm-item" onClick={() => void set(c.when)}>
+            <button key={c.label} type="button" role="menuitem" className="rm-item" disabled={saving} onClick={() => void set(c.when)}>
               <span>{c.label}</span><em>{c.hint}</em>
             </button>
           ))}

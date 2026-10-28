@@ -207,15 +207,15 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         events.AddRange(taskRows.Select(t => new CalendarEventDto("task", t.Id, t.Title, t.DueDate!.Value, t.Status, t.Category,
             t.Category is not (StatusCategory.Done or StatusCategory.Cancelled) && t.DueDate < today, t.ProjectId, t.ProjectName, t.Priority)));
 
-        // Action items and operational work with a due date in the range, for the same people.
-        var workKinds = new[] { WorkItemKind.ActionItem, WorkItemKind.Operational };
+        // Action items, operational work and test issues with a due date in the range, for the same people (issue due dates used to be invisible here).
+        var workKinds = new[] { WorkItemKind.ActionItem, WorkItemKind.Operational, WorkItemKind.Issue };
         var work = new List<WorkItemDto>();
         if (assignees is null)
             work.AddRange(await workItems.ListAsync(new WorkItemQuery(workKinds, OpenOnly: false, ProjectId: projectId, DueFrom: from, DueTo: to, Limit: 500), workScope, ct));
         else
             foreach (var person in assignees)
                 work.AddRange(await workItems.ListAsync(new WorkItemQuery(workKinds, AssigneeId: person, OpenOnly: false, ProjectId: projectId, DueFrom: from, DueTo: to, Limit: 200), workScope, ct));
-        events.AddRange(work.Where(w => w.DueDate is not null).Select(w => new CalendarEventDto(w.Kind == WorkItemKind.ActionItem ? "action" : "work", w.Id, w.Title, w.DueDate!.Value,
+        events.AddRange(work.Where(w => w.DueDate is not null).Select(w => new CalendarEventDto(w.Kind == WorkItemKind.ActionItem ? "action" : w.Kind == WorkItemKind.Issue ? "issue" : "work", w.Id, w.Title, w.DueDate!.Value,
             w.Status, w.Category, w.IsOverdue, w.ProjectId, w.ProjectName, w.Priority)));
 
         // Scheduled meetings (project meetings and scrum calls) starting in the range, for the same people. Personal like tasks/work items
@@ -224,10 +224,16 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         // omits "from"/"to" and model binding defaults them) can never make AddMinutes overflow past what DateTime can represent.
         // A session lasts as long as the series' first one (the end time is stored once per meeting); unknown or nonsense reads as null.
         static int? DurationOf(DateTime start, DateTime end) { var min = (int)Math.Round((end - start).TotalMinutes); return min is > 0 and <= 24 * 60 ? min : null; }
+        // Midnight of that day in the person's zone, with the zone's offset ON THAT DATE (not today's: a range across a DST change used to
+        // shift by an hour). The far ends (DateOnly.Min/MaxValue) stay clamped.
         DateTime ShiftToUtc(DateOnly localDate)
         {
-            var ticks = Math.Clamp(localDate.ToDateTime(TimeOnly.MinValue).Ticks - TimeSpan.FromMinutes(clock.OffsetMinutes).Ticks, DateTime.MinValue.Ticks, DateTime.MaxValue.Ticks);
-            return DateTime.SpecifyKind(new DateTime(ticks), DateTimeKind.Utc);
+            if (localDate.Year <= 1 || localDate.Year >= 9999)
+            {
+                var ticks = Math.Clamp(localDate.ToDateTime(TimeOnly.MinValue).Ticks - TimeSpan.FromMinutes(clock.OffsetMinutes).Ticks, DateTime.MinValue.Ticks, DateTime.MaxValue.Ticks);
+                return DateTime.SpecifyKind(new DateTime(ticks), DateTimeKind.Utc);
+            }
+            return ProjectManagement.Application.Features.Reminders.ZoneTime.ToUtc(ProjectManagement.Application.Features.Reminders.ZoneTime.At(localDate, TimeOnly.MinValue), clock.Zone);
         }
         var fromUtc = ShiftToUtc(from);
         var toUtcExclusive = ShiftToUtc(to == DateOnly.MaxValue ? to : to.AddDays(1));

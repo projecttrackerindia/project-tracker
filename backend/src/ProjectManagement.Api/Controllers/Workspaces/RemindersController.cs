@@ -45,9 +45,9 @@ public class RemindersController(ReminderService reminders, ReminderSuggestionSe
     public async Task<IActionResult> Snooze(Guid id, [FromBody] SnoozeRequest req, CancellationToken ct) => Ok(await reminders.SnoozeAsync(id, req, ct));
 
     [HttpPost("{id:guid}/done")]
-    public async Task<IActionResult> Done(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Done(Guid id, [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] ReminderExpectation? req, CancellationToken ct)
     {
-        var done = await reminders.CompleteAsync(id, ct);
+        var done = await reminders.CompleteAsync(id, req, ct);
         await notifications.MarkSeenAsync(ProjectManagement.Application.Features.Notifications.NotificationTargets.Reminder, id, ct);   // finished: its notices are read
         return Ok(done);
     }

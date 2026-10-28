@@ -69,8 +69,8 @@ public static class TargetStates
                         break;
                     case ReminderTarget.Issue:
                         foreach (var i in await db.StageIssues.IgnoreQueryFilters().AsNoTracking().Where(x => ids.Contains(x.Id) && db.Projects.IgnoreQueryFilters().Any(p => p.Id == x.ProjectId && !p.IsDeleted))
-                            .Select(x => new { x.Id, x.Status, x.ProjectId, x.AssigneeId }).ToListAsync(ct))
-                            result[(group.Key, i.Id)] = new(i.Status != IssueStatus.Resolved, null, i.ProjectId, i.AssigneeId);
+                            .Select(x => new { x.Id, x.Status, x.DueDate, x.ProjectId, x.AssigneeId }).ToListAsync(ct))
+                            result[(group.Key, i.Id)] = new(i.Status != IssueStatus.Resolved, i.DueDate, i.ProjectId, i.AssigneeId);
                         break;
                     case ReminderTarget.ActionItem or ReminderTarget.Operational:
                         foreach (var w in await db.WorkTasks.IgnoreQueryFilters().AsNoTracking().Where(x => ids.Contains(x.Id) && !x.IsDeleted)
@@ -387,6 +387,7 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
                 await live.ToUsersAsync(group.Key.TenantId, [group.Key.UserId], "reminder", group.Select(p => new
                 {
                     id = p.R.Id, title = p.R.Title, note = p.R.Note, targetKey = p.R.TargetKey, link = p.R.Link, source = p.R.Source.ToString(),
+                    nextFireAt = p.R.NextFireAt, lastFiredAt = p.R.LastFiredAt,
                     from = p.R.Source == ReminderSource.Nudge && p.R.CreatedBy is { } c && users.TryGetValue(c, out var u) ? u.DisplayName : null,
                 }).ToList(), ct);
             }
@@ -559,9 +560,11 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
 
     public async Task<int> PlanAsync(DateTime now, CancellationToken ct = default)
     {
+        // The window is a day wider on each side than the UTC day, so it covers "today" on every person's own clock (UTC-12 to UTC+14);
+        // each reminder's day and time is then worked out in its person's zone (WorkCalendar, ZoneTime) below.
         var today = DateOnly.FromDateTime(now);
-        var from = today.AddDays(-40);
-        var to = today.AddDays(30);
+        var from = today.AddDays(-41);
+        var to = today.AddDays(31);
         var items = new List<Item>();
 
         var complete = true;
@@ -599,6 +602,25 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
                 : new Item(ReminderTarget.Operational, w.Id, w.TenantId, WorkItemService.KeyOf(w.Kind, w.Number), w.Title, w.RelatedProjectId, WorkTaskService.LinkOf(w.Id), w.Due, w.Assignee, w.ReporterId, null)));
             if (work.Count < Page) break;
             after = work[^1].Id;
+            complete = items.Count < Ceiling;
+        }
+
+        // Test issues with a due date get the same reminders as other work (they used to have none, so their due dates were invisible).
+        for (Guid? after = null; complete;)
+        {
+            var q = db.StageIssues.IgnoreQueryFilters().AsNoTracking()
+                .Where(i => i.AssigneeId != null && i.DueDate >= from && i.DueDate <= to && i.Status != IssueStatus.Resolved
+                    && db.Projects.IgnoreQueryFilters().Any(p => p.Id == i.ProjectId && !p.IsDeleted)
+                    && db.Tenants.IgnoreQueryFilters().Any(x => x.Id == i.TenantId && !x.IsDeleted && x.Status == TenantStatus.Active));
+            if (after is { } last) q = q.Where(i => i.Id.CompareTo(last) > 0);
+            var issues = await q.OrderBy(i => i.Id)
+                .Select(i => new { i.Id, i.TenantId, i.Number, i.Title, i.ProjectId, Due = i.DueDate!.Value, Assignee = i.AssigneeId!.Value,
+                    Key = db.Projects.IgnoreQueryFilters().Where(p => p.Id == i.ProjectId).Select(p => p.Key).FirstOrDefault(),
+                    Owner = db.Projects.IgnoreQueryFilters().Where(p => p.Id == i.ProjectId).Select(p => (Guid?)p.OwnerId).FirstOrDefault() })
+                .Take(Page).ToListAsync(ct);
+            items.AddRange(issues.Select(i => new Item(ReminderTarget.Issue, i.Id, i.TenantId, $"{i.Key}-I{i.Number}", i.Title, i.ProjectId, ReminderSync.IssueLink(i.ProjectId, i.Id), i.Due, i.Assignee, i.Owner, null)));
+            if (issues.Count < Page) break;
+            after = issues[^1].Id;
             complete = items.Count < Ceiling;
         }
 
@@ -738,7 +760,8 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
         var states = await TargetStates.LoadAsync(db, watched.Select(r => (r.TargetType, r.TargetId!.Value)), ct);
         foreach (var r in watched)
         {
-            if (!states.TryGetValue((r.TargetType, r.TargetId!.Value), out var st)) { r.State = ReminderState.Cancelled; r.NextFireAt = null; continue; }
+            // Work deleted: orphaned (kept with its time), so restoring the work brings the reminder back (see ReminderSync).
+            if (!states.TryGetValue((r.TargetType, r.TargetId!.Value), out var st)) { r.State = ReminderState.Cancelled; r.LockToken = ReminderSync.Orphaned; r.LockedUntil = null; continue; }
             if (r.OnlyIfOpen && !st.Open)
             {
                 // Automatic ones that never went off simply go; anything the person saw counts as done with the work.
