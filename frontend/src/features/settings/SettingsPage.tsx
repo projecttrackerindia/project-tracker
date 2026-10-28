@@ -1,4 +1,5 @@
 import { DataLocationSection, HolidaysSection, StatusPageSection } from '../platform/PlatformSettings';
+import { AttendanceSettings } from '../attendance/AttendanceSettings';
 import { createPortal } from 'react-dom';
 import { WorkspaceLogoCard } from './WorkspaceLogo';
 import { ProfilePhotoCard } from './ProfilePhoto';
@@ -514,6 +515,7 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
     case 'automation': return <><PageHead title="Automation" sub="Rules that run on every project's tasks: when something happens - or on a schedule - do something." /><WorkspaceAutomationSettings /><SectionHistory section="automation" /></>;
     case 'notifications': case 'reminders': return <NotificationsTab sub={id} />;
     case 'holidays': return <HolidaysSection />;
+    case 'attendance': return <AttendanceSettings />;
     case 'data-location': return <DataLocationSection />;
     case 'status-page': return <StatusPageSection />;
     case 'data': return <><PageHead title="Data & retention" sub="How long history is kept, and a full export of everything." /><DataSettings /><SectionHistory section="data" /></>;

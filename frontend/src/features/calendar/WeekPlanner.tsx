@@ -16,6 +16,7 @@ import { ToolbarSlot } from '../talk/ToolbarSlot';
 import { undoToast } from '../talk/flyTask';
 import { CalendarView } from './CalendarView';
 import { EventDetail, type DetailActions } from './EventDetail';
+import { AttendanceRow } from '../attendance/AttendanceCalendar';
 import {
   DOW3, END, HR, MEETING_MIN, MONTHS, SNAP, START, addDays, clockH, dateOf, fmtMins, hourOf, hrefOf, isDeadline, iso, lanes, mondayOf, planFocus, planKey, RANK,
   type Detail, type Focus, type Meet, type PlanOverrides, type Reminder,
@@ -341,6 +342,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                   );
                 })}
               </div>
+              <AttendanceRow days={days} today={today} />
               <div className="wp-body" style={{ height: (END - START) * HR }}>
                 <div className="wp-lines" aria-hidden="true" />
                 <div className="wp-hrs" aria-hidden="true">

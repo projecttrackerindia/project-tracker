@@ -14,6 +14,7 @@ import { haptic } from '../lib/mobile';
 import { useTeamLens } from '../lib/teamLens';
 import { queryClient, useAuth } from '../stores/auth';
 import { toast } from '../stores/ui';
+import { AttendancePill } from '../features/attendance/AttendancePill';
 import { CreateOrganizationModal, NotifIcon } from './parts';
 
 const hue = (name: string) => { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
@@ -64,6 +65,7 @@ export function MobileTopBar() {
             <Icon name="bell" size={21} />{unread > 0 && <em className="m-badge">{unread > 9 ? '9+' : unread}</em>}
           </button>
         )}
+        {!admin && <AttendancePill compact />}
         <AvatarMenu />
       </div>
       {sheet === 'org' && !admin && <OrgSheet onClose={() => setSheet(null)} />}
