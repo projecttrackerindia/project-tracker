@@ -26,7 +26,7 @@ public record ApplyOrgTemplateRequest(string Template);
 /// The organization chart: job roles (a tree), which role each person holds and who reports to whom.
 /// Anyone except guests can read it; only holders of <see cref="Permissions.OrgStructure"/> can change it.
 /// </summary>
-public class OrgService(IAppDbContext db, ICurrentContext ctx, PermissionService permissions, Recorder recorder, AppClock clock)
+public class OrgService(IAppDbContext db, ICurrentContext ctx, PermissionService permissions, Recorder recorder, AppClock clock, OrgGrantGuard guard)
 {
     private const int MaxRoles = 200;
     private static readonly string[] Palette = ["#8b5cf6", "#38bdf8", "#34d399", "#fbbf24", "#fb7185", "#c084fc", "#f97316", "#94a3b8"];
@@ -104,9 +104,9 @@ public class OrgService(IAppDbContext db, ICurrentContext ctx, PermissionService
     /// <summary>True when <paramref name="candidate"/> is <paramref name="roleId"/> itself or sits below it in the tree.</summary>
     private static bool IsSelfOrDescendant(Guid roleId, Guid candidate, IReadOnlyDictionary<Guid, Guid?> parents)
     {
-        var guard = 0;
+        var steps = 0;
         Guid? cur = candidate;
-        while (cur is { } id && guard++ <= parents.Count)
+        while (cur is { } id && steps++ <= parents.Count)
         {
             if (id == roleId) return true;
             cur = parents.GetValueOrDefault(id);
@@ -168,6 +168,7 @@ public class OrgService(IAppDbContext db, ICurrentContext ctx, PermissionService
                 throw new ConflictException("A role cannot report to itself or to one of its own sub-roles.", "ORG_CYCLE");
         }
         if (role.ParentRoleId == req.ParentRoleId) return;
+        await guard.EnsureCanMoveRoleAsync(id, req.ParentRoleId, ct);
 
         var old = role.ParentRoleId;
         role.ParentRoleId = req.ParentRoleId;
@@ -257,6 +258,7 @@ public class OrgService(IAppDbContext db, ICurrentContext ctx, PermissionService
         if (req.RoleId is { } r && !await db.OrgRoles.AnyAsync(x => x.Id == r, ct))
             throw new NotFoundException("Role not found.");
         if (member.OrgRoleId == req.RoleId) return;
+        await guard.EnsureCanAssignRoleAsync(member, req.RoleId, ct);
 
         var old = member.OrgRoleId;
         member.OrgRoleId = req.RoleId;
@@ -279,6 +281,7 @@ public class OrgService(IAppDbContext db, ICurrentContext ctx, PermissionService
                 if (id == userId) throw new ConflictException("That would create a reporting loop.", "ORG_CYCLE");
         }
         if (member.ReportsToUserId == req.ReportsToUserId) return;
+        await guard.EnsureCanSetReportsToAsync(member, req.ReportsToUserId, ct);
 
         var old = member.ReportsToUserId;
         member.ReportsToUserId = req.ReportsToUserId;

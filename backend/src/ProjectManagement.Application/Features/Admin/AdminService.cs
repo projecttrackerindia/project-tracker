@@ -311,6 +311,18 @@ public class AdminService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         RequireAdmin();
         if (id == ctx.UserId) throw new ConflictException("You cannot disable your own account.", "SELF_ACTION");
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct) ?? throw new NotFoundException("User not found.");
+        if (!req.IsActive)
+        {
+            // An organization whose owner cannot sign in has nobody who can run it: ownership must move first.
+            var owned = await (from m in db.TenantMembers.IgnoreQueryFilters().AsNoTracking()
+                               join t in db.Tenants.IgnoreQueryFilters().AsNoTracking() on m.TenantId equals t.Id
+                               where m.UserId == id && m.Role == TenantRole.Owner && t.Type == WorkspaceType.Organization
+                               orderby t.Name
+                               select t.Name).ToListAsync(ct);
+            if (owned.Count > 0)
+                throw new ConflictException($"This person owns {(owned.Count == 1 ? $"the organization “{owned[0]}”" : $"{owned.Count} organizations ({string.Join(", ", owned.Take(3))}{(owned.Count > 3 ? ", …" : "")})")}. " +
+                    "Transfer ownership to someone else before disabling the account.", "OWNER_MUST_TRANSFER");
+        }
         user.IsActive = req.IsActive;
         if (!req.IsActive)
             foreach (var s in await db.UserSessions.Where(s => s.UserId == id && s.RevokedAt == null).ToListAsync(ct)) s.RevokedAt = clock.Now;

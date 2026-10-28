@@ -107,6 +107,7 @@ public class TeamService(
         await permissions.RequireAsync(Permissions.TeamsManage, ct);
         var team = await db.Teams.FirstOrDefaultAsync(t => t.Id == teamId, ct) ?? throw new NotFoundException("Team not found.");
         await access.EnsureTenantMemberAsync(req.UserId, "userId", ct);
+        await EnsureCanManageMembersAsync(team, req.UserId, ct);
 
         var existing = await db.TeamMembers.FirstOrDefaultAsync(m => m.TeamId == teamId && m.UserId == req.UserId, ct);
         if (existing is null)
@@ -122,11 +123,29 @@ public class TeamService(
         return await GetAsync(teamId, ct);
     }
 
+    /// <summary>
+    /// Team membership decides which projects someone can open (under team visibility), so outside Owners and Admins it is limited:
+    /// a person may change the members only of a team they lead (or a team inside a department they lead), and cannot add
+    /// themselves unless they can already see every project.
+    /// </summary>
+    private async Task EnsureCanManageMembersAsync(Team team, Guid? adding, CancellationToken ct)
+    {
+        if (ctx.Role is TenantRole.Owner or TenantRole.Admin) return;
+        var me = ctx.RequireUserId();
+        if (adding == me && !await permissions.HasAsync(Permissions.ProjectsViewAll, ct))
+            throw new ForbiddenException("You cannot add yourself to a team. Ask the team lead or an admin.", "PERMISSION_DENIED");
+        var leads = await db.TeamMembers.AsNoTracking()
+            .AnyAsync(m => m.UserId == me && m.IsLead && (m.TeamId == team.Id || (team.ParentTeamId != null && m.TeamId == team.ParentTeamId)), ct);
+        if (!leads) throw new ForbiddenException("You can only change the members of a team you lead.", "PERMISSION_DENIED");
+    }
+
     public async Task<TeamDetailDto> RemoveMemberAsync(Guid teamId, Guid userId, CancellationToken ct = default)
     {
         await permissions.RequireAsync(Permissions.TeamsManage, ct);
+        var team = await db.Teams.FirstOrDefaultAsync(t => t.Id == teamId, ct) ?? throw new NotFoundException("Team not found.");
         var row = await db.TeamMembers.FirstOrDefaultAsync(m => m.TeamId == teamId && m.UserId == userId, ct)
             ?? throw new NotFoundException("Team member not found.");
+        if (userId != ctx.UserId) await EnsureCanManageMembersAsync(team, null, ct);   // leaving a team yourself is always allowed
         db.TeamMembers.Remove(row);
         await db.SaveChangesAsync(ct);
         return await GetAsync(teamId, ct);

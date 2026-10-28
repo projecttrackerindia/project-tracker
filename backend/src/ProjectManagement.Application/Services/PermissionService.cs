@@ -76,6 +76,7 @@ public class PermissionService(IAppDbContext db, ICurrentContext ctx)
     public async Task<bool> RoleHasAsync(TenantRole role, string permission, CancellationToken ct = default)
     {
         if (role == TenantRole.Owner || ctx.WorkspaceType == WorkspaceType.Personal) return true;
+        if (role == TenantRole.Admin && Permissions.AdminLocked.Contains(permission)) return Permissions.DefaultAllowed(role, permission); // an old override never narrows admins
         if ((await OverridesAsync(ct)).TryGetValue((role, permission), out var allowed)) return allowed;
         return Permissions.DefaultAllowed(role, permission);
     }

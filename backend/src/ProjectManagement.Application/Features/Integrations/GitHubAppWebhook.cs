@@ -336,8 +336,9 @@ public class GitHubAppWebhook(IAppDbContext db, CurrentContext ctx, AppClock clo
     private async Task MoveAsync(GitHubInstallation inst, Linked l, string? statusName, StatusCategory? category, WorkTaskStatus? workStatus, Guid? acting, CancellationToken ct, bool reopen = false)
     {
         if (statusName is null && !reopen && category is null) return;
-        var member = await db.TenantMembers.AsNoTracking().FirstOrDefaultAsync(m => m.UserId == (acting ?? inst.InstalledBy), ct)
-            ?? await db.TenantMembers.AsNoTracking().FirstOrDefaultAsync(m => m.UserId == inst.InstalledBy, ct);
+        // Membership of this installation's organization only: the same person's role in another workspace means nothing here.
+        var member = await db.TenantMembers.AsNoTracking().FirstOrDefaultAsync(m => m.TenantId == inst.TenantId && m.UserId == (acting ?? inst.InstalledBy), ct)
+            ?? await db.TenantMembers.AsNoTracking().FirstOrDefaultAsync(m => m.TenantId == inst.TenantId && m.UserId == inst.InstalledBy, ct);
         if (member is null) return;
         ctx.UserId = member.UserId; ctx.Role = member.Role;
         try
