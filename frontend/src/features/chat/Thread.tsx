@@ -26,7 +26,7 @@ import { MemberProfileModal } from '../people/MemberProfileModal';
 import { insertIntoComposer, LinkedChips, MakeFromMessage, PollCard, putMessage, SeenByDialog, SmartReplies, TranslateLine, UnfurlCards, UnfurlContext, useUnfurls, VoiceNote } from './MessageExtras';
 import { DotsMenu } from '../talk/DotsMenu';
 import { flyToMyWork } from '../talk/flyTask';
-import { AskChatDialog, CatchUpDialog, COMPOSER_AI, PollDialog, ScheduleDialog, useVoiceRecorder } from './ChatTools';
+import { AskChatDialog, CatchUpDialog, COMPOSER_AI, COMPOSER_LANGUAGES, PollDialog, ScheduleDialog, useVoiceRecorder } from './ChatTools';
 import type { ChatExtract } from '../../api/types';
 import { haptic } from '../../lib/mobile';
 import { Popover } from '../../lib/popover';
@@ -158,6 +158,16 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
       else setNewBelow((n) => n + 1);
     }
   }, [items, thread.data, me, toBottom]);
+
+  // The keyboard (or the composer growing) shrinks the list: stay on the newest message if that is where the person was.
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let h = el.clientHeight;
+    const ro = new ResizeObserver(() => { const nh = el.clientHeight; if (nh !== h) { if (atBottom.current) el.scrollTop = el.scrollHeight; h = nh; } });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [thread.data ? 1 : 0]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const onScroll = () => {
     const el = listRef.current;
@@ -921,6 +931,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   const [drafting, setDrafting] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiTranslate, setAiTranslate] = useState(false);
   const [plusOpen, setPlusOpen] = useState(false);
   const [later, setLater] = useState(false);
   const aiRef = useRef<HTMLDivElement>(null);
@@ -1092,14 +1103,21 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
     window.addEventListener('chat:insert', onInsert);
     return () => window.removeEventListener('chat:insert', onInsert);
   });
+  // ✦ with text: rewrite / fix / shorten / a tone / translate, replacing the box (and offering Undo). Works while editing too.
   const rewrite = async (action: string, language?: string) => {
-    setAiOpen(false);
-    const body = text.trim();
+    setAiOpen(false); setAiTranslate(false);
+    const before = box.current ? domToBody(box.current) : text;
+    const body = before.trim();
     if (!body) return;
     setAiBusy(true);
-    try { setBox((await chatApi.transform(plainText(body), action, language)).text); }
+    try {
+      const r = await chatApi.transform(plainText(body), action, language);
+      if (!r.text?.trim()) throw new Error('empty');
+      setBox(r.text);
+      toast('Rewritten with AI', 'success', { label: 'Undo', onClick: () => setBox(before) });
+    }
     catch (e) { toast(e instanceof ApiError ? e.message : 'The AI could not rewrite it right now.', 'error'); }
-    setAiBusy(false);
+    finally { setAiBusy(false); }
   };
   const voice = useVoiceRecorder(id, (attachmentId) => send.mutate({ body: '', ids: [attachmentId] }));
 
@@ -1289,16 +1307,18 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
             {isEmpty && draftReply && !editing && talk
               ? <button type="button" className="talk-draft" onMouseDown={keepFocus} disabled={drafting}
                   onClick={async () => { setDrafting(true); try { const t = await draftReply(); if (t) insertIntoComposer(conversation.id, t, threadRootId); } finally { setDrafting(false); } }}
-                  aria-label="Draft a reply with AI" title="Draft a reply with AI">{drafting ? <Spinner /> : <span className="talk-draft-spark" aria-hidden="true">✦</span>}<span className="talk-draft-label">Draft</span></button>
+                  aria-label="Groot drafts a reply" title="Groot drafts a reply">{drafting ? <Spinner /> : <span className="talk-draft-spark" aria-hidden="true">✦</span>}<span className="talk-draft-label">Draft</span></button>
               : isEmpty && draftReply && !editing
               ? <button type="button" className="btn-icon pill-btn ai" onMouseDown={keepFocus} disabled={drafting}
                   onClick={async () => { setDrafting(true); try { const t = await draftReply(); if (t) insertIntoComposer(conversation.id, t, threadRootId); } finally { setDrafting(false); } }}
-                  aria-label="Draft a reply with AI" title="Draft a reply with AI">{drafting ? <Spinner /> : <Icon name="sparkle" size={16} />}</button>
+                  aria-label="Groot drafts a reply" title="Groot drafts a reply">{drafting ? <Spinner /> : <Icon name="sparkle" size={16} />}</button>
               : <button type="button" className={`btn-icon pill-btn ai ${aiOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setAiOpen((v) => !v)} disabled={isEmpty || aiBusy}
-              aria-label="Rewrite or translate with AI" aria-expanded={aiOpen} title="Rewrite or translate with AI">{aiBusy ? <Spinner /> : <Icon name="sparkle" size={16} />}</button>}
-            <Popover open={aiOpen} onClose={() => setAiOpen(false)} anchorRef={aiRef} side="top" align="start" focusOnOpen={false} restoreFocus={false}>
-              <div className="more-pop up" role="menu" aria-label="Rewrite with AI">
-                {COMPOSER_AI.map((a) => <button key={a.label} type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => void rewrite(a.id, a.language)}>{a.label}</button>)}
+              aria-label="Rewrite or translate with AI" aria-expanded={aiOpen} aria-busy={aiBusy} title="Rewrite or translate with AI">{aiBusy ? <Spinner /> : <Icon name="sparkle" size={16} />}</button>}
+            <Popover open={aiOpen} onClose={() => { setAiOpen(false); setAiTranslate(false); }} anchorRef={aiRef} side="top" align="start" focusOnOpen={false} restoreFocus={false}>
+              <div className="more-pop up composer-ai-menu" role="menu" aria-label="Rewrite with AI">
+                {!aiTranslate && COMPOSER_AI.map((a) => <button key={a.id} type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => void rewrite(a.id, a.language)}>{a.label}</button>)}
+                {!aiTranslate && <button type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => setAiTranslate(true)}>Translate…</button>}
+                {aiTranslate && COMPOSER_LANGUAGES.map((l) => <button key={l.code} type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => void rewrite('translate', l.code)}>Translate to {l.label}</button>)}
               </div>
             </Popover>
           </div>

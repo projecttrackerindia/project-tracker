@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { appUrl, RELEASES_API, DOWNLOAD_PAGE } = require('./config');
 const { autoUpdater } = require('electron-updater');
-const { deepLinkToUrl, isInternal, unreadFromTitle, isNewer } = require('./links');
+const { deepLinkToUrl, isInternal, unreadFromTitle, isNewer, clampBadge } = require('./links');
 
 // Alert sounds must play while the window is hidden in the tray or nobody has clicked yet: the page's timers and audio keep running.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -79,7 +79,7 @@ function createWindow() {
   win.setMenuBarVisibility(false);
   applyShield();
   // A new page (a reload, a new sign-in) asks again for the shield if it shows secrets; one that does not leaves it off.
-  win.webContents.on('did-navigate', () => { pageShield = false; applyShield(); });
+  win.webContents.on('did-navigate', () => { pageShield = false; applyShield(); pageBadges = false; });
   win.on('focus', () => win.flashFrame(false));
   win.webContents.setUserAgent(`${win.webContents.getUserAgent().replace(/ Electron\/\S+/, '')} ${UA_MARK()}`);
   if (st.maximized) win.maximize();
@@ -94,13 +94,10 @@ function createWindow() {
   // The offline page is loaded by this process (loadURL does not pass through here), so no page may navigate the window to a data: or other URL.
   win.webContents.on('will-navigate', (e, url) => { if (!isInternal(url, BASE)) { e.preventDefault(); if (/^https?:|^mailto:/.test(url)) shell.openExternal(url); } });
 
-  // The unread count in the page title becomes the badge on the dock / taskbar / tray.
-  win.webContents.on('page-title-updated', (_e, title) => {
-    const n = unreadFromTitle(title);
-    app.setBadgeCount(n);
-    if (tray) tray.setToolTip(n > 0 ? `Project Tracker (${n} unread)` : 'Project Tracker');
-    if (WIN && win) overlayBadge(n);
-  });
+  // The unread count becomes the badge on the dock / taskbar / tray: the page says it exactly (ptDesktop.setBadge, the Notification Centre's
+  // number); the count at the start of the page title is the fallback for older pages. The window keeps running hidden in the tray (or, on a
+  // Mac, hidden behind the dock icon), so the badge stays live while signed in even with no window on screen.
+  win.webContents.on('page-title-updated', (_e, title) => { if (!pageBadges) showBadge(unreadFromTitle(title)); });
   win.webContents.on('context-menu', (_e, p) => contextMenu(p));
   win.webContents.session.on('will-download', (_e, item) => {
     item.once('done', (_ev, state) => { if (state === 'completed') { const n = new Notification({ title: 'Download finished', body: item.getFilename() }); n.on('click', () => shell.showItemInFolder(item.getSavePath())); n.show(); } });
@@ -110,6 +107,7 @@ function createWindow() {
   win.on('resize', saveState); win.on('move', saveState); win.on('close', (e) => {
     saveState();
     if (!quitting && !MAC && tray && settings().keepRunning) { e.preventDefault(); win.hide(); }   // closing keeps it running in the tray, like a chat app
+    else if (!quitting && MAC) { e.preventDefault(); win.hide(); }   // a Mac app stays in the dock: hidden, still signed in, the badge still live
   });
   if (pendingLink) { open(pendingLink); pendingLink = null; }
 }
@@ -120,6 +118,16 @@ function open(link) {
   if (!win) { pendingLink = link; return; }
   if (win.isMinimized()) win.restore();
   win.show(); win.focus(); win.loadURL(url).catch(() => undefined);
+}
+
+let pageBadges = false, shownBadge = -1;
+function showBadge(count) {
+  const n = clampBadge(count);
+  if (n === shownBadge) return;
+  shownBadge = n;
+  try { app.setBadgeCount(n); } catch { /* Linux without a launcher that shows counts */ }
+  if (tray) tray.setToolTip(n > 0 ? `Project Tracker (${n} unread)` : 'Project Tracker');
+  if (WIN && win) overlayBadge(n);
 }
 
 /** Windows has no badge number: a small red dot with the count is drawn by the page and put on the taskbar button. */
@@ -269,6 +277,12 @@ else {
     });
     // The page asks for attention when an alert arrives and the window is not in front: the taskbar button flashes (Windows, Linux) or the
     // dock icon bounces (Mac) until the person comes back. Urgent alerts (reminders, overdue, security) keep going until then.
+    ipcMain.on('badge', (e, count) => {
+      if (!win || win.isDestroyed() || e.sender !== win.webContents || !isInternal(e.sender.getURL(), BASE)) return;
+      pageBadges = true;
+      showBadge(count);
+    });
+    // A new page (signed out, reloaded) starts from the title again until it reports its number.
     ipcMain.on('attention', (e, kind) => {
       if (!win || win.isDestroyed() || e.sender !== win.webContents || !isInternal(e.sender.getURL(), BASE) || win.isFocused()) return;
       const urgent = kind === 'urgent';

@@ -209,7 +209,7 @@ public class AiAssistant(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         return answer.Text;
     }
 
-    private const string Voice = "You are the assistant inside Project Tracker, a project and work management app. Be concise, concrete and factual. " +
+    private const string Voice = GrootIdentity.Generic + "You work inside ProjectTracker, a project and work management app. Be concise, concrete and factual. " +
         "Use only the data given; never invent projects, people, dates or numbers. Write in plain English for busy managers.";
 
     /// <summary>The first JSON object in a model answer (models sometimes wrap it in prose or a code fence).</summary>

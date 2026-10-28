@@ -423,12 +423,12 @@ try {
   await shot(page, 'settings-project-agent-1440.png', true);
   checks.push('agent-settings-in-settings-ai');
 
-  // Ask about <project>: the floating pill opens the copilot about it.
+  // Ask Groot about <project>: the floating pill opens the Groot chat about it.
   await page.goto(`${origin}/preview-org/work/projects/${rp.id}`); await page.locator('.pp-head h1').waitFor();
-  const ask = page.locator('.v2-ask.corner', { hasText: 'Ask about Razor pay' }); await ask.waitFor();
-  await ask.click(); await page.locator('.v2-panel').waitFor();
-  assert.match(await page.locator('.v2-panel h2').innerText(), /Ask about Razor pay/);
-  await page.keyboard.press('Escape'); await page.locator('.v2-panel').waitFor({ state: 'detached' });
+  const ask = page.locator('.v2-ask.corner', { hasText: 'Ask Groot about Razor pay' }); await ask.waitFor();
+  await ask.click(); await page.locator('.groot-chat').waitFor();
+  assert.match(await page.locator('.groot-chat .gc-empty').innerText(), /Ask me anything about Razor pay/);
+  await page.keyboard.press('Escape'); await page.locator('.groot-chat').waitFor({ state: 'detached' });
   checks.push('ask-about-project');
 
   // Old tab addresses land on the new tab, keeping the query and the #anchor.

@@ -202,6 +202,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Platform.HistoryService>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.SavedViewService>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.HolidayService>();
+        services.AddScoped<ProjectManagement.Application.Features.Attendance.AttendanceService>();
+        services.AddScoped<ProjectManagement.Application.Features.Attendance.AttendanceMonitor>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.StatusPageService>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.DataLocationService>();
         services.AddScoped<ProjectManagement.Application.Features.Work.WorkTaskService>();
@@ -290,6 +292,7 @@ public static class DependencyInjection
         services.AddSingleton<ProjectManagement.Application.Features.Reminders.ReminderMetrics>();
         services.AddScoped<ProjectManagement.Application.Features.Chat.ChatService>();
         services.AddScoped<ProjectManagement.Application.Features.Chat.ChatAiService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.GrootTitleService>();
         services.AddScoped<PlatformService>();
         services.AddScoped<GoLiveService>();
         services.AddSingleton<PlatformSettingsCache>();

@@ -436,7 +436,7 @@ export function AiPage({ home }: { home?: AiHomeSlots } = {}) {
           tools={<ModeMenu mode={mode} onChange={setMode} usage={usage} disabled={streaming} />} />
       </>
     );
-    const thinking = streaming ? (live?.stage === 'queued' ? 'Waiting for the assistant…' : live?.stage === 'writing' ? 'Writing…' : 'Thinking…') : null;
+    const thinking = streaming ? (live?.stage === 'queued' ? 'Waiting for Groot…' : live?.stage === 'writing' ? 'Groot is writing…' : 'Groot is thinking…') : null;
     return (
       <div className="ai-page ai-home">
         <div className="ai-shell home" onDragEnter={onDrag} onDragOver={onDrag} onDragLeave={onDrag} onDrop={onDrag}>

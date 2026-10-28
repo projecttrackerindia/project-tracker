@@ -19,6 +19,11 @@ export function useConversationViewport(enabled: boolean, shell: RefObject<HTMLD
         element.classList.toggle('keyboard-open', editing && Math.max(baseline, window.innerHeight) - height > 120);
       });
     };
+    // The page itself never scrolls under a conversation: iOS would otherwise scroll <body> to "reveal" the focused box and leave
+    // the composer floating in the middle of the screen.
+    document.documentElement.classList.add('conv-lock');
+    const unscroll = () => { if (window.scrollY || document.documentElement.scrollTop) window.scrollTo(0, 0); };
+    window.addEventListener('scroll', unscroll, { passive: true });
     const orient = () => { baseline = window.innerHeight; update(); };
     update();
     viewport?.addEventListener('resize', update); viewport?.addEventListener('scroll', update);
@@ -26,6 +31,7 @@ export function useConversationViewport(enabled: boolean, shell: RefObject<HTMLD
     document.addEventListener('focusin', update); document.addEventListener('focusout', update);
     return () => {
       cancelAnimationFrame(frame);
+      document.documentElement.classList.remove('conv-lock'); window.removeEventListener('scroll', unscroll);
       viewport?.removeEventListener('resize', update); viewport?.removeEventListener('scroll', update);
       window.removeEventListener('resize', update); window.removeEventListener('orientationchange', orient);
       document.removeEventListener('focusin', update); document.removeEventListener('focusout', update);

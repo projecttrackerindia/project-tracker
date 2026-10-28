@@ -93,7 +93,7 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Customize' }).count(), 0);
   assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'Today' }).isVisible());
   // The wide layout: the toolbar's Ask field and + New at the top; no floating Ask bar and no + New in the sidebar.
-  assert.ok(await page.locator('.v2-tb-ask input[placeholder="Ask or find anything"]').isVisible(), 'the toolbar Ask field');
+  assert.ok(await page.locator('.v2-tb-ask input[placeholder="Ask Groot or find anything"]').isVisible(), 'the toolbar Ask field (Groot)');
   assert.equal(await page.locator('form.v2-ask').isVisible(), false, 'no floating Ask bar on a wide screen');
   assert.equal(await page.locator('.v2-side .v2-new').isVisible(), false, 'no + New in the sidebar');
   await shot(page, 'rail-home-1440.png'); checks.push('rail');
@@ -101,12 +101,12 @@ try {
   assert.equal(at(), '/work'); assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'My Work' }).isVisible()); checks.push('rail-navigates');
 
   // The slim avatar menu: Profile, Workspaces, Settings, People, Help, Sign out (dark mode and team view live in Settings now).
-  await page.locator('.v2-avatar').first().click();
-  const items = await page.locator('.v2-menu [role="menuitem"]').allInnerTexts();
+  await page.locator('.acct-row').first().click();
+  const items = await page.locator('.acct-menu [role="menuitem"]').allInnerTexts();
   for (const want of ['Profile', 'Settings', 'People', 'Sign out']) assert.ok(items.some((t) => t.includes(want)), `avatar menu has ${want}: ${items}`);
-  assert.equal(await page.locator('.v2-menu .theme-switch').count(), 0, 'dark mode moved to Settings');
+  assert.equal(await page.locator('.acct-menu .theme-switch').count(), 0, 'dark mode moved to Settings');
   await shot(page, 'avatar-menu-1440.png');
-  await page.locator('.v2-menu [role="menuitem"]', { hasText: 'Settings' }).click(); await page.waitForTimeout(500);
+  await page.locator('.acct-menu [role="menuitem"]', { hasText: 'Settings' }).click(); await page.waitForTimeout(500);
   assert.equal(at(), '/settings/general'); checks.push('avatar-menu');
 
   // Old addresses: their new place, with the query and #anchor kept.
@@ -172,15 +172,16 @@ try {
   await page.keyboard.press('Control+k'); assert.ok(await page.locator('.v2-tb-ask input').evaluate((el) => el === document.activeElement), 'Ctrl K puts the cursor in the toolbar Ask field');
   await page.keyboard.press('Control+k'); await page.locator('.cmdk').waitFor(); await page.keyboard.press('Escape'); checks.push('ctrl-k');
 
-  // On a project page the Ask bar is "Ask about <project>" at the bottom right; it opens the copilot panel.
+  // On a project page the Ask bar is "Ask Groot about <project>" at the bottom right; it opens the Groot chat about that project.
   await page.goto(`${origin}/preview-org/work/projects/${project.id}`); await page.locator('.v2-ask.corner').waitFor();
-  await page.locator('.v2-ask.corner', { hasText: 'Ask about Razor pay' }).waitFor();
-  await page.locator('.v2-ask.corner').click(); await page.locator('.v2-panel').waitFor();
-  assert.ok((await page.locator('.v2-panel h2').innerText()).includes('Razor pay'));
-  assert.equal(await page.locator('.v2-panel footer, .v2-panel .modal-footer').count(), 0, 'no Save / Cancel footer');
+  await page.locator('.v2-ask.corner', { hasText: 'Ask Groot about Razor pay' }).waitFor();
+  await page.locator('.v2-ask.corner').click(); await page.locator('.groot-chat').waitFor();
+  assert.ok((await page.locator('.groot-chat .gc-empty').innerText()).includes('Razor pay'));
+  assert.ok((await page.locator('.groot-chat .gc-sugg').innerText()).includes('What is at risk on Razor pay?'));
+  assert.equal(await page.locator('.groot-chat footer, .groot-chat .modal-footer').count(), 0, 'no Save / Cancel footer');
   await page.waitForTimeout(800); if (await page.getByText('Something went wrong').count()) { await page.getByText('Details').click(); console.log('CRASH', (await page.locator('body').innerText()).slice(0, 800)); }
   await shot(page, 'copilot-1440.png'); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
-  assert.equal(await page.locator('.v2-panel').count(), 0); checks.push('copilot');
+  await page.locator('.groot-chat').waitFor({ state: 'detached', timeout: 3000 }); assert.equal(await page.locator('.groot-chat').count(), 0); checks.push('copilot');
 
   // Phone: the five places and + New at the bottom, nothing cut off.
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto(`${origin}/preview-org/work`); await page.locator('.v2-phone-bar').waitFor(); await page.waitForTimeout(500);

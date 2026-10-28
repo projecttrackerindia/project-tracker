@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../components/Icon';
-import { canPlaySound, firstTime, getAttention, kindForType, playSound, unlockSound, type AttentionKind } from '../../lib/attention';
+import { canPlaySound, playSound, unlockSound, type AttentionKind } from '../../lib/attention';
+import type { NotificationCategory, NotificationType } from '../../api/types';
+import { announce } from './centre/announce';
 import { isDesktopApp } from '../../lib/desktop';
 import { useAuth } from '../../stores/auth';
 import { deviceAlerts, enableDeviceAlerts, type DeviceAlerts } from '../reminders/device';
@@ -8,7 +10,7 @@ import { deviceAlerts, enableDeviceAlerts, type DeviceAlerts } from '../reminder
 const ASKED_KEY = 'pm_alerts_prompt';   // "asked and answered" - the card is shown once per browser, not on every visit
 
 /** A push the service worker just received while this page is open: it asks the page to play the sound and answers whether it did. */
-interface PushMessage { type: 'pm-push'; kind?: AttentionKind; notificationType?: string; tag?: string; call?: string | null }
+interface PushMessage { type: 'pm-push'; kind?: AttentionKind; notificationType?: string; tag?: string; call?: string | null; category?: NotificationCategory; link?: string }
 
 /**
  * Makes sure the person actually gets notifications while they are in another tab or app:
@@ -39,10 +41,9 @@ export function AlertsSetup() {
     const onMessage = (e: MessageEvent<PushMessage>) => {
       if (e.data?.type !== 'pm-push') return;
       if (e.data.call) return;   // a ringing call: the incoming-call card rings and answers the worker itself
-      const kind = e.data.kind ?? kindForType(e.data.notificationType ?? '');
-      // The same alert can also arrive from the live connection or the check: ring once.
-      const fresh = !e.data.tag || firstTime(`push-${e.data.tag}`, 30_000);
-      const played = fresh && canPlaySound() ? getAttention({ kind }) : false;
+      // Its own cue, unless this category is muted here; the same alert can also arrive from the live connection or the check: ring once.
+      const type = (e.data.notificationType || (e.data.kind === 'message' ? 'Message' : e.data.kind === 'urgent' ? 'Reminder' : 'TaskUpdated')) as NotificationType;
+      const played = canPlaySound() ? announce({ id: e.data.tag || null, type, link: e.data.link ?? null, category: e.data.category }) : false;
       e.ports[0]?.postMessage({ played });
     };
     navigator.serviceWorker.addEventListener('message', onMessage);

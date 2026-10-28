@@ -17,9 +17,56 @@ namespace ProjectManagement.Application.Features.Notifications;
 /// <param name="ShownAt">When it belongs in the inbox: when it arrived, or when its snooze ended.</param>
 /// <param name="Actions">What can be done straight from it: done, take, reply, approve, reject, snooze (worked out per person when listed).</param>
 public record NotificationDto(Guid Id, NotificationType Type, string Title, string? Body, string? Link, bool IsRead, DateTime CreatedAt, bool Browser, bool NeedsYou = false,
-    bool Archived = false, DateTime? SnoozedUntil = null, DateTime? ShownAt = null, IReadOnlyList<string>? Actions = null);
-/// <summary>The inbox at a glance: unread overall, and unread in each lane.</summary>
-public record NotificationCountsDto(int Unread, int NeedsYou, int ForInfo, int Snoozed = 0);
+    bool Archived = false, DateTime? SnoozedUntil = null, DateTime? ShownAt = null, IReadOnlyList<string>? Actions = null,
+    string Category = NotificationCategories.Work, DateTime? StartsAt = null, string? JoinLink = null);
+/// <summary>
+/// The inbox at a glance: unread overall, in each lane, and in each category of the Notification Centre (the badges on the bell, the app
+/// icon and the tabs all read this one answer).
+/// </summary>
+public record NotificationCountsDto(int Unread, int NeedsYou, int ForInfo, int Snoozed = 0, int Messages = 0, int Reminders = 0, int Meetings = 0, int Work = 0);
+/// <param name="Category">messages, reminders, meetings or work; empty for every category.</param>
+/// <param name="Ids">These notifications only (a stacked group cleared at once). Wins over the category.</param>
+public record NotificationClearRequest(string? Category = null, IReadOnlyList<Guid>? Ids = null);
+public record NotificationSnoozeRequest(DateTime? Until);
+
+/// <summary>
+/// The Notification Centre's filters: messages (chat, @mentions, calls), reminders (reminders, nudges, due and overdue work), meetings
+/// (invitations, changes and the "starts in 10 minutes" reminders, which point at a meeting) and work (everything else).
+/// </summary>
+public static class NotificationCategories
+{
+    public const string Messages = "messages", Reminders = "reminders", Meetings = "meetings", Work = "work";
+    public static readonly string[] All = [Messages, Reminders, Meetings, Work];
+    public static readonly NotificationType[] MessageTypes = [NotificationType.Message, NotificationType.Mention, NotificationType.Call];
+    public static readonly NotificationType[] ReminderTypes =
+        [NotificationType.Reminder, NotificationType.Nudge, NotificationType.DueSoon, NotificationType.Overdue, NotificationType.TimesheetReminder, NotificationType.CertificationExpiry];
+    public const string CallMeetingPrefix = "/calls/meeting/", MeetPrefix = "/meet?open=";
+
+    public static bool IsMeetingLink(string? link) => link is not null && (link.StartsWith(CallMeetingPrefix, StringComparison.Ordinal) || link.StartsWith(MeetPrefix, StringComparison.Ordinal));
+
+    public static string Of(NotificationType type, string? link) =>
+        type == NotificationType.Meeting || (type == NotificationType.Reminder && IsMeetingLink(link)) ? Meetings
+        : Array.IndexOf(MessageTypes, type) >= 0 ? Messages
+        : Array.IndexOf(ReminderTypes, type) >= 0 ? Reminders
+        : Work;
+
+    /// <summary>The same split as <see cref="Of"/>, as a database filter. Unknown names filter nothing.</summary>
+    public static IQueryable<Notification> Where(IQueryable<Notification> q, string? category)
+    {
+        var msg = MessageTypes;
+        var rem = ReminderTypes;
+        return (category ?? "").Trim().ToLowerInvariant() switch
+        {
+            Messages => q.Where(n => msg.Contains(n.Type)),
+            Meetings => q.Where(n => n.Type == NotificationType.Meeting
+                || (n.Type == NotificationType.Reminder && n.Link != null && (n.Link.StartsWith(CallMeetingPrefix) || n.Link.StartsWith(MeetPrefix)))),
+            Reminders => q.Where(n => rem.Contains(n.Type)
+                && !(n.Type == NotificationType.Reminder && n.Link != null && (n.Link.StartsWith(CallMeetingPrefix) || n.Link.StartsWith(MeetPrefix)))),
+            Work => q.Where(n => n.Type != NotificationType.Meeting && !msg.Contains(n.Type) && !rem.Contains(n.Type)),
+            _ => q,
+        };
+    }
+}
 
 /// <summary>
 /// Which notifications ask something of the person (approve, answer, act, sign in safely) and which only tell them something. The inbox shows
@@ -238,7 +285,9 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
 
     /// <param name="lane">needs (asks something of you), info (tells you something), snoozed (waiting to come back), or empty for both lanes.</param>
     /// <param name="archived">The archive instead of the inbox.</param>
-    public async Task<PagedResult<NotificationDto>> ListAsync(bool unreadOnly, int page, int pageSize, CancellationToken ct = default, string? lane = null, bool archived = false)
+    /// <param name="category">messages, reminders, meetings or work (the Notification Centre's filters); empty for all.</param>
+    public async Task<PagedResult<NotificationDto>> ListAsync(bool unreadOnly, int page, int pageSize, CancellationToken ct = default, string? lane = null, bool archived = false,
+        string? category = null)
     {
         var uid = ctx.RequireUserId();
         var q = db.Notifications.AsNoTracking().Where(n => n.UserId == uid && n.InApp);
@@ -250,13 +299,14 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
         if (string.Equals(lane, "needs", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => needs.Contains(n.Type));
         else if (string.Equals(lane, "info", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => !needs.Contains(n.Type));
         if (unreadOnly) q = q.Where(n => n.ReadAt == null);
+        q = NotificationCategories.Where(q, category);
         var p = new PageQuery(page, pageSize);
         var total = await q.CountAsync(ct);
         var ordered = snoozed ? q.OrderBy(n => n.SnoozedUntil) : q.OrderByDescending(n => n.SnoozedUntil ?? n.CreatedAt);
         var rows = await ordered.Skip((p.SafePage - 1) * p.SafeSize()).Take(p.SafeSize()).ToListAsync(ct);
         return new PagedResult<NotificationDto>(
             rows.Select(n => new NotificationDto(n.Id, n.Type, n.Title, n.Body, n.Link, n.ReadAt != null, n.CreatedAt, n.Browser, NotificationLanes.IsNeedsYou(n.Type), n.ArchivedAt != null,
-                n.SnoozedUntil > now ? n.SnoozedUntil : null, n.SnoozedUntil is { } back && back <= now ? back : n.CreatedAt)).ToList(),
+                n.SnoozedUntil > now ? n.SnoozedUntil : null, n.SnoozedUntil is { } back && back <= now ? back : n.CreatedAt, null, NotificationCategories.Of(n.Type, n.Link))).ToList(),
             p.SafePage, p.SafeSize(), total);
     }
 
@@ -270,13 +320,63 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
     public async Task<NotificationCountsDto> CountsAsync(CancellationToken ct = default)
     {
         var uid = ctx.RequireUserId();
-        var needs = NotificationLanes.NeedsYou;
         var now = clock.Now;
         var unread = db.Notifications.Where(n => n.UserId == uid && n.InApp && n.ReadAt == null && n.ArchivedAt == null && (n.SnoozedUntil == null || n.SnoozedUntil <= now));
-        var total = await unread.CountAsync(ct);
-        var needing = await unread.CountAsync(n => needs.Contains(n.Type), ct);
+        // One round trip for every badge: unread by kind (and whether a reminder points at a meeting), split up here.
+        var groups = await unread
+            .GroupBy(n => new { n.Type, Meet = n.Link != null && (n.Link.StartsWith(NotificationCategories.CallMeetingPrefix) || n.Link.StartsWith(NotificationCategories.MeetPrefix)) })
+            .Select(g => new { g.Key.Type, g.Key.Meet, Count = g.Count() }).ToListAsync(ct);
+        int total = 0, needing = 0, messages = 0, reminders = 0, meetings = 0, work = 0;
+        foreach (var g in groups)
+        {
+            total += g.Count;
+            if (NotificationLanes.IsNeedsYou(g.Type)) needing += g.Count;
+            switch (NotificationCategories.Of(g.Type, g.Meet ? NotificationCategories.MeetPrefix : null))
+            {
+                case NotificationCategories.Messages: messages += g.Count; break;
+                case NotificationCategories.Reminders: reminders += g.Count; break;
+                case NotificationCategories.Meetings: meetings += g.Count; break;
+                default: work += g.Count; break;
+            }
+        }
         var resting = await db.Notifications.CountAsync(n => n.UserId == uid && n.InApp && n.ArchivedAt == null && n.SnoozedUntil != null && n.SnoozedUntil > now, ct);
-        return new NotificationCountsDto(total, needing, total - needing, resting);
+        return new NotificationCountsDto(total, needing, total - needing, resting, messages, reminders, meetings, work);
+    }
+
+    /// <summary>Back to unread (the blue dot), as if it had just arrived.</summary>
+    public async Task MarkUnreadAsync(Guid id, CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        var n = await db.Notifications.FirstOrDefaultAsync(x => x.Id == id && x.UserId == uid, ct) ?? throw new NotFoundException("Notification not found.");
+        n.ReadAt = null;
+        n.ArchivedAt = null;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Clears notifications out of the Notification Centre: a stacked group (its ids), one category, or everything. Cleared ones are put away
+    /// for this person only (read and archived, still findable under Archived until the data policy removes them); snoozed ones stay snoozed.
+    /// </summary>
+    public async Task<int> ClearAsync(NotificationClearRequest req, CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        var now = clock.Now;
+        var q = db.Notifications.Where(x => x.UserId == uid && x.InApp && x.ArchivedAt == null && (x.SnoozedUntil == null || x.SnoozedUntil <= now));
+        if (req.Ids is { Count: > 0 } ids)
+        {
+            if (ids.Count > 500) throw new ValidationException("ids", "Clear at most 500 at a time.");
+            var list = ids.Distinct().ToList();
+            q = q.Where(x => list.Contains(x.Id));
+        }
+        else if (!string.IsNullOrWhiteSpace(req.Category))
+        {
+            if (!NotificationCategories.All.Contains(req.Category.Trim().ToLowerInvariant())) throw new ValidationException("category", "Unknown category.");
+            q = NotificationCategories.Where(q, req.Category);
+        }
+        var rows = await q.Take(5000).ToListAsync(ct);
+        foreach (var n in rows) { n.ArchivedAt = now; n.ReadAt ??= now; }
+        await db.SaveChangesAsync(ct);
+        return rows.Count;
     }
 
     /// <summary>Puts a notification away (and marks it read), or brings it back to the inbox.</summary>
@@ -326,11 +426,13 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task MarkAllReadAsync(CancellationToken ct = default)
+    /// <param name="category">Only this Notification Centre category (messages, reminders, meetings, work); empty for all.</param>
+    public async Task MarkAllReadAsync(CancellationToken ct = default, string? category = null)
     {
         var uid = ctx.RequireUserId();
         var now = clock.Now;
-        foreach (var n in await db.Notifications.Where(x => x.UserId == uid && x.InApp && x.ReadAt == null).ToListAsync(ct)) n.ReadAt = now;
+        var q = NotificationCategories.Where(db.Notifications.Where(x => x.UserId == uid && x.InApp && x.ReadAt == null), category);
+        foreach (var n in await q.ToListAsync(ct)) n.ReadAt = now;
         await db.SaveChangesAsync(ct);
     }
 }

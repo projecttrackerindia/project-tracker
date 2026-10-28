@@ -643,7 +643,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     {
         var t = (title ?? "").Trim();
         if (t.Length == 0) throw new ValidationException("title", "Give the document a title.");
-        if (t.Length > 200) throw new ValidationException("title", "Keep the title under 200 characters.");
+        if (t.Length > 200) throw new ValidationException("title", ProjectManagement.Application.Common.TextLimits.TooLong(200, t.Length));
         return t;
     }
 

@@ -232,7 +232,7 @@ try{
  assert.equal(await page.locator('.wa-media-voice b').count(),0);
  assert.match(await page.locator('.wa-note').innerText(),/took the chat/);
  // Owner, saved replies under "/", a suggested reply, then send.
- await page.getByLabel('Owner').click();await page.getByRole('option',{name:'Upendra Rao'}).click();
+ await page.getByLabel('Owner',{exact:true}).click();await page.getByRole('option',{name:'Upendra Rao'}).click();
  for(let i=0;i<20&&!writes.some(w=>w.ep==='/api/v1/support/conversations/w1/assign');i++)await page.waitForTimeout(100);
  assert.equal(writes.find(w=>w.ep==='/api/v1/support/conversations/w1/assign').b.userId,'u2');
  await page.getByLabel('Reply').fill('/res');await page.locator('.wa-saved button',{hasText:'Reset steps'}).waitFor();

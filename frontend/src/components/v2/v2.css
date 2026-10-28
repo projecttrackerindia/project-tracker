@@ -199,6 +199,7 @@
 .v2-ai-card { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: var(--ds-r-tile); background: color-mix(in srgb, var(--ds-violet) 7%, var(--ds-surface));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--ds-violet) 18%, transparent); }
 .v2-ai-card .v2-spark { color: var(--ds-violet); font-size: 15px; line-height: 20px; flex: none; }
+.v2-ai-card .v2-spark-groot { flex: none; margin-top: -1px; } .v2-ai-card b .v2-spark-groot { vertical-align: -4px; margin-right: 2px; }
 .v2-ai-card-main { flex: 1; min-width: 0; display: grid; gap: 3px; }
 .v2-ai-card-main b { font-size: 13.5px; font-weight: 600; color: var(--ds-text); }
 .v2-ai-card-main span { font-size: 13px; color: var(--ds-text-2); line-height: 1.45; }
@@ -252,6 +253,7 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
   background-size: 200% 100%; animation: v2-shim 1.4s linear infinite; }
 @keyframes v2-shim { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 .v2-understood p { margin: 8px 0 20px; font-size: 12px; color: #86868b; }
+.v2-understood p.v2-new-titled { margin: -12px 0 18px; color: var(--ds-text-2, #6e6e73); overflow-wrap: anywhere; } .v2-understood p.v2-new-titled b { font-weight: 600; color: #6b4dff; } .v2-understood p.v2-new-titled span { color: #86868b; }
 .v2-new-types { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0; }
 .v2-new-type { height: 76px; border-radius: 14px; border: 0; background: rgba(118, 118, 128, .08); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
   font: inherit; font-size: 12.5px; font-weight: 500; color: inherit; cursor: pointer; transition: background .15s var(--ds-ease), box-shadow .15s var(--ds-ease); }
@@ -301,7 +303,6 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
 @keyframes v2-enter { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .v2-enter { animation: none; } }
 
-.v2-side-me > span { display: none; }
 /* The toolbar (wide layout): Ask field + "+ New" at the top of the main area; replaces the floating Ask bar and the sidebar's + New. */
 .v2-tb { display: none; }
 /* A page's segmented control portalled into the toolbar (ToolbarSeg): first in the bar, centred on its 52px height. */
@@ -334,13 +335,6 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
   .v2-rail.v2-side { background: rgba(236, 236, 240, .78); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-right: .5px solid rgba(0, 0, 0, .08); }
   [data-theme='dark'] .v2-rail.v2-side { background: rgba(30, 30, 32, .78); border-right-color: rgba(255, 255, 255, .08); }
   .v2-side .v2-rail-item .v2-badge.calm { color: #86868b; }
-  .v2-side-me { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .v2-side-me > span { display: inline; font-size: 13px; font-weight: 500; color: var(--ds-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-}
-@media (min-width: 1100px) { .v2-side .v2-side-me .v2-avatar { width: 28px; height: 28px; font-size: 11px; background: linear-gradient(135deg, #0a84ff, #5e5ce6); } }
-/* With the full sidebar, the account menu opens straight above the avatar (like macOS), not out beside the page. */
-@media (min-width: 1100px) {
-  .v2-side .v2-menu { left: 10px; bottom: 62px; width: min(288px, calc(100vw - 20px)); transform-origin: 20px 100%; animation: v2-menu-up .22s cubic-bezier(.32, .72, 0, 1) both; }
 }
 @keyframes v2-menu-up { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .v2-side .v2-menu { animation: none; } }
@@ -401,3 +395,52 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
 .v2-new-wa input:checked { background: #34c759; }
 .v2-new-wa input:checked::after { transform: translateX(20px); }
 .v2-new-wa input:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* The account row (sidebar foot): one button — ringed photo, name, workspace · role, chevron. */
+.v2-side-me { display: flex; min-width: 0; }
+.acct-row { display: grid; place-items: center; padding: 3px; border: 0; border-radius: 50%; background: transparent; color: var(--ds-text); font: inherit; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; transition: background .15s var(--ds-ease), transform .1s var(--ds-ease); }
+.acct-row-text, .acct-row-chev { display: none; }
+.acct-row:hover, .acct-row.open { background: var(--ds-fill); }
+.acct-row:active { transform: scale(.98); background: var(--ds-fill-2, var(--ds-fill)); }
+.acct-row:focus-visible, .acct-icon:focus-visible, .acct-email:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.acct-face.v2-avatar { width: 32px; height: 32px; font-size: 12px; cursor: inherit; background: var(--me-ring, var(--ds-accent)); flex: none; }
+.acct-ringed { box-shadow: 0 0 0 2px var(--ds-surface, #fff), 0 0 0 3.5px var(--me-a, var(--ds-accent)); }
+.acct-icon { border: 0; padding: 0; background: none; border-radius: 50%; cursor: pointer; display: grid; place-items: center; -webkit-tap-highlight-color: transparent; }
+.m-shell .m-top .acct-icon .v2-avatar { width: 30px; height: 30px; font-size: 11.5px; }
+@media (min-width: 1100px) {
+  .v2-side .v2-rail-foot { flex-direction: column; align-items: stretch; gap: 6px; }
+  .v2-side .v2-side-me { width: 100%; }
+  .v2-side .acct-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; text-align: left; }
+  .v2-side .acct-row-text { display: grid; flex: 1; min-width: 0; gap: 1px; }
+  .acct-row-text b { font-size: 13px; font-weight: 600; letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acct-row-text small { font-size: 11px; color: var(--ds-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .v2-side .acct-row-chev { display: inline-flex; color: var(--ds-text-3); transform: rotate(180deg); transition: transform .2s var(--ds-ease); }
+  .v2-side .acct-row.open .acct-row-chev { transform: none; }
+}
+
+/* The account card: anchored above the row, on-screen (shared popover), fits its content up to 320px. */
+.floating.acct-menu { z-index: 90; min-width: 264px; width: max-content; max-width: min(320px, calc(100vw - 16px)); background: var(--ds-surface); border-radius: 16px; overflow: hidden auto;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .18), 0 2px 8px rgba(0, 0, 0, .08), 0 0 0 .5px rgba(0, 0, 0, .1); animation: acct-in .18s cubic-bezier(.32, .72, 0, 1); outline: none; }
+@keyframes acct-in { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+html[data-theme='dark'] .floating.acct-menu { background: #2c2c2e; box-shadow: 0 18px 50px rgba(0, 0, 0, .55), 0 0 0 .5px rgba(255, 255, 255, .12); }
+.floating.acct-menu > .acct-head { position: relative; overflow: hidden; } .acct-head { display: flex; align-items: center; gap: 12px; padding: 16px 14px 14px; color: #fff; }
+.acct-head .v2-avatar.lg { width: 48px; height: 48px; font-size: 16px; box-shadow: 0 0 0 2px rgba(255, 255, 255, .85), 0 4px 12px rgba(0, 0, 0, .2); }
+.acct-id { min-width: 0; display: grid; gap: 2px; }
+.acct-id b { font-size: 15px; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; text-shadow: 0 1px 2px rgba(0, 0, 0, .2); }
+.acct-email { border: 0; padding: 0; background: none; color: rgba(255, 255, 255, .92); font: inherit; font-size: 12px; text-align: left; cursor: copy; overflow-wrap: anywhere; word-break: break-word; border-radius: 4px; }
+.acct-ws { font-size: 11.5px; color: rgba(255, 255, 255, .85); overflow-wrap: anywhere; }
+.acct-items { padding: 6px; }
+.acct-menu .v2-menu-item .grow { white-space: normal; overflow-wrap: anywhere; }
+.acct-cur { margin-left: auto; }
+.acct-seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--ds-fill); font-size: 11px; }
+.acct-seg i { font-style: normal; padding: 2px 7px; border-radius: 6px; color: var(--ds-text-3); }
+.acct-seg i.on { background: var(--ds-surface); color: var(--ds-text); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+html[data-theme='dark'] .acct-seg i.on { background: #636366; }
+.floating-sheet.acct-menu { max-width: none; width: auto; border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+.floating-sheet.acct-menu .acct-head { margin: 4px 10px 0; border-radius: 14px; }
+.floating-sheet .acct-email { min-height: 0; }
+/* Collapsed rail on short windows: the places scroll so the account row always stays on screen. */
+.v2-rail .v2-rail-nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.v2-rail .v2-rail-foot { flex: none; }
+.floating.floating-sheet.acct-menu { z-index: 1000; }

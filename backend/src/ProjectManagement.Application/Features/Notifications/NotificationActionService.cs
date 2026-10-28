@@ -37,6 +37,19 @@ public class NotificationActionService(IAppDbContext db, ICurrentContext ctx, No
     private static readonly Regex DirectChat = new(@"^/chat/(?<c>[0-9a-fA-F-]{36})$", RegexOptions.Compiled);
     private static readonly Regex SupportChat = new(@"^/operations\?view=whatsapp&chat=(?<c>[0-9a-fA-F-]{36})$", RegexOptions.Compiled);
 
+    private static readonly Regex CallMeeting = new(@"^/calls/meeting/(?<w>w/)?(?<m>[0-9a-fA-F-]{36})", RegexOptions.Compiled);
+    private static readonly Regex MeetPage = new(@"^/meet\?open=(?<w>[wp]):(?<m>[0-9a-fA-F-]{36})", RegexOptions.Compiled);
+    private static readonly Regex StartsIn = new(@"^Starts in (?<n>\d{1,3}) minutes?", RegexOptions.Compiled);
+
+    /// <summary>The meeting a notification points at (a Project Tracker call, or the meeting on the Meet page), if any.</summary>
+    private static (Guid Id, bool Workspace)? MeetingOf(string? link)
+    {
+        if (string.IsNullOrEmpty(link)) return null;
+        if (CallMeeting.Match(link) is { Success: true } a) return (Guid.Parse(a.Groups["m"].Value), a.Groups["w"].Success);
+        if (MeetPage.Match(link) is { Success: true } b) return (Guid.Parse(b.Groups["m"].Value), b.Groups["w"].Value == "w");
+        return null;
+    }
+
     private enum Target { None, Task, Ticket, Document, Timesheet, ProjectChat, Chat, Support }
 
     private static (Target Kind, Guid Id) TargetOf(string? link)
@@ -83,9 +96,35 @@ public class NotificationActionService(IAppDbContext db, ICurrentContext ctx, No
         var supportChats = chatIds.Count == 0 ? new Dictionary<Guid, Guid?>() : await db.SupportConversations.AsNoTracking()
             .Where(c => chatIds.Contains(c.Id) && c.Status != "closed").ToDictionaryAsync(c => c.Id, c => c.AssigneeId, ct);
 
+        // Meetings: when they start and where to join, so a reminder can offer Join in its last ten minutes.
+        var meetingRefs = page.Items.Select(i => MeetingOf(i.Link)).Where(r => r is not null).Select(r => r!.Value).Distinct().ToList();
+        var meetings = new Dictionary<Guid, (DateTime Start, bool Recurring, string? Join)>();
+        if (meetingRefs.Count > 0)
+        {
+            var pIds = meetingRefs.Where(r => !r.Workspace).Select(r => r.Id).ToList();
+            var wIds = meetingRefs.Where(r => r.Workspace).Select(r => r.Id).ToList();
+            if (pIds.Count > 0)
+                foreach (var m in await db.ProjectMeetings.AsNoTracking().Where(pm => pIds.Contains(pm.Id) && pm.CancelledAt == null)
+                    .Select(pm => new { pm.Id, pm.StartTimeUtc, pm.RecurrenceRule, pm.Provider, pm.GoogleMeetUri }).ToListAsync(ct))
+                    meetings[m.Id] = (m.StartTimeUtc, m.RecurrenceRule != null,
+                        m.Provider == MeetingProvider.ProjectTracker ? ProjectManagement.Application.Features.ProjectMeetings.MeetingCalendar.JoinPath(m.Id, false) : string.IsNullOrEmpty(m.GoogleMeetUri) ? null : m.GoogleMeetUri);
+            if (wIds.Count > 0)
+                foreach (var m in await db.WorkspaceMeetings.AsNoTracking().Where(wm => wIds.Contains(wm.Id) && wm.CancelledAt == null)
+                    .Select(wm => new { wm.Id, wm.StartTimeUtc, wm.RecurrenceRule, wm.Provider, wm.GoogleMeetUri }).ToListAsync(ct))
+                    meetings[m.Id] = (m.StartTimeUtc, m.RecurrenceRule != null,
+                        m.Provider == MeetingProvider.ProjectTracker ? ProjectManagement.Application.Features.ProjectMeetings.MeetingCalendar.JoinPath(m.Id, true) : string.IsNullOrEmpty(m.GoogleMeetUri) ? null : m.GoogleMeetUri);
+        }
+
         var items = targets.Select(x =>
         {
             var (n, t) = x;
+            if (MeetingOf(n.Link) is { } mref && meetings.TryGetValue(mref.Id, out var meet))
+            {
+                // A repeating meeting's own start is the first session; its reminder says how far off this session was when it went off.
+                DateTime? starts = !meet.Recurring ? meet.Start
+                    : StartsIn.Match(n.Title) is { Success: true } si ? (DateTime?)n.CreatedAt.AddMinutes(int.Parse(si.Groups["n"].Value)) : null;
+                n = n with { StartsAt = starts, JoinLink = meet.Join };
+            }
             var acts = new List<string>();
             switch (t.Kind)
             {

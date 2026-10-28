@@ -93,6 +93,10 @@ try{
   assert.ok(apart,'Month card does not overlap the week grid at '+width);
   const inside=await page.locator('.wp-col .wp-e:not(.f):not(.lg)').evaluateAll(items=>items.map(el=>{const day=el.closest('.wp-col').getBoundingClientRect(),box=el.getBoundingClientRect();return box.left>=day.left-1&&box.right<=day.right+1&&box.bottom<=day.bottom+1;}));
   assert.ok(inside.length===4&&inside.every(Boolean),'Calendar entries stay inside their day');await page.locator('[data-testid="week-planner"]').scrollIntoViewIfNeeded();await capture('calendar-'+width);
+  // A block opens its detail card (beside it on a desktop, a sheet on a phone) inside the window, and Esc closes it.
+  await page.locator(`.wp-col[data-day="${today}"] .wp-e:not(.f):not(.lg)`).first().click();const det=page.locator('[data-testid="event-detail"]');await det.waitFor();await page.waitForTimeout(400);
+  const box=await det.boundingBox();assert.ok(box&&box.x>=-.5&&box.x+box.width<=width+.5,'the detail card stays inside the window');assert.equal(await det.getAttribute('data-kind'),'meeting');
+  await capture('calendar-detail-'+width);await page.keyboard.press('Escape');await det.waitFor({state:'detached'});
  }
  await open('/preview-org/settings/ai/usage','.ai-budgets',1440);
  await page.locator('.ai-budgets').scrollIntoViewIfNeeded();await capture('credit-budgets-1440');
@@ -104,7 +108,7 @@ try{
  await open('/preview-org/support','.page-title',390);await page.waitForURL(/\/work\?tab=tickets$/);/* v2: Tickets left the Work toolbar (Desk in the sidebar), but /work?tab=tickets still opens the ticket list */assert.ok(/\/work\?tab=tickets$/.test(page.url()),'Old support links land on Work › Tickets');
  assert.equal(await page.getByRole('link',{name:'Support center',exact:true}).count(),0);
  await open('/preview-org/portfolio?project='+pid,'.pp-head h1',1440);assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0);
- await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.v2-ask .v2-orb').count(),1,'v2: the Ask bar replaces the animated agent mark');
+ await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.v2-ask .groot').count(),1,'v2: the Ask bar replaces the animated agent mark');
  // Project cards line up across a row whatever the name, code or description length (the numbers, bar, badges and owner sit at the same height).
  cardProjects=[card(1,'idfc-qr-callback-api','IQCA','Api Configuration and Validation','Mule Soft','AtRisk',1,0,0,'Medium','Integration',owner(1,'Shiva kumar'),'2026-11-13'),
   card(2,'Payment Engine Disaster Recovery (DR) Setup','PEDR','Payment Engine Disaster Recovery (DR) setup in the AWS Hyderabad region, including failover runbooks and quarterly drills.','Mule Soft','AtRisk',1,0,0,'High','NewProject',owner(2,'Maya Chen'),'2026-11-21'),

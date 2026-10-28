@@ -9,7 +9,7 @@ import { EmptyState, ErrorState, PageLoader, Pager, Segmented } from '../../comp
 import { TimeZonePicker } from '../../components/TimeZonePicker';
 import { formatDateTime, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useDetailsDismiss, useWsQuery } from '../../lib/hooks';
-import { playSound, setSoundOn, soundOn, unlockSound, type AttentionKind } from '../../lib/attention';
+import { playSound, setSoundOn, soundOn, unlockSound } from '../../lib/attention';
 import { deviceZone, formatInZone, isoDateIn, useAppZone, zoneCity, zoneOffsetLabel, zoneToday, shiftIsoDate } from '../../lib/zone';
 import { isDesktopApp } from '../../lib/desktop';
 import { isNativeApp } from '../../lib/native';
@@ -22,6 +22,7 @@ import { deviceDetail, disableDeviceAlerts, enableDeviceAlerts, lastDeviceError,
 import { WhatsAppContactSection } from '../settings/WhatsAppContactSection';
 import { whatsAppPrefsUrl, type WhatsAppPreferences } from '../settings/WhatsAppNotificationPreferences';
 import { get } from '../../api/client';
+import { AlertSettings } from './centre/AlertSettings';
 import { NotificationActions, snoozeChoices } from './NotificationActions';
 
 export type NotificationSection = 'inbox' | 'preferences' | 'devices' | 'schedule';
@@ -590,16 +591,11 @@ function ThisDevice() {
         </Panel>
       )}
 
-      <Panel title="Sound" icon="play" sub="Alerts get a sound on this device so they stand out from other apps."
+      <Panel title="Sound" icon="play" sub="Alerts get a sound on this device so they stand out from other apps. Choose which ones below."
         actions={<Switch on={sound} label="Play alert sounds" onChange={(v) => { setSound(v); setSoundOn(v); if (v) { unlockSound(); playSound('message'); } }} />}>
-        <div className="nc-sounds">
-          {([['message', 'Message', 'A quick pop for chat'], ['update', 'Update', 'A rising chime for updates'], ['urgent', 'Urgent', 'The beacon for reminders and overdue work']] as [AttentionKind, string, string][]).map(([k, l, d]) => (
-            <button key={k} className="nc-sound" disabled={!sound} onClick={() => { unlockSound(); playSound(k); }}>
-              <Icon name="play" size={13} /><span><b>{l}</b><small>{d}</small></span>
-            </button>
-          ))}
-        </div>
+        <p className="ncx-set-foot">{sound ? 'Sounds are on for this device.' : 'All sounds are off on this device.'}</p>
       </Panel>
+      <AlertSettings />
 
       <Panel title="Check end to end" icon="alarm" sub="Sends a real reminder through the server in 2 minutes - the best way to confirm push works when the app is closed.">
         <div className="nc-row-actions">

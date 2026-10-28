@@ -6,6 +6,9 @@ import type { Priority } from '../../api/types';
 import { workItemsApi, type WorkKind } from '../../api/workItemsApi';
 import { motion, useAnimationControls, useReducedMotion } from 'framer-motion';
 import { spring } from '../../lib/motion';
+import { conciseTitle, needsShortTitle, TITLE_MAX } from '../../lib/conciseTitle';
+import { aiWorkspaceApi } from '../../features/ai/aiApi';
+import { useAi } from '../../features/ai/Assistant';
 import { useWsQuery } from '../../lib/hooks';
 import { parseQuickTask, type QuickPerson } from '../../lib/quickTask';
 import { useAuth, useCan, useModule, useWorkspaceId } from '../../stores/auth';
@@ -136,7 +139,23 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const chosenType = activeTypes.find((t) => t.id === workTypeId) ?? wordType;
   const pr: Priority = priority ?? parsed.priority ?? 'Medium';
   const owner = ownerId === '' ? null : people.find((p) => p.id === (ownerId ?? parsed.assignee?.id)) ?? null;
-  const title = (parsed.title || text).trim();
+  // A pasted paragraph is not a title: Groot writes a short one (or the first sentence, ≤ 120 characters, when AI is off) and the whole
+  // text goes into the description, for every kind.
+  const ai = useAi();
+  const long = needsShortTitle(text);
+  const [aiTitle, setAiTitle] = useState<{ for: string; title: string; ai: boolean } | null>(null);
+  useEffect(() => {
+    const words = text.trim();
+    if (!ai || !long || aiTitle?.for === words) return;
+    const t = window.setTimeout(() => {
+      aiWorkspaceApi.title(words, picked ?? guessType(words, allowed) ?? undefined).then((r) => setAiTitle({ for: words, title: r.title, ai: r.ai })).catch(() => undefined);
+    }, 700);
+    return () => window.clearTimeout(t);
+  }, [text, ai, long]); // eslint-disable-line react-hooks/exhaustive-deps
+  const baseTitle = (parsed.title || text).trim();
+  const shortTitle = aiTitle && aiTitle.for === text.trim() && aiTitle.title.trim() ? aiTitle.title.trim() : conciseTitle(baseTitle);
+  const title = long ? (shortTitle.length > TITLE_MAX ? `${shortTitle.slice(0, TITLE_MAX - 1)}…` : shortTitle) : baseTitle;
+  const description = long ? text.trim() : null;
   const def = TYPES.find((t) => t.id === type);
   const label = def?.label ?? '';
 
@@ -188,7 +207,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const makeWork = async () => {
     if (!title) { input.current?.focus(); return; }
     let k: WorkKind;
-    const body: Parameters<typeof workItemsApi.create>[0] = { kind: 'task', title, priority: pr, assigneeId: owner?.id ?? null, dueDate: parsed.dueDate ?? null };
+    const body: Parameters<typeof workItemsApi.create>[0] = { kind: 'task', title, description, priority: pr, assigneeId: owner?.id ?? null, dueDate: parsed.dueDate ?? null };
     if (type === 'ticket') {
       if (!chosenType) { toast('Add a work type first (Settings › Fields & types).', 'error'); return; }
       k = 'ticket'; Object.assign(body, { kind: 'ticket', workTypeId: chosenType.id, projectId: projectId ?? null });
@@ -218,10 +237,10 @@ function NewSheet({ onProject }: { onProject: () => void }) {
     switch (type) {
       case 'task': case 'ticket': case 'bug': await makeWork(); return;
       case 'project': close(); onProject(); return;
-      case 'reminder': close(); openReminderComposer({ text: words }); return;
-      case 'doc': close(); nav(join('/library?new=1', q('title', title))); return;
+      case 'reminder': close(); openReminderComposer(long ? { text: words, title, note: words } : { text: words }); return;
+      case 'doc': close(); nav(join('/library?new=1', q('title', title), long ? q('body', words) : '')); return;
       case 'secret': close(); nav(join('/library/vault?new=item', q('title', title))); return;
-      case 'meeting': close(); nav(join('/messages?f=meetings&new=schedule', q('title', title))); return;
+      case 'meeting': close(); nav(join('/messages?f=meetings&new=schedule', q('title', title), long ? q('details', words) : '')); return;
       case 'time': close(); nav(join('/insights?tab=time', q('log', words))); return;
     }
   };
@@ -302,7 +321,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
       <motion.div ref={sheetRef} className="v2-new-sheet" role="dialog" aria-modal="true" aria-labelledby="v2-new-title" onKeyDown={onKey}
         style={{ ['--kind' as string]: color }}
         initial={still ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.98 }} animate={sheetAnim}>
-        <div className="v2-new-head"><h2 id="v2-new-title">New</h2><span>Describe it — Project Tracker fills in the rest · esc</span></div>
+        <div className="v2-new-head"><h2 id="v2-new-title">New</h2><span>Describe it — Groot fills in the rest · esc</span></div>
         <label className="v2-new-input">
           <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder="Describe it…" aria-label="What to create" />
         </label>
@@ -316,6 +335,11 @@ function NewSheet({ onProject }: { onProject: () => void }) {
             {!understood && <span className="v2-new-shim" aria-hidden="true" />}
           </div>
           <p>{understood ? why : 'Type a sentence: what it is, how urgent, who and when.'}</p>
+          {understood && long && type !== 'time' && (
+            <p className="v2-new-titled" data-testid="new-short-title">
+              <b>{aiTitle?.for === text.trim() && aiTitle.ai ? 'Groot titled it' : 'Title'}:</b> {title}<span> · the full text goes in the {type === 'meeting' ? 'agenda' : type === 'reminder' ? 'note' : 'description'}</span>
+            </p>
+          )}
         </div>
         <div className="v2-new-types" role="radiogroup" aria-label="Type">
           {TYPES.filter((t) => t.tile !== false).map((t) => (

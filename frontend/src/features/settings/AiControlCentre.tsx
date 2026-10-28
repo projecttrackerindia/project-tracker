@@ -40,7 +40,7 @@ export function AiSettings({ tab, onTab, admin = true, agent = true }: { tab: Ai
   ];
   return (
     <div className="aic">
-      <PageHead eyebrow="Settings › AI" title={admin ? 'AI control centre' : 'Project agent'} sub={admin ? 'One place to decide what the AI knows, what it may do, and what it costs.' : 'How the agent behaves on the projects you lead.'}>
+      <PageHead eyebrow="Settings › AI" title={admin ? 'Groot control centre' : 'Groot · Project agent'} sub={admin ? 'One place to decide what Groot knows, what it may do, and what it costs.' : 'How Groot behaves on the projects you lead.'}>
         {admin && control.data?.agents && <span className={`ds-pill ${control.data.aiOn ? 'success' : ''}`}><i className="aic-dot" />{control.data.aiOn ? `AI on for ${people} ${people === 1 ? 'person' : 'people'}` : 'AI is off here'}</span>}
       </PageHead>
       {tabs.length > 1 && <Segmented label="AI settings" value={tab} onChange={onTab} options={tabs} />}

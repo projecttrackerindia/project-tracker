@@ -59,7 +59,7 @@ try {
     const i0=document.querySelector(selector),t0=document.querySelector(".m-tabs");if(!i0||!t0)return {missing:[!!i0,!!t0,location.pathname,document.body.innerText.slice(0,200)]};const input=i0.getBoundingClientRect();const tabs=t0.getBoundingClientRect();
     return {inputBottom:input.bottom,tabsTop:tabs.top,tabsBottom:tabs.bottom,height:innerHeight,overflow:document.documentElement.scrollWidth>innerWidth+1};
    },composer);
-   assert.ok(geometry.inputBottom<=geometry.tabsTop+1,JSON.stringify(geometry));assert.ok(geometry.tabsBottom<=height+1);assert.equal(geometry.overflow,false);
+   assert.ok(geometry.tabsBottom===0?geometry.inputBottom<=geometry.height+1:geometry.inputBottom<=geometry.tabsTop+1,JSON.stringify(geometry));   // the tab bar hides inside a conversation; then the composer sits on the screen's bottomassert.ok(geometry.tabsBottom<=height+1);assert.equal(geometry.overflow,false);
    await page.screenshot({path:path.join(artifacts,`${kind}-${width}.png`),animations:'disabled'});checks.push(`${kind}-${width}-composer-above-navigation`);
    if(width===390){
     await page.locator(composer+' :is(textarea,[contenteditable="true"])').focus();

@@ -448,6 +448,10 @@ public class AssistantAutomationPushTests(ApiFactory factory)
         var payload = JsonNode.Parse(Encoding.UTF8.GetString(plain[..^1]))!;
         Assert.Contains("Prepare the demo", S(payload["body"]));
         Assert.Equal("TaskAssigned", S(payload["type"]));
+        // The installed app's icon badge: what is unread for Dev in this workspace, the same number the bell shows.
+        Assert.True(payload["badge"]!.GetValue<int>() >= 1);
+        Assert.Equal((await o.Dev.Get("/api/v1/notifications/counts")).Data!["unread"]!.GetValue<int>(), payload["badge"]!.GetValue<int>());
+        Assert.Equal("work", S(payload["category"]));
         // The link opens inside the organization it is about: /{organization address}/projects/…
         var slug = factory.WithDb(db => db.Tenants.IgnoreQueryFilters().Where(t => t.Id == o.Owner.WorkspaceId).Select(t => t.Slug).Single());
         Assert.StartsWith($"/{slug}/projects/{o.Project}", S(payload["link"]));

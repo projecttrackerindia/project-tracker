@@ -208,6 +208,8 @@ public interface IAppDbContext
     DbSet<TestRun> TestRuns { get; }
     DbSet<SavedView> SavedViews { get; }
     DbSet<Holiday> Holidays { get; }
+    DbSet<AttendanceDay> AttendanceDays { get; }
+    DbSet<AttendancePolicy> AttendancePolicies { get; }
     DbSet<StatusPage> StatusPages { get; }
     DbSet<Release> Releases { get; }
     DbSet<ReleaseItem> ReleaseItems { get; }

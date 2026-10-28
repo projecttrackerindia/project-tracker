@@ -30,4 +30,10 @@ function isNewer(latest, current) {
   return false;
 }
 
-module.exports = { deepLinkToUrl, isInternal, unreadFromTitle, isNewer };
+/** The number the page reports for the badge, made safe: a whole number from 0 to 999 (anything else is 0). */
+function clampBadge(n) {
+  const v = Math.floor(Number(n));
+  return Number.isFinite(v) && v > 0 ? Math.min(v, 999) : 0;
+}
+
+module.exports = { deepLinkToUrl, isInternal, unreadFromTitle, isNewer, clampBadge };

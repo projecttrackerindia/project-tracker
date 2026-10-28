@@ -1,5 +1,5 @@
 import { del, download, get, patch, post, put, create } from './client';
-import type { TaskSuggestions,TimelineTemplate,Activity,AdminPlan,AdminStats,AdminTenant,AdminTenantDetail,AdminUser,AdminUserDetail,AppNotification,NotificationCounts,AuditLog,BillingOverview,CalendarEvent,Comment,Dashboard,Label,Paged,Project,ProjectDetail,ProjectMember,LensTeam,ReportSummary,SearchHit,Stage,Task,TaskDetail,WorkflowStatus,InvoiceBuyer,UpiPayment,AdminUpiPayment,UpiAccountHealth } from './types';
+import type { TaskSuggestions,TimelineTemplate,Activity,AdminPlan,AdminStats,AdminTenant,AdminTenantDetail,AdminUser,AdminUserDetail,AppNotification,NotificationCategory,NotificationCounts,AuditLog,BillingOverview,CalendarEvent,Comment,Dashboard,Label,Paged,Project,ProjectDetail,ProjectMember,LensTeam,ReportSummary,SearchHit,Stage,Task,TaskDetail,WorkflowStatus,InvoiceBuyer,UpiPayment,AdminUpiPayment,UpiAccountHealth } from './types';
 export interface ProjectFilters { q?: string; status?: string; priority?: string; ownerId?: string; teamId?: string; projectGroupId?: string; projectType?: string; includeArchived?: boolean; sort?: string; page?: number; pageSize?: number; mineOnly?: boolean }
 export interface ProjectInput {
   stageScheduleMode?: 'Manual' | 'FixedDeadline' | 'FollowSchedule';
@@ -120,7 +120,15 @@ export const notificationApi = {
   archiveRead: () => post<{ archived: number }>('/notifications/archive-read'),
   act: (id: string, action: string, extra: { text?: string; until?: string } = {}) => post<{ message: string; archived: boolean }>(`/notifications/${id}/act`, { action, ...extra }),
   read: (id: string) => post(`/notifications/${id}/read`),
-  readAll: () => post('/notifications/read-all'),
+  readAll: (category?: NotificationCategory) => post(category ? `/notifications/read-all?category=${category}` : '/notifications/read-all'),
+  /** The Notification Centre: one category (or all), paged. */
+  centre: (page = 1, category?: NotificationCategory, pageSize = 50) =>
+    get<Paged<AppNotification>>('/notifications', { page, pageSize, category }),
+  unreadOne: (id: string) => post(`/notifications/${id}/unread`),
+  remove: (id: string) => del(`/notifications/${id}`),
+  /** Clears a stacked group (ids), a category, or everything. */
+  clear: (req: { ids?: string[]; category?: NotificationCategory } = {}) => post<{ cleared: number }>('/notifications/clear', req),
+  snooze: (id: string, until: string | null) => post(`/notifications/${id}/snooze`, { until }),
 };
 
 export const billingApi = {

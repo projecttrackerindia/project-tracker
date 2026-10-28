@@ -4,7 +4,7 @@ import { useAuth, useIsPersonal, useModule } from '../../stores/auth';
 export type WorkspaceSection = 'general' | 'members' | 'access' | 'visibility' | 'security' | 'sso' | 'billing' | 'audit' | 'data'
   | 'project-groups' | 'timeline-templates' | 'labels' | 'priorities' | 'custom-fields' | 'work-types' | 'automation'
   | 'notifications' | 'reminders' | 'ai' | 'project-agent' | 'api-keys' | 'connected-apps' | 'webhooks' | 'slack' | 'whatsapp' | 'email' | 'git'
-  | 'holidays' | 'data-location' | 'status-page';
+  | 'holidays' | 'attendance' | 'data-location' | 'status-page';
 
 /**
  * The ten sections of Settings (v2): two about you, eight about the workspace. Each workspace section holds one or more of the pages above
@@ -14,7 +14,7 @@ export type WorkspaceSection = 'general' | 'members' | 'access' | 'visibility' |
 export type SettingsPlace = 'profile' | 'notifications' | 'general' | 'people' | 'fields' | 'timelines' | 'security' | 'integrations' | 'ai' | 'billing';
 export const PLACE_LEAVES: Record<Exclude<SettingsPlace, 'profile'>, WorkspaceSection[]> = {
   notifications: ['notifications', 'reminders'],
-  general: ['general', 'holidays'],
+  general: ['general', 'holidays', 'attendance'],
   people: ['members', 'visibility'],
   fields: ['custom-fields', 'labels', 'priorities', 'work-types'],
   timelines: ['timeline-templates', 'project-groups', 'automation'],
@@ -48,6 +48,7 @@ export function useWorkspaceSections(): SectionDef[] {
   const all: (SectionDef & { show: boolean })[] = [
     { id: 'general', group: 'Workspace', to: leafHref('general'), label: 'General', icon: 'building', blurb: 'Name, description, logo and time zone.', show: true },
     { id: 'holidays', group: 'Workspace', to: leafHref('holidays'), label: 'Holidays', icon: 'calendar', blurb: 'Public holidays: days off for everyone in Capacity.', show: !personal && isAdmin },
+    { id: 'attendance', group: 'Workspace', to: leafHref('attendance'), label: 'Attendance', icon: 'clock', blurb: 'Check-in and check-out: working hours, reminders, office, home or client office.', show: !personal && isAdmin },
     { id: 'project-groups', group: 'Workspace', to: leafHref('project-groups'), label: 'Project groups', icon: 'layers', blurb: 'Folders that hold related projects.', show: has('projectgroups.manage') && mProjects > 0 },
     { id: 'timeline-templates', group: 'Workspace', to: leafHref('timeline-templates'), label: 'Timeline templates', icon: 'flag', blurb: 'Stages and dates a new project can start from.', show: has('workflow.manage') && mProjects > 0 },
     { id: 'labels', group: 'Workspace', to: leafHref('labels'), label: 'Labels', icon: 'tag', blurb: 'Tags for tasks.', show: has('labels.manage') && mTasks > 0 },

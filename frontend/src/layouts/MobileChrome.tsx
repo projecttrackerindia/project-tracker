@@ -1,31 +1,22 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { notificationApi } from '../api/endpoints';
-import { NotificationActions } from '../features/notifications/NotificationActions';
+import { NotificationBell } from '../features/notifications/centre/NotificationCentre';
 import { Icon } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
 import { Sheet } from '../components/Sheet';
 import { openPalette } from '../components/CommandPalette';
 import { AvatarMenu } from '../components/v2';
 import { openNew } from '../components/v2/state';
-import { initials, timeAgo } from '../lib/format';
+import { initials } from '../lib/format';
 import { haptic } from '../lib/mobile';
 import { useTeamLens } from '../lib/teamLens';
-import { queryClient, useAuth } from '../stores/auth';
+import { useAuth } from '../stores/auth';
 import { toast } from '../stores/ui';
-import { CreateOrganizationModal, NotifIcon } from './parts';
+import { AttendancePill } from '../features/attendance/AttendancePill';
+import { CreateOrganizationModal } from './parts';
 
 const hue = (name: string) => { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 
 // ------------------------------------------------------------------ the top bar
-
-/** Unread notifications for the bell. Shares its query with nothing else on a phone, so it is read here. */
-function useUnread() {
-  const wid = useAuth((s) => s.ctx?.current?.id);
-  const q = useQuery({ queryKey: [wid, 'notifications', 'unread'], queryFn: notificationApi.unread, refetchInterval: 60_000, enabled: !!wid });
-  return q.data?.count ?? 0;
-}
 
 /**
  * The phone's top bar: where you are (the organization, tap to switch) and the three things you reach for from anywhere: search, the team
@@ -35,8 +26,7 @@ export function MobileTopBar() {
   const ctx = useAuth((s) => s.ctx)!;
   const admin = ctx.user.isPlatformAdmin;
   const [scrolled, setScrolled] = useState(false);
-  const [sheet, setSheet] = useState<'org' | 'lens' | 'notes' | null>(null);
-  const unread = useUnread();
+  const [sheet, setSheet] = useState<'org' | 'lens' | null>(null);
   const { teams, team, ready } = useTeamLens();
   useEffect(() => {
     const on = () => setScrolled(window.scrollY > 4);
@@ -59,16 +49,12 @@ export function MobileTopBar() {
         )}
         {!admin && <button type="button" className="m-icon m-new" onClick={() => { haptic(12); openNew(); }} aria-label="New"><Icon name="plus" size={20} /></button>}
         <button type="button" className="m-icon" onClick={() => { haptic(); openPalette(); }} aria-label="Search"><Icon name="search" size={21} /></button>
-        {!admin && (
-          <button type="button" className="m-icon" onClick={() => { haptic(); setSheet('notes'); }} aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
-            <Icon name="bell" size={21} />{unread > 0 && <em className="m-badge">{unread > 9 ? '9+' : unread}</em>}
-          </button>
-        )}
+        {!admin && <AttendancePill compact />}
+        {!admin && <NotificationBell variant="phone" />}
         <AvatarMenu />
       </div>
       {sheet === 'org' && !admin && <OrgSheet onClose={() => setSheet(null)} />}
       {sheet === 'lens' && <LensSheet onClose={() => setSheet(null)} />}
-      {sheet === 'notes' && <NotificationsSheet onClose={() => setSheet(null)} />}
     </header>
   );
 }
@@ -120,38 +106,6 @@ function LensSheet({ onClose }: { onClose: () => void }) {
           </button></li>
         ))}
       </ul>
-    </Sheet>
-  );
-}
-
-function NotificationsSheet({ onClose }: { onClose: () => void }) {
-  const wid = useAuth((s) => s.ctx?.current?.id);
-  const nav = useNavigate();
-  const list = useQuery({ queryKey: [wid, 'notifications', 'recent'], queryFn: () => notificationApi.list(1, true), enabled: !!wid });
-  const refresh = () => queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] });
-  const readAll = useMutation({ mutationFn: notificationApi.readAll, onSuccess: refresh });
-  const items = list.data?.items ?? [];
-  const open = async (n: { id: string; link: string | null; isRead: boolean }) => {
-    onClose();
-    if (!n.isRead) { await notificationApi.read(n.id); void refresh(); }
-    if (n.link) nav(n.link);
-  };
-  return (
-    <Sheet title="Notifications" onClose={onClose}>
-      {items.some((n) => !n.isRead) && <button type="button" className="m-text-btn" onClick={() => readAll.mutate()}>Mark all as read</button>}
-      {list.isLoading ? <p className="m-hint">Loading…</p> : items.length === 0 ? <div className="m-empty"><Icon name="bell" size={26} /><b>You're all caught up</b><span>New activity shows up here.</span></div> : (
-        <ul className="m-list">
-          {items.slice(0, 20).map((n) => (
-            <li key={n.id}><button type="button" className={`m-row note ${n.isRead ? '' : 'unread'}`} onClick={() => void open(n)}>
-              <NotifIcon type={n.type} className="m-row-ico" />
-              <span className="m-row-main"><b>{n.title}</b>{n.body && <small>{n.body}</small>}<em>{timeAgo(n.shownAt ?? n.createdAt)}</em></span>
-              {!n.isRead && <i className="m-dot" aria-label="Unread" />}
-            </button>
-            <div className="m-note-acts"><NotificationActions n={n} /></div></li>
-          ))}
-        </ul>
-      )}
-      <button type="button" className="m-text-btn center" onClick={() => { onClose(); nav('/settings/notifications/history'); }}>See all notifications</button>
     </Sheet>
   );
 }

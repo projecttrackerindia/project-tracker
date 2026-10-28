@@ -198,7 +198,7 @@ const SCRUM_AGENDA = 'Progress since the last stand-up\nPriorities for today\nBl
  * The one form for meetings, used only on the Meet page: start one now, or schedule one (a meeting or a stand-up, once or as a series) in
  * Google Meet, Teams or a Project Tracker call, with or without a project, and with the notetaker the meeting needs.
  */
-export function MeetingForm({ mode, project: initialProject, title: initialTitle, onClose }: { mode: 'now' | 'schedule'; project?: { id: string; name: string } | null; /** + New › Meeting: the words typed. */ title?: string | null; onClose: () => void }) {
+export function MeetingForm({ mode, project: initialProject, title: initialTitle, details, onClose }: { mode: 'now' | 'schedule'; project?: { id: string; name: string } | null; /** + New › Meeting: the words typed. */ title?: string | null; /** + New with a long paragraph: the full text, as the agenda. */ details?: string | null; onClose: () => void }) {
   const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx?.user.id);
   const workspaceName = useAuth((s) => s.ctx?.current?.name ?? 'Team');
@@ -208,7 +208,7 @@ export function MeetingForm({ mode, project: initialProject, title: initialTitle
   const autoTitle = (k: typeof kind, p: { name: string } | null) => (k === 'scrum' ? `${p?.name ?? workspaceName} stand-up` : mode === 'now' ? `${p?.name ?? workspaceName} call` : '');
   const [title, setTitle] = useState(initialTitle?.trim() || autoTitle('meeting', initialProject ?? null));
   const [titleEdited, setTitleEdited] = useState(!!initialTitle?.trim());
-  const [agenda, setAgenda] = useState(MEETING_AGENDA);
+  const [agenda, setAgenda] = useState(details?.trim() ? details.trim().slice(0, 4000) : MEETING_AGENDA);
   // The organizer's own zone, visible and changeable: the typed wall-clock time is read in it, never in this browser's clock setting.
   const [tz, setTz] = useState(appZone());
   const [defaults] = useState(() => { const p = zonedParts(new Date(Date.now() + 60 * 60 * 1000), tz); return { date: `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`, time: `${String(p.hour).padStart(2, '0')}:00` }; });

@@ -347,8 +347,10 @@ function NewDocFromLink({ projects, canCreate }: { projects: { id: string; name:
     if (asked.current || params.get('new') !== '1' || !canCreate || aiStatus.isLoading) return;
     asked.current = true;
     const title = params.get('title') ?? '';
-    setParams((p) => { const n = new URLSearchParams(p); n.delete('new'); n.delete('title'); return n; }, { replace: true });
-    if (aiStatus.data?.enabled) { setPrompt(title); setAi(true); } else void newPage.create({ title: title || undefined, projectId: null });
+    // + New with a long paragraph: a short title and the full text (?body=), which is Groot's prompt or the new page's first words.
+    const body = params.get('body') ?? '';
+    setParams((p) => { const n = new URLSearchParams(p); n.delete('new'); n.delete('title'); n.delete('body'); return n; }, { replace: true });
+    if (aiStatus.data?.enabled) { setPrompt(body || title); setAi(true); } else void newPage.create({ title: title || undefined, body: body || undefined, projectId: null });
   }, [params, setParams, canCreate, aiStatus.isLoading, aiStatus.data, newPage]);
   if (!ai) return null;
   return <AiDraftDialog projects={projects} projectId={null} initialPrompt={prompt} useLabel="Create the page" onClose={() => { setAi(false); setPrompt(''); }}

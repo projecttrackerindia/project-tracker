@@ -3,7 +3,10 @@ import { useWsQuery, invalidateWorkspace } from '../../lib/hooks';
 import { reminderApi, type Reminder, type ReminderSubject } from './api';
 
 /** What the reminder form opens with: words typed elsewhere, the work it is about, or a reminder to change. */
-export interface ComposerDraft { text?: string; subject?: ReminderSubject; editing?: Reminder; forUserId?: string }
+export interface ComposerDraft {
+  text?: string; subject?: ReminderSubject; editing?: Reminder; forUserId?: string;
+  /** + New with a long paragraph: a short title to use instead of the words, and the full text as the note. */ title?: string; note?: string;
+}
 
 /** The one reminder form, opened from anywhere: the Reminders page, "Remind me" on a task, the command palette, the assistant box. */
 export const useReminderComposer = create<{ draft: ComposerDraft | null; open: (d?: ComposerDraft) => void; close: () => void }>((set) => ({
