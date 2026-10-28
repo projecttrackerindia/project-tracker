@@ -9,8 +9,12 @@ public record SetAiAllowedRequest(bool Allowed);
 
 /// <summary>The AI assistant (Claude). Every answer is built only from what the caller may already see.</summary>
 [Route("api/v1/ai"), RequireWorkspace]
-public class AiController(AiAssistant assistant) : ApiControllerBase
+public class AiController(AiAssistant assistant, GrootTitleService titles) : ApiControllerBase
 {
+    /// <summary>Groot: a short title for a long description (+ New); the first sentence when AI is off. Never fails for want of AI.</summary>
+    [HttpPost("title"), AiRequestLimit]
+    public async Task<IActionResult> Title([FromBody] GrootTitleRequest req, CancellationToken ct) => Ok(await titles.SuggestAsync(req, ct));
+
     /// <summary>Whether the assistant can be used here, and why not.</summary>
     [HttpGet("status")]
     public async Task<IActionResult> Status(CancellationToken ct) => Ok(await assistant.StatusAsync(ct));

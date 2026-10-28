@@ -164,7 +164,7 @@ const phoneRun = async (device, theme) => {
 
   // 3. Empty box: ✦ drafts a reply.
   await page.locator('.composer-editable').evaluate((e) => { e.innerHTML = ''; e.dispatchEvent(new Event('input', { bubbles: true })); });
-  await page.getByRole('button', { name: 'Draft a reply with AI' }).click();
+  await page.getByRole('button', { name: 'Groot drafts a reply' }).click();
   await page.waitForFunction(() => document.querySelector('.composer-editable')?.textContent?.includes('staging slot'));
   await page.locator('.composer-editable').evaluate((e) => { e.innerHTML = ''; e.dispatchEvent(new Event('input', { bubbles: true })); });
   await keyboardDown(page, device, full);

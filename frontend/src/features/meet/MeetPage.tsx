@@ -52,7 +52,7 @@ export function MeetPage({ section }: { section: Section }) {
       {/* v2: Meet lives in Talk (?f=meetings&s=…); the tabs keep the section in the query, which a NavLink cannot tell apart. */}
       <nav className="tabs route-tabs" aria-label="Meet">
         {([['upcoming', 'Upcoming', 'calendar'], ['series', 'Series', 'repeat'], ['past', 'Past', 'clock'],
-          ...(projects && role !== 'Guest' ? [['notetaker', 'Notetaker', 'sparkle']] : [])] as [Section, string, IconName][]).map(([id, label, icon]) => (
+          ...(projects && role !== 'Guest' ? [['notetaker', 'Groot notetaker', 'sparkle']] : [])] as [Section, string, IconName][]).map(([id, label, icon]) => (
           <Link key={id} to={`/messages?f=meetings&s=${id}${projectId ? `&project=${encodeURIComponent(projectId)}` : ''}`} className={`tab ${section === id ? 'active' : ''}`}
             aria-current={section === id ? 'page' : undefined}><Icon name={icon} />{label}</Link>
         ))}
@@ -63,7 +63,7 @@ export function MeetPage({ section }: { section: Section }) {
       {section === 'notetaker' && <NotetakerSection />}
       {opened && <MeetingDetail kind={opened.kind} id={opened.id} at={params.get('at')} onClose={() => { const next = new URLSearchParams(params); next.delete('open'); next.delete('at'); setParams(next, { replace: true }); }}
         onProject={(pid) => navigate(`/messages?f=meetings&s=upcoming&project=${pid}`)} />}
-      {form && <MeetingForm mode={form} project={project} title={params.get('title')} onClose={closeForm} />}
+      {form && <MeetingForm mode={form} project={project} title={params.get('title')} details={params.get('details')} onClose={closeForm} />}
     </div>
   );
 }

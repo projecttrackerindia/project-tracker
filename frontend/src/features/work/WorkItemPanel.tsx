@@ -317,7 +317,7 @@ function Copilot({ w, me, save, onDueAsk, onStatus, statuses, refetch }: {
   if (!s || dismissed.has(`${w.id}:${s.id}`)) return null;
   const sug = s;
   return (
-    <AiCard stacked title="Copilot" className="wkp-ai" dismissLabel="Not now" onDismiss={() => { dismissed.add(`${w.id}:${sug.id}`); bump((n) => n + 1); }}
+    <AiCard stacked title="Groot suggests" className="wkp-ai" dismissLabel="Not now" onDismiss={() => { dismissed.add(`${w.id}:${sug.id}`); bump((n) => n + 1); }}
       action={{ label: sug.label, busy, onClick: () => { setBusy(true); void Promise.resolve(sug.run()).finally(() => setBusy(false)); } }}>
       {sug.text}
     </AiCard>
@@ -334,7 +334,7 @@ function fixBy(iso: string) {
   return formatDateTime(iso);
 }
 
-const CHANNEL_LABEL: Record<string, string> = { app: 'In the app', email: 'E-mail', whatsapp: 'WhatsApp', phone: 'Phone call', webhook: 'Webhook', ai: 'Assistant' };
+const CHANNEL_LABEL: Record<string, string> = { app: 'In the app', email: 'E-mail', whatsapp: 'WhatsApp', phone: 'Phone call', webhook: 'Webhook', ai: 'Groot' };
 
 function TicketFields({ w, editable, save }: { w: WorkItemDetail; editable: boolean; save: (f: Omit<WorkItemPatch, 'version'>) => Promise<boolean> }) {
   const d = w.detail as { sla?: WorkSla | null; workTypeId?: string; workType?: string; relatedProject?: { id: string; name: string } | null };
@@ -463,7 +463,7 @@ function Activity({ w, onPosted }: { w: WorkItemDetail; onPosted: () => void }) 
 const ACT_ICON = { comment: 'message', time: 'clock', file: 'paperclip', change: 'activity', ai: 'sparkle' } as const;
 
 function ActivityRow({ a }: { a: WorkActivity }) {
-  const who = a.type === 'ai' ? (a.auto ? 'Copilot' : 'Copilot') : a.actor?.name || 'Someone';
+  const who = a.type === 'ai' ? 'Groot' : a.actor?.name || 'Someone';
   const text = a.type === 'comment' ? 'commented' : a.summary;
   return (
     <li className={`wkp-act t-${a.type}`}>

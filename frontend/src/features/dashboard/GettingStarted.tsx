@@ -14,7 +14,7 @@ export function GettingStarted({ personal, ai, canCreateProject, onCreateProject
     { icon: 'folder', title: 'Create your first project', text: 'Give it a name and a due date. Everything else already has a sensible default.', action: 'New project', onClick: onCreateProject, disabled: !canCreateProject },
     { icon: 'checkCircle', title: 'Add the first tasks', text: 'Break the project into tasks, assign them and set dates. You can drag them across the board as work moves.', action: 'Open projects', onClick: () => nav('/projects') },
     ...(!personal ? [{ icon: 'userPlus' as IconName, title: 'Bring your team in', text: 'Invite people by e-mail, or create their accounts yourself and share a temporary password.', action: 'Invite people', onClick: () => nav('/people/invitations') }] : []),
-    ...(ai ? [{ icon: 'sparkle' as IconName, title: 'Ask the assistant', text: 'Describe the work in plain words, for example "plan a website relaunch for 30 November", and review what it proposes.', action: 'Open the assistant', onClick: () => nav('/ai'), ai: true }] : []),
+    ...(ai ? [{ icon: 'sparkle' as IconName, title: 'Ask Groot', text: 'Describe the work in plain words, for example "plan a website relaunch for 30 November", and review what it proposes.', action: 'Open the assistant', onClick: () => nav('/ai'), ai: true }] : []),
   ];
   return (
     <div className="gs">

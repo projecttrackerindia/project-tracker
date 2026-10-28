@@ -243,7 +243,7 @@ try{
  ctx=await make('light',null);page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
  await page.goto(origin+'/preview-org/command-center');await page.locator('.hm-inbox').waitFor();
  assert.match(await page.locator('h1').first().innerText(),/Good (morning|afternoon|evening)/);
- await page.getByRole('button',{name:'More on Home'}).click();await page.getByRole('menuitem',{name:/^Assistant/}).click();
+ await page.getByRole('button',{name:'More on Home'}).click();await page.getByRole('menuitem',{name:/^Groot/}).click();
  await page.waitForURL(/[?&]tab=assistant/);await page.locator('.ai-hero h1').waitFor();
  assert.ok(await page.locator('.ai-main .ai-composer').isVisible(),'the ask box is on the assistant page');
  assert.ok(await page.locator('.ai-composer .ai-attach').isVisible(),'attach is inside the ask box');

@@ -199,6 +199,7 @@
 .v2-ai-card { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: var(--ds-r-tile); background: color-mix(in srgb, var(--ds-violet) 7%, var(--ds-surface));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--ds-violet) 18%, transparent); }
 .v2-ai-card .v2-spark { color: var(--ds-violet); font-size: 15px; line-height: 20px; flex: none; }
+.v2-ai-card .v2-spark-groot { flex: none; margin-top: -1px; } .v2-ai-card b .v2-spark-groot { vertical-align: -4px; margin-right: 2px; }
 .v2-ai-card-main { flex: 1; min-width: 0; display: grid; gap: 3px; }
 .v2-ai-card-main b { font-size: 13.5px; font-weight: 600; color: var(--ds-text); }
 .v2-ai-card-main span { font-size: 13px; color: var(--ds-text-2); line-height: 1.45; }
@@ -252,6 +253,7 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
   background-size: 200% 100%; animation: v2-shim 1.4s linear infinite; }
 @keyframes v2-shim { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 .v2-understood p { margin: 8px 0 20px; font-size: 12px; color: #86868b; }
+.v2-understood p.v2-new-titled { margin: -12px 0 18px; color: var(--ds-text-2, #6e6e73); overflow-wrap: anywhere; } .v2-understood p.v2-new-titled b { font-weight: 600; color: #6b4dff; } .v2-understood p.v2-new-titled span { color: #86868b; }
 .v2-new-types { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0; }
 .v2-new-type { height: 76px; border-radius: 14px; border: 0; background: rgba(118, 118, 128, .08); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
   font: inherit; font-size: 12.5px; font-weight: 500; color: inherit; cursor: pointer; transition: background .15s var(--ds-ease), box-shadow .15s var(--ds-ease); }

@@ -104,7 +104,7 @@ public partial class ChatAiService(ChatService chat, IAppDbContext db, ICurrentC
         var sb = new StringBuilder();
         foreach (var l in lines.Take(MaxCatchUpMessages))
             sb.AppendLine($"[{l.N}] {l.ConversationName} · {l.Sender ?? "System"} · {l.At:dd MMM HH:mm}{(l.ThreadRootId is null ? "" : " (in a thread)")}: {l.Text}");
-        var system = "You catch a busy person up on the team chat messages they have not read. The person is " + myName + ". " +
+        var system = ProjectManagement.Application.Features.Ai.GrootIdentity.Generic + "You catch a busy person up on the team chat messages they have not read. The person is " + myName + ". " +
                      "Reply with JSON only, no prose before or after, in this shape: " +
                      "{\"summary\":\"two to four plain sentences\",\"decisions\":[{\"text\":\"\",\"ref\":1}],\"questions\":[{\"text\":\"a question put to " + myName + "\",\"ref\":2}]," +
                      "\"actions\":[{\"text\":\"\",\"owner\":\"name or null\",\"due\":\"date or null\",\"ref\":3}]}. " +
@@ -186,7 +186,7 @@ public partial class ChatAiService(ChatService chat, IAppDbContext db, ICurrentC
             var m = ranked[i];
             sb.AppendLine($"[{i + 1}] {allowed[m.ConversationId].Name} · {(m.SenderId is { } s ? senders.GetValueOrDefault(s) : "System")} · {m.CreatedAt:dd MMM yyyy}: {mask(Cut(ChatService.Plain(m.Body), 700))}");
         }
-        var system = "You answer a question from a company's chat messages, using only the numbered messages given. Answer in one to four sentences, in the language of " +
+        var system = ProjectManagement.Application.Features.Ai.GrootIdentity.Generic + "You answer a question from a company's chat messages, using only the numbered messages given. Answer in one to four sentences, in the language of " +
                      "the question. After every statement put the number of the message it comes from, like [3]. If the messages do not answer it, say so plainly.";
         var answer = await ai.AskModelAsync("chat_ask", system, $"Question: {question}\n\nMessages:\n{sb}", 700, 2, ct);
         var used = Regex.Matches(answer.Text, @"\[(\d{1,2})\]").Select(x => int.Parse(x.Groups[1].Value, CultureInfo.InvariantCulture)).Where(n => n >= 1 && n <= ranked.Count).Distinct().OrderBy(n => n).ToList();

@@ -60,8 +60,8 @@ function Composer({ draft, onClose }: { draft: ComposerDraft; onClose: () => voi
 
   // ---- what
   const [title, setTitle] = useState(editing?.title ?? '');
-  const [note, setNote] = useState(editing?.note ?? '');
-  const [showNote, setShowNote] = useState(!!editing?.note);
+  const [note, setNote] = useState(editing?.note ?? draft.note?.slice(0, 1000) ?? '');
+  const [showNote, setShowNote] = useState(!!(editing?.note ?? draft.note));
   const [subject, setSubject] = useState<ReminderSubject | null>(draft.subject
     ?? (editing && editing.targetType !== 'None' && editing.targetId ? { type: editing.targetType, id: editing.targetId, title: editing.targetTitle ?? '', key: editing.targetKey } : null));
 
@@ -99,6 +99,7 @@ function Composer({ draft, onClose }: { draft: ComposerDraft; onClose: () => voi
     if (draft.text) {
       const p = parseReminder(draft.text, now, { defaultTime, dayFirst: dayFirst() });
       if (p) apply(p); else setTitle(draft.text);
+      if (draft.title) setTitle(draft.title);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

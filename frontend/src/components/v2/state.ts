@@ -38,16 +38,6 @@ export function guessType(text: string, allowed: (t: NewType) => boolean): NewTy
   return allowed('task') ? 'task' : allowed('ticket') ? 'ticket' : null;
 }
 
-// ------------------------------------------------------------------ Ask (⌘K)
-
-/** The Spotlight-style Ask panel: the question, where the person was, and the toolbar field it springs from. */
-export interface AskFrom { left: number; top: number; width: number; height: number }
-export const useAskPanel = create<{ open: boolean; question: string; context: string | null; from: AskFrom | null; show: (question: string, context: string | null, from: AskFrom | null) => void; close: () => void }>((set) => ({
-  open: false, question: '', context: null, from: null,
-  show: (question, context, from) => set({ open: true, question, context, from }),
-  close: () => set({ open: false }),
-}));
-
 // ------------------------------------------------------------------ the copilot
 
 /** The copilot panel: open or not, and what it is about (a project, or the page it was opened on). */
