@@ -78,7 +78,9 @@ public class DemoLifecycleTests(ApiFactory factory)
 
         // ---- edit: due date, status, assignee - every view follows
         async Task<int> Ver(string id) => (await owner.Get($"/api/v1/work-items/{id}")).Data!["version"]!.GetValue<int>();
-        Assert.True((await owner.Patch($"/api/v1/work-items/{taskId}", new { version = await Ver(taskId), dueDate = Iso(2), title = "DEMO task (renamed)" })).Ok);
+        // Moving a due date later needs a reason (DueDateHistory), like in the app.
+        var moved = await owner.Patch($"/api/v1/work-items/{taskId}", new { version = await Ver(taskId), dueDate = Iso(2), dueDateReason = "Waiting on the client", title = "DEMO task (renamed)" });
+        Assert.True(moved.Ok, moved.ToString());
         v = await Read(member);
         Check("DEMO task", "My Work · due", Iso(2), Field(v.MyWork, taskId, "dueDate"));
         Check("DEMO task", "Today (inbox)", "absent", In(v.Inbox, taskId, "href"));                       // no longer due today
