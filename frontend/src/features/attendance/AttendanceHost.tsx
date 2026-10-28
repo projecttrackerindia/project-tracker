@@ -1,3 +1,4 @@
+import { GrootAvatar } from '../../components/groot/GrootAvatar';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -79,8 +80,8 @@ export function AttendanceHost() {
     setParams((p) => { const n = new URLSearchParams(p); n.delete('attendance'); return n; }, { replace: true });
   }, [params, setParams, on, show]);
   useEffect(() => {
-    const out = () => show('checkout');
-    const inn = () => show('checkin');
+    const out = (e: Event) => { e.preventDefault(); show('checkout'); };   // we handle it, so Groot does not fall back to asking in chat
+    const inn = (e: Event) => { e.preventDefault(); show('checkin'); };
     window.addEventListener('groot:checkout', out);
     window.addEventListener('groot:checkin', inn);
     return () => { window.removeEventListener('groot:checkout', out); window.removeEventListener('groot:checkin', inn); };
@@ -153,7 +154,7 @@ function CheckInCard({ today, prompted, onDone, onSnooze }: { today: AttendanceT
   return (
     <AttFrame label="Check in" onClose={prompted ? onSnooze : onDone} testId="att-checkin">
       <header className="att-hd">
-        <span className="groot-avatar" data-state="greeting" aria-hidden="true" />
+        <GrootAvatar state="greeting" size={56} className="groot-avatar" />
         <div>
           <h2>{greeting(today?.localTime)}{first ? `, ${first}` : ''}</h2>
           <p>{already ? `You checked in at ${already.checkInLocal}.` : 'Where are you working today?'}</p>
@@ -220,7 +221,7 @@ function CheckOutSheet({ today, onClose }: { today: AttendanceToday | null; onCl
   return (
     <AttFrame label="Check out" onClose={onClose} testId="att-checkout">
       <header className="att-hd">
-        <span className="groot-avatar" data-state={done ? 'happy' : 'greeting'} aria-hidden="true" />
+        <GrootAvatar state={done ? 'success' : 'greeting'} size={56} className="groot-avatar" />
         <div>
           <h2>{done ? 'Have a good evening' : open ? 'Wrapping up?' : 'You’re not checked in'}</h2>
           <p>{done ? `Checked out at ${done.day.checkOutLocal}.` : open ? `${m?.emoji} ${m?.label}${open.place ? ` · ${open.place}` : ''} · since ${open.checkInLocal}` : r?.checkOutLocal ? `You checked out at ${r.checkOutLocal}.` : 'Check in first to start your day.'}</p>
