@@ -14,6 +14,7 @@ import { queryClient, useAuth, useEntitlement, useWorkspaceId } from '../../stor
 import { confirmDialog, toast } from '../../stores/ui';
 import { COMMON_EMOJI, dayKey, dayLabel, domToBody, markdownToHtml, mentionChipHtml, mentionsUser, plainText, timeOf } from './chatFormat';
 import { markAnswered } from './chatCache';
+import { conversationReadLocally } from '../notifications/centre/readSync';
 import { chatKeys, PRESENCE_LABEL, useChat, useTypingNames } from './chatStore';
 import type { PresenceStatus } from '../../api/types';
 import { fallbackStatus, PresenceDot } from './Presence';
@@ -210,13 +211,19 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
   const reading = useRef(false);
   const unread = useRef(conversation.unread);
   unread.current = conversation.unread;
+  // Opening the conversation always tells the server once (its notices may be @mentions or thread replies that the unread count does not
+  // show); after that, whenever something new arrives while it is open.
+  const told = useRef<string | null>(null);
   const markRead = useCallback(async () => {
-    if (reading.current || document.hidden || unread.current === 0) return;
+    if (reading.current || document.hidden || (unread.current === 0 && told.current === id)) return;
     reading.current = true;
+    told.current = id;
+    conversationReadLocally(wid, id, projectId);   // the bell, the centre and the badges drop it now
     try {
       await chatApi.markRead(id);
       queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid), (old) => old?.map((c) => (c.id === id ? { ...c, unread: 0 } : c)));
       void queryClient.invalidateQueries({ queryKey: chatKeys.unread(wid) });
+      void queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] });   // the server's numbers settle the optimistic ones
       if (projectId) {
         queryClient.setQueryData<Conversation>(chatKeys.project(wid, projectId), (old) => old && { ...old, unread: 0, unreadMentions: 0 });
         void queryClient.invalidateQueries({ queryKey: chatKeys.projectUnread(wid) });
@@ -224,7 +231,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
     } catch { /* the next message or focus tries again */ }
     finally { reading.current = false; }
   }, [id, wid, projectId]);
-  useEffect(() => { if (thread.data && conversation.unread > 0) void markRead(); }, [thread.data, conversation.unread, items.length, markRead]);
+  useEffect(() => { if (thread.data && (conversation.unread > 0 || told.current !== id)) void markRead(); }, [thread.data, conversation.unread, items.length, markRead, id]);
   useEffect(() => {
     const back = () => { if (!document.hidden) void markRead(); };
     document.addEventListener('visibilitychange', back);

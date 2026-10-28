@@ -72,8 +72,7 @@ public class RequireWorkspaceAttribute : ActionFilterAttribute
     public override void OnActionExecuting(ActionExecutingContext context)
     {
         var ctx = context.HttpContext.RequestServices.GetRequiredService<ICurrentContext>();
-        if (ctx.TenantId is null)
-            throw new ForbiddenException("No active workspace. Select a workspace first.", "WORKSPACE_REQUIRED");
+        if (ctx.TenantId is null) ctx.RequireTenantId();   // WORKSPACE_REQUIRED, or MEMBER_SUSPENDED for a suspended member
     }
 }
 

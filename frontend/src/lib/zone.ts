@@ -130,3 +130,20 @@ export function allZones(): string[] {
 
 /** A friendly name for a zone: "Kolkata", "New York". */
 export const zoneCity = (zone: string) => (zone.split('/').pop() ?? zone).replace(/_/g, ' ');
+
+/** The instant of a wall-clock time ("yyyy-MM-dd" plus hours from midnight, e.g. 9.5 = 09:30) in a zone - correct across DST changes. */
+export function instantIn(day: string, hours: number, zone = appZone()): Date {
+  const [y, m, d] = day.slice(0, 10).split('-').map(Number);
+  const mins = Math.round(hours * 60);
+  const wallUtc = Date.UTC(y, m - 1, d, 0, mins);
+  // Two passes: the zone's offset at the guess, then at the corrected instant (they differ only next to a DST change).
+  let t = wallUtc - zoneOffsetMinutes(zone, new Date(wallUtc)) * 60_000;
+  t = wallUtc - zoneOffsetMinutes(zone, new Date(t)) * 60_000;
+  return new Date(t);
+}
+
+/** Hours from midnight (9.5 = 09:30) of an instant in a zone. */
+export function hourIn(instant: Date, zone = appZone()) {
+  const p = zonedParts(instant, zone);
+  return p.hour + p.minute / 60;
+}

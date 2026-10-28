@@ -34,9 +34,9 @@ export const projectGroupApi = {
 /** Action items of a project (follow-ups with an owner, a due date and a priority). */
 export const actionItemApi = {
   list: (projectId: string) => get<ActionItem[]>(`/projects/${projectId}/action-items`),
-  create: (projectId: string, b: ActionItemInput) => post<ActionItem>(`/projects/${projectId}/action-items`, b),
+  create: (projectId: string, b: ActionItemInput) => create<ActionItem>(`/projects/${projectId}/action-items`, b),
   update: (projectId: string, id: string, b: ActionItemInput & { status: ActionItemStatus }) => put<ActionItem>(`/projects/${projectId}/action-items/${id}`, b),
-  setStatus: (projectId: string, id: string, status: ActionItemStatus) => put<ActionItem>(`/projects/${projectId}/action-items/${id}/status`, { status }),
+  setStatus: (projectId: string, id: string, status: ActionItemStatus, version?: number) => put<ActionItem>(`/projects/${projectId}/action-items/${id}/status`, { status, version }),
   remove: (projectId: string, id: string) => del<void>(`/projects/${projectId}/action-items/${id}`),
 };
 

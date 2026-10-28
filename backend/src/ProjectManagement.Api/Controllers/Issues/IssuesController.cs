@@ -1,3 +1,4 @@
+using ProjectManagement.Application.Features.Notifications;
 using Microsoft.AspNetCore.Mvc;
 using ProjectManagement.Api.Filters;
 using ProjectManagement.Application.Features.Issues;
@@ -7,14 +8,19 @@ namespace ProjectManagement.Api.Controllers.Issues;
 
 /// <summary>Test issues found in a project's stages ("Observed / Failed"): reported, worked on, fixed and confirmed. See <see cref="IssueService"/> for the rules.</summary>
 [Route("api/v1/projects/{projectId:guid}/issues"), RequireWorkspace, RequireModule(Modules.Projects), RequireModule(Modules.Tasks)]
-public class IssuesController(IssueService issues) : ApiControllerBase
+public class IssuesController(IssueService issues, NotificationService notifications) : ApiControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(Guid projectId, [FromQuery] Guid? stageId, [FromQuery] bool openOnly, CancellationToken ct) =>
         Ok(await issues.ListAsync(projectId, stageId, openOnly, ct));
 
     [HttpGet("{issueId:guid}")]
-    public async Task<IActionResult> Get(Guid projectId, Guid issueId, CancellationToken ct) => Ok(await issues.GetAsync(projectId, issueId, ct));
+    public async Task<IActionResult> Get(Guid projectId, Guid issueId, CancellationToken ct)
+    {
+        var issue = await issues.GetAsync(projectId, issueId, ct);
+        await notifications.MarkSeenAsync(NotificationTargets.Issue, issueId, ct);   // opened: its notices are read
+        return Ok(issue);
+    }
 
     [HttpPost]
     public async Task<IActionResult> Create(Guid projectId, [FromBody] CreateIssueRequest req, CancellationToken ct) => Created(await issues.CreateAsync(projectId, req, ct));

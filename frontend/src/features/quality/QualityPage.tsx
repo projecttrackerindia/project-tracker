@@ -227,7 +227,7 @@ function Detail({ c, run, result, onFiled }: { c: TestCase; run: TestRun | null;
         {picking ? (
           <select className="qa-assign" autoFocus aria-label="Assign the bug to" defaultValue="" onChange={(e) => { if (e.target.value) void file(e.target.value); }} onBlur={() => setPicking(false)}>
             <option value="" disabled>Assign to…</option>
-            {(members.data ?? []).filter((x) => x.role !== 'Guest').map((x) => <option key={x.userId} value={x.userId}>{x.displayName}</option>)}
+            {(members.data ?? []).filter((x) => x.role !== 'Guest' && x.isActive !== false).map((x) => <option key={x.userId} value={x.userId}>{x.displayName}</option>)}
           </select>
         ) : <button type="button" className="dq-btn" disabled={!canFile || busy || !!result?.linkedWorkItemId} onClick={() => setPicking(true)}>Assign to…</button>}
       </div>

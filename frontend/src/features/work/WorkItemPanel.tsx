@@ -170,7 +170,7 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
   const editable = canEditOf(w);
   const me = useAuth((s) => s.ctx?.user);
   const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 5 * 60_000 });
-  const people = (members.data ?? []).filter((m) => m.role !== 'Guest');
+  const people = (members.data ?? []).filter((m) => m.role !== 'Guest' && m.isActive !== false);
   const project = useWsQuery(['project', w.projectId], () => projectApi.get(w.projectId!), { enabled: w.kind === 'task' && !!w.projectId, staleTime: 60_000 });
   const statuses = w.kind === 'task'
     ? [...(project.data?.statuses ?? [])].sort((a, b) => a.order - b.order).map((s) => ({ id: s.id, label: s.name }))

@@ -129,7 +129,8 @@ try {
   await page.waitForFunction(() => document.title.startsWith('(5) '));
   checks.push('bell-before-new', 'badge-and-title');
 
-  // Open: a ~400px popover; All shows the stack of three from #MuleSoft Support collapsed to one card with "2 more".
+  // Open: a ~400px popover; All shows only what is unread: the two unread from #MuleSoft Support collapsed to one card with "1 more". What is
+  // read (m3, w2) waits in a collapsed "Read" section at the end, off by default.
   await bell(page).click();
   await pop(page).waitFor();
   await card(page, 'm1').waitFor();
@@ -138,15 +139,28 @@ try {
   assert.equal(await page.locator('.ncx-seg [role=tab]').count(), 5);
   assert.match(await page.locator('.ncx-seg [aria-selected=true]').innerText(), /^All/);
   assert.equal(await card(page, 'm2').count(), 0, 'stacked behind m1');
-  assert.match(await page.locator('.ncx-more-from').first().innerText(), /2 more from #MuleSoft Support/);
-  assert.match(await card(page, 'w2').innerText(), /<img src=x/);
-  assert.equal(await page.evaluate(() => window.ncxUnsafe), undefined, 'notification text is text');
+  assert.match(await page.locator('.ncx-more-from').first().innerText(), /1 more from #MuleSoft Support/);
+  assert.equal(await card(page, 'm3').count(), 0, 'read: hidden by default');
+  assert.equal(await card(page, 'w2').count(), 0, 'read: hidden by default');
   assert.ok(await page.locator('.ncx-sec h3', { hasText: 'Today' }).count());
-  assert.ok(await page.locator('.ncx-sec h3', { hasText: 'Earlier' }).count());
+  const readToggle = page.locator('.ncx-read-toggle');
+  assert.equal(await readToggle.getAttribute('aria-expanded'), 'false');
+  assert.match(await readToggle.innerText(), /Read\s*2/);
+  assert.ok(await page.evaluate(() => { const secs = [...document.querySelectorAll('.ncx-scroll > .ncx-sec')]; return secs.at(-1)?.classList.contains('ncx-read'); }), 'Read is the last section');
   await shot(page, 'centre-desktop.png');
+  await readToggle.click();
+  await card(page, 'w2').waitFor();
+  assert.ok(await page.locator('.ncx-read .ncx-card[data-id="m3"]').count(), 'm3 under Read');
+  await card(page, 'w2').scrollIntoViewIfNeeded();
+  assert.match(await card(page, 'w2').textContent(), /<img src=x/);
+  assert.equal(await page.evaluate(() => window.ncxUnsafe), undefined, 'notification text is text');
+  await shot(page, 'centre-read-open.png');
+  await readToggle.click();
+  assert.equal(await card(page, 'w2').count(), 0, 'Read collapses again');
+  checks.push('unread-only-default', 'read-section');
   await page.locator('.ncx-more-from').first().click();
   await card(page, 'm2').waitFor();
-  assert.equal(await page.locator('.ncx-stack.open .ncx-card').count(), 3);
+  assert.equal(await page.locator('.ncx-stack.open .ncx-card').count(), 2);
   checks.push('panel', 'stacks-expand');
   await shot(page, 'centre-stack-open.png');
 
@@ -157,13 +171,18 @@ try {
   const sent = await waitFor((w) => w.method === 'POST' && w.ep === `/api/v1/chat/conversations/${CONV}/messages`, 'chat send');
   assert.equal(sent.b.body, 'Checking the logs now');
   await waitFor((w) => w.ep === '/api/v1/notifications/m2/read', 'mark read after reply');
-  checks.push('inline-reply');
+  // Read now: it leaves the unread list (m1 is alone again) and waits under Read with m3, stacked by the same conversation.
+  await page.waitForFunction(() => !document.querySelector('.ncx-sec:not(.ncx-read) .ncx-card[data-id="m2"]'));
+  assert.ok(await page.locator('.ncx-sec:not(.ncx-read) .ncx-card[data-id="m1"]').count(), 'm1 still unread');
+  checks.push('inline-reply', 'read-moves-to-read');
 
-  // Clear a stack: one call with its ids.
-  await page.locator('.ncx-stack.open .ncx-pill.x').click();
+  // Clear a stack: one call with its ids (the read pair from #MuleSoft Support, under Read).
+  await page.locator('.ncx-read-toggle').click();
+  await page.locator('.ncx-read .ncx-more-from').first().click();
+  await page.locator('.ncx-read .ncx-stack.open .ncx-pill.x').click();
   const cleared = await waitFor((w) => w.ep === '/api/v1/notifications/clear' && w.b?.ids, 'clear stack');
-  assert.deepEqual([...cleared.b.ids].sort(), ['m1', 'm2', 'm3']);
-  await page.waitForFunction(() => !document.querySelector('.ncx-card[data-id="m1"]'));
+  assert.deepEqual([...cleared.b.ids].sort(), ['m2', 'm3']);
+  await page.waitForFunction(() => !document.querySelector('.ncx-card[data-id="m2"]') && !document.querySelector('.ncx-card[data-id="m3"]'));
   checks.push('clear-stack');
 
   // Snooze from the hover actions: 15 minutes.
@@ -175,7 +194,8 @@ try {
   assert.ok(mins > 13 && mins < 16, `snoozed ~15 min (${mins})`);
   checks.push('snooze');
 
-  // Delete from the hover actions.
+  // Delete from the hover actions (w2 is read: under Read, which is open).
+  await card(page, 'w2').scrollIntoViewIfNeeded();
   await card(page, 'w2').hover();
   await card(page, 'w2').getByRole('button', { name: 'Delete' }).click();
   await waitFor((w) => w.method === 'DELETE' && w.ep === '/api/v1/notifications/w2', 'delete');

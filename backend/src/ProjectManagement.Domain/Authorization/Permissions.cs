@@ -59,6 +59,9 @@ public static class Permissions
     /// <summary>Permissions that can never be changed from their defaults.</summary>
     public static readonly string[] Locked = [PermissionsManage, OrgManage];
 
+    /// <summary>Permissions the Admin access level always keeps at its default: running the organization and handing out access stay with admins.</summary>
+    public static readonly string[] AdminLocked = [AccessManage, OrgStructure, PermissionsManage, OrgManage];
+
     private static readonly Dictionary<TenantRole, HashSet<string>> Defaults = new()
     {
         [TenantRole.Owner] = [.. All],

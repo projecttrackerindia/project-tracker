@@ -5,7 +5,8 @@ import { ApiError } from '../../api/client';
 import { insightApi, integrationsApi, timeApi } from '../../api/endpoints';
 import type { ApprovalRow, DevLink, TimesheetGrid } from '../../api/types';
 import { Face } from '../../components/Face';
-import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { invalidateWorkspace, useCachedWsQuery, useWsQuery } from '../../lib/hooks';
+import { refreshWork } from '../work/workUi';
 import { todayISO } from '../../lib/format';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -38,8 +39,8 @@ export function PhoneToday() {
   const wid = useWorkspaceId();
   const nav = useNavigate();
   const today = todayISO();
-  const briefing = useWsQuery(['inbox', 'briefing'], inboxApi.briefing, { staleTime: 30_000 });
-  const inbox = useWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { staleTime: 30_000 });
+  const briefing = useCachedWsQuery(['inbox', 'briefing'], inboxApi.briefing, { staleTime: 30_000 });
+  const inbox = useCachedWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { staleTime: 30_000 });
   const rows = inbox.data?.rows ?? [];
   const outage = rows.find((r) => r.kind === 'ticket' && r.urgent) ?? null;
   // The timesheet card shows the approval itself, so its row is not listed twice.
@@ -56,7 +57,7 @@ export function PhoneToday() {
       await inboxApi.act(r);
       setDone((s) => new Set(s).add(r.id));
       toast(DONE_TEXT[r.action.verb] ?? 'Done.');
-      window.setTimeout(() => void invalidateWorkspace(wid, 'inbox'), 700);
+      window.setTimeout(() => { void invalidateWorkspace(wid, 'inbox'); void invalidateWorkspace(wid, 'reminders'); refreshWork(wid); }, 700);
     } catch (e) { toast(errText(e, 'That could not be done here. Open it instead.'), 'error'); }
     finally { setBusy(null); }
   };

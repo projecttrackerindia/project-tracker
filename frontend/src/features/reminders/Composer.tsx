@@ -289,7 +289,7 @@ function Composer({ draft, onClose }: { draft: ComposerDraft; onClose: () => voi
               <Select className="input" value={forUser} onChange={(e) => setForUser(e.target.value)} aria-label="Remind who" disabled={!!editing}>
                 <option value="">Me</option>
                 {assignee && !members.data?.some((x) => x.userId === assignee.id) && <option value={assignee.id}>{assignee.name}</option>}
-                {(members.data ?? []).filter((x) => x.userId !== me).map((x) => <option key={x.userId} value={x.userId}>{x.displayName}</option>)}
+                {(members.data ?? []).filter((x) => x.userId !== me && x.isActive !== false).map((x) => <option key={x.userId} value={x.userId}>{x.displayName}</option>)}
               </Select>
             </label>
             {assignee && !forUser && !editing && <button type="button" className="rc-chip" onClick={() => setForUser(assignee.id)}><Icon name="user" size={13} /> Remind {assignee.name}</button>}

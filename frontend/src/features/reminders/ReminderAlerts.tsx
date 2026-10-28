@@ -26,6 +26,7 @@ export function ReminderAlerts() {
   const enabled = !!wid && !!user && !user.isPlatformAdmin;
   const counts = useReminderCounts(enabled);
   const [alerts, setAlerts] = useState<ReminderEvent[]>([]);
+  const [busy, setBusy] = useState<Set<string>>(() => new Set());
   const shown = useRef(new Map<string, number>());
   const lastNow = useRef<number | null>(null);
 
@@ -55,7 +56,7 @@ export function ReminderAlerts() {
     if (lastNow.current != null && n > lastNow.current) {
       void reminderApi.list().then((list) => push(list.open
         .filter((r) => r.state === 'Fired' && !r.quiet && r.lastFiredAt && Date.now() - Date.parse(r.lastFiredAt) < 180_000 && fresh(r.id))
-        .map((r) => ({ id: r.id, title: r.title, note: r.note, targetKey: r.targetKey, link: r.link, source: r.source, from: r.from?.name ?? null })))).catch(() => undefined);
+        .map((r) => ({ id: r.id, title: r.title, note: r.note, targetKey: r.targetKey, link: r.link, source: r.source, from: r.from?.name ?? null, nextFireAt: r.nextFireAt, lastFiredAt: r.lastFiredAt })))).catch(() => undefined);
     }
     lastNow.current = n;
   }, [counts.data?.now]);
@@ -78,11 +79,15 @@ export function ReminderAlerts() {
   }, [alerts.length]);
 
   const dismiss = (id: string) => setAlerts((a) => a.filter((x) => x.id !== id));
+  // One press per alert: the buttons are disabled while it is on its way, and the occurrence it saw goes with it.
   const act = async (id: string, run: () => Promise<unknown>, message: string) => {
-    dismiss(id);
-    try { await run(); await refreshReminders(wid); toast(message, 'success'); }
-    catch { toast('That did not work. Open Reminders to try again.', 'error'); }
+    if (busy.has(id)) return;
+    setBusy((b) => new Set(b).add(id));
+    try { await run(); dismiss(id); await refreshReminders(wid); toast(message, 'success'); }
+    catch { dismiss(id); await refreshReminders(wid); toast('That reminder changed or did not save. Open Reminders to check it.', 'error'); }
+    finally { setBusy((b) => { const n = new Set(b); n.delete(id); return n; }); }
   };
+  const seenOf = (a: ReminderEvent) => (a.nextFireAt !== undefined || a.lastFiredAt !== undefined ? { nextFireAt: a.nextFireAt, lastFiredAt: a.lastFiredAt } : undefined);
 
   if (!alerts.length) return null;
   return (
@@ -95,9 +100,9 @@ export function ReminderAlerts() {
             <b>{a.title}</b>
             {(a.note || a.targetKey) && <span className="ra-sub">{a.note ?? a.targetKey}</span>}
             <div className="ra-actions">
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => void act(a.id, () => reminderApi.done(a.id), 'Done.')}><Icon name="tick" size={14} /> Done</button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={busy.has(a.id)} onClick={() => void act(a.id, () => reminderApi.done(a.id, seenOf(a)), 'Done.')}><Icon name="tick" size={14} /> Done</button>
               {(['1h', 'tomorrow'] as SnoozePreset[]).map((p) => (
-                <button key={p} type="button" className="btn btn-ghost btn-sm" onClick={() => void act(a.id, () => reminderApi.snooze(a.id, p), p === '1h' ? 'Snoozed for an hour.' : 'Snoozed until tomorrow.')}>
+                <button key={p} type="button" className="btn btn-ghost btn-sm" disabled={busy.has(a.id)} onClick={() => void act(a.id, () => reminderApi.snooze(a.id, p, undefined, seenOf(a)), p === '1h' ? 'Snoozed for an hour.' : 'Snoozed until tomorrow.')}>
                   {p === '1h' ? '1 hour' : 'Tomorrow'}
                 </button>
               ))}

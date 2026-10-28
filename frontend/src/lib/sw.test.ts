@@ -12,10 +12,16 @@ function loadWorker() {
   const setAppBadge = vi.fn(() => Promise.resolve());
   const clearAppBadge = vi.fn(() => Promise.resolve());
   const showNotification = vi.fn(() => Promise.resolve());
+  const shown = [
+    { tag: 'n1', data: { link: '/chat/c1' }, close: vi.fn() },
+    { tag: 'n2', data: { link: '/projects/p?task=t1' }, close: vi.fn() },
+    { tag: 'n3', data: { link: '/acme/chat/c9' }, close: vi.fn() },
+  ];
+  const getNotifications = vi.fn(() => Promise.resolve(shown));
   const self = {
     addEventListener: (type: string, h: Handler) => { handlers[type] = h; },
     navigator: { setAppBadge, clearAppBadge },
-    registration: { showNotification },
+    registration: { showNotification, getNotifications },
     clients: { matchAll: () => Promise.resolve([]), openWindow: vi.fn(() => Promise.resolve()), claim: () => Promise.resolve() },
     location: { origin: 'https://app.example.test' },
     skipWaiting: vi.fn(),
@@ -27,7 +33,7 @@ function loadWorker() {
     handlers[type]({ ...extra, waitUntil: (p: Promise<unknown>) => waits.push(p) });
     await Promise.all(waits);
   };
-  return { fire, setAppBadge, clearAppBadge, showNotification };
+  return { fire, setAppBadge, clearAppBadge, showNotification, shown };
 }
 
 const push = (payload: object) => ({ data: { json: () => payload, text: () => JSON.stringify(payload) } });
@@ -56,5 +62,24 @@ describe('service worker badge', () => {
     expect(w.setAppBadge).toHaveBeenLastCalledWith(2);
     await w.fire('message', { data: { type: 'pm-badge', count: 0 } });
     expect(w.clearAppBadge).toHaveBeenCalled();
+  });
+});
+
+describe('service worker: read elsewhere', () => {
+  it('closes the OS notifications the open page says were read (by tag and by link)', async () => {
+    const w = loadWorker();
+    await w.fire('message', { data: { type: 'pm-read', tags: ['n1'], links: ['/chat/c9'] } });
+    expect(w.shown[0].close).toHaveBeenCalled();
+    expect(w.shown[1].close).not.toHaveBeenCalled();
+    expect(w.shown[2].close).toHaveBeenCalled();
+  });
+
+  it('a read push closes the matching notifications, sets the badge and shows nothing', async () => {
+    const w = loadWorker();
+    await w.fire('push', push({ kind: 'read', tags: ['n2'], badge: 4 }));
+    expect(w.shown[1].close).toHaveBeenCalled();
+    expect(w.shown[0].close).not.toHaveBeenCalled();
+    expect(w.setAppBadge).toHaveBeenLastCalledWith(4);
+    expect(w.showNotification).not.toHaveBeenCalled();
   });
 });

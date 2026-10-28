@@ -190,7 +190,7 @@ export const meetingApi = {
   participants: (projectId: string) => get<MeetingParticipant[]>(`/projects/${projectId}/meetings/participants`),
   start: (projectId: string, b: { title?: string; participantUserIds?: string[]; service?: MeetingServiceKey; notetaker?: NotetakerChoice }) => post<Meeting>(`/projects/${projectId}/meetings/start`, b),
   schedule: (projectId: string, b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean; service?: MeetingServiceKey; notetaker?: NotetakerChoice }) =>
-    post<Meeting>(`/projects/${projectId}/meetings/schedule`, b),
+    create<Meeting>(`/projects/${projectId}/meetings/schedule`, b),
   get: (id: string) => get<Meeting>(`/meetings/${id}`),
   cancel: (id: string) => post(`/meetings/${id}/cancel`, {}),
   reschedule: (id: string, b: { startTime: string; endTime: string }) => post<Meeting>(`/meetings/${id}/reschedule`, b),
@@ -199,7 +199,7 @@ export const meetingApi = {
   /** A meeting for the workspace as a whole (no project): its own invitee list and endpoint; Google, Outlook or our own calls hold it. */
   workspaceParticipants: () => get<MeetingParticipant[]>('/meetings/participants'),
   scheduleForWorkspace: (b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean; service?: MeetingServiceKey }) =>
-    post<{ id: string; title: string; meetUri: string; calendarUrl: string | null; participantCount: number; provider?: MeetingProvider; providerName?: string }>('/meetings/schedule', b),
+    create<{ id: string; title: string; meetUri: string; calendarUrl: string | null; participantCount: number; provider?: MeetingProvider; providerName?: string }>('/meetings/schedule', b),
   workspaceGet: (id: string) => get<WorkspaceMeetingDetail>(`/meetings/workspace/${id}`),
   workspaceCancel: (id: string) => post(`/meetings/workspace/${id}/cancel`, {}),
   workspaceReschedule: (id: string, b: { startTime: string; endTime: string }) => post<WorkspaceMeetingDetail>(`/meetings/workspace/${id}/reschedule`, b),

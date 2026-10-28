@@ -1,3 +1,4 @@
+using ProjectManagement.Application.Features.Notifications;
 using Microsoft.AspNetCore.Mvc;
 using ProjectManagement.Api.Filters;
 using ProjectManagement.Application.Features.Files;
@@ -8,7 +9,7 @@ namespace ProjectManagement.Api.Controllers.Work;
 
 /// <summary>Work tasks: operational work (bug fixes, support, analysis ...) kept apart from project tasks. See <see cref="WorkTaskService"/> for the rules.</summary>
 [Route("api/v1"), RequireWorkspace, RequireModule(Modules.Work)]
-public class WorkTasksController(WorkTaskService work) : ApiControllerBase
+public class WorkTasksController(WorkTaskService work, NotificationService notifications) : ApiControllerBase
 {
     private const long RequestCeiling = FileRules.AbsoluteMaxBytes + 4 * FileRules.Mb;
 
@@ -29,7 +30,12 @@ public class WorkTasksController(WorkTaskService work) : ApiControllerBase
     }
 
     [HttpGet("work-tasks/{id:guid}")]
-    public async Task<IActionResult> Get(Guid id, CancellationToken ct) => Ok(await work.GetAsync(id, ct));
+    public async Task<IActionResult> Get(Guid id, CancellationToken ct)
+    {
+        var task = await work.GetAsync(id, ct);
+        await notifications.MarkSeenAsync(NotificationTargets.WorkTask, id, ct);   // opened: its notices are read
+        return Ok(task);
+    }
 
     [HttpPost("work-tasks"), RequireModule(Modules.Work, AccessLevel.Edit)]
     public async Task<IActionResult> Create([FromBody] CreateWorkTaskRequest req, CancellationToken ct) => Created(await work.CreateAsync(req, ct));

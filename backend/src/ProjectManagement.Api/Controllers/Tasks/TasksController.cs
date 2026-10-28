@@ -1,3 +1,4 @@
+using ProjectManagement.Application.Features.Notifications;
 using Microsoft.AspNetCore.Mvc;
 using ProjectManagement.Api.Filters;
 using ProjectManagement.Application.Features.Insights;
@@ -8,10 +9,15 @@ using ProjectManagement.Domain;
 namespace ProjectManagement.Api.Controllers.Tasks;
 
 [Route("api/v1"), RequireWorkspace, RequireModule(Modules.Tasks)]
-public class TasksController(TaskService tasks) : ApiControllerBase
+public class TasksController(TaskService tasks, NotificationService notifications) : ApiControllerBase
 {
     [HttpGet("tasks/{id:guid}")]
-    public async Task<IActionResult> Get(Guid id, CancellationToken ct) => Ok(await tasks.GetAsync(id, ct));
+    public async Task<IActionResult> Get(Guid id, CancellationToken ct)
+    {
+        var task = await tasks.GetAsync(id, ct);
+        await notifications.MarkSeenAsync(NotificationTargets.WorkTask, id, ct);   // opened: its notices are read
+        return Ok(task);
+    }
 
     [HttpPut("tasks/{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateTaskRequest req, CancellationToken ct) => Ok(await tasks.UpdateAsync(id, req, ct));

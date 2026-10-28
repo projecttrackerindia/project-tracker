@@ -27,7 +27,8 @@ public record UpdateWorkspaceRequest(string Name, string? Description);
 public record SetWorkspaceTimeZoneRequest(string? TimeZone);
 public record SwitchResult(string AccessToken, DateTime ExpiresAt);
 
-public record MemberDto(Guid UserId, string DisplayName, string Email, TenantRole Role, DateTime JoinedAt, string? JobRole = null, bool HasAvatar = false);
+public record MemberDto(Guid UserId, string DisplayName, string Email, TenantRole Role, DateTime JoinedAt, string? JobRole = null, bool HasAvatar = false,
+    MemberStatus Status = MemberStatus.Active, bool IsActive = true, Guid? OrgRoleId = null, Guid? ReportsToUserId = null, IReadOnlyList<Guid>? TeamIds = null);
 public record UpdateMemberRoleRequest(TenantRole Role);
 /// <summary>Creates the account directly: the administrator picks the first password, which the person must replace at first sign-in.</summary>
 public record CreateMemberRequest(string Email, string DisplayName, TenantRole Role, string Password, Guid? OrgRoleId = null, Guid? ReportsToUserId = null);
@@ -42,7 +43,8 @@ public record AcceptInvitationRequest(string Token);
 /// has its own access settings: <see cref="NotAppliedTo"/> names those people, so a change here never silently misses anyone.
 /// </summary>
 public record PermissionMatrixDto(IReadOnlyList<TenantRole> Roles, IReadOnlyList<string> Permissions, IReadOnlyList<string> Locked,
-    IReadOnlyDictionary<string, IReadOnlyDictionary<string, bool>> Matrix, bool CanEdit, IReadOnlyList<string>? NotAppliedTo = null);
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, bool>> Matrix, bool CanEdit, IReadOnlyList<string>? NotAppliedTo = null,
+    IReadOnlyList<string>? AdminLocked = null);
 public record SetPermissionRequest(TenantRole Role, string Permission, bool Allowed);
 
 public class WorkspaceService(
@@ -50,7 +52,7 @@ public class WorkspaceService(
     AppClock clock, Recorder recorder, WorkspaceProvisioner provisioner, PermissionService permissions, EntitlementService entitlements,
     ProjectManagement.Application.Features.Organization.ReportingLineService reporting, ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity,
     ProjectManagement.Application.Features.Consent.ConsentService consent, IPasswordHasher hasher, PasswordPolicyService passwordPolicy, ILogger<WorkspaceService> log,
-    ProjectManagement.Application.Features.Vault.VaultOffboarding vaultOffboarding)
+    ProjectManagement.Application.Features.Vault.VaultOffboarding vaultOffboarding, ProjectManagement.Application.Features.Organization.OrgGrantGuard orgGuard)
 {
     private readonly AppOptions _opt = options.Value;
     private const int MaxOwnedOrganizations = 10;
@@ -201,16 +203,21 @@ public class WorkspaceService(
 
     // ---------------------------------------------------------------- members
 
-    public async Task<IReadOnlyList<MemberDto>> GetMembersAsync(CancellationToken ct = default)
+    /// <param name="assignable">Only people who can be given work now: suspended members and accounts deactivated on the platform are left out.</param>
+    public async Task<IReadOnlyList<MemberDto>> GetMembersAsync(CancellationToken ct = default, bool assignable = false)
     {
         var tid = ctx.RequireTenantId();
         var hideEmail = ctx.Role == TenantRole.Guest;
-        var rows = await db.TenantMembers.AsNoTracking().Include(m => m.User)
-            .Where(m => m.TenantId == tid).OrderByDescending(m => m.Role).ThenBy(m => m.User!.DisplayName).ToListAsync(ct);
+        var query = db.TenantMembers.AsNoTracking().Include(m => m.User).Where(m => m.TenantId == tid);
+        if (assignable) query = query.Where(m => m.Status == MemberStatus.Active && m.User!.IsActive);
+        var rows = await query.OrderByDescending(m => m.Role).ThenBy(m => m.User!.DisplayName).ToListAsync(ct);
+        var teamsOf = (await db.TeamMembers.AsNoTracking().Where(t => t.TenantId == tid).Select(t => new { t.UserId, t.TeamId }).ToListAsync(ct))
+            .GroupBy(t => t.UserId).ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(t => t.TeamId).ToList());
         var roleIds = rows.Where(m => m.OrgRoleId != null).Select(m => m.OrgRoleId!.Value).Distinct().ToList();
         var roleNames = await db.OrgRoles.AsNoTracking().Where(r => roleIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Name, ct); // deleted roles are filtered out
         return rows.Select(m => new MemberDto(m.UserId, m.User!.DisplayName, hideEmail ? "" : m.User.Email, m.Role, m.CreatedAt,
-            m.OrgRoleId is { } rid && roleNames.TryGetValue(rid, out var jobRole) ? jobRole : null, m.User.AvatarKey is not null)).ToList();
+            m.OrgRoleId is { } rid && roleNames.TryGetValue(rid, out var jobRole) ? jobRole : null, m.User.AvatarKey is not null,
+            m.Status, m.Status == MemberStatus.Active && m.User.IsActive, m.OrgRoleId, m.ReportsToUserId, teamsOf.GetValueOrDefault(m.UserId) ?? [])).ToList();
     }
 
     /// <summary>
@@ -231,8 +238,11 @@ public class WorkspaceService(
         {
             await permissions.RequireAsync(Permissions.OrgStructure, ct);
             if (req.OrgRoleId is { } roleId)
+            {
                 jobRoleName = await db.OrgRoles.Where(r => r.Id == roleId).Select(r => r.Name).FirstOrDefaultAsync(ct)
                     ?? throw new ValidationException("orgRoleId", "That job role does not exist.");
+                await orgGuard.EnsureRoleGrantableAsync(roleId, ct);   // a delegate cannot hand out a role above or beyond their own
+            }
             if (req.ReportsToUserId is { } bossId && !await db.TenantMembers.AnyAsync(m => m.TenantId == tid && m.UserId == bossId, ct))
                 throw new ValidationException("reportsToUserId", "That person is not a member of this organization.");
         }
@@ -329,8 +339,30 @@ public class WorkspaceService(
         foreach (var report in await db.TenantMembers.Where(m => m.TenantId == tid && m.ReportsToUserId == userId).ToListAsync(ct))
             report.ReportsToUserId = member.ReportsToUserId;
 
-        db.ProjectMembers.RemoveRange(await db.ProjectMembers.Where(p => p.UserId == userId).ToListAsync(ct));
-        db.TeamMembers.RemoveRange(await db.TeamMembers.Where(p => p.UserId == userId).ToListAsync(ct));
+        // Every lookup names the tenant explicitly: the person may belong to other workspaces, and soft-delete filters must not hide rows.
+        db.ProjectMembers.RemoveRange(await db.ProjectMembers.IgnoreQueryFilters().Where(p => p.TenantId == tid && p.UserId == userId).ToListAsync(ct));
+        db.TeamMembers.RemoveRange(await db.TeamMembers.IgnoreQueryFilters().Where(p => p.TenantId == tid && p.UserId == userId).ToListAsync(ct));
+        // Documents shared with them personally are no longer shared.
+        db.DocumentGrants.RemoveRange(await db.DocumentGrants.IgnoreQueryFilters()
+            .Where(g => g.TenantId == tid && g.PrincipalType == GrantPrincipal.User && g.PrincipalId == userId).ToListAsync(ct));
+        // They leave group and project chats (their messages stay); a group keeps someone who can manage it.
+        var chatRows = await (from cm in db.ConversationMembers.IgnoreQueryFilters()
+                              join c in db.Conversations.IgnoreQueryFilters() on cm.ConversationId equals c.Id
+                              where cm.TenantId == tid && c.TenantId == tid && cm.UserId == userId && c.Type != ConversationType.Direct
+                              select new { Row = cm, c.Type }).ToListAsync(ct);
+        foreach (var row in chatRows)
+        {
+            db.ConversationMembers.Remove(row.Row);
+            if (row.Type == ConversationType.Group && row.Row.Role == ConversationRole.Admin)
+            {
+                var others = await db.ConversationMembers.IgnoreQueryFilters()
+                    .Where(m => m.TenantId == tid && m.ConversationId == row.Row.ConversationId && m.UserId != userId).OrderBy(m => m.CreatedAt).ToListAsync(ct);
+                if (others.Count > 0 && !others.Any(m => m.Role == ConversationRole.Admin)) others[0].Role = ConversationRole.Admin;
+            }
+        }
+        // Invitations they sent and that nobody accepted yet are withdrawn: they can no longer vouch for anyone here.
+        foreach (var invite in await db.TenantInvitations.Where(i => i.TenantId == tid && i.CreatedBy == userId && i.Status == InvitationStatus.Pending).ToListAsync(ct))
+            invite.Status = InvitationStatus.Revoked;
         db.TenantMembers.Remove(member);
         // Their own vault locks, their shares go, and anything they read in the last 90 days is marked to be changed.
         await vaultOffboarding.OnLeavingAsync(tid, userId, member.User!.DisplayName, leaving ? null : ctx.UserId, ct);
@@ -384,8 +416,11 @@ public class WorkspaceService(
         {
             await permissions.RequireAsync(Permissions.OrgStructure, ct);
             if (req.OrgRoleId is { } roleId)
+            {
                 jobRoleName = await db.OrgRoles.Where(r => r.Id == roleId).Select(r => r.Name).FirstOrDefaultAsync(ct)
                     ?? throw new ValidationException("orgRoleId", "That job role does not exist.");
+                await orgGuard.EnsureRoleGrantableAsync(roleId, ct);   // a delegate cannot hand out a role above or beyond their own
+            }
             if (req.ReportsToUserId is { } bossId)
                 reportsToName = await db.TenantMembers.Where(m => m.TenantId == tid && m.UserId == bossId).Select(m => m.User!.DisplayName).FirstOrDefaultAsync(ct)
                     ?? throw new ValidationException("reportsToUserId", "That person is not a member of this organization.");
@@ -477,6 +512,9 @@ public class WorkspaceService(
             throw new ConflictException("This organization is no longer available.", "INVITATION_INVALID");
 
         var existingMember = await db.TenantMembers.FirstOrDefaultAsync(m => m.TenantId == invite.TenantId && m.UserId == userId, ct);
+        // The inviter must still be here and still allowed to grant what the invitation promises (they may have left or been demoted since).
+        if (existingMember is null && await orgGuard.InviterProblemAsync(invite, ct) is { } problem)
+            throw new ConflictException(problem, "INVITATION_INVALID");
         var members = await db.TenantMembers.CountAsync(m => m.TenantId == invite.TenantId, ct);
         if (existingMember is null)
         {
@@ -530,7 +568,7 @@ public class WorkspaceService(
                                     && (m.Role == TenantRole.Manager || m.Role == TenantRole.Member || m.Role == TenantRole.Guest)
                               orderby u.DisplayName
                               select new { u.DisplayName, Role = r.Name }).ToListAsync(ct);
-        return new PermissionMatrixDto(roles, Permissions.All, Permissions.Locked, matrix, canEdit, profiled.Select(p => $"{p.DisplayName} ({p.Role})").ToList());
+        return new PermissionMatrixDto(roles, Permissions.All, Permissions.Locked, matrix, canEdit, profiled.Select(p => $"{p.DisplayName} ({p.Role})").ToList(), Permissions.AdminLocked);
     }
 
     public async Task SetPermissionAsync(SetPermissionRequest req, CancellationToken ct = default)
@@ -542,6 +580,12 @@ public class WorkspaceService(
         if (!Permissions.All.Contains(req.Permission)) throw new ValidationException("permission", "Unknown permission.");
         if (req.Role == TenantRole.Owner) throw new ValidationException("role", "Owner permissions cannot be changed.");
         if (Permissions.Locked.Contains(req.Permission)) throw new ValidationException("permission", "This permission cannot be changed.");
+        // Nobody but the owner edits the defaults of their own access level or one above it.
+        if (ctx.Role != TenantRole.Owner && req.Role >= ctx.Role)
+            throw new ForbiddenException("You can only change the permissions of access levels below your own.", "PERMISSION_DENIED");
+        // What lets someone run the organization or hand out access stays with the Admin access level.
+        if (req.Role == TenantRole.Admin && Permissions.AdminLocked.Contains(req.Permission))
+            throw new ValidationException("permission", "This permission of the Admin access level cannot be changed.");
 
         var row = await db.RolePermissionOverrides.FirstOrDefaultAsync(o => o.Role == req.Role && o.Permission == req.Permission, ct);
         var isDefault = Permissions.DefaultAllowed(req.Role, req.Permission) == req.Allowed;

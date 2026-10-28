@@ -17,6 +17,9 @@ import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { PRIORITY_ORDER, refreshWork, useWorkList } from './workUi';
 import { PrChips, usePrStatus } from '../github/PrChips';
+import { focusBlocks, hourOf } from '../calendar/plannerModel';
+import { shiftIsoDate } from '../../lib/zone';
+import { completedClock, completedToday, myWorkBucket, weekEndOf } from './myWorkRules';
 import { SavedViewsBar } from '../platform/SavedViews';
 
 /* ------------------------------------------------------------------ rules */
@@ -42,7 +45,6 @@ const SORTS: Record<Sort, (a: WorkRow, b: WorkRow) => number> = {
   due: (a, b) => dueOf(a).localeCompare(dueOf(b)) || PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority],
   priority: (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || dueOf(a).localeCompare(dueOf(b)),
 };
-const localDay = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const hm = (h: number) => { const hh = Math.floor(h), mm = Math.round((h - hh) * 60); const t = hh > 12 ? hh - 12 : hh; return mm ? `${t}:${String(mm).padStart(2, '0')}` : `${t}:00`; };
 const dur = (min: number) => { const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`; };
 
@@ -70,29 +72,26 @@ function reasonFor(w: WorkRow, rest: WorkRow[], focus: { start: number; end: num
   return `${s}.`;
 }
 
-/** Free gaps of an hour or more between today's meetings, from now to 7 PM (the same rule as Today's "Your day"). */
+/** Free gaps of an hour or more between today's meetings, from now to 7 PM: the shared rule (calendar/plannerModel focusBlocks), in the app's zone. */
 function useFocusBlocks() {
   const today = todayISO();
   const q = useWsQuery(['calendar', 'range', today, today, 'me'], () => insightApi.calendar(today, today, undefined, true), { staleTime: 60_000, retry: false });
   return useMemo(() => {
-    const hourOf = (d: Date) => d.getHours() + d.getMinutes() / 60;
     const busy = (q.data ?? []).filter((e) => e.type === 'meeting' && e.startsAt && e.status !== 'Cancelled')
-      .map((e) => { const h = hourOf(new Date(e.startsAt!)); return [h, h + (e.durationMinutes ?? 30) / 60] as const; }).sort((a, b) => a[0] - b[0]);
+      .map((e) => { const h = hourOf(new Date(e.startsAt!)); return [h, h + (e.durationMinutes ?? 30) / 60] as const; });
     const END = 19;
-    let cur = Math.max(9, Math.ceil(hourOf(new Date()) * 4) / 4);
-    const blocks: { start: number; end: number }[] = [];
-    if (cur >= END) return { blocks, minutes: 0 };
-    const gaps: [number, number][] = [];
-    for (const [a, b] of busy) { if (a > cur) gaps.push([cur, Math.min(a, END)]); cur = Math.max(cur, b); if (cur >= END) break; }
-    if (cur < END) gaps.push([cur, END]);
-    for (const [a, b] of gaps) if (b - a >= 1 && blocks.length < 2) blocks.push({ start: a, end: a + Math.min(1.5, b - a) });
+    const from = Math.max(9, Math.ceil(hourOf(new Date()) * 4) / 4);
+    if (from >= END) return { blocks: [], minutes: 0 };
+    const { blocks } = focusBlocks(busy, from, END, { max: 2, maxLen: 1.5 });
     return { blocks, minutes: blocks.reduce((s, b) => s + (b.end - b.start) * 60, 0) };
   }, [q.data]);
 }
 
 /** Done or started: a task moves to its project's first column of that category, the others to their own status. */
 async function moveTo(w: WorkRow, to: 'Done' | 'Active') {
-  const d = await workItemsApi.get(w.id);
+  // The version this row was read with: a change someone made since is refused (409) instead of being silently overwritten.
+  const version = w.version ?? (await workItemsApi.get(w.id)).version;
+  const d = { version };
   if (w.kind === 'task') {
     const p = w.projectId ? await queryClient.fetchQuery({ queryKey: ['mywork-project', w.projectId], queryFn: () => projectApi.get(w.projectId!), staleTime: 60_000 }) : null;
     const s = [...(p?.statuses ?? [])].sort((a, b) => a.order - b.order).find((x) => x.category === to);
@@ -116,7 +115,7 @@ type LaterStore = Record<string, { later?: LaterMap }>;
 const readOldLater = (): string[] => { try { return JSON.parse(localStorage.getItem(LATER_KEY) ?? '[]') as string[]; } catch { return []; } };
 function useLater(wid: string, today: string) {
   const q = useWsQuery(['ui', 'mywork'], async () => { try { return (await get<{ value: LaterStore | null }>('/me/ui/mywork'))?.value ?? {}; } catch { return null; } }, { staleTime: 5 * 60_000, retry: false });
-  const until = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
+  const until = (days: number) => shiftIsoDate(today, days);   // days in the app's zone, not the device's or UTC
   const mine: LaterMap = q.data?.[wid]?.later ?? Object.fromEntries(readOldLater().map((id) => [id, until(LATER_DAYS)]));
   const ids = Object.entries(mine).filter(([, d]) => d > today).map(([id]) => id);
   const save = (next: LaterMap) => {
@@ -138,9 +137,11 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   const today = todayISO();
   const open = useWorkList({ mine: true });
   const closed = useWorkList({ mine: true, status: 'closed' });
+  const [filter, setFilter] = useState<'all' | 'overdue' | 'raised' | string>('all');
+  // "Raised by me": what I reported, whoever it is assigned to (the server filters on the reporter).
+  const raised = useWorkList({ raisedByMe: true }, filter === 'raised');
   const { blocks, minutes } = useFocusBlocks();
   const [sort, setSort] = useState<Sort>('smart');
-  const [filter, setFilter] = useState<'all' | 'overdue' | string>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   /** Ticked here: struck through in the list and flown off the stack before the server's list catches up. */
   const [ticked, setTicked] = useState<Record<string, WorkRow>>({});
@@ -152,18 +153,21 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
 
   const projects = useMemo(() => [...new Map(open.items.filter((w) => w.projectId).map((w) => [w.projectId!, w.projectName ?? ''])).entries()], [open.items]);
-  const pass = (w: WorkRow) => filter === 'all' || (filter === 'overdue' ? w.isOverdue : w.projectId === filter);
-  const openItems = useMemo(() => open.items.filter((w) => isOpen(w) && !ticked[w.id]).filter(pass).sort(SORTS[sort]), [open.items, ticked, sort, filter]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pass = (w: WorkRow) => filter === 'all' || filter === 'raised' || (filter === 'overdue' ? w.isOverdue : w.projectId === filter);
+  const source = filter === 'raised' ? raised.items : open.items;
+  const openItems = useMemo(() => source.filter((w) => isOpen(w) && !ticked[w.id]).filter(pass).sort(SORTS[sort]), [source, ticked, sort, filter]); // eslint-disable-line react-hooks/exhaustive-deps
   const doneToday = useMemo(() => {
     const m = new Map<string, WorkRow>();
-    for (const w of closed.items) if (localDay(w.updatedAt) === today) m.set(w.id, w);
+    for (const w of closed.items) if (completedToday(w, today)) m.set(w.id, w);
     for (const w of Object.values(ticked)) m.set(w.id, w);
     return [...m.values()].filter(pass);
   }, [closed.items, ticked, today, filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const weekEnd = useMemo(() => { const d = new Date(`${today}T00:00:00`); d.setDate(d.getDate() + 7); return localDay(d.toISOString()); }, [today]);
-  const bucket = (w: WorkRow) => (later.includes(w.id) ? 'later' : !w.dueDate ? 'later' : w.dueDate <= today ? 'today' : w.dueDate <= weekEnd ? 'week' : 'later');
+  const weekEnd = weekEndOf(today);
+  // The shared rules (work/myWorkRules): overdue is its own bucket, never mixed into Today.
+  const bucket = (w: WorkRow) => { if (later.includes(w.id)) return 'later'; const b = myWorkBucket(w, today, weekEnd); return b === 'none' ? 'later' : b; };
   const cols = {
+    overdue: openItems.filter((w) => bucket(w) === 'overdue'),
     today: [...doneToday, ...openItems.filter((w) => bucket(w) === 'today')],
     week: openItems.filter((w) => bucket(w) === 'week'),
     later: openItems.filter((w) => bucket(w) === 'later'),
@@ -186,14 +190,14 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   const complete = (w: WorkRow) => {
     if (drawing) return;
     setDrawing(w.id);
-    const stamp = { ...w, category: 'Done' as const, status: 'Done', updatedAt: new Date().toISOString() };
+    const stamp = { ...w, category: 'Done' as const, status: 'Done', updatedAt: new Date().toISOString(), completedAt: new Date().toISOString() };
     timers.current.push(window.setTimeout(() => { setTicked((t) => ({ ...t, [w.id]: stamp })); setDrawing(null); }, reduce ? 0 : 260));
     moveTo(w, 'Done').then(() => refreshWork(wid)).catch((e: unknown) => {
       setTicked((t) => { const n = { ...t }; delete n[w.id]; return n; }); setDrawing(null);
       toast(e instanceof ApiError || e instanceof Error ? e.message : 'Could not complete it.', 'error');
     });
   };
-  const tickRow = (w: WorkRow) => { if (front && w.id === front.id) complete(w); else { setTicked((t) => ({ ...t, [w.id]: { ...w, category: 'Done', status: 'Done', updatedAt: new Date().toISOString() } }));
+  const tickRow = (w: WorkRow) => { if (front && w.id === front.id) complete(w); else { setTicked((t) => ({ ...t, [w.id]: { ...w, category: 'Done', status: 'Done', updatedAt: new Date().toISOString(), completedAt: new Date().toISOString() } }));
     moveTo(w, 'Done').then(() => refreshWork(wid)).catch((e: unknown) => { setTicked((t) => { const n = { ...t }; delete n[w.id]; return n; }); toast(e instanceof Error ? e.message : 'Could not complete it.', 'error'); }); } };
   const start = (w: WorkRow) => {
     onOpen(w.id);
@@ -217,13 +221,13 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
         <div className="mw-pills">
           <div className="mw-pop-wrap">
             <button type="button" className={`mw-pill ${filter !== 'all' ? 'on' : ''}`} aria-haspopup="menu" aria-expanded={filterOpen} onClick={() => setFilterOpen((v) => !v)}>
-              {filter === 'all' ? 'Filter' : filter === 'overdue' ? 'Overdue' : projects.find(([id]) => id === filter)?.[1] ?? 'Filter'}
+              {filter === 'all' ? 'Filter' : filter === 'overdue' ? 'Overdue' : filter === 'raised' ? 'Raised by me' : projects.find(([id]) => id === filter)?.[1] ?? 'Filter'}
             </button>
             {filterOpen && (
               <div className="mw-pop" role="menu" aria-label="Filter">
-                {[['all', 'Everything'], ['overdue', 'Only overdue'], ...projects].map(([id, name]) => (
+                {[['all', 'Assigned to me'], ['overdue', 'Only overdue'], ['raised', 'Raised by me'], ...projects].map(([id, name]) => (
                   <button key={id} type="button" role="menuitemradio" aria-checked={filter === id} onClick={() => { setFilter(id); setFilterOpen(false); }}>
-                    {projectDot(id === 'all' || id === 'overdue' ? null : id) && <i className="mw-pd" style={{ background: projectDot(id)! }} />}{name}
+                    {projectDot(id === 'all' || id === 'overdue' || id === 'raised' ? null : id) && <i className="mw-pd" style={{ background: projectDot(id)! }} />}{name}
                   </button>
                 ))}
               </div>
@@ -314,10 +318,10 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
       </div>}
 
       <section className="mw-card mw-lists" aria-label="Work list">
-        {([['today', 'Today'], ['week', 'This week'], ['later', 'Later']] as const).map(([id, title]) => (
+        {([['overdue', 'Overdue'], ['today', 'Today'], ['week', 'This week'], ['later', 'Later']] as const).filter(([id]) => id !== 'overdue' || cols.overdue.length > 0).map(([id, title]) => (
           <div key={id} className={`mw-grp g-${id}`} role="group" aria-label={title}>
             <h2>{title} <span>{cols[id].length}</span></h2>
-            {cols[id].map((w) => <Row key={w.id} w={w} pulls={prs.get(w.id)} done={!isOpen(w)} onTick={() => tickRow(w)} onOpen={() => onOpen(w.id)} onBack={later.includes(w.id) ? () => laterStore.remove(w.id) : undefined} />)}
+            {cols[id].map((w) => <Row key={w.id} w={w} pulls={prs.get(w.id)} done={!isOpen(w)} showAssignee={filter === 'raised'} onTick={() => tickRow(w)} onOpen={() => onOpen(w.id)} onBack={later.includes(w.id) ? () => laterStore.remove(w.id) : undefined} />)}
             {id === 'later' && <button type="button" className="mw-add" onClick={() => openNew('task')}>＋ Add item</button>}
           </div>
         ))}
@@ -326,16 +330,18 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   );
 }
 
-function Row({ w, pulls, done, onTick, onOpen, onBack }: { w: WorkRow; pulls?: PullChip[]; done: boolean; onTick: () => void; onOpen: () => void; onBack?: () => void }) {
+function Row({ w, pulls, done, showAssignee, onTick, onOpen, onBack }: { w: WorkRow; pulls?: PullChip[]; done: boolean; showAssignee?: boolean; onTick: () => void; onOpen: () => void; onBack?: () => void }) {
   const dot = projectDot(w.projectId);
   const late = w.isOverdue && w.dueDate ? Math.abs(daysUntil(w.dueDate) ?? 0) : 0;
-  const when = done ? 'just now' : late ? null : dayText(w.dueDate);
+  // Done: the real completion time (not "just now" for something finished hours ago).
+  const when = done ? (completedClock(w) ? `done ${completedClock(w)}` : 'done') : late ? null : dayText(w.dueDate);
+  const who = showAssignee ? `Assignee: ${w.assignee?.name ?? 'Unassigned'}` : null;
   return (
     <div className={`mw-r ${done ? 'done' : ''}`}>
       <button type="button" className={`mw-chk ${done ? 'on' : ''}`} aria-label={done ? `${w.title} is done` : `Complete ${w.title}`} aria-pressed={done} disabled={done} onClick={onTick} />
       <button type="button" className="mw-r-main" onClick={onOpen} aria-label={`${w.key} ${w.title}${w.isOverdue ? ', overdue' : ''}`}>
         <b>{w.title}</b>
-        <small>{dot && !done && <i className="mw-pd" style={{ background: dot }} />}{[w.projectName, when].filter(Boolean).join(' · ')}{late > 0 && !done && <>{w.projectName ? ' · ' : ''}<span className="od">overdue {late}d</span></>}</small>
+        <small>{dot && !done && <i className="mw-pd" style={{ background: dot }} />}{[w.projectName, who, when].filter(Boolean).join(' · ')}{late > 0 && !done && <>{w.projectName ? ' · ' : ''}<span className="od">overdue {late}d</span></>}</small>
       </button>
       {!done && <PrChips pulls={pulls} compact />}
       {!done && (w.priority === 'High' || w.priority === 'Critical') && <span className="mw-flag" title={`${w.priority} priority`} aria-label={`${w.priority} priority`}>!</span>}

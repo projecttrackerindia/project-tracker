@@ -228,7 +228,7 @@ try {
     await page.locator('.mw-ring .mw-n', { hasText: /^0 of \d+$/ }).waitFor();
     await page.locator('.mw-ai .mw-orb').waitFor();
     const list = page.getByRole('region', { name: 'Work list' });
-    assert.deepEqual((await list.locator('.mw-grp h2').allInnerTexts()).map((t) => t.replace(/\s+\d+$/, '')), ['Today', 'This week', 'Later']);
+    assert.deepEqual((await list.locator('.mw-grp h2').allInnerTexts()).map((t) => t.replace(/\s+\d+$/, '')), ['Overdue', 'Today', 'This week', 'Later']);   // overdue has its own group (myWorkRules)
     const lateRow = list.locator('.mw-r', { hasText: 'Refund webhook retries twice' });
     assert.equal(await lateRow.locator('.od').innerText(), 'overdue 3d');
     const red = await lateRow.locator('.od').evaluate((e) => getComputedStyle(e).color);

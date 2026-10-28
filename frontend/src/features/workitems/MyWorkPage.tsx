@@ -6,24 +6,20 @@ import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { EmptyState, ErrorState, Kpi, PageHead, PageLoader, Segmented } from '../../components/ui';
 import './insights.css';
-import { todayISO, dateOffset } from '../../lib/format';
+import { todayISO } from '../../lib/format';
 import { useDebounced, useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useModule } from '../../stores/auth';
 import { TaskModal } from '../tasks/TaskModal';
 import { WorkTaskModal } from '../work/WorkTaskModal';
 import { KIND_META, WorkItemRow, useVisibleKinds, workItemLink, type WorkRowItem } from './workItems';
 import { saveOfflineSnapshot } from '../offline/storage';
+import { myWorkBucket, weekEndOf, type MyWorkBucket } from '../work/myWorkRules';
 
 type View = 'open' | 'all';
 
-/** Which part of the open list an item falls in: late first, then today, this week, later, and undated last. */
-function bucketOf(w: WorkItem, today: string, weekEnd: string): string {
-  if (w.isOverdue) return 'Overdue';
-  if (!w.dueDate) return 'No due date';
-  if (w.dueDate === today) return 'Due today';
-  if (w.dueDate <= weekEnd) return 'Next 7 days';
-  return 'Later';
-}
+const BUCKET_TITLE: Record<MyWorkBucket, string> = { overdue: 'Overdue', today: 'Due today', week: 'Next 7 days', later: 'Later', none: 'No due date' };
+/** Which part of the open list an item falls in - the same rule as the Focus Stack (work/myWorkRules). */
+const bucketOf = (w: WorkItem, today: string, weekEnd: string): string => BUCKET_TITLE[myWorkBucket(w, today, weekEnd)];
 const BUCKETS = ['Overdue', 'Due today', 'Next 7 days', 'Later', 'No due date'];
 
 /**
@@ -57,7 +53,7 @@ export function MyWorkPage({ embedded = false }: { embedded?: boolean } = {}) {
   const counts = useMemo(() => Object.fromEntries(visible.map((k) => [k, all.filter((w) => w.kind === k).length])) as Record<WorkItemKind, number>, [all, visible]);
   const items = kinds.length ? all.filter((w) => kinds.includes(w.kind)) : all;
   const today = todayISO();
-  const weekEnd = dateOffset(7, new Date(today + 'T00:00:00'));
+  const weekEnd = weekEndOf(today);
   const groups = useMemo(() => {
     if (view !== 'open') return [{ title: '', items }];
     const by = new Map<string, WorkItem[]>();
@@ -66,8 +62,8 @@ export function MyWorkPage({ embedded = false }: { embedded?: boolean } = {}) {
   }, [items, view, today, weekEnd]);
 
   const openTasks = all.filter((w) => w.category !== 'Done' && w.category !== 'Cancelled');
-  const late = openTasks.filter((w) => w.isOverdue).length;
-  const dueToday = openTasks.filter((w) => w.dueDate === today).length;
+  const late = openTasks.filter((w) => myWorkBucket(w, today, weekEnd) === 'overdue').length;
+  const dueToday = openTasks.filter((w) => myWorkBucket(w, today, weekEnd) === 'today').length;
   const [openTask, setOpenTask] = useState<string | null>(null);
   const [openWork, setOpenWork] = useState<string | null>(null);
   const open = (i: WorkRowItem) => {

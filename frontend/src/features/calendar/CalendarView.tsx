@@ -13,7 +13,7 @@ import './calendar.css';
 
 const cls = (e: CalendarEvent) =>
   e.type === 'project' || e.type === 'milestone' ? 'purple' : e.type === 'stage' ? 'amber' : e.type === 'meeting' ? 'teal' : e.category === 'Done' ? 'green' : e.overdue ? 'red' : e.type === 'action' ? 'cyan' : e.type === 'work' ? 'orange' : 'blue';
-const TYPE_LABEL: Record<CalendarEvent['type'], string> = { task: 'Task', action: 'Action item', work: 'Operational', project: 'Deadline', milestone: 'Milestone', stage: 'Stage', meeting: 'Meeting' };
+const TYPE_LABEL: Record<CalendarEvent['type'], string> = { task: 'Task', action: 'Action item', work: 'Operational', issue: 'Issue', project: 'Deadline', milestone: 'Milestone', stage: 'Stage', meeting: 'Meeting' };
 const PREFIX: Partial<Record<CalendarEvent['type'], string>> = { project: '⚑ ', milestone: '⚑ ', stage: '◆ ', action: '✓ ', work: '⚡ ', meeting: '☉ ' };
 
 /** Month calendar of task, action item and operational work deadlines, project deadlines and lifecycle stage ends. Days can be picked one at a time,
@@ -34,7 +34,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
   const [rangeAnchor, setRangeAnchor] = useState<string | null>(null);
   // The day the pointer (or keyboard focus) is on: it lights up before it is clicked, and once a range is started the days up to it are previewed.
   const [hover, setHover] = useState<string | null>(null);
-  const [show, setShow] = useState({ task: true, action: true, work: true, project: true, stage: true, milestone: true, meeting: true });
+  const [show, setShow] = useState({ task: true, action: true, work: true, issue: true, project: true, stage: true, milestone: true, meeting: true });
 
   const cells = useMemo(() => monthCells(year, month), [month, year]);
 

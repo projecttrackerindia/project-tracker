@@ -15,6 +15,7 @@ import { playCue } from '../../lib/attention';
 import { announce } from '../../features/notifications/centre/announce';
 import { CATEGORY_META, categoryOf, conversationOf, iconOf } from '../../features/notifications/centre/model';
 import { mayBanner, maySound } from '../../features/notifications/centre/prefs';
+import { isViewing } from '../../features/notifications/centre/readSync';
 import './v2.css';
 
 const MAX = 3;
@@ -46,8 +47,10 @@ export function LiveBanners() {
       running = true;
       try {
         const page = await notificationApi.list(1, true);
-        const arrived = page.items.filter((n) => !seen.current.has(n.id) && !isRingNotice(n) && Date.parse(n.createdAt) > since.current - 2000);
-        arrived.forEach((n) => seen.current.add(n.id));
+        const all = page.items.filter((n) => !seen.current.has(n.id) && !isRingNotice(n) && Date.parse(n.createdAt) > since.current - 2000);
+        all.forEach((n) => seen.current.add(n.id));
+        // About the conversation open in front of them: no banner and no sound - those messages are read (the open chat tells the server).
+        const arrived = all.filter((n) => !isViewing(n.link));
         // Each new one is announced once with its own sound (unless muted here); reminders keep their own alert card, so no banner for them.
         arrived.forEach((n) => { if (!SKIP.has(n.type)) announce(n); });
         const fresh = arrived.filter((n) => !SKIP.has(n.type) && mayBanner(categoryOf(n)));

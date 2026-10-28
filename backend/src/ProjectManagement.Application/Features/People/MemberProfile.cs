@@ -21,7 +21,8 @@ public record TeamRefDto(Guid Id, string Name, bool IsLead);
 /// </summary>
 public record MemberProfileDto(Guid UserId, string DisplayName, string Email, bool HasAvatar, TenantRole Role,
     string? JobRole, string? JobRoleColor, IReadOnlyList<TeamRefDto> Teams, UserRefDto? ReportsTo, DateTime JoinedAt,
-    int Open, int Overdue, int DoneLast30Days, int DoneTotal, bool IsMe, bool CanMessage, IReadOnlyList<CertificationBadgeDto>? CertificationBadges = null, string? Theme = null);
+    int Open, int Overdue, int DoneLast30Days, int DoneTotal, bool IsMe, bool CanMessage, IReadOnlyList<CertificationBadgeDto>? CertificationBadges = null, string? Theme = null,
+    MemberStatus Status = MemberStatus.Active, DateTime? DeactivatedAt = null, IReadOnlyList<UserRefDto>? DirectReports = null, Guid? OrgRoleId = null, Guid? ReportsToUserId = null);
 
 /// <summary>Reads a profile the caller may see: the target must be a member of the caller's current workspace.</summary>
 public class MemberProfileService(IAppDbContext db, ICurrentContext ctx, WorkItemService workItems)
@@ -68,12 +69,18 @@ public class MemberProfileService(IAppDbContext db, ICurrentContext ctx, WorkIte
             .Where(c=>c.UserId==userId&&c.ShowBadge&&!c.Archived)
             .OrderBy(c=>c.Name).Take(10).Select(c=>new CertificationBadgeDto(c.Name,c.Issuer,c.ExpiresOn,c.VerificationStatus)).ToListAsync(ct);
         var themeJson = await db.UserUiPreferences.AsNoTracking().Where(p => p.UserId == userId && p.Key == "profile").Select(p => p.Value).FirstOrDefaultAsync(ct);
+        var reports = await (from m in db.TenantMembers.AsNoTracking()
+                             join u in db.Users.AsNoTracking() on m.UserId equals u.Id
+                             where m.TenantId == tid && m.ReportsToUserId == userId
+                             orderby u.DisplayName
+                             select new UserRefDto(u.Id, u.DisplayName)).ToListAsync(ct);
         var hideEmail = ctx.Role == TenantRole.Guest && userId != ctx.UserId;
         var me = ctx.UserId == userId;
         return new MemberProfileDto(row.User.Id, row.User.DisplayName, hideEmail ? "" : row.User.Email, row.User.AvatarKey is not null,
             row.Member.Role, jobRole?.Name, jobRole?.Color, teams, reportsTo is null ? null : new UserRefDto(reportsTo.Id, reportsTo.DisplayName),
             row.Member.CreatedAt, counts?.Open ?? 0, counts?.Overdue ?? 0, counts?.DoneLast30Days ?? 0, counts?.DoneTotal ?? 0,
-            me, !me && ctx.Role != TenantRole.Guest, badges, ThemeOf(themeJson));
+            me, !me && ctx.Role != TenantRole.Guest && row.Member.Status == MemberStatus.Active, badges, ThemeOf(themeJson),
+            row.Member.Status, row.Member.DeactivatedAt, reports, row.Member.OrgRoleId, row.Member.ReportsToUserId);
     }
 }
 

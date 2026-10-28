@@ -78,6 +78,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Notifications/NotificationService.cs",
         "ProjectManagement.Application/Features/Notifications/PushService.cs",
         "ProjectManagement.Application/Features/Organization/AccessService.cs",
+        "ProjectManagement.Application/Features/Organization/OrgGrantGuard.cs", // invite acceptance runs before the joiner has a workspace context: org roles and overrides are read for the invite's own tenant (TenantId == tid, !IsDeleted)
         "ProjectManagement.Application/Features/Organization/OrgSecurityService.cs",
         "ProjectManagement.Application/Features/Organization/OrgService.cs",
         "ProjectManagement.Application/Features/ProjectMeetings/MeetingReminders.cs", // background and after each change: finds upcoming sessions of scheduled meetings in active tenants (live projects only); each reminder carries its meeting's own tenant and goes to that meeting's own people

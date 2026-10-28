@@ -15,12 +15,13 @@ namespace ProjectManagement.Application.Features.WorkItems;
 /// statuses on one scale (to do, in progress, done, cancelled), so lists and counts mean the same thing whatever the kind.
 /// </summary>
 public record WorkItemDto(WorkItemKind Kind, Guid Id, string Key, string Title, Guid? ProjectId, string? ProjectKey, string? ProjectName,
-    string Status, StatusCategory Category, Priority Priority, DateOnly? DueDate, bool IsOverdue, UserRefDto? Assignee, string? TypeName, DateTime UpdatedAt);
+    string Status, StatusCategory Category, Priority Priority, DateOnly? DueDate, bool IsOverdue, UserRefDto? Assignee, string? TypeName, DateTime UpdatedAt,
+    int Version = 0, DateTime? CompletedAt = null, Guid? ReporterId = null);
 
 /// <summary>Filters for a list of work items. With no kinds given, every kind the caller can see is included.</summary>
 public record WorkItemQuery(IReadOnlyList<WorkItemKind>? Kinds = null, Guid? AssigneeId = null, bool Mine = false, bool OpenOnly = true,
     Guid? ProjectId = null, DateOnly? DueFrom = null, DateOnly? DueTo = null, bool Overdue = false, string? Q = null, int Limit = 200, bool Unassigned = false, int Offset = 0,
-    IReadOnlyCollection<Guid>? AssigneeIds = null);
+    IReadOnlyCollection<Guid>? AssigneeIds = null, Guid? ReporterId = null);
 
 public record WorkKindCounts(int Tasks, int Issues, int ActionItems, int Operational)
 {
@@ -128,6 +129,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (assignee is { } a) tq = tq.Where(t => t.AssigneeId == a);
             if (query.Unassigned) tq = tq.Where(t => t.AssigneeId == null);
             if (query.AssigneeIds is { } people) tq = tq.Where(t => t.AssigneeId != null && people.Contains(t.AssigneeId.Value));
+            if (query.ReporterId is { } rep) tq = tq.Where(t => t.ReporterId == rep);
             if (query.OpenOnly) tq = tq.Where(t => t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled);
             if (query.ProjectId is { } pid) tq = tq.Where(t => t.ProjectId == pid);
             if (query.DueFrom is { } f) tq = tq.Where(t => t.DueDate != null && t.DueDate >= f);
@@ -138,28 +140,35 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 .ThenBy(t => t.DueDate == null).ThenBy(t => t.DueDate).ThenByDescending(t => t.Priority)
                 .ThenByDescending(t => t.UpdatedAt ?? t.CreatedAt).ThenBy(t => t.Id).Skip(query.Offset).Take(limit)
                 .Select(t => new { t.Id, t.Number, t.Title, t.ProjectId, ProjectKey = t.Project!.Key, ProjectName = t.Project.Name, Status = t.Status!.Name, t.Status.Category,
-                    t.Priority, t.DueDate, t.AssigneeId, Updated = t.UpdatedAt ?? t.CreatedAt })
+                    t.Priority, t.DueDate, t.AssigneeId, Updated = t.UpdatedAt ?? t.CreatedAt, t.Version, t.CompletedAt, t.ReporterId })
                 .ToListAsync(ct);
             rows.AddRange(tasks.Select(t => new WorkItemDto(WorkItemKind.Task, t.Id, $"{t.ProjectKey}-{t.Number}", t.Title, t.ProjectId, t.ProjectKey, t.ProjectName,
-                t.Status, t.Category, t.Priority, t.DueDate, IsLate(t.DueDate, t.Category, today), Ref(t.AssigneeId), null, t.Updated)));
+                t.Status, t.Category, t.Priority, t.DueDate, IsLate(t.DueDate, t.Category, today), Ref(t.AssigneeId), null, t.Updated, t.Version, t.CompletedAt, t.ReporterId)));
         }
 
-        if (wanted.Contains(WorkItemKind.Issue) && query.DueFrom is null && query.DueTo is null && !query.Overdue)   // issues have no due date
+        // Issues carry a due date in the shared WorkItems columns (set from the Work panel), so due and overdue filters include them.
+        if (wanted.Contains(WorkItemKind.Issue))
         {
             var iq = Issues(scope).AsNoTracking();
             if (assignee is { } a) iq = iq.Where(i => i.AssigneeId == a);
             if (query.Unassigned) iq = iq.Where(i => i.AssigneeId == null);
             if (query.AssigneeIds is { } people) iq = iq.Where(i => i.AssigneeId != null && people.Contains(i.AssigneeId.Value));
+            if (query.ReporterId is { } rep) iq = iq.Where(i => i.ReporterId == rep);
             if (query.OpenOnly) iq = iq.Where(i => i.Status != IssueStatus.Resolved);
+            if (query.DueFrom is { } f) iq = iq.Where(i => i.DueDate != null && i.DueDate >= f);
+            if (query.DueTo is { } to) iq = iq.Where(i => i.DueDate != null && i.DueDate <= to);
+            if (query.Overdue) iq = iq.Where(i => i.DueDate != null && i.DueDate < today && i.Status != IssueStatus.Resolved);
             if (query.ProjectId is { } pid) iq = iq.Where(i => i.ProjectId == pid);
             if (q is not null) iq = iq.Where(i => EF.Functions.Like(i.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (i.Details != null && EF.Functions.Like(i.Details.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || i.Number == number);
             var issues = await (from i in iq
                                 join p in db.Projects.AsNoTracking() on i.ProjectId equals p.Id
-                                orderby i.CreatedAt descending
-                                select new { i.Id, i.Number, i.Title, i.ProjectId, ProjectKey = p.Key, ProjectName = p.Name, i.Status, i.Severity, i.AssigneeId, Updated = i.UpdatedAt ?? i.CreatedAt })
+                                orderby i.DueDate == null, i.DueDate, i.CreatedAt descending
+                                select new { i.Id, i.Number, i.Title, i.ProjectId, ProjectKey = p.Key, ProjectName = p.Name, i.Status, i.Severity, i.AssigneeId, Updated = i.UpdatedAt ?? i.CreatedAt,
+                                    i.DueDate, i.Version, i.ResolvedAt, i.ReporterId })
                 .Take(limit).ToListAsync(ct);
             rows.AddRange(issues.Select(i => new WorkItemDto(WorkItemKind.Issue, i.Id, $"{i.ProjectKey}-I{i.Number}", i.Title, i.ProjectId, i.ProjectKey, i.ProjectName,
-                LabelOf(i.Status), CategoryOf(i.Status), i.Severity, null, false, Ref(i.AssigneeId), "Test issue", i.Updated)));
+                LabelOf(i.Status), CategoryOf(i.Status), i.Severity, i.DueDate, IsLate(i.DueDate, CategoryOf(i.Status), today), Ref(i.AssigneeId), "Test issue", i.Updated,
+                i.Version, i.ResolvedAt, i.ReporterId)));
         }
 
         foreach (var (kind, itemKind) in new[] { (WorkTaskKind.ActionItem, WorkItemKind.ActionItem), (WorkTaskKind.Operational, WorkItemKind.Operational) })
@@ -169,6 +178,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (assignee is { } a) wq = wq.Where(w => w.AssigneeId == a);
             if (query.Unassigned) wq = wq.Where(w => w.AssigneeId == null);
             if (query.AssigneeIds is { } people) wq = wq.Where(w => w.AssigneeId != null && people.Contains(w.AssigneeId.Value));
+            if (query.ReporterId is { } rep) wq = wq.Where(w => w.ReporterId == rep);
             if (query.OpenOnly) wq = wq.Where(w => w.Status == WorkTaskStatus.ToDo || w.Status == WorkTaskStatus.InProgress || w.Status == WorkTaskStatus.OnHold);
             if (query.ProjectId is { } pid) wq = wq.Where(w => w.RelatedProjectId == pid);
             if (query.DueFrom is { } f) wq = wq.Where(w => w.DueDate != null && w.DueDate >= f);
@@ -177,7 +187,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (q is not null) wq = wq.Where(w => EF.Functions.Like(w.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (w.Description != null && EF.Functions.Like(w.Description.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || w.Number == number);
             var work = await wq.OrderBy(w => w.DueDate == null).ThenBy(w => w.DueDate).Take(limit)
                 .Select(w => new { w.Id, w.Number, w.Title, w.RelatedProjectId, w.Status, w.Priority, w.DueDate, w.AssigneeId, TypeName = w.WorkType != null ? w.WorkType.Name : null,
-                    Updated = w.UpdatedAt ?? w.CreatedAt })
+                    Updated = w.UpdatedAt ?? w.CreatedAt, w.Version, w.CompletedAt, w.ReporterId })
                 .ToListAsync(ct);
             var projectIds = work.Where(w => w.RelatedProjectId != null).Select(w => w.RelatedProjectId!.Value).Distinct().ToList();
             var projects = await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => new { p.Key, p.Name }, ct);
@@ -187,7 +197,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 var cat = CategoryOf(w.Status);
                 return new WorkItemDto(itemKind, w.Id, KeyOf(kind, w.Number), w.Title, p is null ? null : w.RelatedProjectId, p?.Key, p?.Name,
                     kind == WorkTaskKind.ActionItem ? ActionLabel(w.Status) : WorkLabel(w.Status), cat, w.Priority, w.DueDate, IsLate(w.DueDate, cat, today), Ref(w.AssigneeId),
-                    kind == WorkTaskKind.ActionItem ? "Action item" : w.TypeName, w.Updated);
+                    kind == WorkTaskKind.ActionItem ? "Action item" : w.TypeName, w.Updated, w.Version, w.CompletedAt, w.ReporterId);
             }));
         }
 
@@ -262,9 +272,10 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (kinds.Contains(WorkItemKind.Issue))
         {
             var rows = await Issues(scope).AsNoTracking().Where(i => i.AssigneeId != null && ids.Contains(i.AssigneeId.Value))
-                .GroupBy(i => new { Who = i.AssigneeId!.Value, i.Status, Recent = i.ResolvedAt != null && i.ResolvedAt >= since30 })
-                .Select(g => new { g.Key.Who, g.Key.Status, g.Key.Recent, N = g.Count() }).ToListAsync(ct);
-            foreach (var r in rows) result[r.Who].Add(WorkItemKind.Issue, CategoryOf(r.Status), false, false, r.Recent, r.N);
+                .GroupBy(i => new { Who = i.AssigneeId!.Value, i.Status, Late = i.DueDate != null && i.DueDate < today, Soon = i.DueDate != null && i.DueDate >= today && i.DueDate <= week,
+                    Recent = i.ResolvedAt != null && i.ResolvedAt >= since30 })
+                .Select(g => new { g.Key.Who, g.Key.Status, g.Key.Late, g.Key.Soon, g.Key.Recent, N = g.Count() }).ToListAsync(ct);
+            foreach (var r in rows) result[r.Who].Add(WorkItemKind.Issue, CategoryOf(r.Status), r.Late, r.Soon, r.Recent, r.N);
         }
         foreach (var (kind, itemKind) in new[] { (WorkTaskKind.ActionItem, WorkItemKind.ActionItem), (WorkTaskKind.Operational, WorkItemKind.Operational) })
         {

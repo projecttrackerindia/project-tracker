@@ -62,6 +62,11 @@ export function RemindersPage() {
   const watching = (watches.data ?? []).filter((w) => w.state === 'active').length;
   const [filter, setFilter] = useState<Filter>('all');
   const [bump, setBump] = useState(0);
+  // Done/Snooze in flight, per reminder: their buttons stay disabled so a double tap cannot finish the next occurrence too.
+  const [inFlight, setInFlight] = useState<Set<string>>(() => new Set());
+  const flying = useRef(new Set<string>());
+  const begin = (id: string) => { if (flying.current.has(id)) return false; flying.current.add(id); setInFlight(new Set(flying.current)); return true; };
+  const end = (id: string) => { flying.current.delete(id); setInFlight(new Set(flying.current)); };
   const segBox = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
   const key = [wid, 'reminders', 'list'];
@@ -100,6 +105,7 @@ export function RemindersPage() {
   }, [data?.completed, zone]);
 
   const complete = async (r: Reminder, card: HTMLElement) => {
+    if (!begin(r.id)) return;
     card.classList.add('is-completing');
     flyTo(card, segBox.current?.querySelectorAll<HTMLElement>('[role="tab"]')[1] ?? null);
     const series = !!r.recurrence;
@@ -114,14 +120,15 @@ export function RemindersPage() {
     }
     setBump((b) => b + 1);
     try {
-      const done = await reminderApi.done(r.id);
+      const done = await reminderApi.done(r.id, { nextFireAt: r.nextFireAt, lastFiredAt: r.lastFiredAt });
       void refreshReminders(wid);
       toast(series ? 'Done for this time — it repeats.' : 'Done.', 'success', { label: 'Undo', onClick: () => { void reminderApi.reopen(done.id).then(() => refreshReminders(wid)); } });
     } catch (e) {
       if (before) queryClient.setQueryData(key, before);
       card.classList.remove('is-completing');
       toast(e instanceof ApiError ? e.message : 'Could not finish the reminder.', 'error');
-    }
+      void refreshReminders(wid);
+    } finally { end(r.id); }
   };
 
   const restore = async (r: Reminder, card: HTMLElement) => {
@@ -132,8 +139,10 @@ export function RemindersPage() {
   };
 
   const snooze = async (r: Reminder, preset?: SnoozePreset, until?: string) => {
-    try { const s = await reminderApi.snooze(r.id, preset, until); await refreshReminders(wid); toast(`Snoozed until ${s.nextFireAt ? describeInstant(s.nextFireAt, zone) : 'later'}.`, 'success'); }
-    catch (e) { toast(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not snooze it.', 'error'); }
+    if (!begin(r.id)) return;
+    try { const s = await reminderApi.snooze(r.id, preset, until, { nextFireAt: r.nextFireAt, lastFiredAt: r.lastFiredAt }); await refreshReminders(wid); toast(`Snoozed until ${s.nextFireAt ? describeInstant(s.nextFireAt, zone) : 'later'}.`, 'success'); }
+    catch (e) { toast(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not snooze it.', 'error'); void refreshReminders(wid); }
+    finally { end(r.id); }
   };
 
   const remove = async (r: Reminder) => {
@@ -203,7 +212,7 @@ export function RemindersPage() {
           <section key={g.id} className={`rp-group rp-group-${g.id}`} aria-label={g.title}>
             <h3>{g.title}<em>{g.items.length}</em></h3>
             <ul className="rp-list">
-              {g.items.map((r) => <ReminderCard key={r.id} r={r} zone={zone} sent={filter === 'sent'} onDone={complete} onSnooze={snooze} onRemove={remove} />)}
+              {g.items.map((r) => <ReminderCard key={r.id} r={r} zone={zone} sent={filter === 'sent'} busy={inFlight.has(r.id)} onDone={complete} onSnooze={snooze} onRemove={remove} />)}
             </ul>
           </section>
         )))}
@@ -326,8 +335,8 @@ function QuickAdd({ text, setText, defaultTime, onAdded }: { text: string; setTe
   );
 }
 
-function ReminderCard({ r, zone, done, sent, onDone, onSnooze, onRemove, onRestore }: {
-  r: Reminder; zone: string; done?: boolean; sent?: boolean;
+function ReminderCard({ r, zone, done, sent, busy, onDone, onSnooze, onRemove, onRestore }: {
+  r: Reminder; zone: string; done?: boolean; sent?: boolean; busy?: boolean;
   onDone?: (r: Reminder, el: HTMLElement) => void; onSnooze?: (r: Reminder, p?: SnoozePreset, until?: string) => void;
   onRemove: (r: Reminder) => void; onRestore?: (r: Reminder, el: HTMLElement) => void;
 }) {
@@ -356,7 +365,7 @@ function ReminderCard({ r, zone, done, sent, onDone, onSnooze, onRemove, onResto
     <li ref={el} className={`rp-card ${fired ? 'is-fired' : ''} ${done ? 'is-done' : ''} ${menu ? 'menu-open' : ''} src-${r.source.toLowerCase()}`}>
       {done
         ? <span className="rp-check checked" aria-hidden><Icon name="tick" size={14} /></span>
-        : <button type="button" className="rp-check" aria-label={`Done: ${r.title}`} title="Done" disabled={sent} onClick={() => el.current && onDone?.(r, el.current)}><Icon name="tick" size={14} /></button>}
+        : <button type="button" className="rp-check" aria-label={`Done: ${r.title}`} title="Done" disabled={sent || busy} aria-busy={busy || undefined} onClick={() => el.current && onDone?.(r, el.current)}><Icon name="tick" size={14} /></button>}
       <div className="rp-body">
         <div className="rp-title">{r.title}</div>
         {r.note && <div className="rp-note">{r.note}</div>}
@@ -377,7 +386,7 @@ function ReminderCard({ r, zone, done, sent, onDone, onSnooze, onRemove, onResto
         {done
           ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => el.current && onRestore?.(r, el.current)}><Icon name="undo" size={13} /> Restore</button>
           : !sent && (
-            <button type="button" className="btn btn-ghost btn-sm" aria-haspopup="menu" aria-expanded={menu === 'snooze'} onClick={() => setMenu(menu === 'snooze' ? null : 'snooze')}>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={busy} aria-haspopup="menu" aria-expanded={menu === 'snooze'} onClick={() => setMenu(menu === 'snooze' ? null : 'snooze')}>
               <Icon name="clock" size={13} /> Snooze
             </button>
           )}

@@ -155,3 +155,27 @@ describe('protected downloads', () => {
     expect(saveFile).not.toHaveBeenCalled();
   });
 });
+
+describe('stale access context', () => {
+  it('asks the app to re-check its access after a permission refusal, once per burst', async () => {
+    const { client } = await setup();
+    const stale = vi.fn();
+    client.setContextStaleHandler(stale);
+    const refuse = () => new Response(JSON.stringify({ errors: [{ code: 'PERMISSION_DENIED', message: 'No' }] }), { status: 403, headers: { 'X-Context-Stale': '1' } });
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => refuse()));
+    await expect(client.get('/org')).rejects.toMatchObject({ status: 403, code: 'PERMISSION_DENIED' });
+    await expect(client.get('/org')).rejects.toMatchObject({ status: 403 });
+    expect(stale).toHaveBeenCalledOnce();
+  });
+
+  it('ignores other refusals', async () => {
+    const { client } = await setup();
+    const stale = vi.fn();
+    client.setContextStaleHandler(stale);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ errors: [{ code: 'PLAN_LIMIT_REACHED', message: 'Upgrade' }] }), { status: 403 })));
+    await expect(client.get('/projects')).rejects.toMatchObject({ status: 403 });
+    expect(stale).not.toHaveBeenCalled();
+    expect(client.isContextStale(403, 'MODULE_ACCESS_DENIED', null)).toBe(true);
+    expect(client.isContextStale(404, 'PERMISSION_DENIED', '1')).toBe(false);
+  });
+});

@@ -19,8 +19,10 @@ public static class ErrorWriter
     {
         if (http.Response.HasStarted) return;
         var retryAfter = http.Response.Headers.RetryAfter;
-        http.Response.Clear();
+        var stale = http.Response.Headers[ApiExceptionMiddleware.ContextStaleHeader];
+        http.Response.Clear();   // drops anything a failed action set, but keeps the hints the client relies on
         if (retryAfter.Count > 0) http.Response.Headers.RetryAfter = retryAfter;
+        if (stale.Count > 0) http.Response.Headers[ApiExceptionMiddleware.ContextStaleHeader] = stale;
         http.Response.StatusCode = status;
         var options = http.RequestServices.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
         await http.Response.WriteAsJsonAsync(ApiResponse.Fail(message, errors, Activity.Current?.Id ?? http.TraceIdentifier), options);
@@ -109,6 +111,8 @@ public class ConsentMiddleware(RequestDelegate next)
 /// <summary>Maps exceptions to the standard envelope. Internal details are logged, never returned (spec section 51).</summary>
 public class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExceptionMiddleware> log)
 {
+    /// <summary>Set on a 403 PERMISSION_DENIED / MODULE_ACCESS_DENIED so the web app refetches its access context.</summary>
+    public const string ContextStaleHeader = "X-Context-Stale";
     public const string TextTooLongMessage = "Some text is too long for its field. Keep the title short and put the details in the description, then try again.";
 
     public async Task InvokeAsync(HttpContext http)
@@ -118,6 +122,9 @@ public class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExceptionMi
         {
             if (ex is ProjectManagement.Application.Features.Ai.AiRequestLimitException limited)
                 http.Response.Headers.RetryAfter = limited.RetryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            // The person's access changed under them (or the app shows a button it should not): tell the client to reload /me.
+            if (ex.StatusCode == 403 && ex.Code is ("PERMISSION_DENIED" or "MODULE_ACCESS_DENIED"))
+                http.Response.Headers[ContextStaleHeader] = "1";
             await ErrorWriter.WriteAsync(http, ex.StatusCode, ex.Message, ex.Errors);
         }
         catch (DbUpdateConcurrencyException)
@@ -305,9 +312,15 @@ public class CurrentContextMiddleware(RequestDelegate next)
         var membership = await (from m in db.TenantMembers
                                 join t in db.Tenants on m.TenantId equals t.Id
                                 where m.UserId == userId && m.TenantId == workspaceId && t.Status == TenantStatus.Active
-                                select new { m.Role, t.Type, t.ProjectVisibility, t.TimeZone }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+                                select new { m.Role, m.Status, t.Type, t.ProjectVisibility, t.TimeZone }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
         if (membership is null) return;
         zone.WorkspaceZoneId = membership.TimeZone;
+        // A suspended member keeps their place but cannot open the workspace: every workspace request is refused with MEMBER_SUSPENDED.
+        if (membership.Status == MemberStatus.Suspended)
+        {
+            ctx.BlockedWorkspace = (workspaceId, "MEMBER_SUSPENDED", "Your access to this workspace has been suspended. Contact an administrator of the workspace.");
+            return;
+        }
 
         var blocked = await orgSecurity.CheckAccessAsync(workspaceId, mfaEnabled, ctx.IpAddress, http.RequestAborted, signIn);
         if (blocked is not null) { ctx.BlockedWorkspace = (workspaceId, blocked.Code, blocked.Message); return; }

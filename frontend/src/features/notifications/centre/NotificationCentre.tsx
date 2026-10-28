@@ -87,28 +87,43 @@ export function BadgeSync() {
 
 // ------------------------------------------------------------------ the bell
 
-/** The bell: a 30px round button with the red pill badge (pops when the number changes). `variant="phone"` matches the phone top bar. */
+/** SF Symbols-style bell: rounded dome, flared rim, separate clapper - drawn at 20px with a 1.75 stroke in the text colour. */
+function BellGlyph({ size = 20 }: { size?: number }) {
+  return (
+    <svg className="ncx-bell-glyph" viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3.25a.9.9 0 0 1 .9.9v.6a5.9 5.9 0 0 1 5 5.83v3.37c0 .78.26 1.54.74 2.15l.86 1.1c.5.64.05 1.57-.76 1.57H5.26c-.81 0-1.26-.93-.76-1.57l.86-1.1c.48-.61.74-1.37.74-2.15v-3.37a5.9 5.9 0 0 1 5-5.83v-.6a.9.9 0 0 1 .9-.9Z" />
+      <path d="M9.75 20.1a2.4 2.4 0 0 0 4.5 0" />
+    </svg>
+  );
+}
+
+/**
+ * The bell: a 36px round button (no fill until hovered or pressed) with the bell in the primary text colour and Apple's red pill badge just
+ * outside the glyph's top-right, ringed in the toolbar's colour so it never runs into the edge. The badge pops when the number changes and
+ * the bell rings once when something new arrives (not with reduced motion). `variant="phone"` matches the phone top bar.
+ */
 export function NotificationBell({ variant = 'toolbar' }: { variant?: 'toolbar' | 'phone' | 'float' }) {
   const n = useBadge();
   const open = useCentre((s) => s.open);
   const toggle = useCentre((s) => s.toggle);
   const [pop, setPop] = useState(false);
+  const [ring, setRing] = useState(false);
   const prev = useRef(n);
   useEffect(() => {
     if (n === prev.current) return;
     const up = n > prev.current;
     prev.current = n;
-    if (!up) return;
     setPop(true);
-    const t = window.setTimeout(() => setPop(false), 420);
+    if (up) setRing(true);
+    const t = window.setTimeout(() => { setPop(false); setRing(false); }, 900);
     return () => window.clearTimeout(t);
   }, [n]);
   return (
-    <button type="button" className={`ncx-bell ${variant}${open ? ' on' : ''}`} data-ncx-bell aria-haspopup="dialog" aria-expanded={open}
+    <button type="button" className={`ncx-bell ${variant}${open ? ' on' : ''}${ring ? ' ring' : ''}`} data-ncx-bell aria-haspopup="dialog" aria-expanded={open}
       aria-label={`Notifications${n ? `, ${n} unread` : ''}`} title="Notifications"
       onClick={() => { haptic(); unlockSound(); toggle(); }}>
-      <Icon name="bell" size={variant === 'phone' ? 21 : 16} />
-      {n > 0 && <em className={`ncx-badge${pop ? ' pop' : ''}`} aria-hidden="true">{badgeText(n)}</em>}
+      <BellGlyph size={variant === 'phone' ? 22 : 20} />
+      {n > 0 && <em className={`ncx-badge${pop ? ' pop' : ''}${n > 9 ? ' wide' : ''}`} data-count={n} aria-hidden="true">{badgeText(n)}</em>}
     </button>
   );
 }
@@ -216,7 +231,12 @@ function Centre({ onClose }: { onClose: () => void }) {
     enabled: !!wid, staleTime: 10_000,
   });
   const items = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
-  const sections = useMemo(() => arrange(items), [items]);
+  // Unread only, by default (a snoozed one that has come back is unread again). What is read waits in a collapsed "Read" section at the end.
+  const unreadItems = useMemo(() => items.filter((n) => !n.isRead), [items]);
+  const readItems = useMemo(() => items.filter((n) => n.isRead), [items]);
+  const sections = useMemo(() => arrange(unreadItems), [unreadItems]);
+  const readStacks = useMemo(() => arrange(readItems).flatMap((s) => s.stacks), [readItems]);
+  const [showRead, setShowRead] = useState(false);
   const anyUnread = filter === 'all' ? (counts?.unread ?? 0) > 0 || items.some((n) => !n.isRead) : (counts?.[filter] ?? 0) > 0 || items.some((n) => !n.isRead);
 
   // Escape and a click outside close it (the bell itself toggles); focus moves into the panel and back to the bell after.
@@ -278,7 +298,7 @@ function Centre({ onClose }: { onClose: () => void }) {
         })}
       </div>
       <div className="ncx-scroll">
-        {list.isLoading ? <Skeleton /> : items.length === 0 ? (
+        {list.isLoading ? <Skeleton /> : unreadItems.length === 0 ? (
           <div className="ncx-empty">
             <span className="ncx-empty-ico"><Icon name="checkCircle" size={28} /></span>
             <b>You&rsquo;re all caught up</b>
@@ -290,6 +310,14 @@ function Centre({ onClose }: { onClose: () => void }) {
             {sec.stacks.map((s) => <StackView key={s.key} stack={s} go={go} acts={acts} phone={phone} />)}
           </section>
         ))}
+        {!list.isLoading && readItems.length > 0 && (
+          <section className={`ncx-sec ncx-read${showRead ? ' open' : ''}`} aria-label="Read">
+            <button type="button" className="ncx-read-toggle" aria-expanded={showRead} onClick={() => { haptic(4); setShowRead((v) => !v); }}>
+              <span>Read</span><em>{readItems.length}{list.hasNextPage ? '+' : ''}</em><Icon name="chevronD" size={14} />
+            </button>
+            {showRead && readStacks.map((s) => <StackView key={`r-${s.key}`} stack={s} go={go} acts={acts} phone={phone} />)}
+          </section>
+        )}
         {list.hasNextPage && <div ref={sentinel} className="ncx-more">{list.isFetchingNextPage ? 'Loading…' : ''}</div>}
       </div>
     </div>

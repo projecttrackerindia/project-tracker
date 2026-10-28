@@ -63,12 +63,31 @@ function setBadge(n) {
   return Promise.resolve();
 }
 
+/**
+ * Read somewhere else (this device's open page, another device, the server): the OS notifications for those notification ids (their tag)
+ * close, so the notification shade never shows something already read. Matched by tag; `links` also closes ones shown for the same thing.
+ */
+function closeRead(tags, links) {
+  const want = new Set((tags || []).map(String));
+  const paths = (links || []).map(String).filter(Boolean);
+  const reg = self.registration;
+  if (!reg || !reg.getNotifications || (want.size === 0 && paths.length === 0)) return Promise.resolve(0);
+  return reg.getNotifications().then((list) => {
+    let closed = 0;
+    for (const n of list) {
+      const link = (n.data && n.data.link) || '';
+      if ((n.tag && want.has(n.tag)) || paths.some((p) => link === p || link.endsWith(p))) { n.close(); closed++; }
+    }
+    return closed;
+  }).catch(() => 0);
+}
+
 /** Asks an open page to play its alert sound; resolves true if one did (a page that cannot make sound yet, or none, answers false). */
 function askPage(win, message) {
   return new Promise((resolve) => {
     const channel = new MessageChannel();
     const timer = setTimeout(() => resolve(false), 800);
-    channel.port1.onmessage = (e) => { clearTimeout(timer); resolve(!!(e.data && e.data.played)); };
+    channel.port1.onmessage = (e) => { clearTimeout(timer); resolve(e.data && e.data.viewing ? 'viewing' : !!(e.data && e.data.played)); };
     try { win.postMessage(message, [channel.port2]); } catch { clearTimeout(timer); resolve(false); }
   });
 }
@@ -76,6 +95,11 @@ function askPage(win, message) {
 self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = { title: event.data ? event.data.text() : 'Project Tracker' }; }
+  // A 'read' data message: notifications were read on another device - close them here and correct the badge, show nothing.
+  if (data.kind === 'read') {
+    event.waitUntil(Promise.all([closeRead(data.tags, data.links), typeof data.badge === 'number' ? setBadge(data.badge) : Promise.resolve()]));
+    return;
+  }
   // A reminder carries its one-time key: Done and Snooze work right from the notification, even with the app closed
   // (where the browser shows buttons - Chrome, Edge, Android; elsewhere a tap opens it).
   const reminder = !!data.token;
@@ -91,7 +115,10 @@ self.addEventListener('push', (event) => {
     const pages = wins.filter((w) => new URL(w.url).origin === self.location.origin);
     // An open page plays its own (distinct) alert sound, so the system notification stays silent - but only if the page really did: when
     // the page cannot make sound yet, or the app is closed, the notification makes the device's own sound instead.
-    const played = (await Promise.all(pages.map((w) => askPage(w, { type: 'pm-push', kind, notificationType: data.type || '', tag: data.tag || '', call, title: data.title || '', category: data.category || '', link: data.link || '' })))).some(Boolean);
+    const answers = await Promise.all(pages.map((w) => askPage(w, { type: 'pm-push', kind, notificationType: data.type || '', tag: data.tag || '', call, title: data.title || '', category: data.category || '', link: data.link || '' })));
+    // A page has that very conversation open in front of the person: nothing to show, it is read there.
+    if (!call && answers.includes('viewing')) return undefined;
+    const played = answers.some(Boolean);
     if (call) {
       return self.registration.showNotification(data.title || 'Incoming call', {
         body: data.body || '', tag: `call-${call}`, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
@@ -145,4 +172,5 @@ self.addEventListener('message', (event) => {
   if (event.data === 'clear') event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('pm-')).map((k) => caches.delete(k)))));
   if (event.data === 'skip-waiting') self.skipWaiting();
   if (event.data && event.data.type === 'pm-badge') event.waitUntil(setBadge(event.data.count));
+  if (event.data && event.data.type === 'pm-read') event.waitUntil(closeRead(event.data.tags, event.data.links));
 });

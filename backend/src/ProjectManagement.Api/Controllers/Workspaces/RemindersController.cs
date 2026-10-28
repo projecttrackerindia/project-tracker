@@ -8,7 +8,7 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 
 /// <summary>The signed-in person's reminders in the current workspace, their settings, and the workspace's escalation policy.</summary>
 [Route("api/v1/reminders"), RequireWorkspace]
-public class RemindersController(ReminderService reminders, ReminderSuggestionService suggestions) : ApiControllerBase
+public class RemindersController(ReminderService reminders, ReminderSuggestionService suggestions, ProjectManagement.Application.Features.Notifications.NotificationService notifications) : ApiControllerBase
 {
     /// <summary>Reminders offered from what the person said (a promise in chat or email, a meeting's action item), waiting for one tap.</summary>
     [HttpGet("suggestions")]
@@ -45,7 +45,12 @@ public class RemindersController(ReminderService reminders, ReminderSuggestionSe
     public async Task<IActionResult> Snooze(Guid id, [FromBody] SnoozeRequest req, CancellationToken ct) => Ok(await reminders.SnoozeAsync(id, req, ct));
 
     [HttpPost("{id:guid}/done")]
-    public async Task<IActionResult> Done(Guid id, CancellationToken ct) => Ok(await reminders.CompleteAsync(id, ct));
+    public async Task<IActionResult> Done(Guid id, [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] ReminderExpectation? req, CancellationToken ct)
+    {
+        var done = await reminders.CompleteAsync(id, req, ct);
+        await notifications.MarkSeenAsync(ProjectManagement.Application.Features.Notifications.NotificationTargets.Reminder, id, ct);   // finished: its notices are read
+        return Ok(done);
+    }
 
     [HttpPost("{id:guid}/reopen")]
     public async Task<IActionResult> Reopen(Guid id, CancellationToken ct) => Ok(await reminders.ReopenAsync(id, ct));
@@ -54,6 +59,7 @@ public class RemindersController(ReminderService reminders, ReminderSuggestionSe
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         await reminders.DeleteAsync(id, ct);
+        await notifications.MarkSeenAsync(ProjectManagement.Application.Features.Notifications.NotificationTargets.Reminder, id, ct);   // dismissed: its notices are read
         return NoContent();
     }
 

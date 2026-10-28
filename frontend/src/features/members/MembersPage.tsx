@@ -41,7 +41,7 @@ export function DirectoryPanel() {
 }
 
 /** The directory at a glance: people against seats, who can change settings, guests, and invitations still waiting. */
-function PeopleKpis({ members, seats, canInvite }: { members: Member[]; seats: number; canInvite: boolean }) {
+export function PeopleKpis({ members, seats, canInvite }: { members: Member[]; seats: number; canInvite: boolean }) {
   const invites = useWsQuery(['invitations'], workspaceApi.invitations, { enabled: canInvite });
   const admins = members.filter((m) => m.role === 'Owner' || m.role === 'Admin').length;
   const guests = members.filter((m) => m.role === 'Guest').length;
@@ -150,7 +150,7 @@ function Invitations({ onInvite }: { onInvite: () => void }) {
   );
 }
 
-function InviteModal({ onClose }: { onClose: () => void }) {
+export function InviteModal({ onClose }: { onClose: () => void }) {
   const wid = useWorkspaceId();
   const myRole = useAuth((s) => s.ctx!.current!.role);
   const [email, setEmail] = useState('');
@@ -193,7 +193,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
  * Creates the account directly, for people who should not have to go through an email link. The administrator chooses (or
  * generates) the first password and hands it over; it is shown once, and the person must replace it at their first sign-in.
  */
-function CreateUserModal({ onClose, onInviteInstead }: { onClose: () => void; onInviteInstead: () => void }) {
+export function CreateUserModal({ onClose, onInviteInstead }: { onClose: () => void; onInviteInstead: () => void }) {
   const wid = useWorkspaceId();
   const myRole = useAuth((s) => s.ctx!.current!.role);
   const policy = usePasswordPolicy();
@@ -327,7 +327,7 @@ export function AccessLevelMatrix() {
             <td className="td-title">{PERMISSION_LABELS[p] ?? p}<div className="td-sub">{p}</div></td>
             {m.roles.map((r) => {
               const on = m.matrix[r]?.[p] ?? false;
-              const locked = r === 'Owner' || m.locked.includes(p) || !m.canEdit;
+              const locked = r === 'Owner' || m.locked.includes(p) || (r === 'Admin' && !!m.adminLocked?.includes(p)) || !m.canEdit;
               return <td key={r}><button className={`perm-toggle ${on ? 'on' : ''}`} disabled={locked} aria-label={`${r}: ${PERMISSION_LABELS[p] ?? p}`} aria-pressed={on} onClick={() => toggle(r, p, !on)}><Icon name="tick" /></button></td>;
             })}
           </tr>

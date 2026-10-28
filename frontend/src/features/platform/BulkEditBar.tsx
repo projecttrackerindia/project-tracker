@@ -65,7 +65,7 @@ export function BulkEditBar({ rows, onClear, onDone }: { rows: WorkRow[]; onClea
         <label className="pv-bulk-pick"><span>Owner</span>
           <select aria-label="Set owner" value="" disabled={busy} onChange={(e) => e.target.value && void run(e.target.value === '-' ? { unassign: true } : { assigneeId: e.target.value }, 'Owner')}>
             <option value="">Owner…</option><option value="-">Nobody</option>
-            {members.data?.filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
+            {members.data?.filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
           </select></label>
         <label className="pv-bulk-pick"><span>Priority</span>
           <select aria-label="Set priority" value="" disabled={busy} onChange={(e) => e.target.value && void run({ priority: e.target.value as Priority }, 'Priority')}>

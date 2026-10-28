@@ -630,7 +630,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
     {
         await permissions.RequireAsync(Permissions.WorkEdit, ct);
         var c = await db.SupportConversations.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Chat not found.");
-        if (req.UserId is { } u && !await db.TenantMembers.AnyAsync(m => m.UserId == u, ct)) throw new ValidationException("userId", "Choose someone in this workspace.");
+        if (req.UserId is { } u && !await db.TenantMembers.AnyAsync(m => m.TenantId == ctx.TenantId && m.UserId == u, ct)) throw new ValidationException("userId", "Choose someone in this workspace.");
         if (c.AssigneeId == req.UserId) return await ConversationAsync(id, ct);
         c.AssigneeId = req.UserId;
         if (req.UserId is not null && c.Mode == "ai") c.Mode = "human";   // a person owns it now: the AI employee steps back

@@ -66,8 +66,9 @@ public class CurrentWorkspaceController(WorkspaceService workspaces, ProjectMana
 
     // Deliberately not gated by the Members module: this is the shared "who's in the workspace" roster used everywhere
     // people are assigned to things (tasks, projects, teams, timesheets), not just the Members admin page.
+    // ?assignable=true leaves out suspended members and deactivated accounts (people pickers); without it everyone is listed, with status.
     [HttpGet("members")]
-    public async Task<IActionResult> Members(CancellationToken ct) => Ok(await workspaces.GetMembersAsync(ct));
+    public async Task<IActionResult> Members([FromQuery] bool assignable, CancellationToken ct) => Ok(await workspaces.GetMembersAsync(ct, assignable));
 
     /// <summary>Creates an account and adds it to this organization straight away (the alternative to inviting by email).</summary>
     [HttpPost("members")]

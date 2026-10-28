@@ -310,8 +310,9 @@ public class CurrentContext : ICurrentContext
     public void GrantProject(Guid projectId) { if (RestrictsProjects && !ProjectIds.Contains(projectId)) ProjectIds = [.. ProjectIds, projectId]; }
 
     public Guid RequireUserId() => UserId ?? throw new Exceptions.UnauthorizedException();
-    public Guid RequireTenantId() => TenantId ?? throw new Exceptions.ForbiddenException(
-        "No active workspace. Select a workspace first.", "WORKSPACE_REQUIRED");
+    public Guid RequireTenantId() => TenantId ?? throw (BlockedWorkspace is { Code: "MEMBER_SUSPENDED" } b
+        ? new Exceptions.ForbiddenException(b.Message, b.Code)
+        : new Exceptions.ForbiddenException("No active workspace. Select a workspace first.", "WORKSPACE_REQUIRED"));
 }
 
 public interface IPasswordHasher

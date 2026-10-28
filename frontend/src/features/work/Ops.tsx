@@ -120,7 +120,7 @@ export function BulkBar({ ids, onDone }: { ids: string[]; onDone: () => void }) 
       </Select>
       <Select className="select" value="" disabled={busy} aria-label="Assign to" onChange={(e) => e.target.value && void run(e.target.value === '-' ? { ids, unassign: true } : { ids, assigneeId: e.target.value }, 'Assignee')}>
         <option value="">Assign…</option><option value="-">Nobody</option>
-        {members.data?.filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
+        {members.data?.filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
       </Select>
       <Select className="select" value="" disabled={busy} aria-label="Set priority" onChange={(e) => e.target.value && void run({ ids, priority: e.target.value }, 'Priority')}>
         <option value="">Priority…</option>{(['Critical', 'High', 'Medium', 'Low'] as Priority[]).map((p) => <option key={p} value={p}>{p}</option>)}
@@ -342,7 +342,7 @@ export function OpsSettingsPanel() {
   useEffect(() => { if (q.data) setForm(q.data); }, [q.data]);
   if (q.isLoading || !form) return <PageLoader />;
   const can = form.canManage;
-  const people = (members.data ?? []).filter((m) => m.role !== 'Guest');
+  const people = (members.data ?? []).filter((m) => m.role !== 'Guest' && m.isActive !== false);
   const save = async () => {
     setBusy(true);
     try {

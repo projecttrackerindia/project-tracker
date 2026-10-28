@@ -26,7 +26,8 @@ public record CreateWorkTaskRequest(string? Title, string? Description, Guid? Wo
 /// <summary>All the editable fields at once: what is sent replaces what was there (an empty related project, assignee or date clears it).</summary>
 public record UpdateWorkTaskRequest(string? Title, string? Description, Guid? WorkTypeId, Guid? RelatedProjectId, Guid? AssigneeId, Priority Priority,
     WorkTaskStatus Status, DateOnly? StartDate, DateOnly? DueDate, int Version);
-public record SetWorkTaskStatusRequest(WorkTaskStatus Status);
+/// <param name="Version">The version the caller saw (My Work's tick, the board): a change over someone else's newer save is refused (409).</param>
+public record SetWorkTaskStatusRequest(WorkTaskStatus Status, int? Version = null);
 
 public record WorkTaskQuery(string? Q = null, Guid? WorkTypeId = null, Guid? RelatedProjectId = null, bool? NoProject = null, Guid? AssigneeId = null, bool Mine = false,
     Priority? Priority = null, WorkTaskStatus? Status = null, bool? Open = null, DateOnly? DueFrom = null, DateOnly? DueTo = null, bool? Overdue = null,
@@ -56,7 +57,7 @@ public record WorkSummaryDto(DateOnly From, DateOnly To, int Open, int Overdue, 
 public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access,
     NotificationService notifications, WorkTypeService types, AttachmentService files, IFileStorage storage, ILogger<WorkTaskService> log, SlaService sla, WorkRouting routing,
     TicketTriage triage, ProjectManagement.Application.Features.Automation.TicketAutomationEngine automations,
-    ProjectManagement.Application.Features.Support.TicketCustomerMessenger customers)
+    ProjectManagement.Application.Features.Support.TicketCustomerMessenger customers, ProjectManagement.Application.Features.Reminders.ReminderSync reminderSync)
 {
     private const int MaxPageSize = 100;
     private const int MaxFilesPerTask = 50;
@@ -71,6 +72,34 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     /// <summary>The next number of the workspace's shared WT / AI sequence.</summary>
     public static async Task<int> NextNumberAsync(IAppDbContext db, Guid tenantId, CancellationToken ct) =>
         (await db.WorkTasks.IgnoreQueryFilters().Where(t => t.TenantId == tenantId).MaxAsync(t => (int?)t.Number, ct) ?? 0) + 1;
+
+    /// <summary>
+    /// Saves a new ticket or action item. Numbers are "highest so far + 1", so two raised at the same moment can pick the same one: the
+    /// later save then takes the next free number and rewrites what it says about itself (activity, notifications) - up to three times,
+    /// the same way <see cref="ProjectManagement.Application.Features.Tasks.TaskService"/> numbers project tasks.
+    /// </summary>
+    public static async Task SaveNewAsync(IAppDbContext db, WorkTask task, CancellationToken ct)
+    {
+        for (var retry = 0; ; retry++)
+        {
+            try { await db.SaveChangesAsync(ct); return; }
+            catch (DbUpdateException ex) when (retry < 3 && DbErrors.IsWorkNumberTaken(ex))
+            {
+                var oldKey = WorkItemService.KeyOf(task.Kind, task.Number);
+                task.Number = await NextNumberAsync(db, task.TenantId, ct);
+                var newKey = WorkItemService.KeyOf(task.Kind, task.Number);
+                var pattern = new System.Text.RegularExpressions.Regex(System.Text.RegularExpressions.Regex.Escape(oldKey) + @"(?!\d)");
+                foreach (var a in db.Activities.Local.Where(a => a.EntityId == task.Id && db.Activities.Entry(a).State == EntityState.Added).ToList())
+                    a.Summary = pattern.Replace(a.Summary, newKey);
+                var id = task.Id.ToString();
+                foreach (var n in db.Notifications.Local.Where(n => n.Link != null && n.Link.Contains(id, StringComparison.Ordinal) && db.Notifications.Entry(n).State == EntityState.Added).ToList())
+                {
+                    n.Title = pattern.Replace(n.Title, newKey);
+                    n.Body = n.Body is null ? null : pattern.Replace(n.Body, newKey);
+                }
+            }
+        }
+    }
 
     // ------------------------------------------------------------------ rules
 
@@ -316,6 +345,8 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         // Work activity belongs to the workspace, not to the related project: the project's own history stays about the project.
         recorder.Activity("worktask.created", "WorkTask", task.Id, $"Created work task {KeyOf(task.Number)} “{title}” ({type.Name})", null);
         await NotifyAssignedAsync(task, ct);
+        await SaveNewAsync(db, task, ct);
+        // Automation rules can message customers and other systems: they run once the ticket really exists (and has its final number).
         await RunAutomationsAsync(task, true, ct);
         await db.SaveChangesAsync(ct);
         return await GetAsync(task.Id, ct);
@@ -326,6 +357,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var task = await FindAsync(id, ct);
         await RequireEditAsync(task, ct);
         if (task.Version != req.Version) throw new ConflictException("This work task was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
+        db.WorkTasks.Entry(task).Property(x => x.Version).OriginalValue = req.Version;   // a save in between fails instead of being overwritten
         var title = CleanTitle(req.Title);
         var type = await RequireTypeAsync(req.WorkTypeId, task.WorkTypeId, ct);
         if (req.RelatedProjectId != task.RelatedProjectId) await CheckRelatedProjectAsync(req.RelatedProjectId, ct);
@@ -382,9 +414,12 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (otherChanges.Count > 0)
             foreach (var who in new[] { task.AssigneeId, (Guid?)task.ReporterId }.Where(x => x is not null).Select(x => x!.Value).Distinct())
                 await notifications.AddAsync(who, NotificationType.TaskUpdated, $"{key} updated", string.Join(" · ", otherChanges), LinkOf(id), ct: ct);
+        await db.SaveChangesAsync(ct);
+        // Side effects that leave the app (automations, customer messages) only after the change is saved.
         await RunAutomationsAsync(task, false, ct);
         await customers.StatusChangedAsync(task, was, ct);
         await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.Operational, id, ct);
         return await GetAsync(id, ct);
     }
 
@@ -412,6 +447,11 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     {
         var task = await FindAsync(id, ct);
         await RequireEditAsync(task, ct);
+        if (req.Version is { } seen)
+        {
+            if (task.Version != seen) throw new ConflictException("This work task was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
+            db.WorkTasks.Entry(task).Property(x => x.Version).OriginalValue = seen;
+        }
         var was = task.Status;
         if (was != req.Status)
         {
@@ -419,9 +459,11 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             task.Version++; task.UpdatedAt = clock.Now; task.UpdatedBy = ctx.UserId;
             recorder.Activity("worktask.status", "WorkTask", id, $"{KeyOf(task.Number)}: {Label(was)} → {Label(task.Status)}", null, was.ToString(), task.Status.ToString());
             new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", Label(was), Label(task.Status)).Record(recorder, "worktask", "WorkTask", id);
+            await db.SaveChangesAsync(ct);
             await RunAutomationsAsync(task, false, ct);
             await customers.StatusChangedAsync(task, was, ct);
             await db.SaveChangesAsync(ct);
+            await reminderSync.OnWorkChangedAsync(ReminderTarget.Operational, id, ct);
         }
         return await GetAsync(id, ct);
     }
@@ -456,6 +498,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         task.IsDeleted = true; task.DeletedAt = clock.Now; task.DeletedBy = ctx.UserId;
         recorder.Activity("worktask.deleted", "WorkTask", id, $"Deleted work task {KeyOf(task.Number)} “{task.Title}”", null);
         await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.Operational, id, ct);
     }
 
     /// <summary>Brings a deleted work task back, for the person who deleted it or an owner/admin. Used by Undo.</summary>
@@ -469,6 +512,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         task.IsDeleted = false; task.DeletedAt = null; task.DeletedBy = null;
         recorder.Activity("worktask.restored", "WorkTask", id, $"Restored work task {KeyOf(task.Number)} “{task.Title}”", null);
         await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.Operational, id, ct);
     }
 
     // ------------------------------------------------------------------ comments
@@ -623,7 +667,10 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var end = to ?? today; var start = from ?? end.AddDays(-29);
         if (start > end) (start, end) = (end, start);
         if (end.DayNumber - start.DayNumber > 366) start = end.AddDays(-366);
-        var startAt = start.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc); var endAt = end.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        // The period's days are the person's own days (their zone), not UTC days: a ticket closed at 01:00 in Kolkata counts on that date.
+        var zone = clock.Zone;
+        DateOnly LocalDay(DateTime utc) => DateOnly.FromDateTime(ProjectManagement.Application.Features.Reminders.ZoneTime.ToLocal(utc, zone));
+        var startAt = ProjectManagement.Application.Features.Reminders.ZoneTime.ToUtc(ProjectManagement.Application.Features.Reminders.ZoneTime.At(start, TimeOnly.MinValue), zone); var endAt = ProjectManagement.Application.Features.Reminders.ZoneTime.ToUtc(ProjectManagement.Application.Features.Reminders.ZoneTime.At(end.AddDays(1), TimeOnly.MinValue), zone);
 
         var rows = await Operational.AsNoTracking()
             .Where(t => t.Status == WorkTaskStatus.ToDo || t.Status == WorkTaskStatus.InProgress || t.Status == WorkTaskStatus.OnHold
@@ -652,7 +699,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 g.Count(r => IsOpen(r.Status)), g.Count(r => Late(r.DueDate, r.Status)), g.Count(r => Done(r.CompletedAt))))
             .Where(c => c.Open + c.Completed > 0).OrderByDescending(c => c.Open + c.Completed).ThenBy(c => c.Name).Take(15).ToList();
         var perDay = Enumerable.Range(0, end.DayNumber - start.DayNumber + 1).Select(i => start.AddDays(i)).Select(d =>
-            new WorkDayDto(d, rows.Count(r => r.CompletedAt is { } c && DateOnly.FromDateTime(c) == d), rows.Count(r => DateOnly.FromDateTime(r.CreatedAt) == d))).ToList();
+            new WorkDayDto(d, rows.Count(r => r.CompletedAt is { } c && LocalDay(c) == d), rows.Count(r => LocalDay(r.CreatedAt) == d))).ToList();
 
         // Service levels: of the work resolved in the period that had a resolution target, how much made it; and what is late or at risk now.
         var now = clock.Now;
