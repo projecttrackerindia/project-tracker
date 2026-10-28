@@ -161,8 +161,10 @@ function ThemePicker({ p, current }: { p: MemberProfile; current: PersonThemeId 
   const pick = async (t: PersonThemeId) => {
     const before = p.theme ?? null;
     queryClient.setQueryData<MemberProfile>(['member-profile', p.userId], (old) => old && { ...old, theme: t });
+    const mineBefore = queryClient.getQueryData(['me', 'ui', 'profile']);
+    queryClient.setQueryData(['me', 'ui', 'profile'], { theme: t });   // the sidebar row, account menu and phone avatar follow at once
     try { await put('/me/ui/profile', { value: { theme: t } }); }
-    catch { queryClient.setQueryData<MemberProfile>(['member-profile', p.userId], (old) => old && { ...old, theme: before }); toast('Could not save your card theme.', 'error'); }
+    catch { queryClient.setQueryData(['me', 'ui', 'profile'], mineBefore); queryClient.setQueryData<MemberProfile>(['member-profile', p.userId], (old) => old && { ...old, theme: before }); toast('Could not save your card theme.', 'error'); }
   };
   return (
     <div className="pcard-theme" role="radiogroup" aria-label="Theme" data-testid="profile-theme">

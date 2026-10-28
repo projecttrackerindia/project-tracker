@@ -101,12 +101,12 @@ try {
   assert.equal(at(), '/work'); assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'My Work' }).isVisible()); checks.push('rail-navigates');
 
   // The slim avatar menu: Profile, Workspaces, Settings, People, Help, Sign out (dark mode and team view live in Settings now).
-  await page.locator('.v2-avatar').first().click();
-  const items = await page.locator('.v2-menu [role="menuitem"]').allInnerTexts();
+  await page.locator('.acct-row').first().click();
+  const items = await page.locator('.acct-menu [role="menuitem"]').allInnerTexts();
   for (const want of ['Profile', 'Settings', 'People', 'Sign out']) assert.ok(items.some((t) => t.includes(want)), `avatar menu has ${want}: ${items}`);
-  assert.equal(await page.locator('.v2-menu .theme-switch').count(), 0, 'dark mode moved to Settings');
+  assert.equal(await page.locator('.acct-menu .theme-switch').count(), 0, 'dark mode moved to Settings');
   await shot(page, 'avatar-menu-1440.png');
-  await page.locator('.v2-menu [role="menuitem"]', { hasText: 'Settings' }).click(); await page.waitForTimeout(500);
+  await page.locator('.acct-menu [role="menuitem"]', { hasText: 'Settings' }).click(); await page.waitForTimeout(500);
   assert.equal(at(), '/settings/general'); checks.push('avatar-menu');
 
   // Old addresses: their new place, with the query and #anchor kept.

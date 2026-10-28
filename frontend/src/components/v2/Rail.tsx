@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { chatApi, insightApi, projectApi } from '../../api/endpoints';
@@ -13,7 +13,7 @@ import { setTitleParts } from '../../lib/title';
 import { useWsQuery } from '../../lib/hooks';
 import { inboxApi } from '../../features/home/inboxApi';
 import { useAuth, useIsPersonal } from '../../stores/auth';
-import { toast } from '../../stores/ui';
+import { toast, useUi } from '../../stores/ui';
 import { chatKeys } from '../../features/chat/chatStore';
 import { RunningTimer } from '../../features/time/RunningTimer';
 import { inRail, useMainNav, type NavDef } from '../../layouts/navigation';
@@ -22,7 +22,13 @@ import { supportMailto } from '../../lib/support';
 import { Sheet } from '../Sheet';
 import { openNew } from './state';
 import { useMailUnread } from '../../features/mail/useMail';
+import { get } from '../../api/client';
+import { Popover } from '../../lib/popover';
+import { PALETTES, avatarBg, meshOf, themeOf, type PersonThemeId } from '../../lib/personTheme';
 import './v2.css';
+
+/** The cache key of my /me/ui/profile (the card theme); the theme picker writes it too. */
+export const MY_PROFILE_UI = ['me', 'ui', 'profile'] as const;
 
 /** Unread chat messages (the badge on Talk, and in the tab title so it shows when the app is in the background). */
 function useTalkUnread() {
@@ -223,85 +229,102 @@ export function Rail() {
       </nav>
       <div className="v2-rail-foot">
         {!admin && <RunningTimer />}
-        <div className="v2-side-me"><AvatarMenu /><span>{ctx?.user.displayName}</span></div>
+        <div className="v2-side-me"><AvatarMenu variant="row" /></div>
       </div>
     </aside>
   );
 }
 
-/** The avatar and its menu: who you are, the workspace (switch or create one), Profile, Settings, People, theme, help, Sign out. */
-export function AvatarMenu() {
+/** My own card theme (saved at /me/ui/profile as { theme }; a stable default from my id otherwise). */
+export function useMyTheme(userId: string | undefined): PersonThemeId {
+  const q = useQuery({ queryKey: MY_PROFILE_UI, queryFn: async () => { try { return (await get<{ value: { theme?: string } | null }>('/me/ui/profile'))?.value ?? null; } catch { return null; } },
+    staleTime: 5 * 60_000, retry: false, enabled: !!userId });
+  return themeOf(userId, q.data?.theme);
+}
+
+/**
+ * The account control: in the sidebar one whole-row button (photo with my theme ring, name, workspace · role, chevron); on the phone's
+ * top bar just the ringed photo. It opens an Apple-style card above the row (the shared popover: flipped and clamped on-screen; a bottom
+ * sheet on a phone) headed by my profile-card banner, then Profile, Workspaces, Settings, People, Appearance, Help and Sign out.
+ */
+export function AvatarMenu({ variant = 'icon' }: { variant?: 'row' | 'icon' }) {
   const ctx = useAuth((s) => s.ctx)!;
   const logout = useAuth((s) => s.logout);
   const switchWorkspace = useAuth((s) => s.switchWorkspace);
+  const theme = useUi((s) => s.theme);
+  const toggleTheme = useUi((s) => s.toggleTheme);
   const personal = useIsPersonal();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [wsOpen, setWsOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const wrap = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
   const { user, current } = ctx;
   const photo = useAvatarUrl(user.id, user.hasAvatar);
   const admin = user.isPlatformAdmin;
+  const mine = useMyTheme(user.id);
+  const ring = { '--me-ring': avatarBg(mine), '--me-a': PALETTES[mine].a } as CSSProperties;
+  const sub = admin ? 'Platform administrator' : [current?.name, current?.role].filter(Boolean).join(' · ');
 
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => { if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', away);
-    menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
-    return () => document.removeEventListener('mousedown', away);
-  }, [open]);
-  const close = (refocus = true) => { setOpen(false); if (refocus) trigger.current?.focus(); };
-  const go = (to: string) => { close(false); nav(to); };
-  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    const items = [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    const move = (i: number) => { e.preventDefault(); items[(i + items.length) % items.length]?.focus(); };
-    if (e.key === 'Escape') { e.preventDefault(); close(); }
-    else if (e.key === 'ArrowDown') move(at + 1);
-    else if (e.key === 'ArrowUp') move(at - 1);
-  };
+  const close = () => setOpen(false);
+  const go = (to: string) => { close(); nav(to); };
   const pick = async (id: string) => {
-    close(false);
+    close();
     if (id === current?.id) return;
     try { await switchWorkspace(id); toast('Workspace switched.', 'info'); } catch { toast('Could not switch workspace.', 'error'); }
   };
+  const copyEmail = () => { void navigator.clipboard?.writeText(user.email).then(() => toast('Email copied.', 'info'), () => undefined); };
+  const face = (cls: string) => <span className={`v2-avatar acct-face ${cls}`} style={photo ? undefined : { background: avatarBg(mine) }} aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}</span>;
 
   return (
-    <div ref={wrap}>
-      <button type="button" ref={trigger} className="v2-avatar" aria-haspopup="menu" aria-expanded={open} aria-label={`Account: ${user.displayName}`}
-        title={user.displayName} onClick={() => setOpen((o) => !o)}>
-        {photo ? <img src={photo} alt="" /> : initials(user.displayName)}
-      </button>
-      {open && (
-        <div className="v2-menu" role="menu" aria-label="Account" ref={menu} onKeyDown={onKey}>
-          <div className="v2-menu-head">
-            <span className="v2-avatar lg" aria-hidden="true">{photo ? <img src={photo} alt="" /> : initials(user.displayName)}</span>
-            <div><b>{user.displayName}</b><span>{user.email}</span><span>{admin ? 'Platform administrator' : `${current?.name ?? ''} · ${current?.role ?? ''}`}</span></div>
+    <>
+      {variant === 'row' ? (
+        <button type="button" ref={trigger} className={`acct-row${open ? ' open' : ''}`} style={ring} data-theme-id={mine} aria-haspopup="menu" aria-expanded={open}
+          aria-label={`Account: ${user.displayName}${sub ? `, ${sub}` : ''}`} title={user.displayName} onClick={() => setOpen((o) => !o)}>
+          {face('acct-ringed')}
+          <span className="acct-row-text"><b>{user.displayName}</b>{sub && <small>{sub}</small>}</span>
+          <span className="acct-row-chev" aria-hidden="true"><Icon name="chevronD" size={13} /></span>
+        </button>
+      ) : (
+        <button type="button" ref={trigger} className="acct-icon" style={ring} data-theme-id={mine} aria-haspopup="menu" aria-expanded={open}
+          aria-label={`Account: ${user.displayName}`} title={user.displayName} onClick={() => setOpen((o) => !o)}>
+          {face('acct-ringed')}
+        </button>
+      )}
+      <Popover open={open} onClose={close} anchorRef={trigger} role="menu" aria-label="Account" className="acct-menu" side={variant === 'row' ? 'top' : 'bottom'} align={variant === 'row' ? 'start' : 'end'} gap={8}>
+        <div className="acct-head" data-testid="acct-head" data-theme-id={mine} style={{ background: `linear-gradient(180deg, rgba(0, 0, 0, .04), rgba(0, 0, 0, .28)), ${meshOf(mine)}` }}>
+          {face('lg')}
+          <div className="acct-id">
+            <b>{user.displayName}</b>
+            <button type="button" className="acct-email" title={`${user.email} — click to copy`} onClick={copyEmail}>{user.email}</button>
+            {sub && <span className="acct-ws">{sub}</span>}
           </div>
+        </div>
+        <div className="acct-items">
           <button type="button" role="menuitem" className="v2-menu-item" onClick={() => go('/settings/profile')}><Icon name="user" size={16} /><span className="grow">Profile</span></button>
-          {!admin && <button type="button" role="menuitem" className="v2-menu-item" aria-expanded={wsOpen} onClick={() => setWsOpen((o) => !o)}><Icon name="building" size={16} /><span className="grow">Workspaces</span><span style={{ display: 'inline-flex', transform: wsOpen ? 'rotate(180deg)' : undefined }}><Icon name="chevronD" size={14} /></span></button>}
+          {!admin && <button type="button" role="menuitem" className="v2-menu-item" aria-expanded={wsOpen} onClick={() => setWsOpen((o) => !o)}><Icon name="building" size={16} /><span className="grow">Workspaces</span><small className="acct-cur">{ctx.workspaces.length > 1 ? 'Switch' : ''}</small><span style={{ display: 'inline-flex', transform: wsOpen ? 'rotate(180deg)' : undefined }}><Icon name="chevronD" size={14} /></span></button>}
           {!admin && wsOpen && (
             <div className="v2-menu-sub">
               {ctx.workspaces.map((w) => (
-                <button key={w.id} type="button" role="menuitem" className="v2-menu-item" aria-current={w.id === current?.id ? 'true' : undefined} onClick={() => void pick(w.id)}>
+                <button key={w.id} type="button" role="menuitem" className="v2-menu-item" aria-current={w.id === current?.id ? 'true' : undefined} title={w.name} onClick={() => void pick(w.id)}>
                   <span className="v2-ws">{w.name[0]?.toUpperCase()}</span><span className="grow">{w.name}</span>{w.id === current?.id && <Icon name="tick" size={15} />}
                 </button>
               ))}
-              <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { close(false); setCreating(true); }}><Icon name="plus" size={16} /><span className="grow">Create organization</span></button>
+              <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { close(); setCreating(true); }}><Icon name="plus" size={16} /><span className="grow">Create organization</span></button>
             </div>
           )}
           {!admin && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => go('/settings/general')}><Icon name="settings" size={16} /><span className="grow">Settings</span></button>}
           {!admin && !personal && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => go('/people')}><Icon name="users" size={16} /><span className="grow">People</span></button>}
+          <button type="button" role="menuitem" className="v2-menu-item" data-testid="acct-appearance" aria-label={`Appearance: ${theme === 'dark' ? 'Dark' : 'Light'}. Switch to ${theme === 'dark' ? 'light' : 'dark'}`}
+            onClick={() => toggleTheme()}><Icon name="moon" size={16} /><span className="grow">Appearance</span>
+            <span className="acct-seg" aria-hidden="true"><i className={theme !== 'dark' ? 'on' : ''}>Light</i><i className={theme === 'dark' ? 'on' : ''}>Dark</i></span></button>
           <div className="v2-menu-sep" />
-          <a role="menuitem" className="v2-menu-item" href={supportMailto('Help with Project Tracker')} onClick={() => close(false)}><Icon name="mail" size={16} /><span className="grow">Help</span></a>
-          <button type="button" role="menuitem" className="v2-menu-item danger" onClick={() => { close(false); void logout(); }}><Icon name="logout" size={16} /><span className="grow">Sign out</span></button>
+          <a role="menuitem" className="v2-menu-item" href={supportMailto('Help with Project Tracker')} onClick={close}><Icon name="mail" size={16} /><span className="grow">Help</span></a>
+          <button type="button" role="menuitem" className="v2-menu-item danger" onClick={() => { close(); void logout(); }}><Icon name="logout" size={16} /><span className="grow">Sign out</span></button>
         </div>
-      )}
+      </Popover>
       {creating && <CreateOrganizationModal onClose={() => setCreating(false)} />}
-    </div>
+    </>
   );
 }
 
