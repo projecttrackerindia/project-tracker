@@ -146,7 +146,7 @@ public class IssueService(IAppDbContext db, ICurrentContext ctx, PermissionServi
     {
         var t = (title ?? "").Trim();
         if (t.Length == 0) throw new ValidationException("title", "Give the issue a short title.");
-        if (t.Length > 200) throw new ValidationException("title", "The title can be at most 200 characters.");
+        if (t.Length > 200) throw new ValidationException("title", ProjectManagement.Application.Common.TextLimits.TooLong(200, t.Length));
         return t;
     }
 

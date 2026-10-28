@@ -27,7 +27,7 @@ import { LiveCallsBar } from '../features/calls/LiveCallsBar';
 import { CallHost } from '../features/calls/CallHost';
 import { IncomingCallHost } from '../features/calls/IncomingCall';
 import { isRingNotice } from '../features/calls/incomingCalls';
-import { AskBar, AskPanelHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
+import { AskBar, GrootChatHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
 import { MotionConfig } from 'framer-motion';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
@@ -138,7 +138,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       )}
       {!admin && !(phone && conversation) && <AskBar />}
       {!admin && <NewSheetHost />}
-      {!admin && <AskPanelHost />}
+      {!admin && <GrootChatHost />}
       {!admin && <CopilotHost />}
       <SignInIsland />
       <NetworkPill />

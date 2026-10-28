@@ -360,6 +360,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
     {
         if (string.IsNullOrWhiteSpace(req.Kind) || !Kinds.TryGetValue(req.Kind.Trim(), out var kind))
             throw new ValidationException("kind", "Say what to create: task, issue, action or ticket.");
+        ProjectManagement.Application.Common.TextLimits.EnsureTitle(req.Title);
         await RequireModulesAsync(kind, true, ct);
         if (kind == WorkItemKind.Task) await permissions.RequireModuleAsync(Modules.Projects, AccessLevel.View, ct);   // tasks are added on a project
         Guid id;
@@ -400,6 +401,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
         if (body.ValueKind != JsonValueKind.Object) throw new ValidationException("body", "Send the fields to change as a JSON object.");
         var p = new Patch(body);
         var version = p.Int("version") ?? throw new ValidationException("version", "Send the version you last read.");
+        if (p.Has("title")) ProjectManagement.Application.Common.TextLimits.EnsureTitle(p.Text("title"));
         var item = await FindAsync(id, true, ct);
         switch (item)
         {

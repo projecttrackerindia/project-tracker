@@ -188,6 +188,7 @@ public class TaskService(
     public async Task<TaskDto> CreateAsync(Guid projectId, CreateTaskRequest req, CancellationToken ct = default)
     {
         await permissions.RequireAsync(Permissions.TasksCreate, ct);
+        ProjectManagement.Application.Common.TextLimits.EnsureTitle(req.Title);
         var tid = ctx.RequireTenantId();
         var userId = ctx.RequireUserId();
         var project = await access.GetProjectAsync(projectId, ct);
@@ -276,6 +277,7 @@ public class TaskService(
         var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Task not found.");
         await permissions.RequireTaskEditAsync(task, ct);
         await access.EnsureWritableAsync(task.ProjectId, "change its tasks", ct);
+        ProjectManagement.Application.Common.TextLimits.EnsureTitle(req.Title);
         if (task.Version != req.Version)
             throw new ConflictException("This task was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
         if (req.StartDate is { } s && req.DueDate is { } d && d < s) throw new ValidationException("dueDate", "Due date must not be before the start date.");

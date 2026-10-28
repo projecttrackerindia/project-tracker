@@ -267,9 +267,10 @@ try {
     await fields.locator('.sla-chip').waitFor();
     assert.match(await fields.innerText(), /Channel\s*WhatsApp/);
     await fields.getByText('Resolution').waitFor();
-    // ✦ Copilot: violet, one suggested action and Not now.
+    // Groot suggests: violet, Groot's face, one suggested action and Not now.
     const ai = panel.locator('.v2-ai-card');
-    await ai.getByText('Copilot').waitFor();
+    await ai.getByText('Groot suggests').waitFor();
+    assert.equal(await ai.locator('[data-testid="groot-avatar"]').count(), 1, 'Groot on the card');
     assert.equal(await ai.locator('.btn-ai').count(), 1, 'one suggested action');
     await ai.getByRole('button', { name: 'Not now' }).waitFor();
     const violet = await ai.locator('.btn-ai').evaluate((e) => getComputedStyle(e).backgroundColor);

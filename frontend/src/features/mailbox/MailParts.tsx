@@ -235,7 +235,7 @@ export function TaskSuggestion({ s, wid, trigger = 0 }: { s: MailTaskSuggestion;
 /* ---------------- writing ---------------- */
 
 const TOOLS: { mode: ComposeMode; label: string; needsText: boolean }[] = [
-  { mode: 'reply', label: 'Draft reply', needsText: false }, { mode: 'improve', label: 'Improve', needsText: true }, { mode: 'shorter', label: 'Shorter', needsText: true },
+  { mode: 'reply', label: 'Groot: draft reply', needsText: false }, { mode: 'improve', label: 'Improve', needsText: true }, { mode: 'shorter', label: 'Shorter', needsText: true },
   { mode: 'formal', label: 'Formal', needsText: true }, { mode: 'friendly', label: 'Friendly', needsText: true }, { mode: 'complete', label: 'Finish it', needsText: true },
 ];
 

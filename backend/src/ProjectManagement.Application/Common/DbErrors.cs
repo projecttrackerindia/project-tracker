@@ -25,6 +25,17 @@ public static class DbErrors
         return false;
     }
 
+    /// <summary>
+    /// PostgreSQL SQLSTATE 22001 (string_data_right_truncation): a value is longer than its varchar column. It means the request carried too much
+    /// text for a field, not that it clashed with other data, so it is answered as 422 rather than 409.
+    /// </summary>
+    public static bool IsStringTooLong(DbUpdateException error)
+    {
+        for (Exception? x = error; x is not null; x = x.InnerException)
+            if (x is DbException { SqlState: "22001" } || x.Message.Contains("value too long for type character varying", StringComparison.Ordinal)) return true;
+        return false;
+    }
+
     public static bool IsProjectKeyTaken(DbUpdateException e) => IsUniqueViolation(e, ProjectKeyIndex, "Projects", "TenantId", "Key");
     public static bool IsTaskNumberTaken(DbUpdateException e) => IsUniqueViolation(e, TaskNumberIndex, "WorkItems", "ProjectId", "Number");
     // SQLite names the columns, not the index: the running timer is the only unique index on TimeEntries (TenantId, UserId).

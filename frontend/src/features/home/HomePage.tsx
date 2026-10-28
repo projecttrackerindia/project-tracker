@@ -111,7 +111,7 @@ function ForYou({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) => void
             onChange={(v) => (v === 'calendar' ? onTab('calendar') : onTab('for-you', v))} />
           {/* The Command Center's own views stay one click away (quiet ··· beside the switch). */}
           <DotsMenu label="More on Home" items={[
-            { label: 'Assistant', hint: 'Your conversations with the assistant', icon: 'sparkle', onSelect: () => nav('/?tab=assistant') },
+            { label: 'Groot', hint: 'Your conversations with Groot', icon: 'sparkle', onSelect: () => nav('/?tab=assistant') },
             { label: 'Today', hint: 'Check-ins, meetings and "what if"', icon: 'target', onSelect: () => nav('/?tab=today') },
             { label: 'Decisions', icon: 'checks', onSelect: () => nav('/?tab=decisions') },
             { label: 'Audit trail', hint: 'Everything the agent did', icon: 'shield', onSelect: () => nav('/?tab=audit') },

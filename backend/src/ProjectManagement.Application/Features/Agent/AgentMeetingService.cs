@@ -427,7 +427,7 @@ public class AgentMeetingService(IAppDbContext db, AppClock clock, ISecretProtec
         var tier = aiOptions.Value.Chat.Quick;
         await using var reservation = await credits.ReserveAsync(Guid.NewGuid(), tier.Credits, "project_agent_live", ct);
         AiAnswer answer;
-        try { answer = await ai.CompleteAsync("You are the project agent listening to a live stand-up. You interrupt rarely and only when it matters. Answer with JSON only.", prompt.ToString(), 600, ct); }
+        try { answer = await ai.CompleteAsync(ProjectManagement.Application.Features.Ai.GrootIdentity.Generic + "You are acting as the project agent listening to a live stand-up. You interrupt rarely and only when it matters. Answer with JSON only.", prompt.ToString(), 600, ct); }
         catch (AppException ex) { log.LogInformation("Live reminder check failed: {Reason}", ex.Message); return []; }
         var j = AiAssistant.JsonIn(answer.Text);
         await reservation.SettleAsync(reservation.Amount, ct);

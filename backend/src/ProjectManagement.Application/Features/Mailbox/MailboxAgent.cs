@@ -115,7 +115,7 @@ public class MailboxAgent(IAppDbContext db, ICurrentContext ctx, MailboxService 
         var thread = await mailbox.ThreadAsync(req.Account, req.Folder, req.MessageId, ct);
         var open = await OpenWorkAsync(ct);
         var me = await db.Users.AsNoTracking().Where(u => u.Id == ctx.RequireUserId()).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "";
-        var system = "You are a careful executive assistant reading the user's own email inside a project management app. " + Rules +
+        var system = ProjectManagement.Application.Features.Ai.GrootIdentity.Generic + "As Groot you are a careful executive assistant reading the user's own email inside a project management app. " + Rules +
             " Think through the conversation step by step before answering: who wants what from the user, by when, what was already agreed, what is still open, " +
             "and whether any of the user's open tasks is the same piece of work. Then return ONLY JSON with this shape: " +
             "{\"summary\":\"2-3 plain sentences\",\"intent\":\"action_required|question|meeting|fyi|follow_up|approval|promotional\",\"urgency\":\"low|medium|high\"," +

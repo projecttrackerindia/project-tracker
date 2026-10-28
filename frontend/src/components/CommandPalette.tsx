@@ -137,7 +137,7 @@ export function CommandPalette() {
     const hits: Command[] = (search.data?.hits ?? []).slice(0, 8).map((h) => ({
       id: `hit:${h.type}:${h.id}`, group: 'Search results', label: h.title, hint: h.subtitle ?? undefined, icon: HIT_ICON[h.type] ?? 'search', run: go(searchHitLink(h)),
     }));
-    const askAi: Command[] = ai && query.length >= 3 ? [{ id: 'ai:ask', group: 'Assistant', label: `Ask the assistant: “${query}”`, icon: 'ai', run: () => { close(); ask(query); } }] : [];
+    const askAi: Command[] = ai && query.length >= 3 ? [{ id: 'ai:ask', group: 'Groot', label: `Ask Groot: “${query}”`, icon: 'ai', run: () => { close(); ask(query); } }] : [];
     // "remind me to call Priya tomorrow" is a reminder, not a search.
     const remind: Command[] = /^(remind|reminder|remember|don'?t forget)\b/i.test(query) && ctx && !ctx.user.isPlatformAdmin
       ? [{ id: 'new:reminder-typed', group: 'Create', label: `Set a reminder: “${query}”`, icon: 'alarm', run: () => { close(); openReminderComposer({ text: query }); } }] : [];

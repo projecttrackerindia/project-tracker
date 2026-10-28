@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../Icon';
+import { GrootAvatar } from '../groot/GrootAvatar';
 import './v2.css';
 
 /**
@@ -19,7 +20,7 @@ export function AiCard({ title, children, action, onDismiss, dismissLabel, stack
   if (stacked) return (
     <div className={`v2-ai-card stacked ${className}`} role="note">
       <div className="v2-ai-card-main">
-        {title && <b><span className="v2-spark" aria-hidden="true">✦</span> {title}</b>}
+        {title && <b><GrootAvatar size={18} className="v2-spark-groot" title="Groot" /> {title}</b>}
         {children && <span>{children}</span>}
         {(act || dismiss) && <div className="v2-ai-card-acts">{act}{dismiss}</div>}
       </div>
@@ -27,7 +28,7 @@ export function AiCard({ title, children, action, onDismiss, dismissLabel, stack
   );
   return (
     <div className={`v2-ai-card ${className}`} role="note">
-      <span className="v2-spark" aria-hidden="true">✦</span>
+      <GrootAvatar size={22} className="v2-spark-groot" title="Groot" />
       <div className="v2-ai-card-main">{title && <b>{title}</b>}{children && <span>{children}</span>}</div>
       {act}
       {dismiss}

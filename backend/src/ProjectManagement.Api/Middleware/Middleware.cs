@@ -109,6 +109,8 @@ public class ConsentMiddleware(RequestDelegate next)
 /// <summary>Maps exceptions to the standard envelope. Internal details are logged, never returned (spec section 51).</summary>
 public class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExceptionMiddleware> log)
 {
+    public const string TextTooLongMessage = "Some text is too long for its field. Keep the title short and put the details in the description, then try again.";
+
     public async Task InvokeAsync(HttpContext http)
     {
         try { await next(http); }
@@ -122,6 +124,11 @@ public class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExceptionMi
         {
             await ErrorWriter.WriteAsync(http, 409, "The record was changed by someone else. Reload and try again.",
                 [new ApiError("VERSION_CONFLICT", "The record was changed by someone else. Reload and try again.")]);
+        }
+        catch (DbUpdateException ex) when (ProjectManagement.Application.Common.DbErrors.IsStringTooLong(ex))
+        {
+            log.LogWarning(ex, "A value was too long for its column on {Path}", http.Request.Path);
+            await ErrorWriter.WriteAsync(http, 422, TextTooLongMessage, [new ApiError(ProjectManagement.Application.Common.TextLimits.TooLongCode, TextTooLongMessage)]);
         }
         catch (DbUpdateException ex)
         {
