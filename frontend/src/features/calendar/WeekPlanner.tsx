@@ -1,9 +1,8 @@
-import { Face } from '../../components/Face';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { meetingApi } from '../../api/endpoints';
-import type { CalendarEvent, TimelineEvent } from '../../api/types';
+import { meetingApi, timeApi } from '../../api/endpoints';
+import type { CalendarEvent, TimeEntry, TimelineEvent } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { ErrorState, Segmented } from '../../components/ui';
 import { todayISO } from '../../lib/format';
@@ -16,9 +15,12 @@ import { ToolbarSlot } from '../talk/ToolbarSlot';
 import { undoToast } from '../talk/flyTask';
 import { CalendarView } from './CalendarView';
 import { EventDetail, type DetailActions } from './EventDetail';
+import { DayPanel } from './DayPanel';
+import { canMoveDue, editError, entryLock, isoAt, moveDue, moveReminder, placeEntry, refreshAfterEdit, useMyEntries } from './calendarEdit';
+import type { WorkChoice } from './TimeEntryEditor';
 import { AttendanceRow } from '../attendance/AttendanceCalendar';
 import {
-  DOW3, HR, MONTHS, SNAP, addDays, clockH, dateOf, fmtMins, hourOf, hrefOf, isDeadline, iso, lanes, mondayOf, planKey, RANK,
+  DOW3, HR, MONTHS, SNAP, addDays, clockH, dateOf, dayLabel, fmtMins, hourOf, isDeadline, isDone, isWorkItem, iso, lanes, mondayOf, planKey, RANK,
   type Detail, type Focus, type Meet, type PlanOverrides,
 } from './plannerModel';
 import { buildWeek, daySignature, focusLabel, hoursOf, readPlan, useTimeline, weekRange, writePlan, type DayView } from './timeline';
@@ -47,21 +49,64 @@ const LAYERS: [Layer, string][] = [['meetings', 'Meetings'], ['calls', 'Calls'],
  * Everything comes from the one timeline (GET /timeline) that Today reads too. Any block opens a card that says what it is and what can be
  * done with it. Enter opens, Esc closes, the arrow keys walk the blocks. A meeting you organise can be dragged to a new time, with Undo.
  */
+type DragKind = 'meeting' | 'time' | 'focus' | 'reminder';
+type DragMode = 'move' | 'top' | 'bottom';
+/** Anything on the grid that can be dragged: its kind, its block key, where it is now, and whether its edges resize it. */
+interface DragItem { kind: DragKind; key: string; day: string; start: number; end: number; resizable: boolean; /** Drawn on another day while dragged there. */ label: string; cls: string }
+interface DragState { item: DragItem; mode: DragMode; day: string; start: number; end: number }
+const snapH = (h: number) => Math.round(h / SNAP) * SNAP;
+const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+const spanText = (day: string, a: number, b: number) => `${DOW3[dateOf(day).getDay()]} ${clockH(a)}–${clockH(b)}`;
+
+/** Whether the Day panel sits beside the grid (then a block's card opens inside it instead of as a popover). */
+function useWide() {
+  const q = '(min-width: 1440px)';
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(q).matches);
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const m = window.matchMedia(q); const on = () => setWide(m.matches);
+    m.addEventListener?.('change', on); return () => m.removeEventListener?.('change', on);
+  }, []);
+  return wide;
+}
+
+/** The day a detail belongs to (selecting a block selects its day in the Day panel). */
+const dayOfDetail = (d: Detail): string | null => {
+  switch (d.kind) {
+    case 'meeting': return d.m.day;
+    case 'focus': return d.f.day;
+    case 'deadline': return d.e.date;
+    case 'time': case 'done': case 'call': case 'reminder': return d.t.date;
+    case 'loggedDay': case 'leave': case 'create': return d.day;
+  }
+};
+
+/**
+ * Calendar (the sidebar's Calendar): the mini month, layer and project filters and the ✦ week line on the left; the whole day with meetings
+ * and calls at their real lengths, time logged as quiet green bars, finished work as check pills at the minute it was finished, focus blocks
+ * from your day plan, deadline flags and logged totals on the day headers, reminder rings and the now line; the Day panel on the right.
+ * Everything comes from the one timeline (GET /timeline) that Today reads too, and every edit writes the real record:
+ * drag a time entry, a focus block, a reminder or a meeting you organise to move it (its edges resize it, 15-minute steps), drag a deadline flag
+ * to another day to move the due date (a later date asks why), drag over empty time to log time, plan focus or schedule a meeting.
+ * Enter opens, Esc closes, the arrow keys walk the blocks, Alt+↑/↓ moves the focused block a quarter hour.
+ */
 export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calendar') => void; /** Under the ✦ line (Subscribe in Google / Outlook). */ extra?: ReactNode }) {
   const navigate = useNavigate();
   const wid = useWorkspaceId();
   const today = todayISO();
+  const wide = useWide();
   const [view, setView] = useState<View>(() => (typeof window !== 'undefined' && window.innerWidth < 760 ? 'day' : 'week'));
   const [anchor, setAnchor] = useState(today);
   const [mini, setMini] = useState(() => { const d = dateOf(today); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [layers, setLayers] = useState<Record<Layer, boolean>>({ meetings: true, calls: true, logged: true, done: true, focus: true, deadlines: true, reminders: true });
   const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const [selected, setSelected] = useState<string | null>(null);
-  const [moved, setMoved] = useState<Record<string, { day: string; start: number }>>({});
+  const [moved, setMoved] = useState<Record<string, { day: string; start: number; end: number }>>({});
   const [plan, setPlan] = useState<PlanOverrides>(() => readPlan(wid));
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<{ d: Detail; el: HTMLElement | null } | null>(null);
   const [now, setNow] = useState(() => new Date());
+  /** Edits on their way to the server, shown at once (by timeline event id); dropped when the timeline comes back. */
+  const [over, setOver] = useState<Record<string, Partial<TimelineEvent>>>({});
   useEffect(() => { const t = window.setInterval(() => setNow(new Date()), 60_000); return () => window.clearInterval(t); }, []);
   useEffect(() => { setPlan(readPlan(wid)); }, [wid]);
   const nowH = hourOf(now);
@@ -72,16 +117,31 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const sunday = addDays(monday, 6);
   const week = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(monday, i)), [monday]);
   const days = useMemo(() => (view === 'day' ? [anchor] : week), [view, anchor, week]);
+  // The Day panel's day: today when it is on screen, else the first day shown; a click on a day header or empty time chooses another.
+  const [selDay, setSelDay] = useState(today);
+  useEffect(() => { setSelDay(view === 'day' ? anchor : week.includes(today) ? today : week[0]); }, [monday, view, anchor, week, today]);
 
-  // One request for the visible week (the same one Today makes for this week), and the meeting feed for what only Meet knows (who may move it).
+  // One request for the visible week (the same one Today makes for this week), the meeting feed for what only Meet knows (who may move it),
+  // my own entries as the timesheet has them (locks, stamps) and the week grid (the day's capacity, the work I log time on).
   const tl = useTimeline(weekRange(anchor), { enabled: view !== 'month' });
   const feed = useWsQuery(['meet', 'feed', monday], () => meetApi.feed({ from: `${monday}T00:00:00`, to: `${addDays(sunday, 1)}T00:00:00` }), { staleTime: 60_000, retry: false, enabled: view !== 'month' });
-  const raw = useMemo(() => (tl.data?.events ?? []).filter((t) => !(t.type === 'due' && doneIds.has(t.sourceId))), [tl.data, doneIds]);
+  const mine = useMyEntries(monday, sunday, view !== 'month');
+  const grid = useWsQuery(['time', 'grid', monday], () => timeApi.grid(monday), { staleTime: 60_000, retry: false, enabled: view !== 'month', placeholderData: (p) => p });
+  useEffect(() => { setOver({}); }, [tl.dataUpdatedAt]);
+  const entries = useMemo(() => new Map((Array.isArray(mine.data?.entries) ? mine.data!.entries : []).map((e) => [e.id, e])), [mine.data]);
+  const raw = useMemo(() => (tl.data?.events ?? []).filter((t) => !(t.type === 'due' && doneIds.has(t.sourceId))).map((t) => (over[t.id] ? { ...t, ...over[t.id] } : t)), [tl.data, doneIds, over]);
   const projects = useMemo(() => [...new Set(raw.map((e) => e.projectName).filter((n): n is string => !!n))].slice(0, 6), [raw]);
   const tintOf = useCallback((name: string | null) => (name && projects.includes(name) ? TINTS[projects.indexOf(name) % TINTS.length] : 'g'), [projects]);
   const timeline = useMemo(() => raw.filter((t) => !t.projectName || !hidden.has(t.projectName)), [raw, hidden]);
   const wv = useMemo(() => buildWeek(timeline, week, today, nowQ, plan), [timeline, week, today, nowQ, plan]);
-  const events = useMemo(() => wv.days.flatMap((d) => [...d.meets.map((m) => m.e), ...d.due]), [wv]);
+  const openItems = useMemo(() => wv.days.flatMap((d) => d.due).filter((e) => isWorkItem(e) && !isDone(e)), [wv]);
+  const choices = useMemo<WorkChoice[]>(() => {
+    const out = new Map<string, WorkChoice>();
+    for (const r of [...(Array.isArray(grid.data?.rows) ? grid.data!.rows : []), ...(Array.isArray(grid.data?.suggestions) ? grid.data!.suggestions : [])]) out.set(`${r.kind}:${r.targetId}`, { kind: r.kind as 'task' | 'work', id: r.targetId, key: r.key, title: r.title, projectName: r.projectName });
+    for (const e of openItems) if (e.type === 'task' || e.type === 'work') out.set(`${e.type}:${e.id}`, out.get(`${e.type}:${e.id}`) ?? { kind: e.type, id: e.id, key: e.key ?? null, title: e.title, projectName: e.projectName });
+    return [...out.values()];
+  }, [grid.data, openItems]);
+  const peopleById = useMemo(() => new Map(raw.map((t) => [t.sourceId, t.people])), [raw]);
 
   const meets: Meet[] = useMemo(() => {
     const byStart = new Map((feed.data?.items ?? []).map((f) => [`${f.id}|${Date.parse(f.start)}`, f]));
@@ -89,18 +149,12 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     return wv.days.flatMap((d) => d.meets).map((m) => {
       const f = byStart.get(`${m.e.id}|${Date.parse(m.e.startsAt!)}`) ?? byId.get(m.e.id) ?? null;
       const mv = moved[m.key];
-      const len = m.end - m.start;
-      return mv ? { ...m, day: mv.day, start: mv.start, end: mv.start + len, feed: f } : { ...m, feed: f };
+      return mv ? { ...m, day: mv.day, start: mv.start, end: mv.end, feed: f } : { ...m, feed: f };
     });
   }, [wv, feed.data, moved]);
 
-  // ---- drag to reschedule
-  const [drag, setDrag] = useState<{ key: string; day: string; start: number; moved: boolean } | null>(null);
-  const justDragged = useRef(false);
-  const dragRef = useRef<{ key: string; x: number; y: number; day: string; start: number; colW: number; dayIdx: number } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const placed = useMemo(() => meets.map((m) => (drag && drag.key === m.key && drag.moved ? { ...m, day: drag.day, start: drag.start, end: drag.start + (m.end - m.start) } : m)), [meets, drag]);
   const focus = useMemo(() => (layers.focus ? wv.focus.filter((f) => days.includes(f.day)) : []), [layers.focus, wv, days]);
 
   const canMove = useCallback((m: Meet): string | null => {
@@ -110,11 +164,14 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     if (Date.parse(m.feed.end) < Date.now()) return 'This meeting has ended';
     return null;
   }, []);
-  const reschedule = async (m: Meet, day: string, start: number, undo = false) => {
-    const from = { day: m.day, start: m.start };
-    const len = m.end - m.start;
+  const timeWhy = useCallback((t: TimelineEvent): string | null => (t.running ? 'The timer is running on this. Stop it to change its time.' : entryLock(entries.get(t.sourceId))), [entries]);
+  const remWhy = (t: TimelineEvent) => (t.status !== 'scheduled' ? 'This reminder went off: snooze it or mark it done' : null);
+
+  // ---- writes (each one the real record), shown at once, with Undo
+  const reschedule = async (m: Meet, day: string, start: number, len: number, undo = false) => {
+    const from = { day: m.day, start: m.start, end: m.end };
     const at = (d: string, h: number) => instantIn(d, h);   // the wall-clock time in the app's zone, not the device's
-    setMoved((s) => ({ ...s, [m.key]: { day, start } }));
+    setMoved((s) => ({ ...s, [m.key]: { day, start, end: start + len } }));
     try {
       const body = { startTime: at(day, start).toISOString(), endTime: at(day, start + len).toISOString() };
       if (m.e.projectId) await meetingApi.reschedule(m.e.id, body); else await meetingApi.workspaceReschedule(m.e.id, body);
@@ -122,89 +179,226 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
       void invalidateWorkspace(wid, 'timeline');
       if (undo) { toast('Moved back.', 'info'); return; }
       const before = focus.filter((f) => f.day === day && f.end > start && f.start < start + len);
-      const label = `${m.e.title} moved to ${DOW3[dateOf(day).getDay()]} ${clockH(start)}${before.length ? ' · focus replanned' : ''}`;
-      undoToast(label, () => void reschedule({ ...m, day, start, end: start + len }, from.day, from.start, true), gridRef.current, 46);
+      const label = `${m.e.title} moved to ${DOW3[dateOf(day).getDay()]} ${clockH(start)}${Math.abs(len - (from.end - from.start)) > 1e-6 ? `–${clockH(start + len)}` : ''}${before.length ? ' · focus replanned' : ''}`;
+      undoToast(label, () => void reschedule({ ...m, day, start, end: start + len }, from.day, from.start, from.end - from.start, true), gridRef.current, 46);
     } catch (err) {
       setMoved((s) => ({ ...s, [m.key]: from }));
       toast(err instanceof ApiError ? err.message : 'Could not move the meeting.', 'error');
     }
   };
+  const moveTime = async (t: TimelineEvent, day: string, start: number, end: number, undo = false) => {
+    const e = entries.get(t.sourceId);
+    const why = timeWhy(t);
+    if (why || !e) { toast(why ?? 'That entry is not yours to change.', 'error'); return; }
+    if (day > today || (day === today && end > nowH + 1 / 60)) { toast('Logged time is for time that has happened. Drag it earlier, or plan focus for later.', 'error'); return; }
+    const was = hoursOf(t), wasDay = t.date;
+    setOver((o) => ({ ...o, [t.id]: { date: day, start: isoAt(day, start), end: isoAt(day, end), approximated: false, minutes: Math.round((end - start) * 60) } }));
+    try {
+      await placeEntry(e, day, start, end);
+      refreshAfterEdit(wid);
+      if (undo) { toast('Moved back.', 'info'); return; }
+      undoToast(`${t.title} · ${spanText(day, start, end)} (${fmtMins(Math.round((end - start) * 60))})`, () => {
+        // Undo works from the saved entry (its new stamp), once the timeline has it.
+        void mine.refetch().then((r) => { const fresh = r.data?.entries.find((x) => x.id === e.id); if (fresh) void moveTimeEntry(fresh, t, wasDay, was.start, Math.max(was.end, was.start + .25)); });
+      }, gridRef.current, 46);
+    } catch (err) {
+      setOver((o) => { const n = { ...o }; delete n[t.id]; return n; });
+      toast(editError(err, 'That time could not be moved.'), 'error');
+      refreshAfterEdit(wid);
+    }
+  };
+  const moveTimeEntry = async (fresh: TimeEntry, t: TimelineEvent, day: string, start: number, end: number) => {
+    try { await placeEntry(fresh, day, start, end); toast('Moved back.', 'info'); }
+    catch (err) { toast(editError(err, 'Could not move it back.'), 'error'); }
+    finally { refreshAfterEdit(wid); }
+    void t;
+  };
+  const moveRem = async (t: TimelineEvent, day: string, start: number, undo = false) => {
+    const why = remWhy(t);
+    if (why) { toast(why, 'error'); return; }
+    if (day < today || (day === today && start < nowH)) { toast('Choose a time that has not passed yet.', 'error'); return; }
+    const was = hoursOf(t).start, wasDay = t.date;
+    setOver((o) => ({ ...o, [t.id]: { date: day, start: isoAt(day, start) } }));
+    try {
+      await moveReminder(t.sourceId, day, start);
+      refreshAfterEdit(wid);
+      if (undo) { toast('Moved back.', 'info'); return; }
+      undoToast(`Reminder moved to ${DOW3[dateOf(day).getDay()]} ${clockH(start)}`, () => void moveRem({ ...t, date: day, start: isoAt(day, start) }, wasDay, was, true), gridRef.current, 46);
+    } catch (err) {
+      setOver((o) => { const n = { ...o }; delete n[t.id]; return n; });
+      toast(editError(err, 'The reminder could not be moved.'), 'error');
+    }
+  };
+  const savePlan = (p: PlanOverrides) => { setPlan(p); writePlan(wid, p); };
+  const moveFocusTo = (f: Focus, day: string, start: number, len: number) => {
+    const before = plan;
+    savePlan({ ...plan, [planKey(f.e)]: { day, start, len } });
+    undoToast(`Focus on ${focusLabel(f.e)} · ${spanText(day, start, start + len)}`, () => savePlan(before), gridRef.current, 46);
+  };
+  // A deadline flag dropped on another day: the due date moves (a task moved later asks why first, the same rule as its form).
+  const [dueAsk, setDueAsk] = useState<{ e: CalendarEvent; date: string } | null>(null);
+  const shiftDue = async (e: CalendarEvent, date: string, reason: string, undo = false) => {
+    const from = e.date;
+    const ids = raw.filter((t) => t.type === 'due' && t.sourceId === e.id).map((t) => t.id);
+    setOver((o) => ({ ...o, ...Object.fromEntries(ids.map((id) => [id, { date, overdue: date < today }])) }));
+    try {
+      await moveDue(e, date, reason);
+      refreshAfterEdit(wid);
+      if (undo) { toast('Moved back.', 'info'); return; }
+      const back = () => (from > date ? setDueAsk({ e: { ...e, date }, date: from }) : void shiftDue({ ...e, date }, from, '', true));
+      undoToast(`${e.key ?? e.title} now due ${dayLabel(date, today).toLowerCase()}`, back, gridRef.current, 46);
+    } catch (err) {
+      setOver((o) => { const n = { ...o }; for (const id of ids) delete n[id]; return n; });
+      toast(editError(err, 'The due date could not be moved.'), 'error');
+    }
+  };
+  const dropDue = (e: CalendarEvent, date: string) => {
+    if (date === e.date) return;
+    if (!canMoveDue(e)) { toast(`${KIND_WORD[e.type] ?? 'This'} dates move from the ${e.type === 'action' ? 'project’s follow-ups' : 'project'}.`, 'error'); return; }
+    if (date > e.date && e.type === 'task') setDueAsk({ e, date }); else void shiftDue(e, date, '');
+  };
 
-  // Pointer and key handlers change every render; the day columns get stable ones that read the latest through a ref, so a column only
-  // re-renders when its own blocks change (not on hover, not when another day's block is dragged).
-  const live = useRef({ onPointerDown: (_e: ReactPointerEvent, _m: Meet) => {}, onPointerMove: (_e: ReactPointerEvent, _m: Meet) => {}, onPointerUp: (_m: Meet) => {},
-    onCancel: () => {}, onAltMove: (_m: Meet, _up: boolean) => {}, onOpen: (_d: Detail, _el: HTMLElement) => {} });
-  live.current.onPointerDown = (ev, m) => {
-    if (ev.button !== 0 || canMove(m)) return;
+  // ---- dragging: a block (move), its top or bottom edge (resize), a deadline flag (to another day header), or empty time (create)
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const justDragged = useRef(false);
+  const afterDrag = () => { justDragged.current = true; window.setTimeout(() => { justDragged.current = false; }, 0); };
+  const commit = (it: DragItem, day: string, start: number, end: number) => {
+    if (it.kind === 'meeting') { const m = meets.find((x) => x.key === it.key); if (m) void reschedule(m, day, start, end - start); }
+    else if (it.kind === 'time') { const t = raw.find((x) => `time:${x.date}:${x.id}` === it.key); if (t) void moveTime(t, day, start, end); }
+    else if (it.kind === 'focus') { const f = wv.focus.find((x) => x.key === it.key); if (f) moveFocusTo(f, day, start, end - start); }
+    else if (it.kind === 'reminder') { const t = raw.find((x) => `reminder:${x.date}:${x.id}` === it.key); if (t) void moveRem(t, day, start); }
+  };
+  const live = useRef({ down: (_e: ReactPointerEvent, _it: DragItem, _mode: DragMode) => {}, open: (_d: Detail, _el: HTMLElement) => {}, alt: (_it: DragItem, _up: boolean) => {},
+    create: (_e: ReactPointerEvent, _day: string) => {}, flag: (_e: ReactPointerEvent, _f: CalendarEvent) => {} });
+  live.current.down = (ev, it, mode) => {
+    if (ev.button !== 0) return;
+    ev.stopPropagation();
     const col = gridRef.current?.querySelector<HTMLElement>('.wp-col');
-    dragRef.current = { key: m.key, x: ev.clientX, y: ev.clientY, day: m.day, start: m.start, colW: col?.getBoundingClientRect().width ?? 140, dayIdx: days.indexOf(m.day) };
-    (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+    const g = { x: ev.clientX, y: ev.clientY, colW: col?.getBoundingClientRect().width ?? 140, dayIdx: days.indexOf(it.day) };
+    let cur: DragState | null = null;
+    const move = (e: PointerEvent) => {
+      const dx = e.clientX - g.x, dy = e.clientY - g.y;
+      if (!cur && Math.hypot(dx, dy) < 5) return;
+      const len = it.end - it.start;
+      let day = it.day, start = it.start, end = it.end;
+      if (mode === 'move') {
+        start = clamp(snapH(it.start + dy / HR), G0, G1 - len); end = start + len;
+        day = days[clamp(g.dayIdx + Math.round(dx / g.colW), 0, days.length - 1)];
+      } else if (mode === 'top') start = clamp(snapH(it.start + dy / HR), G0, it.end - SNAP);
+      else end = clamp(snapH(it.end + dy / HR), it.start + SNAP, G1);
+      if (!cur || cur.day !== day || cur.start !== start || cur.end !== end) { cur = { item: it, mode, day, start, end }; setDrag(cur); }
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel);
+      const d = cur; setDrag(null);
+      if (!d) return;
+      afterDrag();
+      if (d.day !== it.day || Math.abs(d.start - it.start) > 1e-6 || Math.abs(d.end - it.end) > 1e-6) commit(it, d.day, d.start, d.end);
+    };
+    const cancel = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel); setDrag(null); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel);
   };
-  live.current.onPointerMove = (ev, m) => {
-    const d = dragRef.current;
-    if (!d || d.key !== m.key) return;
-    const dy = ev.clientY - d.y, dx = ev.clientX - d.x;
-    if (!drag && Math.hypot(dx, dy) < 5) return;
-    const len = m.end - m.start;
-    const start = Math.min(G1 - len, Math.max(G0, Math.round((d.start + dy / HR) / SNAP) * SNAP));
-    const idx = Math.min(days.length - 1, Math.max(0, d.dayIdx + Math.round(dx / d.colW)));
-    if (!drag || drag.day !== days[idx] || drag.start !== start) setDrag({ key: m.key, day: days[idx], start, moved: true });
+  live.current.alt = (it, upKey) => {
+    const d = upKey ? -SNAP : SNAP;
+    const len = it.end - it.start;
+    const start = clamp(it.start + d, G0, G1 - len);
+    commit(it, it.day, start, start + len);
   };
-  live.current.onPointerUp = (m) => {
-    const d = dragRef.current;
-    dragRef.current = null;
-    if (!d || !drag || drag.key !== m.key) { setDrag(null); return; }
-    const { day, start } = drag;
-    setDrag(null);
-    justDragged.current = true;
-    window.setTimeout(() => { justDragged.current = false; }, 0);
-    if (day !== m.day || Math.abs(start - m.start) > 1e-6) void reschedule(m, day, start);
-  };
-  live.current.onCancel = () => { dragRef.current = null; setDrag(null); };
-  live.current.onAltMove = (m, up) => { if (!canMove(m)) void reschedule(m, m.day, Math.min(G1 - (m.end - m.start), Math.max(G0, m.start + (up ? -SNAP : SNAP)))); };
-  live.current.onOpen = (d, el) => {
-    if (justDragged.current || drag?.moved) return;
-    if (d.kind === 'meeting') setSelected(d.m.key);
+  live.current.open = (d, el) => {
+    if (justDragged.current) return;
+    const day = dayOfDetail(d);
+    if (day && days.includes(day)) setSelDay(day);
     setOpen((o) => (o?.d.key === d.key ? null : { d, el }));
   };
+  // Empty time: a click chooses the day for the Day panel; a drag picks a span to log time, plan focus or schedule a meeting in.
+  const [pick, setPick] = useState<{ day: string; a: number; b: number } | null>(null);
+  live.current.create = (ev, day) => {
+    if (ev.button !== 0 || ev.target !== ev.currentTarget) return;
+    const colTop = (ev.currentTarget as HTMLElement).getBoundingClientRect().top;
+    const hAt = (y: number) => clamp(G0 + (y - colTop) / HR, G0, G1);
+    const a = Math.floor(hAt(ev.clientY) / SNAP) * SNAP;
+    let b = a, dragged = false;
+    const move = (e: PointerEvent) => {
+      const h = hAt(e.clientY);
+      const nb = h >= a ? Math.ceil(h / SNAP) * SNAP : Math.floor(h / SNAP) * SNAP;
+      if (!dragged && Math.abs(e.clientY - ev.clientY) < 6) return;
+      dragged = true;
+      if (nb !== b) { b = nb; setPick({ day, a, b }); }
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      if (!dragged || Math.abs(b - a) < SNAP) { setPick(null); setSelDay(day); return; }
+      const s0 = Math.min(a, b), e0 = Math.max(a, b);
+      setPick({ day, a: s0, b: e0 });
+      setSelDay(day);
+      setOpen({ d: { kind: 'create', key: `create:${day}:${s0}-${e0}`, day, start: s0, end: e0 }, el: null });
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+  const [flagOver, setFlagOver] = useState<string | null>(null);
+  live.current.flag = (ev, f) => {
+    if (ev.button !== 0) return;
+    const x0 = ev.clientX, y0 = ev.clientY;
+    let target: string | null = null, dragged = false;
+    const move = (e: PointerEvent) => {
+      if (!dragged && Math.hypot(e.clientX - x0, e.clientY - y0) < 6) return;
+      dragged = true;
+      const hd = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>('.wp-dh[data-day], .wp-col[data-day]');
+      target = hd?.dataset.day ?? null; setFlagOver(target);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      setFlagOver(null);
+      if (!dragged) return;
+      afterDrag();
+      if (target) dropDue(f, target);
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
   const handlers = useMemo<ColHandlers>(() => ({
-    down: (e, m) => live.current.onPointerDown(e, m), move: (e, m) => live.current.onPointerMove(e, m), up: (m) => live.current.onPointerUp(m),
-    cancel: () => live.current.onCancel(), alt: (m, up) => live.current.onAltMove(m, up), open: (d, el) => live.current.onOpen(d, el),
+    down: (e, it, mode) => live.current.down(e, it, mode), open: (d, el) => live.current.open(d, el), alt: (it, up) => live.current.alt(it, up),
+    create: (e, day) => live.current.create(e, day),
   }), []);
-  const closeDetail = useCallback(() => setOpen(null), []);
+  const closeDetail = useCallback(() => { setOpen(null); setPick(null); }, []);
   const openKey = open?.d.key ?? null;
 
-  const savePlan = (p: PlanOverrides) => { setPlan(p); writePlan(wid, p); };
   const actions: DetailActions = {
-    moveFocus: (f, day, start) => {
-      const before = plan;
-      savePlan({ ...plan, [planKey(f.e)]: { day, start, len: f.end - f.start } });
-      undoToast(`Focus on ${focusLabel(f.e)} moved to ${DOW3[dateOf(day).getDay()]} ${clockH(start)}`, () => savePlan(before), gridRef.current, 46);
-    },
-    removeFocus: (f) => {
+    moveFocus: (f, day, start) => moveFocusTo(f, day, start, f.end - f.start),
+    removeFocus: (f, quiet) => {
       const before = plan;
       savePlan({ ...plan, [planKey(f.e)]: 'removed' });
-      undoToast(`${focusLabel(f.e)} taken out of your plan`, () => savePlan(before), gridRef.current, 46);
+      if (!quiet) undoToast(`${focusLabel(f.e)} taken out of your plan`, () => savePlan(before), gridRef.current, 46);
     },
     done: (e) => setDoneIds((s) => new Set(s).add(e.id)),
-    moveMeeting: (m, day, start) => void reschedule(meets.find((x) => x.key === m.key) ?? m, day, start),
+    moveMeeting: (m, day, start) => { const x = meets.find((y) => y.key === m.key) ?? m; void reschedule(x, day, start, x.end - x.start); },
     canMoveMeeting: canMove,
+    entryOf: (id) => entries.get(id),
+    choices,
+    openItems,
+    planFocus: (e, day, start, end) => {
+      savePlan({ ...plan, [planKey(e)]: { day, start, len: end - start } });
+      toast(`Focus on ${focusLabel(e)} planned · ${spanText(day, start, end)}`, 'success');
+    },
   };
   // ---- the blocks of each day, laid out once per data change (not per render)
   const cols = useMemo(() => days.map((d) => {
     const dv: DayView | undefined = wv.byDay.get(d) ?? buildWeek(timeline, [d], today, nowQ, plan).byDay.get(d);
-    const ms = placed.filter((m) => layers.meetings && m.day === d);
+    const ms = meets.filter((m) => layers.meetings && m.day === d);
     const calls = layers.calls ? dv?.calls ?? [] : [];
-    const spans = [...ms.map((m) => ({ key: m.key, start: m.start, end: m.end })), ...calls.map((c) => { const h = hoursOf(c); return { key: c.id, start: h.start, end: Math.max(h.end, h.start + .25) }; })];
-    return {
-      d, meets: ms, calls, lanes: lanes(spans),
-      focus: focus.filter((f) => f.day === d),
-      logged: layers.logged ? dv?.time ?? [] : [],
-      done: layers.done ? dv?.done ?? [] : [],
-      reminders: layers.reminders ? dv?.reminders ?? [] : [],
-    };
-  }), [days, wv, timeline, today, nowQ, plan, placed, layers, focus]);
-  const origByKey = useMemo(() => new Map(meets.map((m) => [m.key, m])), [meets]);
+    const fs = focus.filter((f) => f.day === d);
+    // Meetings, calls and focus share the day in columns when they overlap (Apple Calendar), each its own width.
+    const spans = [...ms.map((m) => ({ key: m.key, start: m.start, end: m.end })), ...calls.map((c) => { const h = hoursOf(c); return { key: c.id, start: h.start, end: Math.max(h.end, h.start + .25) }; }),
+      ...fs.map((f) => ({ key: f.key, start: f.start, end: f.end }))];
+    const done = layers.done ? dv?.done ?? [] : [];
+    const reminders = layers.reminders ? dv?.reminders ?? [] : [];
+    // Pills (finished work, reminders) never sit on top of each other: one under the next when their minutes are close.
+    const pills = [...done.map((t) => ({ key: `done:${d}:${t.id}`, top: Math.max(2, (hoursOf(t).start - G0) * HR - 9) })), ...reminders.map((t) => ({ key: `reminder:${d}:${t.id}`, top: Math.max(2, (hoursOf(t).start - G0) * HR - 9) }))]
+      .sort((a, b) => a.top - b.top);
+    const pillTop = new Map<string, number>();
+    let last = -Infinity;
+    for (const p of pills) { const t = Math.max(p.top, last + 20); pillTop.set(p.key, t); last = t; }
+    return { d, meets: ms, calls, lanes: lanes(spans), focus: fs, logged: layers.logged ? dv?.time ?? [] : [], done, reminders, pillTop };
+  }), [days, wv, timeline, today, nowQ, plan, meets, layers, focus]);
   // The card follows its block when the data refreshes (or closes when the block is gone, e.g. after Mark done).
   useEffect(() => {
     if (!openKey) return;
@@ -254,11 +448,6 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     if (next) { ev.preventDefault(); next.focus(); if (open) next.click(); }
   };
 
-  // ---- the inspector: the chosen meeting, else the next one
-  const upcoming = [...meets].filter((m) => days.includes(m.day)).sort((a, b) => (a.day + a.start.toFixed(2)).localeCompare(b.day + b.start.toFixed(2)));
-  const nextUp = upcoming.find((m) => m.day > today || (m.day === today && m.end > nowH)) ?? upcoming[0] ?? null;
-  const sel = meets.find((m) => m.key === selected) ?? nextUp;
-
   // ---- ✦ the week in one line, from the same days the grid draws
   const weekMeets = meets.filter((m) => week.includes(m.day));
   const meetH = weekMeets.reduce((n, m) => n + (m.end - m.start), 0);
@@ -270,6 +459,8 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const busiest = perDay.reduce((a, b) => (b.h > a.h ? b : a), perDay[0]);
   const longest = weekMeets.filter((m) => m.day === busiest?.d).sort((a, b) => (b.end - b.start) - (a.end - a.start))[0];
   const fmtH = (h: number) => `${Math.round(h * 10) / 10}h`.replace('.0h', 'h');
+  const capOf = (d: string) => grid.data?.days?.find((x) => x.date === d)?.targetMinutes ?? (dateOf(d).getDay() % 6 === 0 ? 0 : 480);
+  const weekCap = week.reduce((n, d) => n + capOf(d), 0);
 
   const title = view === 'day'
     ? `${DOW3[dateOf(anchor).getDay()]} ${dateOf(anchor).getDate()} ${MONTHS[dateOf(anchor).getMonth()]}`
@@ -280,6 +471,9 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
       {(['day', 'week', 'month'] as const).map((v) => <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}>{v[0].toUpperCase() + v.slice(1)}</button>)}
     </div>
   );
+  const detail = open && <EventDetail key={open.d.key} detail={open.d} anchor={open.el} today={today} nowH={nowH} days={week} actions={actions} onClose={closeDetail} inline={wide && view !== 'month'} />;
+  const selDv = wv.byDay.get(selDay) ?? buildWeek(timeline, [selDay], today, nowQ, plan).byDay.get(selDay);
+  const overdue = useMemo(() => wv.days.flatMap((d) => d.due).filter((e) => e.overdue && e.date < today), [wv, today]);
 
   return (
     <div className={`wp wp-${view}`} data-testid="week-planner">
@@ -324,7 +518,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
             <button type="button" className="wp-nav" aria-label={view === 'day' ? 'Next day' : 'Next week'} onClick={() => setAnchor(addDays(anchor, view === 'day' ? 1 : 7))}><Icon name="chevronR" size={14} /></button>
           </div>
           {tl.isError ? <ErrorState error={tl.error} retry={() => void tl.refetch()} /> : (
-            <div className={`wp-cal${open ? ' has-open' : ''}`} ref={gridRef} style={{ ['--cols' as string]: days.length }} onKeyDown={onGridKey}>
+            <div className={`wp-cal${open ? ' has-open' : ''}${drag ? ' dragging' : ''}`} ref={gridRef} style={{ ['--cols' as string]: days.length }} onKeyDown={onGridKey}>
               <div className="wp-days">
                 <span />
                 {days.map((d) => {
@@ -337,8 +531,11 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                   const lv = dv?.off[0] ?? null;
                   const fk = flag ? `deadline:${d}:${flag.type}:${flag.id}` : '', lk = `loggedDay:${d}`, vk = `leave:${d}`;
                   return (
-                    <div key={d} className={`wp-dh${d === today ? ' tdy' : ''}`} data-day={d} data-sig={dv ? daySignature(dv) : ''}>
-                      {DOW3[dateOf(d).getDay()]}<b>{dateOf(d).getDate()}</b>
+                    <div key={d} className={`wp-dh${d === today ? ' tdy' : ''}${d === selDay ? ' sel' : ''}${flagOver === d ? ' drop' : ''}`} data-day={d} data-sig={dv ? daySignature(dv) : ''}
+                      onClick={(ev) => { if (!(ev.target as HTMLElement).closest('button')) setSelDay(d); }}>
+                      <button type="button" className="wp-dh-pick" aria-pressed={d === selDay} aria-label={`Show ${dateOf(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} in the Day panel`} onClick={() => setSelDay(d)}>
+                        {DOW3[dateOf(d).getDay()]}<b>{dateOf(d).getDate()}</b>
+                      </button>
                       {mins > 0 && (
                         <button type="button" className={`wp-logged${openKey === lk ? ' open' : ''}`} data-testid="wp-logged" data-block={lk} data-day={d} data-start={-2}
                           aria-label={`${fmtMins(mins)} logged`} aria-expanded={openKey === lk} title={`Logged ${fmtMins(mins)} — click for the entries`}
@@ -349,9 +546,10 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                       {lv && <button type="button" className={`wp-leave${openKey === vk ? ' open' : ''}`} data-block={vk} data-day={d} data-start={-3} aria-expanded={openKey === vk}
                         onClick={(ev) => handlers.open({ kind: 'leave', key: vk, day: d, note: lv.type === 'holiday' ? lv.title : lv.note }, ev.currentTarget)}>{lv.type === 'holiday' ? 'Holiday' : 'Leave'}</button>}
                       {flag && (
-                        <button type="button" className={`wp-flag${flag.overdue ? ' late' : ''}${openKey === fk ? ' open' : ''}`} data-block={fk} data-day={d} data-start={-1} aria-expanded={openKey === fk} data-testid="wp-flag"
-                          title={`${flag.key ? `${flag.key} ` : ''}${flag.title}${flag.projectName ? ` · ${flag.projectName}` : ''} — ${flag.overdue ? 'overdue' : 'due'}${due.length > 1 ? ` (+${due.length - 1} more)` : ''}`}
-                          onClick={(ev) => handlers.open({ kind: 'deadline', key: fk, e: flag, others: due.slice(1) }, ev.currentTarget)}>
+                        <button type="button" className={`wp-flag${flag.overdue ? ' late' : ''}${openKey === fk ? ' open' : ''}${canMoveDue(flag) ? ' movable' : ''}`} data-block={fk} data-day={d} data-start={-1} aria-expanded={openKey === fk} data-testid="wp-flag"
+                          title={`${flag.key ? `${flag.key} ` : ''}${flag.title}${flag.projectName ? ` · ${flag.projectName}` : ''} — ${flag.overdue ? 'overdue' : 'due'}${due.length > 1 ? ` (+${due.length - 1} more)` : ''}${canMoveDue(flag) ? ' · drag to another day to move the date' : ''}`}
+                          onPointerDown={(ev) => live.current.flag(ev, flag)}
+                          onClick={(ev) => { if (!justDragged.current) handlers.open({ kind: 'deadline', key: fk, e: flag, others: due.slice(1) }, ev.currentTarget); }}>
                           <Icon name="flag" size={9} />{flag.key ?? flag.title}{due.length > 1 && <em>+{due.length - 1}</em>}
                         </button>
                       )}
@@ -371,9 +569,10 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                   </div>
                   {cols.map((c) => (
                     <DayCol key={c.d} col={c} nowTop={c.d === today ? (nowH - G0) * HR : null} nowLabel={clockH(nowH)}
-                      openKey={openKey?.includes(`:${c.d}:`) ? openKey : null}
-                      selKey={sel && sel.day === c.d ? sel.key : null} drag={drag && drag.moved && c.meets.some((m) => m.key === drag.key) ? drag.key : null} dragging={!!drag?.moved}
-                      tintOf={tintOf} origByKey={origByKey} canMove={canMove} h={handlers} />
+                      openKey={openKey?.includes(`:${c.d}:`) ? openKey : null} sel={c.d === selDay && view === 'week'}
+                      drag={drag && (drag.day === c.d || drag.item.day === c.d) ? drag : null} dragging={!!drag}
+                      pick={pick && pick.day === c.d ? { start: Math.min(pick.a, pick.b), end: Math.max(pick.a, pick.b), key: openKey?.startsWith('create:') ? openKey : null } : null}
+                      tintOf={tintOf} canMove={canMove} timeWhy={timeWhy} h={handlers} />
                   ))}
                 </div>
               </div>
@@ -382,54 +581,151 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
         </section>
       )}
 
-      {view !== 'month' && <Inspector m={sel} events={events} nowH={nowH} today={today} onOpen={(e) => navigate(hrefOf(e))} />}
-      {open && <EventDetail detail={open.d} anchor={open.el} today={today} nowH={nowH} days={week} actions={actions} onClose={closeDetail} />}
+      {view !== 'month' && (
+        <DayPanel day={selDay} today={today} nowH={nowH} dv={selDv} meets={meets.filter((m) => m.day === selDay && layers.meetings)} focus={(wv.byDay.get(selDay)?.focus ?? []).filter(() => layers.focus)}
+          overdue={overdue} peopleOf={(id) => peopleById.get(id) ?? []} entries={entries} capacityMin={capOf(selDay)}
+          detail={wide ? detail : null} detailKey={open?.d.key ?? null}
+          week={<WeekStrip week={week} today={today} sel={selDay} onPick={setSelDay} wv={wv} meets={weekMeets} capOf={capOf} loggedM={loggedM} weekCap={weekCap} doneN={doneN} callsN={callsN} meetH={meetH} />}
+          onOpen={(d, el) => live.current.open(d, el)}
+          onCreate={(d) => {
+            const s0 = d === today ? Math.max(G0, Math.floor(nowH * 4) / 4 - 1) : 9;
+            setSelDay(d); setPick({ day: d, a: s0, b: s0 + 1 });
+            setOpen({ d: { kind: 'create', key: `create:${d}:${s0}-${s0 + 1}`, day: d, start: s0, end: s0 + 1 }, el: null });
+          }}
+          onDone={(e) => setDoneIds((s) => new Set(s).add(e.id))} />
+      )}
+      {!(wide && view !== 'month') && detail}
+      {dueAsk && <DueReason e={dueAsk.e} date={dueAsk.date} today={today} onCancel={() => setDueAsk(null)} onSave={(reason) => { const a = dueAsk; setDueAsk(null); void shiftDue(a.e, a.date, reason); }} />}
     </div>
+  );
+}
+
+const KIND_WORD: Record<string, string> = { project: 'Project', milestone: 'Milestone', stage: 'Stage', action: 'Follow-up' };
+
+/** Moving a task's date later needs the reason (the task form's rule): asked right where the flag was dropped. */
+function DueReason({ e, date, today, onCancel, onSave }: { e: CalendarEvent; date: string; today: string; onCancel: () => void; onSave: (reason: string) => void }) {
+  const [reason, setReason] = useState('');
+  useEffect(() => { const k = (ev: KeyboardEvent) => { if (ev.key === 'Escape') onCancel(); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); }, [onCancel]);
+  return (
+    <div className="ed-scrim wp-ask-scrim" onClick={(ev) => { if (ev.target === ev.currentTarget) onCancel(); }}>
+      <form className="ed ed-pop wp-ask" role="dialog" aria-modal="true" aria-label="Why it needs more time" data-testid="due-reason" style={{ ['--ed-tint' as string]: 'var(--ed-red)' }}
+        onSubmit={(ev) => { ev.preventDefault(); if (reason.trim()) onSave(reason.trim()); }}>
+        <div className="ed-kind"><span className="ed-ico" aria-hidden="true"><Icon name="flag" size={13} /></span>Move the due date</div>
+        <h2 className="ed-title">{e.key ? `${e.key} · ` : ''}{e.title}</h2>
+        <p className="ed-when">{dayLabel(e.date, today)} → <b>{dayLabel(date, today)}</b></p>
+        <label className="wp-ask-l"><span>Why it needs more time</span>
+          <input className="ed-sel" autoFocus aria-label="Reason" maxLength={500} value={reason} placeholder="Waiting on the vendor's fix" onChange={(ev) => setReason(ev.target.value)} /></label>
+        <div className="ed-pick-act"><button type="button" className="ed-btn ghost" onClick={onCancel}>Cancel</button><button type="submit" className="ed-btn primary" disabled={!reason.trim()}>Move date</button></div>
+      </form>
+    </div>
+  );
+}
+
+/** The week under the Day panel: each day's logged time against its capacity and its meeting hours; a day opens in the panel. */
+function WeekStrip({ week, today, sel, onPick, wv, meets, capOf, loggedM, weekCap, doneN, callsN, meetH }: {
+  week: string[]; today: string; sel: string; onPick: (d: string) => void; wv: { byDay: Map<string, DayView> }; meets: Meet[]; capOf: (d: string) => number;
+  loggedM: number; weekCap: number; doneN: number; callsN: number; meetH: number;
+}) {
+  return (
+    <>
+      <h3>This week<em>{fmtMins(loggedM)} of {fmtMins(weekCap)} logged</em></h3>
+      <div className="dp-wk" role="group" aria-label="Days of the week">
+        {week.map((d) => {
+          const dv = wv.byDay.get(d);
+          const lg = dv?.loggedMin ?? 0, cap = capOf(d), mh = meets.filter((m) => m.day === d).reduce((n, m) => n + (m.end - m.start), 0);
+          return (
+            <button key={d} type="button" className={`dp-wd${d === sel ? ' on' : ''}${d === today ? ' tdy' : ''}`} aria-pressed={d === sel} onClick={() => onPick(d)}
+              title={`${dateOf(d).toLocaleDateString('en-GB', { weekday: 'long' })}: ${fmtMins(lg)} logged${cap ? ` of ${fmtMins(cap)}` : ''}, ${Math.round(mh * 10) / 10}h meetings`}>
+              <span>{DOW3[dateOf(d).getDay()][0]}</span>
+              <i className="dp-wd-bar" aria-hidden="true"><i style={{ height: `${Math.min(100, cap ? (lg / cap) * 100 : 0)}%` }} className={cap && lg > cap ? 'over' : ''} /></i>
+              <small>{lg ? fmtMins(lg) : '–'}</small>
+            </button>
+          );
+        })}
+      </div>
+      <p className="dp-wk-sum">{Math.round(meetH * 10) / 10}h meetings{callsN ? ` · ${callsN} call${callsN === 1 ? '' : 's'}` : ''}{doneN ? ` · ${doneN} done` : ''}</p>
+    </>
   );
 }
 
 // ------------------------------------------------------------------------------------------------------------------------ one day
 interface ColHandlers {
-  down: (e: ReactPointerEvent, m: Meet) => void; move: (e: ReactPointerEvent, m: Meet) => void; up: (m: Meet) => void; cancel: () => void;
-  alt: (m: Meet, up: boolean) => void; open: (d: Detail, el: HTMLElement) => void;
+  down: (e: ReactPointerEvent, it: DragItem, mode: DragMode) => void; open: (d: Detail, el: HTMLElement) => void; alt: (it: DragItem, up: boolean) => void;
+  create: (e: ReactPointerEvent, day: string) => void;
 }
 interface ColData {
   d: string; meets: Meet[]; calls: TimelineEvent[]; lanes: Map<string, { lane: number; of: number }>; focus: Focus[];
-  logged: TimelineEvent[]; done: TimelineEvent[]; reminders: TimelineEvent[];
+  logged: TimelineEvent[]; done: TimelineEvent[]; reminders: TimelineEvent[]; pillTop: Map<string, number>;
 }
 const top = (h: number) => (h - G0) * HR;
+const laneStyle = (l: { lane: number; of: number }) => ({ left: `calc(${(l.lane / l.of) * 100}% + 3px)`, width: `calc(${100 / l.of}% - 6px)` });
 
-/** One day of the week. Memoised: hover is pure CSS, and a column re-renders only when its own blocks, the now line or the open card on it change. */
-const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, selKey, drag, dragging, tintOf, origByKey, canMove, h }: {
-  col: ColData; nowTop: number | null; nowLabel: string; openKey: string | null; selKey: string | null; drag: string | null; dragging: boolean;
-  tintOf: (p: string | null) => string; origByKey: Map<string, Meet>; canMove: (m: Meet) => string | null; h: ColHandlers;
+/** The drag handles on a block's top and bottom edges (resize, 15-minute steps). */
+function Edges({ it, h }: { it: DragItem; h: ColHandlers }) {
+  return (
+    <>
+      <span className="wp-rs t" aria-hidden="true" onPointerDown={(e) => h.down(e, it, 'top')} onClick={(e) => e.stopPropagation()} />
+      <span className="wp-rs b" aria-hidden="true" onPointerDown={(e) => h.down(e, it, 'bottom')} onClick={(e) => e.stopPropagation()} />
+    </>
+  );
+}
+
+/** One day of the week. Memoised: hover is pure CSS, and a column re-renders only when its own blocks, the now line, a drag over it or the open card on it change. */
+const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag, dragging, pick, tintOf, canMove, timeWhy, h }: {
+  col: ColData; nowTop: number | null; nowLabel: string; openKey: string | null; sel: boolean; drag: DragState | null; dragging: boolean;
+  pick: { start: number; end: number; key: string | null } | null;
+  tintOf: (p: string | null) => string; canMove: (m: Meet) => string | null; timeWhy: (t: TimelineEvent) => string | null; h: ColHandlers;
 }) {
   const { d } = col;
+  // Where a block is drawn: where it is, or where it is being dragged to.
+  const at = (key: string, start: number, end: number) => (drag && drag.item.key === key ? (drag.day === d ? { start: drag.start, end: drag.end, lifted: true } : null) : { start, end, lifted: false });
+  const ghost = drag && drag.item.day === d ? <div className="wp-ghost" style={{ top: top(drag.item.start), height: (drag.item.end - drag.item.start) * HR - 2 }} aria-hidden="true" /> : null;
+  const snap = drag && drag.day === d ? <span className="wp-snap" style={{ top: top(drag.start) - 22 }}>{clockH(drag.start)} – {clockH(drag.end)}</span> : null;
+  // A block dragged in from another day is drawn here.
+  const visitor = drag && drag.day === d && drag.item.day !== d;
   return (
-    <div className="wp-col" data-day={d}>
+    <div className={`wp-col${sel ? ' sel' : ''}`} data-day={d} onPointerDown={(e) => h.create(e, d)}>
       {nowTop != null && <div className="wp-now" style={{ top: nowTop }} aria-label={`Now, ${nowLabel}`} data-testid="wp-now" />}
+      {ghost}{snap}
+      {pick && <div className="wp-pick" data-block={pick.key ?? undefined} data-day={d} data-start={pick.start} style={{ top: top(pick.start), height: (pick.end - pick.start) * HR - 2 }}><span>{clockH(pick.start)} – {clockH(pick.end)}</span></div>}
       {col.logged.map((t) => {
         const sp = hoursOf(t);
         const key = `time:${d}:${t.id}`;
-        // Under a meeting, call or focus block the entry is a slim green bar at the column's edge (still a button), so nothing is drawn twice.
-        const end = Math.max(sp.end, sp.start + .25);
-        const under = [...col.meets, ...col.focus].some((m) => m.start < end && m.end > sp.start) || col.calls.some((c) => { const x = hoursOf(c); return x.start < end && Math.max(x.end, x.start + .25) > sp.start; });
+        const pos = at(key, sp.start, Math.max(sp.end, sp.start + .25));
+        if (!pos) return null;
+        // Beside a meeting, call or focus block the entry is a slim green lane at the column's edge (still a button), so labels never collide.
+        const under = [...col.meets, ...col.focus].some((m) => m.start < pos.end && m.end > pos.start) || col.calls.some((c) => { const x = hoursOf(c); return x.start < pos.end && Math.max(x.end, x.start + .25) > pos.start; });
+        const why = timeWhy(t);
+        const it: DragItem = { kind: 'time', key, day: d, start: sp.start, end: Math.max(sp.end, sp.start + .25), resizable: true, label: t.title, cls: 'lg' };
         return (
-          <button key={t.id} type="button" className={`wp-e lg${under ? ' thin' : ''}${t.running ? ' run' : ''}${t.approximated ? ' ap' : ''}${openKey === key ? ' open' : ''}`} aria-label={`Logged ${fmtMins(t.minutes ?? 0)} · ${t.title}`} data-block={key} data-day={d} data-start={sp.start} data-type="time"
-            aria-expanded={openKey === key} style={{ top: top(sp.start), height: Math.max(16, (Math.max(sp.end, sp.start + .25) - sp.start) * HR - 2) }}
-            title={`${t.approximated ? 'Logged (typed in, placed on the day)' : 'Logged'} · ${t.title}`}
+          <button key={t.id} type="button" className={`wp-e lg${under && !pos.lifted ? ' thin' : ''}${t.running ? ' run' : ''}${t.approximated ? ' ap' : ''}${openKey === key ? ' open' : ''}${why ? '' : ' movable'}${pos.lifted ? ' lift' : ''}`}
+            aria-label={`Logged ${fmtMins(t.minutes ?? 0)} · ${t.title}${t.approximated ? ' (approximate time)' : ''}`} data-block={key} data-day={d} data-start={sp.start} data-type="time"
+            aria-expanded={openKey === key} style={{ top: top(pos.start), height: Math.max(16, (pos.end - pos.start) * HR - 2) }}
+            title={`${t.approximated ? '≈ Typed in as minutes, placed on the day' : 'Logged'} · ${t.title} · ${clockH(sp.start)}–${clockH(sp.end)}${why ? ` · ${why}` : ' · drag to move, drag an edge to resize'}`}
+            onPointerDown={why ? undefined : (e) => h.down(e, it, 'move')}
+            onKeyDown={(ev) => { if (!why && ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) { ev.preventDefault(); h.alt(it, ev.key === 'ArrowUp'); } }}
             onClick={(ev) => h.open({ kind: 'time', key, t }, ev.currentTarget)}>
-            {t.running ? 'Running · ' : ''}{t.title}<small>{t.approximated ? '≈ ' : ''}{clockH(sp.start)}{t.running ? '' : ` – ${clockH(sp.end)}`}</small>
+            <span className="wp-lbl">{t.running ? 'Running · ' : ''}{t.title}</span><small>{t.approximated ? '≈ ' : ''}{clockH(pos.start)}{t.running ? '' : ` – ${clockH(pos.end)}`}</small>
+            {!why && <Edges it={it} h={h} />}
           </button>
         );
       })}
-      {col.focus.map((f) => (
-        <button key={f.key} type="button" className={`wp-e f${dragging ? ' dim' : ''}${openKey === f.key ? ' open' : ''}`} data-block={f.key} data-day={d} data-start={f.start} data-type="focus" aria-expanded={openKey === f.key}
-          style={{ top: top(f.start), height: (f.end - f.start) * HR - 2 }} title={`Focus · ${focusLabel(f.e)}`}
-          onClick={(ev) => h.open({ kind: 'focus', key: f.key, f }, ev.currentTarget)}>
-          <span className="wp-f-k">Focus</span>{focusLabel(f.e)}<small>{clockH(f.start)} – {clockH(f.end)}</small>
-        </button>
-      ))}
+      {col.focus.map((f) => {
+        const pos = at(f.key, f.start, f.end);
+        if (!pos) return null;
+        const l = col.lanes.get(f.key) ?? { lane: 0, of: 1 };
+        const it: DragItem = { kind: 'focus', key: f.key, day: d, start: f.start, end: f.end, resizable: true, label: focusLabel(f.e), cls: 'f' };
+        return (
+          <button key={f.key} type="button" className={`wp-e f movable${l.of > 1 && !pos.lifted ? ' narrow' : ''}${dragging && !pos.lifted ? ' dim' : ''}${openKey === f.key ? ' open' : ''}${pos.lifted ? ' lift' : ''}`} data-block={f.key} data-day={d} data-start={f.start} data-type="focus" aria-expanded={openKey === f.key}
+            style={{ top: top(pos.start), height: (pos.end - pos.start) * HR - 2, ...(pos.lifted ? {} : laneStyle(l)) }} title={`Focus · ${focusLabel(f.e)} · drag to move, drag an edge to resize`}
+            onPointerDown={(e) => h.down(e, it, 'move')}
+            onKeyDown={(ev) => { if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) { ev.preventDefault(); h.alt(it, ev.key === 'ArrowUp'); } }}
+            onClick={(ev) => h.open({ kind: 'focus', key: f.key, f }, ev.currentTarget)}>
+            <span className="wp-f-k">Focus</span><span className="wp-lbl">{focusLabel(f.e)}</span><small>{clockH(pos.start)} – {clockH(pos.end)}</small>
+            <Edges it={it} h={h} />
+          </button>
+        );
+      })}
       {col.calls.map((t) => {
         const sp = hoursOf(t);
         const end = Math.max(sp.end, sp.start + .25);
@@ -437,45 +733,44 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, selKey, dr
         const key = `call:${d}:${t.id}`;
         const xs = end - sp.start <= .3;
         return (
-          <button key={t.id} type="button" className={`wp-e c${xs ? ' xs' : ''}${t.running ? ' run' : ''}${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={sp.start} data-type="call"
-            aria-expanded={openKey === key} style={{ top: top(sp.start), height: (end - sp.start) * HR - 2, left: `calc(${(l.lane / l.of) * 100}% + 3px)`, width: `calc(${100 / l.of}% - 6px)` }}
-            title={`Call · ${t.title}`} onClick={(ev) => h.open({ kind: 'call', key, t }, ev.currentTarget)}>
-            <Icon name="phone" size={10} />{t.title}{!xs && <small>{clockH(sp.start)}{t.running ? ' · live' : ` – ${clockH(sp.end)}`}{t.people.length ? ` · ${t.people.length} people` : ''}</small>}
+          <button key={t.id} type="button" className={`wp-e c${xs ? ' xs' : ''}${l.of > 1 ? ' narrow' : ''}${t.running ? ' run' : ''}${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={sp.start} data-type="call"
+            aria-expanded={openKey === key} style={{ top: top(sp.start), height: (end - sp.start) * HR - 2, ...laneStyle(l) }}
+            title={`Call · ${t.title} · ${clockH(sp.start)}–${clockH(end)}`} onClick={(ev) => h.open({ kind: 'call', key, t }, ev.currentTarget)}>
+            <Icon name="phone" size={10} /><span className="wp-lbl">{t.title}</span>{!xs && <small>{clockH(sp.start)}{t.running ? ' · live' : ` – ${clockH(sp.end)}`}{t.people.length ? ` · ${t.people.length} people` : ''}</small>}
           </button>
         );
       })}
       {col.meets.map((m) => {
-        const orig = origByKey.get(m.key) ?? m;
-        const why = canMove(orig);
-        const len = m.end - m.start;
+        const key = `meeting:${d}:${m.key}`;
+        const pos = at(m.key, m.start, m.end);
+        if (!pos) return null;
+        const why = canMove(m);
+        const len = pos.end - pos.start;
         const xs = len <= .3;
         const l = col.lanes.get(m.key) ?? { lane: 0, of: 1 };
-        const isDrag = drag === m.key;
         const people = (m.e.people ?? []).slice(1, 3).map((p) => p.split(' ')[0]).join(', ');
-        const sub = len >= 1.25 ? `${clockH(m.start)} – ${clockH(m.end)}` : `${clockH(m.start)}${people ? ` · ${people}` : m.e.projectName ? ` · ${m.e.projectName}` : ''}`;
-        const key = `meeting:${d}:${m.key}`;
+        const sub = len >= 1.25 ? `${clockH(pos.start)} – ${clockH(pos.end)}` : `${clockH(pos.start)}${people ? ` · ${people}` : m.e.projectName ? ` · ${m.e.projectName}` : ''}`;
+        const it: DragItem = { kind: 'meeting', key: m.key, day: d, start: m.start, end: m.end, resizable: true, label: m.e.title, cls: tintOf(m.e.projectName) };
         return (
-          <div key={m.key} className="wp-slot">
-            {isDrag && <div className="wp-ghost" style={{ top: top(orig.start), height: len * HR - 2 }} aria-hidden="true" />}
-            {isDrag && <span className="wp-snap" style={{ top: top(m.start) - 22 }}>{clockH(m.start)}</span>}
-            <button type="button" className={`wp-e ${tintOf(m.e.projectName)}${xs ? ' xs' : ''}${selKey === m.key ? ' sel' : ''}${isDrag ? ' lift' : ''}${why ? '' : ' movable'}${openKey === key ? ' open' : ''}`}
-              data-block={key} data-day={d} data-start={m.start} data-type="meeting" aria-expanded={openKey === key}
-              style={{ top: top(m.start), height: Math.max(.25, len) * HR - 2, left: `calc(${(l.lane / l.of) * 100}% + 3px)`, width: `calc(${100 / l.of}% - 6px)` }}
-              title={why ? `${m.e.title} · ${why}` : `${m.e.title} · drag to move (Alt+↑/↓)`} aria-pressed={selKey === m.key}
-              onClick={(ev) => h.open({ kind: 'meeting', key, m: orig }, ev.currentTarget)}
-              onPointerDown={(ev) => h.down(ev, orig)} onPointerMove={(ev) => h.move(ev, orig)} onPointerUp={() => h.up(orig)} onPointerCancel={h.cancel}
-              onKeyDown={(ev) => { if (!why && ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) { ev.preventDefault(); h.alt(orig, ev.key === 'ArrowUp'); } }}>
-              {m.e.title}{!xs && <small>{sub}</small>}
-            </button>
-          </div>
+          <button key={m.key} type="button" className={`wp-e ${tintOf(m.e.projectName)}${xs ? ' xs' : ''}${l.of > 1 && !pos.lifted ? ' narrow' : ''}${pos.lifted ? ' lift' : ''}${why ? '' : ' movable'}${openKey === key ? ' open' : ''}`}
+            data-block={key} data-day={d} data-start={m.start} data-type="meeting" aria-expanded={openKey === key}
+            style={{ top: top(pos.start), height: Math.max(.25, len) * HR - 2, ...(pos.lifted ? {} : laneStyle(l)) }}
+            title={why ? `${m.e.title} · ${why}` : `${m.e.title} · drag to move, drag an edge to change its length (Alt+↑/↓)`}
+            onClick={(ev) => h.open({ kind: 'meeting', key, m }, ev.currentTarget)}
+            onPointerDown={why ? undefined : (ev) => h.down(ev, it, 'move')}
+            onKeyDown={(ev) => { if (!why && ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) { ev.preventDefault(); h.alt(it, ev.key === 'ArrowUp'); } }}>
+            <span className="wp-lbl">{m.e.title}</span>{!xs && <small>{sub}</small>}
+            {!why && !xs && <Edges it={it} h={h} />}
+          </button>
         );
       })}
+      {visitor && drag && <div className={`wp-e ${drag.item.cls === 'rem' ? 'g' : drag.item.cls} lift wp-visit`} aria-hidden="true" style={{ top: top(drag.start), height: Math.max(16, (drag.end - drag.start) * HR - 2) }}><span className="wp-lbl">{drag.item.label}</span><small>{clockH(drag.start)} – {clockH(drag.end)}</small></div>}
       {col.done.map((t) => {
-        const at = hoursOf(t).start;
+        const at0 = hoursOf(t).start;
         const key = `done:${d}:${t.id}`;
         return (
-          <button key={t.id} type="button" className={`wp-done${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={at} data-type="done" aria-expanded={openKey === key}
-            style={{ top: Math.max(2, top(at) - 9) }} title={`Done ${clockH(at)} · ${t.key ? `${t.key} ` : ''}${t.title}`}
+          <button key={t.id} type="button" className={`wp-done${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={at0} data-type="done" aria-expanded={openKey === key}
+            style={{ top: col.pillTop.get(key) ?? Math.max(2, top(at0) - 9) }} title={`Done ${clockH(at0)} · ${t.key ? `${t.key} ` : ''}${t.title}`}
             onClick={(ev) => h.open({ kind: 'done', key, t }, ev.currentTarget)}>
             <Icon name="check" size={9} />{t.key ?? t.title}
           </button>
@@ -484,9 +779,14 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, selKey, dr
       {col.reminders.map((t) => {
         const hr = hoursOf(t).start;
         const key = `reminder:${d}:${t.id}`;
+        const pos = at(key, hr, hr + .25);
+        if (!pos) return null;
+        const movable = t.status === 'scheduled';
+        const it: DragItem = { kind: 'reminder', key, day: d, start: hr, end: hr + .25, resizable: false, label: t.title, cls: 'rem' };
         return (
-          <button key={t.id} type="button" className={`wp-rem${t.status !== 'scheduled' ? ' fired' : ''}${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={hr} data-type="reminder" aria-expanded={openKey === key}
-            style={{ top: Math.max(2, top(hr) - 9) }} title={`Reminder · ${clockH(hr)}`}
+          <button key={t.id} type="button" className={`wp-rem${t.status !== 'scheduled' ? ' fired' : ''}${openKey === key ? ' open' : ''}${movable ? ' movable' : ''}${pos.lifted ? ' lift' : ''}`} data-block={key} data-day={d} data-start={hr} data-type="reminder" aria-expanded={openKey === key}
+            style={{ top: pos.lifted ? Math.max(2, top(pos.start) - 9) : col.pillTop.get(key) ?? Math.max(2, top(hr) - 9) }} title={`Reminder · ${clockH(hr)} · ${t.title}${movable ? ' · drag to move' : ''}`}
+            onPointerDown={movable ? (e) => h.down(e, it, 'move') : undefined}
             onClick={(ev) => h.open({ kind: 'reminder', key, t }, ev.currentTarget)}>
             <i aria-hidden="true" />{t.title}
           </button>
@@ -522,63 +822,3 @@ function MiniMonth({ y, m, today, week, onPick, onShift }: { y: number; m: numbe
   );
 }
 
-function Inspector({ m, events, nowH, today, onOpen }: { m: Meet | null; events: CalendarEvent[]; nowH: number; today: string; onOpen: (e: CalendarEvent) => void }) {
-  if (!m) return (
-    <aside className="wp-insp empty" aria-label="Meeting"><p>No meetings this week. Pick one on the grid to see its agenda, people and linked work here.</p></aside>
-  );
-  const e = m.e, f = m.feed;
-  const d = dateOf(m.day);
-  const mins = Math.round(((m.day === today ? m.start - nowH : 99) * 60));
-  const rel = m.day === today && mins > 0 && mins < 600 ? (mins < 60 ? `in ${mins} min` : `in ${Math.floor(mins / 60)}h ${mins % 60 ? `${mins % 60}m` : ''}`.trim()) : m.day === today && m.end > nowH && m.start <= nowH ? 'now' : null;
-  const join = e.joinUrl ?? f?.joinUrl ?? null;
-  const where = join ? `${f?.providerName ?? (join.includes('meet.google') ? 'Google Meet' : join.includes('teams') ? 'Microsoft Teams' : 'Project Tracker call')} · ${join.replace(/^https?:\/\//, '').replace(/^\/calls\/.*/, 'in Project Tracker')}` : null;
-  const agenda = (f?.description ?? '').split(/\n+|(?:^|\s)\d+[.)]\s+/).map((s) => s.trim().replace(/^[-•*]\s*/, '')).filter(Boolean).slice(0, 6);
-  const people = e.people ?? [];
-  const notes = !!e.notes || (f ? f.notetaker === 'transcript' || f.notetaker === 'voice' : false);
-  const linked = events.filter((x) => x.projectId && x.projectId === e.projectId && x.type !== 'meeting').slice(0, 3);
-  const pr = (p: string | null) => (p === 'Critical' || p === 'High' ? 'High' : p === 'Medium' ? 'Med' : p === 'Low' ? 'Low' : null);
-  return (
-    <aside className="wp-insp" aria-label="Meeting">
-      <div>
-        <div className="wp-insp-top">{e.projectName && <span className={`wp-pill`}>{e.projectName}</span>}{rel && <span className="wp-faint">{rel}</span>}</div>
-        <h2>{e.title}</h2>
-        <p className="wp-when">{DOW3[d.getDay()]} {d.getDate()} {MONTHS[d.getMonth()].slice(0, 3)} · {clockH(m.start)} – {clockH(m.end)}{where && <><br />{where}</>}</p>
-      </div>
-      {join && (/^https?:/.test(join)
-        ? <a className="wp-join" href={join} target="_blank" rel="noreferrer">Join meeting</a>
-        : <a className="wp-join" href={join}>Join meeting</a>)}
-      <section className="wp-agenda" aria-label="Agenda">
-        <div className="wp-agenda-hd"><span className="wp-orb sm" aria-hidden="true" />{agenda.length ? 'Agenda' : 'Agenda · drafted for you'}</div>
-        {agenda.length ? <ol>{agenda.map((a) => <li key={a}>{a}</li>)}</ol>
-          : <p>No agenda yet. <button type="button" className="link-btn" onClick={() => onOpen(e)}>Read the brief</button> — Project Tracker drafts one from the linked work.</p>}
-      </section>
-      {people.length > 0 && (
-        <div>
-          <div className="wp-lab">Attendees · {f?.invited ?? people.length}</div>
-          {people.map((p, i) => (
-            <div key={p} className="wp-att"><Face byName name={p} className={`wp-av c${i % 5}`} text={p.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()} />{p}<em>{i === 0 ? 'organiser' : 'invited'}</em></div>
-          ))}
-        </div>
-      )}
-      <div className="wp-notes">
-        <span className="wp-orb" aria-hidden="true" />
-        <div><b>Notes by Project Tracker</b><small>Summary &amp; action items after the call</small></div>
-        <button type="button" role="switch" aria-checked={notes} aria-label="Notes by Project Tracker" className={`wp-sw${notes ? ' on' : ''}`} aria-disabled="true"
-          title="The notetaker is set on the meeting — open it in Messages to change" onClick={() => onOpen(e)} />
-      </div>
-      {linked.length > 0 && (
-        <div>
-          <div className="wp-lab">Linked</div>
-          {linked.map((x) => {
-            const p = pr(x.priority);
-            return (
-              <button key={`${x.type}${x.id}`} type="button" className="wp-att link" onClick={() => onOpen(x)}>
-                <span className={`wp-kind ${p === 'High' ? 'r' : p === 'Med' ? 'o' : 'b'}`} aria-hidden="true">{p === 'High' ? '●' : p === 'Med' ? '!' : '▤'}</span>{x.title}<em>{p ?? (x.type === 'stage' ? 'Stage' : x.type === 'project' ? 'Deadline' : '')}</em>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </aside>
-  );
-}

@@ -210,7 +210,7 @@ try {
     await page.locator('.wp-now').waitFor();
     assert.equal((await page.locator('.wp-nowl').innerText()).trim(), '10:42');
     await page.locator('.wp-rem', { hasText: 'Rotate CRIF token' }).waitFor();
-    const insp = page.getByRole('complementary', { name: 'Meeting' });
+    const insp = page.getByRole('complementary', { name: /^Day/ });
     await insp.getByRole('heading', { name: 'CRIF UAT sign-off' }).waitFor();
     assert.match(await insp.innerText(), /in 18 min/);
     await insp.getByRole('link', { name: 'Join meeting' }).waitFor();

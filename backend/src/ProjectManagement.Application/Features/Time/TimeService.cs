@@ -17,14 +17,23 @@ namespace ProjectManagement.Application.Features.Time;
 /// (<see cref="WorkTaskId"/>, <see cref="Kind"/> "work"); <see cref="TaskKey"/> and <see cref="TaskTitle"/> name whichever it was.
 /// </summary>
 public record TimeEntryDto(Guid Id, Guid? TaskId, string TaskKey, string TaskTitle, Guid? ProjectId, UserRefDto User, DateOnly WorkDate,
-    int Minutes, string? Note, bool IsRunning, DateTime? StartedAt, bool CanEdit, Guid? WorkTaskId = null, string Kind = "task", bool Billable = false, bool Locked = false);
+    int Minutes, string? Note, bool IsRunning, DateTime? StartedAt, bool CanEdit, Guid? WorkTaskId = null, string Kind = "task", bool Billable = false, bool Locked = false,
+    DateTime? EndedAt = null, string? Stamp = null);
 /// <summary>Everything about the time on one task (or work task), plus the caller's own running timer (on anything).</summary>
 /// <summary><see cref="BillableByDefault"/>: whether time logged here starts out billable (the project is billable).</summary>
 public record TaskTimeDto(IReadOnlyList<TimeEntryDto> Entries, int TotalMinutes, decimal? EstimatedHours, TimeEntryDto? MyTimer, bool BillableByDefault = false);
 /// <summary><see cref="Billable"/> empty = the project's setting (time on work without a project is not billable).</summary>
-public record LogTimeRequest(int Minutes, DateOnly? WorkDate, string? Note, bool? Billable = null);
+/// <para><see cref="StartedAt"/>/<see cref="EndedAt"/> (both or neither): the entry has a real time of day (the calendar's drag-to-log); its minutes
+/// and day then come from them.</para>
+public record LogTimeRequest(int Minutes, DateOnly? WorkDate, string? Note, bool? Billable = null, DateTime? StartedAt = null, DateTime? EndedAt = null);
 /// <summary><see cref="Billable"/> empty = leave it as it is.</summary>
-public record UpdateTimeRequest(int Minutes, DateOnly WorkDate, string? Note, bool? Billable = null);
+/// <para><see cref="StartedAt"/>/<see cref="EndedAt"/> (both or neither): place the entry at that time (drag to move, drag an edge to resize); the minutes
+/// and day then follow them. Without them a placed entry keeps its start and its end follows the minutes.</para>
+/// <para><see cref="TaskId"/> or <see cref="WorkTaskId"/>: move the time to another task or work item (you must be able to log time there).</para>
+/// <para><see cref="Stamp"/>: the entry's stamp as you last saw it; when it changed since (edited in another tab, the timesheet grid, the phone) the
+/// change is refused with 409 TIME_ENTRY_CHANGED instead of overwriting it.</para>
+public record UpdateTimeRequest(int Minutes, DateOnly WorkDate, string? Note, bool? Billable = null, DateTime? StartedAt = null, DateTime? EndedAt = null,
+    Guid? TaskId = null, Guid? WorkTaskId = null, string? Stamp = null);
 
 public record TimeByDayDto(DateOnly Date, int Minutes);
 public record TimesheetDto(DateOnly From, DateOnly To, UserRefDto User, IReadOnlyList<TimeEntryDto> Entries, int TotalMinutes, IReadOnlyList<TimeByDayDto> ByDay, int BillableMinutes = 0);
@@ -65,6 +74,8 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         public DateTime? StartedAt { get; init; }
         public DateTime? EndedAt { get; init; }
         public bool Billable { get; init; }
+        public DateTime CreatedAt { get; init; }
+        public DateTime? UpdatedAt { get; init; }
     }
 
     private IQueryable<Row> Rows(IQueryable<TimeEntry> entries) =>
@@ -83,7 +94,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             Id = e.Id, TaskId = e.TaskId, WorkTaskId = e.WorkTaskId, ProjectKey = p != null ? p.Key : null, TaskNumber = t != null ? t.Number : 0, TaskTitle = t != null ? t.Title : null,
             WorkNumber = w != null ? w.Number : 0, WorkTitle = w != null ? w.Title : null, WorkKind = w != null ? w.Kind : WorkTaskKind.Operational,
             ProjectId = e.ProjectId, UserId = e.UserId, UserName = u.DisplayName, WorkDate = e.WorkDate, Minutes = e.Minutes, Note = e.Note, StartedAt = e.StartedAt, EndedAt = e.EndedAt,
-            Billable = e.Billable,
+            Billable = e.Billable, CreatedAt = e.CreatedAt, UpdatedAt = e.UpdatedAt,
         };
 
     private bool IsAdmin => ctx.Role is TenantRole.Owner or TenantRole.Admin;
@@ -95,7 +106,27 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var title = (onWork ? r.WorkTitle : r.TaskTitle) ?? "(deleted)";
         var isLocked = locked.Contains((r.UserId, TimesheetApprovalService.WeekOf(r.WorkDate)));
         return new TimeEntryDto(r.Id, r.TaskId, key, title, r.ProjectId, new UserRefDto(r.UserId, r.UserName), r.WorkDate, r.Minutes, r.Note,
-            r.StartedAt is not null && r.EndedAt is null, r.StartedAt, (r.UserId == ctx.UserId || IsAdmin) && !isLocked, r.WorkTaskId, onWork ? "work" : "task", r.Billable, isLocked);
+            r.StartedAt is not null && r.EndedAt is null, r.StartedAt, (r.UserId == ctx.UserId || IsAdmin) && !isLocked, r.WorkTaskId, onWork ? "work" : "task", r.Billable, isLocked,
+            r.EndedAt, StampOf(r.UpdatedAt, r.CreatedAt));
+    }
+
+    /// <summary>The entry's concurrency stamp: when it last changed, to the microsecond (what the database keeps).</summary>
+    public static string StampOf(DateTime? updatedAt, DateTime createdAt) => ((updatedAt ?? createdAt).Ticks / 10).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>A start and end given together: both in UTC, the end after the start, at most 24 hours, and not in the future.</summary>
+    private (DateTime Start, DateTime End, int Minutes, DateOnly Day)? Placed(DateTime? startedAt, DateTime? endedAt)
+    {
+        if (startedAt is null && endedAt is null) return null;
+        if (startedAt is not { } s || endedAt is not { } e) throw new ValidationException("startedAt", "Give both a start and an end time, or neither.");
+        var start = DateTime.SpecifyKind(s.Kind == DateTimeKind.Local ? s.ToUniversalTime() : s, DateTimeKind.Utc);
+        var end = DateTime.SpecifyKind(e.Kind == DateTimeKind.Local ? e.ToUniversalTime() : e, DateTimeKind.Utc);
+        if (end <= start) throw new ValidationException("endedAt", "The end must be after the start.");
+        var minutes = (int)Math.Round((end - start).TotalMinutes);
+        if (minutes < 1 || minutes > MaxMinutesPerEntry) throw new ValidationException("endedAt", "Enter between 1 minute and 24 hours.");
+        if (end > clock.Now.AddMinutes(1)) throw new ValidationException("endedAt", "You cannot log time that has not happened yet.");
+        var day = clock.LocalDate(start);
+        if (clock.LocalDate(end.AddTicks(-1)) != day) throw new ValidationException("endedAt", "An entry stays within one day. Split it at midnight.");
+        return (start, end, minutes, day);
     }
 
     /// <summary>Rows to entries, marking those in a submitted or approved week (they cannot be changed).</summary>
@@ -143,7 +174,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var task = await VisibleTaskAsync(taskId, ct);
         await RequireWritableAsync(task, ct);
         var entry = await AddEntryAsync(task.TenantId, taskId, null, task.ProjectId, req, ct);
-        recorder.Activity("task.time_logged", "Task", taskId, $"Logged {Format(req.Minutes)} on \"{task.Title}\"", task.ProjectId);
+        recorder.Activity("task.time_logged", "Task", taskId, $"Logged {Format(entry.Minutes)} on \"{task.Title}\"", task.ProjectId);
         await db.SaveChangesAsync(ct);
         await SyncActualHoursAsync(taskId, ct);
         await db.SaveChangesAsync(ct);
@@ -164,7 +195,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     {
         var work = await workTasks.RequireTimeLoggableAsync(workTaskId, ct);
         var entry = await AddEntryAsync(work.TenantId, null, workTaskId, work.RelatedProjectId, req, ct);
-        recorder.Activity("worktask.time_logged", "WorkTask", workTaskId, $"Logged {Format(req.Minutes)} on {WorkTaskService.KeyOf(work.Number)} “{work.Title}”", null);
+        recorder.Activity("worktask.time_logged", "WorkTask", workTaskId, $"Logged {Format(entry.Minutes)} on {WorkTaskService.KeyOf(work.Number)} “{work.Title}”", null);
         await db.SaveChangesAsync(ct);
         return await DtoAsync(entry.Id, ct);
     }
@@ -172,15 +203,18 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     private async Task<TimeEntry> AddEntryAsync(Guid tenantId, Guid? taskId, Guid? workTaskId, Guid? projectId, LogTimeRequest req, CancellationToken ct)
     {
         var userId = ctx.RequireUserId();
-        var date = req.WorkDate ?? clock.Today;
-        Validate(req.Minutes, date);
+        var placed = Placed(req.StartedAt, req.EndedAt);
+        var date = placed?.Day ?? req.WorkDate ?? clock.Today;
+        var minutes = placed?.Minutes ?? req.Minutes;
+        Validate(minutes, date);
         await approvals.EnsureOpenAsync(userId, date, ct);
-        await EnsureDayHasRoomAsync(userId, date, req.Minutes, null, ct);
+        await EnsureDayHasRoomAsync(userId, date, minutes, null, ct);
         var entry = new TimeEntry
         {
             TenantId = tenantId, TaskId = taskId, WorkTaskId = workTaskId, ProjectId = projectId, UserId = userId, WorkDate = date,
-            Minutes = req.Minutes, Note = Clean(req.Note), CreatedAt = clock.Now, CreatedBy = userId,
+            Minutes = minutes, Note = Clean(req.Note), CreatedAt = clock.Now, CreatedBy = userId,
             Billable = req.Billable ?? await BillableByDefaultAsync(projectId, ct),
+            StartedAt = placed?.Start, EndedAt = placed?.End,
         };
         db.TimeEntries.Add(entry);
         return entry;
@@ -287,15 +321,49 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     {
         var entry = await OwnedAsync(id, ct);
         if (entry.EndedAt is null && entry.StartedAt is not null) throw new ConflictException("Stop the timer before editing this entry.", "TIMER_RUNNING");
-        Validate(req.Minutes, req.WorkDate);
+        if (req.Stamp is { Length: > 0 } seen && seen != StampOf(entry.UpdatedAt, entry.CreatedAt))
+            throw new ConflictException("This entry was changed somewhere else (another tab, the timesheet or your phone). Reload it and try again.", "TIME_ENTRY_CHANGED");
+        var placed = Placed(req.StartedAt, req.EndedAt);
+        var date = placed?.Day ?? req.WorkDate;
+        var minutes = placed?.Minutes ?? req.Minutes;
+        Validate(minutes, date);
         await approvals.EnsureOpenAsync(entry.UserId, entry.WorkDate, ct);
-        if (req.WorkDate != entry.WorkDate) await approvals.EnsureOpenAsync(entry.UserId, req.WorkDate, ct);
-        await EnsureDayHasRoomAsync(entry.UserId, req.WorkDate, req.Minutes, entry.Id, ct);
-        entry.Minutes = req.Minutes; entry.WorkDate = req.WorkDate; entry.Note = Clean(req.Note);
+        if (date != entry.WorkDate) await approvals.EnsureOpenAsync(entry.UserId, date, ct);
+        await EnsureDayHasRoomAsync(entry.UserId, date, minutes, entry.Id, ct);
+
+        // Moved to other work: the caller must be able to log time there (the same gate as logging it in the first place).
+        var oldTask = entry.TaskId;
+        if (req.TaskId is { } newTask && newTask != entry.TaskId)
+        {
+            var task = await VisibleTaskAsync(newTask, ct);
+            await RequireWritableAsync(task, ct);
+            entry.TaskId = newTask; entry.WorkTaskId = null; entry.ProjectId = task.ProjectId;
+        }
+        else if (req.WorkTaskId is { } newWork && newWork != entry.WorkTaskId)
+        {
+            var work = await workTasks.RequireTimeLoggableAsync(newWork, ct);
+            entry.TaskId = null; entry.WorkTaskId = newWork; entry.ProjectId = work.RelatedProjectId;
+        }
+
+        var oldDate = entry.WorkDate;
+        entry.Minutes = minutes; entry.WorkDate = date; entry.Note = Clean(req.Note);
+        if (placed is { } p) { entry.StartedAt = p.Start; entry.EndedAt = p.End; }
+        else if (entry.StartedAt is { } s0 && entry.EndedAt is not null)
+        {
+            // A placed entry edited as minutes (or moved to another day in the grid): keep its time of day, the end follows the minutes.
+            var start = date == oldDate ? s0 : clock.StartOfDayUtc(date).Add(s0 - clock.StartOfDayUtc(clock.LocalDate(s0)));
+            entry.StartedAt = start; entry.EndedAt = start.AddMinutes(minutes);
+        }
         if (req.Billable is { } billable) entry.Billable = billable;
-        entry.UpdatedAt = clock.Now;
+        entry.UpdatedAt = clock.Now; entry.UpdatedBy = ctx.UserId;
         await db.SaveChangesAsync(ct);
         await SyncActualHoursAsync(entry.TaskId, ct);
+        if (oldTask is { } was && was != entry.TaskId)
+        {
+            await SyncActualHoursAsync(was, ct);
+            // Its last tracked time moved away: its actual hours were that time, so they go back to nothing.
+            if (!await db.TimeEntries.AnyAsync(e => e.TaskId == was, ct) && await db.Tasks.FirstOrDefaultAsync(t => t.Id == was, ct) is { } left) left.ActualHours = 0;
+        }
         await db.SaveChangesAsync(ct);
         return await DtoAsync(id, ct);
     }

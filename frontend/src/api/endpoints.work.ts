@@ -95,12 +95,13 @@ export const planningApi = {
 
 export const timeApi = {
   forTask: (taskId: string) => get<TaskTime>(`/tasks/${taskId}/time`),
-  log: (taskId: string, b: { minutes: number; workDate?: string; note?: string; billable?: boolean }) => post<TimeEntry>(`/tasks/${taskId}/time`, b),
+  log: (taskId: string, b: { minutes: number; workDate?: string; note?: string; billable?: boolean; startedAt?: string; endedAt?: string }) => post<TimeEntry>(`/tasks/${taskId}/time`, b),
   /** Operational work: the same time tracking as project tasks. */
   forWorkTask: (workTaskId: string) => get<TaskTime>(`/work-tasks/${workTaskId}/time`),
-  logOnWorkTask: (workTaskId: string, b: { minutes: number; workDate?: string; note?: string; billable?: boolean }) => post<TimeEntry>(`/work-tasks/${workTaskId}/time`, b),
+  logOnWorkTask: (workTaskId: string, b: { minutes: number; workDate?: string; note?: string; billable?: boolean; startedAt?: string; endedAt?: string }) => post<TimeEntry>(`/work-tasks/${workTaskId}/time`, b),
   startOnWorkTask: (workTaskId: string) => post<TimeEntry>(`/work-tasks/${workTaskId}/timer/start`),
-  update: (id: string, b: { minutes: number; workDate: string; note?: string | null; billable?: boolean }) => put<TimeEntry>(`/time/${id}`, b),
+  /** startedAt/endedAt (both): place the entry at that time; taskId/workTaskId: move it to other work; stamp: refuse if it changed elsewhere (409). */
+  update: (id: string, b: { minutes: number; workDate: string; note?: string | null; billable?: boolean; startedAt?: string; endedAt?: string; taskId?: string; workTaskId?: string; stamp?: string | null }) => put<TimeEntry>(`/time/${id}`, b),
   remove: (id: string) => del(`/time/${id}`),
   start: (taskId: string) => post<TimeEntry>(`/tasks/${taskId}/timer/start`),
   stop: () => post<TimeEntry>('/timer/stop'),

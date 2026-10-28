@@ -366,6 +366,10 @@ export interface TimeEntry {
   billable: boolean;
   /** In a week that is submitted for approval or approved: it cannot change. */
   locked: boolean;
+  /** When it ended (an entry placed at a time of day, or a stopped timer); null for time typed in as minutes. */
+  endedAt?: string | null;
+  /** Concurrency stamp: send it back with an edit so a change made elsewhere in between is refused (409) instead of overwritten. */
+  stamp?: string | null;
 }
 export interface TaskTime { entries: TimeEntry[]; totalMinutes: number; estimatedHours: number | null; myTimer: TimeEntry | null; billableByDefault: boolean }
 export interface Timesheet { from: string; to: string; user: { id: string; name: string }; entries: TimeEntry[]; totalMinutes: number; byDay: { date: string; minutes: number }[]; billableMinutes: number }
