@@ -7,6 +7,7 @@ import { Select } from '../../components/Select';
 import { Avatar, EmptyState, ErrorState, Field, PageLoader, PriorityBadge, Spinner } from '../../components/ui';
 import { formatDate, formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { refreshWork } from '../work/workUi';
 import { useCan, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { NotesToActionsButton } from '../ai/Assistant';
@@ -119,7 +120,8 @@ function ActionItemsList({ projectId, highlightId }: { projectId: string; highli
   // Who an item can be given to: the people on the project (guests never get work).
   const people = useMemo(() => (project.data?.members ?? []).filter((m) => m.role !== 'Guest').map((m) => ({ id: m.userId, name: m.name })), [project.data]);
 
-  const refresh = () => invalidateWorkspace(wid, 'action-items', projectId);
+  // Action items also show in My Work, Today, Calendar and Reminders.
+  const refresh = () => { void invalidateWorkspace(wid, 'action-items', projectId); refreshWork(wid); };
 
   return (
     <>

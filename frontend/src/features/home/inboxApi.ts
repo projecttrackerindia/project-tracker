@@ -5,7 +5,8 @@ export interface InboxAction { label: string; verb: string; endpoint: string | n
 export type InboxKind = 'ticket' | 'task' | 'decision' | 'approval' | 'access' | 'review' | 'mention' | 'reminder';
 export type InboxGroup = 'assigned' | 'decisions' | 'mentions';
 export type InboxFilter = 'all' | InboxGroup;
-export interface InboxRow { id: string; kind: InboxKind; group: InboxGroup; title: string; sub: string; action: InboxAction; href: string | null; at: string; urgent: boolean }
+export interface InboxRow { id: string; kind: InboxKind; group: InboxGroup; title: string; sub: string; action: InboxAction; href: string | null; at: string; urgent: boolean;
+  /** Work past its due date / due today: the briefing counts these flags, never the subtitle text. */ overdue?: boolean; dueToday?: boolean }
 export interface Inbox { rows: InboxRow[]; counts: { all: number; assigned: number; decisions: number; mentions: number }; later: number }
 export interface InboxBriefing {
   count: number; headline: string; reasons: string[]; sources: string;

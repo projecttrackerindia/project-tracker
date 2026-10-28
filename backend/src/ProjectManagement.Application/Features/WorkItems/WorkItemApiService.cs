@@ -21,7 +21,7 @@ namespace ProjectManagement.Application.Features.WorkItems;
 /// <summary>A row of the one Work list. <see cref="Kind"/> is task, issue, action or ticket.</summary>
 public record WorkItemRowDto(string Kind, Guid Id, string Key, string Title, Guid? ProjectId, string? ProjectKey, string? ProjectName, string Status,
     StatusCategory Category, Priority Priority, DateOnly? DueDate, bool IsOverdue, UserRefDto? Assignee, string? TypeName, DateTime UpdatedAt,
-    DateTime? SlaStartAt = null, DateTime? SlaDueAt = null, string? SlaState = null);
+    DateTime? SlaStartAt = null, DateTime? SlaDueAt = null, string? SlaState = null, int Version = 0, DateTime? CompletedAt = null, Guid? ReporterId = null);
 
 public record WorkItemPageDto(IReadOnlyList<WorkItemRowDto> Items, int Offset, int Limit, bool HasMore);
 
@@ -61,7 +61,8 @@ public record WorkItemCommentResultDto(WorkActivityItemDto Comment, WorkActivity
 /// </summary>
 public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, AppClock clock, WorkItemService items, TaskService tasks, IssueService issues,
     ActionItemService actions, WorkTaskService tickets, TimeService time, PermissionService permissions, NotificationService notifications,
-    ProjectManagement.Application.Features.Platform.HistoryService history, Recorder recorder)
+    ProjectManagement.Application.Features.Platform.HistoryService history, Recorder recorder,
+    ProjectManagement.Application.Features.Reminders.ReminderSync reminderSync)
 {
     public const int MaxPage = 200;
     public const int MaxWindow = WorkItemService.MaxLimit;
@@ -104,8 +105,9 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
     /// <paramref name="team"/>: a team id, or "mine" for everyone in the caller's teams. Paging is over the merged, ordered list, up to
     /// <see cref="MaxWindow"/> rows deep (narrow by kind, project or person to go further).
     /// </summary>
+    /// <param name="raisedByMe">Only work the caller raised (reporter), whoever it is assigned to - My Work's "Raised by me".</param>
     public async Task<WorkItemPageDto> ListAsync(string? kind, bool mine, string? team, Guid? assigneeId, Guid? projectId, string? status, bool overdue,
-        string? q, int offset, int limit, CancellationToken ct = default)
+        string? q, int offset, int limit, CancellationToken ct = default, bool raisedByMe = false)
     {
         ctx.RequireTenantId();
         limit = Math.Clamp(limit <= 0 ? 50 : limit, 1, MaxPage);
@@ -124,7 +126,8 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
             if (people.Count == 0) return new WorkItemPageDto([], offset, limit, false);
         }
         var rows = await items.ListAsync(new WorkItemQuery(ParseKinds(kind), AssigneeId: assigneeId, Mine: mine, OpenOnly: category is null, ProjectId: projectId,
-            Overdue: overdue, Q: q, Limit: offset + limit + 1, AssigneeIds: people), ct: ct);
+            Overdue: overdue, Q: q, Limit: offset + limit + 1, AssigneeIds: people,
+            ReporterId: raisedByMe ? ctx.RequireUserId() : null), ct: ct);
         IEnumerable<WorkItemDto> filtered = rows;
         if (category is { Length: > 0 } cats) filtered = filtered.Where(r => cats.Contains(r.Category));
         var list = filtered.ToList();
@@ -163,7 +166,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
     };
 
     private static WorkItemRowDto ToRow(WorkItemDto r) => new(NameOf(r.Kind), r.Id, r.Key, r.Title, r.ProjectId, r.ProjectKey, r.ProjectName, r.Status, r.Category,
-        r.Priority, r.DueDate, r.IsOverdue, r.Assignee, r.TypeName, r.UpdatedAt);
+        r.Priority, r.DueDate, r.IsOverdue, r.Assignee, r.TypeName, r.UpdatedAt, Version: r.Version, CompletedAt: r.CompletedAt, ReporterId: r.ReporterId);
 
     // ------------------------------------------------------------------ one item
 
@@ -220,7 +223,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
                 var i = (await issues.GetAsync(si.ProjectId, id, ct)).Issue;
                 var p = await ProjectRefAsync(si.ProjectId, ct);
                 dto = new WorkItemDetailDto("issue", i.Id, i.Key, i.Title, i.Details, i.ProjectId, p?.Key, p?.Name, WorkItemService.LabelOf(i.Status),
-                    WorkItemService.CategoryOf(i.Status), i.Severity, si.StartDate, si.DueDate, false, i.Assignee, i.Reporter, si.Version, i.CreatedAt, si.UpdatedAt,
+                    WorkItemService.CategoryOf(i.Status), i.Severity, si.StartDate, si.DueDate, si.DueDate is { } idue && idue < today && i.Status != IssueStatus.Resolved, i.Assignee, i.Reporter, si.Version, i.CreatedAt, si.UpdatedAt,
                     i.ResolvedAt, 0, i, []);
                 break;
             }
@@ -435,7 +438,12 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
             }
             case StageIssue si:
             {
+                // Atomic: the version is claimed first (one conditional update), inside a transaction, so two PATCHes on the same version
+                // can never both apply part of their change; a refused or failed change rolls the claim back.
                 if (si.Version != version) throw Conflict();
+                await using var tx = await db.Database.BeginOwnedTransactionAsync(ct);
+                var claimed = await db.StageIssues.Where(x => x.Id == id && x.Version == version).ExecuteUpdateAsync(s => s.SetProperty(x => x.Version, x => x.Version + 1), ct);
+                if (claimed == 0) throw Conflict();
                 var changed = false;
                 if (p.Has("title") || p.Has("description") || p.Has("details") || p.Has("priority") || p.Has("severity") || p.Has("stageId"))
                 {
@@ -465,15 +473,13 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
                     await db.SaveChangesAsync(ct);
                     changed = true;
                 }
-                if (changed)
-                {
-                    var n = await db.StageIssues.Where(x => x.Id == id && x.Version == version).ExecuteUpdateAsync(s => s.SetProperty(x => x.Version, x => x.Version + 1), ct);
-                    if (n == 0) throw Conflict();
-                }
+                await tx.CommitIfOwnedAsync(ct);
+                if (changed) await reminderSync.OnWorkChangedAsync(ReminderTarget.Issue, id, ct);
                 break;
             }
             case WorkTask { Kind: WorkTaskKind.ActionItem } wa:
             {
+                // The version goes with the change and is checked on the tracked row at save time (no check-then-write gap).
                 if (wa.Version != version) throw Conflict();
                 var a = await ActionAsync(wa, ct);
                 var status = a.Status;
@@ -484,7 +490,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
                     p.Has("assigneeId") ? p.Uuid("assigneeId") : a.Assignee?.Id,
                     p.Has("dueDate") ? p.Day("dueDate") : a.DueDate,
                     p.Has("priority") ? p.Choice<Priority>("priority") ?? a.Priority : a.Priority,
-                    status), ct);
+                    status, version), ct);
                 break;
             }
             default:

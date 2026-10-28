@@ -22,4 +22,5 @@ export function useReminderCounts(enabled = true) {
   return useWsQuery(['reminders', 'counts'], reminderApi.counts, { refetchInterval: 30_000, staleTime: 15_000, enabled });
 }
 
-export const refreshReminders = (wid: string | null | undefined) => invalidateWorkspace(wid, 'reminders');
+/** Reminders also feed the Today inbox (what went off), so both refresh together. */
+export const refreshReminders = (wid: string | null | undefined) => { void invalidateWorkspace(wid, 'inbox'); return invalidateWorkspace(wid, 'reminders'); };

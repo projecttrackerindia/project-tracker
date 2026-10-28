@@ -22,7 +22,10 @@ public record InboxActionDto(string Label, string Verb, string? Endpoint = null)
 /// One row of the Home inbox. Kind: ticket, task, decision, approval, access, review, mention or reminder. Group: assigned, decisions or
 /// mentions (what the filter chips select). Id is stable across reads ("work:…", "finding:…") so "Later" can hide exactly this row.
 /// </summary>
-public record InboxRowDto(string Id, string Kind, string Group, string Title, string Sub, InboxActionDto Action, string? Href, DateTime At, bool Urgent);
+/// <param name="Overdue">Work past its due date (the briefing counts these flags, never the wording of <see cref="Sub"/>).</param>
+/// <param name="DueToday">Work due today in the person's zone.</param>
+public record InboxRowDto(string Id, string Kind, string Group, string Title, string Sub, InboxActionDto Action, string? Href, DateTime At, bool Urgent,
+    bool Overdue = false, bool DueToday = false);
 
 public record InboxDto(IReadOnlyList<InboxRowDto> Rows, InboxCountsDto Counts, int Later);
 public record InboxCountsDto(int All, int Assigned, int Decisions, int Mentions);
@@ -60,8 +63,8 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         var rows = (await GetAsync("all", ct)).Rows;
         var today = clock.Today;
         var stats = new InboxStatsDto(
-            rows.Count(r => r.Kind is "task" or "ticket" && r.Sub.Contains("overdue", StringComparison.OrdinalIgnoreCase)),
-            rows.Count(r => r.Kind is "task" or "ticket" && r.Sub.Contains("due today", StringComparison.OrdinalIgnoreCase)),
+            rows.Count(r => r.Kind is "task" or "ticket" && r.Overdue),
+            rows.Count(r => r.Kind is "task" or "ticket" && r.DueToday),
             rows.Count(r => r.Kind == "decision"), rows.Count(r => r.Kind is "approval" or "access" or "review"),
             rows.Count(r => r.Kind == "mention"), rows.Count(r => r.Kind == "reminder"));
         // The briefing names the first rows of the inbox itself (urgent first, as the inbox orders them), so the count in the headline and the
@@ -134,7 +137,8 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
             if (w.ProjectKey is { Length: > 0 } pk) parts.Add(pk);
             parts.Add(when);
             rows.Add(new InboxRowDto($"work:{w.Id:N}", ticket ? "ticket" : "task", "assigned", $"{w.Key} {w.Title}", string.Join(" · ", parts),
-                new InboxActionDto("Open", "open"), $"/work?item={w.Id}", w.UpdatedAt, late || (ticket && w.Priority == Priority.Critical)));
+                new InboxActionDto("Open", "open"), $"/work?item={w.Id}", w.UpdatedAt, late || (ticket && w.Priority == Priority.Critical),
+                Overdue: late, DueToday: dueToday));
         }
     }
 

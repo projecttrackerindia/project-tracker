@@ -12,6 +12,7 @@ public static class DbErrors
 {
     public const string ProjectKeyIndex = "IX_Projects_TenantId_Key";
     public const string TaskNumberIndex = "IX_WorkItems_Task_ProjectId_Number";
+    public const string WorkNumberIndex = "IX_WorkItems_Work_TenantId_Number";
     public const string RunningTimerIndex = "IX_TimeEntries_TenantId_UserId_Running";
 
     public static bool IsUniqueViolation(DbUpdateException error, string indexName, string table, params string[] columns)
@@ -37,6 +38,8 @@ public static class DbErrors
     }
 
     public static bool IsProjectKeyTaken(DbUpdateException e) => IsUniqueViolation(e, ProjectKeyIndex, "Projects", "TenantId", "Key");
+    /// <summary>Two tickets or action items numbered at the same moment (WT-12 / AI-12 share one running number per workspace).</summary>
+    public static bool IsWorkNumberTaken(DbUpdateException e) => IsUniqueViolation(e, WorkNumberIndex, "WorkItems", "TenantId", "Number");
     public static bool IsTaskNumberTaken(DbUpdateException e) => IsUniqueViolation(e, TaskNumberIndex, "WorkItems", "ProjectId", "Number");
     // SQLite names the columns, not the index: the running timer is the only unique index on TimeEntries (TenantId, UserId).
     public static bool IsTimerRunning(DbUpdateException e) => IsUniqueViolation(e, RunningTimerIndex, "TimeEntries", "TenantId", "UserId");

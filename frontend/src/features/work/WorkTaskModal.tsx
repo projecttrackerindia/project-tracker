@@ -9,6 +9,7 @@ import { Select } from '../../components/Select';
 import { Avatar, ErrorState, Field, Modal, PageLoader, PriorityOptions, SubmitButton, Tabs } from '../../components/ui';
 import { formatDate, formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { refreshWork } from './workUi';
 import { WORK_STATUSES } from '../../lib/workLabels';
 import { useWorkspaceId } from '../../stores/auth';
 import { TimeTracker } from '../time/TimeTracker';
@@ -60,7 +61,8 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
   const [formError, setFormError] = useState<string | null>(null);
 
   const pickableTypes = (types.data ?? []).filter((t) => t.isActive || t.id === task?.workTypeId);
-  const refresh = () => invalidateWorkspace(wid, 'work');
+  // Every view of this work (My Work, Today, Calendar, Reminders), not just the Work list.
+  const refresh = () => { void invalidateWorkspace(wid, 'work'); refreshWork(wid); };
 
   const save = useMutation({
     mutationFn: () => {

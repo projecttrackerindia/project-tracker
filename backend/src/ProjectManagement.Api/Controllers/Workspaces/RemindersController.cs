@@ -45,7 +45,8 @@ public class RemindersController(ReminderService reminders, ReminderSuggestionSe
     public async Task<IActionResult> Snooze(Guid id, [FromBody] SnoozeRequest req, CancellationToken ct) => Ok(await reminders.SnoozeAsync(id, req, ct));
 
     [HttpPost("{id:guid}/done")]
-    public async Task<IActionResult> Done(Guid id, CancellationToken ct) => Ok(await reminders.CompleteAsync(id, ct));
+    public async Task<IActionResult> Done(Guid id, [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] ReminderExpectation? req, CancellationToken ct) =>
+        Ok(await reminders.CompleteAsync(id, req, ct));
 
     [HttpPost("{id:guid}/reopen")]
     public async Task<IActionResult> Reopen(Guid id, CancellationToken ct) => Ok(await reminders.ReopenAsync(id, ct));

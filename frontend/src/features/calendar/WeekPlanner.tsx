@@ -7,6 +7,7 @@ import type { CalendarEvent, TimeEntry } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { ErrorState, Segmented } from '../../components/ui';
 import { todayISO } from '../../lib/format';
+import { instantIn } from '../../lib/zone';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -18,7 +19,7 @@ import { CalendarView } from './CalendarView';
 import { EventDetail, type DetailActions } from './EventDetail';
 import { AttendanceRow } from '../attendance/AttendanceCalendar';
 import {
-  DOW3, END, HR, MEETING_MIN, MONTHS, SNAP, START, addDays, clockH, dateOf, fmtMins, hourOf, hrefOf, isDeadline, iso, lanes, mondayOf, planFocus, planKey, RANK,
+  DOW3, END, HR, MEETING_MIN, MONTHS, SNAP, START, addDays, clockH, dateOf, dayOf, fmtMins, hourOf, hrefOf, isDeadline, iso, lanes, mondayOf, planFocus, planKey, RANK,
   type Detail, type Focus, type Meet, type PlanOverrides, type Reminder,
 } from './plannerModel';
 import './planner.css';
@@ -97,7 +98,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
       const key = `${e.id}|${e.startsAt}`;
       const mv = moved[key];
       const start = mv ? mv.start : hourOf(s);
-      return { key, e, day: mv ? mv.day : iso(s), start, end: start + len, feed: f };
+      return { key, e, day: mv ? mv.day : dayOf(s), start, end: start + len, feed: f };
     });
   }, [events, feed.data, moved]);
 
@@ -121,7 +122,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const reschedule = async (m: Meet, day: string, start: number, undo = false) => {
     const from = { day: m.day, start: m.start };
     const len = m.end - m.start;
-    const at = (d: string, h: number) => { const x = dateOf(d); x.setMinutes(Math.round(h * 60)); return x; };
+    const at = (d: string, h: number) => instantIn(d, h);   // the wall-clock time in the app's zone, not the device's
     setMoved((s) => ({ ...s, [m.key]: { day, start } }));
     try {
       const body = { startTime: at(day, start).toISOString(), endTime: at(day, start + len).toISOString() };
@@ -206,7 +207,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
       lanes: lanes(ms),
       focus: focus.filter((f) => f.day === d),
       logged: layers.logged ? loggedEntries.filter((t) => t.startedAt && t.workDate === d) : [],
-      reminders: layers.reminders ? (rem.data?.open ?? []).filter((r) => r.nextFireAt && iso(new Date(r.nextFireAt)) === d).slice(0, 3) as Reminder[] : [],
+      reminders: layers.reminders ? (rem.data?.open ?? []).filter((r) => r.nextFireAt && dayOf(new Date(r.nextFireAt)) === d).slice(0, 3) as Reminder[] : [],
     };
   }), [days, placed, layers, shown, focus, loggedEntries, rem.data]);
   const origByKey = useMemo(() => new Map(meets.map((m) => [m.key, m])), [meets]);
@@ -386,7 +387,7 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, selKey, dr
     <div className="wp-col" data-day={d}>
       {nowTop != null && <div className="wp-now" style={{ top: nowTop }} aria-label={`Now, ${nowLabel}`} />}
       {col.logged.map((t) => {
-        const st = new Date(t.startedAt!); const h0 = st.getHours() + st.getMinutes() / 60; const h1 = h0 + (t.isRunning ? Math.max(.25, (Date.now() - st.getTime()) / 3.6e6) : t.minutes / 60);
+        const st = new Date(t.startedAt!); const h0 = hourOf(st); const h1 = h0 + (t.isRunning ? Math.max(.25, (Date.now() - st.getTime()) / 3.6e6) : t.minutes / 60);
         if (h1 <= START || h0 >= END) return null;
         const top = Math.max(h0, START), bot = Math.min(h1, END);
         const key = `logged:${d}:${t.id}`;

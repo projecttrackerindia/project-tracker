@@ -27,6 +27,12 @@ export interface WorkRow {
   slaStartAt?: string | null;
   slaDueAt?: string | null;
   slaState?: string | null;
+  /** Optimistic concurrency: send it back with a change (My Work's tick never re-reads the item first). */
+  version?: number;
+  /** When it was finished (done today means completed today, not merely touched today). */
+  completedAt?: string | null;
+  /** Who raised it (My Work's "Raised by me"). */
+  reporterId?: string | null;
 }
 
 export interface WorkPage { items: WorkRow[]; offset: number; limit: number; hasMore: boolean }
@@ -40,6 +46,8 @@ export interface WorkListFilters {
   projectId?: string;
   status?: WorkStatusFilter;
   overdue?: boolean;
+  /** Only work the caller raised, whoever it is assigned to. */
+  raisedByMe?: boolean;
   q?: string;
   offset?: number;
   limit?: number;

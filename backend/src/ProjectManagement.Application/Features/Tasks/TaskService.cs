@@ -32,7 +32,8 @@ public record CreateTaskRequest(string Title, string? Description, Guid? StatusI
 public record UpdateTaskRequest(string Title, string? Description, Guid StatusId, Priority Priority, Guid? AssigneeId, DateOnly? StartDate,
     DateOnly? DueDate, decimal? EstimatedHours, decimal? ActualHours, IReadOnlyList<Guid>? LabelIds, int Version, Guid? MilestoneId = null, Guid? StageId = null,
     string? DueDateReason = null, string? DueDateDependency = null);
-public record MoveTaskRequest(Guid StatusId, double? Position);
+/// <param name="Version">The version the caller saw; when given, a move over someone else's newer change is refused (409) instead of overwriting it.</param>
+public record MoveTaskRequest(Guid StatusId, double? Position, int? Version = null);
 
 public record CommentDto(Guid Id, Guid TaskId, UserRefDto Author, string Body, Guid? ParentCommentId, DateTime CreatedAt, DateTime? EditedAt, bool CanEdit, bool CanDelete);
 public record CreateCommentRequest(string Body, Guid? ParentCommentId, IReadOnlyList<Guid>? MentionUserIds);
@@ -41,7 +42,7 @@ public record UpdateCommentRequest(string Body);
 public class TaskService(
     IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions,
     EntitlementService entitlements, ProjectAccess access, NotificationService notifications, PlanningService planning, AutomationEngine automation, TaskCompletionService completion,
-    DueDateHistory dueHistory)
+    DueDateHistory dueHistory, ProjectManagement.Application.Features.Reminders.ReminderSync reminderSync)
 {
     private const double PositionStep = 1024;
 
@@ -280,6 +281,7 @@ public class TaskService(
         ProjectManagement.Application.Common.TextLimits.EnsureTitle(req.Title);
         if (task.Version != req.Version)
             throw new ConflictException("This task was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
+        db.Tasks.Entry(task).Property(x => x.Version).OriginalValue = req.Version;   // a save in between fails (409) instead of being overwritten
         if (req.StartDate is { } s && req.DueDate is { } d && d < s) throw new ValidationException("dueDate", "Due date must not be before the start date.");
         ValidateHours(req.EstimatedHours, "estimatedHours");
         ValidateHours(req.ActualHours, "actualHours");
@@ -391,6 +393,8 @@ public class TaskService(
         }
 
         await db.SaveChangesAsync(ct);
+        // Due date, assignee, status or title changed: its reminders follow now, not at the planner's next pass.
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.Task, id, ct);
         if (task.ParentTaskId is null) await completion.SyncStagesAsync([oldStageId, task.StageId], ct);
         return await GetDtoAsync(id, ct);
     }
@@ -447,6 +451,12 @@ public class TaskService(
         var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Task not found.");
         await permissions.RequireTaskEditAsync(task, ct);
         await access.EnsureWritableAsync(task.ProjectId, "move its tasks", ct);
+        if (req.Version is { } seen)
+        {
+            if (task.Version != seen) throw new ConflictException("This task was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
+            // And if someone saves between this read and the save below, the save fails instead of overwriting them.
+            db.Tasks.Entry(task).Property(x => x.Version).OriginalValue = seen;
+        }
         var status = await db.WorkflowStatuses.FirstOrDefaultAsync(x => x.Id == req.StatusId && x.ProjectId == task.ProjectId, ct)
             ?? throw new ValidationException("statusId", "Status does not belong to this project.");
         var oldName = await db.WorkflowStatuses.Where(x => x.Id == task.StatusId).Select(x => x.Name).FirstAsync(ct);
@@ -469,6 +479,7 @@ public class TaskService(
             await automation.RunAsync(task, key, AutomationTrigger.StatusChanged, status.Id, null, null, ct);
         }
         await db.SaveChangesAsync(ct);
+        if (changed) await reminderSync.OnWorkChangedAsync(ReminderTarget.Task, id, ct);
         if (changed && task.ParentTaskId is null) await completion.SyncStagesAsync([task.StageId], ct);
         return await GetDtoAsync(id, ct);
     }
@@ -479,11 +490,14 @@ public class TaskService(
         var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Task not found.");
         await access.EnsureWritableAsync(task.ProjectId, "delete its tasks", ct);
         var now = clock.Now;
-        foreach (var t in await db.Tasks.Where(t => t.Id == id || t.ParentTaskId == id).ToListAsync(ct))
+        var gone = await db.Tasks.Where(t => t.Id == id || t.ParentTaskId == id).ToListAsync(ct);
+        foreach (var t in gone)
         { t.IsDeleted = true; t.DeletedAt = now; t.DeletedBy = ctx.UserId; }
         recorder.Audit("task.deleted", "Task", id, new { task.Title });
         recorder.Activity("task.deleted", "Task", id, $"Deleted task \"{task.Title}\"", task.ProjectId);
         await db.SaveChangesAsync(ct);
+        // Their reminders are orphaned (not lost): Undo brings them back.
+        foreach (var t in gone) await reminderSync.OnWorkChangedAsync(ReminderTarget.Task, t.Id, ct);
         if (task.ParentTaskId is null) await completion.SyncStagesAsync([task.StageId], ct);
     }
 
@@ -500,11 +514,13 @@ public class TaskService(
         if (!admin && task.DeletedBy != ctx.UserId) throw new NotFoundException("Task not found.");
         await access.EnsureWritableAsync(task.ProjectId, "restore its tasks", ct);
         var deletedAt = task.DeletedAt;
-        foreach (var t in await db.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tid && (t.Id == id || (t.ParentTaskId == id && t.IsDeleted && t.DeletedAt == deletedAt))).ToListAsync(ct))
+        var back = await db.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tid && (t.Id == id || (t.ParentTaskId == id && t.IsDeleted && t.DeletedAt == deletedAt))).ToListAsync(ct);
+        foreach (var t in back)
         { t.IsDeleted = false; t.DeletedAt = null; t.DeletedBy = null; }
         recorder.Audit("task.restored", "Task", id, new { task.Title });
         recorder.Activity("task.restored", "Task", id, $"Restored task \"{task.Title}\"", task.ProjectId);
         await db.SaveChangesAsync(ct);
+        foreach (var t in back) await reminderSync.OnWorkChangedAsync(ReminderTarget.Task, t.Id, ct);
         if (task.ParentTaskId is null) await completion.SyncStagesAsync([task.StageId], ct);
     }
 

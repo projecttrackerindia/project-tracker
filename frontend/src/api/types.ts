@@ -217,7 +217,7 @@ export interface Dashboard {
   myWork: WorkItem[];
 }
 export interface CalendarEvent {
-  type: 'task' | 'action' | 'work' | 'project' | 'stage' | 'milestone' | 'meeting'; id: string; title: string; date: string; status: string | null; category: StatusCategory | null;
+  type: 'task' | 'action' | 'work' | 'issue' | 'project' | 'stage' | 'milestone' | 'meeting'; id: string; title: string; date: string; status: string | null; category: StatusCategory | null;
   overdue: boolean; projectId: string | null; projectName: string | null; priority: Priority | null;
   /** When a meeting session starts (UTC); null for anything that only has a date. */
   startsAt?: string | null;

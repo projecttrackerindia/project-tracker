@@ -30,7 +30,10 @@ public record ReminderListDto(IReadOnlyList<ReminderDto> Open, IReadOnlyList<Rem
 /// <param name="Free">"When I'm free": the next 15 minutes inside working hours with no meeting (from the calendar), and if a meeting gets in the way it waits for it to end.</param>
 public record ReminderWhen(string? At, string? TimeZone, int? AnchorDays, string? AnchorTime, string? Recurrence, bool? Free = null);
 public record SaveReminderRequest(string? Title, string? Note, ReminderTarget TargetType, Guid? TargetId, Guid? ForUserId, ReminderWhen? When, bool? OnlyIfOpen, bool? Exact);
-public record SnoozeRequest(string? Preset, string? Until, string? TimeZone);
+public record SnoozeRequest(string? Preset, string? Until, string? TimeZone, DateTime? ExpectedNextFireAt = null, DateTime? ExpectedLastFiredAt = null, bool? Expect = null);
+/// <summary>What the caller saw when it pressed Done/Snooze: if the reminder has moved on since (fired again, already finished), the press is refused
+/// instead of finishing the next occurrence. <see cref="Expect"/> true means the two times below are given (null values included).</summary>
+public record ReminderExpectation(DateTime? ExpectedNextFireAt, DateTime? ExpectedLastFiredAt, bool? Expect = true);
 public record TimeZoneRequest(string? TimeZone);
 
 public record ReminderSettingsDto(int[] WorkDays, string WorkStart, string WorkEnd, string? QuietStart, string? QuietEnd, string DefaultTime,
@@ -155,6 +158,8 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     public async Task<ReminderDto> SnoozeAsync(Guid id, SnoozeRequest req, CancellationToken ct = default)
     {
         var r = await OwnAsync(id, ct);
+        if (req.Expect == true || req.ExpectedNextFireAt is not null || req.ExpectedLastFiredAt is not null)
+            EnsureCurrent(r, req.ExpectedNextFireAt, req.ExpectedLastFiredAt);
         var settings = await SettingsRowAsync(r.UserId, ct);
         var tz = Zone(req.TimeZone ?? await UserZoneAsync(r.UserId, ct));
         Snooze(r, req, settings, tz, clock.Now);
@@ -199,9 +204,20 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         r.SnoozeCount++;
     }
 
-    public async Task<ReminderDto> CompleteAsync(Guid id, CancellationToken ct = default)
+    /// <summary>Refuses a Done/Snooze based on an occurrence that is no longer the current one (a double tap, or a second device).</summary>
+    public static void EnsureCurrent(Reminder r, DateTime? expectedNext, DateTime? expectedLast)
+    {
+        static bool Same(DateTime? a, DateTime? b) => a is null ? b is null : b is not null && Math.Abs((a.Value.ToUniversalTime() - b.Value.ToUniversalTime()).TotalSeconds) < 1;
+        if (r.State is ReminderState.Done or ReminderState.Cancelled || !Same(r.NextFireAt, expectedNext) || !Same(r.LastFiredAt, expectedLast))
+            throw new ConflictException("This reminder changed since you opened it. Refresh and try again.", "REMINDER_STALE");
+    }
+
+    public async Task<ReminderDto> CompleteAsync(Guid id, CancellationToken ct = default) => await CompleteAsync(id, null, ct);
+
+    public async Task<ReminderDto> CompleteAsync(Guid id, ReminderExpectation? expect, CancellationToken ct = default)
     {
         var r = await OwnAsync(id, ct);
+        if (expect is not null && (expect.Expect ?? true)) EnsureCurrent(r, expect.ExpectedNextFireAt, expect.ExpectedLastFiredAt);
         var wasOpen = r.State is ReminderState.Scheduled or ReminderState.Fired;
         var done = Complete(db, r, clock.Now);
         if (wasOpen && ProjectManagement.Application.Features.Integrations.ReminderWebhook.IsAboutWork(done))
@@ -580,8 +596,8 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 var i = await (from x in db.StageIssues.AsNoTracking()
                                join p in access.VisibleProjects().AsNoTracking() on x.ProjectId equals p.Id
                                where x.Id == id
-                               select new { x.Id, x.Number, x.Title, x.ProjectId, p.Key, x.AssigneeId, x.Status }).FirstOrDefaultAsync(ct);
-                return i is null ? null : new(type, i.Id, $"{i.Key}-I{i.Number}", i.Title, i.ProjectId, $"/projects/{i.ProjectId}?tab=issues&issue={i.Id}", null, i.AssigneeId,
+                               select new { x.Id, x.Number, x.Title, x.ProjectId, p.Key, x.AssigneeId, x.Status, x.DueDate }).FirstOrDefaultAsync(ct);
+                return i is null ? null : new(type, i.Id, $"{i.Key}-I{i.Number}", i.Title, i.ProjectId, ReminderSync.IssueLink(i.ProjectId, i.Id), i.DueDate, i.AssigneeId,
                     i.Status != IssueStatus.Resolved);
             case ReminderTarget.ActionItem when Lv(Modules.Projects) > 0:
             case ReminderTarget.Operational when Lv(Modules.Work) > 0:

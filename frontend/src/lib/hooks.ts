@@ -63,3 +63,24 @@ export function useDetailsDismiss(control: RefObject<HTMLDetailsElement | null>)
     };
   }, [control]);
 }
+
+/**
+ * useWsQuery that paints at once: the last answer for this person and workspace is kept for the browser session (sessionStorage) and
+ * shown as placeholder data while the fresh one loads, so Today's "Needs you" and stats never sit behind a spinner on a return visit.
+ */
+export function useCachedWsQuery<T>(key: unknown[], fn: () => Promise<T>, opts?: Omit<UseQueryOptions<T, Error, T, unknown[]>, 'queryKey' | 'queryFn' | 'placeholderData'>) {
+  const wid = useWorkspaceId();
+  const uid = useAuth((s) => s.ctx?.user?.id ?? null);
+  const store = wid && uid ? `pm_qc:${uid}:${wid}:${JSON.stringify(key)}` : null;
+  const read = (): T | undefined => {
+    if (!store) return undefined;
+    try { const v = sessionStorage.getItem(store); return v ? (JSON.parse(v) as T) : undefined; } catch { return undefined; }
+  };
+  const q = useQuery<T, Error, T, unknown[]>({
+    ...opts, queryKey: [wid, ...key], enabled: !!wid && (opts?.enabled ?? true),
+    queryFn: async () => { const v = await fn(); if (store) { try { sessionStorage.setItem(store, JSON.stringify(v)); } catch { /* full or blocked */ } } return v; },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    placeholderData: ((prev: T | undefined) => prev ?? read()) as any,
+  });
+  return q;
+}

@@ -1,4 +1,4 @@
-import { del, get, post, put } from '../../api/client';
+import { create, del, get, post, put } from '../../api/client';
 import { deviceZone } from './time';
 import { deviceZone as realDeviceZone } from '../../lib/zone';
 
@@ -56,14 +56,22 @@ export const watchApi = {
   stop: (id: string) => post<void>(`/ai/watches/${id}/stop`),
 };
 
+/** The occurrence on screen when Done/Snooze was pressed. */
+export interface ReminderSeen { nextFireAt?: string | null; lastFiredAt?: string | null }
+export const expectation = (seen?: ReminderSeen) => seen
+  ? { expectedNextFireAt: seen.nextFireAt ?? null, expectedLastFiredAt: seen.lastFiredAt ?? null, expect: true }
+  : {};
+
 export const reminderApi = {
   list: () => get<ReminderList>('/reminders'),
   counts: () => get<ReminderCounts>('/reminders/counts'),
   forTarget: (type: ReminderTarget, id: string) => get<Reminder[]>(`/reminders/for/${type}/${id}`),
-  create: (body: SaveReminder) => post<Reminder>('/reminders', body),
+  create: (body: SaveReminder) => create<Reminder>('/reminders', body),
   update: (id: string, body: SaveReminder) => put<Reminder>(`/reminders/${id}`, body),
-  snooze: (id: string, preset?: SnoozePreset, until?: string) => post<Reminder>(`/reminders/${id}/snooze`, { preset, until, timeZone: deviceZone() }),
-  done: (id: string) => post<Reminder>(`/reminders/${id}/done`),
+  snooze: (id: string, preset?: SnoozePreset, until?: string, seen?: ReminderSeen) =>
+    post<Reminder>(`/reminders/${id}/snooze`, { preset, until, timeZone: deviceZone(), ...expectation(seen) }),
+  /** Finishes the occurrence the person saw: with `seen`, a stale second tap is refused (409) instead of skipping the next one. */
+  done: (id: string, seen?: ReminderSeen) => post<Reminder>(`/reminders/${id}/done`, expectation(seen)),
   reopen: (id: string) => post<Reminder>(`/reminders/${id}/reopen`),
   remove: (id: string) => del(`/reminders/${id}`),
   settings: () => get<ReminderSettings>('/reminders/settings'),

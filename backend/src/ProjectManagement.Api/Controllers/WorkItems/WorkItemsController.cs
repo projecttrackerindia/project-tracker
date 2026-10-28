@@ -22,8 +22,8 @@ public class WorkItemsController(WorkItemService items, WorkloadService workload
     [HttpGet("work-items")]
     public async Task<IActionResult> List([FromQuery] string? kind, [FromQuery] bool mine = false, [FromQuery] string? team = null, [FromQuery] Guid? assigneeId = null,
         [FromQuery] Guid? projectId = null, [FromQuery] string? status = null, [FromQuery] bool overdue = false, [FromQuery] string? q = null,
-        [FromQuery] int offset = 0, [FromQuery] int limit = 50, CancellationToken ct = default) =>
-        Ok(await work.ListAsync(kind, mine, team, assigneeId, projectId, status, overdue, q, offset, limit, ct));
+        [FromQuery] int offset = 0, [FromQuery] int limit = 50, [FromQuery] bool raisedByMe = false, CancellationToken ct = default) =>
+        Ok(await work.ListAsync(kind, mine, team, assigneeId, projectId, status, overdue, q, offset, limit, ct, raisedByMe));
 
     /// <summary>One item with its activity stream (comments, time, files, changes, the agent's changes).</summary>
     [HttpGet("work-items/{id:guid}")]

@@ -17,7 +17,10 @@ import { useAi, useAssistant } from '../ai/Assistant';
 import { useIsMobile, useIsSmallPhone } from '../../lib/mobile';
 import { PhoneToday } from './PhoneToday';
 import { MONTHS, todayISO } from '../../lib/format';
-import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { invalidateWorkspace, useCachedWsQuery, useWsQuery } from '../../lib/hooks';
+import { refreshWork } from '../work/workUi';
+import { hourIn, isoDateIn, zonedParts } from '../../lib/zone';
+import { RANK, clockH, focusForItems, isDone, isWorkItem, windowOf } from '../calendar/plannerModel';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { DotsMenu } from '../talk/DotsMenu';
@@ -38,7 +41,10 @@ const longDay = (s: string) => { const d = dateOf(s); return `${d.toLocaleDateSt
 const headDay = (s: string) => { const d = dateOf(s); return `${d.toLocaleDateString('en-GB', { weekday: 'long' })}, ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'long' })}`; };
 const addDays = (s: string, n: number) => { const d = dateOf(s); d.setDate(d.getDate() + n); return iso(d); };
 /** "9:30", "12:00" — the day card's 12-hour clock without AM/PM. */
-const clock = (d: Date) => `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`;
+/** "9:30" of an instant, read in the app's zone (not the device's). */
+const clock = (d: Date) => { const p = zonedParts(d); return `${p.hour % 12 || 12}:${String(p.minute).padStart(2, '0')}`; };
+/** The app-zone day of an instant. */
+const dayOfInstant = (d: Date) => isoDateIn(d);
 /** "1h 40m", "45m", "2h" */
 const dur = (min: number) => { const h = Math.floor(min / 60), m = Math.round(min % 60); return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`; };
 
@@ -83,7 +89,7 @@ function ForYouOrPhone({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) 
 // ------------------------------------------------------------------------------------------------------------------------- For you
 
 function greeting(name: string) {
-  const h = new Date().getHours();
+  const h = zonedParts(new Date()).hour;
   const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   return `${part}, ${name.split(' ')[0] || name}.`;
 }
@@ -95,7 +101,7 @@ function ForYou({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) => void
   const me = useAuth((s) => s.ctx!.user);
   const today = todayISO();
   const phone = useIsMobile();
-  const briefing = useWsQuery(['inbox', 'briefing'], inboxApi.briefing, { staleTime: 30_000 });
+  const briefing = useCachedWsQuery(['inbox', 'briefing'], inboxApi.briefing, { staleTime: 30_000 });
   const team = view === 'team';
   // The phone has no sidebar, so its Calendar stays a tab here; on a desk Calendar is in the sidebar.
   const segs: { id: HomeSeg; label: string }[] = [{ id: 'me', label: 'For me' }, { id: 'team', label: 'My team' }, ...(phone ? [{ id: 'calendar' as const, label: 'Calendar' }] : [])];
@@ -182,10 +188,11 @@ function InboxCard() {
   const wid = useWorkspaceId();
   const nav = useNavigate();
   const [filter, setFilter] = useState<InboxFilter>('all');
-  const q = useWsQuery(['inbox', 'rows', filter], () => inboxApi.list(filter), { placeholderData: (p) => p });
+  const q = useCachedWsQuery(['inbox', 'rows', filter], () => inboxApi.list(filter), { staleTime: 30_000 });
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<Set<string>>(new Set());
-  const refresh = () => void invalidateWorkspace(wid, 'inbox');
+  // Acting on a row (done, snooze, later) changes reminders and work too: refresh those views with the inbox.
+  const refresh = () => { void invalidateWorkspace(wid, 'inbox'); void invalidateWorkspace(wid, 'reminders'); refreshWork(wid); };
 
   const act = async (row: InboxRow) => {
     if (!row.action.endpoint) { if (row.href) nav(row.href); return; }
@@ -256,7 +263,7 @@ function InboxCard() {
 /** The day runs 9 AM to 7 PM; the scale shows eleven hour columns (9 … 7), as the design's ruler. A meeting without an end reads as 30 min. */
 const DAY_START = 9, DAY_END = 19, DAY_COLS = 11, MEETING_MIN = 30;
 const MEET_TINTS = ['m-green', 'm-teal', 'm-indigo'];
-const hourOf = (d: Date) => d.getHours() + d.getMinutes() / 60;
+const hourOf = (d: Date) => hourIn(d);   // in the app's zone
 type Meeting = { e: CalendarEvent; start: Date; h: number; end: number };
 
 function useMeetings(from: string, to: string, team: boolean) {
@@ -268,12 +275,13 @@ function useMeetings(from: string, to: string, team: boolean) {
 }
 
 /**
- * Today from 9 to 7 on two lanes: meetings (tinted capsules, real lengths) above; open incidents (red) and focus blocks (orange, hatched)
+ * Today from 9 to 7 on two lanes: meetings (tinted capsules, real lengths) above; open incidents (red) and focus blocks (orange, solid as on the Calendar)
  * below — suggested in the free gaps of an hour or more after now, for the work that needs you most. A red line marks now.
  */
 function YourDay({ team }: { team: boolean }) {
   const today = todayISO();
-  const { list } = useMeetings(today, today, team);
+  const { q: dayQ, list } = useMeetings(today, today, team);
+  const events = dayQ.data ?? [];
   const inbox = useWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { staleTime: 30_000 });
   // Time I logged today: the total in the heading; timer entries drawn at the hours they ran.
   const logged = useWsQuery(['time', 'sheet', today, 'me'], () => timeApi.timesheet({ from: today, to: today }), { staleTime: 60_000, retry: false, enabled: !team });
@@ -286,8 +294,9 @@ function YourDay({ team }: { team: boolean }) {
   const rows = inbox.data?.rows ?? [];
   const incidents = rows.filter((r) => r.kind === 'ticket' && r.urgent).slice(0, 2).map((r) => {
     const at = new Date(r.at);
-    const sameDay = iso(at) === today;
-    return { r, start: sameDay ? Math.max(DAY_START, hourOf(at)) : DAY_START, since: sameDay ? clock(at) : `${at.getDate()} ${MONTHS[at.getMonth()]}` };
+    const sameDay = dayOfInstant(at) === today;
+    const ap = zonedParts(at);
+    return { r, start: sameDay ? Math.max(DAY_START, hourOf(at)) : DAY_START, since: sameDay ? clock(at) : `${ap.day} ${MONTHS[ap.month - 1]}` };
   });
   // Focus blocks: free gaps of 60 min or more between meetings from now (rounded up to the quarter) to 7 PM; up to two, at most 90 min each.
   const topics = rows.filter((r) => !(r.kind === 'ticket' && r.urgent)).map((r) => r.title);
@@ -295,24 +304,21 @@ function YourDay({ team }: { team: boolean }) {
   const focus: { start: number; end: number; label: string }[] = [];
   let free = 0;
   if (cursor0 < DAY_END) {
-    const busy = meetings.map((m) => [m.h, m.end] as const).sort((a, b) => a[0] - b[0]);
-    let cur = cursor0;
-    const gaps: [number, number][] = [];
-    for (const [a, b] of busy) { if (a > cur) gaps.push([cur, Math.min(a, DAY_END)]); cur = Math.max(cur, b); if (cur >= DAY_END) break; }
-    if (cur < DAY_END) gaps.push([cur, DAY_END]);
-    for (const [a, b] of gaps) {
-      if (b - a >= 1 && focus.length < 2) {
-        const len = Math.min(1.5, b - a);
-        focus.push({ start: a, end: a + len, label: topics[focus.length] ?? (focus.length ? 'Reviews' : 'Deep work') });
-        free += (b - a - len) * 60;
-      } else if (b > a) free += (b - a) * 60;
-    }
+    // The same focus rule as the Calendar planner and My Work (calendar/plannerModel): your open work due by today, most urgent first,
+    // each block inside the item's own time window when it has one; then the inbox's topics; then plain "Deep work".
+    const work = events.filter((e) => isWorkItem(e) && !isDone(e) && e.date <= today)
+      .sort((a, b) => (RANK[a.priority ?? ''] ?? 4) - (RANK[b.priority ?? ''] ?? 4) || a.date.localeCompare(b.date));
+    const named = [...work.map((e) => ({ item: e.title, window: windowOf(e, today) })), ...topics.map((t) => ({ item: t, window: null })),
+      { item: 'Deep work', window: null }, { item: 'Reviews', window: null }];
+    const plan = focusForItems(named, meetings.map((m) => [m.h, m.end] as const), cursor0, DAY_END, { max: 2, maxLen: 1.5 });
+    plan.blocks.forEach((b) => focus.push({ start: b.start, end: b.end, label: b.item }));
+    free = plan.free;
   }
   const pct = (h: number) => `${(Math.min(DAY_COLS, Math.max(0, h - DAY_START)) / DAY_COLS) * 100}%`;
   const width = (a: number, b: number) => `${(Math.max(.25, Math.min(b, DAY_START + DAY_COLS) - Math.max(a, DAY_START)) / DAY_COLS) * 100}%`;
   const hours = Array.from({ length: DAY_COLS }, (_, i) => DAY_START + i);
   const label = (h: number) => (h === 9 ? '9 AM' : h === 12 ? '12 PM' : String(h > 12 ? h - 12 : h));
-  const span = (h: number) => `${clock(new Date(2000, 0, 1, Math.floor(h), Math.round((h % 1) * 60)))}`;
+  const span = (h: number) => clockH(h);
   const n = meetings.length;
   return (
     <section className="hm-card hm-yday" aria-label="Your day">
@@ -368,8 +374,9 @@ function UpNext({ team }: { team: boolean }) {
   if (q.isLoading) return <section className="hm-card hm-next" aria-label="Up next"><p className="hm-quiet">Loading…</p></section>;
   if (!next) return <section className="hm-card hm-next" aria-label="Up next"><div className="hm-when">Up next</div><p className="hm-quiet">No meetings in the next two weeks.</p></section>;
   const mins = Math.round((next.start.getTime() - now.getTime()) / 60000);
-  const sameDay = iso(next.start) === today;
-  const when = mins <= 0 ? 'Now' : sameDay ? `Up next · in ${mins < 60 ? `${mins} min` : dur(mins)}` : `Up next · ${addDays(today, 1) === iso(next.start) ? 'Tomorrow' : longDay(iso(next.start))}`;
+  const nextDay = dayOfInstant(next.start);
+  const sameDay = nextDay === today;
+  const when = mins <= 0 ? 'Now' : sameDay ? `Up next · in ${mins < 60 ? `${mins} min` : dur(mins)}` : `Up next · ${addDays(today, 1) === nextDay ? 'Tomorrow' : longDay(nextDay)}`;
   const end = new Date(next.start.getTime() + (next.end - next.h) * 3600e3);
   const people = next.e.people ?? [];
   const join = next.e.joinUrl;
@@ -393,7 +400,7 @@ function UpNext({ team }: { team: boolean }) {
 
 /** The four numbers, each opening where it comes from: my overdue items, my time this week, projects at risk, the team's open work. */
 function HomeNumbers() {
-  const dash = useWsQuery(['dashboard', null], () => insightApi.dashboard(null), { staleTime: 60_000 });
+  const dash = useCachedWsQuery(['dashboard', null], () => insightApi.dashboard(null), { staleTime: 60_000 });
   const projects = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false });
   const team = useWsQuery(['workload', 'default'], () => workItemApi.workload(), { staleTime: 60_000, retry: false });
   const risk = projects.data?.items?.filter((p) => p.health === 'Delayed' || p.health === 'AtRisk').length;
