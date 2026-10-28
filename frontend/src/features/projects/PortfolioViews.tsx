@@ -449,7 +449,10 @@ export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items:
   const cur = slides[Math.min(i, n - 1)];
   const note = cur.kind === 'decision' ? cur.item.why : cur.kind === 'weekly' ? `${cur.item.name}: the latest weekly report.` : brief.headlines[0] ?? 'Every project in one view.';
   const week = isoWeek(asOf ? new Date(asOf) : new Date());
-  return (
+  // Portalled to <body>: an ancestor with layout containment (container-type / contain / transform / filter) would otherwise become the
+  // containing block of this position:fixed overlay — it then sizes to the page's content box (thousands of px tall), the centred slide
+  // and the presenter strip land far below the fold and the window shows only the black top bar ("1 of 11" and nothing else).
+  return createPortal(
     <div className={`pf-present${phone ? ' phone' : ''}`} role="dialog" aria-modal="true" aria-label="Present decisions">
       {phone ? (
         <div className="pf-present-top">
@@ -490,6 +493,7 @@ export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items:
         <p className="pf-notes"><b>Notes</b> · {note}</p>
         <div className="pf-clock" aria-label={`${clock(now - startedAt)} elapsed`}><b>{clock(now - startedAt)}</b><small>elapsed · {new Date(startedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} start</small></div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
