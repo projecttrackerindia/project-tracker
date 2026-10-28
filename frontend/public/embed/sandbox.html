@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interactive embed</title>
+<style>html,body{margin:0;height:100%;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:transparent}#lottie{width:100%;height:100%}</style>
+</head>
+<body>
+<script>
+/*
+ * The runner of a page's interactive embed or Lottie animation. It is only ever framed with sandbox="allow-scripts" (no same origin) and
+ * the server adds the CSP sandbox directive, so whatever runs here has an opaque origin: no cookies, no storage, no access to the page that
+ * framed it, no forms, popups or top-level navigation. It takes one message with the content, from its parent only.
+ */
+(function () {
+  var started = false, anim = null;
+  window.addEventListener('message', function (e) {
+    if (e.source !== window.parent) return;
+    var m = e.data;
+    if (!m || m.kind !== 'pt-embed') return;
+    if (m.mode === 'pause') { if (anim) anim.pause(); document.documentElement.style.setProperty('--pt-paused', '1'); return; }
+    if (m.mode === 'play') { if (anim) anim.play(); return; }
+    if (started) return;
+    started = true;
+    if (m.mode === 'lottie') {
+      var s = document.createElement('script');
+      s.textContent = String(m.player || '');
+      document.head.appendChild(s);
+      var box = document.createElement('div'); box.id = 'lottie'; document.body.appendChild(box);
+      try {
+        anim = self.lottie.loadAnimation({ container: box, renderer: 'svg', loop: !!m.loop, autoplay: !!m.autoplay, animationData: m.data });
+      } catch (err) { box.textContent = 'This animation could not be played.'; }
+      return;
+    }
+    if (m.mode === 'html') {
+      var doc = '<!doctype html><html><head><meta charset="utf-8"><style>' + String(m.css || '').replace(/<\/style/gi, '<\\/style') + '</style></head><body>'
+        + String(m.html || '') + '<script>' + String(m.js || '').replace(/<\/script/gi, '<\\/script') + '<\/script></body></html>';
+      document.open(); document.write(doc); document.close();
+    }
+  });
+  window.parent.postMessage({ kind: 'pt-embed-ready' }, '*');
+})();
+</script>
+</body>
+</html>

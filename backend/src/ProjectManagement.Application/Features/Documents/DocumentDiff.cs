@@ -65,6 +65,18 @@ public static class DocumentDiff
         return lines.Where(l => l.Text.Length > 0).ToList();
     }
 
+    /// <summary>How a motion block reads where it cannot move (PDF, print, compare): its kind and caption, and where to see it.</summary>
+    public static string MotionStill(JsonObject o)
+    {
+        var caption = o["attrs"]?["caption"] is JsonValue cv && cv.TryGetValue<string>(out var c) && c.Trim().Length > 0 ? c.Trim() : null;
+        var kind = o["type"]?.GetValue<string>() switch
+        {
+            "motionLottie" => "[animation]", "motionSvg" => "[animated picture]", "motionVideo" => "[video]",
+            _ => "[Interactive embed - open online]",
+        };
+        return caption is null ? kind : $"{kind} {caption}";
+    }
+
     private static string Inline(JsonNode? n)
     {
         var sb = new StringBuilder();
@@ -77,6 +89,7 @@ public static class DocumentDiff
                 case "hardBreak": sb.Append(' '); break;
                 case "docImage": sb.Append("[image] ").Append(o["attrs"]?["alt"]?.GetValue<string>()); break;
                 case "archDiagram": sb.Append("[diagram] ").Append(o["attrs"]?["title"]?.GetValue<string>()); break;
+                case "motionLottie" or "motionSvg" or "motionVideo" or "sandboxEmbed": sb.Append(MotionStill(o)); break;
                 case "mention": sb.Append(o["attrs"]?["kind"]?.ToString() switch { "task" => "#", "page" => "", _ => "@" }).Append(o["attrs"]?["label"]?.ToString()); break;   // @person, #task and linked pages are words of the page
                 default: foreach (var c in o["content"] as JsonArray ?? []) Go(c); break;
             }
@@ -110,6 +123,8 @@ public static class DocumentDiff
             case "table": foreach (var row in kids.OfType<JsonObject>()) lines.Add(new Line(string.Join(" | ", (row["content"] as JsonArray ?? []).Select(Inline)), "row")); break;
             case "docImage": lines.Add(new Line(Inline(o), "img")); break;
             case "archDiagram": lines.Add(new Line(ArchDiagram.ToFlowchart(o["attrs"]?["data"]), "code", "flowchart")); break;
+            // Motion in print and PDF: a still note with the caption (an interactive embed only ever runs online).
+            case "motionLottie" or "motionSvg" or "motionVideo" or "sandboxEmbed": lines.Add(new Line(MotionStill(o), "img")); break;
             default: foreach (var k in kids) Walk(k, lines, style, prefix); break;
         }
     }

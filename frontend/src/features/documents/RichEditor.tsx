@@ -22,6 +22,8 @@ import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { TableKit } from '@tiptap/extension-table';
 import { emptyDoc } from './docUi';
 import { DocImage } from './DocImage';
+import { MotionMenu, motionExtensions } from './motion/MotionBlocks';
+import { insertMotion, LottiePicker, type MotionHost, type MotionKind } from './motion/inserts';
 import './documents-ds.css';
 
 const lowlight = createLowlight(common);
@@ -41,6 +43,7 @@ function contentExtensions(o: { readOnly: boolean; collab: boolean; lookups: { c
     Highlight, TaskList, TaskItem.configure({ nested: true }), TableKit.configure({ table: { resizable: false } }), DocImage,
     CodeBlockLowlight.configure({ lowlight }), Callout, mentionExtension(o.lookups), slashCommands(o.slash),
     Details.configure({ persist: true, HTMLAttributes: { class: 'rte-details' } }), DetailsSummary, DetailsContent, LiveTasks, CommentMark,
+    ...motionExtensions,
   ];
 }
 
@@ -86,6 +89,7 @@ function SelectionBar({ editor, onComment }: { editor: Editor; onComment?: (r: C
   const c = () => editor.chain().focus();
   const ai = useContext(EditorAiContext);
   const [aiState, setAiState] = useState<SelectionAi | null>(null);
+  const [motion, setMotion] = useState(false);
   const comment = () => {
     const { from, to } = editor.state.selection;
     const quote = editor.state.doc.textBetween(from, to, ' ', ' ').trim().slice(0, 500);
@@ -96,8 +100,8 @@ function SelectionBar({ editor, onComment }: { editor: Editor; onComment?: (r: C
   };
   return (
     <BubbleMenu editor={editor} className={`rte-bubble${aiState ? ' with-ai' : ''}`} options={{ placement: 'top-start' }}
-      shouldShow={({ editor: e, from, to }) => !!aiState || (from !== to && (e.isEditable || !!onComment) && !e.isActive('codeBlock') && !e.isActive('mention'))}>
-      {aiState && ai ? <SelectionAiPanel editor={editor} documentId={ai.documentId} state={aiState} setState={setAiState} /> : <>
+      shouldShow={({ editor: e, from, to }) => !!aiState || motion || (from !== to && (e.isEditable || !!onComment) && !e.isActive('codeBlock') && !e.isActive('mention'))}>
+      {motion && editor.isEditable ? <MotionMenu editor={editor} onClose={() => setMotion(false)} /> : aiState && ai ? <SelectionAiPanel editor={editor} documentId={ai.documentId} state={aiState} setState={setAiState} /> : <>
       {ai && editor.isEditable && <><SelectionAiPanel editor={editor} documentId={ai.documentId} state={null} setState={setAiState} /><span className="rte-sep" /></>}
       {onComment && <><Btn label="Comment on this" on={comment}><Icon name="message" size={15} /></Btn>{editor.isEditable && <span className="rte-sep" />}</>}
       {editor.isEditable && <>
@@ -110,13 +114,15 @@ function SelectionBar({ editor, onComment }: { editor: Editor; onComment?: (r: C
       <span className="rte-sep" />
       <Btn label="Heading" active={editor.isActive('heading', { level: 2 })} on={() => c().toggleHeading({ level: 2 }).run()}>H2</Btn>
       <Btn label="Link" active={editor.isActive('link')} on={() => askLink(editor)}><Icon name="link" size={15} /></Btn>
+      <span className="rte-sep" />
+      <Btn label="Motion of this block" on={() => setMotion(true)}>✦ Motion</Btn>
       </>}
       </>}
     </BubbleMenu>
   );
 }
 
-function Toolbar({ editor, onImage }: { editor: Editor; onImage?: () => void }) {
+function Toolbar({ editor, onImage, onMotion, sandbox }: { editor: Editor; onImage?: () => void; onMotion?: (k: MotionKind) => void; sandbox?: boolean }) {
   const link = () => {
     const prev = editor.getAttributes('link').href as string | undefined;
     const url = window.prompt('Link address (https://…)', prev ?? 'https://');
@@ -146,6 +152,14 @@ function Toolbar({ editor, onImage }: { editor: Editor; onImage?: () => void }) 
       <Btn label="Link" active={editor.isActive('link')} on={link}><Icon name="link" size={15} /></Btn>
       {onImage && <Btn label="Insert picture" on={onImage}><Icon name="image" size={15} /></Btn>}
       <Btn label="Insert table" on={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>▦</Btn>
+      {onMotion && <>
+        <span className="rte-sep" />
+        <Btn label="Insert Lottie animation" on={() => onMotion('lottie')}>◌</Btn>
+        <Btn label="Insert animated SVG" on={() => onMotion('svg')}>✧</Btn>
+        <Btn label="Insert video" on={() => onMotion('video')}>▶</Btn>
+        <Btn label="Insert GIF or APNG" on={() => onMotion('gif')}>GIF</Btn>
+        {sandbox && <Btn label="Insert interactive embed" on={() => onMotion('sandbox')}>⧉</Btn>}
+      </>}
       {editor.isActive('table') && <>
         <Btn label="Add row below" on={() => c().addRowAfter().run()}>＋row</Btn>
         <Btn label="Add column after" on={() => c().addColumnAfter().run()}>＋col</Btn>
@@ -166,7 +180,7 @@ function Toolbar({ editor, onImage }: { editor: Editor; onImage?: () => void }) 
  * Rich text for one section. The content is ProseMirror JSON (never HTML): what is typed here is stored as data, and the server drops anything
  * outside the editor's own node and mark types.
  */
-export function RichEditor({ value, onChange, readOnly, placeholder, label, onPickImage, minimal, collab, me, onComment, onOpenComment, onEditor, liveTasks }: { value: string; onChange?: (json: string) => void; readOnly?: boolean; placeholder?: string; label: string; onPickImage?: () => Promise<{ fileId: string; alt: string } | null>;
+export function RichEditor({ value, onChange, readOnly, placeholder, label, onPickImage, minimal, collab, me, onComment, onOpenComment, onEditor, liveTasks, motion }: { value: string; onChange?: (json: string) => void; readOnly?: boolean; placeholder?: string; label: string; onPickImage?: () => Promise<{ fileId: string; alt: string } | null>;
   /** A page: no toolbar - "/" for blocks, a bar over selected text, @ # [[ for mentions. */
   minimal?: boolean;
   /** Editing together: the shared text replaces `value`, and the others' cursors show with their names. */
@@ -178,7 +192,9 @@ export function RichEditor({ value, onChange, readOnly, placeholder, label, onPi
   /** The editor once it exists, and null with the editor that went away (it is destroyed a moment after a newer one may have started). */
   onEditor?: (e: Editor | null, gone?: Editor | null) => void;
   /** "/Live task list" is offered (pages that belong to a project, or any page where projects can be chosen). */
-  liveTasks?: boolean }) {
+  liveTasks?: boolean;
+  /** Motion blocks can be added (Lottie, SVG, video, GIF, interactive embed): the page lends its file upload. */
+  motion?: MotionHost }) {
   const initial = useMemo(() => parse(value), []); // eslint-disable-line react-hooks/exhaustive-deps
   const navigate = useNavigate();
   const lookups = useContext(EditorLookupsContext);
@@ -187,9 +203,11 @@ export function RichEditor({ value, onChange, readOnly, placeholder, label, onPi
   const editorRef = useRef<Editor | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiWrite, setAiWrite] = useState(false);
+  const [lottie, setLottie] = useState(false);
+  const onMotion = motion ? (k: MotionKind) => { if (editorRef.current) void insertMotion(editorRef.current, k, motion, () => setLottie(true)); } : undefined;
   const insertImage = onPickImage ? async () => { const pic = await onPickImage(); if (pic) editorRef.current?.chain().focus().insertContent({ type: 'docImage', attrs: pic }).run(); } : undefined;
   const extras: SlashExtras = {
-    onImage: insertImage, liveTasks,
+    onImage: insertImage, liveTasks, onMotion, sandbox: motion?.sandbox,
     onAiWrite: ai ? () => setAiWrite(true) : undefined,
     onAiContinue: ai ? () => { if (editorRef.current) void continueWriting(editorRef.current, ai.documentId, setAiBusy); } : undefined,
   };
@@ -253,7 +271,7 @@ export function RichEditor({ value, onChange, readOnly, placeholder, label, onPi
   if (!editor) return <div className="rte rte-loading" />;
   return (
     <div className={`rte${readOnly ? ' readonly' : ''}${minimal ? ' minimal' : ''}`} onClick={openChip}>
-      {!readOnly && !minimal && <Toolbar editor={editor} onImage={insertImage} />}
+      {!readOnly && !minimal && <Toolbar editor={editor} onImage={insertImage} onMotion={onMotion} sandbox={motion?.sandbox} />}
       {(!readOnly || onComment) && <SelectionBar editor={editor} onComment={onComment} />}
       {!readOnly && minimal && (
         <DragHandle editor={editor} className="rte-drag">
@@ -263,6 +281,7 @@ export function RichEditor({ value, onChange, readOnly, placeholder, label, onPi
       <EditorContent editor={editor} />
       {aiBusy && <div className="rte-ai-busy" role="status"><span className="spinner" /> Writing the next part…</div>}
       {aiWrite && <AiWriteDialog editor={editor} onClose={() => setAiWrite(false)} />}
+      {lottie && motion && <LottiePicker editor={editor} host={motion} onClose={() => setLottie(false)} />}
     </div>
   );
 }

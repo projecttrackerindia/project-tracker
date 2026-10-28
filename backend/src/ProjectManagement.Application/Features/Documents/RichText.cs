@@ -15,7 +15,8 @@ public static class SectionContent
     public const int MaxChars = 200_000, MaxNodes = 20_000, MaxDepth = 14, MaxColumns = 12, MaxRows = 500, MaxCell = 2000;
     private const string Empty = """{"type":"doc","content":[{"type":"paragraph"}]}""";
 
-    private static readonly HashSet<string> Blocks = ["doc", "paragraph", "heading", "bulletList", "orderedList", "listItem", "blockquote", "codeBlock", "horizontalRule", "table", "tableRow", "tableCell", "tableHeader", "taskList", "taskItem", "docImage", "archDiagram", "callout", "details", "detailsSummary", "detailsContent", "liveTasks"];
+    private static readonly HashSet<string> Blocks = ["doc", "paragraph", "heading", "bulletList", "orderedList", "listItem", "blockquote", "codeBlock", "horizontalRule", "table", "tableRow", "tableCell", "tableHeader", "taskList", "taskItem", "docImage", "archDiagram", "callout", "details", "detailsSummary", "detailsContent", "liveTasks",
+        "motionLottie", "motionSvg", "motionVideo", "sandboxEmbed"];
     private static readonly HashSet<string> Inline = ["text", "hardBreak", "mention"];
     private static readonly HashSet<string> MentionKinds = ["person", "task", "page"];
     private static readonly HashSet<string> CalloutTones = ["info", "warning", "success", "danger"];
@@ -24,10 +25,11 @@ public static class SectionContent
     private static readonly string[] SafeLinks = ["http://", "https://", "mailto:", "/", "#"];
 
     /// <param name="images">The files of this document an image may point to; an image that points anywhere else is dropped.</param>
-    public static string Normalize(SectionKind kind, string? content, string field = "content", IReadOnlySet<Guid>? images = null) =>
-        kind == SectionKind.Table ? NormalizeTable(content, field) : NormalizeRichText(content, field, images);
+    /// <param name="media">The document's Lottie (JSON) and video files a motion block may point to; one that points anywhere else is dropped.</param>
+    public static string Normalize(SectionKind kind, string? content, string field = "content", IReadOnlySet<Guid>? images = null, IReadOnlySet<Guid>? media = null) =>
+        kind == SectionKind.Table ? NormalizeTable(content, field) : NormalizeRichText(content, field, images, media);
 
-    public static string NormalizeRichText(string? content, string field = "content", IReadOnlySet<Guid>? images = null)
+    public static string NormalizeRichText(string? content, string field = "content", IReadOnlySet<Guid>? images = null, IReadOnlySet<Guid>? media = null)
     {
         if (string.IsNullOrWhiteSpace(content)) return Empty;
         if (content.Length > MaxChars) throw new ValidationException(field, "This section is too long. Split it into two sections or shorten it.");
@@ -36,11 +38,11 @@ public static class SectionContent
         catch (JsonException) { throw new ValidationException(field, "The text could not be read."); }
         if (root is not JsonObject obj || obj["type"]?.GetValue<string>() != "doc") throw new ValidationException(field, "The text could not be read.");
         var budget = MaxNodes;
-        var clean = CleanNode(obj, 0, ref budget, images ?? new HashSet<Guid>()) ?? new JsonObject { ["type"] = "doc", ["content"] = new JsonArray(new JsonObject { ["type"] = "paragraph" }) };
+        var clean = CleanNode(obj, 0, ref budget, images ?? new HashSet<Guid>(), media ?? new HashSet<Guid>()) ?? new JsonObject { ["type"] = "doc", ["content"] = new JsonArray(new JsonObject { ["type"] = "paragraph" }) };
         return clean.ToJsonString();
     }
 
-    private static JsonObject? CleanNode(JsonObject node, int depth, ref int budget, IReadOnlySet<Guid> images)
+    private static JsonObject? CleanNode(JsonObject node, int depth, ref int budget, IReadOnlySet<Guid> images, IReadOnlySet<Guid> media)
     {
         if (depth > MaxDepth || --budget < 0) throw new ValidationException("content", "This section is too complex. Simplify it or split it.");
         var type = node["type"] is JsonValue tv && tv.TryGetValue<string>(out var t) ? t : null;
@@ -86,7 +88,62 @@ public static class SectionContent
             var id = node["attrs"]?["fileId"] is JsonValue fv && fv.TryGetValue<string>(out var fs) && Guid.TryParse(fs, out var g) ? g : Guid.Empty;
             if (!images.Contains(id)) return null;
             var alt = node["attrs"]?["alt"] is JsonValue av && av.TryGetValue<string>(out var a2) ? a2 : "";
-            o["attrs"] = new JsonObject { ["fileId"] = id.ToString(), ["alt"] = alt.Length > 200 ? alt[..200] : alt };
+            var ia = new JsonObject { ["fileId"] = id.ToString(), ["alt"] = alt.Length > 200 ? alt[..200] : alt };
+            MotionContent.CopyMotion(node["attrs"], ia);
+            o["attrs"] = ia;
+            return o;
+        }
+
+        if (MotionContent.EmbedTypes.Contains(type))
+        {
+            // Motion blocks: rebuilt from known fields with limits. Files by id (this document's own), an SVG cleaned to an allow-list, an
+            // interactive embed's code kept as data with size limits (it only ever runs in a sandboxed frame, see frontend motion/sandbox.ts).
+            var a0 = node["attrs"];
+            string Str(string key, int max) => MotionContent.Clip(a0?[key] is JsonValue sv0 && sv0.TryGetValue<string>(out var s0) ? s0 : "", max);
+            bool Flag(string key, bool dflt) => a0?[key] is JsonValue bv0 && bv0.TryGetValue<bool>(out var b0) ? b0 : dflt;
+            Guid FileOf(string key, IReadOnlySet<Guid> allowed) => a0?[key] is JsonValue fv0 && fv0.TryGetValue<string>(out var f0) && Guid.TryParse(f0, out var g0) && allowed.Contains(g0) ? g0 : Guid.Empty;
+            var ma = new JsonObject { ["caption"] = Str("caption", 200) };
+            switch (type)
+            {
+                case "motionLottie":
+                    {
+                        var f = FileOf("fileId", media);
+                        if (f == Guid.Empty) return null;
+                        ma["fileId"] = f.ToString(); ma["loop"] = Flag("loop", true); ma["autoplay"] = Flag("autoplay", true);
+                        ma["height"] = a0?["height"] is JsonValue hv && hv.TryGetValue<int>(out var h) ? Math.Clamp(h, 80, 1200) : 320;
+                        break;
+                    }
+                case "motionVideo":
+                    {
+                        var f = FileOf("fileId", media);
+                        if (f == Guid.Empty) return null;
+                        var poster = FileOf("posterId", images);
+                        ma["fileId"] = f.ToString(); ma["posterId"] = poster == Guid.Empty ? "" : poster.ToString(); ma["autoplay"] = Flag("autoplay", false);
+                        break;
+                    }
+                case "motionSvg":
+                    {
+                        var raw = a0?["svg"] is JsonValue svv && svv.TryGetValue<string>(out var svs) ? svs : "";
+                        if (raw.Length > MotionSvg.MaxChars) throw new ValidationException("content", "An animated SVG is too large (keep it under 150 KB).");
+                        var svg = MotionSvg.Clean(raw);
+                        if (svg is null) return null;
+                        ma["svg"] = svg;
+                        break;
+                    }
+                default:   // sandboxEmbed
+                    {
+                        var html = a0?["html"] is JsonValue hv1 && hv1.TryGetValue<string>(out var hs1) ? hs1 : "";
+                        var css = a0?["css"] is JsonValue cv1 && cv1.TryGetValue<string>(out var cs1) ? cs1 : "";
+                        var js = a0?["js"] is JsonValue jv1 && jv1.TryGetValue<string>(out var js1) ? js1 : "";
+                        if (html.Length > MotionContent.MaxSandboxHtml || css.Length > MotionContent.MaxSandboxCss || js.Length > MotionContent.MaxSandboxJs || html.Length + css.Length + js.Length > MotionContent.MaxSandboxTotal)
+                            throw new ValidationException("content", "An interactive embed is too large (HTML and JavaScript up to 40 KB each, CSS up to 20 KB, 80 KB in all).");
+                        ma["html"] = html; ma["css"] = css; ma["js"] = js;
+                        ma["height"] = a0?["height"] is JsonValue hv2 && hv2.TryGetValue<int>(out var h2) ? Math.Clamp(h2, 80, 1200) : 320;
+                        break;
+                    }
+            }
+            MotionContent.CopyMotion(a0, ma);
+            o["attrs"] = ma;
             return o;
         }
 
@@ -120,6 +177,8 @@ public static class SectionContent
         }
 
         var attrs = new JsonObject();
+        if (type is "paragraph" or "heading" or "blockquote" or "callout" or "codeBlock" or "table" or "bulletList" or "orderedList" or "taskList" or "details" or "horizontalRule")
+            MotionContent.CopyMotion(node["attrs"], attrs);
         if (node["attrs"] is JsonObject a)
         {
             if (type == "callout") attrs["tone"] = a["tone"] is JsonValue tov && tov.TryGetValue<string>(out var tone) && CalloutTones.Contains(tone) ? tone : "info";
@@ -140,7 +199,7 @@ public static class SectionContent
         {
             var kept = new JsonArray();
             foreach (var c in children.OfType<JsonObject>())
-                if (CleanNode(c, depth + 1, ref budget, images) is { } cc) kept.Add(cc);
+                if (CleanNode(c, depth + 1, ref budget, images, media) is { } cc) kept.Add(cc);
             if (kept.Count > 0) o["content"] = kept;
         }
         return o;
