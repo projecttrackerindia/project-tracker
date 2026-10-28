@@ -29,6 +29,8 @@ import { formatMinutes } from '../time/time';
 import { KIND_LABEL, inboxApi, type InboxBriefing, type InboxFilter, type InboxKind, type InboxRow } from './inboxApi';
 import { AnimatePresence, motion } from 'framer-motion';
 import { itemVariants, listVariants } from '../../lib/motion';
+import { SignalsSection, signalsLine, useTodaySignals } from './Signals';
+import { Term } from '../../components/Term';
 import './home.css';
 
 type Tab = 'for-you' | 'calendar';
@@ -137,6 +139,7 @@ function ForYou({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) => void
           <ReviewQueueCard compact />
         </aside>
       </div>
+      <SignalsSection />
     </div>
   );
 }
@@ -214,12 +217,13 @@ function InboxCard() {
   };
 
   const counts = q.data?.counts;
+  const watch = signalsLine(useTodaySignals().data);
   // A reply without rows (an older server during a rolling release) reads as an empty inbox, not a crash of Home.
   const rows = q.data?.rows ?? [];
   const total = counts?.all ?? rows.length;
   return (
     <section className="hm-card hm-inbox" aria-label="Needs you">
-      <div className="hm-lh"><h2 className="hm-h3">Needs you</h2>{total > 0 && <span className="hm-faint">{total} · newest problems first</span>}</div>
+      <div className="hm-lh"><h2 className="hm-h3"><Term k="needs you">Needs you</Term></h2>{total > 0 && <span className="hm-faint">{total} · newest problems first</span>}</div>
       {/* The chips only help with more than 10 rows (or when a chip other than All is on). */}
       {(filter !== 'all' || total > 10) && <div className="ds-chips hm-chips" role="group" aria-label="Show">
         {CHIPS.map((c) => (
@@ -229,8 +233,13 @@ function InboxCard() {
         ))}
       </div>}
       {q.isLoading ? <PageLoader /> : q.isError ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : rows.length === 0 ? (
-        <EmptyState icon="checkCircle" title={filter === 'all' ? 'Nothing needs you' : 'Nothing here'}
-          text={(q.data?.later ?? 0) > 0 ? `${q.data!.later} moved to tomorrow.` : 'New work, decisions and mentions arrive here.'} />
+        // Never a bare "Nothing needs you" while there are signals to watch: say how many, and that they are below.
+        filter === 'all' && watch ? (
+          <p className="hm-empty-signals" data-testid="needs-you-empty"><b>Nothing needs you</b> · {watch} below</p>
+        ) : (
+          <EmptyState icon="checkCircle" title={filter === 'all' ? 'Nothing needs you' : 'Nothing here'}
+            text={(q.data?.later ?? 0) > 0 ? `${q.data!.later} moved to tomorrow.` : 'New work, decisions and mentions arrive here.'} />
+        )
       ) : (
         <motion.ul className="hm-rows" variants={listVariants} initial="hidden" animate="show">
           <AnimatePresence initial={false}>
@@ -320,15 +329,16 @@ function HomeNumbers() {
   const risk = projects.data?.items?.filter((p) => p.health === 'Delayed' || p.health === 'AtRisk').length;
   const c = dash.data?.counts;
   const show = (v: number | undefined, loading: boolean) => (v === undefined ? (loading ? '…' : '—') : v);
-  const cell = (n: ReactNode, l: string, to: string, tone?: 'red' | 'orange') => (
-    <Link to={to} className="hm-mini-c"><span className={`hm-n ${tone ?? ''}`}>{n}</span><span className="hm-l">{l}</span></Link>
+  // Each number opens the filtered list it counts; its label carries the one definition (lib/glossary).
+  const cell = (n: ReactNode, l: ReactNode, to: string, tone: 'red' | 'orange' | undefined, id: string) => (
+    <Link to={to} className="hm-mini-c" data-testid={`number-${id}`}><span className={`hm-n ${tone ?? ''}`}>{n}</span><span className="hm-l">{l}</span></Link>
   );
   return (
     <section className="hm-card hm-mini" aria-label="Your numbers">
-      {cell(show(c?.myOverdue, dash.isLoading), 'Overdue', '/work', c?.myOverdue ? 'red' : undefined)}
-      {cell(c ? (c.myLoggedMinutesThisWeek > 0 ? formatMinutes(c.myLoggedMinutesThisWeek) : '0h') : dash.isLoading ? '…' : '—', 'Logged this week', '/insights?tab=time')}
-      {cell(show(risk, projects.isLoading), 'Projects at risk', '/work/projects', risk ? 'orange' : undefined)}
-      {cell(show(team.data?.totals?.open, team.isLoading), 'Team open items', '/insights')}
+      {cell(show(c?.myOverdue, dash.isLoading), <Term k="overdue" focusable={false}>Overdue</Term>, '/work?overdue=1', c?.myOverdue ? 'red' : undefined, 'overdue')}
+      {cell(c ? (c.myLoggedMinutesThisWeek > 0 ? formatMinutes(c.myLoggedMinutesThisWeek) : '0h') : dash.isLoading ? '…' : '—', <><Term k="logged" focusable={false}>Logged</Term> this week</>, '/insights?tab=time', undefined, 'logged')}
+      {cell(show(risk, projects.isLoading), <>Projects <Term k="at risk" focusable={false}>at risk</Term></>, '/work/projects?status=AtRisk', risk ? 'orange' : undefined, 'risk')}
+      {cell(show(team.data?.totals?.open, team.isLoading), <>Team <Term k="open" focusable={false}>open</Term> items</>, '/work?tab=team', undefined, 'team')}
     </section>
   );
 }

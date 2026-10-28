@@ -1,0 +1,13 @@
+/* A defined word: dotted underline; its definition (data-tip) in a small bubble above while hovered or focused. Hidden bubbles take no
+   space (display: none), so a defined word never widens a phone page. */
+.term { position: relative; text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 3px; text-decoration-thickness: 1px; cursor: help; outline: none; }
+.term:focus-visible { border-radius: 4px; box-shadow: 0 0 0 2px var(--ds-accent, #0071e3); }
+.term::after { content: attr(data-tip); display: none; position: absolute; z-index: 80; left: 50%; bottom: calc(100% + 8px); width: max-content; max-width: min(280px, 72vw);
+  padding: 8px 11px; border-radius: 10px; background: var(--ds-dark, #1d1d1f); color: var(--ds-on-dark, #fff); font-size: 12.5px; font-weight: 450; line-height: 1.4;
+  letter-spacing: 0; text-transform: none; text-align: left; white-space: normal; box-shadow: var(--ds-e2, 0 8px 24px rgba(0, 0, 0, .18)); pointer-events: none;
+  transform: translateX(-50%); animation: term-in .14s ease both; }
+.term:hover::after, .term:focus-visible::after { display: block; }
+html[data-theme='dark'] .term::after { background: #f5f5f7; color: #1d1d1f; }
+@keyframes term-in { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 600px) { .term::after { left: 0; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .term::after { animation: none; } }

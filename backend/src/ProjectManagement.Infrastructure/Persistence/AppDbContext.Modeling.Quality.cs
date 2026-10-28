@@ -21,6 +21,7 @@ public partial class AppDbContext
             e.Property(x => x.Expected).HasMaxLength(2000);
             e.Property(x => x.Priority).HasMaxLength(16);
             e.Property(x => x.Tags).HasMaxLength(300);
+            e.Property(x => x.LinksJson).HasMaxLength(4000);
         });
         b.Entity<TestRun>(e =>
         {

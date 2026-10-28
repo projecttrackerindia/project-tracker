@@ -133,7 +133,7 @@ try{
 
  // The hub: collections with their health, Start something, search across endpoints, and no DocTracker screens behind ···.
  const coll=page.getByTestId('collection').filter({hasText:'Payments Core'});await coll.waitFor();
- assert.match((await coll.locator('.dx-bar em').textContent()).trim(),/^\d+%$/);   // the space shows how complete its docs are
+ assert.match(await page.getByTestId('collection-missing').first().innerText(),/^(Missing: |Complete)/);   // the space names what its docs are missing
  assert.match(await coll.innerText(),/3 pages · 3 endpoints · 1 diagram/);
  assert.equal(await page.locator('.dx-start').count(),5,'write with AI, a blank page and three templates');
  await page.getByRole('button',{name:'More in Library'}).click();

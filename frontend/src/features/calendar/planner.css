@@ -324,3 +324,15 @@ html[data-theme='dark'] .wp-dayp > .ed.ed-inline { background: rgba(58, 58, 60, 
 .wp-e.narrow .wp-lbl { display: block; white-space: nowrap; text-overflow: ellipsis; -webkit-line-clamp: unset; }
 .wp-e.narrow { padding-left: 5px; padding-right: 4px; }
 .dp-main > .dp-t:first-child, .dp-main > .dp-t:first-child + small { grid-column: 1 / -1; }
+/* the empty week/day: what to do with the time */
+.wp-empty { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin: 0 0 10px; padding: 12px 14px; border-radius: 14px;
+  background: var(--ds-fill); animation: ds-enter .3s var(--ds-ease, ease-out) both; }
+.wp-empty-t { font-size: 14px; color: var(--ds-text); line-height: 1.4; }
+.wp-empty-t span { color: var(--ds-text-2); }
+.wp-empty-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.wp-empty-btn { height: 30px; padding: 0 13px; border: 0; border-radius: 15px; background: var(--ds-surface); color: var(--ds-text); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; box-shadow: 0 0 0 .5px var(--ds-line); }
+.wp-empty-btn:hover { background: var(--ds-surface-2, var(--ds-surface)); color: var(--ds-accent); }
+.wp-empty-btn.pri { background: var(--ds-accent); color: #fff; box-shadow: none; }
+.wp-empty-btn.pri:hover { filter: brightness(1.06); color: #fff; }
+@media (max-width: 760px) { .wp-empty-acts { width: 100%; } .wp-empty-btn { flex: 1; min-height: 38px; } }
+@media (prefers-reduced-motion: reduce) { .wp-empty { animation: none; } }

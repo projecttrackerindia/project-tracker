@@ -1,0 +1,42 @@
+/* API endpoint › Tests: coverage, latest run per environment, linked cases, Groot's proposals. */
+.et-cov { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.et-cov.ok { background: rgba(52, 199, 89, .14); color: #1a7f35; }
+.et-cov.no { background: rgba(255, 149, 0, .14); color: #a35c00; }
+html[data-theme='dark'] .et-cov.ok { color: #5de06f; } html[data-theme='dark'] .et-cov.no { color: #ffb340; }
+.et-envs { list-style: none; margin: 10px 0 14px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.et-env { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 14px; background: var(--ds-fill); box-shadow: inset 3px 0 0 var(--c, #8e8e93); }
+.et-env.s-pass { --c: #34c759; } .et-env.s-fail { --c: #ff3b30; } .et-env.s-blocked { --c: #ff9500; }
+.et-env b { font-size: 13px; letter-spacing: .02em; }
+.et-env span { font-size: 13px; color: var(--c); font-weight: 600; }
+.et-env small { font-size: 11.5px; color: var(--ds-text-3); }
+.et-cases { list-style: none; margin: 0 0 12px; padding: 0; }
+.et-case { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px 0; border-top: .5px solid var(--ds-line); }
+.et-case:first-child { border-top: 0; }
+.et-key { font-family: var(--mono); font-size: 12px; color: var(--ds-text-3); text-decoration: none; }
+.et-key:hover { color: var(--ds-accent); }
+.et-title { font-size: 14px; color: var(--ds-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.et-latest { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.et-pill { font-style: normal; font-size: 11.5px; font-weight: 600; padding: 2px 7px; border-radius: 9px; background: var(--ds-fill); color: var(--ds-text-2); }
+.et-pill.s-pass { background: rgba(52, 199, 89, .14); color: #1a7f35; } .et-pill.s-fail { background: rgba(255, 59, 48, .12); color: #d70015; } .et-pill.s-blocked { background: rgba(255, 149, 0, .14); color: #a35c00; }
+html[data-theme='dark'] .et-pill.s-pass { color: #5de06f; } html[data-theme='dark'] .et-pill.s-fail { color: #ff6961; } html[data-theme='dark'] .et-pill.s-blocked { color: #ffb340; }
+.et-actions { gap: 8px; flex-wrap: wrap; }
+.et-ai { color: var(--ds-violet, #5e5ce6); }
+.et-proposals { margin-top: 14px; padding: 14px; border-radius: 16px; background: linear-gradient(135deg, rgba(94, 92, 230, .08), rgba(191, 90, 242, .05)); box-shadow: inset 0 0 0 .5px rgba(94, 92, 230, .22); }
+.et-groot { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 13.5px; color: var(--ds-text-2); }
+.et-orb { width: 16px; height: 16px; border-radius: 50%; flex: none; background: conic-gradient(from 200deg, #5e5ce6, #bf5af2, #ff375f, #ff9f0a, #5e5ce6); }
+.et-proposals ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.et-card { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 14px; background: var(--ds-surface); box-shadow: 0 0 0 .5px var(--ds-line), var(--ds-e1, 0 1px 3px rgba(0, 0, 0, .06)); animation: dx-rise .4s var(--ds-ease, ease-out) both; }
+.et-kind { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ds-violet, #5e5ce6); }
+.et-card b { font-size: 14px; line-height: 1.35; }
+.et-card small { font-size: 12.5px; color: var(--ds-text-2); line-height: 1.4; }
+.et-card .et-why { color: var(--ds-text-3); }
+.et-card-acts { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; flex-wrap: wrap; }
+.et-form { display: grid; gap: 6px; }
+.et-form .field-label { margin-top: 6px; }
+@media (max-width: 640px) {
+  .et-case { grid-template-columns: auto minmax(0, 1fr); }
+  .et-latest { grid-column: 1 / -1; justify-content: flex-start; }
+  .et-title { white-space: normal; }
+  .et-actions .dx-btn { flex: 1; justify-content: center; min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) { .et-card { animation: none; } }

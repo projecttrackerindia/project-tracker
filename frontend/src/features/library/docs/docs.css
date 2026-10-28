@@ -639,3 +639,11 @@ html[data-theme='dark'] .dz-aitag { color: #a5a3ff; }
 .dx-design-row input { margin-top: 4px; accent-color: var(--ds-accent); }
 .dx-design-row span { display: grid; gap: 2px; }
 .dx-design-row small { color: var(--ds-text-2); font-size: 13px; }
+/* A collection's missing pieces, named, each a link to fix it (replaces the bare percentage). */
+.dx-coll { display: flex; flex-direction: column; }
+.dx-coll > a { flex: 1; }
+.dx-missing { margin: 6px 4px 0; font-size: 12px; line-height: 1.45; color: var(--ds-text-3); }
+.dx-coll .dx-missing a { display: inline; padding: 0; height: auto; background: none; box-shadow: none; transform: none; border-radius: 0; color: var(--ds-text-2); text-decoration: underline dotted; text-underline-offset: 2px; }
+.dx-missing a:hover { color: var(--ds-accent); }
+.dx-missing-ok { color: #1a7f35; font-weight: 600; }
+html[data-theme='dark'] .dx-missing-ok { color: #5de06f; }

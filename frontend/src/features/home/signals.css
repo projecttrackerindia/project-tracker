@@ -1,0 +1,41 @@
+/* Today › Team & portfolio signals: grouped cards, each with its owner and one action. */
+.sg { margin-top: 18px; padding: 16px 20px 10px; }
+.sg-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.sg-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 6px 22px; }
+.sg-group { min-width: 0; }
+.sg-count { display: inline-flex; align-items: baseline; gap: 5px; padding: 6px 0; font-size: 13px; font-weight: 500; color: var(--t2, var(--ds-text-2)); text-decoration: none; }
+.sg-count b { font-size: 15px; font-weight: 700; color: var(--ds-text); }
+.sg-group.k-risk .sg-count b, .sg-group.k-sla .sg-count b { color: var(--red, #ff3b30); }
+.sg-group.k-team .sg-count b { color: var(--orange, #ff9500); }
+.sg-count:hover { color: var(--ds-accent); }
+.sg-cards { list-style: none; margin: 0 0 8px; padding: 0; }
+.sg-card { display: flex; align-items: center; gap: 12px; padding: 9px 0; position: relative; }
+.sg-card + .sg-card::before { content: ''; position: absolute; left: 38px; right: 0; top: 0; height: .5px; background: rgba(0, 0, 0, .08); }
+html[data-theme='dark'] .sg-card + .sg-card::before { background: rgba(255, 255, 255, .1); }
+.sg-glyph { width: 26px; height: 26px; border-radius: 8px; flex: none; display: grid; place-items: center; font-size: 12px; background: rgba(255, 149, 0, .13); color: var(--orange, #ff9500); }
+.sg-glyph.k-sla, .sg-card.t-red .sg-glyph.k-risk { background: rgba(255, 59, 48, .12); color: var(--red, #ff3b30); }
+.sg-glyph.k-docs { background: rgba(0, 113, 227, .1); color: var(--blue, #0071e3); }
+.sg-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sg-title { font-size: 14px; font-weight: 600; color: var(--ds-text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.sg-title:hover { color: var(--ds-accent); }
+.sg-reason { font-size: 12.5px; color: var(--t2, var(--ds-text-2)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-owner { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--t3, var(--ds-text-3)); margin-top: 2px; }
+.sg-av { width: 18px; height: 18px; border-radius: 50%; font-size: 8px; display: inline-grid; place-items: center; color: #fff; background: #8e8e93; }
+.sg-act { flex: none; }
+.sg-compact { margin-top: 0; }
+/* the empty "Needs you" pointing at the signals below */
+.hm-empty-signals { margin: 0 20px 14px; padding: 10px 14px; border-radius: 12px; background: var(--fill2, rgba(118, 118, 128, .08)); font-size: 13.5px; color: var(--ds-text); }
+.hm-empty-signals b { font-weight: 600; }
+@media (max-width: 760px) {
+  .sg { padding: 14px 14px 6px; }
+  .sg-groups { grid-template-columns: minmax(0, 1fr); }
+  .sg-card { flex-wrap: wrap; }
+  .sg-main { flex-basis: calc(100% - 40px); }
+  .sg-title, .sg-reason { white-space: normal; }
+  .sg-act { margin-left: 38px; min-height: 32px; }
+  .hm-empty-signals { margin: 0 14px 12px; }
+}
+.sg .hm-pill:not(.blue) { background: var(--fill, rgba(118, 118, 128, .12)); color: var(--ds-text); }
+.sg .hm-pill.blue { background: var(--blue, #0071e3); color: #fff; }
+.pt .sg-compact { margin-top: 12px; border-radius: 18px; padding: 12px 16px 4px; }
+.pt .sg-compact .hm-h3 { font-size: 15px; }
