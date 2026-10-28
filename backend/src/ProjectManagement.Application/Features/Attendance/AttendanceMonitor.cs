@@ -64,7 +64,8 @@ public class AttendanceMonitor(IAppDbContext db, AppClock clock, NotificationRou
             {
                 var hours = AttendanceHours.For(policy, policy.HoursSource == "personal" ? own.GetValueOrDefault(p.UserId) : null);
                 var settings = own.GetValueOrDefault(p.UserId) ?? new ReminderSettings { UserId = p.UserId };
-                var quiet = QuietHours.Until(settings, ZoneTime.IsKnown(p.TimeZone) ? ZoneTime.Find(p.TimeZone) : zone, now) is not null;
+                // Attendance follows the organization's day, so quiet hours are read in its time zone too (a person abroad still works these hours).
+                var quiet = QuietHours.Until(settings, zone, now) is not null;
                 var mine = days.Where(d => d.UserId == p.UserId).ToList();
                 var todays = mine.FirstOrDefault(d => d.Date == today);
 

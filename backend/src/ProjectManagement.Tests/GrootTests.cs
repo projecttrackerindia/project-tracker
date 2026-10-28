@@ -176,6 +176,8 @@ public class GrootTests(ApiFactory factory)
     [Fact]
     public void Postgres_reports_value_too_long_as_22001_and_it_is_recognised()
     {
+        // Only PostgreSQL enforces column lengths (SQLite stores any length), so the check runs where the tests use it.
+        if (!factory.WithDb(db => db.Database.IsNpgsql())) return;
         var caught = factory.WithDb(db =>
         {
             db.PlatformSettings.Add(new PlatformSetting { Key = "groot-" + new string('k', 300), Value = "x" });
