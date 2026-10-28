@@ -250,7 +250,7 @@ public class IncomingWebhookService(IAppDbContext db, ICurrentContext ctx, AppCl
         var project = req.ProjectId ?? (req.Target is not null ? null : h.ProjectId);
         if (project is { } pid && !await db.Projects.AsNoTracking().AnyAsync(p => p.Id == pid, ct)) throw new ValidationException("projectId", "That project was not found.");
         if (req.WorkTypeId is { } wt && !await db.WorkTypes.AsNoTracking().AnyAsync(t => t.Id == wt && t.IsActive, ct)) throw new ValidationException("workTypeId", "That work type was not found.");
-        if (req.AssigneeId is { } who && !await db.TenantMembers.AsNoTracking().AnyAsync(m => m.UserId == who && m.Role != TenantRole.Guest, ct)) throw new ValidationException("assigneeId", "That person is not a member of this workspace.");
+        if (req.AssigneeId is { } who && !await db.TenantMembers.AsNoTracking().AnyAsync(m => m.TenantId == ctx.TenantId && m.UserId == who && m.Role != TenantRole.Guest, ct)) throw new ValidationException("assigneeId", "That person is not a member of this workspace.");
         var minutes = req.MergeMinutes ?? h.MergeMinutes;
         if (minutes is < 0 or > 43200) throw new ValidationException("mergeMinutes", "Merge repeats for up to 30 days (0 never merges).");
         if (req.Mapping is { } m)
@@ -453,7 +453,7 @@ public class IncomingWebhookService(IAppDbContext db, ICurrentContext ctx, AppCl
             if (IncomingTemplates.Render(m.Assignee, json) is { Length: > 3 } who && who.Contains('@'))
             {
                 var email = Text.NormalizeEmail(who);
-                assignee = await db.TenantMembers.AsNoTracking().Where(x => x.User!.NormalizedEmail == email && x.Role != TenantRole.Guest && x.User.IsActive).Select(x => (Guid?)x.UserId).FirstOrDefaultAsync(ct) ?? assignee;
+                assignee = await db.TenantMembers.AsNoTracking().Where(x => x.TenantId == hook.TenantId && x.User!.NormalizedEmail == email && x.Role != TenantRole.Guest && x.User.IsActive).Select(x => (Guid?)x.UserId).FirstOrDefaultAsync(ct) ?? assignee;
             }
             var thread = await db.IncomingWebhookThreads.FirstOrDefaultAsync(t => t.IncomingWebhookId == hook.Id && t.DedupeKey == key, ct);
             var open = thread is not null && await IsOpenAsync(db, thread, ct);

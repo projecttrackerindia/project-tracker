@@ -144,6 +144,10 @@ public class SupportChannelTests(ApiFactory factory)
         Assert.Equal("human", chat["mode"]!.GetValue<string>());
         Assert.NotNull(chat["replyDueAt"]);
 
+        // Someone from another workspace (here: only their own personal one) cannot be handed the chat.
+        var stranger = await TestClient.RegisterAsync(factory, "Zed Outside");
+        Assert.Equal(422, (int)(await owner.Post($"/api/v1/support/conversations/{chatId}/assign", new { userId = stranger.UserId })).Status);
+
         // Given to Mia: she is told, it is in her queue, not in the owner's.
         var given = await owner.Post($"/api/v1/support/conversations/{chatId}/assign", new { userId = mia.UserId });
         Assert.True(given.Ok, given.ToString());

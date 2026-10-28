@@ -327,7 +327,7 @@ export function AccessLevelMatrix() {
             <td className="td-title">{PERMISSION_LABELS[p] ?? p}<div className="td-sub">{p}</div></td>
             {m.roles.map((r) => {
               const on = m.matrix[r]?.[p] ?? false;
-              const locked = r === 'Owner' || m.locked.includes(p) || !m.canEdit;
+              const locked = r === 'Owner' || m.locked.includes(p) || (r === 'Admin' && !!m.adminLocked?.includes(p)) || !m.canEdit;
               return <td key={r}><button className={`perm-toggle ${on ? 'on' : ''}`} disabled={locked} aria-label={`${r}: ${PERMISSION_LABELS[p] ?? p}`} aria-pressed={on} onClick={() => toggle(r, p, !on)}><Icon name="tick" /></button></td>;
             })}
           </tr>

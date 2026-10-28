@@ -103,7 +103,7 @@ public class SupportReplyProcessor(IServiceScopeFactory scopes, ILogger<SupportR
         if (claimed == 0) return false;
         var chat = await db.SupportConversations.AsNoTracking().Where(c => c.Id == id).Select(c => new { c.ChannelId, c.ReplyAttempts }).FirstAsync(ct);
         var connectedBy = await db.SupportChannels.AsNoTracking().Where(c => c.Id == chat.ChannelId).Select(c => (Guid?)c.ConnectedBy).FirstOrDefaultAsync(ct);
-        var role = connectedBy is { } u ? await db.TenantMembers.AsNoTracking().Where(m => m.UserId == u).Select(m => (TenantRole?)m.Role).FirstOrDefaultAsync(ct) : null;
+        var role = connectedBy is { } u ? await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tenant && m.UserId == u).Select(m => (TenantRole?)m.Role).FirstOrDefaultAsync(ct) : null;
         context.UserId = role is null ? null : connectedBy;
         context.Role = role;
         context.WorkspaceType = await db.Tenants.AsNoTracking().Where(t => t.Id == tenant).Select(t => (WorkspaceType?)t.Type).FirstOrDefaultAsync(ct);

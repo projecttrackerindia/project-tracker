@@ -109,6 +109,8 @@ public class ConsentMiddleware(RequestDelegate next)
 /// <summary>Maps exceptions to the standard envelope. Internal details are logged, never returned (spec section 51).</summary>
 public class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExceptionMiddleware> log)
 {
+    /// <summary>Set on a 403 PERMISSION_DENIED / MODULE_ACCESS_DENIED so the web app refetches its access context.</summary>
+    public const string ContextStaleHeader = "X-Context-Stale";
     public const string TextTooLongMessage = "Some text is too long for its field. Keep the title short and put the details in the description, then try again.";
 
     public async Task InvokeAsync(HttpContext http)
@@ -118,6 +120,9 @@ public class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExceptionMi
         {
             if (ex is ProjectManagement.Application.Features.Ai.AiRequestLimitException limited)
                 http.Response.Headers.RetryAfter = limited.RetryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            // The person's access changed under them (or the app shows a button it should not): tell the client to reload /me.
+            if (ex.StatusCode == 403 && ex.Code is "PERMISSION_DENIED" or "MODULE_ACCESS_DENIED")
+                http.Response.Headers[ContextStaleHeader] = "1";
             await ErrorWriter.WriteAsync(http, ex.StatusCode, ex.Message, ex.Errors);
         }
         catch (DbUpdateConcurrencyException)

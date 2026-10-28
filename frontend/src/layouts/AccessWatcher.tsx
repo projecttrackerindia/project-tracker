@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { meApi } from '../api/endpoints';
+import { setContextStaleHandler } from '../api/client';
 import { queryClient, useAuth } from '../stores/auth';
 import { toast } from '../stores/ui';
 
@@ -32,9 +33,10 @@ export function AccessWatcher() {
     };
     const timer = window.setInterval(() => void check(), EVERY_MS);
     const onVisible = () => { if (!document.hidden) void check(); };
+    setContextStaleHandler(() => void check());   // a refused request (403) re-checks straight away instead of waiting for the timer
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
-    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
+    return () => { setContextStaleHandler(null); window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
   }, [reload]);
 
   return null;

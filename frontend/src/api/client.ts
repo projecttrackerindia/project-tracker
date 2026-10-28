@@ -40,6 +40,23 @@ let onWorkspaceMismatch: ((tokenWorkspace: string | null) => void) | null = null
 export const setTabWorkspace = (id: string | null) => { tabWorkspaceId = id; };
 export const setWorkspaceMismatchHandler = (fn: (tokenWorkspace: string | null) => void) => { onWorkspaceMismatch = fn; };
 
+// A 403 PERMISSION_DENIED / MODULE_ACCESS_DENIED means the app offered something the person may no longer do: the server marks it with
+// X-Context-Stale and the app re-checks its access context (at most once every few seconds, however many requests were refused).
+const STALE_CODES = new Set(['PERMISSION_DENIED', 'MODULE_ACCESS_DENIED']);
+const STALE_EVERY_MS = 5_000;
+let onContextStale: (() => void) | null = null;
+let staleAt = 0;
+export const setContextStaleHandler = (fn: (() => void) | null) => { onContextStale = fn; };
+/** True for a refusal that means the app's idea of the person's access is out of date. */
+export const isContextStale = (status: number, code: string | undefined, header: string | null) =>
+  status === 403 && (header === '1' || (code !== undefined && STALE_CODES.has(code)));
+function noteStale() {
+  const now = Date.now();
+  if (!onContextStale || now - staleAt < STALE_EVERY_MS) return;
+  staleAt = now;
+  try { onContextStale(); } catch { /* the handler never breaks a request */ }
+}
+
 /** The workspace claim ("wid") of an access token, or null when it has none or cannot be read. */
 export function workspaceOfToken(token: string | null | undefined): string | null {
   const part = token?.split('.')[1];
@@ -82,6 +99,7 @@ async function parse(res: Response): Promise<{ data: unknown; error?: ApiError }
   const error = new ApiError(res.status, json?.message ?? errors[0].message, errors, json?.traceId);
   const retry = Number(res.headers.get('Retry-After'));
   if (Number.isFinite(retry) && retry > 0) error.retryAfterSeconds = retry;
+  if (isContextStale(res.status, error.code, res.headers.get('X-Context-Stale'))) noteStale();
   return { data: null, error };
 }
 

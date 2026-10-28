@@ -93,6 +93,8 @@ export interface PermissionMatrix {
   roles: Role[]; permissions: string[]; locked: string[]; matrix: Record<string, Record<string, boolean>>; canEdit: boolean;
   /** People this matrix does not decide for: their job role has its own access settings ("Name (Job role)"). */
   notAppliedTo?: string[] | null;
+  /** Permissions the Admin row always keeps (running the organization and handing out access). */
+  adminLocked?: string[] | null;
 }
 /** Where a person's access comes from: Owner and Admin have everything; JobRole means their job role's access settings decide; AccessLevel means the defaults of their access level do. */
 export type AccessSource = 'Owner' | 'Admin' | 'JobRole' | 'AccessLevel';
