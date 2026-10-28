@@ -363,6 +363,8 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
     {
         if (string.IsNullOrWhiteSpace(req.Kind) || !Kinds.TryGetValue(req.Kind.Trim(), out var kind))
             throw new ValidationException("kind", "Say what to create: task, issue, action or ticket.");
+        // The one Work API skips the per-kind request validators, so the title rule is checked here (every kind needs one).
+        if (string.IsNullOrWhiteSpace(req.Title)) throw new ValidationException("title", "Give it a title.");
         ProjectManagement.Application.Common.TextLimits.EnsureTitle(req.Title);
         await RequireModulesAsync(kind, true, ct);
         if (kind == WorkItemKind.Task) await permissions.RequireModuleAsync(Modules.Projects, AccessLevel.View, ct);   // tasks are added on a project
