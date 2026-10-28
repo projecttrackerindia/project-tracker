@@ -2,7 +2,7 @@ import { Face } from '../../components/Face';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useIsMobile } from '../../lib/mobile';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { actionItemApi, chatApi, projectApi, statusApi } from '../../api/endpoints';
 import { invalidateWorkspace } from '../../lib/hooks';
@@ -422,6 +422,26 @@ export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items:
   const role = useAuth((s) => s.ctx?.current?.role);
   const slides = useMemo<PresentSlide[]>(() => [{ kind: 'overview' }, ...items.flatMap((item): PresentSlide[] => weekly ? [{ kind: 'decision', item }, { kind: 'weekly', item }] : [{ kind: 'decision', item }])], [items, weekly]);
   const n = slides.length;
+  // Hold the slide being shown when the list changes under it (a refresh reorders or adds projects): follow it by project, not position.
+  const keyOf = (sl: PresentSlide | undefined) => (!sl ? '' : sl.kind === 'overview' ? 'overview' : `${sl.kind}-${sl.item.projectId}`);
+  // The slide also lives in the address (?slide=), so a remount of the page under the overlay — a refresh of the portfolio data —
+  // or a reload keeps the presenter where they were instead of dropping back to the Overview.
+  const [params, setParams] = useSearchParams();
+  const shown = useRef(params.get('slide') ?? 'overview');
+  const restored = useRef(false);
+  useEffect(() => {
+    const at = slides.findIndex((sl) => keyOf(sl) === shown.current);
+    if (at >= 0 && at !== i) setI(at);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slides]);
+  useEffect(() => {
+    const k = keyOf(slides[i]);
+    if (!k || k === shown.current && (params.get('slide') ?? 'overview') === k) return;
+    if (!restored.current) { restored.current = true; if (i === 0 && shown.current !== 'overview' && slides.some((sl) => keyOf(sl) === shown.current)) return; }   // first render, before the restore above lands
+    shown.current = k;
+    setParams((p) => { const nx = new URLSearchParams(p); if (k === 'overview') nx.delete('slide'); else nx.set('slide', k); return nx; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [i, slides]);
   const go = useCallback((d: number) => setI((v) => Math.min(Math.max(0, v + d), n - 1)), [n]);
   const toggleWeekly = () => {
     // Stay on the same project's decision when the slides change around it.
@@ -449,7 +469,10 @@ export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items:
   const cur = slides[Math.min(i, n - 1)];
   const note = cur.kind === 'decision' ? cur.item.why : cur.kind === 'weekly' ? `${cur.item.name}: the latest weekly report.` : brief.headlines[0] ?? 'Every project in one view.';
   const week = isoWeek(asOf ? new Date(asOf) : new Date());
-  return (
+  // Portalled to <body>: an ancestor with layout containment (container-type / contain / transform / filter) would otherwise become the
+  // containing block of this position:fixed overlay — it then sizes to the page's content box (thousands of px tall), the centred slide
+  // and the presenter strip land far below the fold and the window shows only the black top bar ("1 of 11" and nothing else).
+  return createPortal(
     <div className={`pf-present${phone ? ' phone' : ''}`} role="dialog" aria-modal="true" aria-label="Present decisions">
       {phone ? (
         <div className="pf-present-top">
@@ -490,6 +513,7 @@ export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items:
         <p className="pf-notes"><b>Notes</b> · {note}</p>
         <div className="pf-clock" aria-label={`${clock(now - startedAt)} elapsed`}><b>{clock(now - startedAt)}</b><small>elapsed · {new Date(startedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} start</small></div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

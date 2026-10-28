@@ -27,6 +27,10 @@ public class InsightsController(DashboardService dashboard, CalendarService cale
         [FromQuery] string? scope = null, [FromQuery] Guid? userId = null, CancellationToken ct = default) =>
         Ok(await timeline.GetAsync(from, to, scope, userId, ct));
 
+    /// <summary>Today's "Team &amp; portfolio signals": projects at risk, the team's overdue work, pages out of date and Desk SLA breaches in the caller's reach.</summary>
+    [HttpGet("today/signals")]
+    public async Task<IActionResult> TodaySignals([FromServices] TodaySignalsService signals, CancellationToken ct) => Ok(await signals.GetAsync(ct));
+
     [HttpGet("search")]
     public async Task<IActionResult> Search([FromQuery] string q, CancellationToken ct) => Ok(await search.SearchAsync(q ?? "", ct));
 

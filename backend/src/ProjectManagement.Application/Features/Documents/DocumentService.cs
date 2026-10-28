@@ -46,7 +46,7 @@ public record DocumentFilter(Guid? ProjectId = null, Guid? TeamId = null, Guid? 
 /// Documents: the stable record, its draft version and sections, who may open it. What a person may open is decided in the data layer (the
 /// query filter on <see cref="Document"/>), so a document that is not visible simply does not exist for them on any screen or report.
 /// </summary>
-public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentNotifier notifier, DocumentSearchIndexer indexer, DocumentMaskingService masking, ILogger<DocumentService> logger)
+public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements, ProjectAccess access, DocumentAccessService rights, DocumentWorkflowService workflows, DocumentNotifier notifier, DocumentSearchIndexer indexer, DocumentMaskingService masking, ILogger<DocumentService> logger, LibraryDesignService design)
 {
     public const int PageSize = 25, MaxPageSize = 100, MaxSections = 60, MaxTags = 12;
     /// <summary>A view is touched again only once it is this old: a person re-opening (or merely refetching) the same document seconds apart never writes twice.</summary>
@@ -380,6 +380,8 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 ContentJson = SectionContent.Normalize(t.Kind, given.GetValueOrDefault(t.Key), $"sections.{t.Key}"),
             });
         }
+        if (version.Sections.Any(sec => MotionContent.CountEmbeds(sec.ContentJson).ContainsKey("sandboxEmbed")) && !(await design.SwitchesAsync(ct)).Sandbox)
+            throw new ValidationException("sections", "Interactive embeds are turned off in this workspace.");
         version.ContentHash = Hash(version.Sections);
         doc.DraftVersionId = version.Id;
         db.Documents.Add(doc);
@@ -454,16 +456,31 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (doc.Revision != req.Revision) throw Changed();
         var vid = doc.DraftVersionId ?? throw new ConflictException("This document has no draft to edit.", "NO_DRAFT");
         var sections = await db.DocumentSections.Where(s => s.VersionId == vid).ToListAsync(ct);
-        var images = (await db.DocumentFiles.Where(f => f.DocumentId == doc.Id && f.ContentType.StartsWith("image/")).Select(f => f.Id).ToListAsync(ct)).ToHashSet();
+        var files = await db.DocumentFiles.Where(f => f.DocumentId == doc.Id).Select(f => new { f.Id, f.ContentType }).ToListAsync(ct);
+        var images = files.Where(f => f.ContentType.StartsWith("image/")).Select(f => f.Id).ToHashSet();
+        // What a motion block may point to: the document's own Lottie (JSON) and video files.
+        var media = files.Where(f => f.ContentType == "application/json" || f.ContentType.StartsWith("video/")).Select(f => f.Id).ToHashSet();
         var now = clock.Now;
         var maskingOn = await masking.MaskerAsync(ct) is not null;
+        var embedsAdded = new List<string>();
         foreach (var input in req.Sections)
         {
             var s = sections.FirstOrDefault(x => x.Key == input.Key) ?? throw new ValidationException("sections", $"There is no section \"{input.Key}\" in this document.");
             // A masked copy must never be saved over the real values (they would be lost for good).
             if (maskingOn && input.Content is { } c && PiiMasker.LooksMasked(c) && !PiiMasker.LooksMasked(s.ContentJson))
                 throw new ConflictException($"\"{s.Title}\" still shows masked values. Switch to Edit again to load the real values, then make your change.", "MASKED_CONTENT");
-            s.ContentJson = SectionContent.Normalize(s.Kind, input.Content, $"sections.{s.Key}", images);
+            var before = s.ContentJson;
+            var next = SectionContent.Normalize(s.Kind, input.Content, $"sections.{s.Key}", images, media);
+            if (s.Kind != SectionKind.Table)
+            {
+                // The page's style is changed only through SaveStyleAsync: the one already stored is kept, any copy sent with the text is not.
+                next = MotionContent.WithStyle(next, MotionContent.StyleOf(before));
+                var added = MotionContent.Added(before, next);
+                if (added.Contains("sandboxEmbed") && !(await design.SwitchesAsync(ct)).Sandbox)
+                    throw new ValidationException($"sections.{s.Key}", "Interactive embeds are turned off in this workspace.");
+                embedsAdded.AddRange(added);
+            }
+            s.ContentJson = next;
             s.UpdatedAt = now;
         }
         var version = await db.DocumentVersions.FirstAsync(v => v.Id == vid, ct);
@@ -483,6 +500,7 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var recentlyNoted = await db.Activities.AsNoTracking().AnyAsync(a => a.EntityId == doc.Id && a.ActorId == ctx.UserId && a.Action == "document.edited" && a.CreatedAt >= since, ct);
         if (!recentlyNoted) recorder.Activity("document.edited", "Document", doc.Id, $"Edited {KeyOf(doc.Number)} \"{doc.Title}\"", doc.ProjectId);
         recorder.Audit("document.edited", "Document", doc.Id, null, new { sections = req.Sections.Select(x => x.Key), hash });   // which sections, never the words
+        if (embedsAdded.Count > 0) recorder.Audit("document.embed_added", "Document", doc.Id, null, new { kinds = embedsAdded.Distinct().OrderBy(k => k).ToList() });
         await SaveAsync(ct);
         if (doc.PublishedVersionId is null) await indexer.IndexAsync(doc.Id, ct);   // readers see the draft until there is a published version
         return await ToDtoAsync(doc, ct, reveal: true);   // the editor keeps working on the real values
@@ -548,6 +566,36 @@ public class DocumentService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         recorder.Audit("document.placed", "Document", doc.Id, null, new { parent = req.ParentId, order = doc.PageOrder });
         await SaveAsync(ct);
         return await GetAsync(id, ct);
+    }
+
+    /// <summary>
+    /// A page's look (preset, its own CSS, motion), kept on its first rich-text section's body. Editors only; the CSS is checked here
+    /// (<see cref="PageCss"/>) whatever the browser did, refused when the workspace turned custom CSS off, and the change is audited.
+    /// </summary>
+    public async Task<DocumentDto> SaveStyleAsync(Guid id, SavePageStyleRequest req, CancellationToken ct = default)
+    {
+        var doc = await RequireEditableAsync(id, ct);
+        if (doc.Revision != req.Revision) throw Changed();
+        var vid = doc.DraftVersionId ?? throw new ConflictException("This document has no draft to edit.", "NO_DRAFT");
+        var section = (await db.DocumentSections.Where(s => s.VersionId == vid).ToListAsync(ct)).Where(s => s.Kind != SectionKind.Table).OrderBy(s => s.SortOrder).FirstOrDefault()
+            ?? throw new ValidationException("style", "This document has no text to style.");
+        var switches = await design.SwitchesAsync(ct);
+        var style = MotionContent.CleanStyle(req.Style, switches.Css);
+        var old = MotionContent.StyleOf(section.ContentJson);
+        if (old?.ToJsonString() == style?.ToJsonString()) return await ToDtoAsync(doc, ct, reveal: true);
+        section.ContentJson = MotionContent.WithStyle(section.ContentJson, style);
+        section.UpdatedAt = clock.Now;
+        var sections = await db.DocumentSections.Where(s => s.VersionId == vid).ToListAsync(ct);
+        var version = await db.DocumentVersions.FirstAsync(v => v.Id == vid, ct);
+        version.ContentHash = Combine(Hash(sections), doc.ApiHash);
+        version.UpdatedAt = clock.Now;
+        Touch(doc);
+        // What changed, never the CSS itself: the preset, motion and the size of the CSS.
+        recorder.Audit("document.style_changed", "Document", doc.Id,
+            old is null ? null : new { preset = old["preset"]?.ToString(), cssChars = old["css"]?.ToString().Length ?? 0, animateSections = old["animateSections"]?.ToString(), sectionTransition = old["sectionTransition"]?.ToString() },
+            style is null ? null : new { preset = style["preset"]?.ToString(), cssChars = style["css"]?.ToString().Length ?? 0, animateSections = style["animateSections"]?.ToString(), sectionTransition = style["sectionTransition"]?.ToString() });
+        await SaveAsync(ct);
+        return await ToDtoAsync(doc, ct, reveal: true);
     }
 
     public async Task<DocumentDto> SetIconAsync(Guid id, DocumentIconRequest req, CancellationToken ct = default)

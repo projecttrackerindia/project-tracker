@@ -1,5 +1,5 @@
 import { providerConnectionUrl } from './providerConnection';
-import { del, download, fetchBlobUrl, fetchText, get, post, put, uploadFile, create, qs } from './client';
+import { del, download, fetchBlobUrl, fetchText, get, patch, post, put, uploadFile, create, qs } from './client';
 import type { ChatAttachment,ChatThreadView,ChatSavedItem,ChatSeenBy,ChatQuestion,ChatStatus,ChatScheduled,ChatLink,ChatUnfurl,ChatCatchUp,ChatAskAnswer,ChatExtract,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,CapacityPlan,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DevStatus,GitHubAppStatus,GitHubStatusRules,GitHubBranch,ReviewQueue,ReleaseNotes,DeliveryMetrics,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,MeetingProvider,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
 export const platformApi = {
   billing: () => get<PlatformBilling>('/admin/billing'),
@@ -194,6 +194,8 @@ export const meetingApi = {
   get: (id: string) => get<Meeting>(`/meetings/${id}`),
   cancel: (id: string) => post(`/meetings/${id}/cancel`, {}),
   reschedule: (id: string, b: { startTime: string; endTime: string }) => post<Meeting>(`/meetings/${id}/reschedule`, b),
+  /** Title and agenda of a meeting held by Project Tracker (Google/Outlook meetings are edited in that calendar: 409). */
+  updateDetails: (id: string, b: { title: string; description: string | null }) => patch<Meeting>(`/meetings/${id}`, b),
   addParticipant: (id: string, userId: string) => post<Meeting>(`/meetings/${id}/participants`, { userId }),
   removeParticipant: (id: string, userId: string) => del<Meeting>(`/meetings/${id}/participants/${userId}`),
   /** A meeting for the workspace as a whole (no project): its own invitee list and endpoint; Google, Outlook or our own calls hold it. */
@@ -203,6 +205,7 @@ export const meetingApi = {
   workspaceGet: (id: string) => get<WorkspaceMeetingDetail>(`/meetings/workspace/${id}`),
   workspaceCancel: (id: string) => post(`/meetings/workspace/${id}/cancel`, {}),
   workspaceReschedule: (id: string, b: { startTime: string; endTime: string }) => post<WorkspaceMeetingDetail>(`/meetings/workspace/${id}/reschedule`, b),
+  workspaceUpdateDetails: (id: string, b: { title: string; description: string | null }) => patch<WorkspaceMeetingDetail>(`/meetings/workspace/${id}`, b),
   /** Posts the stand-up summary for a project meeting to the project chat now. */
   standupSummary: (id: string) => post<StandupCard>(`/meetings/${id}/standup-summary`, {}),
 };

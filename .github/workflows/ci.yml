@@ -129,7 +129,7 @@ jobs:
     name: Web (type-check + build)
     runs-on: ubuntu-latest
     # The browser install alone has taken 8 minutes on a slow runner; the screen checks need room after it.
-    timeout-minutes: 20
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: frontend

@@ -1,19 +1,22 @@
 import { useState } from 'react';
+import { ApiError } from '../../../api/client';
+import { toast } from '../../../stores/ui';
 import { Link } from 'react-router-dom';
-import { docTrackerApi, insightApi } from '../../../api/endpoints';
+import { docTrackerApi, documentApi, insightApi } from '../../../api/endpoints';
 import { EmptyState, ErrorState, PageLoader, Pager, Segmented } from '../../../components/ui';
 import { formatDateTime, timeAgo } from '../../../lib/format';
-import { useWsQuery } from '../../../lib/hooks';
-import { useModule } from '../../../stores/auth';
+import { invalidateWorkspace, useWsQuery } from '../../../lib/hooks';
+import { useModule, useWorkspaceId } from '../../../stores/auth';
 import { InboxView } from '../../documents/DocumentInbox';
 import { MaskingSection, SecuritySettings } from '../../documents/DocumentSecurity';
 import { docsPath } from './nav';
 import './docs.css';
 
-type Tab = 'masking' | 'access' | 'keys' | 'audit';
+type Tab = 'masking' | 'access' | 'keys' | 'design' | 'audit';
 const AREAS: { prefix: string; label: string }[] = [
   { prefix: 'document.pii_revealed', label: 'Reveals in documents' }, { prefix: 'api.pii_revealed', label: 'Reveals in APIs' },
   { prefix: 'document.secret', label: 'Secrets' }, { prefix: 'document.masking', label: 'Masking changes' },
+  { prefix: 'document.style_changed', label: 'Page styles' }, { prefix: 'document.embed_added', label: 'Embeds added' }, { prefix: 'document.design_settings', label: 'Page design settings' },
   { prefix: 'document.', label: 'All document events' }, { prefix: 'doctracker.', label: 'Architecture' },
 ];
 
@@ -40,6 +43,37 @@ function Audit() {
   );
 }
 
+/**
+ * Page design (Library settings): whether editors may give pages their own CSS, and whether pages may hold interactive embeds. Both are on
+ * by default; turning one off stops it everywhere at once (pages keep their content, it is just not applied or run).
+ */
+function PageDesign() {
+  const wid = useWorkspaceId();
+  const q = useWsQuery(['documents', 'library-design'], documentApi.libraryDesign);
+  const [busy, setBusy] = useState(false);
+  // The switch moves at once; it moves back if the save fails.
+  const [shown, setShown] = useState<{ customCss: boolean; sandboxEmbeds: boolean } | null>(null);
+  if (q.isLoading) return <PageLoader />;
+  if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => void q.refetch()} />;
+  const d = { ...q.data, ...shown };
+  const save = async (patch: Partial<typeof d>) => {
+    const next = { customCss: patch.customCss ?? d.customCss, sandboxEmbeds: patch.sandboxEmbeds ?? d.sandboxEmbeds };
+    setBusy(true); setShown(next);
+    try { await documentApi.saveLibraryDesign(next); invalidateWorkspace(wid, 'documents'); toast('Saved.', 'success'); }
+    catch (e) { setShown(null); toast(e instanceof ApiError ? e.message : 'Could not save.', 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="dx-design" data-testid="library-design">
+      <label className="dx-design-row"><input type="checkbox" checked={d.customCss} disabled={!d.canManage || busy} onChange={(e) => void save({ customCss: e.target.checked })} />
+        <span><b>Custom CSS on pages</b><small>Editors can style a page's text with their own CSS. It is checked, fenced into that page and can never reach the app around it.</small></span></label>
+      <label className="dx-design-row"><input type="checkbox" checked={d.sandboxEmbeds} disabled={!d.canManage || busy} onChange={(e) => void save({ sandboxEmbeds: e.target.checked })} />
+        <span><b>Interactive embeds</b><small>Editors can add their own HTML, CSS and JavaScript. It runs in a sealed sandbox: no access to the app, sign-in or storage, no forms or pop-ups.</small></span></label>
+      {!d.canManage && <p className="muted">Only owners and admins can change these.</p>}
+    </div>
+  );
+}
+
 /** Security Center: what is masked and how, who asked for access, how long a reveal lasts and the keys, and who saw what. */
 export function SecurityCenter() {
   const catalog = useWsQuery(['documents', 'doctracker', 'catalog'], docTrackerApi.catalog, { staleTime: 20_000 });
@@ -48,7 +82,7 @@ export function SecurityCenter() {
   const tabs = [
     { id: 'masking' as Tab, label: 'Masking' },
     { id: 'access' as Tab, label: 'Access requests' },
-    ...(isAdmin ? [{ id: 'keys' as Tab, label: 'Reveal time & keys' }] : []),
+    ...(isAdmin ? [{ id: 'keys' as Tab, label: 'Reveal time & keys' }, { id: 'design' as Tab, label: 'Page design' }] : []),
     ...(audit ? [{ id: 'audit' as Tab, label: 'Audit log' }] : []),
   ];
   const [tab, setTab] = useState<Tab>('masking');
@@ -67,6 +101,7 @@ export function SecurityCenter() {
         {tab === 'masking' && <MaskingSection />}
         {tab === 'access' && <InboxView />}
         {tab === 'keys' && isAdmin && <SecuritySettings />}
+        {tab === 'design' && isAdmin && <PageDesign />}
         {tab === 'audit' && audit && <Audit />}
       </section>
     </div>

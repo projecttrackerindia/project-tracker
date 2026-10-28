@@ -175,6 +175,16 @@ try{
  await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Present'}).click();
  const pres=page.getByRole('dialog',{name:'Present decisions'});await pres.waitFor();
  assert.ok(await pres.getByText(/^1 of \d+$/).isVisible());
+ // Not blank (the live bug): an ancestor with layout containment trapped the fixed overlay so it sized to the page and the slide sat below the fold.
+ // Simulate such an ancestor, then require the overlay to fill the window and the current slide's content to be on screen.
+ const presentFills=async(label)=>{const r=await page.evaluate(()=>{const o=document.querySelector('.pf-present').getBoundingClientRect(),s=document.querySelector('.pf-slide.on'),b=s?.getBoundingClientRect(),h=s?.querySelector('h2,h1,.pf-ov-n,b');
+  return {ow:o.width,oh:o.height,ox:o.x,oy:o.y,vw:innerWidth,vh:innerHeight,sh:b?.height??0,sTop:b?.top??-1,sBot:b?.bottom??-1,text:(s?.innerText||'').trim().length,op:s?getComputedStyle(s).opacity:'0',strip:document.querySelector('.pf-strip')?.getBoundingClientRect().bottom??0,heading:!!h};});
+  assert.ok(r.ox===0&&r.oy===0&&Math.abs(r.ow-r.vw)<20&&Math.abs(r.oh-r.vh)<2,`${label}: present fills the window ${JSON.stringify(r)}`);
+  assert.ok(r.sh>100&&r.sTop>=0&&r.sTop<r.vh&&r.text>10,`${label}: slide content is on screen ${JSON.stringify(r)}`);};
+ await page.evaluate(()=>{const pg=document.querySelector('.pf-lay');for(const el of document.querySelectorAll('#root *'))if(el.contains(pg)&&el!==pg)el.style.transform='translateZ(0)';});await page.waitForTimeout(600);
+ await presentFills('1440 overview');await page.screenshot({path:path.join(out,'present-overview-1440.png')});
+ for(const k of ['ArrowRight','ArrowLeft']){await page.keyboard.press(k);await page.waitForTimeout(550);await presentFills(`1440 after ${k}`);}
+ checks.push('present-not-blank');
  // A project slide: lead, dates, open work with owners, dependencies and the reason the date moved — and live actions.
  const payTab=pres.getByRole('tab').filter({hasText:'Payments'});
  if(await payTab.count()){await payTab.first().click();
@@ -208,6 +218,7 @@ try{
   await shot(page,'present-weekly-1440.png');
   await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'present fits the phone');
+  await presentFills('390 weekly');await page.screenshot({path:path.join(out,'present-weekly-390-viewport.png')});
   // Phone: a compact top bar (Week, n / N, ⋯, Done), no thumbnail strip, the app's bars hidden, and a swipe moves to the next slide.
   await pres.getByRole('button',{name:'Done'}).waitFor();assert.equal(await pres.locator('.pf-strip').isVisible(),false);
   assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.v2-phone-bar,.v2-ask,.toast-root')].some(e=>e.getBoundingClientRect().height>0)),false,'bars hidden while presenting');

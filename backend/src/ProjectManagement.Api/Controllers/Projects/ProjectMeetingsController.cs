@@ -43,6 +43,10 @@ public class WorkspaceMeetingsController(MeetingService meetings) : ApiControlle
         return NoContent();
     }
 
+    /// <summary>The title and agenda of a workspace meeting held by Project Tracker (its organizer).</summary>
+    [HttpPatch("workspace/{id:guid}")]
+    public async Task<IActionResult> UpdateDetails(Guid id, [FromBody] UpdateMeetingDetailsRequest req, CancellationToken ct) => Ok(await meetings.UpdateWorkspaceDetailsAsync(id, req, ct));
+
     [HttpPost("workspace/{id:guid}/reschedule")]
     public async Task<IActionResult> Reschedule(Guid id, [FromBody] RescheduleMeetingRequest req, CancellationToken ct) => Ok(await meetings.RescheduleWorkspaceMeetingAsync(id, req, ct));
 }
@@ -67,6 +71,10 @@ public class MeetingsController(MeetingService meetings, StandupSummaryService s
 
     [HttpPost("reschedule")]
     public async Task<IActionResult> Reschedule(Guid id, [FromBody] RescheduleMeetingRequest req, CancellationToken ct) => Ok(await meetings.RescheduleAsync(id, req, ct));
+
+    /// <summary>The title and agenda of a meeting held by Project Tracker (the organizer, or anyone who may edit projects).</summary>
+    [HttpPatch]
+    public async Task<IActionResult> UpdateDetails(Guid id, [FromBody] UpdateMeetingDetailsRequest req, CancellationToken ct) => Ok(await meetings.UpdateDetailsAsync(id, req, ct));
 
     [HttpPost("participants")]
     public async Task<IActionResult> AddParticipant(Guid id, [FromBody] AddMeetingParticipantRequest req, CancellationToken ct) => Ok(await meetings.AddParticipantAsync(id, req, ct));

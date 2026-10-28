@@ -20,6 +20,7 @@ import { Reading } from './Reading';
 import { HealthRing, MethodPill, PopMenu, RevealSheet, SwaggerSheet } from './shared';
 import { docFresh, DriftPill, FreshPill } from './Fresh';
 import { timeAgo } from '../../../lib/format';
+import { EndpointTests } from '../../quality/EndpointTests';
 
 const pretty = (text: string | null | undefined) => { if (!text) return ''; try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
 const joinUrl = (base: string, basePath: string | null, path: string) => `${base.replace(/\/$/, '')}${(basePath ?? '').replace(/\/$/, '')}${path.startsWith('/') ? '' : '/'}${path}`;
@@ -235,6 +236,8 @@ export function ApiSymbol({ project: p, endpoint: e }: { project: DtProject; end
           </section>
         )}
       </>}
+
+      <EndpointTests endpointId={e.id} projectId={p.id} />
 
       <section className="dx-reveal" data-outline="Health">
         <h2 className="dx-h2">Documentation health</h2>

@@ -65,7 +65,9 @@ export function mentionExtension(lookups: { current: EditorLookups | null }) {
 export { KIND_ICON };
 
 /** The commands of the "/" menu. `image` and `table` appear only where they can be used. */
-export interface SlashExtras { onImage?: () => void; onAiWrite?: () => void; onAiContinue?: () => void; liveTasks?: boolean }
+export interface SlashExtras { onImage?: () => void; onAiWrite?: () => void; onAiContinue?: () => void; liveTasks?: boolean;
+  /** Motion blocks (pages): Lottie, animated SVG, video, GIF/APNG, and the interactive embed when the workspace allows it. */
+  onMotion?: (kind: 'lottie' | 'svg' | 'video' | 'gif' | 'sandbox') => void; sandbox?: boolean }
 
 function slashItems(editor: Editor, extra: SlashExtras): SuggestItem[] {
   const c = () => editor.chain().focus();
@@ -90,6 +92,16 @@ function slashItems(editor: Editor, extra: SlashExtras): SuggestItem[] {
     { id: 'task', title: 'Mention a task', hint: 'Or type #', icon: '#', run: () => c().insertContent('#').run() },
   ];
   if (extra.onImage) items.splice(14, 0, { id: 'image', title: 'Picture', hint: 'Upload an image', icon: '▣', run: extra.onImage });
+  if (extra.onMotion) {
+    const m = extra.onMotion;
+    items.push(
+      { id: 'lottie', title: 'Lottie animation', hint: 'A JSON animation, plays as you read', icon: '◌', run: () => m('lottie') },
+      { id: 'svg', title: 'Animated SVG', hint: 'Cleaned: no scripts or links', icon: '✧', run: () => m('svg') },
+      { id: 'video', title: 'Video', hint: 'MP4 or WebM, optional muted loop', icon: '▶', run: () => m('video') },
+      { id: 'gif', title: 'GIF or APNG', hint: 'An animated picture', icon: '▣', run: () => m('gif') },
+    );
+    if (extra.sandbox) items.push({ id: 'embed', title: 'Interactive embed', hint: 'Your HTML, CSS and JS in a sandbox', icon: '⧉', run: () => m('sandbox') });
+  }
   if (extra.liveTasks) items.push({ id: 'tasks', title: 'Live task list', hint: 'The project’s tasks, always up to date', icon: '☰', run: () => c().insertContent({ type: 'liveTasks', attrs: { projectId: '', filter: 'open', limit: 10 } }).run() });
   // AI first: most people would rather say what they want than type it out.
   if (extra.onAiContinue) items.unshift({ id: 'ai-continue', title: 'Continue writing', hint: 'AI writes the next paragraphs', icon: '✦', run: extra.onAiContinue });
@@ -114,7 +126,7 @@ export function slashCommands(extra: { current: SlashExtras }) {
         },
         items: ({ query, editor }) => {
           const q = query.toLowerCase();
-          return slashItems(editor, extra.current).filter((i) => !q || i.title.toLowerCase().includes(q) || i.id.includes(q) || (q === 'ai' && i.id.startsWith('ai'))).slice(0, 14);
+          return slashItems(editor, extra.current).filter((i) => !q || i.title.toLowerCase().includes(q) || i.id.includes(q) || (q.length > 2 && !!i.hint?.toLowerCase().includes(q)) || (q === 'motion' && ['lottie', 'svg', 'video', 'gif', 'embed'].includes(i.id)) || (q === 'ai' && i.id.startsWith('ai'))).slice(0, 14);
         },
         command: ({ editor, range, props }) => { editor.chain().focus().deleteRange(range).run(); props.run?.(); },
         render: suggestRenderer('No block by that name'),

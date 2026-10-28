@@ -249,3 +249,8 @@
 .pa-gn span.f { display: none; }
 .pa-gn span.cur { opacity: 1; font-weight: 700; }
 @keyframes pa-gn-in { from { opacity: 0; transform: translateY(3px); } to { opacity: .75; transform: none; } }
+/* API test coverage on a pass and in the list (GET /quality/coverage) */
+.pa-cov { font-weight: 600; }
+.pj2-cov { display: inline-block; min-width: 40px; padding: 2px 8px; border-radius: 9px; font-size: 12px; font-weight: 600; text-align: center; background: var(--ds-fill); }
+.pj2-cov.t-good { background: rgba(52, 199, 89, .14); color: #1a7f35; } .pj2-cov.t-ok { background: rgba(255, 149, 0, .14); color: #a35c00; } .pj2-cov.t-low { background: rgba(255, 59, 48, .12); color: #d70015; }
+html[data-theme='dark'] .pj2-cov.t-good { color: #5de06f; } html[data-theme='dark'] .pj2-cov.t-ok { color: #ffb340; } html[data-theme='dark'] .pj2-cov.t-low { color: #ff6961; }

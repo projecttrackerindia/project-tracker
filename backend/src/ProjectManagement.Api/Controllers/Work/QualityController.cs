@@ -43,6 +43,20 @@ public class QualityController(QualityService quality) : ApiControllerBase
     [HttpGet("readiness")]
     public async Task<IActionResult> Readiness([FromQuery] Guid? runId, [FromQuery] Guid? projectId, CancellationToken ct) => Ok(await quality.ReadinessAsync(runId, projectId, ct));
 
+    /// <summary>An API endpoint's "Tests": linked cases, the latest run per environment, coverage, and the "Add test case" prefill.</summary>
+    [HttpGet("endpoints/{endpointId:guid}/tests")]
+    public async Task<IActionResult> EndpointTests([FromServices] QualityLinksService links, Guid endpointId, [FromQuery] int days = QualityLinksService.DefaultDays, CancellationToken ct = default) =>
+        Ok(await links.EndpointAsync(endpointId, days, ct));
+
+    /// <summary>Groot's proposed test cases for an endpoint (happy path, 400, 401/403, timeout, idempotency, masked logs). Nothing is saved.</summary>
+    [HttpGet("endpoints/{endpointId:guid}/suggestions")]
+    public async Task<IActionResult> EndpointSuggestions([FromServices] QualityLinksService links, Guid endpointId, CancellationToken ct) => Ok(await links.SuggestAsync(endpointId, ct));
+
+    /// <summary>API test coverage per project: endpoints with a passing run in the last <c>days</c> days.</summary>
+    [HttpGet("coverage")]
+    public async Task<IActionResult> Coverage([FromServices] QualityLinksService links, [FromQuery] Guid? projectId, [FromQuery] int days = QualityLinksService.DefaultDays, CancellationToken ct = default) =>
+        Ok(await links.CoverageAsync(projectId, days, ct));
+
     /// <summary>Creates a ticket from a failed result, linked to it.</summary>
     [HttpPost("results/{id:guid}/bug"), RequireModule(Modules.Work, AccessLevel.Edit)]
     public async Task<IActionResult> FileBug(Guid id, [FromBody] FileBugRequest? req, CancellationToken ct) => Created(await quality.FileBugAsync(id, req ?? new FileBugRequest(), ct));

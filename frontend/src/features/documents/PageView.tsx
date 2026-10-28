@@ -32,12 +32,22 @@ import { EditorLookupsContext, pageSchema, removeCommentMark, RichEditor, type C
 import type { EditorLookups } from './editor/extensions';
 import { ancestors, PAGE_BODY, pageTree, useNewPage } from './pages';
 import { useExportPdf } from './ExportPdf';
+import { MotionContext, PickFileContext } from './motion/MotionBlocks';
+import { StylePanel } from './motion/StylePanel';
+import { scopeCss } from './motion/cssScope';
+import { DESIGN_DEFAULT, hasMotion, styleOf, withStyle, type PageStyle } from './motion/pageStyle';
+import { useScrollMotion } from './motion/useScrollMotion';
 import './documents-ds.css';
 
 const STATUS_LABEL: Record<string, string> = { Draft: 'Draft', InReview: 'In review', ChangesRequested: 'Changes asked', Approved: 'Approved', Published: 'Published', Archived: 'Archived' };
 const ICONS = ['📄', '📘', '📗', '📕', '📒', '📝', '📌', '📎', '📊', '📈', '🗂️', '🗒️', '✅', '⚠️', '💡', '🔒', '🔑', '🧭', '🚀', '🛠️', '⚙️', '🧪', '🐞', '💬', '📣', '🎯', '🏦', '💸', '🧾', '👥', '🤝', '📅', '⏱️', '🌐', '📦', '🔌', '🧩', '⭐', '🔥', '🌱'];
 /** How long a page waits for the live connection before it is edited on its own. */
 const JOIN_WAIT_MS = 2500;
+
+/** Something on the page moves (a block with motion, a motion block or a picture that may be animated): readers get a Pause motion button. */
+const MOVES = /"type":"(motionLottie|motionSvg|motionVideo|sandboxEmbed|docImage)"|"motion":"(fade|rise|scale|slide|stagger)"/;
+const PAUSE_KEY = 'pm_motion_paused';
+const readPaused = () => { try { return localStorage.getItem(PAUSE_KEY) === '1'; } catch { return false; } };
 
 const isEmptyBody = (json: string) => {
   try {
@@ -108,6 +118,17 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
   const [panel, setPanel] = useState<null | 'history' | 'access' | 'publish' | 'ai'>(null);
   const [iconOpen, setIconOpen] = useState(false);
   const [threads, setThreads] = useState<{ focus: string | null } | null>(null);
+  // The page's look: what is saved, what the Style panel is showing (live), the workspace's switches and the reader's pause.
+  const [style, setStyle] = useState<PageStyle>(() => styleOf(detail.sections.find((x) => x.key === PAGE_BODY)?.content ?? detail.sections[0]?.content));
+  const styleRef = useRef(style); styleRef.current = style;
+  const [previewStyle, setPreviewStyle] = useState<PageStyle | null>(null);
+  const [styleOpen, setStyleOpen] = useState(false);
+  const [styleSaving, setStyleSaving] = useState(false);
+  const [previewMotion, setPreviewMotion] = useState(false);
+  const [paused, setPaused] = useState(readPaused);
+  const design = useWsQuery(['documents', 'library-design'], documentApi.libraryDesign, { staleTime: 300_000 });
+  const designOn = design.data ?? DESIGN_DEFAULT;
+  const [article, setArticle] = useState<HTMLElement | null>(null);
   const [pendingComment, setPendingComment] = useState<CommentRequest | null>(null);
   const editorRef = useRef<Editor | null>(null);
   const [editorReady, setEditorReady] = useState(0);
@@ -139,7 +160,7 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
   const apply = useCallback((r: DocumentDetail, body?: string) => {
     rev.current = r.revision;
     queryClient.setQueryData([wid, 'documents', id], (old: DocumentDetail | undefined) => {
-      const sections = (old ?? r).sections.map((x) => (body !== undefined && x.key === PAGE_BODY ? { ...x, content: body } : x));
+      const sections = (old ?? r).sections.map((x) => (body !== undefined && x.key === PAGE_BODY ? { ...x, content: withStyle(body, styleRef.current) } : x));
       return { ...r, sections };
     });
   }, [wid, id]);
@@ -181,7 +202,7 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
     const offSaved = collab.onSaved((revision) => {
       rev.current = Math.max(rev.current, revision); pending.current = null; setState('saved');
       queryClient.setQueryData([wid, 'documents', id], (old: DocumentDetail | undefined) => (old ? { ...old, revision, item: { ...old.item, updatedAt: new Date().toISOString() },
-        sections: old.sections.map((x) => (x.key === PAGE_BODY ? { ...x, content: bodyRef.current } : x)) } : old));
+        sections: old.sections.map((x) => (x.key === PAGE_BODY ? { ...x, content: withStyle(bodyRef.current, styleRef.current) } : x)) } : old));
     });
     const offRoom = collab.subscribe(() => { if (collab.isLeader && pending.current !== null && !busy.current) { setState('dirty'); schedule(); } });
     return () => { offSaved(); offRoom(); };
@@ -291,6 +312,21 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
     toast('The draft is in the page. Change anything you like.', 'success');
   };
 
+  /** Uploads a file to the page (pictures, videos, Lottie JSON) and gives back its id. */
+  const pickFile = useCallback((accept: string) => new Promise<{ fileId: string; name: string } | null>((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = accept;
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return resolve(null);
+      try { const f = await documentApi.uploadFile(id, file); invalidateWorkspace(wid, 'documents'); resolve({ fileId: f.id, name: file.name.replace(/\.[^.]+$/, '') }); }
+      catch (e) { toast(e instanceof ApiError ? e.message : 'Could not add the file.', 'error'); resolve(null); }
+    };
+    input.oncancel = () => resolve(null);
+    input.click();
+  }), [id, wid]);
+  const motionHost = useMemo(() => ({ pickFile, sandbox: designOn.sandboxEmbeds }), [pickFile, designOn.sandboxEmbeds]);
+
   const pickImage = useCallback(() => new Promise<{ fileId: string; alt: string } | null>((resolve) => {
     const input = document.createElement('input');
     input.type = 'file'; input.accept = 'image/png,image/jpeg,image/gif,image/webp';
@@ -303,6 +339,23 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
     input.oncancel = () => resolve(null);
     input.click();
   }), [id, wid]);
+
+  const saveStyle = async (next: PageStyle) => {
+    setStyleSaving(true);
+    try {
+      await flush();
+      const r = await documentApi.saveStyle(id, { revision: rev.current, style: next });
+      setStyle(next); styleRef.current = next; setPreviewStyle(null);
+      apply(r, bodyRef.current);
+      toast('Style saved.', 'success');
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not save the style.', 'error'); }
+    finally { setStyleSaving(false); }
+  };
+  const shown = previewStyle ?? style;
+  const scoped = useMemo(() => (designOn.customCss && shown.css.trim() ? scopeCss(shown.css, id) : null), [designOn.customCss, shown.css, id]);
+  const moves = hasMotion(shown) || MOVES.test(body);
+  const togglePause = () => { const p = !paused; setPaused(p); try { localStorage.setItem(PAUSE_KEY, p ? '1' : '0'); } catch { /* private window */ } };
+  useScrollMotion(article, { enabled: !canEdit || previewMotion, animateSections: shown.animateSections, transition: shown.sectionTransition, paused, version: `${editorReady}-${mode}` });
 
   const saveLabel = state === 'saving' ? 'Saving…' : state === 'dirty' ? 'Editing…' : state === 'error' ? 'Not saved' : state === 'stale' ? 'Changed elsewhere' : `Saved · ${timeAgo(d.updatedAt)}`;
   const others = collab?.others ?? [];
@@ -351,6 +404,9 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
           <button type="button" className={`rd-btn pg-cmt-btn${threads ? ' on' : ''}`} aria-pressed={!!threads} onClick={() => setThreads((t) => (t ? null : { focus: null }))}>
             <Icon name="message" size={14} /> {openThreads > 0 ? openThreads : ''}<span className="sr-only">Comments</span>
           </button>
+          {moves && <button type="button" className="rd-btn mo-pause" aria-pressed={paused} onClick={togglePause} title={paused ? 'Play the motion on this page' : 'Stop animations, videos and embeds on this page'}>
+            <Icon name={paused ? 'play' : 'pause'} size={14} /> {paused ? 'Play motion' : 'Pause motion'}</button>}
+          {canEdit && <button type="button" className={`rd-btn${styleOpen ? ' on' : ''}`} aria-pressed={styleOpen} onClick={() => setStyleOpen((o) => !o)} data-testid="style-btn"><Icon name="layers" size={14} /> Style</button>}
           {detail.can.share && <button type="button" className="rd-btn" onClick={() => setPanel('access')}><Icon name="users" size={14} /> Share</button>}
           <Menu label="" icon="more" items={[
             { label: 'Write with AI', hint: empty ? 'A whole page from a line, a voice note, a meeting, work or files' : 'Add an AI-written part at the end', icon: 'sparkle', onSelect: () => setPanel('ai'), hidden: !canEdit },
@@ -411,18 +467,25 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
             <span className="muted">or type <kbd>/</kbd> for blocks</span>
           </div>
         )}
-        <article className={`pg-body doc-body${collab?.waiting ? ' pg-waiting' : ''}`} aria-label={d.title} aria-busy={mode === 'joining' || !!collab?.waiting}>
+        <article ref={setArticle} className={`pg-body doc-body doc-scope${collab?.waiting ? ' pg-waiting' : ''}${scoped?.ok && scoped.css ? ' doc-css-on' : ''}${paused ? ' mo-paused' : ''}`} data-doc={id} data-preset={shown.preset}
+          aria-label={d.title} aria-busy={mode === 'joining' || !!collab?.waiting}>
+          {scoped?.ok && scoped.css && <style data-page-css={id}>{scoped.css}</style>}
+          <MotionContext.Provider value={{ paused, sandboxEnabled: designOn.sandboxEmbeds }}>
+          <PickFileContext.Provider value={canEdit ? pickFile : null}>
           <DocumentIdContext.Provider value={id}>
             <EditorLookupsContext.Provider value={lookups}>
               <EditorAiContext.Provider value={aiCtx}>
                 <PageProjectContext.Provider value={projectsCtx}>
                   <RichEditor key={`${id}-${mode}`} minimal value={body} onChange={canEdit && mode !== 'joining' ? onBody : undefined}
-                    readOnly={!canEdit || mode === 'joining' || !!collab?.waiting} label={`${d.title} text`} onPickImage={canEdit ? pickImage : undefined}
-                    collab={collab} me={me} onComment={startComment} onOpenComment={openComment} onEditor={onEditor} liveTasks={projectsCtx.projects.length > 0} />
+                    readOnly={!canEdit || mode === 'joining' || !!collab?.waiting || previewMotion} label={`${d.title} text`} onPickImage={canEdit ? pickImage : undefined}
+                    collab={collab} me={me} onComment={startComment} onOpenComment={openComment} onEditor={onEditor} liveTasks={projectsCtx.projects.length > 0}
+                    motion={canEdit ? motionHost : undefined} />
                 </PageProjectContext.Provider>
               </EditorAiContext.Provider>
             </EditorLookupsContext.Provider>
           </DocumentIdContext.Provider>
+          </PickFileContext.Provider>
+          </MotionContext.Provider>
           {collab?.waiting && <p className="pg-wait-note" role="status"><span className="spinner" /> Opening the page with the others editing it…</p>}
         </article>
 
@@ -444,6 +507,12 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
         <Inspector parts={inspectorParts} open={inspector} onOpen={setInspector} />
       </ReaderRail>
 
+      {/* Beside the page (a portal: nothing around the page may become its containing block), a bottom sheet on a phone. */}
+      {styleOpen && canEdit && createPortal(
+        <div className="doc-scope">
+          <StylePanel value={style} body={body} design={designOn} saving={styleSaving} previewMotion={previewMotion} onPreviewMotion={setPreviewMotion}
+            onPreview={(s) => setPreviewStyle(s)} onSave={(s) => void saveStyle(s)} onClose={() => { setStyleOpen(false); setPreviewStyle(null); setPreviewMotion(false); }} />
+        </div>, document.body)}
       {panel === 'history' && <HistoryModal detail={detail} onClose={() => setPanel(null)} />}
       {panel === 'access' && <AccessModal detail={detail} onClose={() => setPanel(null)} />}
       {panel === 'publish' && <PublishModal detail={detail} onClose={() => setPanel(null)} />}

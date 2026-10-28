@@ -24,6 +24,9 @@ import { chipOf, inFilter, KIND_FILTERS, type KindFilter } from '../libraryKinds
 import { docsPath } from './nav';
 import { avgScore, MethodPill, pidOf, plural, PopMenu, ProjectMark } from './shared';
 import { TextHits } from './TextHits';
+import { useCoverage } from '../../quality/coverage';
+import { Term } from '../../../components/Term';
+import type { ProjectCoverage } from '../../../api/qualityApi';
 import './docs.css';
 
 const STATUS: Record<DocumentStatus, { label: string; tone: string }> = {
@@ -55,6 +58,7 @@ export function DocsHub() {
   const docs = useWsQuery(['documents', 'library', 'all'], () => documentApi.list({ limit: 100 }), { staleTime: 20_000, placeholderData: (p) => p });
   const recent = useWsQuery(['documents', 'recent'], () => documentApi.list({ scope: 'recent', limit: 4 }), { staleTime: 20_000, retry: false });
   const c = catalog.data;
+  const coverage = useCoverage();
   const projects = useMemo(() => (c?.projects ?? []).filter((p): p is DtProject & { id: string } => !!p.id).map((p) => ({ id: p.id, name: p.name })), [c]);
   const all = useMemo(() => [...(docs.data?.items ?? [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [docs.data]);
   const types = useMemo(() => new Map([...all, ...(recent.data?.items ?? [])].map((d) => [d.id, d.typeCode])), [all, recent.data]);
@@ -102,7 +106,7 @@ export function DocsHub() {
               <div className="dx-sect-h"><h2>Spaces</h2><span className="dx-note">One space per project · health shows how complete its docs are</span></div>
               {catalog.isLoading ? <PageLoader /> : catalog.isError || !c ? <ErrorState error={catalog.error} retry={() => void catalog.refetch()} /> : c.projects.length === 0
                 ? <EmptyState icon="layers" title="No spaces yet" text="Every project gets a space of guides, API reference and architecture." />
-                : <ul className="dx-colls">{c.projects.map((p, i) => <CollectionCard key={pidOf(p)} p={p} i={i} />)}</ul>}
+                : <ul className="dx-colls">{c.projects.map((p, i) => <CollectionCard key={pidOf(p)} p={p} i={i} cov={p.id ? coverage.get(p.id) : undefined} />)}</ul>}
               {(c?.teams?.length ?? 0) > 0 && (
                 <p className="dx-teams">Team spaces: {c!.teams!.map((t, i) => <span key={t.id}>{i > 0 && ' · '}<Link to={docsPath.project(null)}>{t.name}</Link> <small>{t.pages}</small></span>)}</p>
               )}
@@ -159,7 +163,7 @@ export function DocsHub() {
             {attention > 0 && c && (
               <section className="dx-card dx-attn" aria-label="Needs attention">
                 <h3>Needs attention</h3>
-                <p className="dx-note">Missing required documents, nothing updated in 90 days, never published.</p>
+                <p className="dx-note">Missing required documents, nothing updated in 90 days, <Term k="never published">never published</Term>.</p>
                 <NeedsAttention canCreate={canCreate} isAdmin={c.isAdmin} onRequired={() => setModal('required')} />
               </section>
             )}
@@ -183,9 +187,25 @@ function completeness(p: DtProject) {
   return Math.round((parts.reduce((x, y) => x + y, 0) / parts.length) * 100);
 }
 
-function CollectionCard({ p, i }: { p: DtProject; i: number }) {
+/** What a collection is missing, by name, each with where to fix it ("Missing: test plan, runbook; 3 endpoints without tests"). */
+export function missingOf(p: DtProject, cov?: ProjectCoverage): { label: string; to: string }[] {
+  const guides = p.documents.filter((d) => !d.isApi);
+  const has = (re: RegExp) => guides.some((d) => re.test(`${d.typeName} ${d.typeCode} ${d.title}`));
+  const out: { label: string; to: string }[] = [];
+  if (!has(/requirement|\bbrd\b|\bprd\b/i)) out.push({ label: 'requirements', to: docsPath.project(p.id) });
+  if (!has(/test plan|\btp\b|test strategy/i)) out.push({ label: 'test plan', to: docsPath.project(p.id) });
+  if (!has(/runbook|\brb\b|playbook|operations guide/i)) out.push({ label: 'runbook', to: docsPath.project(p.id) });
+  if (p.diagrams === 0) out.push({ label: 'architecture diagram', to: docsPath.architecture(p.id) });
+  const weak = p.endpoints.filter((e) => e.score < 70);
+  if (weak.length) out.push({ label: `${weak.length} endpoint${weak.length === 1 ? ' needs' : 's need'} docs`, to: docsPath.endpoint(p.id, weak[0].id) });
+  if (cov && cov.untested > 0) out.push({ label: `${cov.untested} endpoint${cov.untested === 1 ? '' : 's'} without tests`, to: cov.untestedIds[0] ? docsPath.endpoint(p.id, cov.untestedIds[0]) : docsPath.apiIndex(p.id) });
+  return out;
+}
+
+function CollectionCard({ p, i, cov }: { p: DtProject; i: number; cov?: ProjectCoverage }) {
   const guides = p.documents.filter((d) => !d.isApi).length;
   const pct = completeness(p);
+  const missing = missingOf(p, cov);
   const h = hue(p.name);
   const counts = [guides && plural(guides, 'page'), p.endpoints.length && plural(p.endpoints.length, 'endpoint'), p.diagrams && plural(p.diagrams, 'diagram'), p.designs && plural(p.designs, 'design')].filter(Boolean).join(' · ');
   return (
@@ -194,8 +214,14 @@ function CollectionCard({ p, i }: { p: DtProject; i: number }) {
         <span className="dx-cover" aria-hidden="true">{p.diagrams > 0 && <span className="dx-cover-flow"><i /><i /><i /></span>}</span>
         <b>{p.name}</b>
         <small>{counts || 'Nothing yet'}</small>
-        <span className={`dx-bar t-${pct >= 75 ? 'good' : pct >= 45 ? 'ok' : 'low'}`} role="img" aria-label={`Docs ${pct}% complete`}><span style={{ "--w": `${pct}%` } as CSSProperties} /><em>{pct}%</em></span>
+        <span className={`dx-bar t-${pct >= 75 ? 'good' : pct >= 45 ? 'ok' : 'low'}`} aria-hidden="true"><span style={{ "--w": `${pct}%` } as CSSProperties} /></span>
       </Link>
+      {/* The bar's meaning, by name: what is missing and where to fix each (no opaque percentage). */}
+      <p className="dx-missing" data-testid="collection-missing">
+        {missing.length === 0 ? <span className="dx-missing-ok">Complete</span> : <>Missing: {missing.map((m, n) => (
+          <span key={m.label}>{n > 0 && (n === missing.findIndex((x) => /endpoint/.test(x.label)) ? '; ' : ', ')}<Link to={m.to}>{m.label}</Link></span>
+        ))}</>}
+      </p>
     </li>
   );
 }

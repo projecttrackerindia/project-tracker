@@ -35,6 +35,11 @@ export const documentApi = {
   /** Moves a page under another page of the same project (null: top level), at a position among its siblings. */
   place: (id: string, b: { parentId: string | null; pageOrder: number }) => put<DocumentDetail>(`/documents/${id}/place`, b),
   setIcon: (id: string, icon: string | null) => put<DocumentDetail>(`/documents/${id}/icon`, { icon }),
+  /** A page's look (preset, its own CSS, motion). Editors only; checked again on the server and recorded in the audit log. */
+  saveStyle: (id: string, b: { revision: number; style: { preset: string; css: string; animateSections: boolean; sectionTransition: string } }) => put<DocumentDetail>(`/documents/${id}/style`, b),
+  /** The workspace's switches for page design: custom CSS and interactive embeds (admins change them). */
+  libraryDesign: () => get<{ customCss: boolean; sandboxEmbeds: boolean; canManage: boolean }>('/documents/library-design'),
+  saveLibraryDesign: (b: { customCss: boolean; sandboxEmbeds: boolean }) => put<{ customCss: boolean; sandboxEmbeds: boolean; canManage: boolean }>('/documents/library-design', b),
   backlinks: (id: string) => get<Backlink[]>(`/documents/${id}/backlinks`),
   update: (id: string, b: { title: string; visibility: DocumentVisibility; classification?: DocumentClassification; tags: string[]; ownerId?: string | null; revision: number; teamId?: string | null }) => put<DocumentDetail>(`/documents/${id}`, b),
   saveSections: (id: string, b: { revision: number; sections: { key: string; content: string }[] }) => put<DocumentDetail>(`/documents/${id}/sections`, b),

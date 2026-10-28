@@ -154,10 +154,10 @@ try{
   await page.goto(origin+'/preview-org/calendar');await page.locator('[data-testid="week-planner"]').waitFor();
   assert.equal(await page.getByRole('button',{name:/Scrum call|Schedule/}).count(),0);
   // Clicking a planner event selects it and shows the inspector; the meeting opens in Talk from the inspector.
-  const ev=page.locator('.wp-e',{hasText:'Atlas review'});await ev.click();assert.equal(await ev.getAttribute('aria-pressed'),'true','the clicked event is selected');
-  await page.locator('.wp-insp').getByRole('heading',{name:'Atlas review'}).waitFor();
-  // The notes switch is aria-disabled (the notetaker is set on the meeting), so Playwright will not click it; dispatch the click it handles.
-  await page.locator('.wp-insp [title^="The notetaker is set"]').dispatchEvent('click');await page.waitForURL(/[?&](open|meeting)=p(:|%3A)/);
+  const ev=page.locator('.wp-e',{hasText:'Atlas review'});await ev.click();assert.equal(await ev.getAttribute('aria-expanded'),'true','the clicked event is open');
+  // The detail card opens on the event; the meeting opens in Talk from it.
+  const card=page.locator('.ed-title',{hasText:'Atlas review'});await card.waitFor();
+  await page.getByRole('button',{name:/Open (notes|meeting)/}).click();await page.waitForURL(/[?&](open|meeting)=p(:|%3A)/);
   await page.locator('.mt-inline').getByRole('heading',{name:'Atlas review'}).waitFor();checks.push('calendar-opens-meet');
 
   // 8. Old addresses lead to Meet.

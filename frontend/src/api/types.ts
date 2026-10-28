@@ -366,6 +366,10 @@ export interface TimeEntry {
   billable: boolean;
   /** In a week that is submitted for approval or approved: it cannot change. */
   locked: boolean;
+  /** When it ended (an entry placed at a time of day, or a stopped timer); null for time typed in as minutes. */
+  endedAt?: string | null;
+  /** Concurrency stamp: send it back with an edit so a change made elsewhere in between is refused (409) instead of overwritten. */
+  stamp?: string | null;
 }
 export interface TaskTime { entries: TimeEntry[]; totalMinutes: number; estimatedHours: number | null; myTimer: TimeEntry | null; billableByDefault: boolean }
 export interface Timesheet { from: string; to: string; user: { id: string; name: string }; entries: TimeEntry[]; totalMinutes: number; byDay: { date: string; minutes: number }[]; billableMinutes: number }
@@ -1158,3 +1162,17 @@ export interface TaskSuggestions {
   priority: Priority | null; priorityWhy: string | null;
   similar: { id: string; key: string; title: string; hours: number | null; assignee: string | null }[];
 }
+
+// ---- Today: team & portfolio signals (GET /today/signals)
+export type SignalKind = 'risk' | 'team' | 'docs' | 'sla';
+export interface SignalAction { verb: 'open' | 'ask' | 'assign' | 'review'; label: string; href: string | null; userId?: string | null; message?: string | null }
+export interface SignalCard { id: string; kind: SignalKind; title: string; reason: string; owner: { id: string; name: string } | null; action: SignalAction; href: string | null; tone: 'red' | 'orange' }
+export interface SignalGroup { kind: SignalKind; label: string; count: number; href: string; items: SignalCard[] }
+export interface TodaySignals { total: number; groups: SignalGroup[]; generatedAt: string }
+
+// ---- Time: the pre-submit review (GET /time/review)
+export interface TargetDayOff { date: string; kind: 'weekend' | 'leave' | 'holiday'; name: string | null }
+export interface TimesheetTarget { weeklyCapacityMinutes: number; isDefault: boolean; setBy: string | null; setAt: string | null; dailyMinutes: number; workingDays: number; daysOff: TargetDayOff[]; targetMinutes: number; explanation: string }
+export type TimesheetFix = 'log' | 'link' | 'billable' | 'note' | 'stop' | 'open';
+export interface TimesheetIssue { code: 'locked' | 'running' | 'empty' | 'missing-day' | 'long-day' | 'no-item' | 'not-billable' | 'note-missing' | 'overlap'; severity: 'error' | 'warning'; message: string; date: string | null; entryId: string | null; fix: TimesheetFix; fixLabel: string; href?: string | null; minutes?: number | null; note?: string | null }
+export interface TimesheetReview { weekStart: string; weekEnd: string; totalMinutes: number; target: TimesheetTarget; issues: TimesheetIssue[]; errors: number; warnings: number; canSubmit: boolean }

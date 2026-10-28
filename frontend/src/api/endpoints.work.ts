@@ -95,12 +95,13 @@ export const planningApi = {
 
 export const timeApi = {
   forTask: (taskId: string) => get<TaskTime>(`/tasks/${taskId}/time`),
-  log: (taskId: string, b: { minutes: number; workDate?: string; note?: string; billable?: boolean }) => post<TimeEntry>(`/tasks/${taskId}/time`, b),
+  log: (taskId: string, b: { minutes: number; workDate?: string; note?: string; billable?: boolean; startedAt?: string; endedAt?: string }) => post<TimeEntry>(`/tasks/${taskId}/time`, b),
   /** Operational work: the same time tracking as project tasks. */
   forWorkTask: (workTaskId: string) => get<TaskTime>(`/work-tasks/${workTaskId}/time`),
-  logOnWorkTask: (workTaskId: string, b: { minutes: number; workDate?: string; note?: string; billable?: boolean }) => post<TimeEntry>(`/work-tasks/${workTaskId}/time`, b),
+  logOnWorkTask: (workTaskId: string, b: { minutes: number; workDate?: string; note?: string; billable?: boolean; startedAt?: string; endedAt?: string }) => post<TimeEntry>(`/work-tasks/${workTaskId}/time`, b),
   startOnWorkTask: (workTaskId: string) => post<TimeEntry>(`/work-tasks/${workTaskId}/timer/start`),
-  update: (id: string, b: { minutes: number; workDate: string; note?: string | null; billable?: boolean }) => put<TimeEntry>(`/time/${id}`, b),
+  /** startedAt/endedAt (both): place the entry at that time; taskId/workTaskId: move it to other work; stamp: refuse if it changed elsewhere (409). */
+  update: (id: string, b: { minutes: number; workDate: string; note?: string | null; billable?: boolean; startedAt?: string; endedAt?: string; taskId?: string; workTaskId?: string; stamp?: string | null }) => put<TimeEntry>(`/time/${id}`, b),
   remove: (id: string) => del(`/time/${id}`),
   start: (taskId: string) => post<TimeEntry>(`/tasks/${taskId}/timer/start`),
   stop: () => post<TimeEntry>('/timer/stop'),
@@ -109,6 +110,8 @@ export const timeApi = {
   project: (projectId: string) => get<ProjectTime>(`/projects/${projectId}/time`),
   /** A person's week (mine without a user) and where its approval stands. */
   week: (weekStart?: string, userId?: string) => get<TimesheetWeek>('/time/week', { weekStart, userId }),
+  /** The check before "Submit week": where the target comes from and what to fix (errors block, warnings are acknowledged). */
+  review: (weekStart: string) => get<import('./types').TimesheetReview>('/time/review', { weekStart }),
   submitWeek: (weekStart: string, note?: string) => post<TimesheetWeek>('/time/week/submit', { weekStart, note: note || null }),
   withdrawWeek: (weekStart: string) => post<TimesheetWeek>('/time/week/withdraw', { weekStart }),
   approvals: (weekStart?: string) => get<Approvals>('/time/approvals', { weekStart }),

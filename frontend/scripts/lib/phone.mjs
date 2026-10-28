@@ -1,6 +1,11 @@
 // Phone checks shared by the screen tests: nothing may scroll the page sideways, and nothing may be cut off at the right edge
 // (an element wider than the screen whose overflow is hidden by a parent - the page looks fine to scrollWidth but loses its edge).
 export async function cutOff(page) {
+  // Let slide-ins (a pane opening) settle first: mid-transition a pane sits partly off screen by design.
+  await page.evaluate(() => Promise.race([
+    Promise.all(document.getAnimations().filter((a) => a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {}))),
+    new Promise((r) => setTimeout(r, 1500)),   // never wait on a paused or very long animation
+  ])).catch(() => {});
   return page.evaluate(() => {
     const out = [];
     for (const el of document.querySelectorAll('body *')) {

@@ -9,8 +9,18 @@ export type RunStatus = 'Open' | 'Running' | 'Done';
 
 export interface TestCase {
   id: string; key: string; title: string; steps: string | null; expected: string | null; priority: CasePriority; tags: string | null;
-  projectId: string | null; projectName: string | null; createdAt: string; updatedAt: string | null;
+  projectId: string | null; projectName: string | null; createdAt: string; updatedAt: string | null; links?: CaseLink[] | null;
 }
+/** What a case verifies: an API endpoint (with its document) or a whole document. */
+export interface CaseLink { kind: 'endpoint' | 'document'; id: string; documentId?: string | null }
+export interface EnvResult { environment: string; status: 'Pass' | 'Fail' | 'Blocked'; at: string | null; runId: string; runName: string; passed: number; failed: number; blocked: number }
+export interface CaseDraft { kind: 'happy' | 'required' | 'auth' | 'forbidden' | 'timeout' | 'idempotency' | 'masking'; title: string; steps: string; expected: string; priority: CasePriority; tags: string; why: string }
+export interface EndpointTests {
+  endpointId: string; documentId: string; method: string; path: string; projectId: string | null; cases: { case: TestCase; latest: EnvResult[] }[];
+  environments: EnvResult[]; covered: boolean; lastPassAt: string | null; days: number; draft: CaseDraft; canEdit: boolean;
+}
+export interface ProjectCoverage { projectId: string; endpoints: number; covered: number; linked: number; untested: number; percent: number | null; untestedIds: string[] }
+export interface Coverage { days: number; projects: ProjectCoverage[] }
 export interface TestRun {
   id: string; name: string; environment: string | null; build: string | null; status: RunStatus; projectId: string | null;
   createdAt: string; startedAt: string | null; completedAt: string | null; releaseId?: string | null;
@@ -24,7 +34,7 @@ export interface Readiness {
   run: TestRun | null; cases: number; ran: number; passed: number; failed: number; blocked: number; notRun: number; passPercent: number;
   blockers: { caseId: string; key: string; title: string; priority: CasePriority }[]; ready: boolean;
 }
-export interface CaseInput { title?: string; steps?: string | null; expected?: string | null; priority?: CasePriority; tags?: string | null; projectId?: string | null }
+export interface CaseInput { title?: string; steps?: string | null; expected?: string | null; priority?: CasePriority; tags?: string | null; projectId?: string | null; links?: CaseLink[] | null }
 export interface RunInput { name: string; environment?: string | null; build?: string | null; projectId?: string | null }
 
 export const qualityApi = {
@@ -40,6 +50,12 @@ export const qualityApi = {
   readiness: (q: { runId?: string; projectId?: string } = {}) => get<Readiness>('/quality/readiness', q),
   fileBug: (resultId: string, b: { title?: string; assigneeId?: string | null } = {}) =>
     create<{ result: TestResult; workItem: WorkItemDetail }>(`/quality/results/${resultId}/bug`, b),
+  /** An endpoint's Tests: linked cases, latest run per environment, coverage and the "Add test case" prefill. */
+  endpointTests: (endpointId: string) => get<EndpointTests>(`/quality/endpoints/${endpointId}/tests`),
+  /** Groot's proposed cases for an endpoint (nothing saved until one is confirmed). */
+  suggestions: (endpointId: string) => get<CaseDraft[]>(`/quality/endpoints/${endpointId}/suggestions`),
+  /** API test coverage per project (endpoints with a passing run in the last 30 days). */
+  coverage: (projectId?: string) => get<Coverage>('/quality/coverage', { projectId }),
 };
 
 // ---- releases: the work going out together, the runs that check it, the go/no-go (/api/v1/releases)

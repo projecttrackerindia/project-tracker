@@ -27,6 +27,9 @@ public record StartMeetingRequest(string? Title, IReadOnlyList<Guid>? Participan
 public record ScheduleMeetingRequest(string Title, string? Description, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, IReadOnlyList<Guid>? ParticipantUserIds, MeetingRepeat? Repeat = null,
     bool Scrum = false, string? Service = null, string? Notetaker = null);
 public record RescheduleMeetingRequest(DateTimeOffset StartTime, DateTimeOffset EndTime);
+/// <summary>A meeting's title and agenda (the description), edited from the calendar. Only meetings held by Project Tracker itself: a Google or
+/// Outlook event is edited in that calendar, so the invitation people have never says something else.</summary>
+public record UpdateMeetingDetailsRequest(string Title, string? Description);
 public record AddMeetingParticipantRequest(Guid UserId);
 /// <summary>A reply to an invitation to a Project Tracker call: "accepted", "tentative" or "declined".</summary>
 public record MeetingRsvpRequest(string Response);
@@ -404,6 +407,55 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         await db.SaveChangesAsync(ct);
         await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
         return ToDto(meeting, meeting.Organizer?.DisplayName ?? "");
+    }
+
+    // ---------------------------------------------------------------- title and agenda
+
+    private const int MaxTitle = 200, MaxAgenda = 4000;
+
+    private static (string Title, string? Description) CleanDetails(UpdateMeetingDetailsRequest req)
+    {
+        var title = (req.Title ?? "").Trim();
+        if (title.Length == 0) throw new ValidationException("title", "Give the meeting a title.");
+        if (title.Length > MaxTitle) throw new ValidationException("title", $"Keep the title under {MaxTitle} characters.");
+        var description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim();
+        if (description is { Length: > MaxAgenda }) throw new ValidationException("description", $"Keep the agenda under {MaxAgenda} characters.");
+        return (title, description);
+    }
+
+    private static ConflictException EditInCalendar(MeetingProvider p) =>
+        new($"This meeting lives in {(p == MeetingProvider.Microsoft ? "Outlook" : "Google Calendar")}. Change its title and agenda there so the invitation matches.", "MEETING_EDIT_IN_CALENDAR");
+
+    /// <summary>Renames a project meeting or changes its agenda (the organizer, or someone who may edit projects).</summary>
+    public async Task<MeetingDto> UpdateDetailsAsync(Guid meetingId, UpdateMeetingDetailsRequest req, CancellationToken ct = default)
+    {
+        var (title, description) = CleanDetails(req);
+        var meeting = await db.ProjectMeetings.Include(m => m.Participants).ThenInclude(p => p.User).Include(m => m.Organizer)
+            .FirstOrDefaultAsync(m => m.Id == meetingId, ct) ?? throw new NotFoundException("Meeting not found.");
+        await access.GetProjectAsync(meeting.ProjectId, ct);
+        await RequireOrganizerOrEditAsync(meeting, ct);
+        if (meeting.Status != MeetingStatus.Scheduled) throw new ConflictException("Only a scheduled meeting can be changed.", "MEETING_NOT_SCHEDULED");
+        if (meeting.Provider != MeetingProvider.ProjectTracker) throw EditInCalendar(meeting.Provider);
+        var old = new { meeting.Title, meeting.Description };
+        meeting.Title = title; meeting.Description = description;
+        recorder.Audit("meeting.updated", "ProjectMeeting", meeting.Id, oldValue: old, newValue: new { meeting.Title, meeting.Description });
+        await db.SaveChangesAsync(ct);
+        return ToDto(meeting, meeting.Organizer?.DisplayName ?? "");
+    }
+
+    /// <summary>The same for a workspace meeting (its organizer, or an Owner/Admin).</summary>
+    public async Task<WorkspaceMeetingDetailDto> UpdateWorkspaceDetailsAsync(Guid id, UpdateMeetingDetailsRequest req, CancellationToken ct = default)
+    {
+        var (title, description) = CleanDetails(req);
+        var meeting = await LoadWorkspaceMeetingAsync(id, ct);
+        if (!CanManage(meeting)) throw new ForbiddenException("Only the organizer can change this meeting.", "PERMISSION_DENIED");
+        if (meeting.Status != MeetingStatus.Scheduled) throw new ConflictException("Only a scheduled meeting can be changed.", "MEETING_NOT_SCHEDULED");
+        if (meeting.Provider != MeetingProvider.ProjectTracker) throw EditInCalendar(meeting.Provider);
+        var old = new { meeting.Title, meeting.Description };
+        meeting.Title = title; meeting.Description = description;
+        recorder.Audit("meeting.updated", "WorkspaceMeeting", meeting.Id, oldValue: old, newValue: new { meeting.Title, meeting.Description });
+        await db.SaveChangesAsync(ct);
+        return await GetWorkspaceMeetingAsync(id, ct);
     }
 
     private async Task RequireOrganizerOrEditAsync(ProjectMeeting meeting, CancellationToken ct)

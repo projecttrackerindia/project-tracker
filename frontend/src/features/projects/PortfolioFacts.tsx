@@ -24,7 +24,7 @@ const rank = (a: StatusTask, b: StatusTask) =>
 export function ProjectFacts({ projectId, active }: { projectId: string; active: boolean }) {
   const wid = useWorkspaceId();
   const report = useWsQuery(['project-status', projectId], () => statusApi.report(projectId), { enabled: active, staleTime: 30_000, retry: false });
-  const detail = useWsQuery(['projects', projectId], () => projectApi.get(projectId), { enabled: active, staleTime: 60_000, retry: false });
+  const detail = useWsQuery(['project', projectId], () => projectApi.get(projectId), { enabled: active, staleTime: 60_000, retry: false });
   const [remarkFor, setRemarkFor] = useState<string | null>(null);
   const [remark, setRemark] = useState('');
   const [busy, setBusy] = useState<string | null>(null);

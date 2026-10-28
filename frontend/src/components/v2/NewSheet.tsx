@@ -188,8 +188,12 @@ function NewSheet({ onProject }: { onProject: () => void }) {
     const to = target?.getBoundingClientRect();
     if (still || !box || !to || to.width === 0) return;
     setFlying(true);
-    await sheetAnim.start({ x: to.left + to.width / 2 - (box.left + box.width / 2), y: to.top + to.height / 2 - (box.top + box.height / 2), scale: 0.08, opacity: 0.35, borderRadius: 60 },
-      { duration: 0.42, ease: [0.3, 0, 0.2, 1] });
+    // Never let the flourish hold the sheet open: a busy or background tab can stall the animation, so cap the wait.
+    await Promise.race([
+      sheetAnim.start({ x: to.left + to.width / 2 - (box.left + box.width / 2), y: to.top + to.height / 2 - (box.top + box.height / 2), scale: 0.08, opacity: 0.35, borderRadius: 60 },
+        { duration: 0.42, ease: [0.3, 0, 0.2, 1] }),
+      new Promise((r) => window.setTimeout(r, 700)),
+    ]);
     target!.classList.add('v2-landed');
     target!.querySelector('.v2-badge')?.classList.add('v2-bump');
     window.setTimeout(() => { target!.classList.remove('v2-landed'); target!.querySelector('.v2-badge')?.classList.remove('v2-bump'); }, 900);

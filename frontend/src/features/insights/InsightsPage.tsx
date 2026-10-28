@@ -18,6 +18,8 @@ import { TimeWordsReview, useWordsRecorder } from '../time/TimeWords';
 import { cellKey, hm, parseCell } from '../time/grid';
 import { reminderApi } from '../reminders/api';
 import { formatMinutes } from '../time/time';
+import { ReviewDrawer, TargetExplain, useTimesheetReview } from '../time/ReviewDrawer';
+import { Term } from '../../components/Term';
 import './insights-v2.css';
 
 type Tab = 'overview' | 'time' | 'reports';
@@ -307,11 +309,15 @@ function TimeTab({ tabs }: { tabs: React.ReactNode }) {
     } catch (e) { toast(errText(e, 'Could not add the draft.'), 'error'); }
     finally { setBusy(false); }
   };
-  const submit = async () => {
-    setBusy(true);
-    try { await timeApi.submitWeek(week); toast('Week submitted for approval.'); refresh(); void invalidateWorkspace(wid, 'inbox'); }
-    catch (e) { toast(errText(e, 'Could not submit the week.'), 'error'); }
-    finally { setBusy(false); }
+  // "Submit week" opens the review first: errors block, warnings are acknowledged (ReviewDrawer).
+  const [reviewing, setReviewing] = useState(false);
+  const review = useTimesheetReview(week, !!g);
+  const focusDay = (date: string | null) => {
+    setReviewing(false);
+    window.setTimeout(() => {
+      const cell = document.querySelector<HTMLInputElement>(date ? `.ins-grid td[data-day="${date}"] input:not(:disabled)` : '.ins-say input, .ins-grid input:not(:disabled)');
+      cell?.scrollIntoView({ block: 'center', behavior: 'smooth' }); cell?.focus();
+    }, 120);
   };
 
   const st = status.data;
@@ -340,14 +346,16 @@ function TimeTab({ tabs }: { tabs: React.ReactNode }) {
       )}
       {g && (
         <div className="ins-week-foot">
-          <span><b>{hours(g.totalMinutes)}</b> of {hours(g.targetMinutes)} · billable {hours(g.billableMinutes)}</span>
-          {st?.canSubmit && <button type="button" className="btn btn-primary ins-submit" disabled={busy || g.totalMinutes === 0} onClick={() => void submit()}>Submit week</button>}
-          {st && !st.canSubmit && st.status !== 'NotSubmitted' && <span className={`ds-pill ${st.status === 'Approved' ? 'success' : st.status === 'Rejected' ? 'danger' : 'warning'}`}>{STATUS_TEXT[st.status]}</span>}
+          <span><b><Term k="logged">{hours(g.totalMinutes)}</Term></b> of <TargetExplain target={review.data?.target} label={hours(review.data?.target?.targetMinutes ?? g.targetMinutes)} /> · billable {hours(g.billableMinutes)}</span>
+          {st?.canSubmit && <button type="button" className="btn btn-primary ins-submit" disabled={busy || g.totalMinutes === 0} onClick={() => setReviewing(true)} data-testid="submit-week">
+            Submit week{(review.data?.issues?.length ?? 0) > 0 ? ` · ${review.data!.issues.length} to check` : ''}</button>}
+          {st && !st.canSubmit && st.status !== 'NotSubmitted' && <span className={`ds-pill ${st.status === 'Approved' ? 'success' : st.status === 'Rejected' ? 'danger' : 'warning'}`} data-testid="week-status">{st.status === 'Approved' ? <Term k="approved">{STATUS_TEXT[st.status]}</Term> : st.status === 'Submitted' ? <Term k="submitted">{STATUS_TEXT[st.status]}</Term> : STATUS_TEXT[st.status]}</span>}
         </div>
       )}
       {st?.status === 'Rejected' && st.reviewNote && <p className="ins-note">Returned: {st.reviewNote}</p>}
       <p className="ins-note"><Link to={`/insights?tab=time&s=week${week !== mondayOf(today) ? `&week=${week}` : ''}`}>Full timesheet ›</Link> Planned leave, entries over any dates{hasReports ? ', approvals' : ''} and insights over your weeks.</p>
       {hasReports && <p className="ins-note">Timesheets your team submits arrive in your <Link to="/">Home inbox ›</Link></p>}
+      {reviewing && <ReviewDrawer week={week} onClose={() => setReviewing(false)} onLog={focusDay} onSubmitted={() => { setReviewing(false); refresh(); }} />}
       {parsed && <TimeWordsReview parsed={parsed} onClose={() => setParsed(null)} onLogged={() => { setParsed(null); setText(''); refresh(); }} />}
     </>
   );
@@ -390,13 +398,13 @@ function CleanGrid({ grid, week, onWeek, onSaved }: { grid: TimesheetGrid; week:
             <tbody>
               {rows.map((r) => (
                 <tr key={`${r.kind}:${r.targetId}`}>
-                  <th scope="row"><span className="ins-key">{r.key}</span> <span className="ins-title">{r.title}</span></th>
+                  <th scope="row" title={`${r.key} · ${r.title}${r.projectName ? ` · ${r.projectName}` : ''}`}><span className="ins-key">{r.key}</span> <span className="ins-title">{r.title}</span></th>
                   {days.map((d) => {
                     const c = r.cells.find((x) => x.date === d.date) ?? { date: d.date, minutes: 0, entries: 0, running: false, note: null };
                     const k = cellKey(r.kind, r.targetId, d.date);
                     const off = !grid.editable || grid.locked || d.date > today || c.running;
                     return (
-                      <td key={d.date}>
+                      <td key={d.date} data-day={d.date}>
                         <CellInput label={`${r.key} on ${formatDate(d.date)}`} value={hm(c.minutes)} disabled={off} busy={saving.has(k)}
                           onCommit={(v) => save(r.kind, r.targetId, d.date, v, c.minutes)} />
                       </td>

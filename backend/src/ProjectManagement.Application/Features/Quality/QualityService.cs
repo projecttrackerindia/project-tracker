@@ -11,7 +11,7 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Quality;
 
 public record TestCaseDto(Guid Id, string Key, string Title, string? Steps, string? Expected, string Priority, string? Tags, Guid? ProjectId, string? ProjectName,
-    DateTime CreatedAt, DateTime? UpdatedAt);
+    DateTime CreatedAt, DateTime? UpdatedAt, IReadOnlyList<TestCaseLinkDto>? Links = null);
 public record TestRunDto(Guid Id, string Name, string? Environment, string? Build, string Status, Guid? ProjectId, DateTime CreatedAt, DateTime? StartedAt, DateTime? CompletedAt, Guid? ReleaseId = null);
 public record TestResultDto(Guid Id, Guid RunId, Guid CaseId, string Status, string? Actual, string? Evidence, UserRefDto? RunBy, DateTime? At, Guid? LinkedWorkItemId);
 public record TestMatrixDto(IReadOnlyList<TestRunDto> Runs, IReadOnlyList<TestCaseDto> Cases, IReadOnlyList<TestResultDto> Results);
@@ -19,7 +19,8 @@ public record QualityBlockerDto(Guid CaseId, string Key, string Title, string Pr
 public record QualityReadinessDto(TestRunDto? Run, int Cases, int Ran, int Passed, int Failed, int Blocked, int NotRun, int PassPercent, IReadOnlyList<QualityBlockerDto> Blockers, bool Ready);
 public record FiledBugDto(TestResultDto Result, WorkItemDetailDto WorkItem);
 
-public record UpsertTestCaseRequest(string? Title, string? Steps = null, string? Expected = null, string? Priority = null, string? Tags = null, Guid? ProjectId = null);
+public record UpsertTestCaseRequest(string? Title, string? Steps = null, string? Expected = null, string? Priority = null, string? Tags = null, Guid? ProjectId = null,
+    IReadOnlyList<TestCaseLinkDto>? Links = null);
 public record CreateTestRunRequest(string? Name, string? Environment = null, string? Build = null, Guid? ProjectId = null);
 public record SetTestResultRequest(string? Status, string? Actual = null, string? Evidence = null);
 public record FileBugRequest(string? Title = null, Guid? AssigneeId = null);
@@ -29,7 +30,7 @@ public record FileBugRequest(string? Title = null, Guid? AssigneeId = null);
 /// recent runs; readiness is the pass rate of a run and its blockers (failed Critical or High cases); "File bug" creates a ticket through
 /// the Work API, linked to the result. Who may read or change it is the Work module's access (see the controller).
 /// </summary>
-public class QualityService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, WorkItemApiService work, WorkTypeService workTypes)
+public class QualityService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, WorkItemApiService work, WorkTypeService workTypes, QualityLinksService links)
 {
     public static readonly string[] Priorities = ["Low", "Medium", "High", "Critical"];
     public static readonly string[] ResultStatuses = ["NotRun", "Pass", "Fail", "Blocked"];
@@ -66,7 +67,8 @@ public class QualityService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     }
 
     private static TestCaseDto ToDto(TestCase c, IReadOnlyDictionary<Guid, string> projects) =>
-        new(c.Id, c.Key, c.Title, c.Steps, c.Expected, c.Priority, c.Tags, c.ProjectId, c.ProjectId is { } p ? projects.GetValueOrDefault(p) : null, c.CreatedAt, c.UpdatedAt);
+        new(c.Id, c.Key, c.Title, c.Steps, c.Expected, c.Priority, c.Tags, c.ProjectId, c.ProjectId is { } p ? projects.GetValueOrDefault(p) : null, c.CreatedAt, c.UpdatedAt,
+            QualityLinksService.ReadLinks(c.LinksJson));
 
     public static TestRunDto ToDto(TestRun r) => new(r.Id, r.Name, r.Environment, r.Build, r.Status, r.ProjectId, r.CreatedAt, r.StartedAt, r.CompletedAt, r.ReleaseId);
 
@@ -100,6 +102,7 @@ public class QualityService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             TenantId = tenantId, ProjectId = req.ProjectId, Number = next, Key = $"TC-{next}", Title = title,
             Steps = Clean(req.Steps, 8000, "steps"), Expected = Clean(req.Expected, 2000, "expected"), Priority = Pick(req.Priority, Priorities, "Medium", "priority"),
             Tags = Clean(req.Tags, 300, "tags"), CreatedAt = clock.Now, CreatedBy = ctx.UserId,
+            LinksJson = req.Links is null ? "[]" : await links.CheckAsync(req.Links, ct),
         };
         db.TestCases.Add(c);
         recorder.Audit("quality.case.created", "TestCase", c.Id, null, new { c.Key, c.Title });
@@ -115,6 +118,7 @@ public class QualityService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         if (req.Expected is not null) c.Expected = Clean(req.Expected, 2000, "expected");
         if (req.Priority is not null) c.Priority = Pick(req.Priority, Priorities, c.Priority, "priority");
         if (req.Tags is not null) c.Tags = Clean(req.Tags, 300, "tags");
+        if (req.Links is not null) c.LinksJson = await links.CheckAsync(req.Links, ct);
         if (req.ProjectId is { } p && p != c.ProjectId) { await RequireProjectAsync(p, ct); c.ProjectId = p; }
         c.UpdatedAt = clock.Now; c.UpdatedBy = ctx.UserId;
         recorder.Audit("quality.case.updated", "TestCase", c.Id, null, new { c.Key, c.Title });

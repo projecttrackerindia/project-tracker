@@ -112,7 +112,9 @@ try {
     const field = page.getByRole('toolbar', { name: 'Ask and create' }).getByPlaceholder('Ask Groot or find anything');
     await field.waitFor();
     // Ctrl K still lands in the field; typing shows quick find above any chat.
-    await page.keyboard.press('Control+k'); assert.ok(await field.evaluate((el) => el === document.activeElement), 'Ctrl K puts the cursor in the Ask field');
+    // The shortcut is wired once the shell settles; press until it lands (at most ~3s), then require focus.
+    for (let i = 0; i < 10 && !(await field.evaluate((el) => el === document.activeElement)); i++) { await page.keyboard.press('Control+k'); await page.waitForTimeout(300); }
+    assert.ok(await field.evaluate((el) => el === document.activeElement), 'Ctrl K puts the cursor in the Ask field');
     await field.fill('fire');
     await page.locator('#groot-quick-find').waitFor();
     await page.locator('#groot-quick-find .gq-row', { hasText: 'Ask Groot: “fire”' }).waitFor();
