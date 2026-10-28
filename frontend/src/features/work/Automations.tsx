@@ -289,7 +289,7 @@ function Builder({ rule, initial, canEdit, onCount, onSaved, onRemoved }: {
             {f.steps.map((s, i) => (
               <div key={i} className="au-step">
                 <StepTokens n={i} s={s} subject={subject} ro={ro} onChange={(n) => setStep(i, n)}
-                  people={members.data?.map((m) => ({ id: m.userId, name: m.displayName })) ?? []}
+                  people={members.data?.filter((m) => m.isActive !== false).map((m) => ({ id: m.userId, name: m.displayName })) ?? []}
                   labels={labels.data?.map((l) => ({ id: l.id, name: l.name })) ?? []}
                   channels={channels.map((c) => ({ id: c.id, name: c.name }))} />
                 {!ro && f.steps.length > 1 && <button type="button" className="au-x" aria-label={`Remove step ${i + 1}`} onClick={() => set('steps', f.steps.filter((_, k) => k !== i))}><Icon name="close" size={12} /></button>}

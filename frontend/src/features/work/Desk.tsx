@@ -114,7 +114,7 @@ export function TriageChips({ w, save }: { w: WorkItemDetail; save: Save }) {
               <select autoFocus aria-label="Priority" defaultValue={w.priority} onChange={(e) => { void save({ priority: e.target.value as Priority }).then(() => finish(c.id)); setChanging(null); }}><PriorityOptions /></select>
             ) : (
               <select autoFocus aria-label="Owner" defaultValue="" onChange={(e) => { if (e.target.value) void save({ assigneeId: e.target.value }).then(() => finish(c.id)); setChanging(null); }}>
-                <option value="" disabled>Choose…</option>{(members.data ?? []).filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
+                <option value="" disabled>Choose…</option>{(members.data ?? []).filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
               </select>
             )
           ) : (

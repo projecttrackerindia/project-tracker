@@ -112,7 +112,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
         <Field label="Project name" required error={errors.name}><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} placeholder="e.g. API Migration" /></Field>
         <Field label="Project owner" error={errors.ownerId}>
           <Select className="select" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-            {members.data?.filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
+            {members.data?.filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
           </Select>
         </Field>
         <Field label="Due date" required error={errors.dueDate}><input className="input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
@@ -196,7 +196,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
         {!isEdit && !personal && members.data && members.data.length > 1 && (
           <Field label="Team members" full hint="Guests only see projects they are added to. Add or remove people later from the project's Team tab.">
             <div className="member-list" style={{ maxHeight: 160, overflowY: 'auto', gap: 6 }}>
-              {members.data.filter((m) => m.userId !== ownerId).map((m) => (
+              {members.data.filter((m) => m.userId !== ownerId && m.isActive !== false).map((m) => (
                 <label key={m.userId} className="member-item" style={{ padding: '6px 10px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={memberIds.includes(m.userId)} onChange={(e) => setMemberIds((c) => e.target.checked ? [...c, m.userId] : c.filter((x) => x !== m.userId))} />
                   <span className="member-main"><span className="member-name">{m.displayName}</span> <span className="muted" style={{ fontSize: 11 }}>{m.role}</span></span>

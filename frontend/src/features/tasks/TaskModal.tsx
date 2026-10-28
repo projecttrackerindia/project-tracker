@@ -231,7 +231,7 @@ export function TaskModal({ taskId, projectId, statusId, initial, onClose }: { t
           <Field label="Assignee" error={errors.assigneeId}>
             <Select className="select" value={f.assigneeId} onChange={(e) => set('assigneeId', e.target.value)}>
               <option value="">Unassigned</option>
-              {members.data?.filter((m) => m.role !== 'Guest' || m.userId === f.assigneeId).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
+              {members.data?.filter((m) => (m.role !== 'Guest' && m.isActive !== false) || m.userId === f.assigneeId).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
             </Select>
           </Field>
           {show && <Field label="Start date"><input className="input" type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></Field>}

@@ -194,7 +194,7 @@ function ActionItemsToTasks({ minutes }: { minutes: Minutes }) {
   const meUser = useAuth((s) => s.ctx?.user);
   const members = useWsQuery(['members'], workspaceApi.members, { staleTime: 300_000 });
   const existing = useWsQuery(['tasks', 'project', minutes.projectId, 'for-minutes'], () => taskApi.listForProject(minutes.projectId, {}), { staleTime: 15_000 });
-  const people = useMemo(() => (members.data ?? []).filter((m) => m.role !== 'Guest').map((m) => ({ id: m.userId, name: m.displayName })), [members.data]);
+  const people = useMemo(() => (members.data ?? []).filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => ({ id: m.userId, name: m.displayName })), [members.data]);
   const me = meUser ? { id: meUser.id, name: meUser.displayName } : undefined;
   const base = useMemo(() => minutes.content.actionItems.map((a) => {
     const owner = a.owner ? matchPerson(a.owner.replace(/\(.*?\)/g, '').split(/\s+/).slice(0, 2).join(' '), people, me) ?? matchPerson(a.owner.split(/\s+/)[0], people) : undefined;

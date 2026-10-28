@@ -84,7 +84,7 @@ function Editor({ existing, scope, onDone, onCancel, perType, reminders }: { exi
       </div>
       <div className="dwf-presets"><span className="muted">Start from</span>{PRESETS.map((p) => <button type="button" key={p.label} className="chip-btn" onClick={() => setSteps(p.steps.map((n) => blank(n)))}>{p.label}</button>)}</div>
       <ol className="dwf-steps">{steps.map((s, i) => <StepEditor key={i} step={s} index={i} count={steps.length} onChange={(v) => set(i, v)} onMove={(d) => move(i, d)} onRemove={() => setSteps((x) => x.filter((_, j) => j !== i))}
-        people={(members.data ?? []).filter((m) => m.role !== 'Guest').map((m) => ({ id: m.userId, name: m.displayName }))} teams={(teams.data ?? []).map((t) => ({ id: t.id, name: t.name }))} roles={(org.data?.roles ?? []).filter((r) => !r.isDeleted).map((r) => ({ id: r.id, name: r.name }))} reminders={reminders} />)}</ol>
+        people={(members.data ?? []).filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => ({ id: m.userId, name: m.displayName }))} teams={(teams.data ?? []).map((t) => ({ id: t.id, name: t.name }))} roles={(org.data?.roles ?? []).filter((r) => !r.isDeleted).map((r) => ({ id: r.id, name: r.name }))} reminders={reminders} />)}</ol>
       {steps.length < 6 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSteps((x) => [...x, blank()])}><Icon name="plus" size={14} /> Add a step</button>}
       <div className="dwf-opts">
         <label className="check-row"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> <span><b>In use</b> <small>: new submissions follow this path.</small></span></label>

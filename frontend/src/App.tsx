@@ -441,8 +441,12 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         {/* People and Settings: behind the avatar (each People section checks its own access) */}
         <Route path="people" element={<PeoplePage section="directory" />} />
         <Route path="people/invitations" element={<PeoplePage section="invitations" />} />
-        <Route path="people/org-chart" element={<PeoplePage section="org-chart" />} />
+        <Route path="people/org" element={<PeoplePage section="org" />} />
+        <Route path="people/org-chart" element={<Moved to="/people/org?view=canvas" />} />
+        <Route path="people/roles" element={<PeoplePage section="roles" />} />
+        <Route path="people/roles/:kind/:id" element={<PeoplePage section="roles" />} />
         <Route path="people/teams" element={<PeoplePage section="teams" />} />
+        <Route path="people/:id" element={<PeoplePage section="person" />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/:section" element={<SettingsPage />} />
         <Route path="settings/:section/:sub" element={<SettingsPage />} />
@@ -504,7 +508,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="project-groups" element={<Moved to="/settings/timelines/project-groups" />} />
         <Route path="members" element={<Moved to="/people" />} />
         <Route path="teams" element={<Moved to="/people/teams" />} />
-        <Route path="organization" element={<Moved to="/people/org-chart" />} />
+        <Route path="organization" element={<Moved to="/people/org?view=canvas" />} />
         <Route path="billing" element={<Moved to="/settings/billing" />} />
         <Route path="audit" element={<Moved to="/settings/security/audit" />} />
         <Route path="*" element={<NotFound />} />

@@ -1,29 +1,39 @@
 import '../settings/settings-ds.css';
+import './people.css';
 import { Navigate } from 'react-router-dom';
 import { Embedded, PageHead, RouteTabs } from '../../components/ui';
 import { usePeopleSections, type PeopleSection } from './sections';
-import { DirectoryPanel, InvitationsPanel } from '../members/MembersPage';
-import { OrgPage } from '../organization/OrgPage';
+import { InvitationsPanel } from '../members/MembersPage';
 import { TeamsPage } from '../teams/TeamsPage';
+import { Directory } from './Directory';
+import { OrgTreePage } from './OrgTree';
+import { PersonPage } from './PersonPage';
+import { RolesPage } from './RolesPage';
 
 /**
- * People: everyone in the workspace (with invitations), the org chart (job roles and reporting lines) and teams, in one place.
- * What people can access is decided in Workspace settings → Roles & access.
+ * People & Roles: everyone in the workspace, how they are organised (reporting lines, teams, the canvas chart), what each role can do
+ * (Roles & access), invitations and teams, in one place. A person opens to their profile.
  */
 export function PeoplePage({ section }: { section: PeopleSection }) {
   const sections = usePeopleSections();
   if (!sections.length) return <Navigate to="/" replace />;
-  if (!sections.some((s) => s.id === section)) return <Navigate to={sections[0].to} replace />;
+  const wanted = section === 'person' ? 'directory' : section;
+  if (!sections.some((s) => s.id === wanted)) {
+    // A person's profile is open to anyone who shares the workspace, even without the directory.
+    if (section !== 'person') return <Navigate to={sections[0].to} replace />;
+  }
   return (
-    <>
-      <PageHead title="People" sub="Who is in this workspace, how they are organised, and the teams they work in." />
-      {sections.length > 1 && <RouteTabs label="People" tabs={sections} />}
+    <div className="pr-page">
+      {section !== 'person' && <PageHead title="People & Roles" sub="Who is in this workspace, how they are organised, and what each role can do." />}
+      {section !== 'person' && sections.length > 1 && <RouteTabs label="People & Roles" tabs={sections} />}
       <Embedded>
-        {section === 'directory' && <DirectoryPanel />}
+        {section === 'directory' && <Directory />}
+        {section === 'person' && <PersonPage />}
+        {section === 'org' && <OrgTreePage />}
+        {section === 'roles' && <RolesPage />}
         {section === 'invitations' && <InvitationsPanel />}
-        {section === 'org-chart' && <OrgPage />}
         {section === 'teams' && <TeamsPage />}
       </Embedded>
-    </>
+    </div>
   );
 }

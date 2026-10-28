@@ -19,7 +19,7 @@ export function TeamTab({ detail, canEdit }: { detail: ProjectDetail; canEdit: b
   const all = useWsQuery(['members'], workspaceApi.members, { enabled: canEdit });
   const [pick, setPick] = useState('');
   const ownerId = detail.project.owner?.id;
-  const available = all.data?.filter((m) => !detail.members.some((x) => x.userId === m.userId)) ?? [];
+  const available = all.data?.filter((m) => m.isActive !== false && !detail.members.some((x) => x.userId === m.userId)) ?? [];
 
   const add = useMutation({
     mutationFn: () => projectApi.addMember(detail.project.id, pick),

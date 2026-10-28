@@ -130,7 +130,7 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
         <Field label="Assigned to" error={errors.assigneeId}>
           <Select className="select" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} aria-label="Assigned to">
             <option value="">Unassigned</option>
-            {members.data?.filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
+            {members.data?.filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
           </Select>
         </Field>
         <Field label="Priority">
@@ -191,7 +191,7 @@ function Comments({ task, members, onChanged }: { task: WorkTask; members: Membe
   const list = useWsQuery(['work', 'task', task.id, 'comments'], () => workApi.comments(task.id));
   const [body, setBody] = useState('');
   const [mentions, setMentions] = useState<string[]>([]);
-  const people = members.filter((m) => m.role !== 'Guest');
+  const people = members.filter((m) => m.role !== 'Guest' && m.isActive !== false);
   const mention = (userId: string) => {
     const m = people.find((x) => x.userId === userId);
     if (!m) return;

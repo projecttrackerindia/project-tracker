@@ -226,7 +226,7 @@ export function WorkTasksPage({ embedded = false, onOpenItem }: { embedded?: boo
                 <option value="">All projects</option><option value={NO_PROJECT}>No related project</option>
                 {projects.data?.items.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}</Select></label>
               {!mine && <label className="ops-f"><span>Assigned to</span><Select className="select" value={assigneeId} onChange={(e) => on(setAssigneeId)(e.target.value)} aria-label="Assigned to">
-                <option value="">Anyone</option>{members.data?.filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></label>}
+                <option value="">Anyone</option>{members.data?.filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></label>}
               <label className="ops-f"><span>Priority</span><Select className="select" value={priority} onChange={(e) => on(setPriority)(e.target.value)} aria-label="Priority"><option value="">All priorities</option><PriorityOptions /></Select></label>
               <label className="ops-f"><span>Status</span><Select className="select" value={status} onChange={(e) => on(setStatus)(e.target.value)} aria-label="Status">
                 <option value="">Any status</option>{WORK_STATUSES.map((st) => <option key={st.id} value={st.id}>{st.label}</option>)}</Select></label>

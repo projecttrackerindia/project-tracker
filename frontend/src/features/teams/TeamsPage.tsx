@@ -90,7 +90,7 @@ function TeamDetailModal({ id, canManage, onClose }: { id: string; canManage: bo
   if (q.isLoading) return <Modal title="Team" onClose={onClose}><PageLoader /></Modal>;
   if (q.isError || !q.data) return <Modal title="Team" onClose={onClose}><ErrorState error={q.error} /></Modal>;
   const { team, members: list } = q.data;
-  const available = members.data?.filter((m) => !list.some((x) => x.userId === m.userId)) ?? [];
+  const available = members.data?.filter((m) => m.isActive !== false && !list.some((x) => x.userId === m.userId)) ?? [];
   if (editing) return <TeamFormModal team={team} onClose={() => setEditing(false)} />;
 
   const run = async (fn: () => Promise<unknown>, ok?: string) => {

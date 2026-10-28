@@ -521,7 +521,7 @@ function ChatPane({ id, onClose }: { id: string; onClose: () => void }) {
         <Select className="select wad-owner" aria-label="Owner" value={chat.assigneeId ?? ''} disabled={busy}
           onChange={(e) => void act(() => api.assign(id, e.target.value || null), e.target.value ? 'Assigned.' : 'Back in the queue.')}>
           <option value="">Unassigned</option>
-          {(members.data ?? []).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
+          {(members.data ?? []).filter((m) => m.isActive !== false).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
         </Select>
       </header>
       <div className="wad-actions">

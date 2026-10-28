@@ -67,8 +67,9 @@ try{
  await page.waitForFunction(()=>/Invitations waiting\s*1/.test(document.querySelector('[data-testid="people-kpis"]')?.innerText??''));
  const kpiText=(await kpis.innerText()).replace(/\s+/g,' ');
  for(const t of ['Members 5','of 25 seats','Owners and admins 2','Guests 1','Invitations waiting 1'])assert.ok(kpiText.includes(t),`KPI "${t}" in: ${kpiText}`);
- assert.ok(await page.locator('.role-pill.role-owner',{hasText:'Owner'}).isVisible());
- assert.ok(await page.locator('.role-pill.role-guest',{hasText:'Guest'}).isVisible()||await page.getByRole('combobox',{name:'Role for External Auditor'}).isVisible());
+ // People & Roles: access levels are pills on each person's row (owner dark, guest amber).
+ assert.ok(await page.locator('.pr-level.lv-owner',{hasText:'Owner'}).first().isVisible());
+ assert.ok(await page.locator('[data-testid="person-row"]',{hasText:'External Auditor'}).locator('.pr-level.lv-guest',{hasText:'Guest'}).isVisible());
  await shot(page,'people-1440.png');
  await kpis.getByRole('link',{name:/Invitations waiting/}).click();
  await page.waitForURL(/\/people\/invitations$/);await page.getByText('jo@example.test').waitFor();

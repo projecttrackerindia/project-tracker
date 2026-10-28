@@ -203,7 +203,7 @@ function SignOffPeople({ current, onClose, onSave }: { current: ReleaseSignOff[]
   const members = useWsQuery(['workspace', 'members'], () => workspaceApi.members(), { staleTime: 60_000 });
   const [rows, setRows] = useState(() => current.map((x) => ({ userId: x.user.id, role: x.role })));
   const [who, setWho] = useState('');
-  const list = (members.data ?? []).filter((m) => m.role !== 'Guest');
+  const list = (members.data ?? []).filter((m) => m.role !== 'Guest' && m.isActive !== false);
   const name = (id: string) => list.find((m) => m.userId === id)?.displayName ?? current.find((x) => x.user.id === id)?.user.name ?? 'Someone';
   return (
     <Modal title="Who signs off" onClose={onClose} footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={rows.some((x) => !x.role.trim())} onClick={() => onSave(rows.map((x) => ({ userId: x.userId, role: x.role.trim() })))}>Save</button></>}>

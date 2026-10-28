@@ -12,6 +12,9 @@ public enum ProjectScope { None = 0, Teams = 1, Members = 2 }
 /// <summary>Numeric value = privilege level (higher is more privileged).</summary>
 public enum TenantRole { Guest = 1, Member = 2, Manager = 3, Admin = 4, Owner = 5 }
 
+/// <summary>Whether a member may use the workspace. Suspended: they stay a member (history, assignments and reporting lines are kept) but cannot open it.</summary>
+public enum MemberStatus { Active, Suspended }
+
 public enum ProjectStatus { Planning, Active, OnHold, Completed, Cancelled, Archived }
 public enum Priority { Low, Medium, High, Critical }
 public enum StatusCategory { Todo, Active, Done, Cancelled }

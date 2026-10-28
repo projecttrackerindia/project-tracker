@@ -144,6 +144,12 @@ public class TenantMember : TenantEntity
     public decimal? CostRate { get; set; }
     /// <summary>What an hour of this person's billable time is charged at (a project's own rate takes precedence).</summary>
     public decimal? BillRate { get; set; }
+
+    /// <summary>Suspended members keep their place (history, assignments, reporting lines) but cannot open the workspace.</summary>
+    public MemberStatus Status { get; set; } = MemberStatus.Active;
+    /// <summary>When and by whom the member was last suspended (cleared on reactivation).</summary>
+    public DateTime? DeactivatedAt { get; set; }
+    public Guid? DeactivatedBy { get; set; }
 }
 
 /// <summary>

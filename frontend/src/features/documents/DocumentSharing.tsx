@@ -74,7 +74,7 @@ export function AccessModal({ detail, onClose }: { detail: DocumentDetail; onClo
 
   const data = q.data;
   const people = useMemo(() => (data?.people ?? []).filter((p) => !search.trim() || `${p.name} ${p.reasons.join(' ')}`.toLowerCase().includes(search.trim().toLowerCase())), [data, search]);
-  const options = kind === 'User' ? (members.data ?? []).filter((m) => m.userId !== data?.owner.id).map((m) => ({ id: m.userId, name: m.displayName }))
+  const options = kind === 'User' ? (members.data ?? []).filter((m) => m.userId !== data?.owner.id && m.isActive !== false).map((m) => ({ id: m.userId, name: m.displayName }))
     : kind === 'Team' ? (teams.data ?? []).map((t) => ({ id: t.id, name: t.name })) : (org.data?.roles ?? []).filter((r) => !r.isDeleted).map((r) => ({ id: r.id, name: r.name }));
 
   return (

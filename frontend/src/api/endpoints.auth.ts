@@ -1,5 +1,5 @@
 import { del, get, post, put, uploadFile, fetchBlobUrl } from './client';
-import type { AppContext,AuthResponse,MfaChallenge,MfaSetup,MfaStatus,PasswordPolicy,NotificationPreference,TestEmailResult,Invitation,InvitationLookup,Member,MemberProfile,PermissionMatrix,OrgSecurity,ProjectVisibility,SecurityOverview,Session,SignIn,Team,TeamDetail,User,Workspace,ExternalProvider,SsoDiscovery,UserLogin,SsoSettings,SsoConnectionInput,ScimToken,WorkspaceLogo,GroupMappings } from './types';
+import type { AppContext,AuthResponse,MfaChallenge,MfaSetup,MfaStatus,PasswordPolicy,NotificationPreference,TestEmailResult,Invitation,InvitationLookup,Member,MemberProfile,MemberStatus,ImpactPreview,ImpactRequest,PermissionMatrix,OrgSecurity,ProjectVisibility,SecurityOverview,Session,SignIn,Team,TeamDetail,User,Workspace,ExternalProvider,SsoDiscovery,UserLogin,SsoSettings,SsoConnectionInput,ScimToken,WorkspaceLogo,GroupMappings } from './types';
 
 export const authApi = {
   passwordPolicy: () => get<PasswordPolicy>('/auth/password-policy', undefined, { auth: false }),
@@ -75,6 +75,12 @@ export const workspaceApi = {
   members: () => get<Member[]>('/workspace/members'),
   setRole: (userId: string, role: string) => put<Member>(`/workspace/members/${userId}`, { role }),
   removeMember: (userId: string) => del(`/workspace/members/${userId}`),
+  /** Only people who can be given work now (no suspended members, no deactivated accounts). */
+  assignableMembers: () => get<Member[]>('/workspace/members', { assignable: true }),
+  suspendMember: (userId: string) => post<{ userId: string; status: MemberStatus }>(`/workspace/members/${userId}/suspend`),
+  reactivateMember: (userId: string) => post<{ userId: string; status: MemberStatus }>(`/workspace/members/${userId}/reactivate`),
+  /** Dry run: who gains or loses what if this change were saved. Nothing is saved. */
+  impact: (b: ImpactRequest) => post<ImpactPreview>('/workspace/people/impact', b),
   invitations: () => get<Invitation[]>('/workspace/invitations'),
   invite: (b: { email: string; role: string; orgRoleId?: string | null; reportsToUserId?: string | null }) => post<Invitation>('/workspace/invitations', b),
   /** Creates the account directly (instead of inviting): the first password is chosen by the administrator and must be replaced at first sign-in. */
