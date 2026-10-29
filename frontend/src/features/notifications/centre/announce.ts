@@ -6,6 +6,7 @@
 import { firstTime, getAttention, kindForType } from '../../../lib/attention';
 import type { AppNotification } from '../../../api/types';
 import { categoryOf, cueOf } from './model';
+import { flashAura } from '../../../components/aura/mood';
 import { isMuted, getAlertPrefs, maySound } from './prefs';
 
 type Arrival = Pick<AppNotification, 'type' | 'link'> & { id?: string | null; category?: AppNotification['category'] };
@@ -13,6 +14,7 @@ type Arrival = Pick<AppNotification, 'type' | 'link'> & { id?: string | null; ca
 /** Returns whether a sound was played (the service worker then keeps the system notification silent). */
 export function announce(n: Arrival, opts: { silent?: boolean } = {}): boolean {
   if (n.id && !firstTime(`n-${n.id}`, 120_000)) return false;
+  if (/mention|approv/i.test(n.type)) flashAura('alert', 5000);   // Aura: heads up
   const p = getAlertPrefs();
   const cat = categoryOf({ type: n.type, link: n.link ?? null, category: n.category });
   const silent = !!opts.silent || !maySound(cat, p);

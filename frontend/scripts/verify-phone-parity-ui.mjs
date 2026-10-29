@@ -9,7 +9,7 @@ import { timelineFor } from './lib/timeline.mjs';
 // Phone parity (apple/s-mobile, apple/s-phone): Today (needs-you list with one tap, UP NEXT with Join, the outage pill with its running clock,
 // one-tap timesheet approval with the reconciliation line), My Work's FOCUS NOW (Start 2h focus, Log time), Desk rows' ⋯ (Assign / Resolve),
 // + New › Ticket (Notify on WhatsApp, who is on call, similar tickets), and every place in More — at 390×844 (iPhone UA) and 412×915
-// (Android Chrome UA), light and dark: no sideways scroll, nothing cut off, nothing under the tab bar or the Ask bar, toasts above the bars.
+// (Android Chrome UA), light and dark: no sideways scroll, nothing cut off, nothing under the tab bar or Aura's dock, toasts above the bars.
 // Only the built frontend and synthetic fixtures with made-up names; the only writes allowed are the approval and the timer.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/phone-parity-ui');
 await fs.mkdir(out, { recursive: true });
@@ -207,18 +207,17 @@ try {
     await focus.getByRole('button', { name: 'Log time' }).click(); await page.waitForURL(/\/insights\?tab=time&log=ORL-21/);
     await page.evaluate(() => localStorage.removeItem('pm_focus_until'));
 
-    // The Ask bar folds into a pill while scrolling down a long page, and opens on a tap.
+    // Aura's dock steps aside while scrolling down a long page, and comes back on scroll up.
     await page.goto(`${origin}/preview-org/?tab=calendar`); await page.locator('.v2-ask').waitFor();
-    const wide = (await page.locator('.v2-ask').boundingBox()).width;
+    const dockOp = () => page.getByTestId('aura-dock').evaluate((el) => getComputedStyle(el).opacity);
     for (let i = 0; i < 6; i++) { await page.evaluate(() => scrollBy(0, 100)); await page.waitForTimeout(60); }
     await page.waitForTimeout(500);
-    if (process.env.DEBUG_ASK) console.log(await page.evaluate(() => ({ y: scrollY, h: document.documentElement.scrollHeight, cls: document.querySelector('.v2-ask')?.className, w: getComputedStyle(document.querySelector('.v2-ask')).width })));
-    const folded = await page.locator('.v2-ask').boundingBox();
     if (await page.evaluate(() => document.documentElement.scrollHeight > innerHeight + 200)) {
-      assert.ok(folded.width < 120 && wide > 250, `Ask bar folds to a pill (${wide} → ${folded.width})`);
+      assert.equal(await dockOp(), '0', 'the dock steps aside while scrolling down');
       await page.screenshot({ path: path.join(out, `ask-pill-${tag}.png`) }); shots.push(path.join(out, `ask-pill-${tag}.png`));
-      await page.locator('.v2-ask').click(); await page.waitForTimeout(350);
-      assert.ok((await page.locator('.v2-ask').boundingBox()).width > 250, 'a tap opens the Ask bar');
+      for (let i = 0; i < 3; i++) { await page.evaluate(() => scrollBy(0, -100)); await page.waitForTimeout(60); }
+      await page.waitForTimeout(500);
+      assert.equal(await dockOp(), '1', 'the dock is back on scroll up');
     }
 
     // Desk: each row has a visible ⋯ with Assign and Resolve as full-size buttons.

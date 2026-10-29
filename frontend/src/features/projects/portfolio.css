@@ -549,7 +549,7 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 .pf-views { margin: -6px 0 6px; } .pf-views .pv-views { padding: 0; }
 
 /* Present on a phone: the slide fills the screen, swipe between slides, a compact top bar with ⋯, the app's bars, Ask and toasts hidden. */
-html.pf-presenting .v2-phone-bar, html.pf-presenting .v2-ask, html.pf-presenting .m-top, html.pf-presenting .toast-root, html.pf-presenting .v2-live { display: none !important; }
+html.pf-presenting .v2-phone-bar, html.pf-presenting .aura-dock-wrap, html.pf-presenting .m-top, html.pf-presenting .toast-root, html.pf-presenting .v2-live { display: none !important; }
 .pf-present.phone { z-index: 3000; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
 .pf-present.phone .pf-present-top { position: relative; height: 52px; gap: 8px; padding: 0 8px 0 16px; font-size: 14px; }
 .pf-present.phone .pf-ph-count { font-variant-numeric: tabular-nums; }

@@ -131,7 +131,7 @@ try{
  assert.equal(await page.locator('.trk-attention .trk-alert').count(),2);assert.ok(await page.locator('.trk-tab-count.sev-critical').isVisible());checks.push('attention');
  await page.getByRole('button',{name:'Check model health'}).click();await page.getByText('Model service reachable').waitFor();checks.push('health');
 
- await tab(page,'Groot');await page.getByText('Where the time goes').waitFor();
+ await tab(page,'Aura');await page.getByText('Where the time goes').waitFor();
  assert.ok(await page.getByText('find work').first().isVisible());checks.push('assistant');
  await shot(page,'assistant-1440.png');
  await tab(page,'Project agent');await page.getByText('Proposals by kind').waitFor();
@@ -177,7 +177,7 @@ try{
   await shot(page,`overview-390-${theme}.png`);await noOverflow(page,`overview 390 ${theme}`);
   if(theme==='dark'){await page.setViewportSize({width:1440,height:1000});await shot(page,'overview-1440-dark.png');}
   else{
-   await tab(page,'Groot');await page.getByText('Where the time goes').waitFor();await shot(page,'assistant-390.png');await noOverflow(page,'assistant 390');
+   await tab(page,'Aura');await page.getByText('Where the time goes').waitFor();await shot(page,'assistant-390.png');await noOverflow(page,'assistant 390');
    await tab(page,'Runs');await page.locator('.trk-run-head').first().click();await page.locator('.trk-waterfall li').first().waitFor();await shot(page,'runs-390.png');await noOverflow(page,'runs 390');
    await tab(page,'Credits');await page.getByText('At this pace the credits run out').waitFor();await shot(page,'costs-390.png');await noOverflow(page,'costs 390');
    await tab(page,'Alerts');await page.getByText('Needs attention now').waitFor();await shot(page,'alerts-390.png');await noOverflow(page,'alerts 390');

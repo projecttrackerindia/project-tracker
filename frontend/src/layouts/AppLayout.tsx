@@ -34,6 +34,7 @@ import { isRingNotice } from '../features/calls/incomingCalls';
 import { AskBar, GrootChatHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
 import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
+import { AuraWatcher } from '../components/aura/AuraWatcher';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -91,8 +92,8 @@ function ComposerSlot() {
 }
 
 /**
- * The v2 shell: the 84px rail on the left (the phone bar at the bottom of a phone), the page, the Ask bar floating at the bottom, and the
- * things every page can open: + New, the copilot panel, the command palette, calls, reminders and toasts.
+ * The v2 shell: the 84px rail on the left (the phone bar at the bottom of a phone), the page, Aura's dock floating at the bottom, and the
+ * things every page can open: the create sheet (from the dock's chips), the Aura chat, the command palette, calls, reminders and toasts.
  */
 export function AppLayout({ children }: { children?: ReactNode }) {
   const loc = useLocation();
@@ -143,7 +144,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           </div>
         </>
       )}
-      {!admin && !(phone && conversation) && <AskBar />}
+      {/* Aura's dock: every page, except inside a conversation (its composer owns the bottom edge; on a phone all of Messages) */}
+      {!admin && !(phone && conversation) && !/^\/messages\/[^/]+/.test(loc.pathname) && <AskBar />}
       {!admin && <NewSheetHost />}
       {!admin && <GrootChatHost />}
       {!admin && <CopilotHost />}
@@ -160,6 +162,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <AlertsSetup />
       <ComposerSlot />
       {!admin && <AttendanceHost />}
+      {!admin && <AuraWatcher />}
       {chatOn && <ChatRealtime />}
       {chatOn && <ProjectChatHost />}
       {!admin && <LiveBanners />}

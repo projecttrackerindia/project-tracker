@@ -8,7 +8,7 @@ import { appCsp } from './lib/csp.mjs';
 // Read in one place, gone everywhere: opening a chat takes its notifications (the message notice, an @mention, a thread reply) out of the
 // Notification Centre and off the bell, the tab title and the badge; read items are hidden by default and kept under "Read"; nothing pops
 // up for the conversation the person is looking at. And the bell itself: a 36px round button with a strong glyph and a red badge that is
-// never clipped, aligned with "Ask Groot…" and "+ New" at 1440 / 1280 / 1024, in light and dark and on the phone top bar.
+// never clipped, aligned with the check-in capsule at 1440 / 1280 / 1024, in light and dark and on the phone top bar.
 // Built frontend with synthetic API fixtures only (made-up people and channels).
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/notification-read-sync-ui');
 await fs.mkdir(out, { recursive: true });
@@ -39,7 +39,7 @@ const conv = () => ({ id: CONV, type: 'Direct', name: 'Ravi Kumar', members: [{ 
 const msg = (i, body, mins) => ({ id: `00000000-0000-0000-0000-0000000001${String(i).padStart(2, '0')}`, conversationId: CONV, senderId: '00000000-0000-0000-0000-000000000003', senderName: 'Ravi Kumar', kind: 'User', replyTo: null, editedAt: null, body, createdAt: iso(-mins), attachments: [], reactions: [], isDeleted: false });
 const writes = [], errors = [], checks = [];
 let readDelay = 0;
-// Checked in today: the green attendance pill sits between the bell and + New (as on the owner's account).
+// Checked in today: the check-in capsule sits just left of the bell, the last thing in the header (no Ask field, no + New).
 let attendanceOn = false;
 const todayIso = new Date().toISOString().slice(0, 10);
 const attendance = () => ({ date: todayIso, timeZone: 'Asia/Kolkata', localTime: '12:57', workStart: '09:30', workEnd: '18:30', workingDay: true, onLeave: false, holiday: null, shouldPrompt: false,
@@ -143,14 +143,14 @@ try {
     assert.ok(g.ratio >= 7, `bell glyph contrast ${g.ratio.toFixed(2)} @${width} ${theme}`);
     assert.equal(g.stroke, '1.75'); assert.ok(Math.abs(g.size - 20) < 0.6, `20px glyph (${g.size})`);
     if (wide) {
-      const ask = await page.locator('.v2-tb-ask').boundingBox(), nw = await page.locator('.v2-tb-new').boundingBox();
-      const pill = await page.locator('.v2-tb [data-testid="att-pill"]').boundingBox();
-      assert.ok(pill, 'attendance pill present');
+      assert.equal(await page.locator('.v2-tb-ask, .v2-tb-new').count(), 0, 'no Ask field and no + New in the header');
+      const pill = await page.locator('.v2-tb [data-testid="att-capsule"]').boundingBox();
+      assert.ok(pill, 'check-in capsule present');
       const mid = (r) => r.y + r.height / 2;
-      assert.ok(Math.abs(mid(bb) - mid(nw)) <= 1 && Math.abs(mid(bb) - mid(ask)) <= 1 && Math.abs(mid(bb) - mid(pill)) <= 1, `bell centred with Ask, the attendance pill and + New @${width}`);
-      assert.ok(bb.x > ask.x + ask.width && bb.x + bb.width <= pill.x && pill.x + pill.width <= nw.x, 'Ask, bell, attendance pill, + New in order');
-      assert.ok(xb.x + xb.width <= pill.x - 2, `badge clear of the attendance pill @${width}`);
-      assert.ok(pill.x - (bb.x + bb.width) >= 6, 'breathing room between the bell and the pill');
+      assert.ok(Math.abs(mid(bb) - mid(pill)) <= 1, `bell centred with the check-in capsule @${width}`);
+      assert.ok(pill.x + pill.width <= bb.x, 'capsule, then the bell');
+      assert.ok(xb.x + xb.width <= width, `badge inside the window @${width}`);
+      assert.ok(bb.x - (pill.x + pill.width) >= 6, 'breathing room between the capsule and the bell');
       const tb = await page.locator('.v2-tb').boundingBox();
       await shot(page, `bell-${theme}-${width}.png`, { x: Math.max(0, tb.x + tb.width - 520), y: 0, width: Math.min(520, tb.width), height: 60 });
     } else await shot(page, `bell-${theme}-${width}.png`, { x: width - 220, y: 0, width: 220, height: 70 });
@@ -223,13 +223,13 @@ try {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(origin + '/preview-org/work');
     for (const w of [1440, 1280, 1024]) await bellVisual(page, w, theme);
-    // 99+ cap, still inside the viewport and clear of + New.
+    // 99+ cap, still inside the viewport and clear of the check-in capsule.
     await page.setViewportSize({ width: 1280, height: 900 });
     countOverride = { unread: 140, needsYou: 140, forInfo: 0, snoozed: 0, messages: 140, reminders: 0, meetings: 0, work: 0 };
     await page.evaluate(() => window.dispatchEvent(new Event('pm:check-notifications')));
     await page.waitForFunction(() => document.querySelector('.v2-tb .ncx-badge')?.textContent === '99+', null, { timeout: 8000 });
-    const xb = await badge(page).boundingBox(), nw = await page.locator('.v2-tb [data-testid="att-pill"]').boundingBox();
-    assert.ok(xb.x + xb.width <= nw.x - 2, '99+ clear of the attendance pill');
+    const xb = await badge(page).boundingBox(), nw = await page.locator('.v2-tb [data-testid="att-capsule"]').boundingBox();
+    assert.ok(xb.x >= nw.x + nw.width && xb.x + xb.width <= 1280, '99+ clear of the check-in capsule and inside the window');
     await shot(page, `bell-${theme}-99plus.png`, { x: 1280 - 520, y: 0, width: 520, height: 60 });
     countOverride = null;
     await page.setViewportSize({ width: 1440, height: 900 });

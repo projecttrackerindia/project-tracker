@@ -163,9 +163,9 @@ try {
     await shot(page, 'style-presets-1440.png');
     checks.push('presets');
 
-    // Groot: "Make this page more visual".
+    // Aura: "Make this page more visual".
     await panel.getByRole('button', { name: 'Make this page more visual' }).click();
-    assert.match(await page.getByTestId('groot-idea').innerText(), /Groot suggests/);
+    assert.match(await page.getByTestId('groot-idea').innerText(), /Aura suggests/);
     await panel.getByRole('button', { name: 'Not now' }).click();
 
     // Advanced CSS: styles the page's text, never the app around it.

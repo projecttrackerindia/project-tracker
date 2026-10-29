@@ -24,7 +24,7 @@ export function AgentPage({ section, onSection }: { section: AgentSection; onSec
   const assigned = useWsQuery(['agent', 'assigned'], agentApi.assigned);
   return (
     <>
-      <PageHead eyebrow="Groot · Project agent" title="Proposals" sub="Proposals from your projects' email, chat and meetings, waiting for a decision.">
+      <PageHead eyebrow="Aura · Project agent" title="Proposals" sub="Proposals from your projects' email, chat and meetings, waiting for a decision.">
         <Segmented label="Project agent" value={section} onChange={onSection} options={[
           { id: 'review', label: 'To review', count: inbox.data?.pending || undefined },
           { id: 'assigned', label: 'Given to me', count: assigned.data?.pending || undefined },

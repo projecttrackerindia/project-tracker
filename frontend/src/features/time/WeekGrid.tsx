@@ -470,7 +470,7 @@ function QuickAdd({ grid, rows, onAdd, beforeSave }: { grid: TimesheetGrid; rows
         {mic.state !== 'recording' && <button type="submit" className="btn btn-sm btn-primary" disabled={!text.trim() || reading || mic.state === 'reading'}>{reading && <span className="spinner" />}Add</button>}
         {mic.state === 'idle' && (
           <button type="button" className="btn btn-sm btn-ghost tsg-ask" title="Describe your day and the assistant prepares the entries for you to confirm" onClick={() => ask(text.trim() ? `Log my time: ${text.trim()}` : 'Log my time for today: ')}>
-            <Icon name="sparkle" size={14} />Ask Groot
+            <Icon name="sparkle" size={14} />Ask Aura
           </button>
         )}
         {hint && <span id="tsg-quick-hint" className="tsg-quick-hint" role="alert">{hint}</span>}

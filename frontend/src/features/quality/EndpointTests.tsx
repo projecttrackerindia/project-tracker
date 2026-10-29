@@ -24,7 +24,7 @@ export function useEndpointTests(endpointId: string) {
 /**
  * "Tests" on an API endpoint's page: the cases that verify it (with their latest result per environment), the latest run per environment with
  * pass/fail and when, whether it is covered (a linked case passed within 30 days), "Add test case" prefilled from the endpoint, and
- * "✦ Generate test cases": Groot's proposals as cards to confirm one by one. Every confirmed case is linked to the endpoint.
+ * "✦ Generate test cases": Aura's proposals as cards to confirm one by one. Every confirmed case is linked to the endpoint.
  */
 export function EndpointTests({ endpointId, projectId }: { endpointId: string; projectId: string | null }) {
   const wid = useWorkspaceId();
@@ -94,7 +94,7 @@ export function EndpointTests({ endpointId, projectId }: { endpointId: string; p
 
       {asked && proposals.data && (
         <div className="et-proposals" aria-label="Proposed test cases">
-          <p className="et-groot"><span className="et-orb" aria-hidden="true" /> Groot proposes {cards.length} case{cards.length === 1 ? '' : 's'} from this endpoint&apos;s description. Nothing is added until you confirm.</p>
+          <p className="et-groot"><span className="et-orb" aria-hidden="true" /> Aura proposes {cards.length} case{cards.length === 1 ? '' : 's'} from this endpoint&apos;s description. Nothing is added until you confirm.</p>
           <ul>
             {cards.map((d) => (
               <li key={d.kind} className="et-card" data-testid="proposal">

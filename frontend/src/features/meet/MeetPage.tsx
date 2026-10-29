@@ -52,7 +52,7 @@ export function MeetPage({ section }: { section: Section }) {
       {/* v2: Meet lives in Talk (?f=meetings&s=…); the tabs keep the section in the query, which a NavLink cannot tell apart. */}
       <nav className="tabs route-tabs" aria-label="Meet">
         {([['upcoming', 'Upcoming', 'calendar'], ['series', 'Series', 'repeat'], ['past', 'Past', 'clock'],
-          ...(projects && role !== 'Guest' ? [['notetaker', 'Groot notetaker', 'sparkle']] : [])] as [Section, string, IconName][]).map(([id, label, icon]) => (
+          ...(projects && role !== 'Guest' ? [['notetaker', 'Aura notetaker', 'sparkle']] : [])] as [Section, string, IconName][]).map(([id, label, icon]) => (
           <Link key={id} to={`/messages?f=meetings&s=${id}${projectId ? `&project=${encodeURIComponent(projectId)}` : ''}`} className={`tab ${section === id ? 'active' : ''}`}
             aria-current={section === id ? 'page' : undefined}><Icon name={icon} />{label}</Link>
         ))}

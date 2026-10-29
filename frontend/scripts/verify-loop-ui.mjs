@@ -7,7 +7,7 @@ import { appCsp } from './lib/csp.mjs';
 
 // The owner's loop audit: Today's "Team & portfolio signals" (separate from Needs you, owner + one action, never a bare "Nothing needs you"
 // while signals exist, numbers that open filtered lists, glossary definitions), the timesheet review before "Submit week" (target explained,
-// fixes, warnings acknowledged), Quality ↔ API docs (an endpoint's Tests, Groot's proposed cases confirmed one by one, coverage on projects and
+// fixes, warnings acknowledged), Quality ↔ API docs (an endpoint's Tests, Aura's proposed cases confirmed one by one, coverage on projects and
 // named gaps on Library collections) and the Calendar's empty week. Light and dark at 1440, and a 390 phone. Built frontend, synthetic fixtures.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/loop-ui');
 await fs.mkdir(out, { recursive: true });
@@ -60,7 +60,7 @@ const reviewOf = (billableFixed) => {
   return { weekStart: monday, weekEnd: wday(6), totalMinutes: 600, target, issues, errors: 0, warnings: issues.length, canSubmit: true };
 };
 
-// ---- Library: an API endpoint with its Tests, Groot's proposals, coverage
+// ---- Library: an API endpoint with its Tests, Aura's proposals, coverage
 const now = Date.now(), iso = (m) => new Date(now + m * 60000).toISOString();
 const E = (id, method, p, summary, score, gaps) => ({ id, documentId: 'd1', definitionId: 'def1', definition: 'Lending API', method, path: p, summary, tag: 'Loans', deprecated: false, score, gaps, stage: 'Uat', updatedAt: iso(-30) });
 const eps = [E('e1', 'POST', '/loans/dispatch', 'Dispatch a loan', 90, ['No error cases']), E('e2', 'GET', '/loans/{id}', 'Get a loan', 55, ['No description', 'No success response example'])];
@@ -238,7 +238,7 @@ try {
     await page.getByTestId('review-submit').click();
     await page.getByText('Week submitted for approval.').waitFor();
 
-    // ---- Library: the endpoint's Tests, latest run per environment, Groot's proposals confirmed one by one.
+    // ---- Library: the endpoint's Tests, latest run per environment, Aura's proposals confirmed one by one.
     await page.goto(`${origin}/preview-org/library/p/${pid}/api/e1`);
     const et = page.getByTestId('endpoint-tests');
     await et.waitFor();

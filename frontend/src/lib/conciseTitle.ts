@@ -3,7 +3,7 @@ export const TITLE_MAX = 120;
 
 /**
  * A concise title from a long paragraph: drop a greeting ("Hi Team,"), take the first sentence, and cut it at a word to 120 characters.
- * The same rule as the server's GrootTitleService.FirstSentence, used when Groot (AI) is off or has not answered yet.
+ * The same rule as the server's GrootTitleService.FirstSentence, used when Aura (AI) is off or has not answered yet.
  */
 export function conciseTitle(text: string): string {
   let t = text.replace(/\s+/g, ' ').trim();

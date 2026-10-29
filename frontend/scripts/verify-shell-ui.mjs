@@ -92,10 +92,10 @@ try {
   assert.equal(await page.locator('.sidebar, .topbar').count(), 0, 'no sidebar or top bar');
   assert.equal(await page.getByRole('button', { name: 'Customize' }).count(), 0);
   assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'Today' }).isVisible());
-  // The wide layout: the toolbar's Ask field and + New at the top; no floating Ask bar and no + New in the sidebar.
-  assert.ok(await page.locator('.v2-tb-ask input[placeholder="Ask Groot or find anything"]').isVisible(), 'the toolbar Ask field (Groot)');
-  assert.equal(await page.locator('form.v2-ask').isVisible(), false, 'no floating Ask bar on a wide screen');
-  assert.equal(await page.locator('.v2-side .v2-new').isVisible(), false, 'no + New in the sidebar');
+  // The wide layout: Aura's dock at the bottom; the header has no Ask field and no + New; no + New in the sidebar either.
+  assert.ok(await page.locator('form.v2-ask input[placeholder="Ask Aura or tell it what to do"]').isVisible(), "Aura's dock");
+  assert.equal(await page.locator('.v2-tb-ask, .v2-tb-new').count(), 0, 'no Ask field or + New in the header');
+  assert.equal(await page.locator('.v2-side .v2-new, .v2-rail-new').count(), 0, 'no + New in the sidebar');
   await shot(page, 'rail-home-1440.png'); checks.push('rail');
   await page.locator('.v2-rail-item', { hasText: 'My Work' }).click(); await page.waitForTimeout(400);
   assert.equal(at(), '/work'); assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'My Work' }).isVisible()); checks.push('rail-navigates');
@@ -154,8 +154,8 @@ try {
   assert.ok(await page.getByTestId('own-key-status').filter({ hasText: 'Gemini' }).isVisible(), 'Gemini until a Claude key is added');
   await shot(page, 'ai-control-centre-1440.png'); checks.push('ai-control-centre');
 
-  // + New: words in, "I understood this as a ticket" with chips, created through the one Work API and opened in the side panel.
-  await page.goto(`${origin}/preview-org/`); await page.locator('.v2-tb-new').click();
+  // The create sheet (the dock's More… chip): words in, "I understood this as a ticket" with chips, created through the one Work API and opened in the side panel.
+  await page.goto(`${origin}/preview-org/`); await page.locator('form.v2-ask input').click(); await page.locator('.aura-chip[data-chip="more"]').click();
   await page.locator('.v2-new-input input').fill('VPN down for collections team, critical, give to Priya');
   await page.waitForTimeout(300);
   assert.equal(await page.locator('.v2-new-type.on').innerText(), 'Ticket');
@@ -169,13 +169,13 @@ try {
   assert.equal(made.b.kind, 'ticket'); assert.equal(made.b.priority, 'Critical'); assert.equal(made.b.assigneeId, '00000000-0000-0000-0000-0000000000b2'); assert.equal(made.b.workTypeId, '00000000-0000-0000-0000-0000000000c1');
   assert.equal(await page.locator('.v2-new-sheet').count(), 0);
   await page.locator('.v2-panel').getByText('WT-9 · Ticket').waitFor(); assert.equal(at(), '/work?item=00000000-0000-0000-0000-0000000000f1'); checks.push('new-sheet');
-  await page.keyboard.press('Control+k'); assert.ok(await page.locator('.v2-tb-ask input').evaluate((el) => el === document.activeElement), 'Ctrl K puts the cursor in the toolbar Ask field');
+  await page.keyboard.press('Control+k'); assert.ok(await page.locator('form.v2-ask input').evaluate((el) => el === document.activeElement), "Ctrl K puts the cursor in Aura's dock");
   await page.keyboard.press('Control+k'); await page.locator('.cmdk').waitFor(); await page.keyboard.press('Escape'); checks.push('ctrl-k');
 
-  // On a project page the Ask bar is "Ask Groot about <project>" at the bottom right; it opens the Groot chat about that project.
-  await page.goto(`${origin}/preview-org/work/projects/${project.id}`); await page.locator('.v2-ask.corner').waitFor();
-  await page.locator('.v2-ask.corner', { hasText: 'Ask Groot about Razor pay' }).waitFor();
-  await page.locator('.v2-ask.corner').click(); await page.locator('.groot-chat').waitFor();
+  // On a project page the dock is "Ask Aura about <project>"; its orb opens the Aura chat about that project.
+  await page.goto(`${origin}/preview-org/work/projects/${project.id}`);
+  await page.locator('form.v2-ask input[placeholder="Ask Aura about Razor pay"]').waitFor();
+  await page.getByRole('button', { name: 'Open Aura' }).click(); await page.locator('.groot-chat').waitFor();
   assert.ok((await page.locator('.groot-chat .gc-empty').innerText()).includes('Razor pay'));
   assert.ok((await page.locator('.groot-chat .gc-sugg').innerText()).includes('What is at risk on Razor pay?'));
   assert.equal(await page.locator('.groot-chat footer, .groot-chat .modal-footer').count(), 0, 'no Save / Cancel footer');
@@ -183,11 +183,12 @@ try {
   await shot(page, 'copilot-1440.png'); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
   await page.locator('.groot-chat').waitFor({ state: 'detached', timeout: 3000 }); assert.equal(await page.locator('.groot-chat').count(), 0); checks.push('copilot');
 
-  // Phone: the five places and + New at the bottom, nothing cut off.
+  // Phone: the five places and Aura's dock at the bottom, nothing cut off.
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto(`${origin}/preview-org/work`); await page.locator('.v2-phone-bar').waitFor(); await page.waitForTimeout(500);
-  // Four places and More (the same on iPhone and Android); + New is in the top bar; More opens every other place as tiles.
+  // Four places and More (the same on iPhone and Android); no + New (Aura's dock above the tab bar creates); More opens every other place as tiles.
   assert.deepEqual(await page.locator('.v2-phone-tab .v2-rail-label').allTextContents(), ['Today', 'Work', 'Messages', 'Projects', 'More']);
-  assert.equal(await page.getByRole('button', { name: 'New', exact: true }).count(), 1);
+  assert.equal(await page.getByRole('button', { name: 'New', exact: true }).count(), 0);
+  await page.locator('form.v2-ask input[placeholder="Ask Aura or tell it what to do"]').waitFor();
   await page.locator('.v2-phone-tab', { hasText: 'More' }).click();
   const more = page.getByRole('dialog', { name: 'All places' }); await more.waitFor();
   assert.ok((await more.locator('.v2-more-tile').allInnerTexts()).some((t) => /Library/.test(t)), 'Library is under More');

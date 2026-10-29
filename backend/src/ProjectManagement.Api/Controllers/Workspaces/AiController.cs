@@ -11,7 +11,7 @@ public record SetAiAllowedRequest(bool Allowed);
 [Route("api/v1/ai"), RequireWorkspace]
 public class AiController(AiAssistant assistant, GrootTitleService titles) : ApiControllerBase
 {
-    /// <summary>Groot: a short title for a long description (+ New); the first sentence when AI is off. Never fails for want of AI.</summary>
+    /// <summary>Aura: a short title for a long description (+ New); the first sentence when AI is off. Never fails for want of AI.</summary>
     [HttpPost("title"), AiRequestLimit]
     public async Task<IActionResult> Title([FromBody] GrootTitleRequest req, CancellationToken ct) => Ok(await titles.SuggestAsync(req, ct));
 

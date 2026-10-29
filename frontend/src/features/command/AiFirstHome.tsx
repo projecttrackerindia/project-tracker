@@ -107,7 +107,7 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
                         {a.link ? <Link to={a.link}>{a.title}</Link> : <button type="button" className="aih-item-btn" onClick={() => onTab('today')}>{a.title}</button>}
                         <small>{[a.projectKey, a.why[0] ?? a.detail].filter(Boolean).join(' · ')}</small>
                       </div>
-                      <button type="button" className="aih-ask" onClick={() => ask(`Help me deal with this: ${a.title}${a.projectKey ? ` (${a.projectKey})` : ''}. What should I do, and can you prepare it?`)} title="Ask Groot to handle it">
+                      <button type="button" className="aih-ask" onClick={() => ask(`Help me deal with this: ${a.title}${a.projectKey ? ` (${a.projectKey})` : ''}. What should I do, and can you prepare it?`)} title="Ask Aura to handle it">
                         <Icon name="sparkle" size={12} /><span>Ask</span>
                       </button>
                     </li>
@@ -126,7 +126,7 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
                         <Link to={`/work?item=${w.id}`}><span className="aih-key">{w.key}</span> {w.title}</Link>
                         <small>{w.state === 'overdue' ? `Late${w.daysLate ? ` by ${w.daysLate} day${w.daysLate === 1 ? '' : 's'}` : ''}` : w.state === 'due_today' ? 'Due today' : w.due ? `Due ${formatDate(w.due)}` : 'No due date'}{w.waiting.length ? ` · ${w.waiting.length} waiting on it` : ''}</small>
                       </div>
-                      <button type="button" className="aih-ask" onClick={() => ask(`Help me finish ${w.key} "${w.title}": what is left, what is blocking it, and what should I do next?`)} title="Ask Groot about it">
+                      <button type="button" className="aih-ask" onClick={() => ask(`Help me finish ${w.key} "${w.title}": what is left, what is blocking it, and what should I do next?`)} title="Ask Aura about it">
                         <Icon name="sparkle" size={12} /><span>Ask</span>
                       </button>
                     </li>

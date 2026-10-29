@@ -73,7 +73,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
             { label: 'Export to PDF', icon: 'download', onSelect: () => void exportAs('pdf') },
             { label: 'Action items', icon: 'flag', hint: b?.openActionItems ? `${b.openActionItems} open across projects` : 'Follow-ups across projects', onSelect: () => setItemsOpen(true) },
             { label: 'Send me this', icon: 'send', hint: 'The brief, in the app and by e-mail', onSelect: () => void sendBrief() },
-            { label: 'Risk review', icon: 'sparkle', hint: 'Ask Groot which projects will miss their dates', hidden: !ai,
+            { label: 'Risk review', icon: 'sparkle', hint: 'Ask Aura which projects will miss their dates', hidden: !ai,
               onSelect: () => useAssistant.getState().ask('Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.') },
           ]} />
         </div>

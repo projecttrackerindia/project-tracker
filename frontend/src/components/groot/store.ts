@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { AiAction, AiMessage, AiPlanStep } from '../../features/ai/aiApi';
 
-/** One step Groot took while answering ("Reading WT-12…", "Creating ticket…"), from the stream's tool events. */
+/** One step Aura took while answering ("Reading WT-12…", "Creating ticket…"), from the stream's tool events. */
 export interface GrootStep { id: string; label: string; state: 'running' | 'done' | 'failed' }
 export interface GrootTurn {
   id: string; q: string; text: string; message: AiMessage | null; actions: AiAction[]; steps: GrootStep[]; plan: AiPlanStep[];
@@ -9,7 +9,7 @@ export interface GrootTurn {
 }
 
 /**
- * The Groot chat: open or not, what it is about (a project or the page), the conversation of this session (kept while the panel is closed
+ * The Aura chat: open or not, what it is about (a project or the page), the conversation of this session (kept while the panel is closed
  * and opened again), and a question waiting to be asked when it opens.
  */
 interface GrootStore {
@@ -36,5 +36,5 @@ export const useGroot = create<GrootStore>((set, get) => ({
   update: (fn) => set((s) => ({ turns: fn(s.turns) })),
 }));
 
-/** Opens Groot from anywhere, optionally with a question to ask straight away. */
+/** Opens Aura from anywhere, optionally with a question to ask straight away. */
 export const openGroot = (question?: string | null, context?: string | null, about?: string | null) => useGroot.getState().show(question, context, about);

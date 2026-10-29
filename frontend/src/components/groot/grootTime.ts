@@ -1,6 +1,6 @@
 /**
- * Groot's sense of time: the organization's day (its time zone and working hours, from Settings › Operations and the workspace's zone),
- * which part of that day it is now, and what Groot offers to do at that time.
+ * Aura's sense of time: the organization's day (its time zone and working hours, from Settings › Operations and the workspace's zone),
+ * which part of that day it is now, and what Aura offers to do at that time.
  */
 
 export interface OrgDay { zone: string; startMin: number; endMin: number; /** Monday = 1 … Sunday = 64 (Mon–Fri = 31). */ workDays: number }
@@ -41,7 +41,7 @@ export function greeting(part: DayPart, now: Date, zone: string, firstName?: str
 const hhmm = (min: number) => { const h = Math.floor(min / 60), m = min % 60; const ap = h >= 12 ? 'PM' : 'AM'; return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${ap}`; };
 export const workingHours = (day: OrgDay) => `${hhmm(day.startMin)}–${hhmm(day.endMin)}`;
 
-/** What Groot offers on an empty chat, by the organization's time of day. */
+/** What Aura offers on an empty chat, by the organization's time of day. */
 export function suggestionsFor(part: DayPart, project?: string | null): GrootSuggestion[] {
   if (project) return [
     { label: `What is at risk on ${project}?`, prompt: `What is at risk on ${project}?` },
@@ -78,8 +78,8 @@ export function suggestionsFor(part: DayPart, project?: string | null): GrootSug
 }
 
 /**
- * The check-out hook: Groot's "Check out" fires a cancelable `groot:checkout` window event. The attendance feature listens and calls
- * `preventDefault()` when it takes over; when nobody does, this returns false and Groot falls back to wrapping up the day in chat.
+ * The check-out hook: Aura's "Check out" fires a cancelable `groot:checkout` window event. The attendance feature listens and calls
+ * `preventDefault()` when it takes over; when nobody does, this returns false and Aura falls back to wrapping up the day in chat.
  */
 export function grootCheckout(source: 'groot-chat' | 'suggestion' = 'suggestion'): boolean {
   const e = new CustomEvent('groot:checkout', { cancelable: true, detail: { source, at: new Date().toISOString() } });

@@ -104,7 +104,7 @@ export const aiWorkspaceApi = {
   profile: () => get<AiProfile>('/ai/profile'),
   setProfileNotes: (notes: string) => put<AiProfile>('/ai/profile', { notes }),
   resetProfile: () => del('/ai/profile'),
-  /** Groot: a short title for a long description (the first sentence when AI is off). */
+  /** Aura: a short title for a long description (the first sentence when AI is off). */
   title: (text: string, kind?: string) => post<{ title: string; ai: boolean }>('/ai/title', { text, kind }),
   instructions: () => get<AiInstructions>('/ai/instructions'),
   setInstructions: (text: string) => put<AiInstructions>('/ai/instructions', { text }),

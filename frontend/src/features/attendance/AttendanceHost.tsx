@@ -1,4 +1,5 @@
 import { GrootAvatar } from '../../components/groot/GrootAvatar';
+import { flashAura } from '../../components/aura/mood';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -50,7 +51,7 @@ function writePrompt(wid: string | null, date: string, v: PromptState) { try { l
 /**
  * Check-in and check-out for the whole app: asks once a day at the first open (in the organization's working window, never on leave,
  * holidays or days off), "Not now" asks again in 30 minutes; opens the check-in card or the check-out sheet when the pill, the calendar, a
- * notification (?attendance=checkin|checkout) or Groot (window event 'groot:checkout' / 'groot:checkin') asks.
+ * notification (?attendance=checkin|checkout) or Aura (window event 'groot:checkout' / 'groot:checkin') asks.
  */
 export function AttendanceHost() {
   const on = useAttendanceOn();
@@ -72,7 +73,7 @@ export function AttendanceHost() {
     show('checkin', 'prompt');
   }, [on, d, wid, open, show, tick]);
 
-  // a notification's link, and Groot
+  // a notification's link, and Aura
   useEffect(() => {
     const a = params.get('attendance');
     if (!on || (a !== 'checkin' && a !== 'checkout')) return;
@@ -80,7 +81,7 @@ export function AttendanceHost() {
     setParams((p) => { const n = new URLSearchParams(p); n.delete('attendance'); return n; }, { replace: true });
   }, [params, setParams, on, show]);
   useEffect(() => {
-    const out = (e: Event) => { e.preventDefault(); show('checkout'); };   // we handle it, so Groot does not fall back to asking in chat
+    const out = (e: Event) => { e.preventDefault(); show('checkout'); };   // we handle it, so Aura does not fall back to asking in chat
     const inn = (e: Event) => { e.preventDefault(); show('checkin'); };
     window.addEventListener('groot:checkout', out);
     window.addEventListener('groot:checkin', inn);
@@ -145,6 +146,7 @@ function CheckInCard({ today, prompted, onDone, onSnooze }: { today: AttendanceT
     try {
       const r = await attendanceApi.checkIn({ mode, place: mode === 'ClientSite' ? place.trim() : null, note: note.trim() || null, source: sourceOfDevice() });
       toast(`Checked in · ${modeOf(r.mode).short} · ${r.checkInLocal}`);
+      flashAura('morning', 4000);
       void invalidateWorkspace(wid, 'attendance');
       onDone();
     } catch (e) { toast(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not check in.', 'error'); }
@@ -154,7 +156,7 @@ function CheckInCard({ today, prompted, onDone, onSnooze }: { today: AttendanceT
   return (
     <AttFrame label="Check in" onClose={prompted ? onSnooze : onDone} testId="att-checkin">
       <header className="att-hd">
-        <GrootAvatar state="greeting" size={56} className="groot-avatar" />
+        <GrootAvatar state="greeting" mood="morning" size={56} className="groot-avatar" />
         <div>
           <h2>{greeting(today?.localTime)}{first ? `, ${first}` : ''}</h2>
           <p>{already ? `You checked in at ${already.checkInLocal}.` : 'Where are you working today?'}</p>
@@ -213,6 +215,7 @@ function CheckOutSheet({ today, onClose }: { today: AttendanceToday | null; onCl
     try {
       const res = await attendanceApi.checkOut({ note: note.trim() || null });
       setDone(res);
+      flashAura('evening', 4000);
       void invalidateWorkspace(wid, 'attendance');
     } catch (e) { toast(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not check out.', 'error'); }
     finally { setBusy(false); }
@@ -221,7 +224,7 @@ function CheckOutSheet({ today, onClose }: { today: AttendanceToday | null; onCl
   return (
     <AttFrame label="Check out" onClose={onClose} testId="att-checkout">
       <header className="att-hd">
-        <GrootAvatar state={done ? 'success' : 'greeting'} size={56} className="groot-avatar" />
+        <GrootAvatar state={done ? 'success' : 'greeting'} mood="evening" size={56} className="groot-avatar" />
         <div>
           <h2>{done ? 'Have a good evening' : open ? 'Wrapping up?' : 'You’re not checked in'}</h2>
           <p>{done ? `Checked out at ${done.day.checkOutLocal}.` : open ? `${m?.emoji} ${m?.label}${open.place ? ` · ${open.place}` : ''} · since ${open.checkInLocal}` : r?.checkOutLocal ? `You checked out at ${r.checkOutLocal}.` : 'Check in first to start your day.'}</p>

@@ -31,7 +31,7 @@ html .ncx-bell.ncx-bell { padding: 0; margin: 0; }
 .ncx-bell.ring .ncx-bell-glyph { animation: ncx-ring .8s cubic-bezier(.36, .07, .19, .97) 1; }
 @keyframes ncx-ring { 0%, 100% { transform: rotate(0); } 12% { transform: rotate(14deg); } 26% { transform: rotate(-12deg); } 40% { transform: rotate(9deg); }
   54% { transform: rotate(-6deg); } 68% { transform: rotate(3deg); } 82% { transform: rotate(-1deg); } }
-/* In the toolbar the bell sits on the 52px bar between "Ask Groot…" and "+ New": the ring matches the bar. */
+/* In the toolbar the bell sits on the 52px bar between "Ask Aura…" and "+ New": the ring matches the bar. */
 .v2-tb .ncx-bell { --ncx-ring: var(--ds-bg); }
 
 /* ------------------------------------------------------------------ the panel */

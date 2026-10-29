@@ -1,4 +1,4 @@
-/* API endpoint › Tests: coverage, latest run per environment, linked cases, Groot's proposals. */
+/* API endpoint › Tests: coverage, latest run per environment, linked cases, Aura's proposals. */
 .et-cov { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
 .et-cov.ok { background: rgba(52, 199, 89, .14); color: #1a7f35; }
 .et-cov.no { background: rgba(255, 149, 0, .14); color: #a35c00; }

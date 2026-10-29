@@ -100,7 +100,7 @@ export function RiskButton({ projectId }: { projectId: string }) {
   if (!enabled) return null;
   return (
     <>
-      <button type="button" className="btn btn-ghost btn-sm asst-ghost" onClick={() => setOpen(true)} title="Ask Groot how likely this project is to be late"><Sparkle size={14} /> Delay risk</button>
+      <button type="button" className="btn btn-ghost btn-sm asst-ghost" onClick={() => setOpen(true)} title="Ask Aura how likely this project is to be late"><Sparkle size={14} /> Delay risk</button>
       {open && <RiskModal projectId={projectId} onClose={() => setOpen(false)} />}
     </>
   );
@@ -220,7 +220,7 @@ export function AiWorkspaceSwitch() {
   if (!s?.configured) return null;
   const toggle = async () => {
     setBusy(true);
-    try { await aiApi.setAllowed(!s.allowedHere); void invalidateWorkspace(wid, 'ai'); toast(s.allowedHere ? 'Groot is off for this workspace.' : 'Groot is on.'); }
+    try { await aiApi.setAllowed(!s.allowedHere); void invalidateWorkspace(wid, 'ai'); toast(s.allowedHere ? 'Aura is off for this workspace.' : 'Aura is on.'); }
     catch (e) { toast(errText(e, 'Could not change it.'), 'error'); } finally { setBusy(false); }
   };
   return (

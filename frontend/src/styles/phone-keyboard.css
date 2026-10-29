@@ -11,7 +11,9 @@
 
   /* Typing anywhere: the tab bar and the floating Ask bar step aside so the field is never covered. */
   html.kb-open .m-tabs, html.composing .m-tabs { display: none !important; }
-  html.kb-open .v2-ask:not(:focus-within), html.composing .v2-ask { display: none !important; }
+  html.kb-open .aura-dock-wrap:not(:focus-within), html.composing .aura-dock-wrap { display: none !important; }
+  /* typing in the dock itself: it rides on top of the keyboard */
+  html.kb-open .m-shell .aura-dock-wrap:focus-within { bottom: calc(var(--kb, 0px) + 8px); }
   html.kb-open .m-shell .content { padding-bottom: 16px; }
   html.kb-open .toast-root { bottom: calc(var(--kb, 0px) + 8px) !important; }
 
@@ -52,7 +54,7 @@
   .chat-info.as-phone-sheet .chat-info-done { display: inline-flex; position: absolute; right: 8px; bottom: 6px; height: 36px; padding: 0 10px; align-items: center; font-size: 17px; font-weight: 600; color: #0a84ff; background: none; border: 0; border-radius: 8px; }
   .chat-info.as-phone-sheet .chat-info-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
     padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
-  html.info-sheet-open .m-tabs, html.info-sheet-open .v2-ask { display: none !important; }
+  html.info-sheet-open .m-tabs, html.info-sheet-open .aura-dock-wrap { display: none !important; }
 }
 @keyframes infoSheetUp { from { transform: translateY(100%); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .chat-info.as-phone-sheet { animation: none; } }
