@@ -135,6 +135,12 @@ try {
     for (const [chip, radio] of kinds) {
       if (!(await field(page).evaluate((el) => el === document.activeElement))) await field(page).click();
       await page.locator(`.aura-chip[data-chip="${chip}"]`).click();
+      if (chip === 'meeting') {
+        // A meeting opens the one schedule sheet straight away, with the words shown as where it came from (design: meet-schedule).
+        const ms = page.getByTestId('schedule-sheet'); await ms.waitFor();
+        await page.keyboard.press('Escape'); await ms.waitFor({ state: 'detached' });
+        continue;
+      }
       const sheet = page.locator('.v2-new-sheet'); await sheet.waitFor();
       if (chip === 'task') assert.equal(await page.getByLabel('What to create').inputValue(), 'Move LUM-14 to Friday');
       if (radio) assert.equal(await sheet.getByRole('radio', { name: radio, exact: true }).getAttribute('aria-checked'), 'true', `${chip}: ${radio} chosen`);
@@ -142,7 +148,7 @@ try {
       if (chip === 'more') await shot(page, 'chip-more-1440.png');
       await page.getByLabel('What to create').focus(); await page.keyboard.press('Escape'); await sheet.waitFor({ state: 'detached' });
     }
-    checks.push('chips open task, meeting, ticket, doc, time and the full chooser');
+    checks.push('chips open task, the schedule sheet, ticket, doc, time and the full chooser');
 
     // Asking: the chat opens on the right with the orb thinking and step lines at once; then a plan card.
     await field(page).click(); await field(page).fill('Move LUM-14 to Friday and tell Tomas'); await page.keyboard.press('Enter');

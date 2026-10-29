@@ -1,4 +1,5 @@
 import { Face } from '../../components/Face';
+import { MeetTimeCards } from '../meet/MeetTime';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AgentPage, type AgentSection } from '../agent/AgentPage';
 import { AiPage } from '../ai/AiPage';
@@ -133,6 +134,7 @@ function ForYou({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) => void
         </div>
       </header>
       <Briefing q={briefing} team={team} />
+      {view === 'me' && <div className="hm-mlog"><MeetTimeCards /></div>}
       <YourDay team={team} />
       <div className="hm-grid">
         <InboxCard />

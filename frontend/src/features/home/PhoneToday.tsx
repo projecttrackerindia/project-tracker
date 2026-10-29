@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { MeetTimeCards } from '../meet/MeetTime';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -81,6 +82,7 @@ export function PhoneToday() {
           : watch ? <span data-testid="needs-you-empty"><b>Nothing needs you right now</b> · {watch} below.</span>
           : <b>Nothing needs you right now.</b>}
       </p>
+      <MeetTimeCards phone />
       {list.length > 0 && (
         <section className="pt-card" aria-label="Needs you">
           {list.map((r) => {

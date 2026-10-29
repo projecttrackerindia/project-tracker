@@ -44,6 +44,10 @@ public record WeekDraftDto(DateOnly WeekStart, IReadOnlyList<DraftCellDto> Cells
 public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppClock clock, TimeService time, TimesheetApprovalService approvals, ProjectAccess access,
     PermissionService permissions, ProjectManagement.Application.Features.Ai.AiAgentGate gate)
 {
+    /// <summary>What a row's time goes to: the work task, the task, or (time in a meeting, kind "meeting") the meeting itself.</summary>
+    public static Guid TargetOf(TimeEntryDto e) => e.WorkTaskId ?? e.TaskId
+        ?? (e.MeetingRef is { Length: > 2 } r && Guid.TryParse(r[2..], out var m) ? m : Guid.Empty);
+
     public const int MaxCells = 120;
     private const int MaxSuggestions = 12;
 
@@ -86,7 +90,7 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var projectIds = sheet.Entries.Where(e => e.ProjectId != null).Select(e => e.ProjectId!.Value).Distinct().ToList();
         var projectNames = projectIds.Count == 0 ? [] : await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name, ct);
         var rows = sheet.Entries
-            .GroupBy(e => (Kind: e.Kind, Target: e.Kind == "work" ? e.WorkTaskId!.Value : e.TaskId!.Value))
+            .GroupBy(e => (Kind: e.Kind, Target: TimesheetGridService.TargetOf(e)))
             .Select(g =>
             {
                 var first = g.First();
@@ -136,10 +140,10 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
         void Add(GridSuggestionDto s) { if (list.Count < MaxSuggestions && have.Add((s.Kind, s.TargetId))) list.Add(s); }
 
         if (running is not null)
-            Add(new GridSuggestionDto(running.Kind, running.Kind == "work" ? running.WorkTaskId!.Value : running.TaskId!.Value, running.TaskKey, running.TaskTitle, running.ProjectId, null, "timer"));
+            Add(new GridSuggestionDto(running.Kind, TimesheetGridService.TargetOf(running), running.TaskKey, running.TaskTitle, running.ProjectId, null, "timer"));
 
         var last = await time.TimesheetAsync(week.AddDays(-7), week.AddDays(-1), null, ct);
-        foreach (var g in last.Entries.GroupBy(e => (e.Kind, Target: e.Kind == "work" ? e.WorkTaskId!.Value : e.TaskId!.Value)).OrderByDescending(g => g.Sum(e => e.Minutes)))
+        foreach (var g in last.Entries.Where(e => e.Kind != "meeting").GroupBy(e => (e.Kind, Target: TimesheetGridService.TargetOf(e))).OrderByDescending(g => g.Sum(e => e.Minutes)))
             Add(new GridSuggestionDto(g.Key.Kind, g.Key.Target, g.First().TaskKey, g.First().TaskTitle, g.First().ProjectId, null, "lastWeek"));
 
         // Tasks the person changed or commented on this week (from the activity log), then open tasks assigned to them.
@@ -359,9 +363,10 @@ public class TimesheetGridService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var previous = await time.TimesheetAsync(week.AddDays(-7), week.AddDays(-1), null, ct);
         var current = await time.TimesheetAsync(week, week.AddDays(6), null, ct);
         var leave = (await db.PlannedLeaves.AsNoTracking().Where(l => l.UserId == me && l.WorkDate >= week && l.WorkDate <= week.AddDays(6)).Select(l => l.WorkDate).ToListAsync(ct)).ToHashSet();
-        var filled = current.Entries.Select(e => (e.Kind, Target: e.Kind == "work" ? e.WorkTaskId!.Value : e.TaskId!.Value, e.WorkDate)).ToHashSet();
+        var filled = current.Entries.Select(e => (e.Kind, Target: TimesheetGridService.TargetOf(e), e.WorkDate)).ToHashSet();
         var changes = previous.Entries.Where(e => !e.IsRunning)
-            .GroupBy(e => (e.Kind, Target: e.Kind == "work" ? e.WorkTaskId!.Value : e.TaskId!.Value, Date: e.WorkDate.AddDays(7)))
+            .Where(e => e.Kind != "meeting")   // meeting time is logged from the meeting, never copied forward
+            .GroupBy(e => (e.Kind, Target: TimesheetGridService.TargetOf(e), Date: e.WorkDate.AddDays(7)))
             .Where(g => g.Key.Date <= today && g.Key.Date.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && !leave.Contains(g.Key.Date) && !filled.Contains(g.Key))
             .Select(g => new GridCellChange(g.Key.Kind, g.Key.Target, g.Key.Date, Math.Min(24 * 60, g.Sum(e => e.Minutes)),
                 g.Select(e => e.Note).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)), Billable: g.All(e => e.Billable)))

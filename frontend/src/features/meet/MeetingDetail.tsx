@@ -12,6 +12,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { BriefModal, DelegateModal, ReportModal } from '../command/CommandParts';
 import { meetApi, type MeetItem, type Rsvp } from './meetApi';
 import { wallInZone, zonedTimeToUtc } from './timezone';
+import { MeetingCapture, OccurrenceEditor } from './MeetingWork';
 import './meet.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -139,6 +140,10 @@ export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false
 
           {base.description && <div><h3 className="mt-h">Agenda</h3><p className="mt-agenda">{base.description}</p></div>}
 
+          {base.status === 'Scheduled' && (
+            <MeetingCapture kind={kind} id={id} at={session?.originalStart ?? session?.start ?? null} projectId={p?.projectId ?? null} projectName={session?.projectName ?? null} title={title} />
+          )}
+
           <div>
             <h3 className="mt-h">People <small>{[counts.Accepted && `${counts.Accepted} going`, counts.Tentative && `${counts.Tentative} maybe`, counts.Declined && `${counts.Declined} not going`, counts.NeedsAction && `${counts.NeedsAction} not replied`].filter(Boolean).join(' · ')}</small></h3>
             <ul className="mt-people">
@@ -163,7 +168,9 @@ export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false
             )}
           </div>
 
-          {moving && <MoveForm kind={kind} id={id} start={base.startTime} end={base.endTime} zone={zone} onDone={() => { setMoving(false); refresh(); }} onCancel={() => setMoving(false)} />}
+          {moving && (base.recurrenceRule && ours && session
+            ? <OccurrenceEditor kind={kind} id={id} occurrence={session.originalStart ?? session.start} start={session.start} end={session.end} zone={zone} title={title} onDone={() => { setMoving(false); refresh(); }} onCancel={() => setMoving(false)} />
+            : <MoveForm kind={kind} id={id} start={base.startTime} end={base.endTime} zone={zone} onDone={() => { setMoving(false); refresh(); }} onCancel={() => setMoving(false)} />)}
 
           {base.status === 'Scheduled' && (
             <div className="mt-detail-actions">
@@ -176,7 +183,7 @@ export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false
               {canManage && kind === 'project' && base.isScrum && <button type="button" className="btn btn-ghost btn-sm" disabled={busy === 'summary'} onClick={() => void run('summary', () => meetingApi.standupSummary(id), 'Stand-up summary posted to the project chat.')}><Icon name="message" size={14} />Post stand-up summary</button>}
               {base.calendarUrl && !ours && <a className="btn btn-ghost btn-sm" href={base.calendarUrl} target="_blank" rel="noopener noreferrer"><Icon name="calendar" size={14} />Open in {base.provider === 'microsoft' ? 'Outlook' : 'Google Calendar'}</a>}
               <span className="mt-grow" />
-              {canManage && (!base.recurrenceRule || ours) && !moving && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMoving(true)}>Move</button>}
+              {canManage && (!base.recurrenceRule || ours) && !moving && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMoving(true)}>{base.recurrenceRule ? 'Change session…' : 'Move'}</button>}
               {canManage && <button type="button" className="btn btn-ghost btn-sm mt-danger" disabled={busy === 'cancel'} onClick={() => void cancel()}>{base.recurrenceRule ? 'Cancel series' : 'Cancel meeting'}</button>}
             </div>
           )}

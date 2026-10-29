@@ -172,6 +172,10 @@ public interface IAppDbContext
     DbSet<ProjectMeeting> ProjectMeetings { get; }
     DbSet<WorkspaceMeeting> WorkspaceMeetings { get; }
     DbSet<WorkspaceMeetingAttendee> WorkspaceMeetingAttendees { get; }
+    DbSet<MeetingOccurrenceChange> MeetingOccurrenceChanges { get; }
+    DbSet<MeetingTimeProposal> MeetingTimeProposals { get; }
+    DbSet<MeetingReviewSession> MeetingReviewSessions { get; }
+    DbSet<MeetingReviewDecision> MeetingReviewDecisions { get; }
     DbSet<ProjectAgentSettings> ProjectAgentSettings { get; }
     DbSet<AgentSignal> AgentSignals { get; }
     DbSet<AgentRun> AgentRuns { get; }

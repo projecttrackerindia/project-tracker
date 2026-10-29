@@ -11,6 +11,9 @@ namespace ProjectManagement.Infrastructure.Persistence;
 
 public partial class AppDbContext
 {
+    /// <summary>What a time entry is spent on: a task, a work task, or a project meeting (neither, with the meeting named).</summary>
+    public const string OneTimeTarget = "(\"TaskId\" IS NOT NULL AND \"WorkTaskId\" IS NULL) OR (\"TaskId\" IS NULL AND \"WorkTaskId\" IS NOT NULL) OR (\"TaskId\" IS NULL AND \"WorkTaskId\" IS NULL AND \"MeetingRef\" IS NOT NULL)";
+
     private static void ConfigureWork(ModelBuilder b)
     {
         b.Entity<Project>(e =>
@@ -70,6 +73,11 @@ public partial class AppDbContext
             e.HasIndex(x => new { x.TenantId, x.AssigneeId });
             e.HasIndex(x => new { x.TenantId, x.DueDate });
             e.HasIndex("TenantId", "ItemType");
+            e.Property(x => x.SourceMeetingRef).HasMaxLength(40);
+            e.Property(x => x.SourceSeriesRef).HasMaxLength(40);
+            e.Property(x => x.SourceMeetingTitle).HasMaxLength(200);
+            e.Property(x => x.LatestNote).HasMaxLength(500);
+            e.HasIndex(x => new { x.TenantId, x.SourceSeriesRef });
         });
         b.Entity<WorkTask>(e =>
         {
@@ -480,6 +488,9 @@ public partial class AppDbContext
             e.Property(x => x.RecurrenceRule).HasMaxLength(200);
             e.Property(x => x.CalendarUrl).HasMaxLength(2000);
             e.Property(x => x.LastSummaryDay).HasMaxLength(8);
+            e.Property(x => x.VideoKind).HasMaxLength(16);
+            e.Property(x => x.VideoLink).HasMaxLength(500);
+            e.Property(x => x.AttendeeTeamIds).HasMaxLength(800);
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Organizer).WithMany().HasForeignKey(x => x.OrganizerUserId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -493,7 +504,40 @@ public partial class AppDbContext
             e.Property(x => x.GoogleMeetUri).HasMaxLength(300);
             e.Property(x => x.RecurrenceRule).HasMaxLength(200);
             e.Property(x => x.CalendarUrl).HasMaxLength(2000);
+            e.Property(x => x.VideoKind).HasMaxLength(16);
+            e.Property(x => x.VideoLink).HasMaxLength(500);
+            e.Property(x => x.AttendeeTeamIds).HasMaxLength(800);
             e.HasOne(x => x.Organizer).WithMany().HasForeignKey(x => x.OrganizerUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<MeetingOccurrenceChange>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.MeetingId, x.OccurrenceStartUtc }).IsUnique();
+            e.Property(x => x.MeetingRef).HasMaxLength(40);
+            e.Property(x => x.Title).HasMaxLength(200);
+        });
+        b.Entity<MeetingTimeProposal>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.MeetingId, x.OccurrenceStartUtc }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.Status });
+            e.Property(x => x.MeetingRef).HasMaxLength(40);
+            e.Property(x => x.MeetingTitle).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.DismissReason).HasMaxLength(40);
+        });
+        b.Entity<MeetingReviewSession>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.SeriesRef, x.OccurrenceStartUtc });
+            e.Property(x => x.SeriesRef).HasMaxLength(40);
+            e.Property(x => x.MeetingTitle).HasMaxLength(200);
+        });
+        b.Entity<MeetingReviewDecision>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.SessionId });
+            e.HasIndex(x => new { x.TenantId, x.WorkItemId });
+            e.Property(x => x.ItemTitle).HasMaxLength(200);
+            e.Property(x => x.Decision).HasMaxLength(16);
+            e.Property(x => x.Reason).HasMaxLength(500);
+            e.Property(x => x.FromStatus).HasMaxLength(32);
         });
         b.Entity<WorkspaceMeetingAttendee>(e =>
         {
@@ -813,12 +857,13 @@ public partial class AppDbContext
             e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique().HasFilter("\"StartedAt\" IS NOT NULL AND \"EndedAt\" IS NULL")
                 .HasDatabaseName("IX_TimeEntries_TenantId_UserId_Running");
             e.Property(x => x.Note).HasMaxLength(500);
+            e.Property(x => x.MeetingRef).HasMaxLength(40);
+            e.Property(x => x.MeetingTitle).HasMaxLength(200);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<TaskItem>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.WorkTaskId).OnDelete(DeleteBehavior.Cascade);
-            // Time is spent on exactly one thing: a project task or a work task.
-            e.ToTable(t => t.HasCheckConstraint("CK_TimeEntries_OneTarget",
-                "(\"TaskId\" IS NOT NULL AND \"WorkTaskId\" IS NULL) OR (\"TaskId\" IS NULL AND \"WorkTaskId\" IS NOT NULL)"));
+            // Time is spent on exactly one thing: a project task, a work task, or (neither) a meeting of a project.
+            e.ToTable(t => t.HasCheckConstraint("CK_TimeEntries_OneTarget", OneTimeTarget));
         });
         b.Entity<TimesheetApproval>(e =>
         {

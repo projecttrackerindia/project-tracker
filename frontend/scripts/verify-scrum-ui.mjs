@@ -72,13 +72,15 @@ try{
   // A workspace stand-up needs no project: "No project" is the default, and the title follows the workspace.
   assert.equal(await dialog.getByLabel('Project',{exact:true}).inputValue(),'','No project is the default');
   assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Preview Workspace stand-up');
-  assert.equal(await dialog.getByLabel('Repeat',{exact:true}).inputValue(),'Weekdays','A stand-up repeats on weekdays by default');
-  assert.equal(await dialog.getByLabel('Duration',{exact:true}).inputValue(),'15');
-  assert.match(await dialog.locator('.mt-notetaker').innerText(),/Choose a project to bring the notetaker/);
-  await dialog.getByLabel('Repeat',{exact:true}).selectOption('Once');
-  await dialog.getByText('Priya Shah',{exact:true}).click();
-  await dialog.locator('input[type=date]').fill('2030-01-07');await dialog.locator('input[type=time]').fill('09:30');
-  await dialog.getByRole('button',{name:'Send invitation'}).click();await dialog.getByText('Meeting ready',{exact:true}).waitFor();
+  // The one schedule sheet (meet-schedule): a stand-up repeats daily on weekdays and lasts 15 minutes by default.
+  assert.equal(await dialog.getByRole('radiogroup',{name:'Repeats'}).getByRole('radio',{name:'Daily'}).getAttribute('aria-checked'),'true','A stand-up repeats on weekdays by default');
+  assert.ok(await dialog.getByLabel('Weekdays only').isChecked());
+  assert.equal(await dialog.getByRole('radiogroup',{name:'Duration'}).getByRole('radio',{name:'15m'}).getAttribute('aria-checked'),'true');
+  assert.equal(await dialog.locator('.mt-notetaker').count(),0,'No notetaker without a project');
+  await dialog.getByRole('radiogroup',{name:'Repeats'}).getByRole('radio',{name:'Once'}).click();
+  await dialog.getByRole('button',{name:'＋ Add'}).click();await dialog.getByRole('option',{name:'Priya Shah'}).click();
+  await dialog.getByLabel('Date',{exact:true}).fill('2030-01-07');await dialog.getByLabel('Start',{exact:true}).fill('09:30');
+  await dialog.getByRole('button',{name:'Schedule',exact:true}).click();await dialog.getByText('Meeting ready',{exact:true}).waitFor();
   assert.deepEqual(wsSaves.at(-1).participantUserIds,['00000000-0000-0000-0000-000000000009']);assert.equal(wsSaves.at(-1).startTime,'2030-01-07T04:00:00.000Z');
   assert.equal(wsSaves.at(-1).repeat,undefined);assert.equal(wsSaves.at(-1).scrum,true);assert.equal(wsSaves.at(-1).notetaker,undefined,'No notetaker without a project');
   checks.push(`scrum-no-project-${width}`);await dialog.getByRole('button',{name:'Done',exact:true}).click();
@@ -87,12 +89,12 @@ try{
   dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Stand-up',exact:true}).click();
   await dialog.getByLabel('Project',{exact:true}).selectOption(pid);
   assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Connected delivery stand-up');
-  await dialog.locator('input[type=date]').fill('2030-01-07');await dialog.locator('input[type=time]').fill('09:30');
-  await dialog.getByLabel('Repeat',{exact:true}).selectOption('Weekdays');await dialog.getByLabel('Total sessions',{exact:true}).fill('10');
+  await dialog.getByLabel('Date',{exact:true}).fill('2030-01-07');await dialog.getByLabel('Start',{exact:true}).fill('09:30');
+  await dialog.getByLabel('Total sessions',{exact:true}).fill('10');
   await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:path.join(out,`scrum-${width}.png`),animations:'disabled'});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'No viewport overflow');assert.deepEqual(await cutOff(page),[],'cut off at the right edge');
   const controls=await dialog.locator('input,select,textarea').evaluateAll(xs=>xs.every(x=>x.getBoundingClientRect().right<=innerWidth+1));assert.ok(controls,'Fields fit viewport');
-  await dialog.getByRole('button',{name:'Create series and invite'}).click();await dialog.getByText('Meeting ready',{exact:true}).waitFor();
+  await dialog.getByRole('button',{name:'Schedule',exact:true}).click();await dialog.getByText('Meeting ready',{exact:true}).waitFor();
   assert.deepEqual(saves.at(-1).repeat,{frequency:'Weekdays',occurrences:10});assert.equal(saves.at(-1).startTime,'2030-01-07T04:00:00.000Z');
   assert.equal(new Date(saves.at(-1).endTime)-new Date(saves.at(-1).startTime),900000);assert.equal(saves.at(-1).notetaker,'off');
   checks.push(`scrum-series-${width}`);await dialog.getByRole('button',{name:'Done',exact:true}).click();

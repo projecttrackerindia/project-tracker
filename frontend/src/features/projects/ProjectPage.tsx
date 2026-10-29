@@ -1,4 +1,5 @@
 import { useQueries } from '@tanstack/react-query';
+import { openSchedule } from '../meet/scheduleStore';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -171,6 +172,7 @@ export function ProjectPage() {
           <DotsMenu label="More on this project" listClassName="wide" items={[
             { label: 'Add work', icon: 'plus', hint: '+ New, in this project', hidden: !addWork, onSelect: () => openNew('task', '', { id: p.id, name: p.name }) },
             { label: 'Meet', icon: 'video', hint: 'The project’s calls and meetings', onSelect: () => nav(`/messages?f=meetings&s=upcoming&project=${p.id}`) },
+            { label: 'Schedule a meeting', icon: 'calendar', hint: 'Linked to this project; its time logs here', hidden: archived, onSelect: () => openSchedule({ project: { id: p.id, name: p.name } }) },
             { label: 'Chat', icon: 'message', hint: 'The project’s team chat', hidden: !chatOn, onSelect: () => openChat(p.id, p.name) },
             { label: canEdit ? 'Settings' : 'Members', icon: canEdit ? 'settings' : 'users', hint: canEdit ? 'Members, task workflow and automation' : 'Who is on this project', onSelect: () => setSettings('members') },
             { label: 'Delay risk', icon: 'sparkle', hint: 'How likely it is to be late, and why', hidden: !ai, onSelect: () => setRisk(true) },

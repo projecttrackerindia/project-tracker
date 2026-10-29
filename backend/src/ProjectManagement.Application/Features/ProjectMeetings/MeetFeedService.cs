@@ -18,7 +18,8 @@ namespace ProjectManagement.Application.Features.ProjectMeetings;
 public record MeetItemDto(string Ref, string Kind, Guid Id, string Title, string? Description, DateTimeOffset Start, DateTimeOffset End, string TimeZone,
     Guid? ProjectId, string? ProjectName, string? ProjectKey, string Provider, string ProviderName, string JoinUrl, string? CalendarUrl,
     bool IsScrum, bool Recurring, int? SessionsLeft, string Notetaker, string MyRsvp, bool IsOrganizer, bool CanManage, string OrganizerName,
-    int Invited, int Accepted, int Declined, string Status, string? Notes, bool Live);
+    int Invited, int Accepted, int Declined, string Status, string? Notes, bool Live,
+    string? Cadence = null, string? Recurrence = null, DateTimeOffset? OriginalStart = null, string? Video = null, string? SeriesRef = null, string? Agenda = null);
 
 public record MeetFeedDto(IReadOnlyList<MeetItemDto> Items, DateTimeOffset From, DateTimeOffset To, bool Truncated);
 
@@ -34,7 +35,8 @@ public class MeetFeedService(IAppDbContext db, ICurrentContext ctx, AppClock clo
 
     private sealed record Row(string Kind, Guid Id, string Title, string? Description, DateTime StartUtc, DateTime EndUtc, string TimeZone, string? Rule,
         Guid? ProjectId, string? ProjectName, string? ProjectKey, MeetingProvider Provider, string Uri, string? CalendarUrl, bool IsScrum, MeetingNotetaker Notetaker,
-        MeetingStatus Status, Guid OrganizerId, string OrganizerName, string MyRsvp, int Invited, int Accepted, int Declined);
+        MeetingStatus Status, Guid OrganizerId, string OrganizerName, string MyRsvp, int Invited, int Accepted, int Declined,
+        string? VideoKind = null, string? VideoLink = null, Guid? SeriesRootId = null);
 
     public async Task<MeetFeedDto> FeedAsync(DateTimeOffset? from, DateTimeOffset? to, Guid? projectId, CancellationToken ct = default)
     {
@@ -44,15 +46,17 @@ public class MeetFeedService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (end <= start) throw new ValidationException("to", "The end of the range must be after its start.");
         if (end - start > TimeSpan.FromDays(120)) throw new ValidationException("to", "Ask for at most 120 days at a time.");
         var rows = await RowsAsync(start, end, projectId, ct);
+        var changes = await MeetingSessions.ChangesAsync(db, rows.Where(r => r.Rule is not null).Select(r => r.Id), ct);
         var items = new List<MeetItemDto>();
         foreach (var r in rows)
         {
             var length = r.EndUtc - r.StartUtc;
             if (length <= TimeSpan.Zero) length = TimeSpan.FromMinutes(30);
-            foreach (var at in MeetingRecurrence.Occurrences(r.Rule, r.StartUtc, r.TimeZone, start - length, end))
+            // One-off changes ("this occurrence") are applied: a cancelled session is gone, a moved one is where it went.
+            foreach (var s in MeetingSessions.Expand(r.Rule, r.StartUtc, r.EndUtc, r.TimeZone, changes.GetValueOrDefault(r.Id), start - TimeSpan.FromDays(1), end))
             {
-                if (at + length <= start) continue;
-                items.Add(Item(r, at, at + length, null));
+                if (s.End <= start) continue;
+                items.Add(Item(r, s.Start, s.End, null) with { OriginalStart = new DateTimeOffset(s.Original, TimeSpan.Zero), Title = s.Title ?? r.Title });
             }
         }
         var ordered = items.OrderBy(i => i.Start).ThenBy(i => i.Title).ToList();
@@ -66,13 +70,14 @@ public class MeetFeedService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     {
         var now = clock.Now;
         var rows = (await RowsAsync(now.AddHours(-12), now.AddDays(1), projectId, ct, seriesOnly: true)).Where(r => r.Rule is not null).ToList();
+        var changes = await MeetingSessions.ChangesAsync(db, rows.Select(r => r.Id), ct);
         var items = new List<MeetItemDto>();
         foreach (var r in rows)
         {
             var length = r.EndUtc - r.StartUtc;
-            var left = MeetingRecurrence.Occurrences(r.Rule, r.StartUtc, r.TimeZone, now - length, now + MeetingRecurrence.LongestSeries).ToList();
+            var left = MeetingSessions.Expand(r.Rule, r.StartUtc, r.EndUtc, r.TimeZone, changes.GetValueOrDefault(r.Id), now - length, now + MeetingRecurrence.LongestSeries).ToList();
             if (left.Count == 0) continue;
-            items.Add(Item(r, left[0], left[0] + length, left.Count));
+            items.Add(Item(r, left[0].Start, left[0].End, left.Count) with { OriginalStart = new DateTimeOffset(left[0].Original, TimeSpan.Zero) });
         }
         return await DecorateAsync(items.OrderBy(i => i.Start).ToList(), ct);
     }
@@ -90,14 +95,14 @@ public class MeetFeedService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var project = await pq.OrderBy(m => m.StartTimeUtc).Take(MaxMeetings).Select(m => new
         {
             m.Id, m.Title, m.Description, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, m.RecurrenceRule, m.ProjectId, ProjectName = m.Project!.Name, ProjectKey = m.Project.Key,
-            m.Provider, m.GoogleMeetUri, m.CalendarUrl, m.IsScrum, m.Notetaker, m.Status, m.OrganizerUserId, Organizer = m.Organizer!.DisplayName,
+            m.Provider, m.GoogleMeetUri, m.CalendarUrl, m.IsScrum, m.Notetaker, m.Status, m.OrganizerUserId, Organizer = m.Organizer!.DisplayName, m.VideoKind, m.VideoLink, m.SeriesRootId,
             Mine = m.Participants.Where(x => x.UserId == me).Select(x => (AttendeeRsvpStatus?)x.RsvpStatus).FirstOrDefault(),
             Invited = m.Participants.Count(), Accepted = m.Participants.Count(x => x.RsvpStatus == AttendeeRsvpStatus.Accepted),
             Declined = m.Participants.Count(x => x.RsvpStatus == AttendeeRsvpStatus.Declined),
         }).ToListAsync(ct);
         var rows = project.Select(m => new Row("project", m.Id, m.Title, m.Description, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, m.RecurrenceRule, m.ProjectId, m.ProjectName, m.ProjectKey,
             m.Provider, m.GoogleMeetUri, m.CalendarUrl, m.IsScrum, m.Notetaker, m.Status, m.OrganizerUserId, m.Organizer,
-            m.OrganizerUserId == me ? "Organizer" : (m.Mine ?? AttendeeRsvpStatus.NeedsAction).ToString(), m.Invited, m.Accepted, m.Declined)).ToList();
+            m.OrganizerUserId == me ? "Organizer" : (m.Mine ?? AttendeeRsvpStatus.NeedsAction).ToString(), m.Invited, m.Accepted, m.Declined, m.VideoKind, m.VideoLink, m.SeriesRootId)).ToList();
 
         // Workspace meetings (no project): the ones the person is invited to or organizes.
         if (projectId is null)
@@ -108,14 +113,14 @@ public class MeetFeedService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             var workspace = await wq.OrderBy(m => m.StartTimeUtc).Take(MaxMeetings).Select(m => new
             {
                 m.Id, m.Title, m.Description, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, m.RecurrenceRule, m.Provider, m.GoogleMeetUri, m.CalendarUrl, m.IsScrum, m.Notetaker,
-                m.Status, m.OrganizerUserId, Organizer = m.Organizer!.DisplayName,
+                m.Status, m.OrganizerUserId, Organizer = m.Organizer!.DisplayName, m.VideoKind, m.VideoLink, m.SeriesRootId,
                 Mine = m.Attendees.Where(a => a.UserId == me).Select(a => (AttendeeRsvpStatus?)a.RsvpStatus).FirstOrDefault(),
                 Invited = m.Attendees.Count(), Accepted = m.Attendees.Count(a => a.RsvpStatus == AttendeeRsvpStatus.Accepted),
                 Declined = m.Attendees.Count(a => a.RsvpStatus == AttendeeRsvpStatus.Declined),
             }).ToListAsync(ct);
             rows.AddRange(workspace.Select(m => new Row("workspace", m.Id, m.Title, m.Description, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, m.RecurrenceRule, null, null, null,
                 m.Provider, m.GoogleMeetUri, m.CalendarUrl, m.IsScrum, m.Notetaker, m.Status, m.OrganizerUserId, m.Organizer,
-                m.OrganizerUserId == me ? "Organizer" : (m.Mine ?? AttendeeRsvpStatus.NeedsAction).ToString(), m.Invited, m.Accepted, m.Declined)));
+                m.OrganizerUserId == me ? "Organizer" : (m.Mine ?? AttendeeRsvpStatus.NeedsAction).ToString(), m.Invited, m.Accepted, m.Declined, m.VideoKind, m.VideoLink, m.SeriesRootId)));
         }
         return rows;
     }
@@ -123,11 +128,14 @@ public class MeetFeedService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     private MeetItemDto Item(Row r, DateTime at, DateTime until, int? left)
     {
         var workspace = r.Kind == "workspace";
-        var join = r.Provider == MeetingProvider.ProjectTracker ? MeetingCalendar.JoinPath(r.Id, workspace) : r.Uri;
+        // A pasted Teams / Meet / Zoho address is where people join; "none" has no join link at all.
+        var join = r.VideoKind == "none" ? "" : !string.IsNullOrEmpty(r.VideoLink) ? r.VideoLink : r.Provider == MeetingProvider.ProjectTracker ? MeetingCalendar.JoinPath(r.Id, workspace) : r.Uri;
         return new MeetItemDto($"{(workspace ? "w" : "p")}:{r.Id}", r.Kind, r.Id, r.Title, r.Description, new DateTimeOffset(at, TimeSpan.Zero), new DateTimeOffset(until, TimeSpan.Zero),
             r.TimeZone, r.ProjectId, r.ProjectName, r.ProjectKey, MeetingCalendar.Key(r.Provider), MeetingCalendar.Name(r.Provider), join, r.CalendarUrl,
             r.IsScrum, r.Rule is not null, left, MeetNotetaker.Key(r.Notetaker), r.MyRsvp, r.OrganizerId == ctx.UserId, false, r.OrganizerName,
-            r.Invited, r.Accepted, r.Declined, r.Status.ToString(), null, false);
+            r.Invited, r.Accepted, r.Declined, r.Status.ToString(), null, false,
+            MeetingRecurrence.Cadence(r.Rule), r.Rule is null ? "Once" : MeetingRecurrence.Describe(r.Rule, r.StartUtc, r.TimeZone), null,
+            r.VideoKind ?? MeetingCalendar.Key(r.Provider), MeetingSessions.Ref(workspace, r.SeriesRootId ?? r.Id), r.Description);
     }
 
     /// <summary>Adds who may change each meeting, the notetaker's state for each session, and whether its call is going on now.</summary>

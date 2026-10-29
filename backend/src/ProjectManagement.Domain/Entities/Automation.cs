@@ -43,6 +43,13 @@ namespace ProjectManagement.Domain.Entities
         public DateTime? EndedAt { get; set; }
         /// <summary>Time that can be charged to a client. Starts from the project's setting and can be changed per entry.</summary>
         public bool Billable { get; set; }
+        /// <summary>
+        /// Time spent in a meeting ("p:{id}"), logged from the post-meeting prompt: then neither <see cref="TaskId"/> nor <see cref="WorkTaskId"/>
+        /// is set and <see cref="ProjectId"/> is the meeting's project.
+        /// </summary>
+        public string? MeetingRef { get; set; }
+        /// <summary>The meeting's title when the time was logged.</summary>
+        public string? MeetingTitle { get; set; }
 
         public bool IsRunning => StartedAt is not null && EndedAt is null;
 

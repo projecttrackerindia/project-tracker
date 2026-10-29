@@ -16,6 +16,7 @@ import { toast } from '../../stores/ui';
 import { openReminderComposer } from '../../features/reminders/store';
 import { panelHosts, refreshWork } from '../../features/work/workUi';
 import { guessType, useNewSheet, type NewType } from './state';
+import { openScheduleFromWords } from '../../features/meet/openFromWords';
 import './v2.css';
 
 const ProjectFormModal = lazy(() => import('../../features/projects/ProjectFormModal').then((m) => ({ default: m.ProjectFormModal })));
@@ -244,7 +245,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
       case 'reminder': close(); openReminderComposer(long ? { text: words, title, note: words } : { text: words }); return;
       case 'doc': close(); nav(join('/library?new=1', q('title', title), long ? q('body', words) : '')); return;
       case 'secret': close(); nav(join('/library/vault?new=item', q('title', title))); return;
-      case 'meeting': close(); nav(join('/messages?f=meetings&new=schedule', q('title', title), long ? q('details', words) : '')); return;
+      case 'meeting': close(); { const mp = (projectId ? live.find((p) => p.id === projectId) : null) ?? named ?? null; openScheduleFromWords(words, long ? { title, agenda: words } : undefined, mp ? { id: mp.id, name: mp.name } : null); } return;
       case 'time': close(); nav(join('/insights?tab=time', q('log', words))); return;
     }
   };
@@ -254,7 +255,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
     else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void createIt(); }
     else if (e.key === 'Enter' && e.target === input.current) { e.preventDefault(); void createIt(); }
   };
-  const goes = type === 'doc' ? 'Opens Library to write it.' : type === 'secret' ? 'Opens the Vault to fill in the secret.' : type === 'meeting' ? 'Opens the meeting form in Messages.'
+  const goes = type === 'doc' ? 'Opens Library to write it.' : type === 'secret' ? 'Opens the Vault to fill in the secret.' : type === 'meeting' ? 'Opens the schedule sheet.'
     : type === 'time' ? 'Opens your timesheet with this entry.' : type === 'project' ? 'Opens the project form.' : type === 'reminder' ? 'Opens the reminder with the time it understood.'
     : projectWork && !project ? 'Pick the project it belongs to.' : projectWork && inProject && project?.id === inProject.id ? `Adds it to ${inProject.name}.` : null;
   // One line on why: the service level, who was named, the type and project it understood. Only what is known.

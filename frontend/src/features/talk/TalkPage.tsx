@@ -21,6 +21,7 @@ import { AskChatDialog, CatchUpDialog, QuestionsBox, SavedPanel, ScheduledPanel,
 import { FilesPanel, InfoPanel, NewChatModal } from '../chat/Panels';
 import { Thread } from '../chat/Thread';
 import { MeetingDetail } from '../meet/MeetingDetail';
+import { ActionReview } from '../meet/ActionReview';
 import { parseRef } from '../meet/meetApi';
 import { DotsMenu } from './DotsMenu';
 import { ToolbarSlot } from './ToolbarSlot';
@@ -516,6 +517,8 @@ const MEET_SECTIONS: readonly MeetSection[] = ['upcoming', 'series', 'past', 'no
 export function TalkPage() {
   const [params] = useSearchParams();
   const s = params.get('s') as MeetSection | null;
+  // Review action items (a series' since its last session, or all projects' / mine): its own full page.
+  if (params.get('f') === 'meetings' && params.has('review')) return <ActionReview key={`${params.get('review')}|${params.get('at')}`} seriesRef={params.get('review') || null} at={params.get('at')} />;
   if (params.get('f') === 'meetings' && ((s && MEET_SECTIONS.includes(s)) || params.has('new')))
     return <MeetPage section={s && MEET_SECTIONS.includes(s) ? s : 'upcoming'} />;
   if (params.get('f') === 'mail' || params.has('mail')) return <Navigate to={`/mail${params.has('compose') ? '?compose=1' : ''}`} replace />;

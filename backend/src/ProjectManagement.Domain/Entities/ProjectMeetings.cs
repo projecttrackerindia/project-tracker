@@ -62,6 +62,14 @@ namespace ProjectManagement.Domain.Entities
         public string? LastSummaryDay { get; set; }
         /// <summary>Whether the notetaker comes, and whether it may speak (chosen on the schedule form).</summary>
         public MeetingNotetaker Notetaker { get; set; }
+        /// <summary>How people join: "inapp", "teams", "meet", "zoho" or "none" (empty for meetings made before the choice).</summary>
+        public string? VideoKind { get; set; }
+        /// <summary>A Teams, Meet or Zoho address pasted by the organizer, used instead of the service's own link.</summary>
+        public string? VideoLink { get; set; }
+        /// <summary>The teams invited as a whole (comma-separated ids); their members were added as people when it was scheduled.</summary>
+        public string? AttendeeTeamIds { get; set; }
+        /// <summary>The meeting this one continues ("this and following" split a series): its id. Empty for a series' own first meeting.</summary>
+        public Guid? SeriesRootId { get; set; }
 
         public Project? Project { get; set; }
         public User? Organizer { get; set; }
@@ -92,6 +100,14 @@ namespace ProjectManagement.Domain.Entities
         public DateTime? CancelledAt { get; set; }
         /// <summary>Never Transcript or TranscriptAndVoice: a notetaker files its notes under a project, so a meeting with one is a project meeting.</summary>
         public MeetingNotetaker Notetaker { get; set; }
+        /// <summary>How people join: "inapp", "teams", "meet", "zoho" or "none" (empty for meetings made before the choice).</summary>
+        public string? VideoKind { get; set; }
+        /// <summary>A Teams, Meet or Zoho address pasted by the organizer, used instead of the service's own link.</summary>
+        public string? VideoLink { get; set; }
+        /// <summary>The teams invited as a whole (comma-separated ids); their members were added as people when it was scheduled.</summary>
+        public string? AttendeeTeamIds { get; set; }
+        /// <summary>The meeting this one continues ("this and following" split a series): its id. Empty for a series' own first meeting.</summary>
+        public Guid? SeriesRootId { get; set; }
 
         public User? Organizer { get; set; }
         public ICollection<WorkspaceMeetingAttendee> Attendees { get; set; } = new List<WorkspaceMeetingAttendee>();

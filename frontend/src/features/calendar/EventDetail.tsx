@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { openSchedule } from '../meet/scheduleStore';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -560,7 +561,7 @@ function CreateBody({ day, start, end, today, nowH, actions, onClose }: { day: s
       {tab === 'meet' && (
         <form className="ed-pick" data-testid="ed-meet-form" onSubmit={(e) => { e.preventDefault(); if (title.trim()) void schedule(); }}>
           <label className="wide"><span>Title</span><input className="ed-sel" aria-label="Meeting title" maxLength={200} value={title} placeholder="Sync on the release" onChange={(e) => setTitle(e.target.value)} /></label>
-          <p className="ed-note wide">A Project Tracker call. Invite people from Messages › Meetings.</p>
+          <p className="ed-note wide">A Project Tracker call. <button type="button" className="link" data-testid="ed-meet-more" onClick={() => { onClose(); openSchedule({ title: title.trim() || null, start: isoAtHour(day, start), minutes: Math.max(15, Math.round((end - start) * 60)) }); }}>Invite people, a project, repeats…</button></p>
           <div className="ed-pick-act"><button type="button" className="ed-btn ghost" onClick={onClose}>Cancel</button><button type="submit" className="ed-btn primary" disabled={busy || !title.trim()}>{busy ? 'Scheduling…' : 'Schedule'}</button></div>
         </form>
       )}

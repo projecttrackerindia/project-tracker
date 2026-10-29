@@ -272,6 +272,129 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
     }
 
+    // ------------------------------------------------------------------ meetings: capture, review decisions, owner updates
+
+    /// <summary>Who may change this item: the person who added it, the person it is assigned to, or a manager (the same rule as every edit).</summary>
+    private async Task<(Project Project, WorkTask Item)> EditableAsync(Guid projectId, Guid id, CancellationToken ct, bool allowArchivedComplete = false)
+    {
+        var project = await ViewableProjectAsync(projectId, ct);
+        if (!allowArchivedComplete || project.Status != ProjectStatus.Archived) RequireOpen(project);
+        var item = await FindAsync(projectId, id, ct);
+        var manager = await IsManagerAsync(project, ct);
+        if (!(manager || item.CreatedBy == ctx.UserId || item.AssigneeId == ctx.UserId))
+            throw new ForbiddenException("Only the person who added an action item, the person it is assigned to, or a manager can change it.", "PERMISSION_DENIED");
+        return (project, item);
+    }
+
+    /// <summary>Marks a just-created item as agreed in a meeting (its source), for the "◆ From:" tag and the series' review.</summary>
+    public async Task<ActionItemDto> SetSourceAsync(Guid projectId, Guid id, string meetingRef, string seriesRef, string meetingTitle, DateTime? occurrenceStartUtc, CancellationToken ct = default)
+    {
+        var (project, item) = await EditableAsync(projectId, id, ct);
+        item.SourceMeetingRef = meetingRef; item.SourceSeriesRef = seriesRef;
+        item.SourceMeetingTitle = meetingTitle.Length > 200 ? meetingTitle[..200] : meetingTitle;
+        item.SourceOccurrenceStartUtc = occurrenceStartUtc;
+        item.UpdatedAt = clock.Now; item.UpdatedBy = ctx.UserId;
+        recorder.Activity("actionitem.from_meeting", "ActionItem", id, $"Created from {item.SourceMeetingTitle}", projectId);
+        await db.SaveChangesAsync(ct);
+        return await OneAsync(project, item, ct);
+    }
+
+    /// <summary>
+    /// A review's owner and/or due change ("carried" to the next session, or re-planned). Moving the due later needs a reason, as any delivery
+    /// date does (<see cref="DueDateHistory"/>); the new owner is told.
+    /// </summary>
+    public async Task<ActionItemDto> ReplanAsync(Guid projectId, Guid id, Guid? assigneeId, bool changeAssignee, DateOnly? due, bool changeDue, string? reason, string action, CancellationToken ct = default)
+    {
+        var (project, item) = await EditableAsync(projectId, id, ct);
+        if (changeAssignee) await CheckAssigneeAsync(projectId, assigneeId, ct);
+        var oldAssignee = item.AssigneeId; var oldDue = item.DueDate; var oldTime = item.DueTime;
+        var newDue = changeDue ? due : item.DueDate;
+        var note = changeDue ? DueDateHistory.Prepare(oldDue, newDue, reason, null) : null;
+        if (changeAssignee) item.AssigneeId = assigneeId;
+        if (changeDue) { item.DueDate = newDue; item.DueTime = newDue is null ? null : item.DueTime; }
+        item.Version++; item.UpdatedAt = clock.Now; item.UpdatedBy = ctx.UserId;
+        var people = await ProjectManagement.Application.Features.Platform.FieldDiff.NamesAsync(db, [oldAssignee, item.AssigneeId], ct);
+        new ProjectManagement.Application.Features.Platform.FieldDiff()
+            .Add("Assignee", ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldAssignee), ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, item.AssigneeId))
+            .Add("Due date", oldDue, item.DueDate).Add("Due time", oldTime?.ToString("HH:mm"), item.DueTime?.ToString("HH:mm"))
+            .Record(recorder, "actionitem", "ActionItem", id);
+        var what = action == "carried" ? "Carried over" : "Re-planned";
+        var bits = new List<string>();
+        if (oldDue != item.DueDate) bits.Add(DueDateHistory.Describe(oldDue, item.DueDate, null));
+        if (oldAssignee != item.AssigneeId) bits.Add($"owner {ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldAssignee)} → {ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, item.AssigneeId)}");
+        var why = note?.Reason ?? reason?.Trim();
+        recorder.Activity($"actionitem.{action}", "ActionItem", id, $"{what} “{item.Title}”{(bits.Count > 0 ? ": " + string.Join(", ", bits) : "")}{(string.IsNullOrEmpty(why) ? "" : $" ({why})")}", projectId);
+        if (oldAssignee != item.AssigneeId) await NotifyAssignedAsync(project, item, ct);
+        await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
+        return await OneAsync(project, item, ct);
+    }
+
+    /// <summary>Drops an item: cancelled (not deleted, so the minutes and history still show it), with the reason kept.</summary>
+    public async Task<ActionItemDto> CancelAsync(Guid projectId, Guid id, string reason, CancellationToken ct = default)
+    {
+        var why = (reason ?? "").Trim();
+        if (why.Length == 0) throw new ValidationException("reason", "Say why it is dropped.");
+        if (why.Length > 500) throw new ValidationException("reason", "The reason can be at most 500 characters.");
+        var (project, item) = await EditableAsync(projectId, id, ct);
+        var was = item.Status;
+        item.Status = WorkTaskStatus.Cancelled; item.CompletedAt = null; item.CompletedBy = null;
+        item.Version++; item.UpdatedAt = clock.Now; item.UpdatedBy = ctx.UserId;
+        recorder.Activity("actionitem.dropped", "ActionItem", id, $"Dropped action item “{item.Title}”: {why}", projectId, was.ToString(), "Cancelled");
+        new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", was.ToString(), "Cancelled").Record(recorder, "actionitem", "ActionItem", id);
+        await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
+        return await OneAsync(project, item, ct);
+    }
+
+    /// <summary>Undo of a review decision: puts back the status, owner and due it had (only fields the decision changed are passed).</summary>
+    public async Task<ActionItemDto> RestoreFieldsAsync(Guid projectId, Guid id, WorkTaskStatus? status, Guid? assigneeId, bool restoreAssignee, DateOnly? due, bool restoreDue, CancellationToken ct = default)
+    {
+        var (project, item) = await EditableAsync(projectId, id, ct, allowArchivedComplete: true);
+        if (status is { } st && st != item.Status)
+        {
+            if (st == WorkTaskStatus.Completed) { item.CompletedAt = clock.Now; item.CompletedBy = ctx.UserId; } else { item.CompletedAt = null; item.CompletedBy = null; }
+            item.Status = st;
+        }
+        if (restoreAssignee) item.AssigneeId = assigneeId;
+        if (restoreDue) { item.DueDate = due; if (due is null) item.DueTime = null; }
+        item.Version++; item.UpdatedAt = clock.Now; item.UpdatedBy = ctx.UserId;
+        recorder.Activity("actionitem.review_undone", "ActionItem", id, $"Undid a review decision on “{item.Title}”", projectId);
+        await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
+        return await OneAsync(project, item, ct);
+    }
+
+    /// <summary>
+    /// The owner's one-line update ("On track", "Need help", "Ask to move date" or "Done"), kept on the item for everyone's review and added to
+    /// its comments. Need help and Ask to move date tell the person who added it; Done completes it.
+    /// </summary>
+    public async Task<ActionItemDto> OwnerUpdateAsync(Guid projectId, Guid id, string? note, string signal, CancellationToken ct = default)
+    {
+        var text = (note ?? "").Replace("\r\n", " ").Replace('\n', ' ').Trim();
+        if (text.Length > 500) throw new ValidationException("note", "Keep the update to 500 characters.");
+        var label = signal switch { "on_track" => "On track", "need_help" => "Need help", "move_date" => "Asks to move the date", "done" => "Done", "note" => null, _ => throw new ValidationException("signal", "Choose On track, Need help, Ask to move date or Done.") };
+        if (text.Length == 0 && label is null) throw new ValidationException("note", "Write the update.");
+        var (project, item) = await EditableAsync(projectId, id, ct, allowArchivedComplete: signal == "done");
+        var me = ctx.RequireUserId();
+        var line = string.Join(" · ", new[] { text.Length > 0 ? text : null, label }.Where(x => x is not null));
+        item.LatestNote = line.Length > 500 ? line[..500] : line; item.LastUpdateAt = clock.Now;
+        if (signal == "done" && item.Status != WorkTaskStatus.Completed) ApplyStatus(item, ActionItemStatus.Completed);
+        else if (signal is "on_track" && item.Status == WorkTaskStatus.ToDo) item.Status = WorkTaskStatus.InProgress;
+        else if (signal is "need_help" && item.Status is WorkTaskStatus.ToDo or WorkTaskStatus.InProgress) item.Status = WorkTaskStatus.OnHold;
+        item.Version++; item.UpdatedAt = clock.Now; item.UpdatedBy = me;
+        db.WorkTaskComments.Add(new WorkTaskComment { TenantId = item.TenantId, WorkTaskId = item.Id, AuthorId = me, Body = $"Update: {line}", CreatedAt = clock.Now, CreatedBy = me });
+        recorder.Activity("actionitem.owner_update", "ActionItem", id, $"Update on “{item.Title}”: {line}", projectId);
+        if (signal is "need_help" or "move_date" && item.CreatedBy is { } creator && creator != me)
+        {
+            var who = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Someone";
+            await notifications.AddAsync(creator, NotificationType.Nudge, signal == "need_help" ? $"{who} needs help: {item.Title}" : $"{who} asks to move the date: {item.Title}", line, LinkOf(projectId, id), ct: ct);
+        }
+        await db.SaveChangesAsync(ct);
+        await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
+        return await OneAsync(project, item, ct);
+    }
+
     /// <summary>Completing stamps who and when; reopening clears it.</summary>
     private void ApplyStatus(WorkTask item, ActionItemStatus next)
     {

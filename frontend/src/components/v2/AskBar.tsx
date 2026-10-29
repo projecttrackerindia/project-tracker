@@ -6,6 +6,7 @@ import { useWsQuery } from '../../lib/hooks';
 import { useAi, useAssistant } from '../../features/ai/Assistant';
 import { AuraOrb } from '../aura/AuraOrb';
 import { openGroot, useGroot } from '../groot/store';
+import { openScheduleFromWords } from '../../features/meet/openFromWords';
 import { openNew, pageContext, useCopilot, useNewSheet, type NewType } from './state';
 import { openPalette, searchHitLink } from '../CommandPalette';
 import { useIsMobile } from '../../lib/mobile';
@@ -116,6 +117,8 @@ export function AskBar() {
   const create = (type: NewType | null) => {
     const text = q.trim();
     setQ(''); input.current?.blur();
+    // A meeting opens the one schedule sheet straight away, with the sentence read into its fields.
+    if (type === 'meeting') { openScheduleFromWords(text); return; }
     openNew(type, text);
   };
   const go = (i: number) => { const h = found[i]; if (!h) return; setQ(''); input.current?.blur(); nav(searchHitLink(h)); };

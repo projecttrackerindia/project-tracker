@@ -125,7 +125,7 @@ try{
   // 4. Schedule (from Talk's ···): the notetaker is chosen per meeting; voice says why it cannot come; the choice is sent.
   await page.getByRole('button',{name:'More in Messages'}).click();await page.getByRole('menuitem',{name:/Schedule a meeting/}).click();
   const f=page.getByRole('dialog');await f.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
-  assert.match(await f.locator('.mt-notetaker').innerText(),/Choose a project to bring the notetaker/);
+  assert.equal(await f.locator('.mt-notetaker').count(),0,'The notetaker comes with a project: no row without one');
   await f.getByLabel('Project',{exact:true}).selectOption(project.id);
   const voice=f.getByRole('radio',{name:/Transcription \+ voice suggestions/});await voice.waitFor();
   assert.ok(await voice.isDisabled());assert.match(await f.locator('.mt-notetaker').innerText(),/Voice needs the speech service/);
@@ -133,7 +133,7 @@ try{
   await f.getByLabel('Title',{exact:true}).fill('Release go/no-go');
   await f.locator('input[type=date]').fill('2030-01-07');await f.locator('input[type=time]').fill('11:00');
   await shot('meet-schedule-1440.png');
-  await f.getByRole('button',{name:'Send invitation'}).click();await f.getByTestId('meeting-ready').waitFor();
+  await f.getByRole('button',{name:'Schedule',exact:true}).click();await f.getByTestId('meeting-ready').waitFor();
   const sent=writes.find(w=>w.ep===`/api/v1/projects/${project.id}/meetings/schedule`).b;
   assert.equal(sent.notetaker,'transcript');assert.equal(sent.startTime,'2030-01-07T05:30:00.000Z');assert.deepEqual(sent.participantUserIds,['u2']);
   await f.getByRole('button',{name:'Done',exact:true}).click();checks.push('schedule-with-notetaker');

@@ -31,6 +31,8 @@ import { LiveCallsBar } from '../features/calls/LiveCallsBar';
 import { CallHost } from '../features/calls/CallHost';
 import { IncomingCallHost } from '../features/calls/IncomingCall';
 import { isRingNotice } from '../features/calls/incomingCalls';
+import { ScheduleHost } from '../features/meet/ScheduleSheet';
+import { MeetTimePrompt } from '../features/meet/MeetTime';
 import { AskBar, GrootChatHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
 import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
@@ -149,6 +151,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {/* Aura's dock: every page, except inside a conversation (its composer owns the bottom edge; on a phone all of Messages) */}
       {!admin && !(phone && conversation) && !/^\/messages\/[^/]+/.test(loc.pathname) && <AskBar />}
       {!admin && <NewSheetHost />}
+      {!admin && <ScheduleHost />}
+      {!admin && <MeetTimePrompt />}
       {!admin && <GrootChatHost />}
       {!admin && <CopilotHost />}
       <SignInIsland />

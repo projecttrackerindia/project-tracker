@@ -124,14 +124,14 @@ try{
   await page.goto(origin+'/preview-org/meet/upcoming');   // v2: Meet's views are Talk › all meetings
   await page.getByRole('button',{name:'Schedule',exact:true}).click();
   await page.getByRole('dialog').getByLabel('Title',{exact:true}).fill('Atlas review');
-  const svc=page.getByRole('combobox',{name:'Meeting service'});await svc.waitFor();
-  assert.match(await svc.locator('option:checked').innerText(),/your choice: Project Tracker call/);
-  assert.deepEqual((await svc.locator('option').allInnerTexts()).map(x=>x.split(' (')[0]),['Automatic','Google Meet','Project Tracker call']);
-  assert.match(await page.locator('.gm-invite-note').innerText(),/One Project Tracker call/);
-  await page.getByRole('button',{name:'Send invitation'}).click();
+  // The schedule sheet's Video row starts from the organizer's own choice of service (here a Project Tracker call: In-app).
+  const video=page.getByRole('radiogroup',{name:'Video'});await video.waitFor();
+  await page.waitForFunction(()=>document.querySelector('[role="radiogroup"][aria-label="Video"] [aria-checked="true"]')?.textContent==='In-app');
+  assert.deepEqual(await video.getByRole('radio').allInnerTexts(),['In-app','Teams','Meet','Zoho','None']);
+  await page.getByRole('dialog').getByRole('button',{name:'Schedule',exact:true}).click();
   const ready=page.getByTestId('meeting-ready');await ready.waitFor();
   assert.match(await ready.innerText(),/Project Tracker call ready/);
-  assert.equal(writes.find(w=>w.ep==='/api/v1/meetings/schedule').b.service,'auto');
+  assert.equal(writes.find(w=>w.ep==='/api/v1/meetings/schedule').b.video,'inapp');
   assert.match(await ready.locator('code').innerText(),/\/preview-org\/calls\/meeting\/w\/m1$/);
   await shot(page,'schedule-ready.png');
   await ready.getByRole('link',{name:'Join Meeting'}).click();
