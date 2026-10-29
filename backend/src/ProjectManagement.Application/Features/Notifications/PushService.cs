@@ -215,7 +215,7 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
                 // A ring that waited (the worker was busy, or do-not-disturb held it) is not pushed any more: the call is no longer ringing.
                 var ring = IsRing(n);
                 if (ring && deliverableAt - n.CreatedAt > RingFor) continue;
-                var payload = JsonSerializer.Serialize(new { title = n.Title, body = n.Body, link = NotificationEmailService.OrgLink(slugs.GetValueOrDefault(n.TenantId), n.Link), tag = ring ? $"call-{CallIdOf(n)}" : n.Id.ToString(), type = n.Type.ToString(), token,
+                var payload = JsonSerializer.Serialize(new { title = n.Title, body = ProjectManagement.Application.Features.Reminders.DueReminderRules.ForChannel(n.Body), link = NotificationEmailService.OrgLink(slugs.GetValueOrDefault(n.TenantId), n.Link), tag = ring ? $"call-{CallIdOf(n)}" : n.Id.ToString(), type = n.Type.ToString(), token,
                     call = ring ? CallIdOf(n) : null, badge = badges.FirstOrDefault(b => b.UserId == n.UserId && b.TenantId == n.TenantId)?.Count ?? 0,
                     category = NotificationCategories.Of(n.Type, n.Link) }, Json);
                 foreach (var s in subs.Where(s => s.UserId == n.UserId && s.Failures < 20))

@@ -192,6 +192,25 @@ public class DayFixTests(ApiFactory factory)
     }
 
     [Fact]
+    public void Outbound_channels_never_show_the_raw_why_line()
+    {
+        // E-mail, push, digests, Slack, the inbox and Aura all read a body through ForChannel / SplitReason: the reason is a secondary last line.
+        var stored = DueReminderRules.WithReason("Due today · no time set", "ATL-3 · Board pack");
+        Assert.Equal("ATL-3 · Board pack\nDue today · no time set", DueReminderRules.ForChannel(stored));
+        Assert.Equal("Due today · no time set", DueReminderRules.ForChannel(DueReminderRules.WithReason("Due today · no time set", null)));
+        Assert.Equal("Plain body", DueReminderRules.ForChannel("Plain body"));
+        Assert.Null(DueReminderRules.ForChannel(null));
+        Assert.DoesNotContain(DueReminderRules.ReasonPrefix, DueReminderRules.ForChannel(stored));
+        // No outbound sender reads the stored body directly any more.
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && dir.Name != "src") dir = dir.Parent;
+        var app = Path.Combine(dir!.FullName, "ProjectManagement.Application", "Features");
+        foreach (var (file, raw) in new[] { ("Notifications/PushService.cs", "body = n.Body"), ("Notifications/NotificationService.cs", ": n.Body!;"),
+                     ("Integrations/ConnectedAccountsService.cs", "Escape(n.Body)") })
+            Assert.DoesNotContain(raw, File.ReadAllText(Path.Combine(app, file)));
+    }
+
+    [Fact]
     public async Task A_personal_reminder_notification_carries_its_reason()
     {
         var o = await Setup();

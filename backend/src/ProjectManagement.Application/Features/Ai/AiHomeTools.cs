@@ -228,7 +228,7 @@ public class AiHomeTools(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var notes = await notifications.ListAsync(true, 1, 15, ct, "needs");
         if (notes.Items.Count > 0)
         {
-            result["notifications"] = notes.Items.Select(n => new { id = n.Id, type = n.Type.ToString(), title = Cut(n.Title, 200), body = Cut(n.Body, 200), link = n.Link, at = n.CreatedAt });
+            result["notifications"] = notes.Items.Select(n => new { id = n.Id, type = n.Type.ToString(), title = Cut(n.Title, 200), body = Cut(ProjectManagement.Application.Features.Reminders.DueReminderRules.ForChannel(n.Body), 200), link = n.Link, at = n.CreatedAt });
             waiting += notes.Items.Count;
         }
         result["note"] = waiting == 0 ? "Nothing is waiting on the person right now." : Untrusted;

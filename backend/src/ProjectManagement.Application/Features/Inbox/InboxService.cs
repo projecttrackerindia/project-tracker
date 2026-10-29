@@ -212,7 +212,7 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
             .Where(n => n.UserId == me && n.Type == NotificationType.Mention && n.ReadAt == null && n.ArchivedAt == null && n.CreatedAt >= since)
             .OrderByDescending(n => n.CreatedAt).Take(20).ToListAsync(ct);
         foreach (var n in notes)
-            rows.Add(new InboxRowDto($"mention:{n.Id:N}", "mention", "mentions", n.Title, n.Body is { Length: > 0 } b ? Clip(b, 140) : "Mention",
+            rows.Add(new InboxRowDto($"mention:{n.Id:N}", "mention", "mentions", n.Title, ProjectManagement.Application.Features.Reminders.DueReminderRules.ForChannel(n.Body) is { Length: > 0 } b ? Clip(b, 140) : "Mention",
                 new InboxActionDto("Reply", "open"), n.Link, n.CreatedAt, false));
     }
 

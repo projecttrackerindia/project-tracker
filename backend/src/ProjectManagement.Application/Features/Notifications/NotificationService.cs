@@ -652,7 +652,7 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             var user = users[group.Key.UserId];
             var slug = tenants.GetValueOrDefault(group.Key.TenantId)?.Slug; var workspace = tenants.GetValueOrDefault(group.Key.TenantId)?.Name;
             var list = group.OrderBy(n => n.CreatedAt).ToList();
-            var items = list.Select(n => (n.Title, n.Body, baseUrl + OrgLink(slug, n.Link))).ToList();
+            var items = list.Select(n => (n.Title, ProjectManagement.Application.Features.Reminders.DueReminderRules.ForChannel(n.Body), baseUrl + OrgLink(slug, n.Link))).ToList();
                         var title = $"{list.Count} updates{(workspace is null ? "" : " in " + workspace)}";
             try
             {
@@ -677,7 +677,7 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             if (!users.TryGetValue(n.UserId, out var user) || !user.IsActive || !user.EmailVerified) { n.EmailPending = false; continue; }
             var workspace = tenants.GetValueOrDefault(n.TenantId)?.Name;
             var link = baseUrl + OrgLink(tenants.GetValueOrDefault(n.TenantId)?.Slug, n.Link);
-            var body = string.IsNullOrWhiteSpace(n.Body) ? n.Title : n.Body!;
+            var body = ProjectManagement.Application.Features.Reminders.DueReminderRules.ForChannel(n.Body) is { Length: > 0 } shown ? shown : n.Title;
             var headers = links?.Headers(n.UserId, n.Type);
             try
             {

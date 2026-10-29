@@ -116,6 +116,17 @@ public static class DueReminderRules
     /// <summary>The body with its reason as the first line ("Why: Due today · no time set").</summary>
     public static string WithReason(string reason, string? body) => string.IsNullOrWhiteSpace(body) ? ReasonPrefix + reason : $"{ReasonPrefix}{reason}\n{body}";
 
+    /// <summary>
+    /// A notification body as an outbound channel shows it (e-mail, push, digest, Slack): never the raw "Why: " line. The reason becomes a
+    /// secondary last line ("Due today · no time set") under the body, or the whole text when there is no body.
+    /// </summary>
+    public static string? ForChannel(string? body)
+    {
+        var (reason, rest) = SplitReason(body);
+        if (reason is null) return rest;
+        return string.IsNullOrWhiteSpace(rest) ? reason : $"{rest}\n{reason}";
+    }
+
     /// <summary>The reason line split off a notification body again (null when it has none).</summary>
     public static (string? Reason, string? Body) SplitReason(string? body)
     {
