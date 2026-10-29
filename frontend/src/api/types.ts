@@ -47,6 +47,10 @@ export interface ConsentDocument { type: string; version: number; title: string;
 export interface AppContext {
   user: User; workspaces: Workspace[]; current: CurrentWorkspace | null; fingerprint: string;
   blocked?: AccessBlocked | null; pendingConsent?: ConsentDocument[] | null;
+  /** The one zone this person's day runs in (their own, else the organization's, else Asia/Kolkata): every date and time is shown in it. */
+  timeZone?: string | null;
+  /** The person chose their zone by hand (only then does a UTC profile zone count). */
+  timeZoneChosen?: boolean;
 }
 
 // ---- single sign-on, SCIM and outside sign-in

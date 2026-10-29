@@ -43,10 +43,12 @@ function events(now) {
 
 const errors = [], checks = [];
 let NOW = at('09:00');
+// The device's zone, the profile's zone and the zone the server says the person's day runs in (ctx.timeZone).
+let DEVICE_TZ = 'Asia/Kolkata', USER_TZ = 'Asia/Kolkata', CTX_TZ = undefined;
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 try {
   async function context(theme) {
-    const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
+    const ctx = await browser.newContext({ timezoneId: DEVICE_TZ, serviceWorkers: 'block' });
     await ctx.clock.setFixedTime(NOW);
     await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); }, theme);
     await ctx.route('**/*', async (route) => {
@@ -65,7 +67,7 @@ try {
         data = { from, to, timeZone: 'Asia/Kolkata', scope: 'me', generatedAt: NOW.toISOString(), events: events(NOW).filter((t) => t.date >= from && t.date <= to) };
       }
       else if (ep.endsWith('/auth/refresh')) data = { accessToken: `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`, expiresAt: '2099-01-01T00:00:00Z', user };
-      else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['org.manage', 'work.view', 'work.edit', 'work.create', 'reports.view'], modules: { projects: 3, tasks: 3, calendar: 3, work: 3, ai: 3, activity: 3, documents: 3, people: 3, reports: 3, billing: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: {} } };
+      else if (ep === '/api/v1/me') data = { user: { ...user, timeZone: USER_TZ }, timeZone: CTX_TZ, timeZoneChosen: false, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['org.manage', 'work.view', 'work.edit', 'work.create', 'reports.view'], modules: { projects: 3, tasks: 3, calendar: 3, work: 3, ai: 3, activity: 3, documents: 3, people: 3, reports: 3, billing: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: {} } };
       else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
       else if (ep === '/api/v1/inbox') data = {
         rows: [
@@ -184,6 +186,35 @@ try {
   await noOverlap('18:40');
   await page.screenshot({ path: path.join(out, 'your-day-1840-1440.png'), animations: 'disabled' });
   await page.close(); await ctx.close();
+
+  // ---- an Electron shell / browser without a zone reports UTC, and the profile holds that reported UTC: the server says the day runs on
+  // India time (the organization's zone), and Your day and the Calendar draw India time, with a small IST beside the title.
+  DEVICE_TZ = 'UTC'; USER_TZ = 'UTC'; CTX_TZ = 'Asia/Kolkata';
+  ctx = await context('light');
+  page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await at$('10:29');
+  assert.equal(await page.locator('[data-testid="your-day"]').getAttribute('data-day'), today, 'today is India\'s date');
+  assert.equal(await focusStart(), 10.5, 'the focus block starts at 10:30 India time on a UTC device');
+  assert.match(await y().locator('[data-type="checkin"]').innerText(), /In 9:31/, 'the check-in reads India time');
+  assert.equal((await y().getByTestId('zone-badge').innerText()).trim(), 'IST');
+  await loggedBeforeNow('UTC device 10:29');
+  await page.screenshot({ path: path.join(out, 'your-day-utc-device-1440.png'), animations: 'disabled' });
+  await page.goto(origin + '/preview-org/?tab=calendar');
+  await page.locator('[data-testid="week-planner"]').waitFor({ timeout: 15000 });
+  assert.equal((await page.locator('.wp-whd [data-testid="zone-badge"]').innerText()).trim(), 'IST', 'the Calendar names its zone');
+  await page.screenshot({ path: path.join(out, 'calendar-utc-device-1440.png'), animations: 'disabled' });
+  checks.push('UTC device: Your day and Calendar on India time with an IST badge');
+  await page.close(); await ctx.close();
+  // On an Indian device (whose zone the profile already follows): no badge.
+  DEVICE_TZ = 'Asia/Kolkata'; USER_TZ = 'Asia/Kolkata';
+  ctx = await context('light');
+  page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await at$('10:29');
+  assert.equal(await page.getByTestId('zone-badge').count(), 0, 'no badge when the device is on the same zone');
+  await page.close(); await ctx.close();
+  USER_TZ = 'Asia/Kolkata'; CTX_TZ = undefined;
 
   // ---- dark, and the phone
   NOW = at('10:35');

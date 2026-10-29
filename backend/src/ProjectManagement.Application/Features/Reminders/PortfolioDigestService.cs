@@ -66,7 +66,7 @@ public class PortfolioDigestService(IAppDbContext db, IServiceScopeFactory scope
                             join u in db.Users.IgnoreQueryFilters().AsNoTracking() on m.UserId equals u.Id
                             where (m.Role == TenantRole.Owner || m.Role == TenantRole.Admin) && !t.IsDeleted && t.Status == TenantStatus.Active
                                   && t.Type == WorkspaceType.Organization && u.IsActive && !u.IsPlatformAdmin
-                            select new { m.TenantId, m.UserId, m.Role, u.TimeZone }).ToListAsync(ct);
+                            select new { m.TenantId, m.UserId, m.Role, u.TimeZone, OrgZone = t.TimeZone }).ToListAsync(ct);
         if (people.Count == 0) return 0;
         var settings = await db.ReminderSettings.AsNoTracking().Where(s => people.Select(p => p.UserId).Contains(s.UserId)).ToDictionaryAsync(s => s.UserId, ct);
 
@@ -75,7 +75,8 @@ public class PortfolioDigestService(IAppDbContext db, IServiceScopeFactory scope
         {
             var s = settings.GetValueOrDefault(p.UserId);
             if (s is { BriefingEnabled: false }) continue;
-            var local = ZoneTime.ToLocal(now, ZoneTime.Find(p.TimeZone));
+            var local = ZoneTime.ToLocal(now, ZoneTime.Find(ProjectManagement.Application.Services.AppClock.PersonZoneId(p.TimeZone, ProjectManagement.Application.Services.AppClock.Chose(s), p.OrgZone)
+                ?? ProjectManagement.Application.Services.AppClock.FallbackZoneId));
             if (local.DayOfWeek != DayOfWeek.Monday) continue;
             var at = TimeOnly.FromDateTime(local);
             var from = s?.BriefingTime ?? new ReminderSettings().BriefingTime;

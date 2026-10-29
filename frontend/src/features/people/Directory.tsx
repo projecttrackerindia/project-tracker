@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Member, Role } from '../../api/types';
 import { Icon } from '../../components/Icon';
@@ -141,12 +141,40 @@ export function VirtualRows<T>({ rows, height, render, label = 'People' }: { row
   useEffect(() => { const el = box.current; if (el && el.scrollTop !== at) { el.scrollTop = at; setTop(at); } }, [rows.length, at]);
   const first = Math.max(0, Math.floor(at / height) - 6);
   const last = Math.min(rows.length, Math.ceil((at + view) / height) + 6);
+  // The keyboard moves from row to row (arrows, Page Up/Down, Home/End). A row that is only drawn on demand cannot be reached with Tab, and
+  // the browser's own Page Down / End would only scroll this box, leaving its lower part under the window's edge: the row is brought into
+  // view in the box and in the page.
+  const want = useRef<number | null>(null);
+  const reveal = (i: number) => {
+    const el = box.current?.querySelector<HTMLElement>(`[data-index="${i}"]`);
+    if (!el) return false;
+    (el.querySelector<HTMLElement>('button,a,[tabindex]') ?? el).focus({ preventScroll: true });
+    el.scrollIntoView({ block: 'nearest' });
+    return true;
+  };
+  useEffect(() => { if (want.current !== null && reveal(want.current)) want.current = null; });
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const el = box.current; if (!el || !rows.length) return;
+    const cur = Number((document.activeElement?.closest('[data-index]') as HTMLElement | null)?.dataset.index ?? -1);
+    if (cur < 0) return;
+    const page = Math.max(1, Math.floor(view / height) - 1);
+    const step: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page, Home: -rows.length, End: rows.length };
+    if (!(e.key in step) || e.altKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    const to = Math.max(0, Math.min(rows.length - 1, cur + step[e.key]));
+    const rowTop = to * height;
+    if (rowTop < el.scrollTop) el.scrollTop = rowTop;
+    else if (rowTop + height > el.scrollTop + el.clientHeight) el.scrollTop = rowTop + height - el.clientHeight;
+    setTop(el.scrollTop);
+    if (!reveal(to)) want.current = to;
+  };
   return (
-    <div ref={box} className="pr-vlist" role="list" aria-label={label} aria-rowcount={rows.length} data-testid="people-list"
+    <div ref={box} className="pr-vlist" role="list" aria-label={label} aria-rowcount={rows.length} data-testid="people-list" onKeyDown={onKey}
       onScroll={(e) => setTop((e.target as HTMLDivElement).scrollTop)} style={{ ['--row-h' as string]: `${height}px` }}>
       <div style={{ height: rows.length * height, position: 'relative' }}>
         {rows.slice(first, last).map((r, i) => (
-          <div key={first + i} role="listitem" className="pr-vrow" style={{ transform: `translateY(${(first + i) * height}px)`, height }}>{render(r, first + i)}</div>
+          <div key={first + i} role="listitem" className="pr-vrow" data-index={first + i} aria-posinset={first + i + 1} aria-setsize={rows.length}
+            style={{ transform: `translateY(${(first + i) * height}px)`, height }}>{render(r, first + i)}</div>
         ))}
       </div>
     </div>

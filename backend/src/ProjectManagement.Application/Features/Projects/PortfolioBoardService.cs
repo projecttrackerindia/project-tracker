@@ -32,8 +32,17 @@ public record PortfolioCapacityDto(DateOnly From, DateOnly To, int People, IRead
 public record PortfolioBoardDto(DateOnly AsOf, PortfolioFilter Filter, PortfolioBriefDto Brief, IReadOnlyList<PortfolioDecisionDto> Decisions, PortfolioMoneyDto Money,
     PortfolioCapacityDto Capacity, IReadOnlyList<PortfolioChoiceDto> Owners, IReadOnlyList<PortfolioChoiceDto> Groups, string Summary);
 public record TimelineMilestoneDto(Guid Id, string Name, DateOnly? Due, string Status);
+/// <summary>The last time a project's due date moved, with the reason given (the hover card's "Last change").</summary>
+public record TimelineLastChangeDto(DateOnly? Previous, DateOnly? Revised, string? Reason, string? By, DateTime At);
+/// <summary>
+/// One bar. Additive fields (after <see cref="DependsOn"/>): the owner, the owning team (for grouping), how many days the forecast lands after the
+/// due date, the forecast's confidence and how it was worked out in words (<see cref="ForecastBasis"/>), open / blocked counts, the project's own
+/// version (so a dragged re-plan can be saved) and the last due-date change.
+/// </summary>
 public record TimelineProjectDto(Guid Id, string Key, string Name, string Health, string? Group, DateOnly? Start, DateOnly? Due, DateOnly? OriginalDue, DateOnly? Forecast, int Progress,
-    IReadOnlyList<TimelineMilestoneDto> Milestones, IReadOnlyList<Guid> DependsOn);
+    IReadOnlyList<TimelineMilestoneDto> Milestones, IReadOnlyList<Guid> DependsOn, Guid? OwnerId = null, string? Owner = null, Guid? TeamId = null, string? Team = null,
+    int? SlipDays = null, string? Confidence = null, string? ForecastBasis = null, int OpenTasks = 0, int BlockedTasks = 0, int FinishedLast28Days = 0, int Version = 0,
+    string? Status = null, TimelineLastChangeDto? LastChange = null);
 public record PortfolioTimelineDto(DateOnly From, DateOnly To, IReadOnlyList<TimelineProjectDto> Projects);
 public record ApplyDecisionRequest(string Option, PortfolioFilter? Filter = null);
 /// <summary>FindingIds: the proposals made, so a caller that is itself the decision ("Accept" on the portfolio) can approve them at once.</summary>
@@ -408,10 +417,27 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
                           join o in db.Tasks.AsNoTracking() on d.DependsOnTaskId equals o.Id
                           where ids.Contains(t.ProjectId) && ids.Contains(o.ProjectId) && t.ProjectId != o.ProjectId
                           select new { From = t.ProjectId, To = o.ProjectId }).Distinct().ToListAsync(ct);
-        var list = ranked.Select(r => new TimelineProjectDto(r.ProjectId, r.Key, r.Name, r.Health, r.Group, r.StartDate, r.DueDate,
-            firstDue.GetValueOrDefault(r.ProjectId) is { } o && o != r.DueDate ? o : null, r.ProjectedFinish, r.Progress,
-            milestones.Where(m => m.ProjectId == r.ProjectId).Select(m => new TimelineMilestoneDto(m.Id, m.Name, m.DueDate, m.Status.ToString())).ToList(),
-            deps.Where(d => d.From == r.ProjectId).Select(d => d.To).ToList())).OrderBy(p => p.Start ?? p.Due ?? DateOnly.MaxValue).ToList();
+        var meta = await db.Projects.AsNoTracking().Where(p => ids.Contains(p.Id)).Select(p => new { p.Id, p.OwnerId, p.TeamId, p.Version, p.Status }).ToListAsync(ct);
+        var metaBy = meta.ToDictionary(m => m.Id);
+        var teamIds = meta.Where(m => m.TeamId != null).Select(m => m.TeamId!.Value).Distinct().ToList();
+        var teams = await db.Teams.AsNoTracking().Where(t => teamIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
+        // The latest project-level due-date change, with who made it.
+        var lastChanges = (await db.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.TaskId == null).OrderByDescending(c => c.CreatedAt).Take(500)
+            .Select(c => new { c.ProjectId, c.Previous, c.Revised, c.Reason, c.CreatedBy, c.CreatedAt }).ToListAsync(ct)).GroupBy(c => c.ProjectId).ToDictionary(g => g.Key, g => g.First());
+        var byIds = lastChanges.Values.Where(c => c.CreatedBy != null).Select(c => c.CreatedBy!.Value).Distinct().ToList();
+        var byNames = await db.Users.AsNoTracking().Where(u => byIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var list = ranked.Select(r =>
+        {
+            var m = metaBy.GetValueOrDefault(r.ProjectId);
+            var team = m?.TeamId is { } tid ? teams.GetValueOrDefault(tid) : null;
+            var ch = lastChanges.GetValueOrDefault(r.ProjectId);
+            return new TimelineProjectDto(r.ProjectId, r.Key, r.Name, r.Health, r.Group, r.StartDate, r.DueDate,
+                firstDue.GetValueOrDefault(r.ProjectId) is { } o && o != r.DueDate ? o : null, r.ProjectedFinish, r.Progress,
+                milestones.Where(x => x.ProjectId == r.ProjectId).Select(x => new TimelineMilestoneDto(x.Id, x.Name, x.DueDate, x.Status.ToString())).ToList(),
+                deps.Where(d => d.From == r.ProjectId).Select(d => d.To).ToList(), m?.OwnerId, r.Owner, m?.TeamId, team, r.ProjectedSlipDays, r.Confidence,
+                TimelineForecast.Basis(r.Confidence, r.FinishedLast28Days, r.OpenTasks), r.OpenTasks, r.BlockedTasks, r.FinishedLast28Days, m?.Version ?? 0, m?.Status.ToString(),
+                ch is null ? null : new TimelineLastChangeDto(ch.Previous, ch.Revised, ch.Reason, ch.CreatedBy is { } b ? byNames.GetValueOrDefault(b) : null, ch.CreatedAt));
+        }).OrderBy(p => p.Start ?? p.Due ?? DateOnly.MaxValue).ToList();
         var dates = list.SelectMany(p => new[] { p.Start, p.Due, p.OriginalDue, p.Forecast }).Concat(milestones.Select(m => m.DueDate)).Where(d => d is not null).Select(d => d!.Value).ToList();
         var from = dates.Count == 0 ? clock.Today.AddDays(-14) : dates.Min();
         var to = dates.Count == 0 ? clock.Today.AddDays(90) : dates.Max();
@@ -476,6 +502,24 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         recorder.Audit("portfolio.exported", "Tenant", ctx.RequireTenantId(), null, new { format = format.ToString(), projects = b.Brief.Projects });
         return ReportWriter.Write(doc, format);
     }
+}
+
+/// <summary>
+/// The timeline's forecast in words. The date itself is <see cref="AiPortfolio.Forecast"/>: the open tasks divided by the pace of the last four
+/// weeks (tasks finished in 28 days), or, when nothing finished in four weeks, the pace since the project started; this says which one it was, so the
+/// hover card can show how the forecast was worked out.
+/// </summary>
+public static class TimelineForecast
+{
+    public static string Basis(string confidence, int finishedLast28Days, int openTasks) =>
+        openTasks <= 0 ? "No open work left"
+        : confidence == "none" ? "No forecast: nothing has been finished yet"
+        : finishedLast28Days > 0
+            ? $"From pace, 4 wks: {finishedLast28Days} done in 28 days, {openTasks} open ({confidence} confidence)"
+            : $"From pace since the start: {openTasks} open, nothing finished in 4 weeks (low confidence)";
+
+    /// <summary>Days the forecast lands after the due date (0 when on time or there is no forecast).</summary>
+    public static int Slip(DateOnly? due, DateOnly? forecast) => due is { } d && forecast is { } f && f > d ? f.DayNumber - d.DayNumber : 0;
 }
 
 /// <summary>

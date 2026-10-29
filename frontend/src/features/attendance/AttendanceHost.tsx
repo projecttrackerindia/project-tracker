@@ -12,6 +12,7 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { attendanceApi, hm, MODES, modeOf, sourceOfDevice, type AttendanceCheckOut, type AttendanceMode, type AttendanceToday } from './attendanceApi';
 import './attendance.css';
+import { lockScroll } from '../../lib/scrollLock';
 
 /** Which attendance sheet is open: the check-in card (from the sign-in prompt, the pill or the calendar) or the check-out sheet. */
 export const useAttendanceSheet = create<{ open: 'checkin' | 'checkout' | null; why: 'prompt' | 'manual'; show: (k: 'checkin' | 'checkout', why?: 'prompt' | 'manual') => void; close: () => void }>((set) => ({
@@ -104,9 +105,8 @@ export function AttFrame({ label, onClose, children, testId, wide }: { label: st
     ref.current?.focus({ preventScroll: true });
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); } };
     document.addEventListener('keydown', key, true);
-    const html = document.documentElement, before = html.style.overflow;
-    if (phone) html.style.overflow = 'hidden';
-    return () => { document.removeEventListener('keydown', key, true); html.style.overflow = before; prev?.focus?.({ preventScroll: true }); };
+    const unlock = phone ? lockScroll('html') : () => undefined;
+    return () => { document.removeEventListener('keydown', key, true); unlock(); prev?.focus?.({ preventScroll: true }); };
   }, [onClose, phone]);
   return createPortal(
     <div className={`att-scrim${phone ? ' phone' : ''}`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>

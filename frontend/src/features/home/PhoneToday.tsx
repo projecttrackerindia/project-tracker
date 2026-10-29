@@ -16,6 +16,7 @@ import { toast } from '../../stores/ui';
 import { KIND_LABEL, inboxApi, type InboxRow } from './inboxApi';
 import { breachText, useMinuteNow } from '../work/dueTime';
 import { SignalsSection, signalsLine, useTodaySignals } from './Signals';
+import { formatInZone, isoDateIn, shiftIsoDate, zonedParts, zoneToday } from '../../lib/zone';
 import './phoneToday.css';
 
 /*
@@ -27,7 +28,8 @@ import './phoneToday.css';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const headDay = (s: string) => { const d = new Date(`${s}T00:00:00`); return `${d.toLocaleDateString('en-GB', { weekday: 'long' })}, ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'long' })}`; };
-const clock = (d: Date) => `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`;
+/** "9:30" in the person's zone (lib/zone), not the device's. */
+const clock = (d: Date) => { const p = zonedParts(d); return `${p.hour % 12 || 12}:${String(p.minute).padStart(2, '0')}`; };
 const hours = (min: number) => { const h = Math.floor(min / 60), m = Math.round(min % 60); return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`; };
 /** "1h 34m" from a start, ticking every second while under a minute ("42s"). */
 const since = (fromMs: number, now: number) => { const s = Math.max(0, Math.floor((now - fromMs) / 1000)); return s < 60 ? `${s}s` : hours(Math.floor(s / 60)); };
@@ -125,7 +127,7 @@ function OutagePill({ row }: { row: InboxRow }) {
 /** UP NEXT · IN 17 MIN — the next meeting (today's, else the next one in two weeks) with Join. */
 function PhoneUpNext() {
   const today = todayISO();
-  const to = iso(new Date(Date.now() + 14 * 864e5));
+  const to = shiftIsoDate(zoneToday(), 14);
   const q = useTimeline({ from: today, to });
   const now = useNow(30_000);
   const next = useMemo(() => (q.data?.events ?? []).filter((t) => t.type === 'meeting').map((t) => ({ e: toCalendarEvent(t), start: new Date(t.start), mins: t.end ? Math.round((Date.parse(t.end) - Date.parse(t.start)) / 60_000) : 30 }))
@@ -133,8 +135,8 @@ function PhoneUpNext() {
     .find((m) => m.start.getTime() + m.mins * 60_000 > now) ?? null, [q.data, now]);
   if (!next) return null;
   const inMin = Math.round((next.start.getTime() - now) / 60_000);
-  const sameDay = iso(next.start) === today;
-  const when = inMin <= 0 ? 'NOW' : sameDay && inMin < 60 ? `IN ${inMin} MIN` : sameDay ? clock(next.start) : next.start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase();
+  const sameDay = isoDateIn(next.start) === today;
+  const when = inMin <= 0 ? 'NOW' : sameDay && inMin < 60 ? `IN ${inMin} MIN` : sameDay ? clock(next.start) : formatInZone(next.start, { weekday: 'short', day: 'numeric', month: 'short' }, undefined, 'en-GB').toUpperCase();
   const where = [clock(next.start), next.e.joinUrl ? 'Meet' : null, `${next.mins} min`, next.e.notes ? 'agenda ready' : next.e.projectName].filter(Boolean).join(' · ');
   const href = next.e.projectId ? `/work/projects/${next.e.projectId}` : '/?tab=calendar';
   return (

@@ -66,7 +66,11 @@ public record MessagePageDto(IReadOnlyList<ChatMessageDto> Items, bool HasMore);
 public record ChatFileDto(Guid Id, string FileName, string ContentType, long SizeBytes, bool IsImage, Guid MessageId, Guid? SenderId, string SenderName, DateTime CreatedAt);
 public record ChatFilePageDto(IReadOnlyList<ChatFileDto> Items, bool HasMore);
 public record ChatSearchHitDto(Guid MessageId, Guid ConversationId, string ConversationName, string? SenderName, string Snippet, DateTime At);
-public record UnreadDto(int Count);
+/// <param name="Count">The number on the Messages badge.</param>
+/// <param name="Conversations">How many conversations contribute to it.</param>
+/// <param name="MutedMentions">Of the count, @mentions of me in muted conversations.</param>
+/// <param name="MutedActivity">Something unread sits in a muted conversation that does not count (a grey dot).</param>
+public record UnreadDto(int Count, int Conversations = 0, int MutedMentions = 0, bool MutedActivity = false);
 
 public record OpenDirectRequest(Guid UserId);
 public record CreateGroupRequest(string Name, IReadOnlyList<Guid>? MemberIds);

@@ -28,6 +28,7 @@ import { dayMarks, type DayMark } from './deadline';
 import { packColumns, packStyle, type Packed } from './pack';
 import { clock24 } from '../work/dueTime';
 import './planner.css';
+import { ZoneBadge } from '../../components/ZoneBadge';
 
 /** ISO week number. */
 const weekNo = (s: string) => { const d = dateOf(s); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); const w1 = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d.getTime() - w1.getTime()) / 864e5 - 3 + ((w1.getDay() + 6) % 7)) / 7); };
@@ -424,7 +425,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     <div className={`wp wp-${view}`} data-testid="week-planner">
       <ToolbarSlot title={<h1>Calendar</h1>}>{seg}</ToolbarSlot>
       <div className="wp-phone-head tb-wide-hide">
-        <h1>Calendar</h1>
+        <h1>Calendar <ZoneBadge /></h1>
         {onTab && <Segmented label="Home" value="calendar" onChange={onTab} options={[{ id: 'for-you', label: 'For me' }, { id: 'calendar', label: 'Calendar' }]} />}
         {seg}
       </div>
@@ -456,7 +457,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
       ) : (
         <section className="wp-main" aria-label={view === 'day' ? 'Day' : `Week of ${title}`}>
           <div className="wp-whd">
-            <h2>{title}</h2>{view === 'week' && <span className="wp-wk">Week {weekNo(monday)}</span>}
+            <h2>{title}</h2><ZoneBadge />{view === 'week' && <span className="wp-wk">Week {weekNo(monday)}</span>}
             <span className="wp-sp" />
             <button type="button" className="wp-nav" aria-label={view === 'day' ? 'Previous day' : 'Previous week'} onClick={() => setAnchor(addDays(anchor, view === 'day' ? -1 : -7))}><Icon name="chevronL" size={14} /></button>
             <button type="button" className="wp-today" onClick={() => { setAnchor(today); const d = dateOf(today); setMini({ y: d.getFullYear(), m: d.getMonth() }); }}>Today</button>

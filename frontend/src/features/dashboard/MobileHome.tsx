@@ -7,6 +7,7 @@ import { HealthBadge, Progress } from '../../components/ui';
 import { formatDate } from '../../lib/format';
 import { haptic } from '../../lib/mobile';
 import { WorkItemRow, type WorkRowItem } from '../workitems/workItems';
+import { zoneToday } from '../../lib/zone';
 
 const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -27,7 +28,7 @@ function headline(due: number, overdue: number, done: number): string {
 export function MobileHome({ name, data, showProjects, onOpen }: { name: string; data: Dashboard; showProjects: boolean; onOpen: (i: WorkRowItem) => void }) {
   const nav = useNavigate();
   const c = data.counts;
-  const todayIso = iso(new Date());
+  const todayIso = zoneToday();
   const [picked, setPicked] = useState(todayIso);
 
   const week = useMemo(() => {

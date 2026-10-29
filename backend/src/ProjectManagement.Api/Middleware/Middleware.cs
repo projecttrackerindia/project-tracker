@@ -251,14 +251,14 @@ public class CurrentContextMiddleware(RequestDelegate next)
             var user = http.User;
             if (user.FindFirst(ApiKeyAuthMiddleware.ClaimKey) is not null && Guid.TryParse(user.FindFirst("sub")?.Value, out var keyUser))
             {
-                var keyOwner = await db.Users.AsNoTracking().Where(u => u.Id == keyUser).Select(u => new { u.IsActive, u.TimeZone }).FirstOrDefaultAsync(http.RequestAborted);
+                var keyOwner = await db.Users.AsNoTracking().Where(u => u.Id == keyUser).Select(u => new { u.IsActive, u.TimeZone, Chose = db.ReminderSettings.Any(s => s.UserId == u.Id && !s.FollowDeviceTimeZone) }).FirstOrDefaultAsync(http.RequestAborted);
                 if (keyOwner is null || !keyOwner.IsActive)
                 {
                     await ErrorWriter.WriteAsync(http, 401, "This API key is not valid.", [new ApiError("INVALID_API_KEY", "This API key is not valid.")]);
                     return;
                 }
                 ctx.UserId = keyUser; ctx.SessionId = null; ctx.IsPlatformAdmin = false; ctx.ViaApiKey = true; // a key never carries platform-admin rights
-                zone.UserZoneId = keyOwner.TimeZone;
+                zone.UserZoneId = keyOwner.TimeZone; zone.UserZoneChosen = keyOwner.Chose;
                 // A key has no two-step verification of its own to check; an IP allowlist still applies to it.
                 await ApplyMembershipAsync(http, ctx, db, orgSecurity, zone, keyUser, mfaEnabled: true);
                 await next(http);
@@ -274,7 +274,8 @@ public class CurrentContextMiddleware(RequestDelegate next)
             var session = await (from s in db.UserSessions
                                  join u in db.Users on s.UserId equals u.Id
                                  where s.Id == sessionId && s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now
-                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, u.TimeZone, s.SsoTenantId, s.AuthMethod, s.CreatedAt, u.PasswordLength }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, u.TimeZone, s.SsoTenantId, s.AuthMethod, s.CreatedAt, u.PasswordLength,
+                                     ZoneChosen = db.ReminderSettings.Any(r => r.UserId == u.Id && !r.FollowDeviceTimeZone) }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
             if (session is null || !session.IsActive)
             {
                 await ErrorWriter.WriteAsync(http, 401, "Your session has ended. Please sign in again.", [new ApiError("SESSION_REVOKED", "Your session has ended. Please sign in again.")]);
@@ -286,7 +287,8 @@ public class CurrentContextMiddleware(RequestDelegate next)
             ctx.IsPlatformAdmin = session.IsPlatformAdmin;
             ctx.MustChangePassword = session.MustChangePassword;
             // Every "today", due date and overdue flag in this request is worked out in the person's own time zone.
-            zone.UserZoneId = session.TimeZone;
+            // A "UTC" left by a device report or a column default does not count unless they chose it (AppClock.ZoneFor).
+            zone.UserZoneId = session.TimeZone; zone.UserZoneChosen = session.ZoneChosen;
 
             // A passkey is two factors in one (the device and the person's unlock), and a sign-in approved on the person's own phone is something they have:
             // either satisfies a workspace's two-step rule.

@@ -449,3 +449,9 @@ html[data-theme='dark'] .acct-seg i.on { background: #636366; }
 .v2-rail .v2-rail-foot { flex: none; }
 .floating.floating-sheet.acct-menu { z-index: 1000; }
 .m-shell.m-thread .aura-dock-wrap { display: none; }   /* a full-screen conversation on a phone (talk.css hides the bars there too) */
+
+/* Messages: only muted conversations have news - a small grey dot instead of a number (docs/badges.md). */
+.v2-badge-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ds-text-3, #8e8e93); font-style: normal; flex: none; }
+.v2-rail-item .v2-badge-dot { position: absolute; top: 6px; right: 16px; }
+@media (min-width: 1100px) { .v2-side .v2-rail-item .v2-badge-dot { position: static; margin-left: auto; margin-right: 4px; } }
+.v2-phone-tab .v2-phone-ic .v2-badge-dot { position: absolute; top: 0; left: calc(50% + 9px); }

@@ -18,6 +18,7 @@ import { clock24 } from '../work/dueTime';
 import { TimeEntryEditor, type WorkChoice } from './TimeEntryEditor';
 import { KIND, countdown, END, MONTHS, START, SNAP, addDays, clockAP, dateOf, dayLabel, fmtMins, hourOf, hrefOf, type Detail, type Focus, type Meet } from './plannerModel';
 import './eventDetail.css';
+import { lockScroll } from '../../lib/scrollLock';
 
 const KIND_NAME: Record<string, string> = { task: 'Task', action: 'Action item', work: 'Ticket', project: 'Project', milestone: 'Milestone', stage: 'Stage' };
 const longDay = (day: string) => { const d = dateOf(day); return `${d.toLocaleDateString('en-GB', { weekday: 'long' })} ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
@@ -85,9 +86,7 @@ export function EventDetail({ detail, anchor, today, nowH, days, actions, onClos
   // a sheet holds the page still behind it
   useEffect(() => {
     if (!phone) return;
-    const html = document.documentElement, before = html.style.overflow;
-    html.style.overflow = 'hidden';
-    return () => { html.style.overflow = before; };
+    return lockScroll('html');
   }, [phone]);
 
   // Esc closes, a click outside closes, focus moves in and goes back to the block after

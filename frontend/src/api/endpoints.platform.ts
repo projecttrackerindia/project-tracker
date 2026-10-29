@@ -25,7 +25,7 @@ export const platformApi = {
 
 export const chatApi = {
   people: () => get<ChatPerson[]>('/chat/people'),
-  unread: () => get<{ count: number }>('/chat/unread'),
+  unread: () => get<import('../features/chat/unreadBadge').ChatUnread>('/chat/unread'),
   search: (q: string) => get<ChatSearchHit[]>('/chat/search', { q }),
   conversations: () => get<Conversation[]>('/chat/conversations'),
   conversation: (id: string) => get<Conversation>(`/chat/conversations/${id}`),

@@ -36,7 +36,7 @@ export function ProjectsHome() {
   const [params, setParams] = useSearchParams();
   const v = params.get('view');
   const picked = params.get('project');
-  const portfolio = v === 'portfolio' || v === 'timeline' || v === 'present';
+  const portfolio = v === 'portfolio' || v === 'timeline' || v === 'present' || v === 'sheet';
   if (picked && (portfolio || params.has('actions'))) {
     const actions = params.get('actions') === '1';
     return <Navigate to={`/work/projects/${encodeURIComponent(picked)}${actions ? '?tab=work&kind=action' : ''}`} replace />;

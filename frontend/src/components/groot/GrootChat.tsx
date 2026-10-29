@@ -9,7 +9,7 @@ import { Markdown } from '../../features/ai/Markdown';
 import { useAi } from '../../features/ai/Assistant';
 import { useWsQuery } from '../../lib/hooks';
 import { useIsMobile } from '../../lib/mobile';
-import { deviceZone } from '../../lib/zone';
+import { appZone } from '../../lib/zone';
 import { useAuth } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { Icon } from '../Icon';
@@ -38,7 +38,7 @@ function useOrgDay(): OrgDay {
   const ops = useWsQuery(['ops', 'settings'], opsApi.settings, { staleTime: 10 * 60_000, retry: false });
   const d = ops.data;
   return {
-    zone: d?.timeZone || wsZone || deviceZone(),
+    zone: d?.timeZone || wsZone || appZone(),
     startMin: d?.dayStartMinutes ?? DEFAULT_DAY.startMin, endMin: d?.dayEndMinutes ?? DEFAULT_DAY.endMin,
     workDays: Array.isArray(d?.workDays) && d!.workDays.length ? d!.workDays.reduce((bits, n) => bits | (1 << (n - 1)), 0) : DEFAULT_DAY.workDays,
   };
@@ -105,7 +105,7 @@ function GrootChat() {
     const first = !convRef.current;
     update((all) => [...all, { id, q: question, text: '', message: null, actions: [], steps: [], plan: [], error: null, streaming: true }]);
     const where = first && (about || context) ? `\n\n(I am looking at ${about ? `the project ${about}` : context}.)` : '';
-    askAi(convRef.current, { text: question + where, mode: 'auto', attachmentIds: [], timeZone: deviceZone() }, (e) => {
+    askAi(convRef.current, { text: question + where, mode: 'auto', attachmentIds: [], timeZone: appZone() }, (e) => {
       if (e.name === 'started') setConversation(e.conversationId);
       else if (e.name === 'text') patch(id, (t) => ({ ...t, text: t.text + e.delta }));
       else if (e.name === 'tool') patch(id, (t) => ({ ...t, steps: t.steps.some((s) => s.id === e.id) ? t.steps.map((s) => (s.id === e.id ? { ...s, label: e.label || s.label, state: e.state } : s)) : [...t.steps, { id: e.id, label: e.label || e.tool, state: e.state }] }));

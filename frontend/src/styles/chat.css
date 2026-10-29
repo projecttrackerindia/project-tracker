@@ -686,3 +686,65 @@ html .msg.mine .msg-actions.above { right: auto; left: 0; }
 .more-pop .more-foot { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--ds-separator); }
 .more-pop .more-foot button { justify-content: center; }
 @media (prefers-reduced-motion: reduce) { .floating .more-pop { animation: none; } }
+
+/* ============================================================
+   STABLE CONVERSATION (chat-stable): the list is the only scroller, every loading box has its final size, jump to latest, sticky days,
+   picture grid + viewer, uniform file cards, find in conversation.
+   ============================================================ */
+.chat-scroll { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.chat-scroll > .chat-messages { flex: 1 1 auto; min-height: 0; overflow-anchor: none; }   /* the Thread keeps the reading position itself (Safari has no anchoring) */
+.chat-day { position: relative; }
+.day-sep.sticky { position: sticky; top: 6px; z-index: 3; pointer-events: none; }
+.day-sep.sticky span { box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
+.talk-thread .day-sep.sticky span { padding: 2px 10px; border-radius: 99px; background: color-mix(in srgb, var(--talk-bg, var(--ds-surface)) 88%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: none; }
+
+.jump-latest { position: absolute; right: 14px; bottom: 12px; z-index: 6; display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 36px; height: 36px; padding: 0 10px;
+  border: 0; border-radius: 18px; background: var(--ds-surface, #fff); color: var(--ds-text-2); font-size: 12.5px; font-weight: 600; cursor: pointer;
+  box-shadow: 0 0 0 .5px var(--ds-line, rgba(0, 0, 0, .12)), 0 4px 14px rgba(0, 0, 0, .14); animation: jumpIn .18s ease-out both; }
+.jump-latest.has-new { background: var(--ds-accent, #007aff); color: #fff; padding: 0 14px 0 11px; }
+@keyframes jumpIn { from { opacity: 0; transform: translateY(6px) scale(.96); } to { opacity: 1; transform: none; } }
+.new-below { display: none; }
+
+/* Pictures: a fixed box from the first frame (cropped to fill), a grid when there are several. */
+.chat-img-grid { display: grid; gap: 3px; width: 260px; max-width: 100%; border-radius: 14px; overflow: hidden; }
+.chat-img-grid.n2, .chat-img-grid.n3, .chat-img-grid.n4 { grid-template-columns: 1fr 1fr; }
+.chat-img-grid .chat-img { position: relative; width: 100%; max-width: none; min-height: 0; aspect-ratio: 4 / 3; border-radius: 0; }
+.chat-img-grid.n2 .chat-img, .chat-img-grid.n4 .chat-img { aspect-ratio: 1; }
+.chat-img-grid.n3 .chat-img:first-child { grid-column: 1 / -1; aspect-ratio: 2 / 1; }
+.chat-img-grid.n3 .chat-img:not(:first-child) { aspect-ratio: 1; }
+.chat-img-grid .chat-img img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; opacity: 0; transition: opacity .2s; }
+.chat-img-grid .chat-img.ready img { opacity: 1; }
+.chat-img-grid .chat-img-wait { position: absolute; inset: 0; width: auto; height: auto; background: linear-gradient(100deg, var(--ds-fill, rgba(0,0,0,.05)) 40%, var(--ds-fill-strong, rgba(0,0,0,.09)) 50%, var(--ds-fill, rgba(0,0,0,.05)) 60%) 0 0 / 300% 100%; animation: imgShimmer 1.4s linear infinite; }
+.chat-img-more { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .45); color: #fff; font-size: 20px; font-weight: 600; }
+@keyframes imgShimmer { to { background-position: -150% 0; } }
+.chat-lightbox { touch-action: pan-y; user-select: none; }
+.chat-lightbox img { max-width: 94vw; max-height: calc(100dvh - 120px); }
+.chat-lightbox-bar { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 12px); left: 12px; right: 12px; display: flex; align-items: center; gap: 8px; color: #fff; cursor: default; }
+.chat-lightbox-bar .btn-icon { position: static; color: #fff; background: rgba(255, 255, 255, .14); }
+.chat-lightbox-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; opacity: .9; }
+.chat-lightbox .chat-lightbox-nav { position: absolute; top: 50%; right: auto; margin-top: -22px; width: 44px; height: 44px; border-radius: 22px; color: #fff; background: rgba(255, 255, 255, .14); }
+.chat-lightbox .chat-lightbox-nav.prev { left: 12px; }
+.chat-lightbox .chat-lightbox-nav.next { left: auto; right: 12px; }
+
+/* One file card for every kind: type badge, name, size, Open (PDF) and Download - always 56px high. */
+html .chat-file { display: flex; align-items: center; gap: 10px; width: min(300px, 100%); min-width: 0; height: 56px; box-sizing: border-box; padding: 0 6px 0 10px; border-radius: 12px;
+  border: 0; background: var(--ds-surface, var(--surface)); color: var(--ds-text, var(--text)); box-shadow: 0 0 0 1px var(--ds-line, var(--border)); }
+html .chat-file:hover { border-color: transparent; }
+html .chat-file-icon { width: 34px; height: 40px; border-radius: 7px; font-size: 9.5px; font-weight: 700; letter-spacing: .02em; color: var(--ds-text-2); background: var(--ds-fill, var(--surface-3)); }
+html .chat-file-icon.pdf { color: #fff; background: #e5483e; }
+.chat-file-acts { display: flex; gap: 2px; margin-left: auto; flex: none; }
+.chat-file-acts button { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 9px; background: none; color: var(--ds-accent, var(--primary)); cursor: pointer; }
+.chat-file-acts button:hover:not(:disabled) { background: var(--ds-fill); }
+
+/* A file preview has its final height while it loads; "too big to preview" is a compact line. Internal link cards have one height. */
+.pl-card-preview, .pl-card-wait { height: 118px; min-height: 0; box-sizing: border-box; overflow: hidden; }
+.pl-card-wait.small { height: 40px; }
+.unfurl { height: 52px; box-sizing: border-box; overflow: hidden; }
+
+/* Find in conversation */
+.chat-find { position: absolute; top: 8px; left: 12px; right: 12px; z-index: 7; display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 6px 0 12px; border-radius: 12px;
+  background: var(--ds-surface, #fff); color: var(--ds-text-3); box-shadow: 0 0 0 .5px var(--ds-line, rgba(0,0,0,.12)), 0 6px 20px rgba(0, 0, 0, .12); }
+.chat-find input { flex: 1; min-width: 0; height: 32px; border: 0; outline: 0; background: none; color: var(--ds-text); font-size: 14px; }
+.chat-find-n { font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chat-find .btn-icon { width: 30px; height: 30px; }
+@media (prefers-reduced-motion: reduce) { .jump-latest { animation: none; } .chat-img-grid .chat-img-wait { animation: none; } }

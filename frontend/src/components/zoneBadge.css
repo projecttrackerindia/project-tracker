@@ -1,0 +1,6 @@
+.zone-badge {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .04em; line-height: 1; white-space: nowrap; align-self: center;
+  color: var(--ds-text-2); background: var(--ds-surface-2); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-text-3) 22%, transparent);
+  font-variant-numeric: tabular-nums; cursor: default;
+}

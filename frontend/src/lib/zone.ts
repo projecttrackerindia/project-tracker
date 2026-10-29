@@ -3,8 +3,10 @@ import { useSyncExternalStore } from 'react';
 /**
  * The one time zone the whole app runs in for the signed-in person.
  *
- * Order: the person's own zone (My account / Notification Center → Time zone), then their workspace's default zone, then this device.
- * The server applies the same order, so "today", "overdue", due dates, timesheet days, reminders and charts agree everywhere.
+ * The server works it out and sends it with the context (ctx.timeZone): the person's own zone (My account / Notification Center → Time
+ * zone), then the organization's zone, then the platform's (Asia/Kolkata). A plain "UTC" that a device reported (an Electron shell, a browser
+ * without a configured zone) or a column default left counts as "not set", unless the person chose UTC by hand. Before the context arrives
+ * the same order runs here, ending with this device and then India. "today", "overdue", due dates, timesheet days, reminders and charts agree everywhere.
  * Instants come from the server in UTC; every place that shows a date or time formats it in this zone.
  */
 
@@ -20,6 +22,15 @@ export const canonicalZone = (zone: string) => CURRENT_NAMES[zone] ?? zone;
 export const deviceZone = (): string => {
   try { return canonicalZone(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'); } catch { return 'UTC'; }
 };
+
+/** The platform's default zone (App:DefaultTimeZone on the server). */
+export const PLATFORM_ZONE = 'Asia/Kolkata';
+
+const PLACEHOLDERS = new Set(['utc', 'etc/utc', 'etc/uct', 'uct', 'etc/gmt', 'gmt', 'etc/gmt0', 'etc/gmt+0', 'etc/gmt-0', 'gmt0', 'gmt+0', 'gmt-0',
+  'etc/universal', 'universal', 'etc/zulu', 'zulu', 'etc/greenwich', 'greenwich']);
+
+/** A zone that says nothing about where someone is: empty, unknown, or plain UTC (see the order above). */
+export const isPlaceholderZone = (zone: string | null | undefined): boolean => !isKnownZone(zone) || PLACEHOLDERS.has(zone.trim().toLowerCase());
 
 const known = new Map<string, boolean>();
 /** Whether the browser knows this IANA zone. */
@@ -37,22 +48,51 @@ export function isKnownZone(zone: string | null | undefined): zone is string {
 // the auth store: nearly everything imports the date helpers, and that import cycle breaks the bundle's start-up order.)
 let userZone: string | null = null;
 let workspaceZone: string | null = null;
+let effectiveZone: string | null = null;
+let userChose = false;
 let version = 0;
 const zoneListeners = new Set<() => void>();
 
-/** Called by the auth store with the person's own zone and the active workspace's default zone. */
-export function setAppZones(user: string | null | undefined, workspace: string | null | undefined) {
-  const u = user ?? null, w = workspace ?? null;
-  if (u === userZone && w === workspaceZone) return;
-  userZone = u; workspaceZone = w; version++;
+/**
+ * Called by the auth store with the person's own zone, the active workspace's default zone, and the zone the server says this person's
+ * day runs in (with whether they chose their own zone by hand).
+ */
+export function setAppZones(user: string | null | undefined, workspace: string | null | undefined, effective?: string | null, chose?: boolean) {
+  const u = user ?? null, w = workspace ?? null, e = effective ?? null, c = !!chose;
+  if (u === userZone && w === workspaceZone && e === effectiveZone && c === userChose) return;
+  userZone = u; workspaceZone = w; effectiveZone = e; userChose = c; version++;
   zoneListeners.forEach((l) => l());
+}
+
+/** The same order as the server (AppClock.ZoneFor), for when it has not said: own zone, organization's, this device's, India. */
+export function resolveZone(user: string | null | undefined, chose: boolean, workspace: string | null | undefined, device = deviceZone()): string {
+  if (isKnownZone(user) && (chose || !isPlaceholderZone(user))) return canonicalZone(user);
+  if (isKnownZone(workspace)) return canonicalZone(workspace);
+  if (!isPlaceholderZone(device)) return canonicalZone(device);
+  return PLATFORM_ZONE;
 }
 
 /** The zone the app runs in right now (see the order above). Safe outside React. */
 export function appZone(): string {
-  if (isKnownZone(userZone)) return canonicalZone(userZone);
-  if (isKnownZone(workspaceZone)) return canonicalZone(workspaceZone);
-  return deviceZone();
+  if (isKnownZone(effectiveZone)) return canonicalZone(effectiveZone);
+  return resolveZone(userZone, userChose, workspaceZone);
+}
+
+/** This device's zone when it says where the device is; null for a plain UTC report (it is never followed). */
+export const followableDeviceZone = (): string | null => { const d = deviceZone(); return isPlaceholderZone(d) ? null : d; };
+
+/** A short name for a zone: "IST", "GST", "EST", else "GMT+5:30". */
+export function zoneAbbrev(zone: string, at = new Date()): string {
+  const short = (locale: string) => {
+    try { return new Intl.DateTimeFormat(locale, { timeZone: zone, timeZoneName: 'short' }).formatToParts(at).find((p) => p.type === 'timeZoneName')?.value ?? ''; } catch { return ''; }
+  };
+  for (const locale of ['en-US', 'en-IN', 'en-GB']) { const n = short(locale); if (n && !/^(GMT|UTC)[+-]/.test(n)) return n; }
+  return zoneOffsetLabel(zone, at) || zone;
+}
+
+/** The zone's short name when the app shows a different zone from this device's own (so times are not read as local); null otherwise. */
+export function zoneBadge(zone = appZone(), device = deviceZone()): string | null {
+  return canonicalZone(zone) === canonicalZone(device) ? null : zoneAbbrev(zone);
 }
 
 const subscribe = (l: () => void) => { zoneListeners.add(l); return () => { zoneListeners.delete(l); }; };

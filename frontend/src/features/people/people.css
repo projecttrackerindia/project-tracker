@@ -13,10 +13,11 @@
 .pr-note { font-size: 13px; margin: 8px 2px; }
 .pr-hint { font-size: 12.5px; display: flex; gap: 6px; align-items: center; margin: 0 2px 8px; }
 
-/* The virtual list */
+/* The virtual list. Its own scroller (only the rows in view are drawn), but never a trap: at either end the wheel, a trackpad and the
+   keyboard carry on into the page (no overscroll containment), so the rest of People & Roles and the last row can always be reached. */
 .pr-vlist { position: relative; overflow: auto; max-height: calc(100dvh - 300px); min-height: 280px; border-radius: var(--ds-r-card, 16px);
-  background: var(--ds-surface); box-shadow: var(--ds-card-shadow, 0 1px 2px rgba(0,0,0,.06)); overscroll-behavior: contain; }
-.pr-vrow { position: absolute; left: 0; right: 0; top: 0; }
+  background: var(--ds-surface); box-shadow: var(--ds-card-shadow, 0 1px 2px rgba(0,0,0,.06)); overscroll-behavior-y: auto; }
+.pr-vrow { position: absolute; left: 0; right: 0; top: 0; scroll-margin-top: 12px; scroll-margin-bottom: 104px; }   /* a row brought into view clears the floating Aura bar */
 .pr-row { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 12px; width: 100%; height: 100%; padding: 0 14px; cursor: pointer;
   border-bottom: 1px solid var(--ds-separator, var(--ds-line)); }
 .pr-row:hover { background: var(--ds-fill); }
@@ -120,7 +121,7 @@
 /* Organization tree */
 .pr-org-head { display: flex; justify-content: flex-start; margin-bottom: 12px; }
 .pr-tree { position: relative; overflow: auto; max-height: calc(100dvh - 300px); min-height: 320px; border-radius: var(--ds-r-card, 16px);
-  background: var(--ds-surface); box-shadow: var(--ds-card-shadow, 0 1px 2px rgba(0,0,0,.06)); outline: none; overscroll-behavior: contain; }
+  background: var(--ds-surface); box-shadow: var(--ds-card-shadow, 0 1px 2px rgba(0,0,0,.06)); outline: none; overscroll-behavior-y: auto; }
 .pr-node { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 calc(8px + var(--depth) * 24px); cursor: default;
   border-bottom: 1px solid var(--ds-separator, var(--ds-line)); box-sizing: border-box; }
 .pr-node:hover { background: var(--ds-fill); }
@@ -201,6 +202,7 @@
   .pr-cols, .pr-split { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 640px) {
+  .pr-vrow { scroll-margin-bottom: calc(var(--m-tab, 62px) + 84px + env(safe-area-inset-bottom)); }   /* above the tab bar and the Aura bar */
   .pr-hide-phone { display: none !important; }
   .pr-toolbar { gap: 8px; }
   .pr-search { flex-basis: 100%; height: 40px; }

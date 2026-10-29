@@ -2,6 +2,7 @@ import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNo
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { haptic } from '../lib/mobile';
+import { lockScroll } from '../lib/scrollLock';
 
 /**
  * Lets a sheet be dragged down to close, from its grab handle and header, like a native bottom sheet: it follows the finger, closes when pulled far
@@ -46,11 +47,10 @@ export function Sheet({ title, onClose, children, footer, label }: { title?: str
   const drag = useSheetDrag(() => ref.current, onClose);
 
   useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlock = lockScroll('body');
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
     document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+    return () => { document.removeEventListener('keydown', onKey); unlock(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

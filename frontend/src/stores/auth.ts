@@ -1,6 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
-import { setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkspaceMismatchHandler } from '../api/client';
+import { refreshWasRefused, setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkspaceMismatchHandler, transientStatus } from '../api/client';
 import { authApi, meApi, pushApi, workspaceApi } from '../api/endpoints';
 import { disableNativePush } from '../lib/native';
 import { setAppZones } from '../lib/zone';
@@ -40,9 +40,21 @@ export const useAuth = create<AuthState>((set, get) => ({
   /** On page load: trade the HttpOnly refresh cookie for an access token, then load the user's context. */
   bootstrap: async () => {
     const auth = await refreshSession();
-    if (!auth) { set({ status: !navigator.onLine && readOfflineSnapshot() ? 'offline' : 'anonymous', ctx: null }); return; }
-    try { await get().reloadContext(); }
-    catch { setAccessToken(null); set({ status: 'anonymous', ctx: null }); }
+    if (!auth) {
+      // Not answered (a release restarting, a blip) is not "signed out": with saved work the offline view shows, and it is tried again.
+      const unreachable = !refreshWasRefused();
+      set({ status: (!navigator.onLine || unreachable) && readOfflineSnapshot() ? 'offline' : 'anonymous', ctx: null });
+      return;
+    }
+    // The session is good; loading the context can still hit a passing server error - try again before giving up on it.
+    for (let attempt = 0; ; attempt++) {
+      try { await get().reloadContext(); return; }
+      catch (e) {
+        const status = (e as { status?: number })?.status ?? 0;
+        if (attempt >= 2 || !transientStatus(status)) { setAccessToken(null); set({ status: 'anonymous', ctx: null }); return; }
+        await new Promise((r) => setTimeout(r, attempt === 0 ? 600 : 1800));
+      }
+    }
   },
 
   login: async (email, password) => {
@@ -150,7 +162,7 @@ useAuth.subscribe((s, prev) => {
 // Pure, so they're unit-testable without rendering a component or touching the Zustand store;
 // the hooks below are thin wrappers that just supply the current ctx.
 // Keep the app-wide time zone (lib/zone) in step with whoever is signed in and the workspace they are in.
-useAuth.subscribe((s) => setAppZones(s.ctx?.user.timeZone, s.ctx?.current?.timeZone));
+useAuth.subscribe((s) => setAppZones(s.ctx?.user.timeZone, s.ctx?.current?.timeZone, s.ctx?.timeZone, s.ctx?.timeZoneChosen));
 
 export const hasPermission = (ctx: AppContext | null | undefined, permission: string) => ctx?.current?.permissions.includes(permission) ?? false;
 export const entitlementOf = (ctx: AppContext | null | undefined, key: string) => ctx?.current?.entitlements[key] ?? 0;

@@ -99,6 +99,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Reminders/PortfolioDigestService.cs",
         "ProjectManagement.Application/Features/Reminders/ReminderEngine.cs",
         "ProjectManagement.Application/Features/Reminders/DueReminderRules.cs", // the reminder engine (no signed-in workspace): whether the reminded person touched one item, by its id and their id only (existence checks)
+        "ProjectManagement.Application/Features/Reminders/ReminderService.cs", // the signed-in person's own organization zone, by the current tenant id only
         "ProjectManagement.Application/Features/Reports/ReportExportService.cs",
         "ProjectManagement.Application/Features/Sso/SsoGroupSync.cs",
         "ProjectManagement.Application/Features/Tasks/TaskService.cs",

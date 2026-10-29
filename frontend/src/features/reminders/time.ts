@@ -1,4 +1,4 @@
-import { appZone, deviceZone as realDevice } from '../../lib/zone';
+import { appZone, followableDeviceZone } from '../../lib/zone';
 /**
  * Time for reminders, the way people think about it: wall-clock times in the device's own time zone ("tomorrow at 9" means 9 here),
  * turned into what the server needs. Local date-times are carried as "naive" Dates whose UTC fields hold the wall-clock values, so
@@ -12,7 +12,7 @@ import { appZone, deviceZone as realDevice } from '../../lib/zone';
 export const deviceZone = (): string => appZone();
 
 /** The zone reminder pickers write times in: the app's zone, or this device's own when the person keeps "Follow this device" on. */
-export const pickerZone = (followDevice?: boolean | null): string => (followDevice ? realDevice() : appZone());
+export const pickerZone = (followDevice?: boolean | null): string => (followDevice ? followableDeviceZone() ?? appZone() : appZone());
 
 /** Day-first (15/10) or month-first (10/15) numeric dates, from the browser's language. */
 export const dayFirst = (): boolean => {

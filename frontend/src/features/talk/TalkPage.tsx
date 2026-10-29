@@ -16,6 +16,7 @@ import { useWsQuery } from '../../lib/hooks';
 import { useAuth, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { listTime } from '../chat/chatFormat';
 import { chatKeys, useChat } from '../chat/chatStore';
+import { dropUnread } from '../chat/unreadBadge';
 import { AskChatDialog, CatchUpDialog, QuestionsBox, SavedPanel, ScheduledPanel, StatusButton } from '../chat/ChatTools';
 import { FilesPanel, InfoPanel, NewChatModal } from '../chat/Panels';
 import { Thread } from '../chat/Thread';
@@ -111,14 +112,20 @@ function TalkHome() {
   const showPins = !needle && filter === 'all';
   const pinnedRows = showPins ? prefs.pinned.map((pid) => matching.find((r) => r.id === pid)).filter((r): r is TalkRow => !!r) : [];
   const shown = showPins ? matching.filter((r) => !prefs.pinned.includes(r.id)) : matching;
+  // A hidden chat leaves the Messages badge too (docs/badges.md): hiding marks what it holds as read; it comes back with the next message.
+  const hideRead = (c: Conversation) => {
+    dropUnread(wid ?? '', c.unread, c.isMuted);
+    queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid ?? ''), (old) => old?.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)));
+    void chatApi.markRead(c.id).then(() => queryClient.invalidateQueries({ queryKey: chatKeys.unread(wid ?? '') })).catch(() => { /* the badge settles at the next refresh */ });
+  };
   const rowActions = (r: TalkRow): RowAction[] => {
     const c = r.kind === 'chat' ? live.find((x) => x.id === r.id) : undefined;
     const pinned = prefs.pinned.includes(r.id);
     return [
       { id: 'pin', label: pinned ? 'Unpin' : 'Pin', icon: pinned ? 'pinOff' : 'pin', run: () => prefs.togglePin(r.id), undo: () => prefs.togglePin(r.id), done: `${r.title} ${pinned ? 'unpinned' : 'pinned'}.` },
-      ...(c ? [{ id: 'mute', label: c.isMuted ? 'Unmute' : 'Mute', icon: 'bell' as RowAction['icon'], run: () => void chatApi.mute(c.id, !c.isMuted).then(() => queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid ?? '') })).catch(() => toast('Could not change that.', 'error')) }] : []),
-      ...(c && c.unread > 0 ? [{ id: 'read', label: 'Mark as read', icon: 'checkCircle' as RowAction['icon'], run: () => void chatApi.markRead(c.id).then(() => queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid ?? ''), (old) => old?.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)))).catch(() => toast('Could not mark it read.', 'error')) }] : []),
-      { id: 'hide', label: 'Hide', icon: 'eyeOff', danger: true, run: () => { prefs.hide(r.id, r.at ?? ''); if (r.id === activeId) back(); toast(`${r.title} is hidden until something new arrives.`, 'info', { label: 'Undo', onClick: () => prefs.unhide(r.id) }); } },
+      ...(c ? [{ id: 'mute', label: c.isMuted ? 'Unmute' : 'Mute', icon: 'bell' as RowAction['icon'], run: () => void chatApi.mute(c.id, !c.isMuted).then(() => { void queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid ?? '') }); void queryClient.invalidateQueries({ queryKey: chatKeys.unread(wid ?? '') }); }).catch(() => toast('Could not change that.', 'error')) }] : []),
+      ...(c && c.unread > 0 ? [{ id: 'read', label: 'Mark as read', icon: 'checkCircle' as RowAction['icon'], run: () => void chatApi.markRead(c.id).then(() => { dropUnread(wid ?? '', c.unread, c.isMuted); queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid ?? ''), (old) => old?.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x))); void queryClient.invalidateQueries({ queryKey: chatKeys.unread(wid ?? '') }); }).catch(() => toast('Could not mark it read.', 'error')) }] : []),
+      { id: 'hide', label: 'Hide', icon: 'eyeOff', danger: true, run: () => { prefs.hide(r.id, r.at ?? ''); if (c && c.unread > 0) hideRead(c); if (r.id === activeId) back(); toast(`${r.title} is hidden until something new arrives.`, 'info', { label: 'Undo', onClick: () => prefs.unhide(r.id) }); } },
     ];
   };
   const reduce = useReducedMotion();

@@ -399,13 +399,15 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (!ZoneTime.IsKnown(req.TimeZone)) throw new ValidationException("timeZone", "That time zone is not known.");
         var user = await db.Users.FirstAsync(u => u.Id == uid, ct);
         var settings = await SettingsRowAsync(uid, ct);
-        if (settings.FollowDeviceTimeZone && user.TimeZone != req.TimeZone!.Trim())
+        // A device that reports plain UTC (a desktop shell, a browser or server without a configured zone) says nothing about where the person
+        // is: it never replaces their zone, so their day keeps following their own or the organization's zone.
+        if (settings.FollowDeviceTimeZone && !ZoneTime.IsPlaceholder(req.TimeZone) && user.TimeZone != req.TimeZone!.Trim())
         {
             user.TimeZone = req.TimeZone.Trim();
             // Automatic reminders are worked out again by the planner in the new zone; nothing else needs to move.
             await db.SaveChangesAsync(ct);
         }
-        return SettingsDto(settings, user.TimeZone);
+        return SettingsDto(settings, await UserZoneAsync(uid, ct));
     }
 
     public async Task<ReminderInsightsDto> InsightsAsync(CancellationToken ct = default)
@@ -546,8 +548,17 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     private async Task<ReminderSettings> SettingsRowAsync(Guid uid, CancellationToken ct) =>
         await db.ReminderSettings.FirstOrDefaultAsync(s => s.UserId == uid, ct) ?? new ReminderSettings { UserId = uid };
 
-    private async Task<string> UserZoneAsync(Guid uid, CancellationToken ct) =>
-        await db.Users.Where(u => u.Id == uid).Select(u => u.TimeZone).FirstOrDefaultAsync(ct) ?? "UTC";
+    /// <summary>
+    /// The zone a person's reminders are worked out in: their own zone, else the organization's, else the platform's (AppClock.ZoneFor) -
+    /// never a "UTC" left by a device report or a column default.
+    /// </summary>
+    private async Task<string> UserZoneAsync(Guid uid, CancellationToken ct)
+    {
+        var person = await db.Users.AsNoTracking().Where(u => u.Id == uid)
+            .Select(u => new { u.TimeZone, Chose = db.ReminderSettings.Any(s => s.UserId == u.Id && !s.FollowDeviceTimeZone) }).FirstOrDefaultAsync(ct);
+        var org = ctx.TenantId is { } tid ? await db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tid).Select(t => t.TimeZone).FirstOrDefaultAsync(ct) : null;
+        return clock.ZoneIdFor(person?.TimeZone, person?.Chose == true, org);
+    }
 
     private static NodaTime.DateTimeZone Zone(string? id) => ZoneTime.Find(id);
 
