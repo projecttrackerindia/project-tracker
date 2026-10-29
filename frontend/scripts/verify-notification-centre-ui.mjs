@@ -23,7 +23,7 @@ const seed = () => [
   N('m1', 'Message', 'messages', 'Ravi in #MuleSoft Support', 2, `/chat/${CONV}`, false, 'Deploy to UAT is green, can you check the logs?', { actions: ['reply', 'snooze'] }),
   N('m2', 'Message', 'messages', 'Meena in #MuleSoft Support', 6, `/chat/${CONV}`, false, 'The token flow is fixed.', { actions: ['reply', 'snooze'] }),
   N('m3', 'Mention', 'messages', 'Kiran in #MuleSoft Support', 9, `/chat/${CONV}`, true, '@Asha please review the RAML', { actions: ['reply', 'snooze'] }),
-  N('r1', 'Reminder', 'reminders', 'Call the vendor about the EMI file', 12, '/work?reminder=r1', false, null),
+  N('r1', 'Reminder', 'reminders', 'Call the vendor about the EMI file', 12, '/work?reminder=r1', false, null, { reason: 'You set this for 15:30' }),
   N('k1', 'Reminder', 'meetings', 'Starts in 10 minutes: Weekly sync', 5, `/calls/meeting/w/${MEET}`, false, '4:30 PM (Asia/Kolkata) · Project Tracker call', { startsAt: iso(5), joinLink: `/calls/meeting/w/${MEET}` }),
   N('w1', 'TaskAssigned', 'work', 'You were assigned PAY-12: Fix portal login', 30, `/projects/${PROJ}?task=${TASK}`, false, 'Payments Core · due Friday', { actions: ['done', 'reply', 'snooze'] }),
   N('w2', 'Comment', 'work', 'New comment on "Release notes" <img src=x onerror="window.ncxUnsafe=1">', 60 * 30, '/my-work', true, 'Looks good to me'),
@@ -134,6 +134,9 @@ try {
   await bell(page).click();
   await pop(page).waitFor();
   await card(page, 'm1').waitFor();
+  // A reminder says why it came, in a few words, under its title.
+  assert.equal((await page.locator('[data-testid="ncx-reason"]').allInnerTexts()).join('|'), 'You set this for 15:30');
+  checks.push('reminder-reason');
   const pb = await pop(page).boundingBox();
   assert.ok(pb.width >= 380 && pb.width <= 420, `panel width ${pb.width}`);
   assert.equal(await page.locator('.ncx-seg [role=tab]').count(), 5);

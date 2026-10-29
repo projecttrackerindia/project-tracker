@@ -235,3 +235,5 @@ html .ncx-bell.ncx-bell { padding: 0; margin: 0; }
 .ncx-read-toggle svg { margin-left: auto; transition: transform .2s ease; }
 .ncx-read.open .ncx-read-toggle svg { transform: rotate(180deg); }
 .ncx-read .ncx-card { opacity: .78; }
+/* Why a reminder came ("Due today · no time set"): a quiet line under the title. */
+.ncx-why { display: block; margin-top: 1px; font-size: 12px; font-weight: 500; color: var(--ds-text-3, rgba(60, 60, 67, .6)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

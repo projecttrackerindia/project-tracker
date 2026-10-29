@@ -213,7 +213,8 @@ export interface AppNotification { id: string; type: NotificationType; title: st
   /** When it belongs in the inbox: arrival, or the end of its snooze. */ shownAt?: string | null;
   /** What can be done from it without opening it. */ actions?: NotificationAction[];
   /** The Notification Centre filter it belongs to. */ category?: NotificationCategory;
-  /** A meeting's start (UTC) and where to join it, for meeting reminders. */ startsAt?: string | null; joinLink?: string | null }
+  /** A meeting's start (UTC) and where to join it, for meeting reminders. */ startsAt?: string | null; joinLink?: string | null;
+  /** Why a reminder came, in a few words ("Due today · no time set"). */ reason?: string | null }
 export type NotificationCategory = 'messages' | 'reminders' | 'meetings' | 'work';
 export type NotificationAction = 'done' | 'take' | 'reply' | 'approve' | 'reject' | 'snooze';
 /** Unread overall and in each lane of the inbox. */

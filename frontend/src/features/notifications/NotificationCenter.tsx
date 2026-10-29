@@ -277,6 +277,7 @@ function Inbox() {
                           <span className={`nc-item-ico ds-tile-ico ${CATEGORY_TONE[k]}`}>{unread && <i className="nc-dot" aria-label="Unread" />}<Icon name={TYPE_ICON[n.type] ?? 'bell'} size={16} /></span>
                           <span className="nc-item-text">
                             <b>{n.title}</b>
+                            {n.reason && <span className="nc-item-reason" data-testid="nc-reason">{n.reason}</span>}
                             {n.body && <span className="nc-item-body">{n.body}</span>}
                             <span className="nc-item-meta"><span>{CATEGORY[k].label}</span>
                               {n.snoozedUntil && <> · <span className="nc-back">back {formatDateTime(n.snoozedUntil)}</span></>}</span>

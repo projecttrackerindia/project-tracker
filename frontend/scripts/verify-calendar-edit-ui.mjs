@@ -63,13 +63,16 @@ function timeline(from, to) {
     projectId: d.projectId, projectName: d.projectName, status: d.status, priority: d.priority, overdue: d.date < today, people: ['Arjun Pillai'] }));
   ev.push(tev({ id: 'done:work:wt5', type: 'done', title: 'Replace the pier fuse', key: 'WT-5', start: at(today, '10:05'), date: today, sourceType: 'work', sourceId: 'wt5', status: 'Completed' }));
   ev.push(tev({ id: 'call:c1', type: 'call', title: 'Bank sandbox call', start: at(today, '12:30'), end: at(today, '12:50'), date: today, sourceType: 'call', sourceId: 'c1', people: ['Ravi Menon', user.displayName] }));
+  // a short call that already happened (10:31-10:40), under the typed-in time that ends at now: that time is drawn as the slim lane
+  ev.push(tev({ id: 'call:c2', type: 'call', title: 'Quick vendor callback', start: at(today, '10:31'), end: at(today, '10:40'), date: today, sourceType: 'call', sourceId: 'c2', people: ['Ravi Menon', user.displayName] }));
   ev.push(tev({ id: 'attendance:a1', type: 'attendance', title: 'Office', start: at(today, '09:12'), date: today, sourceType: 'attendance', sourceId: 'a1', status: 'in', running: true }));
   const r = s.reminder;
   ev.push(tev({ id: `reminder:${r.id}`, type: 'reminder', title: r.title, start: r.at, date: new Date(new Date(r.at).getTime() + 330 * 60e3).toISOString().slice(0, 10), sourceType: 'reminder', sourceId: r.id, status: r.state.toLowerCase() }));
-  // time entries: placed ones at their hours; typed-in minutes from 10:30
+  // time entries: placed ones at their hours; typed-in minutes from 10:30 - but, as the server does, never past now (ending now instead)
   for (const e of s.entries) {
     const placed = e.startedAt && e.endedAt;
-    const start = placed ? e.startedAt : at(e.workDate, '10:30'), end = placed ? e.endedAt : new Date(Date.parse(at(e.workDate, '10:30')) + e.minutes * 60e3).toISOString();
+    let start = placed ? e.startedAt : at(e.workDate, '10:30'), end = placed ? e.endedAt : new Date(Date.parse(at(e.workDate, '10:30')) + e.minutes * 60e3).toISOString();
+    if (!placed && Date.parse(end) > NOW.getTime()) { end = NOW.toISOString(); start = new Date(NOW.getTime() - e.minutes * 60e3).toISOString(); }
     ev.push(tev({ id: `time:${e.id}`, type: 'time', title: e.taskTitle, start, end, date: e.workDate, sourceType: 'timeEntry', sourceId: e.id, minutes: e.minutes, approximated: !placed, note: e.note, projectId: e.kind === 'task' ? pid : null, projectName: e.kind === 'task' ? 'Harbour Lights' : null }));
   }
   return { from, to, timeZone: 'Asia/Kolkata', scope: 'me', generatedAt: NOW.toISOString(), events: ev.filter((t) => t.date >= from && t.date <= to) };
@@ -215,7 +218,7 @@ try {
   const a = await block('meeting', 'Lamp design review').boundingBox(), b2 = await block('meeting', 'Supplier call').boundingBox();
   assert.ok(a.width < cw * .6 && b2.width < cw * .6 && Math.abs(a.x - b2.x) > 10, `overlapping meetings in columns (${a.width}/${b2.width} of ${cw})`);
   const te2 = col.locator('[data-type="time"].ap');
-  assert.match(await te2.getAttribute('class'), /thin/, 'logged time under a meeting is a slim lane');
+  assert.match(await te2.getAttribute('class'), /thin/, 'logged time under a meeting or call is a slim lane');
   assert.match(await te2.getAttribute('aria-label'), /approximate/);
   assert.match(await block('meeting', 'Lamp design review').getAttribute('title'), /Lamp design review/, 'the full title on hover');
   checks.push('overlap columns');

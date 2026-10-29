@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { todayISO } from '../../lib/format';
 import { useWorkspaceId } from '../../stores/auth';
 import { hourOf, type PlanOverrides } from './plannerModel';
-import { buildWeek, focusLabel, readPlan, useTimeline, weekRange, writePlan, type DayView } from './timeline';
+import { buildWeek, focusLabel, readPlan, stickFocus, useTimeline, weekRange, writePlan, type DayView } from './timeline';
 
 /** The clock, refreshed every minute (shared by Today's pieces so they agree with the Calendar's now line). */
 export function useNow(ms = 60_000) {
@@ -20,6 +20,8 @@ export function useToday(team = false) {
   const today = todayISO();
   const now = useNow();
   const nowQ = Math.ceil(hourOf(now) * 4) / 4;
+  /** To the minute: today's logged time counts only up to now. */
+  const nowM = Math.floor(hourOf(now) * 60) / 60;
   const [plan, setPlan] = useState<PlanOverrides>(() => readPlan(wid));
   useEffect(() => { setPlan(readPlan(wid)); }, [wid]);
   // the Calendar may change the plan in another tab or a moment ago: read it again when the window comes back
@@ -27,10 +29,17 @@ export function useToday(team = false) {
   const q = useTimeline({ ...weekRange(today), scope: team ? 'team' : 'me' });
   const day: DayView | null = useMemo(() => {
     if (!q.data) return null;
-    const d = buildWeek(q.data.events, [today], today, nowQ, team ? {} : plan).byDay.get(today)!;
+    const d = buildWeek(q.data.events, [today], today, nowQ, team ? {} : plan, nowM).byDay.get(today)!;
     return team ? { ...d, focus: [] } : d;
-  }, [q.data, today, nowQ, plan, team]);
+  }, [q.data, today, nowQ, nowM, plan, team]);
   const savePlan = useCallback((p: PlanOverrides) => { setPlan(p); writePlan(wid, p); }, [wid]);
+  // A suggested block that has started (or starts within 15 minutes) stays where it is: kept in the plan, so a refresh never slides it later.
+  const nowH = hourOf(now);
+  useEffect(() => {
+    if (team || !day) return;
+    const next = stickFocus(day.focus, plan, today, nowH);
+    if (next) savePlan(next);
+  }, [team, day, plan, today, nowH, savePlan]);
   return { q, day, today, now, plan, savePlan };
 }
 

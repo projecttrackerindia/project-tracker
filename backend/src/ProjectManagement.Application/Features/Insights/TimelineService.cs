@@ -139,6 +139,8 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             {
                 start = Utc(s);
                 end = t.EndedAt is { } e ? Utc(e) : (now > start ? now : start.AddMinutes(1));
+                // An older entry saved to end in the future (logged as "2h" from the morning's check-in) is drawn up to now, never past it.
+                if (t.EndedAt is not null && end > now) { end = now; start = now.AddMinutes(-t.Minutes); }
             }
             else
             {
@@ -151,6 +153,8 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 var next = cursor.TryGetValue(key, out var c) ? c : dayFloor;
                 if (clock.LocalDate(created) == t.WorkDate && created.AddMinutes(-t.Minutes) >= next) { start = created.AddMinutes(-t.Minutes); end = created; }
                 else { start = next; end = next.AddMinutes(t.Minutes); }
+                // Logged time is time that has happened: an entry stacked past the present ends now and starts that much earlier.
+                if (end > now) { end = now; start = now.AddMinutes(-t.Minutes); }
                 cursor[key] = end > next ? end : next;
             }
             var itemType = t.TaskId is not null ? "task" : "work";

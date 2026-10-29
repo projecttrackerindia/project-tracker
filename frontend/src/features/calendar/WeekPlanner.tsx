@@ -25,7 +25,7 @@ import {
 } from './plannerModel';
 import { useTodaySignals } from '../home/Signals';
 import { Term } from '../../components/Term';
-import { buildWeek, daySignature, focusLabel, hoursOf, readPlan, useTimeline, weekRange, writePlan, type DayView } from './timeline';
+import { buildWeek, daySignature, focusLabel, hoursOf, readPlan, stickFocus, useTimeline, weekRange, writePlan, type DayView } from './timeline';
 import './planner.css';
 
 /** ISO week number. */
@@ -135,7 +135,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const projects = useMemo(() => [...new Set(raw.map((e) => e.projectName).filter((n): n is string => !!n))].slice(0, 6), [raw]);
   const tintOf = useCallback((name: string | null) => (name && projects.includes(name) ? TINTS[projects.indexOf(name) % TINTS.length] : 'g'), [projects]);
   const timeline = useMemo(() => raw.filter((t) => !t.projectName || !hidden.has(t.projectName)), [raw, hidden]);
-  const wv = useMemo(() => buildWeek(timeline, week, today, nowQ, plan), [timeline, week, today, nowQ, plan]);
+  const wv = useMemo(() => buildWeek(timeline, week, today, nowQ, plan, nowH), [timeline, week, today, nowQ, plan, nowH]);
   const openItems = useMemo(() => wv.days.flatMap((d) => d.due).filter((e) => isWorkItem(e) && !isDone(e)), [wv]);
   const choices = useMemo<WorkChoice[]>(() => {
     const out = new Map<string, WorkChoice>();
@@ -232,6 +232,11 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     }
   };
   const savePlan = (p: PlanOverrides) => { setPlan(p); writePlan(wid, p); };
+  // The same rule as Today: a suggested block that has started stays where it is for the rest of the day.
+  useEffect(() => {
+    const next = stickFocus(wv.focus, plan, today, nowH);
+    if (next) { setPlan(next); writePlan(wid, next); }
+  }, [wv, plan, today, nowH, wid]);
   const moveFocusTo = (f: Focus, day: string, start: number, len: number) => {
     const before = plan;
     savePlan({ ...plan, [planKey(f.e)]: { day, start, len } });
@@ -384,7 +389,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   };
   // ---- the blocks of each day, laid out once per data change (not per render)
   const cols = useMemo(() => days.map((d) => {
-    const dv: DayView | undefined = wv.byDay.get(d) ?? buildWeek(timeline, [d], today, nowQ, plan).byDay.get(d);
+    const dv: DayView | undefined = wv.byDay.get(d) ?? buildWeek(timeline, [d], today, nowQ, plan, nowH).byDay.get(d);
     const ms = meets.filter((m) => layers.meetings && m.day === d);
     const calls = layers.calls ? dv?.calls ?? [] : [];
     const fs = focus.filter((f) => f.day === d);
@@ -400,7 +405,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     let last = -Infinity;
     for (const p of pills) { const t = Math.max(p.top, last + 20); pillTop.set(p.key, t); last = t; }
     return { d, meets: ms, calls, lanes: lanes(spans), focus: fs, logged: layers.logged ? dv?.time ?? [] : [], done, reminders, pillTop };
-  }), [days, wv, timeline, today, nowQ, plan, meets, layers, focus]);
+  }), [days, wv, timeline, today, nowQ, nowH, plan, meets, layers, focus]);
   // The card follows its block when the data refreshes (or closes when the block is gone, e.g. after Mark done).
   useEffect(() => {
     if (!openKey) return;
@@ -474,7 +479,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     </div>
   );
   const detail = open && <EventDetail key={open.d.key} detail={open.d} anchor={open.el} today={today} nowH={nowH} days={week} actions={actions} onClose={closeDetail} inline={wide && view !== 'month'} />;
-  const selDv = wv.byDay.get(selDay) ?? buildWeek(timeline, [selDay], today, nowQ, plan).byDay.get(selDay);
+  const selDv = wv.byDay.get(selDay) ?? buildWeek(timeline, [selDay], today, nowQ, plan, nowH).byDay.get(selDay);
   const overdue = useMemo(() => wv.days.flatMap((d) => d.due).filter((e) => e.overdue && e.date < today), [wv, today]);
 
   return (
@@ -688,6 +693,7 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
   tintOf: (p: string | null) => string; canMove: (m: Meet) => string | null; timeWhy: (t: TimelineEvent) => string | null; h: ColHandlers;
 }) {
   const { d } = col;
+  const nowAt = nowTop == null ? null : nowTop / HR + G0;
   // Where a block is drawn: where it is, or where it is being dragged to.
   const at = (key: string, start: number, end: number) => (drag && drag.item.key === key ? (drag.day === d ? { start: drag.start, end: drag.end, lifted: true } : null) : { start, end, lifted: false });
   const ghost = drag && drag.item.day === d ? <div className="wp-ghost" style={{ top: top(drag.item.start), height: (drag.item.end - drag.item.start) * HR - 2 }} aria-hidden="true" /> : null;
@@ -732,7 +738,7 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
             onPointerDown={(e) => h.down(e, it, 'move')}
             onKeyDown={(ev) => { if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) { ev.preventDefault(); h.alt(it, ev.key === 'ArrowUp'); } }}
             onClick={(ev) => h.open({ kind: 'focus', key: f.key, f }, ev.currentTarget)}>
-            <span className="wp-f-k">Focus</span><span className="wp-lbl">{focusLabel(f.e)}</span><small>{clockH(pos.start)} – {clockH(pos.end)}</small>
+            <span className="wp-f-k">{nowAt != null && f.start <= nowAt && nowAt < f.end ? 'Focus now' : 'Focus'}</span><span className="wp-lbl">{focusLabel(f.e)}</span><small>{clockH(pos.start)} – {clockH(pos.end)}</small>
             <Edges it={it} h={h} />
           </button>
         );

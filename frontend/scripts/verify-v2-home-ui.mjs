@@ -133,7 +133,9 @@ try {
     assert.match(await page.locator('.hm-date').innerText(), /^[A-Z]+, \d{1,2} [A-Z]+$/);
     const brief = page.getByRole('region', { name: 'Briefing' });
     await brief.getByText('5 things need you today.').waitFor();
-    assert.match(await brief.innerText(), /WT-5 payout server is down/);
+    // The banner sums the day up (critical · overdue · due today · free) instead of repeating the rows of Needs you.
+    assert.match(await brief.getByTestId('briefing-summary').innerText(), /1 overdue · 1 due today · .+ free$/);
+    assert.doesNotMatch(await brief.innerText(), /WT-5 payout server is down/);
     await brief.getByRole('button', { name: 'Plan my day' }).waitFor();
     assert.equal(await page.getByRole('tab', { name: 'For me' }).getAttribute('aria-selected'), 'true');
     await page.getByRole('tab', { name: 'My team' }).waitFor();
@@ -144,7 +146,7 @@ try {
     assert.match(await yday.locator('.hm-day-hd').innerText(), /3 meetings · 2 focus blocks · .+ free/);
     // Focus blocks are named after the work they are for (here the critical ticket first), never a generic "Deep work".
     assert.equal(await yday.locator('.hm-cap.focus').count(), 2);
-    assert.match(await yday.locator('.hm-cap.focus').first().innerText(), /^Focus · WT-5/);
+    assert.match(await yday.locator('.hm-cap.focus').first().innerText(), /^Focus( now)? · WT-5/);
     assert.equal(await yday.locator('.hm-cap.focus', { hasText: 'Deep work' }).count(), 0);
     assert.equal((await yday.locator('.hm-now').innerText()).trim(), '10:42');
     assert.equal((await yday.locator('.hm-hours span').allInnerTexts()).join(' '), '9 AM 10 11 12 PM 1 2 3 4 5 6 7');

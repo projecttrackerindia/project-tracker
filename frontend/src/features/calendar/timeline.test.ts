@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TimelineEvent } from '../../api/types';
 import { setAppZones } from '../../lib/zone';
-import { buildWeek, dayCounts, daySignature, focusLabel, workWeek } from './timeline';
+import { buildWeek, dayCounts, daySignature, deadlineHourOf, focusLabel, focusWord, freeMinutesOf, loggedMinutesOf, shiftOf, stickFocus, workWeek } from './timeline';
 
 setAppZones('UTC', null);
 const ev = (p: Partial<TimelineEvent> & Pick<TimelineEvent, 'id' | 'type' | 'start' | 'date'>): TimelineEvent => ({
@@ -49,5 +49,42 @@ describe('the one timeline', () => {
     const d = buildWeek(events, [today], today, 18.5, {}).byDay.get(today)!;
     expect(d.focus).toHaveLength(0);
     expect(d.freeMin).toBe(0);
+  });
+});
+
+describe('Your day stays put', () => {
+  it('keeps a started focus block where it is after a refresh (12:29 then 12:35)', () => {
+    const at1029 = 12 + 29 / 60, at1035 = 12 + 35 / 60;
+    const first = buildWeek(events, [today], today, Math.ceil(at1029 * 4) / 4, {}).byDay.get(today)!;
+    const block = first.focus.find((f) => f.start <= at1029 + 0.25)!;
+    expect(block).toBeTruthy();
+    const plan = stickFocus(first.focus, {}, today, at1029)!;
+    expect(plan).not.toBeNull();
+    const later = buildWeek(events, [today], today, Math.ceil(at1035 * 4) / 4, plan).byDay.get(today)!;
+    const same = later.focus.find((f) => f.e.id === block.e.id)!;
+    expect(same.start).toBe(block.start);
+    expect(same.pinned).toBe(false);   // kept by the plan, not "moved by you"
+    expect(stickFocus(later.focus, plan, today, at1035)).toBeNull();   // nothing more to write
+    expect(focusWord(same, today, Math.max(at1035, same.start))).toBe('Focus now');
+    // the kept block of an earlier day is dropped from the plan
+    expect(stickFocus([], plan, '2026-10-29', 9)).toEqual({});
+  });
+
+  it('places a date-only deadline at the shift end and a timed one at its time', () => {
+    expect(deadlineHourOf({ date: today }, { end: 18 })).toBe(18);
+    expect(deadlineHourOf({ date: today, dueTime: '15:30' }, { end: 18 })).toBe(15.5);
+  });
+
+  it('counts logged time only up to now, and free time from max(now, check-in) to the shift end', () => {
+    const future = ev({ id: 't9', type: 'time', title: 'Rotate keys', start: '2026-10-28T09:31:00Z', end: '2026-10-28T11:31:00Z', minutes: 120, date: today, sourceType: 'timeEntry' });
+    expect(loggedMinutesOf([future], today, today, 10 + 29 / 60)).toBe(58);
+    expect(loggedMinutesOf([future], today, today, 14)).toBe(120);
+    expect(loggedMinutesOf([future], today, '2026-10-29', 9)).toBe(120);
+    const shift = shiftOf([ev({ id: 'a1', type: 'attendance', start: '2026-10-28T09:31:00Z', date: today, sourceType: 'attendance' })]);
+    expect(shift).toEqual({ start: 9 + 31 / 60, end: 18, checkIn: 9 + 31 / 60 });
+    // 9:00, checked in at 9:31: from 9:31 to 18:00 less the 12:00-12:30 meeting
+    expect(freeMinutesOf(today, today, 9, shift, [[12, 12.5]], false)).toBe(8 * 60 + 29 - 30);
+    expect(freeMinutesOf(today, today, 18 + 40 / 60, shift, [], false)).toBe(0);
+    expect(freeMinutesOf('2026-10-27', today, 9, shift, [], false)).toBe(0);
   });
 });

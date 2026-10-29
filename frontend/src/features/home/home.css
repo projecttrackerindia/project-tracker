@@ -216,3 +216,30 @@ html[data-theme='dark'] .hm-pin.done { background: #30d158; color: #062b10; }
 .hm-pin.rem i { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid #ff9500; flex: none; }
 .hm-yday-cal { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; font-weight: 500; color: var(--ds-accent); text-decoration: none; }
 .hm-yday-cal:hover { text-decoration: underline; }
+
+/* ---- Your day, in lanes: meetings, calls and focus on the main row; logged time as a slim lane under it (the Calendar's thin lane, never past
+   the now line); pins (done, reminders, deadlines "by end of day", the check-in) below, each label ellipsized to the room before the next. */
+.hm-day-track.tl.lanes { height: 84px; }
+.hm-day-track.tl.lanes.two { height: 104px; }
+.hm-day-track.lanes .hm-lane.lg { top: 44px; height: 10px; border-radius: 5px; background: var(--fill2); opacity: .7; }
+.hm-day-track.lanes .hm-lane.m { top: 62px; }
+.hm-day-track.lanes .hm-cap { min-width: 0; z-index: 1; }
+.hm-cap-t { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hm-cap.half { padding: 2px 8px; font-size: 11px; display: flex; align-items: center; }
+.hm-cap.half small { display: none; }
+.hm-cap.focus.now { box-shadow: inset 3px 0 0 #5856d6, 0 0 0 1.5px rgba(88, 86, 214, .45); }
+.hm-lg { position: absolute; top: 44px; height: 10px; padding: 0; border: 0; border-radius: 5px; background: #28cd41; opacity: .7; cursor: pointer; z-index: 1; }
+.hm-lg:hover, .hm-lg:focus-visible { opacity: 1; }
+.hm-lg.ap { background: repeating-linear-gradient(to right, #28cd41 0 5px, rgba(40, 205, 65, .35) 5px 8px); }
+.hm-lg.run { background: linear-gradient(to right, #28cd41, #28cd41 85%, rgba(40, 205, 65, .3)); }
+html[data-theme='dark'] .hm-lg { background: #30d158; }
+.hm-pre { position: absolute; top: -6px; bottom: -6px; border-radius: 10px 0 0 10px; pointer-events: none;
+  background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(120, 120, 128, .08) 6px 7px), rgba(120, 120, 128, .07); }
+.hm-in { position: absolute; top: -6px; bottom: -6px; width: 0; border-left: 1.5px dashed rgba(40, 205, 65, .8); pointer-events: none; z-index: 1; }
+.hm-dl { position: absolute; top: -6px; bottom: -6px; width: 0; border-left: 1.5px solid rgba(255, 59, 48, .55); pointer-events: none; z-index: 1; }
+.hm-pin-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.hm-day-track.lanes .hm-pin { max-width: none; overflow: hidden; z-index: 2; }
+.hm-pin.dl { background: rgba(255, 59, 48, .12); color: #c11b10; }
+.hm-pin.in { background: rgba(40, 205, 65, .12); color: #127a26; cursor: default; padding: 0 7px; }
+html[data-theme='dark'] .hm-pin.dl { color: #ff6961; } html[data-theme='dark'] .hm-pin.in { color: #7ee08e; }
+.hm-brief-sum { white-space: normal; opacity: .9; }

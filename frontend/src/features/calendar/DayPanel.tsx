@@ -7,7 +7,7 @@ import { toast } from '../../stores/ui';
 import { reminderApi } from '../reminders/api';
 import { canComplete, completeWork, editError, refreshAfterEdit } from './calendarEdit';
 import { DOW3, MONTHS, RANK, clockH, countdown, dateOf, fmtMins, isDeadline, isDone, isWorkItem, type Detail, type Focus, type Meet } from './plannerModel';
-import { focusLabel, hoursOf, type DayView } from './timeline';
+import { dayCounts, focusLabel, hoursOf, type DayView } from './timeline';
 
 const initials = (n: string) => n.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 const longDay = (d: string) => { const x = dateOf(d); return `${x.toLocaleDateString('en-GB', { weekday: 'long' })} ${x.getDate()} ${MONTHS[x.getMonth()]}`; };
@@ -44,7 +44,9 @@ export function DayPanel({ day, today, nowH, dv, meets, focus, overdue, peopleOf
   const due = [...(isToday ? overdue : []), ...(dv?.due ?? [])]
     .filter((e, i, all) => !isDone(e) && all.findIndex((x) => x.type === e.type && x.id === e.id) === i)
     .sort((a, b) => Number(b.overdue) - Number(a.overdue) || (RANK[a.priority ?? ''] ?? 4) - (RANK[b.priority ?? ''] ?? 4) || a.date.localeCompare(b.date));
-  const logged = time.reduce((n, t) => n + (t.minutes ?? 0), 0);
+  // Logged and free time as Today counts them (dayCounts): today's logged time only up to now, free time from max(now, check-in) to the shift's end.
+  const logged = dv?.loggedMin ?? 0;
+  const free = dv && day >= today && !(dv.off.length) ? dayCounts(dv).free : null;
   const off = dv?.off ?? [];
 
   // ---- now and next (today only): what covers this minute, and the first thing still to come
@@ -81,7 +83,7 @@ export function DayPanel({ day, today, nowH, dv, meets, focus, overdue, peopleOf
       {detail}
       <header className="dp-hd">
         <h2>{isToday ? 'Today' : DOW3[dateOf(day).getDay()]}<span>{longDay(day).replace(/^\w+ /, '')}</span></h2>
-        {counts && <p className="dp-sum">{counts}</p>}
+        {(counts || free != null) && <p className="dp-sum">{counts}{free != null && <>{counts ? ' · ' : ''}<span data-testid="day-free">{fmtMins(free)} free</span></>}</p>}
         {off.map((o) => <span key={o.id} className="dp-off">{o.type === 'holiday' ? `Holiday · ${o.title}` : `On leave${o.note ? ` · ${o.note}` : ''}`}</span>)}
       </header>
 

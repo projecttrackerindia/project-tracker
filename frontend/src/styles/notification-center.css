@@ -432,3 +432,5 @@ html .tzp-city em { background: var(--ds-success-bg); color: var(--ds-success); 
   html .nc-panel-body { padding: 14px 18px 18px; }
   html .nc-device { padding: 20px; border-radius: 22px; }
 }
+/* Why a reminder came ("Due today · no time set"): one quiet line between the title and the body. */
+.nc-item-reason { display: block; font-size: 12px; font-weight: 500; color: var(--ds-text-3, var(--text-2)); letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

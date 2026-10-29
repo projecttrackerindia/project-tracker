@@ -110,7 +110,7 @@ try {
   const y = page.locator('[data-testid="your-day"]');
   for (const [type, n] of [['meeting', 1], ['call', 1], ['time', 2], ['done', 3], ['reminder', 2]]) assert.equal(await y.locator(`[data-type="${type}"]`).count(), n, `Today shows ${n} ${type}`);
   const homeFocus = await y.locator('[data-type="focus"]').allInnerTexts();
-  assert.ok(homeFocus.length >= 1 && homeFocus.every((t) => /^Focus · (INFRA-4 Rotate the certificates|WT-15 Renew)/.test(t)), homeFocus.join(' | '));
+  assert.ok(homeFocus.length >= 1 && homeFocus.every((t) => /^Focus( now)? · (INFRA-4 Rotate the certificates|WT-15 Renew)/.test(t)), homeFocus.join(' | '));
   assert.equal(await y.locator('[data-type="focus"]', { hasText: 'Deep work' }).count(), 0, 'never a generic "Deep work"');
   const homeNow = (await y.locator('[data-testid="your-day-now"]').innerText()).trim();
   assert.equal(homeNow, '3:20');

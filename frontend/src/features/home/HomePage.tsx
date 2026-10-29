@@ -21,7 +21,9 @@ import { invalidateWorkspace, useCachedWsQuery, useWsQuery } from '../../lib/hoo
 import { refreshWork } from '../work/workUi';
 import { hourIn, isoDateIn, zonedParts } from '../../lib/zone';
 import { YourDay } from '../calendar/YourDay';
-import { toCalendarEvent, useTimeline } from '../calendar/timeline';
+import { dayCounts, toCalendarEvent, useTimeline } from '../calendar/timeline';
+import { useToday } from '../calendar/useToday';
+import { fmtMins } from '../calendar/plannerModel';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { DotsMenu } from '../talk/DotsMenu';
@@ -129,7 +131,7 @@ function ForYou({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) => void
           ]} />
         </div>
       </header>
-      <Briefing q={briefing} />
+      <Briefing q={briefing} team={team} />
       <YourDay team={team} />
       <div className="hm-grid">
         <InboxCard />
@@ -147,17 +149,32 @@ function ForYou({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) => void
 /** "6 things need you." reads as "6 things need you today." on Today. */
 const todayHeadline = (h?: string | null) => (h ?? '').replace(/ need(s)? you\.$/, ' need$1 you today.');
 
-function Briefing({ q }: { q: UseQueryResult<InboxBriefing, Error> }) {
+/**
+ * The banner's one line under the headline: what the day holds in numbers ("1 critical · 1 due today · 4h free"), never the rows of Needs you
+ * again. Critical comes from the Needs you rows (the same cached request), due and overdue from the briefing, free time from Your day (dayCounts).
+ */
+function briefingSummary(b: Pick<InboxBriefing, 'stats'>, critical: number, freeMin: number | null) {
+  const overdue = b.stats?.overdue ?? 0, dueToday = b.stats?.dueToday ?? 0;
+  const parts = [critical > 0 && `${critical} critical`, overdue > 0 && `${overdue} overdue`, dueToday > 0 && `${dueToday} due today`,
+    freeMin != null && `${fmtMins(Math.max(0, Math.round(freeMin)))} free`];
+  return parts.filter(Boolean).join(' · ');
+}
+
+function Briefing({ q, team }: { q: UseQueryResult<InboxBriefing, Error>; team: boolean }) {
   const ai = useAi();
   const ask = useAssistant((s) => s.ask);
+  const rows = useCachedWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { staleTime: 30_000 });
+  const { day } = useToday(team);
   if (q.isLoading) return <div className="hm-brief loading" aria-busy="true"><span className="hm-orb" aria-hidden="true" /><p>Reading your work…</p></div>;
   if (q.isError) return <div className="hm-brief" role="status"><span className="hm-orb" aria-hidden="true" /><p>The briefing could not be read just now. <button type="button" className="link-btn" onClick={() => void q.refetch()}>Try again</button></p></div>;
   if (!q.data) return null;
   const b = q.data;
+  const critical = (rows.data?.rows ?? []).filter((r) => r.urgent).length;
+  const summary = briefingSummary(b, critical, day ? dayCounts(day).free : null);
   return (
     <section className="hm-brief" aria-label="Briefing" title={b.sources ? `From ${b.sources}` : undefined}>
       <span className="hm-orb" aria-hidden="true" />
-      <p><b>{todayHeadline(b.headline)}</b>{(b.reasons?.length ?? 0) > 0 && <> {b.reasons.join(' ')}</>}</p>
+      <p><b>{todayHeadline(b.headline)}</b>{summary && <> <span className="hm-brief-sum" data-testid="briefing-summary">{summary}</span></>}</p>
       {ai && <button type="button" className="hm-plan" onClick={() => ask('Plan my day: put what needs me today in order around my meetings, with focus blocks for the most important work.')}>Plan my day</button>}
     </section>
   );
