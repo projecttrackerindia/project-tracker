@@ -50,7 +50,9 @@
 /* ---- motion blocks */
 .mo-block { margin: 18px 0; display: block; position: relative; }
 /* An embed sits above anything the page's own CSS can position (z-index at most 10), inside the page's own stacking context. */
-.pg-body[data-doc] { isolation: isolate; }
+.doc-body[data-doc] { isolation: isolate; }
+/* A document with sections styled like a page: the paper keeps its own height (the scoped theme class it carries for @scope sets a page height). */
+.dv-paper.doc-scope[data-doc] { min-height: 0; }
 [data-embed-guard] { position: relative; z-index: 11; isolation: isolate; }
 .mo-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--ds-text-2); margin-bottom: 6px; }
 .mo-kind { font-weight: 600; color: var(--ds-text); padding: 2px 8px; border-radius: 999px; background: var(--ds-fill); }
@@ -93,16 +95,16 @@
 .mo-menu-done { justify-self: end; border: 0; border-radius: 8px; padding: 4px 12px; background: var(--ds-fill); color: var(--ds-text); font: inherit; cursor: pointer; }
 
 /* ---- presets (the app's own CSS: trusted, theme-aware) */
-.pg-body[data-preset='editorial'] .ProseMirror { font-size: 17px; line-height: 1.75; }
-.pg-body[data-preset='editorial'] .ProseMirror :is(h1, h2, h3) { font-family: 'New York', 'Iowan Old Style', Georgia, serif; font-weight: 600; letter-spacing: -.01em; }
-.pg-body[data-preset='editorial'] .ProseMirror > p:first-of-type::first-letter { font-family: Georgia, serif; float: left; font-size: 3.1em; line-height: .9; padding: 4px 8px 0 0; color: var(--ds-accent); }
-.pg-body[data-preset='editorial'] .ProseMirror blockquote { font-family: Georgia, serif; font-size: 1.15em; border-left-color: var(--ds-accent); }
-.pg-body[data-preset='product'] .ProseMirror :is(h1, h2) { font-weight: 750; letter-spacing: -.025em; }
-.pg-body[data-preset='product'] .ProseMirror h2 { font-size: 1.6em; }
-.pg-body[data-preset='product'] .ProseMirror :is(.rte-callout, table, pre) { border-radius: 16px; box-shadow: var(--ds-e2, 0 6px 18px rgba(0, 0, 0, .08)); border: 1px solid var(--ds-line); }
-.pg-body[data-preset='minimal'] .ProseMirror :is(h1, h2, h3) { font-size: 1em; text-transform: uppercase; letter-spacing: .08em; color: var(--ds-text-2); font-weight: 600; margin-top: 2.2em; }
-.pg-body[data-preset='minimal'] .ProseMirror { line-height: 1.85; color: var(--ds-text); }
-.pg-body[data-preset='dark-hero'] .ProseMirror > :first-child {
+.doc-body[data-preset='editorial'] .ProseMirror { font-size: 17px; line-height: 1.75; }
+.doc-body[data-preset='editorial'] .ProseMirror :is(h1, h2, h3) { font-family: 'New York', 'Iowan Old Style', Georgia, serif; font-weight: 600; letter-spacing: -.01em; }
+.doc-body[data-preset='editorial'] .ProseMirror > p:first-of-type::first-letter { font-family: Georgia, serif; float: left; font-size: 3.1em; line-height: .9; padding: 4px 8px 0 0; color: var(--ds-accent); }
+.doc-body[data-preset='editorial'] .ProseMirror blockquote { font-family: Georgia, serif; font-size: 1.15em; border-left-color: var(--ds-accent); }
+.doc-body[data-preset='product'] .ProseMirror :is(h1, h2) { font-weight: 750; letter-spacing: -.025em; }
+.doc-body[data-preset='product'] .ProseMirror h2 { font-size: 1.6em; }
+.doc-body[data-preset='product'] .ProseMirror :is(.rte-callout, table, pre) { border-radius: 16px; box-shadow: var(--ds-e2, 0 6px 18px rgba(0, 0, 0, .08)); border: 1px solid var(--ds-line); }
+.doc-body[data-preset='minimal'] .ProseMirror :is(h1, h2, h3) { font-size: 1em; text-transform: uppercase; letter-spacing: .08em; color: var(--ds-text-2); font-weight: 600; margin-top: 2.2em; }
+.doc-body[data-preset='minimal'] .ProseMirror { line-height: 1.85; color: var(--ds-text); }
+.pg-body[data-preset='dark-hero'] .ProseMirror > :first-child, .dv-paper[data-preset='dark-hero'] .rd-sec:not(.rd-sec ~ .rd-sec) .ProseMirror > :first-child {
   background: radial-gradient(120% 140% at 0% 0%, #3b3f9a 0%, #12142b 55%, #07080f 100%); color: #fff; padding: 40px 32px; border-radius: 20px; margin-bottom: 28px;
   font-size: 1.9em; font-weight: 700; letter-spacing: -.02em; line-height: 1.2;
 }

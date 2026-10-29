@@ -182,7 +182,8 @@ public class AiHomeActions(IAppDbContext db, ICurrentContext ctx, AgentReviewSer
         var section = current.Sections.FirstOrDefault(s => s.Key == key && s.Kind == SectionKind.RichText)
             ?? throw new ValidationException("section", "That section is not on the page any more.");
         var added = AiToolbox.MarkdownToDoc(content);
-        var next = replace ? added : Append(section.Content, added);
+        // Motion blocks and a block's motion survive the rewrite (the model saw them as [[keep:N]] lines); the style is kept by the save.
+        var next = MotionContent.KeepBlocks(section.Content, replace ? added : Append(section.Content, added));
         var saved = await documents.SaveSectionsAsync(id, new SaveSectionsRequest(current.Revision, [new SectionInput(key, next)]), ct);
         if (saved.Revision == current.Revision && saved.Sections.FirstOrDefault(s => s.Key == key)?.Content == section.Content)
             throw new ConflictException("The change could not be verified. Open the page before trying again.", "AI_ACTION_UNVERIFIED");

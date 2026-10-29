@@ -1,5 +1,6 @@
 import { useReadingProgress } from './readingProgress';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -33,6 +34,13 @@ import { EndpointCards, Inspector, ReaderCrumb, ReaderRail, readingTime, useOutl
 import { CLASSIFICATION, ClassificationBadge, VISIBILITY } from './docUi';
 import { PageView } from './PageView';
 import { PAGE_CODE } from './pages';
+import { MotionContext, PickFileContext } from './motion/MotionBlocks';
+import { StylePanel } from './motion/StylePanel';
+import { scopeCss } from './motion/cssScope';
+import { bodyMoves } from './motion/keepMotion';
+import { DESIGN_DEFAULT, hasMotion, readPaused, styleOf, withStyle, writePaused, type PageStyle } from './motion/pageStyle';
+import { useScrollMotion } from './motion/useScrollMotion';
+import { EditorAiContext } from './editor/ai';
 
 /** Whether a section has anything in it (a table: a row; text: a word, a picture, a list item or a diagram). Reading hides sections that have nothing yet. */
 function hasContent(kind: string, value: string): boolean {
@@ -181,6 +189,39 @@ function DocumentView({ id }: { id: string }) {
 
   const outline = useOutline(colRef, [q.data, mode, apiFull, edits]);
 
+  // Style and motion, as on a page: kept with the first text section (versioned with it), changed only in the Style panel; the CSS is fenced
+  // into this document (@scope, embeds excluded), motion stops for reduced motion, print and a reader's Pause.
+  const firstText = detail?.sections.find((s) => s.kind !== 'Table');
+  const savedStyle = useMemo(() => styleOf(firstText?.content), [firstText?.content]);
+  const [previewStyle, setPreviewStyle] = useState<PageStyle | null>(null);
+  const [styleOpen, setStyleOpen] = useState(false);
+  const [styleSaving, setStyleSaving] = useState(false);
+  const [previewMotion, setPreviewMotion] = useState(false);
+  const [paused, setPaused] = useState(readPaused);
+  const [paper, setPaper] = useState<HTMLElement | null>(null);
+  const design = useWsQuery(['documents', 'library-design'], documentApi.libraryDesign, { staleTime: 300_000 });
+  const designOn = design.data ?? DESIGN_DEFAULT;
+  const shownStyle = previewStyle ?? savedStyle;
+  const scoped = useMemo(() => (designOn.customCss && shownStyle.css.trim() ? scopeCss(shownStyle.css, id) : null), [designOn.customCss, shownStyle.css, id]);
+  /** Uploads a file to the document (videos, Lottie JSON) for a motion block. */
+  const pickFile = useCallback((accept: string) => new Promise<{ fileId: string; name: string } | null>((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = accept;
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return resolve(null);
+      try { const f = await documentApi.uploadFile(id, file); invalidateWorkspace(wid, 'documents'); resolve({ fileId: f.id, name: file.name.replace(/\.[^.]+$/, '') }); }
+      catch (e) { toast(e instanceof ApiError ? e.message : 'Could not add the file.', 'error'); resolve(null); }
+    };
+    input.oncancel = () => resolve(null);
+    input.click();
+  }), [id, wid]);
+  const motionHost = useMemo(() => ({ pickFile, sandbox: designOn.sandboxEmbeds }), [pickFile, designOn.sandboxEmbeds]);
+  // AI on selected text while editing (rewrite, shorten…), as on a page: it keeps the motion blocks and block motion (motion/keepMotion.ts).
+  const aiCtx = useMemo(() => ({ documentId: id }), [id]);
+  useScrollMotion(paper, { enabled: mode === 'view' || previewMotion, animateSections: shownStyle.animateSections, transition: shownStyle.sectionTransition, paused,
+    version: `${mode}-${q.data?.revision ?? 0}-${plain ? 1 : 0}` });
+
   if (q.isLoading) return <PageLoader />;
   if (q.error instanceof ApiError && q.error.status === 404) return <DocumentGate id={id} original={q.error} />;
   if (q.isError || !detail) return <ErrorState error={q.error} retry={() => q.refetch()} />;
@@ -211,6 +252,24 @@ function DocumentView({ id }: { id: string }) {
   });
   const place = d.projectId ? `${d.projectKey} · ${d.projectName}` : d.teamName ?? 'Organization';
   const words = detail.sections.reduce((n, s) => n + wordsIn(edits[s.key] ?? s.content), 0);
+  // A file (a build artifact) or a document of tables only has no text for a style: the Style panel says so.
+  const styleUnavailable = isArtifact ? 'A build artifact is a file, so it has no text to style. Its build card shows it as it is.'
+    : !firstText ? 'This document holds only tables, so there is no text to style. Presets, CSS and motion apply to documents with text.' : undefined;
+  const moves = hasMotion(shownStyle) || detail.sections.some((s) => bodyMoves(s.content));
+  const togglePause = () => { const p = !paused; setPaused(p); writePaused(p); };
+  const saveStyle = async (next: PageStyle) => {
+    if (dirty) { toast('Save your changes to the text first, then the style.', 'info'); return; }
+    setStyleSaving(true);
+    try {
+      const r = await documentApi.saveStyle(id, { revision: detail.revision, style: next });
+      setPreviewStyle(null);
+      apply(r);
+      // Real values open for editing: they carry the style too.
+      if (plain && firstText) setPlain({ ...plain, sections: plain.sections.map((s) => (s.key === firstText.key ? { ...s, content: withStyle(s.content, next) } : s)) });
+      toast('Style saved.', 'success');
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not save the style.', 'error'); }
+    finally { setStyleSaving(false); }
+  };
 
 
   const live = review.data?.current && ['Pending', 'Approved', 'ChangesRequested'].includes(review.data.current.state);
@@ -261,6 +320,9 @@ function DocumentView({ id }: { id: string }) {
           {hasApi && apiOverview.data && <span className={`dx-live${apiOverview.data.live ? ' on' : ''}`} title={apiOverview.data.live ? 'The API is shown from the working copy' : `Reading ${apiOverview.data.reading}`}>{apiOverview.data.live ? 'Live' : apiOverview.data.reading}</span>}
           {canEdit && mode === 'view' && <button type="button" className="rd-btn" onClick={() => void enterEdit()}><Icon name="edit" size={14} /> Edit</button>}
           {mode === 'view' && canEdit && detail.can.publish && !workflow && !isArtifact && detail.hasUnpublishedChanges && <button type="button" className="rd-btn" onClick={() => setPanel('publish')}>Publish</button>}
+          {moves && !styleUnavailable && <button type="button" className="rd-btn mo-pause" aria-pressed={paused} onClick={togglePause} title={paused ? 'Play the motion in this document' : 'Stop animations, videos and embeds in this document'}>
+            <Icon name={paused ? 'play' : 'pause'} size={14} /> {paused ? 'Play motion' : 'Pause motion'}</button>}
+          {canEdit && <button type="button" className={`rd-btn${styleOpen ? ' on' : ''}`} aria-pressed={styleOpen} onClick={() => setStyleOpen((o) => !o)} data-testid="style-btn"><Icon name="layers" size={14} /> Style</button>}
           {mode === 'view' && <button type="button" className="rd-btn" onClick={() => setPanel('access')}><Icon name="users" size={14} /> {detail.can.share ? 'Share' : 'Access'}</button>}
           <Menu label="" icon="more" items={[
             { label: 'Review', hint: 'Submit, approve or ask for changes', icon: 'checks', onSelect: () => setInspector('review'), hidden: !inspectorParts.some((x) => x.id === 'review') },
@@ -332,15 +394,24 @@ function DocumentView({ id }: { id: string }) {
         }} />}
 
         {isArtifact && <div className="dv-panel"><ArtifactCard detail={detail} canEdit={canEdit} /></div>}
-        <article className="dv-paper doc-body" aria-label={d.title} hidden={!!verView}>
+        <article ref={setPaper} className={`dv-paper doc-body${styleUnavailable ? '' : ' doc-scope'}${scoped?.ok && scoped.css ? ' doc-css-on' : ''}${paused ? ' mo-paused' : ''}`}
+          data-doc={styleUnavailable ? undefined : id} data-preset={styleUnavailable ? undefined : shownStyle.preset} aria-label={d.title} hidden={!!verView}>
+          {!styleUnavailable && scoped?.ok && scoped.css && <style data-page-css={id}>{scoped.css}</style>}
           {!editable && shownSections.length === 0 && !hasApi && <p className="dv-blank">Nothing has been written yet.{canEdit ? ' Choose Edit to start.' : ''}</p>}
+          <MotionContext.Provider value={{ paused, sandboxEnabled: designOn.sandboxEmbeds }}>
+          <PickFileContext.Provider value={editable ? pickFile : null}>
+          <EditorAiContext.Provider value={editable ? aiCtx : null}>
           <DocumentIdContext.Provider value={id}>
             {shownSections.map((s) => (
               <div key={s.key} data-outline={s.title} id={`sec-${s.key}`} className="rd-sec">
-                <SectionEditor section={s} template={tplFor.get(s.key) ?? null} value={edits[s.key] ?? s.content} onChange={editable ? (v) => set(s.key, v) : undefined} readOnly={!editable} onPickImage={editable ? pickImage : undefined} minimal />
+                <SectionEditor key={mode} section={s} template={tplFor.get(s.key) ?? null} value={edits[s.key] ?? s.content} onChange={editable ? (v) => set(s.key, v) : undefined} readOnly={!editable || previewMotion} onPickImage={editable ? pickImage : undefined} minimal
+                  motion={editable ? motionHost : undefined} />
               </div>
             ))}
           </DocumentIdContext.Provider>
+          </EditorAiContext.Provider>
+          </PickFileContext.Provider>
+          </MotionContext.Provider>
         </article>
         {hasApi && (showFullApi
           ? <section className="rd-api rd-skip-outline" aria-label="API reference"><h2 className="rd-api-full-h" data-outline="API reference">API reference</h2><ApiReference detail={detail} editable={editable} /></section>
@@ -351,6 +422,13 @@ function DocumentView({ id }: { id: string }) {
         <Inspector parts={inspectorParts} open={inspector} onOpen={setInspector} />
       </ReaderRail>
 
+      {/* Beside the document (a portal, as on a page), a bottom sheet on a phone. */}
+      {styleOpen && canEdit && createPortal(
+        <div className="doc-scope">
+          <StylePanel value={savedStyle} body={firstText ? (edits[firstText.key] ?? firstText.content) : ''} design={designOn} saving={styleSaving} previewMotion={previewMotion} onPreviewMotion={setPreviewMotion}
+            unavailable={styleUnavailable} onPreview={(st) => setPreviewStyle(st)} onSave={(st) => void saveStyle(st)}
+            onClose={() => { setStyleOpen(false); setPreviewStyle(null); setPreviewMotion(false); }} />
+        </div>, document.body)}
       {details && <DetailsModal detail={detail} onClose={() => setDetails(false)} />}
       {panel === 'publish' && <PublishModal detail={detail} onClose={() => setPanel(null)} />}
       {panel === 'access' && <AccessModal detail={detail} onClose={() => setPanel(null)} />}

@@ -35,7 +35,7 @@ import { useExportPdf } from './ExportPdf';
 import { MotionContext, PickFileContext } from './motion/MotionBlocks';
 import { StylePanel } from './motion/StylePanel';
 import { scopeCss } from './motion/cssScope';
-import { DESIGN_DEFAULT, hasMotion, styleOf, withStyle, type PageStyle } from './motion/pageStyle';
+import { DESIGN_DEFAULT, hasMotion, readPaused, styleOf, withStyle, writePaused, type PageStyle } from './motion/pageStyle';
 import { useScrollMotion } from './motion/useScrollMotion';
 import './documents-ds.css';
 
@@ -46,8 +46,6 @@ const JOIN_WAIT_MS = 2500;
 
 /** Something on the page moves (a block with motion, a motion block or a picture that may be animated): readers get a Pause motion button. */
 const MOVES = /"type":"(motionLottie|motionSvg|motionVideo|sandboxEmbed|docImage)"|"motion":"(fade|rise|scale|slide|stagger)"/;
-const PAUSE_KEY = 'pm_motion_paused';
-const readPaused = () => { try { return localStorage.getItem(PAUSE_KEY) === '1'; } catch { return false; } };
 
 const isEmptyBody = (json: string) => {
   try {
@@ -354,7 +352,7 @@ export function PageView({ detail, canEdit }: { detail: DocumentDetail; canEdit:
   const shown = previewStyle ?? style;
   const scoped = useMemo(() => (designOn.customCss && shown.css.trim() ? scopeCss(shown.css, id) : null), [designOn.customCss, shown.css, id]);
   const moves = hasMotion(shown) || MOVES.test(body);
-  const togglePause = () => { const p = !paused; setPaused(p); try { localStorage.setItem(PAUSE_KEY, p ? '1' : '0'); } catch { /* private window */ } };
+  const togglePause = () => { const p = !paused; setPaused(p); writePaused(p); };
   useScrollMotion(article, { enabled: !canEdit || previewMotion, animateSections: shown.animateSections, transition: shown.sectionTransition, paused, version: `${editorReady}-${mode}` });
 
   const saveLabel = state === 'saving' ? 'Saving…' : state === 'dirty' ? 'Editing…' : state === 'error' ? 'Not saved' : state === 'stale' ? 'Changed elsewhere' : `Saved · ${timeAgo(d.updatedAt)}`;
