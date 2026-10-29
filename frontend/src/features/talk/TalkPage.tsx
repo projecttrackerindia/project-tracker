@@ -28,6 +28,7 @@ import { WhileAway } from '../chat/ChatPage';
 import { talkApi, type TalkFilter, type TalkRow } from './talkApi';
 import { usePresence } from '../chat/Presence';
 import { avatarBg, defaultTheme } from '../../lib/personTheme';
+import { readablePreview } from './preview';
 import './talk.css';
 
 const FILTERS: { id: TalkFilter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'chat', label: 'Chats' }, { id: 'meetings', label: 'Meetings' }];
@@ -118,13 +119,30 @@ function TalkHome() {
     const c = r.kind === 'chat' ? live.find((x) => x.id === r.id) : undefined;
     const pinned = prefs.pinned.includes(r.id);
     return [
-      { id: 'pin', label: pinned ? 'Unpin' : 'Pin', icon: pinned ? 'pinOff' : 'pin', run: () => prefs.togglePin(r.id) },
+      { id: 'pin', label: pinned ? 'Unpin' : 'Pin', icon: pinned ? 'pinOff' : 'pin', run: () => prefs.togglePin(r.id), undo: () => prefs.togglePin(r.id), done: `${r.title} ${pinned ? 'unpinned' : 'pinned'}.` },
       ...(c ? [{ id: 'mute', label: c.isMuted ? 'Unmute' : 'Mute', icon: 'bell' as RowAction['icon'], run: () => void chatApi.mute(c.id, !c.isMuted).then(() => queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid ?? '') })).catch(() => toast('Could not change that.', 'error')) }] : []),
       ...(c && c.unread > 0 ? [{ id: 'read', label: 'Mark as read', icon: 'checkCircle' as RowAction['icon'], run: () => void chatApi.markRead(c.id).then(() => queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid ?? ''), (old) => old?.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)))).catch(() => toast('Could not mark it read.', 'error')) }] : []),
-      { id: 'hide', label: 'Hide', icon: 'eyeOff', danger: true, run: () => { prefs.hide(r.id, r.at ?? ''); if (r.id === activeId) back(); toast(`${r.title} is hidden until something new arrives.`, 'info'); } },
+      { id: 'hide', label: 'Hide', icon: 'eyeOff', danger: true, run: () => { prefs.hide(r.id, r.at ?? ''); if (r.id === activeId) back(); toast(`${r.title} is hidden until something new arrives.`, 'info', { label: 'Undo', onClick: () => prefs.unhide(r.id) }); } },
     ];
   };
   const reduce = useReducedMotion();
+  // One swiped-open row at a time ("id|l" or "id|r"); a filter, search or route change, a scroll, or a tap anywhere else closes it.
+  const [swiped, setSwiped] = useState<string | null>(null);
+  useEffect(() => { setSwiped(null); }, [filter, needle, location.pathname, location.search]);
+  useEffect(() => {
+    if (!swiped) return;
+    const close = (e: Event) => { const el = e.target instanceof Element ? e.target.closest('[data-swipe-row]') : null; if (el && el.getAttribute('data-swipe-row') === swiped.split('|')[0]) return;
+      setSwiped(null);
+      // As Mail: the tap that closes an open row does only that, it does not also open the row under the finger.
+      if (e.target instanceof Element && e.target.closest('.talk-rows')) {
+        const eat = (c: Event) => { c.preventDefault(); c.stopPropagation(); };
+        document.addEventListener('click', eat, { capture: true, once: true });
+        setTimeout(() => document.removeEventListener('click', eat, { capture: true }), 600);
+      }
+    };
+    document.addEventListener('pointerdown', close, true);
+    return () => document.removeEventListener('pointerdown', close, true);
+  }, [swiped]);
 
   const setParam = (patch: Record<string, string | null>, path?: string) => {
     const next = new URLSearchParams(params);
@@ -177,7 +195,7 @@ function TalkHome() {
             </button>
           ))}
         </div>
-        <div className="talk-scroll">
+        <div className="talk-scroll" onScroll={swiped ? () => setSwiped(null) : undefined}>
           {talk.isError && <div className="talk-note" role="alert">{talk.error instanceof ApiError ? talk.error.message : 'Messages could not be loaded.'} <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></div>}
           {/* Questions colleagues asked you in chat and are waiting on (cleared by replying). */}
           {chatUsable && !needle && (filter === 'all' || filter === 'chat') && <QuestionsBox />}
@@ -195,18 +213,25 @@ function TalkHome() {
             </ul>
           )}
           <LayoutGroup>
-            <ul className="talk-rows">
+            {/* Keyed by the filter: a new filter swaps the list at once (no outgoing rows fading over the new list or its empty state). */}
+            <ul className="talk-rows" key={`${filter}:${needle}`}>
               <AnimatePresence initial={false}>
-                {shown.map((r) => <Row key={r.id} r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} active={r.id === activeId} onOpen={() => open(r)} actions={rowActions(r)} reduce={!!reduce} />)}
+                {shown.map((r) => <Row key={r.id} r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} active={r.id === activeId} onOpen={() => open(r)} actions={rowActions(r)} reduce={!!reduce}
+                  side={swiped?.startsWith(`${r.id}|`) ? (swiped.endsWith('|l') ? 'l' : 'r') : null} onSide={(sd) => setSwiped(sd ? `${r.id}|${sd}` : null)} />)}
               </AnimatePresence>
             </ul>
           </LayoutGroup>
-          {shown.length === 0 && !talk.isLoading && (
-            <EmptyState icon={filter === 'meetings' ? 'video' : 'message'}
-              title={needle ? 'Nothing found' : filter === 'meetings' ? 'No meetings in the next two weeks' : 'No conversations yet'}
-              text={needle ? undefined : filter === 'meetings' ? 'Meetings you organize or are invited to show here.' : 'Message a colleague or start a group.'}
-              action={!needle && filter !== 'meetings' && chatUsable ? <button type="button" className="btn btn-primary" onClick={() => setDialog('new')}>Start a conversation</button> : undefined} />
-          )}
+          {shown.length === 0 && pinnedRows.length === 0 && !talk.isLoading && (() => {
+            const showAll = <button type="button" className="btn btn-ghost" onClick={() => { setSearch(''); setParam({ f: null }); }}>Show all</button>;
+            const start = chatUsable ? <button type="button" className="btn btn-primary" onClick={() => setDialog('new')}>Start a conversation</button> : undefined;
+            const e = needle ? { icon: 'search' as const, title: 'Nothing found', text: `No chats or meetings match “${search.trim()}”.`, action: showAll }
+              : rows.length === 0 ? { icon: 'message' as const, title: 'No conversations yet', text: 'Message a colleague or start a group.', action: start }
+              : filter === 'unread' ? { icon: 'checkCircle' as const, title: 'No unread messages', text: 'You’re all caught up.', action: showAll }
+              : filter === 'chat' ? { icon: 'message' as const, title: 'No chats', text: 'Direct messages and groups you’re in show here.', action: showAll }
+              : filter === 'meetings' ? { icon: 'video' as const, title: 'No meetings in the next two weeks', text: 'Meetings you organize or are invited to show here.', action: showAll }
+              : { icon: 'eyeOff' as const, title: 'Nothing to show', text: 'Hidden conversations come back when something new arrives.', action: start };
+            return <div className="talk-empty-state" data-testid="talk-empty"><EmptyState icon={e.icon} title={e.title} text={e.text} action={e.action} /></div>;
+          })()}
         </div>
       </aside>
 
@@ -250,7 +275,7 @@ function TalkHome() {
 /** A chat row from the live conversation (falling back to what Talk sent). */
 function chatRow(c: Conversation, me: string, base: TalkRow | null): TalkRow {
   const last = c.lastMessage;
-  const text = !last ? null : last.isMine && !last.isSystem ? `You: ${last.snippet}` : c.type !== 'Direct' && last.senderName && !last.isSystem ? `${last.senderName.split(' ')[0]}: ${last.snippet || 'Message deleted'}` : last.snippet || 'Message deleted';
+  const text = !last ? null : last.isMine && !last.isSystem ? `You: ${readablePreview(last.snippet)}` : c.type !== 'Direct' && last.senderName && !last.isSystem ? `${last.senderName.split(' ')[0]}: ${readablePreview(last.snippet) || 'Message deleted'}` : readablePreview(last.snippet) || 'Message deleted';
   const other = c.type === 'Direct' ? c.members.find((m) => m.userId !== me) : null;
   return {
     id: c.id, kind: 'chat', title: c.name, sub: c.type === 'Project' ? 'Project chat' : c.type === 'Group' ? 'Group' : null, last: text, at: last?.at ?? c.lastActivityAt ?? base?.at ?? null,
@@ -265,7 +290,7 @@ function shortTime(iso: string) {
   return /\d:\d\d/.test(t) ? new Date(iso).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s?[ap]m$/i, '') : t;
 }
 
-type RowAction = { id: string; label: string; icon: import('../../components/Icon').IconName; run: () => void; danger?: boolean };
+type RowAction = { id: string; label: string; icon: import('../../components/Icon').IconName; run: () => void; danger?: boolean; undo?: () => void; done?: string };
 
 /** A hidden conversation stays hidden until a message newer than the one it was hidden at arrives. */
 const stillHidden = (hiddenAt: string | undefined, at: string | null) => {
@@ -286,7 +311,10 @@ const clean = (v: Partial<TalkPrefs> | null | undefined): TalkPrefs => ({ pinned
 function useTalkPrefs(wid: string) {
   const key = `pm_talk_prefs:${wid}`;
   const readLocal = (): TalkPrefs => { try { return clean(JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<TalkPrefs>); } catch { return EMPTY_PREFS; } };
-  const [state, setState] = useState(readLocal);
+  const [state, setStateRaw] = useState(readLocal);
+  // The newest value, so an Undo from a toast works on what is saved now, not on the render it was created in.
+  const latest = useRef(state);
+  const setState = (v: TalkPrefs) => { latest.current = v; setStateRaw(v); };
   const server = useWsQuery(['ui', 'conversations'], async () => { try { return (await get<{ value: TalkPrefsAll | null }>('/me/ui/conversations'))?.value ?? {}; } catch { return null; } }, { staleTime: 5 * 60_000, retry: false });
   useEffect(() => { setState(readLocal()); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -310,8 +338,9 @@ function useTalkPrefs(wid: string) {
   };
   return {
     ...state,
-    togglePin: (id: string) => save({ ...state, pinned: state.pinned.includes(id) ? state.pinned.filter((x) => x !== id) : [...state.pinned, id].slice(-8) }),
-    hide: (id: string, at: string) => save({ pinned: state.pinned.filter((x) => x !== id), hidden: { ...state.hidden, [id]: at } }),
+    togglePin: (id: string) => { const cur = latest.current; save({ ...cur, pinned: cur.pinned.includes(id) ? cur.pinned.filter((x) => x !== id) : [...cur.pinned, id].slice(-8) }); },
+    hide: (id: string, at: string) => { const cur = latest.current; save({ pinned: cur.pinned.filter((x) => x !== id), hidden: { ...cur.hidden, [id]: at } }); },
+    unhide: (id: string) => { const cur = latest.current; const hidden = { ...cur.hidden }; delete hidden[id]; save({ ...cur, hidden }); },
   };
 }
 
@@ -326,46 +355,102 @@ function RowAvatar({ r, conversation }: { r: TalkRow; conversation?: Conversatio
       : <Face userId={r.avatar.userId} hasAvatar={r.avatar.hasAvatar || undefined} className={`talk-av av-c${hue(r.title)}`} style={r.avatar.userId ? { background: avatarBg(defaultTheme(r.avatar.userId)) } : undefined} text={initials} />;
 }
 
-const SWIPE_OPEN = 148;
+const ACT_W = 74;          // one swipe button
+const LOCK = 8;            // px before the gesture picks an axis
+const FLICK = 0.45;        // px/ms: a flick opens or closes regardless of distance
+const FULL = 0.6;          // share of the row width that triggers the primary action
 
 /**
  * A Messages-style row: avatar with its source glyph (meeting ▶, a person's live status), unread blue dot on the left, name and time,
- * two lines of preview. Right-click (desktop) opens Pin · Mute · Mark as read · Hide; on a phone the same actions sit under a swipe
- * (right: Read and Pin; left: Mute and Hide). Rows glide to their new place when a conversation jumps to the top.
+ * two lines of preview. Desktop: hover buttons (Pin · Mute · Hide) and right-click for every action. Phone: Apple Mail's swipe — the
+ * gesture locks to one axis after 8px (vertical wins: the list scrolls, the row stays put), releases snap to closed or fully open by
+ * distance and velocity, a full swipe runs the outermost action (Pin on the right swipe, Hide on the left) with Undo, and only one
+ * row is open at a time (the list owns which one, and closes it on a tap elsewhere, a scroll, or a filter or route change).
  */
-function Row({ r, conversation, active, onOpen, actions, reduce }: { r: TalkRow; conversation?: Conversation; active: boolean; onOpen: () => void; actions: RowAction[]; reduce: boolean }) {
+function Row({ r, conversation, active, onOpen, actions, reduce, side, onSide }: {
+  r: TalkRow; conversation?: Conversation; active: boolean; onOpen: () => void; actions: RowAction[]; reduce: boolean;
+  side: 'l' | 'r' | null; onSide: (s: 'l' | 'r' | null) => void;
+}) {
   const channel = r.kind === 'chat' && (conversation ? conversation.type !== 'Direct' : r.group);
   const title = channel && !r.title.startsWith('#') ? `#${r.title}` : r.title;
   const iso = r.kind === 'meeting' ? r.sessionStart ?? r.at : r.at;
   const when = r.live ? 'Now' : iso ? shortTime(iso) : meetingTime(r);
-  const second = r.kind === 'meeting' ? (r.live ? 'Live now' : r.sub ?? 'Meeting') : r.last;
+  const second = r.kind === 'meeting' ? (r.live ? 'Live now' : r.sub ?? 'Meeting') : readablePreview(r.last);
   const [menu, setMenu] = useState(false);
-  const [dx, setDx] = useState(0);
-  const [dragging, setDragging] = useState(false);
+  const [drag, setDrag] = useState<number | null>(null);   // live offset while a finger is down; null at rest
   const anchor = useRef<HTMLDivElement>(null);
-  const t = useRef<{ x: number; y: number; base: number; horizontal: boolean | null } | null>(null);
-  const left = actions.filter((a) => a.id === 'read' || a.id === 'pin');     // revealed by swiping right
-  const right = actions.filter((a) => a.id === 'mute' || a.id === 'hide');   // revealed by swiping left
-  const run = (a: RowAction) => { setDx(0); setMenu(false); a.run(); };
+  const btn = useRef<HTMLButtonElement>(null);
+  const left = actions.filter((a) => a.id === 'pin' || a.id === 'read');     // revealed by swiping right; Pin outermost
+  const right = actions.filter((a) => a.id === 'mute' || a.id === 'hide');   // revealed by swiping left; Hide outermost
+  const leftW = left.length * ACT_W, rightW = right.length * ACT_W;
+  const rest = side === 'l' ? leftW : side === 'r' ? -rightW : 0;
+  const dx = drag ?? rest;
+  const live = useRef({ rest, leftW, rightW, left, right, onSide, reduce });
+  live.current = { rest, leftW, rightW, left, right, onSide, reduce };
+  const swallowClick = useRef(false);
+
+  const run = (a: RowAction, full = false) => {
+    onSide(null); setMenu(false); a.run();
+    if (full && a.undo && a.done) toast(a.done, 'info', { label: 'Undo', onClick: a.undo });
+  };
+
+  // Native listeners: touchmove must be non-passive to stop the page scrolling sideways once the gesture is horizontal.
+  useEffect(() => {
+    const el = btn.current; if (!el) return;
+    let s: { x: number; y: number; base: number; lock: 'h' | 'v' | null; v: number; lx: number; lt: number; cur: number } | null = null;
+    const start = (e: TouchEvent) => {
+      if (e.touches.length !== 1) { s = null; return; }
+      const p = e.touches[0];
+      s = { x: p.clientX, y: p.clientY, base: live.current.rest, lock: null, v: 0, lx: p.clientX, lt: e.timeStamp, cur: live.current.rest };
+    };
+    const move = (e: TouchEvent) => {
+      if (!s) return;
+      const p = e.touches[0], mx = p.clientX - s.x, my = p.clientY - s.y;
+      if (s.lock === null) { if (Math.abs(mx) < LOCK && Math.abs(my) < LOCK) return; s.lock = Math.abs(mx) > Math.abs(my) ? 'h' : 'v'; }
+      if (s.lock === 'v') return;
+      e.preventDefault();
+      const { leftW: lw, rightW: rw } = live.current, width = el.offsetWidth;
+      let v = s.base + mx;
+      const max = lw ? width : 0, min = rw ? -width : 0;
+      v = Math.max(min, Math.min(max, v));
+      const dt = e.timeStamp - s.lt;
+      if (dt > 0) s.v = 0.8 * ((p.clientX - s.lx) / dt) + 0.2 * s.v;
+      s.lx = p.clientX; s.lt = e.timeStamp; s.cur = v;
+      setDrag(v);
+    };
+    const end = () => {
+      const g = s; s = null;
+      if (!g || g.lock !== 'h') return;
+      swallowClick.current = true; setTimeout(() => { swallowClick.current = false; }, 350);
+      const { leftW: lw, rightW: rw, left: L, right: R, onSide: set } = live.current, width = el.offsetWidth, v = g.cur;
+      if (v > width * FULL && L[0]) { setDrag(null); haptic(12); run(L[0], true); return; }
+      if (v < -width * FULL && R[R.length - 1]) { setDrag(null); haptic(12); run(R[R.length - 1], true); return; }
+      const projected = v + g.v * 160;
+      const flick = Math.abs(g.v) > FLICK;
+      let next: 'l' | 'r' | null = null;
+      if (v > 0 && lw) next = (flick ? g.v > 0 : projected > lw / 2) ? 'l' : null;
+      else if (v < 0 && rw) next = (flick ? g.v < 0 : projected < -rw / 2) ? 'r' : null;
+      if (next) haptic(8);
+      setDrag(null); set(next);
+    };
+    const cancel = () => { s = null; setDrag(null); };
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', cancel);
+    return () => { el.removeEventListener('touchstart', start); el.removeEventListener('touchmove', move); el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', cancel); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hover = actions.filter((a) => a.id === 'pin' || a.id === 'mute' || a.id === 'hide');
   return (
     <motion.li layout={reduce ? false : 'position'} transition={{ type: 'spring', stiffness: 500, damping: 42 }} exit={reduce ? undefined : { opacity: 0, height: 0 }}>
-      <div className={`talk-row-swipe${dx !== 0 ? ' swiping' : ''}`} ref={anchor}>
-        {dx > 0 && <div className="talk-swipe-acts l">{left.map((a) => <button key={a.id} type="button" className={`sw-${a.id}`} onClick={() => run(a)}><Icon name={a.icon} size={18} />{a.label}</button>)}</div>}
-        {dx < 0 && <div className="talk-swipe-acts r">{right.map((a) => <button key={a.id} type="button" className={`sw-${a.id}`} onClick={() => run(a)}><Icon name={a.icon} size={18} />{a.label}</button>)}</div>}
-        <button type="button" className={`talk-row k-${r.kind}${active ? ' active' : ''}${r.unread > 0 ? ' unread' : ''}`} onClick={() => { if (dx !== 0) { setDx(0); return; } onOpen(); }} aria-current={active ? 'true' : undefined} data-row={r.title}
-          style={dx ? { transform: `translateX(${dx}px)`, transition: dragging ? 'none' : undefined } : undefined}
-          onContextMenu={(e) => { e.preventDefault(); setMenu(true); }}
-          onTouchStart={(e) => { const p = e.touches[0]; t.current = { x: p.clientX, y: p.clientY, base: dx, horizontal: null }; }}
-          onTouchMove={(e) => {
-            const s = t.current; if (!s) return;
-            const mx = e.touches[0].clientX - s.x, my = e.touches[0].clientY - s.y;
-            if (s.horizontal === null && (Math.abs(mx) > 8 || Math.abs(my) > 8)) s.horizontal = Math.abs(mx) > Math.abs(my);
-            if (!s.horizontal) return;
-            setDragging(true);
-            const v = Math.max(right.length ? -SWIPE_OPEN - 24 : 0, Math.min(left.length ? SWIPE_OPEN + 24 : 0, s.base + mx));
-            setDx(v);
-          }}
-          onTouchEnd={() => { const s = t.current; t.current = null; setDragging(false); if (!s?.horizontal) return; setDx((v) => { const next = v > 56 ? (left.length > 1 ? SWIPE_OPEN : SWIPE_OPEN / 2) : v < -56 ? -(right.length > 1 ? SWIPE_OPEN : SWIPE_OPEN / 2) : 0; if (next) haptic(8); return next; }); }}>
+      <div className={`talk-row-swipe${dx !== 0 ? ' swiping' : ''}${drag !== null ? ' dragging' : ''}`} ref={anchor} data-swipe-row={r.id} data-swipe={side ?? (drag ? 'drag' : 'closed')}>
+        {dx > 0 && <div className="talk-swipe-acts l" style={{ width: Math.max(leftW, dx) }}>{left.map((a, i) => <button key={a.id} type="button" className={`sw-${a.id}${i === 0 && dx > leftW ? ' grow' : ''}`} onClick={() => run(a)}><Icon name={a.icon} size={18} />{a.label}</button>)}</div>}
+        {dx < 0 && <div className="talk-swipe-acts r" style={{ width: Math.max(rightW, -dx) }}>{right.map((a, i) => <button key={a.id} type="button" className={`sw-${a.id}${i === right.length - 1 && -dx > rightW ? ' grow' : ''}`} onClick={() => run(a)}><Icon name={a.icon} size={18} />{a.label}</button>)}</div>}
+        <button ref={btn} type="button" className={`talk-row k-${r.kind}${active ? ' active' : ''}${r.unread > 0 ? ' unread' : ''}`} aria-current={active ? 'true' : undefined} data-row={r.title}
+          onClick={() => { if (swallowClick.current) return; if (side) { onSide(null); return; } onOpen(); }}
+          style={dx ? { transform: `translate3d(${dx}px,0,0)`, transition: drag !== null || reduce ? 'none' : undefined } : undefined}
+          onContextMenu={(e) => { e.preventDefault(); setMenu(true); }}>
           {r.unread > 0 && <span className="talk-dot" aria-label={`${r.unread} unread`} />}
           <span className="talk-gl">
             <RowAvatar r={r} conversation={conversation} />
@@ -380,6 +465,13 @@ function Row({ r, conversation, active, onOpen, actions, reduce }: { r: TalkRow;
             <span className="talk-preview">{second || <em>No messages yet</em>}</span>
           </span>
         </button>
+        {/* Desktop (a mouse): the swipe actions as hover buttons, no drag needed. */}
+        {hover.length > 0 && (
+          <span className="talk-hover-acts">
+            {hover.map((a) => <button key={a.id} type="button" className={a.danger ? 'danger' : ''} title={a.label} aria-label={`${a.label} ${r.title}`} onClick={() => run(a)}><Icon name={a.icon} size={14} /></button>)}
+            <button type="button" title="More" aria-label={`More actions for ${r.title}`} onClick={() => setMenu(true)}><Icon name="more" size={14} /></button>
+          </span>
+        )}
       </div>
       <Popover open={menu} onClose={() => setMenu(false)} anchorRef={anchor} side="bottom" align="start">
         <ul className="v2-dots-list talk-row-menu" role="menu" aria-label={`${r.title} actions`}>
