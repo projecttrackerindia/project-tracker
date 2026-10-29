@@ -374,6 +374,8 @@ try {
   assert.equal(await page.locator('.v2-new-type.on').innerText(), 'Task');
   { const t = await page.locator('.v2-new-chip').allTextContents(); assert.ok(t.some((x) => /Project\s*Razor pay/.test(x)), `the project chip: ${t}`); }
   assert.match(await page.locator('.v2-understood p').innerText(), /Adds it to Razor pay/);
+  // Escape is the sheet's own key: press it with focus in the sheet (on a slow runner the autofocus can land after the keypress).
+  await page.locator('.v2-new-sheet input, .v2-new-sheet textarea').first().focus();
   await page.keyboard.press('Escape'); await page.locator('.v2-new-sheet').waitFor({ state: 'detached' });
   checks.push('add-work');
 

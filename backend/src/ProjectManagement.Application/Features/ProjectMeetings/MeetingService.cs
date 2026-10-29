@@ -779,7 +779,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
                 var next = MeetingRecurrence.Continue(rule, left is { } n ? Math.Max(1, n) : null);
                 if (!MeetingRecurrence.Occurrences(next, start.UtcDateTime, zone, start.UtcDateTime, start.UtcDateTime.AddSeconds(1)).Any())
                     throw new ValidationException("startTime", "Choose a day the series meets on.");
-                var root = (pm?.SeriesRootId ?? wm!.SeriesRootId) ?? meetingId;
+                var root = (pm is not null ? pm.SeriesRootId : wm!.SeriesRootId) ?? meetingId;
                 await db.SaveChangesAsync(ct);
                 if (pm is not null)
                 {
