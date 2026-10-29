@@ -560,3 +560,9 @@ html.pf-presenting .v2-phone-bar, html.pf-presenting .aura-dock-wrap, html.pf-pr
 .pf-present.phone .pf-stage { flex: 1; min-height: 0; touch-action: pan-y; padding: 0 12px 12px; }
 .pf-present.phone .pf-count { display: none; }
 .pf-present.phone .pf-strip { display: none; }
+
+/* Round 3: the view tabs sit under the title (Board · Timeline · Plan sheet · Capacity · Present); header buttons per view. */
+.pf-tabs { display: flex; align-items: center; margin: 4px 0 2px; }
+.pf-slot { display: contents; }
+.pf-hbtn { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--pf-line, rgba(0,0,0,.1)); background: var(--ds-surface); color: var(--ds-text); font: inherit; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+.pf-hbtn:hover { background: var(--ds-fill); }
