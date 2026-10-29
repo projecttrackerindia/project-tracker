@@ -132,7 +132,7 @@ export function PayloadFileCard({ file, onDownload }: { file: ChatAttachment; on
       </div>
       {shown !== null ? <button type="button" className="pl-card-preview" onClick={() => setOpen(true)} aria-label={`Open ${file.fileName}`}><Lines lines={preview} kind={kind} /></button>
         : !tooBig && !failed ? <div className="pl-card-wait"><Spinner /></div>
-        : <div className="pl-card-wait">{tooBig ? 'Too big to preview — download it.' : 'Preview not available.'}</div>}
+        : <div className={`pl-card-wait${tooBig ? ' small' : ''}`}>{tooBig ? 'Too big to preview — download it.' : 'Preview not available.'}</div>}
       <div className="pl-card-actions">
         <button type="button" onClick={onDownload}><Icon name="download" size={13} />Download</button>
         <button type="button" onClick={() => setOpen(true)} disabled={shown === null} data-testid="payload-open"><Icon name="eye" size={13} />Open</button>

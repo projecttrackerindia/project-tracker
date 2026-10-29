@@ -34,6 +34,7 @@ export const PATHS = {
   chevronL: '<path d="M15 18l-6-6 6-6"/>',
   chevronR: '<path d="M9 18l6-6-6-6"/>',
   chevronD: '<path d="M6 9l6 6 6-6"/>',
+  chevronU: '<path d="M6 15l6-6 6 6"/>',
   arrowLeft: '<path d="M19 12H5M12 19l-7-7 7-7"/>',
   alert: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>',
   checkCircle: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/>',

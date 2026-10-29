@@ -99,6 +99,20 @@ export function badgeCount(c: NotificationCounts | undefined, prefs: AlertPrefs)
   return CATEGORIES.reduce((sum, k) => sum + (prefs.cats[k].badge ? (c[k] ?? 0) : 0), 0);
 }
 
+/**
+ * The one total for the bell, the tab title, the app icon and the desktop app (docs/badges.md). Its message part is the Messages badge's
+ * own number (unread chat messages), so the two never disagree; notices that are not in that number (project-chat mentions, thread replies)
+ * still count when there are more of them than chat messages.
+ */
+export function totalBadge(c: NotificationCounts | undefined, prefs: AlertPrefs, chatUnread: number): number {
+  const chat = Math.max(0, chatUnread);
+  if (!c) return prefs.cats.messages.badge ? chat : 0;
+  const split = CATEGORIES.map((k) => c[k]);
+  if (split.some((v) => typeof v !== 'number')) return Math.max(c.unread, chat);
+  const rest = CATEGORIES.reduce((sum, k) => sum + (k !== 'messages' && prefs.cats[k].badge ? (c[k] ?? 0) : 0), 0);
+  return rest + (prefs.cats.messages.badge ? Math.max(c.messages ?? 0, chat) : 0);
+}
+
 export const badgeText = (n: number) => (n > 99 ? '99+' : String(n));
 
 /** Short time like Apple's: "now", "4m", "2h", "Yesterday", "Mon", "12 Oct". */

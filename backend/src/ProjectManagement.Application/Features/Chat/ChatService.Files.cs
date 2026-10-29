@@ -105,23 +105,49 @@ public partial class ChatService
 
     public async Task SetMutedAsync(Guid conversationId, bool muted, CancellationToken ct = default)
     {
-        var (_, me) = Require();
+        var (tenant, me) = Require();
         var mine = await MembershipAsync(conversationId, me, ct);
+        if (mine.IsMuted == muted) return;
         mine.IsMuted = muted;
         await db.SaveChangesAsync(ct);
+        // My other tabs and devices recount their badge at once (muting changes what counts).
+        await PushAsync(tenant, [me], ChatEvents.Conversation, new { conversationId, muted }, ct);
     }
 
-    /// <summary>Unread messages across every conversation that is not muted (the badge in the menu).</summary>
+    /// <summary>
+    /// The Messages badge (see docs/badges.md): messages from others after my read pointer, in direct and group chats I am in. A muted
+    /// conversation adds nothing to the number (it only lights a grey dot) except the messages that @mention me, which always count.
+    /// Two grouped queries, whatever the number of conversations.
+    /// </summary>
     public async Task<UnreadDto> UnreadAsync(CancellationToken ct = default)
     {
         var (_, me) = Require();
-        var count = await (from msg in db.ChatMessages.AsNoTracking()
-                           join m in db.ConversationMembers.AsNoTracking() on msg.ConversationId equals m.ConversationId
-                           join c in db.Conversations.AsNoTracking() on msg.ConversationId equals c.Id
-                           where c.Type != ConversationType.Project && m.UserId == me && !m.IsMuted && msg.CreatedAt > m.LastReadAt && msg.CreatedAt >= m.CreatedAt
-                                 && msg.Kind == ChatMessageKind.User && msg.SenderId != me && msg.DeletedAt == null && msg.ThreadRootId == null
-                           select msg.Id).CountAsync(ct);
-        return new UnreadDto(count);
+        var perConversation = await (from msg in db.ChatMessages.AsNoTracking()
+                                     join m in db.ConversationMembers.AsNoTracking() on msg.ConversationId equals m.ConversationId
+                                     join c in db.Conversations.AsNoTracking() on msg.ConversationId equals c.Id
+                                     where c.Type != ConversationType.Project && m.UserId == me && msg.CreatedAt > m.LastReadAt && msg.CreatedAt >= m.CreatedAt
+                                           && msg.Kind == ChatMessageKind.User && msg.SenderId != me && msg.DeletedAt == null && msg.ThreadRootId == null
+                                     group msg by new { msg.ConversationId, m.IsMuted } into g
+                                     select new { g.Key.ConversationId, g.Key.IsMuted, Count = g.Count() }).ToListAsync(ct);
+        if (perConversation.Count == 0) return new UnreadDto(0);
+        var mutedIds = perConversation.Where(r => r.IsMuted).Select(r => r.ConversationId).ToList();
+        var mutedMentions = mutedIds.Count == 0 ? new Dictionary<Guid, int>()
+            : await (from mn in db.ChatMentions.AsNoTracking()
+                     join msg in db.ChatMessages.AsNoTracking() on mn.MessageId equals msg.Id
+                     join m in db.ConversationMembers.AsNoTracking() on mn.ConversationId equals m.ConversationId
+                     where mn.UserId == me && m.UserId == me && mutedIds.Contains(mn.ConversationId) && msg.CreatedAt > m.LastReadAt
+                           && msg.DeletedAt == null && msg.SenderId != me && msg.ThreadRootId == null
+                     group mn by mn.ConversationId into g
+                     select new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+        var count = 0; var conversations = 0; var mutedActivity = false;
+        foreach (var r in perConversation)
+        {
+            var counted = r.IsMuted ? mutedMentions.GetValueOrDefault(r.ConversationId) : r.Count;
+            if (r.IsMuted && r.Count > counted) mutedActivity = true;
+            if (counted == 0) continue;
+            count += counted; conversations++;
+        }
+        return new UnreadDto(count, conversations, mutedMentions.Values.Sum(), mutedActivity);
     }
 
     public async Task<IReadOnlyList<ChatSearchHitDto>> SearchAsync(string? text, CancellationToken ct = default)

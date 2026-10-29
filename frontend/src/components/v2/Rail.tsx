@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { chatApi, insightApi, projectApi } from '../../api/endpoints';
+import { insightApi, projectApi } from '../../api/endpoints';
 import type { Project } from '../../api/types';
 import { usePins, useContextMenu } from './pins';
 import { Icon, type IconName } from '../Icon';
@@ -14,7 +14,7 @@ import { useWsQuery } from '../../lib/hooks';
 import { inboxApi } from '../../features/home/inboxApi';
 import { useAuth, useIsPersonal } from '../../stores/auth';
 import { toast, useUi } from '../../stores/ui';
-import { chatKeys } from '../../features/chat/chatStore';
+import { badgeOf, useCanChat, useChatUnread } from '../../features/chat/unreadBadge';
 import { RunningTimer } from '../../features/time/RunningTimer';
 import { inRail, useMainNav, type NavDef } from '../../layouts/navigation';
 import { CreateOrganizationModal } from '../../layouts/parts';
@@ -29,15 +29,16 @@ import './v2.css';
 /** The cache key of my /me/ui/profile (the card theme); the theme picker writes it too. */
 export const MY_PROFILE_UI = ['me', 'ui', 'profile'] as const;
 
-/** Unread chat messages (the badge on Talk, and in the tab title so it shows when the app is in the background). */
-function useTalkUnread() {
-  const ctx = useAuth((s) => s.ctx);
-  const wid = ctx?.current?.id;
-  const canChat = !!ctx?.current && ctx.current.type !== 'Personal' && ctx.current.role !== 'Guest' && !ctx.user.isPlatformAdmin;
-  const q = useQuery({ queryKey: chatKeys.unread(wid ?? ''), queryFn: () => chatApi.unread(), enabled: !!wid && canChat, refetchInterval: 90_000, staleTime: 30_000 });
-  const n = q.data?.count ?? 0;
+/**
+ * Unread chat messages (the badge on Messages in the sidebar and the phone tab bar, and the number in the tab title). docs/badges.md:
+ * a red number (99+), or a grey dot when only muted conversations have news.
+ */
+function useTalkUnread(): { n: number; dot: boolean } {
+  const u = useChatUnread();
+  const canChat = useCanChat();
+  const { n, dot } = badgeOf(u);
   useEffect(() => { setTitleParts({ unread: canChat ? n : 0 }); }, [n, canChat]);
-  return canChat ? n : 0;
+  return canChat ? { n, dot } : { n: 0, dot: false };
 }
 
 /** Open inbox rows (the badge on Home): the same query Home's inbox uses, so the two agree. Red when any row is urgent. */
@@ -56,10 +57,10 @@ function usePlaces() {
   const talk = useTalkUnread();
   const inbox = useInboxOpen();
   return groups.flatMap((g) => g.items).filter(inRail)
-    .map((i) => (i.id === 'talk' ? { ...i, badge: talk } : i.id === 'home' ? { ...i, badge: inbox.count, calm: !inbox.urgent } : i)) as (NavDef & { calm?: boolean })[];
+    .map((i) => (i.id === 'talk' ? { ...i, badge: talk.n, dot: talk.dot } : i.id === 'home' ? { ...i, badge: inbox.count, calm: !inbox.urgent } : i)) as (NavDef & { calm?: boolean; dot?: boolean })[];
 }
 
-type SideItem = { key: string; to: string; label: string; icon: IconName; tint: string; on: boolean; badge?: number; calm?: boolean; hint?: string };
+type SideItem = { key: string; to: string; label: string; icon: IconName; tint: string; on: boolean; badge?: number; calm?: boolean; hint?: string; /** No number, but something new (muted chats): a grey dot. */ dot?: boolean };
 type SideGroup = { title: string | null; items: SideItem[] };
 
 const TINT = {
@@ -135,7 +136,7 @@ function useSideGroups(): SideGroup[] {
       mk('/?tab=calendar', 'calendar', 'Calendar', 'calendar', TINT.red, home && tab === 'calendar'),
     ] as SideItem[] }),
     clean({ title: 'Together', items: [
-      mk('/messages', 'talk', 'Messages', 'message', TINT.green, pathname === '/messages' || pathname.startsWith('/messages/') || pathname.startsWith('/calls/'), { badge: talk, calm: true }),
+      mk('/messages', 'talk', 'Messages', 'message', TINT.green, pathname === '/messages' || pathname.startsWith('/messages/') || pathname.startsWith('/calls/'), { badge: talk.n, dot: talk.dot }),
       mk('/mail', 'mail', 'Mail', 'mail', TINT.blue, pathname === '/mail' || pathname.startsWith('/mail/'), { badge: mailUnread, calm: true }),
       mk('/library', 'library', 'Library', 'note', TINT.amber, (pathname === '/library' || pathname.startsWith('/library/')) && !vault),
       mk('/library/vault', 'vault', 'Vault', 'key', TINT.gray, vault),
@@ -194,7 +195,8 @@ export function Rail() {
               <Link key={i.key} to={i.to} className={`v2-rail-item ${i.on ? 'on' : ''}`} aria-current={i.on ? 'page' : undefined} title={i.hint ?? i.label} data-place={i.key}>
                 <span className="v2-tile" style={{ background: i.tint }}><Icon name={i.icon} size={13} /></span>
                 <span className="v2-rail-label">{i.label}</span>
-                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} aria-label={i.key === 'home' ? `${i.badge} waiting on you` : i.key === 'talk' || i.key === 'mail' ? `${i.badge} unread` : `${i.badge} open`}>{i.badge > 99 ? '99+' : i.badge}</em>}
+                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} data-badge={i.key} aria-label={i.key === 'home' ? `${i.badge} waiting on you` : i.key === 'talk' || i.key === 'mail' ? `${i.badge} unread` : `${i.badge} open`}>{i.badge > 99 ? '99+' : i.badge}</em>}
+                {!i.badge && i.dot && <em className="v2-badge-dot" data-badge={i.key} aria-label="New messages in muted conversations" />}
               </Link>
             ))}
           </div>
@@ -362,7 +364,7 @@ export function PhoneBar() {
       <nav className="v2-phone-bar m-tabs" aria-label="Main" style={{ gridTemplateColumns: `repeat(${primary.length + 1}, 1fr)` }}>
         {primary.map((i) => (
           <Link key={i.key} to={i.to} className={`v2-phone-tab ${i.on && !more ? 'on' : ''}`} aria-current={i.on ? 'page' : undefined} onClick={() => haptic(6)}>
-            <span className="v2-phone-ic"><Icon name={i.icon} size={24} />{!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`}>{i.badge > 99 ? '99+' : i.badge}</em>}</span>
+            <span className="v2-phone-ic"><Icon name={i.icon} size={24} />{!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} data-badge={i.key} aria-label={i.key === 'talk' ? `${i.badge} unread` : undefined}>{i.badge > 99 ? '99+' : i.badge}</em>}{!i.badge && i.dot && <em className="v2-badge-dot" data-badge={i.key} aria-label="New messages in muted conversations" />}</span>
             <span className="v2-rail-label">{i.label === 'My Work' ? 'Work' : i.label}</span>
           </Link>
         ))}
