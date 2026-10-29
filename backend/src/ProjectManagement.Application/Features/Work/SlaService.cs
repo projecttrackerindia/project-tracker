@@ -12,7 +12,15 @@ namespace ProjectManagement.Application.Features.Work;
 /// <summary>A target pair for one priority, in minutes (empty = not measured).</summary>
 public record SlaTargetDto(Priority Priority, int? ResponseMinutes, int? ResolutionMinutes);
 public record SlaOverrideDto(Guid WorkTypeId, string WorkType, IReadOnlyList<SlaTargetDto> Targets);
-public record SlaSettingsDto(bool Entitled, bool CanManage, IReadOnlyList<SlaTargetDto> Defaults, IReadOnlyList<SlaOverrideDto> Overrides);
+/// <summary>
+/// <see cref="Suggested"/>: the starting targets offered (in working minutes when the clocks count working hours: a "day" is one working
+/// day). <see cref="Hours"/>: the working hours the clocks count in (null = calendar time, nights and weekends count).
+/// </summary>
+public record SlaSettingsDto(bool Entitled, bool CanManage, IReadOnlyList<SlaTargetDto> Defaults, IReadOnlyList<SlaOverrideDto> Overrides,
+    IReadOnlyList<SlaTargetDto>? Suggested = null, SlaHoursDto? Hours = null);
+/// <summary>Working hours of the SLA clocks: minutes after midnight, ISO weekdays (1 = Monday), the zone, and whether they are the default
+/// (no Operations settings saved: the attendance policy's hours, 09:30-18:30 Monday to Friday unless changed).</summary>
+public record SlaHoursDto(int DayStartMinutes, int DayEndMinutes, IReadOnlyList<int> WorkDays, string TimeZone, bool IsDefault);
 /// <summary>Replaces the targets of the defaults (no work type) or of one work type.</summary>
 public record SaveSlaRequest(Guid? WorkTypeId, IReadOnlyList<SlaTargetDto>? Targets);
 
@@ -31,11 +39,29 @@ public record WorkSlaSummaryDto(int Tracked, int Met, int Missed, decimal? Compl
 /// </summary>
 public class SlaService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, EntitlementService entitlements)
 {
-    /// <summary>A sensible starting point (calendar hours), offered until the workspace saves its own.</summary>
-    public static readonly IReadOnlyList<SlaTargetDto> Suggested =
+    /// <summary>A sensible starting point in calendar minutes (a day is 24 hours), offered until the workspace saves its own.</summary>
+    public static readonly IReadOnlyList<SlaTargetDto> Suggested = SuggestedFor(24 * 60);
+
+    /// <summary>
+    /// The suggested targets for a working day of <paramref name="dayMinutes"/>: Critical respond in 15 minutes and resolve in 4 hours, High
+    /// 1 hour and 1 day, Medium 4 hours and 3 days, Low 1 day and 5 days (days are working days when the clocks count working hours).
+    /// </summary>
+    public static IReadOnlyList<SlaTargetDto> SuggestedFor(int dayMinutes) =>
     [
-        new(Priority.Critical, 30, 4 * 60), new(Priority.High, 2 * 60, 24 * 60), new(Priority.Medium, 8 * 60, 3 * 24 * 60), new(Priority.Low, 24 * 60, 7 * 24 * 60),
+        new(Priority.Critical, 15, 4 * 60), new(Priority.High, 60, dayMinutes), new(Priority.Medium, 4 * 60, 3 * dayMinutes), new(Priority.Low, dayMinutes, 5 * dayMinutes),
     ];
+
+    /// <summary>The working hours used when a workspace has saved no Operations settings: 09:30 to 18:30, Monday to Friday.</summary>
+    public static readonly TimeOnly DefaultDayStart = new(9, 30), DefaultDayEnd = new(18, 30);
+
+    /// <summary>ISO weekdays ("1,2,3,4,5") as calendar bits (Monday = 1 ... Sunday = 64); Monday to Friday when nothing usable is given.</summary>
+    public static int DayBits(string? isoDays)
+    {
+        var bits = 0;
+        foreach (var part in (isoDays ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            if (int.TryParse(part, out var d) && d is >= 1 and <= 7) bits |= 1 << (d - 1);
+        return bits == 0 ? 31 : bits;
+    }
     private const int MaxTargetMinutes = 365 * 24 * 60;
     private const decimal RiskShare = 0.75m;
 
@@ -51,8 +77,12 @@ public class SlaService(IAppDbContext db, ICurrentContext ctx, AppClock clock, R
         IReadOnlyList<SlaTargetDto> Targets(Guid? type) => Order.Select(p => rows.FirstOrDefault(r => r.WorkTypeId == type && r.Priority == p) is { } r
             ? new SlaTargetDto(p, r.ResponseMinutes, r.ResolutionMinutes) : new SlaTargetDto(p, null, null)).ToList();
         var overrides = types.Where(t => rows.Any(r => r.WorkTypeId == t.Id)).Select(t => new SlaOverrideDto(t.Id, t.Name, Targets(t.Id))).ToList();
+        var cal = await CalendarAsync(ct);
+        var hours = cal is null ? null : new SlaHoursDto(cal.DayStart, cal.DayEnd, Enumerable.Range(1, 7).Where(d => (cal.WorkDays & (1 << (d - 1))) != 0).ToList(), cal.Zone.Id,
+            !await db.OperationsSettings.AsNoTracking().AnyAsync(ct));
         return new SlaSettingsDto(await entitlements.GetValueAsync(FeatureKeys.ServiceLevels, ct) > 0, await permissions.HasAsync(Permissions.WorkTypesManage, ct),
-            rows.Any(r => r.WorkTypeId == null) ? Targets(null) : Suggested.Select(s => new SlaTargetDto(s.Priority, null, null)).ToList(), overrides);
+            rows.Any(r => r.WorkTypeId == null) ? Targets(null) : Suggested.Select(s => new SlaTargetDto(s.Priority, null, null)).ToList(), overrides,
+            SuggestedFor(cal is null ? 24 * 60 : cal.DayEnd - cal.DayStart), hours);
     }
 
     public async Task<SlaSettingsDto> SaveAsync(SaveSlaRequest req, CancellationToken ct = default)
@@ -114,15 +144,35 @@ public class SlaService(IAppDbContext db, ICurrentContext ctx, AppClock clock, R
     private BusinessCalendar? _calendar;
     private bool _calendarLoaded;
 
-    /// <summary>The workspace's working hours when its clocks count business hours only; null for calendar hours.</summary>
+    /// <summary>
+    /// The working hours the clocks count: the workspace's Operations settings when saved (null when they say calendar hours); otherwise the
+    /// default working calendar (<see cref="DefaultCalendarAsync"/>), so a target of "4h" means four working hours.
+    /// </summary>
     public async Task<BusinessCalendar?> CalendarAsync(CancellationToken ct = default)
     {
         if (_calendarLoaded) return _calendar;
         var s = await db.OperationsSettings.AsNoTracking().FirstOrDefaultAsync(ct);
-        _calendar = s is { BusinessHoursOnly: true } ? new BusinessCalendar(s.WorkDays, s.DayStartMinutes, s.DayEndMinutes, ProjectManagement.Application.Features.Reminders.ZoneTime.Find(s.TimeZone ?? clock.ZoneId)) : null;
+        _calendar = s is null ? await DefaultCalendarAsync(ct)
+            : s.BusinessHoursOnly ? new BusinessCalendar(s.WorkDays, s.DayStartMinutes, s.DayEndMinutes, ProjectManagement.Application.Features.Reminders.ZoneTime.Find(s.TimeZone ?? clock.ZoneId)) : null;
         if (_calendar is { Valid: false }) _calendar = null;
         _calendarLoaded = true;
         return _calendar;
+    }
+
+    /// <summary>
+    /// The working calendar of a workspace that has not set its own Operations hours: the attendance policy's working days and hours
+    /// (09:30 to 18:30, Monday to Friday, when there is no policy), in the organization's time zone.
+    /// </summary>
+    public async Task<BusinessCalendar> DefaultCalendarAsync(CancellationToken ct = default)
+    {
+        var p = await db.AttendancePolicies.AsNoTracking().FirstOrDefaultAsync(ct);
+        var start = p?.WorkStart ?? DefaultDayStart;
+        var end = p?.WorkEnd ?? DefaultDayEnd;
+        if (end <= start) (start, end) = (DefaultDayStart, DefaultDayEnd);
+        string? zone = null;
+        if (ctx.TenantId is { } tid) zone = await db.Tenants.AsNoTracking().Where(t => t.Id == tid).Select(t => t.TimeZone).FirstOrDefaultAsync(ct);
+        var tz = ProjectManagement.Application.Features.Reminders.ZoneTime.IsKnown(zone) ? ProjectManagement.Application.Features.Reminders.ZoneTime.Find(zone) : clock.DefaultZone;
+        return new BusinessCalendar(DayBits(p?.WorkDays), start.Hour * 60 + start.Minute, end.Hour * 60 + end.Minute, tz);
     }
 
     /// <summary>Forgets the loaded working hours (after they are changed).</summary>

@@ -15,12 +15,15 @@ namespace ProjectManagement.Application.Features.Projects;
 public record ActionItemCan(bool Edit, bool Delete, bool Complete);
 
 public record ActionItemDto(Guid Id, Guid ProjectId, string Title, string? Details, UserRefDto? Assignee, DateOnly? DueDate, Priority Priority, ActionItemStatus Status,
-    bool IsOverdue, DateTime CreatedAt, UserRefDto? CreatedBy, DateTime? CompletedAt, UserRefDto? CompletedBy, ActionItemCan Can, string Key = "", int Number = 0);
+    bool IsOverdue, DateTime CreatedAt, UserRefDto? CreatedBy, DateTime? CompletedAt, UserRefDto? CompletedBy, ActionItemCan Can, string Key = "", int Number = 0,
+    TimeOnly? DueTime = null, DateTime? DueAt = null);
 
-public record CreateActionItemRequest(string? Title, string? Details, Guid? AssigneeId, DateOnly? DueDate, Priority? Priority);
+public record CreateActionItemRequest(string? Title, string? Details, Guid? AssigneeId, DateOnly? DueDate, Priority? Priority, TimeOnly? DueTime = null);
 /// <summary>All the editable fields at once: what is sent replaces what was there (an empty assignee or due date clears it).</summary>
 /// <param name="Version">The version the caller saw; when given, a save over someone else's newer change is refused (409).</param>
-public record UpdateActionItemRequest(string? Title, string? Details, Guid? AssigneeId, DateOnly? DueDate, Priority Priority, ActionItemStatus Status, int? Version = null);
+/// <param name="DueTime">Left out keeps the current due time (cleared with the date, or with <paramref name="ClearDueTime"/>).</param>
+public record UpdateActionItemRequest(string? Title, string? Details, Guid? AssigneeId, DateOnly? DueDate, Priority Priority, ActionItemStatus Status, int? Version = null,
+    TimeOnly? DueTime = null, bool ClearDueTime = false);
 public record SetActionItemStatusRequest(ActionItemStatus Status, int? Version = null);
 
 /// <summary>
@@ -135,8 +138,8 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
             var done = r.Status == WorkTaskStatus.Completed;
             var can = new ActionItemCan(Edit: !archived && (manager || mine || assigned), Delete: !archived && (manager || (mine && canCreate)), Complete: (!archived || !done) && (manager || mine || assigned));   // archived: open ones can still be completed (not reopened)
             return new ActionItemDto(r.Id, project.Id, r.Title, r.Description, Ref(r.AssigneeId), r.DueDate, r.Priority, ToApi(r.Status),
-                !done && r.DueDate is { } d && d < today, r.CreatedAt, Ref(r.CreatedBy), r.CompletedAt, Ref(r.CompletedBy), can,
-                WorkItemService.KeyOf(WorkTaskKind.ActionItem, r.Number), r.Number);
+                !done && clock.IsPastDue(r.DueDate, r.DueTime), r.CreatedAt, Ref(r.CreatedBy), r.CompletedAt, Ref(r.CompletedBy), can,
+                WorkItemService.KeyOf(WorkTaskKind.ActionItem, r.Number), r.Number, r.DueTime, clock.DueAt(r.DueDate, r.DueTime));
         }).ToList();
     }
 
@@ -164,6 +167,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         {
             TenantId = project.TenantId, Kind = WorkTaskKind.ActionItem, Number = await WorkTaskService.NextNumberAsync(db, project.TenantId, ct),
             RelatedProjectId = projectId, Title = title, Description = details, AssigneeId = req.AssigneeId, DueDate = req.DueDate,
+            DueTime = req.DueDate is null ? null : req.DueTime,
             ReporterId = ctx.RequireUserId(), Priority = req.Priority ?? Priority.Medium, Status = WorkTaskStatus.ToDo, CreatedAt = clock.Now, CreatedBy = ctx.UserId,
         };
         db.WorkTasks.Add(item);
@@ -197,8 +201,9 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
 
         var was = ToApi(item.Status);
         var reassigned = req.AssigneeId != item.AssigneeId;
-        var oldTitle = item.Title; var oldDetails = item.Description; var oldAssignee = item.AssigneeId; var oldDue = item.DueDate; var oldPriority = item.Priority;
-        item.Title = title; item.Description = details; item.AssigneeId = req.AssigneeId; item.DueDate = req.DueDate; item.Priority = req.Priority;
+        var oldTitle = item.Title; var oldDetails = item.Description; var oldAssignee = item.AssigneeId; var oldDue = item.DueDate; var oldPriority = item.Priority; var oldDueTime = item.DueTime;
+        item.Title = title; item.Description = details; item.AssigneeId = req.AssigneeId; item.Priority = req.Priority;
+        item.DueTime = DueDateHistory.NextTime(req.DueDate, req.DueTime, req.ClearDueTime, item.DueTime); item.DueDate = req.DueDate;
         ApplyStatus(item, req.Status);
         item.Version++; item.UpdatedAt = clock.Now; item.UpdatedBy = ctx.UserId;
         var now = ToApi(item.Status);
@@ -206,7 +211,8 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         new ProjectManagement.Application.Features.Platform.FieldDiff()
             .Add("Title", oldTitle, item.Title).Add("Status", was.ToString(), now.ToString())
             .Add("Assignee", ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldAssignee), ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, item.AssigneeId))
-            .Add("Priority", oldPriority.ToString(), item.Priority.ToString()).Add("Due date", oldDue, item.DueDate).Add("Description", oldDetails, item.Description, 60)
+            .Add("Priority", oldPriority.ToString(), item.Priority.ToString()).Add("Due date", oldDue, item.DueDate).Add("Due time", oldDueTime?.ToString("HH:mm"), item.DueTime?.ToString("HH:mm"))
+            .Add("Description", oldDetails, item.Description, 60)
             .Record(recorder, "actionitem", "ActionItem", id);
         recorder.Activity("actionitem.updated", "ActionItem", id, was != now ? $"Action item “{title}”: {was} → {now}" : $"Updated action item “{title}”", projectId,
             was.ToString(), now.ToString());

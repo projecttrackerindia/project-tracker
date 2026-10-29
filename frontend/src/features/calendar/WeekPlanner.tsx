@@ -26,6 +26,8 @@ import {
 import { useTodaySignals } from '../home/Signals';
 import { Term } from '../../components/Term';
 import { buildWeek, daySignature, focusLabel, hoursOf, readPlan, useTimeline, weekRange, writePlan, type DayView } from './timeline';
+import { dayMarks, type DayMark } from './deadline';
+import { clock24 } from '../work/dueTime';
 import './planner.css';
 
 /** ISO week number. */
@@ -399,8 +401,10 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     const pillTop = new Map<string, number>();
     let last = -Infinity;
     for (const p of pills) { const t = Math.max(p.top, last + 20); pillTop.set(p.key, t); last = t; }
-    return { d, meets: ms, calls, lanes: lanes(spans), focus: fs, logged: layers.logged ? dv?.time ?? [] : [], done, reminders, pillTop };
-  }), [days, wv, timeline, today, nowQ, plan, meets, layers, focus]);
+    // Deadlines at their time (a due time, or an open ticket's SLA breach): a marker on the grid at that hour.
+    const marks = layers.deadlines ? dayMarks(d, dv?.due ?? [], now.getTime()) : [];
+    return { d, meets: ms, calls, lanes: lanes(spans), focus: fs, logged: layers.logged ? dv?.time ?? [] : [], done, reminders, pillTop, marks };
+  }), [days, wv, timeline, today, nowQ, plan, meets, layers, focus, now]);
   // The card follows its block when the data refreshes (or closes when the block is gone, e.g. after Mark done).
   useEffect(() => {
     if (!openKey) return;
@@ -666,7 +670,7 @@ interface ColHandlers {
 }
 interface ColData {
   d: string; meets: Meet[]; calls: TimelineEvent[]; lanes: Map<string, { lane: number; of: number }>; focus: Focus[];
-  logged: TimelineEvent[]; done: TimelineEvent[]; reminders: TimelineEvent[]; pillTop: Map<string, number>;
+  logged: TimelineEvent[]; done: TimelineEvent[]; reminders: TimelineEvent[]; pillTop: Map<string, number>; marks: DayMark[];
 }
 const top = (h: number) => (h - G0) * HR;
 const laneStyle = (l: { lane: number; of: number }) => ({ left: `calc(${(l.lane / l.of) * 100}% + 3px)`, width: `calc(${100 / l.of}% - 6px)` });
@@ -800,6 +804,17 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
             onPointerDown={movable ? (e) => h.down(e, it, 'move') : undefined}
             onClick={(ev) => h.open({ kind: 'reminder', key, t }, ev.currentTarget)}>
             <i aria-hidden="true" />{t.title}
+          </button>
+        );
+      })}
+      {col.marks.map((m) => {
+        const key = `deadline:${m.e.date}:${m.e.type}:${m.e.id}`;
+        const label = m.kind === 'sla' ? `SLA ${m.late ? 'breached' : 'breach'} ${clock24(m.iso)} · ${m.e.key ? `${m.e.key} ` : ''}${m.e.title}` : `Due ${clock24(m.iso)} · ${m.e.key ? `${m.e.key} ` : ''}${m.e.title}`;
+        return (
+          <button key={m.key} type="button" className={`wp-dl ${m.kind}${m.late ? ' late' : ''}${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={m.at} data-type={m.kind === 'sla' ? 'sla' : 'deadline'}
+            data-testid={m.kind === 'sla' ? 'wp-sla' : 'wp-due'} aria-expanded={openKey === key} aria-label={label} title={label} style={{ top: top(m.at) }}
+            onClick={(ev) => h.open({ kind: 'deadline', key, e: m.e, others: [] }, ev.currentTarget)}>
+            <span>{m.kind === 'sla' ? 'SLA ' : ''}{clock24(m.iso)}</span>{m.e.key ?? m.e.title}
           </button>
         );
       })}

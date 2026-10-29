@@ -194,6 +194,8 @@ export interface Task {
   id: string; projectId: string; projectKey: string; projectName: string; number: number; key: string; title: string; description: string | null;
   statusId: string; statusName: string; statusCategory: StatusCategory; statusColor: string; priority: Priority;
   assignee: UserRef | null; reporter: UserRef | null; startDate: string | null; dueDate: string | null;
+  /** The time of day it is due ("14:30:00", workspace time) and the instant; null for a date-only due. */
+  dueTime?: string | null; dueAt?: string | null;
   estimatedHours: number | null; actualHours: number | null; position: number; parentTaskId: string | null;
   subtaskTotal: number; subtaskDone: number; commentCount: number; labels: Label[];
   completedAt: string | null; createdAt: string; updatedAt: string | null; version: number; isOverdue: boolean;
@@ -242,6 +244,8 @@ export interface TimelineEvent {
   /** A time entry typed in as minutes only, placed on its day by the server. */
   approximated: boolean; overdue: boolean; priority: Priority | null; minutes: number | null; note: string | null; joinUrl: string | null; notes: boolean;
   userId: string | null; mode: string | null; running: boolean;
+  /** A deadline: the instant it is due (its due time, or a ticket's SLA resolve-by); an open ticket's SLA breach instant and clock state. */
+  dueAt?: string | null; slaBreachAt?: string | null; slaState?: SlaState | null;
 }
 export interface Timeline { from: string; to: string; timeZone: string; scope: 'me' | 'user' | 'team'; generatedAt: string; events: TimelineEvent[] }
 
@@ -260,6 +264,8 @@ export interface CalendarEvent {
   joinUrl?: string | null;
   /** Up to five people invited (display names, the organizer first). */
   people?: string[] | null;
+  /** A deadline with a time: the instant it is due; an open ticket's SLA breach instant (from the timeline). */
+  dueAt?: string | null; slaBreachAt?: string | null; slaState?: SlaState | null;
 }
 export interface SearchHit { type: string; id: string; title: string; subtitle: string | null; projectId: string | null; taskId: string | null }
 export interface ReportSummary {
@@ -767,16 +773,26 @@ export interface WorkTask {
   loggedMinutes: number;
   /** Service-level clocks, when a target applies to it. */
   sla: WorkSla | null;
+  /** Due time ("14:30:00"); the due instant; true when that instant is the SLA resolve-by (no due time of its own). */
+  dueTime?: string | null; dueAt?: string | null; dueFromSla?: boolean;
 }
 export type SlaState = 'OnTrack' | 'AtRisk' | 'Breached' | 'Met' | 'Missed' | 'Paused' | 'Stopped';
 export interface SlaClock { dueAt: string; metAt: string | null; state: SlaState }
 export interface WorkSla { response: SlaClock | null; resolution: SlaClock | null; state: SlaState }
 export interface SlaTarget { priority: Priority; responseMinutes: number | null; resolutionMinutes: number | null }
-export interface SlaSettings { entitled: boolean; canManage: boolean; defaults: SlaTarget[]; overrides: { workTypeId: string; workType: string; targets: SlaTarget[] }[] }
+/** Working hours of the SLA clocks (minutes after midnight, ISO weekdays); null = calendar time. `isDefault`: nothing saved in Operations. */
+export interface SlaHours { dayStartMinutes: number; dayEndMinutes: number; workDays: number[]; timeZone: string; isDefault: boolean }
+export interface SlaSettings {
+  entitled: boolean; canManage: boolean; defaults: SlaTarget[]; overrides: { workTypeId: string; workType: string; targets: SlaTarget[] }[];
+  /** The targets offered to start from (a day is a working day when the clocks count working hours). */
+  suggested?: SlaTarget[]; hours?: SlaHours | null;
+}
 export interface WorkSlaSummary { tracked: number; met: number; missed: number; compliance: number | null; openBreached: number; openAtRisk: number; responseTracked: number; responseMet: number }
 export interface WorkTaskInput {
   title: string; description?: string | null; workTypeId: string; relatedProjectId?: string | null; assigneeId?: string | null; priority?: string; status?: string;
   startDate?: string | null; dueDate?: string | null;
+  /** "14:30:00"; left out keeps the time, `clearDueTime` removes it. */
+  dueTime?: string | null; clearDueTime?: boolean;
 }
 export interface WorkComment { id: string; workTaskId: string; author: UserRef | null; body: string; createdAt: string; editedAt: string | null; canEdit: boolean; canDelete: boolean }
 export interface WorkAttachment { id: string; workTaskId: string; fileName: string; contentType: string; sizeBytes: number; uploadedBy: UserRef | null; createdAt: string; canDelete: boolean; isImage: boolean }

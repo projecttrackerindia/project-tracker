@@ -139,6 +139,15 @@
 .wkp-inline:has(select)::after { content: ''; width: 6px; height: 6px; margin-left: 2px; border-right: 1.5px solid var(--ds-text-4); border-bottom: 1.5px solid var(--ds-text-4); transform: translateY(-2px) rotate(45deg); }
 .wkp-sla { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .wkp-sla small { font-size: 12px; color: var(--ds-text-3); }
+.wkp-sla-left { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ds-text); }
+.wkp-sla-left.t-warn { color: var(--ds-warning, #b25000); }
+.wkp-sla-left.t-late { color: var(--ds-danger); }
+.wkp-sla-left.t-paused { color: var(--ds-text-3); font-weight: 500; }
+.wkp-duetime { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: -2px; padding: 8px 14px; border-radius: 14px; background: var(--ds-fill); font-size: 13px; color: var(--ds-text-3); }
+.wkp-duetime label { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.wkp-duetime input { height: 30px; padding: 0 8px; border: 0; border-radius: 8px; background: var(--ds-surface); color: var(--ds-text); font: inherit; font-size: 14px; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 1px var(--ds-line); }
+.wkp-duetime input:focus { outline: 0; box-shadow: 0 0 0 2px var(--ds-accent); }
+.wkp-duetime-hint { font-size: 12px; color: var(--ds-text-3); text-align: right; }
 .wkp-channel { display: inline-flex; align-items: center; gap: 6px; }
 .wkp-channel::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--ds-text-4); }
 .wkp-channel.c-whatsapp::before { background: var(--ds-success); }
@@ -232,7 +241,7 @@
   .wkp-tile { padding: 10px 12px; }
   .wkp-fields > div { grid-template-columns: 92px minmax(0, 1fr); }
   .v2-panel-head .wkp-title { font-size: 21px; }
-  .wkp-compose-box textarea, .wkp-desc, .wkp-due-ask input { font-size: 16px; }
+  .wkp-compose-box textarea, .wkp-desc, .wkp-due-ask input, .wkp-duetime input { font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { .wk-row, .wk-kchip, .wkp-tile { transition: none; } }
 

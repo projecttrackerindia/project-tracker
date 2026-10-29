@@ -9,6 +9,9 @@
 @keyframes dq-live { 50% { box-shadow: 0 0 0 6px rgba(255, 255, 255, .15); } }
 @media (prefers-reduced-motion: reduce) { .dq-live { animation: none; } }
 .dq-tm { font: 600 15px var(--font); font-variant-numeric: tabular-nums; background: rgba(0, 0, 0, .14); padding: 4px 10px; border-radius: 8px; flex: none; }
+.dq-tm-left { font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
+.dq-tm-left b { font-weight: 700; }
+.dq-tm-left.late { padding: 3px 9px; border-radius: 8px; background: rgba(0, 0, 0, .22); }
 .dq-war { height: 30px; padding: 0 14px; border-radius: 15px; background: #fff; color: #ff3b30; font: 600 12px var(--font); border: 0; cursor: pointer; flex: none; }
 .dq-war:disabled { opacity: .7; }
 .dq-desk .dq-eyebrow { color: var(--ds-text-2, #6e6e73); }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { chatApi, opsApi, workApi, workspaceApi } from '../../api/endpoints';
-import type { ChatAskAnswer, Priority } from '../../api/types';
+import type { ChatAskAnswer, Priority, WorkSla } from '../../api/types';
 import { workItemsApi, type WorkItemDetail, type WorkItemPatch } from '../../api/workItemsApi';
 import { Icon } from '../../components/Icon';
 import { PriorityOptions } from '../../components/ui';
@@ -12,6 +12,8 @@ import { toast } from '../../stores/ui';
 import { useAi } from '../ai/Assistant';
 import { useNow } from '../time/time';
 import { MACROS, elapsed, fillMacro, slaRing } from './deskLogic';
+import { clock24, countdown } from './dueTime';
+import { formatDateTime } from '../../lib/format';
 import './desk.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -62,17 +64,28 @@ export function useWarRoom(w: WorkItemDetail) {
   return { open, busy };
 }
 
-/** Critical open ticket: a red strip with the time since it was raised, and a War room that gathers the people in a Talk group. */
+/**
+ * Critical open ticket: a red strip counting DOWN to its resolve-by (its due time, else the SLA's), with the time since it was raised beside
+ * it, and a War room that gathers the people in a Talk group.
+ */
 export function IncidentStrip({ w }: { w: WorkItemDetail }) {
   const now = useNow(true);
   const { open, busy } = useWarRoom(w);
   const started = (w.detail as { createdAt?: string }).createdAt ?? w.createdAt;
+  const sla = (w.detail as { sla?: WorkSla | null }).sla ?? null;
+  const resolveBy = (w.dueAt && !w.dueFromSla ? w.dueAt : sla?.resolution?.dueAt) ?? w.dueAt ?? null;
+  const late = !!resolveBy && Date.parse(resolveBy) < now;
 
   return (
     <div className="dk-incident" role="status">
       <span className="dk-incident-dot" aria-hidden="true" />
       <b>Critical incident</b>
-      <span className="dk-incident-time" title={`Raised ${new Date(started).toLocaleString()}`}>{elapsed(started, now)}</span>
+      {resolveBy && (
+        <span className={`dk-incident-left${late ? ' late' : ''}`} data-testid="incident-countdown" title={`Resolve by ${formatDateTime(resolveBy)}`}>
+          {late ? 'Breached ' : 'Resolve in '}<b>{countdown(resolveBy, now).replace(/^-/, '')}</b>{late ? ' ago' : ` · by ${clock24(resolveBy)}`}
+        </span>
+      )}
+      <span className="dk-incident-time" data-testid="incident-elapsed" title={`Raised ${new Date(started).toLocaleString()}`}>{resolveBy ? 'Open ' : ''}{elapsed(started, now)}</span>
       <button type="button" className="dk-incident-btn" disabled={busy} onClick={() => void open()}><Icon name="message" size={14} />{busy ? 'Opening…' : 'War room'}</button>
     </div>
   );
