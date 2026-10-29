@@ -6,7 +6,7 @@ export type Rsvp = 'Organizer' | 'Accepted' | 'Tentative' | 'Declined' | 'NeedsA
 
 /**
  * One session of a meeting on the Meet page. `ref` is "p:{id}" (a project meeting) or "w:{id}" (a meeting for the workspace), the form the
- * links in notifications and reminders use (/meet?open=p:…). `joinUrl` is the Google Meet or Teams address, or this app's path for a
+ * links in notifications and reminders use (/meetings?open=p:…). `joinUrl` is the Google Meet or Teams address, or this app's path for a
  * Project Tracker call. `notes`: the notetaker's state for this session when it came (scheduled, in_call, done, failed).
  */
 export interface MeetItem {

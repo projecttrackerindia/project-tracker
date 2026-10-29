@@ -13,6 +13,7 @@ import { SettingsCard } from '../command/CommandParts';
 import { NotetakerPanel } from '../notetaker/NotetakerPage';
 import { meetApi, parseRef, type MeetItem } from './meetApi';
 import { MeetingForm } from './ScheduleMeeting';
+import { ActionReview } from './ActionReview';
 import { NotetakerWorkspaceSettings } from './NotetakerWorkspaceSettings';
 import '../command/command.css';
 import './meet.css';
@@ -28,6 +29,19 @@ const DAY = 24 * 60 * 60 * 1000;
  * the notetaker's notes, and the notetaker itself. Scheduling and starting happen only here; Calendar, Reminders, chat and notifications
  * open the meeting here.
  */
+const SECTIONS: readonly Section[] = ['upcoming', 'past', 'series', 'notetaker'];
+
+/**
+ * Meetings (/meetings): its own place, apart from Messages. Tabs Upcoming · Past · Series (and the notetaker), a meeting opened with
+ * ?open=p:{id}|w:{id} (&at= a session), scheduling with ?new=schedule|now, and the review of action items with ?review=.
+ */
+export function MeetingsPage() {
+  const [params] = useSearchParams();
+  if (params.has('review')) return <ActionReview key={`${params.get('review')}|${params.get('at')}`} seriesRef={params.get('review') || null} at={params.get('at')} />;
+  const s = params.get('s') as Section | null;
+  return <MeetPage section={s && SECTIONS.includes(s) ? s : 'upcoming'} />;
+}
+
 export function MeetPage({ section }: { section: Section }) {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -43,17 +57,18 @@ export function MeetPage({ section }: { section: Section }) {
 
   return (
     <div className="mt-page">
-      <PageHead title="Meet" eyebrow={project ? project.name : new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+      <PageHead title="Meetings" eyebrow={project ? project.name : new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
         sub={project ? 'This project\'s meetings and calls.' : 'Google Meet, Teams and Project Tracker calls, in one place.'}>
         {projectId && <button type="button" className="btn btn-ghost" onClick={() => setParam('project', null)}>All meetings</button>}
+        {projects && role !== 'Guest' && section !== 'notetaker' && <Link className="btn btn-ghost" to={`/meetings?s=notetaker${projectId ? `&project=${encodeURIComponent(projectId)}` : ''}`}><Icon name="sparkle" />Notetaker</Link>}
         <button type="button" className="btn btn-ghost" onClick={() => setForm('now')}>Start now</button>
-        <button type="button" className="btn btn-primary" onClick={() => setForm('schedule')}>Schedule</button>
+        <button type="button" className="btn btn-primary" onClick={() => setForm('schedule')}>Schedule meeting</button>
       </PageHead>
-      {/* v2: Meet lives in Talk (?f=meetings&s=…); the tabs keep the section in the query, which a NavLink cannot tell apart. */}
-      <nav className="tabs route-tabs" aria-label="Meet">
-        {([['upcoming', 'Upcoming', 'calendar'], ['series', 'Series', 'repeat'], ['past', 'Past', 'clock'],
-          ...(projects && role !== 'Guest' ? [['notetaker', 'Aura notetaker', 'sparkle']] : [])] as [Section, string, IconName][]).map(([id, label, icon]) => (
-          <Link key={id} to={`/messages?f=meetings&s=${id}${projectId ? `&project=${encodeURIComponent(projectId)}` : ''}`} className={`tab ${section === id ? 'active' : ''}`}
+      {/* Meetings is its own place (/meetings?s=…); the tabs keep the section in the query, which a NavLink cannot tell apart. */}
+      <nav className="tabs route-tabs" aria-label="Meetings">
+        {([['upcoming', 'Upcoming', 'calendar'], ['past', 'Past', 'clock'], ['series', 'Series', 'repeat'],
+          ...(section === 'notetaker' ? [['notetaker', 'Aura notetaker', 'sparkle']] : [])] as [Section, string, IconName][]).map(([id, label, icon]) => (
+          <Link key={id} to={`/meetings?s=${id}${projectId ? `&project=${encodeURIComponent(projectId)}` : ''}`} className={`tab ${section === id ? 'active' : ''}`}
             aria-current={section === id ? 'page' : undefined}><Icon name={icon} />{label}</Link>
         ))}
       </nav>
@@ -62,7 +77,7 @@ export function MeetPage({ section }: { section: Section }) {
       {section === 'past' && <Past projectId={projectId} onOpen={(m) => setParam('open', m.ref)} />}
       {section === 'notetaker' && <NotetakerSection />}
       {opened && <MeetingDetail kind={opened.kind} id={opened.id} at={params.get('at')} onClose={() => { const next = new URLSearchParams(params); next.delete('open'); next.delete('at'); setParams(next, { replace: true }); }}
-        onProject={(pid) => navigate(`/messages?f=meetings&s=upcoming&project=${pid}`)} />}
+        onProject={(pid) => navigate(`/meetings?s=upcoming&project=${pid}`)} />}
       {form && <MeetingForm mode={form} project={project} title={params.get('title')} details={params.get('details')} onClose={closeForm} />}
     </div>
   );
@@ -189,7 +204,7 @@ function Row({ m, onOpen, past = false, series = false }: { m: MeetItem; onOpen:
 }
 
 function CalendarRow({ c }: { c: MyMeeting }) {
-  const send = `/meet/notetaker?url=${encodeURIComponent(c.meetUrl ?? '')}&title=${encodeURIComponent(c.title)}`;
+  const send = `/meetings?s=notetaker&url=${encodeURIComponent(c.meetUrl ?? '')}&title=${encodeURIComponent(c.title)}`;
   return (
     <li className="mt-item">
       <span className="mt-item-main mt-static">

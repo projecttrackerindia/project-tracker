@@ -222,7 +222,7 @@ function AttentionCard({ a, onCheckIn, onDelegate }: { a: AttentionItem; onCheck
 function ComingUp({ meetings, onDelegate, onBrief }: { meetings: MyMeeting[]; onDelegate: (d: { meetingId: string; at: string; title?: string }) => void; onBrief: (b: { meetingId: string; at?: string | null }) => void }) {
   return (
     <div className="card cmd-panel">
-      <h3 className="cmd-panel-title"><Icon name="video" size={14} />Coming up<Link className="ag-link cmd-panel-more" to="/meet">All in Meet</Link></h3>
+      <h3 className="cmd-panel-title"><Icon name="video" size={14} />Coming up<Link className="ag-link cmd-panel-more" to="/meetings">All meetings</Link></h3>
       {meetings.length === 0 ? <p className="cmd-muted">No meetings in the next day.</p> : (
         <ol className="cmd-timeline">
           {meetings.map((m) => {

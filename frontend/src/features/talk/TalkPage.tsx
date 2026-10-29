@@ -5,7 +5,6 @@ import { queryClient } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { Popover } from '../../lib/popover';
 import { haptic } from '../../lib/mobile';
-import { MeetPage } from '../meet/MeetPage';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, get, put } from '../../api/client';
@@ -20,9 +19,6 @@ import { chatKeys, useChat } from '../chat/chatStore';
 import { AskChatDialog, CatchUpDialog, QuestionsBox, SavedPanel, ScheduledPanel, StatusButton } from '../chat/ChatTools';
 import { FilesPanel, InfoPanel, NewChatModal } from '../chat/Panels';
 import { Thread } from '../chat/Thread';
-import { MeetingDetail } from '../meet/MeetingDetail';
-import { ActionReview } from '../meet/ActionReview';
-import { parseRef } from '../meet/meetApi';
 import { DotsMenu } from './DotsMenu';
 import { ToolbarSlot } from './ToolbarSlot';
 import { WhileAway } from '../chat/ChatPage';
@@ -32,7 +28,7 @@ import { avatarBg, defaultTheme } from '../../lib/personTheme';
 import { readablePreview } from './preview';
 import './talk.css';
 
-const FILTERS: { id: TalkFilter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'chat', label: 'Chats' }, { id: 'meetings', label: 'Meetings' }];
+const FILTERS: { id: TalkFilter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'chat', label: 'Chats' }];
 const KIND_OF: Record<TalkFilter, TalkRow['kind'] | null> = { all: null, unread: null, chat: 'chat', mail: 'mail', meetings: 'meeting' };
 const NO_CONVERSATIONS: Conversation[] = [];
 const DAY = 86_400_000;
@@ -59,7 +55,7 @@ function meetingTime(r: TalkRow) {
 }
 
 /**
- * Talk: chats and meetings in one list (filters All · Unread · Chats · Meetings), and the open one on the right in the same pane: a chat
+ * Talk: chats in one list (filters All · Unread · Chats), and the open one on the right in the same pane: a chat
  * thread (actions beside the bubble, ✦ summary strip, ✦ draft a reply) or a meeting. Calls start from the list or a thread. Chats keep
  * their conversation id in the address (/messages/{id}); meetings open with ?meeting=. Mail has its own place (/mail).
  */
@@ -76,7 +72,6 @@ function TalkHome() {
 
   const filter = (FILTERS.some((x) => x.id === params.get('f')) ? params.get('f') : 'all') as TalkFilter;
   const chatId = (() => { const m = /\/messages\/([^/?#]+)/.exec(location.pathname); return m ? decodeURIComponent(m[1]) : null; })();
-  const meeting = parseRef(params.get('meeting'));
   const [search, setSearch] = useState('');
   const [panel, setPanel] = useState<'info' | 'files' | 'saved' | 'scheduled' | null>(null);
   const [dialog, setDialog] = useState<null | 'catchup' | 'ask' | 'new'>(null);
@@ -97,7 +92,7 @@ function TalkHome() {
     const out: TalkRow[] = [];
     const seen = new Set<string>();
     for (const r of talk.data?.items ?? []) {
-      if (r.kind === 'mail') continue;   // mail lives in Mail now
+      if (r.kind === 'mail' || r.kind === 'meeting') continue;   // mail lives in Mail, meetings in Meetings
       if (r.kind !== 'chat') { out.push(r); continue; }
       const c = byId.get(r.id);
       seen.add(r.id);
@@ -154,11 +149,10 @@ function TalkHome() {
   const keepF = filter === 'all' ? '' : `?f=${filter}`;
   const open = (r: TalkRow) => {
     setPanel(null);
-    if (r.kind === 'chat') navigate(`/messages/${r.id}${keepF}`);
-    else navigate(`/messages?${new URLSearchParams({ ...(filter === 'all' ? {} : { f: filter }), meeting: r.meetingRef ?? '', ...(r.sessionStart ? { at: r.sessionStart } : {}) })}`);
+    navigate(`/messages/${r.id}${keepF}`);
   };
   const back = () => navigate(`/messages${keepF}`);
-  const activeId = chatId ?? (meeting ? `meet:${params.get('meeting')}` : null);
+  const activeId = chatId;
   const current = chatId ? live.find((c) => c.id === chatId) ?? null : null;
   const opened = !!activeId;
 
@@ -173,7 +167,7 @@ function TalkHome() {
         <div className="talk-large" aria-hidden="true">Messages</div>
         <div className="talk-list-top">
           <label className="talk-search"><Icon name="search" size={14} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats and meetings" aria-label="Search Messages" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats" aria-label="Search Messages" />
           </label>
           {chatUsable && <StatusButton />}
           <DotsMenu label="More in Messages" items={[
@@ -182,9 +176,6 @@ function TalkHome() {
             { label: 'Ask the chat', hint: 'Answers from your conversations, with links', icon: 'search', onSelect: () => setDialog('ask'), hidden: !chatUsable },
             { label: 'Saved messages', icon: 'star', onSelect: () => setPanel('saved'), hidden: !chatUsable },
             { label: 'Scheduled messages', icon: 'clock', onSelect: () => setPanel('scheduled'), hidden: !chatUsable },
-            // Meetings keep their full views (Meet): scheduling, the upcoming list with replies, series, past notes and the notetaker.
-            { label: 'Schedule a meeting', icon: 'calendar', onSelect: () => navigate('/messages?f=meetings&new=schedule') },
-            { label: 'All meetings', hint: 'Upcoming, series, past and the notetaker', icon: 'video', onSelect: () => navigate('/messages?f=meetings&s=upcoming') },
           ]} />
         </div>
         {/* A small segmented control, as Messages' filters. */}
@@ -226,11 +217,10 @@ function TalkHome() {
           {shown.length === 0 && pinnedRows.length === 0 && !talk.isLoading && (() => {
             const showAll = <button type="button" className="btn btn-ghost" onClick={() => { setSearch(''); setParam({ f: null }); }}>Show all</button>;
             const start = chatUsable ? <button type="button" className="btn btn-primary" onClick={() => setDialog('new')}>Start a conversation</button> : undefined;
-            const e = needle ? { icon: 'search' as const, title: 'Nothing found', text: `No chats or meetings match “${search.trim()}”.`, action: showAll }
+            const e = needle ? { icon: 'search' as const, title: 'Nothing found', text: `No chats match “${search.trim()}”.`, action: showAll }
               : rows.length === 0 ? { icon: 'message' as const, title: 'No conversations yet', text: 'Message a colleague or start a group.', action: start }
               : filter === 'unread' ? { icon: 'checkCircle' as const, title: 'No unread messages', text: 'You’re all caught up.', action: showAll }
               : filter === 'chat' ? { icon: 'message' as const, title: 'No chats', text: 'Direct messages and groups you’re in show here.', action: showAll }
-              : filter === 'meetings' ? { icon: 'video' as const, title: 'No meetings in the next two weeks', text: 'Meetings you organize or are invited to show here.', action: showAll }
               : { icon: 'eyeOff' as const, title: 'Nothing to show', text: 'Hidden conversations come back when something new arrives.', action: start };
             return <div className="talk-empty-state" data-testid="talk-empty"><EmptyState icon={e.icon} title={e.title} text={e.text} action={e.action} /></div>;
           })()}
@@ -245,12 +235,6 @@ function TalkHome() {
                 filesOpen={panel === 'files'} onFiles={() => setPanel((p) => (p === 'files' ? null : 'files'))} />
             : conversations.isLoading || conversations.isFetching ? <PageLoader />
               : <Gone text="This conversation was removed, or you are no longer in it." onBack={back} />
-        ) : meeting ? (
-          <div className="talk-meeting">
-            <MeetingDetail key={params.get('meeting')} inline kind={meeting.kind} id={meeting.id} at={params.get('at')} onClose={back}
-              onProject={(pid) => navigate(`/work/projects/${pid}`)}
-              headerExtra={<button type="button" className="btn-icon talk-pane-back" onClick={back} aria-label="Back to conversations"><Icon name="arrowLeft" /></button>} />
-          </div>
         ) : chatUsable ? (
           // Nothing open: "While you were away" (decisions on request, the first question waiting for you, the latest file).
           <WhileAway missing={false} list={live} onCatchUp={() => setDialog('catchup')} onNew={() => setDialog('new')} />
@@ -258,7 +242,7 @@ function TalkHome() {
           <div className="talk-empty">
             <Icon name="message" size={30} />
             <h2>Pick a conversation</h2>
-            <p>Chats and meetings are all on the left. Start a call or a new conversation from there.</p>
+            <p>Your chats are on the left. Start a call or a new conversation from there.</p>
           </div>
         )}
       </section>
@@ -507,20 +491,22 @@ function Gone({ text, onBack }: { text: string; onBack: () => void }) {
   );
 }
 
-type MeetSection = 'upcoming' | 'series' | 'past' | 'notetaker';
-const MEET_SECTIONS: readonly MeetSection[] = ['upcoming', 'series', 'past', 'notetaker'];
 
 /**
- * Talk. Meetings keep their full views here: a section (`?f=meetings&s=series|past|notetaker`) or scheduling (`&new=schedule|now`) opens
- * the meetings page; everything else is the one list of chats and meetings. Old mail addresses (?f=mail, ?mail=) move to Mail.
+ * Messages: chats only. Meetings have their own place (/meetings), and Mail its own (/mail); old addresses for either move there.
  */
 export function TalkPage() {
   const [params] = useSearchParams();
-  const s = params.get('s') as MeetSection | null;
-  // Review action items (a series' since its last session, or all projects' / mine): its own full page.
-  if (params.get('f') === 'meetings' && params.has('review')) return <ActionReview key={`${params.get('review')}|${params.get('at')}`} seriesRef={params.get('review') || null} at={params.get('at')} />;
-  if (params.get('f') === 'meetings' && ((s && MEET_SECTIONS.includes(s)) || params.has('new')))
-    return <MeetPage section={s && MEET_SECTIONS.includes(s) ? s : 'upcoming'} />;
+  // Meetings are their own place now: old addresses (?f=meetings&…, ?meeting=) move there with what they were opened with.
+  if (params.get('f') === 'meetings' || params.has('meeting')) {
+    const q = new URLSearchParams(params);
+    q.delete('f');
+    const m = q.get('meeting'); q.delete('meeting');
+    if (m && !q.has('open')) q.set('open', m);
+    if (q.get('new') === '1') q.set('new', 'schedule');
+    const qs = q.toString();
+    return <Navigate to={`/meetings${qs ? `?${qs}` : ''}${window.location.hash}`} replace />;
+  }
   if (params.get('f') === 'mail' || params.has('mail')) return <Navigate to={`/mail${params.has('compose') ? '?compose=1' : ''}`} replace />;
   return <TalkHome />;
 }

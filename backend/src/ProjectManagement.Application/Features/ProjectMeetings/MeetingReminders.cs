@@ -126,8 +126,8 @@ public static class MeetingReminders
     public static string Link(Guid meetingId, bool workspace, MeetingProvider provider) =>
         provider == MeetingProvider.ProjectTracker ? MeetingCalendar.JoinPath(meetingId, workspace) : MeetLink(meetingId, workspace);
 
-    /// <summary>The meeting on the Meet page (the one place meetings are kept).</summary>
-    public static string MeetLink(Guid meetingId, bool workspace) => $"/meet?open={(workspace ? "w" : "p")}:{meetingId}";
+    /// <summary>The meeting on the Meetings page (the one place meetings are kept).</summary>
+    public static string MeetLink(Guid meetingId, bool workspace) => $"/meetings?open={(workspace ? "w" : "p")}:{meetingId}";
 
     private static string Cut(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
 }

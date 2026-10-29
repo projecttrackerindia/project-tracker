@@ -67,6 +67,7 @@ const ProjectsHome = page(() => import('./features/projects/ProjectsHome'), 'Pro
 const ProjectPage = page(() => import('./features/projects/ProjectPage'), 'ProjectPage');
 const WeeklyReportPage = page(() => import('./features/projects/WeeklyReport'), 'WeeklyReportPage');
 const TalkPage = page(() => import('./features/talk/TalkPage'), 'TalkPage');
+const MeetingsPage = page(() => import('./features/meet/MeetPage'), 'MeetingsPage');
 const MailPage = page(() => import('./features/mail/MailPage'), 'MailPage');
 const LibraryPage = page(() => import('./features/library/LibraryPage'), 'LibraryPage');
 const InsightsPage = page(() => import('./features/insights/InsightsPage'), 'InsightsPage');
@@ -422,6 +423,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="work/projects/:id/report" element={<Guard allow={mProjects}><WeeklyReportPage /></Guard>} />
         <Route path="work/projects/:id/:tab" element={<ProjectTabMoved />} />
         <Route path="mail" element={<MailPage />} />
+        <Route path="meetings" element={<MeetingsPage />} />
         <Route path="messages" element={<TalkPage />} />
         <Route path="messages/:conversationId" element={<TalkPage />} />
         {/* "Talk" was renamed Messages: old links (and every query they carry) land on the same place. */}
@@ -462,7 +464,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="project-agent" element={<Moved to="/?tab=proposals" />} />
         <Route path="project-agent/assigned" element={<Moved to="/?tab=given" />} />
         <Route path="project-agent/my-inbox" element={<Moved to="/?tab=mail-agent" />} />
-        <Route path="project-agent/meeting-bot" element={<Moved to="/messages?f=meetings&s=notetaker" />} />
+        <Route path="project-agent/meeting-bot" element={<Moved to="/meetings?s=notetaker" />} />
         <Route path="project-agent/*" element={<Moved to="/" />} />
         <Route path="ai" element={<Moved to="/?tab=assistant" />} />
         <Route path="ai/operations" element={<Moved to="/insights?tab=workflows" />} />
@@ -480,9 +482,9 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="chat" element={<Moved to="/messages?f=chat" />} />
         <Route path="chat/*" element={<Moved to="/messages" prefix="/chat" />} />
         <Route path="mailbox" element={<Moved to="/mail" />} />
-        <Route path="meet" element={<Moved to="/messages?f=meetings" rename={{ open: 'meeting' }} />} />
-        <Route path="meet/:s" element={<SectionMoved to="/messages?f=meetings" rename={{ open: 'meeting' }} />} />
-        <Route path="notetaker" element={<Moved to="/messages?f=meetings&s=notetaker" />} />
+        <Route path="meet" element={<Moved to="/meetings" />} />
+        <Route path="meet/:s" element={<SectionMoved to="/meetings?" />} />
+        <Route path="notetaker" element={<Moved to="/meetings?s=notetaker" />} />
         <Route path="doctracker/*" element={<Moved to="/library/docs" />} />   {/* LibraryPage sends ?p= / ?ep= / ?view= on to the new addresses */}
         <Route path="documents" element={<LegacyDocuments />} />
         <Route path="documents/*" element={<Moved to="/library/docs" prefix="/documents" />} />

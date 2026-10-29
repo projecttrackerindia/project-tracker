@@ -18,8 +18,8 @@ const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.err
 const dayMonth = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
 const dayLong = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '');
 const dateOnly = (d: string | null) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) : '');
-/** The meeting page a source links back to (Messages opens the meeting, at that session). */
-export const meetingLink = (ref: string | null | undefined, at?: string | null) => (ref ? `/messages?meeting=${encodeURIComponent(ref)}${at ? `&at=${encodeURIComponent(at)}` : ''}` : '/messages?f=meetings');
+/** The meeting page a source links back to (Meetings opens the meeting, at that session). */
+export const meetingLink = (ref: string | null | undefined, at?: string | null) => (ref ? `/meetings?open=${encodeURIComponent(ref)}${at ? `&at=${encodeURIComponent(at)}` : ''}` : '/meetings');
 
 /** "◆ From: AutoPay weekly · 27 Oct": the small violet tag on items agreed in a meeting. */
 export function SourceTag({ source, faded }: { source: WorkSource | null | undefined; faded?: boolean }) {
@@ -86,7 +86,7 @@ export function MeetingCapture({ kind, id, at, projectId, projectName, title }: 
 
   const data = items.data && Array.isArray(items.data.createdHere) ? items.data : null;
   const open = data?.openInSeries ?? 0;
-  const review = () => nav(`/messages?f=meetings&review=${encodeURIComponent(data?.seriesRef ?? ref)}${at ? `&at=${encodeURIComponent(at)}` : ''}`);
+  const review = () => nav(`/meetings?review=${encodeURIComponent(data?.seriesRef ?? ref)}${at ? `&at=${encodeURIComponent(at)}` : ''}`);
   return (
     <div className="mc-grid" data-testid="meeting-capture">
       <div className="mc-main">

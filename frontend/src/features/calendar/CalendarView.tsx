@@ -34,7 +34,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
   // Meetings are shown here and open in Meet, the one place they are kept (an older link, /calendar?meeting=…, goes there too).
   const [params] = useSearchParams();
   const meetingParam = params.get('meeting');
-  useEffect(() => { if (meetingParam) nav(`/meet?open=w:${meetingParam}`, { replace: true }); }, [meetingParam, nav]);
+  useEffect(() => { if (meetingParam) nav(`/meetings?open=w:${meetingParam}`, { replace: true }); }, [meetingParam, nav]);
   const [daySheet, setDaySheet] = useState<string | null>(null);   // on a phone a tapped day opens its list in a sheet
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
@@ -87,7 +87,7 @@ export function CalendarView({ projectId, mine, userId, onOpenTask, onOpenWork }
     if (e.type === 'task') onOpenTask(e.id, e.projectId);
     else if (e.type === 'action') nav(`/work?item=${e.id}`);
     else if (e.type === 'work') { if (onOpenWork) onOpenWork(e.id); else nav(`/work?item=${e.id}`); }
-    else if (e.type === 'meeting') nav(`/meet?open=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`);
+    else if (e.type === 'meeting') nav(`/meetings?open=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`);
     else if (e.projectId && e.projectId !== projectId) nav(`/projects/${e.projectId}`);
   };
 

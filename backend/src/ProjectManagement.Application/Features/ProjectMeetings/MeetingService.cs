@@ -315,7 +315,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         meeting.CancelledAt = clock.Now;
         recorder.Audit("meeting.cancelled", "WorkspaceMeeting", meeting.Id);
         foreach (var userId in await db.WorkspaceMeetingAttendees.AsNoTracking().Where(a => a.MeetingId == id && !a.IsOrganizer).Select(a => a.UserId).ToListAsync(ct))
-            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {MeetingCalendar.Name(meeting.Provider)} was cancelled", meeting.Title, "/meet", ct: ct);
+            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {MeetingCalendar.Name(meeting.Provider)} was cancelled", meeting.Title, "/meetings", ct: ct);
         await db.SaveChangesAsync(ct);
         await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
     }
@@ -466,7 +466,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         recorder.Activity("meeting.participant_removed", "ProjectMeeting", meeting.Id, $"Removed {row.User?.DisplayName ?? row.Email} from \"{meeting.Title}\"", meeting.ProjectId);
         recorder.Audit("meeting.participant_removed", "ProjectMeeting", meeting.Id, oldValue: new { UserId = userId, row.Email });
         if (row.UserId is { } removedId)
-            await notifications.AddAsync(removedId, NotificationType.Meeting, $"You are no longer invited to a {MeetingCalendar.Name(meeting.Provider)}", meeting.Title, "/meet", ct: ct);
+            await notifications.AddAsync(removedId, NotificationType.Meeting, $"You are no longer invited to a {MeetingCalendar.Name(meeting.Provider)}", meeting.Title, "/meetings", ct: ct);
         await db.SaveChangesAsync(ct);
         await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
         return ToDto(meeting, meeting.Organizer?.DisplayName ?? "");
@@ -591,7 +591,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var participantCount = await db.MeetingParticipants.AsNoTracking().CountAsync(p => p.MeetingId == meeting.Id, ct);
         var participants = await db.MeetingParticipants.AsNoTracking().Where(p => p.MeetingId == meeting.Id && p.UserId != null && p.UserId != meeting.OrganizerUserId).Select(p => p.UserId!.Value).ToListAsync(ct);
         foreach (var userId in participants)
-            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {what} was cancelled", meeting.Title, "/meet", ct: ct);
+            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {what} was cancelled", meeting.Title, "/meetings", ct: ct);
         await db.SaveChangesAsync(ct);
         await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
 

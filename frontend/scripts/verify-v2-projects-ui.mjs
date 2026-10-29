@@ -363,7 +363,7 @@ try {
   await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({ state: 'detached' });
   await page.getByRole('button', { name: 'More on this project' }).click();
   await page.getByRole('menu', { name: 'More on this project' }).getByRole('menuitem', { name: /^Meet/ }).click();
-  await waitUrl(page, (u) => u.startsWith('/messages') && u.includes(`project=${rp.id}`), 'Meet opens the project’s meetings in Messages');
+  await waitUrl(page, (u) => u.startsWith('/meetings') && u.includes(`project=${rp.id}`), 'Meet opens the project’s meetings in Meetings');
   await page.goBack(); await page.locator('.pp-head h1').waitFor();
   checks.push('dots-menu');
 

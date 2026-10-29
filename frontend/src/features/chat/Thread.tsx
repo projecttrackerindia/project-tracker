@@ -77,7 +77,7 @@ function MeetingCardMessage({ body, projectId }: { body: string; projectId: stri
           {card.meetUri.startsWith('/')
             ? <Link className="btn btn-primary btn-sm" to={card.meetUri}><Icon name="video" size={13} /> Join</Link>
             : <a className="btn btn-primary btn-sm" href={card.meetUri} target="_blank" rel="noopener noreferrer"><Icon name="video" size={13} /> Join</a>}
-          <Link className="btn btn-ghost btn-sm" to={`/meet?project=${projectId}&open=p:${card.meetingId}`}>Details</Link>
+          <Link className="btn btn-ghost btn-sm" to={`/meetings?project=${projectId}&open=p:${card.meetingId}`}>Details</Link>
         </div>
       )}
     </div>
@@ -1280,7 +1280,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
                     <button type="button" role="menuitem" aria-label="Photo" onClick={() => { setPlusOpen(false); if (canAttach) photoPicker.current?.click(); else toast('Sending files in chat is not part of your plan. You can upgrade it under Settings → Billing.', 'info'); }} disabled={pending.length >= MAX_FILES}><span className="app-ic a-photo"><Icon name="image" size={17} /></span>Photos</button>
                     {draftReply && <button type="button" role="menuitem" disabled={drafting} onClick={async () => { setPlusOpen(false); setDrafting(true); try { const t = await draftReply(); if (t) insertIntoComposer(conversation.id, t, threadRootId); } finally { setDrafting(false); } }}><span className="app-ic a-ai">✦</span>Draft reply</button>}
                     {onPoll && <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); onPoll(); }}><span className="app-ic a-poll"><Icon name="chart" size={17} /></span>Poll</button>}
-                    <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); navigate('/messages?f=meetings&new=schedule'); }}><span className="app-ic a-meet"><Icon name="video" size={17} /></span>Meeting</button>
+                    <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); navigate('/meetings?new=schedule'); }}><span className="app-ic a-meet"><Icon name="video" size={17} /></span>Meeting</button>
                     <button type="button" role="menuitem" disabled={!text.trim()} onClick={() => { setPlusOpen(false); setLater(true); }}><span className="app-ic a-later"><Icon name="clock" size={17} /></span>Send later{!text.trim() ? ' (write first)' : ''}</button>
                     {canAttach && voice.supported && <button type="button" role="menuitem" disabled={voice.state !== 'idle'} onClick={() => { setPlusOpen(false); void voice.start(); }}><span className="app-ic a-voice"><Icon name="mic" size={17} /></span>Voice note</button>}
                     <button type="button" role="menuitem" aria-pressed={formatting} onClick={() => { setPlusOpen(false); setFormatting((v) => !v); }}><span className="app-ic a-fmt"><span className="aa" aria-hidden="true">Aa</span></span>Formatting</button>

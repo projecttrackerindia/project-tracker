@@ -66,7 +66,7 @@ try{
   await page.goto(origin+'/preview-org/calendar');await page.locator('[data-testid="week-planner"]').waitFor();   // v2: Home › Calendar
   assert.equal(await page.getByRole('button',{name:'Scrum call',exact:true}).count(),0,'No scrum call button on the Calendar');
   assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0,'Header Ask Agent removed');
-  await page.goto(origin+'/preview-org/meet/upcoming');await page.getByRole('button',{name:'Schedule',exact:true}).click();   // v2: Talk › all meetings
+  await page.goto(origin+'/preview-org/meet/upcoming');await page.getByRole('button',{name:'Schedule meeting',exact:true}).click();   // Meetings, its own place
   let dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
   await dialog.getByRole('button',{name:'Stand-up',exact:true}).click();await dialog.getByRole('heading',{name:'Schedule a stand-up'}).waitFor();
   // A workspace stand-up needs no project: "No project" is the default, and the title follows the workspace.
@@ -85,7 +85,7 @@ try{
   assert.equal(wsSaves.at(-1).repeat,undefined);assert.equal(wsSaves.at(-1).scrum,true);assert.equal(wsSaves.at(-1).notetaker,undefined,'No notetaker without a project');
   checks.push(`scrum-no-project-${width}`);await dialog.getByRole('button',{name:'Done',exact:true}).click();
   // Choosing a project switches the invitees and the suggested title to that project's.
-  await page.getByRole('button',{name:'Schedule',exact:true}).click();
+  await page.getByRole('button',{name:'Schedule meeting',exact:true}).click();
   dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Stand-up',exact:true}).click();
   await dialog.getByLabel('Project',{exact:true}).selectOption(pid);
   assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Connected delivery stand-up');
@@ -101,8 +101,8 @@ try{
   // The project page has one way in: Meet (under ··· since v2), filtered to the project, which then schedules for that project.
   await page.goto(origin+`/preview-org/projects/${pid}`);
   assert.equal(await page.getByRole('button',{name:'Meeting',exact:true}).count(),0,'No meeting menu on the project page');
-  await page.getByRole('button',{name:'More on this project'}).click();await page.getByRole('menu',{name:'More on this project'}).getByRole('menuitem',{name:/^Meet/}).click();await page.waitForURL(/\/messages\?.*f=meetings.*project=/);
-  await page.getByRole('button',{name:'Schedule',exact:true}).click();
+  await page.getByRole('button',{name:'More on this project'}).click();await page.getByRole('menu',{name:'More on this project'}).getByRole('menuitem',{name:/^Meet/}).click();await page.waitForURL(/\/meetings\?.*project=/);
+  await page.getByRole('button',{name:'Schedule meeting',exact:true}).click();
   dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
   await page.waitForFunction(()=>document.querySelector('[aria-label="Project"]')?.value?.length>0);
   assert.equal(await dialog.getByLabel('Project',{exact:true}).inputValue(),pid);checks.push(`project-meet-${width}`);

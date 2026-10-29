@@ -192,7 +192,7 @@ try {
   checks.push('Item detail: From meeting card with next review and cadence');
 
   // The meeting page: capture one line into a task with this meeting as its source.
-  await page.goto(origin + `/preview-org/messages?meeting=p:${mid}&at=${encodeURIComponent(iso(day, '11:30'))}`);
+  await page.goto(origin + `/preview-org/meetings?open=p:${mid}&at=${encodeURIComponent(iso(day, '11:30'))}`);
   const cap = page.getByTestId('meeting-capture');
   await cap.waitFor({ timeout: 15000 });
   const line = cap.getByRole('textbox').first();

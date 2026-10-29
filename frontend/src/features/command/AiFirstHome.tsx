@@ -138,7 +138,7 @@ function HomeStart({ c, onTab, ask, composer, recent, open, showAll }: {
           <ReviewQueueCard compact />
           {next && (
             <div className="aih-card">
-              <header><span>Next meeting</span><Link className="mb-link" to="/meet">Open</Link></header>
+              <header><span>Next meeting</span><Link className="mb-link" to="/meetings">Open</Link></header>
               <b>{next.title}</b>
               <small>{formatTime(next.startUtc)}{next.projectKey ? ` · ${next.projectKey}` : ''}{next.agentAttending ? ' · the agent is attending' : ''}</small>
             </div>

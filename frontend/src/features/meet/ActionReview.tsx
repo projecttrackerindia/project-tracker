@@ -131,8 +131,8 @@ export function ActionReview({ seriesRef, at }: { seriesRef: string | null; at: 
   const pct = c.total ? Math.round((c.reviewed / c.total) * 100) : 0;
   const crumbs = (
     <nav className="rv-crumbs" aria-label="Breadcrumb">
-      <Link to="/messages?f=meetings">Meetings</Link><span>›</span>
-      {review.seriesRef ? <Link to={`/messages?meeting=${encodeURIComponent(review.seriesRef)}`}>{review.title}</Link> : <span>{review.title}</span>}
+      <Link to="/meetings">Meetings</Link><span>›</span>
+      {review.seriesRef ? <Link to={`/meetings?open=${encodeURIComponent(review.seriesRef)}`}>{review.title}</Link> : <span>{review.title}</span>}
       {review.occurrence && review.scope === 'series' && <><span>›</span><span>{dmw(review.occurrence)}</span></>}
     </nav>
   );
@@ -344,7 +344,7 @@ function MinutesView({ review, minutes, onBack, onSent }: { review: Review; minu
   };
   return (
     <div className="ar rv-min" data-testid="minutes">
-      <nav className="rv-crumbs" aria-label="Breadcrumb"><Link to="/messages?f=meetings">Meetings</Link><span>›</span><span>{minutes.title}</span><span>›</span><span>{dmw(minutes.occurrence)}</span></nav>
+      <nav className="rv-crumbs" aria-label="Breadcrumb"><Link to="/meetings">Meetings</Link><span>›</span><span>{minutes.title}</span><span>›</span><span>{dmw(minutes.occurrence)}</span></nav>
       <header className="rv-head">
         <div>
           <h1>{minutes.sent ? 'Minutes sent' : 'Minutes are ready'}</h1>

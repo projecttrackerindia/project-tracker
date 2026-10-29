@@ -121,8 +121,8 @@ try{
 
   // 5. Scheduling (in Meet, the one place for meetings) names the service, and a Project Tracker call opens in the app (no project).
   await page.setViewportSize({width:1440,height:1000});
-  await page.goto(origin+'/preview-org/meet/upcoming');   // v2: Meet's views are Talk › all meetings
-  await page.getByRole('button',{name:'Schedule',exact:true}).click();
+  await page.goto(origin+'/preview-org/meet/upcoming');   // Meetings, its own place (the old address moves there)
+  await page.getByRole('button',{name:'Schedule meeting',exact:true}).click();
   await page.getByRole('dialog').getByLabel('Title',{exact:true}).fill('Atlas review');
   // The schedule sheet's Video row starts from the organizer's own choice of service (here a Project Tracker call: In-app).
   const video=page.getByRole('radiogroup',{name:'Video'});await video.waitFor();

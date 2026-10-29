@@ -404,7 +404,7 @@ public class MeetReviewService(IAppDbContext db, ICurrentContext ctx, AppClock c
         if (text.Length > 20000) throw new ValidationException("text", "The minutes can be at most 20,000 characters.");
         var m = await connect.LoadAsync(s.SeriesRef, ct);
         s.Minutes = text; s.SentAt = clock.Now; s.UpdatedAt = clock.Now; s.UpdatedBy = ctx.UserId;
-        var link = $"/messages?f=meetings&review={Uri.EscapeDataString(s.SeriesRef)}&at={Uri.EscapeDataString(At(s.OccurrenceStartUtc).ToString("O"))}";
+        var link = $"/meetings?review={Uri.EscapeDataString(s.SeriesRef)}&at={Uri.EscapeDataString(At(s.OccurrenceStartUtc).ToString("O"))}";
         var body = string.Join(" · ", text.Split('\n').Skip(1).Where(l => l.StartsWith("- ", StringComparison.Ordinal)).Take(4).Select(l => l[2..]));
         foreach (var u in m.People)
             await notifications.AddAsync(u, NotificationType.Meeting, $"Minutes: {m.Title} · {s.OccurrenceStartUtc:d MMM}", body.Length == 0 ? "No decisions recorded." : body, link,

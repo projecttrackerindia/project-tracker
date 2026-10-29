@@ -101,7 +101,7 @@ try {
     await page.setViewportSize({ width, height });
     return { ctx, page, writes };
   }
-  const reviewUrl = `/preview-org/messages?f=meetings&review=${encodeURIComponent(`p:${mid}`)}&at=${encodeURIComponent(iso('2026-11-02'))}`;
+  const reviewUrl = `/preview-org/meetings?review=${encodeURIComponent(`p:${mid}`)}&at=${encodeURIComponent(iso('2026-11-02'))}`;
 
   // ---------------------------------------------------------------- 1440 light
   let { ctx, page, writes } = await setup('light', 1440);

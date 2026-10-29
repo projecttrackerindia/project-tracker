@@ -29,7 +29,7 @@ const TYPES: { id: NewType; label: string; glyph: string; color: string; place: 
   { id: 'project', label: 'Project', glyph: '▤', color: '#5856d6', place: 'Projects', to: '/work/projects' },
   { id: 'doc', label: 'Doc', glyph: '✎', color: '#a2845e', place: 'Library', to: '/library' },
   { id: 'secret', label: 'Secret', glyph: '⚿', color: '#636366', place: 'Vault', to: '/library/vault' },
-  { id: 'meeting', label: 'Meeting', glyph: '◫', color: '#30b0c7', place: 'Messages', to: '/messages' },
+  { id: 'meeting', label: 'Meeting', glyph: '◫', color: '#30b0c7', place: 'Meetings', to: '/meetings' },
   { id: 'reminder', label: 'Reminder', glyph: '◔', color: '#ff9f0a', place: 'Today', to: '/' },
   { id: 'time', label: 'Time', glyph: '◷', color: '#34c759', place: 'Insights', to: '/insights', tile: false },
 ];

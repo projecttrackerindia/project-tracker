@@ -40,9 +40,9 @@ public static class NotificationCategories
     public static readonly NotificationType[] MessageTypes = [NotificationType.Message, NotificationType.Mention, NotificationType.Call];
     public static readonly NotificationType[] ReminderTypes =
         [NotificationType.Reminder, NotificationType.Nudge, NotificationType.DueSoon, NotificationType.Overdue, NotificationType.TimesheetReminder, NotificationType.CertificationExpiry];
-    public const string CallMeetingPrefix = "/calls/meeting/", MeetPrefix = "/meet?open=";
+    public const string CallMeetingPrefix = "/calls/meeting/", MeetPrefix = "/meet?open=", MeetingsPrefix = "/meetings?open=";
 
-    public static bool IsMeetingLink(string? link) => link is not null && (link.StartsWith(CallMeetingPrefix, StringComparison.Ordinal) || link.StartsWith(MeetPrefix, StringComparison.Ordinal));
+    public static bool IsMeetingLink(string? link) => link is not null && (link.StartsWith(CallMeetingPrefix, StringComparison.Ordinal) || link.StartsWith(MeetPrefix, StringComparison.Ordinal) || link.StartsWith(MeetingsPrefix, StringComparison.Ordinal));
 
     public static string Of(NotificationType type, string? link) =>
         type == NotificationType.Meeting || (type == NotificationType.Reminder && IsMeetingLink(link)) ? Meetings
@@ -59,9 +59,9 @@ public static class NotificationCategories
         {
             Messages => q.Where(n => msg.Contains(n.Type)),
             Meetings => q.Where(n => n.Type == NotificationType.Meeting
-                || (n.Type == NotificationType.Reminder && n.Link != null && (n.Link.StartsWith(CallMeetingPrefix) || n.Link.StartsWith(MeetPrefix)))),
+                || (n.Type == NotificationType.Reminder && n.Link != null && (n.Link.StartsWith(CallMeetingPrefix) || n.Link.StartsWith(MeetPrefix) || n.Link.StartsWith(MeetingsPrefix)))),
             Reminders => q.Where(n => rem.Contains(n.Type)
-                && !(n.Type == NotificationType.Reminder && n.Link != null && (n.Link.StartsWith(CallMeetingPrefix) || n.Link.StartsWith(MeetPrefix)))),
+                && !(n.Type == NotificationType.Reminder && n.Link != null && (n.Link.StartsWith(CallMeetingPrefix) || n.Link.StartsWith(MeetPrefix) || n.Link.StartsWith(MeetingsPrefix)))),
             Work => q.Where(n => n.Type != NotificationType.Meeting && !msg.Contains(n.Type) && !rem.Contains(n.Type)),
             _ => q,
         };
@@ -412,7 +412,7 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
         var unread = db.Notifications.Where(n => n.UserId == uid && n.InApp && n.ReadAt == null && n.ArchivedAt == null && (n.SnoozedUntil == null || n.SnoozedUntil <= now));
         // One round trip for every badge: unread by kind (and whether a reminder points at a meeting), split up here.
         var groups = await unread
-            .GroupBy(n => new { n.Type, Meet = n.Link != null && (n.Link.StartsWith(NotificationCategories.CallMeetingPrefix) || n.Link.StartsWith(NotificationCategories.MeetPrefix)) })
+            .GroupBy(n => new { n.Type, Meet = n.Link != null && (n.Link.StartsWith(NotificationCategories.CallMeetingPrefix) || n.Link.StartsWith(NotificationCategories.MeetPrefix) || n.Link.StartsWith(NotificationCategories.MeetingsPrefix)) })
             .Select(g => new { g.Key.Type, g.Key.Meet, Count = g.Count() }).ToListAsync(ct);
         int total = 0, needing = 0, messages = 0, reminders = 0, meetings = 0, work = 0;
         foreach (var g in groups)

@@ -369,7 +369,7 @@ function HomeNumbers() {
 
 function hrefOf(e: CalendarEvent): string {
   // Talk opens a meeting from ?meeting= (Meet's old ?open=), and a series' occurrence from ?at=.
-  if (e.type === 'meeting') return `/messages?f=meetings&meeting=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`;
+  if (e.type === 'meeting') return `/meetings?open=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`;
   if (e.type === 'task' || e.type === 'action' || e.type === 'work') return `/work?item=${e.id}`;
   return e.projectId ? `/work/projects/${e.projectId}` : '/work/projects';
 }

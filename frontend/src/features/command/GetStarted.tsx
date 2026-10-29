@@ -24,7 +24,7 @@ export function GetStarted() {
   const dismiss = () => { try { localStorage.setItem(key, '1'); } catch { /* shown again next time */ } setHidden(true); };
   const steps = [
     { done: mailDone, to: '/settings/integrations/mail', title: 'Connect your mail', text: mail.data.company ? `Just your ${mail.data.company.name} password.` : 'Gmail, Outlook or Rediffmail: read, reply and turn emails into tasks.' },
-    { done: notesDone, to: '/meet/notetaker', title: 'Set up your notetaker', text: 'It joins your calls, writes the minutes and updates tasks.' },
+    { done: notesDone, to: '/meetings?s=notetaker', title: 'Set up your notetaker', text: 'It joins your calls, writes the minutes and updates tasks.' },
   ];
   return (
     <section className="cmd-start" aria-label="Get started">
