@@ -126,3 +126,11 @@ html[data-theme='dark'] .ed-note.warn { color: #ffb340; }
 .ed-time input[type='time'], .ed-time input[type='date'] { font-variant-numeric: tabular-nums; }
 
 .ed-sla { color: var(--ds-danger); font-weight: 600; }
+
+/* A logged entry that shares time with another: say so, with the one-click fixes (Move after / Trim). */
+.ed-overlap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; padding: 8px 10px; border-radius: 10px;
+  background: color-mix(in srgb, var(--ed-orange, #ff9500) 12%, transparent); color: var(--ed-t1, inherit); font-size: 12px; }
+.ed-overlap-t { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.ed-overlap-t b { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--ed-orange, #ff9500); color: #fff; font-size: 10px; flex: none; }
+.ed-overlap-a { display: inline-flex; gap: 6px; }
+.ed-overlap-a .ed-btn { padding: 4px 10px; font-size: 12px; }

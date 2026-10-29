@@ -2,6 +2,7 @@ import type { CalendarEvent, TimelineEvent } from '../../api/types';
 import type { IconName } from '../../components/Icon';
 import type { MeetItem } from '../meet/meetApi';
 import { hourIn, isoDateIn } from '../../lib/zone';
+import { packColumns } from './pack';
 
 // ------------------------------------------------------------------------------------------------------------------------ dates & clock
 export const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -71,17 +72,18 @@ export function focusBlocks(busy: readonly (readonly [number, number])[], from: 
  * Focus blocks for named items, one each, in order: each block sits in a free gap (focusBlocks' rule) and never outside the item's own
  * time window when it has one (a maintenance window 11:00-15:00 gets its block inside 11-15, never 13:45-15:15). Items without room get none.
  */
-export function focusForItems<T>(items: { item: T; window?: readonly [number, number] | null }[], busy: readonly (readonly [number, number])[], from: number, to: number,
+export function focusForItems<T>(items: { item: T; window?: readonly [number, number] | null; /** This item's own longest block (less when part of it is already logged). */ maxLen?: number }[], busy: readonly (readonly [number, number])[], from: number, to: number,
   opts: { max?: number; maxLen?: number; minGap?: number } = {}) {
   const { max = 2 } = opts;
   const out: { item: T; start: number; end: number }[] = [];
   let free = focusBlocks(busy, from, to, { ...opts, max: 0 }).free;
-  for (const { item, window } of items) {
+  for (const { item, window, maxLen } of items) {
     if (out.length >= max) break;
     const lo = Math.max(from, window?.[0] ?? from), hi = Math.min(to, window?.[1] ?? to);
     if (hi - lo <= 0) continue;
     const taken = [...busy, ...out.map((b) => [b.start, b.end] as const)];
-    const first = focusBlocks(taken, lo, hi, { ...opts, max: 1 }).blocks[0];
+    const own = maxLen != null ? { maxLen, minGap: Math.min(opts.minGap ?? 1, maxLen) } : {};
+    const first = focusBlocks(taken, lo, hi, { ...opts, ...own, max: 1 }).blocks[0];
     if (!first) continue;
     out.push({ item, start: first.start, end: first.end });
     free -= (first.end - first.start) * 60;
@@ -96,20 +98,10 @@ export function windowOf(e: CalendarEvent, day: string): [number, number] | null
   return [h, h + (e.durationMinutes ?? 60) / 60];
 }
 
-/** Side-by-side lanes for blocks that overlap on one day. */
+/** Side-by-side lanes for blocks that overlap on one day: the shared packing engine ({@link packColumns}), as lane / lane count. */
 export function lanes(list: { key: string; start: number; end: number }[]) {
-  const sorted = [...list].sort((a, b) => a.start - b.start || b.end - a.end);
-  const out = new Map<string, { lane: number; of: number }>();
-  let group: typeof list = [], groupEnd = -1, laneEnds: number[] = [];
-  const flush = () => { for (const m of group) out.set(m.key, { lane: out.get(m.key)!.lane, of: laneEnds.length }); group = []; laneEnds = []; };
-  for (const m of sorted) {
-    if (m.start >= groupEnd && group.length) flush();
-    let lane = laneEnds.findIndex((e) => e <= m.start);
-    if (lane < 0) { lane = laneEnds.length; laneEnds.push(m.end); } else laneEnds[lane] = m.end;
-    out.set(m.key, { lane, of: 1 }); group.push(m); groupEnd = Math.max(groupEnd, m.end);
-  }
-  flush();
-  return out;
+  const packed = packColumns(list);
+  return new Map([...packed].map(([k, p]) => [k, { lane: p.col, of: p.cols, span: p.span }]));
 }
 
 export const hrefOf = (e: CalendarEvent) => (e.type === 'meeting'

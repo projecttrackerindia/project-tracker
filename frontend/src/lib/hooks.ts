@@ -17,10 +17,19 @@ export function invalidateWorkspace(wid: string | null | undefined, ...keyPrefix
   if (!wid) return Promise.resolve();
   // Anything that changes what happened or is scheduled on a day changes the one timeline (Today and the Calendar) too.
   if (typeof keyPrefix[0] === 'string' && TIMELINE_SOURCES.has(keyPrefix[0])) void queryClient.invalidateQueries({ queryKey: [wid, 'timeline'] });
+  // Time is one family: a change from the Time grid, a quick log, the timer, the Calendar or Aura refreshes every view of it (the Calendar's
+  // entries and week grid ['time', …], the timesheet and its grid ['timesheet', …], the running timer ['timer']) and the timeline.
+  if (typeof keyPrefix[0] === 'string' && TIME_FAMILY.includes(keyPrefix[0])) {
+    for (const k of TIME_FAMILY) if (k !== keyPrefix[0]) void queryClient.invalidateQueries({ queryKey: [wid, k] });
+  }
   return queryClient.invalidateQueries({ queryKey: keyPrefix.length ? [wid, ...keyPrefix] : [wid] });
 }
 /** Query families whose changes show on the timeline (GET /timeline): work, meetings, calls, time, reminders, attendance, leave. */
-export const TIMELINE_SOURCES = new Set(['calendar', 'work', 'work-items', 'my-work', 'tasks', 'task', 'meet', 'meetings', 'calls', 'time', 'reminders', 'attendance', 'inbox', 'timer']);
+export const TIMELINE_SOURCES = new Set(['calendar', 'work', 'work-items', 'my-work', 'tasks', 'task', 'meet', 'meetings', 'calls', 'time', 'reminders', 'attendance', 'inbox', 'timer', 'timesheet']);
+/** The query key families that hold time entries. Every time-entry mutation invalidates all of them ({@link refreshTime}). */
+export const TIME_FAMILY: readonly string[] = ['time', 'timesheet', 'timer'];
+/** After any time-entry change: Today, the Calendar and Time read it again together. */
+export function refreshTime(wid: string | null | undefined) { return invalidateWorkspace(wid, 'time'); }
 
 /** Debounce a rapidly changing value (e.g. a search box). */
 export function useDebounced<T>(value: T, ms = 300) {

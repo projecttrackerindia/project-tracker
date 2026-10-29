@@ -4,7 +4,8 @@ import { ApiError } from '../../api/client';
 import { timeApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
 import { formatDate, todayISO } from '../../lib/format';
-import { useWsQuery } from '../../lib/hooks';
+import { refreshTime, useWsQuery } from '../../lib/hooks';
+import { warnOverlap } from '../calendar/calendarEdit';
 import { useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { clock, formatMinutes, parseDuration, useNow } from './time';
@@ -36,8 +37,7 @@ export function TimeTracker({ taskId, workTaskId, canEdit }: { taskId?: string; 
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: [wid, ...cacheKey] });
-    void qc.invalidateQueries({ queryKey: [wid, 'timer'] });
-    void qc.invalidateQueries({ queryKey: [wid, 'timesheet'] });
+    void refreshTime(wid);   // the timer, the timesheet, the Calendar and Today together
     void qc.invalidateQueries({ queryKey: [wid, 'project'] });
     void qc.invalidateQueries({ queryKey: [wid, 'tasks'] });
   };
@@ -52,7 +52,7 @@ export function TimeTracker({ taskId, workTaskId, canEdit }: { taskId?: string; 
     const minutes = parseDuration(duration);
     if (!minutes) return setError('Enter a duration such as 1h 30m, 45m or 1.5h.');
     const body = { minutes, workDate: date, note: note.trim() || undefined, billable: billableNow };
-    void run(async () => { await (onWork ? timeApi.logOnWorkTask(id, body) : timeApi.log(id, body)); setDuration(''); setNote(''); }, 'Time logged.');
+    void run(async () => { const res = await (onWork ? timeApi.logOnWorkTask(id, body) : timeApi.log(id, body)); setDuration(''); setNote(''); warnOverlap(res); }, 'Time logged.');
   };
 
   const total = data?.totalMinutes ?? 0;

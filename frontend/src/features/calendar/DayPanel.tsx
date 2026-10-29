@@ -5,7 +5,7 @@ import { Icon } from '../../components/Icon';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { reminderApi } from '../reminders/api';
-import { canComplete, completeWork, editError, refreshAfterEdit } from './calendarEdit';
+import { canComplete, completeWork, editError, overlapText, refreshAfterEdit } from './calendarEdit';
 import { DOW3, MONTHS, RANK, clockH, countdown, dateOf, fmtMins, isDeadline, isDone, isWorkItem, type Detail, type Focus, type Meet } from './plannerModel';
 import { dayCounts, focusLabel, hoursOf, type DayView } from './timeline';
 
@@ -175,11 +175,13 @@ export function DayPanel({ day, today, nowH, dv, meets, focus, overdue, peopleOf
           <span className="dp-cap" aria-hidden="true"><i style={{ width: `${Math.min(100, (logged / Math.max(1, capacityMin)) * 100)}%` }} className={logged > capacityMin ? 'over' : ''} /></span>
           {time.map((t) => {
             const en = entries.get(t.sourceId);
+            const ov = dv?.overlaps.get(t.id) ?? [];
             return (
-              <div key={t.id} className="dp-row" data-type="time">
+              <div key={t.id} className={`dp-row${ov.length ? ' ovl' : ''}`} data-type="time" data-overlaps={ov.length || undefined}>
                 <button type="button" className="dp-main" title={t.title} onClick={row({ kind: 'time', key: `time:${t.date}:${t.id}`, t })}>
                   <i className="dp-dot g" aria-hidden="true" /><span className="dp-t">{en?.taskKey && <code>{en.taskKey}</code>}{t.title}</span>
-                  <small>{t.approximated ? '≈ ' : ''}{span(t)}{t.projectName ? ` · ${t.projectName}` : ''}{en?.locked ? ' · locked' : ''}{t.note ? ` · ${t.note}` : ''}</small>
+                  <small>{t.approximated ? '≈ ' : ''}{span(t)}{t.projectName ? ` · ${t.projectName}` : ''}{en?.locked ? ' · locked' : ''}{t.note ? ` · ${t.note}` : ''}
+                    {ov.length > 0 && <em className="dp-ovl" data-testid="dp-overlap">{overlapText(ov[0], entries.get(ov[0].sourceId)?.taskKey)}{ov.length > 1 ? ` +${ov.length - 1}` : ''} · Adjust</em>}</small>
                 </button>
                 <span className="dp-m">{t.running ? 'running' : fmtMins(t.minutes ?? 0)}</span>
               </div>

@@ -345,3 +345,30 @@ html[data-theme='dark'] .wp-dayp > .ed.ed-inline { background: rgba(58, 58, 60, 
 .wp-dl.sla { border-top-style: dashed; }
 .wp-dl.sla span { background: var(--ds-danger); color: #fff; box-shadow: none; }
 .wp-dl.open span, .wp-dl:focus-visible span { box-shadow: 0 0 0 2px var(--ds-accent); }
+
+/* ---- the all-day / due strip: each day's deadlines as chips above the grid (never on top of the day's blocks) */
+.wp-allday { display: grid; grid-template-columns: 52px repeat(var(--cols), 1fr); border-bottom: .5px solid var(--wp-line); min-height: 26px; }
+.wp-allday-l { align-self: center; justify-self: end; padding-right: 8px; font-size: 10px; font-weight: 600; color: var(--wp-t3); text-transform: uppercase; letter-spacing: .04em; }
+.wp-allday-d { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 3px; padding: 4px 4px 5px; min-width: 0; border-left: .5px solid var(--wp-line); }
+.wp-allday-d.drop { background: rgba(255, 59, 48, .08); }
+.wp-allday .wp-flag { position: static; max-width: 100%; min-width: 0; }
+.wp-allday .wp-flag.timed { color: var(--ds-text); background: var(--wp-fill); }
+.wp-allday .wp-flag.timed svg { color: var(--wp-red); }
+.wp-allday .wp-flag.sla { color: #fff; background: var(--ds-danger); }
+.wp-allday .wp-flag.sla svg { color: #fff; }
+.wp-flag-at { font-variant-numeric: tabular-nums; margin-right: 2px; }
+.wp-flag-more { font-size: 10px; font-weight: 700; color: var(--wp-t2); padding: 2px 4px; }
+.wp-allday .wp-flag.movable { cursor: grab; touch-action: none; }
+/* a deadline with a time: a thin line across its day at that hour, and its time in the margin */
+.wp-dl-line { position: absolute; left: 0; right: 0; height: 0; border-top: 1.5px solid color-mix(in srgb, var(--ds-danger) 70%, transparent); z-index: 6; pointer-events: none; }
+.wp-dl-line.sla { border-top-style: dashed; }
+.wp-dl-tag { right: 4px !important; padding: 0 3px; border-radius: 4px; font-size: 9.5px !important; font-weight: 700 !important; color: var(--ds-danger) !important; background: var(--ds-surface); z-index: 4; transform: none !important; font-variant-numeric: tabular-nums; }
+.wp-dl-tag.sla { color: #fff !important; background: var(--ds-danger); }
+/* logged time is packed with everything else: two entries at once sit side by side, and an overlap is marked */
+.wp-e.lg.narrow { padding: 3px 4px 3px 6px; }
+.wp-e.lg.ovl { box-shadow: inset 3px 0 0 #ff9500, inset 0 0 0 1px rgba(255, 149, 0, .45); }
+.wp-ovl { display: inline-grid; place-items: center; width: 12px; height: 12px; margin-right: 3px; border-radius: 50%; background: #ff9500; color: #fff; font-size: 8.5px; vertical-align: 1px; }
+.wp-done, .wp-rem { max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.dp-ovl { display: block; font-style: normal; font-weight: 600; color: #a35c00; margin-top: 1px; }
+html[data-theme='dark'] .dp-ovl { color: #ffb340; }

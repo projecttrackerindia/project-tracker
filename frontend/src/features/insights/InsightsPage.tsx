@@ -20,6 +20,7 @@ import { reminderApi } from '../reminders/api';
 import { formatMinutes } from '../time/time';
 import { ReviewDrawer, TargetExplain, useTimesheetReview } from '../time/ReviewDrawer';
 import { Term } from '../../components/Term';
+import { useOverlapsByDay } from '../calendar/timeline';
 import './insights-v2.css';
 
 type Tab = 'overview' | 'time' | 'reports';
@@ -366,6 +367,8 @@ function CleanGrid({ grid, week, onWeek, onSaved }: { grid: TimesheetGrid; week:
   const today = todayISO();
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const days = grid.days.filter((d) => !d.weekend || d.minutes > 0);
+  // The same entries on the clock as Today and the Calendar: a day whose entries overlap says so (its total stays the grid's own).
+  const overlapsByDay = useOverlapsByDay(week, grid.mine);
   const rows: GridRow[] = grid.rows.length ? grid.rows : grid.suggestions.slice(0, 5).map((s) => ({
     kind: s.kind, targetId: s.targetId, key: s.key, title: s.title, projectId: s.projectId, projectName: s.projectName, billable: false, totalMinutes: 0,
     cells: grid.days.map((d) => ({ date: d.date, minutes: 0, entries: 0, running: false, note: null })),
@@ -414,6 +417,18 @@ function CleanGrid({ grid, week, onWeek, onSaved }: { grid: TimesheetGrid; week:
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="ins-day-total">
+                <th scope="row">Day</th>
+                {days.map((d) => (
+                  <td key={d.date} data-testid="tsg-day-total" data-day={d.date} data-minutes={d.minutes}>
+                    <b>{d.minutes ? hours(d.minutes) : '–'}</b>
+                    {overlapsByDay.get(d.date) && <Link to="/?tab=calendar" className="tsg-ovl" data-testid="tsg-overlap" title="Some of this day's entries share the same time on the clock. Open the Calendar to move or trim one.">{overlapsByDay.get(d.date)} overlapping</Link>}
+                  </td>
+                ))}
+                <td className="ins-total"><b>{hours(grid.totalMinutes)}</b></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { insightApi } from '../../api/endpoints';
 import type { CalendarEvent, Timeline, TimelineEvent, TimelineType } from '../../api/types';
 import { useWsQuery } from '../../lib/hooks';
@@ -26,6 +27,20 @@ const normalise = (d: Timeline): Timeline => (d && Array.isArray(d.events) ? d :
 export function useTimeline(r: Range, opts: { enabled?: boolean } = {}) {
   return useWsQuery<Timeline>([...timelineKey(r)], () => insightApi.timeline(r.from, r.to, r.scope ?? 'me', r.userId ?? undefined),
     { staleTime: 60_000, retry: false, placeholderData: (p) => p, enabled: opts.enabled ?? true, select: normalise });
+}
+
+/**
+ * Time's week grids read the same timeline (the request Today and the Calendar make for this week) to flag, per day, how many entries share
+ * wall-clock time with another ({@link timeOverlaps}); their totals stay the grid's own, the count Today and the Calendar show too.
+ */
+export function useOverlapsByDay(week: string, enabled = true) {
+  const tl = useTimeline(weekRange(week), { enabled });
+  return useMemo(() => {
+    const out = new Map<string, number>();
+    const time = (tl.data?.events ?? []).filter((t) => t.type === 'time');
+    for (const d of new Set(time.map((t) => t.date))) { const n = timeOverlaps(time.filter((t) => t.date === d)).size; if (n) out.set(d, n); }
+    return out;
+  }, [tl.data]);
 }
 
 // ------------------------------------------------------------------------------------------------------------------------ helpers
@@ -61,8 +76,12 @@ export interface DayView {
   attendance: TimelineEvent[];
   off: TimelineEvent[];
   focus: Focus[];
-  /** Minutes logged on the day (every entry, timer or typed in). */
+  /** Minutes logged on the day: the Time grid's own count ({@link loggedMinutesOf}), so Today, the Calendar and Time always agree. */
   loggedMin: number;
+  /** Logged entries that share wall-clock time with another of the day's entries (by time event id), for the "Overlaps …" warning. */
+  overlaps: Map<string, TimelineEvent[]>;
+  /** Automatic due-date reminders not drawn because the item's own deadline is on the day (Your day and the Calendar show one marker). */
+  hiddenReminders: TimelineEvent[];
   /** Free minutes left in the working day from max(now, check-in) to the shift's end: not in a meeting, a call or a focus block. 0 for a past day. */
   freeMin: number;
   /** The working day: from the check-in (when there is one, else 9:00) to 18:00, in hours. */
@@ -73,6 +92,9 @@ export interface Shift { start: number; end: number; checkIn: number | null }
 export interface WeekView { days: DayView[]; byDay: Map<string, DayView>; focus: Focus[]; events: TimelineEvent[] }
 
 const FOCUS_PER_DAY = 2, FOCUS_MAX_H = 1.5;
+/** What was worked on today: minutes logged per item, items with a running timer, and the logged spans (never planned over). */
+export interface Worked { minutes: Map<string, number>; running: Set<string>; busy: (readonly [number, number])[] }
+const NO_WORK: Worked = { minutes: new Map(), running: new Set(), busy: [] };
 /** A suggested block this close to its start (or past it) no longer moves: it stays where it is for the rest of the day. */
 export const FOCUS_STICK_H = 0.25;
 
@@ -103,14 +125,47 @@ export function freeMinutesOf(day: string, today: string, nowH: number, shift: S
   return focusBlocks(busy, from, shift.end, { max: 0 }).free;
 }
 
-/** Minutes logged on a day, counting today's time only up to now (an entry never adds time that has not happened yet). */
-export function loggedMinutesOf(time: readonly TimelineEvent[], day: string, today: string, nowH: number): number {
-  return time.reduce((n, t) => {
-    if (day !== today) return n + (t.minutes ?? 0);
-    const s = hoursOf(t);
-    const upToNow = Math.max(0, (Math.min(s.end, nowH) - s.start) * 60);
-    return n + Math.round(t.running ? upToNow : Math.min(t.minutes ?? upToNow, upToNow));
-  }, 0);
+/**
+ * Minutes logged on a day, as the Time grid counts them: the sum of every finished entry's minutes (a running timer counts once it is stopped).
+ * Entries that overlap in time each still count in full, exactly like the timesheet; the screens flag the overlap instead ({@link timeOverlaps}).
+ * The one total Today ("Your day"), the Calendar (day header, Day panel, week strip) and Time show.
+ */
+export function loggedMinutesOf(time: readonly TimelineEvent[]): number {
+  return time.reduce((n, t) => n + (t.running ? 0 : t.minutes ?? 0), 0);
+}
+
+/** The minutes of a week (or any set of days), from the same rule. */
+export const loggedMinutesOfDays = (days: readonly DayView[]) => days.reduce((n, d) => n + d.loggedMin, 0);
+
+/**
+ * Logged entries that overlap another of the same person's entries on the clock. Only entries with a real time of day count: a typed-in
+ * duration (approximated) is placed by the server and its position is a guess, so it never raises a warning.
+ */
+export function timeOverlaps(time: readonly TimelineEvent[]): Map<string, TimelineEvent[]> {
+  const out = new Map<string, TimelineEvent[]>();
+  const real = time.filter((t) => !t.approximated && t.end);
+  for (let i = 0; i < real.length; i++) for (let j = i + 1; j < real.length; j++) {
+    const a = real[i], b = real[j];
+    if ((a.userId ?? '') !== (b.userId ?? '')) continue;
+    if (Date.parse(a.start) < Date.parse(b.end!) && Date.parse(b.start) < Date.parse(a.end!)) {
+      out.set(a.id, [...(out.get(a.id) ?? []), b]);
+      out.set(b.id, [...(out.get(b.id) ?? []), a]);
+    }
+  }
+  return out;
+}
+
+/** The work item a time entry was logged on (the server's itemId; older servers only say it in the link). */
+export const itemIdOf = (t: TimelineEvent): string | null => t.itemId ?? /[?&]item=([0-9a-fA-F-]{36})/.exec(t.link ?? '')?.[1] ?? null;
+
+/**
+ * An automatic reminder about a deadline ("WT-11 is due today", "INFRA-4 is overdue") made by the reminders engine. The server says so
+ * (`origin` dueDate / overdue); an older server is read from the reminder's target key and wording.
+ */
+export function isDueReminder(t: TimelineEvent): boolean {
+  if (t.type !== 'reminder') return false;
+  if (t.origin) return t.origin === 'dueDate' || t.origin === 'overdue';
+  return !!t.key && /\b(is due|due today|due tomorrow|overdue)\b/i.test(t.title);
 }
 
 /**
@@ -141,13 +196,19 @@ const byStart = (a: TimelineEvent, b: TimelineEvent) => a.start.localeCompare(b.
  * its due day (an overdue item only today), at most two a day and 90 minutes each, never before now and never on a day off. Blocks you moved or
  * removed (kept on this device) follow your choice. Built on the shared focusForItems rule.
  */
-export function planWeekFocus(days: string[], busyOf: (day: string) => (readonly [number, number])[], items: CalendarEvent[], today: string, nowH: number, overrides: PlanOverrides): Focus[] {
+export function planWeekFocus(days: string[], busyOf: (day: string) => (readonly [number, number])[], items: CalendarEvent[], today: string, nowH: number, overrides: PlanOverrides,
+  worked: Worked = NO_WORK): Focus[] {
+  // Work already done on an item today: a running timer means it is being worked (no block); time logged today shortens the block, and
+  // a full block's worth logged means there is nothing left to plan today.
+  const fullMin = FOCUS_MAX_H * 60;
+  const doneToday = (e: CalendarEvent) => worked.running.has(e.id) || (worked.minutes.get(e.id) ?? 0) >= fullMin;
   const open = items.filter((e) => isWorkItem(e) && !isDone(e))
     .sort((a, b) => (RANK[a.priority ?? ''] ?? 4) - (RANK[b.priority ?? ''] ?? 4) || a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
   const key = (e: CalendarEvent) => `${e.type}:${e.id}`;
   const out: Focus[] = [];
   for (const e of open) {
     const o = overrides[key(e)];
+    if (o && o !== 'removed' && o.auto && o.day === today && doneToday(e)) continue;   // kept by the plan, but the work has been done since
     if (o && o !== 'removed' && days.includes(o.day) && o.day >= today) out.push({ key: `focus:${o.day}:${key(e)}`, day: o.day, start: o.start, end: o.start + o.len, e, pinned: !o.auto });
   }
   let left = open.filter((e) => !overrides[key(e)]);
@@ -156,8 +217,10 @@ export function planWeekFocus(days: string[], busyOf: (day: string) => (readonly
     const from = day === today ? Math.max(START, Math.ceil(nowH * 4) / 4) : START;
     if (from >= END) continue;
     const pinned = out.filter((f) => f.day === day).map((f) => [f.start, f.end] as const);
-    const fits = left.filter((e) => e.date >= day || (e.date < today && day === today));
-    const plan = focusForItems(fits.map((e) => ({ item: e, window: null })), [...busyOf(day), ...pinned], from, END, { max: FOCUS_PER_DAY, maxLen: FOCUS_MAX_H, minGap: 1 });
+    const fits = left.filter((e) => (e.date >= day || (e.date < today && day === today)) && !(day === today && doneToday(e)));
+    const lenOf = (e: CalendarEvent) => (day === today && worked.minutes.get(e.id) ? Math.max(.25, Math.floor(((fullMin - worked.minutes.get(e.id)!) / 60) * 4) / 4) : undefined);
+    const busy = [...busyOf(day), ...pinned, ...(day === today ? worked.busy : [])];
+    const plan = focusForItems(fits.map((e) => ({ item: e, window: null, maxLen: lenOf(e) })), busy, from, END, { max: FOCUS_PER_DAY, maxLen: FOCUS_MAX_H, minGap: 1 });
     for (const b of plan.blocks) out.push({ key: `focus:${day}:${key(b.item)}`, day, start: b.start, end: b.end, e: b.item, pinned: false });
     const placed = new Set(plan.blocks.map((b) => key(b.item)));
     left = left.filter((e) => !placed.has(key(e)));
@@ -168,9 +231,9 @@ export function planWeekFocus(days: string[], busyOf: (day: string) => (readonly
 /**
  * Lay out the days of a timeline. `days` are the days to show (one for Today or the day view, Monday to Friday for the week); the plan is always
  * made for the whole working week of `today` (or of the first day shown) so a day shows the same focus blocks whichever screen draws it.
- * `nowH` (to the quarter hour) places the plan and the free time; `exactNowH` (to the minute) caps today's logged time.
+ * `nowH` (to the quarter hour) places the plan and the free time. `exactNowH` is kept for callers; logged totals follow the Time grid.
  */
-export function buildWeek(events: readonly TimelineEvent[], days: string[], today: string, nowH: number, overrides: PlanOverrides, exactNowH: number = nowH): WeekView {
+export function buildWeek(events: readonly TimelineEvent[], days: string[], today: string, nowH: number, overrides: PlanOverrides, _exactNowH: number = nowH): WeekView {
   // The working week of the days shown, and today when it falls in that week (a Saturday you work still gets its plan).
   const ww = workWeek(days[0] ?? today);
   const planDays = mondayOf(today) === ww[0] && !ww.includes(today) ? [...ww, today] : ww;
@@ -182,17 +245,30 @@ export function buildWeek(events: readonly TimelineEvent[], days: string[], toda
   });
   const busyOf = (day: string) => [...meetsOf(day).map((m) => [m.start, m.end] as const), ...of('call', day).map((t) => { const h = hoursOf(t); return [h.start, h.end] as const; })];
   const items = events.filter((t) => t.type === 'due').map(toCalendarEvent);
-  const focus = planWeekFocus(planDays.filter((d) => !off.has(d)), busyOf, items, today, nowH, overrides);
+  const worked: Worked = { minutes: new Map(), running: new Set(), busy: [] };
+  for (const t of of('time', today)) {
+    const id = itemIdOf(t);
+    const h = hoursOf(t);
+    worked.busy.push([h.start, Math.min(Math.max(h.end, h.start), nowH)]);   // only time that has happened is taken
+    if (!id) continue;
+    if (t.running) worked.running.add(id); else worked.minutes.set(id, (worked.minutes.get(id) ?? 0) + (t.minutes ?? 0));
+  }
+  const focus = planWeekFocus(planDays.filter((d) => !off.has(d)), busyOf, items, today, nowH, overrides, worked);
   const list = days.map((day): DayView => {
     const f = focus.filter((x) => x.day === day);
     const attendance = of('attendance', day);
     const shift = shiftOf(attendance);
     const freeMin = freeMinutesOf(day, today, nowH, shift, [...busyOf(day), ...f.map((x) => [x.start, x.end] as const)], off.has(day));
     const time = of('time', day);
+    const due = items.filter((e) => e.date === day);
+    // One marker per deadline: an automatic "is due today" reminder is not drawn when the item's own deadline is on the day.
+    const dueIds = new Set(due.map((e) => e.id)), dueKeys = new Set(due.map((e) => e.key).filter(Boolean));
+    const rems = of('reminder', day);
+    const dup = (t: TimelineEvent) => isDueReminder(t) && ((t.itemId != null && dueIds.has(t.itemId)) || (!!t.key && dueKeys.has(t.key)));
     return {
-      day, meets: meetsOf(day), calls: of('call', day), time, done: of('done', day), due: items.filter((e) => e.date === day),
-      reminders: of('reminder', day), attendance, off: events.filter((t) => (t.type === 'leave' || t.type === 'holiday') && t.date === day),
-      focus: f, loggedMin: loggedMinutesOf(time, day, today, exactNowH), freeMin, shift,
+      day, meets: meetsOf(day), calls: of('call', day), time, done: of('done', day), due,
+      reminders: rems.filter((t) => !dup(t)), hiddenReminders: rems.filter(dup), attendance, off: events.filter((t) => (t.type === 'leave' || t.type === 'holiday') && t.date === day),
+      focus: f, loggedMin: loggedMinutesOf(time), overlaps: timeOverlaps(time), freeMin, shift,
     };
   });
   return { days: list, byDay: new Map(list.map((d) => [d.day, d])), focus, events: [...events] };

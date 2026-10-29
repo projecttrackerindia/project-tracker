@@ -11,7 +11,7 @@ import type { PullChip } from '../../api/types';
 import { Avatar } from '../../components/ui';
 import { openNew } from '../../components/v2/state';
 import { DOW, daysUntil, formatDateShort, todayISO } from '../../lib/format';
-import { useWsQuery } from '../../lib/hooks';
+import { refreshTime, useWsQuery } from '../../lib/hooks';
 import { spring } from '../../lib/motion';
 import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -361,7 +361,7 @@ function FocusNow({ w, onOpen }: { w: WorkRow | null; onOpen: (id: string) => vo
     if (busy) return;
     if (on) {
       setBusy(true);
-      try { await timeApi.stop(); setFocus(null); try { localStorage.removeItem(FOCUS_KEY); } catch { /* private */ } toast('Focus ended. Time logged.'); void queryClient.invalidateQueries({ queryKey: [wid, 'timer'] }); void queryClient.invalidateQueries({ queryKey: [wid, 'timeline'] }); }
+      try { await timeApi.stop(); setFocus(null); try { localStorage.removeItem(FOCUS_KEY); } catch { /* private */ } toast('Focus ended. Time logged.'); void refreshTime(wid); }
       catch (e) { toast(e instanceof Error ? e.message : 'Could not stop the timer.', 'error'); }
       finally { setBusy(false); }
       return;
@@ -373,7 +373,7 @@ function FocusNow({ w, onOpen }: { w: WorkRow | null; onOpen: (id: string) => vo
       setFocus(f); try { localStorage.setItem(FOCUS_KEY, JSON.stringify(f)); } catch { /* private */ }
       if (w.category === 'Todo') void moveTo(w, 'Active').then(() => refreshWork(wid)).catch(() => {});
       toast(`Focus on ${w.key} for 2 hours. Timer running.`);
-      void queryClient.invalidateQueries({ queryKey: [wid, 'timer'] });
+      void refreshTime(wid);
     } catch (e) { toast(e instanceof ApiError || e instanceof Error ? e.message : 'Could not start the timer.', 'error'); }
     finally { setBusy(false); }
   };

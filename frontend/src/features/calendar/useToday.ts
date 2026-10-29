@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { TimelineEvent } from '../../api/types';
 import { todayISO } from '../../lib/format';
 import { useWorkspaceId } from '../../stores/auth';
 import { hourOf, type PlanOverrides } from './plannerModel';
@@ -27,11 +28,12 @@ export function useToday(team = false) {
   // the Calendar may change the plan in another tab or a moment ago: read it again when the window comes back
   useEffect(() => { const f = () => setPlan(readPlan(wid)); window.addEventListener('focus', f); window.addEventListener('storage', f); return () => { window.removeEventListener('focus', f); window.removeEventListener('storage', f); }; }, [wid]);
   const q = useTimeline({ ...weekRange(today), scope: team ? 'team' : 'me' });
-  const day: DayView | null = useMemo(() => {
-    if (!q.data) return null;
-    const d = buildWeek(q.data.events, [today], today, nowQ, team ? {} : plan, nowM).byDay.get(today)!;
+  /** Today laid out from a list of events (the timeline, or the timeline with edits on their way shown at once). */
+  const build = useCallback((events: readonly TimelineEvent[]): DayView => {
+    const d = buildWeek(events, [today], today, nowQ, team ? {} : plan, nowM).byDay.get(today)!;
     return team ? { ...d, focus: [] } : d;
-  }, [q.data, today, nowQ, nowM, plan, team]);
+  }, [today, nowQ, nowM, plan, team]);
+  const day: DayView | null = useMemo(() => (q.data ? build(q.data.events) : null), [q.data, build]);
   const savePlan = useCallback((p: PlanOverrides) => { setPlan(p); writePlan(wid, p); }, [wid]);
   // A suggested block that has started (or starts within 15 minutes) stays where it is: kept in the plan, so a refresh never slides it later.
   const nowH = hourOf(now);
@@ -40,7 +42,7 @@ export function useToday(team = false) {
     const next = stickFocus(day.focus, plan, today, nowH);
     if (next) savePlan(next);
   }, [team, day, plan, today, nowH, savePlan]);
-  return { q, day, today, now, plan, savePlan };
+  return { q, day, today, now, plan, savePlan, build };
 }
 
 /** My Work's focus card: today's focus blocks from the same plan Today and the Calendar draw. */
