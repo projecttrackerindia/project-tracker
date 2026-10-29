@@ -39,11 +39,17 @@ export interface SheetRow {
   start: string | null; due: string | null; dueTime: string | null; durationDays: number | null; status: string; category: string; statusId: string | null; progress: number | null;
   dependsOn: string[]; cadence: string | null; nextAt: string | null; updatedAt: string | null; updatedBy: string | null; notes: string | null; late: boolean; atRisk: boolean;
   version: number; canEdit: boolean; forecast?: string | null;
+  /** Additive (plan sheet v3): estimate for the workload bars, checklist counts for the smart fill, progress set by hand. */
+  estimatedHours?: number | null; checklistTotal?: number | null; checklistDone?: number | null; manualProgress?: boolean;
+  /** Days the due date has moved from the first one it had. */ slipDays?: number | null;
 }
 export interface SheetStatus { id: string; projectId: string; name: string; category: string }
 export interface SheetScope { id: 'all' | 'mine' | 'managed' | 'team'; label: string; allowed: boolean; why: string | null; teamId: string | null }
 export interface PlanSheet { asOf: string; timeZone: string; rows: SheetRow[]; people: PortfolioChoice[]; statuses: SheetStatus[]; scopes: SheetScope[]; truncated: boolean; canEdit: boolean; meetings: boolean }
-export interface SheetChange { id: string; version?: number; assigneeId?: string; unassign?: boolean; startDate?: string; clearStart?: boolean; dueDate?: string; dueTime?: string; clearDueTime?: boolean; statusId?: string; title?: string }
+export interface SheetChange { id: string; version?: number; assigneeId?: string; unassign?: boolean; startDate?: string; clearStart?: boolean; dueDate?: string; dueTime?: string; clearDueTime?: boolean; statusId?: string; title?: string;
+  progress?: number; clearProgress?: boolean; notes?: string }
+export interface SheetMove { id: string; projectId?: string; afterId?: string | null; beforeId?: string | null; version?: number }
+export interface SheetMoveResult { id: string; key: string; projectId: string; version: number; position: number; movedProject: boolean }
 export interface SheetRowResult { id: string; key: string | null; ok: boolean; error: string | null; field: string | null; code: string | null; version: number | null }
 export interface SheetBulkResult { changed: number; failed: number; rows: SheetRowResult[] }
 export interface PasteRowIn { title: string; owner?: string; start?: string; due?: string; status?: string }
@@ -67,6 +73,7 @@ export const portfolioApi = {
   sheet: (f: PortfolioFilter, mine = false) => get<PlanSheet>('/portfolio/sheet', { ...q(f), ...(mine ? { mine: 'true' } : {}) }),
   sheetBulk: (changes: SheetChange[], dueDateReason?: string | null, dueDateDependency?: string | null) =>
     post<SheetBulkResult>('/portfolio/sheet/bulk', { changes, dueDateReason: dueDateReason || null, dueDateDependency: dueDateDependency || null }),
+  sheetMove: (m: SheetMove) => post<SheetMoveResult>('/portfolio/sheet/move', m),
   sheetPaste: (projectId: string, rows: PasteRowIn[], commit = false, include?: number[], dueDateReason?: string | null) =>
     post<PasteResult>('/portfolio/sheet/paste', { projectId, rows, commit, include: include ?? null, dueDateReason: dueDateReason || null }),
   sheetExport: (f: PortfolioFilter, o: SheetExportOptions) => {

@@ -162,11 +162,13 @@ public partial class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvid
 
     private static string ViewGroup(Guid tenant, string key) => $"v:{tenant:N}:{key}";
 
-    /// <summary>"task:{id}" or "work:{id}" of a task or work task in the caller's workspace, else null.</summary>
+    /// <summary>"task:{id}" or "work:{id}" of a task or work task in the caller's workspace, or "sheet:{workspace id}" of its plan sheet, else null.</summary>
     private async Task<string?> CheckKeyAsync(string key, Guid tenant)
     {
         var parts = key.Split(':');
         if (parts.Length != 2 || !Guid.TryParse(parts[1], out var id)) return null;
+        // The Portfolio plan sheet of the caller's own workspace: everyone who can open the workspace sees who else has the sheet open.
+        if (parts[0] == "sheet") return id == tenant && (Context.Items[UserKey] is Guid) ? $"sheet:{id:N}" : null;
         if (parts[0] is not ("task" or "work") || Context.Items[UserKey] is not Guid user) return null;
         // The same reach an API request of this person has (membership, guests, team-limited projects), so nobody can learn who is looking
         // at a task they could not open themselves. The normal data filters then apply to the lookups below.
@@ -204,6 +206,15 @@ public partial class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvid
         if (Context.Items[WatchingKey] is not HashSet<string> watching || !watching.Remove(key)) return;
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, ViewGroup(tenant, key));
         await Clients.Group(ViewGroup(tenant, key)).SendAsync("viewing", new { key, userId = user, on = false });
+    }
+
+    /// <summary>On a plan sheet the caller is watching: the cell they are on ("{row id}:{column}"), or null when they left the grid. Shown to the others as a named outline.</summary>
+    public async Task SheetFocus(string key, string? cell)
+    {
+        if (Context.Items[TenantKey] is not Guid tenant || Context.Items[UserKey] is not Guid user) return;
+        if (Context.Items[WatchingKey] is not HashSet<string> watching || !watching.Contains(key) || !key.StartsWith("sheet:", StringComparison.Ordinal)) return;
+        if (cell is { Length: > 80 }) return;
+        await Clients.OthersInGroup(ViewGroup(tenant, key)).SendAsync("sheetFocus", new { key, userId = user, name = Context.Items[NameKey] as string, cell });
     }
 
     /// <summary>Tells the other people in a conversation that the caller is typing. Ignored unless the caller is in it.</summary>

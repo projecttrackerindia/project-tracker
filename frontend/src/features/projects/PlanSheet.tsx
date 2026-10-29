@@ -1,59 +1,46 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ApiError, get, put } from '../../api/client';
-import { bulkApi, savedViewApi, type SavedView } from '../../api/platformApi';
-import { Icon } from '../../components/Icon';
-import { ErrorState, Modal, PageLoader } from '../../components/ui';
+import { resourcesApi } from '../../api/endpoints';
+import { savedViewApi, type SavedView } from '../../api/platformApi';
+import { openPalette } from '../../components/CommandPalette';
+import { registerPaletteCommands } from '../../components/paletteRegistry';
+import { ErrorState, PageLoader } from '../../components/ui';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
-import { confirmDialog, toast } from '../../stores/ui';
+import { toast } from '../../stores/ui';
+import { hubInvoke, isLiveConnected, onLiveConnected, onSheetFocus, onViewing } from '../live/bus';
+import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
 import { dueChange } from './DueChangeFields';
-import { portfolioApi, type PasteResult, type PlanSheet as PlanSheetData, type PortfolioFilter, type SheetChange, type SheetRow, type SheetStatus } from './portfolioApi';
+import { portfolioApi, type PlanSheet as PlanSheetData, type PortfolioFilter, type SheetChange, type SheetRow, type SheetStatus } from './portfolioApi';
+import { addDays, dayNum, dm, isOpen, parseTsv } from './planSheet';
 import {
-  ago, buildDisplay, cellText, DEFAULT_CONFIG, DEFAULT_FILTERS, dayNum, dm, isItem, isOpen, mapColumns, parseDue, parseTsv, parseTypedDate, pasteRows, PASTE_FIELDS, totals,
-  type ColId, type Display, type GroupBy, type PasteField, type SheetConfig, type SheetFilters,
-} from './planSheet';
+  checklistPct, DUE_LABEL, estimateLoad, interpret, isWork, matchesAll, slipDays, STATUS_KEYS, STATUS_LABEL, statusKey, weekLabel, weekStart,
+  type DueKey, type Load, type StatusKey, type Tok,
+} from './planSheetQuery';
+import { Av, Dot, Floating, NoteText, Owner, personColor, Progress, Ring, Status } from './planSheetParts';
+import { DateEditor, NotesEditor, PeoplePicker, ProgressEditor, StatusPicker } from './planSheetEditors';
+import { PasteModal } from './planSheetPaste';
+import { Inspector, type EditCol, type LinkedMeeting } from './planSheetInspector';
+import { ReasonModal } from './planSheetReason';
 import './planSheet.css';
 
-// ---------------------------------------------------------------- columns
+type Layout = 'sheet' | 'split' | 'timeline';
+type ColId = 'task' | 'owner' | 'dates' | 'due' | 'status' | 'progress' | 'notes' | 'gantt';
+const COLS: Record<'sheet' | 'narrow' | 'split' | 'timeline', [ColId, string, number][]> = {
+  sheet: [['task', 'Task', 33], ['owner', 'Owner', 13], ['dates', 'Dates', 13], ['status', 'Status', 10], ['progress', 'Progress', 12], ['notes', 'Notes', 19]],
+  narrow: [['task', 'Task', 46], ['owner', 'Owner', 20], ['due', 'Due', 15], ['status', 'Status', 19]],
+  split: [['task', 'Task', 30], ['owner', 'Owner', 14], ['dates', 'Dates', 14], ['status', 'Status', 11], ['gantt', 'Timeline', 31]],
+  timeline: [['task', 'Task', 30], ['gantt', 'Timeline', 70]],
+};
+const EDITOR_OF: Partial<Record<ColId, EditCol>> = { owner: 'owner', dates: 'dates', due: 'dates', status: 'status', progress: 'progress', notes: 'notes' };
+const FILLABLE: ColId[] = ['owner', 'dates', 'due', 'status', 'progress'];
+const REASON_UNDO = 'Undone on the plan sheet';
+const EXPORT_COLUMNS = ['Key', 'Title', 'Owner', 'Start', 'Due', 'Status', 'Progress', 'Depends on', 'Notes'];
 
-interface Col { id: ColId; label: string; w: number; frozen?: boolean; num?: boolean }
-const BASE_COLS: Col[] = [
-  { id: 'key', label: 'Key', w: 86, frozen: true }, { id: 'title', label: 'Title', w: 178, frozen: true }, { id: 'owner', label: 'Owner', w: 132 },
-  { id: 'start', label: 'Start', w: 66 }, { id: 'due', label: 'End / Due', w: 112 }, { id: 'dur', label: 'Dur.', w: 52, num: true }, { id: 'status', label: 'Status', w: 104 },
-  { id: 'progress', label: 'Progress', w: 92 }, { id: 'deps', label: 'Depends', w: 74 }, { id: 'meeting', label: 'Meeting', w: 212 }, { id: 'updated', label: 'Updated', w: 84 },
-  { id: 'notes', label: 'Notes', w: 190 },
-];
-const SEL_W = 34, GANTT_W = 260;
-const EXPORT_NAME: Record<ColId, string> = { key: 'Key', title: 'Title', owner: 'Owner', start: 'Start', due: 'Due', dur: 'Duration', status: 'Status', progress: 'Progress', deps: 'Depends on', meeting: 'Meeting', updated: 'Updated', notes: 'Notes' };
-const GROUP_LABEL: Record<GroupBy, string> = { project: 'Project › Task', owner: 'Owner', status: 'Status', cadence: 'Meeting cadence', none: 'None (flat list)' };
-const REASONS = ['Waiting on external', 'Scope changed', 'Capacity', 'Dependency late'];
-type Layout = 'grid' | 'gridTimeline';
-
-const initials = (n: string | null | undefined) => (n ?? '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '?';
-const HUES = [212, 280, 150, 18, 330, 190, 40, 250];
-const hue = (id: string | null | undefined) => HUES[[...(id ?? '')].reduce((a, c) => a + c.charCodeAt(0), 0) % HUES.length];
-function Who({ id, name, bold, size = 20 }: { id: string | null; name: string | null; bold?: boolean; size?: number }) {
-  if (!name) return <span className="psh-muted">—</span>;
-  return <span className={`psh-who ${bold ? 'b' : ''}`}><i style={{ '--h': hue(id), width: size, height: size } as CSSProperties} aria-hidden="true">{initials(name)}</i><span>{name}</span></span>;
-}
-function chipTone(r: SheetRow): string {
-  if (r.kind === 'meeting') return 'blue';
-  if (r.kind === 'project') return r.category === 'Delayed' ? 'red' : r.category === 'AtRisk' ? 'orange' : r.progress === 100 ? 'green' : r.category === 'OnHold' ? '' : 'blue';
-  if (/block|wait/i.test(r.status)) return 'red';
-  return r.category === 'Done' ? 'green' : r.category === 'Active' ? 'blue' : r.category === 'Cancelled' ? '' : '';
-}
-export function StatusChip({ r }: { r: SheetRow }) {
-  const label = r.kind === 'project' && r.progress === 100 ? 'Done' : r.status;
-  return <span className={`psh-chip ${chipTone(r)}`}>{label}</span>;
-}
-export function Cadence({ c }: { c: string }) {
-  const tone = c === 'Daily' ? 'blue' : /week|fortnight/i.test(c) ? 'violet' : /month/i.test(c) ? 'orange' : '';
-  return <span className={`psh-chip ${tone}`}>{c}</span>;
-}
-const nextText = (iso: string | null) => iso ? `${new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} · ${new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}` : '';
-const lateDays = (r: SheetRow, today: string) => r.due && r.late ? Math.max(1, dayNum(today) - dayNum(r.due)) : 0;
+interface EditEntry { id: number; label: string; at: number; count: number; inverse: SheetChange[] | null; move?: { id: string; projectId: string; afterId: string | null; beforeId: string | null } }
+type Display = { type: 'g'; p: SheetRow; all: SheetRow[]; shown: number } | { type: 'r'; r: SheetRow; level: number };
+interface Prefs { defaultView?: string | null }
 
 function usePhone() {
   const q = '(max-width: 760px)';
@@ -61,49 +48,95 @@ function usePhone() {
   useEffect(() => { const m = window.matchMedia(q); const on = () => setPhone(m.matches); m.addEventListener('change', on); return () => m.removeEventListener('change', on); }, []);
   return phone;
 }
-
-interface Prefs { defaultView?: string | null }
-
-// ---------------------------------------------------------------- the view
+const editableTarget = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]');
 
 /**
- * Portfolio › Plan sheet: every project, task, sub-item and meeting in one grid, edited like Excel and saved as you go through the Work API (one row at a
- * time on the server, so every rule applies). Arrow keys move, Enter / F2 / typing edits, Tab and Shift+Tab save and move, Esc cancels, Ctrl D fills
- * down; checkboxes (or Shift-click) select rows for the bulk bar. A due date moving later asks for one reason for the whole batch. Ctrl V of rows copied
- * from Excel opens a preview that is checked on the server first. On a phone each row is a card under its project, with swipe actions.
+ * Portfolio › Plan sheet: every project with its tasks in one full-width grid. One command field filters it (owner:, status:, due:, project: or a
+ * plain sentence that Aura reads into tokens) and keeps saved views; Paste, Export and Present sit under ⋯ and in ⌘K. Cells open rich editors
+ * (a calendar with slip and knock-on, people with their weekly load, status, a progress slider, notes with @mentions); the fill handle drags a
+ * value down a column (with a smart fill from checklists); every edit can be undone (⌘Z) from the toast. A task opens the inspector on the
+ * right; rows drag to a new place or into another project; others on the sheet show live. On a phone each project is a card.
  */
-export function PlanSheetView({ filter, actionsSlot, onPresent }: { filter: PortfolioFilter; actionsSlot: HTMLElement | null; onPresent: () => void }) {
+export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: PortfolioFilter; tabs: ReactNode; extraMenu: DotsItem[]; onPresent: () => void }) {
   const phone = usePhone();
   const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx?.user?.id) ?? null;
   const [params, setParams] = useSearchParams();
-  const [scope, setScope] = useState<{ id: string; teamId: string | null; label: string }>({ id: 'all', teamId: null, label: 'Everything I can see' });
-  const f: PortfolioFilter = scope.teamId ? { ...filter, teamId: scope.teamId } : filter;
-  const mine = scope.id === 'mine';
-  const q = useWsQuery(['portfolio', 'sheet', f, mine], () => portfolioApi.sheet(f, mine), { staleTime: 30_000, placeholderData: (p) => p });
-  const [cfg, setCfg] = useState<SheetConfig>(DEFAULT_CONFIG);
-  const [layout, setLayout] = useState<Layout>('grid');
+  const q = useWsQuery(['portfolio', 'sheet', filter], () => portfolioApi.sheet(filter), { staleTime: 30_000, placeholderData: (p) => p });
+  const data = q.data;
+  const today = data?.asOf ?? new Date().toISOString().slice(0, 10);
+  const [toks, setToks] = useState<Tok[]>([]);
+  const [text, setText] = useState('');
+  const [layout, setLayout] = useState<Layout>('sheet');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<Map<string, Partial<SheetRow>>>(new Map());
-  const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [announce, setAnnounce] = useState('');
-  const [reasonAsk, setReasonAsk] = useState<{ changes: SheetChange[]; moves: { key: string; from: string; to: string; days: number | null }[] } | null>(null);
+  const [inspect, setInspect] = useState<string | null>(null);
   const [paste, setPaste] = useState<string[][] | null>(null);
-  const [menu, setMenu] = useState<null | 'export' | 'filter' | 'views' | 'viewing' | 'group'>(null);
+  const [reasonAsk, setReasonAsk] = useState<{ changes: SheetChange[]; label: string; moves: { key: string; from: string; to: string; days: number | null }[] } | null>(null);
+  const [edits, setEdits] = useState<EditEntry[]>([]);
+  const [toastAt, setToastAt] = useState<{ text: string; at: number; undo: boolean } | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [warn, setWarn] = useState<string | null>(null);
   const views = useWsQuery(['saved-views', 'portfolio'], () => savedViewApi.list('portfolio'), { staleTime: 60_000, retry: false });
   const prefs = useWsQuery(['ui', 'plansheet'], async () => { try { return (await get<{ value: Prefs | null }>('/me/ui/plansheet'))?.value ?? {}; } catch { return {}; } }, { staleTime: 300_000 });
   const sheetViews = useMemo(() => (views.data ?? []).filter((v) => v.config.list === 'sheet'), [views.data]);
   const [activeView, setActiveView] = useState<string | null>(null);
-  const today = q.data?.asOf ?? new Date().toISOString().slice(0, 10);
 
+  const rows = useMemo(() => (data?.rows ?? []).map((r) => { const o = overrides.get(r.id); return o ? { ...r, ...o } : r; }), [data, overrides]);
+  const projects = useMemo(() => rows.filter((r) => r.kind === 'project'), [rows]);
+  const work = useMemo(() => rows.filter(isWork), [rows]);
+  const people = useMemo(() => data?.people ?? [], [data]);
+  const interpreted = useMemo(() => (text.trim() ? interpret(text, people, projects) : []), [text, people, projects]);
+  const active = useMemo(() => [...toks, ...interpreted], [toks, interpreted]);
+  const ctx = useMemo(() => ({ today, me }), [today, me]);
+  const matching = useMemo(() => work.filter((r) => matchesAll(r, active, ctx)), [work, active, ctx]);
+  const statusesBy = useMemo(() => { const m = new Map<string, SheetStatus[]>(); for (const s of data?.statuses ?? []) m.set(s.projectId, [...(m.get(s.projectId) ?? []), s]); return m; }, [data]);
+
+  // Each project's next meeting: shown in the inspector of its tasks and under the open task due first (the one the meeting will look at).
+  const meetings = useMemo(() => {
+    const byProject = new Map<string, LinkedMeeting>(), byTask = new Map<string, LinkedMeeting>();
+    for (const p of projects) {
+      const m = rows.filter((r) => r.kind === 'meeting' && r.projectId === p.id && r.nextAt).sort((a, b) => Date.parse(a.nextAt!) - Date.parse(b.nextAt!))[0];
+      if (!m) continue;
+      const lm = { title: m.title, nextAt: m.nextAt, cadence: m.cadence };
+      byProject.set(p.id, lm);
+      const first = work.filter((r) => r.projectId === p.id && isOpen(r) && r.due).sort((a, b) => dayNum(a.due!) - dayNum(b.due!))[0];
+      if (first) byTask.set(first.id, lm);
+    }
+    return { byProject, byTask };
+  }, [projects, rows, work]);
+
+  const display: Display[] = useMemo(() => {
+    const out: Display[] = [];
+    const on = active.length > 0;
+    const pass = new Set(matching.map((r) => r.id));
+    for (const p of projects) {
+      const all = work.filter((r) => r.projectId === p.id);
+      const shown = new Set(all.filter((r) => pass.has(r.id)).map((r) => r.id));
+      for (const r of all) if (shown.has(r.id) && r.parentId) shown.add(r.parentId);
+      if (on && shown.size === 0) continue;
+      out.push({ type: 'g', p, all, shown: on ? shown.size : all.length });
+      if (collapsed.has(p.id)) continue;
+      for (const r of all) if (!on || shown.has(r.id)) out.push({ type: 'r', r, level: r.kind === 'subtask' ? 1 : 0 });
+    }
+    return out;
+  }, [projects, work, matching, active.length, collapsed]);
+
+  // ---- views
   const applyView = useCallback((v: SavedView) => {
-    const c = v.config as { group?: GroupBy; sort?: SheetConfig['sort']; filters?: Partial<SheetFilters>; layout?: Layout };
-    setCfg({ group: c.group ?? 'project', sort: c.sort ?? null, filters: { ...DEFAULT_FILTERS, ...(c.filters ?? {}), values: c.filters?.values ?? {} } });
-    if (c.layout) setLayout(c.layout);
+    const c = v.config as { tokens?: Tok[]; layout?: Layout | 'grid' | 'gridTimeline'; filters?: { ownerMe?: boolean; lateOnly?: boolean; notDone?: boolean; due30?: boolean } };
+    const t: Tok[] = c.tokens ?? [];
+    if (!c.tokens && c.filters) {
+      if (c.filters.ownerMe) t.push({ kind: 'owner', value: 'me', label: 'Me' });
+      if (c.filters.lateOnly) t.push({ kind: 'status', value: 'late', label: 'Late' });
+      if (c.filters.notDone) t.push({ kind: 'status', value: 'open', label: 'Not done' });
+      if (c.filters.due30) t.push({ kind: 'due', value: 'next-30', label: DUE_LABEL['next-30'] });
+    }
+    setToks(t); setText('');
+    setLayout(c.layout === 'gridTimeline' ? 'split' : c.layout === 'split' || c.layout === 'timeline' ? c.layout : 'sheet');
     setActiveView(v.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only setters (the parser reads `c.layout` as the `layout` state)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only setters (the linter reads `c.layout` as the `layout` state)
   }, []);
-  // Deep link ?v=<saved view>, else my default view.
   const applied = useRef(false);
   useEffect(() => {
     if (applied.current || !views.data || !prefs.data) return;
@@ -112,32 +145,51 @@ export function PlanSheetView({ filter, actionsSlot, onPresent }: { filter: Port
     applied.current = true;
     if (v) applyView(v);
   }, [views.data, prefs.data, sheetViews, params, applyView]);
+  const saveView = async (name: string) => {
+    try {
+      const v = await savedViewApi.create({ scope: 'portfolio', name, sharing: 'private', config: { list: 'sheet', tokens: active, layout } });
+      setActiveView(v.id); setToks(active); setText(''); void invalidateWorkspace(wid, 'saved-views'); toast(`Saved the view “${name}”.`);
+      const n = new URLSearchParams(params); n.set('v', v.id); setParams(n, { replace: true });
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'The view could not be saved.', 'error'); }
+  };
+  const setDefault = async (id: string | null) => {
+    try { await put('/me/ui/plansheet', { value: { ...(prefs.data ?? {}), defaultView: id } }); void prefs.refetch(); toast(id ? 'This view now opens first.' : 'No default view.'); }
+    catch { toast('Could not set the default view.', 'error'); }
+  };
 
-  const data = q.data;
-  const rows = useMemo(() => (data?.rows ?? []).map((r) => { const o = overrides.get(r.id); return o ? { ...r, ...o } : r; }), [data, overrides]);
-  const display = useMemo(() => buildDisplay(rows, cfg, collapsed, me, today), [rows, cfg, collapsed, me, today]);
-  const statusesBy = useMemo(() => {
-    const m = new Map<string, SheetStatus[]>();
-    for (const s of data?.statuses ?? []) m.set(s.projectId, [...(m.get(s.projectId) ?? []), s]);
-    return m;
-  }, [data]);
-  const nameOf = useCallback((id: string | null | undefined) => data?.people.find((p) => p.id === id)?.name ?? null, [data]);
-
-  // ---- saving: optimistic, through the bulk endpoint (one row at a time on the server), with a reason for later due dates
-  const save = useCallback(async (changes: SheetChange[], reason?: string, dependency?: string) => {
+  // ---- saving: optimistic through the bulk endpoint (one row at a time on the server), one reason for later due dates, and an undo entry
+  const nameOf = useCallback((id: string | null | undefined) => people.find((p) => p.id === id)?.name ?? null, [people]);
+  const inverseOf = (r: SheetRow, c: SheetChange): SheetChange => {
+    const inv: SheetChange = { id: r.id };
+    if (c.assigneeId || c.unassign) { if (r.ownerId) inv.assigneeId = r.ownerId; else inv.unassign = true; }
+    if (c.startDate || c.clearStart) { if (r.start) inv.startDate = r.start; else inv.clearStart = true; }
+    if (c.dueDate && r.due) inv.dueDate = r.due;
+    if (c.dueTime) { if (r.dueTime) inv.dueTime = r.dueTime; else inv.clearDueTime = true; }
+    if (c.statusId && r.statusId) inv.statusId = r.statusId;
+    if (c.title !== undefined) inv.title = r.title;
+    if (c.progress !== undefined || c.clearProgress) { if (r.manualProgress && r.progress != null) inv.progress = r.progress; else inv.clearProgress = true; }
+    if (c.notes !== undefined) inv.notes = r.notes ?? '';
+    return inv;
+  };
+  const pushEdit = (e: Omit<EditEntry, 'id' | 'at'>) => {
+    const at = Date.now();
+    setEdits((list) => [{ ...e, id: at + Math.random(), at }, ...list].slice(0, 30));
+    setToastAt({ text: e.label, at, undo: true });
+  };
+  const save = useCallback(async (changes: SheetChange[], label: string, opts: { reason?: string; dependency?: string; undo?: boolean } = {}) => {
     if (!data || changes.length === 0) return;
-    if (reason === undefined) {
+    if (opts.reason === undefined) {
       const moves = changes.flatMap((c) => {
         const r = rows.find((x) => x.id === c.id); if (!r || !c.dueDate) return [];
         const d = dueChange(r.due, c.dueDate);
-        const timeLater = !d && r.due === c.dueDate && !!c.dueTime && !!r.dueTime && c.dueTime > r.dueTime;
-        return d?.delay || timeLater ? [{ key: r.key, from: r.due!, to: c.dueDate, days: d?.days ?? 0 }] : [];
+        return d?.delay ? [{ key: r.key, from: r.due!, to: c.dueDate, days: d.days ?? 0 }] : [];
       });
-      if (moves.length) { setReasonAsk({ changes, moves }); return; }
+      if (moves.length) { setReasonAsk({ changes, label, moves }); return; }
     }
+    const before = new Map(rows.map((r) => [r.id, r]));
     const patch = new Map(overrides);
     for (const c of changes) {
-      const r = rows.find((x) => x.id === c.id); if (!r) continue;
+      const r = before.get(c.id); if (!r) continue;
       const o: Partial<SheetRow> = { ...(patch.get(c.id) ?? {}) };
       if (c.title !== undefined) o.title = c.title;
       if (c.unassign) { o.ownerId = null; o.owner = null; }
@@ -145,29 +197,24 @@ export function PlanSheetView({ filter, actionsSlot, onPresent }: { filter: Port
       if (c.startDate) o.start = c.startDate;
       if (c.clearStart) o.start = null;
       if (c.dueDate) { o.due = c.dueDate; o.late = isOpen(r) && dayNum(c.dueDate) < dayNum(today); }
-      if (c.dueTime) o.dueTime = c.dueTime;
-      if (c.statusId) { const s = data.statuses.find((x) => x.id === c.statusId); if (s) { o.statusId = s.id; o.status = s.name; o.category = s.category; } }
-      const start = o.start !== undefined ? o.start : r.start, due = o.due !== undefined ? o.due : r.due;
-      o.durationDays = start && due && dayNum(due) >= dayNum(start) ? dayNum(due) - dayNum(start) + 1 : null;
+      if (c.statusId) { const s = data.statuses.find((x) => x.id === c.statusId); if (s) { o.statusId = s.id; o.status = s.name; o.category = s.category; if (s.category === 'Done') { o.late = false; o.atRisk = false; o.progress = 100; } } }
+      if (c.progress !== undefined) { o.progress = c.progress; o.manualProgress = true; }
+      if (c.notes !== undefined) o.notes = c.notes || null;
       patch.set(c.id, o);
     }
     setOverrides(patch);
     try {
-      const withVersions = changes.map((c) => ({ ...c, version: c.version ?? rows.find((x) => x.id === c.id)?.version }));
-      const res = await portfolioApi.sheetBulk(withVersions, reason, dependency);
+      const withVersions = changes.map((c) => ({ ...c, version: c.version ?? before.get(c.id)?.version }));
+      const res = await portfolioApi.sheetBulk(withVersions, opts.reason, opts.dependency);
       const failed = res.rows.filter((x) => !x.ok);
-      setOverrides((cur) => {
-        const n = new Map(cur);
-        for (const x of res.rows) {
-          if (!x.ok) n.delete(x.id);
-          else if (x.version != null) n.set(x.id, { ...(n.get(x.id) ?? {}), version: x.version });
-        }
-        return n;
-      });
-      if (res.changed) { setSavedAt(Date.now()); setAnnounce(`${res.changed === 1 ? 'Saved' : `${res.changed} rows saved`}`); }
+      const ok = new Set(res.rows.filter((x) => x.ok).map((x) => x.id));
       if (failed.length) {
         const first = failed[0];
         toast(failed.length === 1 ? `${first.key ?? 'A row'}: ${first.error ?? 'not saved'}` : `${res.changed} saved · ${failed.length} not saved (${first.key ?? 'a row'}: ${first.error})`, 'error');
+      }
+      if (res.changed) {
+        if (opts.undo) setToastAt({ text: `Undone · ${label}`, at: Date.now(), undo: false });
+        else pushEdit({ label, count: res.changed, inverse: changes.filter((c) => ok.has(c.id)).map((c) => inverseOf(before.get(c.id)!, c)) });
       }
       await q.refetch();
       setOverrides(new Map());
@@ -177,937 +224,636 @@ export function PlanSheetView({ filter, actionsSlot, onPresent }: { filter: Port
     }
   }, [data, rows, overrides, nameOf, today, q]);
 
-  // ---- paste anywhere on the sheet (not while typing in a field)
+  const move = useCallback(async (m: { id: string; projectId: string; afterId: string | null; beforeId: string | null }, undo = false) => {
+    const r = rows.find((x) => x.id === m.id); if (!r) return;
+    // Where it was, for Undo: its neighbours among the top-level tasks of its project.
+    const sibs = rows.filter((x) => x.kind === 'task' && x.projectId === r.projectId);
+    const i = sibs.findIndex((x) => x.id === r.id);
+    const back = { id: r.id, projectId: r.projectId, afterId: sibs[i - 1]?.id ?? null, beforeId: sibs[i + 1]?.id ?? null };
+    try {
+      const res = await portfolioApi.sheetMove({ id: m.id, projectId: m.projectId, afterId: m.afterId, beforeId: m.beforeId, version: r.version });
+      const to = projects.find((p) => p.id === m.projectId);
+      if (undo) setToastAt({ text: `Moved ${res.key} back`, at: Date.now(), undo: false });
+      else pushEdit({ label: res.movedProject ? `Moved ${r.key} to ${to?.title ?? 'another project'} as ${res.key}` : `Moved ${r.key}`, count: 1, inverse: null, move: back });
+      await q.refetch();
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'The task could not be moved.', 'error'); }
+  }, [rows, projects, q]);
+
+  const undo = useCallback(() => {
+    const [last, ...rest] = edits;
+    if (!last) { setToastAt({ text: 'Nothing to undo', at: Date.now(), undo: false }); return; }
+    setEdits(rest);
+    if (last.move) void move(last.move, true);
+    else if (last.inverse?.length) void save(last.inverse, last.label, { reason: REASON_UNDO, undo: true });
+  }, [edits, move, save]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== 'z' || editableTarget(e.target)) return;
+      if (!document.querySelector('.ps3')) return;
+      e.preventDefault(); undo();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [undo]);
+  useEffect(() => { if (!toastAt) return; const t = window.setTimeout(() => setToastAt((x) => (x?.at === toastAt.at ? null : x)), 6500); return () => window.clearTimeout(t); }, [toastAt]);
+
+  // ---- paste anywhere on the sheet (not while typing)
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.closest('input,textarea,[contenteditable="true"]') || t.closest('.modal, .psh-paste'))) return;
-      if (!document.querySelector('.psh')) return;
-      const text = e.clipboardData?.getData('text/plain') ?? '';
-      const grid = parseTsv(text);
+      if (editableTarget(e.target) || (e.target as HTMLElement | null)?.closest?.('.ps3-modal')) return;
+      if (!document.querySelector('.ps3')) return;
+      const grid = parseTsv(e.clipboardData?.getData('text/plain') ?? '');
       if (grid.length === 0 || (grid.length === 1 && grid[0].length === 1)) return;
       e.preventDefault();
-      if (grid.length > 500 && !window.confirm(`Paste ${grid.length} rows? That is more than 500.`)) return;
+      if (grid.length > 500) { toast('Paste at most 500 rows at a time.', 'error'); return; }
       setPaste(grid);
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
   }, []);
 
-  const exportAs = async (format: 'xlsx' | 'csv', opts: { visible: boolean; meetings: boolean }) => {
-    setMenu(null);
-    try {
-      const visibleRows = display.flatMap((d) => (d.type === 'row' ? [d.row.id] : []));
-      await portfolioApi.sheetExport(f, { format, mine, meetings: opts.meetings, columns: opts.visible ? cols(layout, data?.meetings ?? false).map((c) => EXPORT_NAME[c.id]) : undefined,
-        ids: opts.visible && anyActive(cfg, collapsed) ? visibleRows : undefined });
-    } catch { toast('The export could not be made.', 'error'); }
-  };
+  const exportAs = useCallback(async (format: 'xlsx' | 'csv') => {
+    try { await portfolioApi.sheetExport(filter, { format, columns: EXPORT_COLUMNS, ids: active.length ? [...projects.map((p) => p.id), ...matching.map((r) => r.id)] : undefined }); }
+    catch { toast('The export could not be made.', 'error'); }
+  }, [filter, active.length, projects, matching]);
+  const focusSearch = () => document.querySelector<HTMLInputElement>('.ps3-cmd input')?.focus();
+  useEffect(() => registerPaletteCommands('plansheet', [
+    { id: 'paste', group: 'Plan sheet', label: 'Paste from Excel', icon: 'upload', keywords: 'import rows spreadsheet', run: () => setPaste([]) },
+    { id: 'xlsx', group: 'Plan sheet', label: 'Export plan sheet to Excel', icon: 'download', keywords: 'xlsx download', run: () => void exportAs('xlsx') },
+    { id: 'csv', group: 'Plan sheet', label: 'Export plan sheet as CSV', icon: 'download', keywords: 'csv download', run: () => void exportAs('csv') },
+    { id: 'present', group: 'Plan sheet', label: 'Present', icon: 'present', keywords: 'meeting slides', run: onPresent },
+    { id: 'filter', group: 'Plan sheet', label: 'Filter the sheet…', icon: 'filter', keywords: 'search owner status due', run: () => setTimeout(focusSearch, 30) },
+    { id: 'sheet', group: 'Plan sheet', label: 'Show as sheet', icon: 'list', run: () => setLayout('sheet') },
+    { id: 'split', group: 'Plan sheet', label: 'Show sheet and timeline', icon: 'layers', run: () => setLayout('split') },
+    { id: 'timeline', group: 'Plan sheet', label: 'Show as timeline', icon: 'calendar', run: () => setLayout('timeline') },
+    { id: 'undo', group: 'Plan sheet', label: 'Undo the last edit', hint: '⌘Z', icon: 'undo', run: undo },
+  ]), [exportAs, onPresent, undo]);
 
-  const saveView = async (name: string) => {
-    try {
-      const v = await savedViewApi.create({ scope: 'portfolio', name, sharing: 'private', config: { list: 'sheet', group: cfg.group, sort: cfg.sort, filters: cfg.filters, layout } });
-      setActiveView(v.id); void invalidateWorkspace(wid, 'saved-views'); toast(`Saved the view “${name}”.`);
-      const n = new URLSearchParams(params); n.set('v', v.id); setParams(n, { replace: true });
-    } catch (e) { toast(e instanceof ApiError ? e.message : 'The view could not be saved.', 'error'); }
-  };
-  const setDefault = async (id: string | null) => {
-    try { await put('/me/ui/plansheet', { value: { ...(prefs.data ?? {}), defaultView: id } }); void invalidateWorkspace(wid, 'ui', 'plansheet'); void prefs.refetch(); }
-    catch { toast('Could not set the default view.', 'error'); }
-  };
+  // ---- who else has the sheet open, and the cell they are on
+  const liveKey = wid ? `sheet:${wid.replace(/-/g, '').toLowerCase()}` : null;
+  const [viewers, setViewers] = useState<Record<string, { name: string; seen: number; cell: string | null }>>({});
+  useEffect(() => {
+    if (!liveKey) return;
+    const announce = () => hubInvoke('Watch', liveKey);
+    announce();
+    const offC = onLiveConnected(announce);
+    const offV = onViewing((e) => {
+      if (e.key !== liveKey || e.userId === me) return;
+      if (e.hello) hubInvoke('Here', liveKey);
+      setViewers((v) => { const n = { ...v }; if (e.on) n[e.userId] = { name: e.name ?? v[e.userId]?.name ?? 'Someone', seen: Date.now(), cell: v[e.userId]?.cell ?? null }; else delete n[e.userId]; return n; });
+    });
+    const offF = onSheetFocus((e) => {
+      if (e.key !== liveKey || e.userId === me) return;
+      setViewers((v) => ({ ...v, [e.userId]: { name: e.name ?? v[e.userId]?.name ?? 'Someone', seen: Date.now(), cell: e.cell } }));
+    });
+    const tick = window.setInterval(() => { hubInvoke('Here', liveKey); setViewers((v) => Object.fromEntries(Object.entries(v).filter(([, x]) => Date.now() - x.seen < 75_000))); }, 30_000);
+    return () => { offC(); offV(); offF(); window.clearInterval(tick); hubInvoke('SheetFocus', liveKey, null); hubInvoke('Unwatch', liveKey); };
+  }, [liveKey, me]);
+  const focusCell = useCallback((cell: string | null) => { if (liveKey && isLiveConnected()) hubInvoke('SheetFocus', liveKey, cell); }, [liveKey]);
+  const others = Object.entries(viewers).map(([id, v]) => ({ id, ...v }));
 
-  const actions = actionsSlot && createPortal(
-    <div className="psh-head-actions">
-      <button type="button" className="psh-btn" onClick={() => setPaste([])}><Icon name="upload" size={14} />Paste from Excel</button>
-      <span className="psh-rel">
-        <button type="button" className={`psh-btn ${menu === 'export' ? 'pri' : ''}`} aria-haspopup="menu" aria-expanded={menu === 'export'} onClick={() => setMenu(menu === 'export' ? null : 'export')}>
-          <Icon name="download" size={14} />Export</button>
-        {menu === 'export' && <ExportMenu viewName={sheetViews.find((v) => v.id === activeView)?.name ?? 'Plan sheet'} rows={display.filter((d) => d.type === 'row').length}
-          cols={cols(layout, data?.meetings ?? false).length} zone={data?.timeZone ?? ''} meetingsAvailable={!!data?.meetings} onExport={exportAs} onClose={() => setMenu(null)} />}
-      </span>
-      <button type="button" className="psh-btn" onClick={onPresent}><Icon name="play" size={14} />Present sheet</button>
-    </div>, actionsSlot);
+  if (q.isLoading) return <PageLoader />;
+  if (q.isError || !data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
 
-  if (q.isLoading) return <>{actions}<PageLoader /></>;
-  if (q.isError || !data) return <>{actions}<ErrorState error={q.error} retry={() => q.refetch()} /></>;
-
-  const viewName = sheetViews.find((v) => v.id === activeView)?.name;
-  const toolbar = (
-    <div className="psh-toolbar" role="toolbar" aria-label="Plan sheet tools">
-      <span className="psh-rel">
-        <button type="button" className="psh-viewing" aria-haspopup="menu" aria-expanded={menu === 'viewing'} onClick={() => setMenu(menu === 'viewing' ? null : 'viewing')}>
-          Viewing: {scope.label} <Icon name="chevronD" size={13} /></button>
-        {menu === 'viewing' && (
-          <Pop label="Viewing" onClose={() => setMenu(null)} className="psh-menu">
-            <div className="hd">WHAT THE SHEET SHOWS</div>
-            {data.scopes.filter((s) => s.id !== 'team').map((s) => (
-              <button key={s.id} type="button" role="menuitemradio" aria-checked={scope.id === s.id} disabled={!s.allowed} className={`mi ${scope.id === s.id ? 'on' : ''}`}
-                title={s.why ?? undefined} onClick={() => { setScope({ id: s.id, teamId: null, label: s.label }); setMenu(null); }}>
-                {!s.allowed && <Icon name="lock" size={13} />}{s.label}{!s.allowed && <small>{s.why}</small>}{scope.id === s.id && <small>✓</small>}
-              </button>
-            ))}
-            {data.scopes.some((s) => s.id === 'team') && <><hr /><div className="hd">ONE TEAM</div></>}
-            {data.scopes.filter((s) => s.id === 'team').map((s) => (
-              <button key={s.teamId} type="button" role="menuitemradio" aria-checked={scope.teamId === s.teamId} className={`mi ${scope.teamId === s.teamId ? 'on' : ''}`}
-                onClick={() => { setScope({ id: 'team', teamId: s.teamId, label: s.label }); setMenu(null); }}>{s.label}</button>
-            ))}
-          </Pop>
-        )}
-      </span>
-      <span className="psh-rel">
-        <button type="button" className="psh-btn sm" aria-haspopup="menu" aria-expanded={menu === 'views'} onClick={() => setMenu(menu === 'views' ? null : 'views')}>My views <Icon name="chevronD" size={13} /></button>
-        {menu === 'views' && <ViewsMenu views={sheetViews} active={activeView} defaultId={prefs.data?.defaultView ?? null} onApply={(v) => { applyView(v); setMenu(null); }}
-          onSave={(n) => { void saveView(n); setMenu(null); }} onDefault={(id) => void setDefault(id)} onClose={() => setMenu(null)} />}
-      </span>
-      {viewName && <span className="psh-chip blue lg">View: {viewName}</span>}
-      <FilterChips cfg={cfg} setCfg={(c) => { setCfg(c); setActiveView(null); }} />
-      <span className="psh-rel">
-        <button type="button" className={`psh-btn sm ${menu === 'filter' ? 'pri' : ''}`} aria-haspopup="dialog" aria-expanded={menu === 'filter'} onClick={() => setMenu(menu === 'filter' ? null : 'filter')}>
-          <Icon name="filter" size={13} />Filter · Group</button>
-        {menu === 'filter' && <FilterGroup cfg={cfg} rows={rows} setCfg={(c) => { setCfg(c); setActiveView(null); }} views={sheetViews} defaultId={prefs.data?.defaultView ?? null}
-          onApply={(v) => { applyView(v); setMenu(null); }} onSave={(n) => { void saveView(n); setMenu(null); }} onClose={() => setMenu(null)} />}
-      </span>
-      <span className="psh-rel">
-        <button type="button" className="psh-btn sm" aria-haspopup="menu" aria-expanded={menu === 'group'} onClick={() => setMenu(menu === 'group' ? null : 'group')}>Group: {GROUP_LABEL[cfg.group]}</button>
-        {menu === 'group' && (
-          <Pop label="Group by" onClose={() => setMenu(null)} className="psh-menu">
-            {(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => <button key={g} type="button" role="menuitemradio" aria-checked={cfg.group === g} className={`mi ${cfg.group === g ? 'on' : ''}`}
-              onClick={() => { setCfg({ ...cfg, group: g }); setActiveView(null); setMenu(null); }}>{GROUP_LABEL[g]}{cfg.group === g && <small>✓</small>}</button>)}
-          </Pop>
-        )}
-      </span>
-      <span className="psh-sp" />
-      <div className="psh-seg" role="tablist" aria-label="Sheet layout">
-        <button type="button" role="tab" aria-selected={layout === 'grid'} className={layout === 'grid' ? 'on' : ''} onClick={() => setLayout('grid')}>Grid</button>
-        <button type="button" role="tab" aria-selected={layout === 'gridTimeline'} className={layout === 'gridTimeline' ? 'on' : ''} onClick={() => setLayout('gridTimeline')}>Grid + timeline</button>
-        <button type="button" role="tab" aria-selected={false} onClick={() => { const n = new URLSearchParams(params); n.set('view', 'portfolio'); n.set('mode', 'timeline'); setParams(n, { replace: true }); }}>Timeline</button>
-      </div>
+  const menu: DotsItem[] = [
+    { label: 'Paste from Excel', icon: 'upload', hint: 'Or ⌘V anywhere on the sheet', onSelect: () => setPaste([]) },
+    { label: 'Export to Excel', icon: 'download', hint: active.length ? 'The rows the filter shows' : 'The whole sheet', onSelect: () => void exportAs('xlsx') },
+    { label: 'Export as CSV', icon: 'download', onSelect: () => void exportAs('csv') },
+    { label: 'Present', icon: 'present', onSelect: onPresent },
+    ...(activeView ? [{ label: prefs.data?.defaultView === activeView ? 'Stop opening this view first' : 'Open this view first', icon: 'star' as const, onSelect: () => void setDefault(prefs.data?.defaultView === activeView ? null : activeView) }] : []),
+    ...extraMenu,
+  ];
+  const head = (
+    <div className="ps3-head">
+      <div className="ps3-crumb">Portfolio</div><h1>Plan</h1>
+      {!phone && <div className="ps3-tabs">{tabs}</div>}
+      <span className="ps3-sp" />
+      {!phone && others.length > 0 && <div className="ps3-pres" aria-label={`Also on the sheet: ${others.map((o) => o.name).join(', ')}`} title={`Also here: ${others.map((o) => o.name).join(', ')}`}>
+        {others.slice(0, 4).map((o) => <Av key={o.id} id={o.id} name={o.name} size={24} />)}</div>}
+      {!phone && <DotsMenu label="More on the plan sheet" items={menu} />}
     </div>
   );
-
+  const command = (
+    <CommandField toks={toks} setToks={(t) => { setToks(t); setActiveView(null); }} text={text} setText={(t) => { setText(t); if (t) setActiveView(null); }} interpreted={interpreted}
+      count={matching.length} total={work.length} filtering={active.length > 0} people={people} projects={projects} work={work} ctx={ctx} compact={phone}
+      views={sheetViews} activeView={activeView} defaultView={prefs.data?.defaultView ?? null} onApplyView={applyView} onSaveView={(n) => void saveView(n)} />
+  );
   return (
-    <div className="psh">
-      {actions}
-      <div className="psh-live" aria-live="polite" role="status">{announce}</div>
-      {phone ? (
-        <PhoneSheet data={data} rows={rows} cfg={cfg} setCfg={setCfg} collapsed={collapsed} me={me} today={today} statusesBy={statusesBy} save={save} />
-      ) : (
-        <>
-          {toolbar}
-          <Grid data={data} display={display} layout={layout} today={today} collapsed={collapsed} cfg={cfg} rowsAll={rows}
-            setCfg={(c) => { setCfg(c); setActiveView(null); }} statusesBy={statusesBy} save={save}
-            toggle={(id) => setCollapsed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} refresh={() => q.refetch()} />
-          <div className="psh-hints">
-            <span>{savedAt ? `Saved · ${ago(new Date(savedAt).toISOString())}` : data.truncated ? 'Showing the first 5,000 rows' : 'Changes save as you go'}</span>
-            <span><kbd>↵</kbd> edit</span><span><kbd>Tab</kbd> next cell</span><span><kbd>Ctrl D</kbd> fill down</span><span><kbd>Ctrl V</kbd> paste rows</span>
-            <span>Red date = late · amber = at risk · <i className="psh-dia" /> meeting</span>
-            <span>Times in {data.timeZone}</span>
+    <div className={`ps3 ${phone ? 'ps3-phone' : ''}`}>
+      {head}
+      {phone ? <>
+        <div className="ps3-cmdrow">{command}</div>
+        <PhoneCards display={display} data={data} rows={rows} today={today} statusesBy={statusesBy} save={save} />
+      </> : <>
+        <div className="ps3-cmdrow">{command}
+          <div className="ps3-vsw" role="tablist" aria-label="Sheet layout">
+            {(['sheet', 'split', 'timeline'] as Layout[]).map((l) => <button key={l} type="button" role="tab" aria-selected={layout === l} onClick={() => setLayout(l)}>{l === 'sheet' ? 'Sheet' : l === 'split' ? 'Split' : 'Timeline'}</button>)}
           </div>
-        </>
+        </div>
+        <SheetGrid data={data} display={display} rows={rows} work={work} today={today} layout={layout} inspectId={inspect} setInspect={setInspect} collapsed={collapsed}
+          toggle={(id) => setCollapsed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} statusesBy={statusesBy} meetings={meetings}
+          save={save} move={move} others={others} focusCell={focusCell} onWarn={setWarn} refresh={() => q.refetch()} />
+      </>}
+      {toastAt && !historyOpen && (
+        <div className="ps3-toast" role="status">
+          <span>{toastAt.text}</span>
+          {toastAt.undo && (() => { const n = edits.filter((e) => Date.now() - e.at < 60_000).length; return n > 1 ? <span className="m" style={{ cursor: 'default' }}>· {n} edits this minute</span> : null; })()}
+          {toastAt.undo && <button type="button" className="b" onClick={undo}>Undo ⌘Z</button>}
+          <button type="button" className="m" onClick={() => setHistoryOpen(true)}>History</button>
+        </div>
       )}
+      {historyOpen && (
+        <Floating anchor={new DOMRect(window.innerWidth / 2 - 180, window.innerHeight - 80, 360, 1)} place="above" width={360} label="Edit history" onClose={() => setHistoryOpen(false)} style={{ padding: '6px 0' }}>
+          <div className="ph">History · this session</div>
+          {edits.length === 0 && <div className="it ps3-dim">No edits yet</div>}
+          {edits.slice(0, 10).map((e, i) => <div key={e.id} className="it" style={{ cursor: 'default' }}><span style={{ flex: 1, minWidth: 0 }}>{e.label}<span className="ps3-dim" style={{ display: 'block', fontSize: 11 }}>{new Date(e.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span></span>
+            {i === 0 && <button type="button" className="ps3-qc" onClick={() => { setHistoryOpen(false); undo(); }}>Undo</button>}</div>)}
+        </Floating>
+      )}
+      {warn && <div className="ps3-toast warn" role="alert">{warn}</div>}
       {reasonAsk && <ReasonModal moves={reasonAsk.moves} onClose={() => setReasonAsk(null)}
-        onSave={(reason, dep) => { const c = reasonAsk.changes; setReasonAsk(null); void save(c, reason, dep); }} />}
-      {paste && <PasteModal grid={paste} data={data} onClose={() => setPaste(null)} defaultProject={firstProject(display)}
+        onSave={(reason, dep) => { const a = reasonAsk; setReasonAsk(null); void save(a.changes, a.label, { reason, dependency: dep }); }} />}
+      {paste && <PasteModal grid={paste} data={data} today={today} onClose={() => setPaste(null)}
+        defaultProject={(inspect ? rows.find((r) => r.id === inspect)?.projectId : null) ?? firstProject(display)}
         onDone={() => { setPaste(null); void q.refetch(); }} />}
     </div>
   );
 }
 
-const firstProject = (display: Display[]) => { for (const d of display) if (d.type === 'row') return d.row.projectId; return null; };
-const anyActive = (cfg: SheetConfig, collapsed: Set<string>) => collapsed.size > 0 || cfg.group !== 'project' || Object.values(cfg.filters).some((v) => (typeof v === 'boolean' ? v : Object.values(v).some((x) => (x as string[] | undefined)?.length)));
-// The Meeting column only when there are meetings to show; Grid + timeline adds the mini-Gantt column after these.
-const cols = (_layout: Layout, meetings: boolean) => BASE_COLS.filter((c) => meetings || c.id !== 'meeting');
+const firstProject = (display: Display[]) => { for (const d of display) if (d.type === 'g') return d.p.id; return null; };
 
-// ---------------------------------------------------------------- small popover
+// ---------------------------------------------------------------- the command field
 
-function Pop({ label, onClose, children, className = '', style, role = 'menu' }: { label: string; onClose: () => void; children: ReactNode; className?: string; style?: CSSProperties; role?: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const down = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node) && !(e.target as HTMLElement).closest?.('[aria-expanded="true"]')) onClose(); };
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
-    document.addEventListener('mousedown', down); document.addEventListener('keydown', key, true);
-    return () => { document.removeEventListener('mousedown', down); document.removeEventListener('keydown', key, true); };
-  }, [onClose]);
-  // Inside the grid's frame, a popover that would be cut off at the bottom opens upwards instead.
-  const [up, setUp] = useState(false);
-  useLayoutEffect(() => {
-    const el = ref.current; const frame = el?.closest('.psh-frame'); if (!el || !frame) return;
-    if (el.getBoundingClientRect().bottom > frame.getBoundingClientRect().bottom - 4) setUp(true);
-  }, []);
-  return <div ref={ref} role={role} aria-label={label} className={`psh-pop ${className} ${up ? 'up' : ''}`} style={style}>{children}</div>;
-}
-
-function ExportMenu({ viewName, rows, cols: n, zone, meetingsAvailable, onExport, onClose }: {
-  viewName: string; rows: number; cols: number; zone: string; meetingsAvailable: boolean; onExport: (f: 'xlsx' | 'csv', o: { visible: boolean; meetings: boolean }) => void; onClose: () => void;
+function CommandField({ toks, setToks, text, setText, interpreted, count, total, filtering, people, projects, work, ctx, compact, views, activeView, defaultView, onApplyView, onSaveView }: {
+  toks: Tok[]; setToks: (t: Tok[]) => void; text: string; setText: (t: string) => void; interpreted: Tok[]; count: number; total: number; filtering: boolean;
+  people: { id: string; name: string }[]; projects: SheetRow[]; work: SheetRow[]; ctx: { today: string; me: string | null }; compact: boolean;
+  views: SavedView[]; activeView: string | null; defaultView: string | null; onApplyView: (v: SavedView) => void; onSaveView: (name: string) => void;
 }) {
-  const [visible, setVisible] = useState(true);
-  const [meetings, setMeetings] = useState(true);
-  return (
-    <Pop label="Export" onClose={onClose} className="psh-menu psh-export">
-      <div className="hd">EXPORT “{viewName.toUpperCase()}”</div>
-      <button type="button" role="menuitem" className="mi on" onClick={() => onExport('xlsx', { visible, meetings })}>Excel workbook (.xlsx)<small>⌘E</small></button>
-      <button type="button" role="menuitem" className="mi" onClick={() => onExport('csv', { visible, meetings })}>CSV (.csv)</button>
-      <button type="button" role="menuitem" className="mi" disabled title="Not available yet">PDF — one page per project<small>Soon</small></button>
-      <hr />
-      <button type="button" role="menuitemcheckbox" aria-checked={visible} className="mi" onClick={() => setVisible(!visible)}><span className={`psh-check ${visible ? 'on' : ''}`}>{visible && '✓'}</span>Only visible columns & filters</button>
-      <button type="button" role="menuitemcheckbox" aria-checked className="mi" disabled><span className="psh-check on">✓</span>Keep groups as outline levels</button>
-      <button type="button" role="menuitemcheckbox" aria-checked={false} className="mi" disabled title="Not available yet"><span className="psh-check" />Include timeline as colour cells</button>
-      {meetingsAvailable && <button type="button" role="menuitemcheckbox" aria-checked={meetings} className="mi" onClick={() => setMeetings(!meetings)}><span className={`psh-check ${meetings ? 'on' : ''}`}>{meetings && '✓'}</span>Include meeting rows</button>}
-      <hr />
-      <div className="mi note">{rows} rows · {n} columns · dates in {zone}</div>
-    </Pop>
-  );
-}
-
-function ViewsMenu({ views, active, defaultId, onApply, onSave, onDefault, onClose }: {
-  views: SavedView[]; active: string | null; defaultId: string | null; onApply: (v: SavedView) => void; onSave: (name: string) => void; onDefault: (id: string | null) => void; onClose: () => void;
-}) {
-  const [name, setName] = useState('');
-  return (
-    <Pop label="My views" onClose={onClose} className="psh-menu">
-      <div className="hd">SAVED VIEWS</div>
-      {views.length === 0 && <div className="mi note">No saved views yet</div>}
-      {views.map((v) => (
-        <div key={v.id} className={`mi split ${active === v.id ? 'on' : ''}`}>
-          <button type="button" role="menuitem" onClick={() => onApply(v)}>{v.name}</button>
-          <button type="button" className="star" aria-label={defaultId === v.id ? `${v.name} is the default; remove` : `Make ${v.name} the default`} aria-pressed={defaultId === v.id}
-            onClick={() => onDefault(defaultId === v.id ? null : v.id)}>{defaultId === v.id ? '★' : '☆'}</button>
-        </div>
-      ))}
-      <hr />
-      <form className="psh-save-view" onSubmit={(e) => { e.preventDefault(); if (name.trim()) onSave(name.trim()); }}>
-        <input aria-label="Name for the current view" placeholder="Save current as view…" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
-        <button type="submit" className="psh-btn sm pri" disabled={!name.trim()}>Save</button>
-      </form>
-    </Pop>
-  );
-}
-
-function FilterChips({ cfg, setCfg }: { cfg: SheetConfig; setCfg: (c: SheetConfig) => void }) {
-  const f = cfg.filters;
-  const off = (k: keyof Omit<SheetFilters, 'values'>) => setCfg({ ...cfg, filters: { ...f, [k]: false } });
-  const chips: [string, () => void][] = [];
-  if (f.notDone) chips.push(['Status ≠ Done', () => off('notDone')]);
-  if (f.due30) chips.push(['Due in 30 days', () => off('due30')]);
-  if (f.lateOnly) chips.push(['Late only', () => off('lateOnly')]);
-  if (f.meetingsOnly) chips.push(['Meeting rows only', () => off('meetingsOnly')]);
-  for (const [c, v] of Object.entries(f.values) as [ColId, string[]][]) if (v?.length) chips.push([`${BASE_COLS.find((x) => x.id === c)?.label}: ${v.length === 1 ? v[0] : `${v.length} values`}`, () => setCfg({ ...cfg, filters: { ...f, values: { ...f.values, [c]: [] } } })]);
+  const [open, setOpen] = useState(false);
+  const [naming, setNaming] = useState<string | null>(null);
+  const [custom, setCustom] = useState<{ from: string; to: string } | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const word = text.trim().split(/\s+/).pop()?.toLowerCase() ?? '';
+  const byOwner = useMemo(() => { const m = new Map<string, number>(); for (const r of work) if (r.ownerId && isOpen(r)) m.set(r.ownerId, (m.get(r.ownerId) ?? 0) + 1); return m; }, [work]);
+  const ppl = useMemo(() => {
+    const list = people.filter((p) => !toks.some((t) => t.kind === 'owner' && t.value === p.id));
+    const hit = word.length >= 2 ? list.filter((p) => p.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(word))) : [];
+    return (hit.length ? hit : list.filter((p) => byOwner.has(p.id)).sort((a, b) => (byOwner.get(b.id) ?? 0) - (byOwner.get(a.id) ?? 0))).slice(0, hit.length ? 4 : 2);
+  }, [people, toks, word, byOwner]);
+  const statusCount = useMemo(() => { const m: Record<StatusKey, number> = { late: 0, risk: 0, prog: 0, todo: 0, done: 0 }; for (const r of work) m[statusKey(r)]++; return m; }, [work]);
+  const [hi, setHi] = useState(0);
+  const add = (t: Tok) => { setToks([...toks.filter((x) => !(x.kind === t.kind && x.value === t.value)), t]); setText(''); input.current?.focus(); };
+  const has = (k: Tok['kind'], v: string) => [...toks, ...interpreted].some((t) => t.kind === k && t.value === v);
+  const commit = () => { if (interpreted.length) { setToks([...toks, ...interpreted.filter((t) => !toks.some((x) => x.kind === t.kind && x.value === t.value))]); setText(''); } };
+  const tokLabel = (t: Tok) => t.kind === 'text' ? <>{t.label}</> : <><span className="k">{t.kind} </span>{t.label}</>;
+  const person = (id: string) => people.find((p) => p.id === id);
   return (
     <>
-      {chips.map(([label, clear]) => <span key={label} className="psh-chip lg">{label}<button type="button" aria-label={`Remove filter ${label}`} onClick={clear}>✕</button></span>)}
-      <button type="button" className={`psh-chip lg ${f.ownerMe ? 'blue' : ''}`} aria-pressed={f.ownerMe} onClick={() => setCfg({ ...cfg, filters: { ...f, ownerMe: !f.ownerMe } })}>{f.ownerMe ? 'Owner: me ✕' : 'Owner: any'}</button>
+      <div ref={box} className={`ps3-cmd ${open ? 'focus' : ''}`} onMouseDown={(e) => { if (e.target === e.currentTarget) { e.preventDefault(); input.current?.focus(); } }}>
+        <span className="ic" aria-hidden="true">⌕</span>
+        {toks.map((t, i) => (
+          <span key={`${t.kind}:${t.value}`} className="ps3-tok">{t.kind === 'owner' && t.value !== 'me' && <Av id={t.value} name={person(t.value)?.name} size={16} />}{tokLabel(t)}
+            <button type="button" className="x" aria-label={`Remove ${t.kind} ${t.label}`} onClick={() => setToks(toks.filter((_, j) => j !== i))}>✕</button></span>
+        ))}
+        <input ref={input} aria-label="Filter, search or ask" placeholder={toks.length ? '' : compact ? 'Filter or ask' : 'Filter, search or ask — try “late this week”'} value={text}
+          onFocus={() => setOpen(true)} onChange={(e) => { setText(e.target.value); setHi(0); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); if (interpreted.length) commit(); else if (ppl[hi]) add({ kind: 'owner', value: ppl[hi].id, label: ppl[hi].name }); }
+            else if (e.key === 'Backspace' && !text && toks.length) setToks(toks.slice(0, -1));
+            else if (e.key === 'ArrowDown') { e.preventDefault(); setHi((x) => Math.min(ppl.length - 1, x + 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((x) => Math.max(0, x - 1)); }
+            else if (e.key === 'Escape') { setOpen(false); input.current?.blur(); }
+          }} />
+        <span className={`ps3-count ${filtering ? 'on' : ''}`} aria-live="polite">{compact ? (filtering ? count : total) : filtering ? `${count} of ${total} tasks` : `${total} tasks`}</span>
+        {!compact && <kbd role="button" tabIndex={-1} title="Commands (⌘K)" onMouseDown={(e) => { e.preventDefault(); openPalette(); }}>⌘K</kbd>}
+      </div>
+      {open && !compact && <div className="ps3-cmd-scrim" aria-hidden="true" />}
+      {open && (
+        <Floating anchor={box.current} onClose={() => { setOpen(false); setNaming(null); setCustom(null); }} width={compact ? 358 : 560} label="Filter suggestions" style={{ paddingBottom: 8 }}>
+          {interpreted.length > 0 && <>
+            <div style={{ display: 'flex', gap: 8, padding: '12px 14px 6px', alignItems: 'center', flexWrap: 'wrap' }}><span className="ps3-dim" style={{ fontSize: 12 }}>Aura read this as</span>
+              {interpreted.map((t) => <button key={`${t.kind}:${t.value}`} type="button" className="ps3-tok aura" onClick={commit} title="Keep these filters (↵)">{tokLabel(t)}</button>)}</div>
+            <div className="hr" />
+          </>}
+          {ppl.length > 0 && <><div className="ph">People</div>
+            {ppl.map((p, i) => <button key={p.id} type="button" className={`it ${i === hi ? 'on' : ''}`} onMouseEnter={() => setHi(i)} onClick={() => add({ kind: 'owner', value: p.id, label: p.name })}>
+              <Av id={p.id} name={p.name} /><span style={{ flex: 1 }}>{p.name}</span><span className="ps3-dim">{byOwner.get(p.id) ?? 0} task{byOwner.get(p.id) === 1 ? '' : 's'}</span>{i === hi && <span aria-hidden="true">↵</span>}</button>)}</>}
+          <div className="ph">Status</div>
+          <div className="row">{STATUS_KEYS.map((k) => <button key={k} type="button" className="ps3-tok" style={has('status', k) ? { boxShadow: '0 0 0 1px var(--p-blue)' } : undefined}
+            onClick={() => add({ kind: 'status', value: k, label: STATUS_LABEL[k] })}><span className="ps3-st"><Dot k={k} />{STATUS_LABEL[k]}</span><span className="ps3-dim" style={{ fontWeight: 400 }}>{statusCount[k]}</span></button>)}</div>
+          <div className="ph">Dates</div>
+          <div className="row">{(['overdue', 'this-week', 'next-2-weeks', 'slipped'] as DueKey[]).map((k) => <button key={k} type="button" className={`ps3-qc ${has('due', k) ? 'on' : ''}`} onClick={() => add({ kind: 'due', value: k, label: DUE_LABEL[k] })}>{DUE_LABEL[k]}</button>)}
+            <button type="button" className={`ps3-qc ${custom ? 'on' : ''}`} onClick={() => setCustom(custom ? null : { from: ctx.today, to: addDays(ctx.today, 14) })}>Custom…</button>
+            {custom && <span className="ps3-save-view"><input type="date" aria-label="From" value={custom.from} onChange={(e) => setCustom({ ...custom, from: e.target.value })} style={{ width: 130 }} />
+              <input type="date" aria-label="To" value={custom.to} onChange={(e) => setCustom({ ...custom, to: e.target.value })} style={{ width: 130 }} />
+              <button type="button" className="ps3-qc pri" disabled={!custom.from || !custom.to || custom.to < custom.from} onClick={() => { add({ kind: 'due', value: `${custom.from}..${custom.to}`, label: `${dm(custom.from)} – ${dm(custom.to)}` }); setCustom(null); }}>Add</button></span>}</div>
+          <div className="ph">Projects</div>
+          <div className="row" style={{ paddingBottom: 8 }}>{projects.map((p) => <button key={p.id} type="button" className={`ps3-qc ${has('project', p.id) ? 'on' : ''}`} onClick={() => add({ kind: 'project', value: p.id, label: p.title })}>{p.title}</button>)}</div>
+          <div className="hr" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px 2px', flexWrap: 'wrap' }}><span className="ps3-dim" style={{ fontSize: 12 }}>Saved views</span>
+            {views.length === 0 && <span className="ps3-dim" style={{ fontSize: 12 }}>none yet</span>}
+            {views.slice(0, 6).map((v) => <button key={v.id} type="button" className={`ps3-qc ${activeView === v.id ? 'on' : ''}`} onClick={() => { onApplyView(v); setOpen(false); }}>{defaultView === v.id ? '★ ' : ''}{v.name}</button>)}
+            <span className="ps3-sp" />
+            {naming === null ? <button type="button" className="ps3-link" disabled={!filtering} title={filtering ? undefined : 'Add a filter first'} style={filtering ? undefined : { opacity: .5 }} onClick={() => setNaming('')}>＋ Save as view</button>
+              : <form className="ps3-save-view" onSubmit={(e) => { e.preventDefault(); if (naming.trim()) { onSaveView(naming.trim()); setNaming(null); setOpen(false); } }}>
+                <input autoFocus aria-label="Name for the view" placeholder="Name the view" value={naming} onChange={(e) => setNaming(e.target.value)} maxLength={80} />
+                <button type="submit" className="ps3-qc pri" disabled={!naming.trim()}>Save</button></form>}
+          </div>
+        </Floating>
+      )}
     </>
-  );
-}
-
-function FilterGroup({ cfg, rows, setCfg, views, defaultId, onApply, onSave, onClose }: {
-  cfg: SheetConfig; rows: SheetRow[]; setCfg: (c: SheetConfig) => void; views: SavedView[]; defaultId: string | null; onApply: (v: SavedView) => void; onSave: (n: string) => void; onClose: () => void;
-}) {
-  const f = cfg.filters;
-  const [name, setName] = useState('');
-  const toggle = (k: keyof Omit<SheetFilters, 'values'>) => setCfg({ ...cfg, filters: { ...f, [k]: !f[k] } });
-  const late = rows.filter((r) => isItem(r) && r.late).length, meetings = rows.filter((r) => r.kind === 'meeting').length;
-  const item = (k: keyof Omit<SheetFilters, 'values'>, label: string, n?: number) => (
-    <button type="button" role="menuitemcheckbox" aria-checked={f[k]} className="mi" onClick={() => toggle(k)}><span className={`psh-check ${f[k] ? 'on' : ''}`}>{f[k] && '✓'}</span>{label}{n != null && <small>{n}</small>}</button>
-  );
-  return (
-    <Pop label="Filter and group" onClose={onClose} className="psh-fg" role="dialog">
-      <div className="psh-menu">
-        <div className="hd">FILTER</div>
-        {item('notDone', 'Status is not Done')}{item('due30', 'Due within next 30 days')}{item('lateOnly', 'Late only', late)}{item('ownerMe', 'Owner is me')}{item('meetingsOnly', 'Meeting rows only', meetings)}
-        <hr />
-        <div className="hd">SORT</div>
-        {(['due', 'start', 'title', 'owner', 'progress'] as ColId[]).map((c) => {
-          const on = cfg.sort?.col === c;
-          return <button key={c} type="button" className={`mi ${on ? 'on' : ''}`} onClick={() => setCfg({ ...cfg, sort: on ? (cfg.sort!.dir === 1 ? { col: c, dir: -1 } : null) : { col: c, dir: 1 } })}>
-            {BASE_COLS.find((x) => x.id === c)!.label} · {on && cfg.sort!.dir === -1 ? 'latest first' : 'earliest first'}<small>{on ? (cfg.sort!.dir === 1 ? '↑' : '↓') : '⇅'}</small></button>;
-        })}
-      </div>
-      <div className="psh-menu">
-        <div className="hd">GROUP BY</div>
-        {(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => <button key={g} type="button" className={`mi ${cfg.group === g ? 'on' : ''}`} onClick={() => setCfg({ ...cfg, group: g })}>{GROUP_LABEL[g]}{cfg.group === g && <small>✓</small>}</button>)}
-        <hr />
-        <div className="hd">SAVED VIEWS</div>
-        {views.map((v) => <button key={v.id} type="button" className="mi" onClick={() => onApply(v)}>{defaultId === v.id ? '★ ' : ''}{v.name}{defaultId === v.id && <small>default</small>}</button>)}
-        <form className="psh-save-view" onSubmit={(e) => { e.preventDefault(); if (name.trim()) onSave(name.trim()); }}>
-          <input aria-label="Save current as view" placeholder="Save current as view…" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
-          <button type="submit" className="psh-btn sm pri" disabled={!name.trim()}>Save</button>
-        </form>
-      </div>
-    </Pop>
   );
 }
 
 // ---------------------------------------------------------------- the grid
 
-type Editing = { id: string; col: ColId; draft: string | null };
-const EDITABLE_TASK: ColId[] = ['title', 'owner', 'start', 'due', 'status'];
-const EDITABLE_PROJECT: ColId[] = ['owner', 'start', 'due'];
-const canEditCell = (r: SheetRow, c: ColId) => r.canEdit && (r.kind === 'project' ? EDITABLE_PROJECT.includes(c) : r.kind === 'meeting' ? false : EDITABLE_TASK.includes(c));
-
-function Grid({ data, display, layout, today, collapsed, cfg, rowsAll, setCfg, statusesBy, save, toggle, refresh }: {
-  data: PlanSheetData; display: Display[]; layout: Layout; today: string; collapsed: Set<string>; cfg: SheetConfig; rowsAll: SheetRow[]; setCfg: (c: SheetConfig) => void;
-  statusesBy: Map<string, SheetStatus[]>; save: (c: SheetChange[]) => Promise<void>; toggle: (id: string) => void; refresh: () => Promise<unknown>;
+function SheetGrid({ data, display, rows, work, today, layout, inspectId, setInspect, collapsed, toggle, statusesBy, meetings, save, move, others, focusCell, onWarn, refresh }: {
+  data: PlanSheetData; display: Display[]; rows: SheetRow[]; work: SheetRow[]; today: string; layout: Layout; inspectId: string | null; setInspect: (id: string | null) => void;
+  collapsed: Set<string>; toggle: (id: string) => void; statusesBy: Map<string, SheetStatus[]>; meetings: { byProject: Map<string, LinkedMeeting>; byTask: Map<string, LinkedMeeting> };
+  save: (c: SheetChange[], label: string) => Promise<void>; move: (m: { id: string; projectId: string; afterId: string | null; beforeId: string | null }) => Promise<void>;
+  others: { id: string; name: string; cell: string | null }[]; focusCell: (cell: string | null) => void; onWarn: (t: string | null) => void; refresh: () => Promise<unknown>;
 }) {
-  const columns = cols(layout, data.meetings);
-  const nav = useMemo(() => display.flatMap((d) => (d.type === 'row' ? [d.row] : [])), [display]);
-  const [active, setActive] = useState<{ r: number; c: number }>({ r: 0, c: 1 });
-  const [editing, setEditing] = useState<Editing | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [anchor, setAnchor] = useState<number | null>(null);
-  const [headMenu, setHeadMenu] = useState<ColId | null>(null);
-  const [bulk, setBulk] = useState<null | 'owner' | 'dates' | 'status'>(null);
+  const inspected = inspectId ? rows.find((r) => r.id === inspectId) ?? null : null;
+  const cols = COLS[inspected ? 'narrow' : layout];
+  const nav = useMemo(() => display.flatMap((d) => (d.type === 'r' ? [d.r] : [])), [display]);
+  const navCols: ColId[] = cols.map((c) => c[0]).filter((c) => c !== 'gantt');
+  const [act, setAct] = useState<{ id: string; col: ColId } | null>(null);
+  const [edit, setEdit] = useState<{ id: string; col: EditCol | 'title'; anchor: HTMLElement | null; draft?: string } | null>(null);
+  const [fill, setFill] = useState<{ col: ColId; src: string; to: string[] } | null>(null);
+  const [smart, setSmart] = useState<{ src: SheetRow; targets: SheetRow[]; anchor: DOMRect } | null>(null);
+  const [drag, setDrag] = useState<{ id: string; x: number; y: number; line: { top: number; left: number; width: number } | null; target: { projectId: string; afterId: string | null; beforeId: string | null } | null } | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
-  const frame = useRef<HTMLDivElement>(null);
-  const [maxH, setMaxH] = useState<number>(560);
+  const [h, setH] = useState(600);
   useEffect(() => {
-    const fit = () => { const el = frame.current; if (!el) return; const top = el.getBoundingClientRect().top + window.scrollY; setMaxH(Math.max(320, window.innerHeight - top - 136)); };
-    fit(); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit);
+    // The grid scrolls inside itself and the page never does: its height is what the window has left below it, less what the layout puts after it.
+    const fit = () => {
+      const el = wrap.current; if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY, after = Math.max(0, document.documentElement.scrollHeight - (top + el.offsetHeight));
+      setH(Math.max(360, window.innerHeight - top - after));
+    };
+    fit(); const t = window.setTimeout(fit, 120); window.addEventListener('resize', fit);
+    return () => { window.clearTimeout(t); window.removeEventListener('resize', fit); };
   }, []);
-  const lefts = useMemo(() => { let l = SEL_W; return columns.map((c) => { const x = l; l += c.w; return x; }); }, [columns]);
-  const r = Math.min(active.r, Math.max(0, nav.length - 1));
-  const activeRow = nav[r];
-  const activeCol = columns[Math.min(active.c, columns.length - 1)];
-  const focusGrid = () => requestAnimationFrame(() => wrap.current?.focus({ preventScroll: true }));
+  useEffect(() => { focusCell(act ? `${act.id}:${act.col}` : null); }, [act, focusCell]);
+  const cellEl = (id: string, col: ColId) => wrap.current?.querySelector<HTMLElement>(`[data-cell="${id}:${col}"]`) ?? null;
+  const open = (r: SheetRow, col: ColId, anchor?: HTMLElement | null, draft?: string) => {
+    if (!r.canEdit) return;
+    const ed = EDITOR_OF[col];
+    if (col === 'task') { setEdit({ id: r.id, col: 'title', anchor: anchor ?? cellEl(r.id, col), draft }); return; }
+    if (ed) setEdit({ id: r.id, col: ed, anchor: anchor ?? cellEl(r.id, col), draft });
+  };
+  const done = (changes: SheetChange[] | null, label = 'Saved') => { setEdit(null); if (changes?.length) void save(changes, label); requestAnimationFrame(() => wrap.current?.focus({ preventScroll: true })); };
+  // Keep the active cell in view by scrolling the grid only (never the page).
   useEffect(() => {
-    const cell = wrap.current?.querySelector<HTMLElement>('[data-active="true"]');
-    cell?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [active]);
+    const el = act ? cellEl(act.id, act.col) : null, box = wrap.current;
+    if (!el || !box) return;
+    const r = el.getBoundingClientRect(), b = box.getBoundingClientRect(), head = 34;
+    if (r.top < b.top + head) box.scrollTop -= b.top + head - r.top;
+    else if (r.bottom > b.bottom - 88) box.scrollTop += r.bottom - (b.bottom - 88);
+  }, [act]);
 
-  const move = (dr: number, dc: number) => setActive((a) => ({ r: Math.max(0, Math.min(nav.length - 1, a.r + dr)), c: Math.max(0, Math.min(columns.length - 1, a.c + dc)) }));
-  const startEdit = (draft: string | null) => {
-    if (!activeRow || !activeCol || !canEditCell(activeRow, activeCol.id)) return;
-    setEditing({ id: activeRow.id, col: activeCol.id, draft });
-  };
-  const finish = (change: SheetChange | null, then: 'down' | 'right' | 'left' | null) => {
-    setEditing(null);
-    if (change) void save([change]);
-    if (then === 'down') move(1, 0); else if (then === 'right') move(0, 1); else if (then === 'left') move(0, -1);
-    wrap.current?.focus({ preventScroll: true });
-    focusGrid();
-  };
+  // Workload for the people picker: the capacity plan when there is one, else worked out from the sheet's own assigned hours.
+  const editRow = edit ? rows.find((r) => r.id === edit.id) ?? null : null;
+  const mon = weekStart(editRow?.due && dayNum(editRow.due) >= dayNum(today) ? (editRow.start && dayNum(editRow.start) > dayNum(today) ? editRow.start : editRow.due) : addDays(today, 7));
+  const plan = useWsQuery(['resources', 'plan', mon], () => resourcesApi.plan({ from: mon, weeks: 1, scope: 'Everyone' }), { enabled: edit?.col === 'owner', staleTime: 120_000, retry: false });
+  const loadFor = useCallback((id: string): Load => {
+    const name = data.people.find((p) => p.id === id)?.name ?? '';
+    const extra = editRow && editRow.ownerId !== id ? estimateLoad([{ ...editRow, ownerId: id }], id, mon).minutes : 0;
+    const cell = plan.data?.entitled ? plan.data.people.find((p) => p.userId === id)?.weeks.find((w) => w.weekStart === mon) : undefined;
+    if (cell && cell.capacityMinutes > 0) { const minutes = cell.bookedMinutes + extra; return { id, name, minutes, capacity: cell.capacityMinutes, pct: Math.round((minutes * 100) / cell.capacityMinutes), source: 'plan' }; }
+    const e = estimateLoad(work, id, mon);
+    const minutes = e.minutes + extra;
+    return { id, name, minutes, capacity: e.capacity, pct: Math.round((minutes * 100) / e.capacity), source: 'estimate' };
+  }, [data.people, editRow, mon, plan.data, work]);
 
-  // Fill down: the active column from the first selected row (or the row above) into the others.
-  const fillChange = (src: SheetRow, dst: SheetRow, c: ColId): SheetChange | null => {
-    if (!canEditCell(dst, c) || src.id === dst.id) return null;
-    switch (c) {
-      case 'owner': return src.ownerId ? (src.ownerId === dst.ownerId ? null : { id: dst.id, assigneeId: src.ownerId }) : dst.kind === 'project' || !dst.ownerId ? null : { id: dst.id, unassign: true };
-      case 'start': return src.start && src.start !== dst.start ? { id: dst.id, startDate: src.start } : null;
-      case 'due': return src.due && (src.due !== dst.due || src.dueTime !== dst.dueTime) ? { id: dst.id, dueDate: src.due, ...(src.dueTime && dst.kind !== 'project' ? { dueTime: src.dueTime } : {}) } : null;
-      case 'status': {
-        const target = statusesBy.get(dst.projectId) ?? [];
-        const s = target.find((x) => x.name === src.status) ?? target.find((x) => x.category === src.category);
-        return s && s.id !== dst.statusId ? { id: dst.id, statusId: s.id } : null;
-      }
-      case 'title': return src.title !== dst.title ? { id: dst.id, title: src.title } : null;
+  // ---- fill handle: drag the active cell's value down its column
+  const fillRef = useRef(fill); fillRef.current = fill;
+  const fillChange = (src: SheetRow, dst: SheetRow, col: ColId): SheetChange | null => {
+    if (!dst.canEdit || src.id === dst.id) return null;
+    switch (col) {
+      case 'owner': return src.ownerId ? (src.ownerId === dst.ownerId ? null : { id: dst.id, assigneeId: src.ownerId }) : dst.ownerId ? { id: dst.id, unassign: true } : null;
+      case 'dates': case 'due': return src.due && (src.due !== dst.due || (col === 'dates' && src.start !== dst.start)) ? { id: dst.id, dueDate: src.due, ...(col === 'dates' && src.start ? { startDate: src.start } : {}) } : null;
+      case 'status': { const t = statusesBy.get(dst.projectId) ?? []; const s = t.find((x) => x.name === src.status) ?? t.find((x) => x.category === src.category); return s && s.id !== dst.statusId ? { id: dst.id, statusId: s.id } : null; }
+      case 'progress': return src.progress != null && src.progress !== dst.progress ? { id: dst.id, progress: src.progress } : null;
       default: return null;
     }
   };
-  const fillDown = () => {
-    if (!activeCol) return;
-    const sel = nav.filter((x) => selected.has(x.id));
-    let changes: SheetChange[];
-    if (sel.length >= 2) changes = sel.slice(1).map((d) => fillChange(sel[0], d, activeCol.id)).filter((x): x is SheetChange => !!x);
-    else { const above = nav[r - 1]; changes = above && activeRow ? [fillChange(above, activeRow, activeCol.id)].filter((x): x is SheetChange => !!x) : []; }
-    if (changes.length === 0) { toast('Nothing to fill down here.', 'info'); return; }
-    void save(changes);
+  const startFill = (e: React.PointerEvent, r: SheetRow, col: ColId) => {
+    e.preventDefault(); e.stopPropagation();
+    setFill({ col, src: r.id, to: [] });
+    const srcIdx = nav.findIndex((x) => x.id === r.id);
+    const moveH = (ev: PointerEvent) => {
+      const tr = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>('tr[data-row]');
+      const idx = tr ? nav.findIndex((x) => x.id === tr.dataset.row) : -1;
+      setFill((f) => (f ? { ...f, to: idx > srcIdx ? nav.slice(srcIdx + 1, idx + 1).map((x) => x.id) : [] } : f));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', moveH); window.removeEventListener('pointerup', up);
+      const f = fillRef.current; setFill(null);
+      if (!f || f.to.length === 0) return;
+      const src = rows.find((x) => x.id === f.src)!, targets = f.to.map((id) => rows.find((x) => x.id === id)!).filter((x) => x && x.canEdit);
+      if (f.col === 'progress' && src.progress === 100 && targets.some((t) => statusKey(t) !== 'done' && checklistPct(t) != null && checklistPct(t) !== 100)) {
+        const last = cellEl(targets[targets.length - 1].id, 'progress')?.getBoundingClientRect();
+        setSmart({ src, targets, anchor: last ?? new DOMRect(window.innerWidth / 2, 300, 1, 1) });
+        return;
+      }
+      const changes = targets.map((t) => fillChange(src, t, f.col)).filter((x): x is SheetChange => !!x);
+      if (changes.length === 0) { toast('Nothing to fill there.', 'info'); return; }
+      void save(changes, `Filled ${changes.length} cell${changes.length === 1 ? '' : 's'}`);
+    };
+    window.addEventListener('pointermove', moveH); window.addEventListener('pointerup', up);
+  };
+  const smartValue = (t: SheetRow) => (statusKey(t) !== 'done' && checklistPct(t) != null ? checklistPct(t)! : 100);
+
+  // ---- drag a row to a new place, or into another project
+  const dragRef = useRef(drag); dragRef.current = drag;
+  const startDrag = (e: React.PointerEvent, r: SheetRow) => {
+    if (r.kind !== 'task' || !r.canEdit) return;
+    e.preventDefault(); e.stopPropagation();
+    setDrag({ id: r.id, x: e.clientX, y: e.clientY, line: null, target: null });
+    const tops = (pid: string) => rows.filter((x) => x.kind === 'task' && x.projectId === pid && x.id !== r.id);
+    const moveH = (ev: PointerEvent) => {
+      const el = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>('tr[data-row], tr[data-group]');
+      let line = null, target = null;
+      const table = wrap.current?.querySelector('table')?.getBoundingClientRect();
+      if (el && table) {
+        const rect = el.getBoundingClientRect(), pid = el.dataset.project!;
+        const list = tops(pid);
+        if (el.dataset.group) { line = { top: rect.bottom, left: table.left + 24, width: table.width - 48 }; target = { projectId: pid, afterId: null, beforeId: list[0]?.id ?? null }; }
+        else {
+          const over = rows.find((x) => x.id === el.dataset.row)!;
+          const anchorId = over.kind === 'subtask' && over.parentId ? over.parentId : over.id;
+          const i = list.findIndex((x) => x.id === anchorId);
+          const before = ev.clientY < rect.top + rect.height / 2 && over.kind !== 'subtask';
+          if (anchorId !== r.id && i >= 0) {
+            line = { top: before ? rect.top : rect.bottom, left: table.left + 24, width: table.width - 48 };
+            target = before ? { projectId: pid, afterId: list[i - 1]?.id ?? null, beforeId: list[i].id } : { projectId: pid, afterId: list[i].id, beforeId: list[i + 1]?.id ?? null };
+          }
+        }
+      }
+      setDrag((d) => (d ? { ...d, x: ev.clientX, y: ev.clientY, line, target } : d));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', moveH); window.removeEventListener('pointerup', up);
+      const d = dragRef.current; setDrag(null);
+      if (d?.target) void move({ id: d.id, ...d.target });
+    };
+    window.addEventListener('pointermove', moveH); window.addEventListener('pointerup', up);
+  };
+  const dragRow = drag ? rows.find((x) => x.id === drag.id) : null;
+  const dragTo = drag?.target && dragRow && drag.target.projectId !== dragRow.projectId ? rows.find((x) => x.id === drag.target!.projectId) : null;
+
+  // ---- keyboard: arrows move, Enter/F2 edits, typing edits (title, owner), Esc leaves the inspector
+  const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (edit || e.target !== wrap.current) return;
+    const ri = act ? nav.findIndex((x) => x.id === act.id) : -1, ci = act ? navCols.indexOf(act.col) : 0;
+    const go = (dr: number, dc: number) => {
+      const r2 = nav[Math.max(0, Math.min(nav.length - 1, (ri < 0 ? 0 : ri) + dr))]; const c2 = navCols[Math.max(0, Math.min(navCols.length - 1, Math.max(0, ci) + dc))];
+      if (r2 && c2) setAct({ id: r2.id, col: c2 });
+    };
+    const r = act ? rows.find((x) => x.id === act.id) : null;
+    if (e.key === 'ArrowDown') { e.preventDefault(); go(1, 0); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); go(-1, 0); }
+    else if (e.key === 'ArrowRight' || (e.key === 'Tab' && !e.shiftKey)) { e.preventDefault(); go(0, 1); }
+    else if (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) { e.preventDefault(); go(0, -1); }
+    else if ((e.key === 'Enter' || e.key === 'F2') && r && act) { e.preventDefault(); if (act.col === 'task' && e.key === 'Enter') setInspect(r.id); else open(r, act.col); }
+    else if (e.key === ' ' && r) { e.preventDefault(); setInspect(inspectId === r.id ? null : r.id); }
+    else if (e.key === 'Escape') { if (inspectId) setInspect(null); else setAct(null); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && r && act) {
+      e.preventDefault(); const above = nav[ri - 1]; const c = above ? fillChange(above, r, act.col) : null;
+      if (c) void save([c], 'Filled 1 cell'); else toast('Nothing to fill down here.', 'info');
+    }
+    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && r && act && (act.col === 'task' || act.col === 'owner')) { e.preventDefault(); open(r, act.col, null, e.key); }
   };
 
-  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (editing) return;
-    if (e.target !== wrap.current) return;
-    const k = e.key;
-    if ((e.ctrlKey || e.metaKey) && (k === 'd' || k === 'D')) { e.preventDefault(); fillDown(); return; }
-    if (k === 'ArrowDown') { e.preventDefault(); if (e.shiftKey && activeRow) extendSel(r + 1); move(1, 0); }
-    else if (k === 'ArrowUp') { e.preventDefault(); if (e.shiftKey && activeRow) extendSel(r - 1); move(-1, 0); }
-    else if (k === 'ArrowRight') { e.preventDefault(); move(0, 1); }
-    else if (k === 'ArrowLeft') { e.preventDefault(); move(0, -1); }
-    else if (k === 'Tab') { e.preventDefault(); move(0, e.shiftKey ? -1 : 1); }
-    else if (k === 'Home') { e.preventDefault(); setActive((a) => ({ ...a, c: 0 })); }
-    else if (k === 'End') { e.preventDefault(); setActive((a) => ({ ...a, c: columns.length - 1 })); }
-    else if (k === 'Enter' || k === 'F2') { e.preventDefault(); startEdit(null); }
-    else if (k === ' ' && activeRow) { e.preventDefault(); toggleSel(activeRow.id, r, e.shiftKey); }
-    else if (k === 'Escape') { setSelected(new Set()); }
-    else if (k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); startEdit(k); }
-  };
-  const extendSel = (to: number) => {
-    const from = anchor ?? r; const [a, b] = [Math.min(from, to), Math.max(from, to)];
-    if (anchor == null) setAnchor(r);
-    setSelected(new Set(nav.slice(Math.max(0, a), b + 1).filter((x) => x.kind !== 'project').map((x) => x.id)));
-  };
-  const toggleSel = (id: string, index: number, shift: boolean) => {
-    if (shift && anchor != null) { const [a, b] = [Math.min(anchor, index), Math.max(anchor, index)]; setSelected(new Set([...selected, ...nav.slice(a, b + 1).filter((x) => x.kind !== 'project').map((x) => x.id)])); return; }
-    const n = new Set(selected); if (n.has(id)) n.delete(id); else n.add(id); setSelected(n); setAnchor(index);
-  };
-  const selRows = nav.filter((x) => selected.has(x.id));
-
-  // Mini timeline (Grid + timeline): range of the visible dates, today line, meetings as diamonds.
-  const g = useMemo(() => {
+  const gantt = useMemo(() => {
     const ds = nav.flatMap((x) => [x.start, x.due]).filter((x): x is string => !!x).map(dayNum);
     if (!ds.length) return null;
     const a = Math.min(...ds, dayNum(today)) - 3, b = Math.max(...ds, dayNum(today)) + 3;
-    return { a, span: Math.max(1, b - a), x: (iso: string) => ((dayNum(iso) - a) / Math.max(1, b - a)) * 100 };
+    return { a, b, x: (iso: string) => ((dayNum(iso) - a) / Math.max(1, b - a)) * 100 };
   }, [nav, today]);
-  const t = totals(display);
-  const totalW = SEL_W + columns.reduce((a, c) => a + c.w, 0) + (layout === 'gridTimeline' ? GANTT_W : 0);
+  const cursorAt = (id: string, col: ColId) => others.filter((o) => o.cell === `${id}:${col}`);
 
+  const cell = (r: SheetRow, col: ColId, level: number): ReactNode => {
+    const k = statusKey(r);
+    switch (col) {
+      case 'task': {
+        const mt = meetings.byTask.get(r.id);
+        return (
+          <div className="ps3-task" style={{ paddingLeft: level * 18 }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="ps3-ttl"><span className="ps3-key">{r.key}</span>{edit?.id === r.id && edit.col === 'title'
+                ? <TitleInput r={r} draft={edit.draft} onDone={(t) => done(t !== null && t !== r.title ? [{ id: r.id, title: t }] : null, `Renamed ${r.key}`)} />
+                : <b title={r.title}>{r.title}</b>}</div>
+              {(r.dependsOn.length > 0 || mt) && <div className="ps3-sub" style={{ paddingLeft: r.key.length * 6.6 + 8 }}>
+                {r.dependsOn.length > 0 && <span>↳ after {r.dependsOn.join(', ')}</span>}
+                {mt && <span className="m">◆ {mt.title}{mt.nextAt ? ` · ${new Date(mt.nextAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}` : ''}</span>}</div>}
+            </div>
+          </div>
+        );
+      }
+      case 'owner': return <Owner id={r.ownerId} name={r.owner} />;
+      case 'dates': {
+        const s = slipDays(r, today);
+        return <span className="ps3-num">{r.start && <span className="ps3-dim">{dm(r.start)} → </span>}<span style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{dm(r.due) || <span className="ps3-dim">No date</span>}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}</span>;
+      }
+      case 'due': { const s = slipDays(r, today); return <><span className="ps3-num" style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{dm(r.due) || '—'}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}</>; }
+      case 'status': return <Status r={r} />;
+      case 'progress': {
+        const pv = smart && smart.targets.some((t) => t.id === r.id) ? smartValue(r) : fill?.col === 'progress' && fill.to.includes(r.id) ? rows.find((x) => x.id === fill.src)?.progress ?? r.progress : r.progress;
+        return <Progress value={pv} k={k} />;
+      }
+      case 'notes': return <div className="ps3-note">{r.notes ? <NoteText text={r.notes} /> : <span className="ph">Add a note…<span className="ps3-slash">/</span></span>}</div>;
+      case 'gantt': {
+        if (!gantt) return null;
+        const s = r.start ?? r.due;
+        return <div className="ps3-gantt" aria-hidden="true">{s && r.due && <b className={k} style={{ left: `${gantt.x(s)}%`, width: `max(6px, ${gantt.x(r.due) - gantt.x(s)}%)` }} />}<span className="today" style={{ left: `${gantt.x(today)}%` }} /></div>;
+      }
+    }
+  };
+
+  const half = Math.ceil(cols.length / 2);
   return (
-    <>
-      <div className="psh-frame" ref={frame} style={{ maxHeight: maxH }}>
-        <div ref={wrap} className="psh-scroll" role="grid" aria-label="Plan sheet" aria-rowcount={nav.length + 2} aria-colcount={columns.length + 1} tabIndex={0} onKeyDown={onKey}
-          aria-activedescendant={activeRow && activeCol ? `psh-${activeRow.id}-${activeCol.id}` : undefined}>
-          <table className="psh-table" style={{ width: totalW }}>
-            <colgroup><col style={{ width: SEL_W }} />{columns.map((c) => <col key={c.id} style={{ width: c.w }} />)}{layout === 'gridTimeline' && <col style={{ width: GANTT_W }} />}</colgroup>
-            <thead>
-              <tr role="row">
-                <th className="frz" style={{ left: 0 }} role="columnheader"><span className="psh-vh">Select</span></th>
-                {columns.map((c, i) => {
-                  const sorted = cfg.sort?.col === c.id ? (cfg.sort.dir === 1 ? 'ascending' : 'descending') : 'none';
-                  const filtered = (cfg.filters.values[c.id]?.length ?? 0) > 0;
-                  return (
-                    <th key={c.id} role="columnheader" aria-sort={sorted} className={`${c.frozen ? 'frz' : ''} ${c.id === 'title' ? 'frzline' : ''} ${c.num ? 'num' : ''}`} style={c.frozen ? { left: lefts[i] } : undefined}>
-                      <span className="psh-th">{c.label}{sorted !== 'none' && <em>{sorted === 'ascending' ? '↑' : '↓'}</em>}
-                        <button type="button" className={`psh-th-btn ${filtered ? 'on' : ''}`} aria-label={`Sort and filter ${c.label}`} aria-haspopup="menu" aria-expanded={headMenu === c.id}
-                          onClick={() => setHeadMenu(headMenu === c.id ? null : c.id)}><Icon name="chevronD" size={11} /></button>
-                      </span>
-                      {headMenu === c.id && <HeadMenu col={c} cfg={cfg} rows={rowsAll} setCfg={setCfg} onClose={() => setHeadMenu(null)} />}
-                    </th>
-                  );
-                })}
-                {layout === 'gridTimeline' && <th role="columnheader">{g ? `${dm(new Date(g.a * 86_400_000).toISOString().slice(0, 10))} – ${dm(new Date((g.a + g.span) * 86_400_000).toISOString().slice(0, 10))}` : 'Timeline'}</th>}
-              </tr>
-            </thead>
+    <div className="ps3-body">
+      <div className="ps3-sheet">
+        <div ref={wrap} className="ps3-scroll" style={{ '--ps3-h': `${h}px` } as CSSProperties} role="grid" aria-label="Plan sheet" tabIndex={0} onKeyDown={onKey}
+          aria-rowcount={nav.length + 1} aria-colcount={cols.length}>
+          <table className="ps3-table">
+            <colgroup>{cols.map(([id, , w]) => <col key={id} style={{ width: `${w}%` }} />)}</colgroup>
+            <thead><tr role="row">{cols.map(([id, label]) => <th key={id} role="columnheader">{id === 'gantt' && gantt
+              ? <span className="ps3-gantt-h"><span>{dm(new Date(gantt.a * 86_400_000).toISOString().slice(0, 10))}</span><span>Today</span><span>{dm(new Date(gantt.b * 86_400_000).toISOString().slice(0, 10))}</span></span> : label}</th>)}</tr></thead>
             <tbody>
-              {(() => { let n = -1; return display.map((d) => {
-                if (d.type === 'group') return (
-                  <tr key={d.id} className="grp" role="row">
-                    <td className="frz" style={{ left: 0 }}><button type="button" className="psh-tw" aria-expanded={!collapsed.has(d.id)} aria-label={`${collapsed.has(d.id) ? 'Expand' : 'Collapse'} ${d.label}`} onClick={() => toggle(d.id)}>{collapsed.has(d.id) ? '▸' : '▾'}</button></td>
-                    <td className="frz" style={{ left: lefts[0] }} />
-                    <td className="frz frzline" style={{ left: lefts[1] }} role="rowheader" aria-level={1}>{d.label} <span className="psh-muted">· {d.count} rows</span></td>
-                    <td colSpan={columns.length - 2 + (layout === 'gridTimeline' ? 1 : 0)} />
-                  </tr>
-                );
-                n++;
-                const row = d.row; const idx = n;
-                const isSel = selected.has(row.id);
+              {display.length === 0 && <tr><td colSpan={cols.length} className="ps3-empty">Nothing matches the filter.</td></tr>}
+              {display.map((d) => {
+                if (d.type === 'g') {
+                  const p = d.p, open0 = d.all.filter(isOpen);
+                  const late = open0.filter((x) => x.late).length, risk = open0.filter((x) => !x.late && x.atRisk).length;
+                  const pct = p.progress ?? (d.all.length ? Math.round(d.all.reduce((a, x) => a + (x.progress ?? 0), 0) / d.all.length) : 0);
+                  const tone = late || p.late ? 'var(--p-red)' : risk || p.atRisk ? 'var(--p-orange)' : pct >= 100 ? 'var(--p-green)' : 'var(--p-blue)';
+                  const summary = late ? `${late} late` : risk ? `${risk} at risk` : p.late ? 'Late' : p.atRisk ? 'At risk' : 'On track';
+                  const owners = new Map<string, string | null>();
+                  for (const x of [p, ...d.all]) if (x.ownerId && !owners.has(x.ownerId) && owners.size < 3) owners.set(x.ownerId, x.owner);
+                  return (
+                    <tr key={p.id} className="g" role="row" data-group={p.id} data-project={p.id} aria-level={1}>
+                      <td colSpan={half}><div className="ps3-gt">
+                        <button type="button" className="tw" aria-expanded={!collapsed.has(p.id)} aria-label={`${collapsed.has(p.id) ? 'Expand' : 'Collapse'} ${p.title}`} onClick={() => toggle(p.id)}>{collapsed.has(p.id) ? '▸' : '▾'}</button>
+                        <Ring pct={pct} color={tone} />{p.title}<span className="ps3-gm">{d.shown} · {pct}%</span></div></td>
+                      <td colSpan={cols.length - half}><div className="ps3-gm" style={{ justifyContent: 'flex-end' }}>
+                        <span style={{ color: tone }}>{summary}</span>{p.due && <span>Ends {dm(p.due)}</span>}
+                        <span className="ps3-pres">{[...owners.entries()].map(([id, name]) => <Av key={id} id={id} name={name} size={18} />)}</span></div></td>
+                    </tr>
+                  );
+                }
+                const r = d.r;
                 return (
-                  <tr key={row.id} role="row" aria-selected={isSel} aria-level={d.level + 1} className={`${row.kind === 'project' ? 'grp' : ''} ${row.kind === 'subtask' ? 'subr' : ''} ${isSel ? 'sel' : ''}`}>
-                    <td className="frz sel-cell" style={{ left: 0 }}>
-                      {row.kind === 'project'
-                        ? <button type="button" className="psh-tw" aria-expanded={!collapsed.has(row.id)} aria-label={`${collapsed.has(row.id) ? 'Expand' : 'Collapse'} ${row.title}`} onClick={() => toggle(row.id)}>{collapsed.has(row.id) ? '▸' : '▾'}</button>
-                        : <label className="psh-rowsel"><input type="checkbox" checked={isSel} aria-label={`Select ${row.key} ${row.title}`}
-                            onChange={() => undefined} onClick={(e) => toggleSel(row.id, idx, e.shiftKey)} /><span className="psh-check-ui" aria-hidden="true">{isSel ? '✓' : ''}</span><span className="psh-rownum" aria-hidden="true">{idx + 1}</span></label>}
-                    </td>
-                    {columns.map((c, ci) => {
-                      const isActive = idx === r && ci === active.c;
-                      const isEditing = editing?.id === row.id && editing.col === c.id;
+                  <tr key={r.id} role="row" data-row={r.id} data-project={r.projectId} className={`${inspectId === r.id ? 'sel' : ''} ${drag?.id === r.id ? 'dragging' : ''}`} aria-selected={inspectId === r.id}>
+                    {cols.map(([col]) => {
+                      const isAct = act?.id === r.id && act.col === col;
+                      const inRange = fill?.col === col && fill.to.includes(r.id) || (smart && col === 'progress' && smart.targets.some((t) => t.id === r.id));
+                      const curs = cursorAt(r.id, col);
                       return (
-                        <td key={c.id} id={`psh-${row.id}-${c.id}`} role="gridcell" data-active={isActive} aria-readonly={!canEditCell(row, c.id)}
-                          className={`${c.frozen ? 'frz' : ''} ${c.id === 'title' ? 'frzline t' : ''} ${c.num ? 'num' : ''} ${isActive ? (isEditing ? 'cell-edit' : 'cell-focus') : ''} ${dueClass(row, c.id)}`}
-                          style={c.frozen ? { left: lefts[ci] } : undefined}
-                          onMouseDown={() => setActive({ r: idx, c: ci })} onDoubleClick={() => { setActive({ r: idx, c: ci }); if (canEditCell(row, c.id)) setEditing({ id: row.id, col: c.id, draft: null }); }}>
-                          <Cell r={row} c={c.id} today={today} level={d.level} childCount={d.childCount} />
-                          {isActive && !isEditing && canEditCell(row, c.id) && <span className="psh-fillh" aria-hidden="true" title="Ctrl D fills down" />}
-                          {isEditing && <Editor r={row} col={c.id} draft={editing!.draft} data={data} statuses={statusesBy.get(row.projectId) ?? []} today={today} onDone={finish} />}
+                        <td key={col} role="gridcell" data-cell={`${r.id}:${col}`} className={`${isAct || (edit?.id === r.id && EDITOR_OF[col] === edit.col) ? 'act' : ''} ${inRange ? 'rng' : ''}`}
+                          aria-selected={isAct}
+                          onMouseDown={(e) => { if ((e.target as HTMLElement).closest('a, .ps3-grip, .ps3-handle, input')) return; setAct({ id: r.id, col }); }}
+                          onClick={(e) => {
+                            if ((e.target as HTMLElement).closest('a, .ps3-grip, .ps3-handle, input')) return;
+                            if (col === 'task' || col === 'gantt') setInspect(r.id); else if (r.canEdit) open(r, col, e.currentTarget);
+                          }}
+                          onDoubleClick={(e) => { if (col === 'task') open(r, 'task', e.currentTarget); }}>
+                          {col === 'task' && r.kind === 'task' && r.canEdit && <button type="button" className="ps3-grip" aria-label={`Drag ${r.key} to move it`} onPointerDown={(e) => startDrag(e, r)}>⋮⋮</button>}
+                          {cell(r, col, d.level)}
+                          {isAct && !edit && FILLABLE.includes(col) && r.canEdit && <span className="ps3-handle" aria-hidden="true" title="Drag down to fill" onPointerDown={(e) => startFill(e, r, col)} />}
+                          {curs.map((o) => <span key={o.id}><span className="ps3-cbox" style={{ boxShadow: `inset 0 0 0 1.5px ${personColor(o.id)}` }} /><span className="ps3-cursor" style={{ background: personColor(o.id) }}>{o.name}</span></span>)}
                         </td>
                       );
                     })}
-                    {layout === 'gridTimeline' && <td className="psh-gcell"><MiniBar r={row} g={g} today={today} /></td>}
                   </tr>
                 );
-              }); })()}
-              <tr className="tot" role="row">
-                <td className="frz" style={{ left: 0 }} /><td className="frz" style={{ left: lefts[0] }} />
-                <td className="frz frzline" style={{ left: lefts[1] }}>{t.rows} rows · {t.projects} project{t.projects === 1 ? '' : 's'}</td>
-                {columns.slice(2).map((c) => <td key={c.id} className={c.num ? 'num' : ''}>{totalCell(c.id, t)}</td>)}
-                {layout === 'gridTimeline' && <td />}
-              </tr>
+              })}
             </tbody>
           </table>
         </div>
       </div>
-      {selRows.length > 0 && (
-        <div className="psh-bulk" role="toolbar" aria-label="Selected rows">
-          <b>{selRows.length} row{selRows.length === 1 ? '' : 's'} selected</b>
-          <span className="psh-rel"><button type="button" className="psh-bbtn" aria-expanded={bulk === 'owner'} onClick={() => setBulk(bulk === 'owner' ? null : 'owner')}>Owner</button>
-            {bulk === 'owner' && <OwnerList people={data.people} allowNone label="Owner for the selected rows" className="up"
-              onPick={(id) => { setBulk(null); void save(selRows.filter((x) => x.canEdit && x.kind !== 'meeting').map((x) => (id ? { id: x.id, assigneeId: id } : { id: x.id, unassign: true })).filter((c) => !(c.unassign && findRow(selRows, c.id)?.kind === 'project'))); }}
-              onClose={() => setBulk(null)} />}</span>
-          <span className="psh-rel"><button type="button" className="psh-bbtn" aria-expanded={bulk === 'dates'} onClick={() => setBulk(bulk === 'dates' ? null : 'dates')}>Dates…</button>
-            {bulk === 'dates' && <DatesPop today={today} onClose={() => setBulk(null)} onApply={(o) => {
-              setBulk(null);
-              void save(selRows.filter((x) => x.canEdit && x.kind !== 'meeting').map((x) => {
-                const c: SheetChange = { id: x.id };
-                if (o.shift) { if (x.due) c.dueDate = isoAdd(x.due, o.shift); if (x.start) c.startDate = isoAdd(x.start, o.shift); }
-                if (o.start) c.startDate = o.start; if (o.due) c.dueDate = o.due;
-                return c;
-              }).filter((c) => c.dueDate || c.startDate));
-            }} />}</span>
-          <span className="psh-rel"><button type="button" className="psh-bbtn" aria-expanded={bulk === 'status'} onClick={() => setBulk(bulk === 'status' ? null : 'status')}>Status</button>
-            {bulk === 'status' && (
-              <Pop label="Status for the selected rows" onClose={() => setBulk(null)} className="psh-menu up">
-                {[['Todo', 'Not started'], ['Active', 'In progress'], ['Done', 'Done']].map(([cat, label]) => (
-                  <button key={cat} type="button" role="menuitem" className="mi" onClick={() => {
-                    setBulk(null);
-                    void save(selRows.filter((x) => x.canEdit && (x.kind === 'task' || x.kind === 'subtask')).map((x) => ({ id: x.id, statusId: (statusesBy.get(x.projectId) ?? []).find((s) => s.category === cat)?.id ?? '' })).filter((c) => c.statusId));
-                  }}>{label}</button>
-                ))}
-              </Pop>
-            )}</span>
-          <button type="button" className="psh-bbtn" onClick={fillDown}>Fill down ⌃D</button>
-          <span className="psh-rel"><button type="button" className="psh-bbtn" onClick={() => setBulk(bulk === 'dates' ? null : 'dates')}>Move</button></span>
-          <button type="button" className="psh-bbtn danger" onClick={async () => {
-            const ids = selRows.filter((x) => x.kind === 'task' || x.kind === 'subtask').map((x) => x.id);
-            if (!ids.length || !(await confirmDialog({ title: `Delete ${ids.length} item${ids.length === 1 ? '' : 's'}?`, message: 'They go to the bin and can be restored from there.', confirmText: 'Delete', danger: true }))) return;
-            try { const res = await bulkApi.run({ ids, delete: true }); toast(res.failed.length ? `${res.changed} deleted · ${res.failed.length} could not be` : `${res.changed} deleted.`, res.failed.length ? 'error' : 'success'); setSelected(new Set()); await refresh(); }
-            catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete.', 'error'); }
-          }}>Delete</button>
-          <button type="button" className="psh-bbtn" aria-label="Clear the selection" onClick={() => setSelected(new Set())}>✕</button>
-        </div>
+      {inspected && <Inspector h={h} r={inspected} rows={rows} project={rows.find((x) => x.id === inspected.projectId)} today={today} meeting={meetings.byProject.get(inspected.projectId) ?? null}
+        onClose={() => setInspect(null)} onChanged={() => void refresh()} onEdit={(col, anchor) => setEdit({ id: inspected.id, col, anchor })} />}
+
+      {edit && editRow && edit.col === 'dates' && <DateEditor r={editRow} rows={rows} today={today} anchor={edit.anchor} onClose={() => done(null)} onSave={(c, label) => done(c, label)} />}
+      {edit && editRow && edit.col === 'owner' && <PeoplePicker r={editRow} people={data.people} loadFor={loadFor} week={weekLabel(mon)} mon={mon} anchor={edit.anchor} initial={edit.draft} onWarn={onWarn}
+        onClose={() => done(null)} onPick={(id) => done(id === editRow.ownerId ? null : [id ? { id: editRow.id, assigneeId: id } : { id: editRow.id, unassign: true }], `Gave ${editRow.key} to ${data.people.find((p) => p.id === id)?.name ?? 'nobody'}`)} />}
+      {edit && editRow && edit.col === 'status' && <StatusPicker r={editRow} statuses={statusesBy.get(editRow.projectId) ?? []} anchor={edit.anchor} onClose={() => done(null)}
+        onPick={(sid) => done(sid === editRow.statusId ? null : [{ id: editRow.id, statusId: sid }], `${editRow.key} → ${data.statuses.find((s) => s.id === sid)?.name ?? 'status'}`)} />}
+      {edit && editRow && edit.col === 'progress' && <ProgressEditor r={editRow} anchor={edit.anchor} onClose={() => done(null)}
+        onSave={(v) => done(v === null ? [{ id: editRow.id, clearProgress: true }] : v === editRow.progress && editRow.manualProgress ? null : [{ id: editRow.id, progress: v }], `${editRow.key} progress ${v ?? 'worked out'}${v === null ? '' : '%'}`)} />}
+      {edit && editRow && edit.col === 'notes' && <NotesEditor r={editRow} people={data.people} anchor={edit.anchor} onClose={() => done(null)}
+        onSave={(t) => done(t === (editRow.notes ?? '') ? null : [{ id: editRow.id, notes: t }], `Note on ${editRow.key}`)} />}
+
+      {smart && (
+        <Floating anchor={smart.anchor} onClose={() => setSmart(null)} width={400} label="Smart fill" style={{ padding: '14px 16px' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><span className="ps3-orb sm" aria-hidden="true" /><b>Fill progress from status?</b></div>
+          <div className="ps3-dim" style={{ fontSize: 12, lineHeight: 1.5, margin: '8px 0 10px' }}>
+            You’re dragging {smart.src.progress}% down {smart.targets.length + 1} rows. {listKeys(smart.targets.filter((t) => smartValue(t) !== 100).map((t) => t.key))} {smart.targets.filter((t) => smartValue(t) !== 100).length === 1 ? 'isn’t' : 'aren’t'} done — Aura can fill from each task’s checklist instead.</div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{smart.src.key}</span><span>{smart.src.progress}% <span className="ps3-dim">keep</span></span></div>
+            {smart.targets.map((t) => { const v = smartValue(t); return <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between' }}><span>{t.key}</span>
+              <span><s className="ps3-dim">{smart.src.progress}%</s> → <b style={{ color: 'var(--p-blue)' }}>{v}%</b> {v !== 100 && <span className="ps3-dim">{t.checklistDone} of {t.checklistTotal} items</span>}</span></div>; })}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+            <button type="button" className="ps3-qc" onClick={() => { const s = smart; setSmart(null); void save(s.targets.map((t) => ({ id: t.id, progress: s.src.progress! })), `Filled ${s.targets.length} cells`); }}>Fill {smart.src.progress}% anyway</button>
+            <button type="button" className="ps3-qc pri" onClick={() => { const s = smart; setSmart(null); void save(s.targets.map((t) => ({ id: t.id, progress: smartValue(t) })), `Smart-filled ${s.targets.length} cells`); }}>Use smart fill</button>
+          </div>
+        </Floating>
       )}
-    </>
-  );
-}
-const findRow = (list: SheetRow[], id: string) => list.find((x) => x.id === id);
-const isoAdd = (iso: string, n: number) => new Date((dayNum(iso) + n) * 86_400_000).toISOString().slice(0, 10);
-const dueClass = (r: SheetRow, c: ColId) => (c === 'due' && r.kind !== 'meeting' ? (r.late ? 'late' : r.atRisk ? 'risk' : '') : '');
-
-function totalCell(c: ColId, t: ReturnType<typeof totals>): ReactNode {
-  switch (c) {
-    case 'owner': return `${t.owners} owner${t.owners === 1 ? '' : 's'}`;
-    case 'start': return dm(t.start);
-    case 'due': return dm(t.end);
-    case 'dur': return t.spanDays != null ? `${t.spanDays}d` : '';
-    case 'status': return <>{t.late > 0 && <span className="psh-chip red">{t.late} late</span>} {t.risk > 0 && <span className="psh-chip orange">{t.risk} risk</span>}</>;
-    case 'progress': return t.avg != null ? `${t.avg}% avg` : '';
-    case 'meeting': return t.meetings ? `${t.meetings} meeting${t.meetings === 1 ? '' : 's'}` : '';
-    default: return '';
-  }
-}
-
-function Cell({ r, c, today, level, childCount }: { r: SheetRow; c: ColId; today: string; level: number; childCount?: number }) {
-  const project = r.kind === 'project';
-  switch (c) {
-    case 'key': return <span className="psh-key">{r.kind === 'meeting' ? 'MTG' : r.key}</span>;
-    case 'title': return (
-      <span className="psh-title" style={{ paddingLeft: project ? 0 : Math.max(0, level - 1) * 20 }} title={r.title}>
-        {r.kind === 'meeting' && <i className="psh-dia" aria-label="Meeting" />}{project ? <b>{r.title}</b> : r.title}
-        {project && childCount != null && <span className="psh-muted"> · {childCount} rows</span>}
-      </span>
-    );
-    case 'owner': return <Who id={r.ownerId} name={r.owner} bold={project} />;
-    case 'start': return <>{cellText(r, 'start')}</>;
-    case 'due': return r.kind === 'meeting' ? null : <span>{cellText(r, 'due')}{r.late && !project && <span className="psh-vh"> · {lateDays(r, today)} days late</span>}{r.atRisk && !r.late && <span className="psh-vh"> · at risk</span>}</span>;
-    case 'dur': return <>{cellText(r, 'dur')}</>;
-    case 'status': return <StatusChip r={r} />;
-    case 'progress': return r.progress == null || r.kind === 'meeting' ? null : <span className="psh-prog"><span className="bar"><i style={{ width: `${r.progress}%` }} className={r.progress === 100 && !project ? 'done' : ''} /></span>{r.progress}%</span>;
-    case 'deps': return <span className="psh-key">{r.kind === 'task' || r.kind === 'subtask' ? r.dependsOn.join(', ') || '—' : ''}</span>;
-    case 'meeting': return r.cadence ? <span className="psh-mt"><Cadence c={r.cadence} /> <span>{nextText(r.nextAt)}</span></span> : null;
-    case 'updated': return <span className="psh-muted" title={r.updatedBy ? `${r.updatedBy}${r.updatedAt ? ` · ${new Date(r.updatedAt).toLocaleString('en-GB')}` : ''}` : undefined}>{project ? '' : ago(r.updatedAt)}</span>;
-    case 'notes': return <span className={`psh-notes ${r.late && !project ? 'late' : project && r.atRisk ? 'risk' : ''}`} title={r.notes ?? undefined}>{r.notes}</span>;
-  }
-}
-
-function MiniBar({ r, g, today }: { r: SheetRow; g: { x: (iso: string) => number } | null; today: string }) {
-  if (!g) return null;
-  const tone = r.late ? 'r' : r.atRisk ? 'o' : r.progress === 100 || r.category === 'Done' ? 'g' : '';
-  return (
-    <div className="psh-gantt" aria-hidden="true">
-      {r.kind === 'meeting' ? (r.nextAt && <b className="m" style={{ left: `${g.x(r.nextAt.slice(0, 10))}%` }} />)
-        : r.due && <b className={tone} style={{ left: `${g.x(r.start ?? r.due)}%`, width: `max(6px, ${g.x(r.due) - g.x(r.start ?? r.due)}%)` }} />}
-      <span className="today" style={{ left: `${g.x(today)}%` }} />
-    </div>
-  );
-}
-
-function HeadMenu({ col, cfg, rows: all, setCfg, onClose }: { col: Col; cfg: SheetConfig; rows: SheetRow[]; setCfg: (c: SheetConfig) => void; onClose: () => void }) {
-  const values = useMemo(() => [...new Set(all.filter(isItem).map((r) => cellText(r, col.id)).filter(Boolean))].sort().slice(0, 40), [all, col.id]);
-  const chosen = cfg.filters.values[col.id] ?? [];
-  const setVals = (v: string[]) => setCfg({ ...cfg, filters: { ...cfg.filters, values: { ...cfg.filters.values, [col.id]: v } } });
-  const filterable = ['owner', 'status', 'deps', 'meeting', 'key'].includes(col.id);
-  return (
-    <Pop label={`${col.label} sort and filter`} onClose={onClose} className="psh-menu psh-headmenu">
-      <div className="hd">SORT</div>
-      <button type="button" role="menuitem" className={`mi ${cfg.sort?.col === col.id && cfg.sort.dir === 1 ? 'on' : ''}`} onClick={() => { setCfg({ ...cfg, sort: { col: col.id, dir: 1 } }); onClose(); }}>{['start', 'due'].includes(col.id) ? 'Earliest first' : 'A → Z'}</button>
-      <button type="button" role="menuitem" className={`mi ${cfg.sort?.col === col.id && cfg.sort.dir === -1 ? 'on' : ''}`} onClick={() => { setCfg({ ...cfg, sort: { col: col.id, dir: -1 } }); onClose(); }}>{['start', 'due'].includes(col.id) ? 'Latest first' : 'Z → A'}</button>
-      {cfg.sort?.col === col.id && <button type="button" role="menuitem" className="mi" onClick={() => { setCfg({ ...cfg, sort: null }); onClose(); }}>Clear sort</button>}
-      {col.id === 'due' && <><hr /><button type="button" role="menuitemcheckbox" aria-checked={cfg.filters.lateOnly} className="mi" onClick={() => setCfg({ ...cfg, filters: { ...cfg.filters, lateOnly: !cfg.filters.lateOnly } })}>
-        <span className={`psh-check ${cfg.filters.lateOnly ? 'on' : ''}`}>{cfg.filters.lateOnly && '✓'}</span>Late only</button></>}
-      {filterable && values.length > 0 && <>
-        <hr /><div className="hd">SHOW</div>
-        <div className="psh-vals">{values.map((v) => {
-          const on = chosen.includes(v);
-          return <button key={v} type="button" role="menuitemcheckbox" aria-checked={on} className="mi" onClick={() => setVals(on ? chosen.filter((x) => x !== v) : [...chosen, v])}>
-            <span className={`psh-check ${on ? 'on' : ''}`}>{on && '✓'}</span>{v}</button>;
-        })}</div>
-        {chosen.length > 0 && <button type="button" className="mi" onClick={() => setVals([])}>Clear filter</button>}
+      {drag && dragRow && <>
+        {drag.line && <div className="ps3-drop" style={{ top: drag.line.top - 1, left: drag.line.left, width: drag.line.width }} />}
+        <div className="ps3-dragrow ps3-float" style={{ left: drag.x - 120, top: drag.y - 18 }}><span className="ps3-dim">⋮⋮</span><span className="ps3-key">{dragRow.key}</span><b style={{ fontWeight: 500 }}>{dragRow.title}</b><span className="ps3-sp" />
+          {dragTo && <span className="ps3-dim" style={{ fontSize: 12 }}>Move to {dragTo.title}</span>}</div>
       </>}
-    </Pop>
+    </div>
   );
 }
+const listKeys = (k: string[]) => (k.length <= 1 ? k.join('') : `${k.slice(0, -1).join(', ')} and ${k[k.length - 1]}`);
 
-// ---------------------------------------------------------------- editors
-
-function OwnerList({ people, allowNone, label, initial = '', onPick, onClose, onTab, className = '' }: {
-  people: { id: string; name: string }[]; allowNone?: boolean; label: string; initial?: string; onPick: (id: string | null) => void; onClose: () => void; onTab?: (id: string | null, back: boolean) => void; className?: string;
-}) {
-  const [qText, setQ] = useState(initial);
-  const [i, setI] = useState(0);
-  const list = useMemo(() => {
-    const t = qText.trim().toLowerCase();
-    if (!t) return people.slice(0, 8);
-    // Name starts with it, then a word starts with it, then anywhere in the name.
-    const rank = (n: string) => { const l = n.toLowerCase(); return l.startsWith(t) ? 0 : l.split(/\s+/).some((w) => w.startsWith(t)) ? 1 : l.includes(t) ? 2 : 3; };
-    return people.map((p) => ({ p, r: rank(p.name) })).filter((x) => x.r < 3).sort((a, b) => a.r - b.r).map((x) => x.p).slice(0, 8);
-  }, [people, qText]);
-  const pick = (n: number) => (list[n] ? list[n].id : null);
-  return (
-    <Pop label={label} onClose={onClose} className={`psh-menu psh-owner ${className}`} role="dialog">
-      <div className="hd">ASSIGN OWNER · type to search</div>
-      <input autoFocus className="psh-search" role="combobox" aria-expanded aria-controls="psh-owner-list" aria-label="Search people" value={qText}
-        onChange={(e) => { setQ(e.target.value); setI(0); }}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowDown') { e.preventDefault(); setI((x) => Math.min(list.length - 1, x + 1)); }
-          else if (e.key === 'ArrowUp') { e.preventDefault(); setI((x) => Math.max(0, x - 1)); }
-          else if (e.key === 'Enter') { e.preventDefault(); const id = pick(i); if (id) onPick(id); }
-          else if (e.key === 'Tab' && onTab) { e.preventDefault(); onTab(pick(i), e.shiftKey); }
-          else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
-        }} />
-      <div id="psh-owner-list" role="listbox" aria-label="People">
-        {list.map((p, n) => (
-          <button key={p.id} type="button" role="option" aria-selected={n === i} className={`mi ${n === i ? 'on' : ''}`} onMouseEnter={() => setI(n)} onClick={() => onPick(p.id)}>
-            <Who id={p.id} name={p.name} />{n === i && <small>↵</small>}</button>
-        ))}
-        {list.length === 0 && <div className="mi note">Nobody matches “{qText}”</div>}
-      </div>
-      {allowNone && <button type="button" className="mi" onClick={() => onPick(null)}>No owner</button>}
-      <hr /><div className="mi note">Tab saves & moves right · Esc cancels</div>
-    </Pop>
-  );
-}
-
-function Editor({ r, col, draft, data, statuses, today, onDone }: {
-  r: SheetRow; col: ColId; draft: string | null; data: PlanSheetData; statuses: SheetStatus[]; today: string;
-  onDone: (change: SheetChange | null, then: 'down' | 'right' | 'left' | null) => void;
-}) {
-  const nav = (e: { key: string; shiftKey: boolean }) => (e.key === 'Tab' ? (e.shiftKey ? 'left' : 'right') : 'down') as 'down' | 'right' | 'left';
-  if (col === 'owner') {
-    const pick = (id: string | null, then: 'down' | 'right' | 'left') => onDone(id === r.ownerId ? null : id ? { id: r.id, assigneeId: id } : r.kind === 'project' ? null : { id: r.id, unassign: true }, then);
-    return <OwnerList people={data.people} allowNone={r.kind !== 'project'} label={`Owner of ${r.key}`} initial={draft ?? ''} onPick={(id) => pick(id, 'down')} onTab={(id, back) => pick(id, back ? 'left' : 'right')}
-      onClose={() => onDone(null, null)} />;
-  }
-  if (col === 'status') return <StatusMenu r={r} statuses={statuses} draft={draft} onDone={onDone} />;
-  if (col === 'title') return <TitleEditor r={r} draft={draft} onDone={onDone} nav={nav} />;
-  return <DateEditor r={r} col={col} draft={draft} today={today} onDone={onDone} nav={nav} />;
-}
-
-function TitleEditor({ r, draft, onDone, nav }: { r: SheetRow; draft: string | null; onDone: (c: SheetChange | null, t: 'down' | 'right' | 'left' | null) => void; nav: (e: { key: string; shiftKey: boolean }) => 'down' | 'right' | 'left' }) {
+function TitleInput({ r, draft, onDone }: { r: SheetRow; draft?: string; onDone: (t: string | null) => void }) {
   const [v, setV] = useState(draft ?? r.title);
-  return <input autoFocus className="psh-inline" aria-label={`Title of ${r.key}`} value={v} onChange={(e) => setV(e.target.value)} maxLength={300}
-    onKeyDown={(e) => {
-      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); onDone(v.trim() && v.trim() !== r.title ? { id: r.id, title: v.trim() } : null, nav(e)); }
-      else if (e.key === 'Escape') { e.preventDefault(); onDone(null, null); }
-    }} onBlur={() => onDone(null, null)} />;
+  return <input autoFocus className="ps3-inline" aria-label={`Title of ${r.key}`} value={v} maxLength={300} onChange={(e) => setV(e.target.value)}
+    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onDone(v.trim() || null); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onDone(null); } }}
+    onBlur={() => onDone(null)} onClick={(e) => e.stopPropagation()} />;
 }
 
-function StatusMenu({ r, statuses, draft, onDone }: { r: SheetRow; statuses: SheetStatus[]; draft: string | null; onDone: (c: SheetChange | null, t: 'down' | 'right' | 'left' | null) => void }) {
-  const list = draft ? statuses.filter((s) => s.name.toLowerCase().startsWith(draft.toLowerCase())).concat(statuses.filter((s) => !s.name.toLowerCase().startsWith(draft.toLowerCase()))) : statuses;
-  const [i, setI] = useState(Math.max(0, draft ? 0 : list.findIndex((s) => s.id === r.statusId)));
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { ref.current?.focus(); }, []);
-  const pick = (n: number, then: 'down' | 'right' | 'left') => { const s = list[n]; onDone(s && s.id !== r.statusId ? { id: r.id, statusId: s.id } : null, then); };
-  return (
-    <Pop label={`Status of ${r.key}`} onClose={() => onDone(null, null)} className="psh-menu psh-status" role="listbox">
-      <div ref={ref} tabIndex={-1} className="psh-focus-trap" onKeyDown={(e) => {
-        if (e.key === 'ArrowDown') { e.preventDefault(); setI((x) => Math.min(list.length - 1, x + 1)); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); setI((x) => Math.max(0, x - 1)); }
-        else if (e.key === 'Enter') { e.preventDefault(); pick(i, 'down'); }
-        else if (e.key === 'Tab') { e.preventDefault(); pick(i, e.shiftKey ? 'left' : 'right'); }
-        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onDone(null, null); }
-      }}>
-        <div className="hd">STATUS</div>
-        {list.map((s, n) => <button key={s.id} type="button" role="option" aria-selected={n === i} className={`mi ${n === i ? 'on' : ''}`} onMouseEnter={() => setI(n)} onClick={() => pick(n, 'down')}>
-          <span className={`psh-chip ${s.category === 'Done' ? 'green' : s.category === 'Active' ? 'blue' : ''}`}>{s.name}</span>{s.id === r.statusId && <small>current</small>}</button>)}
-      </div>
-    </Pop>
-  );
-}
+// ---------------------------------------------------------------- phone: one card per project
 
-function DateEditor({ r, col, draft, today, onDone, nav }: {
-  r: SheetRow; col: ColId; draft: string | null; today: string; onDone: (c: SheetChange | null, t: 'down' | 'right' | 'left' | null) => void; nav: (e: { key: string; shiftKey: boolean }) => 'down' | 'right' | 'left';
+function PhoneCards({ display, data, rows, today, statusesBy, save }: {
+  display: Display[]; data: PlanSheetData; rows: SheetRow[]; today: string; statusesBy: Map<string, SheetStatus[]>; save: (c: SheetChange[], label: string) => Promise<void>;
 }) {
-  const due = col === 'due';
-  const cur = due ? r.due : r.start;
-  const [text, setText] = useState(draft ?? (cur ? `${dm(cur)}${due && r.dueTime ? ` · ${r.dueTime}` : ''}` : ''));
-  const [err, setErr] = useState('');
-  const parsed = due ? parseDue(text, cur, today) : (() => { const d = parseTypedDate(text, cur, today); return d ? { date: d, time: null } : null; })();
-  const commit = (then: 'down' | 'right' | 'left') => {
-    if (!text.trim()) { onDone(!due && r.start && r.kind !== 'project' ? { id: r.id, clearStart: true } : null, then); return; }
-    if (!parsed) { setErr('Not a date. Try 7 Nov, 7/11, 2026-11-07 or +3'); return; }
-    if (due) {
-      const time = parsed.time ?? r.dueTime;
-      if (parsed.date === r.due && (time ?? null) === (r.dueTime ?? null)) { onDone(null, then); return; }
-      onDone({ id: r.id, dueDate: parsed.date, ...(parsed.time && r.kind !== 'project' ? { dueTime: parsed.time } : {}) }, then);
-    } else onDone(parsed.date === r.start ? null : { id: r.id, startDate: parsed.date }, then);
-  };
-  return (
-    <Pop label={`${due ? 'Due date' : 'Start date'} of ${r.key}`} onClose={() => onDone(null, null)} className="psh-menu psh-date" role="dialog">
-      <div className="hd">{due ? 'DUE · date and time' : 'START'}</div>
-      <input autoFocus className="psh-search" aria-label={due ? 'Due date' : 'Start date'} value={text} onChange={(e) => { setText(e.target.value); setErr(''); }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); commit(nav(e)); }
-          else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onDone(null, null); }
-        }} />
-      <div className="psh-date-row">
-        <input type="date" aria-label="Pick a date" value={parsed?.date ?? cur ?? ''} onChange={(e) => e.target.value && setText(`${dm(e.target.value)}${due && (parsed?.time ?? r.dueTime) ? ` · ${parsed?.time ?? r.dueTime}` : ''}`)} />
-        {due && r.kind !== 'project' && <input type="time" aria-label="Pick a time" value={parsed?.time ?? r.dueTime ?? ''} onChange={(e) => e.target.value && setText(`${dm(parsed?.date ?? cur ?? today)} · ${e.target.value}`)} />}
-      </div>
-      <div className={`mi note ${err ? 'err' : ''}`}>{err || (parsed ? `${dm(parsed.date)}${parsed.time ? ` · ${parsed.time}` : ''} · Enter saves` : '7 Nov · 18:00, 7/11, +3 or today')}</div>
-    </Pop>
-  );
-}
-
-function DatesPop({ today, onApply, onClose }: { today: string; onApply: (o: { shift?: number; start?: string; due?: string }) => void; onClose: () => void }) {
-  const [shift, setShift] = useState('');
-  const [start, setStart] = useState('');
-  const [due, setDue] = useState('');
-  return (
-    <Pop label="Dates for the selected rows" onClose={onClose} className="psh-menu psh-dates up" role="dialog">
-      <div className="hd">MOVE BY DAYS</div>
-      <div className="psh-date-row"><input aria-label="Move by days" placeholder="+3 or -2" value={shift} onChange={(e) => setShift(e.target.value)} /></div>
-      <div className="hd">OR SET</div>
-      <div className="psh-date-row"><label>Start<input type="date" aria-label="Start for all" value={start} onChange={(e) => setStart(e.target.value)} /></label>
-        <label>Due<input type="date" aria-label="Due for all" value={due} min={start || undefined} onChange={(e) => setDue(e.target.value)} /></label></div>
-      <div className="psh-row-end"><button type="button" className="psh-btn sm" onClick={onClose}>Cancel</button>
-        <button type="button" className="psh-btn sm pri" disabled={!shift.trim() && !start && !due} onClick={() => {
-          const n = parseInt(shift.replace(/\s/g, ''), 10);
-          onApply({ shift: Number.isFinite(n) && n !== 0 ? n : undefined, start: start || undefined, due: due || undefined });
-        }}>Apply</button></div>
-      <div className="mi note">Later due dates ask for one reason · today is {dm(today)}</div>
-    </Pop>
-  );
-}
-
-// ---------------------------------------------------------------- reason for later due dates
-
-export function ReasonModal({ moves, onSave, onClose, title }: { moves: { key: string; from: string; to: string; days: number | null }[]; onSave: (reason: string, dependency: string) => void; onClose: () => void; title?: string }) {
-  const [reason, setReason] = useState('');
-  const [chip, setChip] = useState<string | null>(null);
-  const [dep, setDep] = useState('');
-  const full = [chip, reason.trim()].filter(Boolean).join(': ');
-  return (
-    <Modal title={title ?? (moves.length === 1 ? `Why is ${moves[0].key} moving?` : `Why are ${moves.length} due dates moving?`)} subtitle="Later due dates need a reason, kept with the date history." onClose={onClose} size="sm"
-      onSubmit={(e) => { e.preventDefault(); if (full) onSave(full, dep.trim()); }}
-      footer={<><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="submit" className="btn btn-primary" disabled={!full}>Save</button></>}>
-      <ul className="psh-moves">{moves.slice(0, 6).map((m) => <li key={m.key}><span className="psh-key">{m.key}</span> {dm(m.from)} → <b>{dm(m.to)}</b>{m.days ? <em>+{m.days}d</em> : null}</li>)}
-        {moves.length > 6 && <li className="psh-muted">and {moves.length - 6} more</li>}</ul>
-      <div className="psh-reasons" role="group" aria-label="Common reasons">{REASONS.map((x) => <button key={x} type="button" aria-pressed={chip === x} className={`psh-chip lg ${chip === x ? 'blue' : ''}`} onClick={() => setChip(chip === x ? null : x)}>{x}</button>)}</div>
-      <label className="psh-field">Reason<textarea aria-label="Reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={480} placeholder="What changed?" /></label>
-      <label className="psh-field">Waiting on (optional)<input aria-label="Waiting on" value={dep} onChange={(e) => setDep(e.target.value)} maxLength={300} /></label>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------- paste preview
-
-function PasteModal({ grid, data, defaultProject, onClose, onDone }: { grid: string[][]; data: PlanSheetData; defaultProject: string | null; onClose: () => void; onDone: () => void }) {
-  const [cells, setCells] = useState<string[][]>(grid);
-  const projects = data.rows.filter((r) => r.kind === 'project');
-  const [projectId, setProjectId] = useState<string>(defaultProject ?? projects[0]?.id ?? '');
-  const auto = useMemo(() => mapColumns(cells), [cells]);
-  const [map, setMap] = useState<PasteField[] | null>(null);
-  const m = map && map.length === auto.map.length ? map : auto.map;
-  const input = useMemo(() => pasteRows(cells, auto.header, m), [cells, auto.header, m]);
-  const [res, setRes] = useState<PasteResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [ticked, setTicked] = useState<Set<number>>(new Set());
-  const [reason, setReason] = useState('');
-  const [err, setErr] = useState('');
-  useEffect(() => {
-    if (!projectId || input.length === 0) { setRes(null); return; }
-    let live = true;
-    setBusy(true);
-    portfolioApi.sheetPaste(projectId, input, false).then((x) => { if (!live) return; setRes(x); setTicked(new Set(x.rows.filter((r) => r.ready).map((r) => r.index))); setErr(''); })
-      .catch((e) => live && setErr(e instanceof ApiError ? e.message : 'The rows could not be checked.')).finally(() => live && setBusy(false));
-    return () => { live = false; };
-  }, [projectId, input]);
-  const needsReason = !!res?.rows.some((r) => ticked.has(r.index) && r.needsReason);
-  const n = res ? res.rows.filter((r) => ticked.has(r.index) && r.ready).length : 0;
-  const commit = async () => {
-    if (!res) return;
-    if (needsReason && !reason.trim()) { setErr('Say why the due dates are moving.'); return; }
-    setBusy(true);
-    try {
-      const out = await portfolioApi.sheetPaste(projectId, input, true, [...ticked], reason.trim() || null);
-      const failed = out.rows.filter((r) => ticked.has(r.index) && r.ready && !r.saved);
-      toast(failed.length ? `${out.saved} saved · ${failed.length} not saved (${failed[0].error})` : `${out.saved} row${out.saved === 1 ? '' : 's'} added to ${out.projectKey}.`, failed.length ? 'error' : 'success');
-      onDone();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : 'The rows could not be saved.'); } finally { setBusy(false); }
-  };
-  const project = projects.find((p) => p.id === projectId);
-  const ready = res?.ready ?? 0, look = res?.problems ?? 0;
-  return (
-    <Modal title={cells.length ? `Paste ${input.length} row${input.length === 1 ? '' : 's'} from Excel` : 'Paste from Excel'} size="xl" onClose={onClose} className="psh-paste"
-      subtitle={cells.length ? `We matched your columns. Check the preview, then add to ${project?.title ?? 'the project'}.` : 'Copy rows in Excel and paste them here (Ctrl V). The first row may be headers.'}
-      footer={<>
-        <span className="psh-paste-note">Matching by title updates existing items instead of duplicating. Date changes ask for a reason.</span>
-        <button type="button" className="btn" onClick={onClose}>Cancel</button>
-        <button type="button" className="btn btn-primary" disabled={busy || n === 0} onClick={() => void commit()}>{`Add ${n} row${n === 1 ? '' : 's'}`}</button>
-      </>}>
-      {cells.length === 0 ? (
-        <textarea className="psh-paste-box" aria-label="Paste rows here" autoFocus placeholder="Paste rows copied from Excel here" rows={8}
-          onPaste={(e) => { const g = parseTsv(e.clipboardData.getData('text/plain')); if (g.length) { e.preventDefault(); setCells(g); } }}
-          onChange={(e) => { const g = parseTsv(e.target.value); if (g.length && /\t|\n/.test(e.target.value)) setCells(g); }} />
-      ) : (
-        <>
-          <div className="psh-paste-top">
-            <label className="psh-field inline">Add to<select aria-label="Project to add to" value={projectId} onChange={(e) => setProjectId(e.target.value)}>{projects.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.title}</option>)}</select></label>
-            <span className="psh-sp" />
-            {res && <><span className="psh-chip green lg">{ready} ready</span>{look > 0 && <span className="psh-chip orange lg">{look} need{look === 1 ? 's' : ''} a look</span>}</>}
-          </div>
-          <div className="hd psh-hd">COLUMN MAPPING</div>
-          <div className="psh-mapping">
-            {m.map((fld, i) => (
-              <label key={i} className="psh-chip lg map">{String.fromCharCode(65 + i)} {auto.header ? `“${cells[0][i] ?? ''}”` : ''} →
-                <select aria-label={`Column ${String.fromCharCode(65 + i)}`} value={fld} onChange={(e) => { const nm = [...m]; nm[i] = e.target.value as PasteField; setMap(nm); }}>
-                  {PASTE_FIELDS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                </select></label>
-            ))}
-          </div>
-          <div className="psh-paste-table">
-            <table className="psh-table auto">
-              <thead><tr><th style={{ width: 36 }}><span className="psh-vh">Include</span></th><th>Title</th><th>Owner</th><th>Start</th><th>Due</th><th>Status</th><th>Result</th></tr></thead>
-              <tbody>
-                {(res?.rows ?? []).map((r) => {
-                  const src = input[r.index];
-                  const on = ticked.has(r.index);
-                  return (
-                    <tr key={r.index} className={r.ready ? '' : 'bad'}>
-                      <td><input type="checkbox" aria-label={`Include ${r.title || `row ${r.index + 1}`}`} checked={on} disabled={!r.ready}
-                        onChange={() => setTicked((s) => { const x = new Set(s); if (x.has(r.index)) x.delete(r.index); else x.add(r.index); return x; })} /></td>
-                      <td>{r.title || <span className="psh-muted">(no title)</span>}</td>
-                      <td>{r.owner ? <Who id={r.ownerId} name={r.owner} /> : src?.owner ? <span className="risk">“{src.owner}”</span> : ''}</td>
-                      <td className={r.start == null && src?.start ? 'late' : ''}>{r.start ? dm(r.start) : src?.start ?? ''}</td>
-                      <td className={r.due == null && src?.due ? 'late' : ''}>{r.due ? dm(r.due) : src?.due ?? ''}</td>
-                      <td>{r.status ? <span className="psh-chip">{r.status}</span> : src?.status ? <span className="risk">{src.status}</span> : ''}</td>
-                      <td className={r.ready ? r.action === 'update' ? 'accent' : 'psh-muted' : 'risk'}>{r.ready ? r.change : r.problems.join(' · ')}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {busy && !res && <p className="psh-muted" role="status">Checking the rows…</p>}
-          </div>
-          {needsReason && <label className="psh-field">Why are due dates moving later?<input aria-label="Reason for the date changes" value={reason} onChange={(e) => { setReason(e.target.value); setErr(''); }} maxLength={480} /></label>}
-          {err && <p className="psh-err" role="alert">{err}</p>}
-        </>
-      )}
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------- phone
-
-function PhoneSheet({ data, rows: all, cfg, setCfg, collapsed, me, today, statusesBy, save }: {
-  data: PlanSheetData; rows: SheetRow[]; cfg: SheetConfig; setCfg: (c: SheetConfig) => void; collapsed: Set<string>; me: string | null; today: string;
-  statusesBy: Map<string, SheetStatus[]>; save: (c: SheetChange[]) => Promise<void>;
-}) {
-  const display = useMemo(() => buildDisplay(all, { ...cfg, group: 'project' }, collapsed, me, today), [all, cfg, collapsed, me, today]);
-  const [ownerOpen, setOwnerOpen] = useState(false);
-  const [cadOpen, setCadOpen] = useState(false);
   const [act, setAct] = useState<SheetRow | null>(null);
-  const [moveRow, setMoveRow] = useState<SheetRow | null>(null);
-  const owners = [...new Set(all.filter(isItem).map((r) => r.owner).filter((x): x is string => !!x))].sort();
-  const cads = [...new Set(all.map((r) => r.cadence).filter((x): x is string => !!x))];
-  const f = cfg.filters;
-  const done = (r: SheetRow) => { const s = (statusesBy.get(r.projectId) ?? []).find((x) => x.category === 'Done'); if (s && s.id !== r.statusId) void save([{ id: r.id, statusId: s.id }]); };
-  const groups: { p: SheetRow; items: SheetRow[] }[] = [];
-  for (const d of display) if (d.type === 'row') { if (d.row.kind === 'project') groups.push({ p: d.row, items: [] }); else groups[groups.length - 1]?.items.push(d.row); }
+  const groups: { p: SheetRow; all: SheetRow[]; items: SheetRow[] }[] = [];
+  for (const d of display) if (d.type === 'g') groups.push({ p: d.p, all: d.all, items: [] }); else groups[groups.length - 1]?.items.push(d.r);
+  const doneStatus = (r: SheetRow) => (statusesBy.get(r.projectId) ?? []).find((x) => x.category === 'Done');
   return (
-    <div className="psh-phone">
-      <div className="psh-phone-chips" role="toolbar" aria-label="Filters">
-        <button type="button" className="psh-chip lg blue" onClick={() => setCfg({ ...cfg, group: 'project' })}>Project ▾</button>
-        <button type="button" className={`psh-chip lg ${f.notDone ? 'blue' : ''}`} aria-pressed={f.notDone} onClick={() => setCfg({ ...cfg, filters: { ...f, notDone: !f.notDone } })}>Not done</button>
-        <span className="psh-rel"><button type="button" className={`psh-chip lg ${f.values.owner?.length ? 'blue' : ''}`} aria-expanded={ownerOpen} onClick={() => setOwnerOpen(!ownerOpen)}>{f.values.owner?.[0] ?? 'Owner'} ▾</button>
-          {ownerOpen && <Pop label="Owner" onClose={() => setOwnerOpen(false)} className="psh-menu">
-            <button type="button" className="mi" onClick={() => { setCfg({ ...cfg, filters: { ...f, values: { ...f.values, owner: [] } } }); setOwnerOpen(false); }}>Anyone</button>
-            {owners.map((o) => <button key={o} type="button" className="mi" onClick={() => { setCfg({ ...cfg, filters: { ...f, values: { ...f.values, owner: [o] } } }); setOwnerOpen(false); }}>{o}</button>)}
-          </Pop>}</span>
-        {cads.length > 0 && <span className="psh-rel"><button type="button" className={`psh-chip lg ${f.values.meeting?.length ? 'blue' : ''}`} aria-expanded={cadOpen} onClick={() => setCadOpen(!cadOpen)}>{f.values.meeting?.[0] ?? 'Cadence'} ▾</button>
-          {cadOpen && <Pop label="Cadence" onClose={() => setCadOpen(false)} className="psh-menu">
-            <button type="button" className="mi" onClick={() => { setCfg({ ...cfg, filters: { ...f, values: { ...f.values, meeting: [] } } }); setCadOpen(false); }}>Any</button>
-            {cads.map((o) => <button key={o} type="button" className="mi" onClick={() => { setCfg({ ...cfg, filters: { ...f, values: { ...f.values, meeting: [o] } } }); setCadOpen(false); }}>{o}</button>)}
-          </Pop>}</span>}
-      </div>
-      {groups.length === 0 && <p className="psh-muted psh-empty">Nothing matches.</p>}
-      {groups.map(({ p, items }) => (
-        <section key={p.id} aria-label={p.title}>
-          <h3 className="psh-phone-h">{p.title.toUpperCase()} · {(p.kind === 'project' && p.progress === 100 ? 'DONE' : p.status).toUpperCase()}</h3>
-          {items.map((r) => r.kind === 'meeting' ? (
-            <div key={r.id} className="psh-card mt">
-              <div className="psh-row"><i className="psh-dia" aria-hidden="true" /><b>{r.title}</b><span className="psh-sp" />{r.cadence && <Cadence c={r.cadence} />}</div>
-              <div className="psh-card-sub">Next: {nextText(r.nextAt)}</div>
-            </div>
-          ) : <SwipeCard key={r.id} r={r} today={today} onDone={() => done(r)} onMenu={() => setAct(r)} />)}
-        </section>
-      ))}
-      <p className="psh-phone-hint">Swipe right: Done · left: Move date / Owner</p>
-      {act && (
-        <Modal title={`${act.key} · ${act.title}`} onClose={() => setAct(null)} size="sm">
-          <div className="psh-actions">
-            <button type="button" className="btn" onClick={() => { const r = act; setAct(null); done(r); }}><Icon name="check" size={15} />Mark done</button>
-            <button type="button" className="btn" onClick={() => { const r = act; setAct(null); setMoveRow(r); }}><Icon name="calendar" size={15} />Move date</button>
-          </div>
-          <OwnerInline people={data.people} onPick={(id) => { const r = act; setAct(null); if (id && id !== r.ownerId) void save([{ id: r.id, assigneeId: id }]); }} />
-        </Modal>
-      )}
-      {moveRow && (
-        <Modal title={`Move ${moveRow.key}`} onClose={() => setMoveRow(null)} size="sm">
-          <div className="psh-actions">
-            {[1, 3, 7].map((n) => <button key={n} type="button" className="btn" onClick={() => { const r = moveRow; setMoveRow(null); if (r.due) void save([{ id: r.id, dueDate: isoAdd(r.due, n) }]); }}>+{n} day{n === 1 ? '' : 's'}</button>)}
-          </div>
-          <label className="psh-field">New due date<input type="date" aria-label="New due date" defaultValue={moveRow.due ?? ''} onChange={(e) => { const r = moveRow; if (e.target.value) { setMoveRow(null); void save([{ id: r.id, dueDate: e.target.value }]); } }} /></label>
-        </Modal>
-      )}
+    <div>
+      {groups.length === 0 && <p className="ps3-empty">Nothing matches the filter.</p>}
+      {groups.map(({ p, all, items }) => {
+        const open0 = all.filter(isOpen), late = open0.filter((x) => x.late).length, risk = open0.filter((x) => !x.late && x.atRisk).length;
+        const pct = p.progress ?? 0, tone = late ? 'var(--p-red)' : risk ? 'var(--p-orange)' : pct >= 100 ? 'var(--p-green)' : 'var(--p-blue)';
+        return (
+          <section key={p.id} aria-label={p.title}>
+            <div className="ps3-phone-g ps3-gt"><Ring pct={pct} color={tone} />{p.title}<span className="ps3-sp" /><span className="ps3-gm" style={{ color: tone }}>{late ? `${late} late` : risk ? `${risk} at risk` : 'On track'}</span></div>
+            <div className="ps3-card">{items.map((r) => <PhoneRow key={r.id} r={r} today={today} onMenu={() => setAct(r)}
+              onDone={() => { const s = doneStatus(r); if (s && s.id !== r.statusId) void save([{ id: r.id, statusId: s.id }], `${r.key} done`); }} />)}</div>
+          </section>
+        );
+      })}
+      <p className="ps3-phone-hint">Swipe a task to change status · hold for more</p>
+      {act && <>
+        <div className="ps3-scrim" onClick={() => setAct(null)} />
+        <div className="ps3-sheet-bottom ps3-float ps3-pop" style={{ position: 'fixed', borderRadius: '18px 18px 0 0', top: 'auto' }} role="dialog" aria-label={`${act.key} ${act.title}`}>
+          <div style={{ padding: '4px 18px 10px' }}><span className="ps3-key">{act.key}</span><div style={{ fontWeight: 600, fontSize: 16, marginTop: 2 }}>{act.title}</div></div>
+          <div className="ph">Status</div>
+          {(statusesBy.get(act.projectId) ?? []).map((s) => <button key={s.id} type="button" className={`it ${s.id === act.statusId ? 'on' : ''}`}
+            onClick={() => { const r = act; setAct(null); if (s.id !== r.statusId) void save([{ id: r.id, statusId: s.id }], `${r.key} → ${s.name}`); }}>
+            <Dot k={s.category === 'Done' ? 'done' : s.category === 'Active' ? 'prog' : 'todo'} />{s.name}</button>)}
+          {act.due && <><div className="ph">Move due date</div><div className="row">{[1, 2, 7].map((n) => <button key={n} type="button" className="ps3-qc"
+            onClick={() => { const r = act; setAct(null); void save([{ id: r.id, dueDate: addDays(r.due!, n) }], `Moved ${r.key}`); }}>+{n === 7 ? '1 week' : `${n}d`}</button>)}</div></>}
+          <div className="ph">Progress</div><div className="row">{[0, 25, 50, 75, 100].map((n) => <button key={n} type="button" className={`ps3-qc ${act.progress === n ? 'on' : ''}`}
+            onClick={() => { const r = act; setAct(null); void save([{ id: r.id, progress: n }], `${r.key} progress ${n}%`); }}>{n}%</button>)}</div>
+          <div className="ph">Owner</div>
+          {data.people.slice(0, 8).map((x) => <button key={x.id} type="button" className={`it ${x.id === act.ownerId ? 'on' : ''}`}
+            onClick={() => { const r = act; setAct(null); if (x.id !== r.ownerId) void save([{ id: r.id, assigneeId: x.id }], `Gave ${r.key} to ${x.name}`); }}><Av id={x.id} name={x.name} />{x.name}</button>)}
+          <div style={{ height: 10 }} /><span className="ps3-vh">{rows.length}</span>
+        </div>
+      </>}
     </div>
   );
 }
 
-function OwnerInline({ people, onPick }: { people: { id: string; name: string }[]; onPick: (id: string | null) => void }) {
-  const [t, setT] = useState('');
-  const list = people.filter((p) => p.name.toLowerCase().includes(t.trim().toLowerCase())).slice(0, 6);
-  return (
-    <div className="psh-owner-inline">
-      <input aria-label="Change owner" placeholder="Change owner…" value={t} onChange={(e) => setT(e.target.value)} />
-      {t && list.map((p) => <button key={p.id} type="button" className="psh-owner-opt" onClick={() => onPick(p.id)}><Who id={p.id} name={p.name} /></button>)}
-    </div>
-  );
-}
-
-function SwipeCard({ r, today, onDone, onMenu }: { r: SheetRow; today: string; onDone: () => void; onMenu: () => void }) {
+function PhoneRow({ r, today, onDone, onMenu }: { r: SheetRow; today: string; onDone: () => void; onMenu: () => void }) {
   const [dx, setDx] = useState(0);
   const start = useRef<{ x: number; y: number } | null>(null);
   const press = useRef<number | null>(null);
-  const late = r.late ? lateDays(r, today) : 0;
+  const k = statusKey(r), s = slipDays(r, today);
   const end = () => {
     if (press.current) { clearTimeout(press.current); press.current = null; }
-    if (dx > 90) { setDx(0); onDone(); } else if (dx < -90) { setDx(0); onMenu(); } else setDx(0);
-    start.current = null;
+    if (dx > 90) onDone(); else if (dx < -90) onMenu();
+    setDx(0); start.current = null;
   };
   return (
-    <div className="psh-swipe">
-      {dx !== 0 && <div className={`psh-under ${dx < 0 ? 'left' : ''}`} aria-hidden="true">{dx >= 0 ? <span>✓ Done</span> : <span>Move date / Owner</span>}</div>}
-      <div className="psh-card" style={{ transform: dx ? `translateX(${dx}px)` : undefined }} role="group" aria-label={`${r.key} ${r.title}`}
+    <div className="ps3-swipe">
+      {dx !== 0 && <div className={`ps3-under ${dx < 0 ? 'left' : ''}`} aria-hidden="true">{dx > 0 ? '✓ Done' : 'More'}</div>}
+      <div className="ps3-card-row" role="button" tabIndex={0} aria-label={`${r.key} ${r.title}`} style={{ transform: dx ? `translateX(${dx}px)` : undefined }}
+        onClick={() => { if (!dx) onMenu(); }} onKeyDown={(e) => { if (e.key === 'Enter') onMenu(); }}
         onTouchStart={(e) => { const t = e.touches[0]; start.current = { x: t.clientX, y: t.clientY }; press.current = window.setTimeout(() => { press.current = null; onMenu(); }, 550); }}
-        onTouchMove={(e) => { const s = start.current; if (!s) return; const t = e.touches[0]; const x = t.clientX - s.x; if (Math.abs(x) > 8 && press.current) { clearTimeout(press.current); press.current = null; } if (Math.abs(x) > Math.abs(t.clientY - s.y)) setDx(Math.max(-140, Math.min(140, x))); }}
+        onTouchMove={(e) => { const st = start.current; if (!st) return; const t = e.touches[0]; const x = t.clientX - st.x; if (Math.abs(x) > 8 && press.current) { clearTimeout(press.current); press.current = null; } if (Math.abs(x) > Math.abs(t.clientY - st.y)) setDx(Math.max(-140, Math.min(140, x))); }}
         onTouchEnd={end} onContextMenu={(e) => { e.preventDefault(); onMenu(); }}>
-        <div className="psh-row"><span className="psh-key">{r.key}</span><StatusChip r={r} /><span className="psh-sp" />{r.owner && <span className="psh-av" style={{ '--h': hue(r.ownerId) } as CSSProperties} title={r.owner}>{initials(r.owner)}</span>}
-          <button type="button" className="psh-more" aria-label={`Actions for ${r.key}`} onClick={onMenu}><Icon name="more" size={16} /></button></div>
-        <div className="psh-card-t">{r.title}</div>
-        <div className={`psh-card-sub ${r.late ? 'late' : r.atRisk ? 'risk' : ''}`}>
-          {r.start ? `${dm(r.start)} → ` : ''}{r.due ? <span className={r.late ? 'late' : ''}>{dm(r.due)}{r.dueTime ? `, ${r.dueTime}` : ''}{late ? ` · ${late}d late` : ''}</span> : 'No due date'}
+        <span className={`ps3-gl ${k}`} style={{ marginTop: 5 }} aria-hidden="true" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="t">{r.title}</div>
+          <div className="m">{r.owner && <><Av id={r.ownerId} name={r.owner} size={16} />{r.owner.split(' ')[0]} ·</>}
+            <span style={{ color: k === 'late' ? 'var(--p-red)' : 'inherit' }}>{dm(r.due) || 'No date'}</span>{s > 0 && <b style={{ color: k === 'late' ? 'var(--p-red)' : 'var(--p-orange)' }}>+{s}d</b>}</div>
+          {r.progress != null && <div style={{ marginTop: 8 }}><Progress value={r.progress} k={k} /></div>}
         </div>
-        {r.progress != null && <div className="psh-pbar"><i style={{ width: `${r.progress}%` }} /></div>}
       </div>
     </div>
   );
 }
+

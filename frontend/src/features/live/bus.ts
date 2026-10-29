@@ -28,6 +28,11 @@ const viewingListeners = new Set<(e: ViewingEvent) => void>();
 const reconnectListeners = new Set<() => void>();
 export const emitViewing = (e: ViewingEvent) => viewingListeners.forEach((l) => l(e));
 export function onViewing(l: (e: ViewingEvent) => void) { viewingListeners.add(l); return () => { viewingListeners.delete(l); }; }
+/** Someone else's cell on a plan sheet ("{row id}:{column}"; null: they left the grid). */
+export interface SheetFocusEvent { key: string; userId: string; name?: string | null; cell: string | null }
+const sheetFocusListeners = new Set<(e: SheetFocusEvent) => void>();
+export const emitSheetFocus = (e: SheetFocusEvent) => sheetFocusListeners.forEach((l) => l(e));
+export function onSheetFocus(l: (e: SheetFocusEvent) => void) { sheetFocusListeners.add(l); return () => { sheetFocusListeners.delete(l); }; }
 /** A reminder just went off for the signed-in person (sent by the server to their open tabs). */
 export interface ReminderEvent { id: string; title: string; note: string | null; targetKey: string | null; link: string | null; source: string; from: string | null;
   /** The occurrence this alert is about; Done/Snooze send it back so a second tap never finishes the next one. */ nextFireAt?: string | null; lastFiredAt?: string | null }

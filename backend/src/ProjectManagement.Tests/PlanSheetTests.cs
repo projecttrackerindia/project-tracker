@@ -120,6 +120,62 @@ public class PlanSheetTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Progress_and_notes_are_edited_on_the_sheet_and_kept_with_the_task()
+    {
+        var s = await SeedAsync();
+        var res = await s.C.Post("/api/v1/portfolio/sheet/bulk", new { changes = new object[] { new { id = s.B, version = await Version(s.C, s.B), progress = 45, notes = "Waiting on @Lena for the auditor letter" } } });
+        Assert.True(res.Ok, res.ToString());
+        Assert.True(res.Data!["rows"]![0]!["ok"]!.GetValue<bool>(), res.ToString());
+        var row = (await s.C.Get("/api/v1/portfolio/sheet")).Data!["rows"]!.AsArray().Single(r => S(r!["id"]) == s.B.ToString())!;
+        Assert.Equal(45, row["progress"]!.GetValue<int>());
+        Assert.True(row["manualProgress"]!.GetValue<bool>());
+        Assert.Equal("Waiting on @Lena for the auditor letter", S(row["notes"]));
+        // Out of range is refused for that row; clearing goes back to the worked-out value.
+        var bad = await s.C.Post("/api/v1/portfolio/sheet/bulk", new { changes = new object[] { new { id = s.B, version = await Version(s.C, s.B), progress = 140 } } });
+        Assert.False(bad.Data!["rows"]![0]!["ok"]!.GetValue<bool>());
+        var clear = await s.C.Post("/api/v1/portfolio/sheet/bulk", new { changes = new object[] { new { id = s.B, version = await Version(s.C, s.B), clearProgress = true } } });
+        Assert.True(clear.Data!["rows"]![0]!["ok"]!.GetValue<bool>(), clear.ToString());
+        row = (await s.C.Get("/api/v1/portfolio/sheet")).Data!["rows"]!.AsArray().Single(r => S(r!["id"]) == s.B.ToString())!;
+        Assert.False(row["manualProgress"]!.GetValue<bool>());
+        // Slip: the due date moved 5 days later than it first was (the date history).
+        var later = await s.C.Post("/api/v1/portfolio/sheet/bulk", new { dueDateReason = "Auditor slot moved", changes = new object[] { new { id = s.B, version = await Version(s.C, s.B), dueDate = Iso(Today.AddDays(3)) } } });
+        Assert.True(later.Data!["rows"]![0]!["ok"]!.GetValue<bool>(), later.ToString());
+        row = (await s.C.Get("/api/v1/portfolio/sheet")).Data!["rows"]!.AsArray().Single(r => S(r!["id"]) == s.B.ToString())!;
+        Assert.Equal(5, row["slipDays"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task A_dragged_row_moves_within_its_project_or_into_another_one()
+    {
+        var s = await SeedAsync();
+        // Reorder: B dropped before A.
+        var res = await s.C.Post("/api/v1/portfolio/sheet/move", new { id = s.B, beforeId = s.A, version = await Version(s.C, s.B) });
+        Assert.True(res.Ok, res.ToString());
+        Assert.False(res.Data!["movedProject"]!.GetValue<bool>());
+        var ids = (await s.C.Get("/api/v1/portfolio/sheet")).Data!["rows"]!.AsArray().Where(r => S(r!["projectId"]) == s.Project.ToString() && S(r!["kind"]) == "task").Select(r => S(r!["id"])).ToList();
+        Assert.True(ids.IndexOf(s.B.ToString()) < ids.IndexOf(s.A.ToString()), string.Join(",", ids));
+
+        // Into another project: next number and key there.
+        var other = await s.C.Post("/api/v1/projects", new { name = "Bureau Bridge", priority = "Medium", ownerId = s.C.UserId, startDate = Iso(Today), dueDate = Iso(Today.AddDays(30)) });
+        var target = Guid.Parse(S(other.Data!["project"]!["id"]));
+        var targetKey = S(other.Data!["project"]!["key"]);
+        var moved = await s.C.Post("/api/v1/portfolio/sheet/move", new { id = s.B, projectId = target, version = await Version(s.C, s.B) });
+        Assert.True(moved.Ok, moved.ToString());
+        Assert.True(moved.Data!["movedProject"]!.GetValue<bool>());
+        Assert.Equal($"{targetKey}-1", S(moved.Data!["key"]));
+        var row = (await s.C.Get("/api/v1/portfolio/sheet")).Data!["rows"]!.AsArray().Single(r => S(r!["id"]) == s.B.ToString())!;
+        Assert.Equal(target.ToString(), S(row["projectId"]));
+
+        // A task with dependencies (or sub-items) stays: dependencies live inside one project.
+        var refused = await s.C.Post("/api/v1/portfolio/sheet/move", new { id = s.Other, projectId = target });
+        Assert.Equal(422, (int)refused.Status);
+        var parent = await s.C.Post("/api/v1/portfolio/sheet/move", new { id = s.A, projectId = target });
+        Assert.Equal(422, (int)parent.Status);
+        // A stale version is a conflict.
+        Assert.Equal(409, (int)(await s.C.Post("/api/v1/portfolio/sheet/move", new { id = s.A, afterId = s.Other, version = await Version(s.C, s.A) + 5 })).Status);
+    }
+
+    [Fact]
     public async Task Paste_from_Excel_is_a_dry_run_first_then_saves_only_the_ready_rows()
     {
         var s = await SeedAsync();
@@ -247,6 +303,13 @@ public class PlanSheetTests(ApiFactory factory)
         Assert.Equal(100, PlanSheetMath.Progress(StatusCategory.Done, null, 0, 0));
         Assert.Equal(30, PlanSheetMath.Progress(StatusCategory.Active, (10, 3), 0, 0));
         Assert.Equal(50, PlanSheetMath.Progress(StatusCategory.Active, null, 2, 1));
+        Assert.Equal(65, PlanSheetMath.Progress(StatusCategory.Active, (10, 3), 0, 0, 65));   // set by hand wins over the checklist
+        Assert.Equal(100, PlanSheetMath.Progress(StatusCategory.Done, null, 0, 0, 40));
+        Assert.Equal(1536, PlanSheetMath.Between(1024, 2048, 9000));
+        Assert.Equal(3072, PlanSheetMath.Between(2048, null, 9000));
+        Assert.Equal(10024, PlanSheetMath.Between(null, null, 9000));
+        Assert.Equal("New note\nSecond line", PlanSheetMath.ReplaceFirstLine("Old note\nSecond line", "New note"));
+        Assert.Equal("Only", PlanSheetMath.ReplaceFirstLine(null, " Only "));
         Assert.True(PlanSheetMath.AtRisk(today.AddDays(2), today, 40));
         Assert.False(PlanSheetMath.AtRisk(today.AddDays(2), today, 80));
         Assert.False(PlanSheetMath.AtRisk(today.AddDays(10), today, 0));

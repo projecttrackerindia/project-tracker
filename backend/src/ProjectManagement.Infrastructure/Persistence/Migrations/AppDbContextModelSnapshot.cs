@@ -15492,6 +15492,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasPrecision(9, 2)
                         .HasColumnType("numeric(9,2)");
 
+                    b.Property<int?>("ManualProgress")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("MilestoneId")
                         .HasColumnType("uuid");
 

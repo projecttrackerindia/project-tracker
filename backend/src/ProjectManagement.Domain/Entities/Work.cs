@@ -178,6 +178,11 @@ public class TaskItem : WorkItem, ISoftDelete
     public decimal? EstimatedHours { get; set; }
     public decimal? ActualHours { get; set; }
     public double Position { get; set; }
+    /// <summary>
+    /// Progress set by hand on the Plan sheet (0-100), for a task without a checklist or sub-items to work it out from. Null: worked out
+    /// (checklist share, else finished sub-items, else 0 / 100 by status).
+    /// </summary>
+    public int? ManualProgress { get; set; }
 
     public Project? Project { get; set; }
     public WorkflowStatus? Status { get; set; }
