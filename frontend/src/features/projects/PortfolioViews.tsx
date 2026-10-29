@@ -1,5 +1,5 @@
 import { Face } from '../../components/Face';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useIsMobile } from '../../lib/mobile';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -221,102 +221,6 @@ function DropSheet({ p, from, to, item, filter, onClose, onFlagged }: { p: Timel
         )}
       </section>
     </div>, document.body);
-}
-
-// ------------------------------------------------------------------------------------------------------------------ Timeline
-const dayMs = 86_400_000;
-const at = (d: string) => new Date(d.slice(0, 10) + 'T00:00:00Z').getTime();
-const SEVERITY: Record<string, number> = { Delayed: 0, AtRisk: 1, OnTrack: 2 };
-const monthYear = (m: number) => new Date(m).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
-
-export function TimelineLegend() {
-  return (
-    <div className="pf-legend" aria-label="Legend">
-      <span><i className="plan" /> Plan</span><span><i className="fc" /> Forecast</span><span><i className="ms" /> Milestone</span>
-    </div>
-  );
-}
-
-/**
- * Gantt, six months from this month (longer when work runs later): one row per project sorted by severity, the original plan as an
- * outlined capsule and the forecast as a filled capsule in its status colour, milestones as diamonds, and a red Today line. Hovering
- * (or focusing) a row shows why it moved and the AI's best fix.
- */
-export function Gantt({ filter, brief, decisions, onRange }: { filter: PortfolioFilter; brief: PortfolioBrief; decisions: PortfolioDecision[]; onRange?: (label: string) => void }) {
-  const q = useWsQuery(['portfolio', 'timeline', filter], () => portfolioApi.timeline(filter), { placeholderData: (p) => p });
-  const [hover, setHover] = useState<string | null>(null);
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const t = q.data;
-  const g = useMemo(() => {
-    if (!t) return null;
-    const now = new Date(at(todayIso));
-    const from = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
-    const last = Math.max(...t.projects.flatMap((p) => [p.due, p.originalDue, p.forecast]).filter((d): d is string => !!d).map(at), at(todayIso));
-    const l = new Date(last);
-    const need = (l.getUTCFullYear() - now.getUTCFullYear()) * 12 + l.getUTCMonth() - now.getUTCMonth() + 1;
-    const n = Math.min(12, Math.max(6, need));
-    const months = Array.from({ length: n }, (_, k) => Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + k, 1));
-    const to = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + n, 1);
-    const pct = (d: string) => Math.min(100, Math.max(0, ((at(d) - from) / Math.max(dayMs, to - from)) * 100));
-    const rows = [...t.projects].sort((a, b) => (SEVERITY[a.health] ?? 3) - (SEVERITY[b.health] ?? 3) || (b.forecast && b.due ? at(b.forecast) - at(b.due) : 0) - (a.forecast && a.due ? at(a.forecast) - at(a.due) : 0));
-    return { months, pct, rows, label: `${monthYear(months[0])} – ${monthYear(months[n - 1])}` };
-  }, [t, todayIso]);
-  useEffect(() => { if (g && onRange) onRange(g.label); }, [g, onRange]);
-  if (q.isLoading) return <p className="muted" role="status">Loading the timeline…</p>;
-  if (!t || !g || t.projects.length === 0) return <section className="pf-gantt" aria-label="Timeline"><p className="muted pf-g-empty">No projects match.</p></section>;
-  const ranked = new Map(brief.ranked.map((r) => [r.projectId, r]));
-  const decided = new Map(decisions.map((d) => [d.projectId, d]));
-  const first = (s: string | null | undefined) => (s ?? '').split(' ')[0];
-  const seg = (a: string, b: string): CSSProperties => { const l = g.pct(a < b ? a : b); return { left: `${l}%`, width: `max(12px, ${Math.abs(g.pct(b) - l)}%)` }; };
-  const hi = hover ? g.rows.findIndex((p) => p.id === hover) : -1;
-  const hp = hi >= 0 ? g.rows[hi] : null;
-  return (
-    <section className="pf-gantt" aria-label="Timeline" style={{ '--pf-months': g.months.length } as CSSProperties}>
-      <div className="pf-g-head">
-        <span className="pf-g-count">{plural(t.projects.length, 'project')}</span>
-        {g.months.map((m) => <span key={m}>{new Date(m).toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}</span>)}
-      </div>
-      <div className="pf-g-body" onMouseLeave={() => setHover(null)}>
-        <div className="pf-g-cols" aria-hidden="true">{g.months.map((m) => <i key={m} />)}</div>
-        {g.rows.map((p, i) => {
-          const start = p.start ?? p.due; const planEnd = p.originalDue ?? p.due; const fcEnd = p.forecast ?? p.due;
-          const tone = colOf(p.health) ?? 'done';
-          return (
-            <div key={p.id} className={`pf-g-row tl-row ${hover === p.id ? 'on' : ''}`} onMouseEnter={() => setHover(p.id)} onFocus={() => setHover(p.id)} onBlur={() => setHover(null)}>
-              <Link className="pf-g-name" to={`/work/projects/${p.id}`} title={p.name}><i className={tone} /><b>{p.name}</b>{ranked.get(p.id)?.owner && <small>{first(ranked.get(p.id)?.owner)}</small>}</Link>
-              <div className="pf-g-track" aria-label={`${p.key}: plan ${start ? dayMonth(start) : '—'} to ${planEnd ? dayMonth(planEnd) : '—'}, forecast ${fcEnd ? dayMonth(fcEnd) : '—'}`}>
-                {start && planEnd && <i className="pf-g-plan" style={seg(start, planEnd)} title={`Plan ${dayMonth(start)} → ${dayMonth(planEnd)}`} />}
-                {start && fcEnd && <i className={`pf-g-fc ${tone}`} style={{ ...seg(start, fcEnd), animationDelay: `${i * 40}ms` }} title={`Forecast ${dayMonth(start)} → ${dayMonth(fcEnd)} · ${p.progress}% done`} />}
-                {p.milestones.filter((m) => m.due).map((m) => <i key={m.id} className="pf-g-ms" style={{ left: `${g.pct(m.due!)}%`, animationDelay: `${i * 40 + 600 + 150}ms` }} title={`${m.name}: ${dayMonth(m.due)}`} />)}
-              </div>
-            </div>
-          );
-        })}
-        <div className="pf-g-todaywrap" aria-hidden="true"><i className="pf-g-today" style={{ left: `${g.pct(todayIso)}%` }}><span>Today {dayMonth(todayIso)}</span></i></div>
-        {hp && <HoverCard p={hp} index={hi} pct={g.pct} risk={ranked.get(hp.id)} decision={decided.get(hp.id) ?? null} />}
-      </div>
-    </section>
-  );
-}
-
-function HoverCard({ p, index, pct, risk, decision }: { p: TimelineProject; index: number; pct: (d: string) => number; risk?: PortfolioRisk; decision: PortfolioDecision | null }) {
-  const end = p.forecast ?? p.due;
-  const slip = p.forecast && p.due ? Math.round((at(p.forecast) - at(p.due)) / dayMs) : 0;
-  const reasons = (decision?.causes.length ? decision.causes.map(cap) : risk?.reasons ?? []).slice(0, 3);
-  const fix = otherOptions(decision)[0];
-  const x = end ? pct(end) : 50;
-  // Positions are over the track (the body minus the name column).
-  const style: CSSProperties = { top: `${Math.max(0, index * 46 + 4)}px`, ...(x > 58
-    ? { right: `calc((100% - var(--pf-name)) * ${(100 - x) / 100} + 24px)` } : { left: `calc(var(--pf-name) + (100% - var(--pf-name)) * ${x / 100} + 24px)` }) };
-  return (
-    <div className="pf-hover" role="tooltip" style={style}>
-      <div className="pf-hover-h"><b>{p.name}</b>{slip > 0 && <span className={`pf-slip ${colOf(p.health) ?? ''}`}>+{plural(slip, 'day')}</span>}</div>
-      <p className="pf-hover-d">Due {dayMonth(p.due)} → Forecast {dayMonth(end)}</p>
-      {reasons.length > 0 && <ul>{reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
-      {fix ? <p className="pf-hover-ai"><span className="pf-orb" aria-hidden="true" />{fix.title}{fix.finish ? ` lands it ${dayMonth(fix.finish)}.` : `: ${fix.effect}.`}</p>
-        : slip <= 0 && <p className="pf-hover-ai"><span className="pf-orb" aria-hidden="true" />On course for its date.</p>}
-    </div>
-  );
 }
 
 // ------------------------------------------------------------------------------------------------------------------ Present

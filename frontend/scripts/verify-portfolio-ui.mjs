@@ -156,10 +156,11 @@ try{
  await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Timeline'}).click();
  const tl=page.getByRole('region',{name:'Timeline'});await tl.waitFor();
  { const u=new URL(page.url()); assert.equal(u.searchParams.get('view'),'portfolio'); assert.equal(u.searchParams.get('mode'),'timeline'); }
- assert.equal(await tl.locator('.pf-g-row').count(),2);
- assert.equal(await tl.locator('.pf-g-row').first().locator('.pf-g-plan').count(),1);
- assert.equal(await tl.locator('.pf-g-row').first().locator('.pf-g-fc').count(),1);
- assert.equal(await tl.locator('.pf-g-today').count(),1);
+ // Round 3 timeline: one bar per project, the slip to the forecast hatched with +Nd, a labelled today line (details: verify-plan-sheet-ui.mjs).
+ await tl.locator('.ptl-bar').first().waitFor();
+ assert.equal(await tl.locator('.ptl-bar').count(),2);
+ assert.equal(await tl.locator('.ptl-slip').count(),1);
+ assert.equal(await tl.locator('.ptl-todayline').count(),1);
  await shot(page,'timeline-1440.png');
  checks.push('timeline');
 

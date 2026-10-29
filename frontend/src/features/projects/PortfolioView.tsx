@@ -5,13 +5,17 @@ import { ErrorState, PageHead, PageLoader, Segmented } from '../../components/ui
 import { useWsQuery } from '../../lib/hooks';
 import { useTeamLens } from '../../lib/teamLens';
 import { toast } from '../../stores/ui';
+import { useAuth } from '../../stores/auth';
 import { aiWorkspaceApi } from '../ai/aiApi';
 import { useAi, useAssistant } from '../ai/Assistant';
 import { DotsMenu } from '../talk/DotsMenu';
 import { PortfolioActionItems } from './PortfolioActionItems';
 import { CapacityPlanView } from './CapacityPlan';
 import { CapacitySection, filterCount, MoneySection, PortfolioFilters } from './PortfolioBoard';
-import { BoardColumns, DecisionCard, Gantt, PresentOverlay, isoWeek, TimelineLegend } from './PortfolioViews';
+import { BoardColumns, DecisionCard, PresentOverlay, isoWeek } from './PortfolioViews';
+import { PortfolioTimeline } from './PortfolioTimeline';
+import { PlanSheetView } from './PlanSheet';
+import { Icon } from '../../components/Icon';
 import { decisionItems, type DecisionItem } from './portfolioDecisions';
 import { portfolioApi, type PortfolioAiSummary, type PortfolioFilter } from './portfolioApi';
 import { errText } from './projectParts';
@@ -19,7 +23,7 @@ import './portfolio.css';
 import { SavedViewsBar } from '../platform/SavedViews';
 import './projectsHome.css';
 
-type Mode = 'board' | 'timeline' | 'capacity' | 'present';
+type Mode = 'board' | 'timeline' | 'sheet' | 'capacity' | 'present';
 const sentences = (t: string) => t.trim().split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
 
 /**
@@ -30,6 +34,7 @@ const sentences = (t: string) => t.trim().split(/(?<=[.!?])\s+/).map((x) => x.tr
 // The Projects · Portfolio switch is not shown here: the rail carries both Projects and Portfolio (design s-portfolio).
 export function PortfolioView(_props: { switcher?: ReactNode }) {
   const ai = useAi();
+  const wsName = useAuth((s) => s.ctx?.current?.name);
   const { teamId } = useTeamLens();
   const [params, setParams] = useSearchParams();
   const filter: PortfolioFilter = { teamId, ownerId: params.get('owner'), groupId: params.get('group'), health: params.get('health'), dueFrom: params.get('from'), dueTo: params.get('to') };
@@ -40,18 +45,22 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   };
   // ?view=portfolio&mode=timeline|present (the rail keys Portfolio on view=portfolio); old ?view=timeline|present links still open.
   const v = params.get('mode') ?? params.get('view');
-  const mode: Mode = v === 'timeline' ? 'timeline' : v === 'capacity' ? 'capacity' : v === 'present' ? 'present' : 'board';
+  const mode: Mode = v === 'timeline' ? 'timeline' : v === 'sheet' ? 'sheet' : v === 'capacity' ? 'capacity' : v === 'present' ? 'present' : 'board';
   const setMode = (m: Mode) => { const n = new URLSearchParams(params); n.set('view', 'portfolio'); if (m === 'board') n.delete('mode'); else n.set('mode', m); setParams(n, { replace: true }); };
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [itemsOpen, setItemsOpen] = useState(false);
   const [timelineRange, setTimelineRange] = useState<string | null>(null);
+  const [slot, setSlot] = useState<HTMLSpanElement | null>(null);
   const q = useWsQuery(['portfolio', 'board', filter], () => portfolioApi.board(filter), { refetchInterval: 120_000, staleTime: 60_000, placeholderData: (prev) => prev });
   const nFilters = filterCount(filter);
   const sendBrief = async () => {
     try { const r = await aiWorkspaceApi.sendBrief(teamId); toast(r.sent ? 'The brief is on its way to you, in the app and by e-mail.' : r.reason ?? 'Nothing was sent.', r.sent ? 'success' : 'info'); }
     catch { toast('Could not send the brief.', 'error'); }
   };
-  const exportAs = async (format: 'xlsx' | 'pdf') => { try { await portfolioApi.export(filter, format); } catch { toast('The export could not be made.', 'error'); } };
+  const exportAs = async (format: 'xlsx' | 'pdf') => {
+    try { if (mode === 'sheet' && format === 'xlsx') await portfolioApi.sheetExport(filter, { format: 'xlsx' }); else await portfolioApi.export(filter, format); }
+    catch { toast('The export could not be made.', 'error'); }
+  };
   const board = q.data;
   const b = board?.brief;
   const items: DecisionItem[] = useMemo(() => board && b ? decisionItems(board.decisions, b) : [], [board, b]);
@@ -62,14 +71,18 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   const eyebrow = mode === 'capacity' ? 'Next 6 weeks' : mode === 'timeline' && timelineRange ? timelineRange : `${b?.projects ?? projectsN} projects · Week ${isoWeek(asOf ? new Date(asOf) : new Date())}`;
   return (
     <div className="pj2 pj2-portfolio pf">
-      <PageHead eyebrow={eyebrow} title={mode === 'capacity' ? 'Capacity' : 'Portfolio'}>
+      <PageHead eyebrow={mode === 'sheet' || mode === 'timeline' ? undefined : eyebrow} title={mode === 'capacity' ? 'Capacity' : 'Portfolio'}
+        sub={mode === 'sheet' ? 'Every project, task and meeting in one grid. Edit like Excel — changes save as you go.'
+          : mode === 'timeline' ? `${wsName ? `${wsName} · ` : ''}${b?.projects ?? projectsN} projects · week ${isoWeek(asOf ? new Date(asOf) : new Date())}` : undefined}>
         <div className="pj2-heads pf-heads">
-          {mode === 'timeline' && <TimelineLegend />}
-          <Segmented<Mode> label="Portfolio view" value={mode} onChange={setMode}
-            options={[{ id: 'board', label: 'Board' }, { id: 'timeline', label: 'Timeline' }, { id: 'capacity', label: 'Capacity' }, { id: 'present', label: 'Present' }]} />
+          {mode === 'sheet' && <span ref={setSlot} className="pf-slot" />}
+          {mode === 'timeline' && <>
+            <button type="button" className="pf-hbtn" onClick={() => void exportAs('xlsx')}><Icon name="download" size={14} />Export</button>
+            <button type="button" className="pf-hbtn" onClick={() => setMode('present')}><Icon name="play" size={14} />Present</button>
+          </>}
           <DotsMenu label="More on Portfolio" items={[
             { label: nFilters ? `Filters · ${nFilters}` : 'Filters', icon: 'search', hint: 'Owner, group, health and due dates', onSelect: () => setFiltersOpen((x) => !x) },
-            { label: 'Export to Excel', icon: 'download', onSelect: () => void exportAs('xlsx') },
+            { label: 'Export to Excel', icon: 'download', hint: mode === 'sheet' ? 'The plan sheet, as on screen' : undefined, onSelect: () => void exportAs('xlsx') },
             { label: 'Export to PDF', icon: 'download', onSelect: () => void exportAs('pdf') },
             { label: 'Action items', icon: 'flag', hint: b?.openActionItems ? `${b.openActionItems} open across projects` : 'Follow-ups across projects', onSelect: () => setItemsOpen(true) },
             { label: 'Send me this', icon: 'send', hint: 'The brief, in the app and by e-mail', onSelect: () => void sendBrief() },
@@ -78,10 +91,14 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
           ]} />
         </div>
       </PageHead>
+      <div className="pf-tabs">
+        <Segmented<Mode> label="Portfolio view" value={mode} onChange={setMode}
+          options={[{ id: 'board', label: 'Board' }, { id: 'timeline', label: 'Timeline' }, { id: 'sheet', label: 'Plan sheet' }, { id: 'capacity', label: 'Capacity' }, { id: 'present', label: 'Present' }]} />
+      </div>
 
-      {mode !== 'present' && (
+      {mode !== 'present' && mode !== 'sheet' && mode !== 'timeline' && (
         <div className="pf-views">
-          <SavedViewsBar scope="portfolio" current={{ mode: mode === 'board' ? undefined : mode, owner: filter.ownerId ?? undefined, group: filter.groupId ?? undefined,
+          <SavedViewsBar scope="portfolio" only="portfolio" current={{ mode: mode === 'board' ? undefined : mode, owner: filter.ownerId ?? undefined, group: filter.groupId ?? undefined,
             health: filter.health ?? undefined, from: filter.dueFrom ?? undefined, to: filter.dueTo ?? undefined }}
             onApply={(c) => {
               const n = new URLSearchParams(params);
@@ -96,7 +113,9 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
       {q.isLoading ? <PageLoader /> : q.isError || !board || !b ? <ErrorState error={q.error} retry={() => q.refetch()} /> : mode === 'capacity' ? (
         <CapacityPlanView />
       ) : mode === 'timeline' ? (
-        <Gantt filter={filter} brief={b} decisions={board.decisions} onRange={setTimelineRange} />
+        <PortfolioTimeline filter={filter} onRange={setTimelineRange} />
+      ) : mode === 'sheet' ? (
+        <PlanSheetView filter={filter} actionsSlot={slot} onPresent={() => setMode('present')} />
       ) : (
         <>
           <div className="pf-big">

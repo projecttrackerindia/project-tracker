@@ -23,12 +23,15 @@ import { registerPage } from './lib/prefetchPages';
  * and the #anchor, and adding any the new place needs, so bookmarks and links in old e-mails, notifications and AI answers keep working.
  * `prefix`: the old address's start is swapped for `to` and the rest is kept (/projects/7/x → /work/projects/7/x).
  */
-function Moved({ to, prefix, rename }: { to: string; prefix?: string; /** Query names the new place calls differently (Meet's ?open= is Talk's ?meeting=). */ rename?: Record<string, string> }) {
+function Moved({ to, prefix, rename, keep }: { to: string; prefix?: string; /** Query names the new place calls differently (Meet's ?open= is Talk's ?meeting=). */ rename?: Record<string, string>;
+  /** Query values the old address carried under a name the new address sets itself (/portfolio?view=sheet keeps "sheet" as ?mode=). */ keep?: Record<string, string> }) {
   const loc = useLocation();
   const [base, extra] = to.split('?');
   const path = prefix ? `${base}${loc.pathname.slice(prefix.length)}`.replace(/\/+$/, '') || '/' : base;
   const q = new URLSearchParams(loc.search);
+  const kept = Object.entries(keep ?? {}).map(([from, name]) => ({ from, name, v: q.get(from) }));
   new URLSearchParams(extra ?? '').forEach((v, k) => q.set(k, v));
+  for (const k of kept) if (k.v && k.v !== q.get(k.from) && !q.has(k.name)) q.set(k.name, k.v);
   for (const [from, name] of Object.entries(rename ?? {})) { const v = q.get(from); if (v !== null && !q.has(name)) q.set(name, v); }
   const s = q.toString();
   return <Navigate to={`${path}${s ? `?${s}` : ''}${loc.hash}`} replace state={loc.state} />;   // and what the page was opened with (a new document, a question in hand)
@@ -475,7 +478,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="work/reports" element={<Moved to="/insights?tab=reports&s=operations" />} />
         <Route path="projects" element={<Moved to="/work/projects" />} />
         <Route path="projects/*" element={<ProjectsMoved />} />
-        <Route path="portfolio/*" element={<Moved to="/work/projects?view=portfolio" />} />
+        <Route path="portfolio/*" element={<Moved to="/work/projects?view=portfolio" keep={{ view: 'mode' }} />} />
         <Route path="project-status" element={<Moved to="/work/projects?view=portfolio" />} />
         <Route path="chat" element={<Moved to="/messages?f=chat" />} />
         <Route path="chat/*" element={<Moved to="/messages" prefix="/chat" />} />
