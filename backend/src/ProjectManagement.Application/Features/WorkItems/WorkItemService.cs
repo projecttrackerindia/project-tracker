@@ -16,7 +16,7 @@ namespace ProjectManagement.Application.Features.WorkItems;
 /// </summary>
 public record WorkItemDto(WorkItemKind Kind, Guid Id, string Key, string Title, Guid? ProjectId, string? ProjectKey, string? ProjectName,
     string Status, StatusCategory Category, Priority Priority, DateOnly? DueDate, bool IsOverdue, UserRefDto? Assignee, string? TypeName, DateTime UpdatedAt,
-    int Version = 0, DateTime? CompletedAt = null, Guid? ReporterId = null);
+    int Version = 0, DateTime? CompletedAt = null, Guid? ReporterId = null, TimeOnly? DueTime = null);
 
 /// <summary>Filters for a list of work items. With no kinds given, every kind the caller can see is included.</summary>
 public record WorkItemQuery(IReadOnlyList<WorkItemKind>? Kinds = null, Guid? AssigneeId = null, bool Mine = false, bool OpenOnly = true,
@@ -141,13 +141,13 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (query.Overdue) tq = tq.Where(t => t.DueDate != null && t.DueDate < today && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled);
             if (q is not null) tq = tq.Where(t => EF.Functions.Like(t.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (t.Description != null && EF.Functions.Like(t.Description.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || t.Number == number);
             var tasks = await tq.OrderBy(t => t.Status!.Category == StatusCategory.Done || t.Status.Category == StatusCategory.Cancelled)
-                .ThenBy(t => t.DueDate == null).ThenBy(t => t.DueDate).ThenByDescending(t => t.Priority)
+                .ThenBy(t => t.DueDate == null).ThenBy(t => t.DueDate).ThenBy(t => t.DueTime == null).ThenBy(t => t.DueTime).ThenByDescending(t => t.Priority)
                 .ThenByDescending(t => t.UpdatedAt ?? t.CreatedAt).ThenBy(t => t.Id).Skip(query.Offset).Take(limit)
                 .Select(t => new { t.Id, t.Number, t.Title, t.ProjectId, ProjectKey = t.Project!.Key, ProjectName = t.Project.Name, Status = t.Status!.Name, t.Status.Category,
-                    t.Priority, t.DueDate, t.AssigneeId, Updated = t.UpdatedAt ?? t.CreatedAt, t.Version, t.CompletedAt, t.ReporterId })
+                    t.Priority, t.DueDate, t.DueTime, t.AssigneeId, Updated = t.UpdatedAt ?? t.CreatedAt, t.Version, t.CompletedAt, t.ReporterId })
                 .ToListAsync(ct);
             rows.AddRange(tasks.Select(t => new WorkItemDto(WorkItemKind.Task, t.Id, $"{t.ProjectKey}-{t.Number}", t.Title, t.ProjectId, t.ProjectKey, t.ProjectName,
-                t.Status, t.Category, t.Priority, t.DueDate, IsLate(t.DueDate, t.Category, today), Ref(t.AssigneeId), null, t.Updated, t.Version, t.CompletedAt, t.ReporterId)));
+                t.Status, t.Category, t.Priority, t.DueDate, IsLate(t.DueDate, t.DueTime, t.Category), Ref(t.AssigneeId), null, t.Updated, t.Version, t.CompletedAt, t.ReporterId, t.DueTime)));
         }
 
         // Issues carry a due date in the shared WorkItems columns (set from the Work panel), so due and overdue filters include them.
@@ -170,11 +170,11 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                                 join p in db.Projects.AsNoTracking() on i.ProjectId equals p.Id
                                 orderby i.DueDate == null, i.DueDate, i.CreatedAt descending
                                 select new { i.Id, i.Number, i.Title, i.ProjectId, ProjectKey = p.Key, ProjectName = p.Name, i.Status, i.Severity, i.AssigneeId, Updated = i.UpdatedAt ?? i.CreatedAt,
-                                    i.DueDate, i.Version, i.ResolvedAt, i.ReporterId })
+                                    i.DueDate, i.DueTime, i.Version, i.ResolvedAt, i.ReporterId })
                 .Take(limit).ToListAsync(ct);
             rows.AddRange(issues.Select(i => new WorkItemDto(WorkItemKind.Issue, i.Id, $"{i.ProjectKey}-I{i.Number}", i.Title, i.ProjectId, i.ProjectKey, i.ProjectName,
-                LabelOf(i.Status), CategoryOf(i.Status), i.Severity, i.DueDate, IsLate(i.DueDate, CategoryOf(i.Status), today), Ref(i.AssigneeId), "Test issue", i.Updated,
-                i.Version, i.ResolvedAt, i.ReporterId)));
+                LabelOf(i.Status), CategoryOf(i.Status), i.Severity, i.DueDate, IsLate(i.DueDate, i.DueTime, CategoryOf(i.Status)), Ref(i.AssigneeId), "Test issue", i.Updated,
+                i.Version, i.ResolvedAt, i.ReporterId, i.DueTime)));
         }
 
         foreach (var (kind, itemKind) in new[] { (WorkTaskKind.ActionItem, WorkItemKind.ActionItem), (WorkTaskKind.Operational, WorkItemKind.Operational) })
@@ -193,8 +193,8 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (query.CompletedTo is { } ctu) wq = wq.Where(w => w.CompletedAt != null && w.CompletedAt < ctu);
             if (query.Overdue) wq = wq.Where(w => w.DueDate != null && w.DueDate < today && (w.Status == WorkTaskStatus.ToDo || w.Status == WorkTaskStatus.InProgress || w.Status == WorkTaskStatus.OnHold));
             if (q is not null) wq = wq.Where(w => EF.Functions.Like(w.Title.ToLower(), SearchText.Pattern(q), SearchText.Escape) || (w.Description != null && EF.Functions.Like(w.Description.ToLower(), SearchText.Pattern(q), SearchText.Escape)) || w.Number == number);
-            var work = await wq.OrderBy(w => w.DueDate == null).ThenBy(w => w.DueDate).Take(limit)
-                .Select(w => new { w.Id, w.Number, w.Title, w.RelatedProjectId, w.Status, w.Priority, w.DueDate, w.AssigneeId, TypeName = w.WorkType != null ? w.WorkType.Name : null,
+            var work = await wq.OrderBy(w => w.DueDate == null).ThenBy(w => w.DueDate).ThenBy(w => w.DueTime == null).ThenBy(w => w.DueTime).Take(limit)
+                .Select(w => new { w.Id, w.Number, w.Title, w.RelatedProjectId, w.Status, w.Priority, w.DueDate, w.DueTime, w.AssigneeId, TypeName = w.WorkType != null ? w.WorkType.Name : null,
                     Updated = w.UpdatedAt ?? w.CreatedAt, w.Version, w.CompletedAt, w.ReporterId })
                 .ToListAsync(ct);
             var projectIds = work.Where(w => w.RelatedProjectId != null).Select(w => w.RelatedProjectId!.Value).Distinct().ToList();
@@ -204,8 +204,8 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 var p = w.RelatedProjectId is { } id && projects.TryGetValue(id, out var x) ? x : null;
                 var cat = CategoryOf(w.Status);
                 return new WorkItemDto(itemKind, w.Id, KeyOf(kind, w.Number), w.Title, p is null ? null : w.RelatedProjectId, p?.Key, p?.Name,
-                    kind == WorkTaskKind.ActionItem ? ActionLabel(w.Status) : WorkLabel(w.Status), cat, w.Priority, w.DueDate, IsLate(w.DueDate, cat, today), Ref(w.AssigneeId),
-                    kind == WorkTaskKind.ActionItem ? "Action item" : w.TypeName, w.Updated, w.Version, w.CompletedAt, w.ReporterId);
+                    kind == WorkTaskKind.ActionItem ? ActionLabel(w.Status) : WorkLabel(w.Status), cat, w.Priority, w.DueDate, IsLate(w.DueDate, w.DueTime, cat), Ref(w.AssigneeId),
+                    kind == WorkTaskKind.ActionItem ? "Action item" : w.TypeName, w.Updated, w.Version, w.CompletedAt, w.ReporterId, w.DueTime);
             }));
         }
 
@@ -218,7 +218,7 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     /// <summary>Open items first; then the soonest due (undated last); then the more urgent; then the most recently changed.</summary>
     public static IEnumerable<WorkItemDto> Order(IEnumerable<WorkItemDto> rows) =>
         rows.OrderBy(r => r.Category is StatusCategory.Done or StatusCategory.Cancelled)
-            .ThenBy(r => r.DueDate is null).ThenBy(r => r.DueDate)
+            .ThenBy(r => r.DueDate is null).ThenBy(r => r.DueDate).ThenBy(r => r.DueTime ?? TimeOnly.MaxValue)
             .ThenByDescending(r => (int)r.Priority)
             .ThenByDescending(r => r.UpdatedAt).ThenBy(r => r.Id);
 
@@ -231,8 +231,9 @@ public class WorkItemService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (rows[i].Assignee is { } a) rows[i] = rows[i] with { Assignee = names.TryGetValue(a.Id, out var n) ? new UserRefDto(a.Id, n) : null };
     }
 
-    private static bool IsLate(DateOnly? due, StatusCategory cat, DateOnly today) =>
-        due is { } d && d < today && cat is not (StatusCategory.Done or StatusCategory.Cancelled);
+    /// <summary>Open and past its due: an earlier day, or today at a due time already gone.</summary>
+    private bool IsLate(DateOnly? due, TimeOnly? at, StatusCategory cat) =>
+        cat is not (StatusCategory.Done or StatusCategory.Cancelled) && clock.IsPastDue(due, at);
 
     public static string WorkLabel(WorkTaskStatus s) => s switch
     {

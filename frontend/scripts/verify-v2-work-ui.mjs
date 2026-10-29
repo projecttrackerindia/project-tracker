@@ -264,7 +264,7 @@ try {
     assert.match(await panel.locator('.wkp-tile', { hasText: 'Status' }).innerText(), /In Progress/);
     // A ticket's SLA, channel and resolution are fields.
     const fields = panel.locator('.wkp-fields');
-    await fields.locator('.sla-chip').waitFor();
+    await fields.getByTestId('sla-countdown').waitFor();   // a running clock: "Resolve by HH:mm · Xh Ym left"
     assert.match(await fields.innerText(), /Channel\s*WhatsApp/);
     await fields.getByText('Resolution').waitFor();
     // Aura suggests: violet, Aura's face, one suggested action and Not now.

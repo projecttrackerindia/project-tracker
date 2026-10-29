@@ -13,6 +13,7 @@ import { meetApi, type Rsvp } from '../meet/meetApi';
 import { reminderApi } from '../reminders/api';
 import { canComplete, canMoveDue, completeWork, editError, isoAt as isoAtHour, moveDue, moveReminder, refreshAfterEdit } from './calendarEdit';
 import { appZone } from '../../lib/zone';
+import { clock24 } from '../work/dueTime';
 import { TimeEntryEditor, type WorkChoice } from './TimeEntryEditor';
 import { KIND, countdown, END, MONTHS, START, SNAP, addDays, clockAP, dateOf, dayLabel, fmtMins, hourOf, hrefOf, type Detail, type Focus, type Meet } from './plannerModel';
 import './eventDetail.css';
@@ -205,7 +206,10 @@ function WorkBody({ e, focus, others, today, nowH = 0, days, actions, onClose }:
   const why = focus
     ? <>Focus time {focus.pinned ? 'you placed' : 'planned by your day plan'} for <b>{key ?? e.title}</b>{priority ? ` · ${priority}` : ''} · {dueText(due, today)}</>
     : <>Deadline of <b>{key ?? e.title}</b>{e.projectName ? ` in ${e.projectName}` : ''}{priority && isWork ? ` · ${priority} priority` : ''}{e.overdue ? ' · overdue' : ''}</>;
-  const when = focus ? <>{longDay(focus.day)} · {clockAP(focus.start)} – {clockAP(focus.end)}</> : <>{longDay(due)} · all day</>;
+  // A deadline with a time (or a ticket held to its SLA) reads "by 14:30" / "SLA breach 14:29"; a date-only one is all day.
+  const dueAtText = e.slaBreachAt && !e.dueAt ? null : e.dueAt ? `by ${clock24(e.dueAt)}` : null;
+  const when = focus ? <>{longDay(focus.day)} · {clockAP(focus.start)} – {clockAP(focus.end)}</>
+    : <>{longDay(due)} · {dueAtText ?? 'all day'}{e.slaBreachAt && <span className="ed-sla" data-testid="ed-sla"> · SLA {Date.parse(e.slaBreachAt) < Date.now() ? 'breached' : 'breach'} {clock24(e.slaBreachAt)}</span>}</>;
 
   const run = async (name: string, fn: () => Promise<unknown>, ok: string, after?: () => void) => {
     setBusy(name);

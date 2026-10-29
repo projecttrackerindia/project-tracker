@@ -7,6 +7,8 @@ import { useWorkspaceId } from '../../stores/auth';
 import { EventDetail, type DetailActions } from './EventDetail';
 import { END, START, clockH, fmtMins, hourOf, isDone, lanes, planKey, type Detail, type PlanOverrides } from './plannerModel';
 import { dayCounts, daySignature, deadlineHourOf, focusLabel, focusWord, hoursOf, workWeek } from './timeline';
+import { dayMarks, type DayMark } from './deadline';
+import { clock24 } from '../work/dueTime';
 import { useToday } from './useToday';
 import './planner.css';
 import './eventDetail.css';
@@ -65,9 +67,11 @@ export function YourDay({ team }: { team: boolean }) {
   const nowH = hourOf(now);
   const d = day;
   const shift = d?.shift ?? { start: START, end: END, checkIn: null };
+  // Deadlines with a time and SLA breaches, at their hour (markers only: the lanes stay as they are).
+  const marks = d ? dayMarks(d.day, d.due, now.getTime()) : [];
   // the ruler: 9 AM to 8 PM, wider when something happened earlier or later
   const timed = d ? [...d.meets.map((m) => [m.start, m.end]), ...[...d.calls, ...d.time, ...d.done, ...d.reminders].map((t) => { const h = hoursOf(t); return [h.start, h.end]; }),
-    ...(shift.checkIn != null ? [[shift.checkIn, shift.checkIn]] : [])] : [];
+    ...(shift.checkIn != null ? [[shift.checkIn, shift.checkIn]] : []), ...marks.map((m) => [m.at, m.at])] : [];
   const h0 = Math.max(0, Math.min(9, ...timed.map((x) => Math.floor(x[0])))), h1 = Math.min(24, Math.max(20, ...timed.map((x) => Math.ceil(x[1]))));
   const cols = h1 - h0;
   const frac = (h: number) => (Math.min(cols, Math.max(0, h - h0)) / cols) * 100;
@@ -107,8 +111,9 @@ export function YourDay({ team }: { team: boolean }) {
 
   // ---- the pins: finished work, reminders, the check-in and deadlines (date-only at the shift's end: "by end of day")
   const deadlines = new Map<number, CalendarEvent[]>();
+  const marked = new Set(marks.map((m) => `${m.e.type}:${m.e.id}`));   // timed deadlines and SLA breaches have their own markers
   for (const e of d?.due ?? []) {
-    if (isDone(e)) continue;
+    if (isDone(e) || marked.has(`${e.type}:${e.id}`)) continue;
     const h = deadlineHourOf(e, shift);
     deadlines.set(h, [...(deadlines.get(h) ?? []), e]);
   }
@@ -172,6 +177,7 @@ export function YourDay({ team }: { team: boolean }) {
               onClick={(ev) => show(p.det!, ev.currentTarget)}>{p.body}</button>
           ) : <span key={p.key} className={`hm-pin ${p.cls}`} data-type={p.type} data-hour={p.at} style={style} title={p.title}>{p.body}</span>;
         })}
+        {marks.map((m) => <DeadlineMark key={m.key} m={m} left={pct(m.at)} onOpen={(el) => show({ kind: 'deadline', key: `deadline:${m.e.date}:${m.e.type}:${m.e.id}`, e: m.e, others: [] }, el)} />)}
         {nowH >= h0 && nowH <= h1 && (
           <div className="hm-now" style={{ left: pct(nowH) }} aria-label={`Now, ${clockH(nowH)}`} data-testid="your-day-now" data-hour={nowH}><span>{clockH(nowH)}</span></div>
         )}
@@ -179,6 +185,21 @@ export function YourDay({ team }: { team: boolean }) {
       <div className="hm-hours" aria-hidden="true" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>{Array.from({ length: cols }, (_, i) => h0 + i).map((h) => <span key={h}>{label(h, h === h0)}</span>)}</div>
       {open && <EventDetail detail={open.d} anchor={open.el} today={today} nowH={nowH} days={workWeek(today)} actions={actions} onClose={() => setOpen(null)} />}
     </section>
+  );
+}
+
+/** A deadline at its hour on Your day: a red SLA breach line with its pill, or a flag for work due at a set time. */
+function DeadlineMark({ m, left, onOpen }: { m: DayMark; left: string; onOpen: (el: HTMLElement) => void }) {
+  const what = `${m.e.key ? `${m.e.key} ` : ''}${m.e.title}`;
+  const label = m.kind === 'sla' ? `SLA ${m.late ? 'breached' : 'breach'} ${clock24(m.iso)} · ${what}` : `Due ${clock24(m.iso)} · ${what}`;
+  return (
+    <>
+      {m.kind === 'sla' && <i className="hm-slaline" style={{ left }} aria-hidden="true" />}
+      <button type="button" className={`hm-pin dl ${m.kind}${m.late ? ' late' : ''}`} data-type={m.kind === 'sla' ? 'sla' : 'deadline'} data-testid={m.kind === 'sla' ? 'your-day-sla' : 'your-day-due'}
+        data-at={clock24(m.iso)} style={{ left }} title={label} aria-label={label} onClick={(ev) => onOpen(ev.currentTarget)}>
+        <Icon name="flag" size={9} />{m.kind === 'sla' ? `SLA ${clock24(m.iso)}` : clock24(m.iso)} · {m.e.key ?? m.e.title}
+      </button>
+    </>
   );
 }
 
@@ -190,6 +211,7 @@ export function YourDayList() {
   const nowH = hourOf(now);
   if (!d) return <section className="pt-card pt-day" aria-label="Your day"><p className="pt-quiet">{q.isError ? 'Your day could not be read.' : 'Reading your day…'}</p></section>;
   const c = dayCounts(d);
+  const listMarks = dayMarks(d.day, d.due, now.getTime()), listMarked = new Set(listMarks.map((m) => `${m.e.type}:${m.e.id}`));
   type Row = { key: string; at: number; end: number | null; type: string; title: string; sub: string; det: Detail | null };
   const rows: Row[] = [
     ...d.meets.map((m) => ({ key: `meeting:${m.key}`, at: m.start, end: m.end, type: 'meeting', title: m.e.title, sub: m.e.projectName ?? 'Meeting', det: { kind: 'meeting', key: `meeting:${m.key}`, m } as Detail })),
@@ -199,9 +221,12 @@ export function YourDayList() {
     ...d.reminders.map((t) => { const s = hoursOf(t); return { key: t.id, at: s.start, end: null, type: 'reminder', title: t.title, sub: 'Reminder', det: { kind: 'reminder', key: `reminder:${t.id}`, t } as Detail }; }),
     ...d.focus.map((f) => ({ key: f.key, at: f.start, end: f.end, type: 'focus', title: `${focusWord(f, today, nowH)} · ${focusLabel(f.e)}`, sub: 'Suggested focus', det: { kind: 'focus', key: f.key, f } as Detail })),
     // date-only work is due by the end of the shift (deadlineHourOf), and the check-in starts the day
-    ...d.due.filter((e) => !isDone(e)).map((e) => { const h = deadlineHourOf(e, d.shift); return { key: `deadline:${e.type}:${e.id}`, at: h, end: null, type: 'deadline', title: `${e.key ? `${e.key} ` : ''}${e.title}`,
+    ...d.due.filter((e) => !isDone(e) && !listMarked.has(`${e.type}:${e.id}`)).map((e) => { const h = deadlineHourOf(e, d.shift); return { key: `deadline:${e.type}:${e.id}`, at: h, end: null, type: 'deadline', title: `${e.key ? `${e.key} ` : ''}${e.title}`,
       sub: h === d.shift.end ? 'Due by end of day' : `Due by ${clockH(h)}`, det: { kind: 'deadline', key: `deadline:${d.day}:${e.type}:${e.id}`, e, others: [] } as Detail }; }),
     ...(d.shift.checkIn != null ? [{ key: 'checkin', at: d.shift.checkIn, end: null, type: 'checkin', title: `Checked in at ${clockH(d.shift.checkIn)}`, sub: 'Attendance', det: null }] : []),
+    ...listMarks.map((m) => ({ key: m.key, at: m.at, end: null, type: m.kind === 'sla' ? 'sla' : 'deadline',
+      title: `${m.e.key ? `${m.e.key} ` : ''}${m.e.title}`, sub: m.kind === 'sla' ? `SLA ${m.late ? 'breached' : 'breach'} at ${clock24(m.iso)}` : `Due ${clock24(m.iso)}`,
+      det: { kind: 'deadline', key: `deadline:${m.e.date}:${m.e.type}:${m.e.id}`, e: m.e, others: [] } as Detail })),
   ].sort((a, b) => a.at - b.at || a.key.localeCompare(b.key));
   return (
     <section className="pt-card pt-day" aria-label="Your day" data-testid="your-day" data-day={today} data-sig={daySignature(d)}>

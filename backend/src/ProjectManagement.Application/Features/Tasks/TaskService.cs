@@ -20,7 +20,8 @@ public record TaskDto(Guid Id, Guid ProjectId, string ProjectKey, string Project
     double Position, Guid? ParentTaskId, int SubtaskTotal, int SubtaskDone, int CommentCount, IReadOnlyList<LabelDto> Labels,
     DateTime? CompletedAt, DateTime CreatedAt, DateTime? UpdatedAt, int Version, bool IsOverdue,
     Guid? MilestoneId, string? MilestoneName, int DependsOnCount, int BlocksCount, bool IsBlocked, Guid? SprintId = null, string? SprintName = null,
-    int ChecklistTotal = 0, int ChecklistDone = 0, bool CanEdit = true, Guid? StageId = null, string? StageName = null);
+    int ChecklistTotal = 0, int ChecklistDone = 0, bool CanEdit = true, Guid? StageId = null, string? StageName = null,
+    TimeOnly? DueTime = null, DateTime? DueAt = null);
 public record TaskDetailDto(TaskDto Task, IReadOnlyList<TaskDto> Subtasks);
 
 public record TaskQuery(Guid? ProjectId, bool Mine = false, Guid? AssigneeId = null, Guid? StatusId = null, StatusCategory? Category = null,
@@ -28,10 +29,12 @@ public record TaskQuery(Guid? ProjectId, bool Mine = false, Guid? AssigneeId = n
     bool Overdue = false, bool IncludeSubtasks = false, string? Sort = null, int Page = 1, int PageSize = 50,
     Guid? SprintId = null, bool Backlog = false, Guid? StageId = null);
 public record CreateTaskRequest(string Title, string? Description, Guid? StatusId, Priority Priority, Guid? AssigneeId, DateOnly? StartDate,
-    DateOnly? DueDate, decimal? EstimatedHours, IReadOnlyList<Guid>? LabelIds, Guid? ParentTaskId, Guid? MilestoneId = null, Guid? StageId = null);
+    DateOnly? DueDate, decimal? EstimatedHours, IReadOnlyList<Guid>? LabelIds, Guid? ParentTaskId, Guid? MilestoneId = null, Guid? StageId = null,
+    TimeOnly? DueTime = null);
+/// <param name="DueTime">The time of day it is due; left out keeps the current time (cleared with the date, or with <paramref name="ClearDueTime"/>).</param>
 public record UpdateTaskRequest(string Title, string? Description, Guid StatusId, Priority Priority, Guid? AssigneeId, DateOnly? StartDate,
     DateOnly? DueDate, decimal? EstimatedHours, decimal? ActualHours, IReadOnlyList<Guid>? LabelIds, int Version, Guid? MilestoneId = null, Guid? StageId = null,
-    string? DueDateReason = null, string? DueDateDependency = null);
+    string? DueDateReason = null, string? DueDateDependency = null, TimeOnly? DueTime = null, bool ClearDueTime = false);
 /// <param name="Version">The version the caller saw; when given, a move over someone else's newer change is refused (409) instead of overwriting it.</param>
 public record MoveTaskRequest(Guid StatusId, double? Position, int? Version = null);
 
@@ -91,9 +94,9 @@ public class TaskService(
                 r.AssigneeName is null ? null : new UserRefDto(t.AssigneeId!.Value, r.AssigneeName),
                 new UserRefDto(t.ReporterId, r.ReporterName ?? "Unknown"), t.StartDate, t.DueDate, t.EstimatedHours, t.ActualHours,
                 t.Position, t.ParentTaskId, r.SubtaskTotal, r.SubtaskDone, r.CommentCount, r.Labels, t.CompletedAt, t.CreatedAt, t.UpdatedAt,
-                t.Version, open && t.DueDate is { } due && due < today,
+                t.Version, open && clock.IsPastDue(t.DueDate, t.DueTime),
                 t.MilestoneId, r.MilestoneName, r.DependsOn, r.Blocks, open && r.Unmet > 0, t.SprintId, r.SprintName, r.ChecklistTotal, r.ChecklistDone,
-                canEditAny || (canEditAssigned && t.AssigneeId == uid), t.StageId, r.StageName);
+                canEditAny || (canEditAssigned && t.AssigneeId == uid), t.StageId, r.StageName, t.DueTime, clock.DueAt(t.DueDate, t.DueTime));
         }).ToList();
     }
 
@@ -224,7 +227,7 @@ public class TaskService(
         {
             TenantId = tid, ProjectId = projectId, ParentTaskId = req.ParentTaskId, StageId = stageId, MilestoneId = milestoneId, Number = await NextNumberAsync(projectId, ct),
             Title = req.Title.Trim(), Description = req.Description?.Trim(), StatusId = status.Id, Priority = req.Priority,
-            AssigneeId = req.AssigneeId, ReporterId = userId, StartDate = req.StartDate, DueDate = req.DueDate,
+            AssigneeId = req.AssigneeId, ReporterId = userId, StartDate = req.StartDate, DueDate = req.DueDate, DueTime = req.DueDate is null ? null : req.DueTime,
             EstimatedHours = req.EstimatedHours, Position = await NextPositionAsync(projectId, status.Id, ct), CreatedAt = now, CreatedBy = userId,
             CompletedAt = status.Category == StatusCategory.Done ? now : null,
         };
@@ -285,7 +288,8 @@ public class TaskService(
         if (req.StartDate is { } s && req.DueDate is { } d && d < s) throw new ValidationException("dueDate", "Due date must not be before the start date.");
         ValidateHours(req.EstimatedHours, "estimatedHours");
         ValidateHours(req.ActualHours, "actualHours");
-        var dueNote = DueDateHistory.Prepare(task.DueDate, req.DueDate, req.DueDateReason, req.DueDateDependency);   // a delay needs a reason
+        var nextDueTime = DueDateHistory.NextTime(req.DueDate, req.DueTime, req.ClearDueTime, task.DueTime);
+        var dueNote = DueDateHistory.Prepare(task.DueDate, task.DueTime, req.DueDate, nextDueTime, req.DueDateReason, req.DueDateDependency);   // a delay (a later day or time) needs a reason
 
         var project = await db.Projects.FirstAsync(p => p.Id == task.ProjectId, ct);
         var status = await db.WorkflowStatuses.FirstOrDefaultAsync(x => x.Id == req.StatusId && x.ProjectId == task.ProjectId, ct)
@@ -306,12 +310,12 @@ public class TaskService(
         if (task.StatusId != status.Id) await completion.EnsureCanCompleteAsync(task, status, task.StageId, ct);
 
         var oldStatus = await db.WorkflowStatuses.Where(x => x.Id == task.StatusId).Select(x => x.Name).FirstAsync(ct);
-        var oldAssignee = task.AssigneeId; var oldDue = task.DueDate; var oldPriority = task.Priority; var oldStart = task.StartDate; var oldTitle = task.Title;
+        var oldAssignee = task.AssigneeId; var oldDue = task.DueDate; var oldDueTime = task.DueTime; var oldPriority = task.Priority; var oldStart = task.StartDate; var oldTitle = task.Title;
         var oldDescription = task.Description; var oldEstimate = task.EstimatedHours;
         var key = $"{project.Key}-{task.Number}";
 
         task.Title = req.Title.Trim(); task.Description = req.Description?.Trim(); task.Priority = req.Priority;
-        task.AssigneeId = req.AssigneeId; task.StartDate = req.StartDate; task.DueDate = req.DueDate;
+        task.AssigneeId = req.AssigneeId; task.StartDate = req.StartDate; task.DueDate = req.DueDate; task.DueTime = nextDueTime;
         task.EstimatedHours = req.EstimatedHours;
         // With tracked time, actual hours is the sum of the time entries and cannot be typed over.
         if (!await db.TimeEntries.AnyAsync(e => e.TaskId == id, ct)) task.ActualHours = req.ActualHours;
@@ -337,6 +341,7 @@ public class TaskService(
                 .Add("Title", oldTitle, task.Title).Add("Status", oldStatus, status.Name)
                 .Add("Assignee", ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldAssignee), ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, task.AssigneeId))
                 .Add("Priority", oldPriority.ToString(), task.Priority.ToString()).Add("Start date", oldStart, task.StartDate).Add("Due date", oldDue, task.DueDate)
+                .Add("Due time", oldDueTime?.ToString("HH:mm"), task.DueTime?.ToString("HH:mm"))
                 .Add("Labels", Labels(current.Select(l => l.LabelId)), Labels(wanted))
                 .Add("Description", oldDescription, task.Description, 60).Add("Estimate (h)", oldEstimate?.ToString("0.##"), task.EstimatedHours?.ToString("0.##"))
                 .Record(recorder, "task", "Task", id);
@@ -353,7 +358,7 @@ public class TaskService(
         if (dueNote is not null)
         {
             dueHistory.Record(task.TenantId, task.ProjectId, id, oldDue, task.DueDate, dueNote);
-            recorder.Activity("task.due_changed", "Task", id, $"{key}: {DueDateHistory.Describe(oldDue, task.DueDate, dueNote.Reason)}", task.ProjectId,
+            recorder.Activity("task.due_changed", "Task", id, $"{key}: {DueDateHistory.Describe(oldDue, oldDueTime, task.DueDate, task.DueTime, dueNote.Reason)}", task.ProjectId,
                 oldDue?.ToString("yyyy-MM-dd"), task.DueDate?.ToString("yyyy-MM-dd"));
         }
         if (oldPriority != task.Priority)
@@ -374,14 +379,14 @@ public class TaskService(
         }
         var renamed = oldTitle != task.Title;
         if (renamed) recorder.Activity("task.renamed", "Task", id, $"{key} renamed: “{oldTitle}” → “{task.Title}”", task.ProjectId, oldTitle, task.Title);
-        if (oldStatus == status.Name && oldAssignee == task.AssigneeId && oldDue == task.DueDate && oldPriority == task.Priority && oldStart == task.StartDate && !stageMoved && !renamed)
+        if (oldStatus == status.Name && oldAssignee == task.AssigneeId && oldDue == task.DueDate && oldDueTime == task.DueTime && oldPriority == task.Priority && oldStart == task.StartDate && !stageMoved && !renamed)
             recorder.Activity("task.updated", "Task", id, $"Updated task {key} \"{task.Title}\"", task.ProjectId);
 
         // Reassignment already tells the new assignee (TaskAssigned, above); this is everything else that changed, to whoever is still
         // on the task (assignee and reporter), so a watcher is not left to notice a status/date/priority/title change on their own.
         var changeNotes = new List<string>();
         if (oldStatus != status.Name) changeNotes.Add($"status: {oldStatus} → {status.Name}");
-        if (dueNote is not null) changeNotes.Add(DueDateHistory.Describe(oldDue, task.DueDate, dueNote.Reason));
+        if (dueNote is not null) changeNotes.Add(DueDateHistory.Describe(oldDue, oldDueTime, task.DueDate, task.DueTime, dueNote.Reason));
         if (oldPriority != task.Priority) changeNotes.Add($"priority: {oldPriority} → {task.Priority}");
         if (oldStart != task.StartDate) changeNotes.Add("start date changed");
         if (renamed) changeNotes.Add($"renamed to “{task.Title}”");

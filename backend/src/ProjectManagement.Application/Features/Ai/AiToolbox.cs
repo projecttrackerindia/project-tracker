@@ -195,7 +195,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             new(UpdateWork, "Propose changing existing work by its key (ATL-12 for a project task, WT-3 operational work, AI-4 an action item): status, assignee (or \"none\"), due date, priority, and/or add a comment. A later due date needs a reason. The person confirms first.",
                 """
                 {"type":"object","properties":{"key":{"type":"string"},"status":{"type":"string","description":"A status name, e.g. In Progress, Done, On Hold."},
-                 "assignee":{"type":"string","description":"A person's name, \"me\" or \"none\"."},"due_date":{"type":"string","description":"yyyy-mm-dd"},"start_date":{"type":"string","description":"yyyy-mm-dd"},
+                 "assignee":{"type":"string","description":"A person's name, \"me\" or \"none\"."},"due_date":{"type":"string","description":"yyyy-mm-dd"},"due_time":{"type":"string","description":"HH:mm, optional time of day on the due date (workspace time)"},"start_date":{"type":"string","description":"yyyy-mm-dd"},
                  "title":{"type":"string"},"description":{"type":"string","description":"The full new description (replaces the old one)."},"estimate_hours":{"type":"number"},
                  "priority":{"type":"string","enum":["Low","Medium","High","Critical"]},"comment":{"type":"string"},"reason":{"type":"string","description":"Why the due date moves later."}},"required":["key"]}
                 """),
@@ -232,19 +232,19 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 """
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},
                  "assignee":{"type":"string","description":"A person's name or \"me\"."},"priority":{"type":"string","enum":["Low","Medium","High","Critical"]},
-                 "start_date":{"type":"string","description":"yyyy-mm-dd"},"due_date":{"type":"string","description":"yyyy-mm-dd"},"estimate_hours":{"type":"number"},
+                 "start_date":{"type":"string","description":"yyyy-mm-dd"},"due_date":{"type":"string","description":"yyyy-mm-dd"},"due_time":{"type":"string","description":"HH:mm, optional time of day on the due date (workspace time)"},"estimate_hours":{"type":"number"},
                  "comment":{"type":"string","description":"A first comment to post on the task once it exists, e.g. the plan, context or acceptance criteria."}},"required":["project","title"]}
                 """),
             new(CreateWork, "Propose a new operational work item (a bug fix, support request, analysis...) not tied to a project timeline. The person confirms first.",
                 """
                 {"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"},"work_type":{"type":"string","description":"The name of a work type, e.g. Bug Fix."},
                  "project":{"type":"string","description":"Optional related project."},"assignee":{"type":"string"},
-                 "priority":{"type":"string","enum":["Low","Medium","High","Critical"]},"due_date":{"type":"string","description":"yyyy-mm-dd"}},"required":["title","work_type"]}
+                 "priority":{"type":"string","enum":["Low","Medium","High","Critical"]},"due_date":{"type":"string","description":"yyyy-mm-dd"},"due_time":{"type":"string","description":"HH:mm, optional time of day on the due date (workspace time)"}},"required":["title","work_type"]}
                 """),
             new(CreateActionItem, "Propose a follow-up (action item) on a project, for example from meeting notes. The person confirms first.",
                 """
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string"},"details":{"type":"string"},"assignee":{"type":"string"},
-                 "due_date":{"type":"string","description":"yyyy-mm-dd"},"priority":{"type":"string","enum":["Low","Medium","High","Critical"]}},"required":["project","title"]}
+                 "due_date":{"type":"string","description":"yyyy-mm-dd"},"due_time":{"type":"string","description":"HH:mm, optional time of day on the due date (workspace time)"},"priority":{"type":"string","enum":["Low","Medium","High","Critical"]}},"required":["project","title"]}
                 """),
             new(ReviseReminder, "Propose a replacement for a pending reminder in THIS conversation. Use message_id and proposal_id from context. Nothing is saved until Confirm; confirming the replacement invalidates the original.",
                 """{"type":"object","properties":{"message_id":{"type":"string","format":"uuid"},"proposal_id":{"type":"string"},"at":{"type":"string","description":"Explicit local date/time yyyy-mm-ddTHH:mm"}},"required":["message_id","proposal_id","at"]}"""),
@@ -692,12 +692,12 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var assigneeText = Str(a, "assignee");
         var unassign = assigneeText is not null && assigneeText.Equals("none", StringComparison.OrdinalIgnoreCase);
         var assignee = assigneeText is null || unassign ? null : await PersonAsync(assigneeText, ct);
-        var due = Date(a, "due_date");
+        var due = Date(a, "due_date"); var dueTime = TimeArg(a);
         Priority? priority = Enum.TryParse<Priority>(Str(a, "priority"), true, out var pr) ? pr : null;
         var statusText = Str(a, "status"); var comment = Str(a, "comment"); var reason = Str(a, "reason");
         var newTitle = Str(a, "title"); var newDescription = Str(a, "description"); var start = Date(a, "start_date");
         var hours = a.TryGetProperty("estimate_hours", out var eh) && eh.ValueKind == JsonValueKind.Number ? eh.GetDecimal() : (decimal?)null;
-        if (statusText is null && assigneeText is null && due is null && priority is null && comment is null && newTitle is null && newDescription is null && start is null && hours is null)
+        if (statusText is null && assigneeText is null && due is null && dueTime is null && priority is null && comment is null && newTitle is null && newDescription is null && start is null && hours is null)
             throw new AiToolException("Say what to change: status, assignee, dates, priority, title, description, estimate or a comment.");
         if (newTitle is { Length: > 200 }) throw new AiToolException("A title is at most 200 characters.");
         if (comment is { Length: > 2000 }) throw new AiToolException("Keep the comment under 2,000 characters.");
@@ -720,7 +720,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 statusName = st.ToString(); changes.Add($"status {ai.Status} → {st}");
             }
             if (assignee is not null || unassign) changes.Add($"assignee {ai.Assignee?.Name ?? "none"} → {(unassign ? "none" : assignee!.Name)}");
-            if (due is not null) changes.Add($"due {Day(ai.DueDate)} → {Day(due)}");
+            if (due is not null || dueTime is not null) changes.Add($"due {Day(ai.DueDate)}{Hm(ai.DueTime)} → {Day(due ?? ai.DueDate)}{Hm(dueTime ?? ai.DueTime)}");
             if (priority is not null) changes.Add($"priority {ai.Priority} → {priority}");
         }
         else if (prefix == "WT")
@@ -741,7 +741,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             }
             if (comment is not null && comment.Length < 1) comment = null;
             if (assignee is not null || unassign) changes.Add($"assignee {w.Assignee?.Name ?? "none"} → {(unassign ? "none" : assignee!.Name)}");
-            if (due is not null) changes.Add($"due {Day(w.DueDate)} → {Day(due)}");
+            if (due is not null || dueTime is not null) changes.Add($"due {Day(w.DueDate)}{Hm(w.DueTime)} → {Day(due ?? w.DueDate)}{Hm(dueTime ?? w.DueTime)}");
             if (priority is not null) changes.Add($"priority {w.Priority} → {priority}");
         }
         else
@@ -760,10 +760,11 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 changes.Add($"status {t.StatusName} → {statusName}");
             }
             if (assignee is not null || unassign) changes.Add($"assignee {t.Assignee?.Name ?? "none"} → {(unassign ? "none" : assignee!.Name)}");
-            if (due is not null)
+            if (due is not null || dueTime is not null)
             {
-                if (t.DueDate is { } old && due > old && string.IsNullOrWhiteSpace(reason)) throw new AiToolException("Moving a due date later needs a reason. Ask the person why, then pass it as 'reason'.");
-                changes.Add($"due {Day(t.DueDate)} → {Day(due)}");
+                if (DueDateHistory.NeedsReason(t.DueDate, t.DueTime, due ?? t.DueDate, dueTime ?? t.DueTime) && string.IsNullOrWhiteSpace(reason))
+                    throw new AiToolException("Moving a due date later needs a reason. Ask the person why, then pass it as 'reason'.");
+                changes.Add($"due {Day(t.DueDate)}{Hm(t.DueTime)} → {Day(due ?? t.DueDate)}{Hm(dueTime ?? t.DueTime)}");
             }
             if (priority is not null) changes.Add($"priority {t.Priority} → {priority}");
         }
@@ -772,7 +773,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (start is not null) changes.Add($"start → {Day(start)}");
         if (hours is not null) changes.Add($"estimate → {hours}h");
         if (comment is not null) changes.Add($"comment “{(comment.Length > 80 ? comment[..80] + "…" : comment)}”");
-        var payload = new { target, id, projectId = itemProject, key, title, statusName, assigneeId = assignee?.Id, assigneeName = assignee?.Name, unassign, dueDate = due, startDate = start, priority = priority?.ToString(), comment, reason, newTitle, newDescription, estimateHours = hours };
+        var payload = new { target, id, projectId = itemProject, key, title, statusName, assigneeId = assignee?.Id, assigneeName = assignee?.Name, unassign, dueDate = due, dueTime = dueTime?.ToString("HH:mm"), startDate = start, priority = priority?.ToString(), comment, reason, newTitle, newDescription, estimateHours = hours };
         return Propose("update_work", $"Update {key}: {title}", string.Join("; ", changes), payload, newDescription ?? comment);
     }
 
@@ -1060,8 +1061,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         }
         var hours = a.TryGetProperty("estimate_hours", out var eh) && eh.ValueKind == JsonValueKind.Number ? eh.GetDecimal() : (decimal?)null;
         var comment = Str(a, "comment");
-        var payload = new { projectId = project.IsPending ? (Guid?)null : project.Id, projectKey = project.Key, projectName = project.Name, title, description = Str(a, "description"), assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, startDate = start, dueDate = due, estimateHours = hours, comment };
-        var summary = $"In {project.Label}{Join(assignee is null ? null : $"assigned to {assignee.Name}", $"{priority} priority", start is null ? null : $"starts {Day(start)}", due is null ? null : $"due {Day(due)}", hours is null ? null : $"{hours}h estimate", comment is null ? null : "with a first comment")}";
+        var payload = new { projectId = project.IsPending ? (Guid?)null : project.Id, projectKey = project.Key, projectName = project.Name, title, description = Str(a, "description"), assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, startDate = start, dueDate = due, dueTime = due is null ? null : TimeArg(a)?.ToString("HH:mm"), estimateHours = hours, comment };
+        var summary = $"In {project.Label}{Join(assignee is null ? null : $"assigned to {assignee.Name}", $"{priority} priority", start is null ? null : $"starts {Day(start)}", due is null ? null : $"due {Day(due)}{Hm(TimeArg(a))}", hours is null ? null : $"{hours}h estimate", comment is null ? null : "with a first comment")}";
         return Propose("create_task", $"Create task “{title}”", summary, payload, Str(a, "description") ?? comment);
     }
 
@@ -1077,8 +1078,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var assignee = Str(a, "assignee") is { } w ? await PersonAsync(w, ct) : null;
         var priority = PriorityOf(a);
         var due = Date(a, "due_date");
-        var payload = new { title, description = Str(a, "description"), workTypeId = type.Id, workType = type.Name, projectId = project is { IsPending: false } ? project.Id : (Guid?)null, projectKey = project?.Key, projectName = project?.Name, assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, dueDate = due };
-        var summary = $"{type.Name}{Join(project is null ? null : $"related to {project.Label}", assignee is null ? null : $"assigned to {assignee.Name}", $"{priority} priority", due is null ? null : $"due {Day(due)}")}";
+        var payload = new { title, description = Str(a, "description"), workTypeId = type.Id, workType = type.Name, projectId = project is { IsPending: false } ? project.Id : (Guid?)null, projectKey = project?.Key, projectName = project?.Name, assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, dueDate = due, dueTime = due is null ? null : TimeArg(a)?.ToString("HH:mm") };
+        var summary = $"{type.Name}{Join(project is null ? null : $"related to {project.Label}", assignee is null ? null : $"assigned to {assignee.Name}", $"{priority} priority", due is null ? null : $"due {Day(due)}{Hm(TimeArg(a))}")}";
         return Propose("create_work", $"Create work “{title}”", summary, payload, Str(a, "description"));
     }
 
@@ -1089,8 +1090,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var assignee = Str(a, "assignee") is { } w ? await PersonAsync(w, ct) : null;
         var priority = PriorityOf(a);
         var due = Date(a, "due_date");
-        var payload = new { projectId = project.IsPending ? (Guid?)null : project.Id, projectKey = project.Key, projectName = project.Name, title, details = Str(a, "details"), assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, dueDate = due };
-        var summary = $"On {project.Label}{Join(assignee is null ? null : $"for {assignee.Name}", due is null ? null : $"due {Day(due)}")}";
+        var payload = new { projectId = project.IsPending ? (Guid?)null : project.Id, projectKey = project.Key, projectName = project.Name, title, details = Str(a, "details"), assigneeId = assignee?.Id, assigneeName = assignee?.Name, priority, dueDate = due, dueTime = due is null ? null : TimeArg(a)?.ToString("HH:mm") };
+        var summary = $"On {project.Label}{Join(assignee is null ? null : $"for {assignee.Name}", due is null ? null : $"due {Day(due)}{Hm(TimeArg(a))}")}";
         return Propose("create_action_item", $"Add action item “{title}”", summary, payload, Str(a, "details"));
     }
 
@@ -1513,6 +1514,16 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     private static Priority PriorityOf(JsonElement a) => Enum.TryParse<Priority>(Str(a, "priority"), true, out var p) ? p : Priority.Medium;
 
     private static string Day(DateOnly? d) => d?.ToString("yyyy-MM-dd") ?? "none";
+
+    /// <summary>"due_time" (HH:mm): optional; a value that is not a time is refused rather than dropped.</summary>
+    private static TimeOnly? TimeArg(JsonElement a)
+    {
+        if (Str(a, "due_time") is not { Length: > 0 } value) return null;
+        return ZoneTime.TryParseTime(value, out var t) ? t : throw new AiToolException("due_time must be a time of day in HH:mm format (24-hour). Ask for clarification rather than guessing.");
+    }
+
+    /// <summary>" 14:30" after a date, or nothing.</summary>
+    private static string Hm(TimeOnly? t) => t is { } x ? " " + x.ToString("HH:mm") : "";
 
     private static string Join(params string?[] parts) => parts.Where(p => !string.IsNullOrEmpty(p)).ToList() is { Count: > 0 } l ? " — " + string.Join(", ", l) : "";
 

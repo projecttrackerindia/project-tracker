@@ -264,6 +264,8 @@ public class ResourcingTests(ApiFactory factory)
     public async Task Service_levels_fix_due_times_pause_on_hold_and_alert_once_when_missed()
     {
         var t = await Setup();
+        // Clocks count working hours by default; this test measures in calendar time (nights and weekends count), so the arithmetic is exact.
+        Assert.True((await t.Owner.Put("/api/v1/operations/settings", new { businessHoursOnly = false, dayStartMinutes = 540, dayEndMinutes = 1080, workDays = new[] { 1, 2, 3, 4, 5 }, timeZone = "Asia/Kolkata", escalateOnBreach = false })).Ok);
         var saved = await t.Owner.Put("/api/v1/work/sla", new
         {
             workTypeId = (Guid?)null,

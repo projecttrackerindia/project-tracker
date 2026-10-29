@@ -43,7 +43,7 @@ export function toCalendarEvent(t: TimelineEvent): CalendarEvent {
       notes: t.notes, joinUrl: t.joinUrl, people: t.people };
   }
   return { type: t.sourceType as CalendarEvent['type'], id: t.sourceId, key: t.key, title: t.title, date: t.date, status: t.status, category: null, overdue: t.overdue,
-    projectId: t.projectId, projectName: t.projectName, priority: t.priority };
+    projectId: t.projectId, projectName: t.projectName, priority: t.priority, dueAt: t.dueAt ?? null, slaBreachAt: t.slaBreachAt ?? null, slaState: t.slaState ?? null };
 }
 
 /** What a focus block is called everywhere: "Focus · INFRA-4 Patch the gateway". Never a generic "Deep work". */

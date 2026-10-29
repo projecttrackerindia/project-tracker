@@ -14515,6 +14515,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly?>("DueDate")
                         .HasColumnType("date");
 
+                    b.Property<TimeOnly?>("DueTime")
+                        .HasColumnType("time without time zone");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 

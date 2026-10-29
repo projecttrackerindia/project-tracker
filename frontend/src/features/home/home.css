@@ -146,6 +146,8 @@ html[data-theme='dark'] .hm-row + .hm-row::before { background: rgba(255, 255, 2
 .hm-row-title { color: var(--ds-text); font-weight: 600; font-size: 14px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 a.hm-row-title:hover { color: var(--ds-accent); }
 .hm-row-sub { color: var(--t2); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hm-breach { font-style: normal; font-weight: 600; color: var(--ds-text-2, var(--t2)); font-variant-numeric: tabular-nums; }
+.hm-breach.soon { color: var(--ds-danger); }
 .hm-row-acts { display: flex; gap: 6px; align-items: center; flex: none; }
 .hm-later { background: none; color: var(--t2); opacity: 0; transition: opacity .15s var(--ds-ease); }
 .hm-row:hover .hm-later, .hm-row:focus-within .hm-later { opacity: 1; }
@@ -214,6 +216,11 @@ html[data-theme='dark'] .hm-cap.focus { background: rgba(94, 92, 230, .2); color
 html[data-theme='dark'] .hm-pin.done { background: #30d158; color: #062b10; }
 .hm-pin.rem { background: var(--ds-surface); color: var(--ds-text); box-shadow: 0 0 0 .5px var(--fill), 0 2px 8px rgba(0, 0, 0, .06); }
 .hm-pin.rem i { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid #ff9500; flex: none; }
+/* Deadlines at their hour: work due at a set time (a red-outlined flag) and SLA breaches (a red pill with a dashed line across the lanes). */
+.hm-pin.dl { background: var(--ds-surface); color: var(--ds-danger); font-weight: 600; box-shadow: 0 0 0 1px color-mix(in srgb, var(--ds-danger) 45%, transparent); z-index: 1; }
+.hm-pin.dl.sla { background: var(--ds-danger); color: #fff; box-shadow: none; }
+.hm-pin.dl.sla.late { background: color-mix(in srgb, var(--ds-danger) 82%, #000); }
+.hm-slaline { position: absolute; top: -4px; bottom: 20px; width: 0; border-left: 1.5px dashed var(--ds-danger); pointer-events: none; z-index: 1; }
 .hm-yday-cal { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; font-weight: 500; color: var(--ds-accent); text-decoration: none; }
 .hm-yday-cal:hover { text-decoration: underline; }
 

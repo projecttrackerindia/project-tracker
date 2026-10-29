@@ -9,6 +9,11 @@
 .dk-incident { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 12px; border-radius: var(--ds-r-input); background: var(--ds-danger); color: #fff; font-size: 13px; }
 .dk-incident-dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: dk-pulse 1.2s ease-in-out infinite; }
 .dk-incident-time { font-variant-numeric: tabular-nums; font-weight: 600; margin-left: auto; }
+.dk-incident-left { font-variant-numeric: tabular-nums; margin-left: auto; white-space: nowrap; }
+.dk-incident-left b { font-weight: 700; }
+.dk-incident-left + .dk-incident-time { margin-left: 0; font-weight: 500; opacity: .85; }
+.dk-incident-left.late { padding: 1px 8px; border-radius: var(--ds-r-pill); background: rgba(0, 0, 0, .22); }
+@media (max-width: 560px) { .dk-incident { flex-wrap: wrap; row-gap: 6px; } .dk-incident-left { margin-left: 0; flex-basis: 100%; order: 3; } }
 .dk-incident-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(255, 255, 255, .6); background: rgba(255, 255, 255, .14); color: #fff; border-radius: var(--ds-r-pill); padding: 4px 12px; font: inherit; font-weight: 600; cursor: pointer; }
 .dk-incident-btn:hover { background: rgba(255, 255, 255, .26); }
 .dk-incident-btn:disabled { opacity: .7; cursor: default; }

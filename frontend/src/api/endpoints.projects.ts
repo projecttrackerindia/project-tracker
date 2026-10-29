@@ -83,6 +83,8 @@ export interface TaskInput {
   dueDate?: string | null; estimatedHours?: number | null; labelIds?: string[]; parentTaskId?: string | null; milestoneId?: string | null;
   /** When an existing due date moves: why (required for a delay) and what it depends on. */
   dueDateReason?: string | null; dueDateDependency?: string | null;
+  /** The time of day on the due date ("14:30:00"); left out keeps the current time, `clearDueTime` removes it. */
+  dueTime?: string | null; clearDueTime?: boolean;
 }
 
 export const taskApi = {

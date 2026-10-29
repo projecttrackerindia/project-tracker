@@ -6,7 +6,9 @@ export type InboxKind = 'ticket' | 'task' | 'decision' | 'approval' | 'access' |
 export type InboxGroup = 'assigned' | 'decisions' | 'mentions';
 export type InboxFilter = 'all' | InboxGroup;
 export interface InboxRow { id: string; kind: InboxKind; group: InboxGroup; title: string; sub: string; action: InboxAction; href: string | null; at: string; urgent: boolean;
-  /** Work past its due date / due today: the briefing counts these flags, never the subtitle text. */ overdue?: boolean; dueToday?: boolean }
+  /** Work past its due date / due today: the briefing counts these flags, never the subtitle text. */ overdue?: boolean; dueToday?: boolean;
+  /** The instant it is due (a due time, or a ticket's SLA); an open ticket's SLA breach instant (the rows come soonest breach first). */
+  dueAt?: string | null; breachAt?: string | null; priority?: string | null }
 export interface Inbox { rows: InboxRow[]; counts: { all: number; assigned: number; decisions: number; mentions: number }; later: number }
 export interface InboxBriefing {
   count: number; headline: string; reasons: string[]; sources: string;

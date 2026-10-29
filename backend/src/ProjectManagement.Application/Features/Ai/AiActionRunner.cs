@@ -134,19 +134,19 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             {
                 var projectId = await ProjectIdAsync(a, ct, p.Execution?.DependsOn is { } dependencies ? plan?.Where(step => dependencies.Contains(step.Id)).ToList() : null);
                 decimal? hours = a.TryGetProperty("estimateHours", out var eh) && eh.ValueKind == JsonValueKind.Number ? eh.GetDecimal() : null;
-                var t = await tasks.CreateAsync(projectId, new CreateTaskRequest(Str(a, "title")!, Str(a, "description"), null, Prio(a), Guid(a, "assigneeId"), Date(a, "startDate"), Date(a, "dueDate"), hours, null, null), ct);
+                var t = await tasks.CreateAsync(projectId, new CreateTaskRequest(Str(a, "title")!, Str(a, "description"), null, Prio(a), Guid(a, "assigneeId"), Date(a, "startDate"), Date(a, "dueDate"), hours, null, null, DueTime: Time(a, "dueTime")), ct);
                 if (Str(a, "comment") is { } first) await tasks.AddCommentAsync(t.Id, new CreateCommentRequest(first, null, null), ct);
                 return new AiActionResult($"/projects/{projectId}?task={t.Id}", t.Id);
             }
             case "create_work":
             {
-                var w = await workTasks.CreateAsync(new CreateWorkTaskRequest(Str(a, "title"), Str(a, "description"), Guid(a, "workTypeId"), Guid(a, "projectId") ?? (Str(a, "projectName") is null ? null : await ProjectIdAsync(a, ct, p.Execution?.DependsOn is { } dependencies ? plan?.Where(step => dependencies.Contains(step.Id)).ToList() : null)), Guid(a, "assigneeId"), Prio(a), null, null, Date(a, "dueDate")), ct);
+                var w = await workTasks.CreateAsync(new CreateWorkTaskRequest(Str(a, "title"), Str(a, "description"), Guid(a, "workTypeId"), Guid(a, "projectId") ?? (Str(a, "projectName") is null ? null : await ProjectIdAsync(a, ct, p.Execution?.DependsOn is { } dependencies ? plan?.Where(step => dependencies.Contains(step.Id)).ToList() : null)), Guid(a, "assigneeId"), Prio(a), null, null, Date(a, "dueDate"), Time(a, "dueTime")), ct);
                 return new AiActionResult("/operations", w.Id);
             }
             case "create_action_item":
             {
                 var projectId = await ProjectIdAsync(a, ct, p.Execution?.DependsOn is { } dependencies ? plan?.Where(step => dependencies.Contains(step.Id)).ToList() : null);
-                var item = await actionItems.CreateAsync(projectId, new CreateActionItemRequest(Str(a, "title"), Str(a, "details"), Guid(a, "assigneeId"), Date(a, "dueDate"), Prio(a)), ct);
+                var item = await actionItems.CreateAsync(projectId, new CreateActionItemRequest(Str(a, "title"), Str(a, "details"), Guid(a, "assigneeId"), Date(a, "dueDate"), Prio(a), Time(a, "dueTime")), ct);
                 return new AiActionResult($"/projects/{projectId}", item.Id);
             }
             case "update_reminder":
@@ -360,7 +360,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
     {
         var id = Guid(a, "id")!.Value;
         var assigneeId = Guid(a, "assigneeId"); var unassign = a.TryGetProperty("unassign", out var u) && u.ValueKind == JsonValueKind.True;
-        var due = Date(a, "dueDate"); var statusName = Str(a, "statusName"); var comment = Str(a, "comment");
+        var due = Date(a, "dueDate"); var dueTime = Time(a, "dueTime"); var statusName = Str(a, "statusName"); var comment = Str(a, "comment");
         Priority? priority = Enum.TryParse<Priority>(Str(a, "priority"), true, out var pr) ? pr : null;
         if (Str(a, "target") == "actionitem")
         {
@@ -368,7 +368,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             var cur = (await actionItems.ListAsync(projectId, ct)).First(i => i.Id == id);
             var status = statusName is null ? cur.Status : Enum.Parse<ActionItemStatus>(statusName, true);
             await actionItems.UpdateAsync(projectId, id, new UpdateActionItemRequest(Str(a, "newTitle") ?? cur.Title, Str(a, "newDescription") ?? cur.Details,
-                unassign ? null : assigneeId ?? cur.Assignee?.Id, due ?? cur.DueDate, priority ?? cur.Priority, status), ct);
+                unassign ? null : assigneeId ?? cur.Assignee?.Id, due ?? cur.DueDate, priority ?? cur.Priority, status, DueTime: dueTime), ct);
             return new AiActionResult(ActionItemService.LinkOf(projectId, id), id, JsonSerializer.Serialize(new AiUndoBefore("actionitem", id, projectId, cur.Title, cur.Details, cur.Status.ToString(), null, cur.Priority, cur.Assignee?.Id, null, cur.DueDate, null), Json));
         }
         if (Str(a, "target") == "work")
@@ -376,7 +376,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             var w = await workTasks.GetAsync(id, ct);
             var status = statusName is null ? w.Status : Enum.Parse<WorkTaskStatus>(statusName, true);
             await workTasks.UpdateAsync(id, new UpdateWorkTaskRequest(Str(a, "newTitle") ?? w.Title, Str(a, "newDescription") ?? w.Description, w.WorkTypeId, w.RelatedProject?.Id, unassign ? null : assigneeId ?? w.Assignee?.Id, priority ?? w.Priority,
-                status, Date(a, "startDate") ?? w.StartDate, due ?? w.DueDate, w.Version), ct);
+                status, Date(a, "startDate") ?? w.StartDate, due ?? w.DueDate, w.Version, dueTime), ct);
             if (comment is not null) await workTasks.AddCommentAsync(id, new WorkCommentRequest(comment), ct);
             return new AiActionResult($"/operations?task={id}", id, JsonSerializer.Serialize(new AiUndoBefore("work", id, null, w.Title, w.Description, w.Status.ToString(), null, w.Priority, w.Assignee?.Id, w.StartDate, w.DueDate, null), Json));
         }
@@ -387,7 +387,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 ? sid : throw new ValidationException("status", $"The status “{statusName}” no longer exists on this project.");
         decimal? newHours = a.TryGetProperty("estimateHours", out var eh) && eh.ValueKind == JsonValueKind.Number ? eh.GetDecimal() : null;
         await tasks.UpdateAsync(id, new UpdateTaskRequest(Str(a, "newTitle") ?? t.Title, Str(a, "newDescription") ?? t.Description, statusId, priority ?? t.Priority, unassign ? null : assigneeId ?? t.Assignee?.Id, Date(a, "startDate") ?? t.StartDate, due ?? t.DueDate,
-            newHours ?? t.EstimatedHours, t.ActualHours, t.Labels.Select(l => l.Id).ToList(), t.Version, t.MilestoneId, t.StageId, Str(a, "reason")), ct);
+            newHours ?? t.EstimatedHours, t.ActualHours, t.Labels.Select(l => l.Id).ToList(), t.Version, t.MilestoneId, t.StageId, Str(a, "reason"), DueTime: dueTime), ct);
         if (comment is not null) await tasks.AddCommentAsync(id, new CreateCommentRequest(comment, null, null), ct);
         var wantedAssignee = unassign ? null : assigneeId ?? t.Assignee?.Id;
         var verified = await db.Tasks.AsNoTracking().AnyAsync(saved => saved.Id == id && saved.AssigneeId == wantedAssignee
@@ -420,6 +420,8 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
     private static Guid? Guid(JsonElement a, string n) => Str(a, n) is { } s && System.Guid.TryParse(s, out var g) ? g : null;
     private static List<Guid>? Guids(JsonElement a, string n) => a.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().Select(x => System.Guid.Parse(x.GetString()!)).ToList() : null;
     private static DateOnly? Date(JsonElement a, string n) => DateOnly.TryParse(Str(a, n), out var d) ? d : null;
+    /// <summary>An optional time of day ("14:30") for a due date; older suggestions without one keep the item's time.</summary>
+    private static TimeOnly? Time(JsonElement a, string n) => ProjectManagement.Application.Features.Reminders.ZoneTime.TryParseTime(Str(a, n), out var t) ? t : null;
     private static Priority Prio(JsonElement a) => Enum.TryParse<Priority>(Str(a, "priority"), true, out var p) ? p : Priority.Medium;
 }
 

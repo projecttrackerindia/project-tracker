@@ -19,7 +19,8 @@ namespace ProjectManagement.Application.Features.Insights;
 public record TimelineEventDto(string Id, string Type, string Title, DateTime Start, DateTime? End, bool AllDay, DateOnly Date,
     string SourceType, Guid SourceId, string? Link, Guid? ProjectId, string? ProjectName, IReadOnlyList<string> People, string? Status, string Colour,
     string? Key = null, bool Approximated = false, bool Overdue = false, string? Priority = null, int? Minutes = null, string? Note = null,
-    string? JoinUrl = null, bool Notes = false, Guid? UserId = null, string? Mode = null, bool Running = false);
+    string? JoinUrl = null, bool Notes = false, Guid? UserId = null, string? Mode = null, bool Running = false,
+    DateTime? DueAt = null, DateTime? SlaBreachAt = null, string? SlaState = null);
 
 public record TimelineDto(DateOnly From, DateOnly To, string TimeZone, string Scope, DateTime GeneratedAt, IReadOnlyList<TimelineEventDto> Events);
 
@@ -100,6 +101,8 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 keys[k.Id] = WorkItemService.KeyOf(k.Kind, k.Number);
         for (var i = 0; i < events.Count; i++)
             if (events[i].Type == "due" && keys.TryGetValue(events[i].SourceId, out var key)) events[i] = events[i] with { Key = key };
+
+        await AddDueTimesAsync(events, people, workScope, fromUtc, toUtc, ct);
 
         // ---- done: every kind of work finished in the range by the people in view, at the moment it was finished
         var finished = await workItems.ListAsync(new WorkItemQuery(null, OpenOnly: false, Limit: WorkItemService.MaxLimit, AssigneeIds: people,
@@ -225,6 +228,54 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         return new TimelineDto(from, to, clock.ZoneId, mode, now, ordered);
 
         static DateTime Utc(DateTime d) => DateTime.SpecifyKind(d, DateTimeKind.Utc);
+    }
+
+    /// <summary>
+    /// Deadlines at their time: an open item with a due time gets <c>DueAt</c> (the instant on its day); an open ticket gets its SLA resolve-by
+    /// as <c>SlaBreachAt</c> (and as <c>DueAt</c> when it has no due time of its own), so Today and the Calendar can mark the breach at its hour.
+    /// Tickets of the people in view that have no due date but whose resolve-by falls in the range are added as deadlines on the breach day.
+    /// One read for the dated items and one for the SLA-only tickets.
+    /// </summary>
+    private async Task AddDueTimesAsync(List<TimelineEventDto> events, HashSet<Guid> people, WorkItemScope workScope, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+    {
+        var now = clock.Now;
+        var dueIds = events.Where(e => e.Type == "due" && e.SourceType is "task" or "issue" or "action" or "work").Select(e => e.SourceId).Distinct().ToList();
+        if (dueIds.Count > 0)
+        {
+            var times = await db.WorkItems.AsNoTracking().Where(w => dueIds.Contains(w.Id)).Select(w => new { w.Id, w.DueDate, w.DueTime }).ToListAsync(ct);
+            var slas = await db.WorkTasks.AsNoTracking().Where(w => dueIds.Contains(w.Id) && w.Kind == WorkTaskKind.Operational).ToDictionaryAsync(w => w.Id, ct);
+            var byId = times.ToDictionary(t => t.Id);
+            for (var i = 0; i < events.Count; i++)
+            {
+                var e = events[i];
+                if (e.Type != "due" || !byId.TryGetValue(e.SourceId, out var t)) continue;
+                var at = clock.DueAt(t.DueDate, t.DueTime);
+                DateTime? breach = null; string? state = null;
+                if (slas.TryGetValue(e.SourceId, out var w) && ProjectManagement.Application.Features.Work.SlaService.State(w, now) is { Resolution: { } res } sla && res.State is "OnTrack" or "AtRisk" or "Breached" or "Paused")
+                    (breach, state) = (res.DueAt, sla.State);
+                events[i] = e with { DueAt = at ?? breach, SlaBreachAt = breach, SlaState = state, Overdue = e.Overdue || (at is { } x && x < now) };
+            }
+        }
+
+        // Tickets held to an SLA in the range that have no due date (so the calendar does not list them): a deadline on the breach day.
+        var kinds = await workItems.VisibleKindsAsync(workScope, ct);
+        if (!kinds.Contains(WorkItemKind.Operational)) return;
+        var open = new[] { WorkTaskStatus.ToDo, WorkTaskStatus.InProgress, WorkTaskStatus.OnHold };
+        var shown = events.Where(e => e.Type == "due").Select(e => e.SourceId).ToHashSet();
+        var slaOnly = await db.WorkTasks.AsNoTracking()
+            .Where(w => w.Kind == WorkTaskKind.Operational && open.Contains(w.Status) && w.DueDate == null && w.AssigneeId != null && people.Contains(w.AssigneeId.Value)
+                        && w.ResolutionDueAt != null && w.ResolutionDueAt >= fromUtc && w.ResolutionDueAt < toUtc)
+            .OrderBy(w => w.ResolutionDueAt).Take(200).ToListAsync(ct);
+        foreach (var w in slaOnly.Where(w => !shown.Contains(w.Id)))
+        {
+            if (ProjectManagement.Application.Features.Work.SlaService.State(w, now) is not { Resolution: { } res } sla) continue;
+            var at = res.DueAt;
+            var day = clock.LocalDate(at);
+            events.Add(new TimelineEventDto($"due:work:{w.Id}", "due", w.Title, clock.StartOfDayUtc(day), null, true, day, "work", w.Id, LinkOf("work", w.Id, null),
+                null, null, [], WorkItemService.WorkLabel(w.Status), res.State == "Breached" ? "overdue" : "due",
+                Key: WorkItemService.KeyOf(w.Kind, w.Number), Overdue: res.State == "Breached", Priority: w.Priority.ToString(), UserId: w.AssigneeId,
+                DueAt: at, SlaBreachAt: at, SlaState: sla.State));
+        }
     }
 
     private static string TypeOf(WorkItemKind k) => k switch

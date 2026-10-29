@@ -19,6 +19,7 @@ import { PhoneToday } from './PhoneToday';
 import { MONTHS, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useCachedWsQuery, useWsQuery } from '../../lib/hooks';
 import { refreshWork } from '../work/workUi';
+import { breachText, useMinuteNow } from '../work/dueTime';
 import { hourIn, isoDateIn, zonedParts } from '../../lib/zone';
 import { YourDay } from '../calendar/YourDay';
 import { dayCounts, toCalendarEvent, useTimeline } from '../calendar/timeline';
@@ -238,9 +239,10 @@ function InboxCard() {
   // A reply without rows (an older server during a rolling release) reads as an empty inbox, not a crash of Home.
   const rows = q.data?.rows ?? [];
   const total = counts?.all ?? rows.length;
+  const now = useMinuteNow(rows.some((r) => !!r.breachAt));
   return (
     <section className="hm-card hm-inbox" aria-label="Needs you">
-      <div className="hm-lh"><h2 className="hm-h3"><Term k="needs you">Needs you</Term></h2>{total > 0 && <span className="hm-faint">{total} · newest problems first</span>}</div>
+      <div className="hm-lh"><h2 className="hm-h3"><Term k="needs you">Needs you</Term></h2>{total > 0 && <span className="hm-faint">{total} · {rows.some((r) => r.breachAt) ? 'soonest breach first' : 'newest problems first'}</span>}</div>
       {/* The chips only help with more than 10 rows (or when a chip other than All is on). */}
       {(filter !== 'all' || total > 10) && <div className="ds-chips hm-chips" role="group" aria-label="Show">
         {CHIPS.map((c) => (
@@ -269,7 +271,7 @@ function InboxCard() {
                 <span className={`hm-kind k-${r.kind}`} role="img" aria-label={KIND_LABEL[r.kind]} title={KIND_LABEL[r.kind]}>{KIND_GLYPH[r.kind]}</span>
                 <div className="hm-row-main">
                   {r.href ? <Link to={r.href} className="hm-row-title">{r.title}</Link> : <span className="hm-row-title">{r.title}</span>}
-                  <span className="hm-row-sub">{subLine(r)}</span>
+                  <span className="hm-row-sub">{subLine(r)}{r.breachAt && <em className={`hm-breach${Date.parse(r.breachAt) - now < 3_600_000 ? ' soon' : ''}`} data-testid="needs-you-breach"> · {breachText(r.breachAt, now)}</em>}</span>
                 </div>
                 <div className="hm-row-acts">
                   <button type="button" className="hm-later" disabled={off} onClick={() => void later(r)} title="Hide until tomorrow morning (or right-click the row)">Later</button>

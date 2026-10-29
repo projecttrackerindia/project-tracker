@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react';
+import { hm, toApiTime } from './dueTime';
 import { SmartTriage } from './Ops';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -57,6 +58,7 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
   const [status, setStatus] = useState<WorkTaskStatus>(task?.status ?? 'ToDo');
   const [startDate, setStartDate] = useState(task?.startDate ?? '');
   const [dueDate, setDueDate] = useState(task?.dueDate ?? '');
+  const [dueTime, setDueTime] = useState(hm(task?.dueTime) ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -66,7 +68,8 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
 
   const save = useMutation({
     mutationFn: () => {
-      const body = { title: title.trim(), description: description.trim() || null, workTypeId, relatedProjectId: projectId || null, assigneeId: assigneeId || null, startDate: startDate || null, dueDate: dueDate || null };
+      const body = { title: title.trim(), description: description.trim() || null, workTypeId, relatedProjectId: projectId || null, assigneeId: assigneeId || null, startDate: startDate || null, dueDate: dueDate || null,
+        dueTime: dueDate && dueTime ? toApiTime(dueTime) : null, clearDueTime: !!task?.dueTime && (!dueTime || !dueDate) };
       return task ? workApi.update(task.id, { ...body, priority, status, version: task.version }) : workApi.create({ ...body, priority, status });
     },
     onSuccess: () => { toast(isEdit ? 'Work task updated.' : 'Work task created.'); refresh(); onClose(); },
@@ -145,6 +148,7 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
         </Field>
         <Field label="Start date"><input className="input" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
         <Field label="Due date" error={errors.dueDate}><input className="input" type="date" value={dueDate} onChange={(e) => { setDueDate(e.target.value); setErrors((x) => ({ ...x, dueDate: '' })); }} /></Field>
+        <Field label="Due time"><input className="input" type="time" step={300} aria-label="Due time" value={dueTime} disabled={!dueDate} onChange={(e) => setDueTime(e.target.value)} /></Field>
         <Field label="Description" full>
           <textarea className="textarea" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={8000} placeholder="What needs to be done, and any context that helps." />
         </Field>

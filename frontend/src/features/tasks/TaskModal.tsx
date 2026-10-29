@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { dueMovesLater, hm, toApiTime } from '../work/dueTime';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { labelApi, planningApi, projectApi, taskApi, workspaceApi } from '../../api/endpoints';
@@ -27,9 +28,9 @@ import './tasks.css';
 
 interface Form {
   title: string; description: string; statusId: string; priority: Priority; assigneeId: string;
-  startDate: string; dueDate: string; estimatedHours: string; actualHours: string; labelIds: string[]; milestoneId: string; stageId: string;
+  startDate: string; dueDate: string; dueTime: string; estimatedHours: string; actualHours: string; labelIds: string[]; milestoneId: string; stageId: string;
 }
-const EMPTY: Form = { title: '', description: '', statusId: '', priority: 'Medium', assigneeId: '', startDate: '', dueDate: '', estimatedHours: '', actualHours: '', labelIds: [], milestoneId: '', stageId: '' };
+const EMPTY: Form = { title: '', description: '', statusId: '', priority: 'Medium', assigneeId: '', startDate: '', dueDate: '', dueTime: '', estimatedHours: '', actualHours: '', labelIds: [], milestoneId: '', stageId: '' };
 const NO_STATUSES: WorkflowStatus[] = [];
 
 /** Create or edit a task. Also hosts subtasks and the comment thread when editing. */
@@ -73,7 +74,7 @@ export function TaskModal({ taskId, projectId, statusId, initial, onClose }: { t
     if (!task) return;
     setF({
       title: task.title, description: task.description ?? '', statusId: task.statusId, priority: task.priority, assigneeId: task.assignee?.id ?? '',
-      startDate: task.startDate ?? '', dueDate: task.dueDate ?? '', estimatedHours: task.estimatedHours?.toString() ?? '',
+      startDate: task.startDate ?? '', dueDate: task.dueDate ?? '', dueTime: hm(task.dueTime) ?? '', estimatedHours: task.estimatedHours?.toString() ?? '',
       actualHours: task.actualHours?.toString() ?? '', labelIds: task.labels.map((l) => l.id), milestoneId: task.milestoneId ?? '', stageId: task.stageId ?? '',
     });
     setDueReason(''); setDueDependency('');
@@ -83,6 +84,8 @@ export function TaskModal({ taskId, projectId, statusId, initial, onClose }: { t
       setF((p) => ({ ...p, statusId: (statuses.find((s) => s.category === 'Todo') ?? statuses[0]).id }));
   }, [statuses, isEdit]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Only the time moving later on the same day (or losing its time) is a delay too.
+  const timeLater = isEdit && !!task?.dueDate && f.dueDate === task.dueDate && dueMovesLater(task.dueDate, task.dueTime, f.dueDate, f.dueTime || null);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => { setF((p) => ({ ...p, [k]: v })); setErrors((e) => ({ ...e, [k]: '' })); };
 
   const validate = () => {
@@ -94,14 +97,15 @@ export function TaskModal({ taskId, projectId, statusId, initial, onClose }: { t
     const projectStart = project.data?.project.startDate;
     if (!e.dueDate && projectStart && f.dueDate && f.dueDate < projectStart && f.dueDate !== task?.dueDate)
       e.dueDate = `The project starts on ${formatDate(projectStart)}; the due date cannot be before that.`;
-    if (isEdit && dueChange(task?.dueDate, f.dueDate)?.delay && !dueReason.trim()) e.dueDateReason = 'Say why the due date is moving.';
+    if (isEdit && (dueChange(task?.dueDate, f.dueDate)?.delay || timeLater) && !dueReason.trim()) e.dueDateReason = 'Say why the due date is moving.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const payload = () => ({
     title: f.title.trim(), description: f.description.trim() || null, priority: f.priority, assigneeId: f.assigneeId || null,
-    startDate: f.startDate || null, dueDate: f.dueDate || null, estimatedHours: f.estimatedHours ? Number(f.estimatedHours) : null,
+    startDate: f.startDate || null, dueDate: f.dueDate || null, dueTime: f.dueDate && f.dueTime ? toApiTime(f.dueTime) : null,
+    ...(task?.dueTime && (!f.dueTime || !f.dueDate) ? { clearDueTime: true } : {}), estimatedHours: f.estimatedHours ? Number(f.estimatedHours) : null,
     labelIds: f.labelIds, milestoneId: f.milestoneId || null, stageId: f.stageId || null,
   });
 
@@ -111,7 +115,7 @@ export function TaskModal({ taskId, projectId, statusId, initial, onClose }: { t
     mutationFn: () => isEdit
       ? taskApi.update(currentId!, {
           ...payload(), statusId: f.statusId, actualHours: f.actualHours ? Number(f.actualHours) : null, version: task!.version,
-          ...(dueChange(task!.dueDate, f.dueDate) ? { dueDateReason: dueReason.trim() || null, dueDateDependency: dueDependency.trim() || null } : {}),
+          ...(dueChange(task!.dueDate, f.dueDate) || timeLater ? { dueDateReason: dueReason.trim() || null, dueDateDependency: dueDependency.trim() || null } : {}),
         })
       : taskApi.create(pid, { ...payload(), statusId: f.statusId || null }).then(async (created) => {
           const filled = Object.fromEntries(Object.entries(pendingFields).filter(([, v]) => v !== ''));
@@ -236,7 +240,8 @@ export function TaskModal({ taskId, projectId, statusId, initial, onClose }: { t
           </Field>
           {show && <Field label="Start date"><input className="input" type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></Field>}
           <Field label="Due date" error={errors.dueDate}><input className="input" type="date" value={f.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></Field>
-          {isEdit && dueChange(task?.dueDate, f.dueDate) && (
+          <Field label="Due time"><input className="input" type="time" step={300} aria-label="Due time" value={f.dueTime} disabled={!f.dueDate} onChange={(e) => set('dueTime', e.target.value)} /></Field>
+          {isEdit && (dueChange(task?.dueDate, f.dueDate) || timeLater) && (
             <div className="field full">
               <DueChangeFields previous={task?.dueDate} revised={f.dueDate} reason={dueReason} dependency={dueDependency} error={errors.dueDateReason}
                 onReason={(v) => { setDueReason(v); setErrors((x) => ({ ...x, dueDateReason: '' })); }} onDependency={setDueDependency} />

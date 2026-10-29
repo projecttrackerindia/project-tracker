@@ -336,3 +336,12 @@ html[data-theme='dark'] .wp-dayp > .ed.ed-inline { background: rgba(58, 58, 60, 
 .wp-empty-btn.pri:hover { filter: brightness(1.06); color: #fff; }
 @media (max-width: 760px) { .wp-empty-acts { width: 100%; } .wp-empty-btn { flex: 1; min-height: 38px; } }
 @media (prefers-reduced-motion: reduce) { .wp-empty { animation: none; } }
+
+/* Deadlines at their hour: a red line across the day with a small label (SLA breaches dashed and filled red, work due at a set time outlined). */
+.wp-dl { position: absolute; left: 2px; right: 2px; z-index: 3; display: flex; align-items: flex-start; gap: 4px; height: 0; padding: 0; border: 0; border-top: 2px solid var(--ds-danger);
+  background: none; color: var(--ds-danger); font: inherit; font-size: 10.5px; font-weight: 600; line-height: 1; text-align: left; white-space: nowrap; cursor: pointer; }
+.wp-dl::after { content: ''; position: absolute; left: 0; right: 0; top: -8px; height: 14px; }
+.wp-dl span { margin-top: -9px; padding: 1px 5px; border-radius: 6px; background: var(--ds-surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ds-danger) 50%, transparent); font-variant-numeric: tabular-nums; }
+.wp-dl.sla { border-top-style: dashed; }
+.wp-dl.sla span { background: var(--ds-danger); color: #fff; box-shadow: none; }
+.wp-dl.open span, .wp-dl:focus-visible span { box-shadow: 0 0 0 2px var(--ds-accent); }
