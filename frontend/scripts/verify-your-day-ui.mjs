@@ -1,7 +1,7 @@
 // "Your day" at fixed clock times (09:00, 10:29, 10:35, 14:00, 18:40) with a suggested focus block, time logged as "2h" (saved by an older
 // server to end in the future), a date-only deadline and a check-in at 09:31:
 //  - the focus block does not move between 10:29 and 10:35 (refresh), and reads "Focus now" once it has started;
-//  - no logged block is drawn past the now line, and "logged" counts only time up to now;
+//  - no logged block is drawn past the now line, and "logged" is the Time grid's own count (every entry in full; see verify-day-sync-ui);
 //  - no two labels overlap (bounding boxes); the deadline sits at the shift's end, "by end of day";
 //  - the check-in is on the timeline; the banner sums the day up instead of repeating Needs you;
 //  - Today's free time equals the Calendar's day panel.
@@ -147,7 +147,8 @@ try {
   const s1029 = await focusStart();
   assert.equal(s1029, 10.5, `the focus block starts at 10:30 (${s1029})`);
   await loggedBeforeNow('10:29');
-  assert.match(await counts(), /58m logged/, 'only the 58 minutes since 9:31 count');
+  // "logged" is the Time grid's total (the 2h entry counts in full), the same number Time and the Calendar show.
+  assert.match(await counts(), /2h logged/, 'the Time grid’s count');
   assert.equal(await y().locator('[data-testid="your-day-checkin"]').count(), 1, 'the check-in is on the timeline');
   assert.match(await y().locator('[data-type="checkin"]').innerText(), /In 9:31/);
   await noOverlap('10:29');

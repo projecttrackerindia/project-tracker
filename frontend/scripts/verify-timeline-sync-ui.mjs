@@ -155,13 +155,14 @@ try {
   // legend toggles map to types
   const layers = [['meetings', '[data-type="meeting"]'], ['calls', '[data-type="call"]'], ['logged', '[data-type="time"]'], ['done', '.wp-done'], ['focus', '[data-type="focus"]'], ['reminders', '.wp-rem'], ['deadlines', '.wp-flag']];
   for (const [layer, sel] of layers) {
-    const scope = layer === 'deadlines' ? page.locator('.wp-days') : page.locator('.wp-body');
+    // deadlines live in the all-day / due strip above the grid (never on top of the day's blocks)
+    const scope = layer === 'deadlines' ? page.locator('.wp-cal') : page.locator('.wp-body');
     const before = await scope.locator(sel).count();
     assert.ok(before > 0, `${layer} drawn before the toggle`);
     await page.locator(`[data-testid="wp-layers"] label[data-layer="${layer}"]`).click();
-    await page.waitForFunction(([s, d]) => document.querySelectorAll(`${d} ${s}`).length === 0, [sel, layer === 'deadlines' ? '.wp-days' : '.wp-body']);
+    await page.waitForFunction(([s, d]) => document.querySelectorAll(`${d} ${s}`).length === 0, [sel, layer === 'deadlines' ? '.wp-allday' : '.wp-body']);
     await page.locator(`[data-testid="wp-layers"] label[data-layer="${layer}"]`).click();
-    await page.waitForFunction(([s, d, n]) => document.querySelectorAll(`${d} ${s}`).length === n, [sel, layer === 'deadlines' ? '.wp-days' : '.wp-body', before]);
+    await page.waitForFunction(([s, d, n]) => document.querySelectorAll(`${d} ${s}`).length === n, [sel, layer === 'deadlines' ? '.wp-allday' : '.wp-body', before]);
   }
   checks.push('legend toggles: ' + layers.map(([l]) => l).join(', '));
 

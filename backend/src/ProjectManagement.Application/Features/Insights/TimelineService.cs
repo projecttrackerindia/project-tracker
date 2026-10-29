@@ -15,12 +15,16 @@ namespace ProjectManagement.Application.Features.Insights;
 /// instants; <c>Date</c> is the day it falls on in the person's zone (the response's <c>TimeZone</c>). An all-day event starts at that day's
 /// midnight. <c>Approximated</c>: a time entry typed in as minutes only, placed on the day by the server (see <see cref="TimelineService"/>).
 /// <c>Colour</c> is a key the client maps to its palette (meet, call, time, done, due, overdue, reminder, attendance, leave).
+/// <c>ItemId</c>/<c>ItemType</c>: the work item a time entry was logged on, or a reminder is about ("task" | "work"), so a day can tell which
+/// work already has time today. <c>Origin</c>: what made a reminder (personal, nudge, dueDate, overdue, escalation, meeting) - an automatic
+/// due-date one is not drawn beside its own deadline.
 /// </summary>
 public record TimelineEventDto(string Id, string Type, string Title, DateTime Start, DateTime? End, bool AllDay, DateOnly Date,
     string SourceType, Guid SourceId, string? Link, Guid? ProjectId, string? ProjectName, IReadOnlyList<string> People, string? Status, string Colour,
     string? Key = null, bool Approximated = false, bool Overdue = false, string? Priority = null, int? Minutes = null, string? Note = null,
     string? JoinUrl = null, bool Notes = false, Guid? UserId = null, string? Mode = null, bool Running = false,
-    DateTime? DueAt = null, DateTime? SlaBreachAt = null, string? SlaState = null);
+    DateTime? DueAt = null, DateTime? SlaBreachAt = null, string? SlaState = null,
+    Guid? ItemId = null, string? ItemType = null, string? Origin = null);
 
 public record TimelineDto(DateOnly From, DateOnly To, string TimeZone, string Scope, DateTime GeneratedAt, IReadOnlyList<TimelineEventDto> Events);
 
@@ -133,6 +137,10 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                                  Title = t.TaskId != null ? db.Tasks.Where(x => x.Id == t.TaskId).Select(x => x.Title).FirstOrDefault()
                                      : db.WorkTasks.Where(x => x.Id == t.WorkTaskId).Select(x => x.Title).FirstOrDefault(),
                                  ProjectName = db.Projects.Where(p => p.Id == t.ProjectId).Select(p => p.Name).FirstOrDefault(),
+                                 ProjectKey = db.Projects.Where(p => p.Id == t.ProjectId).Select(p => p.Key).FirstOrDefault(),
+                                 TaskNumber = db.Tasks.Where(x => x.Id == t.TaskId).Select(x => (int?)x.Number).FirstOrDefault(),
+                                 WorkNumber = db.WorkTasks.Where(x => x.Id == t.WorkTaskId).Select(x => (int?)x.Number).FirstOrDefault(),
+                                 WorkKind = db.WorkTasks.Where(x => x.Id == t.WorkTaskId).Select(x => (WorkTaskKind?)x.Kind).FirstOrDefault(),
                              }).OrderBy(t => t.WorkDate).ThenBy(t => t.StartedAt ?? t.CreatedAt).Take(1000).ToListAsync(ct);
         var cursor = new Dictionary<(Guid, DateOnly), DateTime>();
         foreach (var t in entries)
@@ -162,10 +170,13 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             }
             var itemType = t.TaskId is not null ? "task" : "work";
             var itemId = t.TaskId ?? t.WorkTaskId ?? t.Id;
+            var timeKey = t.WorkNumber is { } wn && t.WorkKind is { } wk ? WorkItemService.KeyOf(wk, wn)
+                : t.TaskNumber is { } tn && t.ProjectKey is { } pk ? $"{pk}-{tn}" : null;
             events.Add(new TimelineEventDto($"time:{t.Id}", "time", t.Title ?? "Time", start, end, false, t.WorkDate, "timeEntry", t.Id,
                 t.TaskId is null && t.WorkTaskId is null ? "/time" : LinkOf(itemType, itemId, t.ProjectId), t.ProjectId, t.ProjectName, [],
-                t.StartedAt is not null && t.EndedAt is null ? "running" : "logged", "time", Approximated: approx, Minutes: t.Minutes, Note: t.Note, UserId: t.UserId,
-                Running: t.StartedAt is not null && t.EndedAt is null));
+                t.StartedAt is not null && t.EndedAt is null ? "running" : "logged", "time", Key: timeKey, Approximated: approx, Minutes: t.Minutes, Note: t.Note, UserId: t.UserId,
+                Running: t.StartedAt is not null && t.EndedAt is null,
+                ItemId: t.TaskId ?? t.WorkTaskId, ItemType: t.TaskId is null && t.WorkTaskId is null ? null : itemType));
         }
 
         // ---- calls held in the app: the ones the caller was in, with someone in view taking part
@@ -204,13 +215,14 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 .Where(r => r.UserId == me && r.State != ReminderState.Cancelled
                             && ((r.NextFireAt != null && r.NextFireAt >= fromUtc && r.NextFireAt < toUtc) || (r.LastFiredAt != null && r.LastFiredAt >= fromUtc && r.LastFiredAt < toUtc)))
                 .OrderBy(r => r.NextFireAt ?? r.LastFiredAt).Take(300)
-                .Select(r => new { r.Id, r.Title, r.Note, r.State, r.NextFireAt, r.LastFiredAt, r.Link, r.TargetKey, r.TargetProjectId }).ToListAsync(ct);
+                .Select(r => new { r.Id, r.Title, r.Note, r.State, r.NextFireAt, r.LastFiredAt, r.Link, r.TargetKey, r.TargetProjectId, r.Source, r.TargetId }).ToListAsync(ct);
             foreach (var r in rems)
             {
                 var upcoming = r.State == ReminderState.Scheduled && r.NextFireAt is { } nf && nf >= fromUtc && nf < toUtc;
                 var at = Utc(upcoming ? r.NextFireAt!.Value : r.LastFiredAt ?? r.NextFireAt!.Value);
                 events.Add(new TimelineEventDto($"reminder:{r.Id}", "reminder", r.Title, at, null, false, clock.LocalDate(at), "reminder", r.Id, r.Link ?? "/?tab=reminders",
-                    r.TargetProjectId, null, [], upcoming ? "scheduled" : r.State == ReminderState.Done ? "done" : "fired", "reminder", Key: r.TargetKey, Note: r.Note));
+                    r.TargetProjectId, null, [], upcoming ? "scheduled" : r.State == ReminderState.Done ? "done" : "fired", "reminder", Key: r.TargetKey, Note: r.Note,
+                    ItemId: r.TargetId, Origin: OriginOf(r.Source)));
             }
         }
 
@@ -282,6 +294,9 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     {
         WorkItemKind.Task => "task", WorkItemKind.Issue => "issue", WorkItemKind.ActionItem => "action", _ => "work",
     };
+
+    /// <summary>A reminder's source as the client reads it: "personal", "nudge", "dueDate", "overdue", "escalation", "meeting".</summary>
+    public static string OriginOf(ReminderSource source) { var n = source.ToString(); return char.ToLowerInvariant(n[0]) + n[1..]; }
 
     /// <summary>Where a click goes: work items open in Work, projects/milestones/stages in their project.</summary>
     private static string LinkOf(string type, Guid id, Guid? projectId) => type switch

@@ -11,7 +11,7 @@ import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { meetApi, type Rsvp } from '../meet/meetApi';
 import { reminderApi } from '../reminders/api';
-import { canComplete, canMoveDue, completeWork, editError, isoAt as isoAtHour, moveDue, moveReminder, refreshAfterEdit } from './calendarEdit';
+import { canComplete, canMoveDue, completeWork, editError, entryLock, isoAt as isoAtHour, moveDue, moveReminder, overlapText, refreshAfterEdit } from './calendarEdit';
 import { appZone } from '../../lib/zone';
 import { clock24 } from '../work/dueTime';
 import { TimeEntryEditor, type WorkChoice } from './TimeEntryEditor';
@@ -45,6 +45,10 @@ export interface DetailActions {
   entryOf?: (id: string) => TimeEntry | undefined;
   /** Work time can be logged on (this week's items and what time was logged on). */
   choices?: WorkChoice[];
+  /** The day's other entries a logged entry shares time with ("Overlaps WT-11 09:31–11:31"). */
+  overlapsOf?: (t: TimelineEvent) => TimelineEvent[];
+  /** The one-click fixes for an overlap: move the entry to after the other one, or trim the overlapping part off. */
+  fixOverlap?: (t: TimelineEvent, other: TimelineEvent, how: 'after' | 'trim') => void;
 }
 
 /**
@@ -375,6 +379,18 @@ function LoggedBody({ entries, day, single, today, onClose, actions }: { entries
   return (
     <>
       <Head kind={single ? 'time' : 'loggedDay'} title={single ? first.title : `${fmtMins(total)} logged`} when={when} why={why} sub={single && first.projectName ? first.projectName : null} />
+      {single && first && (actions?.overlapsOf?.(first) ?? []).map((o) => {
+        const fixable = !!entry && !entryLock(entry) && !!actions?.fixOverlap;
+        return (
+          <div key={o.id} className="ed-overlap" role="status" data-testid="ed-overlap">
+            <span className="ed-overlap-t"><b aria-hidden="true">!</b>{overlapText(o, actions?.entryOf?.(o.sourceId)?.taskKey)}</span>
+            {fixable && <span className="ed-overlap-a">
+              <button type="button" className="ed-btn ghost" data-testid="ed-overlap-after" onClick={() => { actions!.fixOverlap!(first, o, 'after'); onClose(); }}>Move after</button>
+              <button type="button" className="ed-btn ghost" data-testid="ed-overlap-trim" onClick={() => { actions!.fixOverlap!(first, o, 'trim'); onClose(); }}>Trim</button>
+            </span>}
+          </div>
+        );
+      })}
       {single && entry && sp && !first.running && (
         <TimeEntryEditor key={`${entry.id}:${entry.stamp ?? ''}`} entry={entry} day={first.date} start={sp.s} end={Math.max(sp.e, sp.s + 0.25)} approximated={first.approximated}
           choices={actions?.choices ?? []} today={today} onDone={onClose} />

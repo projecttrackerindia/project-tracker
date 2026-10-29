@@ -212,13 +212,21 @@ try {
   await shot('day-panel-1440');
   checks.push('panel: all types');
 
-  // Overlap: the two meetings at 15:00 share the column; logged time beside a meeting is a slim lane; approximate time is marked.
+  // Overlap: the two meetings at 15:00 share the column; logged time beside a meeting is packed beside it (never under its text); approximate time is marked.
   const col = page.locator(`.wp-col[data-day="${today}"]`);
   const cw = (await col.boundingBox()).width;
   const a = await block('meeting', 'Lamp design review').boundingBox(), b2 = await block('meeting', 'Supplier call').boundingBox();
   assert.ok(a.width < cw * .6 && b2.width < cw * .6 && Math.abs(a.x - b2.x) > 10, `overlapping meetings in columns (${a.width}/${b2.width} of ${cw})`);
   const te2 = col.locator('[data-type="time"].ap');
-  assert.match(await te2.getAttribute('class'), /thin/, 'logged time under a meeting or call is a slim lane');
+  {
+    // Every timed block of the day is packed: no two bounding boxes in the column intersect (the logged entry sits beside the meeting it overlaps).
+    const bx = await col.locator('.wp-e:not(.wp-visit), .wp-rem, .wp-done').evaluateAll((els) => els.map((el) => { const r = el.getBoundingClientRect(); return { t: (el.getAttribute('aria-label') ?? el.textContent ?? '').slice(0, 40), x: r.x, y: r.y, r: r.right, b: r.bottom }; }));
+    for (let i = 0; i < bx.length; i++) for (let j = i + 1; j < bx.length; j++) {
+      const p = bx[i], q = bx[j], ox = Math.min(p.r, q.r) - Math.max(p.x, q.x), oy = Math.min(p.b, q.b) - Math.max(p.y, q.y);
+      assert.ok(ox <= 1 || oy <= 1, `"${p.t}" and "${q.t}" overlap on the grid (${ox.toFixed(1)} x ${oy.toFixed(1)})`);
+    }
+    assert.match(await te2.getAttribute('class'), /narrow/, 'logged time beside a meeting or call shares the column');
+  }
   assert.match(await te2.getAttribute('aria-label'), /approximate/);
   assert.match(await block('meeting', 'Lamp design review').getAttribute('title'), /Lamp design review/, 'the full title on hover');
   checks.push('overlap columns');
@@ -304,7 +312,7 @@ try {
   checks.push('locked week refuses');
 
   // A deadline flag dropped on a later day asks why, then moves the date with the reason.
-  const flag = page.locator(`.wp-dh[data-day="${tue}"] .wp-flag`);
+  const flag = page.locator(`.wp-allday-d[data-day="${tue}"] .wp-flag`);
   const fb = await flag.boundingBox(), thuH = await page.locator(`.wp-dh[data-day="${thu}"]`).boundingBox();
   await page.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2); await page.mouse.down();
   for (let i = 1; i <= 8; i++) await page.mouse.move(fb.x + (thuH.x + thuH.width / 2 - fb.x) * i / 8, fb.y + 10);
