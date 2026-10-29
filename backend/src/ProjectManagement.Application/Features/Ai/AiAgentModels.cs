@@ -21,7 +21,20 @@ public record AiAttachmentDto(Guid Id, string Name, string ContentType, long Siz
 /// so the person can read it before confirming.
 /// </summary>
 public record AiActionDto(string Id, string Kind, string Title, string Summary, string Status, string? Link = null, string? Error = null, string? Preview = null, Guid? ResultId = null, AiActionLifecycleDto? Lifecycle = null,
-    DateTime? UndoUntil = null);
+    DateTime? UndoUntil = null, bool? Undoable = null, string? UndoNote = null);
+
+/// <summary>One step of an answer's plan: its place in the order, what it does, where it stands, and whether (and how) it can be undone.</summary>
+public sealed record AiRunStepDto(int Index, string Id, string Kind, string Title, string Summary, string Status, bool Undoable, string? UndoNote, DateTime? UndoUntil,
+    string? Link = null, string? Error = null);
+
+/// <summary>
+/// An answer's proposed actions seen as one run: the plan before anything happens, or what happened after it was carried out (or undone) in
+/// order. <see cref="Outcome"/>: awaiting_confirmation, succeeded, partial, failed, cancelled, executing or undone. <see cref="Completed"/>
+/// lists the steps that took effect; <see cref="FailedStepId"/> is where a run stopped. <see cref="UndoUntil"/> is the last moment Undo for
+/// the whole run is offered (null when no step can be undone).
+/// </summary>
+public sealed record AiRunDto(Guid MessageId, string Outcome, IReadOnlyList<AiRunStepDto> Steps, IReadOnlyList<string> Completed, string? FailedStepId, DateTime? UndoUntil,
+    string? Message = null);
 
 public record AiMessageDto(Guid Id, string Role, string Content, string? Reasoning, string? Tier, string? Model, string? RouteReason, int Credits, string Status,
     IReadOnlyList<AiToolUseDto> Tools, IReadOnlyList<AiActionDto> Actions, IReadOnlyList<AiAttachmentDto> Attachments, DateTime CreatedAt,

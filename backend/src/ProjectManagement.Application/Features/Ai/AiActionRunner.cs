@@ -33,7 +33,7 @@ public sealed record AiActionResult(string? Link, Guid? RecordId = null, string?
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
     ReminderService reminders, ChatService messages, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email,
     ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
-    ProjectManagement.Application.Features.Time.TimeService time, AiHomeActions home, AiWatchService watches, ProjectManagement.Application.Features.Calls.CallService calls)
+    ProjectManagement.Application.Features.Time.TimeService time, AiHomeActions home, AiWatchService watches, ProjectManagement.Application.Features.Calls.CallService calls, AiPowerActions power)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -71,6 +71,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
     {
         using var doc = JsonDocument.Parse(p.PayloadJson);
         var a = doc.RootElement;
+        await EnsureAssignableAsync(a, ct);
         switch (p.Kind)
         {
             case "create_project":
@@ -216,8 +217,21 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             }
             default:
                 // Home: the agent's proposals, timesheets, notifications, chat replies, pages, portfolio options and vault requests.
-                return await home.RunAsync(p.Kind, a, executionId, ct) ?? throw new ValidationException("action", "This kind of suggestion is not supported.");
+                return await home.RunAsync(p.Kind, a, executionId, ct) ?? await power.RunAsync(p.Kind, a, ct)
+                    ?? throw new ValidationException("action", "This kind of suggestion is not supported.");
         }
+    }
+
+    /// <summary>
+    /// Whoever a proposal gives work to must still be an active member when it is confirmed: a member suspended since the card was made (or one
+    /// named by id) is refused, as the app's own pickers leave them out.
+    /// </summary>
+    private async Task EnsureAssignableAsync(JsonElement a, CancellationToken ct)
+    {
+        if (Guid(a, "assigneeId") is not { } assignee) return;
+        var tid = ctx.RequireTenantId();
+        if (!await db.TenantMembers.AsNoTracking().AnyAsync(m => m.TenantId == tid && m.UserId == assignee && m.Status == MemberStatus.Active && m.User!.IsActive, ct))
+            throw new ValidationException("assigneeId", "That person is suspended or no longer a member, so work cannot be assigned to them.");
     }
 
     /// <summary>The project a proposal is for: the one it named, or (when it was proposed together with that project) the one with that name, which exists by now.</summary>
