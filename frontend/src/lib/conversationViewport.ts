@@ -22,7 +22,7 @@ export function useConversationViewport(enabled: boolean, shell: RefObject<HTMLD
     // The page itself never scrolls under a conversation: iOS would otherwise scroll <body> to "reveal" the focused box and leave
     // the composer floating in the middle of the screen.
     document.documentElement.classList.add('conv-lock');
-    const unscroll = () => { if (window.scrollY || document.documentElement.scrollTop) window.scrollTo(0, 0); };
+    const unscroll = () => { if (window.scrollY || window.scrollX || document.documentElement.scrollTop || document.documentElement.scrollLeft) window.scrollTo(0, 0); };
     window.addEventListener('scroll', unscroll, { passive: true });
     const orient = () => { baseline = window.innerHeight; update(); };
     update();

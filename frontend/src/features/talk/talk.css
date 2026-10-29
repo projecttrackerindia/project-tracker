@@ -352,9 +352,24 @@ html .talk-composer .send-btn svg { width: 16px; height: 16px; stroke-width: 2.4
   .talk-draft-label { display: none; }
   .talk-ppl { display: none; }
   .mt-inline { padding: 14px; }
+
+  /* Nothing in Messages scrolls the page sideways: long links wrap, code and file cards scroll inside their bubble, and the push
+     transition is clipped by its own container (clip, not hidden: no new scroll container, so sticky still works). */
+  .m-shell.m-conversation .content, .talk-shell, .talk-pane, .talk-list, .talk-thread, .talk-thread .chat-messages { overflow-x: clip; }
+  .talk-thread .msg-col, .talk-thread .bubble-wrap, .talk-thread .bubble { min-width: 0; max-width: 100%; }
+  .talk-thread .bubble, .talk-thread .bubble a, .talk-thread .chat-file-meta { overflow-wrap: anywhere; word-break: break-word; }
+  .talk-thread .msg-code, .talk-thread .pl-card, .talk-thread .chat-file, .talk-thread .chat-files { max-width: 100%; min-width: 0; box-sizing: border-box; }
+  .talk-thread .msg-code pre, .talk-thread .pl-card-preview, .talk-thread .pl-card .pl-lines { max-width: 100%; overflow-x: auto; }
+  .talk-thread .chat-file-meta { min-width: 0; }
+
+  /* An open conversation fills the screen: no tab bar, no app top bar; its own header sits under the status bar. */
+  html .m-shell.m-thread .m-tabs, html .m-shell.m-thread .m-top { display: none; }
+  html .m-shell.m-thread .content { padding: 0; }
+  html .m-shell.m-thread .talk-shell { border-radius: 0; }
+  .m-shell.m-thread .talk-thread .talk-head { position: sticky; top: 0; z-index: 5; padding-top: calc(env(safe-area-inset-top, 0px) + 6px); background: var(--talk-bg, var(--ds-surface)); }
 }
 @keyframes talkPush { from { transform: translateX(100%); } to { transform: none; } }
-@keyframes talkPopBack { from { transform: translateX(-28%); opacity: .7; } to { transform: none; opacity: 1; } }
+@keyframes talkPopBack { from { opacity: .6; } to { opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
   .talk-row, .talk-pin, .tapback { transition: none; }

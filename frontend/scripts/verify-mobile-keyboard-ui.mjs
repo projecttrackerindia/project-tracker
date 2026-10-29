@@ -235,7 +235,7 @@ const phoneRun = async (device, theme) => {
   for (let y = head.y + 40; y < head.y + 260; y += 40) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: tp(y) });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await info.waitFor({ state: 'detached' });
-  assert.equal(await isShown(page, '.m-tabs'), true, `${tag}: tab bar back after Details closes`);
+  assert.equal(await isShown(page, '.m-tabs'), false, `${tag}: a conversation stays full screen (no tab bar) after Details closes`);
   await ctx.close();
 };
 
