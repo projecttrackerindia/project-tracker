@@ -194,7 +194,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     }
 
     /// <summary>
-    /// A duration logged for today ends now (<see cref="EndingNow"/>); when that would overlap the person's other time, it goes into the latest free gap
+    /// A duration logged for today ends now (<see cref="EndingNow"/>); when that would overlap the person's other time, it goes into the latest free gap after the day's work start (check-in, else working-hours start)
     /// before now that fits it whole (ending as late as possible). With no such gap it stays ending now and the response warns about the overlap.
     /// </summary>
     private async Task<(DateTime Start, DateTime End, int Minutes, DateOnly Day)?> FitBeforeNowAsync(Guid userId, (DateTime Start, DateTime End, int Minutes, DateOnly Day) want, CancellationToken ct)
@@ -203,7 +203,12 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             .Select(x => new { S = x.StartedAt!.Value, E = x.EndedAt }).ToListAsync(ct);
         var spans = busy.Select(b => (S: b.S, E: b.E ?? clock.Now)).Where(b => b.E > b.S).OrderBy(b => b.S).ToList();
         if (!spans.Any(b => b.S < want.End && b.E > want.Start)) return want;
-        var floor = clock.StartOfDayUtc(want.Day);
+        // Only from the person's work start that day: their first check-in, else the workspace's working-hours start (09:30 by default).
+        var checkIn = await db.AttendanceDays.Where(x => x.UserId == userId && x.Date == want.Day).OrderBy(x => x.CheckInAt).Select(x => (DateTime?)x.CheckInAt).FirstOrDefaultAsync(ct);
+        var workStart = await db.AttendancePolicies.Select(x => (TimeOnly?)x.WorkStart).FirstOrDefaultAsync(ct) ?? new TimeOnly(9, 30);
+        var floor = checkIn is { } ci ? DateTime.SpecifyKind(ci, DateTimeKind.Utc) : clock.StartOfDayUtc(want.Day).Add(workStart.ToTimeSpan());
+        if (floor >= want.End) return want;
+        spans = spans.Select(b => (S: b.S < floor ? floor : b.S, b.E)).Where(b => b.E > b.S).ToList();
         // Free gaps from the start of the day to now, latest first.
         var gaps = new List<(DateTime A, DateTime B)>();
         var cur = floor;
