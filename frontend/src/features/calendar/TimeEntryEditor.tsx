@@ -4,7 +4,7 @@ import type { TimeEntry } from '../../api/types';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { undoToast } from '../talk/flyTask';
-import { editError, entryLock, isoAt, refreshAfterEdit } from './calendarEdit';
+import { editError, entryLock, isoAt, refreshAfterEdit, warnOverlap } from './calendarEdit';
 import { SNAP, fmtMins } from './plannerModel';
 
 /** Work time can be logged on: a project task or a work item (ticket, action item). */
@@ -50,13 +50,13 @@ export function TimeEntryEditor({ entry, day: day0, start: start0, end: end0, ap
     try {
       if (entry) {
         const moved = current && choiceId(current) !== work;
-        await timeApi.update(entry.id, { minutes: mins, workDate: day, note: note.trim() || null, billable, ...span, stamp: entry.stamp ?? null,
+        const res = await timeApi.update(entry.id, { minutes: mins, workDate: day, note: note.trim() || null, billable, ...span, stamp: entry.stamp ?? null,
           ...(moved ? (kind === 'task' ? { taskId: id } : { workTaskId: id }) : {}) });
-        toast(`Saved · ${fmtMins(mins)} ${hhmm(s)}–${hhmm(e)}`, 'success');
+        if (!warnOverlap(res)) toast(`Saved · ${fmtMins(mins)} ${hhmm(s)}–${hhmm(e)}`, 'success');
       } else {
         const body = { minutes: mins, workDate: day, note: note.trim() || undefined, billable, ...span };
-        if (kind === 'task') await timeApi.log(id, body); else await timeApi.logOnWorkTask(id, body);
-        toast(`Logged ${fmtMins(mins)} · ${hhmm(s)}–${hhmm(e)}`, 'success');
+        const res = kind === 'task' ? await timeApi.log(id, body) : await timeApi.logOnWorkTask(id, body);
+        if (!warnOverlap(res)) toast(`Logged ${fmtMins(mins)} · ${hhmm(s)}–${hhmm(e)}`, 'success');
       }
       refreshAfterEdit(wid);
       onDone();

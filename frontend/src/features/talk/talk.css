@@ -32,7 +32,7 @@ html[data-theme='dark'] .talk-seg-thumb { background: #636366; box-shadow: none;
 .talk-seg-label { position: relative; overflow: hidden; text-overflow: ellipsis; }
 .talk-chip.on .talk-seg-label { font-weight: 600; }
 
-.talk-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0 10px; }
+.talk-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior-x: none; padding: 4px 0 10px; }
 .talk-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
 .talk-rows > li { position: relative; }
 
@@ -49,7 +49,7 @@ html[data-theme='dark'] .talk-seg-thumb { background: #636366; box-shadow: none;
 /* a row; its swipe actions live underneath it */
 .talk-row-swipe { position: relative; overflow: hidden; margin: 0 8px; border-radius: 10px; }
 .talk-row { position: relative; width: 100%; display: flex; align-items: flex-start; gap: 11px; padding: 9px 12px 9px 16px; border-radius: 10px; text-align: left; color: var(--ds-text); background: transparent;
-  transition: background-color .2s ease, color .2s ease, transform .32s var(--talk-spring); }
+  transition: background-color .2s ease, color .2s ease, transform .3s cubic-bezier(.2, .9, .25, 1); touch-action: pan-y; -webkit-touch-callout: none; }
 .talk-row-swipe.swiping .talk-row { background: var(--talk-bg); }
 .talk-row:hover { background: var(--talk-fill2); }
 .talk-row.active, .talk-row.active:hover { background: var(--talk-sel); color: #fff; }
@@ -75,15 +75,23 @@ html[data-theme='dark'] .talk-seg-thumb { background: #636366; box-shadow: none;
 .talk-top time { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--talk-t3); }
 .talk-chev { display: none; }
 .talk-muted { flex: none; color: var(--talk-t3); align-self: center; }
-.talk-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 1px; font-size: 12.5px; line-height: 1.35; color: var(--talk-t2); }
+.talk-preview { overflow-wrap: anywhere; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 1px; font-size: 12.5px; line-height: 1.35; color: var(--talk-t2); }
 .talk-row.active .talk-preview, .talk-row.active .talk-top time, .talk-row.active .talk-muted { color: rgba(255, 255, 255, .86); }
 .talk-live { flex: none; padding: 1px 7px; border-radius: var(--ds-r-pill); font-size: 11px; font-weight: 700; background: #ff3b30; color: #fff; }
 .talk-note { padding: 10px 16px; font-size: 13px; color: var(--talk-t3); list-style: none; }
 .talk-swipe-acts { position: absolute; top: 0; bottom: 0; display: flex; }
 .talk-swipe-acts.l { left: 0; } .talk-swipe-acts.r { right: 0; }
-.talk-swipe-acts button { width: 74px; display: grid; place-content: center; justify-items: center; gap: 3px; color: #fff; font-size: 11.5px; font-weight: 500; }
+.talk-swipe-acts button { flex: 0 0 74px; transition: flex-basis .18s ease; display: grid; place-content: center; justify-items: center; gap: 3px; color: #fff; font-size: 11.5px; font-weight: 500; }
 .talk-swipe-acts .sw-read { background: #0a84ff; } .talk-swipe-acts .sw-pin { background: #ff9f0a; } .talk-swipe-acts .sw-mute { background: #5e5ce6; } .talk-swipe-acts .sw-hide { background: #ff3b30; }
+.talk-swipe-acts button.grow { flex: 1 1 auto; }
+.talk-row-swipe.dragging .talk-swipe-acts button { transition: none; }
 .talk-row-menu .danger { color: #ff3b30; }
+/* desktop: the swipe actions as hover buttons over the row's time (a mouse never has to drag) */
+.talk-hover-acts { display: none; position: absolute; right: 10px; bottom: 8px; gap: 2px; padding: 2px; border-radius: 8px; background: var(--ds-surface); box-shadow: 0 1px 3px rgba(0, 0, 0, .14), 0 0 0 .5px var(--talk-line2); }
+.talk-hover-acts button { width: 26px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: var(--talk-t2); }
+.talk-hover-acts button:hover { background: var(--talk-fill); color: var(--ds-text); }
+.talk-hover-acts button.danger:hover { color: #ff3b30; }
+@media (hover: hover) and (pointer: fine) { .talk-row-swipe:hover .talk-hover-acts, .talk-row-swipe:focus-within .talk-hover-acts { display: flex; } }
 .talk-orb { width: 16px; height: 16px; flex: none; border-radius: 50%; background: conic-gradient(from 200deg, #5e5ce6, #bf5af2, #ff375f, #ff9f0a, #5e5ce6); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1); display: inline-block; }
 .talk-orb.sm { width: 12px; height: 12px; }
 
@@ -318,6 +326,7 @@ html .talk-composer .send-btn svg { width: 16px; height: 16px; stroke-width: 2.4
   .talk-search { height: 36px; border-radius: 10px; }
   .talk-search input { font-size: 16px; }
   .talk-row-swipe { margin: 0; border-radius: 0; }
+  .talk-hover-acts { display: none !important; }
   .talk-row { border-radius: 0; padding: 10px 16px 10px 22px; }
   .talk-row.active, .talk-row.active:hover { background: var(--talk-fill); color: var(--ds-text); }
   .talk-row.active .talk-preview, .talk-row.active .talk-top time { color: var(--talk-t2); }
@@ -372,7 +381,7 @@ html .talk-composer .send-btn svg { width: 16px; height: 16px; stroke-width: 2.4
 @keyframes talkPopBack { from { opacity: .6; } to { opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .talk-row, .talk-pin, .tapback { transition: none; }
+  .talk-row, .talk-pin, .tapback, .talk-swipe-acts button { transition: none; }
   .talk-shell.is-open .talk-pane, .talk-shell:not(.is-open) .talk-list, .talk-thread .msg.fresh .bubble-wrap, .talk-typing-bubble, html .talk-composer .send-btn.talk-send { animation: none; }
   .talk-typing-bubble i { animation: none; opacity: .6; }
 }

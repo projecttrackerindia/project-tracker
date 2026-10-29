@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { timeApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
-import { useWsQuery } from '../../lib/hooks';
+import { refreshTime, useWsQuery } from '../../lib/hooks';
 import { useModule, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { clock, useNow } from './time';
@@ -23,9 +23,8 @@ export function RunningTimer() {
     try {
       await timeApi.stop();
       toast('Timer stopped and time saved.');
-      void qc.invalidateQueries({ queryKey: [wid, 'timer'] });
+      void refreshTime(wid);
       void qc.invalidateQueries({ queryKey: t.kind === 'work' ? [wid, 'work', 'task', t.workTaskId] : [wid, 'task', t.taskId] });
-      void qc.invalidateQueries({ queryKey: [wid, 'timesheet'] });
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not stop the timer.', 'error'); }
   };
 

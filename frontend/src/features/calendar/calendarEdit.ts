@@ -1,6 +1,8 @@
 import { ApiError } from '../../api/client';
 import { actionItemApi, opsApi, projectApi, taskApi, timeApi, workApi } from '../../api/endpoints';
-import type { CalendarEvent, Task, TimeEntry } from '../../api/types';
+import type { CalendarEvent, Task, TimeEntry, TimelineEvent } from '../../api/types';
+import { toast } from '../../stores/ui';
+import { clock24 } from '../work/dueTime';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { appZone, instantIn } from '../../lib/zone';
 import { reminderApi } from '../reminders/api';
@@ -38,6 +40,30 @@ export function placeEntry(e: TimeEntry, day: string, start: number, end: number
     minutes: Math.max(1, Math.round((end - start) * 60)), workDate: day, note: e.note, billable: e.billable,
     startedAt: isoAt(day, start), endedAt: isoAt(day, end), stamp: e.stamp ?? null,
   });
+}
+
+/** "Overlaps WT-11 09:31–11:31": the words for an overlap, from the other entry on the timeline (24-hour clock, the app's zone). */
+export const overlapText = (other: Pick<TimelineEvent, 'start' | 'end' | 'title' | 'key'>, key?: string | null) =>
+  `Overlaps ${key ?? other.key ?? other.title} ${clock24(other.start)}–${other.end ? clock24(other.end) : 'now'}`;
+
+/**
+ * The one-click fixes for an entry that overlaps another (hours on its day): move it to start when the other ends (keeping its length; only
+ * while it then still ends before now on today), or trim the overlapping end off it (an entry wholly inside the other cannot be trimmed).
+ */
+export function overlapFixes(t: { start: number; end: number; day: string }, other: { start: number; end: number }, today: string, nowH: number) {
+  const len = t.end - t.start;
+  const afterEnd = other.end + len;
+  const after = afterEnd <= 24 && (t.day < today || afterEnd <= nowH + 1 / 60) ? [other.end, afterEnd] as const : null;
+  const trim = t.start < other.start && other.start < t.end ? [t.start, other.start] as const
+    : t.end > other.end && other.end > t.start ? [other.end, t.end] as const : null;
+  return { after, trim: trim && trim[1] - trim[0] >= 1 / 60 ? trim : null };
+}
+
+/** After a save that the server says overlaps other time: say so, with "Adjust" opening the entry's card (Move after / Trim). */
+export function warnOverlap(res: Pick<TimeEntry, 'warning' | 'overlaps'> | null | undefined, onAdjust?: () => void) {
+  if (!res?.warning) return false;
+  toast(res.warning, 'info', onAdjust ? { label: 'Adjust', onClick: onAdjust } : undefined);
+  return true;
 }
 
 /** The message to show for a refused edit (a locked week, a change made elsewhere, validation). */

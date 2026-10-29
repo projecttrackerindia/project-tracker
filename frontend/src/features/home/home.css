@@ -250,3 +250,17 @@ html[data-theme='dark'] .hm-lg { background: #30d158; }
 .hm-pin.in { background: rgba(40, 205, 65, .12); color: #127a26; cursor: default; padding: 0 7px; }
 html[data-theme='dark'] .hm-pin.dl { color: #ff6961; } html[data-theme='dark'] .hm-pin.in { color: #7ee08e; }
 .hm-brief-sum { white-space: normal; opacity: .9; }
+
+/* ---- Your day is edited like the Calendar: drag a focus block, a meeting you organise or logged time along the day (its edges resize it) */
+.hm-day-track.lanes .hm-lane.lg { height: 14px; border-radius: 6px; }
+.hm-day-track .hm-cap.movable, .hm-lg.movable { cursor: grab; touch-action: none; }
+.hm-day-track.dragging, .hm-day-track.dragging * { cursor: grabbing !important; user-select: none; }
+.hm-day-track .hm-cap.lift, .hm-lg.lift { z-index: 6; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); opacity: .95; }
+.hm-lg { height: 14px; border-radius: 4px; }
+.hm-lg.ovl { background: repeating-linear-gradient(135deg, #28cd41 0 5px, #ff9500 5px 8px); opacity: .9; }
+.hm-rs { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 2; touch-action: none; }
+.hm-rs.l { left: 0; } .hm-rs.r { right: 0; }
+@media (hover: hover) { .hm-cap.movable:hover .hm-rs::after, .hm-lg.movable:hover .hm-rs::after { content: ''; position: absolute; top: 25%; bottom: 25%; left: 2px; width: 2px; border-radius: 1px; background: currentColor; opacity: .35; } }
+.hm-snap { position: absolute; top: -22px; transform: translateX(-4px); padding: 1px 6px; border-radius: 6px; font-size: 10.5px; font-weight: 700; color: #fff; background: var(--ds-accent); z-index: 8; pointer-events: none; white-space: nowrap; }
+.hm-ovl { border: 0; padding: 0 6px; border-radius: 8px; font: inherit; font-weight: 600; color: #a35c00; background: rgba(255, 149, 0, .14); cursor: pointer; }
+html[data-theme='dark'] .hm-ovl { color: #ffb340; background: rgba(255, 149, 0, .2); }

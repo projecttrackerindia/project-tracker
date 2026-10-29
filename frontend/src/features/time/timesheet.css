@@ -344,3 +344,6 @@ html .ts-week.approved .ts-week-icon { background: var(--ds-success-bg); color: 
 html .ts-week.returned .ts-week-icon { background: var(--ds-danger-bg); color: var(--ds-danger); }
 .ts-week-title b { font-size: 16px; font-weight: 600; }
 .ts-week-sub { font-size: 13px; color: var(--ds-text-3); }
+
+.tsg-ovl { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 600; color: #a35c00; text-decoration: none; }
+html[data-theme='dark'] .tsg-ovl { color: #ffb340; }

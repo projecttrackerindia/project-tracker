@@ -217,7 +217,8 @@ try {
     await insp.getByRole('link', { name: 'Join meeting' }).waitFor();
     assert.equal(await insp.getByRole('switch', { name: 'Notes by Project Tracker' }).getAttribute('aria-checked'), 'true');
     if (width >= 700) {
-      assert.equal(await page.locator('.wp-dh', { hasText: 'UAT' }).locator('.wp-flag').count(), 1, 'a deadline flag on the day header');
+      // the deadline is a chip in the day's all-day / due strip (above the grid, never over its blocks)
+      assert.equal(await page.locator('.wp-allday-d .wp-flag', { hasText: 'UAT' }).count(), 1, 'a deadline flag in the day’s due strip');
       const ai = page.getByRole('region', { name: 'This week' });
       assert.match(await ai.innerText(), /This week: .*meetings, .*focus/);
       await page.getByRole('tablist', { name: 'Calendar view' }).getByRole('tab', { name: 'Week' }).waitFor();

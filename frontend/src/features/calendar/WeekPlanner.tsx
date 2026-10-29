@@ -1,32 +1,31 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError } from '../../api/client';
-import { meetingApi, timeApi } from '../../api/endpoints';
-import type { CalendarEvent, TimeEntry, TimelineEvent } from '../../api/types';
+import { timeApi } from '../../api/endpoints';
+import type { CalendarEvent, TimelineEvent } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { ErrorState, Segmented } from '../../components/ui';
 import { todayISO } from '../../lib/format';
-import { instantIn } from '../../lib/zone';
-import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { meetApi } from '../meet/meetApi';
 import { ToolbarSlot } from '../talk/ToolbarSlot';
 import { undoToast } from '../talk/flyTask';
 import { CalendarView } from './CalendarView';
 import { EventDetail, type DetailActions } from './EventDetail';
 import { DayPanel } from './DayPanel';
-import { canMoveDue, editError, entryLock, isoAt, moveDue, moveReminder, placeEntry, refreshAfterEdit, useMyEntries } from './calendarEdit';
+import { canMoveDue, editError, moveDue, overlapText, refreshAfterEdit } from './calendarEdit';
+import { useClearOnRefresh, useDayEdit } from './useDayEdit';
 import type { WorkChoice } from './TimeEntryEditor';
 import { AttendanceRow } from '../attendance/AttendanceCalendar';
 import {
-  DOW3, HR, MONTHS, SNAP, addDays, clockH, dateOf, dayLabel, fmtMins, hourOf, isDeadline, isDone, isWorkItem, iso, lanes, mondayOf, planKey, RANK,
+  DOW3, HR, MONTHS, SNAP, addDays, clockH, dateOf, dayLabel, fmtMins, hourOf, isDeadline, isDone, isWorkItem, iso, mondayOf, planKey, RANK,
   type Detail, type Focus, type Meet, type PlanOverrides,
 } from './plannerModel';
 import { useTodaySignals } from '../home/Signals';
 import { Term } from '../../components/Term';
-import { buildWeek, daySignature, focusLabel, hoursOf, readPlan, stickFocus, useTimeline, weekRange, writePlan, type DayView } from './timeline';
+import { buildWeek, daySignature, focusLabel, hoursOf, loggedMinutesOf, readPlan, stickFocus, useTimeline, weekRange, writePlan, type DayView } from './timeline';
 import { dayMarks, type DayMark } from './deadline';
+import { packColumns, packStyle, type Packed } from './pack';
 import { clock24 } from '../work/dueTime';
 import './planner.css';
 
@@ -104,13 +103,10 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const [mini, setMini] = useState(() => { const d = dateOf(today); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [layers, setLayers] = useState<Record<Layer, boolean>>({ meetings: true, calls: true, logged: true, done: true, focus: true, deadlines: true, reminders: true });
   const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const [moved, setMoved] = useState<Record<string, { day: string; start: number; end: number }>>({});
   const [plan, setPlan] = useState<PlanOverrides>(() => readPlan(wid));
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<{ d: Detail; el: HTMLElement | null } | null>(null);
   const [now, setNow] = useState(() => new Date());
-  /** Edits on their way to the server, shown at once (by timeline event id); dropped when the timeline comes back. */
-  const [over, setOver] = useState<Record<string, Partial<TimelineEvent>>>({});
   useEffect(() => { const t = window.setInterval(() => setNow(new Date()), 60_000); return () => window.clearInterval(t); }, []);
   useEffect(() => { setPlan(readPlan(wid)); }, [wid]);
   const nowH = hourOf(now);
@@ -128,12 +124,16 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   // One request for the visible week (the same one Today makes for this week), the meeting feed for what only Meet knows (who may move it),
   // my own entries as the timesheet has them (locks, stamps) and the week grid (the day's capacity, the work I log time on).
   const tl = useTimeline(weekRange(anchor), { enabled: view !== 'month' });
-  const feed = useWsQuery(['meet', 'feed', monday], () => meetApi.feed({ from: `${monday}T00:00:00`, to: `${addDays(sunday, 1)}T00:00:00` }), { staleTime: 60_000, retry: false, enabled: view !== 'month' });
-  const mine = useMyEntries(monday, sunday, view !== 'month');
   const grid = useWsQuery(['time', 'grid', monday], () => timeApi.grid(monday), { staleTime: 60_000, retry: false, enabled: view !== 'month', placeholderData: (p) => p });
-  useEffect(() => { setOver({}); }, [tl.dataUpdatedAt]);
-  const entries = useMemo(() => new Map((Array.isArray(mine.data?.entries) ? mine.data!.entries : []).map((e) => [e.id, e])), [mine.data]);
-  const raw = useMemo(() => (tl.data?.events ?? []).filter((t) => !(t.type === 'due' && doneIds.has(t.sourceId))).map((t) => (over[t.id] ? { ...t, ...over[t.id] } : t)), [tl.data, doneIds, over]);
+  const savePlan = (p: PlanOverrides) => { setPlan(p); writePlan(wid, p); };
+  const focusRef = useRef<readonly Focus[]>([]);
+  const gridRef = useRef<HTMLDivElement>(null);
+  // The edits a day takes, shared with Today's "Your day" (the same rules, the same writes, the same refresh).
+  const ed = useDayEdit({ from: monday, to: sunday, enabled: view !== 'month', today, nowH, plan, savePlan, anchor: () => gridRef.current, focus: () => focusRef.current,
+    onAdjust: (id) => { const el = gridRef.current?.querySelector<HTMLElement>(`[data-type="time"][data-id="${CSS.escape(id)}"]`); el?.click(); } });
+  const { entries, canMove, timeWhy, apply: applyEdits, withFeed } = ed;
+  useClearOnRefresh(tl.dataUpdatedAt, ed.clearOver);
+  const raw = useMemo(() => applyEdits((tl.data?.events ?? []).filter((t) => !(t.type === 'due' && doneIds.has(t.sourceId)))), [tl.data, doneIds, applyEdits]);
   const projects = useMemo(() => [...new Set(raw.map((e) => e.projectName).filter((n): n is string => !!n))].slice(0, 6), [raw]);
   const tintOf = useCallback((name: string | null) => (name && projects.includes(name) ? TINTS[projects.indexOf(name) % TINTS.length] : 'g'), [projects]);
   const timeline = useMemo(() => raw.filter((t) => !t.projectName || !hidden.has(t.projectName)), [raw, hidden]);
@@ -147,109 +147,24 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   }, [grid.data, openItems]);
   const peopleById = useMemo(() => new Map(raw.map((t) => [t.sourceId, t.people])), [raw]);
 
-  const meets: Meet[] = useMemo(() => {
-    const byStart = new Map((feed.data?.items ?? []).map((f) => [`${f.id}|${Date.parse(f.start)}`, f]));
-    const byId = new Map((feed.data?.items ?? []).map((f) => [f.id, f]));
-    return wv.days.flatMap((d) => d.meets).map((m) => {
-      const f = byStart.get(`${m.e.id}|${Date.parse(m.e.startsAt!)}`) ?? byId.get(m.e.id) ?? null;
-      const mv = moved[m.key];
-      return mv ? { ...m, day: mv.day, start: mv.start, end: mv.end, feed: f } : { ...m, feed: f };
-    });
-  }, [wv, feed.data, moved]);
+  const meets: Meet[] = useMemo(() => withFeed(wv.days.flatMap((d) => d.meets)), [wv, withFeed]);
 
-  const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const focus = useMemo(() => (layers.focus ? wv.focus.filter((f) => days.includes(f.day)) : []), [layers.focus, wv, days]);
+  focusRef.current = focus;
 
-  const canMove = useCallback((m: Meet): string | null => {
-    if (!m.feed) return 'Open the meeting in Messages to move it';
-    if (!m.feed.canManage) return 'Only the organiser can move this meeting';
-    if (m.feed.recurring) return 'A recurring meeting moves from its series in Messages';
-    if (Date.parse(m.feed.end) < Date.now()) return 'This meeting has ended';
-    return null;
-  }, []);
-  const timeWhy = useCallback((t: TimelineEvent): string | null => (t.running ? 'The timer is running on this. Stop it to change its time.' : entryLock(entries.get(t.sourceId))), [entries]);
-  const remWhy = (t: TimelineEvent) => (t.status !== 'scheduled' ? 'This reminder went off: snooze it or mark it done' : null);
-
-  // ---- writes (each one the real record), shown at once, with Undo
-  const reschedule = async (m: Meet, day: string, start: number, len: number, undo = false) => {
-    const from = { day: m.day, start: m.start, end: m.end };
-    const at = (d: string, h: number) => instantIn(d, h);   // the wall-clock time in the app's zone, not the device's
-    setMoved((s) => ({ ...s, [m.key]: { day, start, end: start + len } }));
-    try {
-      const body = { startTime: at(day, start).toISOString(), endTime: at(day, start + len).toISOString() };
-      if (m.e.projectId) await meetingApi.reschedule(m.e.id, body); else await meetingApi.workspaceReschedule(m.e.id, body);
-      void invalidateWorkspace(wid, 'meet');
-      void invalidateWorkspace(wid, 'timeline');
-      if (undo) { toast('Moved back.', 'info'); return; }
-      const before = focus.filter((f) => f.day === day && f.end > start && f.start < start + len);
-      const label = `${m.e.title} moved to ${DOW3[dateOf(day).getDay()]} ${clockH(start)}${Math.abs(len - (from.end - from.start)) > 1e-6 ? `–${clockH(start + len)}` : ''}${before.length ? ' · focus replanned' : ''}`;
-      undoToast(label, () => void reschedule({ ...m, day, start, end: start + len }, from.day, from.start, from.end - from.start, true), gridRef.current, 46);
-    } catch (err) {
-      setMoved((s) => ({ ...s, [m.key]: from }));
-      toast(err instanceof ApiError ? err.message : 'Could not move the meeting.', 'error');
-    }
-  };
-  const moveTime = async (t: TimelineEvent, day: string, start: number, end: number, undo = false) => {
-    const e = entries.get(t.sourceId);
-    const why = timeWhy(t);
-    if (why || !e) { toast(why ?? 'That entry is not yours to change.', 'error'); return; }
-    if (day > today || (day === today && end > nowH + 1 / 60)) { toast('Logged time is for time that has happened. Drag it earlier, or plan focus for later.', 'error'); return; }
-    const was = hoursOf(t), wasDay = t.date;
-    setOver((o) => ({ ...o, [t.id]: { date: day, start: isoAt(day, start), end: isoAt(day, end), approximated: false, minutes: Math.round((end - start) * 60) } }));
-    try {
-      await placeEntry(e, day, start, end);
-      refreshAfterEdit(wid);
-      if (undo) { toast('Moved back.', 'info'); return; }
-      undoToast(`${t.title} · ${spanText(day, start, end)} (${fmtMins(Math.round((end - start) * 60))})`, () => {
-        // Undo works from the saved entry (its new stamp), once the timeline has it.
-        void mine.refetch().then((r) => { const fresh = r.data?.entries.find((x) => x.id === e.id); if (fresh) void moveTimeEntry(fresh, t, wasDay, was.start, Math.max(was.end, was.start + .25)); });
-      }, gridRef.current, 46);
-    } catch (err) {
-      setOver((o) => { const n = { ...o }; delete n[t.id]; return n; });
-      toast(editError(err, 'That time could not be moved.'), 'error');
-      refreshAfterEdit(wid);
-    }
-  };
-  const moveTimeEntry = async (fresh: TimeEntry, t: TimelineEvent, day: string, start: number, end: number) => {
-    try { await placeEntry(fresh, day, start, end); toast('Moved back.', 'info'); }
-    catch (err) { toast(editError(err, 'Could not move it back.'), 'error'); }
-    finally { refreshAfterEdit(wid); }
-    void t;
-  };
-  const moveRem = async (t: TimelineEvent, day: string, start: number, undo = false) => {
-    const why = remWhy(t);
-    if (why) { toast(why, 'error'); return; }
-    if (day < today || (day === today && start < nowH)) { toast('Choose a time that has not passed yet.', 'error'); return; }
-    const was = hoursOf(t).start, wasDay = t.date;
-    setOver((o) => ({ ...o, [t.id]: { date: day, start: isoAt(day, start) } }));
-    try {
-      await moveReminder(t.sourceId, day, start);
-      refreshAfterEdit(wid);
-      if (undo) { toast('Moved back.', 'info'); return; }
-      undoToast(`Reminder moved to ${DOW3[dateOf(day).getDay()]} ${clockH(start)}`, () => void moveRem({ ...t, date: day, start: isoAt(day, start) }, wasDay, was, true), gridRef.current, 46);
-    } catch (err) {
-      setOver((o) => { const n = { ...o }; delete n[t.id]; return n; });
-      toast(editError(err, 'The reminder could not be moved.'), 'error');
-    }
-  };
-  const savePlan = (p: PlanOverrides) => { setPlan(p); writePlan(wid, p); };
   // The same rule as Today: a suggested block that has started stays where it is for the rest of the day.
   useEffect(() => {
     const next = stickFocus(wv.focus, plan, today, nowH);
     if (next) { setPlan(next); writePlan(wid, next); }
   }, [wv, plan, today, nowH, wid]);
-  const moveFocusTo = (f: Focus, day: string, start: number, len: number) => {
-    const before = plan;
-    savePlan({ ...plan, [planKey(f.e)]: { day, start, len } });
-    undoToast(`Focus on ${focusLabel(f.e)} · ${spanText(day, start, start + len)}`, () => savePlan(before), gridRef.current, 46);
-  };
+  const { reschedule, moveTime, moveRem, moveFocusTo } = ed;
   // A deadline flag dropped on another day: the due date moves (a task moved later asks why first, the same rule as its form).
   const [dueAsk, setDueAsk] = useState<{ e: CalendarEvent; date: string } | null>(null);
   const shiftDue = async (e: CalendarEvent, date: string, reason: string, undo = false) => {
     const from = e.date;
     const ids = raw.filter((t) => t.type === 'due' && t.sourceId === e.id).map((t) => t.id);
-    setOver((o) => ({ ...o, ...Object.fromEntries(ids.map((id) => [id, { date, overdue: date < today }])) }));
+    ed.patch(Object.fromEntries(ids.map((id) => [id, { date, overdue: date < today }])));
     try {
       await moveDue(e, date, reason);
       refreshAfterEdit(wid);
@@ -257,7 +172,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
       const back = () => (from > date ? setDueAsk({ e: { ...e, date }, date: from }) : void shiftDue({ ...e, date }, from, '', true));
       undoToast(`${e.key ?? e.title} now due ${dayLabel(date, today).toLowerCase()}`, back, gridRef.current, 46);
     } catch (err) {
-      setOver((o) => { const n = { ...o }; for (const id of ids) delete n[id]; return n; });
+      ed.unpatch(ids);
       toast(editError(err, 'The due date could not be moved.'), 'error');
     }
   };
@@ -352,7 +267,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     const move = (e: PointerEvent) => {
       if (!dragged && Math.hypot(e.clientX - x0, e.clientY - y0) < 6) return;
       dragged = true;
-      const hd = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>('.wp-dh[data-day], .wp-col[data-day]');
+      const hd = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>('.wp-dh[data-day], .wp-col[data-day], .wp-allday-d[data-day]');
       target = hd?.dataset.day ?? null; setFlagOver(target);
     };
     const up = () => {
@@ -373,15 +288,13 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
 
   const actions: DetailActions = {
     moveFocus: (f, day, start) => moveFocusTo(f, day, start, f.end - f.start),
-    removeFocus: (f, quiet) => {
-      const before = plan;
-      savePlan({ ...plan, [planKey(f.e)]: 'removed' });
-      if (!quiet) undoToast(`${focusLabel(f.e)} taken out of your plan`, () => savePlan(before), gridRef.current, 46);
-    },
+    removeFocus: ed.removeFocus,
     done: (e) => setDoneIds((s) => new Set(s).add(e.id)),
     moveMeeting: (m, day, start) => { const x = meets.find((y) => y.key === m.key) ?? m; void reschedule(x, day, start, x.end - x.start); },
     canMoveMeeting: canMove,
     entryOf: (id) => entries.get(id),
+    overlapsOf: (t) => wv.byDay.get(t.date)?.overlaps.get(t.id) ?? [],
+    fixOverlap: ed.fixOverlap,
     choices,
     openItems,
     planFocus: (e, day, start, end) => {
@@ -395,21 +308,33 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     const ms = meets.filter((m) => layers.meetings && m.day === d);
     const calls = layers.calls ? dv?.calls ?? [] : [];
     const fs = focus.filter((f) => f.day === d);
-    // Meetings, calls and focus share the day in columns when they overlap (Apple Calendar), each its own width.
-    const spans = [...ms.map((m) => ({ key: m.key, start: m.start, end: m.end })), ...calls.map((c) => { const h = hoursOf(c); return { key: c.id, start: h.start, end: Math.max(h.end, h.start + .25) }; }),
-      ...fs.map((f) => ({ key: f.key, start: f.start, end: f.end }))];
     const done = layers.done ? dv?.done ?? [] : [];
     const reminders = layers.reminders ? dv?.reminders ?? [] : [];
-    // Pills (finished work, reminders) never sit on top of each other: one under the next when their minutes are close.
-    const pills = [...done.map((t) => ({ key: `done:${d}:${t.id}`, top: Math.max(2, (hoursOf(t).start - G0) * HR - 9) })), ...reminders.map((t) => ({ key: `reminder:${d}:${t.id}`, top: Math.max(2, (hoursOf(t).start - G0) * HR - 9) }))]
-      .sort((a, b) => a.top - b.top);
-    const pillTop = new Map<string, number>();
-    let last = -Infinity;
-    for (const p of pills) { const t = Math.max(p.top, last + 20); pillTop.set(p.key, t); last = t; }
-    // Deadlines at their time (a due time, or an open ticket's SLA breach): a marker on the grid at that hour.
+    const logged = layers.logged ? dv?.time ?? [] : [];
+    // Every timed thing of the day shares the column through the one packing engine (pack.ts): overlapping items split the width into
+    // columns and widen into free ones, so no block, logged entry, reminder or check ever covers another's text.
+    const spans = [
+      ...ms.map((m) => ({ key: m.key, start: m.start, end: m.end })),
+      ...calls.map((c) => { const h = hoursOf(c); return { key: c.id, start: h.start, end: Math.max(h.end, h.start + .25) }; }),
+      ...fs.map((f) => ({ key: f.key, start: f.start, end: f.end })),
+      ...logged.map((t) => { const h = hoursOf(t); return { key: `time:${d}:${t.id}`, start: h.start, end: Math.max(h.end, h.start + .25) }; }),
+      ...reminders.map((t) => { const h = hoursOf(t).start; return { key: `reminder:${d}:${t.id}`, start: h, end: h + PILL_H }; }),
+      ...done.map((t) => { const h = hoursOf(t).start; return { key: `done:${d}:${t.id}`, start: h, end: h + PILL_H }; }),
+    ];
+    // Deadlines with a time (a due time, or an open ticket's SLA breach): a chip in the day's due strip, a thin line at its hour.
     const marks = layers.deadlines ? dayMarks(d, dv?.due ?? [], now.getTime()) : [];
-    return { d, meets: ms, calls, lanes: lanes(spans), focus: fs, logged: layers.logged ? dv?.time ?? [] : [], done, reminders, pillTop, marks };
+    return { d, meets: ms, calls, pack: packColumns(spans, PILL_H), focus: fs, logged, done, reminders, marks, overlaps: dv?.overlaps ?? new Map() };
   }), [days, wv, timeline, today, nowQ, nowH, plan, meets, layers, focus, now]);
+  // ---- each day's due strip: the flagged deadlines (overdue first) and every deadline with a time, at most three chips and "+N"
+  const strips = useMemo(() => cols.map((c) => {
+    const dv = wv.byDay.get(c.d);
+    const flagged = (dv?.due ?? []).filter((e) => !isDone(e) && (isDeadline(e) || e.overdue))
+      .sort((a, b) => Number(b.overdue) - Number(a.overdue) || ['project', 'milestone', 'stage'].indexOf(b.type) - ['project', 'milestone', 'stage'].indexOf(a.type) || (RANK[a.priority ?? ''] ?? 4) - (RANK[b.priority ?? ''] ?? 4));
+    const timed = new Map(c.marks.map((m) => [`${m.e.type}:${m.e.id}`, m]));
+    const all = [...c.marks.map((m) => ({ e: m.e, mark: m as DayMark | null })), ...flagged.filter((e) => !timed.has(`${e.type}:${e.id}`)).map((e) => ({ e, mark: null as DayMark | null }))];
+    const chips = all.slice(0, 3).map((x) => ({ ...x, others: all.filter((y) => y.e !== x.e && !y.mark).map((y) => y.e) }));
+    return { d: c.d, chips, more: Math.max(0, all.length - 3) };
+  }), [cols, wv]);
   // The card follows its block when the data refreshes (or closes when the block is gone, e.g. after Mark done).
   useEffect(() => {
     if (!openKey) return;
@@ -428,6 +353,15 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     }
     return Math.max(G0, Math.floor(h));
   }, [cols]);
+  // A deadline's time in the time-axis margin (one tag per minute across the shown days), beside the thin line on its day.
+  const marginTags = useMemo(() => {
+    const by = new Map<string, { at: string; h: number; sla: boolean; late: boolean; tip: string }>();
+    for (const c of cols) for (const m of c.marks) {
+      const at = clock24(m.iso), x = by.get(at), what = `${m.kind === 'sla' ? 'SLA' : 'Due'} ${at} · ${m.e.key ?? m.e.title}`;
+      by.set(at, x ? { ...x, sla: x.sla || m.kind === 'sla', late: x.late || m.late, tip: `${x.tip} · ${what}` } : { at, h: m.at, sla: m.kind === 'sla', late: m.late, tip: what });
+    }
+    return [...by.values()].filter((t) => Math.abs(t.h - nowH) > .2 || !days.includes(today));
+  }, [cols, nowH, days, today]);
   const scrolledFor = useRef<string | null>(null);
   const rangeKey = `${view}:${days[0]}:${days.length}:${tl.data ? 'y' : 'n'}`;
   useLayoutEffect(() => {
@@ -543,13 +477,10 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                 <span />
                 {days.map((d) => {
                   const dv = wv.byDay.get(d);
-                  const due = layers.deadlines ? (dv?.due ?? []).filter((e) => isDeadline(e) || e.overdue)
-                    .sort((a, b) => Number(b.overdue) - Number(a.overdue) || ['project', 'milestone', 'stage'].indexOf(b.type) - ['project', 'milestone', 'stage'].indexOf(a.type) || (RANK[a.priority ?? ''] ?? 4) - (RANK[b.priority ?? ''] ?? 4)) : [];
-                  const flag = due[0];
                   const ents = layers.logged ? dv?.time ?? [] : [];
-                  const mins = ents.reduce((n, t) => n + (t.minutes ?? 0), 0);
+                  const mins = loggedMinutesOf(ents);
                   const lv = dv?.off[0] ?? null;
-                  const fk = flag ? `deadline:${d}:${flag.type}:${flag.id}` : '', lk = `loggedDay:${d}`, vk = `leave:${d}`;
+                  const lk = `loggedDay:${d}`, vk = `leave:${d}`;
                   return (
                     <div key={d} className={`wp-dh${d === today ? ' tdy' : ''}${d === selDay ? ' sel' : ''}${flagOver === d ? ' drop' : ''}`} data-day={d} data-sig={dv ? daySignature(dv) : ''}
                       onClick={(ev) => { if (!(ev.target as HTMLElement).closest('button')) setSelDay(d); }}>
@@ -565,18 +496,36 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                       )}
                       {lv && <button type="button" className={`wp-leave${openKey === vk ? ' open' : ''}`} data-block={vk} data-day={d} data-start={-3} aria-expanded={openKey === vk}
                         onClick={(ev) => handlers.open({ kind: 'leave', key: vk, day: d, note: lv.type === 'holiday' ? lv.title : lv.note }, ev.currentTarget)}>{lv.type === 'holiday' ? 'Holiday' : 'Leave'}</button>}
-                      {flag && (
-                        <button type="button" className={`wp-flag${flag.overdue ? ' late' : ''}${openKey === fk ? ' open' : ''}${canMoveDue(flag) ? ' movable' : ''}`} data-block={fk} data-day={d} data-start={-1} aria-expanded={openKey === fk} data-testid="wp-flag"
-                          title={`${flag.key ? `${flag.key} ` : ''}${flag.title}${flag.projectName ? ` · ${flag.projectName}` : ''} — ${flag.overdue ? 'overdue' : 'due'}${due.length > 1 ? ` (+${due.length - 1} more)` : ''}${canMoveDue(flag) ? ' · drag to another day to move the date' : ''}`}
-                          onPointerDown={(ev) => live.current.flag(ev, flag)}
-                          onClick={(ev) => { if (!justDragged.current) handlers.open({ kind: 'deadline', key: fk, e: flag, others: due.slice(1) }, ev.currentTarget); }}>
-                          <Icon name="flag" size={9} />{flag.key ?? flag.title}{due.length > 1 && <em>+{due.length - 1}</em>}
-                        </button>
-                      )}
                     </div>
                   );
                 })}
               </div>
+              {/* The all-day / due strip (Google Calendar's all-day row): each day's deadlines as chips, never on top of the day's blocks. A chip
+                  drags to another day to move the date; a timed one shows its time (its line is on the grid at that hour). */}
+              {layers.deadlines && strips.some((x) => x.chips.length > 0) && (
+                <div className="wp-allday" data-testid="wp-allday">
+                  <span className="wp-allday-l">Due</span>
+                  {strips.map(({ d, chips, more }) => (
+                    <div key={d} className={`wp-allday-d${flagOver === d ? ' drop' : ''}`} data-day={d}>
+                      {chips.map((c) => {
+                        const fk = `deadline:${d}:${c.e.type}:${c.e.id}`;
+                        const tag = c.mark ? (c.mark.kind === 'sla' ? `SLA ${clock24(c.mark.iso)}` : clock24(c.mark.iso)) : null;
+                        const label = `${c.e.key ? `${c.e.key} ` : ''}${c.e.title}${c.e.projectName ? ` · ${c.e.projectName}` : ''} — ${c.mark ? (c.mark.kind === 'sla' ? `SLA ${c.mark.late ? 'breached' : 'breach'} ${clock24(c.mark.iso)}` : `due ${clock24(c.mark.iso)}`) : c.e.overdue ? 'overdue' : 'due'}${canMoveDue(c.e) ? ' · drag to another day to move the date' : ''}`;
+                        return (
+                          <button key={fk} type="button" className={`wp-flag${c.e.overdue || c.mark?.late ? ' late' : ''}${c.mark ? ` timed ${c.mark.kind}` : ''}${openKey === fk ? ' open' : ''}${canMoveDue(c.e) ? ' movable' : ''}`}
+                            data-block={fk} data-day={d} data-start={-1} aria-expanded={openKey === fk} data-testid={c.mark ? (c.mark.kind === 'sla' ? 'wp-sla' : 'wp-due') : 'wp-flag'}
+                            data-at={c.mark ? clock24(c.mark.iso) : undefined} title={label} aria-label={label}
+                            onPointerDown={(ev) => live.current.flag(ev, c.e)}
+                            onClick={(ev) => { if (!justDragged.current) handlers.open({ kind: 'deadline', key: fk, e: c.e, others: c.mark ? [] : c.others }, ev.currentTarget); }}>
+                            <Icon name="flag" size={9} />{tag && <span className="wp-flag-at">{tag}</span>}{c.e.key ?? c.e.title}
+                          </button>
+                        );
+                      })}
+                      {more > 0 && <span className="wp-flag-more" title={`${more} more due`}>+{more}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
               <AttendanceRow days={days} today={today} />
               <div className="wp-scroll" ref={scrollRef} data-testid="wp-scroll">
                 <div className="wp-body" style={{ height: (G1 - G0) * HR }}>
@@ -586,6 +535,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                       <span key={h} data-hour={h} style={{ top: (h - G0) * HR, opacity: h === G0 ? 0 : 1 }}>{hourLabel(h)}</span>
                     ))}
                     {days.includes(today) && <span className="wp-nowl" style={{ top: (nowH - G0) * HR - 7 }}>{clockH(nowH)}</span>}
+                    {marginTags.map((t) => <span key={t.at} className={`wp-dl-tag${t.sla ? ' sla' : ''}${t.late ? ' late' : ''}`} data-testid="wp-dl-tag" style={{ top: (t.h - G0) * HR - 7 }} title={t.tip}>{t.at}</span>)}
                   </div>
                   {cols.map((c) => (
                     <DayCol key={c.d} col={c} nowTop={c.d === today ? (nowH - G0) * HR : null} nowLabel={clockH(nowH)}
@@ -674,11 +624,13 @@ interface ColHandlers {
   create: (e: ReactPointerEvent, day: string) => void;
 }
 interface ColData {
-  d: string; meets: Meet[]; calls: TimelineEvent[]; lanes: Map<string, { lane: number; of: number }>; focus: Focus[];
-  logged: TimelineEvent[]; done: TimelineEvent[]; reminders: TimelineEvent[]; pillTop: Map<string, number>; marks: DayMark[];
+  d: string; meets: Meet[]; calls: TimelineEvent[]; pack: Map<string, Packed>; focus: Focus[];
+  logged: TimelineEvent[]; done: TimelineEvent[]; reminders: TimelineEvent[]; marks: DayMark[]; overlaps: Map<string, TimelineEvent[]>;
 }
 const top = (h: number) => (h - G0) * HR;
-const laneStyle = (l: { lane: number; of: number }) => ({ left: `calc(${(l.lane / l.of) * 100}% + 3px)`, width: `calc(${100 / l.of}% - 6px)` });
+/** Point-like items (a reminder, a done check) take a quarter hour of the column: the height their pill is drawn with. */
+const PILL_H = .25;
+const narrowOf = (p: Packed | undefined) => !!p && p.width < 1 - 1e-9;
 
 /** The drag handles on a block's top and bottom edges (resize, 15-minute steps). */
 function Edges({ it, h }: { it: DragItem; h: ColHandlers }) {
@@ -714,19 +666,19 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
         const key = `time:${d}:${t.id}`;
         const pos = at(key, sp.start, Math.max(sp.end, sp.start + .25));
         if (!pos) return null;
-        // Beside a meeting, call or focus block the entry is a slim green lane at the column's edge (still a button), so labels never collide.
-        const under = [...col.meets, ...col.focus].some((m) => m.start < pos.end && m.end > pos.start) || col.calls.some((c) => { const x = hoursOf(c); return x.start < pos.end && Math.max(x.end, x.start + .25) > pos.start; });
+        const pk = col.pack.get(key);
+        const ov = col.overlaps.get(t.id) ?? [];
         const why = timeWhy(t);
         const it: DragItem = { kind: 'time', key, day: d, start: sp.start, end: Math.max(sp.end, sp.start + .25), resizable: true, label: t.title, cls: 'lg' };
         return (
-          <button key={t.id} type="button" className={`wp-e lg${under && !pos.lifted ? ' thin' : ''}${t.running ? ' run' : ''}${t.approximated ? ' ap' : ''}${openKey === key ? ' open' : ''}${why ? '' : ' movable'}${pos.lifted ? ' lift' : ''}`}
-            aria-label={`Logged ${fmtMins(t.minutes ?? 0)} · ${t.title}${t.approximated ? ' (approximate time)' : ''}`} data-block={key} data-day={d} data-start={sp.start} data-type="time"
-            aria-expanded={openKey === key} style={{ top: top(pos.start), height: Math.max(16, (pos.end - pos.start) * HR - 2) }}
-            title={`${t.approximated ? '≈ Typed in as minutes, placed on the day' : 'Logged'} · ${t.title} · ${clockH(sp.start)}–${clockH(sp.end)}${why ? ` · ${why}` : ' · drag to move, drag an edge to resize'}`}
+          <button key={t.id} type="button" className={`wp-e lg${narrowOf(pk) && !pos.lifted ? ' narrow' : ''}${ov.length ? ' ovl' : ''}${t.running ? ' run' : ''}${t.approximated ? ' ap' : ''}${openKey === key ? ' open' : ''}${why ? '' : ' movable'}${pos.lifted ? ' lift' : ''}`}
+            aria-label={`Logged ${fmtMins(t.minutes ?? 0)} · ${t.title}${t.approximated ? ' (approximate time)' : ''}${ov.length ? ` · ${overlapText(ov[0])}` : ''}`} data-block={key} data-day={d} data-start={sp.start} data-type="time" data-id={t.id}
+            data-overlaps={ov.length || undefined} aria-expanded={openKey === key} style={{ top: top(pos.start), height: Math.max(16, (pos.end - pos.start) * HR - 2), ...(pos.lifted ? {} : packStyle(pk)) }}
+            title={`${t.approximated ? '≈ Typed in as minutes, placed on the day' : 'Logged'} · ${t.title} · ${clockH(sp.start)}–${clockH(sp.end)}${ov.length ? ` · ${overlapText(ov[0])}` : ''}${why ? ` · ${why}` : ' · drag to move, drag an edge to resize'}`}
             onPointerDown={why ? undefined : (e) => h.down(e, it, 'move')}
             onKeyDown={(ev) => { if (!why && ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) { ev.preventDefault(); h.alt(it, ev.key === 'ArrowUp'); } }}
             onClick={(ev) => h.open({ kind: 'time', key, t }, ev.currentTarget)}>
-            <span className="wp-lbl">{t.running ? 'Running · ' : ''}{t.title}</span><small>{t.approximated ? '≈ ' : ''}{clockH(pos.start)}{t.running ? '' : ` – ${clockH(pos.end)}`}</small>
+            <span className="wp-lbl">{ov.length > 0 && <b className="wp-ovl" aria-hidden="true">!</b>}{t.running ? 'Running · ' : ''}{t.title}</span><small>{t.approximated ? '≈ ' : ''}{clockH(pos.start)}{t.running ? '' : ` – ${clockH(pos.end)}`}</small>
             {!why && <Edges it={it} h={h} />}
           </button>
         );
@@ -734,11 +686,11 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
       {col.focus.map((f) => {
         const pos = at(f.key, f.start, f.end);
         if (!pos) return null;
-        const l = col.lanes.get(f.key) ?? { lane: 0, of: 1 };
+        const pk = col.pack.get(f.key);
         const it: DragItem = { kind: 'focus', key: f.key, day: d, start: f.start, end: f.end, resizable: true, label: focusLabel(f.e), cls: 'f' };
         return (
-          <button key={f.key} type="button" className={`wp-e f movable${l.of > 1 && !pos.lifted ? ' narrow' : ''}${dragging && !pos.lifted ? ' dim' : ''}${openKey === f.key ? ' open' : ''}${pos.lifted ? ' lift' : ''}`} data-block={f.key} data-day={d} data-start={f.start} data-type="focus" aria-expanded={openKey === f.key}
-            style={{ top: top(pos.start), height: (pos.end - pos.start) * HR - 2, ...(pos.lifted ? {} : laneStyle(l)) }} title={`Focus · ${focusLabel(f.e)} · drag to move, drag an edge to resize`}
+          <button key={f.key} type="button" className={`wp-e f movable${narrowOf(pk) && !pos.lifted ? ' narrow' : ''}${dragging && !pos.lifted ? ' dim' : ''}${openKey === f.key ? ' open' : ''}${pos.lifted ? ' lift' : ''}`} data-block={f.key} data-day={d} data-start={f.start} data-type="focus" aria-expanded={openKey === f.key}
+            style={{ top: top(pos.start), height: (pos.end - pos.start) * HR - 2, ...(pos.lifted ? {} : packStyle(pk)) }} title={`Focus · ${focusLabel(f.e)} · drag to move, drag an edge to resize`}
             onPointerDown={(e) => h.down(e, it, 'move')}
             onKeyDown={(ev) => { if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) { ev.preventDefault(); h.alt(it, ev.key === 'ArrowUp'); } }}
             onClick={(ev) => h.open({ kind: 'focus', key: f.key, f }, ev.currentTarget)}>
@@ -750,12 +702,12 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
       {col.calls.map((t) => {
         const sp = hoursOf(t);
         const end = Math.max(sp.end, sp.start + .25);
-        const l = col.lanes.get(t.id) ?? { lane: 0, of: 1 };
+        const pk = col.pack.get(t.id);
         const key = `call:${d}:${t.id}`;
         const xs = end - sp.start <= .3;
         return (
-          <button key={t.id} type="button" className={`wp-e c${xs ? ' xs' : ''}${l.of > 1 ? ' narrow' : ''}${t.running ? ' run' : ''}${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={sp.start} data-type="call"
-            aria-expanded={openKey === key} style={{ top: top(sp.start), height: (end - sp.start) * HR - 2, ...laneStyle(l) }}
+          <button key={t.id} type="button" className={`wp-e c${xs ? ' xs' : ''}${narrowOf(pk) ? ' narrow' : ''}${t.running ? ' run' : ''}${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={sp.start} data-type="call"
+            aria-expanded={openKey === key} style={{ top: top(sp.start), height: (end - sp.start) * HR - 2, ...packStyle(pk) }}
             title={`Call · ${t.title} · ${clockH(sp.start)}–${clockH(end)}`} onClick={(ev) => h.open({ kind: 'call', key, t }, ev.currentTarget)}>
             <Icon name="phone" size={10} /><span className="wp-lbl">{t.title}</span>{!xs && <small>{clockH(sp.start)}{t.running ? ' · live' : ` – ${clockH(sp.end)}`}{t.people.length ? ` · ${t.people.length} people` : ''}</small>}
           </button>
@@ -768,14 +720,14 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
         const why = canMove(m);
         const len = pos.end - pos.start;
         const xs = len <= .3;
-        const l = col.lanes.get(m.key) ?? { lane: 0, of: 1 };
+        const pk = col.pack.get(m.key);
         const people = (m.e.people ?? []).slice(1, 3).map((p) => p.split(' ')[0]).join(', ');
         const sub = len >= 1.25 ? `${clockH(pos.start)} – ${clockH(pos.end)}` : `${clockH(pos.start)}${people ? ` · ${people}` : m.e.projectName ? ` · ${m.e.projectName}` : ''}`;
         const it: DragItem = { kind: 'meeting', key: m.key, day: d, start: m.start, end: m.end, resizable: true, label: m.e.title, cls: tintOf(m.e.projectName) };
         return (
-          <button key={m.key} type="button" className={`wp-e ${tintOf(m.e.projectName)}${xs ? ' xs' : ''}${l.of > 1 && !pos.lifted ? ' narrow' : ''}${pos.lifted ? ' lift' : ''}${why ? '' : ' movable'}${openKey === key ? ' open' : ''}`}
+          <button key={m.key} type="button" className={`wp-e ${tintOf(m.e.projectName)}${xs ? ' xs' : ''}${narrowOf(pk) && !pos.lifted ? ' narrow' : ''}${pos.lifted ? ' lift' : ''}${why ? '' : ' movable'}${openKey === key ? ' open' : ''}`}
             data-block={key} data-day={d} data-start={m.start} data-type="meeting" aria-expanded={openKey === key}
-            style={{ top: top(pos.start), height: Math.max(.25, len) * HR - 2, ...(pos.lifted ? {} : laneStyle(l)) }}
+            style={{ top: top(pos.start), height: Math.max(.25, len) * HR - 2, ...(pos.lifted ? {} : packStyle(pk)) }}
             title={why ? `${m.e.title} · ${why}` : `${m.e.title} · drag to move, drag an edge to change its length (Alt+↑/↓)`}
             onClick={(ev) => h.open({ kind: 'meeting', key, m }, ev.currentTarget)}
             onPointerDown={why ? undefined : (ev) => h.down(ev, it, 'move')}
@@ -791,7 +743,7 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
         const key = `done:${d}:${t.id}`;
         return (
           <button key={t.id} type="button" className={`wp-done${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={at0} data-type="done" aria-expanded={openKey === key}
-            style={{ top: col.pillTop.get(key) ?? Math.max(2, top(at0) - 9) }} title={`Done ${clockH(at0)} · ${t.key ? `${t.key} ` : ''}${t.title}`}
+            style={{ top: top(at0), ...packStyle(col.pack.get(key)) }} title={`Done ${clockH(at0)} · ${t.key ? `${t.key} ` : ''}${t.title}`}
             onClick={(ev) => h.open({ kind: 'done', key, t }, ev.currentTarget)}>
             <Icon name="check" size={9} />{t.key ?? t.title}
           </button>
@@ -806,24 +758,15 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
         const it: DragItem = { kind: 'reminder', key, day: d, start: hr, end: hr + .25, resizable: false, label: t.title, cls: 'rem' };
         return (
           <button key={t.id} type="button" className={`wp-rem${t.status !== 'scheduled' ? ' fired' : ''}${openKey === key ? ' open' : ''}${movable ? ' movable' : ''}${pos.lifted ? ' lift' : ''}`} data-block={key} data-day={d} data-start={hr} data-type="reminder" aria-expanded={openKey === key}
-            style={{ top: pos.lifted ? Math.max(2, top(pos.start) - 9) : col.pillTop.get(key) ?? Math.max(2, top(hr) - 9) }} title={`Reminder · ${clockH(hr)} · ${t.title}${movable ? ' · drag to move' : ''}`}
+            style={{ top: top(pos.start), ...(pos.lifted ? {} : packStyle(col.pack.get(key))) }} title={`Reminder · ${clockH(hr)} · ${t.title}${movable ? ' · drag to move' : ''}`}
             onPointerDown={movable ? (e) => h.down(e, it, 'move') : undefined}
             onClick={(ev) => h.open({ kind: 'reminder', key, t }, ev.currentTarget)}>
             <i aria-hidden="true" />{t.title}
           </button>
         );
       })}
-      {col.marks.map((m) => {
-        const key = `deadline:${m.e.date}:${m.e.type}:${m.e.id}`;
-        const label = m.kind === 'sla' ? `SLA ${m.late ? 'breached' : 'breach'} ${clock24(m.iso)} · ${m.e.key ? `${m.e.key} ` : ''}${m.e.title}` : `Due ${clock24(m.iso)} · ${m.e.key ? `${m.e.key} ` : ''}${m.e.title}`;
-        return (
-          <button key={m.key} type="button" className={`wp-dl ${m.kind}${m.late ? ' late' : ''}${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={m.at} data-type={m.kind === 'sla' ? 'sla' : 'deadline'}
-            data-testid={m.kind === 'sla' ? 'wp-sla' : 'wp-due'} aria-expanded={openKey === key} aria-label={label} title={label} style={{ top: top(m.at) }}
-            onClick={(ev) => h.open({ kind: 'deadline', key, e: m.e, others: [] }, ev.currentTarget)}>
-            <span>{m.kind === 'sla' ? 'SLA ' : ''}{clock24(m.iso)}</span>{m.e.key ?? m.e.title}
-          </button>
-        );
-      })}
+      {/* a deadline with a time: a thin line at its hour (its chip is in the day's due strip, its time in the margin), never over a block's text */}
+      {col.marks.map((m) => <i key={m.key} className={`wp-dl-line ${m.kind}${m.late ? ' late' : ''}`} data-testid="wp-dl-line" data-kind={m.kind} data-day={d} data-at={clock24(m.iso)} style={{ top: top(m.at) }} aria-hidden="true" />)}
     </div>
   );
 });

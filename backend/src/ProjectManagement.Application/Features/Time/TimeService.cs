@@ -3,6 +3,7 @@ using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Projects;
+using ProjectManagement.Application.Features.Reminders;
 using ProjectManagement.Application.Features.Work;
 using ProjectManagement.Application.Features.WorkItems;
 using ProjectManagement.Application.Services;
@@ -18,7 +19,12 @@ namespace ProjectManagement.Application.Features.Time;
 /// </summary>
 public record TimeEntryDto(Guid Id, Guid? TaskId, string TaskKey, string TaskTitle, Guid? ProjectId, UserRefDto User, DateOnly WorkDate,
     int Minutes, string? Note, bool IsRunning, DateTime? StartedAt, bool CanEdit, Guid? WorkTaskId = null, string Kind = "task", bool Billable = false, bool Locked = false,
-    DateTime? EndedAt = null, string? Stamp = null);
+    DateTime? EndedAt = null, string? Stamp = null, IReadOnlyList<TimeOverlapDto>? Overlaps = null, string? Warning = null);
+/// <summary>
+/// Another of the same person's entries this one shares wall-clock time with. A warning, never an error: the entry is saved, both still count
+/// in full on the timesheet, and the screens offer to move or trim it. <see cref="Span"/>: "09:31–11:31" in the person's zone.
+/// </summary>
+public record TimeOverlapDto(Guid Id, string TaskKey, string TaskTitle, DateTime StartedAt, DateTime EndedAt, string Span);
 /// <summary>Everything about the time on one task (or work task), plus the caller's own running timer (on anything).</summary>
 /// <summary><see cref="BillableByDefault"/>: whether time logged here starts out billable (the project is billable).</summary>
 public record TaskTimeDto(IReadOnlyList<TimeEntryDto> Entries, int TotalMinutes, decimal? EstimatedHours, TimeEntryDto? MyTimer, bool BillableByDefault = false);
@@ -99,11 +105,14 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
 
     private bool IsAdmin => ctx.Role is TenantRole.Owner or TenantRole.Admin;
 
+    private static string KeyOf(Row r) => r.WorkTaskId is not null ? WorkItemService.KeyOf(r.WorkKind, r.WorkNumber) : $"{r.ProjectKey}-{r.TaskNumber}";
+    private static string TitleOf(Row r) => (r.WorkTaskId is not null ? r.WorkTitle : r.TaskTitle) ?? "(deleted)";
+
     private TimeEntryDto ToDto(Row r, HashSet<(Guid User, DateOnly Week)> locked)
     {
         var onWork = r.WorkTaskId is not null;
-        var key = onWork ? WorkItemService.KeyOf(r.WorkKind, r.WorkNumber) : $"{r.ProjectKey}-{r.TaskNumber}";
-        var title = (onWork ? r.WorkTitle : r.TaskTitle) ?? "(deleted)";
+        var key = KeyOf(r);
+        var title = TitleOf(r);
         var isLocked = locked.Contains((r.UserId, TimesheetApprovalService.WeekOf(r.WorkDate)));
         return new TimeEntryDto(r.Id, r.TaskId, key, title, r.ProjectId, new UserRefDto(r.UserId, r.UserName), r.WorkDate, r.Minutes, r.Note,
             r.StartedAt is not null && r.EndedAt is null, r.StartedAt, (r.UserId == ctx.UserId || IsAdmin) && !isLocked, r.WorkTaskId, onWork ? "work" : "task", r.Billable, isLocked,
@@ -151,6 +160,71 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
 
     private async Task<TimeEntryDto> DtoAsync(Guid id, CancellationToken ct) => (await ToDtosAsync([await Rows(db.TimeEntries.Where(e => e.Id == id)).OrderBy(r => r.Id).FirstAsync(ct)], ct))[0];
 
+    // ---------------------------------------------------------------- overlaps (a warning, never an error)
+
+    private string Clock24(DateTime utc) => ZoneTime.ToLocal(DateTime.SpecifyKind(utc, DateTimeKind.Utc), clock.Zone).ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+    private TimeOverlapDto OverlapOf(Row r) => new(r.Id, KeyOf(r), TitleOf(r), r.StartedAt!.Value, r.EndedAt!.Value, $"{Clock24(r.StartedAt!.Value)}–{Clock24(r.EndedAt!.Value)}");
+    private static string WarningOf(IReadOnlyList<TimeOverlapDto> o) =>
+        $"Overlaps {o[0].TaskKey} {o[0].Span}" + (o.Count > 1 ? $" and {o.Count - 1} more" : "");
+
+    /// <summary>The entry with the person's other entries on the clock it shares time with (only entries with a real start and end count).</summary>
+    private async Task<TimeEntryDto> WithOverlapsAsync(TimeEntryDto dto, CancellationToken ct)
+    {
+        if (dto.IsRunning || dto.StartedAt is not { } s || dto.EndedAt is not { } e) return dto;
+        var others = await Rows(db.TimeEntries.Where(x => x.UserId == dto.User.Id && x.Id != dto.Id && x.WorkDate == dto.WorkDate
+                && x.StartedAt != null && x.EndedAt != null && x.StartedAt < e && x.EndedAt > s))
+            .OrderBy(r => r.StartedAt).Take(20).ToListAsync(ct);
+        if (others.Count == 0) return dto;
+        var list = others.Select(OverlapOf).ToList();
+        return dto with { Overlaps = list, Warning = WarningOf(list) };
+    }
+
+    /// <summary>The same, for a list already read (a timesheet): each entry against the others of its person and day.</summary>
+    private List<TimeEntryDto> WithOverlaps(List<TimeEntryDto> entries, IReadOnlyList<Row> rows)
+    {
+        var byId = rows.ToDictionary(r => r.Id);
+        var placed = entries.Where(x => !x.IsRunning && x.StartedAt is not null && x.EndedAt is not null).ToList();
+        return entries.Select(x =>
+        {
+            if (x.IsRunning || x.StartedAt is not { } s || x.EndedAt is not { } e) return x;
+            var list = placed.Where(o => o.Id != x.Id && o.User.Id == x.User.Id && o.WorkDate == x.WorkDate && o.StartedAt < e && o.EndedAt > s)
+                .OrderBy(o => o.StartedAt).Select(o => OverlapOf(byId[o.Id])).ToList();
+            return list.Count == 0 ? x : x with { Overlaps = list, Warning = WarningOf(list) };
+        }).ToList();
+    }
+
+    /// <summary>
+    /// A duration logged for today ends now (<see cref="EndingNow"/>); when that would overlap the person's other time, it goes into the latest free gap after the day's work start (check-in, else working-hours start)
+    /// before now that fits it whole (ending as late as possible). With no such gap it stays ending now and the response warns about the overlap.
+    /// </summary>
+    private async Task<(DateTime Start, DateTime End, int Minutes, DateOnly Day)?> FitBeforeNowAsync(Guid userId, (DateTime Start, DateTime End, int Minutes, DateOnly Day) want, CancellationToken ct)
+    {
+        var busy = await db.TimeEntries.Where(x => x.UserId == userId && x.WorkDate == want.Day && x.StartedAt != null)
+            .Select(x => new { S = x.StartedAt!.Value, E = x.EndedAt }).ToListAsync(ct);
+        var spans = busy.Select(b => (S: b.S, E: b.E ?? clock.Now)).Where(b => b.E > b.S).OrderBy(b => b.S).ToList();
+        if (!spans.Any(b => b.S < want.End && b.E > want.Start)) return want;
+        // Only from the person's work start that day: their first check-in, else the workspace's working-hours start (09:30 by default).
+        var checkIn = await db.AttendanceDays.Where(x => x.UserId == userId && x.Date == want.Day).OrderBy(x => x.CheckInAt).Select(x => (DateTime?)x.CheckInAt).FirstOrDefaultAsync(ct);
+        var workStart = await db.AttendancePolicies.Select(x => (TimeOnly?)x.WorkStart).FirstOrDefaultAsync(ct) ?? new TimeOnly(9, 30);
+        var floor = checkIn is { } ci ? DateTime.SpecifyKind(ci, DateTimeKind.Utc) : clock.StartOfDayUtc(want.Day).Add(workStart.ToTimeSpan());
+        if (floor >= want.End) return want;
+        spans = spans.Select(b => (S: b.S < floor ? floor : b.S, b.E)).Where(b => b.E > b.S).ToList();
+        // Free gaps from the start of the day to now, latest first.
+        var gaps = new List<(DateTime A, DateTime B)>();
+        var cur = floor;
+        foreach (var b in spans)
+        {
+            if (b.S > cur) gaps.Add((cur, b.S < want.End ? b.S : want.End));
+            if (b.E > cur) cur = b.E;
+            if (cur >= want.End) break;
+        }
+        if (cur < want.End) gaps.Add((cur, want.End));
+        var length = TimeSpan.FromMinutes(want.Minutes);
+        foreach (var (a, b) in gaps.Where(g => g.B > g.A).OrderByDescending(g => g.B))
+            if (b - a >= length) return (b - length, b, want.Minutes, want.Day);
+        return want;
+    }
+
     private async Task<TaskItem> VisibleTaskAsync(Guid taskId, CancellationToken ct) =>
         await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == taskId, ct) ?? throw new NotFoundException("Task not found.");
 
@@ -191,7 +265,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         await db.SaveChangesAsync(ct);
         await SyncActualHoursAsync(taskId, ct);
         await db.SaveChangesAsync(ct);
-        return await DtoAsync(entry.Id, ct);
+        return await WithOverlapsAsync(await DtoAsync(entry.Id, ct), ct);
     }
 
     // ---------------------------------------------------------------- per work task
@@ -210,7 +284,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var entry = await AddEntryAsync(work.TenantId, null, workTaskId, work.RelatedProjectId, req, ct);
         recorder.Activity("worktask.time_logged", "WorkTask", workTaskId, $"Logged {Format(entry.Minutes)} on {WorkTaskService.KeyOf(work.Number)} “{work.Title}”", null);
         await db.SaveChangesAsync(ct);
-        return await DtoAsync(entry.Id, ct);
+        return await WithOverlapsAsync(await DtoAsync(entry.Id, ct), ct);
     }
 
     private async Task<TimeEntry> AddEntryAsync(Guid tenantId, Guid? taskId, Guid? workTaskId, Guid? projectId, LogTimeRequest req, CancellationToken ct)
@@ -221,7 +295,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var minutes = placed?.Minutes ?? req.Minutes;
         Validate(minutes, date);
         // Logged as a duration for today ("log 2h"): the time ends now and started that long ago - never 9:31 to 11:31 at 10:29.
-        if (placed is null) placed = EndingNow(minutes, date);
+        if (placed is null && EndingNow(minutes, date) is { } endingNow) placed = await FitBeforeNowAsync(userId, endingNow, ct);
         await approvals.EnsureOpenAsync(userId, date, ct);
         await EnsureDayHasRoomAsync(userId, date, minutes, null, ct);
         var entry = new TimeEntry
@@ -309,7 +383,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         await db.SaveChangesAsync(ct);
         await SyncActualHoursAsync(running.TaskId, ct);
         await db.SaveChangesAsync(ct);
-        return await DtoAsync(running.Id, ct);
+        return await WithOverlapsAsync(await DtoAsync(running.Id, ct), ct);
     }
 
     private void Finish(TimeEntry e)
@@ -382,7 +456,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             if (!await db.TimeEntries.AnyAsync(e => e.TaskId == was, ct) && await db.Tasks.FirstOrDefaultAsync(t => t.Id == was, ct) is { } left) left.ActualHours = 0;
         }
         await db.SaveChangesAsync(ct);
-        return await DtoAsync(id, ct);
+        return await WithOverlapsAsync(await DtoAsync(id, ct), ct);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -430,7 +504,8 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
 
         var query = db.TimeEntries.Where(e => e.UserId == who && e.WorkDate >= start && e.WorkDate <= end);
         if (who != me && !inMyLine) query = await VisibleAsync(query, ct);
-        var entries = await ToDtosAsync(await Rows(query).OrderByDescending(r => r.WorkDate).ThenByDescending(r => r.Id).Take(MaxRows).ToListAsync(ct), ct);
+        var rows = await Rows(query).OrderByDescending(r => r.WorkDate).ThenByDescending(r => r.Id).Take(MaxRows).ToListAsync(ct);
+        var entries = WithOverlaps(await ToDtosAsync(rows, ct), rows);
         var name = await db.Users.Where(u => u.Id == who).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) ?? "Unknown";
 
         var days = new List<TimeByDayDto>();

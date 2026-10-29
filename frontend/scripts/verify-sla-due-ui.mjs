@@ -180,14 +180,21 @@ try {
       await yday.locator('.hm-cap', { hasText: 'Bank sync' }).waitFor();
       await shot(page, `home-${tag}.png`);
 
-      // The Calendar's week: the same breach as a red marker at 14:29 on today's column, the task at 16:00.
+      // The Calendar's week: the same breach as a red chip "SLA 14:29" in today's due strip (never on top of the day's blocks), a thin dashed
+      // line on today's column at 14:29 and its time in the margin; the task due at 16:00 likewise.
       await page.getByRole('link', { name: 'Calendar' }).first().click();
       await page.getByRole('heading', { level: 1, name: 'Calendar' }).waitFor();
-      const wsla = page.locator(`.wp-col[data-day="${today}"]`).getByTestId('wp-sla');
+      const strip = page.locator(`.wp-allday-d[data-day="${today}"]`);
+      const wsla = strip.getByTestId('wp-sla');
       await wsla.waitFor();
       assert.match(await wsla.innerText(), /SLA 14:29/);
-      assert.ok(Math.abs(Number(await wsla.getAttribute('data-start')) - (14 + 29 / 60)) < 0.01);
-      assert.match(await page.locator(`.wp-col[data-day="${today}"]`).getByTestId('wp-due').innerText(), /16:00/);
+      assert.match(await strip.getByTestId('wp-due').innerText(), /16:00/);
+      const line = page.locator(`.wp-col[data-day="${today}"] [data-testid="wp-dl-line"][data-kind="sla"]`);
+      assert.equal(await line.getAttribute('data-at'), '14:29');
+      const lb = await line.boundingBox(), hr = await page.locator('.wp-hrs span[data-hour="14"]').boundingBox();
+      assert.ok(Math.abs(lb.y - (hr.y + 6 + (29 / 60) * 73)) < 4, `the line is at 14:29 (${lb.y} vs ${hr.y})`);
+      assert.ok(await page.locator('[data-testid="wp-dl-tag"]', { hasText: '14:29' }).count() === 1, 'its time in the margin');
+      assert.equal(await page.locator(`.wp-col[data-day="${today}"] [data-testid="wp-sla"], .wp-col[data-day="${today}"] [data-testid="wp-due"]`).count(), 0, 'no deadline chip on the grid itself');
       await shot(page, `calendar-${tag}.png`);
     } else {
       // The phone's Today: the critical ticket is the outage pill; the next rows say when they breach, and Your day lists the breach at 14:29.

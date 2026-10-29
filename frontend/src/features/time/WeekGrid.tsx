@@ -17,6 +17,7 @@ import { PlannedLeavePanel } from './PlannedLeavePanel';
 import { cellKey, dayName, dayNum, dayState, downloadText, gridCsv, hm, parseCell, parseQuickAdd, rowKey } from './grid';
 import { clock, formatMinutes, useNow } from './time';
 import { TimeWordsReview, useWordsRecorder } from './TimeWords';
+import { useOverlapsByDay } from '../calendar/timeline';
 
 const REASON: Record<GridSuggestion['reason'], { label: string; icon: 'repeat' | 'user' | 'activity' | 'timer' }> = {
   lastWeek: { label: 'Last week', icon: 'repeat' },
@@ -38,6 +39,8 @@ export function WeekGrid({ week, onWeek, userId }: { week: string; onWeek: (w: s
   const qc = useQueryClient();
   const key = useMemo(() => ['timesheet', 'grid', week, userId], [week, userId]);
   const q = useWsQuery(key, () => timeApi.grid(week, userId || undefined));
+  // Your own week also reads the one timeline (the request Today and the Calendar make): an overlap between two entries is flagged here as there.
+  const overlapsByDay = useOverlapsByDay(week, !userId);
   const mobile = useIsMobile();
   const [extra, setExtra] = useState<Stub[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -220,8 +223,9 @@ export function WeekGrid({ week, onWeek, userId }: { week: string; onWeek: (w: s
                   {days.map((d) => {
                     const s = dayState(d.minutes, d.targetMinutes);
                     return (
-                      <td key={d.date} className={`tsg-foot ${s}`}>
+                      <td key={d.date} className={`tsg-foot ${s}`} data-testid="tsg-day-total" data-day={d.date} data-minutes={d.minutes}>
                         <b>{d.minutes ? formatMinutes(d.minutes) : '–'}</b>
+                        {overlapsByDay.get(d.date) && <Link to="/?tab=calendar" className="tsg-ovl" data-testid="tsg-overlap" title="Some of this day's entries share the same time on the clock. Open the Calendar to move or trim one.">{overlapsByDay.get(d.date)} overlapping</Link>}
                         {d.targetMinutes > 0 && <span className="tsg-meter" aria-hidden><i style={{ width: `${Math.min(100, (d.minutes / d.targetMinutes) * 100)}%` }} /></span>}
                         {d.targetMinutes > 0 && <small>of {formatMinutes(d.targetMinutes)}</small>}
                       </td>

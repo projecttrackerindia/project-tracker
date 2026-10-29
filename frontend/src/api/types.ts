@@ -247,6 +247,10 @@ export interface TimelineEvent {
   userId: string | null; mode: string | null; running: boolean;
   /** A deadline: the instant it is due (its due time, or a ticket's SLA resolve-by); an open ticket's SLA breach instant and clock state. */
   dueAt?: string | null; slaBreachAt?: string | null; slaState?: SlaState | null;
+  /** A time entry or a reminder: the work item it is about (a task or work item id) and its kind ('task' | 'work'). */
+  itemId?: string | null; itemType?: string | null;
+  /** A reminder: what made it (personal, nudge, dueDate, overdue, escalation, meeting). Automatic due-date ones are not drawn beside their deadline. */
+  origin?: string | null;
 }
 export interface Timeline { from: string; to: string; timeZone: string; scope: 'me' | 'user' | 'team'; generatedAt: string; events: TimelineEvent[] }
 
@@ -377,7 +381,12 @@ export interface TimeEntry {
   endedAt?: string | null;
   /** Concurrency stamp: send it back with an edit so a change made elsewhere in between is refused (409) instead of overwritten. */
   stamp?: string | null;
+  /** Your other entries this one shares time with (a warning, never an error): "Overlaps WT-11 09:31–11:31". */
+  overlaps?: TimeOverlap[] | null;
+  /** The overlap in words, ready to show. */
+  warning?: string | null;
 }
+export interface TimeOverlap { id: string; taskKey: string; taskTitle: string; startedAt: string; endedAt: string; span: string }
 export interface TaskTime { entries: TimeEntry[]; totalMinutes: number; estimatedHours: number | null; myTimer: TimeEntry | null; billableByDefault: boolean }
 export interface Timesheet { from: string; to: string; user: { id: string; name: string }; entries: TimeEntry[]; totalMinutes: number; byDay: { date: string; minutes: number }[]; billableMinutes: number }
 
