@@ -23,7 +23,8 @@ namespace ProjectManagement.Application.Features.Projects;
 /// </summary>
 public record PlanSheetRowDto(string Kind, Guid Id, Guid ProjectId, Guid? ParentId, int Level, string Key, string Title, Guid? OwnerId, string? Owner,
     DateOnly? Start, DateOnly? Due, string? DueTime, int? DurationDays, string Status, string Category, Guid? StatusId, int? Progress, IReadOnlyList<string> DependsOn,
-    string? Cadence, DateTime? NextAt, DateTime? UpdatedAt, string? UpdatedBy, string? Notes, bool Late, bool AtRisk, int Version, bool CanEdit, DateOnly? Forecast = null);
+    string? Cadence, DateTime? NextAt, DateTime? UpdatedAt, string? UpdatedBy, string? Notes, bool Late, bool AtRisk, int Version, bool CanEdit, DateOnly? Forecast = null,
+    decimal? EstimatedHours = null, int? ChecklistTotal = null, int? ChecklistDone = null, bool ManualProgress = false, int? SlipDays = null);
 public record PlanSheetStatusDto(Guid Id, Guid ProjectId, string Name, string Category);
 /// <summary>A "Viewing" choice. Only what exists today is allowed (everything I can see, my work, one team of the team lens); team-scoped views come later.</summary>
 public record PlanSheetScopeDto(string Id, string Label, bool Allowed, string? Why = null, Guid? TeamId = null);
@@ -32,11 +33,19 @@ public record PlanSheetDto(DateOnly AsOf, string TimeZone, IReadOnlyList<PlanShe
 
 /// <summary>One row's change. Send only what changes; <see cref="Version"/> is the version the sheet last read (a newer one is a conflict for that row only).</summary>
 public record PlanSheetChange(Guid Id, int? Version = null, Guid? AssigneeId = null, bool Unassign = false, DateOnly? StartDate = null, bool ClearStart = false,
-    DateOnly? DueDate = null, string? DueTime = null, bool ClearDueTime = false, Guid? StatusId = null, string? Title = null);
+    DateOnly? DueDate = null, string? DueTime = null, bool ClearDueTime = false, Guid? StatusId = null, string? Title = null,
+    int? Progress = null, bool ClearProgress = false, string? Notes = null);
 /// <summary>Many rows at once. One reason covers every due date in the batch that moves later (the existing date-change rule).</summary>
 public record PlanSheetBulkRequest(IReadOnlyList<PlanSheetChange>? Changes, string? DueDateReason = null, string? DueDateDependency = null);
 public record PlanSheetRowResultDto(Guid Id, string? Key, bool Ok, string? Error = null, string? Field = null, string? Code = null, int? Version = null);
 public record PlanSheetBulkResultDto(int Changed, int Failed, IReadOnlyList<PlanSheetRowResultDto> Rows);
+
+/// <summary>
+/// A row dragged on the sheet: to a new place among its project's tasks (between <see cref="AfterId"/> and <see cref="BeforeId"/>), or into another
+/// project (<see cref="ProjectId"/>), where it takes the next number and the column of the same name, else of the same kind.
+/// </summary>
+public record PlanSheetMoveRequest(Guid Id, Guid? ProjectId = null, Guid? AfterId = null, Guid? BeforeId = null, int? Version = null);
+public record PlanSheetMoveResultDto(Guid Id, string Key, Guid ProjectId, int Version, double Position, bool MovedProject);
 
 /// <summary>A row pasted from Excel, already split into the sheet's columns by the client's column mapping (values exactly as typed).</summary>
 public record PlanSheetPasteRow(string? Title, string? Owner = null, string? Start = null, string? Due = null, string? Status = null);
@@ -55,7 +64,7 @@ public record PlanSheetPasteResultDto(Guid ProjectId, string ProjectKey, string 
 /// workflow, the due-date reason rule and version checks apply exactly as when the row is edited on its own. What fails is reported per row.
 /// </summary>
 public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock clock, AiPortfolio portfolio, ProjectAccess access, WorkItemApiService work,
-    ProjectService projects, Recorder recorder)
+    ProjectService projects, Recorder recorder, PermissionService permissions)
 {
     public const int MaxRows = 5000, MaxBulk = 500, MaxPaste = 500;
 
@@ -82,7 +91,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         var tasks = ids.Count == 0 ? [] : await access.VisibleTasks().AsNoTracking().Where(t => ids.Contains(t.ProjectId))
             .OrderBy(t => t.ProjectId).ThenBy(t => t.Position).ThenBy(t => t.Number)
             .Select(t => new { t.Id, t.ProjectId, t.ParentTaskId, t.Number, t.Title, t.AssigneeId, t.StartDate, t.DueDate, t.DueTime, t.StatusId, StatusName = t.Status!.Name,
-                Cat = t.Status.Category, t.Version, t.UpdatedAt, t.UpdatedBy, t.CreatedAt, t.CreatedBy, t.Description })
+                Cat = t.Status.Category, t.Version, t.UpdatedAt, t.UpdatedBy, t.CreatedAt, t.CreatedBy, t.Description, t.EstimatedHours, t.ManualProgress })
             .Take(MaxRows + 1).ToListAsync(ct);
         var truncated = tasks.Count > MaxRows || brief.Truncated;
         tasks = tasks.Take(MaxRows).ToList();
@@ -100,6 +109,11 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                                                 where ids.Contains(t.ProjectId)
                                                 select new { d.TaskId, o.Number, Key = o.Project!.Key }).ToListAsync(ct);
         var depsBy = deps.GroupBy(d => d.TaskId).ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(d => $"{d.Key}-{d.Number}").Distinct().OrderBy(k => k).ToList());
+        // Slip: how far the due date has moved from the first one it had (the date history), shown as "+3d" next to the dates.
+        var firstDue = ids.Count == 0 ? [] : await db.DueDateChanges.AsNoTracking().Where(d => ids.Contains(d.ProjectId) && d.TaskId != null && d.Previous != null)
+            .OrderBy(d => d.CreatedAt).Select(d => new { TaskId = d.TaskId!.Value, d.Previous }).Take(20000).ToListAsync(ct);
+        var originalDue = new Dictionary<Guid, DateOnly>();
+        foreach (var d in firstDue) originalDue.TryAdd(d.TaskId, d.Previous!.Value);
         var statuses = ids.Count == 0 ? [] : await db.WorkflowStatuses.AsNoTracking().Where(s => ids.Contains(s.ProjectId)).OrderBy(s => s.ProjectId).ThenBy(s => s.Order)
             .Select(s => new PlanSheetStatusDto(s.Id, s.ProjectId, s.Name, s.Category.ToString())).ToListAsync(ct);
 
@@ -143,12 +157,15 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                 if (!mine || t.AssigneeId == me || subs.Any(s => s.AssigneeId == me) || m.OwnerId == me)
                 {
                     var open = t.Cat is not (StatusCategory.Done or StatusCategory.Cancelled);
-                    var progress = PlanSheetMath.Progress(t.Cat, checks.TryGetValue(t.Id, out var c) ? c : ((int Total, int Done)?)null, subs.Count, subs.Count(s => s.Cat == StatusCategory.Done));
+                    var check = checks.TryGetValue(t.Id, out var c) ? c : ((int Total, int Done)?)null;
+                    var progress = PlanSheetMath.Progress(t.Cat, check, subs.Count, subs.Count(s => s.Cat == StatusCategory.Done), t.ManualProgress);
                     var late = open && clock.IsPastDue(t.DueDate, t.DueTime);
                     var risk = open && !late && PlanSheetMath.AtRisk(t.DueDate, today, progress);
                     rows.Add(new PlanSheetRowDto(level == 1 ? "task" : "subtask", t.Id, t.ProjectId, t.ParentTaskId, Math.Min(level, 2), $"{r.Key}-{t.Number}", t.Title, t.AssigneeId, Name(t.AssigneeId),
                         t.StartDate, t.DueDate, t.DueTime?.ToString("HH:mm", CultureInfo.InvariantCulture), PlanSheetMath.Duration(t.StartDate, t.DueDate), t.StatusName, t.Cat.ToString(), t.StatusId, progress,
-                        depsBy.GetValueOrDefault(t.Id) ?? [], null, null, t.UpdatedAt ?? t.CreatedAt, Name(t.UpdatedBy ?? t.CreatedBy), PlanSheetMath.FirstLine(t.Description), late, risk, t.Version, canEdit));
+                        depsBy.GetValueOrDefault(t.Id) ?? [], null, null, t.UpdatedAt ?? t.CreatedAt, Name(t.UpdatedBy ?? t.CreatedBy), PlanSheetMath.FirstLine(t.Description), late, risk, t.Version, canEdit, null,
+                        t.EstimatedHours, check?.Total, check?.Done, t.ManualProgress is not null && t.Cat != StatusCategory.Done,
+                        t.DueDate is { } due && originalDue.TryGetValue(t.Id, out var first) && due > first ? due.DayNumber - first.DayNumber : null));
                 }
                 foreach (var s in subs) AddTask(s.Id, level + 1);
             }
@@ -200,7 +217,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                 {
                     key = p.Key;
                     if (c.Unassign) throw new ValidationException("ownerId", "A project always has an owner.");
-                    if (c.StatusId is not null || c.Title is not null || c.DueTime is not null || c.ClearDueTime)
+                    if (c.StatusId is not null || c.Title is not null || c.DueTime is not null || c.ClearDueTime || c.Progress is not null || c.ClearProgress || c.Notes is not null)
                         throw new ValidationException("changes", "On a project row only the owner and the dates can be changed here.");
                     if (c.AssigneeId is null && c.StartDate is null && !c.ClearStart && c.DueDate is null) throw new ValidationException("changes", "Say what to change.");
                     var d = await projects.UpdateAsync(p.Id, new UpdateProjectRequest(p.Name, p.Description, p.Priority, p.Status, c.AssigneeId ?? p.OwnerId, p.TeamId,
@@ -211,12 +228,34 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                 }
                 else if (items.TryGetValue(c.Id, out var item) && item is TaskItem)
                 {
-                    var body = Body(c, item.Version, reason, dependency);
-                    var saved = await work.PatchAsync(c.Id, body, ct);
-                    key = saved.Key;
-                    recorder.Audit("plansheet.row_updated", "WorkItem", c.Id, newValue: new { c.AssigneeId, c.Unassign, c.StartDate, c.DueDate, c.DueTime, c.StatusId, Reason = c.DueDate is null ? null : reason });
+                    var version = c.Version ?? item.Version;
+                    var progressOnly = c.Progress is not null || c.ClearProgress;
+                    if (progressOnly && c.Progress is { } pv && (pv < 0 || pv > 100)) throw new ValidationException("progress", "Progress is between 0 and 100.");
+                    var body = Body(c with { Version = version }, item.Version, reason, dependency, item.Description, allowEmpty: progressOnly);
+                    if (body is { } b)
+                    {
+                        var saved = await work.PatchAsync(c.Id, b, ct);
+                        key = saved.Key;
+                        version = saved.Version;
+                        await db.SaveChangesAsync(ct);
+                    }
+                    if (progressOnly)
+                    {
+                        // Progress is the sheet's own field: the same edit rights and archive rule as any other change to the task, and its version.
+                        var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == c.Id, ct) ?? throw new NotFoundException("Not found, or you cannot see it.");
+                        await permissions.RequireTaskEditAsync(task, ct);
+                        await access.EnsureWritableAsync(task.ProjectId, "change its tasks", ct);
+                        if (task.Version != version) throw new ConflictException("This task was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
+                        db.Tasks.Entry(task).Property(x => x.Version).OriginalValue = version;
+                        task.ManualProgress = c.ClearProgress ? null : c.Progress;
+                        task.Version++;
+                        await db.SaveChangesAsync(ct);
+                        version = task.Version;
+                        key ??= $"{await db.Projects.Where(p => p.Id == task.ProjectId).Select(p => p.Key).FirstAsync(ct)}-{task.Number}";
+                    }
+                    recorder.Audit("plansheet.row_updated", "WorkItem", c.Id, newValue: new { c.AssigneeId, c.Unassign, c.StartDate, c.DueDate, c.DueTime, c.StatusId, c.Progress, c.ClearProgress, Notes = c.Notes is not null, Reason = c.DueDate is null ? null : reason });
                     await db.SaveChangesAsync(ct);
-                    results.Add(new(c.Id, key, true, Version: saved.Version));
+                    results.Add(new(c.Id, key, true, Version: version));
                 }
                 else throw new NotFoundException("Not found, or you cannot see it.");
                 changed++;
@@ -232,10 +271,11 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         return new PlanSheetBulkResultDto(changed, results.Count(r => !r.Ok), results);
     }
 
-    private static JsonElement Body(PlanSheetChange c, int currentVersion, string? reason, string? dependency)
+    private static JsonElement? Body(PlanSheetChange c, int currentVersion, string? reason, string? dependency, string? description = null, bool allowEmpty = false)
     {
         var o = new JsonObject { ["version"] = c.Version ?? currentVersion };
         if (c.Title is { } title) o["title"] = title;
+        if (c.Notes is { } notes) o["description"] = PlanSheetMath.ReplaceFirstLine(description, notes);
         if (c.Unassign) o["assigneeId"] = null;
         else if (c.AssigneeId is { } a) o["assigneeId"] = a.ToString();
         if (c.ClearStart) o["startDate"] = null;
@@ -244,13 +284,76 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         if (c.ClearDueTime) o["dueTime"] = null;
         else if (!string.IsNullOrWhiteSpace(c.DueTime)) o["dueTime"] = c.DueTime.Trim();
         if (c.StatusId is { } sid) o["statusId"] = sid.ToString();
-        if (o.Count == 1) throw new ValidationException("changes", "Say what to change.");
+        if (o.Count == 1)
+        {
+            if (allowEmpty) return null;
+            throw new ValidationException("changes", "Say what to change.");
+        }
         if (c.DueDate is not null || o.ContainsKey("dueTime"))
         {
             if (reason is not null) o["dueDateReason"] = reason;
             if (dependency is not null) o["dueDateDependency"] = dependency;
         }
         return JsonSerializer.SerializeToElement(o);
+    }
+
+    // ---------------------------------------------------------------- drag a row
+
+    /// <summary>
+    /// A task dragged to a new place: its position among the tasks of its project (between the two neighbours it was dropped between), or into
+    /// another project. Moving project is for a top-level task without sub-items or dependencies (dependencies stay inside one project): it takes
+    /// the next number there, the column of the same name (else the first of the same kind) and leaves its stage, milestone and sprint behind.
+    /// </summary>
+    public async Task<PlanSheetMoveResultDto> MoveAsync(PlanSheetMoveRequest req, CancellationToken ct = default)
+    {
+        ctx.RequireTenantId();
+        var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == req.Id, ct) ?? throw new NotFoundException("Not found, or you cannot see it.");
+        await permissions.RequireTaskEditAsync(task, ct);
+        await access.EnsureWritableAsync(task.ProjectId, "move its tasks", ct);
+        if (req.Version is { } seen)
+        {
+            if (task.Version != seen) throw new ConflictException("This task was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
+            db.Tasks.Entry(task).Property(x => x.Version).OriginalValue = seen;
+        }
+        var from = await db.Projects.AsNoTracking().FirstAsync(p => p.Id == task.ProjectId, ct);
+        var target = req.ProjectId ?? task.ProjectId;
+        var moved = target != task.ProjectId;
+        var oldKey = $"{from.Key}-{task.Number}";
+        var dest = from;
+        if (moved)
+        {
+            dest = await access.GetProjectAsync(target, ct);
+            ProjectAccess.EnsureNotArchived(dest, "add tasks");
+            await permissions.RequireAsync(Permissions.TasksCreate, ct);
+            if (task.ParentTaskId is not null) throw new ValidationException("projectId", "A sub-item moves with its parent task.");
+            if (await db.Tasks.AnyAsync(t => t.ParentTaskId == task.Id, ct)) throw new ValidationException("projectId", "Move its sub-items out first, or move them with it from the project.");
+            if (await db.TaskDependencies.AnyAsync(d => d.TaskId == task.Id || d.DependsOnTaskId == task.Id, ct))
+                throw new ValidationException("projectId", "Remove its dependencies first: dependencies stay inside one project.");
+            var statuses = await db.WorkflowStatuses.Where(s => s.ProjectId == target).OrderBy(s => s.Order).ToListAsync(ct);
+            var current = await db.WorkflowStatuses.AsNoTracking().FirstAsync(s => s.Id == task.StatusId, ct);
+            var status = statuses.FirstOrDefault(s => PlanSheetMath.Norm(s.Name) == PlanSheetMath.Norm(current.Name)) ?? statuses.FirstOrDefault(s => s.Category == current.Category)
+                ?? statuses.FirstOrDefault() ?? throw new ValidationException("projectId", $"{dest.Key} has no columns to put the task in.");
+            // Numbers are never reused, deleted tasks included, so the highest number of the target project is read past the soft-delete filter
+            // (the project id is the caller's own, checked just above).
+            task.Number = (await db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == target).MaxAsync(t => (int?)t.Number, ct) ?? 0) + 1;
+            task.ProjectId = target;
+            task.StatusId = status.Id;
+            task.CompletedAt = status.Category == StatusCategory.Done ? task.CompletedAt ?? clock.Now : null;
+            task.StageId = null;
+            task.MilestoneId = null;
+            task.SprintId = null;
+            if (task.AssigneeId is { } who) await access.ShareWithAssigneeAsync(target, who, ct);
+        }
+        // Position between the neighbours it was dropped between (in the target project).
+        var after = req.AfterId is { } a ? await db.Tasks.Where(t => t.Id == a && t.ProjectId == target).Select(t => (double?)t.Position).FirstOrDefaultAsync(ct) : null;
+        var before = req.BeforeId is { } b ? await db.Tasks.Where(t => t.Id == b && t.ProjectId == target).Select(t => (double?)t.Position).FirstOrDefaultAsync(ct) : null;
+        task.Position = PlanSheetMath.Between(after, before, await db.Tasks.Where(t => t.ProjectId == target && t.Id != task.Id).MaxAsync(t => (double?)t.Position, ct));
+        task.Version++;
+        var key = $"{dest.Key}-{task.Number}";
+        if (moved) recorder.Activity("task.moved", "Task", task.Id, $"Moved {oldKey} to {dest.Name} as {key}", target, oldKey, key);
+        recorder.Audit("plansheet.row_moved", "WorkItem", task.Id, new { from = from.Id, oldKey }, new { to = target, key, task.Position });
+        await db.SaveChangesAsync(ct);
+        return new PlanSheetMoveResultDto(task.Id, key, target, task.Version, task.Position, moved);
     }
 
     // ---------------------------------------------------------------- paste from Excel
@@ -459,12 +562,38 @@ public static class PlanSheetMath
         return line.Length > 120 ? line[..117] + "…" : line.Length == 0 ? null : line;
     }
 
+    /// <summary>A position between two neighbours (either may be missing: then just after the one there is, else after the last).</summary>
+    public static double Between(double? after, double? before, double? last)
+    {
+        const double step = 1024;
+        return (after, before) switch
+        {
+            ({ } a, { } b) => (a + b) / 2,
+            ({ } a, null) => a + step,
+            (null, { } b) => b - step,
+            _ => (last ?? 0) + step,
+        };
+    }
+
+    /// <summary>The note is the description's first line: replace that line and keep the rest of the description as it was.</summary>
+    public static string? ReplaceFirstLine(string? description, string note)
+    {
+        var line = note.Replace("\r", "").Replace('\n', ' ').Trim();
+        if (string.IsNullOrWhiteSpace(description)) return line.Length == 0 ? null : line;
+        var text = description.Replace("\r\n", "\n");
+        var i = text.IndexOf('\n');
+        var rest = i < 0 ? "" : text[i..];
+        var result = (line + rest).Trim('\n');
+        return result.Length == 0 ? null : result;
+    }
+
     public static string HealthLabel(string health) => health switch { "Delayed" => "Late", "AtRisk" => "At risk", "OnHold" => "On hold", "OnTrack" => "On track", _ => health };
 
     /// <summary>Checklist share when the task has one, else the share of finished sub-items, else 100 for done and 0 for not started (unknown while in progress).</summary>
-    public static int? Progress(StatusCategory category, (int Total, int Done)? checklist, int subs, int subsDone)
+    public static int? Progress(StatusCategory category, (int Total, int Done)? checklist, int subs, int subsDone, int? manual = null)
     {
         if (category == StatusCategory.Done) return 100;
+        if (manual is { } m) return Math.Clamp(m, 0, 100);
         if (checklist is { Total: > 0 } c) return (int)Math.Round(c.Done * 100.0 / c.Total);
         if (subs > 0) return (int)Math.Round(subsDone * 100.0 / subs);
         return category == StatusCategory.Todo ? 0 : null;

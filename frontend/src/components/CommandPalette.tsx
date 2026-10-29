@@ -12,6 +12,7 @@ import { useAuth, useCan, useModule } from '../stores/auth';
 import { openReminderComposer } from '../features/reminders/store';
 import { useUi } from '../stores/ui';
 import { openNew } from './v2/state';
+import { usePaletteExtras } from './paletteRegistry';
 
 /** Where a search hit opens. Shared with the search box in the top bar. */
 export function searchHitLink(h: Pick<SearchHit, 'type' | 'id' | 'projectId' | 'taskId'>): string {
@@ -75,6 +76,7 @@ export function CommandPalette() {
   const permWork = useCan('work.create'), modWork = useModule('work');
   const canProject = permProject && modProjects >= 2;
   const canWork = permWork && modWork >= 2;
+  const extras = usePaletteExtras();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -99,7 +101,7 @@ export function CommandPalette() {
   const go = (to: string) => () => { close(); nav(to); };
 
   const commands = useMemo<Command[]>(() => {
-    const list: Command[] = [];
+    const list: Command[] = extras.map((x) => ({ ...x, run: () => { close(); x.run(); } }));
     for (const g of groups) for (const i of g.items.filter((x) => x.show !== false)) list.push({ id: `nav:${i.to}`, group: 'Go to', label: i.label, hint: g.title, icon: i.icon, run: go(i.to) });
     for (const s of settings) list.push({ id: `set:${s.to}`, group: 'Settings', label: s.label, hint: s.group, icon: s.icon ?? 'settings', keywords: 'settings workspace', run: go(s.to) });
     // Every single setting too: "MFA", "logo" or "retention" jumps straight to the switch.
@@ -121,7 +123,7 @@ export function CommandPalette() {
     list.push({ id: 'help:security', group: 'Help', label: 'How we keep your data safe', icon: 'shield', keywords: 'security privacy', run: () => { close(); window.location.assign('/security/'); } });
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, settings, ctx, canProject, canWork, theme]);
+  }, [groups, settings, ctx, canProject, canWork, theme, extras]);
 
   const visible = useMemo(() => {
     const query = q.trim();
@@ -131,7 +133,8 @@ export function CommandPalette() {
     const ranked = commands.map((c) => ({ c, s: score(c, query) + (best.has(c.id) ? 30 - best.get(c.id)! * 4 : 0) + (query ? 0 : recent.includes(c.id) ? 100 - recent.indexOf(c.id) : 0) }))
       .filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => x.c);
     const shown: Command[] = query ? ranked.slice(0, 12) : [
-      ...ranked.filter((c) => recent.includes(c.id)).map((c) => ({ ...c, group: 'Recent' })),
+      ...ranked.filter((c) => extras.some((x) => x.id === c.id)),
+      ...ranked.filter((c) => recent.includes(c.id) && !extras.some((x) => x.id === c.id)).map((c) => ({ ...c, group: 'Recent' })),
       ...ranked.filter((c) => !recent.includes(c.id) && (c.group === 'Create' || c.group === 'Go to')).slice(0, 9),
     ];
     const hits: Command[] = (search.data?.hits ?? []).slice(0, 8).map((h) => ({
@@ -144,7 +147,7 @@ export function CommandPalette() {
     // A command that matches what was typed wins; asking the assistant is the fallback at the end.
     return [...remind, ...shown, ...hits, ...askAi];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [commands, q, search.data, ai, settings]);
+  }, [commands, q, search.data, ai, settings, extras]);
 
   useEffect(() => { setActive(0); }, [q]);
   useEffect(() => { list.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' }); }, [active]);

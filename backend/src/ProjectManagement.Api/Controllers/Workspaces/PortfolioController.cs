@@ -52,6 +52,10 @@ public class PortfolioController(PortfolioBoardService board, PlanSheetService s
     [HttpPost("sheet/bulk")]
     public async Task<IActionResult> SheetBulk([FromBody] PlanSheetBulkRequest req, CancellationToken ct) => Ok(await sheet.BulkAsync(req, ct));
 
+    /// <summary>A row dragged to a new place in its project, or into another project (next number there, column of the same name).</summary>
+    [HttpPost("sheet/move")]
+    public async Task<IActionResult> SheetMove([FromBody] PlanSheetMoveRequest req, CancellationToken ct) => Ok(await sheet.MoveAsync(req, ct));
+
     /// <summary>Rows pasted from Excel: commit=false is a dry run (what each row would do), commit=true saves the chosen ready rows.</summary>
     [HttpPost("sheet/paste")]
     public async Task<IActionResult> SheetPaste([FromBody] PlanSheetPasteRequest req, CancellationToken ct) => Ok(await sheet.PasteAsync(req, ct));

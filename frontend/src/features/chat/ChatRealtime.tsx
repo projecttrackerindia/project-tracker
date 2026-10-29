@@ -18,7 +18,7 @@ import { markAnswered, putMessage } from './chatCache';
 import { useProjectChat } from './projectChatStore';
 import { bumpUnread, dropUnread, useUnreadCatchUp } from './unreadBadge';
 import { emitCallEvent } from '../calls/incomingCalls';
-import { emitReminders, emitViewing, notifyLiveConnected, setLiveConnection, type ReminderEvent, type ViewingEvent } from '../live/bus';
+import { emitReminders, emitSheetFocus, emitViewing, notifyLiveConnected, setLiveConnection, type ReminderEvent, type SheetFocusEvent, type ViewingEvent } from '../live/bus';
 
 /** Screens that show work: refreshed (if open) when someone else changes something. Chat, settings and the like have their own events or none. */
 const LIVE_KEYS = new Set(['action-items', 'activity', 'approvals', 'calendar', 'dashboard', 'dashboard-report', 'dev-links', 'issues', 'milestones', 'my-work',
@@ -124,6 +124,7 @@ export function ChatRealtime() {
       refreshWork();
     });
     connection.on('viewing', (e: ViewingEvent) => emitViewing(e));
+    connection.on('sheetFocus', (e: SheetFocusEvent) => emitSheetFocus(e));
     connection.on('reminder', (e: ReminderEvent[]) => emitReminders(e));
     // Calls: one ringing for me, one that stopped ringing (ended, missed, or declined on another device), my call turned down.
     connection.on('call.incoming', (e: { callId: string; title?: string; fromName?: string; startedAt?: string }) => emitCallEvent({ event: 'incoming', ...e }));

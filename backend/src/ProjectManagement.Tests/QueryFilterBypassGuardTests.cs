@@ -31,6 +31,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Admin/DeployAlertService.cs", // anonymous hosting webhook (token in the address): only the platform administrators' e-mail addresses are read
         "ProjectManagement.Application/Features/Admin/PlatformService.cs",
         "ProjectManagement.Application/Features/Ai/AiPortfolio.cs",
+        "ProjectManagement.Application/Features/Projects/PlanSheetService.cs", // a task dragged into another project takes the next number there: the highest number of that one project (checked visible and writable first), deleted tasks included so numbers are never reused
         "ProjectManagement.Application/Features/Ai/AiOperationsProcessor.cs", // scheduling metadata and atomic leases; retrieval uses fresh current requester scope
         "ProjectManagement.Application/Features/Ai/AiSemanticIndex.cs", // background embedding across workspaces; every search hit is re-opened with the reader's own access
         "ProjectManagement.Application/Features/Ai/AiToolbox.cs",
