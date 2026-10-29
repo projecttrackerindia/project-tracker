@@ -1,0 +1,19 @@
+/* Aura, the assistant's orb: the box is the sphere; the canvas (glow, rings) spills past it and never takes layout space. */
+.aura-orb { position: relative; display: inline-block; flex: none; vertical-align: middle; pointer-events: none; contain: layout style; }
+.aura-orb > canvas { position: absolute; left: 50%; top: 50%; translate: -50% -50%; pointer-events: none; }
+button .aura-orb, a .aura-orb { pointer-events: none; }
+
+/* While Aura acts on the page: a soft animated glow around the page edge, and a moving outline on each row it changes. */
+@property --aura-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes aura-edge { to { --aura-a: 360deg; } }
+.aura-edge { position: fixed; inset: 0; z-index: 1190; pointer-events: none; opacity: 0; transition: opacity .5s; padding: 3px;
+  background: conic-gradient(from var(--aura-a), rgba(90, 200, 250, .9), rgba(94, 92, 230, .9), rgba(255, 159, 216, .9), rgba(48, 209, 88, .9), rgba(90, 200, 250, .9));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  filter: blur(1.5px); animation: aura-edge 3s linear infinite; }
+html.aura-acting .aura-edge { opacity: 1; }
+.aura-touch { position: relative; background-color: rgba(94, 92, 230, .07) !important; border-radius: 10px; }
+.aura-touch::after { content: ''; position: absolute; inset: -3px -6px; border-radius: 12px; padding: 2px; pointer-events: none; z-index: 2;
+  background: conic-gradient(from var(--aura-a), #5ac8fa, #5e5ce6, #ff9fd8, #30d158, #5ac8fa);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: aura-edge 2s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .aura-edge, .aura-touch::after { animation: none; } }

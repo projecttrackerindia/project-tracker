@@ -15,7 +15,7 @@ import './tracker/tracker.css';
 
 type Tab = 'overview' | 'assistant' | 'quality' | 'agent' | 'meetings' | 'costs' | 'alerts' | 'runs';
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
-  { id: 'overview', label: 'Overview', icon: 'dashboard' }, { id: 'assistant', label: 'Groot', icon: 'agent' }, { id: 'quality', label: 'Quality', icon: 'target' }, { id: 'agent', label: 'Project agent', icon: 'sparkle' },
+  { id: 'overview', label: 'Overview', icon: 'dashboard' }, { id: 'assistant', label: 'Aura', icon: 'agent' }, { id: 'quality', label: 'Quality', icon: 'target' }, { id: 'agent', label: 'Project agent', icon: 'sparkle' },
   { id: 'meetings', label: 'Meetings & follow-ups', icon: 'video' }, { id: 'costs', label: 'Credits', icon: 'bolt' }, { id: 'alerts', label: 'Alerts', icon: 'radar' },
   { id: 'runs', label: 'Runs', icon: 'list' },
 ];

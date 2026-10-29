@@ -62,7 +62,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   { id: 'data.audit', section: 'data', label: 'Keep the audit log for', keywords: 'retention audit log delete purge compliance days', hint: 'At least a year' },
   { id: 'security.dataLocation', section: 'data-location', label: 'Data location', keywords: 'data location residency region india mumbai backups where stored localisation localization sovereignty', hint: 'Where data and backups are kept; keep data in India' },
   { id: 'workspace.holidays', section: 'holidays', label: 'Public holidays', keywords: 'holidays holiday public festival leave capacity diwali calendar india', hint: 'Days off for everyone in Capacity' },
-  { id: 'workspace.attendance', section: 'attendance', label: 'Attendance', keywords: 'attendance check in check out checkin checkout office home work from home client office working hours groot', hint: 'Check-in, check-out and reminders' },
+  { id: 'workspace.attendance', section: 'attendance', label: 'Attendance', keywords: 'attendance check in check out checkin checkout office home work from home client office working hours groot aura', hint: 'Check-in, check-out and reminders' },
   { id: 'integrations.statusPage', section: 'status-page', label: 'API status page', keywords: 'status page uptime incidents public api health outage', hint: 'A public page showing whether your APIs are up' },
   { id: 'data.export', section: 'data', label: 'Export all data', keywords: 'export backup download zip json data portability', hint: 'Everything the workspace holds, in one zip' },
   { id: 'audit.log', section: 'audit', label: 'Audit log', keywords: 'audit trail log history who changed tamper evidence compliance', hint: 'Every security-relevant change', find: 'Audit log' },

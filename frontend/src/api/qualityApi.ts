@@ -52,7 +52,7 @@ export const qualityApi = {
     create<{ result: TestResult; workItem: WorkItemDetail }>(`/quality/results/${resultId}/bug`, b),
   /** An endpoint's Tests: linked cases, latest run per environment, coverage and the "Add test case" prefill. */
   endpointTests: (endpointId: string) => get<EndpointTests>(`/quality/endpoints/${endpointId}/tests`),
-  /** Groot's proposed cases for an endpoint (nothing saved until one is confirmed). */
+  /** Aura's proposed cases for an endpoint (nothing saved until one is confirmed). */
   suggestions: (endpointId: string) => get<CaseDraft[]>(`/quality/endpoints/${endpointId}/suggestions`),
   /** API test coverage per project (endpoints with a passing run in the last 30 days). */
   coverage: (projectId?: string) => get<Coverage>('/quality/coverage', { projectId }),

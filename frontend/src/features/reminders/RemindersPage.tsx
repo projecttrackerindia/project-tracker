@@ -243,7 +243,7 @@ function WatchList({ items, onStopped }: { items: Watch[]; onStopped: () => void
     finally { setBusy(null); }
   };
   if (items.length === 0) return (
-    <EmptyState icon="eye" title="Not watching anything" text="Ask Groot “tell me when ATL-12 is done” or “warn me if Atlas slips past Friday”. You get one notification, then it stops." />
+    <EmptyState icon="eye" title="Not watching anything" text="Ask Aura “tell me when ATL-12 is done” or “warn me if Atlas slips past Friday”. You get one notification, then it stops." />
   );
   return (
     <>

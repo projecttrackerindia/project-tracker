@@ -13,7 +13,7 @@ public record TestCaseLinkDto(string Kind, Guid Id, Guid? DocumentId = null);
 /// <summary>The latest result of a case (or of the endpoint's cases) in one environment: Pass, Fail or Blocked, from which run and when.</summary>
 public record EnvResultDto(string Environment, string Status, DateTime? At, Guid RunId, string RunName, int Passed = 0, int Failed = 0, int Blocked = 0);
 public record EndpointCaseDto(TestCaseDto Case, IReadOnlyList<EnvResultDto> Latest);
-/// <summary>A test case written from the endpoint, not saved: "Add test case" opens with it; Groot's proposals are a list of these with <c>Kind</c> and <c>Why</c>.</summary>
+/// <summary>A test case written from the endpoint, not saved: "Add test case" opens with it; Aura's proposals are a list of these with <c>Kind</c> and <c>Why</c>.</summary>
 public record CaseDraftDto(string Kind, string Title, string Steps, string Expected, string Priority, string Tags, string Why);
 /// <summary>
 /// An endpoint's "Tests": the cases linked to it, the latest run per environment, and whether it is covered (a case linked to it passed in a run
@@ -123,7 +123,7 @@ public class QualityLinksService(IAppDbContext db, AppClock clock, PermissionSer
             Drafts(method, ep.Path, ep.Summary, details, auth)[0], await permissions.LevelAsync(ProjectManagement.Domain.Modules.Work, ct) >= ProjectManagement.Domain.AccessLevel.Edit);
     }
 
-    /// <summary>Groot's proposals for the endpoint: written from its own description (parameters, statuses, auth, method); nothing is saved.</summary>
+    /// <summary>Aura's proposals for the endpoint: written from its own description (parameters, statuses, auth, method); nothing is saved.</summary>
     public async Task<IReadOnlyList<CaseDraftDto>> SuggestAsync(Guid endpointId, CancellationToken ct = default)
     {
         var ep = await (from e in db.ApiEndpoints.AsNoTracking()

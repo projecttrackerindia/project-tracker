@@ -165,7 +165,7 @@ export function WorkPage() {
         {tab === 'team' && !person && seesWorkload && <TeamLoadLine />}
         <WorkList key={tab} viewKey={tab} filters={filters} kinds={tab === 'tickets' ? ['ticket'] : kinds} showKinds={tab !== 'tickets'} selectedId={item} onOpen={open} headExtra={teamPick}
           defaults={tab === 'tickets' ? { group: 'status', sort: 'priority' } : tab === 'team' ? { group: 'owner', sort: 'priority' } : undefined}
-          empty={tab === 'mine' ? { title: 'Nothing is assigned to you', text: 'Tasks, issues, action items and tickets given to you show up here.', action: <button type="button" className="btn btn-primary" onClick={() => openNew()}><Icon name="plus" size={15} /> New</button> }
+          empty={tab === 'mine' ? { title: 'Nothing is assigned to you', text: 'Tasks, issues, action items and tickets given to you show up here.', action: <button type="button" className="btn btn-primary" onClick={() => openNew('task')}><Icon name="plus" size={15} /> Create a task</button> }
             : tab === 'team' ? { title: person ? 'Nothing open for this person' : 'Your teams have nothing open', text: person ? undefined : 'Work owned by the people in your teams shows up here. Teams are set up in People › Teams.',
               action: seesWorkload ? <button type="button" className="btn btn-ghost" onClick={() => go({ s: 'workload' })}>Workload by person ›</button> : undefined }
             : { title: 'No open tickets', text: 'Support requests, bugs and other operational work show up here, from the app, e-mail, WhatsApp and calls.', action: canNew ? <button type="button" className="btn btn-primary" onClick={() => openNew('ticket')}><Icon name="plus" size={15} /> New ticket</button> : undefined }} />

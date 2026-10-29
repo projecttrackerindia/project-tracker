@@ -119,11 +119,11 @@ try {
   await page.goto(origin + '/preview-org/work');
   await bell(page).waitFor();
 
-  // The bell sits just left of + New, with the unread count (5) in a red pill; the tab title carries the same number.
-  const order = await page.evaluate(() => { const b = document.querySelector('.v2-tb [data-ncx-bell]'); return b?.nextElementSibling?.classList.contains('v2-tb-new') ?? false; });
-  assert.ok(order, 'the bell is immediately before + New');
-  const bb = await bell(page).boundingBox(), nb = await page.locator('.v2-tb-new').boundingBox();
-  assert.ok(bb.x + bb.width <= nb.x && nb.x - (bb.x + bb.width) < 20, 'bell is just left of + New');
+  // The bell is the last thing in the header (no + New any more), with the unread count (5) in a red pill; the tab title carries the same number.
+  const order = await page.evaluate(() => { const b = document.querySelector('.v2-tb [data-ncx-bell]'); return !!b && !b.nextElementSibling && document.querySelectorAll('.v2-tb-new').length === 0; });
+  assert.ok(order, 'the bell ends the header and there is no + New');
+  const bb = await bell(page).boundingBox(), tb = await page.locator('.v2-tb').boundingBox();
+  assert.ok(tb.x + tb.width - (bb.x + bb.width) < 30, 'the bell sits at the right edge of the header');
   await page.locator('.v2-tb .ncx-badge').waitFor();
   assert.equal(await page.locator('.v2-tb .ncx-badge').innerText(), '5');
   await page.waitForFunction(() => document.title.startsWith('(5) '));

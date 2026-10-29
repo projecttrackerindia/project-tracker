@@ -1,6 +1,6 @@
-/* Check-in / check-out: Groot's card (a floating card on a desktop, a bottom sheet on a phone), the top-bar pill, the calendar band and
+/* Check-in / check-out: Aura's card (a floating card on a desktop, a bottom sheet on a phone), the top-bar pill, the calendar band and
    the settings pane. Light and dark. */
-.att-card, .att-pill, .att-row, .ed { --att-blue: #0071e3; --att-green: #28cd41; --att-orange: #ff9500; }
+.att-card, .att-cap-wrap, .att-row, .ed { --att-blue: #0071e3; --att-green: #28cd41; --att-orange: #ff9500; }
 .att-scrim { position: fixed; inset: 0; z-index: 1250; display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; background: rgba(0, 0, 0, .18);
   animation: att-fade .2s ease-out both; }
 .att-scrim.phone { align-items: flex-end; padding: 0; background: rgba(0, 0, 0, .32); }
@@ -22,7 +22,7 @@ html[data-theme='dark'] .att-card { --att-bg: rgba(44, 44, 46, .92); --att-line:
 .att-hd h2 { margin: 2px 0 0; font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
 .att-hd p { margin: 3px 0 0; color: var(--att-t2); font-size: 14px; }
 .att-when { display: block; margin-top: 4px; color: var(--att-t3); font-size: 11.5px; }
-/* The avatar slot: Groot's animated face is swapped in by another component; until then a soft gradient orb. */
+/* The avatar slot: Aura's animated face is swapped in by another component; until then a soft gradient orb. */
 .groot-avatar { flex: none; width: 48px; height: 48px; border-radius: 50%; display: inline-block;
   background: radial-gradient(circle at 35% 30%, #a8f0c0, #34c759 45%, #1f8f5f 100%); box-shadow: inset 0 -4px 10px rgba(0, 0, 0, .15), 0 4px 14px rgba(52, 199, 89, .35); }
 .groot-avatar[data-state='greeting'] { animation: att-breathe 2.4s ease-in-out infinite; }
@@ -62,18 +62,9 @@ html[data-theme='dark'] .att-card { --att-bg: rgba(44, 44, 46, .92); --att-line:
 .att-sum span { font-size: 11.5px; color: var(--att-t2); }
 .att-tip { margin: 12px 0 0; font-size: 12.5px; color: var(--att-t2); }
 
-/* the top-bar pill */
-.att-pill { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 10px; border-radius: 15px; font-size: 12.5px; font-weight: 600; white-space: nowrap;
-  background: var(--ds-fill, rgba(118, 118, 128, .12)); color: var(--ds-text); flex: none; }
-.att-pill.idle { padding: 0 12px; color: var(--ds-accent); cursor: pointer; }
-.att-pill.out { padding: 0 12px; color: var(--ds-text-2, #6e6e73); font-weight: 500; }
-.att-pill.in { background: rgba(40, 205, 65, .13); }
-html[data-theme='dark'] .att-pill.in { background: rgba(40, 205, 65, .2); }
-.att-pill-main { display: inline-flex; align-items: center; gap: 6px; background: none; color: inherit; font: inherit; padding: 0; font-variant-numeric: tabular-nums; }
-.att-pill-out { height: 24px; padding: 0 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: var(--ds-surface); color: var(--ds-text); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .08); }
+/* status dots (the calendar band) */
 .att-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .6; }
 .att-dot.on { background: var(--att-green); opacity: 1; box-shadow: 0 0 0 3px rgba(40, 205, 65, .2); }
-.att-pill.compact { height: 30px; padding: 0 10px; font-size: 12px; gap: 4px; }
 
 /* the calendar band: a slim row above the day columns */
 .att-row { display: grid; grid-template-columns: 52px repeat(var(--cols), minmax(0, 1fr)); height: 28px; align-items: center; border-bottom: .5px solid var(--wp-line, rgba(0, 0, 0, .08)); }
@@ -118,3 +109,45 @@ html[data-theme='dark'] .att-pill.in { background: rgba(40, 205, 65, .2); }
   .att-days button { width: 26px; height: 26px; }
 }
 @media (prefers-reduced-motion: reduce) { .att-card, .att-scrim, .groot-avatar { animation: none !important; } }
+
+/* ------------------------------------------------------------------ the check-in capsule in the header (AttendanceCapsule.tsx) */
+.att-cap-wrap { --att-track: #e5e5ea; position: relative; flex: none; }
+html[data-theme='dark'] .att-cap-wrap { --att-track: rgba(255, 255, 255, .14); }
+.att-cap { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 5px; border: 0; border-radius: 18px; cursor: pointer; font: inherit; font-size: 13px; color: var(--ds-text, #1d1d1f);
+  background: var(--ds-surface, #fff); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .08), 0 1px 2px rgba(0, 0, 0, .04); white-space: nowrap; font-variant-numeric: tabular-nums; }
+html[data-theme='dark'] .att-cap { background: rgba(255, 255, 255, .08); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .1); }
+.att-cap:focus-visible { outline: 2px solid var(--ds-accent, #0071e3); outline-offset: 2px; }
+.att-cap[data-state='none'] { padding: 0 14px; }
+.att-cap-in { color: var(--ds-accent, #0071e3); font-weight: 600; }
+.att-cap-t b { font-weight: 600; }
+.att-cap-dim { color: var(--ds-text-2, #6e6e73); }
+.att-cap-dot { display: inline-block; width: 6px; height: 6px; border-radius: 3px; margin-right: 6px; vertical-align: 1px; background: var(--att-c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--att-c) 20%, transparent); }
+.att-cap.compact { height: 32px; padding: 0 10px 0 4px; gap: 5px; }
+.att-cap.compact[data-state='none'] { padding: 0 11px; font-size: 12.5px; }
+.att-cap.compact .att-ring { width: 22px; height: 22px; }
+.att-cap-h { font-size: 13px; font-weight: 600; }
+.att-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 96; width: 340px; padding: 18px; border-radius: 18px; color: var(--ds-text, #1d1d1f);
+  background: rgba(255, 255, 255, .97); backdrop-filter: blur(40px) saturate(1.8); -webkit-backdrop-filter: blur(40px) saturate(1.8);
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1), 0 20px 60px rgba(0, 0, 0, .18); animation: att-pop-in .2s cubic-bezier(.2, .9, .25, 1) both; }
+html[data-theme='dark'] .att-pop { background: rgba(44, 44, 46, .97); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .12), 0 20px 60px rgba(0, 0, 0, .5); }
+@keyframes att-pop-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+@media (prefers-reduced-motion: reduce) { .att-pop { animation: none; } }
+.att-day { --att-track: #e5e5ea; }
+html[data-theme='dark'] .att-day { --att-track: rgba(255, 255, 255, .14); }
+.att-day h3 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.att-day-s { margin: 2px 0 0; font-size: 13px; color: var(--ds-text-2, #6e6e73); }
+.att-bar { position: relative; height: 30px; margin: 16px 0 4px; }
+.att-bar-tr { position: absolute; left: 0; right: 0; top: 12px; height: 6px; border-radius: 3px; background: var(--att-track); }
+.att-bar-fill { position: absolute; top: 12px; height: 6px; border-radius: 3px; min-width: 4px; }
+.att-bar-now { position: absolute; top: 6px; width: 2px; height: 18px; margin-left: -1px; border-radius: 1px; background: var(--ds-text, #1d1d1f); }
+.att-ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--ds-text-3, #a1a1a6); font-variant-numeric: tabular-nums; }
+.att-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; margin: 16px 0 12px; border-radius: 10px; background: rgba(118, 118, 128, .12); }
+.att-seg button { height: 30px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 12.5px; color: var(--ds-text-2, #6e6e73); cursor: pointer; }
+.att-seg button.on { background: var(--ds-surface, #fff); color: var(--ds-text, #1d1d1f); font-weight: 500; box-shadow: 0 1px 3px rgba(0, 0, 0, .1); }
+html[data-theme='dark'] .att-seg button.on { background: rgba(255, 255, 255, .16); }
+.att-day-place { width: 100%; margin: 0 0 12px; }
+.att-big { width: 100%; height: 44px; border: 0; border-radius: 12px; background: var(--ds-dark, #1d1d1f); color: var(--ds-on-dark, #fff); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.att-big:disabled { opacity: .5; cursor: default; }
+.att-big:focus-visible, .att-seg button:focus-visible { outline: 2px solid var(--ds-accent, #0071e3); outline-offset: 2px; }
+.att-day[data-state='done'] .att-day-mini { margin-top: 14px; }
+.att-day-mini { display: flex; justify-content: space-between; gap: 10px; margin-top: 12px; font-size: 12px; color: var(--ds-text-2, #6e6e73); }

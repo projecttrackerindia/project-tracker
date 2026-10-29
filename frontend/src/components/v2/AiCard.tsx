@@ -20,7 +20,7 @@ export function AiCard({ title, children, action, onDismiss, dismissLabel, stack
   if (stacked) return (
     <div className={`v2-ai-card stacked ${className}`} role="note">
       <div className="v2-ai-card-main">
-        {title && <b><GrootAvatar size={18} className="v2-spark-groot" title="Groot" /> {title}</b>}
+        {title && <b><GrootAvatar size={18} className="v2-spark-groot" title="Aura" /> {title}</b>}
         {children && <span>{children}</span>}
         {(act || dismiss) && <div className="v2-ai-card-acts">{act}{dismiss}</div>}
       </div>
@@ -28,7 +28,7 @@ export function AiCard({ title, children, action, onDismiss, dismissLabel, stack
   );
   return (
     <div className={`v2-ai-card ${className}`} role="note">
-      <GrootAvatar size={22} className="v2-spark-groot" title="Groot" />
+      <GrootAvatar size={22} className="v2-spark-groot" title="Aura" />
       <div className="v2-ai-card-main">{title && <b>{title}</b>}{children && <span>{children}</span>}</div>
       {act}
       {dismiss}

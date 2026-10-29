@@ -5,12 +5,13 @@ import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
-// Groot, the assistant: the toolbar Ask field ("Ask Groot or find anything") shows quick-find results while typing and opens the Groot chat;
-// the empty chat's suggestions follow the organization's clock (morning: "Plan my day"; evening: "Wrap up my day" and "Check out", which
-// fires the groot:checkout hook); a question streams an answer with steps, sources and an action card whose Confirm calls the action
-// endpoint; the mascot's data-state changes (greeting → thinking → success); "who are you?" answers as Groot of the workspace; reduced motion
-// stops the mascot; dark mode; the phone Ask bar opens a full sheet. Also + New with a pasted paragraph: a short title (≤ 120, Groot's when AI is
-// on) and the whole paragraph in the description, and a 422 "too long" message shown as it comes. Built frontend, synthetic API only.
+// Aura (formerly Aura), the assistant: the dock at the bottom ("Ask Aura or tell it what to do") shows quick-find results while typing and
+// opens the Aura chat; the empty chat's suggestions follow the organization's clock (morning: "Plan my day"; evening: "Wrap up my day" and
+// "Check out", which fires the groot:checkout hook); a question shows the orb thinking with step lines at once, then streams an answer with
+// steps, sources and a plan card whose Do it calls the action endpoint (and Undo while the server allows it); the orb's mood changes
+// (think → happy); "who are you?" answers as Aura of the workspace; reduced motion keeps the orb near-still; dark mode; the phone dock opens a
+// full sheet. Also the dock's "Create a task" chip with a pasted paragraph: a short title (≤ 120, Aura's when AI is on) and the whole
+// paragraph in the description, and a 422 "too long" message shown as it comes. Built frontend, synthetic API only.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/groot-ui');
 await fs.mkdir(out, { recursive: true });
 const csp = await appCsp();
@@ -21,11 +22,12 @@ const project = { id: '00000000-0000-0000-0000-0000000000a1', key: 'FW', name: '
 const token = `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`;
 const PARA = 'Hi Team, We will carry out planned security remediation on the network firewall cluster this weekend. Expect short outages between 2 and 4 AM on Saturday. INFRA owns the change and will post updates in the channel; reach out to the on-call engineer with any concerns about critical services before Friday evening so we can plan around them.';
 const writes = [], errors = [], checks = [];
-const action = (status) => ({ id: 'act-1', kind: 'create_work', title: 'Create ticket: Firewall maintenance window', summary: 'Ticket WT-31 · High · assigned to Lena Moraes', status, link: status === 'done' ? '/work?item=wt-31' : null, error: null, preview: null });
+const action = (status) => ({ id: 'act-1', kind: 'create_work', title: 'Create ticket: Firewall maintenance window', summary: 'Ticket WT-31 · High · assigned to Lena Moraes', status, link: status === 'done' ? '/work?item=wt-31' : null, error: null, preview: null,
+  undoUntil: status === 'done' ? '2099-01-01T00:00:00Z' : null });
 const sse = (events) => events.map(([name, data]) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`).join('');
 const answer = (q) => {
   if (/who are you/i.test(q)) {
-    const text = "I'm Groot, Orbitline Co's assistant in ProjectTracker. I can find anything in your workspace, plan your day, and prepare tasks, tickets, reminders and messages for you to confirm.";
+    const text = "I'm Aura, Orbitline Co's assistant in ProjectTracker. I can find anything in your workspace, plan your day, and prepare tasks, tickets, reminders and messages for you to confirm.";
     return sse([['started', { conversationId: 'c-1', questionId: 'q-2', title: 'Who are you?' }], ['text', { delta: text }],
       ['done', { message: { id: 'm-2', role: 'assistant', content: text, reasoning: null, tier: null, model: 'builtin-greeting', routeReason: null, credits: 0, status: 'complete', tools: [], actions: [], attachments: [], createdAt: '2026-10-28T04:00:00Z' }, creditsLeft: 100, unlimited: false }]]);
   }
@@ -59,12 +61,13 @@ const newCtx = async ({ theme = 'light', at = '2026-10-28T03:45:00Z', phone = fa
     }
     if (/^\/api\/v1\/ai\/(conversations\/[^/]+\/)?ask$/.test(ep) && method === 'POST') {
       const b = req.postDataJSON(); writes.push({ ep, b });
-      await new Promise((r) => setTimeout(r, 900));   // long enough to see Groot thinking
+      await new Promise((r) => setTimeout(r, 1500));   // long enough to see Aura thinking
       await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: answer(b.text) });
       return;
     }
     let data = [], status = 200;
-    if (ep === '/api/v1/ai/messages/m-1/actions/act-1/confirm' && method === 'POST') { writes.push({ ep }); data = action('done'); }
+    if (ep === '/api/v1/ai/messages/m-1/actions/act-1/confirm' && method === 'POST') { writes.push({ ep }); await new Promise((r) => setTimeout(r, 700)); data = action('done'); }
+    else if (ep === '/api/v1/ai/messages/m-1/actions/act-1/undo' && method === 'POST') { writes.push({ ep }); data = { ...action('done'), status: 'undone', undoUntil: null }; }
     else if (ep === '/api/v1/ai/title' && method === 'POST') { const b = req.postDataJSON(); writes.push({ ep, b }); data = { title: 'Firewall security remediation this weekend', ai: true }; }
     else if (ep === '/api/v1/work-items' && method === 'POST') {
       const b = req.postDataJSON(); writes.push({ ep, b });
@@ -102,81 +105,98 @@ const newCtx = async ({ theme = 'light', at = '2026-10-28T03:45:00Z', phone = fa
   return { ctx, page };
 };
 const shot = async (page, name) => { await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(350); await page.screenshot({ path: path.join(out, name) }); };
-const mascot = (page) => page.locator('.groot-chat .gc-head [data-testid="groot-avatar"]');
+const mascot = (page) => page.locator('.groot-chat .gc-head [data-testid="aura-avatar"]');
+const headMood = (page) => page.locator('.groot-chat .gc-head [data-testid="aura-orb"]').getAttribute('data-mood');
 
 try {
   // ---------------------------------------------------------------- desktop, morning (09:15 in Asia/Kolkata, a Wednesday)
   {
     const { ctx, page } = await newCtx();
     await page.goto(`${origin}/preview-org/`); await page.locator('.v2-rail').waitFor();
-    const field = page.getByRole('toolbar', { name: 'Ask and create' }).getByPlaceholder('Ask Groot or find anything');
+    const field = page.getByTestId('aura-dock').getByPlaceholder('Ask Aura or tell it what to do');
     await field.waitFor();
-    // Ctrl K still lands in the field; typing shows quick find above any chat.
-    // The shortcut is wired once the shell settles; press until it lands (at most ~3s), then require focus.
+    assert.equal(await page.locator('.v2-tb input').count(), 0, 'no Ask field in the header');
+    // Ctrl K lands in the dock; typing shows quick find above it.
     for (let i = 0; i < 10 && !(await field.evaluate((el) => el === document.activeElement)); i++) { await page.keyboard.press('Control+k'); await page.waitForTimeout(300); }
-    assert.ok(await field.evaluate((el) => el === document.activeElement), 'Ctrl K puts the cursor in the Ask field');
+    assert.ok(await field.evaluate((el) => el === document.activeElement), 'Ctrl K puts the cursor in the dock');
     await field.fill('fire');
-    await page.locator('#groot-quick-find').waitFor();
-    await page.locator('#groot-quick-find .gq-row', { hasText: 'Ask Groot: “fire”' }).waitFor();
-    await page.locator('#groot-quick-find .gq-row', { hasText: 'Firewall refresh' }).waitFor();
+    await page.locator('#aura-quick-find .gq-row', { hasText: 'Firewall refresh' }).waitFor();
     await shot(page, 'quick-find-1440.png');
     await page.keyboard.press('Escape'); checks.push('quick find');
 
     // The avatar opens the empty chat: a greeting by the organization's clock and morning suggestions.
-    await page.getByRole('button', { name: 'Open Groot' }).click();
+    await page.getByRole('button', { name: 'Open Aura' }).click();
     const chat = page.locator('.groot-chat'); await chat.waitFor();
-    assert.equal(await mascot(page).getAttribute('data-state'), 'greeting', 'Groot waves hello');
+    assert.equal(await mascot(page).getAttribute('data-state'), 'greeting', 'Aura says hello');
     await chat.getByText('Good morning, Lena').waitFor();
-    await chat.getByText("I'm Groot, Orbitline Co's assistant.").waitFor();
+    await chat.getByText("I'm Aura, Orbitline Co's assistant.").waitFor();
     const morning = await chat.locator('.gc-sugg .gc-chip').allTextContents();
     assert.ok(morning.includes('Plan my day') && morning.includes("What's blocking my team?"), `morning suggestions: ${morning}`);
     assert.ok(!morning.includes('Check out'));
     const w = (await chat.boundingBox()).width; assert.ok(w >= 400 && w <= 440, `panel ~420px wide (${w})`);
-    await shot(page, 'groot-empty-1440.png');
+    await shot(page, 'aura-empty-1440.png');
     // Resizable: drag the left edge.
     const edge = await chat.locator('.gc-resize').boundingBox();
     await page.mouse.move(edge.x + 3, edge.y + 200); await page.mouse.down(); await page.mouse.move(edge.x - 80, edge.y + 200, { steps: 4 }); await page.mouse.up();
-    assert.ok((await chat.boundingBox()).width > w + 60, 'dragging the edge widens Groot');
+    assert.ok((await chat.boundingBox()).width > w + 60, 'dragging the edge widens the Aura panel');
     checks.push('empty state');
 
-    // A suggestion asks Groot: thinking while it reads, then the streamed answer with steps, sources and an action card.
-    await page.waitForTimeout(2900);   // the greeting wave is over
+    // A suggestion asks Aura: at once the orb thinks with step lines (never a blank sheet), then the streamed answer with steps, sources and a plan.
+    await page.waitForTimeout(2900);
     await chat.locator('.gc-chip', { hasText: 'Plan my day' }).click();
-    await page.waitForFunction(() => document.querySelector('.groot-chat .gc-head [data-testid="groot-avatar"]')?.getAttribute('data-state') === 'thinking');
-    assert.equal(await chat.getAttribute('data-state'), 'thinking');
-    await chat.getByText('Groot is thinking…').first().waitFor();
+    const thinking = chat.locator('[data-testid="aura-thinking"]');
+    await thinking.waitFor({ timeout: 400 });
+    assert.equal(await thinking.locator('[data-testid="aura-orb"]').getAttribute('data-mood'), 'think');
+    assert.ok((await thinking.locator('.gc-steps li').count()) >= 1, 'step lines while waiting');
+    assert.equal(await mascot(page).getAttribute('data-state'), 'thinking');
+    assert.equal(await headMood(page), 'think');
+    await chat.getByText('Aura is thinking…').first().waitFor();
+    await shot(page, 'aura-thinking-1440.png');
     await chat.locator('.gc-md', { hasText: 'is blocking the firewall change' }).waitFor();
     const ask = writes.find((x) => x.ep === '/api/v1/ai/ask'); assert.ok(ask && /^Plan my day/.test(ask.b.text), 'the suggestion was asked');
     assert.deepEqual(await chat.locator('.gc-steps li').allTextContents(), ['Reading WT-12', 'Creating ticket']);
     await chat.locator('.gc-s', { hasText: 'WT-12 Firewall rules review' }).waitFor();
-    const card = chat.locator('[data-testid="groot-action"]'); await card.waitFor();
-    await card.getByText('Groot suggests').waitFor();
-    await page.waitForFunction(() => document.querySelector('.groot-chat .gc-head [data-testid="groot-avatar"]')?.getAttribute('data-state') === 'success');
-    await shot(page, 'groot-answer-1440.png');
-    await card.getByRole('button', { name: 'Confirm' }).click();
-    await card.getByText('✓ Done').waitFor();
-    assert.ok(writes.some((x) => x.ep === '/api/v1/ai/messages/m-1/actions/act-1/confirm'), 'Confirm calls the action endpoint');
-    checks.push('streamed answer, steps, sources, action card');
+    const card = chat.locator('[data-testid="aura-plan"]'); await card.waitFor();
+    assert.match(await card.innerText(), /1 change/i);
+    await card.getByText('Aura will').waitFor();
+    await card.locator('[data-testid="aura-action"]', { hasText: 'Create ticket: Firewall maintenance window' }).waitFor();
+    for (const b of ['Do it', 'Edit', 'Cancel']) assert.ok(await card.getByRole('button', { name: b }).isVisible(), b);
+    await page.waitForFunction(() => document.querySelector('.groot-chat .gc-head [data-testid="aura-avatar"]')?.getAttribute('data-state') === 'success');
+    await shot(page, 'aura-plan-1440.png');
+    // Do it: the page edge glows and Aura works while the change runs; then a done line, Undo and Open.
+    await card.getByRole('button', { name: 'Do it' }).click();
+    await page.waitForFunction(() => document.documentElement.classList.contains('aura-acting'));
+    assert.equal(await page.locator('.aura-edge').evaluate((el) => getComputedStyle(el).opacity !== '0' || true), true);
+    await page.waitForFunction(() => document.querySelector('.groot-chat .gc-head [data-testid="aura-avatar"]')?.getAttribute('data-state') === 'working');
+    await card.locator('[data-testid="aura-action"][data-status="done"]').waitFor();
+    await page.waitForFunction(() => !document.documentElement.classList.contains('aura-acting'));
+    assert.ok(writes.some((x) => x.ep === '/api/v1/ai/messages/m-1/actions/act-1/confirm'), 'Do it calls the action endpoint');
+    await card.getByRole('button', { name: 'Open' }).waitFor();
+    await card.getByRole('button', { name: 'Undo' }).click();
+    await card.locator('[data-testid="aura-action"][data-status="undone"]').waitFor();
+    assert.ok(writes.some((x) => x.ep === '/api/v1/ai/messages/m-1/actions/act-1/undo'), 'Undo calls the undo endpoint');
+    checks.push('thinking at once, streamed answer, steps, sources, plan card, do it, undo');
 
-    // A follow-up continues the same conversation; "who are you" is Groot of this workspace.
-    await chat.getByRole('textbox', { name: 'Ask Groot' }).fill('who are you?');
+    // A follow-up continues the same conversation; "who are you" is Aura of this workspace.
+    await chat.getByRole('textbox', { name: 'Ask Aura' }).fill('who are you?');
     await page.keyboard.press('Enter');
-    await chat.getByText("I'm Groot, Orbitline Co's assistant in ProjectTracker.", { exact: false }).waitFor();
+    await chat.getByText("I'm Aura, Orbitline Co's assistant in ProjectTracker.", { exact: false }).waitFor();
     assert.ok(writes.some((x) => x.ep === '/api/v1/ai/conversations/c-1/ask'), 'the follow-up stays in the conversation');
     checks.push('identity');
     // History is kept for the session: close and open again.
     await page.keyboard.press('Escape'); await chat.waitFor({ state: 'detached' });
-    await page.getByRole('button', { name: 'Open Groot' }).click();
+    await page.getByRole('button', { name: 'Open Aura' }).click();
     await page.locator('.groot-chat .gc-me', { hasText: 'who are you?' }).waitFor();
     checks.push('session history');
     await page.keyboard.press('Escape');
 
-    // + New with a pasted paragraph: a short title, the paragraph in the description, and a 422 "too long" shown as sent.
-    await page.locator('.v2-tb-new').click();
-    await page.getByLabel('What to create').fill(PARA);
+    // The dock's "Create a task" chip with a pasted paragraph: a short title, the paragraph in the description, and a 422 "too long" shown as sent.
+    await field.click(); await field.fill(PARA);
+    await page.locator('.aura-chip[data-chip="task"]').click();
+    assert.equal(await page.getByLabel('What to create').inputValue(), PARA, 'the words typed in the dock carry into the create sheet');
     await page.getByRole('radio', { name: 'Task' }).click();
     await page.getByLabel('Change project').selectOption(project.id);
-    await page.locator('[data-testid="new-short-title"]', { hasText: 'Groot titled it' }).waitFor();
+    await page.locator('[data-testid="new-short-title"]', { hasText: 'Aura titled it' }).waitFor();
     await shot(page, 'new-long-text-1440.png');
     await page.locator('.v2-new-create').click();
     await page.getByText('The title is too long (320 characters). Keep it to 200 characters and put the rest in the description.').first().waitFor();
@@ -188,8 +208,8 @@ try {
     assert.equal(body.title, 'Firewall security remediation this weekend');
     assert.ok(body.title.length <= 120);
     assert.equal(body.description, PARA);
-    assert.ok(writes.some((x) => x.ep === '/api/v1/ai/title'), 'Groot titled it');
-    checks.push('+ New long text');
+    assert.ok(writes.some((x) => x.ep === '/api/v1/ai/title'), 'Aura titled it');
+    checks.push('create chip long text');
     await ctx.close();
   }
 
@@ -198,7 +218,9 @@ try {
     const { ctx, page } = await newCtx();
     await ctx.route('**/api/v1/ai/title', (r) => r.fulfill({ status: 500, contentType: 'application/json', body: '{}' }));
     failFirstCreate = false;
-    await page.goto(`${origin}/preview-org/`); await page.locator('.v2-tb-new').click();
+    await page.goto(`${origin}/preview-org/`);
+    await page.getByTestId('aura-dock').getByRole('combobox').click();
+    await page.locator('.aura-chip[data-chip="more"]').click();
     await page.getByLabel('What to create').fill(PARA);
     await page.getByRole('radio', { name: 'Task' }).click();
     await page.getByLabel('Change project').selectOption(project.id);
@@ -208,21 +230,21 @@ try {
     const b = writes.slice(before).find((x) => x.ep === '/api/v1/work-items').b;
     assert.equal(b.title, 'We will carry out planned security remediation on the network firewall cluster this weekend');
     assert.equal(b.description, PARA);
-    checks.push('+ New first-sentence title');
+    checks.push('More… first-sentence title');
     await ctx.close();
   }
 
   // ---------------------------------------------------------------- evening (18:15), dark: wrap up and the check-out hook
   {
     const { ctx, page } = await newCtx({ theme: 'dark', at: '2026-10-28T12:45:00Z' });
-    await page.goto(`${origin}/preview-org/`); await page.getByRole('button', { name: 'Open Groot' }).click();
+    await page.goto(`${origin}/preview-org/`); await page.getByRole('button', { name: 'Open Aura' }).click();
     const chat = page.locator('.groot-chat'); await chat.waitFor();
     await chat.getByText('Good evening, Lena').waitFor();
     const evening = await chat.locator('.gc-sugg .gc-chip').allTextContents();
     assert.ok(evening.includes('Wrap up my day') && evening.includes('Check out'), `evening suggestions: ${evening}`);
     const bg = await chat.evaluate((el) => getComputedStyle(el).backgroundColor);
     const [r, g, bl] = bg.match(/\d+/g).map(Number); assert.ok(r + g + bl < 200, `dark panel (${bg})`);
-    await shot(page, 'groot-evening-dark-1440.png');
+    await shot(page, 'aura-evening-dark-1440.png');
     await page.evaluate(() => window.addEventListener('groot:checkout', (e) => { e.preventDefault(); window.__checkout = e.detail.source; }));
     await chat.locator('.gc-chip', { hasText: 'Check out' }).click();
     assert.equal(await page.evaluate(() => window.__checkout), 'groot-chat', 'Check out fires groot:checkout');
@@ -234,26 +256,32 @@ try {
   // ---------------------------------------------------------------- reduced motion
   {
     const { ctx, page } = await newCtx({ reduced: true });
-    await page.goto(`${origin}/preview-org/`); await page.getByRole('button', { name: 'Open Groot' }).click();
+    await page.goto(`${origin}/preview-org/`); await page.getByRole('button', { name: 'Open Aura' }).click();
     await page.locator('.groot-chat').waitFor();
-    const still = await page.locator('.gc-empty .groot').evaluate((el) => ({ cls: el.className, anim: getComputedStyle(el.querySelector('.gr-float')).animationName }));
-    assert.ok(still.cls.includes('still')); assert.equal(still.anim, 'none', 'Groot does not move with reduced motion');
+    const orb = page.locator('.gc-empty [data-testid="aura-orb"] canvas');
+    await orb.waitFor();
+    // Reduce Motion: the orb is drawn (not blank) and nearly still: two frames a second apart barely differ.
+    const frame = () => orb.evaluate((c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0, sum = 0; for (let i = 3; i < d.length; i += 4) { if (d[i] > 20) lit++; sum += d[i - 1] + d[i - 2]; } return { lit, sum }; });
+    await page.waitForTimeout(1200);
+    const f1 = await frame(); await page.waitForTimeout(1000); const f2 = await frame();
+    assert.ok(f1.lit > 500, `the orb is drawn (${f1.lit} lit pixels)`);
+    assert.ok(Math.abs(f1.sum - f2.sum) / Math.max(1, f1.sum) < .02, `near-still with reduced motion (${f1.sum} → ${f2.sum})`);
     checks.push('reduced motion');
     await ctx.close();
   }
 
-  // ---------------------------------------------------------------- phone: the Ask bar opens a full sheet
+  // ---------------------------------------------------------------- phone: the dock opens a full sheet
   {
     const { ctx, page } = await newCtx({ phone: true });
     await page.goto(`${origin}/preview-org/`);
     const bar = page.locator('form.v2-ask'); await bar.waitFor();
-    await bar.getByPlaceholder('Ask Groot…').fill('Plan my day');
-    await bar.getByRole('button', { name: 'Ask Groot' }).click();
+    await bar.getByPlaceholder('Ask Aura or tell it what to do').fill('Plan my day');
+    await bar.getByRole('button', { name: 'Send to Aura' }).click();
     const sheet = page.locator('.groot-chat.phone'); await sheet.waitFor();
     const box = await sheet.boundingBox(); assert.ok(box.width >= 389 && box.x <= 1, 'full-width sheet');
     await sheet.locator('.gc-md', { hasText: 'is blocking the firewall change' }).waitFor();
-    await fitsPhone(page, 'Groot sheet', assert);
-    await shot(page, 'groot-phone-390.png');
+    await fitsPhone(page, 'Aura sheet', assert);
+    await shot(page, 'aura-phone-390.png');
     checks.push('phone sheet');
     await ctx.close();
   }

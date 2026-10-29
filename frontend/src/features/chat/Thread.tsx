@@ -1314,11 +1314,11 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
             {isEmpty && draftReply && !editing && talk
               ? <button type="button" className="talk-draft" onMouseDown={keepFocus} disabled={drafting}
                   onClick={async () => { setDrafting(true); try { const t = await draftReply(); if (t) insertIntoComposer(conversation.id, t, threadRootId); } finally { setDrafting(false); } }}
-                  aria-label="Groot drafts a reply" title="Groot drafts a reply">{drafting ? <Spinner /> : <span className="talk-draft-spark" aria-hidden="true">✦</span>}<span className="talk-draft-label">Draft</span></button>
+                  aria-label="Aura drafts a reply" title="Aura drafts a reply">{drafting ? <Spinner /> : <span className="talk-draft-spark" aria-hidden="true">✦</span>}<span className="talk-draft-label">Draft</span></button>
               : isEmpty && draftReply && !editing
               ? <button type="button" className="btn-icon pill-btn ai" onMouseDown={keepFocus} disabled={drafting}
                   onClick={async () => { setDrafting(true); try { const t = await draftReply(); if (t) insertIntoComposer(conversation.id, t, threadRootId); } finally { setDrafting(false); } }}
-                  aria-label="Groot drafts a reply" title="Groot drafts a reply">{drafting ? <Spinner /> : <Icon name="sparkle" size={16} />}</button>
+                  aria-label="Aura drafts a reply" title="Aura drafts a reply">{drafting ? <Spinner /> : <Icon name="sparkle" size={16} />}</button>
               : <button type="button" className={`btn-icon pill-btn ai ${aiOpen ? 'on' : ''}`} onMouseDown={keepFocus} onClick={() => setAiOpen((v) => !v)} disabled={isEmpty || aiBusy}
               aria-label="Rewrite or translate with AI" aria-expanded={aiOpen} aria-busy={aiBusy} title="Rewrite or translate with AI">{aiBusy ? <Spinner /> : <Icon name="sparkle" size={16} />}</button>}
             <Popover open={aiOpen} onClose={() => { setAiOpen(false); setAiTranslate(false); }} anchorRef={aiRef} side="top" align="start" focusOnOpen={false} restoreFocus={false}>

@@ -164,7 +164,7 @@ export function Reasoning({ text, live }: { text: string; live: boolean }) {
   return (
     <div className={`ai-reason ${live ? 'live' : ''}`}>
       <button type="button" className="ai-reason-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <span className="ai-pulse" />{live ? 'Groot is thinking…' : 'How Groot approached this'}<Icon name={open ? 'chevronD' : 'chevronR'} size={13} />
+        <span className="ai-pulse" />{live ? 'Aura is thinking…' : 'How Aura approached this'}<Icon name={open ? 'chevronD' : 'chevronR'} size={13} />
       </button>
       {open && <div className="ai-reason-body">{text || 'Working out how to approach this…'}</div>}
     </div>

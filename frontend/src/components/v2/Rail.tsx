@@ -20,7 +20,6 @@ import { inRail, useMainNav, type NavDef } from '../../layouts/navigation';
 import { CreateOrganizationModal } from '../../layouts/parts';
 import { supportMailto } from '../../lib/support';
 import { Sheet } from '../Sheet';
-import { openNew } from './state';
 import { useMailUnread } from '../../features/mail/useMail';
 import { get } from '../../api/client';
 import { Popover } from '../../lib/popover';
@@ -182,7 +181,6 @@ export function Rail() {
         <button type="button" className="v2-rail-logo" aria-label="Home" title="Home" onClick={() => nav(admin ? '/admin' : '/')}><BrandMark size={20} /></button>
         <span className="v2-side-ws-text"><b>{admin ? 'Platform' : ctx?.current?.name ?? 'Workspace'}</b><small>{admin ? 'Administrator' : ctx?.current?.role ?? ''}</small></span>
       </div>
-      {!admin && <button type="button" className="v2-new v2-rail-new" aria-label="New" title="New (N)" onClick={() => openNew()}><Icon name="plus" size={18} /><span className="v2-side-label">New</span></button>}
       <nav className="v2-rail-nav">
         {admin ? places.map((i) => (
           <NavLink key={i.id ?? i.to} to={i.to} end={i.end} className={() => `v2-rail-item ${isOn(i, pathname) ? 'on' : ''}`} aria-current={isOn(i, pathname) ? 'page' : undefined} title={i.hint ?? i.label}>

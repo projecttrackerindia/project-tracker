@@ -101,7 +101,7 @@
 
 /* the page beside the rail */
 .v2-shell > .main.v2-main { margin-left: var(--rail-w); min-height: 100vh; min-width: 0; }
-.v2-shell > .main.v2-main > .content { padding-bottom: 112px; }
+.v2-shell > .main.v2-main > .content { padding-bottom: 128px; }
 
 /* ------------------------------------------------------------------ the phone bar: the five places and + New */
 .v2-phone-bar.m-tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; display: grid; grid-template-columns: repeat(6, 1fr); align-items: center; gap: 0; pointer-events: auto;
@@ -121,24 +121,48 @@
 .v2-place-link { font-size: 14px; font-weight: 500; color: var(--ds-accent); text-decoration: none; padding: 6px 4px; }
 .v2-place-link:hover { text-decoration: underline; }
 
-/* ------------------------------------------------------------------ the Ask bar */
-.v2-ask { position: fixed; z-index: 55; bottom: 22px; left: calc(var(--rail-w, 0px) + (100vw - var(--rail-w, 0px)) / 2); transform: translateX(-50%); width: min(560px, calc(100vw - var(--rail-w, 0px) - 48px));
-  display: flex; align-items: center; gap: 10px; padding: 7px 7px 7px 12px; border-radius: var(--ds-r-pill); background: var(--ds-glass);
-  backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); box-shadow: var(--ds-e3), 0 0 0 1px var(--ds-line); }
-.v2-ask { transition: opacity .2s var(--ds-ease), translate .28s var(--ds-ease); }
-.v2-ask.away:not(:focus-within) { opacity: 0; translate: 0 16px; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .v2-ask { transition: opacity .12s linear; } .v2-ask.away:not(:focus-within) { translate: none; } }
-.v2-ask.corner { left: auto; right: 24px; transform: none; width: auto; padding: 7px 16px 7px 8px; cursor: pointer; border: 0; font: inherit; color: var(--ds-text); font-size: 14px; font-weight: 500; }
-.v2-ask.corner:hover { box-shadow: var(--ds-e4), 0 0 0 1px color-mix(in srgb, var(--ds-violet) 40%, transparent); }
+/* ------------------------------------------------------------------ Aura's dock (AskBar.tsx): bottom centre of every page */
+.aura-dock-wrap { position: fixed; z-index: 55; bottom: 24px; left: calc(var(--rail-w, 0px) + (100vw - var(--rail-w, 0px)) / 2); transform: translateX(-50%);
+  width: min(620px, calc(100vw - var(--rail-w, 0px) - 48px)); display: flex; flex-direction: column; align-items: center; gap: 10px;
+  transition: opacity .2s var(--ds-ease), translate .28s var(--ds-ease); pointer-events: none; }
+.aura-dock-wrap > * { pointer-events: auto; }
+.aura-dock-wrap.away:not(.focused) { opacity: 0; translate: 0 24px; }
+.aura-dock-wrap.away:not(.focused) > * { pointer-events: none; }
+.aura-dock-wrap.chat-open { display: none; }   /* the chat has its own field */
+@media (prefers-reduced-motion: reduce) { .aura-dock-wrap { transition: opacity .12s linear; } .aura-dock-wrap.away:not(.focused) { translate: none; } }
+.v2-ask { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 6px 8px 6px 6px; border-radius: 29px;
+  background: rgba(255, 255, 255, .72); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1), 0 12px 40px rgba(0, 0, 0, .14); }
+html[data-theme='dark'] .v2-ask { background: rgba(44, 44, 46, .72); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .12), 0 12px 40px rgba(0, 0, 0, .5); }
+.v2-ask:focus-within { box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1), 0 0 0 4px rgba(94, 92, 230, .14), 0 12px 40px rgba(0, 0, 0, .16); }
+.aura-dock-orb { width: 46px; height: 46px; border: 0; padding: 0; background: none; display: grid; place-items: center; border-radius: 50%; cursor: pointer; flex: none; }
+.aura-dock-orb:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 .v2-orb { width: 26px; height: 26px; border-radius: 50%; flex: none; background: radial-gradient(circle at 30% 30%, #8E8CF5, var(--ds-violet) 55%, #3A39B8); box-shadow: 0 0 12px -2px color-mix(in srgb, var(--ds-violet) 70%, transparent); }
-.v2-ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 14.5px; color: var(--ds-text); }
+.v2-ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 15px; color: var(--ds-text); }
 .v2-ask input::placeholder { color: var(--ds-text-3); }
-.v2-ask kbd { font: 500 11px/1 inherit; color: var(--ds-text-3); padding: 4px 6px; border-radius: 6px; box-shadow: 0 0 0 1px var(--ds-outline); background: var(--ds-surface); }
-.v2-ask-send { width: 34px; height: 34px; border-radius: 50%; border: 0; display: grid; place-items: center; background: var(--ds-dark); color: var(--ds-on-dark); cursor: pointer; flex: none; }
+.v2-ask kbd { font-family: inherit; font-size: 12px; font-weight: 500; line-height: 1; color: var(--ds-text-2); padding: 4px 7px; border-radius: 6px; background: rgba(118, 118, 128, .12); white-space: nowrap; }
+.v2-ask-send { width: 40px; height: 40px; border-radius: 50%; border: 0; display: grid; place-items: center; background: var(--ds-dark); color: var(--ds-on-dark); cursor: pointer; flex: none; }
 .v2-ask-send:disabled { opacity: .35; cursor: default; }
-.m-shell .v2-ask { --rail-w: 0px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 44; }   /* under full-screen panels (z 50) like the bar */
+.aura-above { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; animation: aura-rise .22s var(--ds-ease) both; }
+@keyframes aura-rise { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .aura-above { animation: none; } }
+.aura-find.gq-pop { position: static; width: min(520px, 100%); }
+.aura-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.aura-chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border: 0; border-radius: 16px; font: inherit; font-size: 13px; color: var(--ds-text); cursor: pointer;
+  background: rgba(255, 255, 255, .85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .08), 0 4px 14px rgba(0, 0, 0, .06); white-space: nowrap; }
+.aura-chip:hover { background: #fff; }
+.aura-chip:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.aura-chip svg { color: var(--ds-text-2); }
+html[data-theme='dark'] .aura-chip { background: rgba(58, 58, 60, .85); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .1), 0 4px 14px rgba(0, 0, 0, .3); }
+/* phone: above the tab bar, full width less the gutters; it steps aside while the page scrolls down */
+.m-shell .aura-dock-wrap { --rail-w: 0px; bottom: calc(var(--m-tab, 62px) + 12px + env(safe-area-inset-bottom)); width: calc(100vw - 32px); z-index: 44; }   /* under full-screen panels (z 50) like the bar */
+.m-shell .v2-ask { min-height: 52px; border-radius: 26px; padding: 5px 6px 5px 5px; }
+.m-shell .aura-dock-orb { width: 40px; height: 40px; }
+.m-shell .v2-ask input { font-size: 16px; }
 .m-shell .v2-ask kbd { display: none; }
-.m-shell .v2-ask.corner { right: 14px; }
+.m-shell .v2-ask-send { width: 36px; height: 36px; }
+.m-shell .aura-chips { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; width: 100%; scrollbar-width: none; padding: 2px; }
+.m-shell .aura-chips::-webkit-scrollbar { display: none; }
 
 /* ------------------------------------------------------------------ the side panel: right, saves as you go, no footer */
 .v2-panel-scrim { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, .12); animation: ds-fade .16s var(--ds-ease) both; }
@@ -165,7 +189,7 @@
   .v2-panel.docked { top: 16px; right: 16px; bottom: 16px; width: min(var(--panel-w, 520px), 42vw); border-radius: var(--ds-r-card); overflow: hidden;
     box-shadow: var(--ds-e3), 0 0 0 1px var(--ds-line); }
   html.v2-panel-docked .v2-shell > .main.v2-main > .content { padding-right: calc(min(var(--v2-docked-w, 520px), 42vw) + 32px); transition: padding-right .22s var(--ds-ease); }
-  html.v2-panel-docked .v2-ask:not(.corner) { left: calc(var(--rail-w, 0px) + (100vw - var(--rail-w, 0px) - min(var(--v2-docked-w, 520px), 42vw) - 16px) / 2);
+  html.v2-panel-docked .aura-dock-wrap { left: calc(var(--rail-w, 0px) + (100vw - var(--rail-w, 0px) - min(var(--v2-docked-w, 520px), 42vw) - 16px) / 2);
     width: min(520px, calc(100vw - var(--rail-w, 0px) - min(var(--v2-docked-w, 520px), 42vw) - 64px)); }
 }
 .m-shell .v2-panel.docked { z-index: 92; }
@@ -303,7 +327,7 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
 @keyframes v2-enter { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .v2-enter { animation: none; } }
 
-/* The toolbar (wide layout): Ask field + "+ New" at the top of the main area; replaces the floating Ask bar and the sidebar's + New. */
+/* The toolbar (wide layout): one quiet line at the top of the main area: the check-in capsule and the bell (Aura's dock does asking and creating). */
 .v2-tb { display: none; }
 /* A page's segmented control portalled into the toolbar (ToolbarSeg): first in the bar, centred on its 52px height. */
 .mw-tbslot { order: -1; display: flex; align-items: center; flex: none; }
@@ -312,19 +336,8 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
   .v2-tb { display: flex; position: sticky; top: 0; z-index: 40; height: 52px; flex: none; align-items: center; gap: 12px; padding: 0 22px;
     background: color-mix(in srgb, var(--ds-bg) 82%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
   .v2-tb-sp { flex: 1; }
-  .v2-tb-ask { display: flex; align-items: center; gap: 8px; height: 30px; width: 280px; padding: 0 10px; border-radius: 9px; background: rgba(118, 118, 128, .12); cursor: text; }
-  .v2-tb-ask:focus-within { background: var(--ds-surface); box-shadow: 0 0 0 3px rgba(0, 113, 227, .18); }
-  .v2-tb-ask .v2-orb { width: 16px; height: 16px; box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1); background: conic-gradient(from 200deg, #5e5ce6, #bf5af2, #ff375f, #ff9f0a, #5e5ce6); }
-  .v2-tb-ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 13px; color: var(--ds-text); padding: 0; letter-spacing: -.01em; }
-  .v2-tb-ask input::placeholder { color: #86868b; }
-  .v2-tb-ask kbd { font: 500 11px/1 inherit; color: #86868b; background: none; box-shadow: none; padding: 0; }
-  .v2-tb-new { height: 30px; padding: 0 14px; border-radius: 15px; border: 0; display: inline-flex; align-items: center; gap: 6px; background: var(--ds-accent-fill); color: #fff;
-    font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
-  .v2-tb-new:hover { background: var(--ds-accent-hover); }
-  .v2-tb-new:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
-  .v2-shell .v2-ask:not(.corner) { display: none; }
   .v2-side .v2-new { display: none; }
-  html .v2-shell > .main.v2-main > .content { padding: 6px 34px 40px; }
+  html .v2-shell > .main.v2-main > .content { padding: 6px 34px 128px; }
 }
 /* Very wide windows: the page keeps a readable width and sits centred; below 1680px it fills the main area edge to edge (34px gutters). */
 @media (min-width: 1680px) {
@@ -348,7 +361,6 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
 .v2-phone-tab.on .v2-phone-ic { background: color-mix(in srgb, var(--ds-accent) 13%, transparent); }   /* the Material 3 pill, quiet enough for iOS too */
 .v2-phone-tab:active .v2-phone-ic { transform: scale(.92); }
 .v2-phone-tab .v2-phone-ic .v2-badge { position: absolute; top: -3px; left: calc(50% + 7px); }
-.m-icon.m-new { background: var(--ds-accent); color: #fff; border-radius: 50%; width: 32px; height: 32px; }
 .v2-more-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 8px; padding: 6px 2px 14px; }
 .v2-more-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0; border: 0; background: none; color: var(--ds-text); font: inherit; font-size: 12px; cursor: pointer; animation: v2-tile-in .35s cubic-bezier(.32, .72, 0, 1) both; }
 .v2-more-tile:nth-child(2) { animation-delay: 30ms; } .v2-more-tile:nth-child(3) { animation-delay: 60ms; } .v2-more-tile:nth-child(4) { animation-delay: 90ms; } .v2-more-tile:nth-child(n+5) { animation-delay: 120ms; }
@@ -365,7 +377,7 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
 /* ------------------------------------------------------------------ phone: nothing hides under the bars */
 /* Pages end above the tab bar, the Ask bar and the home indicator, so the last row can always be scrolled into view. */
 @media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
-  :root { --m-ask: 64px; }
+  :root { --m-ask: 72px; }
   html .m-shell.v2-shell .m-main > .content { padding-bottom: calc(var(--m-tab, 62px) + var(--m-ask) + env(safe-area-inset-bottom, 0px) + 20px); }
   html .m-shell.m-conversation .m-main > .content { padding-bottom: 0; }
   /* toasts and live banners sit just above the Ask bar, never over a page's header */
@@ -373,14 +385,6 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
   html .m-shell.m-conversation .toast-root { bottom: calc(var(--m-tab, 62px) + 72px + env(safe-area-inset-bottom, 0px)) !important; }
   html .m-shell .toast { animation-name: v2-toast-rise; }
   html .m-shell ~ .v2-live, html .v2-live { top: auto; right: 12px; left: 12px; width: auto; bottom: calc(var(--m-tab, 62px) + var(--m-ask) + env(safe-area-inset-bottom, 0px) + 8px); flex-direction: column-reverse; }
-  /* the Ask bar folds into a small pill while the page scrolls down, and opens again on a tap or a scroll up */
-  .m-shell .v2-ask:not(.corner) { transition: width .28s var(--ds-spring), opacity .2s var(--ds-ease), padding .28s var(--ds-spring); }
-  .m-shell .v2-ask.away:not(.corner):not(:focus-within) { opacity: 1; translate: none; pointer-events: auto; width: 92px; padding: 7px 14px 7px 8px; cursor: pointer; }
-  .m-shell .v2-ask.away:not(.corner):not(:focus-within) input,
-  .m-shell .v2-ask.away:not(.corner):not(:focus-within) .v2-ask-send { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-  .v2-ask-pill { display: none; font-size: 14px; font-weight: 600; color: var(--ds-text); }
-  .m-shell .v2-ask.away:not(.corner):not(:focus-within) .v2-ask-pill { display: inline; }
-  .m-shell .v2-ask.corner.away { opacity: 1; translate: none; pointer-events: auto; }
 }
 @keyframes v2-toast-rise { from { transform: translateY(24px) scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -444,3 +448,4 @@ html[data-theme='dark'] .acct-seg i.on { background: #636366; }
 .v2-rail .v2-rail-nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
 .v2-rail .v2-rail-foot { flex: none; }
 .floating.floating-sheet.acct-menu { z-index: 1000; }
+.m-shell.m-thread .aura-dock-wrap { display: none; }   /* a full-screen conversation on a phone (talk.css hides the bars there too) */

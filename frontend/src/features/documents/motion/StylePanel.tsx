@@ -45,7 +45,7 @@ export function StylePanel({ value, body, design, saving, onPreview, onSave, onC
           <button type="button" className="sp-groot" onClick={() => setIdea(suggestVisual(body))}><Icon name="sparkle" size={14} /> Make this page more visual</button>
           {idea && (
             <div className="sp-idea" role="status" data-testid="groot-idea">
-              <b>Groot suggests {PRESETS.find((p) => p.id === idea.style.preset)?.label}{idea.style.animateSections ? ' with sections that rise in' : ''}</b>
+              <b>Aura suggests {PRESETS.find((p) => p.id === idea.style.preset)?.label}{idea.style.animateSections ? ' with sections that rise in' : ''}</b>
               <ul>{idea.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
               <div><button type="button" className="btn btn-primary btn-sm" onClick={() => { set({ ...idea.style, css: s.css }); setIdea(null); }}>Apply</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setIdea(null)}>Not now</button></div>
