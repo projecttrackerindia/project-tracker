@@ -409,7 +409,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var doc = await documents.GetAsync(documentId, ct); // visibility, tenant, project and published-version checks stay in the existing service
         var text = string.Join("\n", doc.Sections.Select(s => s.Title + "\n" + (s.Kind == SectionKind.Table
             ? string.Join("\n", DocumentDiff.ReadTable(s.Content).Item2.Select(row => string.Join(" | ", row)))
-            : string.Join("\n", DocumentDiff.TextLines(s.Content).Select(line => line.Text)))));
+            : string.Join("\n", MotionContent.LinesForAi(s.Content)))));
         var chunk = offset >= text.Length ? "" : text.Substring(offset, Math.Min(4000, text.Length - offset));
         return new AiToolOutcome(JsonSerializer.Serialize(new { doc.Item.Key, doc.Item.Title, doc.Revision, doc.VersionLabel, can_edit = doc.Can.Edit,
             sections = offset == 0 ? doc.Sections.Select(s => new { s.Key, s.Title, kind = s.Kind == SectionKind.Table ? "table" : "text" }) : null, offset, text = chunk,

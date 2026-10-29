@@ -171,7 +171,8 @@ a.ds-row:hover .ds-doc-title b { color: var(--primary); }
 .dv-paper .ProseMirror { font-size: 15px; line-height: 1.75; color: var(--text); }
 .dv-paper .ProseMirror p { margin: 0 0 12px; }
 .dv-paper .ProseMirror p:last-child { margin-bottom: 0; }
-.dv-paper .ProseMirror h1, .dv-paper .ProseMirror h2, .dv-paper .ProseMirror h3, .dv-paper .ProseMirror h4 { all: revert; color: var(--text); letter-spacing: -.01em; line-height: 1.35; font-family: var(--font); }
+/* Not when the document has its own CSS (motion/cssScope.ts): its @scope rules must be able to style the headings. */
+.dv-paper:not(.doc-css-on) .ProseMirror :is(h1, h2, h3, h4) { all: revert; color: var(--text); letter-spacing: -.01em; line-height: 1.35; font-family: var(--font); }
 .dv-paper .ProseMirror h1 { font-size: 20px; font-weight: 650; margin: 24px 0 8px; }
 .dv-paper .ProseMirror h2 { font-size: 17px; font-weight: 650; margin: 22px 0 8px; }
 .dv-paper .ProseMirror h3 { font-size: 15.5px; font-weight: 650; margin: 20px 0 6px; }

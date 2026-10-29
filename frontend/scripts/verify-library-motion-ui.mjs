@@ -67,11 +67,26 @@ const STYLE = { preset: 'editorial', css: '', animateSections: true, sectionTran
 const item = { id: DOC, key: 'DOC-21', number: 21, title: 'Onboarding tour', typeId: 't-PAGE', typeCode: 'PAGE', typeName: 'Page', typeColor: '#4f46e5', typeIcon: 'file', projectId: null, projectKey: null, projectName: null,
   teamId: null, teamName: null, owner: { id: user.id, name: 'Asha Rao' }, status: 'Published', visibility: 'Workspace', classification: 'Internal', tags: [], updatedAt: now, createdAt: now, linkedCount: 0, icon: '🧭', parentId: null, pageOrder: 0 };
 
+// A requirements document (not a Page): sections, one of them tables only, with a style and motion; and a document of tables only.
+const DOC2 = '00000000-0000-0000-0000-00000000d202', DOC3 = '00000000-0000-0000-0000-00000000d203';
+const STYLE2 = { preset: 'editorial', css: 'h2 { color: rgb(220, 38, 38) }', animateSections: true, sectionTransition: 'line' };
+const body2 = (style) => JSON.stringify({ type: 'doc', ...(style ? { attrs: { pageStyle: style } } : {}), content: [
+  p('Northwind rollout covers the north region first, then the coast.', { motion: 'rise', motionDelay: 0, motionDuration: 400 }),
+  { type: 'motionSvg', attrs: { svg: SVG, caption: 'Rollout map' } },
+  p('Support is on call for the first week.'),
+  h2('Milestones'), ...filler(6),
+] });
+const item2 = { ...item, id: DOC2, key: 'BRD-4', number: 4, title: 'Northwind rollout brief', typeId: 't-BRD', typeCode: 'BRD', typeName: 'Requirements', typeColor: '#0e7490', icon: null, visibility: 'Organization' };
+const item3 = { ...item, id: DOC3, key: 'BRD-5', number: 5, title: 'Rollout risk register', typeId: 't-BRD', typeCode: 'BRD', typeName: 'Requirements', typeColor: '#0e7490', icon: null, visibility: 'Organization' };
+const TABLE = JSON.stringify({ columns: ['Risk', 'Owner'], rows: [['Courier delay', 'Ravi Kumar']] });
+const REWRITE = 'Rewritten: the rollout starts in the north and support stays on call.';
+
 const errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 const make = async ({ theme = 'light', edit = true, style = STYLE, design = { customCss: true, sandboxEmbeds: true }, opts = {} } = {}) => {
   const writes = [];
   let current = body(style); let revision = 3;
+  let current2 = body2(STYLE2);
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', ...opts });
   // Only in the app's own window: the embed frames are sealed (no storage), which is the point.
   await ctx.addInitScript((th) => { if (window !== window.top) return; localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', th); localStorage.removeItem('pm_motion_paused'); }, theme);
@@ -91,6 +106,9 @@ const make = async ({ theme = 'light', edit = true, style = STYLE, design = { cu
     const json = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(status < 300 ? { data } : data) });
     const detail = () => ({ item, revision, versionLabel: '1.0', can: { edit, delete: edit, link: edit, share: edit, publish: edit }, publishedLabel: '1.0', hasUnpublishedChanges: false, viewingPublished: !edit,
       sections: [{ key: 'body', title: 'Body', kind: 'RichText', sortOrder: 0, content: current }], maskedCount: 0 });
+    const detail2 = (tablesOnly) => ({ item: tablesOnly ? item3 : item2, revision, versionLabel: '0.3', can: { edit, delete: edit, link: edit, share: edit, publish: edit }, publishedLabel: null, hasUnpublishedChanges: true, viewingPublished: false,
+      sections: tablesOnly ? [{ key: 'risks', title: 'Risks', kind: 'Table', sortOrder: 0, content: TABLE }]
+        : [{ key: 'overview', title: 'Overview', kind: 'RichText', sortOrder: 0, content: current2 }, { key: 'risks', title: 'Risks', kind: 'Table', sortOrder: 1, content: TABLE }], maskedCount: 0 });
     const fm = ep.match(/^\/api\/v1\/documents\/[^/]+\/files\/([^/]+)\/download$/);
     if (fm) {
       const [ct, buf] = fm[1] === F.lottie ? ['application/json', Buffer.from(JSON.stringify(LOTTIE))] : fm[1] === F.video ? ['video/webm', VIDEO] : fm[1] === F.gif ? ['image/gif', GIF] : ['image/png', PNG];
@@ -101,6 +119,16 @@ const make = async ({ theme = 'light', edit = true, style = STYLE, design = { cu
     else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['org.manage', 'projects.view', 'documents.view', ...(edit ? ['documents.edit'] : [])], modules: { projects: 3, documents: 3, work: 3, ai: 3, audit: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { AI_ASSISTANT: 3 } } };
     else if (ep === '/api/v1/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };
     else if (ep === `/api/v1/documents/${DOC}`) data = detail();
+    else if (ep === `/api/v1/documents/${DOC2}` || ep === `/api/v1/documents/${DOC3}`) data = detail2(ep.endsWith(DOC3));
+    else if (ep === `/api/v1/documents/${DOC2}/style` && method === 'PUT') {
+      revision++; const parsed = JSON.parse(current2); parsed.attrs = { pageStyle: reqBody.style }; current2 = JSON.stringify(parsed); data = detail2(false);
+    }
+    else if (ep === `/api/v1/documents/${DOC2}/sections` && method === 'PUT') {
+      // As the server does: the stored style is put back on the text, whatever the editor sent.
+      revision++; const sent = JSON.parse(reqBody.sections.find((x) => x.key === 'overview').content); const style = JSON.parse(current2).attrs; delete sent.attrs; current2 = JSON.stringify({ ...sent, ...(style ? { attrs: style } : {}) });
+      data = detail2(false);
+    }
+    else if (ep === '/api/v1/documents/ai/transform' && method === 'POST') data = { text: REWRITE, blocks: JSON.stringify([{ type: 'paragraph', content: [t(REWRITE)] }]), model: 'preview', inline: false };
     else if (ep === `/api/v1/documents/${DOC}/style` && method === 'PUT') {
       const s = reqBody.style; revision++;
       const parsed = JSON.parse(current); parsed.attrs = { pageStyle: s }; current = JSON.stringify(parsed);
@@ -110,7 +138,8 @@ const make = async ({ theme = 'light', edit = true, style = STYLE, design = { cu
     else if (ep === '/api/v1/documents/library-design') { if (method === 'PUT') Object.assign(design, { customCss: reqBody.customCss, sandboxEmbeds: reqBody.sandboxEmbeds }); data = { ...design, canManage: true }; }
     else if (ep === `/api/v1/documents/${DOC}/files`) data = [{ id: F.lottie, fileName: 'request-flow.json', contentType: 'application/json', sizeBytes: 2400, isImage: false, uploadedBy: null, createdAt: now, canDelete: true }];
     else if (ep === '/api/v1/doctracker/catalog') data = { projects: [{ id: null, key: null, name: 'General', endpoints: [], definitions: [], documents: [{ ...item }], diagrams: 0 }], canCreate: true, isAdmin: true, truncated: 0 };
-    else if (ep === '/api/v1/document-types') data = [{ id: 't-PAGE', code: 'PAGE', name: 'Page', description: null, icon: 'file', color: '#4f46e5', sections: [{ key: 'body', title: 'Body', kind: 'RichText', sortOrder: 0 }], sortOrder: 0 }];
+    else if (ep === '/api/v1/document-types') data = [{ id: 't-PAGE', code: 'PAGE', name: 'Page', description: null, icon: 'file', color: '#4f46e5', sections: [{ key: 'body', title: 'Body', kind: 'RichText', sortOrder: 0 }], sortOrder: 0 },
+      { id: 't-BRD', code: 'BRD', name: 'Requirements', description: null, icon: 'file', color: '#0e7490', sections: [{ key: 'overview', title: 'Overview', kind: 'RichText', sortOrder: 0 }, { key: 'risks', title: 'Risks', kind: 'Table', sortOrder: 1 }], sortOrder: 1 }];
     else if (/^\/api\/v1\/documents\/[^/]+\/api$/.test(ep)) data = { definitions: [], endpoints: [] };
     else if (ep.endsWith('/review')) data = { workflowApplies: false, steps: [] };
     else if (ep.endsWith('/freshness')) data = { verifiedAt: null, verifiedBy: null, staleSince: null, staleReason: null, lastEditedAt: now };
@@ -129,7 +158,7 @@ const make = async ({ theme = 'light', edit = true, style = STYLE, design = { cu
   // Playwright's own service-worker blocking reads navigator.serviceWorker in every frame; in a sealed frame that read throws (more proof
   // the frame has no same-origin access), so that one message is not an app error.
   page.on('pageerror', (e) => { if (/Service worker is disabled because the context is sandboxed/.test(e.message)) return; errors.push(e.message); });
-  return { ctx, page, writes, design };
+  return { ctx, page, writes, design, stored2: () => current2 };
 };
 const shot = async (page, name) => { await page.waitForTimeout(300); await page.screenshot({ path: path.join(out, name) }); };
 const open = async (page) => { await page.goto(`${origin}/preview-org/documents/${DOC}`); await page.locator('.pg-body .ProseMirror').waitFor(); };
@@ -346,6 +375,109 @@ try {
     checks.push('dark');
     await ctx.close();
   }
+
+  // ---- 7. A document that is not a Page: style and motion work the same, AI rewrites keep them, a tables-only one says why it has no style.
+  {
+    const { ctx, page, writes, stored2 } = await make();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${origin}/preview-org/documents/${DOC2}`);
+    const art = page.locator('article.dv-paper');
+    await page.locator('article.dv-paper .ProseMirror').first().waitFor();
+    assert.equal(await art.getAttribute('data-doc'), DOC2);
+    assert.equal(await art.getAttribute('data-preset'), 'editorial');
+    assert.match(await page.locator('style[data-page-css]').evaluate((e) => e.textContent), new RegExp(`@scope \\(\\.doc-scope\\[data-doc="${DOC2}"\\]\\) to \\(\\[data-embed-guard\\]\\)`));
+    assert.equal(await color(page.locator('article.dv-paper .ProseMirror h2').first()), 'rgb(220, 38, 38)', 'the document CSS styles its text');
+    assert.notEqual(await color(page.locator('.rd-title').first()), 'rgb(220, 38, 38)', 'and nothing outside it');
+    assert.notEqual(await page.locator('.doc-section > h3').first().evaluate((e) => getComputedStyle(e).color), 'rgb(255, 0, 0)');
+    await page.waitForFunction(() => document.querySelector('article.dv-paper')?.classList.contains('mo-armed'));
+    assert.ok(await page.locator('article.dv-paper .ProseMirror > h2.mo-sec').count() >= 1, 'section transitions in a document with sections');
+    const last = page.locator('article.dv-paper .ProseMirror > p').last();
+    assert.equal(await last.evaluate((e) => getComputedStyle(e).opacity), '0', 'blocks below the fold wait to rise in');
+    await last.scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => { const ps = document.querySelectorAll('article.dv-paper .ProseMirror > p'); return ps[ps.length - 1].classList.contains('mo-in'); });
+    assert.match(await page.locator('article.dv-paper .mo-svg img').first().getAttribute('src'), /^data:image\/svg\+xml/);
+    assert.equal(await page.locator('article.dv-paper .mo-svg[data-embed-guard], article.dv-paper [data-embed-guard] .mo-svg, article.dv-paper [data-embed-guard]').count() > 0, true, 'the motion block is guarded from the CSS');
+    await page.getByRole('button', { name: 'Pause motion' }).click();
+    assert.ok(await art.evaluate((e) => e.classList.contains('mo-paused')));
+    await page.getByRole('button', { name: 'Play motion' }).click();
+    await page.emulateMedia({ media: 'print' });
+    assert.equal(await page.locator('article.dv-paper .ProseMirror > p').nth(3).evaluate((e) => getComputedStyle(e).opacity), '1', 'nothing is hidden in print');
+    await page.emulateMedia({ media: 'screen' });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await shot(page, 'document-styled-1440.png');
+    checks.push('non-page-style-motion');
+
+    // The Style panel on a document with sections.
+    await page.getByTestId('style-btn').click();
+    const panel = page.getByTestId('style-panel');
+    await panel.waitFor();
+    await panel.getByRole('radio', { name: /Product/ }).click();
+    assert.equal(await art.getAttribute('data-preset'), 'product');
+    await panel.getByRole('button', { name: 'Save style' }).click();
+    await page.waitForFunction(() => document.body.innerText.includes('Style saved'));
+    assert.equal(writes.find((w) => w.ep === `/api/v1/documents/${DOC2}/style`).body.style.preset, 'product');
+    await panel.getByRole('button', { name: 'Close style' }).click();
+    checks.push('non-page-style-saved');
+
+    // AI rewrite of a selection that spans the motion block: the block and the first block's motion stay, so does the style.
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    await page.getByTestId('edit-toolbar').waitFor();
+    await page.locator('article.dv-paper .ProseMirror[contenteditable="true"]').first().waitFor();
+    await page.evaluate(() => {
+      const ed = document.querySelector('article.dv-paper .ProseMirror').editor;
+      let end = 0; ed.state.doc.forEach((n, pos, i) => { if (i === 2) end = pos + n.nodeSize - 1; });
+      ed.chain().focus().setTextSelection({ from: 1, to: end }).run();
+    });
+    await page.locator('.rte-ai').click();
+    await page.getByRole('menuitem', { name: 'Rewrite' }).click();
+    await page.getByRole('button', { name: 'Replace' }).click();
+    const pm = page.locator('article.dv-paper .ProseMirror').first();
+    await page.waitForFunction((txt) => document.querySelector('article.dv-paper .ProseMirror').innerText.includes(txt), REWRITE);
+    assert.equal(await pm.locator('.mo-svg').count(), 1, 'the motion block survived the rewrite');
+    assert.equal(await pm.locator('> p').first().getAttribute('data-motion'), 'rise', 'the first block kept its motion');
+    await page.getByTestId('edit-toolbar').getByRole('button', { name: /^Save/ }).click();
+    await page.waitForFunction(() => document.body.innerText.includes('Saved.'));
+    const sent = JSON.parse(writes.filter((w) => w.ep === `/api/v1/documents/${DOC2}/sections`).pop().body.sections.find((x) => x.key === 'overview').content);
+    assert.ok(sent.content.some((b) => b.type === 'motionSvg' && b.attrs.caption === 'Rollout map'), 'the saved text keeps the motion block');
+    assert.equal(sent.content[0].attrs.motion, 'rise');
+    assert.ok(JSON.stringify(sent).includes(REWRITE));
+    assert.equal(JSON.parse(stored2()).attrs.pageStyle.preset, 'product', 'the style is still on the document');
+    await page.getByTestId('edit-toolbar').getByRole('button', { name: 'Done' }).click();
+    assert.equal(await art.getAttribute('data-preset'), 'product');
+    await shot(page, 'document-ai-rewrite-1440.png');
+    checks.push('non-page-ai-rewrite-keeps-motion');
+
+    // Tables only: the Style panel says why there is nothing to style.
+    await page.goto(`${origin}/preview-org/documents/${DOC3}`);
+    await page.getByTestId('style-btn').click();
+    assert.match(await page.getByTestId('style-unavailable').innerText(), /only tables/);
+    assert.equal(await page.getByRole('button', { name: 'Save style' }).count(), 0);
+    await shot(page, 'document-tables-only-1440.png');
+    checks.push('style-unavailable');
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await make({ edit: false, opts: { reducedMotion: 'reduce' } });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${origin}/preview-org/documents/${DOC2}`);
+    await page.locator('article.dv-paper .ProseMirror').first().waitFor();
+    await page.waitForTimeout(400);
+    assert.equal(await page.locator('article.dv-paper').evaluate((e) => e.classList.contains('mo-armed')), false, 'not armed with reduced motion');
+    checks.push('non-page-reduced-motion');
+    await ctx.close();
+  }
+  for (const theme of ['light', 'dark']) {
+    const { ctx, page } = await make({ theme, opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true } });
+    await page.goto(`${origin}/preview-org/documents/${DOC2}`);
+    await page.locator('article.dv-paper .ProseMirror').first().waitFor();
+    await fitsPhone(page, `document ${theme}`, assert);
+    await page.getByTestId('style-btn').click();
+    await page.getByTestId('style-panel').waitFor();
+    await fitsPhone(page, `document style sheet ${theme}`, assert);
+    await shot(page, `document-style-390-${theme}.png`);
+    await ctx.close();
+  }
+  checks.push('non-page-phone');
 
   // ---- 6. Phone: the reader and the Style panel as a bottom sheet.
   for (const theme of ['light', 'dark']) {
