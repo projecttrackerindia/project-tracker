@@ -22,7 +22,7 @@ namespace ProjectManagement.Application.Features.WorkItems;
 public record WorkItemRowDto(string Kind, Guid Id, string Key, string Title, Guid? ProjectId, string? ProjectKey, string? ProjectName, string Status,
     StatusCategory Category, Priority Priority, DateOnly? DueDate, bool IsOverdue, UserRefDto? Assignee, string? TypeName, DateTime UpdatedAt,
     DateTime? SlaStartAt = null, DateTime? SlaDueAt = null, string? SlaState = null, int Version = 0, DateTime? CompletedAt = null, Guid? ReporterId = null,
-    TimeOnly? DueTime = null, DateTime? DueAt = null, bool DueFromSla = false);
+    TimeOnly? DueTime = null, DateTime? DueAt = null, bool DueFromSla = false, WorkSourceDto? Source = null);
 
 public record WorkItemPageDto(IReadOnlyList<WorkItemRowDto> Items, int Offset, int Limit, bool HasMore);
 
@@ -41,7 +41,7 @@ public record WorkActivityItemDto(string Type, Guid Id, DateTime At, UserRefDto?
 public record WorkItemDetailDto(string Kind, Guid Id, string Key, string Title, string? Description, Guid? ProjectId, string? ProjectKey, string? ProjectName,
     string Status, StatusCategory Category, Priority Priority, DateOnly? StartDate, DateOnly? DueDate, bool IsOverdue, UserRefDto? Assignee, UserRefDto? Reporter,
     int Version, DateTime CreatedAt, DateTime? UpdatedAt, DateTime? CompletedAt, int LoggedMinutes, object Detail, IReadOnlyList<WorkActivityItemDto> Activity,
-    string? Channel = null, TimeOnly? DueTime = null, DateTime? DueAt = null, bool DueFromSla = false);
+    string? Channel = null, TimeOnly? DueTime = null, DateTime? DueAt = null, bool DueFromSla = false, WorkSourceDto? Source = null);
 
 /// <summary>
 /// + New: one request for every kind. Task: project and title (status, stage, estimate, parent, milestone, labels optional). Issue:
@@ -108,7 +108,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
     /// </summary>
     /// <param name="raisedByMe">Only work the caller raised (reporter), whoever it is assigned to - My Work's "Raised by me".</param>
     public async Task<WorkItemPageDto> ListAsync(string? kind, bool mine, string? team, Guid? assigneeId, Guid? projectId, string? status, bool overdue,
-        string? q, int offset, int limit, CancellationToken ct = default, bool raisedByMe = false)
+        string? q, int offset, int limit, CancellationToken ct = default, bool raisedByMe = false, bool fromMeetings = false, string? sourceSeries = null)
     {
         ctx.RequireTenantId();
         limit = Math.Clamp(limit <= 0 ? 50 : limit, 1, MaxPage);
@@ -128,7 +128,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
         }
         var rows = await items.ListAsync(new WorkItemQuery(ParseKinds(kind), AssigneeId: assigneeId, Mine: mine, OpenOnly: category is null, ProjectId: projectId,
             Overdue: overdue, Q: q, Limit: offset + limit + 1, AssigneeIds: people,
-            ReporterId: raisedByMe ? ctx.RequireUserId() : null), ct: ct);
+            ReporterId: raisedByMe ? ctx.RequireUserId() : null, FromMeetings: fromMeetings, SourceSeries: string.IsNullOrWhiteSpace(sourceSeries) ? null : sourceSeries.Trim()), ct: ct);
         IEnumerable<WorkItemDto> filtered = rows;
         if (category is { Length: > 0 } cats) filtered = filtered.Where(r => cats.Contains(r.Category));
         var list = filtered.ToList();
@@ -171,7 +171,8 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
     };
 
     private static WorkItemRowDto ToRow(WorkItemDto r) => new(NameOf(r.Kind), r.Id, r.Key, r.Title, r.ProjectId, r.ProjectKey, r.ProjectName, r.Status, r.Category,
-        r.Priority, r.DueDate, r.IsOverdue, r.Assignee, r.TypeName, r.UpdatedAt, Version: r.Version, CompletedAt: r.CompletedAt, ReporterId: r.ReporterId, DueTime: r.DueTime);
+        r.Priority, r.DueDate, r.IsOverdue, r.Assignee, r.TypeName, r.UpdatedAt, Version: r.Version, CompletedAt: r.CompletedAt, ReporterId: r.ReporterId, DueTime: r.DueTime,
+        Source: r.Source);
 
     // ------------------------------------------------------------------ one item
 
@@ -258,7 +259,8 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
         var (dueAt, fromSla) = item is WorkTask wt ? tickets.DueOf(wt) : (clock.DueAt(item.DueDate, item.DueTime), false);
         var open = dto.Category is StatusCategory.Todo or StatusCategory.Active;
         return dto with { Activity = activity, LoggedMinutes = logged, IsOverdue = dto.IsOverdue || (open && clock.IsPastDue(dto.DueDate, dueTime)),
-            DueTime = dueTime, DueAt = dueAt, DueFromSla = fromSla };
+            DueTime = dueTime, DueAt = dueAt, DueFromSla = fromSla,
+            Source = WorkItemService.Source(item.SourceMeetingRef, item.SourceSeriesRef, item.SourceMeetingTitle, item.SourceOccurrenceStartUtc, item.LatestNote, item.LastUpdateAt) };
     }
 
     /// <summary>Where a ticket came from: a WhatsApp chat or a call that raised it, an incoming webhook, an e-mail to the work mailbox, else the app.</summary>

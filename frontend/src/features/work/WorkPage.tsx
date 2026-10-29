@@ -19,6 +19,8 @@ import { AutomationsPage } from './Automations';
 import { WorkItemPanel } from './WorkItemPanel';
 import { WorkList } from './WorkList';
 import { MyWork } from './MyWork';
+import { MyActionItems } from '../meet/MyActionItems';
+import { openSchedule } from '../meet/scheduleStore';
 import { ProjectWorkTab } from './ProjectWorkTab';
 import { WorkTasksPage, type OpsView } from './WorkTasksPage';
 import { useWorkKinds, useWorkList } from './workUi';
@@ -115,6 +117,8 @@ export function WorkPage() {
     { label: 'Capacity & cost', icon: 'gauge', hint: 'Logged time against capacity', hidden: !seesWorkload, onSelect: () => go({ s: 'capacity', item: null }) },
   ] : [
     { label: 'New task', icon: 'plus', onSelect: () => openNew('task') },
+    { label: 'Schedule a meeting', icon: 'calendar', onSelect: () => openSchedule({}) },
+    { label: 'My action items', icon: 'checkCircle', hint: 'Your items from meetings, to update before the meeting', onSelect: () => go({ view: 'actions' }) },
     { label: 'Only what is overdue', icon: 'alert', hidden: overdue, onSelect: () => go({ overdue: '1' }) },
   ];
 
@@ -158,6 +162,7 @@ export function WorkPage() {
           <option value="mine">My teams</option>{teams.data!.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select></label>
     ) : null;
+  if (tab === 'mine' && params.get('view') === 'actions') return <div className="wk wk-mine">{seg}<MyActionItems />{panel}</div>;
   if (tab === 'mine' && !overdue) return <div className="wk wk-mine">{seg}<MyWork onOpen={open} />{panel}</div>;
   const body = tab === 'automations' ? <AutomationsPage /> : (
       <>

@@ -23,7 +23,7 @@ namespace ProjectManagement.Application.Features.Ai;
 /// billing, security settings, revealing secrets) are never proposed: <see cref="ManualOnly"/> answers with where to do them by hand.
 /// </summary>
 public class AiPowerTools(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access, TimeService time,
-    AttendanceService attendance, IssueService issues, MeetingService meetings, QualityService quality, DocumentWorkflowService workflows)
+    AttendanceService attendance, IssueService issues, MeetingService meetings, QualityService quality, DocumentWorkflowService workflows, MeetConnectService connect)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
 
@@ -31,14 +31,15 @@ public class AiPowerTools(IAppDbContext db, ICurrentContext ctx, AppClock clock,
     public const string AddComment = "propose_add_comment", ReportIssue = "propose_report_issue", UpdateIssue = "propose_update_issue",
         EditTimeEntry = "propose_edit_time_entry", CheckIn = "propose_check_in", CheckOut = "propose_check_out",
         RescheduleMeeting = "propose_reschedule_meeting", UpdateMeeting = "propose_update_meeting",
-        CreateTestCase = "propose_create_test_case", RecordTestResult = "propose_record_test_result", DecideReview = "propose_decide_document_review";
+        CreateTestCase = "propose_create_test_case", RecordTestResult = "propose_record_test_result", DecideReview = "propose_decide_document_review",
+        CaptureActionItem = "propose_capture_action_item";
 
     public static readonly string[] ReadTools = [ListMyTimeEntries, ListApprovals, ManualOnly];
-    public static readonly string[] WriteTools = [AddComment, ReportIssue, UpdateIssue, EditTimeEntry, CheckIn, CheckOut, RescheduleMeeting, UpdateMeeting, CreateTestCase, RecordTestResult, DecideReview];
+    public static readonly string[] WriteTools = [AddComment, ReportIssue, UpdateIssue, EditTimeEntry, CheckIn, CheckOut, RescheduleMeeting, UpdateMeeting, CreateTestCase, RecordTestResult, DecideReview, CaptureActionItem];
 
     /// <summary>The proposal kinds carried out by <see cref="AiPowerActions"/>.</summary>
     public static readonly string[] Kinds = ["add_comment", "create_issue", "update_issue", "update_time_entry", "check_in", "check_out", "reschedule_meeting", "update_meeting",
-        "create_test_case", "record_test_result", "decide_document_review"];
+        "create_test_case", "record_test_result", "decide_document_review", "capture_action_item"];
 
     /// <summary>Things the assistant never does, with where the person does them by hand.</summary>
     public static readonly IReadOnlyDictionary<string, (string What, string Link)> Manual = new Dictionary<string, (string, string)>
@@ -84,6 +85,8 @@ public class AiPowerTools(IAppDbContext db, ICurrentContext ctx, AppClock clock,
             """{"type":"object","properties":{"title":{"type":"string","maxLength":200},"steps":{"type":"string","maxLength":8000},"expected":{"type":"string","maxLength":2000},"priority":{"type":"string","enum":["Low","Medium","High","Critical"]},"project":{"type":"string","maxLength":200}},"required":["title"]}""");
         yield return new AiToolDef(RecordTestResult, "Propose recording how a test case went in a test run (Pass, Fail, Blocked or NotRun) with what actually happened. The person confirms first.",
             """{"type":"object","properties":{"run_id":{"type":"string","format":"uuid"},"case_id":{"type":"string","format":"uuid"},"status":{"type":"string","enum":["Pass","Fail","Blocked","NotRun"]},"actual":{"type":"string","maxLength":2000}},"required":["run_id","case_id","status"]}""");
+        yield return new AiToolDef(CaptureActionItem, "Propose capturing an action item agreed in a meeting (an id from list_project_meetings): one line like \"Confirm the bank sandbox date @Ravi fri\" - the text, @owner and a due word (today, tomorrow, fri, 7 nov, +3d), read the same way as the meeting page's capture line. It becomes a work item in the meeting's project with the meeting as its source. The person confirms first.",
+            """{"type":"object","properties":{"meeting_id":{"type":"string","format":"uuid"},"line":{"type":"string","maxLength":300}},"required":["meeting_id","line"]}""");
         yield return new AiToolDef(DecideReview, "Propose approving a document review or requesting changes, where the person is the approver of the current step (a document id from list_my_approvals). A comment is required to request changes. The person confirms first.",
             """{"type":"object","properties":{"document_id":{"type":"string","format":"uuid"},"decision":{"type":"string","enum":["approve","request_changes"]},"comment":{"type":"string","maxLength":2000}},"required":["document_id","decision"]}""");
     }
@@ -109,6 +112,7 @@ public class AiPowerTools(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         CreateTestCase => await ProposeTestCaseAsync(a, project, ct),
         RecordTestResult => await ProposeTestResultAsync(a, ct),
         DecideReview => await ProposeReviewDecisionAsync(a, ct),
+        CaptureActionItem => await ProposeCaptureAsync(a, ct),
         _ => null,
     };
 
@@ -277,6 +281,22 @@ public class AiPowerTools(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         var start = new DateTimeOffset(startUtc, TimeSpan.Zero);
         return AiToolbox.Propose("reschedule_meeting", $"Reschedule “{Cut(m.Title, 80)}”", $"To {local:ddd d MMM yyyy, HH:mm} ({zone}), {minutes} minutes · attendees are told",
             new { meetingId = m.Id, startTime = start, endTime = start.AddMinutes(minutes), beforeStart = m.StartTime, beforeEnd = m.EndTime });
+    }
+
+    /// <summary>Plan: the line read as the capture line reads it (title, owner, due), shown on the card; nothing is made until Confirm.</summary>
+    private async Task<AiToolOutcome> ProposeCaptureAsync(JsonElement a, CancellationToken ct)
+    {
+        var (m, _) = await VisibleMeetingAsync(a, ct);
+        var line = Str(a, "line") ?? throw new AiToolException("Give the action item as one line: what, @owner and when.");
+        var meetingRef = MeetingSessions.Ref(false, m.Id);
+        CapturePreviewDto preview;
+        try { preview = await connect.PreviewAsync(meetingRef, new CaptureActionItemRequest(line), ct); }
+        catch (ProjectManagement.Application.Exceptions.AppException ex) { throw new AiToolException(ex.Message); }
+        if (preview.Title.Length == 0) throw new AiToolException("Say what needs doing.");
+        if (preview.OwnerAmbiguous) throw new AiToolException($"More than one person matches @{preview.OwnerToken}; ask which one.");
+        if (preview.OwnerToken is not null && preview.Owner is null) throw new AiToolException($"Nobody on the project matches @{preview.OwnerToken}; ask who it is for.");
+        var summary = string.Join(" · ", new[] { preview.Owner is { } o ? $"owner {o.Name}" : "no owner yet", preview.Due is { } d ? $"due {d:ddd d MMM}" : "no due date", $"from “{Cut(m.Title, 60)}”" });
+        return AiToolbox.Propose("capture_action_item", $"Action item “{Cut(preview.Title, 80)}”", summary, new { meetingRef, text = line, assigneeId = preview.Owner?.Id, dueDate = preview.Due });
     }
 
     private async Task<AiToolOutcome> ProposeMeetingDetailsAsync(JsonElement a, CancellationToken ct)

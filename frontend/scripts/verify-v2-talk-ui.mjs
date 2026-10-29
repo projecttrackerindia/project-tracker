@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
-// Talk (v2, s-talk): chats and meetings in one list with All · Unread · Chats · Meetings (mail has its own place) and a source glyph per row, meetings and
+// Talk (v2, s-talk): chats in one list with All · Unread · Chats (meetings and mail have their own places) and a source glyph per row, meetings and
 // channels as rounded squares, the "Connect your mailbox" banner, a chat thread with members, call and ⓘ, the pinned "While you were away"
 // card (now an inline chip, see verify-messages-apple-ui), actions BESIDE the bubble (Make task · Remind me · ↩ · ···), "Message …" with Draft reply, and a meeting opening in the same pane. 1440 light and dark, and a 390 phone. Synthetic API only.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist');
@@ -99,16 +99,15 @@ try {
   assert.ok(new URL(page.url()).pathname.endsWith('/preview-org/messages'), `the old /talk address lands on /messages: ${page.url()}`);
   assert.equal(await page.locator('.talk-shell h1.sr-only').innerText(), 'Messages');
   checks.push('talk-renamed-messages');
-  await page.locator('.talk-row[data-row="Daily status call"]').waitFor();
-  assert.deepEqual(await page.locator('.talk-filters .talk-chip').allInnerTexts(), ['All', 'Unread 1', 'Chats', 'Meetings']);
+  await page.locator('.talk-row[data-row="Devraj Kumar"]').waitFor();
+  // Chats only: meetings have their own place (/meetings), so no Meetings filter and no meeting rows even when the feed has one.
+  assert.deepEqual(await page.locator('.talk-filters .talk-chip').allInnerTexts(), ['All', 'Unread 1', 'Chats']);
+  assert.equal(await page.locator('.talk-row[data-row="Daily status call"]').count(), 0, 'no meeting rows in Messages');
+  assert.equal(await page.locator('.talk-src.s-meeting').count(), 0, 'no ▶ meeting badges in Messages');
   assert.ok(await page.getByRole('textbox', { name: 'Search Messages' }).isVisible(), 'search at the top of the list');
-  assert.equal(await page.locator('.talk-row.k-meeting .talk-src').count(), await page.locator('.talk-row.k-meeting').count(), 'a ▶ badge on every meeting');
-  assert.equal(await page.locator('.talk-row.k-meeting .talk-src.s-presence').count(), 0, 'presence only on people');
   assert.equal(await page.locator('.talk-row[data-row="MuleSoft Support"] .talk-dot').count(), 1, 'an unread dot');
-  // the meeting is a rounded square, people are round
+  // people are round, groups a rounded square
   const radius = async (sel) => page.locator(sel).first().evaluate((e) => parseFloat(getComputedStyle(e).borderTopLeftRadius));
-  const sq = await radius('.talk-row[data-row="Daily status call"] .talk-av');
-  assert.ok(sq > 4 && sq < 20, `meeting avatar is a rounded square (${sq}px)`);
   assert.ok(await radius('.talk-row[data-row="Devraj Kumar"] .talk-av') >= 19, 'a person is round');
   const ch = await radius('.talk-row[data-row="MuleSoft Support"] .talk-av');
   assert.ok(ch > 4 && ch < 20, `a group is a rounded square with # (${ch}px)`);
@@ -117,16 +116,16 @@ try {
   checks.push('one-list');
   await shot(page, 'list-1440-light.png');
 
-  await page.locator('.talk-filters .talk-chip', { hasText: 'Meetings' }).click();
-  await page.waitForFunction(() => location.search.includes('f=meetings'));
-  await page.waitForFunction(() => document.querySelectorAll('.talk-rows .talk-row').length === 1);   // the others glide out
-  assert.deepEqual(await page.locator('.talk-rows .talk-row').evaluateAll((els) => els.map((e) => e.getAttribute('data-row'))), ['Daily status call']);
-  // Mail moved out of Talk: the old Mail filter address opens Mail, and Talk asks only for chats and meetings.
+  // The old Meetings filter address opens Meetings, its own place.
+  await page.goto(`${origin}/preview-org/talk?f=meetings`);
+  await page.waitForURL(/\/meetings$/);
+  await page.locator('.v2-rail-item.on', { hasText: 'Meetings' }).waitFor();
+  // Mail moved out of Talk: the old Mail filter address opens Mail, and Talk asks only for chats.
   assert.ok(talkFilters.length > 0 && talkFilters.every((f) => f === 'talk'), `Talk asks for f=talk: ${talkFilters}`);
   await page.goto(`${origin}/preview-org/talk?f=mail`);
   await page.waitForURL(/\/mail$/);
   await page.goto(`${origin}/preview-org/talk`);
-  await page.locator('.talk-row[data-row="Daily status call"]').waitFor();
+  await page.locator('.talk-row[data-row="Devraj Kumar"]').waitFor();
   checks.push('no-mail');
   await page.locator('.talk-filters .talk-chip', { hasText: 'All' }).click();
   checks.push('filters');
@@ -176,13 +175,14 @@ try {
   await page.mouse.click(5, 5);
   checks.push('actions-beside-bubble');
 
-  // A meeting opens in the same pane.
-  await page.locator('.talk-row[data-row="Daily status call"]').click();
-  await page.locator('.mt-inline').waitFor();
-  await page.locator('.mt-inline-title h2', { hasText: 'Daily status call' }).waitFor();
-  await page.locator('.mt-inline').getByText('Blockers and today').waitFor();
+  // A meeting link from before (Messages ?meeting=) opens the meeting in Meetings.
+  await page.goto(`${origin}/preview-org/messages?meeting=p:${meetingId}`);
+  await page.waitForURL(/\/meetings\?open=p(:|%3A)/);
+  const md = page.getByRole('dialog');
+  await md.getByRole('heading', { name: 'Daily status call' }).waitFor();
+  await md.getByText('Blockers and today').waitFor();
   await shot(page, 'meeting-1440-light.png');
-  checks.push('meeting-in-pane');
+  checks.push('meeting-in-meetings');
   assert.deepEqual(errors, []);
   await ctx.close();
 

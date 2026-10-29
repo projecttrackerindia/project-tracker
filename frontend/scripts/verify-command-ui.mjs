@@ -205,7 +205,7 @@ try{
    dialog=page.getByRole('dialog');await dialog.getByRole('radio',{name:/On track/}).waitFor();
    await shot(page,'checkin-390.png');await noOverflow(page,'check-in 390');
    await page.keyboard.press('Escape');await dialog.waitFor({state:'detached'});
-   await page.goto(origin+'/preview-org/meet/upcoming');await page.getByRole('button',{name:'Schedule',exact:true}).waitFor();   // v2: Talk › all meetings
+   await page.goto(origin+'/preview-org/meet/upcoming');await page.getByRole('button',{name:'Schedule meeting',exact:true}).waitFor();   // Meetings, its own place
    await shot(page,'meet-390.png',true);await noOverflow(page,'meet 390');
    await page.goto(origin+'/preview-org/command-center?tab=today');await page.locator('[data-attention]').first().waitFor();
    await page.getByRole('button',{name:/What if/}).click();

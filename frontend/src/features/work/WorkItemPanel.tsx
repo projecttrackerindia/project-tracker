@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { FromMeetingCard } from '../meet/MeetingWork';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, download, uploadFile } from '../../api/client';
 import { projectApi, workApi, workspaceApi } from '../../api/endpoints';
@@ -211,6 +212,7 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
         </div>
       )}
       {w.kind === 'ticket' && w.priority === 'Critical' && (w.category === 'Todo' || w.category === 'Active') && <IncidentStrip w={w} />}
+      {w.source?.meetingRef && <FromMeetingCard source={w.source} createdBy={w.reporter?.name} />}
       <div className="wkp-tiles">
         <Tile label="Status" value={w.status} tone={w.category === 'Done' ? 'done' : w.category === 'Active' ? 'active' : undefined} disabled={!editable}>
           <select aria-label="Status" value={current} onChange={(e) => setStatus(e.target.value)} disabled={!editable}>

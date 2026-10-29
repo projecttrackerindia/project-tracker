@@ -105,7 +105,7 @@ export function lanes(list: { key: string; start: number; end: number }[]) {
 }
 
 export const hrefOf = (e: CalendarEvent) => (e.type === 'meeting'
-  ? `/messages?f=meetings&meeting=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`
+  ? `/meetings?open=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`
   : isWorkItem(e) ? `/work?item=${e.id}` : e.projectId ? `/work/projects/${e.projectId}` : '/work/projects');
 
 // ------------------------------------------------------------------------------------------------------------------------ what a click opens

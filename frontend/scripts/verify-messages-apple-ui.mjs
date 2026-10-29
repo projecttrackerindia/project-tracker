@@ -131,7 +131,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${origin}/preview-org/messages`);
   await page.locator('.talk-row[data-row="Lena Park"]').waitFor();
-  assert.equal(await page.locator('.talk-seg .talk-chip').count(), 4, 'a compact segmented filter');
+  assert.equal(await page.locator('.talk-seg .talk-chip').count(), 3, 'a compact segmented filter: All · Unread · Chats (meetings have their own place)');
   assert.equal(await page.locator('.talk-row[data-row="Lena Park"] .talk-dot').count(), 1, 'the blue unread dot');
   assert.equal(await bg(page.locator('.talk-row[data-row="Lena Park"] .talk-dot')), 'rgb(10, 132, 255)');
   assert.equal(await page.locator('.v2-tb-new, .v2-rail-new').count(), 0, 'no + New in Messages');

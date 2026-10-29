@@ -352,7 +352,7 @@ try {
   await page.getByRole('button', { name: 'More on this project' }).click();
   const more = page.getByRole('menu', { name: 'More on this project' });
   const items = await more.getByRole('menuitem').locator('b').allInnerTexts();
-  assert.deepEqual(items.slice(0, 5), ['Add work', 'Meet', 'Chat', 'Settings', 'Delay risk'], items.join(', '));
+  assert.deepEqual(items.slice(0, 5), ['Add work', 'Meet', 'Schedule a meeting', 'Chat', 'Settings'], items.join(', '));
   for (const want of ['Edit details', 'Import tasks from CSV', 'Delete project']) assert.ok(items.includes(want), `··· has ${want}`);
   await more.getByRole('menuitem', { name: /^Settings/ }).click();
   await page.getByRole('dialog').waitFor(); assert.ok(at(page).includes('settings=members'));
@@ -363,7 +363,7 @@ try {
   await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({ state: 'detached' });
   await page.getByRole('button', { name: 'More on this project' }).click();
   await page.getByRole('menu', { name: 'More on this project' }).getByRole('menuitem', { name: /^Meet/ }).click();
-  await waitUrl(page, (u) => u.startsWith('/messages') && u.includes(`project=${rp.id}`), 'Meet opens the project’s meetings in Messages');
+  await waitUrl(page, (u) => u.startsWith('/meetings') && u.includes(`project=${rp.id}`), 'Meet opens the project’s meetings in Meetings');
   await page.goBack(); await page.locator('.pp-head h1').waitFor();
   checks.push('dots-menu');
 
@@ -374,6 +374,8 @@ try {
   assert.equal(await page.locator('.v2-new-type.on').innerText(), 'Task');
   { const t = await page.locator('.v2-new-chip').allTextContents(); assert.ok(t.some((x) => /Project\s*Razor pay/.test(x)), `the project chip: ${t}`); }
   assert.match(await page.locator('.v2-understood p').innerText(), /Adds it to Razor pay/);
+  // Escape is the sheet's own key: press it with focus in the sheet (on a slow runner the autofocus can land after the keypress).
+  await page.locator('.v2-new-sheet input, .v2-new-sheet textarea').first().focus();
   await page.keyboard.press('Escape'); await page.locator('.v2-new-sheet').waitFor({ state: 'detached' });
   checks.push('add-work');
 

@@ -158,6 +158,10 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<MeetingParticipant> MeetingParticipants => Set<MeetingParticipant>();
     public DbSet<WorkspaceMeeting> WorkspaceMeetings => Set<WorkspaceMeeting>();
     public DbSet<WorkspaceMeetingAttendee> WorkspaceMeetingAttendees => Set<WorkspaceMeetingAttendee>();
+    public DbSet<MeetingOccurrenceChange> MeetingOccurrenceChanges => Set<MeetingOccurrenceChange>();
+    public DbSet<MeetingTimeProposal> MeetingTimeProposals => Set<MeetingTimeProposal>();
+    public DbSet<MeetingReviewSession> MeetingReviewSessions => Set<MeetingReviewSession>();
+    public DbSet<MeetingReviewDecision> MeetingReviewDecisions => Set<MeetingReviewDecision>();
     public DbSet<InvoiceSequence> InvoiceSequences => Set<InvoiceSequence>();
     public DbSet<ProjectAgentSettings> ProjectAgentSettings => Set<ProjectAgentSettings>();
     public DbSet<AgentSignal> AgentSignals => Set<AgentSignal>();

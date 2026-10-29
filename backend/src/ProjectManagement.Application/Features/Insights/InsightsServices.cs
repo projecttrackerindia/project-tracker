@@ -29,7 +29,9 @@ public record DashboardDto(DashboardCounts Counts, IReadOnlyList<TaskDto> MyTask
 
 public record CalendarEventDto(string Type, Guid Id, string Title, DateOnly Date, string? Status, StatusCategory? Category, bool Overdue,
     Guid? ProjectId, string? ProjectName, Priority? Priority, DateTime? StartsAt = null,
-    int? DurationMinutes = null, bool Notes = false, string? JoinUrl = null, IReadOnlyList<string>? People = null);
+    int? DurationMinutes = null, bool Notes = false, string? JoinUrl = null, IReadOnlyList<string>? People = null,
+    /// <summary>Meetings: part of a repeating series (the recurrence icon), and its ref ("p:{id}") for opening it.</summary>
+    bool Recurring = false, string? MeetingRef = null);
 public record SearchHit(string Type, Guid Id, string Title, string? Subtitle, Guid? ProjectId, Guid? TaskId);
 public record SearchResultDto(IReadOnlyList<SearchHit> Hits);
 
@@ -245,13 +247,17 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (projectId is { } meetingProject) meq = meq.Where(m => m.ProjectId == meetingProject);
         if (assignees is { } meetingIds) meq = meq.Where(m => meetingIds.Contains(m.OrganizerUserId) || m.Participants.Any(p => p.UserId != null && meetingIds.Contains(p.UserId.Value)));
         var meetingRows = await meq.AsNoTracking().OrderBy(m => m.StartTimeUtc).Take(200)
-            .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, m.RecurrenceRule, m.Status, m.ProjectId, m.Notetaker, m.GoogleMeetUri, ProjectName = db.Projects.Where(p => p.Id == m.ProjectId).Select(p => p.Name).FirstOrDefault(),
+            .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, m.RecurrenceRule, m.Status, m.ProjectId, m.Notetaker, m.GoogleMeetUri, m.VideoKind, m.VideoLink, ProjectName = db.Projects.Where(p => p.Id == m.ProjectId).Select(p => p.Name).FirstOrDefault(),
                 People = m.Participants.Where(x => x.User != null).OrderBy(x => x.Role).Select(x => x.User!.DisplayName).Take(5).ToList() })
             .ToListAsync(ct);
+        // Sessions of a series with their one-off changes applied (moved or cancelled on their own), the same as the Meet page shows.
+        var sessionChanges = await ProjectManagement.Application.Features.ProjectMeetings.MeetingSessions.ChangesAsync(db,
+            meetingRows.Where(m => m.RecurrenceRule != null).Select(m => m.Id), ct);
         foreach (var m in meetingRows)
-            foreach (var at in ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.Occurrences(m.RecurrenceRule, m.StartTimeUtc, m.TimeZone, fromUtc, toUtcExclusive))
-                events.Add(new CalendarEventDto("meeting", m.Id, m.Title, clock.LocalDate(at), m.Status.ToString(), null, false, m.ProjectId, m.ProjectName, null, at,
-                    DurationOf(m.StartTimeUtc, m.EndTimeUtc), m.Notetaker != MeetingNotetaker.Off, string.IsNullOrEmpty(m.GoogleMeetUri) ? null : m.GoogleMeetUri, m.People));
+            foreach (var se in ProjectManagement.Application.Features.ProjectMeetings.MeetingSessions.Expand(m.RecurrenceRule, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, sessionChanges.GetValueOrDefault(m.Id), fromUtc, toUtcExclusive))
+                events.Add(new CalendarEventDto("meeting", m.Id, se.Title ?? m.Title, clock.LocalDate(se.Start), m.Status.ToString(), null, false, m.ProjectId, m.ProjectName, null, se.Start,
+                    DurationOf(se.Start, se.End), m.Notetaker != MeetingNotetaker.Off, m.VideoKind == "none" ? null : !string.IsNullOrEmpty(m.VideoLink) ? m.VideoLink : string.IsNullOrEmpty(m.GoogleMeetUri) ? null : m.GoogleMeetUri, m.People,
+                    m.RecurrenceRule != null, $"p:{m.Id}"));
 
         // Workspace meetings (a stand-up with no project): for the people invited, or everyone's when the view is the whole workspace.
         if (projectId is null)
@@ -262,12 +268,15 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (assignees is { } invited) wq = wq.Where(m => m.Attendees.Any(a => invited.Contains(a.UserId)));
             else if (!orgAdmin) wq = wq.Where(m => m.Attendees.Any(a => a.UserId == me));
             var workspaceRows = await wq.AsNoTracking().OrderBy(m => m.StartTimeUtc).Take(200)
-                .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, m.RecurrenceRule, m.Status, m.GoogleMeetUri,
+                .Select(m => new { m.Id, m.Title, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, m.RecurrenceRule, m.Status, m.GoogleMeetUri, m.VideoKind, m.VideoLink,
                     People = m.Attendees.OrderByDescending(a => a.IsOrganizer).Select(a => db.Users.Where(u => u.Id == a.UserId).Select(u => u.DisplayName).FirstOrDefault() ?? a.Email).Take(5).ToList() }).ToListAsync(ct);
+            var workspaceChanges = await ProjectManagement.Application.Features.ProjectMeetings.MeetingSessions.ChangesAsync(db,
+                workspaceRows.Where(m => m.RecurrenceRule != null).Select(m => m.Id), ct);
             foreach (var m in workspaceRows)
-                foreach (var at in ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.Occurrences(m.RecurrenceRule, m.StartTimeUtc, m.TimeZone, fromUtc, toUtcExclusive))
-                    events.Add(new CalendarEventDto("meeting", m.Id, m.Title, clock.LocalDate(at), m.Status.ToString(), null, false, null, null, null, at,
-                        DurationOf(m.StartTimeUtc, m.EndTimeUtc), false, string.IsNullOrEmpty(m.GoogleMeetUri) ? null : m.GoogleMeetUri, m.People));
+                foreach (var se in ProjectManagement.Application.Features.ProjectMeetings.MeetingSessions.Expand(m.RecurrenceRule, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, workspaceChanges.GetValueOrDefault(m.Id), fromUtc, toUtcExclusive))
+                    events.Add(new CalendarEventDto("meeting", m.Id, se.Title ?? m.Title, clock.LocalDate(se.Start), m.Status.ToString(), null, false, null, null, null, se.Start,
+                        DurationOf(se.Start, se.End), false, m.VideoKind == "none" ? null : !string.IsNullOrEmpty(m.VideoLink) ? m.VideoLink : string.IsNullOrEmpty(m.GoogleMeetUri) ? null : m.GoogleMeetUri, m.People,
+                        m.RecurrenceRule != null, $"w:{m.Id}"));
         }
 
         if (showWorkspaceEvents)

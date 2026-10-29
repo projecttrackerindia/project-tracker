@@ -127,6 +127,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetingService>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetNotetaker>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetFeedService>();
+        services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetConnectService>();
+        services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetReviewService>();
         services.AddScoped<ProjectManagement.Application.Features.Talk.TalkService>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.MeetingSyncEngine>();
         services.AddScoped<ProjectManagement.Application.Features.ProjectMeetings.StandupSummaryService>();

@@ -282,7 +282,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 """
                 {"type":"object","properties":{"project":{"type":"string"},"title":{"type":"string"},"agenda":{"type":"string","description":"Optional description/agenda."},
                  "at":{"type":"string","description":"Local date and time, yyyy-mm-ddTHH:mm"},"duration_minutes":{"type":"integer","description":"Default 30."},
-                 "repeat_frequency":{"type":"string","enum":["Daily","Weekdays","Weekly"],"description":"Only when repetition is requested. Ask for the session count if missing."},"occurrences":{"type":"integer","minimum":2,"maximum":120,"description":"Total sessions including the first. Required when repeating."},
+                 "repeat_frequency":{"type":"string","enum":["Daily","Weekdays","Weekly","Monthly"],"description":"Only when repetition is requested. Ask for the session count or end date if missing."},"occurrences":{"type":"integer","minimum":2,"maximum":120,"description":"Total sessions including the first. Required when repeating, unless until is given."},
+                 "until":{"type":"string","description":"yyyy-mm-dd: the last day a session may fall on (instead of occurrences)."},
+                 "video":{"type":"string","enum":["inapp","teams","meet","zoho","none"],"description":"Only when said: how people join."},"video_url":{"type":"string","description":"A pasted Teams, Meet or Zoho link."},
                  "participants":{"type":"array","items":{"type":"string"},"description":"Names, or \"me\". Default: every project member."},
                  "notetaker":{"type":"string","enum":["off","transcript","voice"],"description":"Only when asked: off, transcript (listens and writes the minutes), or voice (also speaks up when something is missed)."}},"required":["project","title","at"]}
                 """),
@@ -1227,12 +1229,14 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (a.TryGetProperty("occurrences", out _) && Str(a, "repeat_frequency") is null) throw new AiToolException("How often should the meeting repeat: daily, weekdays, or weekly?");
         ProjectManagement.Application.Features.ProjectMeetings.MeetingRepeat? repeat = null;
         if (Str(a, "repeat_frequency") is { } frequency) {
-            if (!a.TryGetProperty("occurrences", out var count) || !count.TryGetInt32(out var total)) throw new AiToolException("How many sessions should this series contain (2-120)?");
-            repeat = new(frequency, total);
+            DateOnly? until = Str(a, "until") is { } u && DateOnly.TryParseExact(u, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var ud) ? ud : null;
+            var total = a.TryGetProperty("occurrences", out var count) && count.TryGetInt32(out var t) ? t : 0;
+            if (total == 0 && until is null) throw new AiToolException("How many sessions should this series contain (2-120)?");
+            repeat = new(frequency, total, until);
             ProjectManagement.Application.Features.ProjectMeetings.MeetingRecurrence.Rule(repeat, new DateTimeOffset(startUtc, TimeSpan.Zero), zone);
         }
         var notetaker = Str(a, "notetaker") is { } nt ? ProjectManagement.Application.Features.ProjectMeetings.MeetNotetaker.Parse(nt) : ProjectManagement.Domain.Enums.MeetingNotetaker.ProjectDefault;
-        var payload = new { repeat, projectId = project.Id, title, description = Str(a, "agenda"), startTime = new DateTimeOffset(startUtc, TimeSpan.Zero), endTime = new DateTimeOffset(startUtc.AddMinutes(minutes), TimeSpan.Zero), timeZone = zone, participantUserIds = participantIds,
+        var payload = new { repeat, video = Str(a, "video"), videoUrl = Str(a, "video_url"), projectId = project.Id, title, description = Str(a, "agenda"), startTime = new DateTimeOffset(startUtc, TimeSpan.Zero), endTime = new DateTimeOffset(startUtc.AddMinutes(minutes), TimeSpan.Zero), timeZone = zone, participantUserIds = participantIds,
             notetaker = ProjectManagement.Application.Features.ProjectMeetings.MeetNotetaker.Wanted(notetaker) || notetaker == ProjectManagement.Domain.Enums.MeetingNotetaker.Off ? ProjectManagement.Application.Features.ProjectMeetings.MeetNotetaker.Key(notetaker) : null };
         var summary = $"In {project.Label} — {local:ddd d MMM yyyy, HH:mm} ({zone}), {minutes} minutes{(participantIds is null ? ", every project member invited" : $", {participantIds.Count} invited")}";
         summary += notetaker switch
@@ -1242,7 +1246,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             ProjectManagement.Domain.Enums.MeetingNotetaker.Off => "; no notetaker",
             _ => "",
         };
-        if (repeat is not null) summary += $"; {repeat.Frequency}, {repeat.Occurrences} sessions including the first";
+        if (repeat is not null) summary += repeat.Occurrences > 0 ? $"; {repeat.Frequency}, {repeat.Occurrences} sessions including the first" : $"; {repeat.Frequency} until {repeat.Until:d MMM yyyy}";
         return Propose("schedule_meeting", $"Schedule a meeting “{title}”", summary, payload, Str(a, "agenda"));
     }
 

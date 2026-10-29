@@ -37,7 +37,12 @@ export interface WorkRow {
   dueTime?: string | null;
   dueAt?: string | null;
   dueFromSla?: boolean;
+  /** The meeting it was agreed in ("◆ From: AutoPay weekly · 27 Oct"), and the owner's latest one-line update. */
+  source?: WorkSource | null;
 }
+
+/** Where an item came from: the meeting ("p:{id}"), its series, its title then, the session; plus the owner's latest update and when. */
+export interface WorkSource { meetingRef: string | null; seriesRef: string | null; title: string | null; occurrenceStart: string | null; latestNote?: string | null; lastUpdateAt?: string | null }
 
 export interface WorkPage { items: WorkRow[]; offset: number; limit: number; hasMore: boolean }
 
@@ -52,6 +57,9 @@ export interface WorkListFilters {
   overdue?: boolean;
   /** Only work the caller raised, whoever it is assigned to. */
   raisedByMe?: boolean;
+  /** Only items agreed in a meeting ("◆ From meetings"); sourceSeries: only those of one series ("p:{id}"). */
+  fromMeetings?: boolean;
+  sourceSeries?: string;
   q?: string;
   offset?: number;
   limit?: number;
@@ -108,6 +116,7 @@ export interface WorkItemDetail {
   dueTime?: string | null;
   dueAt?: string | null;
   dueFromSla?: boolean;
+  source?: WorkSource | null;
 }
 
 export interface CreateWorkItemInput {

@@ -43,24 +43,27 @@ public static class MeetingReminders
                 && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == m.TenantId && !t.IsDeleted && t.Status == TenantStatus.Active));
         if (onlyMeeting is { } pm) projectQ = projectQ.Where(m => m.Id == pm);
         var projectRows = await projectQ.OrderBy(m => m.StartTimeUtc).Take(Batch)
-            .Select(m => new { m.TenantId, m.Id, m.ProjectId, m.Title, Key = m.Project!.Key, m.Provider, m.TimeZone, m.StartTimeUtc, m.RecurrenceRule, m.OrganizerUserId,
+            .Select(m => new { m.TenantId, m.Id, m.ProjectId, m.Title, Key = m.Project!.Key, m.Provider, m.TimeZone, m.StartTimeUtc, m.EndTimeUtc, m.RecurrenceRule, m.OrganizerUserId,
                 People = m.Participants.Where(p => p.UserId != null && p.RsvpStatus != AttendeeRsvpStatus.Declined).Select(p => p.UserId!.Value).ToList() })
             .ToListAsync(ct);
+        // Sessions changed on their own (moved or cancelled): the reminder follows the session, or goes.
+        var projectChanges = await MeetingSessions.ChangesAsync(db, projectRows.Where(m => m.RecurrenceRule != null).Select(m => m.Id), ct, ignoreFilters: true);
         foreach (var m in projectRows)
-            foreach (var at in MeetingRecurrence.Occurrences(m.RecurrenceRule, m.StartTimeUtc, m.TimeZone, now, to))
-                sessions.Add(new(m.TenantId, m.Id, false, m.ProjectId, m.Title, m.Key, m.Provider, m.TimeZone, at, m.People.Append(m.OrganizerUserId).Distinct().ToList()));
+            foreach (var se in MeetingSessions.Expand(m.RecurrenceRule, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, projectChanges.GetValueOrDefault(m.Id), now, to))
+                sessions.Add(new(m.TenantId, m.Id, false, m.ProjectId, se.Title ?? m.Title, m.Key, m.Provider, m.TimeZone, se.Start, m.People.Append(m.OrganizerUserId).Distinct().ToList()));
 
         var workspaceQ = db.WorkspaceMeetings.IgnoreQueryFilters().AsNoTracking()
             .Where(m => m.Status == MeetingStatus.Scheduled && m.CancelledAt == null && m.StartTimeUtc < to && (m.RecurrenceRule != null ? m.StartTimeUtc >= floor : m.StartTimeUtc > now - Ahead)
                 && db.Tenants.IgnoreQueryFilters().Any(t => t.Id == m.TenantId && !t.IsDeleted && t.Status == TenantStatus.Active));
         if (onlyMeeting is { } wm) workspaceQ = workspaceQ.Where(m => m.Id == wm);
         var workspaceRows = await workspaceQ.OrderBy(m => m.StartTimeUtc).Take(Batch)
-            .Select(m => new { m.TenantId, m.Id, m.Title, m.Provider, m.TimeZone, m.StartTimeUtc, m.RecurrenceRule, m.OrganizerUserId,
+            .Select(m => new { m.TenantId, m.Id, m.Title, m.Provider, m.TimeZone, m.StartTimeUtc, m.EndTimeUtc, m.RecurrenceRule, m.OrganizerUserId,
                 People = m.Attendees.Where(a => a.RsvpStatus != AttendeeRsvpStatus.Declined).Select(a => a.UserId).ToList() })
             .ToListAsync(ct);
+        var workspaceChanges = await MeetingSessions.ChangesAsync(db, workspaceRows.Where(m => m.RecurrenceRule != null).Select(m => m.Id), ct, ignoreFilters: true);
         foreach (var m in workspaceRows)
-            foreach (var at in MeetingRecurrence.Occurrences(m.RecurrenceRule, m.StartTimeUtc, m.TimeZone, now, to))
-                sessions.Add(new(m.TenantId, m.Id, true, null, m.Title, "", m.Provider, m.TimeZone, at, m.People.Append(m.OrganizerUserId).Distinct().ToList()));
+            foreach (var se in MeetingSessions.Expand(m.RecurrenceRule, m.StartTimeUtc, m.EndTimeUtc, m.TimeZone, workspaceChanges.GetValueOrDefault(m.Id), now, to))
+                sessions.Add(new(m.TenantId, m.Id, true, null, se.Title ?? m.Title, "", m.Provider, m.TimeZone, se.Start, m.People.Append(m.OrganizerUserId).Distinct().ToList()));
 
         // Wanted: one per person per session still to come (a session starting in under ten minutes still gets one, at once).
         var wanted = new Dictionary<string, (Session S, Guid User)>();
@@ -123,8 +126,8 @@ public static class MeetingReminders
     public static string Link(Guid meetingId, bool workspace, MeetingProvider provider) =>
         provider == MeetingProvider.ProjectTracker ? MeetingCalendar.JoinPath(meetingId, workspace) : MeetLink(meetingId, workspace);
 
-    /// <summary>The meeting on the Meet page (the one place meetings are kept).</summary>
-    public static string MeetLink(Guid meetingId, bool workspace) => $"/meet?open={(workspace ? "w" : "p")}:{meetingId}";
+    /// <summary>The meeting on the Meetings page (the one place meetings are kept).</summary>
+    public static string MeetLink(Guid meetingId, bool workspace) => $"/meetings?open={(workspace ? "w" : "p")}:{meetingId}";
 
     private static string Cut(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
 }

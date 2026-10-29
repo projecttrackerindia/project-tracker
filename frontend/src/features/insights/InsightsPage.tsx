@@ -1,4 +1,5 @@
 import { Face } from '../../components/Face';
+import { MeetTimeRows } from '../meet/MeetTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AgentWorkflowsPage } from '../ai/AgentWorkflowsPage';
 import { TimesheetPage, type TimesheetSection } from '../time/TimesheetPage';
@@ -336,6 +337,7 @@ function TimeTab({ tabs }: { tabs: React.ReactNode }) {
           <button type="submit" className="btn btn-dark" disabled={!text.trim() || reading}>{reading && <span className="spinner" />}Log</button>
         </form>
       )}
+      <MeetTimeRows />
       {draftCells.length > 0 && (
         <section className="ins-draft" aria-label="Draft of your week">
           <p><b>✦ I drafted your week</b> from what you changed or commented on, less your meetings — {hours(draftMinutes)} across {draftCells.length} item{draftCells.length === 1 ? '' : 's'}. Check and adjust before submitting.</p>

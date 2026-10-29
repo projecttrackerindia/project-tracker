@@ -24,9 +24,16 @@ public record MeetingDto(Guid Id, Guid ProjectId, string Title, string? Descript
 /// <param name="Notetaker">"off", "transcript", "voice" (transcript, and it speaks up when something is being missed), or empty (the project agent's settings decide).</param>
 public record StartMeetingRequest(string? Title, IReadOnlyList<Guid>? ParticipantUserIds, string? Service = null, string? Notetaker = null);
 /// <summary>Schedule Meeting: the organizer always names start/end explicitly, in a real instant (not a bare local time) so no timezone is guessed.</summary>
+/// <param name="TeamIds">Whole teams invited: their members are added as people when it is scheduled (for a project, those who can see it).</param>
+/// <param name="Video">How people join: "inapp" (a Project Tracker call), "teams", "meet", "zoho" (with <paramref name="VideoUrl"/> pasted, or Teams / Meet
+/// from the organizer's connected calendar) or "none". Empty keeps <paramref name="Service"/> deciding, as before.</param>
 public record ScheduleMeetingRequest(string Title, string? Description, DateTimeOffset StartTime, DateTimeOffset EndTime, string TimeZone, IReadOnlyList<Guid>? ParticipantUserIds, MeetingRepeat? Repeat = null,
-    bool Scrum = false, string? Service = null, string? Notetaker = null);
+    bool Scrum = false, string? Service = null, string? Notetaker = null, IReadOnlyList<Guid>? TeamIds = null, string? Video = null, string? VideoUrl = null);
 public record RescheduleMeetingRequest(DateTimeOffset StartTime, DateTimeOffset EndTime);
+/// <summary>One session (<paramref name="OccurrenceStart"/>, where the rule puts it) changed: Scope "this", "following" or "all"; a new time, a new title, or cancelled.</summary>
+public record ChangeOccurrenceRequest(DateTimeOffset OccurrenceStart, string? Scope, DateTimeOffset? StartTime = null, DateTimeOffset? EndTime = null, string? Title = null, bool Cancel = false);
+/// <summary>What changed; <paramref name="NewSeriesRef"/> is the series that carries on after a "this and following" change.</summary>
+public record OccurrenceChangeResultDto(string Scope, string Ref, DateTimeOffset? Start, DateTimeOffset? End, string? NewSeriesRef);
 /// <summary>A meeting's title and agenda (the description), edited from the calendar. Only meetings held by Project Tracker itself: a Google or
 /// Outlook event is edited in that calendar, so the invitation people have never says something else.</summary>
 public record UpdateMeetingDetailsRequest(string Title, string? Description);
@@ -91,17 +98,69 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     }
 
     /// <summary>"Schedule Google Meet": the organizer's own title, time and attendee list.</summary>
-    public Task<MeetingDto> ScheduleAsync(Guid projectId, ScheduleMeetingRequest req, CancellationToken ct = default)
+    public async Task<MeetingDto> ScheduleAsync(Guid projectId, ScheduleMeetingRequest req, CancellationToken ct = default, Guid? seriesRootId = null)
     {
         if (req.EndTime <= req.StartTime) throw new ValidationException("endTime", "The meeting must end after it starts.");
         if (req.StartTime < DateTimeOffset.UtcNow.AddMinutes(-5)) throw new ValidationException("startTime", "Choose a time that has not already passed.");
-        return CreateAsync(projectId, req.Title, req.Description, req.StartTime, req.EndTime, req.TimeZone, req.ParticipantUserIds, ct, MeetingRecurrence.Rule(req.Repeat, req.StartTime, req.TimeZone), req.Scrum, req.Service,
-            MeetNotetaker.Parse(req.Notetaker));
+        var video = Video(req.Video, req.VideoUrl, req.Service);
+        var people = req.ParticipantUserIds;
+        var teams = CleanTeams(req.TeamIds);
+        if (teams.Count > 0)
+        {
+            // A team is its members, at the moment it is scheduled: the ones who can see the project are invited (the rest could not open it).
+            var project = await access.GetProjectAsync(projectId, ct);
+            var eligible = await EligibleUserIdsAsync(project, ct);
+            var members = await TeamMemberIdsAsync(teams, ct);
+            people = (people ?? []).Concat(members.Where(eligible.Contains)).Where(id => id != ctx.UserId).Distinct().ToList();
+        }
+        return await CreateAsync(projectId, req.Title, req.Description, req.StartTime, req.EndTime, req.TimeZone, people, ct, MeetingRecurrence.Rule(req.Repeat, req.StartTime, req.TimeZone), req.Scrum, video.Service,
+            MeetNotetaker.Parse(req.Notetaker), video.Kind, video.Link, teams.Count > 0 ? string.Join(",", teams) : null, seriesRootId);
+    }
+
+    /// <summary>The teams named, each once, at most 20.</summary>
+    private static List<Guid> CleanTeams(IReadOnlyList<Guid>? ids)
+    {
+        var list = (ids ?? []).Where(i => i != Guid.Empty).Distinct().ToList();
+        if (list.Count > 20) throw new ValidationException("teamIds", "Invite at most 20 teams at once.");
+        return list;
+    }
+
+    private async Task<List<Guid>> TeamMemberIdsAsync(List<Guid> teams, CancellationToken ct)
+    {
+        var known = await db.Teams.AsNoTracking().Where(t => teams.Contains(t.Id)).Select(t => t.Id).ToListAsync(ct);
+        if (known.Count != teams.Count) throw new ValidationException("teamIds", "One of those teams does not exist in this workspace.");
+        return await db.TeamMembers.AsNoTracking().Where(m => teams.Contains(m.TeamId)).Select(m => m.UserId).Distinct().ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// How people join, from the schedule form's Video choice: In-app is our own call; Teams and Meet use the organizer's connected calendar,
+    /// or the address they pasted (then our own call holds the meeting and the pasted address is the join link); Zoho needs the address; None has no link.
+    /// </summary>
+    private static (string? Service, string? Kind, string? Link) Video(string? video, string? url, string? service)
+    {
+        var kind = video?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(kind)) return (service, null, null);
+        var link = url?.Trim();
+        if (!string.IsNullOrEmpty(link))
+        {
+            if (link.Length > 500 || !Uri.TryCreate(link, UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttps)
+                throw new ValidationException("videoUrl", "Paste the meeting's full https:// link.");
+        }
+        else link = null;
+        return kind switch
+        {
+            "inapp" => ("ours", "inapp", null),
+            "teams" => link is null ? ("microsoft", "teams", null) : ("ours", "teams", link),
+            "meet" => link is null ? ("google", "meet", null) : ("ours", "meet", link),
+            "zoho" => link is null ? throw new ValidationException("videoUrl", "Paste the Zoho Meeting link people join with.") : ("ours", "zoho", link),
+            "none" => ("ours", "none", null),
+            _ => throw new ValidationException("video", "Choose In-app, Teams, Meet, Zoho or None."),
+        };
     }
 
     private async Task<MeetingDto> CreateAsync(Guid projectId, string? title, string? description, DateTimeOffset start, DateTimeOffset end, string timeZone,
         IReadOnlyList<Guid>? requestedParticipants, CancellationToken ct, string? recurrenceRule = null, bool scrum = false, string? service = null,
-        MeetingNotetaker notetakerChoice = MeetingNotetaker.ProjectDefault)
+        MeetingNotetaker notetakerChoice = MeetingNotetaker.ProjectDefault, string? videoKind = null, string? videoLink = null, string? teamIds = null, Guid? seriesRootId = null)
     {
         var project = await access.GetProjectAsync(projectId, ct);
         // Checked before anything reaches a calendar: a notetaker that cannot come must not leave an invitation behind that promises one.
@@ -134,6 +193,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             StartTimeUtc = start.UtcDateTime, EndTimeUtc = end.UtcDateTime, TimeZone = timeZone, Status = MeetingStatus.Scheduled,
             GoogleCalendarEventId = created.EventId, GoogleMeetSpaceName = created.MeetSpaceName, GoogleMeetUri = created.MeetUri, RecurrenceRule = recurrenceRule, CalendarUrl = created.HtmlLink,
             IsScrum = scrum, Notetaker = notetakerChoice, CreatedAt = clock.Now, CreatedBy = organizerId,
+            VideoKind = videoKind, VideoLink = videoLink, AttendeeTeamIds = teamIds, SeriesRootId = seriesRootId,
         };
         db.ProjectMeetings.Add(meeting);
         meeting.Participants.Add(new MeetingParticipant { TenantId = project.TenantId, ProjectId = projectId, Meeting = meeting, UserId = organizerId, Email = organizer.Email, Role = MeetingParticipantRole.Organizer, RsvpStatus = AttendeeRsvpStatus.Accepted, CreatedAt = clock.Now });
@@ -173,7 +233,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
     /// picked from the workspace's members and nothing is posted to a project's chat or meeting list (there is none). Everyone invited still
     /// gets the Calendar invitation from Google and an in-app notification.
     /// </summary>
-    public async Task<WorkspaceMeetingDto> ScheduleForWorkspaceAsync(ScheduleMeetingRequest req, CancellationToken ct = default)
+    public async Task<WorkspaceMeetingDto> ScheduleForWorkspaceAsync(ScheduleMeetingRequest req, CancellationToken ct = default, Guid? seriesRootId = null, string? ruleOverride = null)
     {
         RequireNotGuest();
         if (string.IsNullOrWhiteSpace(req.Title)) throw new ValidationException("title", "Give the meeting a title.");
@@ -187,7 +247,9 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             throw new ValidationException("notetaker", "Choose a project to bring the notetaker: it keeps the notes and follow-ups in that project.");
         var tid = ctx.RequireTenantId();
         var organizerId = ctx.RequireUserId();
-        var invitedIds = (req.ParticipantUserIds ?? []).Where(id => id != organizerId).Distinct().ToList();
+        var video = Video(req.Video, req.VideoUrl, req.Service);
+        var teams = CleanTeams(req.TeamIds);
+        var invitedIds = (req.ParticipantUserIds ?? []).Concat(teams.Count > 0 ? await TeamMemberIdsAsync(teams, ct) : new List<Guid>()).Where(id => id != organizerId).Distinct().ToList();
         var members = await db.TenantMembers.AsNoTracking()
             .Where(m => m.TenantId == tid && m.Role != TenantRole.Guest && m.User!.IsActive && (invitedIds.Contains(m.UserId) || m.UserId == organizerId))
             .Select(m => new { m.UserId, m.User!.DisplayName, m.User.Email }).ToListAsync(ct);
@@ -197,8 +259,8 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var attendees = members.Where(m => m.UserId != organizerId).ToList();
 
         var title = req.Title.Trim();
-        var rule = MeetingRecurrence.Rule(req.Repeat, req.StartTime, req.TimeZone);
-        var choice = await calendar.ChooseAsync(organizerId, req.Service, ct);
+        var rule = ruleOverride ?? MeetingRecurrence.Rule(req.Repeat, req.StartTime, req.TimeZone);
+        var choice = await calendar.ChooseAsync(organizerId, video.Service, ct);
         var provider = MeetingCalendar.ToProvider(choice.Provider);
         var meetingId = Guid.CreateVersion7();
         CreatedGoogleMeeting created;
@@ -212,6 +274,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
             TenantId = tid, OrganizerUserId = organizerId, Title = title, Description = req.Description, StartTimeUtc = req.StartTime.UtcDateTime, EndTimeUtc = req.EndTime.UtcDateTime,
             TimeZone = req.TimeZone, RecurrenceRule = rule, CalendarUrl = string.IsNullOrEmpty(created.HtmlLink) ? null : created.HtmlLink, Status = MeetingStatus.Scheduled,
             GoogleCalendarEventId = created.EventId, GoogleMeetUri = created.MeetUri, IsScrum = req.Scrum, CreatedAt = clock.Now, CreatedBy = organizerId,
+            VideoKind = video.Kind, VideoLink = video.Link, AttendeeTeamIds = teams.Count > 0 ? string.Join(",", teams) : null, SeriesRootId = seriesRootId,
         };
         db.WorkspaceMeetings.Add(meeting);
         foreach (var m in members)
@@ -252,7 +315,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         meeting.CancelledAt = clock.Now;
         recorder.Audit("meeting.cancelled", "WorkspaceMeeting", meeting.Id);
         foreach (var userId in await db.WorkspaceMeetingAttendees.AsNoTracking().Where(a => a.MeetingId == id && !a.IsOrganizer).Select(a => a.UserId).ToListAsync(ct))
-            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {MeetingCalendar.Name(meeting.Provider)} was cancelled", meeting.Title, "/meet", ct: ct);
+            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {MeetingCalendar.Name(meeting.Provider)} was cancelled", meeting.Title, "/meetings", ct: ct);
         await db.SaveChangesAsync(ct);
         await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
     }
@@ -403,7 +466,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         recorder.Activity("meeting.participant_removed", "ProjectMeeting", meeting.Id, $"Removed {row.User?.DisplayName ?? row.Email} from \"{meeting.Title}\"", meeting.ProjectId);
         recorder.Audit("meeting.participant_removed", "ProjectMeeting", meeting.Id, oldValue: new { UserId = userId, row.Email });
         if (row.UserId is { } removedId)
-            await notifications.AddAsync(removedId, NotificationType.Meeting, $"You are no longer invited to a {MeetingCalendar.Name(meeting.Provider)}", meeting.Title, "/meet", ct: ct);
+            await notifications.AddAsync(removedId, NotificationType.Meeting, $"You are no longer invited to a {MeetingCalendar.Name(meeting.Provider)}", meeting.Title, "/meetings", ct: ct);
         await db.SaveChangesAsync(ct);
         await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
         return ToDto(meeting, meeting.Organizer?.DisplayName ?? "");
@@ -528,7 +591,7 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var participantCount = await db.MeetingParticipants.AsNoTracking().CountAsync(p => p.MeetingId == meeting.Id, ct);
         var participants = await db.MeetingParticipants.AsNoTracking().Where(p => p.MeetingId == meeting.Id && p.UserId != null && p.UserId != meeting.OrganizerUserId).Select(p => p.UserId!.Value).ToListAsync(ct);
         foreach (var userId in participants)
-            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {what} was cancelled", meeting.Title, "/meet", ct: ct);
+            await notifications.AddAsync(userId, NotificationType.Meeting, $"A {what} was cancelled", meeting.Title, "/meetings", ct: ct);
         await db.SaveChangesAsync(ct);
         await MeetingReminders.PlanAsync(db, clock.Now, ct, meeting.Id);
 
@@ -611,4 +674,144 @@ public class MeetingService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         var verb = status switch { AttendeeRsvpStatus.Accepted => "accepted", AttendeeRsvpStatus.Declined => "declined", _ => "may join" };
         await notifications.AddAsync(organizerId, NotificationType.Meeting, $"{name} {verb}", title, link, ct: ct);
     }
+
+    // ---------------------------------------------------------------- one session, this and following, or the whole series
+
+    /// <summary>
+    /// Changes one session of a repeating meeting (<paramref name="req"/>.Scope "this"), it and every later one ("following": the series is
+    /// split there - the first part ends before it and a new series carries on from it), or the whole series ("all"). Moving, renaming and
+    /// cancelling all work this way. Only for meetings held by Project Tracker: a Google or Outlook series is changed in that calendar.
+    /// </summary>
+    public async Task<OccurrenceChangeResultDto> ChangeOccurrenceAsync(bool workspace, Guid meetingId, ChangeOccurrenceRequest req, CancellationToken ct = default)
+    {
+        var scope = (req.Scope ?? "this").Trim().ToLowerInvariant();
+        if (scope is not ("this" or "following" or "all")) throw new ValidationException("scope", "Choose this occurrence, this and following, or all.");
+        if (!req.Cancel && req.StartTime is null && string.IsNullOrWhiteSpace(req.Title)) throw new ValidationException("startTime", "Say what changes: the time, the title, or cancel it.");
+        if (req.StartTime is { } st && (req.EndTime is not { } en || en <= st)) throw new ValidationException("endTime", "The meeting must end after it starts.");
+        if (req.StartTime is { } st2 && st2 < DateTimeOffset.UtcNow.AddMinutes(-5)) throw new ValidationException("startTime", "Choose a time that has not already passed.");
+        var title = string.IsNullOrWhiteSpace(req.Title) ? null : req.Title.Trim();
+        if (title is { Length: > 200 }) throw new ValidationException("title", ProjectManagement.Application.Common.TextLimits.TooLong(200, title.Length));
+
+        ProjectMeeting? pm = null; WorkspaceMeeting? wm = null;
+        if (workspace)
+        {
+            wm = await LoadWorkspaceMeetingAsync(meetingId, ct);
+            if (!CanManage(wm)) throw new ForbiddenException("Only the organizer can change this meeting.", "PERMISSION_DENIED");
+        }
+        else
+        {
+            pm = await db.ProjectMeetings.Include(m => m.Participants).FirstOrDefaultAsync(m => m.Id == meetingId, ct) ?? throw new NotFoundException("Meeting not found.");
+            await RequireOrganizerOrEditAsync(pm, ct);
+        }
+        var status = pm?.Status ?? wm!.Status;
+        var rule = pm is not null ? pm.RecurrenceRule : wm!.RecurrenceRule;
+        var provider = pm?.Provider ?? wm!.Provider;
+        var firstStart = pm?.StartTimeUtc ?? wm!.StartTimeUtc;
+        var firstEnd = pm?.EndTimeUtc ?? wm!.EndTimeUtc;
+        var zone = ZoneOf(pm?.TimeZone ?? wm!.TimeZone);
+        var meetingTitle = pm?.Title ?? wm!.Title;
+        var tid = ctx.RequireTenantId();
+        var mref = MeetingSessions.Ref(workspace, meetingId);
+        if (status != MeetingStatus.Scheduled) throw new ConflictException("Only a scheduled meeting can be changed.", "MEETING_NOT_SCHEDULED");
+        if (rule is null) throw new ConflictException("This meeting does not repeat: move or cancel the meeting itself.", "MEETING_NOT_RECURRING");
+        if (provider != MeetingProvider.ProjectTracker) throw SeriesInCalendar(provider);
+        var occurrence = req.OccurrenceStart.UtcDateTime;
+        if (!MeetingRecurrence.Occurrences(rule, firstStart, zone, occurrence, occurrence.AddSeconds(1)).Any())
+            throw new ValidationException("occurrenceStart", "That is not one of this meeting's sessions.");
+        if (scope == "following" && occurrence <= firstStart) scope = "all";
+        var length = firstEnd - firstStart;
+
+        var people = pm is not null
+            ? pm.Participants.Where(p => p.UserId is not null && p.UserId != ctx.UserId).Select(p => p.UserId!.Value).ToList()
+            : await db.WorkspaceMeetingAttendees.AsNoTracking().Where(a => a.MeetingId == meetingId && a.UserId != ctx.UserId).Select(a => a.UserId).ToListAsync(ct);
+        var whatChanged = req.Cancel ? "cancelled" : req.StartTime is not null ? "moved" : "renamed";
+        string? newSeries = null;
+        DateTimeOffset? resultStart = req.StartTime, resultEnd = req.EndTime;
+
+        if (scope == "this")
+        {
+            var change = await db.MeetingOccurrenceChanges.FirstOrDefaultAsync(c => c.MeetingId == meetingId && c.OccurrenceStartUtc == occurrence, ct);
+            if (change is null)
+            {
+                change = new MeetingOccurrenceChange { TenantId = tid, MeetingRef = mref, MeetingId = meetingId, OccurrenceStartUtc = occurrence, CreatedAt = clock.Now, CreatedBy = ctx.UserId };
+                db.MeetingOccurrenceChanges.Add(change);
+            }
+            if (req.Cancel) change.IsCancelled = true;
+            if (req.StartTime is { } ns)
+            {
+                if (Math.Abs((ns.UtcDateTime - occurrence).TotalDays) > MeetingSessions.MaxMove.TotalDays) throw new ValidationException("startTime", "Move one session by at most a month; change the series for more.");
+                change.NewStartUtc = ns.UtcDateTime; change.NewEndUtc = req.EndTime!.Value.UtcDateTime;
+            }
+            if (title is not null) change.Title = title;
+            change.UpdatedAt = clock.Now; change.UpdatedBy = ctx.UserId;
+        }
+        else if (scope == "all")
+        {
+            if (req.Cancel)
+            {
+                if (workspace) await CancelWorkspaceMeetingAsync(meetingId, ct); else await CancelAsync(meetingId, ct);
+                return new OccurrenceChangeResultDto("all", mref, null, null, null);
+            }
+            if (req.StartTime is { } ns)
+            {
+                // The whole series keeps its rhythm from the new time: every session moves by the same amount, one-off changes are let go.
+                var shift = ns.UtcDateTime - occurrence;
+                var newLength = req.EndTime!.Value.UtcDateTime - ns.UtcDateTime;
+                var start = firstStart + shift;
+                if (pm is not null) { pm.StartTimeUtc = start; pm.EndTimeUtc = start + newLength; } else { wm!.StartTimeUtc = start; wm.EndTimeUtc = start + newLength; }
+                await db.MeetingOccurrenceChanges.Where(c => c.MeetingId == meetingId).ExecuteDeleteAsync(ct);
+                resultStart = new DateTimeOffset(start, TimeSpan.Zero); resultEnd = new DateTimeOffset(start + newLength, TimeSpan.Zero);
+            }
+            if (title is not null) { if (pm is not null) pm.Title = title; else wm!.Title = title; }
+        }
+        else
+        {
+            // This and following: the series ends before this session; unless it is cancelled from here on, a new series carries on.
+            var taken = MeetingRecurrence.CountBefore(rule, firstStart, zone, occurrence);
+            var left = MeetingRecurrence.CountLeft(rule, taken);
+            var ended = MeetingRecurrence.EndBefore(rule, occurrence);
+            if (pm is not null) pm.RecurrenceRule = ended; else wm!.RecurrenceRule = ended;
+            await db.MeetingOccurrenceChanges.Where(c => c.MeetingId == meetingId && c.OccurrenceStartUtc >= occurrence).ExecuteDeleteAsync(ct);
+            if (!req.Cancel)
+            {
+                var start = req.StartTime ?? new DateTimeOffset(occurrence, TimeSpan.Zero);
+                var end = req.EndTime ?? start + length;
+                var next = MeetingRecurrence.Continue(rule, left is { } n ? Math.Max(1, n) : null);
+                if (!MeetingRecurrence.Occurrences(next, start.UtcDateTime, zone, start.UtcDateTime, start.UtcDateTime.AddSeconds(1)).Any())
+                    throw new ValidationException("startTime", "Choose a day the series meets on.");
+                var root = (pm is not null ? pm.SeriesRootId : wm!.SeriesRootId) ?? meetingId;
+                await db.SaveChangesAsync(ct);
+                if (pm is not null)
+                {
+                    var made = await CreateAsync(pm.ProjectId, title ?? pm.Title, pm.Description, start, end, zone, people, ct, next, pm.IsScrum, "ours", pm.Notetaker,
+                        pm.VideoKind, pm.VideoLink, pm.AttendeeTeamIds, root);
+                    newSeries = MeetingSessions.Ref(false, made.Id);
+                }
+                else
+                {
+                    var made = await ScheduleForWorkspaceAsync(new ScheduleMeetingRequest(title ?? wm!.Title, wm!.Description, start, end, zone, people, null, wm.IsScrum, "ours", null, null,
+                        wm.VideoKind, wm.VideoLink), ct, root, next);
+                    newSeries = MeetingSessions.Ref(true, made.Id);
+                }
+                resultStart = start; resultEnd = end;
+            }
+        }
+
+        recorder.Audit($"meeting.occurrence_{whatChanged}", workspace ? "WorkspaceMeeting" : "ProjectMeeting", meetingId,
+            newValue: new { Scope = scope, Occurrence = occurrence, StartTimeUtc = resultStart?.UtcDateTime, Title = title, NewSeries = newSeries });
+        if (pm is not null) recorder.Activity($"meeting.occurrence_{whatChanged}", "ProjectMeeting", meetingId, $"{Cap(whatChanged)} {(scope == "this" ? "one session" : scope == "following" ? "this and following sessions" : "every session")} of \"{meetingTitle}\"", pm.ProjectId);
+        if (newSeries is null)
+        {
+            var link = MeetingReminders.MeetLink(meetingId, workspace);
+            var when = req.StartTime is { } at ? $" · now {InZone(at, zone)}" : "";
+            foreach (var u in people)
+                await notifications.AddAsync(u, NotificationType.Meeting, $"{meetingTitle}: {(scope == "this" ? "one session" : "the series")} {whatChanged}",
+                    $"Session of {InZone(new DateTimeOffset(occurrence, TimeSpan.Zero), zone)}{when}", link, ct: ct);
+        }
+        await db.SaveChangesAsync(ct);
+        await MeetingReminders.PlanAsync(db, clock.Now, ct, meetingId);
+        return new OccurrenceChangeResultDto(scope, mref, resultStart, resultEnd, newSeries);
+    }
+
+    private static string Cap(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 }

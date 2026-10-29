@@ -48,7 +48,7 @@ public class MeetTabTests(ApiFactory factory)
 
         // The invitation opens the meeting in Meet.
         var invite = factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == mate.UserId && n.Type == NotificationType.Meeting).ToList()).Single();
-        Assert.Equal($"/meet?open=p:{id}", invite.Link);
+        Assert.Equal($"/meetings?open=p:{id}", invite.Link);
 
         // Meet lists it for both, with each person's own reply.
         var feed = await mate.Get("/api/v1/meet");

@@ -19,7 +19,9 @@ namespace ProjectManagement.Application.Features.Time;
 /// </summary>
 public record TimeEntryDto(Guid Id, Guid? TaskId, string TaskKey, string TaskTitle, Guid? ProjectId, UserRefDto User, DateOnly WorkDate,
     int Minutes, string? Note, bool IsRunning, DateTime? StartedAt, bool CanEdit, Guid? WorkTaskId = null, string Kind = "task", bool Billable = false, bool Locked = false,
-    DateTime? EndedAt = null, string? Stamp = null, IReadOnlyList<TimeOverlapDto>? Overlaps = null, string? Warning = null);
+    DateTime? EndedAt = null, string? Stamp = null, IReadOnlyList<TimeOverlapDto>? Overlaps = null, string? Warning = null,
+    /// <summary>Time in a project meeting (<see cref="Kind"/> "meeting"): the meeting ("p:{id}"); neither a task nor a work task.</summary>
+    string? MeetingRef = null);
 /// <summary>
 /// Another of the same person's entries this one shares wall-clock time with. A warning, never an error: the entry is saved, both still count
 /// in full on the timesheet, and the screens offer to move or trim it. <see cref="Span"/>: "09:31–11:31" in the person's zone.
@@ -71,6 +73,8 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         public int WorkNumber { get; init; }
         public string? WorkTitle { get; init; }
         public WorkTaskKind WorkKind { get; init; }
+        public string? MeetingRef { get; init; }
+        public string? MeetingTitle { get; init; }
         public Guid? ProjectId { get; init; }
         public Guid UserId { get; init; }
         public string UserName { get; init; } = "";
@@ -100,13 +104,13 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             Id = e.Id, TaskId = e.TaskId, WorkTaskId = e.WorkTaskId, ProjectKey = p != null ? p.Key : null, TaskNumber = t != null ? t.Number : 0, TaskTitle = t != null ? t.Title : null,
             WorkNumber = w != null ? w.Number : 0, WorkTitle = w != null ? w.Title : null, WorkKind = w != null ? w.Kind : WorkTaskKind.Operational,
             ProjectId = e.ProjectId, UserId = e.UserId, UserName = u.DisplayName, WorkDate = e.WorkDate, Minutes = e.Minutes, Note = e.Note, StartedAt = e.StartedAt, EndedAt = e.EndedAt,
-            Billable = e.Billable, CreatedAt = e.CreatedAt, UpdatedAt = e.UpdatedAt,
+            Billable = e.Billable, CreatedAt = e.CreatedAt, UpdatedAt = e.UpdatedAt, MeetingRef = e.MeetingRef, MeetingTitle = e.MeetingTitle,
         };
 
     private bool IsAdmin => ctx.Role is TenantRole.Owner or TenantRole.Admin;
 
-    private static string KeyOf(Row r) => r.WorkTaskId is not null ? WorkItemService.KeyOf(r.WorkKind, r.WorkNumber) : $"{r.ProjectKey}-{r.TaskNumber}";
-    private static string TitleOf(Row r) => (r.WorkTaskId is not null ? r.WorkTitle : r.TaskTitle) ?? "(deleted)";
+    private static string KeyOf(Row r) => r.WorkTaskId is not null ? WorkItemService.KeyOf(r.WorkKind, r.WorkNumber) : r.TaskId is null && r.MeetingRef is not null ? (r.ProjectKey is { } k ? $"{k} meeting" : "Meeting") : $"{r.ProjectKey}-{r.TaskNumber}";
+    private static string TitleOf(Row r) => (r.WorkTaskId is not null ? r.WorkTitle : r.TaskId is null && r.MeetingRef is not null ? r.MeetingTitle : r.TaskTitle) ?? "(deleted)";
 
     private TimeEntryDto ToDto(Row r, HashSet<(Guid User, DateOnly Week)> locked)
     {
@@ -115,8 +119,9 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var title = TitleOf(r);
         var isLocked = locked.Contains((r.UserId, TimesheetApprovalService.WeekOf(r.WorkDate)));
         return new TimeEntryDto(r.Id, r.TaskId, key, title, r.ProjectId, new UserRefDto(r.UserId, r.UserName), r.WorkDate, r.Minutes, r.Note,
-            r.StartedAt is not null && r.EndedAt is null, r.StartedAt, (r.UserId == ctx.UserId || IsAdmin) && !isLocked, r.WorkTaskId, onWork ? "work" : "task", r.Billable, isLocked,
-            r.EndedAt, StampOf(r.UpdatedAt, r.CreatedAt));
+            r.StartedAt is not null && r.EndedAt is null, r.StartedAt, (r.UserId == ctx.UserId || IsAdmin) && !isLocked, r.WorkTaskId,
+            onWork ? "work" : r.TaskId is null && r.MeetingRef is not null ? "meeting" : "task", r.Billable, isLocked,
+            r.EndedAt, StampOf(r.UpdatedAt, r.CreatedAt), MeetingRef: r.TaskId is null && r.WorkTaskId is null ? r.MeetingRef : null);
     }
 
     /// <summary>The entry's concurrency stamp: when it last changed, to the microsecond (what the database keeps).</summary>
@@ -283,6 +288,24 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var work = await workTasks.RequireTimeLoggableAsync(workTaskId, ct);
         var entry = await AddEntryAsync(work.TenantId, null, workTaskId, work.RelatedProjectId, req, ct);
         recorder.Activity("worktask.time_logged", "WorkTask", workTaskId, $"Logged {Format(entry.Minutes)} on {WorkTaskService.KeyOf(work.Number)} “{work.Title}”", null);
+        await db.SaveChangesAsync(ct);
+        return await WithOverlapsAsync(await DtoAsync(entry.Id, ct), ct);
+    }
+
+    /// <summary>
+    /// Time spent in a session of a project meeting, from the post-meeting prompt (the person tapped Log): placed on the clock where the
+    /// session was, so the timesheet's overlap rules apply as for any placed entry. The caller has checked the person may see the project.
+    /// </summary>
+    public async Task<TimeEntryDto> LogOnMeetingAsync(Guid projectId, string meetingRef, string meetingTitle, LogTimeRequest req, CancellationToken ct = default)
+    {
+        var project = await access.GetProjectAsync(projectId, ct);
+        if (project.Status == ProjectStatus.Archived)
+            throw new ConflictException("Archived projects are read-only. Restore the project to log time.", "PROJECT_ARCHIVED");
+        var entry = await AddEntryAsync(project.TenantId, null, null, projectId, req, ct);
+        entry.MeetingRef = meetingRef;
+        entry.MeetingTitle = meetingTitle.Length > 200 ? meetingTitle[..200] : meetingTitle;
+        recorder.Activity("meeting.time_logged", "ProjectMeeting", Guid.TryParse(meetingRef.Length > 2 ? meetingRef[2..] : "", out var mid) ? mid : projectId,
+            $"Logged {Format(entry.Minutes)} in “{entry.MeetingTitle}”", projectId);
         await db.SaveChangesAsync(ct);
         return await WithOverlapsAsync(await DtoAsync(entry.Id, ct), ct);
     }
@@ -480,6 +503,7 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var visibleTasks = access.VisibleTasks().Select(t => t.Id);
         var visibleProjects = access.VisibleProjects().Select(p => p.Id);
         return q.Where(e => (e.TaskId != null && visibleTasks.Contains(e.TaskId.Value))
+                            || (e.TaskId == null && e.WorkTaskId == null && e.MeetingRef != null && seesProjects && e.ProjectId != null && visibleProjects.Contains(e.ProjectId.Value))
                             || (e.WorkTaskId != null && db.WorkTasks.Any(w => w.Id == e.WorkTaskId
                                 && ((w.Kind == WorkTaskKind.Operational && seesWork)
                                     || (w.Kind == WorkTaskKind.ActionItem && seesProjects && w.RelatedProjectId != null && visibleProjects.Contains(w.RelatedProjectId.Value))))));

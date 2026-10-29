@@ -144,6 +144,20 @@ public abstract class WorkItem : TenantEntity, ITenantScoped
     /// filter reads it so one rule covers every kind.
     /// </summary>
     public Guid? ScopeProjectId { get; private set; }
+
+    // Meetings connected: an item agreed in a meeting carries that meeting (the action item's source). Kept as text, so the tag survives the
+    // meeting being deleted. All empty for work that did not come from a meeting.
+    /// <summary>The meeting it was agreed in: "p:{id}" (a project meeting) or "w:{id}" (a workspace meeting).</summary>
+    public string? SourceMeetingRef { get; set; }
+    /// <summary>The series that meeting belongs to (the first meeting of a series that was split with "this and following"), same form.</summary>
+    public string? SourceSeriesRef { get; set; }
+    /// <summary>The meeting's title when the item was made ("◆ From: AutoPay weekly · 27 Oct").</summary>
+    public string? SourceMeetingTitle { get; set; }
+    /// <summary>The session it was agreed in (its start, UTC).</summary>
+    public DateTime? SourceOccurrenceStartUtc { get; set; }
+    /// <summary>The owner's latest one-line update ("Asked Lena for final copy; on track") and when it was given: a review shows "no update in N days" without it.</summary>
+    public string? LatestNote { get; set; }
+    public DateTime? LastUpdateAt { get; set; }
 }
 
 public class TaskItem : WorkItem, ISoftDelete

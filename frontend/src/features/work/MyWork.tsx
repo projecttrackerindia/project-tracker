@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion, type Transition } from 'fram
 import { ApiError, get, put } from '../../api/client';
 import { projectApi, timeApi } from '../../api/endpoints';
 import type { TimeEntry } from '../../api/types';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useIsSmallPhone } from '../../lib/mobile';
 import '../home/phoneToday.css';
 import { workItemsApi, type WorkRow } from '../../api/workItemsApi';
@@ -21,6 +21,11 @@ import { useTodayFocus } from '../calendar/useToday';
 import { shiftIsoDate } from '../../lib/zone';
 import { completedClock, completedToday, myWorkBucket, weekEndOf } from './myWorkRules';
 import { SavedViewsBar } from '../platform/SavedViews';
+import { SourceTag, meetingLink } from '../meet/MeetingWork';
+import { meetApi, type MeetItem } from '../meet/meetApi';
+import { JoinButton } from '../meet/MeetingDetail';
+import { openSchedule } from '../meet/scheduleStore';
+import '../meet/connect.css';
 
 /* ------------------------------------------------------------------ rules */
 
@@ -123,6 +128,10 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   const open = useWorkList({ mine: true });
   const closed = useWorkList({ mine: true, status: 'closed' });
   const [filter, setFilter] = useState<'all' | 'overdue' | 'raised' | string>('all');
+  // "◆ From meetings": only items agreed in a meeting (also opened from the post-meeting prompt with ?from=meetings).
+  const [params] = useSearchParams();
+  const [fromMeetings, setFromMeetings] = useState(params.get('from') === 'meetings');
+  const [todayOnly, setTodayOnly] = useState(false);
   // "Raised by me": what I reported, whoever it is assigned to (the server filters on the reporter).
   const raised = useWorkList({ raisedByMe: true }, filter === 'raised');
   // Today's focus blocks: the same plan (and the same blocks) Today's "Your day" and the Calendar draw.
@@ -139,17 +148,25 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
 
   const projects = useMemo(() => [...new Map(open.items.filter((w) => w.projectId).map((w) => [w.projectId!, w.projectName ?? ''])).entries()], [open.items]);
-  const pass = (w: WorkRow) => filter === 'all' || filter === 'raised' || (filter === 'overdue' ? w.isOverdue : w.projectId === filter);
+  const pass = (w: WorkRow) => (filter === 'all' || filter === 'raised' || (filter === 'overdue' ? w.isOverdue : w.projectId === filter))
+    && (!fromMeetings || !!w.source?.meetingRef) && (!todayOnly || myWorkBucket(w, today, weekEndOf(today)) === 'today' || w.isOverdue);
   const source = filter === 'raised' ? raised.items : open.items;
-  const openItems = useMemo(() => source.filter((w) => isOpen(w) && !ticked[w.id]).filter(pass).sort(SORTS[sort]), [source, ticked, sort, filter]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openItems = useMemo(() => source.filter((w) => isOpen(w) && !ticked[w.id]).filter(pass).sort(SORTS[sort]), [source, ticked, sort, filter, fromMeetings, todayOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fromMeetingCount = source.filter((w) => isOpen(w) && !!w.source?.meetingRef).length;
   const doneToday = useMemo(() => {
     const m = new Map<string, WorkRow>();
     for (const w of closed.items) if (completedToday(w, today)) m.set(w.id, w);
     for (const w of Object.values(ticked)) m.set(w.id, w);
     return [...m.values()].filter(pass);
-  }, [closed.items, ticked, today, filter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [closed.items, ticked, today, filter, fromMeetings, todayOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const weekEnd = weekEndOf(today);
+  // Meetings are work too: today's and this week's sessions sit in the same list, with Join and the agenda.
+  const meetings = useWsQuery(['meet', 'feed', 'my-work', today], () => meetApi.feed({ from: new Date(Date.now() - 60 * 60_000).toISOString(), to: new Date(`${weekEnd}T23:59:59`).toISOString() }), { staleTime: 60_000, retry: false });
+  const myMeetings = (meetings.data?.items ?? []).filter((m) => m.status === 'Scheduled' && m.myRsvp !== 'Declined' && new Date(m.end).getTime() > Date.now());
+  const meetingDay = (m: MeetItem) => { const d = new Date(m.start); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const meetingsToday = fromMeetings || filter !== 'all' ? [] : myMeetings.filter((m) => meetingDay(m) <= today);
+  const meetingsWeek = fromMeetings || filter !== 'all' || todayOnly ? [] : myMeetings.filter((m) => meetingDay(m) > today && meetingDay(m) <= weekEnd);
   // The shared rules (work/myWorkRules): overdue is its own bucket, never mixed into Today.
   const bucket = (w: WorkRow) => { if (later.includes(w.id)) return 'later'; const b = myWorkBucket(w, today, weekEnd); return b === 'none' ? 'later' : b; };
   const cols = {
@@ -201,7 +218,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
     <div className="mw">
       <div className="mw-hd">
         <div>
-          <div className="mw-eyebrow">{loading ? ' ' : `${openItems.length} open · ${overdue} overdue`}</div>
+          <div className="mw-eyebrow">{loading ? ' ' : `${openItems.length} open · ${overdue} overdue${fromMeetingCount ? ` · ${fromMeetingCount} from meetings` : ''}`}</div>
           <h1 className="mw-h1">My Work</h1>
         </div>
         <div className="mw-pills">
@@ -219,6 +236,11 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
               </div>
             )}
           </div>
+          <button type="button" className={`mw-pill mw-meet-chip${fromMeetings ? ' on' : ''}`} aria-pressed={fromMeetings} data-testid="from-meetings-chip"
+            onClick={() => setFromMeetings((v) => !v)}><i aria-hidden="true">◆</i> From meetings{fromMeetingCount ? ` · ${fromMeetingCount}` : ''}{fromMeetings && <span aria-hidden="true"> ×</span>}</button>
+          {small && <button type="button" className={`mw-pill${todayOnly ? ' on' : ''}`} aria-pressed={todayOnly} onClick={() => setTodayOnly((v) => !v)}>Today</button>}
+          <Link className="mw-pill" to="/work?view=actions">My action items</Link>
+          <button type="button" className="mw-pill" onClick={() => openSchedule({})}>Schedule a meeting</button>
           <button type="button" className="mw-pill" aria-label={`Sort: ${SORT_LABEL[sort]}`} title="Change the order"
             onClick={() => setSort((s) => (s === 'smart' ? 'due' : s === 'due' ? 'priority' : 'smart'))}>Sort: {SORT_LABEL[sort]}</button>
         </div>
@@ -306,7 +328,8 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
       <section className="mw-card mw-lists" aria-label="Work list">
         {([['overdue', 'Overdue'], ['today', 'Today'], ['week', 'This week'], ['later', 'Later']] as const).filter(([id]) => id !== 'overdue' || cols.overdue.length > 0).map(([id, title]) => (
           <div key={id} className={`mw-grp g-${id}`} role="group" aria-label={title}>
-            <h2>{title} <span>{cols[id].length}</span></h2>
+            <h2>{title} <span>{cols[id].length + (id === 'today' ? meetingsToday.length : id === 'week' ? meetingsWeek.length : 0)}</span></h2>
+            {(id === 'today' ? meetingsToday : id === 'week' ? meetingsWeek : []).map((m) => <MeetingRow key={`${m.ref}:${m.start}`} m={m} week={id === 'week'} />)}
             {cols[id].map((w) => <Row key={w.id} w={w} pulls={prs.get(w.id)} done={!isOpen(w)} showAssignee={filter === 'raised'} onTick={() => tickRow(w)} onOpen={() => onOpen(w.id)} onBack={later.includes(w.id) ? () => laterStore.remove(w.id) : undefined} />)}
             {id === 'later' && <button type="button" className="mw-add" onClick={() => openNew('task')}>＋ Add item</button>}
           </div>
@@ -327,11 +350,34 @@ function Row({ w, pulls, done, showAssignee, onTick, onOpen, onBack }: { w: Work
       <button type="button" className={`mw-chk ${done ? 'on' : ''}`} aria-label={done ? `${w.title} is done` : `Complete ${w.title}`} aria-pressed={done} disabled={done} onClick={onTick} />
       <button type="button" className="mw-r-main" onClick={onOpen} aria-label={`${w.key} ${w.title}${w.isOverdue ? ', overdue' : ''}`}>
         <b>{w.title}</b>
-        <small>{dot && !done && <i className="mw-pd" style={{ background: dot }} />}{[w.projectName, who, when].filter(Boolean).join(' · ')}{late > 0 && !done && <>{w.projectName ? ' · ' : ''}<span className="od">overdue {late}d</span></>}</small>
+        <small>{dot && !done && <i className="mw-pd" style={{ background: dot }} />}{[w.projectName, who, when].filter(Boolean).join(' · ')}{late > 0 && !done && <>{w.projectName ? ' · ' : ''}<span className="od">overdue {late}d</span></>}
+          {w.source?.meetingRef && <> <SourceTag source={w.source} faded={done} /></>}</small>
       </button>
       {!done && <PrChips pulls={pulls} compact />}
       {!done && (w.priority === 'High' || w.priority === 'Critical') && <span className="mw-flag" title={`${w.priority} priority`} aria-label={`${w.priority} priority`}>!</span>}
       {onBack && !done && <button type="button" className="mw-back" onClick={onBack} aria-label={`Bring ${w.title} back`} title="Bring it back now">↩</button>}
+    </div>
+  );
+}
+
+/** A meeting in My Work (design: meet-where, My Work column): today with Join and its agenda; this week with its day, time and cadence. */
+function MeetingRow({ m, week }: { m: MeetItem; week: boolean }) {
+  const start = new Date(m.start);
+  const minutes = Math.round((new Date(m.end).getTime() - start.getTime()) / 60_000);
+  const time = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const agenda = (m.agenda ?? m.description ?? '').split('\n').map((l) => l.replace(/^\s*(\d+[.)]|[-•*])\s*/, '').trim()).filter(Boolean).slice(0, 3);
+  const cadence = m.cadence && m.cadence !== 'Ad hoc' ? m.cadence.toLowerCase() : null;
+  const length = minutes >= 60 ? (minutes % 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes / 60}h`) : `${minutes}m`;
+  return (
+    <div className={`mw-r mw-meet${week ? ' week' : ''}`} data-testid="my-work-meeting">
+      <span className="mw-meet-ico" aria-hidden="true">◆</span>
+      <Link className="mw-r-main" to={meetingLink(m.ref, m.originalStart ?? m.start)} aria-label={`Meeting ${m.title}`}>
+        <b>{m.title}</b>
+        <small>{week ? [start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }), time, cadence].filter(Boolean).join(' · ')
+          : ['Meeting', time, length, cadence].filter(Boolean).join(' · ')}</small>
+        {!week && agenda.length > 0 && <small className="mw-agenda">Agenda · {agenda.map((a, i) => `${i + 1} ${a}`).join(' · ')}</small>}
+      </Link>
+      {!week && m.joinUrl && <JoinButton m={m} />}
     </div>
   );
 }

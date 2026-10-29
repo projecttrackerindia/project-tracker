@@ -116,7 +116,7 @@ public class TimesheetWordsService(IAppDbContext db, ICurrentContext ctx, AppClo
         var recent = await time.TimesheetAsync(today.AddDays(-13), today, null, ct);
         var projectIds = recent.Entries.Where(e => e.ProjectId != null).Select(e => e.ProjectId!.Value).Distinct().ToList();
         var names = projectIds.Count == 0 ? new Dictionary<Guid, string>() : await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name, ct);
-        foreach (var g in recent.Entries.GroupBy(e => (e.Kind, Target: e.Kind == "work" ? e.WorkTaskId!.Value : e.TaskId!.Value)).OrderByDescending(g => g.Sum(e => e.Minutes)))
+        foreach (var g in recent.Entries.Where(e => e.Kind != "meeting").GroupBy(e => (e.Kind, Target: TimesheetGridService.TargetOf(e))).OrderByDescending(g => g.Sum(e => e.Minutes)))
         {
             var e = g.First();
             Add(new Cand(g.Key.Kind, g.Key.Target, e.TaskKey, e.TaskTitle, e.ProjectId is { } pid ? names.GetValueOrDefault(pid) : null, 3));

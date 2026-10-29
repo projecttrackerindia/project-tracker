@@ -807,7 +807,7 @@ function NoMeetings({ scope, focusCount, onPlanFocus }: { scope: 'day' | 'week';
       <div className="wp-empty-t"><b>No meetings this {scope}.</b> <span><Term k="free time">Free time</Term> to protect{focusCount ? ` · ${focusCount} focus block${focusCount === 1 ? '' : 's'} suggested` : ''}.</span></div>
       <div className="wp-empty-acts">
         <button type="button" className="wp-empty-btn pri" onClick={onPlanFocus} data-testid="plan-focus">Plan focus</button>
-        <button type="button" className="wp-empty-btn" onClick={() => navigate('/messages?f=meetings&new=1')}>Schedule meeting</button>
+        <button type="button" className="wp-empty-btn" onClick={() => navigate('/meetings?new=schedule')}>Schedule meeting</button>
         {risky?.href
           ? <button type="button" className="wp-empty-btn" title={`${risky.title} · ${risky.reason}`} onClick={() => navigate(risky.href!)}>Open riskiest project</button>
           : <button type="button" className="wp-empty-btn" onClick={() => navigate('/work/projects?status=AtRisk')}>Projects at risk</button>}

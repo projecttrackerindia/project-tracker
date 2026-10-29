@@ -77,7 +77,7 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
                 var refId = $"{(e.ProjectId is null ? "w" : "p")}:{e.Id}";
                 events.Add(new TimelineEventDto($"meeting:{e.Id}:{at:yyyyMMddHHmm}", "meeting", e.Title, at, end, false, clock.LocalDate(at),
                     e.ProjectId is null ? "workspaceMeeting" : "projectMeeting", e.Id,
-                    $"/messages?f=meetings&meeting={refId}&at={Uri.EscapeDataString(at.ToString("yyyy-MM-ddTHH:mm:ssZ"))}",
+                    $"/meetings?open={refId}&at={Uri.EscapeDataString(at.ToString("yyyy-MM-ddTHH:mm:ssZ"))}",
                     e.ProjectId, e.ProjectName, e.People ?? [], e.Status, "meet", JoinUrl: e.JoinUrl, Notes: e.Notes));
                 continue;
             }
@@ -201,8 +201,8 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             var live = c.Status == "live" && c.EndedAt is null;
             var end = c.EndedAt is { } e ? Utc(e) : live ? (now > start ? now : start.AddMinutes(1)) : start.AddMinutes(1);
             var link = live ? $"/calls/{c.Id}"
-                : c.MeetingId is { } pm ? $"/messages?f=meetings&meeting=p:{pm}"
-                : c.WorkspaceMeetingId is { } wm ? $"/messages?f=meetings&meeting=w:{wm}"
+                : c.MeetingId is { } pm ? $"/meetings?open=p:{pm}"
+                : c.WorkspaceMeetingId is { } wm ? $"/meetings?open=w:{wm}"
                 : c.ConversationId is { } cv ? $"/messages/{cv}" : null;
             events.Add(new TimelineEventDto($"call:{c.Id}", "call", c.Title, start, end, false, clock.LocalDate(start), "call", c.Id, link, c.ProjectId, c.ProjectName,
                 namesByCall.TryGetValue(c.Id, out var n) ? n : [], live ? "live" : "ended", "call", Notes: c.AgentEnabled, Mode: c.Kind, Running: live));

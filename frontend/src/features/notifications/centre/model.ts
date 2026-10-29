@@ -7,7 +7,7 @@ import { CATEGORIES } from './prefs';
 
 const MESSAGE_TYPES = new Set<NotificationType>(['Message', 'Mention', 'Call'] as NotificationType[]);
 const REMINDER_TYPES = new Set<NotificationType>(['Reminder', 'Nudge', 'DueSoon', 'Overdue', 'TimesheetReminder', 'CertificationExpiry'] as NotificationType[]);
-const isMeetingLink = (l: string | null | undefined) => !!l && (l.startsWith('/calls/meeting/') || l.startsWith('/meet?open='));
+const isMeetingLink = (l: string | null | undefined) => !!l && (l.startsWith('/calls/meeting/') || l.startsWith('/meet?open=') || l.startsWith('/meetings?open='));
 
 /** The server says which category; older answers do not, so the same split is worked out here. */
 export function categoryOf(n: Pick<AppNotification, 'type' | 'link' | 'category'>): NotificationCategory {

@@ -6,6 +6,7 @@ using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Attendance;
 using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Features.Issues;
+using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.ProjectMeetings;
 using ProjectManagement.Application.Features.Quality;
 using ProjectManagement.Application.Features.Tasks;
@@ -24,7 +25,7 @@ namespace ProjectManagement.Application.Features.Ai;
 /// What Undo needs is recorded with the result; <see cref="UndoAsync"/> reverses it through the same services.
 /// </summary>
 public class AiPowerActions(IAppDbContext db, ICurrentContext ctx, PermissionService permissions, TaskService tasks, WorkTaskService workTasks, TimeService time,
-    AttendanceService attendance, IssueService issues, MeetingService meetings, QualityService quality, DocumentWorkflowService workflows)
+    AttendanceService attendance, IssueService issues, MeetingService meetings, QualityService quality, DocumentWorkflowService workflows, MeetConnectService connect)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -123,6 +124,13 @@ public class AiPowerActions(IAppDbContext db, ICurrentContext ctx, PermissionSer
                 var before = await meetings.GetAsync(id, ct);
                 await meetings.UpdateDetailsAsync(id, new UpdateMeetingDetailsRequest(Str(a, "title") ?? before.Title, Str(a, "description")), ct);
                 return new AiActionResult(MeetingReminders.MeetLink(id, false), id, JsonSerializer.Serialize(new { meetingId = id, title = before.Title, description = before.Description }, Json));
+            }
+            case "capture_action_item":
+            {
+                // The same service as the meeting page's capture line, as the person: the item is theirs, with the meeting as its source.
+                DateOnly? due = DateOnly.TryParse(Str(a, "dueDate"), System.Globalization.CultureInfo.InvariantCulture, out var dd) ? dd : null;
+                var made = await connect.CaptureAsync(Str(a, "meetingRef") ?? "", new CaptureActionItemRequest(Str(a, "text"), null, null, OptId(a, "assigneeId"), due), ct);
+                return new AiActionResult(ActionItemService.LinkOf(made.Item.ProjectId, made.Item.Id), made.Item.Id);
             }
             case "create_test_case":
             {

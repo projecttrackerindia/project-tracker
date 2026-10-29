@@ -10,7 +10,8 @@ import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { appZone, zonedParts } from '../../lib/zone';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { meetApi } from './meetApi';
+import { NotetakerPicker } from './NotetakerPicker';
+import { ScheduleSheet } from './ScheduleSheet';
 import { zonedTimeToUtc } from './timezone';
 import './meet.css';
 
@@ -104,46 +105,6 @@ function ParticipantPicker({ projectId, organizerUserId, selected, onChange }: {
   );
 }
 
-/**
- * The notetaker for this meeting: none, transcription, or transcription with spoken suggestions when something is being missed. It is the
- * project's agent in the meeting, so it needs a project with its agent allowed to read meetings; what is not possible says why.
- */
-function NotetakerPicker({ projectId, value, onChange }: { projectId: string | null; value: NotetakerChoice; onChange: (v: NotetakerChoice) => void }) {
-  const q = useWsQuery(['meet', 'notetaker', projectId ?? 'none'], () => meetApi.notetaker(projectId!), { enabled: !!projectId, staleTime: 30_000 });
-  const r = q.data;
-  useEffect(() => {
-    // A choice the project cannot honour falls back to what it can.
-    if (!r) return;
-    if (!r.available && value !== 'off') onChange('off');
-    else if (value === 'voice' && !r.voiceAvailable) onChange('transcript');
-  }, [r, value, onChange]);
-  if (!projectId) return (
-    <fieldset className="mt-notetaker">
-      <legend>Notetaker</legend>
-      <p className="mt-hint">Choose a project to bring the notetaker. Its notes and follow-ups are kept in that project.</p>
-    </fieldset>
-  );
-  const options: { key: NotetakerChoice; label: string; text: string; ok: boolean; why?: string | null }[] = [
-    { key: 'off', label: 'Not needed', text: 'Nobody listens or records.', ok: true },
-    { key: 'transcript', label: 'Transcription', text: 'Listens, writes the transcript and the minutes, and stays quiet.', ok: !!r?.available, why: r?.reason },
-    { key: 'voice', label: 'Transcription + voice suggestions', text: 'Also speaks up, briefly, when an agenda point, an owner or a date is being missed.', ok: !!r?.voiceAvailable, why: r?.voiceReason },
-  ];
-  return (
-    <fieldset className="mt-notetaker" aria-busy={q.isLoading}>
-      <legend>Notetaker</legend>
-      <div className="mt-choices" role="radiogroup" aria-label="Notetaker">
-        {options.map((o) => (
-          <label key={o.key} className={`mt-choice${value === o.key ? ' on' : ''}${o.ok ? '' : ' off'}`}>
-            <input type="radio" name="notetaker" value={o.key} checked={value === o.key} disabled={!o.ok} onChange={() => onChange(o.key)} />
-            <span><b>{o.label}</b><small>{o.ok || !o.why ? o.text : o.why}</small></span>
-          </label>
-        ))}
-      </div>
-      {r && !r.available && r.canSwitchOn && <p className="mt-hint"><Link to={`/projects/${projectId}?tab=agent`}>Open the project's agent settings</Link></p>}
-    </fieldset>
-  );
-}
-
 /** Searches every project on the server (a workspace may have hundreds); "No project" for a workspace meeting (not for guests). */
 function ProjectPicker({ value, onChange }: { value: { id: string; name: string } | null; onChange: (p: { id: string; name: string } | null) => void }) {
   const isGuest = useAuth((s) => s.ctx?.current?.role === 'Guest');
@@ -198,7 +159,13 @@ const SCRUM_AGENDA = 'Progress since the last stand-up\nPriorities for today\nBl
  * The one form for meetings, used only on the Meet page: start one now, or schedule one (a meeting or a stand-up, once or as a series) in
  * Google Meet, Teams or a Project Tracker call, with or without a project, and with the notetaker the meeting needs.
  */
-export function MeetingForm({ mode, project: initialProject, title: initialTitle, details, onClose }: { mode: 'now' | 'schedule'; project?: { id: string; name: string } | null; /** + New › Meeting: the words typed. */ title?: string | null; /** + New with a long paragraph: the full text, as the agenda. */ details?: string | null; onClose: () => void }) {
+export function MeetingForm(props: { mode: 'now' | 'schedule'; project?: { id: string; name: string } | null; /** + New › Meeting: the words typed. */ title?: string | null; /** + New with a long paragraph: the full text, as the agenda. */ details?: string | null; onClose: () => void }) {
+  // Scheduling is the one schedule sheet wherever it is opened from; "start now" keeps its short form.
+  if (props.mode === 'schedule') return <ScheduleSheet open={{ project: props.project ?? null, title: props.title, agenda: props.details }} onClose={props.onClose} />;
+  return <StartNowForm {...props} />;
+}
+
+function StartNowForm({ mode, project: initialProject, title: initialTitle, details, onClose }: { mode: 'now' | 'schedule'; project?: { id: string; name: string } | null; title?: string | null; details?: string | null; onClose: () => void }) {
   const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx?.user.id);
   const workspaceName = useAuth((s) => s.ctx?.current?.name ?? 'Team');

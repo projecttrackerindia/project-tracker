@@ -176,7 +176,7 @@ export function ProjectAgentSettings({ projectId, archived }: { projectId: strin
         <div className="ag-actions">
           {manage && <button type="button" className="btn btn-primary btn-sm" onClick={() => setTranscript(true)}><Icon name="note" size={14} />Add transcript</button>}
           {manage && <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => void run()}>{busy === 'run' ? <span className="spinner" /> : <Icon name="refresh" size={14} />}Read new now</button>}
-          {a.liveBotAvailable && a.readMeetings && <Link className="btn btn-ghost btn-sm" to={`/messages?f=meetings&s=notetaker&project=${projectId}`}><Icon name="video" size={14} />Send to a call</Link>}
+          {a.liveBotAvailable && a.readMeetings && <Link className="btn btn-ghost btn-sm" to={`/meetings?s=notetaker&project=${projectId}`}><Icon name="video" size={14} />Send to a call</Link>}
         </div>
         <p className="ag-meta">{a.lastRunAt ? `Last read ${timeAgo(a.lastRunAt)}` : 'Has not read anything yet'} · {a.runsThisMonth}/{a.monthlyRunLimit} readings this month
           {a.actingUserName && <> · acts as {a.actingUserName}</>}</p>

@@ -185,11 +185,18 @@ export const personalEmailApi = {
 };
 /** Whether the notetaker comes to a meeting: no, to listen and write (transcript), or also to speak up when something is missed (voice). */
 export type NotetakerChoice = 'off' | 'transcript' | 'voice';
+/** How a meeting repeats: Daily, Weekdays, Weekly, Monthly or Custom (every interval weeks on days), ending after occurrences sessions and/or on until (yyyy-mm-dd). */
+export interface MeetingRepeatInput { frequency: 'Daily' | 'Weekdays' | 'Weekly' | 'Monthly' | 'Custom'; occurrences?: number; until?: string; interval?: number; days?: string[] }
+/** Schedule a meeting. teamIds: whole teams (their members are invited). video: inapp, teams, meet, zoho (videoUrl pasted) or none. */
+export interface ScheduleBody {
+  title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: MeetingRepeatInput; scrum?: boolean;
+  service?: MeetingServiceKey; teamIds?: string[]; video?: 'inapp' | 'teams' | 'meet' | 'zoho' | 'none'; videoUrl?: string;
+}
 export const meetingApi = {
   list: (projectId: string) => get<Meeting[]>(`/projects/${projectId}/meetings`),
   participants: (projectId: string) => get<MeetingParticipant[]>(`/projects/${projectId}/meetings/participants`),
   start: (projectId: string, b: { title?: string; participantUserIds?: string[]; service?: MeetingServiceKey; notetaker?: NotetakerChoice }) => post<Meeting>(`/projects/${projectId}/meetings/start`, b),
-  schedule: (projectId: string, b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean; service?: MeetingServiceKey; notetaker?: NotetakerChoice }) =>
+  schedule: (projectId: string, b: ScheduleBody & { notetaker?: NotetakerChoice }) =>
     create<Meeting>(`/projects/${projectId}/meetings/schedule`, b),
   get: (id: string) => get<Meeting>(`/meetings/${id}`),
   cancel: (id: string) => post(`/meetings/${id}/cancel`, {}),
@@ -200,7 +207,7 @@ export const meetingApi = {
   removeParticipant: (id: string, userId: string) => del<Meeting>(`/meetings/${id}/participants/${userId}`),
   /** A meeting for the workspace as a whole (no project): its own invitee list and endpoint; Google, Outlook or our own calls hold it. */
   workspaceParticipants: () => get<MeetingParticipant[]>('/meetings/participants'),
-  scheduleForWorkspace: (b: { title: string; description?: string; startTime: string; endTime: string; timeZone: string; participantUserIds?: string[]; repeat?: { frequency: 'Daily' | 'Weekdays' | 'Weekly'; occurrences: number }; scrum?: boolean; service?: MeetingServiceKey }) =>
+  scheduleForWorkspace: (b: ScheduleBody) =>
     create<{ id: string; title: string; meetUri: string; calendarUrl: string | null; participantCount: number; provider?: MeetingProvider; providerName?: string }>('/meetings/schedule', b),
   workspaceGet: (id: string) => get<WorkspaceMeetingDetail>(`/meetings/workspace/${id}`),
   workspaceCancel: (id: string) => post(`/meetings/workspace/${id}/cancel`, {}),

@@ -374,7 +374,7 @@ public class NotificationTests(ApiFactory factory)
         {
             var options = Options.Create(new AppOptions { WebBaseUrl = "http://localhost:8080" });
             var svc = new NotificationEmailService(db, new BrokenSender(), options, new AppClock(TimeProvider.System, options), NullLogger<NotificationEmailService>.Instance);
-            for (var i = 0; i < NotificationEmailService.MaxAttempts + 2; i++) svc.SendPendingAsync().GetAwaiter().GetResult();
+            for (var i = 0; i < NotificationEmailService.MaxAttempts + 2; i++) svc.SendPendingAsync(int.MaxValue).GetAwaiter().GetResult();
             return db.Notifications.IgnoreQueryFilters().First(n => n.UserId == mia.UserId && n.Body == "Flaky mail");
         });
         Assert.Equal(NotificationEmailService.MaxAttempts, failure.EmailAttempts);

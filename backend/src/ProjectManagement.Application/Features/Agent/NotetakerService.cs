@@ -276,7 +276,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
             var nowLocal = ProjectManagement.Application.Features.Reminders.ZoneTime.ToLocal(clock.Now, zone);
             if (ProjectManagement.Application.Features.Reminders.PromiseDetector.DueFrom(a.Due, nowLocal, settings) is not { } at) continue;
             var key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(a.Task.Trim().ToLowerInvariant())))[..16];
-            await promises.OfferAtAsync(bot.TenantId, owner, a.Task, at, "meeting", $"minutes:{bot.Id:N}:{key}", $"/meet/notetaker?session={bot.Id}",
+            await promises.OfferAtAsync(bot.TenantId, owner, a.Task, at, "meeting", $"minutes:{bot.Id:N}:{key}", $"/meetings?s=notetaker&session={bot.Id}",
                 $"{a.Task} — {a.Owner}, by {a.Due} ({content.Title})", ct);
         }
     }
@@ -341,7 +341,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
                         await db.AgentMeetingBots.Where(b => b.Id == bot.Id).ExecuteUpdateAsync(u => u.SetProperty(b => b.TranscriptProtected, (string?)null), ct);
                     await notifications.AddAsync(p.UserId, NotificationType.Meeting, $"Minutes ready: {minutes.Title}",
                         created.Count > 0 ? $"Your notetaker wrote up the call and created {created.Count} task(s) from it." : "Your notetaker wrote up the call. Review and send the minutes.",
-                        $"/meet/notetaker?session={bot.Id}", $"minutes:{bot.Id}", toSelf: true, ct: ct);
+                        $"/meetings?s=notetaker&session={bot.Id}", $"minutes:{bot.Id}", toSelf: true, ct: ct);
                     await db.SaveChangesAsync(ct);
                     done++;
                 }
@@ -368,7 +368,7 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
     {
         var n = minutes.Content.ActionItems.Count(a => a.Task.Length > 0);
         if (n == 0) return;
-        actionLog.Propose(AiAgents.Notetaker, "create_tasks", new AiActionLog.Target("project", null, null, bot.ProjectId, $"/meet/notetaker?session={bot.Id}"),
+        actionLog.Propose(AiAgents.Notetaker, "create_tasks", new AiActionLog.Target("project", null, null, bot.ProjectId, $"/meetings?s=notetaker&session={bot.Id}"),
             $"Create {n} task{(n == 1 ? "" : "s")} from the minutes of {minutes.Content.Title}", userId, new TasksProposal(bot.Id, bot.ProjectId));
     }
 

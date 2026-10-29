@@ -10,7 +10,7 @@ public class MeetingRecurrenceTests
     public void Known_rhythms_produce_bounded_native_rules(string frequency,string expected) =>
         Assert.Equal(expected, MeetingRecurrence.Rule(new(frequency,10), DateTimeOffset.Parse("2030-01-07T09:00:00Z"), "UTC"));
     [Theory]
-    [InlineData("Monthly",10,"UTC")]
+    [InlineData("Yearly",10,"UTC")]
     [InlineData("Daily",1,"UTC")]
     [InlineData("Daily",121,"UTC")]
     [InlineData("Daily",10,"Not/AZone")]

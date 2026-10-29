@@ -86,13 +86,15 @@ try{
  const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&!m.text().startsWith('Failed to load resource'))console.error('console:',m.text().slice(0,400));});await page.setViewportSize({width:1440,height:1000});
  const shot=(name)=>page.screenshot({path:path.join(out,name),animations:'disabled'});
  try{
-  // 1. One entry: Talk in the rail, Meetings among its filters (the old address lands there); Talk's ··· opens all meetings, where the list
-  // shows what is coming with each person's reply and Join only when it is near.
-  await page.goto(origin+'/preview-org/meet');await page.waitForURL(/\/messages\?f=meetings/);
-  await page.locator('.v2-rail-item.on',{hasText:'Messages'}).waitFor();
-  assert.equal(await page.locator('.talk-filters .ds-chip',{hasText:'Meetings'}).getAttribute('aria-pressed'),'true');
-  await page.getByRole('button',{name:'More in Messages'}).click();await page.getByRole('menuitem',{name:/All meetings/}).click();
-  await page.waitForURL(/[?&]s=upcoming/);
+  // 1. Meetings is its own place: in the sidebar (Together: Meetings · Messages · Mail), the old address lands there, tabs Upcoming · Past ·
+  // Series. The list shows what is coming with each person's reply and Join only when it is near.
+  await page.goto(origin+'/preview-org/meet');await page.waitForURL(/\/meetings$/);
+  await page.locator('.v2-rail-item.on',{hasText:'Meetings'}).waitFor();
+  assert.equal(await page.locator('.v2-rail-item.on',{hasText:'Messages'}).count(),0,'Messages is not lit on Meetings');
+  { const names=(await page.locator('.v2-rail-item .v2-rail-label, .v2-rail-item').allInnerTexts()).map((t)=>t.trim().split('\n')[0]);
+    const at=(n)=>names.findIndex((x)=>x===n);assert.ok(at('Meetings')>=0&&at('Meetings')<at('Messages')&&at('Messages')<at('Mail'),`Together order: ${names}`); }
+  assert.deepEqual((await page.locator('.mt-page .route-tabs .tab').allInnerTexts()).map((t)=>t.trim()),['Upcoming','Past','Series']);
+  await page.locator('.mt-page .route-tabs .tab',{hasText:'Upcoming'}).click();await page.waitForURL(/[?&]s=upcoming/);
   const rows=page.locator('.mt-item');await rows.first().waitFor();
   assert.equal(await rows.count(),4,'Three meetings and one call from the calendar');
   const review=rows.filter({hasText:'Atlas review'});
@@ -102,7 +104,7 @@ try{
   assert.match(await review.innerText(),/Notetaker with voice/);
   assert.match(await rows.filter({hasText:'Vendor call'}).innerText(),/On your calendar/);
   assert.equal(await rows.filter({hasText:'Vendor call'}).getByRole('link',{name:'Send notetaker'}).getAttribute('href'),
-    `/preview-org/meet/notetaker?url=${encodeURIComponent('https://teams.microsoft.com/l/meetup-join/vendor')}&title=Vendor%20call`);
+    `/preview-org/meetings?s=notetaker&url=${encodeURIComponent('https://teams.microsoft.com/l/meetup-join/vendor')}&title=Vendor%20call`);
   await shot('meet-upcoming-1440.png');checks.push('list');
 
   // 2. Replying to a Project Tracker call from the list.
@@ -110,10 +112,10 @@ try{
   await page.waitForFunction(()=>[...document.querySelectorAll('.mt-item')].some(li=>li.textContent.includes('Atlas review')&&li.textContent.includes('Going')));
   assert.deepEqual(writes.at(-1),{ep:`/api/v1/meet/p/${ids.ours}/rsvp`,method:'POST',b:{response:'accepted'}});checks.push('reply-from-list');
 
-  // 3. One meeting, opened from a link (reminders and notifications use these): people, agenda, the notetaker, and the reply. v2: it opens
-  // in Talk's own pane.
-  await page.goto(origin+`/preview-org/meet?open=p:${ids.ours}`);await page.waitForURL(/[?&]meeting=p(:|%3A)/);
-  const d=page.locator('.mt-inline');await d.getByRole('heading',{name:'Atlas review'}).waitFor();
+  // 3. One meeting, opened from a link (reminders and notifications use these): people, agenda, the notetaker, and the reply. It opens in
+  // Meetings (the old /meet and /messages?meeting= addresses move there).
+  await page.goto(origin+`/preview-org/messages?meeting=p:${ids.ours}`);await page.waitForURL(/\/meetings\?open=p(:|%3A)/);
+  const d=page.getByRole('dialog');await d.getByRole('heading',{name:'Atlas review'}).waitFor();
   assert.match(await d.locator('.mt-props').innerText(),/speaks up when something is missed/);
   assert.match(await d.locator('.mt-agenda').innerText(),/Release scope/);
   assert.match(await d.innerText(),/1 not going/);
@@ -122,10 +124,11 @@ try{
   assert.equal(await d.getByRole('button',{name:'Cancel meeting'}).count(),0,'Only the organizer cancels');
   await shot('meet-detail-1440.png');checks.push('detail-and-reply');
 
-  // 4. Schedule (from Talk's ···): the notetaker is chosen per meeting; voice says why it cannot come; the choice is sent.
-  await page.getByRole('button',{name:'More in Messages'}).click();await page.getByRole('menuitem',{name:/Schedule a meeting/}).click();
+  // 4. Schedule (Meetings' own button): the notetaker is chosen per meeting; voice says why it cannot come; the choice is sent.
+  await page.goto(origin+'/preview-org/meetings');await page.locator('.mt-item').first().waitFor();
+  await page.getByRole('button',{name:'Schedule meeting',exact:true}).click();
   const f=page.getByRole('dialog');await f.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
-  assert.match(await f.locator('.mt-notetaker').innerText(),/Choose a project to bring the notetaker/);
+  assert.equal(await f.locator('.mt-notetaker').count(),0,'The notetaker comes with a project: no row without one');
   await f.getByLabel('Project',{exact:true}).selectOption(project.id);
   const voice=f.getByRole('radio',{name:/Transcription \+ voice suggestions/});await voice.waitFor();
   assert.ok(await voice.isDisabled());assert.match(await f.locator('.mt-notetaker').innerText(),/Voice needs the speech service/);
@@ -133,7 +136,7 @@ try{
   await f.getByLabel('Title',{exact:true}).fill('Release go/no-go');
   await f.locator('input[type=date]').fill('2030-01-07');await f.locator('input[type=time]').fill('11:00');
   await shot('meet-schedule-1440.png');
-  await f.getByRole('button',{name:'Send invitation'}).click();await f.getByTestId('meeting-ready').waitFor();
+  await f.getByRole('button',{name:'Schedule',exact:true}).click();await f.getByTestId('meeting-ready').waitFor();
   const sent=writes.find(w=>w.ep===`/api/v1/projects/${project.id}/meetings/schedule`).b;
   assert.equal(sent.notetaker,'transcript');assert.equal(sent.startTime,'2030-01-07T05:30:00.000Z');assert.deepEqual(sent.participantUserIds,['u2']);
   await f.getByRole('button',{name:'Done',exact:true}).click();checks.push('schedule-with-notetaker');
@@ -150,18 +153,22 @@ try{
   await page.goto(origin+'/preview-org/meet/past');const kick=page.locator('.mt-item').filter({hasText:'Kick-off'});await kick.waitFor();
   assert.match(await kick.innerText(),/Notes/);assert.equal(await kick.getByRole('link',{name:'Join'}).count(),0);checks.push('past');
 
-  // 7. The Calendar (Home › Calendar in v2) shows meetings and opens them in Talk; it has no meeting button of its own.
+  // 7. The Calendar (Home › Calendar in v2) shows meetings and opens them in Meetings; it has no meeting button of its own.
   await page.goto(origin+'/preview-org/calendar');await page.locator('[data-testid="week-planner"]').waitFor();
   assert.equal(await page.getByRole('button',{name:/Scrum call|Schedule/}).count(),0);
   // Clicking a planner event selects it and shows the inspector; the meeting opens in Talk from the inspector.
   const ev=page.locator('.wp-e',{hasText:'Atlas review'});await ev.click();assert.equal(await ev.getAttribute('aria-expanded'),'true','the clicked event is open');
-  // The detail card opens on the event; the meeting opens in Talk from it.
+  // The detail card opens on the event; the meeting opens in Meetings from it.
   const card=page.locator('.ed-title',{hasText:'Atlas review'});await card.waitFor();
-  await page.getByRole('button',{name:/Open (notes|meeting)/}).click();await page.waitForURL(/[?&](open|meeting)=p(:|%3A)/);
-  await page.locator('.mt-inline').getByRole('heading',{name:'Atlas review'}).waitFor();checks.push('calendar-opens-meet');
+  await page.getByRole('button',{name:/Open (notes|meeting)/}).click();await page.waitForURL(/\/meetings\?open=p(:|%3A)/);
+  await page.getByRole('dialog').getByRole('heading',{name:'Atlas review'}).waitFor();checks.push('calendar-opens-meet');
 
-  // 8. Old addresses lead to Meet.
-  await page.goto(origin+'/preview-org/notetaker?session=s1');await page.waitForURL(/\/messages\?session=s1&f=meetings&s=notetaker$/);checks.push('old-address');
+  // 8. Old addresses lead to Meetings, and Messages is chats only (no Meetings filter, no meeting rows).
+  await page.goto(origin+'/preview-org/notetaker?session=s1');await page.waitForURL(/\/meetings\?session=s1&s=notetaker$/);
+  await page.goto(origin+'/preview-org/messages?f=meetings&s=past');await page.waitForURL(/\/meetings\?s=past$/);
+  await page.goto(origin+'/preview-org/messages');await page.locator('.talk-filters').waitFor();
+  assert.equal(await page.locator('.talk-filters .ds-chip',{hasText:'Meetings'}).count(),0,'No Meetings filter in Messages');
+  assert.equal(await page.locator('.talk-src.s-meeting').count(),0,'No meeting rows in Messages');checks.push('old-address');
 
   // 9. A phone: the list fits and Join stays reachable.
   await page.setViewportSize({width:390,height:844});await page.goto(origin+'/preview-org/meet/upcoming');await page.locator('.mt-item').first().waitFor();

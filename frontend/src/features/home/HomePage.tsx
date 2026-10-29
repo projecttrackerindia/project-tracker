@@ -1,4 +1,5 @@
 import { Face } from '../../components/Face';
+import { MeetTimeCards } from '../meet/MeetTime';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AgentPage, type AgentSection } from '../agent/AgentPage';
 import { AiPage } from '../ai/AiPage';
@@ -133,6 +134,7 @@ function ForYou({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) => void
         </div>
       </header>
       <Briefing q={briefing} team={team} />
+      {view === 'me' && <div className="hm-mlog"><MeetTimeCards /></div>}
       <YourDay team={team} />
       <div className="hm-grid">
         <InboxCard />
@@ -367,7 +369,7 @@ function HomeNumbers() {
 
 function hrefOf(e: CalendarEvent): string {
   // Talk opens a meeting from ?meeting= (Meet's old ?open=), and a series' occurrence from ?at=.
-  if (e.type === 'meeting') return `/messages?f=meetings&meeting=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`;
+  if (e.type === 'meeting') return `/meetings?open=${e.projectId ? 'p' : 'w'}:${e.id}${e.startsAt ? `&at=${encodeURIComponent(e.startsAt)}` : ''}`;
   if (e.type === 'task' || e.type === 'action' || e.type === 'work') return `/work?item=${e.id}`;
   return e.projectId ? `/work/projects/${e.projectId}` : '/work/projects';
 }
