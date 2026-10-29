@@ -147,8 +147,8 @@ try {
   await page.getByText('He agreed to the plan and asked for the doc by mail.').waitFor();
   await page.keyboard.press('Escape');
   checks.push('while-you-were-away');
-  assert.match((await page.getByRole('button', { name: 'Groot drafts a reply' }).innerText()).trim(), /Draft/);
-  await page.getByRole('button', { name: 'Groot drafts a reply' }).click();
+  assert.match((await page.getByRole('button', { name: 'Aura drafts a reply' }).innerText()).trim(), /Draft/);
+  await page.getByRole('button', { name: 'Aura drafts a reply' }).click();
   await page.waitForFunction(() => document.querySelector('.composer-editable')?.textContent?.includes('Sending the doc by mail now.'));
   checks.push('composer-draft');
 

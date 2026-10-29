@@ -139,7 +139,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const chosenType = activeTypes.find((t) => t.id === workTypeId) ?? wordType;
   const pr: Priority = priority ?? parsed.priority ?? 'Medium';
   const owner = ownerId === '' ? null : people.find((p) => p.id === (ownerId ?? parsed.assignee?.id)) ?? null;
-  // A pasted paragraph is not a title: Groot writes a short one (or the first sentence, ≤ 120 characters, when AI is off) and the whole
+  // A pasted paragraph is not a title: Aura writes a short one (or the first sentence, ≤ 120 characters, when AI is off) and the whole
   // text goes into the description, for every kind.
   const ai = useAi();
   const long = needsShortTitle(text);
@@ -325,7 +325,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
       <motion.div ref={sheetRef} className="v2-new-sheet" role="dialog" aria-modal="true" aria-labelledby="v2-new-title" onKeyDown={onKey}
         style={{ ['--kind' as string]: color }}
         initial={still ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.98 }} animate={sheetAnim}>
-        <div className="v2-new-head"><h2 id="v2-new-title">New</h2><span>Describe it — Groot fills in the rest · esc</span></div>
+        <div className="v2-new-head"><h2 id="v2-new-title">New</h2><span>Describe it — Aura fills in the rest · esc</span></div>
         <label className="v2-new-input">
           <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder="Describe it…" aria-label="What to create" />
         </label>
@@ -341,7 +341,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
           <p>{understood ? why : 'Type a sentence: what it is, how urgent, who and when.'}</p>
           {understood && long && type !== 'time' && (
             <p className="v2-new-titled" data-testid="new-short-title">
-              <b>{aiTitle?.for === text.trim() && aiTitle.ai ? 'Groot titled it' : 'Title'}:</b> {title}<span> · the full text goes in the {type === 'meeting' ? 'agenda' : type === 'reminder' ? 'note' : 'description'}</span>
+              <b>{aiTitle?.for === text.trim() && aiTitle.ai ? 'Aura titled it' : 'Title'}:</b> {title}<span> · the full text goes in the {type === 'meeting' ? 'agenda' : type === 'reminder' ? 'note' : 'description'}</span>
             </p>
           )}
         </div>

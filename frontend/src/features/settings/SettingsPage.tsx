@@ -153,7 +153,7 @@ export function SettingsPage() {
     ...leaves.filter((l) => PLACE_LEAVES.notifications.includes(l.id)).map((l) => ({ id: l.id, label: l.id === 'notifications' ? 'Member defaults' : l.label }))];
   const tabs: SubTab[] = place === 'profile'
     ? [{ id: 'profile', label: 'Profile' },
-      ...(!isPlatformAdmin ? [{ id: 'mobile', label: 'Mobile app' }, { id: 'accounts', label: 'Connected accounts' }, { id: 'assistant', label: 'Groot' }] : [])]
+      ...(!isPlatformAdmin ? [{ id: 'mobile', label: 'Mobile app' }, { id: 'accounts', label: 'Connected accounts' }, { id: 'assistant', label: 'Aura' }] : [])]
     : place === 'notifications' ? [{ id: 'overview', label: 'Overview' }, ...notifTabs]
       : place === 'ai' ? []
       : place === 'security' ? [{ id: 'account', label: 'Your account' }, ...(wsSecurity ? leaves.filter((l) => PLACE_LEAVES.security.includes(l.id)).sort((a, b) => PLACE_LEAVES.security.indexOf(a.id) - PLACE_LEAVES.security.indexOf(b.id)).map((l) => ({ id: l.id, label: l.label })) : [])]
@@ -267,7 +267,7 @@ function ProfileTab({ sub }: { sub: string }) {
   switch (sub) {
     case 'mobile': return <MobileAppSection />;
     case 'accounts': return <ConnectedAccountsSection />;
-    case 'assistant': return <><PageHead title="Groot" sub="How Groot, your assistant, works with you: what it learned, your own notes, and the organisation’s AI account." /><div data-setting="account.ai"><AiProfileCard /><MyAiProviderCard /></div></>;
+    case 'assistant': return <><PageHead title="Aura" sub="How Aura, your assistant, works with you: what it learned, your own notes, and the organisation’s AI account." /><div data-setting="account.ai"><AiProfileCard /><MyAiProviderCard /></div></>;
     default: return <ProfileSection />;
   }
 }

@@ -4,6 +4,7 @@ import { ApiError } from '../../../api/client';
 import { Modal } from '../../../components/ui';
 import { Icon, type IconName } from '../../../components/Icon';
 import { toast } from '../../../stores/ui';
+import { replaceKeepingMotion } from '../motion/keepMotion';
 import { docAiApi, LANGUAGES, type AiAction, type AiLanguage, type DocTransform } from '../docAi';
 
 /** The page the editor writes into, so AI can read its title and the credits are counted for the right workspace. Absent: no AI in the editor. */
@@ -66,7 +67,7 @@ export function SelectionAiPanel({ editor, documentId, state, setState }: { edit
   };
   const replace = () => {
     if (!state?.result) return;
-    editor.chain().focus().insertContentAt(range(state), answerContent(state.result)).run();
+    replaceKeepingMotion(editor, range(state), answerContent(state.result));
     setState(null);
   };
   const below = () => {

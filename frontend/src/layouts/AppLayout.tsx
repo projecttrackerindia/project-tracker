@@ -34,6 +34,7 @@ import { isRingNotice } from '../features/calls/incomingCalls';
 import { AskBar, GrootChatHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
 import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
+import { AuraWatcher } from '../components/aura/AuraWatcher';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -91,8 +92,8 @@ function ComposerSlot() {
 }
 
 /**
- * The v2 shell: the 84px rail on the left (the phone bar at the bottom of a phone), the page, the Ask bar floating at the bottom, and the
- * things every page can open: + New, the copilot panel, the command palette, calls, reminders and toasts.
+ * The v2 shell: the 84px rail on the left (the phone bar at the bottom of a phone), the page, Aura's dock floating at the bottom, and the
+ * things every page can open: the create sheet (from the dock's chips), the Aura chat, the command palette, calls, reminders and toasts.
  */
 export function AppLayout({ children }: { children?: ReactNode }) {
   const loc = useLocation();
@@ -103,11 +104,13 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   const homeChat = (loc.pathname === '/' || loc.pathname === '') && new URLSearchParams(loc.search).has('c');   // paths are inside the workspace's basename
   // Talk (its list and an open conversation) is a conversation on a phone: its composer stays above the tab bar.
   const conversation = homeChat || /^\/messages(?:\/[^/]+)?\/?$/.test(loc.pathname);
+  // An open conversation (or meeting) in Messages is a full-screen view on a phone: its own header with Back, no tab bar.
+  const thread = phone && (/^\/messages\/[^/]+\/?$/.test(loc.pathname) || (/^\/messages\/?$/.test(loc.pathname) && new URLSearchParams(loc.search).has('meeting')));
   useConversationViewport(phone && conversation, shell);
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
-  useEffect(() => { window.scrollTo({ top: 0 }); }, [loc.pathname]);
+  useEffect(() => { window.scrollTo({ top: 0, left: 0 }); }, [loc.pathname]);   // left too: a page never stays shifted sideways
   // Every page's code, fetched quietly once the app is idle, so a click shows the next page at once instead of a blank pause.
   useEffect(() => { prefetchPages(); }, []);
   // The page content fades in when the place changes (the rail and the Ask bar stay put). A class on the existing main element, not a
@@ -120,7 +123,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   const page = <><LiveCallsBar /><Suspense fallback={<PageLoader />}>{children ?? <Outlet />}</Suspense></>;
   return (
     <MotionConfig reducedMotion="user">
-    <div ref={shell} className={`app-shell v2-shell ${phone ? 'm-shell' : ''} ${phone && conversation ? 'm-conversation' : ''}`}>
+    <div ref={shell} className={`app-shell v2-shell ${phone ? 'm-shell' : ''} ${phone && conversation ? 'm-conversation' : ''} ${thread ? 'm-thread' : ''}`}>
       <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); main.current?.focus(); }}>Skip to content</a>
       <LensSync />
       <ShortcutNew />
@@ -143,7 +146,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           </div>
         </>
       )}
-      {!admin && !(phone && conversation) && <AskBar />}
+      {/* Aura's dock: every page, except inside a conversation (its composer owns the bottom edge; on a phone all of Messages) */}
+      {!admin && !(phone && conversation) && !/^\/messages\/[^/]+/.test(loc.pathname) && <AskBar />}
       {!admin && <NewSheetHost />}
       {!admin && <GrootChatHost />}
       {!admin && <CopilotHost />}
@@ -160,6 +164,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <AlertsSetup />
       <ComposerSlot />
       {!admin && <AttendanceHost />}
+      {!admin && <AuraWatcher />}
       {chatOn && <ChatRealtime />}
       {chatOn && <ProjectChatHost />}
       {!admin && <LiveBanners />}

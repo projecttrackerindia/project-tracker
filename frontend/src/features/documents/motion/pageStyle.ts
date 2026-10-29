@@ -57,13 +57,18 @@ export function withStyle(body: string, style: PageStyle | null): string {
 export const isDefault = (s: PageStyle) => s.preset === 'default' && !s.css.trim() && !s.animateSections && s.sectionTransition === 'none';
 export const hasMotion = (s: PageStyle) => s.animateSections || s.sectionTransition !== 'none';
 
+/** A reader's "Pause motion", remembered on this device for every document. */
+export const PAUSE_KEY = 'pm_motion_paused';
+export const readPaused = () => { try { return localStorage.getItem(PAUSE_KEY) === '1'; } catch { return false; } };
+export const writePaused = (p: boolean) => { try { localStorage.setItem(PAUSE_KEY, p ? '1' : '0'); } catch { /* private window */ } };
+
 /** Workspace switches (Library settings): custom CSS and interactive embeds, both on unless an admin turned them off. */
 export interface LibraryDesign { customCss: boolean; sandboxEmbeds: boolean; canManage: boolean }
 export const DESIGN_DEFAULT: LibraryDesign = { customCss: true, sandboxEmbeds: true, canManage: false };
 
 type Node = { type?: string; content?: Node[]; attrs?: Record<string, unknown> };
 /**
- * "Make this page more visual": a look and motion picked from what the page holds (Groot's suggestion; nothing changes until applied).
+ * "Make this page more visual": a look and motion picked from what the page holds (Aura's suggestion; nothing changes until applied).
  */
 export function suggestVisual(body: string): { style: PageStyle; reasons: string[] } {
   let doc: Node = {};

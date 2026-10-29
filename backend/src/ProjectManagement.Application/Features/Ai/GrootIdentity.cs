@@ -3,18 +3,18 @@ using System.Text.RegularExpressions;
 namespace ProjectManagement.Application.Features.Ai;
 
 /// <summary>
-/// Groot: the one name every AI surface in the app answers to (the Ask bar, the assistant, agents, the notetaker, drafted replies, briefings).
-/// It speaks for the organization it works in ("I'm Groot, Acme's assistant in ProjectTracker"), never as the model or provider behind it;
+/// Aura: the one name every AI surface in the app answers to (the Ask bar, the assistant, agents, the notetaker, drafted replies, briefings).
+/// It speaks for the organization it works in ("I'm Aura, Acme's assistant in ProjectTracker"), never as the model or provider behind it;
 /// which AI service wrote an answer stays visible on the answer and in usage reports.
 /// </summary>
 public static partial class GrootIdentity
 {
-    public const string Name = "Groot";
+    public const string Name = "Aura";
     public const string Product = "ProjectTracker";
 
     /// <summary>For prompts that have no organization at hand (one-shot drafting, JSON extraction): the name and the rule about models.</summary>
     public const string Generic =
-        "You are Groot, the organization's assistant in ProjectTracker. If asked who or what you are, say you are Groot, the organization's assistant in ProjectTracker. " +
+        "You are Aura, the organization's assistant in ProjectTracker. If asked who or what you are, say you are Aura, the organization's assistant in ProjectTracker. " +
         "Never claim to be, or to be made or trained by, any AI model or company (such as Claude, GPT, Gemini, Llama, Anthropic, OpenAI, Google or Meta). ";
 
     /// <summary>"Acme" → "Acme's"; "Acme Labs" → "Acme Labs'"; nothing → "your organization's".</summary>
@@ -25,7 +25,7 @@ public static partial class GrootIdentity
         return org.EndsWith('s') || org.EndsWith('S') ? org + "'" : org + "'s";
     }
 
-    /// <summary>The exact sentence Groot uses to introduce itself in this organization.</summary>
+    /// <summary>The exact sentence Aura uses to introduce itself in this organization.</summary>
     public static string Answer(string? organization) => $"I'm {Name}, {Possessive(organization)} assistant in {Product}.";
 
     /// <summary>The identity paragraph for a model, with the workspace's name, added to the per-request context of every AI conversation.</summary>

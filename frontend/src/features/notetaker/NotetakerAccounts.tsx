@@ -55,7 +55,7 @@ export function NotetakerAccountsCard() {
 
 function IdentityModal({ identity, onClose, onSaved }: { identity: BotIdentity | null; onClose: () => void; onSaved: () => void }) {
   const [email, setEmail] = useState(identity?.email ?? '');
-  const [name, setName] = useState(identity?.displayName ?? 'Groot Notetaker');
+  const [name, setName] = useState(identity?.displayName ?? 'Aura Notetaker');
   const [cookies, setCookies] = useState('');
   const [busy, setBusy] = useState(false);
   const save = async () => {

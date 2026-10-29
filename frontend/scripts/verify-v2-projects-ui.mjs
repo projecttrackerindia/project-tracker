@@ -423,10 +423,10 @@ try {
   await shot(page, 'settings-project-agent-1440.png', true);
   checks.push('agent-settings-in-settings-ai');
 
-  // Ask Groot about <project>: the floating pill opens the Groot chat about it.
+  // Ask Aura about <project>: the dock asks about it; its orb opens the Aura chat about it.
   await page.goto(`${origin}/preview-org/work/projects/${rp.id}`); await page.locator('.pp-head h1').waitFor();
-  const ask = page.locator('.v2-ask.corner', { hasText: 'Ask Groot about Razor pay' }); await ask.waitFor();
-  await ask.click(); await page.locator('.groot-chat').waitFor();
+  await page.locator('form.v2-ask input[placeholder="Ask Aura about Razor pay"]').waitFor();
+  await page.getByRole('button', { name: 'Open Aura' }).click(); await page.locator('.groot-chat').waitFor();
   assert.match(await page.locator('.groot-chat .gc-empty').innerText(), /Ask me anything about Razor pay/);
   await page.keyboard.press('Escape'); await page.locator('.groot-chat').waitFor({ state: 'detached' });
   checks.push('ask-about-project');
@@ -487,13 +487,13 @@ try {
   for (const t of ['', '?tab=work', '?tab=docs', '?tab=time', '?tab=activity']) {
     await page.goto(`${origin}/preview-org/work/projects/${rp.id}${t}`); await page.locator('.pp-head h1').waitFor(); await page.waitForTimeout(500);
     await fitsPhone(page, `project ${t || 'overview'}`, assert);
-    // Nothing covers content: the Ask pill sits beside the page, the bottom bar under it, and both clear the last line.
+    // Nothing covers content: the dock clears the project's head actions.
     const covered = await page.evaluate(() => {
-      const pill = document.querySelector('.v2-ask.corner')?.getBoundingClientRect();
+      const pill = document.querySelector('form.v2-ask')?.getBoundingClientRect();
       const actions = document.querySelector('.pp-actions')?.getBoundingClientRect();
       return !!pill && !!actions && pill.top < actions.bottom && pill.bottom > actions.top;
     });
-    assert.equal(covered, false, 'the Ask pill does not cover the head');
+    assert.equal(covered, false, 'the dock does not cover the head');
   }
   await page.goto(`${origin}/preview-org/work/projects/${rp.id}`); await page.locator('.pp-journey').waitFor(); await shot(page, 'project-390.png', true);
   checks.push('phone-390');

@@ -134,6 +134,21 @@ public class DocumentMotionTests(ApiFactory factory)
         Assert.Contains(DocumentDiff.TextLines(clean.ToJsonString()), l => l.Text.StartsWith("[video]"));
     }
 
+    [Fact]
+    public void An_ai_edit_keeps_motion_blocks_and_block_motion()
+    {
+        var before = """{"type":"doc","content":[{"type":"heading","attrs":{"level":2,"motion":"fade","motionDelay":0,"motionDuration":400},"content":[{"type":"text","text":"Plan"}]},{"type":"sandboxEmbed","attrs":{"html":"<b>a</b>","caption":"Demo"}},{"type":"paragraph","content":[{"type":"text","text":"Old"}]},{"type":"motionVideo","attrs":{"caption":"Tour"}}]}""";
+        Assert.Equal(new List<string> { "Plan", "[[keep:1]] [Interactive embed - open online] Demo", "Old", "[[keep:2]] [video] Tour" }, MotionContent.LinesForAi(before));
+        // The model kept the second placeholder (moved first), dropped the first, and left a stray mark in a sentence.
+        var after = """{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"[[keep:2]] [video] Tour"}]},{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"New plan"}]},{"type":"paragraph","content":[{"type":"text","text":"New [[keep:9]] text"}]}]}""";
+        var kept = JsonNode.Parse(MotionContent.KeepBlocks(before, after))!["content"]!.AsArray();
+        // The dropped embed goes back to its old place (second); the heading keeps its fade.
+        Assert.Equal(new[] { "motionVideo", "sandboxEmbed", "heading", "paragraph" }, kept.Select(b => S(b!["type"])).ToArray());
+        Assert.Equal("fade", S(kept[2]!["attrs"]!["motion"]));
+        Assert.Equal("<b>a</b>", S(kept[1]!["attrs"]!["html"]));
+        Assert.Equal("New  text", S(kept[3]!["content"]![0]!["text"]));
+    }
+
     // ------------------------------------------------------------------ through the API
 
     private async Task<(TestClient Owner, Guid Page, int Revision)> Page(string body = """{"type":"doc","content":[{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Overview"}]},{"type":"paragraph","content":[{"type":"text","text":"Welcome."}]}]}""")

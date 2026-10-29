@@ -14,8 +14,10 @@ h2 { color: var(--accent); }
  * Style: how this page looks and moves (editors only). Changes show on the page at once; nothing is kept until Save, and the server checks
  * the CSS again before it is stored and records the change in the audit log.
  */
-export function StylePanel({ value, body, design, saving, onPreview, onSave, onClose, previewMotion, onPreviewMotion }: {
+export function StylePanel({ value, body, design, saving, onPreview, onSave, onClose, previewMotion, onPreviewMotion, unavailable }: {
   value: PageStyle; body: string; design: LibraryDesign; saving: boolean;
+  /** Why this document cannot carry a style (a file, or only tables): said in the panel instead of hiding the panel. */
+  unavailable?: string;
   onPreview: (s: PageStyle) => void; onSave: (s: PageStyle) => void; onClose: () => void;
   previewMotion: boolean; onPreviewMotion: (on: boolean) => void;
 }) {
@@ -36,12 +38,14 @@ export function StylePanel({ value, body, design, saving, onPreview, onSave, onC
         <button type="button" className="sp-x" aria-label="Close style" onClick={() => { onPreview(value); onClose(); }}><Icon name="close" size={16} /></button>
       </header>
 
-      {tab === 'look' ? (
+      {unavailable ? (
+        <div className="sp-body"><p className="sp-off" role="note" data-testid="style-unavailable">{unavailable}</p></div>
+      ) : tab === 'look' ? (
         <div className="sp-body">
           <button type="button" className="sp-groot" onClick={() => setIdea(suggestVisual(body))}><Icon name="sparkle" size={14} /> Make this page more visual</button>
           {idea && (
             <div className="sp-idea" role="status" data-testid="groot-idea">
-              <b>Groot suggests {PRESETS.find((p) => p.id === idea.style.preset)?.label}{idea.style.animateSections ? ' with sections that rise in' : ''}</b>
+              <b>Aura suggests {PRESETS.find((p) => p.id === idea.style.preset)?.label}{idea.style.animateSections ? ' with sections that rise in' : ''}</b>
               <ul>{idea.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
               <div><button type="button" className="btn btn-primary btn-sm" onClick={() => { set({ ...idea.style, css: s.css }); setIdea(null); }}>Apply</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setIdea(null)}>Not now</button></div>
@@ -85,10 +89,10 @@ export function StylePanel({ value, body, design, saving, onPreview, onSave, onC
         </div>
       )}
 
-      <footer className="sp-foot">
+      {!unavailable && <footer className="sp-foot">
         <button type="button" className="btn btn-ghost" onClick={() => { setS(value); onPreview(value); }} disabled={!changed}>Reset</button>
         <button type="button" className="btn btn-primary" disabled={!changed || errors.length > 0 || saving} onClick={() => onSave(s)}>{saving ? <span className="spinner" /> : null} Save style</button>
-      </footer>
+      </footer>}
     </aside>
   );
 }

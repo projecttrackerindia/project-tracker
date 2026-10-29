@@ -5,13 +5,12 @@ import { BrandMark } from '../components/BrandMark';
 import { Sheet } from '../components/Sheet';
 import { openPalette } from '../components/CommandPalette';
 import { AvatarMenu } from '../components/v2';
-import { openNew } from '../components/v2/state';
 import { initials } from '../lib/format';
 import { haptic } from '../lib/mobile';
 import { useTeamLens } from '../lib/teamLens';
 import { useAuth } from '../stores/auth';
 import { toast } from '../stores/ui';
-import { AttendancePill } from '../features/attendance/AttendancePill';
+import { AttendanceCapsule } from '../features/attendance/AttendanceCapsule';
 import { CreateOrganizationModal } from './parts';
 
 const hue = (name: string) => { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
@@ -47,9 +46,8 @@ export function MobileTopBar() {
             {team ? <span className="lens-chip" style={{ '--h': hue(team.name) } as React.CSSProperties}>{initials(team.name)}</span> : <Icon name="users" size={21} />}
           </button>
         )}
-        {!admin && <button type="button" className="m-icon m-new" onClick={() => { haptic(12); openNew(); }} aria-label="New"><Icon name="plus" size={20} /></button>}
         <button type="button" className="m-icon" onClick={() => { haptic(); openPalette(); }} aria-label="Search"><Icon name="search" size={21} /></button>
-        {!admin && <AttendancePill compact />}
+        {!admin && <AttendanceCapsule compact />}
         {!admin && <NotificationBell variant="phone" />}
         <AvatarMenu />
       </div>

@@ -113,7 +113,7 @@ export function CommandPalette() {
       list.push({ id: 'acc:security', group: 'Settings', label: 'Sign-in & security', icon: 'lock', keywords: 'account password two-step mfa', run: go('/settings/security/account') });
       list.push({ id: 'acc:connected', group: 'Settings', label: 'Connected accounts', icon: 'link', keywords: 'google microsoft outlook teams slack github gmail calendar meet connect', run: go('/settings/profile/accounts') });
     }
-    if (ctx && !ctx.user.isPlatformAdmin) list.push({ id: 'new:any', group: 'Create', label: 'New… (task, ticket, doc, meeting, time…)', icon: 'plus', keywords: 'create add new make', run: () => { close(); openNew(); } });
+    if (ctx && !ctx.user.isPlatformAdmin) list.push({ id: 'new:any', group: 'Create', label: 'Create… (task, ticket, doc, meeting, time…)', icon: 'plus', keywords: 'create add new make', run: () => { close(); openNew(); } });
     if (canProject) list.push({ id: 'new:project', group: 'Create', label: 'New project', icon: 'folder', keywords: 'create add', run: () => { close(); openNew('project'); } });
     if (canWork) list.push({ id: 'new:work', group: 'Create', label: 'New support ticket / work task', icon: 'bolt', keywords: 'create add operational ticket bug support helpdesk incident request', run: () => { close(); openNew('ticket'); } });
     if (ctx && !ctx.user.isPlatformAdmin) list.push({ id: 'new:reminder', group: 'Create', label: 'New reminder', icon: 'alarm', keywords: 'create add remind me alarm later', run: () => { close(); openReminderComposer(); } });
@@ -137,7 +137,7 @@ export function CommandPalette() {
     const hits: Command[] = (search.data?.hits ?? []).slice(0, 8).map((h) => ({
       id: `hit:${h.type}:${h.id}`, group: 'Search results', label: h.title, hint: h.subtitle ?? undefined, icon: HIT_ICON[h.type] ?? 'search', run: go(searchHitLink(h)),
     }));
-    const askAi: Command[] = ai && query.length >= 3 ? [{ id: 'ai:ask', group: 'Groot', label: `Ask Groot: “${query}”`, icon: 'ai', run: () => { close(); ask(query); } }] : [];
+    const askAi: Command[] = ai && query.length >= 3 ? [{ id: 'ai:ask', group: 'Aura', label: `Ask Aura: “${query}”`, icon: 'ai', run: () => { close(); ask(query); } }] : [];
     // "remind me to call Priya tomorrow" is a reminder, not a search.
     const remind: Command[] = /^(remind|reminder|remember|don'?t forget)\b/i.test(query) && ctx && !ctx.user.isPlatformAdmin
       ? [{ id: 'new:reminder-typed', group: 'Create', label: `Set a reminder: “${query}”`, icon: 'alarm', run: () => { close(); openReminderComposer({ text: query }); } }] : [];

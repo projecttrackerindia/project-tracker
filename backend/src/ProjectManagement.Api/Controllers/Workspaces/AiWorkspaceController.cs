@@ -149,6 +149,18 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysi
     [HttpPost("messages/{id:guid}/actions/confirm-all")]
     public async Task<IActionResult> ConfirmAll(Guid id, CancellationToken ct) => Ok(await agent.ConfirmAllAsync(id, ct));
 
+    /// <summary>An answer's actions as one plan: each step in order with a summary and whether it can be undone. Nothing runs.</summary>
+    [HttpGet("messages/{id:guid}/plan")]
+    public async Task<IActionResult> RunPlan(Guid id, CancellationToken ct) => Ok(await agent.RunPlanAsync(id, ct));
+
+    /// <summary>Confirms the plan: runs the waiting steps in order, stopping at the first failure, and reports each step and where it stopped.</summary>
+    [HttpPost("messages/{id:guid}/actions/run")]
+    public async Task<IActionResult> ExecuteRun(Guid id, CancellationToken ct) => Ok(await agent.ExecuteRunAsync(id, ct));
+
+    /// <summary>Undoes the whole run (every step that can be undone, newest first) within the undo window.</summary>
+    [HttpPost("messages/{id:guid}/actions/undo-all")]
+    public async Task<IActionResult> UndoRun(Guid id, CancellationToken ct) => Ok(await agent.UndoRunAsync(id, ct));
+
     /// <summary>The portfolio analysed: risk ranking with reasons, forecasts, slips, action items. Found by rules over the person's own projects (no model, no credits, every plan).</summary>
     [HttpGet("portfolio/brief")]
     public async Task<IActionResult> PortfolioBrief([FromQuery] Guid? teamId, CancellationToken ct) => Ok(await portfolio.BriefAsync(teamId, ct));

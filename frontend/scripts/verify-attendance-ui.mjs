@@ -1,5 +1,5 @@
-// Attendance: Groot's check-in card at the first open of the day (organization time), once a day; three ways of working; a client office asks
-// for the place (recent ones suggested); Not now snoozes 30 minutes; Check in calls the API; the top-bar pill; check-out with the day's
+// Attendance: Aura's check-in card at the first open of the day (organization time), once a day; three ways of working; a client office asks
+// for the place (recent ones suggested); Not now snoozes 30 minutes; Check in calls the API; the header's check-in capsule (ring, place, hours; its day popover); check-out with the day's
 // summary; the 'groot:checkout' event opens the sheet; the calendar band, its card (correct today) and the Team view; Settings › Attendance;
 // phone bottom sheet; dark mode. Synthetic data only.
 import { chromium } from 'playwright';
@@ -135,7 +135,7 @@ try {
   let ctx = await context('light');
   await open(ctx, 1440);
   await checkin().waitFor({ timeout: 15000 });
-  assert.equal(await checkin().locator('.groot-avatar[data-state="greeting"]').count(), 1, 'Groot avatar slot');
+  assert.equal(await checkin().locator('.groot-avatar[data-state="greeting"] [data-testid="aura-orb"][data-mood="morning"]').count(), 1, 'Aura greets in its morning colours');
   assert.match(await checkin().innerText(), /Good morning, Alexandra/);
   assert.match(await checkin().innerText(), /India time/, 'the organization clock is named');
   assert.equal(await checkin().locator('[role="radio"]').count(), 3, 'three ways of working');
@@ -167,11 +167,21 @@ try {
   await checkin().waitFor({ state: 'detached' });
   const ci = writes.find((w) => w.ep === '/api/v1/me/attendance/check-in');
   assert.deepEqual({ mode: ci.body.mode, place: ci.body.place, note: ci.body.note, source: ci.body.source }, { mode: 'ClientSite', place: 'Northwind Traders, Hitech City', note: 'Sprint demo', source: 'web' });
-  // the pill
-  const pill = page.locator('.v2-tb [data-testid="att-pill"]');
+  // the capsule: ring, the place and the hours; its day: the shift bar with now, the place, one Check out button
+  const pill = page.locator('.v2-tb [data-testid="att-capsule"]');
   await pill.waitFor();
-  assert.match(await pill.innerText(), /In · Client · 10:42 →/);
-  assert.ok(await pill.getByRole('button', { name: 'Check out' }).count());
+  assert.equal(await pill.getAttribute('data-state'), 'client');
+  assert.match(await pill.innerText(), /Client\s*·\s*0m/);
+  assert.equal(await pill.locator('.att-ring').count(), 1, 'the shift ring');
+  await pill.click();
+  const dayPop = page.locator('[data-testid="att-day"]'); await dayPop.waitFor();
+  assert.match(await dayPop.innerText(), /At Northwind Traders, Hitech City/);
+  assert.match(await dayPop.innerText(), /Checked in at 10:42 · shift 09:30 – 18:30/);
+  assert.equal(await dayPop.getByRole('radio', { name: 'Client' }).getAttribute('aria-checked'), 'true');
+  assert.equal(await dayPop.locator('[data-testid="att-now"]').count(), 1, 'now marker');
+  assert.ok(await dayPop.getByRole('button', { name: 'Check out' }).isVisible());
+  await capture('capsule-day-1440');
+  await page.keyboard.press('Escape'); await dayPop.waitFor({ state: 'detached' });
   // reload: never asked twice the same day
   await page.reload(); await page.locator('[data-testid="week-planner"]').waitFor(); await page.waitForTimeout(800);
   assert.equal(await checkin().count(), 0, 'once a day');
@@ -208,7 +218,7 @@ try {
   await capture('calendar-team-1440');
   await page.keyboard.press('Escape');
 
-  // Groot asks to check out: the sheet opens; check-out shows the day's summary
+  // Aura asks to check out: the sheet opens; check-out shows the day's summary
   await page.evaluate(() => window.dispatchEvent(new Event('groot:checkout')));
   const co = page.locator('[data-testid="att-checkout"]');
   await co.waitFor();
@@ -252,12 +262,18 @@ try {
   await checkin().getByRole('button', { name: 'Check in' }).click();
   await checkin().waitFor({ state: 'detached' });
   assert.equal(writes.filter((w) => w.ep === '/api/v1/me/attendance/check-in').at(-1).body.source, 'phone');
-  const mpill = page.locator('.m-top [data-testid="att-pill"]');
+  const mpill = page.locator('.m-top [data-testid="att-capsule"]');
   await mpill.waitFor();
+  assert.equal(await mpill.getAttribute('data-state'), 'office');
+  assert.match(await mpill.innerText(), /^\s*0m\s*$/, 'the phone capsule: the ring and the hours');
   await capture('pill-phone-dark-390');
-  await mpill.getByRole('button').first().click();
-  await page.locator('[data-testid="att-checkout"].att-sheet').waitFor();
-  await capture('checkout-sheet-dark-390');
+  await mpill.click();
+  const mday = page.locator('[data-testid="att-day"].att-sheet'); await mday.waitFor();
+  await capture('capsule-day-sheet-dark-390');
+  await mday.getByRole('button', { name: 'Check out' }).click();
+  await mday.waitFor({ state: 'detached' });
+  assert.equal(writes.filter((w) => w.ep === '/api/v1/me/attendance/check-out').length, 2, 'Check out from the day sheet');
+  await page.waitForFunction(() => document.querySelector('.m-top [data-testid="att-capsule"]')?.getAttribute('data-state') === 'done');
   await page.close(); await ctx.close();
 
   assert.deepEqual(errors, [], 'no page errors');

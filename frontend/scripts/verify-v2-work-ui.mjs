@@ -267,10 +267,10 @@ try {
     await fields.locator('.sla-chip').waitFor();
     assert.match(await fields.innerText(), /Channel\s*WhatsApp/);
     await fields.getByText('Resolution').waitFor();
-    // Groot suggests: violet, Groot's face, one suggested action and Not now.
+    // Aura suggests: violet, Aura's face, one suggested action and Not now.
     const ai = panel.locator('.v2-ai-card');
-    await ai.getByText('Groot suggests').waitFor();
-    assert.equal(await ai.locator('[data-testid="groot-avatar"]').count(), 1, 'Groot on the card');
+    await ai.getByText('Aura suggests').waitFor();
+    assert.equal(await ai.locator('[data-testid="aura-avatar"]').count(), 1, 'Aura on the card');
     assert.equal(await ai.locator('.btn-ai').count(), 1, 'one suggested action');
     await ai.getByRole('button', { name: 'Not now' }).waitFor();
     const violet = await ai.locator('.btn-ai').evaluate((e) => getComputedStyle(e).backgroundColor);
@@ -426,10 +426,10 @@ try {
     await page.keyboard.press('Escape');
     checks.push(`project-${tag}`);
 
-    // ---------------------------------------------------------------- + New: a ticket from words, with chips, opened in the panel
+    // ---------------------------------------------------------------- the create sheet (dock › More…): a ticket from words, with chips, opened in the panel
     await page.goto(`${origin}/preview-org/work`);
     await list.locator('.mw-r').first().waitFor();
-    await page.evaluate(() => document.querySelector(window.innerWidth < 769 ? '.m-new' : '.v2-new')?.click());
+    await page.locator('form.v2-ask input').click(); await page.locator('.aura-chip[data-chip="more"]').click();   // + New is gone: the dock's More… chip
     const sheet = page.getByRole('dialog', { name: 'New' });
     await sheet.getByLabel('What to create').fill('VPN down for collections team, critical, give to Ravi');
     await sheet.locator('.v2-understood-label', { hasText: /Understood as\s*a ticket/ }).waitFor();
@@ -461,7 +461,7 @@ try {
       const kept = errors.length;
       const newSheet = async (words, tile) => {
         await page.goto(`${origin}/preview-org/work`); await page.locator('.mw-r').first().waitFor();
-        await page.locator('.v2-tb-new').click();
+        await page.locator('form.v2-ask input').click(); await page.locator('.aura-chip[data-chip="more"]').click();
         await sheet.getByLabel('What to create').fill(words);
         if (tile) await sheet.getByRole('radio', { name: tile }).click();
         await sheet.getByRole('button', { name: /^Create / }).click();
@@ -481,7 +481,7 @@ try {
       await page.keyboard.press('Escape');
       // A task needs its project: the Project chip asks for one, then it is made through /work-items too.
       await page.goto(`${origin}/preview-org/work`); await page.locator('.mw-r').first().waitFor();
-      await page.locator('.v2-tb-new').click();
+      await page.locator('form.v2-ask input').click(); await page.locator('.aura-chip[data-chip="more"]').click();
       await sheet.getByLabel('What to create').fill('Write the settlement runbook');
       await sheet.getByRole('radio', { name: 'Task' }).click();
       await sheet.getByLabel('Change project').selectOption(pid);

@@ -464,6 +464,110 @@ public static class MotionContent
     }
 
     public static string Clip(string? s, int max) { var v = s ?? ""; return v.Length > max ? v[..max] : v; }
+
+    // ------------------------------------------------------------------ AI edits keep the motion
+
+    /// <summary>How a motion block is shown to the model: an opaque <c>[[keep:N]]</c> line (with its still, for context), restored by <see cref="KeepBlocks"/>.</summary>
+    private static readonly Regex KeepMark = new(@"\[\[keep:(\d{1,3})\]\]", RegexOptions.CultureInvariant);
+    public const string KeepHint = "Motion blocks (animations, videos, interactive embeds) show as [[keep:N]] lines: leave each on its own line where it belongs; it is put back exactly as it was.";
+
+    private static string TypeOf(JsonObject o) => o["type"] is JsonValue tv && tv.TryGetValue<string>(out var t) ? t : "";
+    private static bool IsEmbed(JsonObject o) => EmbedTypes.Contains(TypeOf(o));
+
+    /// <summary>A rich-text body as lines for the model, every top-level motion block as a <c>[[keep:N]]</c> placeholder in its place.</summary>
+    public static List<string> LinesForAi(string? json)
+    {
+        var lines = new List<string>();
+        if (string.IsNullOrWhiteSpace(json)) return lines;
+        JsonNode? root;
+        try { root = JsonNode.Parse(json); } catch (JsonException) { return lines; }
+        var n = 0;
+        foreach (var b in (root?["content"] as JsonArray ?? []).OfType<JsonObject>())
+        {
+            if (IsEmbed(b)) { lines.Add($"[[keep:{++n}]] {DocumentDiff.MotionStill(b)}"); continue; }
+            lines.AddRange(DocumentDiff.TextLines(new JsonObject { ["type"] = "doc", ["content"] = new JsonArray(b.DeepClone()) }.ToJsonString()).Select(l => l.Text));
+        }
+        return lines;
+    }
+
+    /// <summary>
+    /// An AI edit of a body, with what the model cannot write put back: every motion block of <paramref name="before"/> returns where the model
+    /// left its <c>[[keep:N]]</c> line (or, if it dropped the line, at its old place), and a block's motion (rise, fade…) stays on the block of the
+    /// same kind in the same order. Placeholder text never stays in the page. The page's style is kept by the save itself (see SaveSectionsAsync).
+    /// </summary>
+    public static string KeepBlocks(string? before, string after)
+    {
+        JsonObject? old = null;
+        try { old = string.IsNullOrWhiteSpace(before) ? null : JsonNode.Parse(before) as JsonObject; } catch (JsonException) { }
+        JsonObject next;
+        try { if (JsonNode.Parse(after) is JsonObject parsed) next = parsed; else return after; } catch (JsonException) { return after; }
+        var oldBlocks = (old?["content"] as JsonArray ?? []).OfType<JsonObject>().ToList();
+        var embeds = oldBlocks.Select((b, i) => (Block: b, At: i)).Where(x => IsEmbed(x.Block)).ToList();
+        var used = new bool[embeds.Count];
+        var result = new List<JsonObject>();
+        foreach (var b in (next["content"] as JsonArray ?? []).OfType<JsonObject>())
+        {
+            if (IsEmbed(b))
+            {
+                // Already there (an addition keeps the old blocks as they are).
+                for (var k = 0; k < embeds.Count; k++) if (!used[k] && JsonNode.DeepEquals(embeds[k].Block, b)) { used[k] = true; break; }
+                result.Add((JsonObject)b.DeepClone());
+                continue;
+            }
+            var m = KeepMark.Match(PlainOf(b).Trim());
+            if (TypeOf(b) == "paragraph" && m.Success && m.Index == 0)
+            {
+                var k = int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) - 1;
+                if (k >= 0 && k < embeds.Count && !used[k]) { used[k] = true; result.Add((JsonObject)embeds[k].Block.DeepClone()); }
+                continue;
+            }
+            var clean = (JsonObject)b.DeepClone();
+            StripMarks(clean);
+            result.Add(clean);
+        }
+        for (var k = 0; k < embeds.Count; k++)
+            if (!used[k]) result.Insert(Math.Min(embeds[k].At, result.Count), (JsonObject)embeds[k].Block.DeepClone());
+
+        // A block's own motion: the n-th paragraph (heading, list…) keeps the motion the n-th one had.
+        foreach (var group in oldBlocks.Where(b => !IsEmbed(b)).GroupBy(TypeOf))
+        {
+            var mine = result.Where(b => !IsEmbed(b) && TypeOf(b) == group.Key).ToList();
+            var i = 0;
+            foreach (var ob in group)
+            {
+                if (i >= mine.Count) break;
+                var target = mine[i++];
+                if (ob["attrs"]?["motion"] is null || target["attrs"]?["motion"] is not null) continue;
+                if (target["attrs"] is JsonObject attrs) CopyMotion(ob["attrs"], attrs);
+                else { var fresh = new JsonObject(); CopyMotion(ob["attrs"], fresh); if (fresh.Count > 0) target["attrs"] = fresh; }
+            }
+        }
+        next["content"] = new JsonArray(result.Select(b => (JsonNode)b).ToArray());
+        return next.ToJsonString();
+    }
+
+    private static string PlainOf(JsonNode? n) => n switch
+    {
+        JsonObject o when TypeOf(o) == "text" => o["text"] is JsonValue v && v.TryGetValue<string>(out var t) ? t : "",
+        JsonObject o => string.Concat((o["content"] as JsonArray ?? []).Select(PlainOf)),
+        _ => "",
+    };
+
+    /// <summary>Takes stray <c>[[keep:N]]</c> marks out of the text (and text runs left empty).</summary>
+    private static void StripMarks(JsonObject o)
+    {
+        if (o["content"] is not JsonArray kids) return;
+        for (var i = kids.Count - 1; i >= 0; i--)
+        {
+            if (kids[i] is not JsonObject k) continue;
+            if (TypeOf(k) == "text" && k["text"] is JsonValue v && v.TryGetValue<string>(out var t) && KeepMark.IsMatch(t))
+            {
+                var left = KeepMark.Replace(t, "");
+                if (left.Trim().Length == 0) kids.RemoveAt(i); else k["text"] = left;
+            }
+            else StripMarks(k);
+        }
+    }
 }
 
 /// <summary>

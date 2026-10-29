@@ -7,7 +7,7 @@ namespace ProjectManagement.Tests;
 
 /// <summary>
 /// Quality ↔ API docs: a test case links the endpoints it verifies; the endpoint's "Tests" show the linked cases with the latest result per
-/// environment and whether it is covered; Groot proposes cases from the endpoint; a project's coverage counts endpoints with a passing run.
+/// environment and whether it is covered; Aura proposes cases from the endpoint; a project's coverage counts endpoints with a passing run.
 /// Links to things the person cannot open are refused, and another person cannot read an endpoint's tests through a private document.
 /// </summary>
 [Collection("api")]
@@ -48,7 +48,7 @@ public class QualityLinksTests(ApiFactory factory)
         var dispatch = await Endpoint("POST", "/loans/dispatch");
         var status = await Endpoint("GET", "/loans/{id}");
 
-        // Groot proposes cases from the endpoint: happy path (201), required field (400), auth (401/403), timeout, idempotency and masked logs.
+        // Aura proposes cases from the endpoint: happy path (201), required field (400), auth (401/403), timeout, idempotency and masked logs.
         var proposals = (await owner.Get($"/api/v1/quality/endpoints/{dispatch}/suggestions")).Data!.AsArray();
         var kinds = proposals.Select(p => S(p!["kind"])).ToList();
         Assert.Equal(new[] { "happy", "required", "auth", "forbidden", "timeout", "idempotency", "masking" }, kinds);

@@ -253,6 +253,51 @@ public partial class AiWorkspaceTests
     }
 
     [Fact]
+    public async Task An_ai_rewrite_of_a_styled_document_keeps_its_style_and_motion_blocks()
+    {
+        var o = await Setup();
+        // A requirements document (not a Page): the style and motion work on every Library type with text.
+        var type = S((await o.Owner.Get("/api/v1/document-types")).Data!.AsArray().First(t => S(t!["code"]) == "BRD")!["id"]);
+        var created = await o.Owner.Post("/api/v1/documents", new { title = "Northwind rollout brief", typeId = type, visibility = "Organization" });
+        Assert.True(created.Ok, created.ToString());
+        var id = S(created.Data!["item"]!["id"]);
+        async Task<JsonNode> Doc() => (await o.Owner.Get($"/api/v1/documents/{id}")).Data!;
+        var sectionKey = S((await Doc())["sections"]!.AsArray().First(s => s!["kind"]!.ToString() is "RichText" or "0")!["key"]);
+        var start = """{"type":"doc","content":[{"type":"paragraph","attrs":{"motion":"rise","motionDelay":100,"motionDuration":400},"content":[{"type":"text","text":"Rollout starts in the north region."}]},{"type":"motionSvg","attrs":{"svg":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 10\"><rect width=\"2\" height=\"2\"/></svg>","caption":"Rollout map"}},{"type":"paragraph","content":[{"type":"text","text":"Support is on call."}]}]}""";
+        var saved = await o.Owner.Send(HttpMethod.Put, $"/api/v1/documents/{id}/sections", new { revision = (await Doc())["revision"]!.GetValue<int>(), sections = new[] { new { key = sectionKey, content = start } } });
+        Assert.True(saved.Ok, saved.ToString());
+        var styled = await o.Owner.Put($"/api/v1/documents/{id}/style", new { revision = saved.Data!["revision"]!.GetValue<int>(), style = new { preset = "editorial", css = "h2 { color: #4f46e5 }", animateSections = true, sectionTransition = "line" } });
+        Assert.True(styled.Ok, styled.ToString());
+        JsonObject Body(JsonNode d) => JsonNode.Parse(d["sections"]!.AsArray().First(s => S(s!["key"]) == sectionKey)!["content"]!.GetValue<string>())!.AsObject();
+
+        // The model sees the motion block as an opaque line, not its markup.
+        var read = await RunTool(o.Owner, AiToolbox.ReadDocument, new { id }, "Read the Northwind rollout brief");
+        Assert.Contains("[[keep:1]]", read);
+        Assert.DoesNotContain("<svg", read);
+
+        // The rewrite leaves the placeholder where the block belongs; another drops it entirely.
+        var rewrite = await Card(o.Owner, AiHomeTools.EditPage, new { document = id, section = sectionKey, mode = "replace", content = "The rollout begins in the north.\n\n[[keep:1]] [animated picture] Rollout map\n\nSupport stays on call all week." });
+        Assert.Equal("done", await Confirmed(o.Owner, rewrite));
+        var body = Body(await Doc());
+        Assert.Equal("editorial", S(body["attrs"]!["pageStyle"]!["preset"]));
+        Assert.Equal("h2 { color: #4f46e5 }", S(body["attrs"]!["pageStyle"]!["css"]));
+        var blocks = body["content"]!.AsArray();
+        Assert.Equal(new[] { "paragraph", "motionSvg", "paragraph" }, blocks.Select(b => S(b!["type"])).ToArray());
+        Assert.Equal("Rollout map", S(blocks[1]!["attrs"]!["caption"]));
+        Assert.Contains("<rect", S(blocks[1]!["attrs"]!["svg"]));
+        Assert.Equal("rise", S(blocks[0]!["attrs"]!["motion"]));
+        Assert.Contains("The rollout begins in the north.", body.ToJsonString());
+        Assert.DoesNotContain("[[keep", body.ToJsonString());
+
+        var dropped = await Card(o.Owner, AiHomeTools.EditPage, new { document = id, section = sectionKey, mode = "replace", content = "Rollout in one line." });
+        Assert.Equal("done", await Confirmed(o.Owner, dropped));
+        body = Body(await Doc());
+        Assert.Equal("editorial", S(body["attrs"]!["pageStyle"]!["preset"]));
+        Assert.Single(body["content"]!.AsArray(), b => S(b!["type"]) == "motionSvg");
+        Assert.Contains("Rollout in one line.", body.ToJsonString());
+    }
+
+    [Fact]
     public async Task Vault_tools_see_names_never_values_and_rotation_and_sharing_wait_for_a_card()
     {
         var o = await Setup();

@@ -8,7 +8,7 @@ public record GrootTitleRequest(string? Text, string? Kind);
 public record GrootTitleDto(string Title, bool Ai);
 
 /// <summary>
-/// A short title for something described in a long paragraph (+ New): Groot writes one when AI is on; otherwise, and whenever the model is not
+/// A short title for something described in a long paragraph (+ New): Aura writes one when AI is on; otherwise, and whenever the model is not
 /// available, the first sentence up to 120 characters. The full text always stays in the description, so nothing typed is lost.
 /// </summary>
 public partial class GrootTitleService(DocumentAiService ai)

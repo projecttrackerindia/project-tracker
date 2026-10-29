@@ -14,7 +14,7 @@ const HOURS = [1, 2, 3, 4, 6, 8].map((n) => ({ id: String(n), label: `${n} h aft
 
 /**
  * Settings › General › Attendance (owners and admins): whether people check in, the working hours it runs on (the workspace's or each
- * person's own), when Groot reminds them, which ways of working are allowed, whether a client office needs a name, and closing a
+ * person's own), when Aura reminds them, which ways of working are allowed, whether a client office needs a name, and closing a
  * forgotten check-out. Every change saves at once.
  */
 export function AttendanceSettings() {
@@ -40,7 +40,7 @@ export function AttendanceSettings() {
 
   return (
     <div className="pv-pane" data-setting="workspace.attendance" data-testid="att-settings">
-      <SPaneHead icon="✓" color="#34c759" title="Attendance" sub={`Check-in and check-out on the organization’s clock (${p.timeZone}). Groot asks at the first sign-in of the day and reminds people who forget.`} />
+      <SPaneHead icon="✓" color="#34c759" title="Attendance" sub={`Check-in and check-out on the organization’s clock (${p.timeZone}). Aura asks at the first sign-in of the day and reminds people who forget.`} />
       <SGroup>
         <SRow icon={<STile color="#34c759">✓</STile>} title="Check-in and check-out" sub="People say where they work each day: office, home or a client’s office.">
           <SSwitch on={p.enabled} label="Check-in and check-out" onChange={(v) => void save({ enabled: v })} />

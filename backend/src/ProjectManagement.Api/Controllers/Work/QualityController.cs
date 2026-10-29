@@ -48,7 +48,7 @@ public class QualityController(QualityService quality) : ApiControllerBase
     public async Task<IActionResult> EndpointTests([FromServices] QualityLinksService links, Guid endpointId, [FromQuery] int days = QualityLinksService.DefaultDays, CancellationToken ct = default) =>
         Ok(await links.EndpointAsync(endpointId, days, ct));
 
-    /// <summary>Groot's proposed test cases for an endpoint (happy path, 400, 401/403, timeout, idempotency, masked logs). Nothing is saved.</summary>
+    /// <summary>Aura's proposed test cases for an endpoint (happy path, 400, 401/403, timeout, idempotency, masked logs). Nothing is saved.</summary>
     [HttpGet("endpoints/{endpointId:guid}/suggestions")]
     public async Task<IActionResult> EndpointSuggestions([FromServices] QualityLinksService links, Guid endpointId, CancellationToken ct) => Ok(await links.SuggestAsync(endpointId, ct));
 

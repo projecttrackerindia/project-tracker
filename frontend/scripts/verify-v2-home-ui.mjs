@@ -179,11 +179,10 @@ try {
     assert.equal(await num('Team open items'), '10');
     assert.equal(await num('Logged this week'), '4h 10m');
     if (width === 1440) {
-      // The desk shell: the toolbar (Ask field + New), no floating Ask bar, no + New in the sidebar.
-      await page.getByRole('toolbar', { name: 'Ask and create' }).getByPlaceholder('Ask Groot or find anything').waitFor();
-      await page.getByRole('toolbar', { name: 'Ask and create' }).getByRole('button', { name: 'New' }).waitFor();
-      assert.equal(await page.locator('form.v2-ask').isVisible(), false);
-      assert.equal(await page.locator('.v2-side .v2-new').isVisible(), false);
+      // The desk shell: a quiet header (the bell; no Ask field, no + New), Aura's dock at the bottom, no + New in the sidebar.
+      await page.getByRole('toolbar', { name: 'Your day' }).waitFor();
+      assert.equal(await page.locator('.v2-tb input, .v2-tb-new, .v2-side .v2-new').count(), 0);
+      await page.locator('form.v2-ask').getByPlaceholder('Ask Aura or tell it what to do').waitFor();
     }
     if (width < 700) await fitsPhone(page, 'Home', assert);
     await shot(page, `home-${tag}.png`);

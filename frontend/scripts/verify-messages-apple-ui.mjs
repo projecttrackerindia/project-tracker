@@ -116,7 +116,7 @@ const greens = (page) => page.evaluate(() => {
   const hits = [];
   const isGreen = (c) => { const m = /rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)/.exec(c); if (!m || (m[4] !== undefined && Number(m[4]) < .05)) return false;
     const [r, g, b] = [m[1], m[2], m[3]].map(Number); return g > 120 && g > r + 40 && g > b + 30; };
-  for (const el of document.querySelectorAll('.talk-shell *, .v2-tb-new')) {
+  for (const el of document.querySelectorAll('.talk-shell *, .aura-dock-wrap *')) {
     if (el.closest('.s-presence, .presence-dot, .talk-src, .a-poll')) continue;
     const cs = getComputedStyle(el); const r = el.getBoundingClientRect(); if (!r.width || cs.visibility === 'hidden') continue;
     for (const c of [cs.backgroundColor, cs.borderTopColor, cs.outlineColor, cs.boxShadow]) if (isGreen(c) && !(c === cs.borderTopColor && cs.borderTopWidth === '0px') && !(c === cs.outlineColor && cs.outlineStyle === 'none')) hits.push(`${el.className}: ${c}`);
@@ -134,7 +134,8 @@ try {
   assert.equal(await page.locator('.talk-seg .talk-chip').count(), 4, 'a compact segmented filter');
   assert.equal(await page.locator('.talk-row[data-row="Lena Park"] .talk-dot').count(), 1, 'the blue unread dot');
   assert.equal(await bg(page.locator('.talk-row[data-row="Lena Park"] .talk-dot')), 'rgb(10, 132, 255)');
-  assert.equal(await bg(page.locator('.v2-tb-new').first()), 'rgb(0, 122, 255)', '+ New is blue in Messages');
+  assert.equal(await page.locator('.v2-tb-new, .v2-rail-new').count(), 0, 'no + New in Messages');
+  await page.getByTestId('aura-dock').waitFor();   // Aura's dock on the list (a conversation hides it)
   checks.push('list');
 
   // Right-click a row: Pin · Mute · Mark as read · Hide. Pinning puts it in the round avatars on top (one row, only when pinned).

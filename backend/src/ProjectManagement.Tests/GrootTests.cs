@@ -17,7 +17,7 @@ using ProjectManagement.Tests.Infrastructure;
 namespace ProjectManagement.Tests;
 
 /// <summary>
-/// Groot, the app's assistant: it introduces itself as the organization's assistant (never as a model), and the long-paragraph bug in + New:
+/// Aura, the app's assistant: it introduces itself as the organization's assistant (never as a model), and the long-paragraph bug in + New:
 /// a title longer than its column is a clear 422 from every work item path, and a database "value too long" is a 422, not a 409 conflict.
 /// </summary>
 [Collection("api")]
@@ -46,11 +46,11 @@ public class GrootTests(ApiFactory factory)
     [Fact]
     public void The_identity_names_the_organization_and_no_model()
     {
-        Assert.Equal("I'm Groot, Orbitline Co's assistant in ProjectTracker.", GrootIdentity.Answer("Orbitline Co"));
-        Assert.Equal("I'm Groot, Acme Labs' assistant in ProjectTracker.", GrootIdentity.Answer("Acme Labs"));
-        Assert.Equal("I'm Groot, your organization's assistant in ProjectTracker.", GrootIdentity.Answer("  "));
+        Assert.Equal("I'm Aura, Orbitline Co's assistant in ProjectTracker.", GrootIdentity.Answer("Orbitline Co"));
+        Assert.Equal("I'm Aura, Acme Labs' assistant in ProjectTracker.", GrootIdentity.Answer("Acme Labs"));
+        Assert.Equal("I'm Aura, your organization's assistant in ProjectTracker.", GrootIdentity.Answer("  "));
         var line = GrootIdentity.PromptLine("Orbitline Co");
-        Assert.Contains("Your name is Groot", line);
+        Assert.Contains("Your name is Aura", line);
         Assert.Contains("Orbitline Co's assistant in ProjectTracker", line);
         Assert.Contains("Never claim to be", line);
         Assert.Contains("Never claim to be", GrootIdentity.Generic);
@@ -89,7 +89,7 @@ public class GrootTests(ApiFactory factory)
         var (owner, org) = await Org();
         factory.Chat.Requests.Clear();
         var (text, _) = await Ask(owner, "Who are you?");
-        Assert.StartsWith($"I'm Groot, {org}'s assistant in ProjectTracker.", text);
+        Assert.StartsWith($"I'm Aura, {org}'s assistant in ProjectTracker.", text);
         Assert.DoesNotContain("Claude", text);
         Assert.Empty(factory.Chat.Requests);   // the application answers; no model can claim another identity
     }
@@ -103,7 +103,7 @@ public class GrootTests(ApiFactory factory)
         await Ask(owner, "What is overdue on my team this week?");
         var sent = factory.Chat.Requests.Last();
         Assert.Contains($"You are {org}'s assistant in ProjectTracker", sent.Context);
-        Assert.Contains("are Groot", sent.System, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("are Aura", sent.System, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Project Tracker's assistant", sent.System);
     }
 

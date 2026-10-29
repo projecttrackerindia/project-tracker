@@ -69,7 +69,9 @@ try {
     await page.screenshot({path:path.join(artifacts,`${kind}-keyboard.png`),animations:'disabled'});checks.push(`${kind}-keyboard-keeps-composer-visible`);
     const box=await page.locator(composer).boundingBox();const layout=await page.evaluate(()=>Object.fromEntries(['.m-shell','.m-main','.content','.ai-shell','.ai-main','.ai-scroll'].map(selector=>{const e=document.querySelector(selector);return [selector,e?{height:e.getBoundingClientRect().height,minHeight:getComputedStyle(e).minHeight,style:e.getAttribute('style')}:null];})));assert.ok(box.y+box.height<=411,JSON.stringify({kind,box,layout}));
     await page.locator(composer+' :is(textarea,[contenteditable="true"])').blur();await page.evaluate(()=>{delete visualViewport.height;visualViewport.dispatchEvent(new Event('resize'));});
-    await page.locator('.m-tabs').waitFor({state:'visible'});checks.push(`${kind}-navigation-restored-after-keyboard`);
+    // An open chat is a full-screen view on a phone (no tab bar); the assistant's conversation gets its tabs back.
+    if(kind==='chat'){await page.waitForFunction(()=>!document.querySelector('.m-shell').classList.contains('keyboard-open'));assert.equal(await page.locator('.m-tabs').isVisible(),false);checks.push('chat-stays-full-screen-after-keyboard');}
+    else{await page.locator('.m-tabs').waitFor({state:'visible'});checks.push(`${kind}-navigation-restored-after-keyboard`);}
    }
    if(kind==='agent'&&width===390){await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.agent-ribbon').first().evaluate(e=>getComputedStyle(e).animationName),'none');checks.push('agent-mark-reduced-motion');}
    await page.close();

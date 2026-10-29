@@ -23,7 +23,8 @@ namespace ProjectManagement.Application.Features.Ai;
 public sealed record AiProposal(string Id, string Kind, string Title, string Summary, string PayloadJson, string Status = "proposed", string? Link = null, string? Error = null,
     string? Preview = null, Guid? ResultId = null, AiActionExecution? Execution = null, string? UndoJson = null, DateTime? UndoUntil = null)
 {
-    public AiActionDto ToDto() => new(Id, Kind, Title, Summary, Status, Link, Error, Preview, ResultId, AiActionPlan.ToDto(Execution), Status == "done" ? UndoUntil : null);
+    public AiActionDto ToDto() => new(Id, Kind, Title, Summary, Status, Link, Error, Preview, ResultId, AiActionPlan.ToDto(Execution), Status == "done" ? UndoUntil : null,
+        AiUndoService.Supports(Kind), AiUndoService.Supports(Kind) ? AiUndoService.Describe(Kind) : "Cannot be undone from the assistant; change it back by hand.");
 }
 
 /// <summary>What a tool gave back: the text the model reads, a short label for the page ("Looked through 12 work items"), and any proposal.</summary>
@@ -42,7 +43,7 @@ public sealed class AiToolException(string message) : Exception(message);
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
     WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, AiPortfolio portfolio, ActionItemService actionItems, TaskService tasks, WorkTaskService workTasks, ProjectService projects, DocumentService documents, ReminderService reminders,
     ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiToolbox> log, AiKnowledgeService knowledge, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
-    AiHomeTools home, AiWorkdayTools workday, Microsoft.Extensions.Options.IOptions<ProjectManagement.Application.Features.Calls.CallsOptions> callsOptions)
+    AiHomeTools home, AiWorkdayTools workday, AiPowerTools power, Microsoft.Extensions.Options.IOptions<ProjectManagement.Application.Features.Calls.CallsOptions> callsOptions)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
@@ -61,7 +62,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
     public const string ScheduleProject = "propose_schedule_project";
     public static readonly string[] WriteTools = [Watch, StopWatch, DeleteWork, PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, StartCall, ScheduleMeeting,
-        .. AiHomeTools.WriteTools, .. AiWorkdayTools.WriteTools];
+        .. AiHomeTools.WriteTools, .. AiWorkdayTools.WriteTools, .. AiPowerTools.WriteTools];
 
     /// <summary>
     /// Proposal kinds (<see cref="AiProposal.Kind"/>) that run the instant they are proposed, with no card to click: ordinary, reversible
@@ -95,9 +96,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             && (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(reminder|reminders|remind)\b")
             || System.Text.RegularExpressions.Regex.IsMatch(lower, @"^(please\s+)?(change|move|reschedule)\s+(it|that)\s+(to|at)\s+\d{1,2}:\d{2}[.!?]*$")))
             return all.Where(t => new[] { ListReminders, CreateReminder, ReviseReminder, UpdateReminder, FindWork, ListPeople }.Contains(t.Name)).ToList();
-        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(create|add|assign|update|change|edit|invite|send|schedule|start|remind|write|yes|please|do|crete|creat|move|mark|comment|rename|apply|rebalance|turn|draft|email|fix|push|put|raise|make|give|plan|book|call|huddle)\b")
+        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(create|add|assign|update|change|edit|invite|send|schedule|start|remind|write|yes|please|do|crete|creat|move|mark|comment|rename|apply|rebalance|turn|draft|email|fix|push|put|raise|make|give|plan|book|call|huddle|reschedule|reopen|approve|decline|check in|check out|checkin|checkout|clock in|clock out)\b")
             || AiExecutionPolicy.Classify(text) is AiRequestIntent.Execute or AiRequestIntent.Combined) return all;
-        var selected = new HashSet<string> { FindWork, ListProjects, ProjectReport, MyWorkSummary };
+        var selected = new HashSet<string> { FindWork, ListProjects, ProjectReport, MyWorkSummary, AiPowerTools.ManualOnly };
         var matched = false;
         void Include(string pattern, params string[] names)
         { if (System.Text.RegularExpressions.Regex.IsMatch(lower, pattern)) { matched = true; selected.UnionWith(names); } }
@@ -106,6 +107,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         Include(@"\b(workload|team|people|overloaded|assignee)\b", TeamWorkload, ListPeople, WorkloadBalance, SuggestAssignee);
         Include(@"\b(history|historical|pace|accuracy)\b", HistoryInsights);
         Include(@"\b(meeting|calendar|scrum|standup|stand-up)\b", ListMeetings);
+        Include(@"\b(approval|approvals|approver)\b", AiPowerTools.ListApprovals, AiHomeTools.NeedsYou);
+        Include(@"\b(time entr\w*)\b", AiPowerTools.ListMyTimeEntries, AiWorkdayTools.MyTime);
         Include(@"\b(document|documents|notes|knowledge)\b", SearchDocuments, ReadDocument);
         Include(@"\b(knowledge|evidence|reference|search|find)\b", SearchKnowledge, ReadKnowledge);
         Include(@"\b(my day|plan my day|today|tomorrow|calendar|free|busy|agenda|due this week|due today|next meeting|my meetings?)\b", AiWorkdayTools.MySchedule, AiHomeTools.NeedsYou, ListMeetings);
@@ -181,6 +184,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         };
         tools.AddRange(home.Definitions(false));
         tools.AddRange(workday.Definitions(false));
+        tools.AddRange(power.Definitions(false));
         if (!actionsAllowed) return tools;
         tools.AddRange(
         [
@@ -285,6 +289,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         ]);
         tools.AddRange(home.Definitions(true).Where(t => AiHomeTools.WriteTools.Contains(t.Name)));
         tools.AddRange(workday.Definitions(true).Where(t => AiWorkdayTools.WriteTools.Contains(t.Name)));
+        tools.AddRange(power.Definitions(true).Where(t => AiPowerTools.WriteTools.Contains(t.Name)));
         if (actionsAllowed) actionCatalog = tools; else readCatalog = tools;
         return tools;
     }
@@ -353,6 +358,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 StartCall => await ProposeStartCallAsync(a, ct),
                 ScheduleMeeting => await ProposeScheduleMeetingAsync(a, timeZone, ct),
                 _ => await home.ExecuteAsync(name, a, timeZone, HomePersonAsync, ct) ?? await workday.ExecuteAsync(name, a, timeZone, MemberEmailAsync, ct)
+                    ?? await power.ExecuteAsync(name, a, timeZone, HomePersonAsync, PowerProjectAsync, ResolveWorkItemAsync, ct)
                     ?? throw new AiToolException($"There is no tool called {name}."),
             };
         }
@@ -403,7 +409,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var doc = await documents.GetAsync(documentId, ct); // visibility, tenant, project and published-version checks stay in the existing service
         var text = string.Join("\n", doc.Sections.Select(s => s.Title + "\n" + (s.Kind == SectionKind.Table
             ? string.Join("\n", DocumentDiff.ReadTable(s.Content).Item2.Select(row => string.Join(" | ", row)))
-            : string.Join("\n", DocumentDiff.TextLines(s.Content).Select(line => line.Text)))));
+            : string.Join("\n", MotionContent.LinesForAi(s.Content)))));
         var chunk = offset >= text.Length ? "" : text.Substring(offset, Math.Min(4000, text.Length - offset));
         return new AiToolOutcome(JsonSerializer.Serialize(new { doc.Item.Key, doc.Item.Title, doc.Revision, doc.VersionLabel, can_edit = doc.Can.Edit,
             sections = offset == 0 ? doc.Sections.Select(s => new { s.Key, s.Title, kind = s.Kind == SectionKind.Table ? "table" : "text" }) : null, offset, text = chunk,
@@ -1165,7 +1171,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var list = await meetings.ListAsync(project.Id, ct);
         if (list.Count == 0) return new AiToolOutcome($"No meetings on {project.Label}.", "Looked for meetings", 0);
         var shown = list.Take(ListCap).Select(m =>
-            $"{m.Title} | {m.Status} | {m.StartTime:yyyy-MM-dd HH:mm}–{m.EndTime:HH:mm} UTC | organizer {m.OrganizerName} | " +
+            $"id {m.Id} | {m.Title} | {m.Status} | {m.StartTime:yyyy-MM-dd HH:mm}–{m.EndTime:HH:mm} UTC | organizer {m.OrganizerName} | " +
             (m.RecurrenceRule is null ? "" : $"series {m.RecurrenceRule}; first session shown; consult Google Calendar for exceptions | ") +
             string.Join(", ", m.Participants.Where(p => p.Role != "Organizer").Select(p => $"{p.Name}:{p.RsvpStatus}")));
         return new AiToolOutcome(string.Join("\n", shown), $"Found {list.Count} meeting(s) on {project.Label}", list.Count);
@@ -1383,7 +1389,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     {
         if (ctx.Role == TenantRole.Guest) throw new AiToolException("Guests cannot look up other people.");
         var tid = ctx.RequireTenantId();   // TenantMember is not filtered by workspace on its own: without this, people from every organization come back
-        return _people ??= (await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest && m.User!.IsActive)
+        return _people ??= (await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest && m.User!.IsActive && m.Status == MemberStatus.Active)
             .Select(m => new { m.UserId, m.User!.DisplayName, m.User.Email, m.Role, JobRole = db.OrgRoles.Where(r => r.Id == m.OrgRoleId).Select(r => r.Name).FirstOrDefault() })
             .ToListAsync(ct)).Select(m => new Person(m.UserId, m.DisplayName, m.Email, m.Role.ToString(), m.JobRole)).ToList();
     }
@@ -1410,6 +1416,13 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
     {
         var p = await PersonAsync(text, ct);
         return (p.Id, p.Name);
+    }
+
+    /// <summary>A project by what was said, for <see cref="AiPowerTools"/> (an empty id for one only proposed in this answer).</summary>
+    private async Task<(Guid Id, string Key, string Name)> PowerProjectAsync(string text, CancellationToken ct)
+    {
+        var p = await ProjectAsync(text, ct);
+        return (p.Id, p.Key, p.Name);
     }
 
     private async Task<(string Name, string Email)> MemberEmailAsync(string text, CancellationToken ct)

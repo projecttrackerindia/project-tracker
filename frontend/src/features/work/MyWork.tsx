@@ -270,7 +270,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
               <div className="mw-lab">All clear</div>
               <div className="mw-ti static">Nothing is waiting on you</div>
               <p className="mw-why">Tasks, issues, action items and tickets given to you show up here, the most important first.</p>
-              <div className="mw-ft"><button type="button" className="mw-start" onClick={() => openNew()}>+ New</button></div>
+              <div className="mw-ft"><button type="button" className="mw-start" onClick={() => openNew('task')}>Create a task</button></div>
             </div></div>
           )}
           {loading && <div className="mw-fc front mw-skel" aria-busy="true" aria-label="Loading work" />}
@@ -323,7 +323,7 @@ function Row({ w, pulls, done, showAssignee, onTick, onOpen, onBack }: { w: Work
   const when = done ? (completedClock(w) ? `done ${completedClock(w)}` : 'done') : late ? null : dayText(w.dueDate);
   const who = showAssignee ? `Assignee: ${w.assignee?.name ?? 'Unassigned'}` : null;
   return (
-    <div className={`mw-r ${done ? 'done' : ''}`}>
+    <div className={`mw-r ${done ? 'done' : ''}`} data-task-id={w.id} data-key={w.key ?? undefined}>
       <button type="button" className={`mw-chk ${done ? 'on' : ''}`} aria-label={done ? `${w.title} is done` : `Complete ${w.title}`} aria-pressed={done} disabled={done} onClick={onTick} />
       <button type="button" className="mw-r-main" onClick={onOpen} aria-label={`${w.key} ${w.title}${w.isOverdue ? ', overdue' : ''}`}>
         <b>{w.title}</b>
