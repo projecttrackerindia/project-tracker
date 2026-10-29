@@ -33,7 +33,7 @@ public class TimesheetNudgeMonitor(IAppDbContext db, AppClock clock, Notificatio
             join t in db.Tenants.IgnoreQueryFilters() on m.TenantId equals t.Id
             where u.IsActive && m.Role != TenantRole.Guest && t.Status == TenantStatus.Active && !t.IsDeleted && t.Type == WorkspaceType.Organization
                   && db.TimeEntries.IgnoreQueryFilters().Any(e => e.TenantId == m.TenantId && e.UserId == m.UserId && e.WorkDate >= since)
-            select new { m.TenantId, m.UserId, u.TimeZone }).Take(Batch).ToListAsync(ct);
+            select new { m.TenantId, m.UserId, u.TimeZone, OrgZone = t.TimeZone, Chose = db.ReminderSettings.Any(s => s.UserId == u.Id && !s.FollowDeviceTimeZone) }).Take(Batch).ToListAsync(ct);
         if (people.Count == 0) return 0;
 
         var tenants = people.Select(p => p.TenantId).Distinct().ToList();
@@ -54,7 +54,7 @@ public class TimesheetNudgeMonitor(IAppDbContext db, AppClock clock, Notificatio
         var emptyDays = new List<(Guid TenantId, Guid UserId, DateOnly Day, string Key)>();
         foreach (var p in people)
         {
-            var local = ZoneTime.ToLocal(now, ZoneTime.Find(p.TimeZone));
+            var local = ZoneTime.ToLocal(now, clock.ZoneFor(p.TimeZone, p.Chose, p.OrgZone));
             if (local.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || local.Hour < 10 || local.Hour >= 19) continue;
             var today = DateOnly.FromDateTime(local);
             var previous = today.AddDays(today.DayOfWeek == DayOfWeek.Monday ? -3 : -1);

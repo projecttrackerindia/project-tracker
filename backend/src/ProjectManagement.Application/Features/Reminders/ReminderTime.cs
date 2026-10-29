@@ -14,6 +14,18 @@ public static class ZoneTime
     public const string Format = "yyyy-MM-dd'T'HH:mm";
     private static readonly ZoneLocalMappingResolver EarlierOrAfterGap = Resolvers.CreateMappingResolver(Resolvers.ReturnEarlier, Resolvers.ReturnStartOfIntervalAfter);
 
+    private static readonly HashSet<string> Placeholders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "UTC", "Etc/UTC", "Etc/UCT", "UCT", "Etc/GMT", "GMT", "Etc/GMT0", "Etc/GMT+0", "Etc/GMT-0", "GMT0", "GMT+0", "GMT-0",
+        "Etc/Universal", "Universal", "Etc/Zulu", "Zulu", "Etc/Greenwich", "Greenwich",
+    };
+
+    /// <summary>
+    /// A zone that says nothing about where a person is: empty, unknown, or plain UTC (what a column default, a server, an Electron shell or
+    /// a browser without a configured zone reports). Such a value counts as "not set" unless the person chose UTC themselves.
+    /// </summary>
+    public static bool IsPlaceholder(string? id) => !IsKnown(id) || Placeholders.Contains(id!.Trim());
+
     public static bool IsKnown(string? id) =>
         !string.IsNullOrWhiteSpace(id) && id.Length <= 64 && DateTimeZoneProviders.Tzdb.GetZoneOrNull(id.Trim()) is not null;
 

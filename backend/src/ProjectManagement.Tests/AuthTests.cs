@@ -100,7 +100,7 @@ public class AuthTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task A_second_tab_refreshing_with_the_same_token_within_the_grace_window_gets_an_access_token_but_no_new_refresh_token()
+    public async Task A_second_tab_refreshing_with_the_same_token_within_the_grace_window_gets_an_access_token_and_a_token_of_its_own()
     {
         var c = await TestClient.RegisterAsync(factory);
         var first = c.RefreshToken!;
@@ -110,12 +110,37 @@ public class AuthTests(ApiFactory factory)
 
         var otherTab = await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = first }, true);
         Assert.True(otherTab.Ok, otherTab.ToString());
-        Assert.Null(otherTab.Data!["refreshToken"]);
+        var sibling = otherTab.Data!["refreshToken"]!.GetValue<string>();
+        Assert.NotEqual(second, sibling);
         var tab = new TestClient(factory) { Token = otherTab.Data["accessToken"]!.GetValue<string>() };
         Assert.True((await tab.Get("/api/v1/me")).Ok);
 
-        // the session is intact: the rotated token still works
+        // the session is intact: the rotated token and the sibling both still work
         Assert.True((await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = second }, true)).Ok);
+        Assert.True((await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = sibling }, true)).Ok);
+    }
+
+    [Fact]
+    public async Task A_refresh_whose_response_was_lost_does_not_end_the_session_on_the_next_navigation()
+    {
+        var c = await TestClient.RegisterAsync(factory);
+        var first = c.RefreshToken!;
+        // The page navigated away while its refresh was on the way: the server rotated, the browser never got the new cookie.
+        Assert.True((await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = first }, true)).Ok);
+        // The next page load presents the old cookie within the grace window and is handed a fresh one.
+        var reload = await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = first }, true);
+        Assert.True(reload.Ok, reload.ToString());
+        var fresh = reload.Data!["refreshToken"]!.GetValue<string>();
+        // Minutes later (opening the Calendar): the browser's cookie is the fresh one, and it still works.
+        factory.WithDb(db =>
+        {
+            foreach (var t in db.RefreshTokens.Where(t => t.UsedAt != null && t.UserId == c.UserId)) t.UsedAt = DateTime.UtcNow.AddMinutes(-5);
+            db.SaveChanges();
+            return 0;
+        });
+        var later = await c.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = fresh }, true);
+        Assert.True(later.Ok, later.ToString());
+        Assert.True((await new TestClient(factory) { Token = later.Data!["accessToken"]!.GetValue<string>() }.Get("/api/v1/me")).Ok);
     }
 
     [Fact]

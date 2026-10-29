@@ -16,6 +16,7 @@ import { dayMonth } from './projectParts';
 import { ProjectFacts } from './PortfolioFacts';
 import { HealthSheet } from './ProjectHealth';
 import type { PortfolioBrief, PortfolioRisk } from '../ai/aiApi';
+import { lockScroll } from '../../lib/scrollLock';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -458,8 +459,8 @@ export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items:
       else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(-1); }
     };
     window.addEventListener('keydown', onKey);
-    const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+    const unlock = lockScroll('body');
+    return () => { window.removeEventListener('keydown', onKey); unlock(); };
   }, [go, onClose]);
   // Phones: the slide fills the screen, a swipe moves between slides, the app's bars and toasts step aside, the top bar is compact.
   const phone = useIsMobile();

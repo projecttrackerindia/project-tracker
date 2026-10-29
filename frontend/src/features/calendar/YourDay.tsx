@@ -15,6 +15,7 @@ import { clock24 } from '../work/dueTime';
 import { useToday } from './useToday';
 import './planner.css';
 import './eventDetail.css';
+import { ZoneBadge } from '../../components/ZoneBadge';
 
 const MEET_TINTS = ['m-teal', 'm-indigo', 'm-green'];
 /** The ruler as the design: the first hour with AM/PM, noon as 12 PM, the rest bare. */
@@ -241,7 +242,7 @@ export function YourDay({ team }: { team: boolean }) {
 
   return (
     <section className="hm-card hm-yday" aria-label="Your day" data-testid="your-day" data-day={today} data-sig={d ? daySignature(d) : ''} data-logged={c?.logged ?? ''}>
-      <div className="hm-day-hd"><h2 className="hm-h3">Your day</h2>
+      <div className="hm-day-hd"><h2 className="hm-h3">Your day</h2><ZoneBadge />
         {c ? (
           <span className="hm-faint" data-testid="your-day-counts">
             {c.meetings} meeting{c.meetings === 1 ? '' : 's'}{c.calls > 0 && <> · {c.calls} call{c.calls === 1 ? '' : 's'}</>} · {c.focus} focus block{c.focus === 1 ? '' : 's'} · <span data-testid="your-day-free">{dur(c.free)} free</span>
@@ -343,7 +344,7 @@ export function YourDayList() {
   ].sort((a, b) => a.at - b.at || a.key.localeCompare(b.key));
   return (
     <section className="pt-card pt-day" aria-label="Your day" data-testid="your-day" data-day={today} data-sig={daySignature(d)}>
-      <div className="pt-eyebrow">YOUR DAY</div>
+      <div className="pt-eyebrow">YOUR DAY <ZoneBadge /></div>
       <p className="pt-day-counts" data-testid="your-day-counts">{c.meetings} meeting{c.meetings === 1 ? '' : 's'}{c.calls ? ` · ${c.calls} call${c.calls === 1 ? '' : 's'}` : ''} · {c.focus} focus · {dur(c.free)} free{c.logged ? ` · ${dur(c.logged)} logged` : ''}</p>
       {rows.length === 0 ? <p className="pt-quiet">Nothing on your day yet.</p> : (
         <ul className="pt-day-list">

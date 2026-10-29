@@ -25,6 +25,7 @@ import { applyBadge, clearBadge } from './badge';
 import { arrange, badgeCount, badgeText, canJoin, CATEGORY_META, categoryOf, conversationOf, FILTERS, iconOf, shortTime, snoozePresets, type Stack } from './model';
 import { maySound, useAlertPrefs } from './prefs';
 import '../../../styles/notification-centre-apple.css';
+import { lockScroll } from '../../../lib/scrollLock';
 
 type Filter = NotificationCategory | 'all';
 
@@ -251,9 +252,8 @@ function Centre({ onClose }: { onClose: () => void }) {
     };
     document.addEventListener('keydown', onKey);
     if (!phone) document.addEventListener('mousedown', onDown);
-    const prevOverflow = document.body.style.overflow;
-    if (phone) document.body.style.overflow = 'hidden';
-    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown); document.body.style.overflow = prevOverflow; back?.focus?.({ preventScroll: true }); };
+    const unlock = phone ? lockScroll('body') : () => undefined;
+    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown); unlock(); back?.focus?.({ preventScroll: true }); };
   }, [onClose, phone]);
 
   // The end of the list loads the next page (long lists are paged and off-screen cards skip layout and paint).

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { appZone, canonicalZone, daysFromToday, isKnownZone, isoDateIn, setAppZones, shiftIsoDate, zoneOffsetLabel, zoneToday } from './zone';
+import { appZone, canonicalZone, daysFromToday, hourIn, isKnownZone, isPlaceholderZone, isoDateIn, resolveZone, setAppZones, shiftIsoDate, zoneAbbrev, zoneBadge, zoneOffsetLabel, zoneToday } from './zone';
 import { daysUntil, dueLabel, todayISO } from './format';
 
-afterEach(() => { vi.useRealTimers(); setAppZones(null, null); });
+afterEach(() => { vi.useRealTimers(); setAppZones(null, null, null, false); });
 
 describe('app time zone', () => {
   it('prefers the person, then the workspace, then the device', () => {
@@ -12,7 +12,45 @@ describe('app time zone', () => {
     expect(appZone()).toBe('Europe/London');
     setAppZones('Not/AZone', null);
     expect(isKnownZone('Not/AZone')).toBe(false);
-    expect(appZone()).toBe(canonicalZone(Intl.DateTimeFormat().resolvedOptions().timeZone));
+    const device = canonicalZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(appZone()).toBe(isPlaceholderZone(device) ? 'Asia/Kolkata' : device);
+  });
+
+  it('uses the zone the server worked out for the person before anything else', () => {
+    setAppZones('UTC', null, 'Asia/Kolkata', false);
+    expect(appZone()).toBe('Asia/Kolkata');
+    setAppZones('UTC', null, 'UTC', true);
+    expect(appZone()).toBe('UTC');
+  });
+
+  it('treats a reported or default UTC as "not set": the organization, then a real device zone, then India', () => {
+    for (const z of ['UTC', 'Etc/UTC', 'GMT', 'Etc/GMT', '', null, 'Not/AZone']) expect(isPlaceholderZone(z)).toBe(true);
+    for (const z of ['Asia/Kolkata', 'Europe/London', 'Africa/Abidjan']) expect(isPlaceholderZone(z)).toBe(false);
+    expect(resolveZone('UTC', false, 'Asia/Dubai', 'Etc/UTC')).toBe('Asia/Dubai');
+    expect(resolveZone('Etc/UTC', false, null, 'Europe/Berlin')).toBe('Europe/Berlin');
+    expect(resolveZone('UTC', false, null, 'Etc/UTC')).toBe('Asia/Kolkata');
+    expect(resolveZone('UTC', true, 'Asia/Dubai', 'Etc/UTC')).toBe('UTC');
+    expect(resolveZone('America/New_York', false, 'Asia/Dubai', 'Etc/UTC')).toBe('America/New_York');
+    expect(resolveZone('Asia/Calcutta', false, null)).toBe('Asia/Kolkata');
+  });
+
+  it('puts hours and days in the app zone even when the device runs on UTC', () => {
+    setAppZones('Etc/UTC', null, null, false);   // what an Electron shell reports, no zone from the server yet
+    const instant = new Date('2026-10-28T19:00:00Z');
+    const zone = resolveZone('Etc/UTC', false, null, 'Etc/UTC');
+    expect(zone).toBe('Asia/Kolkata');
+    expect(isoDateIn(instant, zone)).toBe('2026-10-29');
+    expect(hourIn(instant, zone)).toBe(0.5);
+    setAppZones('UTC', null, 'Asia/Kolkata', false);
+    expect(isoDateIn(instant)).toBe('2026-10-29');
+    expect(hourIn(new Date('2026-10-29T04:00:00Z'))).toBe(9.5);
+  });
+
+  it('names the zone with a short badge only when it differs from the device', () => {
+    expect(zoneAbbrev('Asia/Kolkata', new Date('2026-01-01T00:00:00Z'))).toBe('IST');
+    expect(zoneBadge('Asia/Kolkata', 'Etc/UTC')).toBe('IST');
+    expect(zoneBadge('Asia/Kolkata', 'Asia/Calcutta')).toBeNull();
+    expect(zoneBadge('Europe/London', 'Europe/London')).toBeNull();
   });
 
   it('maps old zone names to current ones', () => {

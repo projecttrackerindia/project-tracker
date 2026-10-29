@@ -73,6 +73,47 @@ describe('session refresh across tabs', () => {
   });
 });
 
+describe('a refresh that is not answered', () => {
+  it('keeps the session when the refresh cannot be reached, retrying before giving up', async () => {
+    const { client } = await setup();
+    vi.useFakeTimers();
+    const lost = vi.fn();
+    client.setAuthLostHandler(lost);
+    // The page's request is refused (expired token); the refresh hits a release restarting the server three times.
+    const fetch = vi.fn().mockResolvedValueOnce(error(401)).mockResolvedValueOnce(error(503)).mockRejectedValueOnce(new TypeError('network'))
+      .mockResolvedValueOnce(error(502));
+    vi.stubGlobal('fetch', fetch);
+    const call = client.get('/timeline').catch((e) => e);
+    await vi.runAllTimersAsync();
+    expect(await call).toMatchObject({ status: 401 });
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(lost).not.toHaveBeenCalled();
+    expect(client.refreshWasRefused()).toBe(false);
+  });
+
+  it('recovers when a retried refresh is answered', async () => {
+    const { client } = await setup();
+    vi.useFakeTimers();
+    const fetch = vi.fn().mockResolvedValueOnce(error(401)).mockResolvedValueOnce(error(503)).mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { ok: true } })));
+    vi.stubGlobal('fetch', fetch);
+    const call = client.get<{ ok: boolean }>('/timeline');
+    await vi.runAllTimersAsync();
+    expect(await call).toEqual({ ok: true });
+    expect(client.getAccessToken()).toBe('renewed');
+  });
+
+  it('still signs out when the server refuses the refresh', async () => {
+    const { client } = await setup();
+    const lost = vi.fn();
+    client.setAuthLostHandler(lost);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(error(401)).mockResolvedValueOnce(error(401)));
+    await expect(client.get('/timeline')).rejects.toMatchObject({ status: 401 });
+    expect(lost).toHaveBeenCalledOnce();
+    expect(client.refreshWasRefused()).toBe(true);
+  });
+});
+
 describe('protected downloads', () => {
   it('passes the view cancellation signal through to the protected file request', async () => {
     const { client, saveFile } = await setup();

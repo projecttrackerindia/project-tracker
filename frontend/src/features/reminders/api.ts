@@ -1,6 +1,6 @@
 import { create, del, get, post, put } from '../../api/client';
 import { deviceZone } from './time';
-import { deviceZone as realDeviceZone } from '../../lib/zone';
+import { appZone, followableDeviceZone } from '../../lib/zone';
 
 export type ReminderSource = 'Personal' | 'Nudge' | 'DueDate' | 'Overdue' | 'Escalation' | 'Meeting';
 export type ReminderState = 'Scheduled' | 'Fired' | 'Done' | 'Cancelled';
@@ -77,7 +77,7 @@ export const reminderApi = {
   settings: () => get<ReminderSettings>('/reminders/settings'),
   saveSettings: (s: ReminderSettings) => put<ReminderSettings>('/reminders/settings', s),
   /** Moves the profile's zone to this device's real zone (only when the person keeps "Follow this device" on). */
-  followDevice: () => put<ReminderSettings>('/reminders/time-zone', { timeZone: realDeviceZone() }),
+  followDevice: () => put<ReminderSettings>('/reminders/time-zone', { timeZone: followableDeviceZone() ?? appZone() }),
   insights: () => get<ReminderInsights>('/reminders/insights'),
   policy: () => get<ReminderPolicy>('/reminders/policy'),
   savePolicy: (body: { escalationEnabled: boolean; steps: string }) => put<ReminderPolicy>('/reminders/policy', body),

@@ -643,7 +643,9 @@ function Schedule() {
   const canWorkspace = canManageOrg && !personal;
   const settings = useQuery({ queryKey: ['reminder-settings', 'nc'], queryFn: reminderApi.settings });
   const [s, setS] = useState<ReminderSettings | null>(null);
-  const [zone, setZone] = useState<string>(ctx.user.timeZone);
+  // The zone the day really runs in (a reported UTC on the profile shows as the organization's zone it falls back to).
+  const shownZone = ctx.timeZone ?? ctx.user.timeZone;
+  const [zone, setZone] = useState<string>(shownZone);
   const [busy, setBusy] = useState(false);
   const device = deviceZone();
   useEffect(() => { if (settings.data && !s) setS(settings.data); }, [settings.data, s]);
@@ -654,7 +656,7 @@ function Schedule() {
   const toggle = (k: 'workDays' | 'dueLeads' | 'overdueSteps', v: number) => setS((x) => x && ({ ...x, [k]: x[k].includes(v) ? x[k].filter((y) => y !== v) : [...x[k], v].sort((a, b) => a - b) }));
   const quiet = !!s.quietStart;
 
-  const zoneDirty = zone !== ctx.user.timeZone;
+  const zoneDirty = zone !== shownZone;
   const settingsDirty = JSON.stringify(s) !== JSON.stringify(settings.data);
 
   const pickZone = (z: string | null) => {
