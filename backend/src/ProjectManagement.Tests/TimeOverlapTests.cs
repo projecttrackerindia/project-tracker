@@ -81,10 +81,11 @@ public class TimeOverlapTests(ApiFactory factory)
         if (LocalMinutes < 150) return;   // the first hours after midnight have no room for the gap this test needs
         var w = await Setup();
         var now = DateTime.UtcNow;
-        // Already logged on the clock: from 60 to 10 minutes ago.
+        // Checked in two hours ago; already logged on the clock from 60 to 10 minutes ago.
         var busyStart = now.AddMinutes(-60);
         factory.WithDb(db =>
         {
+            db.AttendanceDays.Add(new AttendanceDay { TenantId = w.Tenant, UserId = w.Owner.UserId, Date = AppDay.Today, CheckInAt = now.AddMinutes(-120), Mode = "Office" });
             db.TimeEntries.Add(new TimeEntry { TenantId = w.Tenant, TaskId = w.TaskA, ProjectId = w.Project, UserId = w.Owner.UserId, WorkDate = AppDay.Today, Minutes = 50,
                 StartedAt = busyStart, EndedAt = now.AddMinutes(-10), CreatedAt = now, CreatedBy = w.Owner.UserId });
             return db.SaveChanges();
@@ -138,5 +139,29 @@ public class TimeOverlapTests(ApiFactory factory)
         Assert.Equal("dueDate", S(auto["origin"]));
         Assert.Equal(w.TaskA.ToString(), S(auto["itemId"]));
         Assert.Equal("personal", S(events.First(e => S(e!["title"]) == "Call the bank")!["origin"]));
+    }
+
+    [Fact]
+    public async Task Gap_placement_never_reaches_before_the_check_in()
+    {
+        if (LocalMinutes < 150) return;
+        var w = await Setup();
+        var now = DateTime.UtcNow;
+        // Checked in 70 minutes ago, logged from 60 to 10 minutes ago: the only gaps after the check-in are 10 minutes each, so "30m"
+        // is not pushed before the check-in; it ends now and warns.
+        factory.WithDb(db =>
+        {
+            db.AttendanceDays.Add(new AttendanceDay { TenantId = w.Tenant, UserId = w.Owner.UserId, Date = AppDay.Today, CheckInAt = now.AddMinutes(-70), Mode = "Office" });
+            db.TimeEntries.Add(new TimeEntry { TenantId = w.Tenant, TaskId = w.TaskA, ProjectId = w.Project, UserId = w.Owner.UserId, WorkDate = AppDay.Today, Minutes = 50,
+                StartedAt = now.AddMinutes(-60), EndedAt = now.AddMinutes(-10), CreatedAt = now, CreatedBy = w.Owner.UserId });
+            return db.SaveChanges();
+        });
+        var res = await w.Owner.Post($"/api/v1/tasks/{w.TaskB}/time", new { minutes = 30 });
+        Assert.True(res.Ok, res.ToString());
+        var start = DateTime.Parse(S(res.Data!["startedAt"])).ToUniversalTime();
+        var end = DateTime.Parse(S(res.Data["endedAt"])).ToUniversalTime();
+        Assert.True(start >= now.AddMinutes(-70).AddSeconds(-61), $"starts {start:o}, before the check-in");
+        Assert.True(end >= now.AddMinutes(-1), $"ends {end:o}: now");
+        Assert.StartsWith("Overlaps ", S(res.Data["warning"]));
     }
 }
