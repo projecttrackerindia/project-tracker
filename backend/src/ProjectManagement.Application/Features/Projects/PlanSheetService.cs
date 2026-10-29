@@ -315,18 +315,18 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
             if (task.Version != seen) throw new ConflictException("This task was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
             db.Tasks.Entry(task).Property(x => x.Version).OriginalValue = seen;
         }
-        var from = await db.Projects.AsNoTracking().FirstAsync(p => p.Id == task.ProjectId, ct);
+        var source = await db.Projects.AsNoTracking().FirstAsync(p => p.Id == task.ProjectId, ct);
         var target = req.ProjectId ?? task.ProjectId;
         var moved = target != task.ProjectId;
-        var oldKey = $"{from.Key}-{task.Number}";
-        var dest = from;
+        var oldKey = $"{source.Key}-{task.Number}";
+        var dest = source;
         if (moved)
         {
             dest = await access.GetProjectAsync(target, ct);
             ProjectAccess.EnsureNotArchived(dest, "add tasks");
             await permissions.RequireAsync(Permissions.TasksCreate, ct);
             if (task.ParentTaskId is not null) throw new ValidationException("projectId", "A sub-item moves with its parent task.");
-            if (await db.Tasks.AnyAsync(t => t.ParentTaskId == task.Id, ct)) throw new ValidationException("projectId", "Move its sub-items out first, or move them with it from the project.");
+            if (await db.Tasks.AnyAsync(t => t.ParentTaskId == task.Id, ct)) throw new ValidationException("projectId", "Move its sub-items out first: a task moves to another project on its own.");
             if (await db.TaskDependencies.AnyAsync(d => d.TaskId == task.Id || d.DependsOnTaskId == task.Id, ct))
                 throw new ValidationException("projectId", "Remove its dependencies first: dependencies stay inside one project.");
             var statuses = await db.WorkflowStatuses.Where(s => s.ProjectId == target).OrderBy(s => s.Order).ToListAsync(ct);
@@ -351,7 +351,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         task.Version++;
         var key = $"{dest.Key}-{task.Number}";
         if (moved) recorder.Activity("task.moved", "Task", task.Id, $"Moved {oldKey} to {dest.Name} as {key}", target, oldKey, key);
-        recorder.Audit("plansheet.row_moved", "WorkItem", task.Id, new { from = from.Id, oldKey }, new { to = target, key, task.Position });
+        recorder.Audit("plansheet.row_moved", "WorkItem", task.Id, new { fromProject = source.Id, oldKey }, new { to = target, key, task.Position });
         await db.SaveChangesAsync(ct);
         return new PlanSheetMoveResultDto(task.Id, key, target, task.Version, task.Position, moved);
     }

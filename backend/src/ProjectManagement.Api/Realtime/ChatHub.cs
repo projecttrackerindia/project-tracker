@@ -168,7 +168,7 @@ public partial class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvid
         var parts = key.Split(':');
         if (parts.Length != 2 || !Guid.TryParse(parts[1], out var id)) return null;
         // The Portfolio plan sheet of the caller's own workspace: everyone who can open the workspace sees who else has the sheet open.
-        if (parts[0] == "sheet") return id == tenant && Context.Items[UserKey] is Guid ? $"sheet:{id:N}" : null;
+        if (parts[0] == "sheet") return id == tenant && (Context.Items[UserKey] is Guid) ? $"sheet:{id:N}" : null;
         if (parts[0] is not ("task" or "work") || Context.Items[UserKey] is not Guid user) return null;
         // The same reach an API request of this person has (membership, guests, team-limited projects), so nobody can learn who is looking
         // at a task they could not open themselves. The normal data filters then apply to the lookups below.
