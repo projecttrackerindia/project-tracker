@@ -161,7 +161,8 @@ function TalkHome() {
   const current = chatId ? live.find((c) => c.id === chatId) ?? null : null;
   const opened = !!activeId;
 
-  if (talk.isLoading && conversations.isLoading) return <PageLoader />;
+  // Rows wait for the account's pins and hides too (a chat hidden on another device must not flash in), at most ~2s.
+  if ((talk.isLoading && conversations.isLoading) || !prefs.ready) return <PageLoader />;
 
   return (
     <div className={`talk-shell${opened ? ' is-open' : ''}`} data-testid="talk">
@@ -316,6 +317,10 @@ function useTalkPrefs(wid: string) {
   const latest = useRef(state);
   const setState = (v: TalkPrefs) => { latest.current = v; setStateRaw(v); };
   const server = useWsQuery(['ui', 'conversations'], async () => { try { return (await get<{ value: TalkPrefsAll | null }>('/me/ui/conversations'))?.value ?? {}; } catch { return null; } }, { staleTime: 5 * 60_000, retry: false });
+  // Ready once the account's copy has answered (or failed); if it is slow, after 2s with this device's copy.
+  const [waited, setWaited] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setWaited(true), 2000); return () => clearTimeout(t); }, []);
+  const ready = waited || !server.isLoading;
   useEffect(() => { setState(readLocal()); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     // The account's copy wins once it arrives; a device that had local pins but nothing on the server uploads them once.
@@ -338,6 +343,7 @@ function useTalkPrefs(wid: string) {
   };
   return {
     ...state,
+    ready,
     togglePin: (id: string) => { const cur = latest.current; save({ ...cur, pinned: cur.pinned.includes(id) ? cur.pinned.filter((x) => x !== id) : [...cur.pinned, id].slice(-8) }); },
     hide: (id: string, at: string) => { const cur = latest.current; save({ pinned: cur.pinned.filter((x) => x !== id), hidden: { ...cur.hidden, [id]: at } }); },
     unhide: (id: string) => { const cur = latest.current; const hidden = { ...cur.hidden }; delete hidden[id]; save({ ...cur, hidden }); },
