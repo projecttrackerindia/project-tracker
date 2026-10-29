@@ -102,9 +102,12 @@ export class AuraRenderer {
         if (a) X.lineTo(px, py); else X.moveTo(px, py);
       }
       const col = c.pal[(i % 3) + 1];
-      X.strokeStyle = rgba(col, .22 + .1 * c.glow); X.lineWidth = W * .012 * (1 + .6 * Math.sin(t + i)); X.shadowColor = rgba(col, .9); X.shadowBlur = blur; X.stroke(); X.restore();
+      // No shadowBlur (it costs a full blur pass per ring per frame): a wide faint stroke under a thin one gives the glow.
+      const lw = W * .012 * (1 + .6 * Math.sin(t + i));
+      X.strokeStyle = rgba(col, .07 + .04 * c.glow); X.lineWidth = lw + blur * 1.6; X.stroke();
+      X.strokeStyle = rgba(col, .22 + .1 * c.glow); X.lineWidth = lw; X.stroke(); X.restore();
     }
-    X.shadowBlur = 0; X.globalCompositeOperation = 'source-over';
+    X.globalCompositeOperation = 'source-over';
     // sphere body
     X.save(); X.beginPath(); X.arc(cx, cy, R, 0, Math.PI * 2); X.clip();
     const b = X.createRadialGradient(cx - R * .2, cy - R * .25, R * .1, cx, cy, R * 1.05);
@@ -126,15 +129,16 @@ export class AuraRenderer {
     X.restore();
     // bright rim
     X.globalCompositeOperation = 'lighter'; X.beginPath(); X.arc(cx, cy, R * .985, 0, Math.PI * 2);
-    X.strokeStyle = rgba(c.pal[3], .75 * Math.min(1, c.glow + .2)); X.lineWidth = W * .012; X.shadowColor = rgba(c.pal[3], 1); X.shadowBlur = W * .035; X.stroke();
-    X.shadowBlur = 0; X.globalCompositeOperation = 'source-over';
+    X.strokeStyle = rgba(c.pal[3], .18 * Math.min(1, c.glow + .2)); X.lineWidth = W * .05; X.stroke();
+    X.strokeStyle = rgba(c.pal[3], .75 * Math.min(1, c.glow + .2)); X.lineWidth = W * .012; X.stroke();
+    X.globalCompositeOperation = 'source-over';
     this.dirty = false;
   }
 }
 
 // ------------------------------------------------------------------ the shared loop
 const orbs = new Set<AuraRenderer>();
-let raf = 0, last = 0, lastStill = 0;
+let raf = 0, last = 0, lastStill = 0, lastDraw = 0;
 let io: IntersectionObserver | null = null;
 const byCanvas = new WeakMap<Element, AuraRenderer>();
 /** A point (client coordinates) the highlight leans toward instead of the pointer: the caret while typing in an Aura field. */
@@ -158,6 +162,8 @@ function loop(now: number) {
   let more = false;
   // Reduce Motion: about 8 frames a second, and only while the colour is still changing.
   const throttled = still && now - lastStill < 120;
+  if (!still && now - lastDraw < 30) { raf = requestAnimationFrame(loop); return; }   // about 30 frames a second is plenty for slow liquid
+  if (!still) lastDraw = now;
   for (const o of orbs) {
     if (!o.visible) continue;
     if (still) {
