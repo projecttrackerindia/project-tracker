@@ -35,6 +35,7 @@ import { MessageBody } from './CodeBlock';
 import { isCodeOnly } from './codeDetect';
 import { cleanFileName, detectPayload, findSecrets, KIND_MIME, kindOfFile, maskSecrets, payloadFileName } from './payload';
 import { PayloadFileCard, PayloadSuggestion, type PayloadDraft } from './PayloadViews';
+import { dropUnread } from './unreadBadge';
 
 /** The stand-up summary posted after each session of a project's scrum call. */
 function StandupCardMessage({ card }: { card: StandupCard; projectId?: string }) {
@@ -122,11 +123,13 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
   const [openThread, setOpenThread] = useState<string | null>(() => params.get('thread'));
   const [side, setSide] = useState<null | 'pins'>(null);
   const [dialog, setDialog] = useState<null | 'catchup' | 'ask' | 'poll'>(null);
+  const [find, setFind] = useState(false);
   const unfurls = useUnfurls(items);
   const pins = useQuery({ queryKey: chatKeys.pins(wid, id), queryFn: () => chatApi.pins(id), staleTime: 60_000 });
   const pinCount = pins.data?.length ?? 0;
 
   const listRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
   const atBottom = useRef(true);
   const firstPaint = useRef(true);
   const lastSeenId = useRef<string | undefined>(undefined);
@@ -140,41 +143,70 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
     else navigate('/messages', { replace: true });
   }, [thread.error, navigate, variant, onClose]);
 
-  // ---- keep the view where the person expects it
+  // ---- keep the view where the person expects it (docs/badges.md has the read model; this is the scroll model)
+  // The message list is the only thing that scrolls. Opening a chat lands on the newest message at once (no animated scroll). While
+  // pictures, file previews and link cards load, the list grows: if the person is at the bottom it stays pinned there; if they scrolled up,
+  // the message they are reading stays exactly where it is (an anchor, so growth above it never moves it - Safari has no overflow-anchor).
+  const stackRef = useRef<HTMLDivElement>(null);
+  const anchor = useRef<{ id: string; top: number } | null>(null);
+  const [farUp, setFarUp] = useState(false);
+  const pin = useCallback(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, []);
+  const remember = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    for (const row of el.querySelectorAll<HTMLElement>('[data-msg]')) {
+      const r = row.getBoundingClientRect();
+      if (r.bottom > top + 1) { anchor.current = { id: row.dataset.msg!, top: r.top - top }; return; }
+    }
+    anchor.current = null;
+  }, []);
   const toBottom = useCallback((smooth = false) => {
     const el = listRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
-    setNewBelow(0);
+    if (el) { atBottom.current = true; el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); }
+    setNewBelow(0); setFarUp(false);
   }, []);
 
   useLayoutEffect(() => {
     const el = listRef.current;
     if (!el || !thread.data) return;
-    if (restoreFrom.current !== null) { el.scrollTop = el.scrollHeight - restoreFrom.current; restoreFrom.current = null; return; }
+    if (restoreFrom.current !== null) { el.scrollTop = el.scrollHeight - restoreFrom.current; restoreFrom.current = null; remember(); return; }
     const last = items.at(-1);
     if (firstPaint.current) { firstPaint.current = false; lastSeenId.current = last?.id; toBottom(); return; }
     if (last && last.id !== lastSeenId.current) {
       lastSeenId.current = last.id;
-      if (atBottom.current || last.senderId === me) toBottom(true);
+      if (atBottom.current || last.senderId === me) toBottom(!reduceMotion && !atBottom.current);
       else setNewBelow((n) => n + 1);
     }
-  }, [items, thread.data, me, toBottom]);
+  }, [items, thread.data, me, toBottom, remember]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The keyboard (or the composer growing) shrinks the list: stay on the newest message if that is where the person was.
+  // Anything changing size - the list (keyboard, composer growing) or what is in it (a picture or preview arriving) - keeps the view.
   useEffect(() => {
-    const el = listRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    let h = el.clientHeight;
-    const ro = new ResizeObserver(() => { const nh = el.clientHeight; if (nh !== h) { if (atBottom.current) el.scrollTop = el.scrollHeight; h = nh; } });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [thread.data ? 1 : 0]);   // eslint-disable-line react-hooks/exhaustive-deps
+    const el = listRef.current, stack = stackRef.current;
+    if (!el || !stack || typeof ResizeObserver === 'undefined') return;
+    const keep = () => {
+      if (atBottom.current) { pin(); return; }
+      const a = anchor.current;
+      const row = a ? el.querySelector<HTMLElement>(`[data-msg="${CSS.escape(a.id)}"]`) : null;
+      if (!a || !row) return;
+      const delta = row.getBoundingClientRect().top - el.getBoundingClientRect().top - a.top;
+      if (Math.abs(delta) >= 1) el.scrollTop += delta;
+    };
+    const ro = new ResizeObserver(keep);
+    ro.observe(el); ro.observe(stack);
+    // A picture finishing (a load event does not bubble, so listen in the capture phase) is the same as a resize.
+    stack.addEventListener('load', keep, true);
+    return () => { ro.disconnect(); stack.removeEventListener('load', keep, true); };
+  }, [thread.data ? 1 : 0, pin]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const onScroll = () => {
     const el = listRef.current;
     if (!el) return;
-    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    atBottom.current = gap < 80;
+    setFarUp(gap > el.clientHeight * 0.75);
     if (atBottom.current) setNewBelow(0);
+    remember();
   };
 
   const loadOlder = async () => {
@@ -219,6 +251,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
     reading.current = true;
     told.current = id;
     conversationReadLocally(wid, id, projectId);   // the bell, the centre and the badges drop it now
+    if (!projectId) dropUnread(wid, unread.current, conversation.isMuted);
     try {
       await chatApi.markRead(id);
       queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid), (old) => old?.map((c) => (c.id === id ? { ...c, unread: 0 } : c)));
@@ -230,7 +263,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
       }
     } catch { /* the next message or focus tries again */ }
     finally { reading.current = false; }
-  }, [id, wid, projectId]);
+  }, [id, wid, projectId, conversation.isMuted]);
   useEffect(() => { if (thread.data && (conversation.unread > 0 || told.current !== id)) void markRead(); }, [thread.data, conversation.unread, items.length, markRead, id]);
   useEffect(() => {
     const back = () => { if (!document.hidden) void markRead(); };
@@ -296,6 +329,16 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
   }, [talk, thread.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // "Read 9:41 AM" / "Delivered" under my latest message (not in project chats, which have no receipts).
   const lastMine = [...items].reverse().find((x) => x.kind === 'User' && x.senderId === me && !x.isDeleted);
+  // The messages by day, so each day's label can stick to the top while that day scrolls.
+  const days = useMemo(() => {
+    const out: { key: string; items: { m: ChatMessage; i: number }[] }[] = [];
+    items.forEach((m, i) => {
+      const k = dayKey(m.createdAt);
+      if (out.at(-1)?.key !== k) out.push({ key: k, items: [] });
+      out.at(-1)!.items.push({ m, i });
+    });
+    return out;
+  }, [items]);
   const lastMineId = lastMine && items.slice(items.indexOf(lastMine) + 1).every((x) => x.senderId === me || x.kind !== 'User') ? lastMine.id : null;
   const receipt = !lastMine || conversation.type === 'Project' ? null
     : isRead(lastMine) ? `Read ${timeOf(new Date(Math.max(...others.map((o) => utcMs(o.lastReadAt)))).toISOString())}` : 'Delivered';
@@ -324,7 +367,8 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
           <DotsMenu label="Conversation actions" className="talk-info" items={[
             { label: 'Details', hint: 'People, pinned, files, mute', icon: 'info', onSelect: () => onInfo?.(), hidden: !onInfo },
             { label: 'Catch me up', hint: 'Decisions, questions and actions in this chat', icon: 'sparkle', onSelect: () => setDialog('catchup') },
-            { label: 'Ask this conversation', icon: 'search', onSelect: () => setDialog('ask') },
+            { label: 'Find in conversation', hint: 'Words in this chat', icon: 'search', onSelect: () => setFind(true) },
+            { label: 'Ask this conversation', icon: 'sparkle', onSelect: () => setDialog('ask') },
             { label: `Pinned messages${pinCount ? ` (${pinCount})` : ''}`, icon: 'flag', onSelect: () => (onInfo ? onInfo() : setSide((v) => (v === 'pins' ? null : 'pins'))) },
             { label: 'Files', icon: 'folder', onSelect: () => onFiles?.(), hidden: !onFiles },
           ]} />
@@ -355,7 +399,10 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
       {banner}
 
       <UnfurlContext.Provider value={unfurls}>
+      <div className="chat-scroll">
+      {find && <FindBar conversationId={id} loaded={items} onClose={() => setFind(false)} onJump={(mid) => jumpTo(mid)} />}
       <div className="chat-messages" ref={listRef} onScroll={onScroll} role="log" aria-label={`Messages with ${conversation.name}`}>
+        <div className="chat-stack" ref={stackRef}>
         {thread.isLoading && <PageLoader />}
         {thread.isError && !(thread.error instanceof ApiError && thread.error.status === 404) && (
           <div className="chat-note">Messages could not be loaded. <button className="link-btn" onClick={() => void thread.refetch()}>Try again</button></div>
@@ -366,7 +413,11 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
         {thread.data && items.length === 0 && (
           <div className="chat-empty"><Icon name="message" size={28} /><p>No messages yet.</p><span>{conversation.type === 'Project' ? 'Start the conversation with the project team. Type @ to mention someone.' : `Say hello to ${conversation.type === 'Direct' ? conversation.name : 'the group'}.`}</span></div>
         )}
-        {items.map((m, i) => {
+        {days.map((day) => (
+          <section key={day.key} className="chat-day" aria-label={dayLabel(day.items[0].m.createdAt)}>
+          {/* The day's label sticks to the top while its messages scroll under it (Messages / Slack). */}
+          <div className={`day-sep sticky${talk ? ' talk-time' : ''}`} data-day={day.key}><span>{talk ? <><b>{dayLabel(day.items[0].m.createdAt)}</b> {timeOf(day.items[0].m.createdAt)}</> : dayLabel(day.items[0].m.createdAt)}</span></div>
+          {day.items.map(({ m, i }) => {
           const prev = items[i - 1];
           const newDay = !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt);
           // Messages (Apple): a centred "Today 9:39 AM" whenever 15 minutes or more pass between two messages.
@@ -379,9 +430,8 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
             || utcMs(next.createdAt) - utcMs(m.createdAt) >= GROUP_WITHIN_MS;
           return (
             <div key={m.id} className="chat-row-wrap">
-              {talk
-                ? (newDay || gap) && <div className="day-sep talk-time"><span><b>{dayLabel(m.createdAt)}</b> {timeOf(m.createdAt)}</span></div>
-                : newDay && <div className="day-sep"><span>{dayLabel(m.createdAt)}</span></div>}
+              {/* A gap of 15 minutes or more adds a time line (Messages). */}
+              {talk && gap && <div className="day-sep talk-time"><span><b>{dayLabel(m.createdAt)}</b> {timeOf(m.createdAt)}</span></div>}
               {talk && awayFrom === m.id && <AwayChip conversation={conversation} count={awayCount} lastMsgId={items.at(-1)?.id} onCatchUp={() => setDialog('catchup')} />}
               {m.kind === 'System'
                 ? (decisionOf(m.body)
@@ -398,15 +448,24 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
             </div>
           );
         })}
+          </section>
+        ))}
         {talk && typingNames.length > 0 && (
           <div className="talk-typing" role="status" aria-label={`${typingNames[0].split(' ')[0]} is typing`}>
             <span className="talk-typing-bubble"><i /><i /><i /></span>
           </div>
         )}
+        </div>
+      </div>
+      {(newBelow > 0 || farUp) && (
+        <button type="button" className={`jump-latest${newBelow > 0 ? ' has-new' : ''}`} data-testid="jump-latest" onClick={() => toBottom(!reduceMotion)}
+          aria-label={newBelow > 0 ? `${newBelow} new ${newBelow === 1 ? 'message' : 'messages'}, jump to the latest` : 'Jump to the latest message'}>
+          <Icon name="chevronD" size={14} />{newBelow > 0 && <span>{newBelow > 99 ? '99+' : newBelow} new</span>}
+        </button>
+      )}
       </div>
       </UnfurlContext.Provider>
 
-      {newBelow > 0 && <button className="new-below" onClick={() => toBottom(true)}><Icon name="chevronD" size={14} /> {newBelow} new {newBelow === 1 ? 'message' : 'messages'}</button>}
 
       <Composer key={`${id}:${editing?.id ?? ''}`} conversation={conversation} replyTo={replyTo} editing={editing} onPoll={() => setDialog('poll')}
         placeholder={variant === 'talk' ? `Message ${conversation.type === 'Direct' ? conversation.name : `#${conversation.name.replace(/^#/, '')}`}` : undefined} draftReply={variant === 'talk' ? draftReply : undefined} talk={variant === 'talk'}
@@ -427,6 +486,42 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
       {dialog === 'catchup' && <CatchUpDialog conversationId={id} onClose={() => setDialog(null)} />}
       {dialog === 'ask' && <AskChatDialog conversationId={id} onClose={() => setDialog(null)} />}
       {dialog === 'poll' && <PollDialog conversation={conversation} onClose={() => setDialog(null)} />}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ find in this conversation
+/**
+ * Find in conversation: a slim bar over the messages. Matches come from the messages on screen and the server's chat search (for older
+ * ones), newest first; ↑ / ↓ (or Enter / Shift+Enter) step through them and each one is scrolled to and flashed.
+ */
+function FindBar({ conversationId, loaded, onClose, onJump }: { conversationId: string; loaded: ChatMessage[]; onClose: () => void; onJump: (messageId: string) => void }) {
+  const wid = useWorkspaceId()!;
+  const [q, setQ] = useState('');
+  const [at, setAt] = useState(0);
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => { const t = window.setTimeout(() => setDebounced(q.trim()), 220); return () => window.clearTimeout(t); }, [q]);
+  const remote = useQuery({ queryKey: [wid, 'chat', 'find', conversationId, debounced], queryFn: () => chatApi.search(debounced), enabled: debounced.length >= 2, staleTime: 30_000 });
+  const hits = useMemo(() => {
+    if (debounced.length < 2) return [] as string[];
+    const needle = debounced.toLowerCase();
+    const local = loaded.filter((m) => !m.isDeleted && m.kind === 'User' && plainText(m.body).toLowerCase().includes(needle)).map((m) => ({ id: m.id, at: m.createdAt }));
+    const server = (remote.data ?? []).filter((h) => h.conversationId === conversationId).map((h) => ({ id: h.messageId, at: h.at }));
+    const seen = new Set<string>();
+    return [...local, ...server].sort((a, b) => b.at.localeCompare(a.at)).filter((h) => (seen.has(h.id) ? false : (seen.add(h.id), true))).map((h) => h.id);
+  }, [debounced, loaded, remote.data, conversationId]);
+  useEffect(() => { setAt(0); }, [debounced]);
+  useEffect(() => { if (hits[at]) onJump(hits[at]); }, [hits, at]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const step = (d: number) => { if (hits.length) setAt((n) => (n + d + hits.length) % hits.length); };
+  return (
+    <div className="chat-find" role="search" data-testid="chat-find">
+      <Icon name="search" size={14} />
+      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find in conversation" aria-label="Find in conversation"
+        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); else if (e.key === 'Enter') { e.preventDefault(); step(e.shiftKey ? -1 : 1); } }} />
+      <span className="chat-find-n" aria-live="polite">{debounced.length < 2 ? '' : remote.isFetching && !hits.length ? '…' : hits.length ? `${at + 1} of ${hits.length}` : 'No matches'}</span>
+      <button type="button" className="btn-icon" onClick={() => step(1)} disabled={hits.length < 2} aria-label="Older match"><Icon name="chevronU" size={14} /></button>
+      <button type="button" className="btn-icon" onClick={() => step(-1)} disabled={hits.length < 2} aria-label="Newer match"><Icon name="chevronD" size={14} /></button>
+      <button type="button" className="link-btn" onClick={onClose}>Done</button>
     </div>
   );
 }
@@ -590,33 +685,83 @@ function Ticks({ read }: { read: boolean }) {
 // ------------------------------------------------------------------ one message
 function fileSize(bytes: number) { return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`; }
 
-/** A picture sent in chat, fetched with the signed-in person's access (a file is never a public link). Click to view it larger. */
-function ChatImage({ file }: { file: ChatAttachment }) {
+/** A file's address for this signed-in person (files are never public links): a blob URL, revoked when it is no longer shown. */
+function useFileUrl(id: string | null, inline = true) {
   const [url, setUrl] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
   useEffect(() => {
+    if (!id) return;
     let live = true; let made: string | null = null;
-    chatApi.fileUrl(file.id, true).then((u) => { made = u; if (live) setUrl(u); else URL.revokeObjectURL(u); }).catch(() => undefined);
+    setUrl(null);
+    chatApi.fileUrl(id, inline).then((u) => { made = u; if (live) setUrl(u); else URL.revokeObjectURL(u); }).catch(() => undefined);
     return () => { live = false; if (made) URL.revokeObjectURL(made); };
-  }, [file.id]);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
-  }, [open]);
+  }, [id, inline]);
+  return url;
+}
+
+/**
+ * The files of one message: pictures as a grid (one large, or tiles two across), then file cards. Every box has its size before anything
+ * loads, so nothing in the conversation moves when a picture or a preview arrives.
+ */
+function ChatFiles({ files }: { files: ChatAttachment[] }) {
+  const images = files.filter((f) => f.isImage && !f.isVoice);
+  const [view, setView] = useState<number | null>(null);
+  const shown = images.slice(0, 4);
   return (
-    <>
-      <button type="button" className="chat-img" onClick={() => url && setOpen(true)} aria-label={`View ${file.fileName}`}>
-        {url ? <img src={url} alt={file.fileName} loading="lazy" /> : <span className="chat-img-wait"><Spinner /></span>}
-      </button>
-      {open && url && (
-        <div className="chat-lightbox" role="dialog" aria-label={file.fileName} onClick={() => setOpen(false)}>
-          <img src={url} alt={file.fileName} onClick={(e) => e.stopPropagation()} />
-          <button type="button" className="btn-icon" aria-label="Close" onClick={() => setOpen(false)}><Icon name="close" size={18} /></button>
+    <div className="chat-files">
+      {images.length > 0 && (
+        <div className={`chat-img-grid n${shown.length}`} data-testid="img-grid">
+          {shown.map((f, i) => <ChatImage key={f.id} file={f} more={i === 3 && images.length > 4 ? images.length - 4 : 0} onOpen={() => setView(i)} />)}
         </div>
       )}
-    </>
+      {files.filter((f) => !(f.isImage && !f.isVoice)).map((f) => (f.isVoice ? <VoiceNote key={f.id} file={f} /> : <ChatFile key={f.id} file={f} />))}
+      {view !== null && <ImageViewer files={images} start={view} onClose={() => setView(null)} />}
+    </div>
+  );
+}
+
+/** A picture in a fixed box (cropped to fill it), so the row has its final height from the first frame. */
+function ChatImage({ file, onOpen, more = 0 }: { file: ChatAttachment; onOpen: () => void; more?: number }) {
+  const url = useFileUrl(file.id);
+  const [ready, setReady] = useState(false);
+  return (
+    <button type="button" className={`chat-img${ready ? ' ready' : ''}`} onClick={onOpen} aria-label={`View ${file.fileName}`}>
+      {url && <img src={url} alt={file.fileName} decoding="async" onLoad={() => setReady(true)} />}
+      {!ready && <span className="chat-img-wait" aria-hidden="true" />}
+      {more > 0 && <span className="chat-img-more">+{more}</span>}
+    </button>
+  );
+}
+
+/** Full screen: the picture, ‹ › (and a swipe, or the arrow keys) to the others of the message, Download, and Esc or a tap outside to close. */
+function ImageViewer({ files, start, onClose }: { files: ChatAttachment[]; start: number; onClose: () => void }) {
+  const [i, setI] = useState(start);
+  const file = files[i];
+  const url = useFileUrl(file.id);
+  const go = useCallback((d: number) => setI((n) => Math.min(files.length - 1, Math.max(0, n + d))), [files.length]);
+  const downX = useRef<number | null>(null);
+  useEffect(() => {
+    const key = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') onClose(); else if (e.key === 'ArrowRight') go(1); else if (e.key === 'ArrowLeft') go(-1); };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [go, onClose]);
+  const save = async () => {
+    try { const u = await chatApi.fileUrl(file.id); const a = document.createElement('a'); a.href = u; a.download = file.fileName; document.body.appendChild(a); a.click(); a.remove(); window.setTimeout(() => URL.revokeObjectURL(u), 10_000); }
+    catch { toast('Could not download the file.', 'error'); }
+  };
+  return createPortal(
+    <div className="chat-lightbox" role="dialog" aria-modal="true" aria-label={file.fileName} data-testid="image-viewer" onClick={onClose}
+      onPointerDown={(e) => { downX.current = e.clientX; }}
+      onPointerUp={(e) => { const x = downX.current; downX.current = null; if (x !== null && Math.abs(e.clientX - x) > 50) { e.stopPropagation(); go(e.clientX < x ? 1 : -1); } }}>
+      {url ? <img key={file.id} src={url} alt={file.fileName} onClick={(e) => e.stopPropagation()} draggable={false} /> : <Spinner />}
+      <div className="chat-lightbox-bar" onClick={(e) => e.stopPropagation()}>
+        <span className="chat-lightbox-name">{file.fileName}{files.length > 1 ? ` · ${i + 1} of ${files.length}` : ''}</span>
+        <button type="button" className="btn-icon" aria-label="Download" onClick={() => void save()}><Icon name="download" size={18} /></button>
+        <button type="button" className="btn-icon" aria-label="Close" onClick={onClose}><Icon name="close" size={18} /></button>
+      </div>
+      {files.length > 1 && i > 0 && <button type="button" className="btn-icon chat-lightbox-nav prev" aria-label="Previous picture" onClick={(e) => { e.stopPropagation(); go(-1); }}><Icon name="chevronL" size={22} /></button>}
+      {files.length > 1 && i < files.length - 1 && <button type="button" className="btn-icon chat-lightbox-nav next" aria-label="Next picture" onClick={(e) => { e.stopPropagation(); go(1); }}><Icon name="chevronR" size={22} /></button>}
+    </div>,
+    document.body,
   );
 }
 
@@ -633,12 +778,23 @@ function ChatFile({ file }: { file: ChatAttachment }) {
   };
   // JSON, logs, XML, CSV and text files show what is in them (a preview, and a viewer to open).
   if (kindOfFile(file.fileName, file.contentType)) return <PayloadFileCard file={file} onDownload={() => void save()} />;
+  const ext = (/\.([a-z0-9]{1,5})$/i.exec(file.fileName)?.[1] ?? 'file').toUpperCase();
+  const pdf = file.contentType === 'application/pdf' || ext === 'PDF';
+  // A PDF opens in a new tab (the browser's own viewer); everything else downloads.
+  const openPdf = async () => {
+    const tab = window.open('', '_blank');
+    try { const url = await chatApi.fileUrl(file.id, true); if (tab) tab.location.href = url; else window.location.assign(url); window.setTimeout(() => URL.revokeObjectURL(url), 60_000); }
+    catch { tab?.close(); toast('Could not open the file.', 'error'); }
+  };
   return (
-    <button type="button" className="chat-file" onClick={() => void save()} disabled={busy} title={`Download ${file.fileName}`}>
-      <span className="chat-file-icon"><Icon name="paperclip" size={16} /></span>
-      <span className="chat-file-meta"><b>{file.fileName}</b><em>{fileSize(file.sizeBytes)}</em></span>
-      {busy ? <Spinner /> : <Icon name="download" size={14} />}
-    </button>
+    <div className="chat-file" data-testid="file-card">
+      <span className={`chat-file-icon${pdf ? ' pdf' : ''}`} aria-hidden="true">{ext.slice(0, 4)}</span>
+      <span className="chat-file-meta"><b title={file.fileName}>{file.fileName}</b><em>{fileSize(file.sizeBytes)}</em></span>
+      <span className="chat-file-acts">
+        {pdf && <button type="button" onClick={() => void openPdf()} aria-label={`Open ${file.fileName}`}><Icon name="eye" size={14} /></button>}
+        <button type="button" onClick={() => void save()} disabled={busy} aria-label={`Download ${file.fileName}`}>{busy ? <Spinner /> : <Icon name="download" size={14} />}</button>
+      </span>
+    </div>
   );
 }
 
@@ -847,7 +1003,7 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
               ? <em className="deleted">This message was deleted{meta}</em>
               : <>
                   {(m.attachments?.length ?? 0) > 0 && (
-                    <div className="chat-files">{m.attachments!.map((f) => (f.isVoice ? <VoiceNote key={f.id} file={f} /> : f.isImage ? <ChatImage key={f.id} file={f} /> : <ChatFile key={f.id} file={f} />))}</div>
+                    <ChatFiles files={m.attachments!} />
                   )}
                   {isPoll && m.poll ? <><PollCard poll={m.poll} onChanged={update} /><div className="msg-text">{meta}</div></>
                     : <div className="msg-text">{m.body ? <MessageBody body={m.body} /> : null}{meta}</div>}

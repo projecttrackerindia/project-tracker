@@ -16,6 +16,7 @@ import { plainText } from './chatFormat';
 import { chatKeys, useChat } from './chatStore';
 import { markAnswered, putMessage } from './chatCache';
 import { useProjectChat } from './projectChatStore';
+import { bumpUnread, dropUnread, useUnreadCatchUp } from './unreadBadge';
 import { emitCallEvent } from '../calls/incomingCalls';
 import { emitReminders, emitViewing, notifyLiveConnected, setLiveConnection, type ReminderEvent, type ViewingEvent } from '../live/bus';
 
@@ -76,6 +77,7 @@ export function ChatRealtime() {
   navigate.current = goto;
   const [hub, setHub] = useState<SignalR | null>(signalr);
   const [attempt, setAttempt] = useState(0);
+  useUnreadCatchUp(wid);
 
   useEffect(() => {
     if (!wid || !me || hub) return;
@@ -188,8 +190,14 @@ export function ChatRealtime() {
       if (e.message.senderId === me) markAnswered(wid, e.message);
       else void queryClient.invalidateQueries({ queryKey: chatKeys.questions(wid) });
       if (e.message.senderId) useChat.getState().clearTyping(e.conversationId, e.message.senderId);
-      refreshLists();
       const viewing = useChat.getState().openConversation === e.conversationId && !away();
+      // The Messages badge moves now (docs/badges.md); the refetch below settles it. Muted chats only count @mentions of me.
+      if (!e.projectId && e.message.kind === 'User' && e.message.senderId !== me && !viewing) {
+        const conv = queryClient.getQueryData<Conversation[]>(chatKeys.conversations(wid))?.find((c) => c.id === e.conversationId);
+        bumpUnread(wid, conv?.isMuted && !e.mentioned?.includes(me) ? 'dot' : 'count');
+        queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid), (old) => old?.map((c) => (c.id === e.conversationId ? { ...c, unread: c.unread + 1 } : c)));
+      }
+      refreshLists();
       if (e.message.kind !== 'User' || e.message.senderId === me || viewing) return;
       if (e.projectId) { if (e.mentioned?.includes(me)) notifyMention(e.projectId, e.conversationName ?? 'a project', e.message); return; }
       notify(e.conversationId, e.message);
@@ -208,8 +216,18 @@ export function ChatRealtime() {
       putInThread(e.conversationId, e.message, true);
       refreshLists();
     });
-    connection.on('conversation', () => refreshLists());
+    connection.on('conversation', () => refreshLists());   // also my own mute / unmute from another device: the badge recounts
     connection.on('read', (e: { conversationId: string; userId: string; at: string }) => {
+      if (e.userId === me) {
+        // I read it - in this tab, another tab or on another device: its unread leaves every badge now, then the server's numbers settle it.
+        const conv = queryClient.getQueryData<Conversation[]>(chatKeys.conversations(wid))?.find((c) => c.id === e.conversationId);
+        if (conv) dropUnread(wid, conv.unread, conv.isMuted);
+        queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid), (old) => old?.map((c) => (c.id === e.conversationId ? { ...c, unread: 0, unreadMentions: 0 } : c)));
+        void queryClient.invalidateQueries({ queryKey: chatKeys.unread(wid) });
+        void queryClient.invalidateQueries({ queryKey: [wid, 'talk'] });
+        void queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] });
+        return;
+      }
       queryClient.setQueryData<Conversation[]>(chatKeys.conversations(wid), (old) => old?.map((c) => c.id !== e.conversationId ? c
         : { ...c, members: c.members.map((m) => (m.userId === e.userId ? { ...m, lastReadAt: e.at } : m)) }));
     });

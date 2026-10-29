@@ -150,6 +150,66 @@ public class ChatTests(ApiFactory factory)
         Assert.Equal(1, (await InList(priya, id))!["unread"]!.GetValue<int>());   // still counted on the conversation itself
     }
 
+    // ------------------------------------------------------------------ the Messages badge (docs/badges.md)
+
+    private static async Task<JsonNode> Badge(TestClient who) => (await who.Get("/api/v1/chat/unread")).Data!;
+
+    [Fact]
+    public async Task Badge_counts_each_arriving_message_and_not_my_own()
+    {
+        var (ravi, priya, kumar) = await BuildTeam();
+        var direct = await Direct(ravi, priya);
+        var group = await Group(kumar, "Release crew", priya, ravi);
+        Assert.Equal(0, (await Badge(priya))["count"]!.GetValue<int>());
+
+        await Say(ravi, direct, "One");
+        Assert.Equal(1, (await Badge(priya))["count"]!.GetValue<int>());
+        await Say(kumar, group, "Two");
+        var b = await Badge(priya);
+        Assert.Equal(2, b["count"]!.GetValue<int>());
+        Assert.Equal(2, b["conversations"]!.GetValue<int>());
+        Assert.False(b["mutedActivity"]!.GetValue<bool>());
+
+        await Say(priya, group, "Mine");               // writing reads the group for me, and my own message never counts
+        Assert.Equal(1, (await Badge(priya))["count"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task A_muted_conversation_shows_only_a_dot_but_a_mention_of_me_still_counts()
+    {
+        var (ravi, priya, kumar) = await BuildTeam();
+        var group = await Group(kumar, "Ops room", priya, ravi);
+        Assert.Equal(HttpStatusCode.NoContent, (await priya.Put($"/api/v1/chat/conversations/{group}/mute", new { muted = true })).Status);
+
+        await Say(kumar, group, "Chatter nobody needs");
+        var b = await Badge(priya);
+        Assert.Equal(0, b["count"]!.GetValue<int>());
+        Assert.True(b["mutedActivity"]!.GetValue<bool>());     // the grey dot
+
+        await Say(ravi, group, $"@[Priya]({priya.UserId}) can you check the deploy?");
+        b = await Badge(priya);
+        Assert.Equal(1, b["count"]!.GetValue<int>());
+        Assert.Equal(1, b["mutedMentions"]!.GetValue<int>());
+
+        // Unmuting counts everything again.
+        await priya.Put($"/api/v1/chat/conversations/{group}/mute", new { muted = false });
+        Assert.Equal(2, (await Badge(priya))["count"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task Hiding_a_chat_marks_it_read_so_it_leaves_the_badge()
+    {
+        // Hide is "until something new arrives" (kept in the person's settings); the app marks the chat read when hiding it.
+        var (ravi, priya, _) = await BuildTeam();
+        var id = await Direct(ravi, priya);
+        await Say(ravi, id, "Old news");
+        Assert.Equal(1, (await Badge(priya))["count"]!.GetValue<int>());
+        Assert.Equal(HttpStatusCode.NoContent, (await priya.Post($"/api/v1/chat/conversations/{id}/read")).Status);
+        Assert.Equal(0, (await Badge(priya))["count"]!.GetValue<int>());
+        await Say(ravi, id, "Something new");          // and it comes back with the next message
+        Assert.Equal(1, (await Badge(priya))["count"]!.GetValue<int>());
+    }
+
     // ------------------------------------------------------------------ messages
 
     [Fact]
@@ -468,6 +528,29 @@ public class ChatTests(ApiFactory factory)
         await priya.Post($"/api/v1/chat/conversations/{id}/read");
         await Task.Delay(300);
         Assert.NotNull(await InList(priya, id));
+    }
+
+    [Fact]
+    public async Task Reading_on_one_device_tells_my_other_devices_so_their_badge_clears()
+    {
+        var (ravi, priya, _) = await BuildTeam();
+        var id = await Direct(ravi, priya);
+        var (phone, events) = await Live(priya);       // Priya's phone is open; she reads on her laptop
+        await using var _1 = phone;
+
+        await Say(ravi, id, "Are you there?");
+        await Eventually(() => { lock (events) return events.Where(e => e.Name == "message").Select(e => (JsonElement?)e.Payload).FirstOrDefault(); });
+        Assert.Equal(1, (await Badge(priya))["count"]!.GetValue<int>());
+
+        await priya.Post($"/api/v1/chat/conversations/{id}/read");
+        var read = await Eventually(() => { lock (events) return events.Where(e => e.Name == "read").Select(e => (JsonElement?)e.Payload).FirstOrDefault(); });
+        Assert.Equal(priya.UserId.ToString(), read.GetProperty("userId").GetString());
+        Assert.Equal(0, (await Badge(priya))["count"]!.GetValue<int>());
+
+        // Muting on one device tells the others too.
+        await priya.Put($"/api/v1/chat/conversations/{id}/mute", new { muted = true });
+        var conv = await Eventually(() => { lock (events) return events.Where(e => e.Name == "conversation" && e.Payload.TryGetProperty("muted", out _)).Select(e => (JsonElement?)e.Payload).FirstOrDefault(); });
+        Assert.True(conv.GetProperty("muted").GetBoolean());
     }
 
     [Fact]

@@ -19,10 +19,11 @@ import { playCue, unlockSound } from '../../../lib/attention';
 import { queryClient, useAuth } from '../../../stores/auth';
 import { confirmDialog, toast } from '../../../stores/ui';
 import { chatKeys } from '../../chat/chatStore';
+import { useChatUnread } from '../../chat/unreadBadge';
 import { reminderApi } from '../../reminders/api';
 import { CHECK_NOTIFICATIONS } from '../events';
 import { applyBadge, clearBadge } from './badge';
-import { arrange, badgeCount, badgeText, canJoin, CATEGORY_META, categoryOf, conversationOf, FILTERS, iconOf, shortTime, snoozePresets, type Stack } from './model';
+import { arrange, badgeText, totalBadge, canJoin, CATEGORY_META, categoryOf, conversationOf, FILTERS, iconOf, shortTime, snoozePresets, type Stack } from './model';
 import { maySound, useAlertPrefs } from './prefs';
 import '../../../styles/notification-centre-apple.css';
 
@@ -54,7 +55,8 @@ export function useNotificationCounts() {
 export function useBadge(): number {
   const prefs = useAlertPrefs();
   const counts = useNotificationCounts();
-  return badgeCount(counts.data, prefs);
+  const chat = useChatUnread();
+  return totalBadge(counts.data, prefs, chat.count);
 }
 
 /**

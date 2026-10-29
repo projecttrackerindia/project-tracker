@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppNotification } from '../../../api/types';
-import { arrange, badgeCount, canJoin, categoryOf, cueOf, sourceOf } from './model';
+import { arrange, badgeCount, totalBadge, canJoin, categoryOf, cueOf, sourceOf } from './model';
 import { DEFAULT_PREFS, isMuted, muteUntil } from './prefs';
 
 const N = (id: string, type: string, link: string | null, minsAgo: number, extra: Partial<AppNotification> = {}): AppNotification =>
@@ -39,6 +39,14 @@ describe('notification centre model', () => {
     expect(badgeCount(c, DEFAULT_PREFS)).toBe(9);
     expect(badgeCount(c, { ...DEFAULT_PREFS, cats: { ...DEFAULT_PREFS.cats, messages: { ...DEFAULT_PREFS.cats.messages, badge: false } } })).toBe(5);
     expect(badgeCount({ unread: 3, needsYou: 3, forInfo: 0 }, DEFAULT_PREFS)).toBe(3);   // an older server
+  });
+
+  it('takes the message part of the total from the Messages badge so the two agree', () => {
+    const c = { unread: 9, needsYou: 9, forInfo: 0, messages: 1, reminders: 2, meetings: 1, work: 2 };
+    expect(totalBadge(c, DEFAULT_PREFS, 7)).toBe(12);                         // 5 others + 7 chat messages (one notice per chat)
+    expect(totalBadge({ ...c, messages: 9 }, DEFAULT_PREFS, 3)).toBe(14);     // more notices than messages (mentions in project chats)
+    expect(totalBadge(undefined, DEFAULT_PREFS, 4)).toBe(4);
+    expect(totalBadge(c, { ...DEFAULT_PREFS, cats: { ...DEFAULT_PREFS.cats, messages: { ...DEFAULT_PREFS.cats.messages, badge: false } } }, 7)).toBe(5);
   });
 
   it('offers Join from ten minutes before a meeting', () => {
