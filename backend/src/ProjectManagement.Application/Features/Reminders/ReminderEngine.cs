@@ -574,7 +574,7 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
 /// they come back if the work moves back. A reminder the person dismissed stays Cancelled with its key, so it is not made again. Reminders about finished work leave "needs attention" by themselves, and
 /// personal reminders set relative to a due date follow it when it moves.
 /// </summary>
-public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, ILogger<ReminderPlanner> log)
+public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, ILogger<ReminderPlanner> log, AppClock clock)
 {
     /// <summary>Rows read per query: the work is walked in pages (by id), so every item is seen however many there are.</summary>
     private const int Page = 2000;
