@@ -103,6 +103,17 @@ async function parse(res: Response): Promise<{ data: unknown; error?: ApiError }
   return { data: null, error };
 }
 
+/**
+ * Whether the last refresh that failed was refused by the server (the session is really over: 400-level) rather than not answered (offline,
+ * a release restarting the server, a 5xx, rate limiting). Only a refusal signs the person out; a refresh that could not be made leaves the
+ * session as it is, so a blip while moving between pages never sends someone to the sign-in page.
+ */
+let lastRefreshRefused = false;
+export const refreshWasRefused = () => lastRefreshRefused;
+/** Server answers that mean "try again shortly", not "signed out". */
+export const transientStatus = (status: number) => status === 0 || status === 408 || status === 425 || status === 429 || status >= 500;
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 // One in-flight refresh shared by every caller (page bootstrap, parallel 401s, React StrictMode double-invoke).
 let refreshing: Promise<AuthResponse | null> | null = null;
 export function refreshSession(): Promise<AuthResponse | null> {
@@ -113,18 +124,27 @@ export function refreshSession(): Promise<AuthResponse | null> {
         // received, and the server tolerates a near-simultaneous second use of the same token in any case.
         const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' }; // CSRF guard for the cookie-based refresh
         if (tabWorkspaceId) headers['X-Workspace-Id'] = tabWorkspaceId;
-        const res = await fetch(`${BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include', headers });
-        const { data, error } = await parse(res);
-        if (error || !data) return null;
-        remember();
-        return data as AuthResponse;
+        // A refresh that is not answered is tried again a couple of times before giving up (without signing out).
+        for (let attempt = 0; ; attempt++) {
+          let res: Response | null = null;
+          try { res = await fetch(`${BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include', headers }); } catch { res = null; }
+          if (res && !transientStatus(res.status)) {
+            const { data, error } = await parse(res);
+            if (error || !data) { lastRefreshRefused = true; return null; }
+            lastRefreshRefused = false;
+            remember();
+            return data as AuthResponse;
+          }
+          if (attempt >= 2) { lastRefreshRefused = false; return null; }
+          await pause(attempt === 0 ? 600 : 1800);
+        }
       });
       if (!auth) return null;
       accessToken = auth.accessToken;
       const tokenWorkspace = workspaceOfToken(auth.accessToken);
       if (tabWorkspaceId && tokenWorkspace !== tabWorkspaceId) onWorkspaceMismatch?.(tokenWorkspace);
       return auth;
-    } catch { return null; }
+    } catch { lastRefreshRefused = false; return null; }
     finally { setTimeout(() => { refreshing = null; }, 0); }
   })();
   return refreshing;
@@ -175,8 +195,8 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
   if (error.status === 401 && auth && retry && !path.startsWith('/auth/')) {
     const renewed = await refreshSession();
     if (renewed) return send<T>(method, path, body, { ...opts, retry: false }, idempotencyKey);
-    accessToken = null;
-    onAuthLost?.();
+    // Signed out only when the server refused the refresh; when it could not be reached the session stays and this request fails.
+    if (lastRefreshRefused) { accessToken = null; onAuthLost?.(); }
   }
   throw error;
 }
@@ -192,8 +212,7 @@ export const del = <T = void>(path: string) => api<T>('DELETE', path);
 /** After a 401: renew the session and send again, or, when it cannot be renewed, end it in the app the same way api() does. */
 async function renewOrLose(refused: Response, send: () => Promise<Response>): Promise<Response> {
   if (await refreshSession()) return send();
-  accessToken = null;
-  onAuthLost?.();
+  if (lastRefreshRefused) { accessToken = null; onAuthLost?.(); }
   return refused;
 }
 
@@ -288,7 +307,7 @@ export async function download(path: string, filename: string, signal?: AbortSig
   let res = await send();
   if (res.status === 401) {
     if (await refreshSession()) res = await send();
-    else { accessToken = null; onAuthLost?.(); }
+    else if (lastRefreshRefused) { accessToken = null; onAuthLost?.(); }
   }
   if (!res.ok) throw (await parse(res)).error ?? new ApiError(res.status, 'Download failed', []);
   const blob = await res.blob(); signal?.throwIfAborted();

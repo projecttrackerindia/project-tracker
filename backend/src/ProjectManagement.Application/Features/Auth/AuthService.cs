@@ -422,7 +422,13 @@ public class AuthService(
             if (graceUser is null || !graceUser.IsActive) throw new UnauthorizedException("Account is disabled.", "ACCOUNT_DISABLED");
             var graceWorkspace = await RefreshWorkspaceAsync(graceUser.Id, requestedWorkspace, session.WorkspaceId, ct);
             var graceAccess = tokens.CreateAccessToken(graceUser, session.Id, graceWorkspace);
-            return new AuthResult(graceAccess.Token, graceAccess.ExpiresAt, ToDto(graceUser), null, stored.ExpiresAt);
+            // A fresh refresh token too (a sibling of the one that replaced it; both stay valid). Without it, a browser whose first refresh
+            // response was lost - the page navigated or reloaded while it was on its way, so the rotated cookie never arrived - keeps the
+            // old cookie, and its next refresh after the grace window looks like theft and ends a perfectly good session.
+            var (graceRaw, graceNext) = NewRefreshToken(session, graceUser.Id);
+            session.LastSeenAt = now;
+            await db.SaveChangesAsync(ct);
+            return new AuthResult(graceAccess.Token, graceAccess.ExpiresAt, ToDto(graceUser), graceRaw, graceNext.ExpiresAt);
         }
 
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == stored.UserId, ct);
@@ -570,7 +576,18 @@ public class AuthService(
         var userId = ctx.RequireUserId();
         var user = await db.Users.FirstAsync(u => u.Id == userId, ct);
         user.DisplayName = req.DisplayName.Trim();
-        if (!string.IsNullOrWhiteSpace(req.TimeZone)) user.TimeZone = req.TimeZone.Trim();
+        if (!string.IsNullOrWhiteSpace(req.TimeZone))
+        {
+            user.TimeZone = req.TimeZone.Trim();
+            // Choosing UTC by hand is a real choice (a device or a column default reporting UTC is not): it is remembered by turning
+            // "Follow this device" off, which is what makes a UTC profile zone count (AppClock.ZoneFor).
+            if (ProjectManagement.Application.Features.Reminders.ZoneTime.IsKnown(user.TimeZone) && ProjectManagement.Application.Features.Reminders.ZoneTime.IsPlaceholder(user.TimeZone))
+            {
+                var settings = await db.ReminderSettings.FirstOrDefaultAsync(s => s.UserId == userId, ct);
+                if (settings is null) db.ReminderSettings.Add(new ReminderSettings { UserId = userId, FollowDeviceTimeZone = false });
+                else settings.FollowDeviceTimeZone = false;
+            }
+        }
         await db.SaveChangesAsync(ct);
         return ToDto(user);
     }

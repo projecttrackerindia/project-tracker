@@ -3,7 +3,7 @@ import type { TimelineEvent } from '../../api/types';
 import { setAppZones } from '../../lib/zone';
 import { buildWeek, dayCounts, daySignature, deadlineHourOf, focusLabel, focusWord, freeMinutesOf, isDueReminder, loggedMinutesOf, shiftOf, stickFocus, timeOverlaps, workWeek } from './timeline';
 
-setAppZones('UTC', null);
+setAppZones('UTC', null, 'UTC', true);
 const ev = (p: Partial<TimelineEvent> & Pick<TimelineEvent, 'id' | 'type' | 'start' | 'date'>): TimelineEvent => ({
   title: p.id, end: null, allDay: false, sourceType: 'task', sourceId: p.id, link: null, projectId: null, projectName: null, people: [], status: null, colour: '',
   key: null, approximated: false, overdue: false, priority: null, minutes: null, note: null, joinUrl: null, notes: false, userId: null, mode: null, running: false, ...p,

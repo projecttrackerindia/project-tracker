@@ -11,6 +11,7 @@ import { Initials } from './projectParts';
 import { useMailData, useMailLocal } from '../mail/useMail';
 import type { MailRow } from '../mail/useMail';
 import './weeklyReport.css';
+import { appZone } from '../../lib/zone';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const day = (iso?: string | null) => { if (!iso) return ''; const [, m, d] = iso.slice(0, 10).split('-').map(Number); return `${d} ${MON[m - 1]}`; };
@@ -27,7 +28,8 @@ const isoWeek = (iso: string) => {
 };
 const tone = (h?: string | null) => h === 'On track' ? 'ok' : h === 'At risk' ? 'warn' : h === 'Late' ? 'bad' : 'neutral';
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
-const zone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } };
+/** The person's one zone (lib/zone), never a device's bare UTC. */
+const zone = () => appZone();
 
 type Channel = 'mail' | 'chat' | 'pdf';
 const CHAT = 'chat';

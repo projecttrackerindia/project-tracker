@@ -11,9 +11,9 @@ import { formatDate } from '../../lib/format';
 import { useWsQuery } from '../../lib/hooks';
 import { WORK_STATUSES } from '../../lib/workLabels';
 import { toast } from '../../stores/ui';
+import { shiftIsoDate, zoneToday } from '../../lib/zone';
 
 const PERIODS = [{ days: 7, label: 'Last 7 days' }, { days: 30, label: 'Last 30 days' }, { days: 90, label: 'Last 90 days' }, { days: 365, label: 'Last 12 months' }];
-const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 function Stat({ icon, tone, value, label, foot, to }: { icon: IconName; tone: string; value: number; label: string; foot?: string; to?: string }) {
   const body = (
@@ -54,8 +54,8 @@ function Breakdown({ title, sub, rows, empty }: { title: string; sub: string; ro
 /** Operations analytics (a tab of Reports): how much operational work is open, late and finished, by type, person and project, with a daily trend and a CSV download. */
 export function WorkReportsPage() {
   const [days, setDays] = useState(30);
-  const to = iso(new Date());
-  const from = iso(new Date(Date.now() - (days - 1) * 86400000));
+  const to = zoneToday();
+  const from = shiftIsoDate(to, -(days - 1));
   const q = useWsQuery(['work', 'summary', from, to], () => workApi.summary(from, to));
   const s: WorkSummary | undefined = q.data;
 

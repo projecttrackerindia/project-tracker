@@ -13,6 +13,11 @@ public class RequestZone
 {
     /// <summary>The person's IANA zone ("Asia/Kolkata", "America/New_York").</summary>
     public string? UserZoneId { get; set; }
+    /// <summary>
+    /// The person chose <see cref="UserZoneId"/> by hand (they turned "Follow this device" off). Only then does a UTC profile zone count:
+    /// otherwise UTC is a device report or a column default, and the workspace's zone applies instead.
+    /// </summary>
+    public bool UserZoneChosen { get; set; }
     /// <summary>The active workspace's default zone, used when the person has none.</summary>
     public string? WorkspaceZoneId { get; set; }
 }
@@ -41,10 +46,33 @@ public class AppClock(TimeProvider time, IOptions<AppOptions> options, RequestZo
     }
 
     /// <summary>The zone of this request's person, else their workspace's default, else the platform's.</summary>
-    public DateTimeZone Zone =>
-        ZoneTime.IsKnown(zone?.UserZoneId) ? ZoneTime.Find(zone!.UserZoneId)
-        : ZoneTime.IsKnown(zone?.WorkspaceZoneId) ? ZoneTime.Find(zone!.WorkspaceZoneId)
-        : DefaultZone;
+    public DateTimeZone Zone => ZoneFor(zone?.UserZoneId, zone?.UserZoneChosen == true, zone?.WorkspaceZoneId);
+
+    /// <summary>
+    /// The one zone a person's day is worked out in: their own zone when it says where they are (or they chose it, UTC included), else the
+    /// organization's zone, else the platform's default (Asia/Kolkata). The same order runs in the browser (lib/zone.ts).
+    /// </summary>
+    public DateTimeZone ZoneFor(string? userZoneId, bool userChoseIt, string? workspaceZoneId) =>
+        PersonZoneId(userZoneId, userChoseIt, workspaceZoneId) is { } id ? ZoneTime.Find(id) : DefaultZone;
+
+    /// <summary>The same as an IANA name.</summary>
+    public string ZoneIdFor(string? userZoneId, bool userChoseIt, string? workspaceZoneId) => ZoneFor(userZoneId, userChoseIt, workspaceZoneId).Id;
+
+    /// <summary>The same for background work that has the person's reminder settings at hand ("Follow this device" off = they chose the zone).</summary>
+    public string ZoneIdFor(string? userZoneId, ProjectManagement.Domain.Entities.ReminderSettings? settings, string? workspaceZoneId) =>
+        ZoneIdFor(userZoneId, Chose(settings), workspaceZoneId);
+
+    /// <summary>A person picked their zone by hand: their reminder settings exist with "Follow this device" off.</summary>
+    public static bool Chose(ProjectManagement.Domain.Entities.ReminderSettings? settings) => settings is { FollowDeviceTimeZone: false };
+
+    /// <summary>The person's or the workspace's zone that applies (null = neither, the platform default applies). See <see cref="ZoneFor"/>.</summary>
+    public static string? PersonZoneId(string? userZoneId, bool userChoseIt, string? workspaceZoneId)
+    {
+        if (ZoneTime.IsKnown(userZoneId) && (userChoseIt || !ZoneTime.IsPlaceholder(userZoneId))) return userZoneId!.Trim();
+        // An organization's zone is only ever set by an administrator on purpose, so UTC there is a choice.
+        if (ZoneTime.IsKnown(workspaceZoneId)) return workspaceZoneId!.Trim();
+        return null;
+    }
 
     public string ZoneId => Zone.Id;
 

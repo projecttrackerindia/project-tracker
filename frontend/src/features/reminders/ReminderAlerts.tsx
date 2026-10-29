@@ -10,7 +10,7 @@ import { syncNativePush } from '../../lib/native';
 import { pushApi } from '../../api/endpoints';
 import { deviceAlerts, primeSound, pushCoversThisDevice, systemNotification } from './device';
 import { getAttention } from '../../lib/attention';
-import { deviceZone as realDeviceZone } from '../../lib/zone';
+import { followableDeviceZone } from '../../lib/zone';
 
 const SOURCE_LABEL: Record<string, string> = { Personal: 'Reminder', Nudge: 'Reminder', DueDate: 'Due soon', Overdue: 'Overdue', Escalation: 'Overdue work' };
 
@@ -65,8 +65,9 @@ export function ReminderAlerts() {
   // "Follow this device" on). When the server moves the profile's zone, the whole app is reloaded into it.
   const reload = useAuth((s) => s.reloadContext);
   useEffect(() => {
-    const device = realDeviceZone();
-    if (!enabled || !user || user.timeZone === device) return;
+    // A device reporting plain UTC (a desktop shell, a browser without a zone) says nothing about where the person is: never followed.
+    const device = followableDeviceZone();
+    if (!enabled || !user || !device || user.timeZone === device) return;
     const key = `pm_tz_synced_${device}`;
     try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch { /* storage unavailable */ }
     void reminderApi.followDevice().then((s) => { if (s.timeZone !== user.timeZone) void reload(); }).catch(() => undefined);

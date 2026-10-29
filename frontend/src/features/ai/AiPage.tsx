@@ -15,6 +15,7 @@ import { saveFile } from '../../lib/native';
 import { Markdown } from './Markdown';
 import { ProviderConsentDialog, ProviderNotice } from './OwnAiKey';
 import { aiProviderApi, type AiProviderStatus } from './providerApi';
+import { appZone } from '../../lib/zone';
 
 /** What the page shows while an answer is being written. */
 interface Live {
@@ -26,7 +27,8 @@ interface Live {
 /** A mouse or trackpad: the ask box may take focus on its own (on a phone that would pop the keyboard up). */
 const finePointer = () => { try { return window.matchMedia('(pointer: fine)').matches; } catch { return false; } };
 const extOf = (n: string) => n.split('.').pop()?.toLowerCase() ?? '';
-const zone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } };
+/** The person's one zone (lib/zone), never a device's bare UTC. */
+const zone = () => appZone();
 
 function settled(over: Partial<AiMessage>): AiMessage {
   return { id: `local-${Math.random().toString(36).slice(2)}`, role: 'assistant', content: '', reasoning: null, tier: null, model: null, routeReason: null, credits: 0,

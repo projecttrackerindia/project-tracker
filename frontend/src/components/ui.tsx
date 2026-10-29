@@ -12,6 +12,7 @@ import { useUi } from '../stores/ui';
 import { usePriorities } from '../features/priorities/usePriorities';
 import { projectTypeLabel } from '../lib/workLabels';
 import { Icon, type IconName } from './Icon';
+import { lockScroll } from '../lib/scrollLock';
 
 // ------------------------------------------------------------------ badges
 const PRIORITY_CLASS: Record<Priority, string> = { Critical: 'badge-critical', High: 'badge-high', Medium: 'badge-medium', Low: 'badge-low' };
@@ -508,7 +509,7 @@ export function Modal({ title, subtitle, onClose, children, footer, size, onSubm
 
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
-    document.body.style.overflow = 'hidden';
+    const unlock = lockScroll('body');
     const root = ref.current;
     const focusables = () => Array.from(root?.querySelectorAll<HTMLElement>('input,select:not(.ss-native),textarea,button,[href],[tabindex]:not([tabindex="-1"])') ?? [])
       .filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null);
@@ -524,7 +525,7 @@ export function Modal({ title, subtitle, onClose, children, footer, size, onSubm
       }
     };
     document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; prev?.focus?.(); };
+    return () => { document.removeEventListener('keydown', onKey); unlock(); prev?.focus?.(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

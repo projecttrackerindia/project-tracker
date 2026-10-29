@@ -19,7 +19,8 @@ public record CurrentWorkspaceDto(Guid Id, string Name, string Slug, WorkspaceTy
     IReadOnlyDictionary<string, int> Modules, int ReportCount = 0, string? TimeZone = null);
 /// <summary>Everything the app shows or hides based on what a person may do. <see cref="Fingerprint"/> changes exactly when that changes.</summary>
 public record ContextDto(UserDto User, IReadOnlyList<WorkspaceDto> Workspaces, CurrentWorkspaceDto? Current, string Fingerprint = "",
-    Organization.AccessBlockedDto? Blocked = null, IReadOnlyList<Admin.ConsentDocumentDto>? PendingConsent = null);
+    Organization.AccessBlockedDto? Blocked = null, IReadOnlyList<Admin.ConsentDocumentDto>? PendingConsent = null,
+    string? TimeZone = null, bool TimeZoneChosen = false);
 public record FingerprintDto(string Fingerprint);
 public record CreateWorkspaceRequest(string Name, string? Description);
 public record UpdateWorkspaceRequest(string Name, string? Description);
@@ -81,7 +82,10 @@ public class WorkspaceService(
         var blocked = current is null && ctx.BlockedWorkspace is { } b ? new Organization.AccessBlockedDto(b.WorkspaceId, b.Code, b.Message) : null;
         var consentStatus = await consent.StatusForAsync(userId, ct);
         var dto = new ContextDto(AuthService.ToDto(user), workspaces, current, Blocked: blocked,
-            PendingConsent: consentStatus.UpToDate ? null : consentStatus.Pending);
+            PendingConsent: consentStatus.UpToDate ? null : consentStatus.Pending,
+            // The one zone this person's day runs in (their own, else the organization's, else the platform's): the app renders in it.
+            TimeZone: clock.ZoneId,
+            TimeZoneChosen: await db.ReminderSettings.AsNoTracking().AnyAsync(s => s.UserId == userId && !s.FollowDeviceTimeZone, ct));
         return dto with { Fingerprint = FingerprintOf(dto) };
     }
 

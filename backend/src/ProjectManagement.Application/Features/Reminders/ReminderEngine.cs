@@ -229,13 +229,15 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
         var senders = waiting.Select(w => w.Sender).Distinct().ToList();
         var zones = await db.Users.AsNoTracking().Where(u => senders.Contains(u.Id) && u.IsActive).ToDictionaryAsync(u => u.Id, u => u.TimeZone, ct);
         var settings = await db.ReminderSettings.AsNoTracking().Where(x => senders.Contains(x.UserId)).ToDictionaryAsync(x => x.UserId, ct);
+        var followTenants = waiting.Select(w => w.TenantId).Distinct().ToList();
+        var orgZones = await db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => followTenants.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.TimeZone, ct);
         var sent = 0;
         foreach (var w in waiting)
         {
             if (!zones.TryGetValue(w.Sender, out var zone)) continue;
             var other = others.Where(o => o.ConversationId == w.Conversation && o.UserId != w.Sender).ToList();
             if (other.Count != 1 || reacted.Contains((w.Message, other[0].UserId))) continue;
-            var tz = ZoneTime.Find(zone);
+            var tz = ZoneTime.Find(clock.ZoneIdFor(zone, settings.GetValueOrDefault(w.Sender), orgZones.GetValueOrDefault(w.TenantId)));
             var cal = new WorkCalendar(settings.GetValueOrDefault(w.Sender) ?? new ReminderSettings());
             var askedOn = DateOnly.FromDateTime(ZoneTime.ToLocal(w.CreatedAt, tz));
             var local = ZoneTime.ToLocal(now, tz);
@@ -317,7 +319,7 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
 
             var s = settings.GetValueOrDefault(r.UserId) ?? new ReminderSettings { UserId = r.UserId };
             var cal = new WorkCalendar(s);
-            var tz = ZoneTime.Find(user.TimeZone);
+            var tz = ZoneTime.Find(clock.ZoneIdFor(user.TimeZone, settings.GetValueOrDefault(r.UserId), tenant.TimeZone));
             var todayLocal = DateOnly.FromDateTime(ZoneTime.ToLocal(now, tz));
             var target = r.TargetId is { } tid0 && targets.TryGetValue((r.TargetType, tid0), out var ts0) ? ts0 : null;
             // The person already knows: they set the date themselves after the reminder time, or worked on the item in the last two hours.
@@ -456,7 +458,7 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
                             join t in db.Tenants.IgnoreQueryFilters().AsNoTracking() on m.TenantId equals t.Id
                             join u in db.Users.AsNoTracking() on m.UserId equals u.Id
                             where !t.IsDeleted && t.Status == TenantStatus.Active && u.IsActive && !u.IsPlatformAdmin
-                            select new { m.TenantId, m.UserId, u.TimeZone }).ToListAsync(ct);
+                            select new { m.TenantId, m.UserId, u.TimeZone, OrgZone = t.TimeZone }).ToListAsync(ct);
         if (people.Count == 0) return 0;
         var userIds = people.Select(p => p.UserId).Distinct().ToList();
         // Read without tracking: the day is claimed with a conditional update below, never by saving these copies.
@@ -468,7 +470,7 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
         {
             var s = settings.GetValueOrDefault(person.Key);
             if (s is { BriefingEnabled: false }) continue;
-            var tz = ZoneTime.Find(person.First().TimeZone);
+            var tz = ZoneTime.Find(clock.ZoneIdFor(person.First().TimeZone, s, person.First().OrgZone));
             var local = ZoneTime.ToLocal(now, tz);
             var today = DateOnly.FromDateTime(local);
             var day = today.ToString("yyyyMMdd");
@@ -677,6 +679,9 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
         var userIds = members.Select(m => m.UserId).Distinct().ToList();
         var users = await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id) && u.IsActive).ToDictionaryAsync(u => u.Id, u => new { u.TimeZone, u.DisplayName }, ct);
         var settings = await db.ReminderSettings.AsNoTracking().Where(s => userIds.Contains(s.UserId)).ToDictionaryAsync(s => s.UserId, ct);
+        var orgZones = await db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => tenantIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.TimeZone, ct);
+        // Each person's day in their own zone, else the organization's (never a UTC a device reported or a column default left).
+        string ZoneOf(Guid user, string? own, Guid tenant) => clock.ZoneIdFor(own, settings.GetValueOrDefault(user), orgZones.GetValueOrDefault(tenant));
         var policies = await db.ReminderPolicies.IgnoreQueryFilters().AsNoTracking().Where(p => p.EscalationEnabled && tenantIds.Contains(p.TenantId)).ToListAsync(ct);
         var ladders = new Dictionary<Guid, IReadOnlyList<EscalationStep>>();
         foreach (var p in policies)
@@ -706,9 +711,9 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
                 var lead = leads.Count == 0 ? 0 : leads.Min();
                 var day = cal.WorkingDaysBefore(item.Due, lead);
                 var title = day == item.Due ? $"{item.Key} is due today" : day.AddDays(1) == item.Due ? $"{item.Key} is due tomorrow" : $"{item.Key} is due {When(item.Due)}";
-                Add($"L{lead}", item.Assignee, assignee.TimeZone, ReminderSource.DueDate, title, day, s.DefaultTime);
+                Add($"L{lead}", item.Assignee, ZoneOf(item.Assignee, assignee.TimeZone, item.TenantId), ReminderSource.DueDate, title, day, s.DefaultTime);
                 if (WorkCalendar.ParseNumbers(s.OverdueSteps, 1, 30).Count > 0)
-                    Add("O1", item.Assignee, assignee.TimeZone, ReminderSource.Overdue, $"{item.Key} is still open: it was due {When(item.Due)}",
+                    Add("O1", item.Assignee, ZoneOf(item.Assignee, assignee.TimeZone, item.TenantId), ReminderSource.Overdue, $"{item.Key} is still open: it was due {When(item.Due)}",
                         cal.WorkingOnOrAfter(item.Due.AddDays(1)), s.DefaultTime);
             }
 
@@ -718,7 +723,7 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
                     var to2 = step.Who == "Manager" ? memberOf.GetValueOrDefault((item.TenantId, item.Assignee)) : item.Owner;
                     if (to2 is not { } recipient || recipient == item.Assignee || !memberOf.ContainsKey((item.TenantId, recipient)) || !users.TryGetValue(recipient, out var r)) continue;
                     var rs = settings.GetValueOrDefault(recipient) ?? new ReminderSettings();
-                    Add($"E{step.Days}{step.Who}", recipient, r.TimeZone, ReminderSource.Escalation, $"{item.Key} is {step.Days} days overdue ({assignee.DisplayName})",
+                    Add($"E{step.Days}{step.Who}", recipient, ZoneOf(recipient, r.TimeZone, item.TenantId), ReminderSource.Escalation, $"{item.Key} is {step.Days} days overdue ({assignee.DisplayName})",
                         new WorkCalendar(rs).WorkingOnOrAfter(item.Due.AddDays(step.Days)), rs.DefaultTime);
                 }
         }
@@ -853,7 +858,8 @@ public class ReminderActionService(IAppDbContext db, AppClock clock, ProjectMana
                 break;
             case "snooze":
                 var settings = await db.ReminderSettings.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == r.UserId, ct) ?? new ReminderSettings { UserId = r.UserId };
-                ReminderService.Snooze(r, new SnoozeRequest(req.Preset ?? "1h", null, null), settings, ZoneTime.Find(user.TimeZone), now);
+                var orgZone = await db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == r.TenantId).Select(t => t.TimeZone).FirstOrDefaultAsync(ct);
+                ReminderService.Snooze(r, new SnoozeRequest(req.Preset ?? "1h", null, null), settings, ZoneTime.Find(clock.ZoneIdFor(user.TimeZone, settings, orgZone)), now);
                 break;
             default:
                 throw new ValidationException("action", "Choose done or snooze.");
