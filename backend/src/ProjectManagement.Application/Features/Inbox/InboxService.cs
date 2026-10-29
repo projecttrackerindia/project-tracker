@@ -121,7 +121,6 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
     public static IEnumerable<InboxRowDto> Order(IEnumerable<InboxRowDto> rows) =>
         rows.OrderBy(r => r.BreachAt ?? DateTime.MaxValue).ThenByDescending(r => r.Urgent).ThenBy(r => r.DueAt ?? DateTime.MaxValue)
             .ThenByDescending(r => (int?)r.Priority ?? -1).ThenByDescending(r => r.At);
-    }
 
     /// <summary>A source the person cannot use (a module switched off, nobody to review) adds nothing instead of failing the whole inbox.</summary>
     private static async Task Safe(Func<Task> read)
