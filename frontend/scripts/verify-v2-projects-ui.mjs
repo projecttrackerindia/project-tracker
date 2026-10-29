@@ -352,7 +352,7 @@ try {
   await page.getByRole('button', { name: 'More on this project' }).click();
   const more = page.getByRole('menu', { name: 'More on this project' });
   const items = await more.getByRole('menuitem').locator('b').allInnerTexts();
-  assert.deepEqual(items.slice(0, 5), ['Add work', 'Meet', 'Chat', 'Settings', 'Delay risk'], items.join(', '));
+  assert.deepEqual(items.slice(0, 5), ['Add work', 'Meet', 'Schedule a meeting', 'Chat', 'Settings'], items.join(', '));
   for (const want of ['Edit details', 'Import tasks from CSV', 'Delete project']) assert.ok(items.includes(want), `··· has ${want}`);
   await more.getByRole('menuitem', { name: /^Settings/ }).click();
   await page.getByRole('dialog').waitFor(); assert.ok(at(page).includes('settings=members'));

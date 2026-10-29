@@ -470,7 +470,10 @@ try {
       await newSheet('Payout runbook for the bank', 'Doc');
       await page.waitForURL((u) => u.pathname.startsWith('/preview-org/library'));
       await newSheet('Meeting with the bank on Friday', 'Meeting');
-      await page.waitForURL((u) => u.pathname === '/preview-org/messages' && u.searchParams.get('f') === 'meetings');
+      // + New › Meeting opens the one schedule sheet in place, with the words as where it came from.
+      await page.getByTestId('schedule-sheet').waitFor();
+      assert.match(await page.getByTestId('schedule-from-aura').innerText(), /Meeting with the bank on Friday/);
+      await page.keyboard.press('Escape'); await page.getByTestId('schedule-sheet').waitFor({ state: 'detached' });
       await newSheet('2h on WT-5 today', null);   // Time has no tile in the design; the words pick it
       await page.waitForURL((u) => u.pathname === '/preview-org/insights' && u.searchParams.get('tab') === 'time' && u.searchParams.get('log') === '2h on WT-5 today');
       await newSheet('Remind me to call Ravi tomorrow at 10', 'Reminder');
