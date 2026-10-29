@@ -323,7 +323,7 @@ try {
     assert.equal(await page.locator('.mo-sandbox .mo-stage').isVisible(), false);
     // The poster fixture is a 1x1 image: check that the print still shows it loaded, not its (tiny) box.
     await page.waitForFunction(() => { const i = document.querySelector('.mo-video .mo-still img'); return !!i && i.complete && i.naturalWidth > 0 && getComputedStyle(i.closest('.mo-still')).display !== 'none'; }, null, { timeout: 5000 }).catch(() => assert.fail('the video prints its poster'));
-    assert.match(await page.locator('.mo-lottie .mo-still').innerText(), /Animation · How a request flows/);
+    assert.match(await page.locator('.mo-lottie .mo-still').textContent(), /Animation · How a request flows/);
     assert.equal(await page.locator('.pg-body .ProseMirror > p').nth(2).evaluate((e) => getComputedStyle(e).opacity), '1', 'nothing is hidden in print');
     await page.pdf({ path: path.join(out, 'print-stills.pdf') });
     await page.emulateMedia({ media: 'screen' });
