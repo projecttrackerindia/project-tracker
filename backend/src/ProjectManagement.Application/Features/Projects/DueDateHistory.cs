@@ -19,6 +19,42 @@ public class DueDateHistory(IAppDbContext db, AppClock clock)
     /// <summary>A date moving later, or being removed, is a delay: it needs a reason.</summary>
     public static bool NeedsReason(DateOnly? previous, DateOnly? revised) => previous is not null && (revised is null || revised > previous);
 
+    /// <summary>
+    /// With due times: a due moving later in time (a later day, the same day at a later time, or the same day losing its time - date-only
+    /// means the end of the day), or being removed, is a delay.
+    /// </summary>
+    public static bool NeedsReason(DateOnly? previous, TimeOnly? previousTime, DateOnly? revised, TimeOnly? revisedTime) =>
+        previous is { } p && (revised is not { } r || r > p || (r == p && (revisedTime ?? TimeOnly.MaxValue) > (previousTime ?? TimeOnly.MaxValue)));
+
+    /// <summary>
+    /// <see cref="Prepare(DateOnly?, DateOnly?, string?, string?)"/> for a due that may carry a time of day: only the time changing is a change
+    /// too, and moving it later in the same day needs a reason like moving the date.
+    /// </summary>
+    public static DueDateNote? Prepare(DateOnly? previous, TimeOnly? previousTime, DateOnly? revised, TimeOnly? revisedTime, string? reason, string? dependency)
+    {
+        if (previous == revised && previousTime == revisedTime) return null;
+        var why = Clean(reason, MaxReason, "dueDateReason", "The reason");
+        var on = Clean(dependency, MaxDependency, "dueDateDependency", "The dependency");
+        if (why is null && NeedsReason(previous, previousTime, revised, revisedTime))
+            throw new ValidationException("dueDateReason", "Say why the due date is moving (for example a dependency, a change in scope or waiting on a client).");
+        return new DueDateNote(why, on);
+    }
+
+    /// <summary>"due 12 Oct 2026 14:30 → 12 Oct 2026 17:00: waiting on the client" (the date-only wording when neither side has a time).</summary>
+    public static string Describe(DateOnly? previous, TimeOnly? previousTime, DateOnly? revised, TimeOnly? revisedTime, string? reason)
+    {
+        if (previousTime is null && revisedTime is null) return Describe(previous, revised, reason);
+        string D(DateOnly? d, TimeOnly? t) => d is null ? "none" : $"{d:dd MMM yyyy}{(t is { } x ? " " + x.ToString("HH:mm") : "")}";
+        return $"due date {D(previous, previousTime)} → {D(revised, revisedTime)}{(string.IsNullOrEmpty(reason) ? "" : $": {reason}")}";
+    }
+
+    /// <summary>
+    /// The due time an edit leaves: none without a date or when it is cleared on purpose; the time sent; otherwise the time it had (a client
+    /// that does not know about due times, or a date dragged to another day, keeps the time).
+    /// </summary>
+    public static TimeOnly? NextTime(DateOnly? revised, TimeOnly? requested, bool clear, TimeOnly? current) =>
+        revised is null || clear ? null : requested ?? current;
+
     /// <summary>Signed number of days the date moved (positive = later); null when it was or became empty.</summary>
     public static int? DaysShifted(DateOnly? previous, DateOnly? revised) =>
         previous is { } p && revised is { } r ? r.DayNumber - p.DayNumber : null;

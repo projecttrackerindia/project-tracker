@@ -13,6 +13,7 @@ import { todayISO } from '../../lib/format';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { KIND_LABEL, inboxApi, type InboxRow } from './inboxApi';
+import { breachText, useMinuteNow } from '../work/dueTime';
 import { SignalsSection, signalsLine, useTodaySignals } from './Signals';
 import './phoneToday.css';
 
@@ -50,6 +51,7 @@ export function PhoneToday() {
   const approvals = useWsQuery(['time', 'approvals', 'pending'], () => timeApi.approvals(), { staleTime: 60_000, retry: false });
   const pending = (approvals.data?.pending ?? []).filter((p) => p.id && p.status === 'Submitted');
   const list = rows.filter((r) => r.id !== outage?.id && !(pending.length > 0 && r.kind === 'approval' && /timesheet/i.test(`${r.title} ${r.sub}`))).slice(0, 5);
+  const minute = useMinuteNow(list.some((r) => !!r.breachAt));
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<Set<string>>(new Set());
 
@@ -83,13 +85,14 @@ export function PhoneToday() {
         <section className="pt-card" aria-label="Needs you">
           {list.map((r) => {
             const off = busy === r.id || done.has(r.id);
+            const sub = `${r.sub || KIND_LABEL[r.kind]}${r.breachAt ? ` · ${breachText(r.breachAt, minute)}` : ''}`;
             const label = r.kind === 'ticket' && r.urgent ? 'Open' : r.kind === 'decision' ? 'Decide' : r.action.label;
             const go = !r.action.endpoint || r.kind === 'decision';
             return (
               <div key={r.id} className={`pt-li${done.has(r.id) ? ' done' : ''}`}>
                 <span className="pt-dot" style={{ background: DOT[r.kind] ?? '#8e8e93' }} aria-hidden="true" />
-                {r.href ? <Link className="pt-li-main" to={r.href}><span className="pt-li-t">{r.title}</span><small>{r.sub || KIND_LABEL[r.kind]}</small></Link>
-                  : <span className="pt-li-main"><span className="pt-li-t">{r.title}</span><small>{r.sub || KIND_LABEL[r.kind]}</small></span>}
+                {r.href ? <Link className="pt-li-main" to={r.href}><span className="pt-li-t">{r.title}</span><small>{sub}</small></Link>
+                  : <span className="pt-li-main"><span className="pt-li-t">{r.title}</span><small>{sub}</small></span>}
                 <button type="button" className="pt-act" disabled={off} onClick={() => (go && r.href ? nav(r.href) : void act(r))}>{done.has(r.id) ? '✓' : label}</button>
               </div>
             );

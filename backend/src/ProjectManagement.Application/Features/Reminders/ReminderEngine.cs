@@ -285,6 +285,7 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
         var targets = await TargetStates.LoadAsync(db, rows.Where(r => r.TargetId != null).Select(r => (r.TargetType, r.TargetId!.Value)), ct);
         var autoToday = new Dictionary<(Guid, Guid), int>();
         var pending = new List<(Reminder R, string Token)>();
+        var why = new Dictionary<Guid, (string Reason, bool DueToday)>();
         var outbox = new ProjectManagement.Application.Features.Integrations.WebhookOutbox(db);
 
         foreach (var r in rows)
@@ -317,6 +318,15 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
             var s = settings.GetValueOrDefault(r.UserId) ?? new ReminderSettings { UserId = r.UserId };
             var cal = new WorkCalendar(s);
             var tz = ZoneTime.Find(user.TimeZone);
+            var todayLocal = DateOnly.FromDateTime(ZoneTime.ToLocal(now, tz));
+            var target = r.TargetId is { } tid0 && targets.TryGetValue((r.TargetType, tid0), out var ts0) ? ts0 : null;
+            // The person already knows: they set the date themselves after the reminder time, or worked on the item in the last two hours.
+            if (r.Source == ReminderSource.DueDate && r.TargetId is { } itemId
+                && await DueReminderRules.TouchedAsync(db, r.TargetType, itemId, r.UserId, DueReminderRules.KnowsSince(r, now), ct))
+            {
+                Stop(r, ReminderState.Cancelled, now);
+                continue;
+            }
             if (!r.Exact)
             {
                 var local = ZoneTime.ToLocal(now, tz);
@@ -346,19 +356,35 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
                 await outbox.EmitAsync(r.TenantId, "reminder.fired", now, ProjectManagement.Application.Features.Integrations.ReminderWebhook.Data(r, user.DisplayName), r.TargetProjectId, ct);
             r.NextFireAt = r.Recurrence is not null ? ReminderService.NextOccurrence(r, now) : null;
             var token = ReminderService.NewActionToken(r, now);
+            var nudger = r.Source == ReminderSource.Nudge && r.CreatedBy is { } by && users.TryGetValue(by, out var who) ? who.DisplayName : null;
+            why[r.Id] = (DueReminderRules.Reason(r, target?.Due, todayLocal, nudger), r.Source == ReminderSource.DueDate && target?.Due == todayLocal);
             if (!quiet) pending.Add((r, token));
         }
 
         foreach (var group in pending.GroupBy(p => (p.R.TenantId, p.R.UserId)))
         {
             var list = group.ToList();
+            // Several things due today in the same quarter hour: one notification ("3 things are due today"), not a burst of them.
+            var dueToday = list.Where(p => why[p.R.Id].DueToday).ToList();
+            if (dueToday.Count >= 2)
+            {
+                var n = new Notification
+                {
+                    TenantId = group.Key.TenantId, UserId = group.Key.UserId, CreatedAt = now, Link = "/reminders", Type = NotificationType.DueSoon,
+                    Title = $"{dueToday.Count} things are due today",
+                    Body = Text(DueReminderRules.WithReason("Due today · no time set", string.Join(" · ", dueToday.Select(p => p.R.TargetKey is { } k ? $"{k} {p.R.TargetTitle}" : p.R.Title))), 500),
+                    DedupeKey = $"due-today:{group.Key.UserId:N}:{now:yyyyMMddHHmm}",
+                };
+                if (await router.ApplyAsync(n, ct)) db.Notifications.Add(n);
+                list = list.Except(dueToday).ToList();
+            }
             if (list.Count >= 3)
             {
                 var n = new Notification
                 {
                     TenantId = group.Key.TenantId, UserId = group.Key.UserId, CreatedAt = now, Link = "/reminders",
                     Type = list.Any(p => p.R.Source == ReminderSource.Personal) ? NotificationType.Reminder : list.Any(p => p.R.Source == ReminderSource.Nudge) ? NotificationType.Nudge : NotificationType.DueSoon,
-                    Title = $"{list.Count} reminders", Body = Text(string.Join(" · ", list.Select(p => p.R.Title)), 500),
+                    Title = $"{list.Count} reminders", Body = Text(DueReminderRules.WithReason($"{list.Count} reminders came at once", string.Join(" · ", list.Select(p => p.R.Title))), 500),
                     DedupeKey = $"rems:{group.Key.UserId:N}:{now:yyyyMMddHHmmss}",
                 };
                 if (await router.ApplyAsync(n, ct)) db.Notifications.Add(n);
@@ -372,7 +398,7 @@ public class ReminderEngine(IAppDbContext db, AppClock clock, NotificationRouter
                     Type = r.Source switch { ReminderSource.Personal => NotificationType.Reminder, ReminderSource.Nudge => NotificationType.Nudge, ReminderSource.DueDate => NotificationType.DueSoon,
                         ReminderSource.Meeting => NotificationType.Meeting, _ => NotificationType.Overdue },
                     Title = Text(from is null ? r.Title : $"{from} reminds you: {r.Title}", 200)!,
-                    Body = Text(r.Note ?? (r.Source is ReminderSource.Personal or ReminderSource.Nudge && r.TargetKey is not null ? $"{r.TargetKey} · {r.TargetTitle}" : r.TargetTitle), 500),
+                    Body = Text(DueReminderRules.WithReason(why[r.Id].Reason, r.Note ?? (r.Source is ReminderSource.Personal or ReminderSource.Nudge && r.TargetKey is not null ? $"{r.TargetKey} · {r.TargetTitle}" : r.TargetTitle)), 500),
                 };
                 if (await router.ApplyAsync(n, ct)) db.Notifications.Add(n);
             }
@@ -707,13 +733,24 @@ public class ReminderPlanner(IAppDbContext db, EntitlementService entitlements, 
             known.UnionWith(await db.Reminders.IgnoreQueryFilters().Where(r => r.SystemKey != null && list.Contains(r.SystemKey)).Select(r => r.SystemKey!).ToListAsync(ct));
         }
         var created = 0;
-        foreach (var w in keep.Where(w => !known.Contains(w.Key) && w.Utc >= now.AddHours(-2)))
+        foreach (var w in keep.Where(w => !known.Contains(w.Key)))
         {
+            // Planned after its time has passed (the due date became today at 10:28, the work was just assigned): never "now", but the next
+            // sensible moment (DueReminderRules.LateSlot); a due-day reminder whose day has no sensible moment left is not made at all.
+            var fireAt = w.Utc;
+            if (w.Utc < now)
+            {
+                if (w.Source != ReminderSource.DueDate && w.Utc < now.AddHours(-2)) continue;
+                var tz = ZoneTime.Find(w.Zone);
+                var cal = new WorkCalendar(settings.GetValueOrDefault(w.User) ?? new ReminderSettings());
+                if (DueReminderRules.LateSlot(ZoneTime.ToLocal(now, tz), cal, w.Source, DateOnly.FromDateTime(w.Local)) is not { } late) continue;
+                fireAt = ZoneTime.ToUtc(late, tz);
+            }
             db.Reminders.Add(new Reminder
             {
                 TenantId = w.Item.TenantId, UserId = w.User, Source = w.Source, Title = w.Title, TargetType = w.Item.Type, TargetId = w.Item.Id,
                 TargetKey = w.Item.Key, TargetTitle = w.Item.Title.Length > 200 ? w.Item.Title[..200] : w.Item.Title, TargetProjectId = w.Item.ProjectId, Link = w.Item.Link,
-                TimeZone = w.Zone, LocalAt = ZoneTime.Write(w.Local), OnlyIfOpen = true, Exact = false, NextFireAt = w.Utc, SystemKey = w.Key, CreatedAt = now,
+                TimeZone = w.Zone, LocalAt = ZoneTime.Write(w.Local), OnlyIfOpen = true, Exact = false, NextFireAt = fireAt, SystemKey = w.Key, CreatedAt = now,
             });
             created++;
         }

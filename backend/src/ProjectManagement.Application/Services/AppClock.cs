@@ -65,6 +65,18 @@ public class AppClock(TimeProvider time, IOptions<AppOptions> options, RequestZo
     /// <summary>The instant a calendar day starts, in this request's person's zone.</summary>
     public DateTime StartOfDayUtc(DateOnly day) => ZoneTime.ToUtc(day.ToDateTime(TimeOnly.MinValue), Zone);
 
+    /// <summary>The time of day now, in this request's person's zone.</summary>
+    public TimeOnly TimeOfDay => TimeOnly.FromDateTime(ZoneTime.ToLocal(Now, Zone));
+
+    /// <summary>
+    /// The instant a due date and time of day fall on (read in this request's person's zone, like every date-only field). Null without a
+    /// date or without a time: a date-only due means "by the end of that day".
+    /// </summary>
+    public DateTime? DueAt(DateOnly? day, TimeOnly? at) => day is { } d && at is { } t ? ZoneTime.ToUtc(ZoneTime.At(d, t), Zone) : null;
+
+    /// <summary>A due date (and optional time) that has passed: before today, or today at a time already gone.</summary>
+    public bool IsPastDue(DateOnly? day, TimeOnly? at) => day is { } d && (d < Today || (d == Today && at is { } t && t < TimeOfDay));
+
     public static int OffsetFor(DateTimeZone tz, DateTime utc) =>
         (int)(tz.GetUtcOffset(Instant.FromDateTimeUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc))).Seconds / 60);
 }

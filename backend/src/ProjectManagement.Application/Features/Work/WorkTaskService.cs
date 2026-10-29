@@ -19,13 +19,14 @@ public record WorkTaskCan(bool Edit, bool Delete);
 public record WorkProjectRefDto(Guid Id, string Key, string Name, ProjectStatus Status);
 public record WorkTaskDto(Guid Id, string Key, int Number, string Title, string? Description, Guid WorkTypeId, string WorkType, WorkProjectRefDto? RelatedProject,
     UserRefDto? Assignee, UserRefDto? Reporter, Priority Priority, WorkTaskStatus Status, DateOnly? StartDate, DateOnly? DueDate, bool IsOverdue,
-    DateTime? CompletedAt, DateTime CreatedAt, int Version, int CommentCount, int AttachmentCount, WorkTaskCan Can, int LoggedMinutes = 0, WorkSlaDto? Sla = null);
+    DateTime? CompletedAt, DateTime CreatedAt, int Version, int CommentCount, int AttachmentCount, WorkTaskCan Can, int LoggedMinutes = 0, WorkSlaDto? Sla = null,
+    TimeOnly? DueTime = null, DateTime? DueAt = null, bool DueFromSla = false);
 
 public record CreateWorkTaskRequest(string? Title, string? Description, Guid? WorkTypeId, Guid? RelatedProjectId, Guid? AssigneeId, Priority? Priority,
-    WorkTaskStatus? Status, DateOnly? StartDate, DateOnly? DueDate);
+    WorkTaskStatus? Status, DateOnly? StartDate, DateOnly? DueDate, TimeOnly? DueTime = null);
 /// <summary>All the editable fields at once: what is sent replaces what was there (an empty related project, assignee or date clears it).</summary>
 public record UpdateWorkTaskRequest(string? Title, string? Description, Guid? WorkTypeId, Guid? RelatedProjectId, Guid? AssigneeId, Priority Priority,
-    WorkTaskStatus Status, DateOnly? StartDate, DateOnly? DueDate, int Version);
+    WorkTaskStatus Status, DateOnly? StartDate, DateOnly? DueDate, int Version, TimeOnly? DueTime = null, bool ClearDueTime = false);
 /// <param name="Version">The version the caller saw (My Work's tick, the board): a change over someone else's newer save is refused (409).</param>
 public record SetWorkTaskStatusRequest(WorkTaskStatus Status, int? Version = null);
 
@@ -287,11 +288,23 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         foreach (var r in rows)
         {
             var can = new WorkTaskCan(await CanEditAsync(r, ct), await CanDeleteAsync(r, ct));
+            var (dueAt, fromSla) = DueOf(r);
             result.Add(new WorkTaskDto(r.Id, KeyOf(r.Number), r.Number, r.Title, r.Description, r.WorkTypeId ?? Guid.Empty, r.WorkType?.Name ?? "", r.RelatedProjectId is { } p && projects.TryGetValue(p, out var pr) ? pr : null,
-                Ref(r.AssigneeId), Ref(r.ReporterId), r.Priority, r.Status, r.StartDate, r.DueDate, IsOpen(r.Status) && r.DueDate is { } d && d < today, r.CompletedAt, r.CreatedAt, r.Version,
-                comments.GetValueOrDefault(r.Id), attachments.GetValueOrDefault(r.Id), can, logged.GetValueOrDefault(r.Id), SlaService.State(r, now)));
+                Ref(r.AssigneeId), Ref(r.ReporterId), r.Priority, r.Status, r.StartDate, r.DueDate, IsOpen(r.Status) && clock.IsPastDue(r.DueDate, r.DueTime), r.CompletedAt, r.CreatedAt, r.Version,
+                comments.GetValueOrDefault(r.Id), attachments.GetValueOrDefault(r.Id), can, logged.GetValueOrDefault(r.Id), SlaService.State(r, now), r.DueTime, dueAt, fromSla));
         }
         return result;
+    }
+
+    /// <summary>
+    /// The instant a work task is due: its due date at its due time; for an open ticket without a due time, its SLA resolve-by (so the
+    /// service level is what it is held to). Null when neither is known.
+    /// </summary>
+    public (DateTime? DueAt, bool FromSla) DueOf(WorkTask t)
+    {
+        if (clock.DueAt(t.DueDate, t.DueTime) is { } at) return (at, false);
+        if (t.Kind == WorkTaskKind.Operational && IsOpen(t.Status) && t.ResolutionDueAt is { } sla) return (sla, true);
+        return (null, false);
     }
 
     // ------------------------------------------------------------------ write
@@ -323,6 +336,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             TenantId = tid, Kind = WorkTaskKind.Operational, Number = await NextNumberAsync(db, tid, ct),
             Title = title, Description = CleanDescription(req.Description), WorkTypeId = type.Id, RelatedProjectId = req.RelatedProjectId, AssigneeId = req.AssigneeId,
             ReporterId = ctx.RequireUserId(), Priority = req.Priority ?? Priority.Medium, Status = status, StartDate = req.StartDate, DueDate = req.DueDate,
+            DueTime = req.DueDate is null ? null : req.DueTime,
             CompletedAt = status == WorkTaskStatus.Completed ? now : null, CompletedBy = status == WorkTaskStatus.Completed ? ctx.UserId : null,
             CreatedAt = now, CreatedBy = ctx.UserId,
             // Raised already under way: it has had its response. Raised on hold: the resolution clock starts stopped.
@@ -374,17 +388,19 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (task.RelatedProjectId != req.RelatedProjectId) changes.Add("related project");
         if (reassigned) changes.Add("assignee");
         if (task.Priority != req.Priority) changes.Add($"priority {task.Priority} → {req.Priority}");
-        if (task.DueDate != req.DueDate) changes.Add($"due date {task.DueDate?.ToString("dd MMM yyyy") ?? "none"} → {req.DueDate?.ToString("dd MMM yyyy") ?? "none"}");
+        var nextDueTime = ProjectManagement.Application.Features.Projects.DueDateHistory.NextTime(req.DueDate, req.DueTime, req.ClearDueTime, task.DueTime);
+        if (task.DueDate != req.DueDate || task.DueTime != nextDueTime)
+            changes.Add(ProjectManagement.Application.Features.Projects.DueDateHistory.Describe(task.DueDate, task.DueTime, req.DueDate, nextDueTime, null));
         if (task.StartDate != req.StartDate) changes.Add("start date");
         if (task.Description != description) changes.Add("description");
 
         var history = new ProjectManagement.Application.Features.Platform.FieldDiff();
         var oldTitle = task.Title; var oldDescription = task.Description; var oldType = task.WorkTypeId; var oldProject = task.RelatedProjectId;
-        var oldAssignee = task.AssigneeId; var oldPriority = task.Priority; var oldStart = task.StartDate; var oldDue = task.DueDate;
+        var oldAssignee = task.AssigneeId; var oldPriority = task.Priority; var oldStart = task.StartDate; var oldDue = task.DueDate; var oldDueTime = task.DueTime;
         var reprioritized=task.Priority!=req.Priority;
         var retarget = task.Priority != req.Priority || task.WorkTypeId != type.Id;
         task.Title = title; task.Description = description; task.WorkTypeId = type.Id; task.RelatedProjectId = req.RelatedProjectId;
-        task.AssigneeId = req.AssigneeId; task.Priority = req.Priority; task.StartDate = req.StartDate; task.DueDate = req.DueDate;
+        task.AssigneeId = req.AssigneeId; task.Priority = req.Priority; task.StartDate = req.StartDate; task.DueDate = req.DueDate; task.DueTime = nextDueTime;
         await ApplyStatusAsync(task, req.Status, ct);
         // A new priority or type brings its own targets, still measured from when the task was raised.
         if (retarget && IsOpen(task.Status)) await sla.ApplyTargetsAsync(task, ct);
@@ -400,6 +416,7 @@ public class WorkTaskService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             history.Add("Title", oldTitle, task.Title).Add("Status", Label(was), Label(task.Status))
                 .Add("Assignee", ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldAssignee), ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, task.AssigneeId))
                 .Add("Priority", oldPriority.ToString(), task.Priority.ToString()).Add("Start date", oldStart, task.StartDate).Add("Due date", oldDue, task.DueDate)
+                .Add("Due time", oldDueTime?.ToString("HH:mm"), task.DueTime?.ToString("HH:mm"))
                 .Add("Type", oldType is { } ot ? typeNames.GetValueOrDefault(ot) : null, task.WorkTypeId is { } nt ? typeNames.GetValueOrDefault(nt) : null)
                 .Add("Project", oldProject is { } op ? projectNames.GetValueOrDefault(op) : null, task.RelatedProjectId is { } np ? projectNames.GetValueOrDefault(np) : null)
                 .Add("Description", oldDescription, task.Description, 60)

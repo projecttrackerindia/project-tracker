@@ -126,6 +126,11 @@ public abstract class WorkItem : TenantEntity, ITenantScoped
     public string? Description { get; set; }
     public DateOnly? StartDate { get; set; }
     public DateOnly? DueDate { get; set; }
+    /// <summary>
+    /// The time of day it is due, on <see cref="DueDate"/>, in the workspace's zone (the same wall clock as the date). Optional: without it the
+    /// item is due by the end of that day. Always empty when there is no due date.
+    /// </summary>
+    public TimeOnly? DueTime { get; set; }
     public DateTime? CompletedAt { get; set; }
     /// <summary>Optimistic concurrency: an update names the version it read and fails if someone saved in between.</summary>
     public int Version { get; set; } = 1;

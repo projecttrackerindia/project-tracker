@@ -24,8 +24,10 @@ public record InboxActionDto(string Label, string Verb, string? Endpoint = null)
 /// </summary>
 /// <param name="Overdue">Work past its due date (the briefing counts these flags, never the wording of <see cref="Sub"/>).</param>
 /// <param name="DueToday">Work due today in the person's zone.</param>
+/// <param name="DueAt">Work with a due time (or a ticket held to its SLA): the instant it is due.</param>
+/// <param name="BreachAt">An open ticket's SLA resolve-by while its clock runs: the inbox puts the soonest breach first ("breaches in 3h 52m").</param>
 public record InboxRowDto(string Id, string Kind, string Group, string Title, string Sub, InboxActionDto Action, string? Href, DateTime At, bool Urgent,
-    bool Overdue = false, bool DueToday = false);
+    bool Overdue = false, bool DueToday = false, DateTime? DueAt = null, DateTime? BreachAt = null, Priority? Priority = null);
 
 public record InboxDto(IReadOnlyList<InboxRowDto> Rows, InboxCountsDto Counts, int Later);
 public record InboxCountsDto(int All, int Assigned, int Decisions, int Mentions);
@@ -109,9 +111,16 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         await Safe(() => DocumentsAsync(rows, ct));
         await Safe(() => MentionsAsync(rows, ct));
         await Safe(() => RemindersAsync(rows, ct));
-        // Urgent first (critical tickets, late work), then the rest newest first.
-        return rows.GroupBy(r => r.Id).Select(g => g.First()).OrderByDescending(r => r.Urgent).ThenByDescending(r => r.At).ToList();
+        return Order(rows.GroupBy(r => r.Id).Select(g => g.First())).ToList();
     }
+
+    /// <summary>
+    /// The inbox order: the soonest SLA breach first (time to breach), then urgent rows (critical tickets, late work), then the soonest due
+    /// instant, then the higher priority, then the newest.
+    /// </summary>
+    public static IEnumerable<InboxRowDto> Order(IEnumerable<InboxRowDto> rows) =>
+        rows.OrderBy(r => r.BreachAt ?? DateTime.MaxValue).ThenByDescending(r => r.Urgent).ThenBy(r => r.DueAt ?? DateTime.MaxValue)
+            .ThenByDescending(r => (int?)r.Priority ?? -1).ThenByDescending(r => r.At);
 
     /// <summary>A source the person cannot use (a module switched off, nobody to review) adds nothing instead of failing the whole inbox.</summary>
     private static async Task Safe(Func<Task> read)
@@ -123,22 +132,35 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
     private async Task WorkAsync(List<InboxRowDto> rows, CancellationToken ct)
     {
         var today = clock.Today;
+        var now = clock.Now;
+        var endOfToday = clock.StartOfDayUtc(today.AddDays(1));
         var mine = await work.ListAsync(new WorkItemQuery(Mine: true, OpenOnly: true, Limit: 200), ct: ct);
+        // Tickets' SLA clocks, one read: a running resolution clock gives the breach instant.
+        var ticketIds = mine.Where(w => w.Kind == WorkItemKind.Operational).Select(w => w.Id).ToList();
+        var clocks = ticketIds.Count == 0 ? new Dictionary<Guid, WorkTask>()
+            : await db.WorkTasks.AsNoTracking().Where(t => ticketIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, ct);
         foreach (var w in mine)
         {
-            var late = w.DueDate is { } d && d < today;
+            var late = clock.IsPastDue(w.DueDate, w.DueTime);
             var dueToday = w.DueDate == today;
             var ticket = w.Kind == WorkItemKind.Operational;
             var urgentTicket = ticket && w.Priority is Priority.Critical or Priority.High;
-            if (!late && !dueToday && !urgentTicket) continue;
-            var when = late ? $"overdue since {w.DueDate:d MMM}" : dueToday ? "due today" : w.DueDate is { } due ? $"due {due:d MMM}" : "no due date";
+            DateTime? breachAt = null;
+            if (ticket && clocks.TryGetValue(w.Id, out var t) && ProjectManagement.Application.Features.Work.SlaService.State(t, now) is { Resolution: { State: "OnTrack" or "AtRisk" or "Breached" } res })
+                breachAt = res.DueAt;
+            var breachesToday = breachAt is { } b && b < endOfToday;
+            if (!late && !dueToday && !urgentTicket && !breachesToday) continue;
+            var dueAt = clock.DueAt(w.DueDate, w.DueTime) ?? breachAt;
+            var at = w.DueTime is { } tm ? $" {tm:HH:mm}" : "";
+            var when = late ? (w.DueDate == today ? $"overdue since{at}" : $"overdue since {w.DueDate:d MMM}") : dueToday ? $"due today{at}" : w.DueDate is { } due ? $"due {due:d MMM}{at}" : "no due date";
             var parts = new List<string>();
             if (ticket || w.Priority >= Priority.High) parts.Add(w.Priority.ToString());
             if (w.ProjectKey is { Length: > 0 } pk) parts.Add(pk);
-            parts.Add(when);
+            // A ticket held only to its SLA (no due date): the row says when it breaches instead of "no due date".
+            parts.Add(w.DueDate is null && breachAt is { } by ? (by < now ? "SLA breached" : $"resolve by {ZoneTime.ToLocal(by, clock.Zone):HH:mm}") : when);
             rows.Add(new InboxRowDto($"work:{w.Id:N}", ticket ? "ticket" : "task", "assigned", $"{w.Key} {w.Title}", string.Join(" · ", parts),
                 new InboxActionDto("Open", "open"), $"/work?item={w.Id}", w.UpdatedAt, late || (ticket && w.Priority == Priority.Critical),
-                Overdue: late, DueToday: dueToday));
+                Overdue: late, DueToday: dueToday, DueAt: dueAt, BreachAt: breachAt, Priority: w.Priority));
         }
     }
 
@@ -212,7 +234,7 @@ public class InboxService(IAppDbContext db, ICurrentContext ctx, AppClock clock,
             .Where(n => n.UserId == me && n.Type == NotificationType.Mention && n.ReadAt == null && n.ArchivedAt == null && n.CreatedAt >= since)
             .OrderByDescending(n => n.CreatedAt).Take(20).ToListAsync(ct);
         foreach (var n in notes)
-            rows.Add(new InboxRowDto($"mention:{n.Id:N}", "mention", "mentions", n.Title, n.Body is { Length: > 0 } b ? Clip(b, 140) : "Mention",
+            rows.Add(new InboxRowDto($"mention:{n.Id:N}", "mention", "mentions", n.Title, ProjectManagement.Application.Features.Reminders.DueReminderRules.ForChannel(n.Body) is { Length: > 0 } b ? Clip(b, 140) : "Mention",
                 new InboxActionDto("Reply", "open"), n.Link, n.CreatedAt, false));
     }
 

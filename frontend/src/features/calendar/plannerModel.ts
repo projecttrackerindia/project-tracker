@@ -34,7 +34,7 @@ export interface Meet { key: string; e: CalendarEvent; day: string; start: numbe
 /** A focus block: time on the grid given to one open piece of your work, on or before the day it is due. */
 export interface Focus { key: string; day: string; start: number; end: number; e: CalendarEvent; /** Moved by you (Move to another time). */ pinned: boolean }
 /** Your changes to the suggested plan (kept on this device): a block moved, or an item taken out of the plan. */
-export type PlanOverrides = Record<string, { day: string; start: number; len: number } | 'removed'>;
+export type PlanOverrides = Record<string, { day: string; start: number; len: number; /** Kept in place by the plan itself (the block had started), not moved by you. */ auto?: boolean } | 'removed'>;
 
 const OPEN_KINDS = new Set(['task', 'action', 'work', 'issue']);
 export const isDone = (e: CalendarEvent) => e.category === 'Done' || e.category === 'Cancelled' || e.status === 'Completed' || e.status === 'Cancelled' || e.status === 'Done';

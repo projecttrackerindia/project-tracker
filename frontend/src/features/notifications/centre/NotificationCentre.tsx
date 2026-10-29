@@ -426,6 +426,7 @@ function Card({ n, go, acts, phone }: { n: AppNotification; go: (n: AppNotificat
         <div className="ncx-main">
           <button type="button" className="ncx-open" onClick={open} aria-label={`${n.title}${n.isRead ? '' : ', unread'}. Open`}>
             <span className="ncx-row1"><b>{n.title}</b><time dateTime={n.shownAt ?? n.createdAt} title={new Date(n.shownAt ?? n.createdAt).toLocaleString()}>{shortTime(n.shownAt ?? n.createdAt)}</time></span>
+            {n.reason && <span className="ncx-why" data-testid="ncx-reason">{n.reason}</span>}
             {n.body && <span className="ncx-text">{n.body}</span>}
           </button>
           {(join || reminder || canReply) && (

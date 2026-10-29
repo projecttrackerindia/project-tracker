@@ -43,7 +43,7 @@ export function toCalendarEvent(t: TimelineEvent): CalendarEvent {
       notes: t.notes, joinUrl: t.joinUrl, people: t.people };
   }
   return { type: t.sourceType as CalendarEvent['type'], id: t.sourceId, key: t.key, title: t.title, date: t.date, status: t.status, category: null, overdue: t.overdue,
-    projectId: t.projectId, projectName: t.projectName, priority: t.priority };
+    projectId: t.projectId, projectName: t.projectName, priority: t.priority, dueAt: t.dueAt ?? null, slaBreachAt: t.slaBreachAt ?? null, slaState: t.slaState ?? null };
 }
 
 /** What a focus block is called everywhere: "Focus · INFRA-4 Patch the gateway". Never a generic "Deep work". */
@@ -63,12 +63,76 @@ export interface DayView {
   focus: Focus[];
   /** Minutes logged on the day (every entry, timer or typed in). */
   loggedMin: number;
-  /** Free minutes left in the working day (9 to 6) from now on: not in a meeting, a call or a focus block. 0 for a past day. */
+  /** Free minutes left in the working day from max(now, check-in) to the shift's end: not in a meeting, a call or a focus block. 0 for a past day. */
   freeMin: number;
+  /** The working day: from the check-in (when there is one, else 9:00) to 18:00, in hours. */
+  shift: Shift;
 }
+/** A working day in hours: `start` is the check-in when the person checked in (else the day's start), `end` the shift's end. */
+export interface Shift { start: number; end: number; checkIn: number | null }
 export interface WeekView { days: DayView[]; byDay: Map<string, DayView>; focus: Focus[]; events: TimelineEvent[] }
 
 const FOCUS_PER_DAY = 2, FOCUS_MAX_H = 1.5;
+/** A suggested block this close to its start (or past it) no longer moves: it stays where it is for the rest of the day. */
+export const FOCUS_STICK_H = 0.25;
+
+/**
+ * The hour a deadline falls at on its day: the item's own due time when it has one ("HH:mm"), else the end of the shift - a date-only item is
+ * due "by end of day", never "now". The one rule every screen uses to place a deadline.
+ */
+export function deadlineHourOf(item: { readonly date: string; dueTime?: string | null }, shift: Pick<Shift, 'end'>): number {
+  const m = /^(\d{1,2}):(\d{2})/.exec(item.dueTime ?? '');
+  return m ? Math.min(24, Number(m[1]) + Number(m[2]) / 60) : shift.end;
+}
+
+/** The working day of a day: from the check-in (attendance on the timeline) or 9:00, to 18:00. */
+export function shiftOf(attendance: readonly TimelineEvent[]): Shift {
+  const ins = attendance.map((t) => hourOf(new Date(t.start))).sort((a, b) => a - b);
+  const checkIn = ins.length ? ins[0] : null;
+  return { start: checkIn ?? START, end: END, checkIn };
+}
+
+/**
+ * Free minutes left in a day: from max(now, check-in, the day's start) to the shift's end, less meetings, calls and focus blocks. The one
+ * count Today ("Your day", the banner) and the Calendar's day show. 0 for a past day or a day off.
+ */
+export function freeMinutesOf(day: string, today: string, nowH: number, shift: Shift, busy: readonly (readonly [number, number])[], off: boolean): number {
+  if (day < today || off) return 0;
+  const from = day === today ? Math.max(START, shift.checkIn ?? START, nowH) : START;
+  if (from >= shift.end) return 0;
+  return focusBlocks(busy, from, shift.end, { max: 0 }).free;
+}
+
+/** Minutes logged on a day, counting today's time only up to now (an entry never adds time that has not happened yet). */
+export function loggedMinutesOf(time: readonly TimelineEvent[], day: string, today: string, nowH: number): number {
+  return time.reduce((n, t) => {
+    if (day !== today) return n + (t.minutes ?? 0);
+    const s = hoursOf(t);
+    const upToNow = Math.max(0, (Math.min(s.end, nowH) - s.start) * 60);
+    return n + Math.round(t.running ? upToNow : Math.min(t.minutes ?? upToNow, upToNow));
+  }, 0);
+}
+
+/**
+ * Keep started focus blocks where they are: a suggested block for today whose start has passed (or is within 15 minutes) is written into the
+ * plan at that start, so a refresh at 10:35 never slides the 10:30 block to 10:45. Returns the new plan, or null when nothing changes.
+ * Kept blocks of earlier days are dropped from the plan.
+ */
+export function stickFocus(focus: readonly Focus[], plan: PlanOverrides, today: string, nowH: number): PlanOverrides | null {
+  let next: PlanOverrides | null = null;
+  for (const [k, o] of Object.entries(plan)) if (o !== 'removed' && o.auto && o.day < today) { next ??= { ...plan }; delete next[k]; }
+  for (const f of focus) {
+    if (f.pinned || f.day !== today || f.start > nowH + FOCUS_STICK_H) continue;
+    const k = `${f.e.type}:${f.e.id}`;
+    if (plan[k]) continue;
+    next ??= { ...plan };
+    next[k] = { day: f.day, start: f.start, len: f.end - f.start, auto: true };
+  }
+  return next;
+}
+
+/** "Focus now" while a block is under way, "Focus" otherwise. */
+export const focusWord = (f: Focus, today: string, nowH: number) => (f.day === today && f.start <= nowH && nowH < f.end ? 'Focus now' : 'Focus');
 const byStart = (a: TimelineEvent, b: TimelineEvent) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id);
 
 /**
@@ -84,7 +148,7 @@ export function planWeekFocus(days: string[], busyOf: (day: string) => (readonly
   const out: Focus[] = [];
   for (const e of open) {
     const o = overrides[key(e)];
-    if (o && o !== 'removed' && days.includes(o.day) && o.day >= today) out.push({ key: `focus:${o.day}:${key(e)}`, day: o.day, start: o.start, end: o.start + o.len, e, pinned: true });
+    if (o && o !== 'removed' && days.includes(o.day) && o.day >= today) out.push({ key: `focus:${o.day}:${key(e)}`, day: o.day, start: o.start, end: o.start + o.len, e, pinned: !o.auto });
   }
   let left = open.filter((e) => !overrides[key(e)]);
   for (const day of days) {
@@ -104,8 +168,9 @@ export function planWeekFocus(days: string[], busyOf: (day: string) => (readonly
 /**
  * Lay out the days of a timeline. `days` are the days to show (one for Today or the day view, Monday to Friday for the week); the plan is always
  * made for the whole working week of `today` (or of the first day shown) so a day shows the same focus blocks whichever screen draws it.
+ * `nowH` (to the quarter hour) places the plan and the free time; `exactNowH` (to the minute) caps today's logged time.
  */
-export function buildWeek(events: readonly TimelineEvent[], days: string[], today: string, nowH: number, overrides: PlanOverrides): WeekView {
+export function buildWeek(events: readonly TimelineEvent[], days: string[], today: string, nowH: number, overrides: PlanOverrides, exactNowH: number = nowH): WeekView {
   // The working week of the days shown, and today when it falls in that week (a Saturday you work still gets its plan).
   const ww = workWeek(days[0] ?? today);
   const planDays = mondayOf(today) === ww[0] && !ww.includes(today) ? [...ww, today] : ww;
@@ -120,13 +185,14 @@ export function buildWeek(events: readonly TimelineEvent[], days: string[], toda
   const focus = planWeekFocus(planDays.filter((d) => !off.has(d)), busyOf, items, today, nowH, overrides);
   const list = days.map((day): DayView => {
     const f = focus.filter((x) => x.day === day);
-    const from = day === today ? Math.max(START, Math.ceil(nowH * 4) / 4) : START;
-    const freeMin = day < today || from >= END || off.has(day) ? 0 : focusBlocks([...busyOf(day), ...f.map((x) => [x.start, x.end] as const)], from, END, { max: 0 }).free;
+    const attendance = of('attendance', day);
+    const shift = shiftOf(attendance);
+    const freeMin = freeMinutesOf(day, today, nowH, shift, [...busyOf(day), ...f.map((x) => [x.start, x.end] as const)], off.has(day));
     const time = of('time', day);
     return {
       day, meets: meetsOf(day), calls: of('call', day), time, done: of('done', day), due: items.filter((e) => e.date === day),
-      reminders: of('reminder', day), attendance: of('attendance', day), off: events.filter((t) => (t.type === 'leave' || t.type === 'holiday') && t.date === day),
-      focus: f, loggedMin: time.reduce((n, t) => n + (t.minutes ?? 0), 0), freeMin,
+      reminders: of('reminder', day), attendance, off: events.filter((t) => (t.type === 'leave' || t.type === 'holiday') && t.date === day),
+      focus: f, loggedMin: loggedMinutesOf(time, day, today, exactNowH), freeMin, shift,
     };
   });
   return { days: list, byDay: new Map(list.map((d) => [d.day, d])), focus, events: [...events] };

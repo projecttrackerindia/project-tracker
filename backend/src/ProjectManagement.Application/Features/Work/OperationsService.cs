@@ -115,9 +115,11 @@ public class OperationsService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var names = await NamesAsync(rules.SelectMany(r => WorkRouting.Members(r.MemberIds).Select(m => (Guid?)m)).Concat(rules.Select(r => r.EscalateToUserId))
             .Concat(rules.Select(r => r.LastAssignedUserId)).Append(s?.EscalateToUserId), ct);
         UserRefDto? Ref(Guid? id) => id is { } u && names.TryGetValue(u, out var n) ? new UserRefDto(u, n) : null;
-        var days = Enumerable.Range(1, 7).Where(d => ((s?.WorkDays ?? 31) & (1 << (d - 1))) != 0).ToList();
-        return new OperationsSettingsDto(await permissions.HasAsync(Permissions.WorkTypesManage, ct), s?.BusinessHoursOnly ?? false, s?.DayStartMinutes ?? 9 * 60,
-            s?.DayEndMinutes ?? 18 * 60, days, s?.TimeZone ?? clock.ZoneId, s?.EscalateOnBreach ?? false, Ref(s?.EscalateToUserId),
+        // Nothing saved yet: the clocks count the default working calendar (the attendance policy's hours, 09:30-18:30 Monday to Friday).
+        var fallback = s is null ? await sla.DefaultCalendarAsync(ct) : null;
+        var days = Enumerable.Range(1, 7).Where(d => ((s?.WorkDays ?? fallback!.WorkDays) & (1 << (d - 1))) != 0).ToList();
+        return new OperationsSettingsDto(await permissions.HasAsync(Permissions.WorkTypesManage, ct), s?.BusinessHoursOnly ?? true, s?.DayStartMinutes ?? fallback!.DayStart,
+            s?.DayEndMinutes ?? fallback!.DayEnd, days, s?.TimeZone ?? fallback?.Zone.Id ?? clock.ZoneId, s?.EscalateOnBreach ?? false, Ref(s?.EscalateToUserId),
             rules.OrderBy(r => r.WorkTypeId is null ? "" : types.GetValueOrDefault(r.WorkTypeId.Value) ?? "~").Select(r => new RoutingRuleDto(r.Id, r.WorkTypeId,
                 r.WorkTypeId is { } t ? types.GetValueOrDefault(t) : null, r.Mode, WorkRouting.Members(r.MemberIds).Select(m => Ref(m)).Where(x => x is not null).Select(x => x!).ToList(),
                 Ref(r.EscalateToUserId), r.Enabled, Ref(r.LastAssignedUserId))).ToList());

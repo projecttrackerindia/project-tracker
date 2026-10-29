@@ -21,7 +21,8 @@ namespace ProjectManagement.Application.Features.WorkItems;
 /// <summary>A row of the one Work list. <see cref="Kind"/> is task, issue, action or ticket.</summary>
 public record WorkItemRowDto(string Kind, Guid Id, string Key, string Title, Guid? ProjectId, string? ProjectKey, string? ProjectName, string Status,
     StatusCategory Category, Priority Priority, DateOnly? DueDate, bool IsOverdue, UserRefDto? Assignee, string? TypeName, DateTime UpdatedAt,
-    DateTime? SlaStartAt = null, DateTime? SlaDueAt = null, string? SlaState = null, int Version = 0, DateTime? CompletedAt = null, Guid? ReporterId = null);
+    DateTime? SlaStartAt = null, DateTime? SlaDueAt = null, string? SlaState = null, int Version = 0, DateTime? CompletedAt = null, Guid? ReporterId = null,
+    TimeOnly? DueTime = null, DateTime? DueAt = null, bool DueFromSla = false);
 
 public record WorkItemPageDto(IReadOnlyList<WorkItemRowDto> Items, int Offset, int Limit, bool HasMore);
 
@@ -40,7 +41,7 @@ public record WorkActivityItemDto(string Type, Guid Id, DateTime At, UserRefDto?
 public record WorkItemDetailDto(string Kind, Guid Id, string Key, string Title, string? Description, Guid? ProjectId, string? ProjectKey, string? ProjectName,
     string Status, StatusCategory Category, Priority Priority, DateOnly? StartDate, DateOnly? DueDate, bool IsOverdue, UserRefDto? Assignee, UserRefDto? Reporter,
     int Version, DateTime CreatedAt, DateTime? UpdatedAt, DateTime? CompletedAt, int LoggedMinutes, object Detail, IReadOnlyList<WorkActivityItemDto> Activity,
-    string? Channel = null);
+    string? Channel = null, TimeOnly? DueTime = null, DateTime? DueAt = null, bool DueFromSla = false);
 
 /// <summary>
 /// + New: one request for every kind. Task: project and title (status, stage, estimate, parent, milestone, labels optional). Issue:
@@ -48,7 +49,7 @@ public record WorkItemDetailDto(string Kind, Guid Id, string Key, string Title, 
 /// </summary>
 public record CreateWorkItemRequest(string? Kind, string? Title, string? Description = null, Guid? ProjectId = null, Guid? AssigneeId = null,
     Priority? Priority = null, DateOnly? StartDate = null, DateOnly? DueDate = null, Guid? StatusId = null, Guid? StageId = null, Guid? WorkTypeId = null,
-    decimal? EstimatedHours = null, Guid? ParentTaskId = null, Guid? MilestoneId = null, IReadOnlyList<Guid>? LabelIds = null);
+    decimal? EstimatedHours = null, Guid? ParentTaskId = null, Guid? MilestoneId = null, IReadOnlyList<Guid>? LabelIds = null, TimeOnly? DueTime = null);
 
 public record WorkItemCommentRequest(string? Body, IReadOnlyList<Guid>? MentionUserIds = null, Guid? ParentCommentId = null);
 
@@ -133,6 +134,8 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
         var list = filtered.ToList();
         var page = list.Skip(offset).Take(limit).Select(ToRow).ToList();
         page = await WithSlaAsync(page, ct);
+        // Tasks, issues and action items with a due time: the instant they are due (tickets have theirs from WithSlaAsync).
+        page = page.Select(r => r.Kind != "ticket" && r.DueAt is null && clock.DueAt(r.DueDate, r.DueTime) is { } at ? r with { DueAt = at } : r).ToList();
         return new WorkItemPageDto(page, offset, limit, list.Count > offset + limit);
     }
 
@@ -147,8 +150,10 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
         var now = clock.Now;
         return page.Select(r =>
         {
-            if (r.Kind != "ticket" || !byId.TryGetValue(r.Id, out var t) || SlaService.State(t, now) is not { } sla) return r;
-            return r with { SlaStartAt = t.CreatedAt, SlaDueAt = sla.Resolution?.DueAt ?? sla.Response?.DueAt, SlaState = sla.State };
+            if (r.Kind != "ticket" || !byId.TryGetValue(r.Id, out var t)) return r;
+            var (dueAt, fromSla) = tickets.DueOf(t);
+            if (SlaService.State(t, now) is not { } sla) return r with { DueAt = dueAt, DueFromSla = fromSla };
+            return r with { SlaStartAt = t.CreatedAt, SlaDueAt = sla.Resolution?.DueAt ?? sla.Response?.DueAt, SlaState = sla.State, DueAt = dueAt, DueFromSla = fromSla };
         }).ToList();
     }
 
@@ -166,7 +171,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
     };
 
     private static WorkItemRowDto ToRow(WorkItemDto r) => new(NameOf(r.Kind), r.Id, r.Key, r.Title, r.ProjectId, r.ProjectKey, r.ProjectName, r.Status, r.Category,
-        r.Priority, r.DueDate, r.IsOverdue, r.Assignee, r.TypeName, r.UpdatedAt, Version: r.Version, CompletedAt: r.CompletedAt, ReporterId: r.ReporterId);
+        r.Priority, r.DueDate, r.IsOverdue, r.Assignee, r.TypeName, r.UpdatedAt, Version: r.Version, CompletedAt: r.CompletedAt, ReporterId: r.ReporterId, DueTime: r.DueTime);
 
     // ------------------------------------------------------------------ one item
 
@@ -248,7 +253,12 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
         }
         var activity = await ActivityAsync(item, ct);
         var logged = activity.Where(a => a.Type == "time").Sum(a => a.Minutes ?? 0);
-        return dto with { Activity = activity, LoggedMinutes = logged, IsOverdue = dto.IsOverdue || (dto.DueDate is { } d && d < today && dto.Category is StatusCategory.Todo or StatusCategory.Active) };
+        // The due time (shared WorkItems column) and the instant it is due; an open ticket without a due time is held to its SLA resolve-by.
+        var dueTime = item.DueTime;
+        var (dueAt, fromSla) = item is WorkTask wt ? tickets.DueOf(wt) : (clock.DueAt(item.DueDate, item.DueTime), false);
+        var open = dto.Category is StatusCategory.Todo or StatusCategory.Active;
+        return dto with { Activity = activity, LoggedMinutes = logged, IsOverdue = dto.IsOverdue || (open && clock.IsPastDue(dto.DueDate, dueTime)),
+            DueTime = dueTime, DueAt = dueAt, DueFromSla = fromSla };
     }
 
     /// <summary>Where a ticket came from: a WhatsApp chat or a call that raised it, an incoming webhook, an e-mail to the work mailbox, else the app.</summary>
@@ -373,17 +383,24 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
         {
             case WorkItemKind.Task:
                 id = (await tasks.CreateAsync(RequireProject(req.ProjectId), new CreateTaskRequest(req.Title ?? "", req.Description, req.StatusId, req.Priority ?? Priority.Medium,
-                    req.AssigneeId, req.StartDate, req.DueDate, req.EstimatedHours, req.LabelIds, req.ParentTaskId, req.MilestoneId, req.StageId), ct)).Id;
+                    req.AssigneeId, req.StartDate, req.DueDate, req.EstimatedHours, req.LabelIds, req.ParentTaskId, req.MilestoneId, req.StageId, req.DueTime), ct)).Id;
                 break;
             case WorkItemKind.Issue:
                 id = (await issues.CreateAsync(RequireProject(req.ProjectId), new CreateIssueRequest(req.StageId, req.Title, req.Description, req.Priority, req.AssigneeId), ct)).Issue.Id;
+                if (req.DueDate is not null)
+                {
+                    // Issues keep their dates in the shared WorkItems columns (as a PATCH sets them).
+                    var row = await db.StageIssues.FirstAsync(x => x.Id == id, ct);
+                    row.StartDate = req.StartDate; row.DueDate = req.DueDate; row.DueTime = req.DueTime;
+                    await db.SaveChangesAsync(ct);
+                }
                 break;
             case WorkItemKind.ActionItem:
-                id = (await actions.CreateAsync(RequireProject(req.ProjectId), new CreateActionItemRequest(req.Title, req.Description, req.AssigneeId, req.DueDate, req.Priority), ct)).Id;
+                id = (await actions.CreateAsync(RequireProject(req.ProjectId), new CreateActionItemRequest(req.Title, req.Description, req.AssigneeId, req.DueDate, req.Priority, req.DueTime), ct)).Id;
                 break;
             default:
                 id = (await tickets.CreateAsync(new CreateWorkTaskRequest(req.Title, req.Description, req.WorkTypeId, req.ProjectId, req.AssigneeId, req.Priority, null,
-                    req.StartDate, req.DueDate), ct)).Id;
+                    req.StartDate, req.DueDate, req.DueTime), ct)).Id;
                 break;
         }
         return await GetAsync(id, ct);
@@ -398,7 +415,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
     /// Changes any of the fields sent (a field sent as null clears it); fields not sent stay as they are. <c>version</c> is required: the
     /// version the caller last read; if someone saved in between, nothing is changed and 409 VERSION_CONFLICT comes back.
     /// Fields: title, description, assigneeId, priority, status (the kind's own status name; for a task the name of a column of its
-    /// project, or statusId), startDate, dueDate, stageId, workTypeId, projectId (tickets: the related project), estimatedHours,
+    /// project, or statusId), startDate, dueDate, dueTime ("14:30"; null clears it, leaving it out keeps it), stageId, workTypeId, projectId (tickets: the related project), estimatedHours,
     /// actualHours, milestoneId.
     /// </summary>
     public async Task<WorkItemDetailDto> PatchAsync(Guid id, JsonElement body, CancellationToken ct = default)
@@ -435,7 +452,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
                     version,
                     p.Has("milestoneId") ? p.Uuid("milestoneId") : t.MilestoneId,
                     p.Has("stageId") ? p.Uuid("stageId") : t.StageId,
-                    p.Text("dueDateReason"), p.Text("dueDateDependency")), ct);
+                    p.Text("dueDateReason"), p.Text("dueDateDependency"), p.Time("dueTime"), ClearsTime(p)), ct);
                 break;
             }
             case StageIssue si:
@@ -463,7 +480,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
                     var current = (await issues.GetAsync(si.ProjectId, id, ct)).Issue;
                     if (current.Status != to) { await issues.ChangeStatusAsync(si.ProjectId, id, new ChangeIssueStatusRequest(to, p.Text("note")), ct); changed = true; }
                 }
-                if (p.Has("startDate") || p.Has("dueDate"))
+                if (p.Has("startDate") || p.Has("dueDate") || p.Has("dueTime"))
                 {
                     // Issues had no dates before WorkItems; the shared columns hold them. Only people who may edit the issue may set them.
                     var current = (await issues.GetAsync(si.ProjectId, id, ct)).Issue;
@@ -471,6 +488,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
                     var row = await db.StageIssues.FirstAsync(x => x.Id == id, ct);
                     if (p.Has("startDate")) row.StartDate = p.Day("startDate");
                     if (p.Has("dueDate")) row.DueDate = p.Day("dueDate");
+                    row.DueTime = ProjectManagement.Application.Features.Projects.DueDateHistory.NextTime(row.DueDate, p.Time("dueTime"), ClearsTime(p), row.DueTime);
                     row.UpdatedAt = clock.Now; row.UpdatedBy = ctx.UserId;
                     await db.SaveChangesAsync(ct);
                     changed = true;
@@ -492,7 +510,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
                     p.Has("assigneeId") ? p.Uuid("assigneeId") : a.Assignee?.Id,
                     p.Has("dueDate") ? p.Day("dueDate") : a.DueDate,
                     p.Has("priority") ? p.Choice<Priority>("priority") ?? a.Priority : a.Priority,
-                    status, version), ct);
+                    status, version, p.Time("dueTime"), ClearsTime(p)), ct);
                 break;
             }
             default:
@@ -508,12 +526,15 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
                     p.Has("status") ? p.Choice<WorkTaskStatus>("status") ?? w.Status : w.Status,
                     p.Has("startDate") ? p.Day("startDate") : w.StartDate,
                     p.Has("dueDate") ? p.Day("dueDate") : w.DueDate,
-                    version), ct);
+                    version, p.Time("dueTime"), ClearsTime(p)), ct);
                 break;
             }
         }
         return await GetAsync(id, ct);
     }
+
+    /// <summary>"dueTime": null sent on purpose clears the time; left out keeps it.</summary>
+    private static bool ClearsTime(Patch p) => p.Has("dueTime") && p.Time("dueTime") is null;
 
     private static ConflictException Conflict() =>
         new("Someone else changed this item since you opened it. Reload it to see their change.", "VERSION_CONFLICT");
@@ -547,6 +568,11 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
 
         public DateOnly? Day(string name) => Get(name) is { } v
             ? v.ValueKind == JsonValueKind.String && DateOnly.TryParse(v.GetString(), System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : throw Bad(name)
+            : null;
+
+        /// <summary>A time of day: "14:30" or "14:30:00".</summary>
+        public TimeOnly? Time(string name) => Get(name) is { } v
+            ? v.ValueKind == JsonValueKind.String && ProjectManagement.Application.Features.Reminders.ZoneTime.TryParseTime(v.GetString(), out var t) ? t : throw Bad(name)
             : null;
 
         public T? Choice<T>(string name) where T : struct, System.Enum => Get(name) is { } v

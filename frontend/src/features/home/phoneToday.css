@@ -89,6 +89,7 @@
 .pt-day-row > i { width: 4px; align-self: stretch; border-radius: 2px; flex: none; background: var(--ds-fill); }
 .pt-day-row.t-meeting > i { background: #30b0c7; } .pt-day-row.t-call > i { background: #34c759; } .pt-day-row.t-time > i { background: rgba(40, 205, 65, .55); }
 .pt-day-row.t-done > i { background: #28cd41; } .pt-day-row.t-reminder > i { background: #ff9500; } .pt-day-row.t-focus > i { background: #5856d6; }
+.pt-day-row.t-sla > i, .pt-day-row.t-deadline > i { background: var(--ds-danger); } .pt-day-row.t-sla small { color: var(--ds-danger); font-weight: 600; }
 .pt-day-m { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .pt-day-m b { font-weight: 500; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pt-day-m small { font-size: 12px; color: var(--ds-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

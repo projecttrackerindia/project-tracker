@@ -18,7 +18,7 @@ namespace ProjectManagement.Application.Features.Notifications;
 /// <param name="Actions">What can be done straight from it: done, take, reply, approve, reject, snooze (worked out per person when listed).</param>
 public record NotificationDto(Guid Id, NotificationType Type, string Title, string? Body, string? Link, bool IsRead, DateTime CreatedAt, bool Browser, bool NeedsYou = false,
     bool Archived = false, DateTime? SnoozedUntil = null, DateTime? ShownAt = null, IReadOnlyList<string>? Actions = null,
-    string Category = NotificationCategories.Work, DateTime? StartsAt = null, string? JoinLink = null);
+    string Category = NotificationCategories.Work, DateTime? StartsAt = null, string? JoinLink = null, string? Reason = null);
 /// <summary>
 /// The inbox at a glance: unread overall, in each lane, and in each category of the Notification Centre (the badges on the bell, the app
 /// icon and the tabs all read this one answer).
@@ -393,8 +393,8 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
         var ordered = snoozed ? q.OrderBy(n => n.SnoozedUntil) : q.OrderByDescending(n => n.SnoozedUntil ?? n.CreatedAt);
         var rows = await ordered.Skip((p.SafePage - 1) * p.SafeSize()).Take(p.SafeSize()).ToListAsync(ct);
         return new PagedResult<NotificationDto>(
-            rows.Select(n => new NotificationDto(n.Id, n.Type, n.Title, n.Body, n.Link, n.ReadAt != null, n.CreatedAt, n.Browser, NotificationLanes.IsNeedsYou(n.Type), n.ArchivedAt != null,
-                n.SnoozedUntil > now ? n.SnoozedUntil : null, n.SnoozedUntil is { } back && back <= now ? back : n.CreatedAt, null, NotificationCategories.Of(n.Type, n.Link))).ToList(),
+            rows.Select(n => new NotificationDto(n.Id, n.Type, n.Title, ProjectManagement.Application.Features.Reminders.DueReminderRules.SplitReason(n.Body).Body, n.Link, n.ReadAt != null, n.CreatedAt, n.Browser, NotificationLanes.IsNeedsYou(n.Type), n.ArchivedAt != null,
+                n.SnoozedUntil > now ? n.SnoozedUntil : null, n.SnoozedUntil is { } back && back <= now ? back : n.CreatedAt, null, NotificationCategories.Of(n.Type, n.Link), Reason: ProjectManagement.Application.Features.Reminders.DueReminderRules.SplitReason(n.Body).Reason)).ToList(),
             p.SafePage, p.SafeSize(), total);
     }
 
@@ -652,7 +652,7 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             var user = users[group.Key.UserId];
             var slug = tenants.GetValueOrDefault(group.Key.TenantId)?.Slug; var workspace = tenants.GetValueOrDefault(group.Key.TenantId)?.Name;
             var list = group.OrderBy(n => n.CreatedAt).ToList();
-            var items = list.Select(n => (n.Title, n.Body, baseUrl + OrgLink(slug, n.Link))).ToList();
+            var items = list.Select(n => (n.Title, ProjectManagement.Application.Features.Reminders.DueReminderRules.ForChannel(n.Body), baseUrl + OrgLink(slug, n.Link))).ToList();
                         var title = $"{list.Count} updates{(workspace is null ? "" : " in " + workspace)}";
             try
             {
@@ -677,7 +677,7 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             if (!users.TryGetValue(n.UserId, out var user) || !user.IsActive || !user.EmailVerified) { n.EmailPending = false; continue; }
             var workspace = tenants.GetValueOrDefault(n.TenantId)?.Name;
             var link = baseUrl + OrgLink(tenants.GetValueOrDefault(n.TenantId)?.Slug, n.Link);
-            var body = string.IsNullOrWhiteSpace(n.Body) ? n.Title : n.Body!;
+            var body = ProjectManagement.Application.Features.Reminders.DueReminderRules.ForChannel(n.Body) is { Length: > 0 } shown ? shown : n.Title;
             var headers = links?.Headers(n.UserId, n.Type);
             try
             {

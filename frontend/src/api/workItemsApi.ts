@@ -33,6 +33,10 @@ export interface WorkRow {
   completedAt?: string | null;
   /** Who raised it (My Work's "Raised by me"). */
   reporterId?: string | null;
+  /** The time of day it is due ("14:30:00", workspace time); the due instant; true when that instant is a ticket's SLA resolve-by. */
+  dueTime?: string | null;
+  dueAt?: string | null;
+  dueFromSla?: boolean;
 }
 
 export interface WorkPage { items: WorkRow[]; offset: number; limit: number; hasMore: boolean }
@@ -100,6 +104,10 @@ export interface WorkItemDetail {
   activity: WorkActivity[];
   /** Tickets: where it came from (app, email, whatsapp, phone, webhook, ai); null for other kinds. */
   channel?: string | null;
+  /** The time of day it is due ("14:30:00"); the due instant; true when that instant is a ticket's SLA resolve-by (no due time). */
+  dueTime?: string | null;
+  dueAt?: string | null;
+  dueFromSla?: boolean;
 }
 
 export interface CreateWorkItemInput {
@@ -111,6 +119,8 @@ export interface CreateWorkItemInput {
   priority?: Priority;
   startDate?: string | null;
   dueDate?: string | null;
+  /** "14:30": the time of day on the due date (workspace time). */
+  dueTime?: string | null;
   statusId?: string | null;
   stageId?: string | null;
   workTypeId?: string | null;
@@ -134,6 +144,8 @@ export interface WorkItemPatch {
   statusId?: string;
   startDate?: string | null;
   dueDate?: string | null;
+  /** "14:30" sets the time of day; null clears it (left out keeps it). A later time, like a later date, needs a reason on a task. */
+  dueTime?: string | null;
   stageId?: string | null;
   workTypeId?: string | null;
   projectId?: string | null;

@@ -12,24 +12,25 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { useNow } from '../time/time';
 
 const PRIORITIES: Priority[] = ['Critical', 'High', 'Medium', 'Low'];
-const SUGGESTED: SlaTarget[] = [
-  { priority: 'Critical', responseMinutes: 30, resolutionMinutes: 4 * 60 }, { priority: 'High', responseMinutes: 2 * 60, resolutionMinutes: 24 * 60 },
-  { priority: 'Medium', responseMinutes: 8 * 60, resolutionMinutes: 3 * 24 * 60 }, { priority: 'Low', responseMinutes: 24 * 60, resolutionMinutes: 7 * 24 * 60 },
+/** Critical respond 15m / resolve 4h, High 1h / 1 day, Medium 4h / 3 days, Low 1 day / 5 days (a day of `day` minutes: a working day when the clocks count working hours). */
+const suggestedTargets = (day = 1440): SlaTarget[] => [
+  { priority: 'Critical', responseMinutes: 15, resolutionMinutes: 4 * 60 }, { priority: 'High', responseMinutes: 60, resolutionMinutes: day },
+  { priority: 'Medium', responseMinutes: 4 * 60, resolutionMinutes: 3 * day }, { priority: 'Low', responseMinutes: day, resolutionMinutes: 5 * day },
 ];
 
-/** 90 → "1h 30m", 1440 → "1d", 2160 → "1d 12h", 30 → "30m". */
-export function formatTarget(min: number | null): string {
+/** 90 → "1h 30m", 1440 → "1d", 2160 → "1d 12h", 30 → "30m". With working hours a "d" is one working day (`day` minutes, 540 for 09:30-18:30). */
+export function formatTarget(min: number | null, day = 1440): string {
   if (min === null) return '';
-  const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60), m = min % 60;
+  const d = Math.floor(min / day), h = Math.floor((min % day) / 60), m = min % 60;
   return [d && `${d}d`, h && `${h}h`, m && `${m}m`].filter(Boolean).join(' ') || '0m';
 }
-/** "30m", "4h", "1.5h", "3d", "1d 4h" → minutes; empty → null; anything else → NaN. */
-export function parseTarget(text: string): number | null {
+/** "30m", "4h", "1.5h", "3d", "1d 4h" → minutes ("d" = `day` minutes); empty → null; anything else → NaN. */
+export function parseTarget(text: string, day = 1440): number | null {
   const t = text.trim().toLowerCase();
   if (!t) return null;
   const re = /(\d+(?:\.\d+)?)\s*(d|h|m)/g;
   let total = 0, used = '';
-  for (let m = re.exec(t); m; m = re.exec(t)) { total += Number(m[1]) * (m[2] === 'd' ? 1440 : m[2] === 'h' ? 60 : 1); used += m[0]; }
+  for (let m = re.exec(t); m; m = re.exec(t)) { total += Number(m[1]) * (m[2] === 'd' ? day : m[2] === 'h' ? 60 : 1); used += m[0]; }
   if (/^\d+(\.\d+)?$/.test(t)) return Math.round(Number(t) * 60);   // a bare number is hours
   return used.replace(/\s/g, '') === t.replace(/\s/g, '') && total > 0 ? Math.round(total) : NaN;
 }
@@ -139,8 +140,11 @@ export function SlaSettings() {
   }, [q.data, scope]);
   const hasOwn = !!scope && !!q.data?.overrides.some((o) => o.workTypeId === scope);
   const base = saved ?? q.data?.defaults ?? [];
+  // With working hours, a "day" is one working day (09:30-18:30 = 9h by default); in calendar time it is 24 hours.
+  const hours = q.data?.hours ?? null;
+  const day = hours ? Math.max(15, hours.dayEndMinutes - hours.dayStartMinutes) : 1440;
   useEffect(() => {
-    setDraft(Object.fromEntries(PRIORITIES.map((p) => { const t = base.find((x) => x.priority === p); return [p, { r: formatTarget(t?.responseMinutes ?? null), s: formatTarget(t?.resolutionMinutes ?? null) }]; })));
+    setDraft(Object.fromEntries(PRIORITIES.map((p) => { const t = base.find((x) => x.priority === p); return [p, { r: formatTarget(t?.responseMinutes ?? null, day), s: formatTarget(t?.resolutionMinutes ?? null, day) }]; })));
   }, [q.data, scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!seeWork) return null;
@@ -148,7 +152,7 @@ export function SlaSettings() {
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => void q.refetch()} />;
   const d = q.data;
   const editable = d.entitled && d.canManage;
-  const parsed = PRIORITIES.map((p) => ({ priority: p, responseMinutes: parseTarget(draft[p]?.r ?? ''), resolutionMinutes: parseTarget(draft[p]?.s ?? '') }));
+  const parsed = PRIORITIES.map((p) => ({ priority: p, responseMinutes: parseTarget(draft[p]?.r ?? '', day), resolutionMinutes: parseTarget(draft[p]?.s ?? '', day) }));
   const invalid = parsed.some((t) => Number.isNaN(t.responseMinutes) || Number.isNaN(t.resolutionMinutes));
   const empty = d.defaults.every((t) => t.responseMinutes === null && t.resolutionMinutes === null);
 
@@ -163,7 +167,10 @@ export function SlaSettings() {
     try { await workApi.clearSla(scope); toast('This work type now uses the default targets.'); void invalidateWorkspace(wid, 'work'); }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Could not change it.', 'error'); }
   };
-  const suggest = () => setDraft(Object.fromEntries(SUGGESTED.map((t) => [t.priority, { r: formatTarget(t.responseMinutes), s: formatTarget(t.resolutionMinutes) }])));
+  const suggest = () => setDraft(Object.fromEntries((d.suggested ?? suggestedTargets(day)).map((t) => [t.priority, { r: formatTarget(t.responseMinutes, day), s: formatTarget(t.resolutionMinutes, day) }])));
+  const hm2 = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+  const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const dayRange = (list: number[]) => (list.length === 5 && list.every((x, i) => x === i + 1) ? 'Mon–Fri' : list.map((x) => DAY_NAMES[x - 1]).join(', '));
 
   return (
     <div className="card mb-22">
@@ -188,7 +195,7 @@ export function SlaSettings() {
             <tbody>
               {PRIORITIES.map((p) => {
                 const v = draft[p] ?? { r: '', s: '' };
-                const badR = Number.isNaN(parseTarget(v.r)), badS = Number.isNaN(parseTarget(v.s));
+                const badR = Number.isNaN(parseTarget(v.r, day)), badS = Number.isNaN(parseTarget(v.s, day));
                 return (
                   <tr key={p}>
                     <td><PriorityBadge priority={p} /></td>
@@ -202,7 +209,11 @@ export function SlaSettings() {
             </tbody>
           </table>
         </div>
-        <p className="field-hint" style={{ marginTop: 8 }}>Type a duration such as 30m, 4h, 1d 12h or 3d. Calendar time: nights and weekends count.</p>
+        <p className="field-hint" style={{ marginTop: 8 }} data-testid="sla-hours">
+          {hours
+            ? <>Type a duration such as 15m, 4h, 1d or 3d. Counted in working hours: {hm2(hours.dayStartMinutes)}–{hm2(hours.dayEndMinutes)} {dayRange(hours.workDays)} ({hours.timeZone}){hours.isDefault ? ', the workspace default' : ''}; 1d is one working day ({formatTarget(day)}). Nights and weekends do not count; On Hold pauses the clock.</>
+            : <>Type a duration such as 30m, 4h, 1d 12h or 3d. Calendar time: nights and weekends count. On Hold pauses the clock.</>}
+        </p>
         {editable && (
           <div className="row" style={{ gap: 8, marginTop: 12 }}>
             <button type="button" className="btn btn-primary" disabled={busy || invalid} onClick={() => void save()}>Save targets</button>

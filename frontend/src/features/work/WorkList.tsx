@@ -238,7 +238,7 @@ function WorkRowButton({ w, on, onOpen }: { w: WorkRow; on: boolean; onOpen: (id
       <span className="wk-title">{w.slaDueAt && w.slaStartAt && !done && <SlaRing start={w.slaStartAt} due={w.slaDueAt} state={w.slaState ?? null} />}{w.title}{done && <small> · {w.status}</small>}</span>
       <span className="wk-meta"><span className="wk-key">{w.key}</span><KindChip kind={w.kind} /></span>
       <Owner person={w.assignee} />
-      <Due due={w.dueDate} late={w.isOverdue} />
+      <Due due={w.dueDate} late={w.isOverdue} time={w.dueTime} />
     </button>
   );
 }

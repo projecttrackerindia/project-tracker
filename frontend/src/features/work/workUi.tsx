@@ -1,6 +1,7 @@
 // The small pieces of the v2 Work list and side panel: how each kind, priority, owner and due date is drawn, the shared list query,
 // and where an item lives.
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { hm } from './dueTime';
 import type { Priority } from '../../api/types';
 import { workItemsApi, type WorkKind, type WorkListFilters, type WorkPage, type WorkRow } from '../../api/workItemsApi';
 import { Avatar } from '../../components/ui';
@@ -46,9 +47,16 @@ export function dueText(due: string | null, late: boolean): string {
   if (d === 1) return 'Tomorrow';
   return formatDateShort(due).replace(/^0/, '');
 }
-export function Due({ due, late }: { due: string | null; late: boolean }) {
+/** "Today · 14:30", "Tomorrow · 09:00", "3 Nov · 17:00"; without a time, the date-only wording ("Today", "2d late"). */
+export function dueWithTime(date: string | null, time: string | null | undefined, late: boolean): string {
+  if (!date) return 'No date';
+  const t = hm(time);
+  return t ? `${dueText(date, late)} · ${t}` : dueText(date, late);
+}
+export function Due({ due, late, time }: { due: string | null; late: boolean; time?: string | null }) {
   const today = due ? daysUntil(due) === 0 : false;
-  return <span className={`wk-due ${late ? 'late' : ''} ${today ? 'today' : ''} ${due ? '' : 'none'}`} title={due ? `Due ${formatDateShort(due)}${late ? ' · overdue' : ''}` : 'No due date'}>{dueText(due, late)}</span>;
+  const t = hm(time);
+  return <span className={`wk-due ${late ? 'late' : ''} ${today ? 'today' : ''} ${due ? '' : 'none'}`} title={due ? `Due ${formatDateShort(due)}${t ? ` ${t}` : ''}${late ? ' · overdue' : ''}` : 'No due date'}>{dueWithTime(due, time, late)}</span>;
 }
 
 // ------------------------------------------------------------------ the list query

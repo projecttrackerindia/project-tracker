@@ -129,6 +129,19 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         return (start, end, minutes, day);
     }
 
+    /// <summary>
+    /// A duration logged for today, placed on the clock: ending now (to the minute) and starting <paramref name="minutes"/> before. Null for
+    /// another day, or when that start would fall before midnight (then the entry keeps no time of day, and the timeline places it).
+    /// </summary>
+    private (DateTime Start, DateTime End, int Minutes, DateOnly Day)? EndingNow(int minutes, DateOnly date)
+    {
+        if (date != clock.Today) return null;
+        var now = clock.Now;
+        var end = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        var start = end.AddMinutes(-minutes);
+        return clock.LocalDate(start) == date ? (start, end, minutes, date) : null;
+    }
+
     /// <summary>Rows to entries, marking those in a submitted or approved week (they cannot be changed).</summary>
     private async Task<List<TimeEntryDto>> ToDtosAsync(IReadOnlyList<Row> rows, CancellationToken ct)
     {
@@ -207,6 +220,8 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var date = placed?.Day ?? req.WorkDate ?? clock.Today;
         var minutes = placed?.Minutes ?? req.Minutes;
         Validate(minutes, date);
+        // Logged as a duration for today ("log 2h"): the time ends now and started that long ago - never 9:31 to 11:31 at 10:29.
+        if (placed is null) placed = EndingNow(minutes, date);
         await approvals.EnsureOpenAsync(userId, date, ct);
         await EnsureDayHasRoomAsync(userId, date, minutes, null, ct);
         var entry = new TimeEntry
@@ -350,8 +365,10 @@ public class TimeService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         if (placed is { } p) { entry.StartedAt = p.Start; entry.EndedAt = p.End; }
         else if (entry.StartedAt is { } s0 && entry.EndedAt is not null)
         {
-            // A placed entry edited as minutes (or moved to another day in the grid): keep its time of day, the end follows the minutes.
+            // A placed entry edited as minutes (or moved to another day in the grid): keep its time of day, the end follows the minutes -
+            // but never past now: an entry that would end in the future ends now and starts earlier instead.
             var start = date == oldDate ? s0 : clock.StartOfDayUtc(date).Add(s0 - clock.StartOfDayUtc(clock.LocalDate(s0)));
+            if (start.AddMinutes(minutes) > clock.Now && EndingNow(minutes, date) is { } now) start = now.Start;
             entry.StartedAt = start; entry.EndedAt = start.AddMinutes(minutes);
         }
         if (req.Billable is { } billable) entry.Billable = billable;

@@ -14,6 +14,7 @@ import { useAi } from '../ai/Assistant';
 import { useNow } from '../time/time';
 import { fillMacro, MACROS } from '../work/deskLogic';
 import { useWarRoom } from '../work/Desk';
+import { clock24, countdown } from '../work/dueTime';
 import { clock, deskRing, firstLine, initials, leftLabel, type DeskTone } from './deskPageLogic';
 import './desk-page.css';
 import { BulkEditBar } from '../platform/BulkEditBar';
@@ -239,12 +240,20 @@ function Incident({ row, now }: { row: WorkRow; now: number }) {
   const started = d.data?.createdAt ?? row.updatedAt;
   const people = [d.data?.assignee?.name.split(' ')[0], ...(d.data?.activity ?? []).map((a) => a.actor?.name.split(' ')[0])].filter((x, i, a): x is string => !!x && a.indexOf(x) === i).slice(0, 2);
   const sub = [firstLine(d.data?.description), people.length ? `${people.join(' and ')} on it` : null].filter(Boolean).join(' · ');
+  // Counts down to the resolve-by (its own due time, else the SLA's); the time since it was raised stays beside it.
+  const resolveBy = d.data?.dueAt ?? row.dueAt ?? row.slaDueAt ?? null;
+  const late = !!resolveBy && Date.parse(resolveBy) < now;
   return (
     <div className="dq-inc" role="status">
       <span className="dq-live" aria-hidden="true" />
       <b>Critical incident · {row.key} {row.title}</b>
       {sub && <span className="dq-inc-sub">{sub}</span>}
       <span className="dq-sp" />
+      {resolveBy && (
+        <span className={`dq-tm-left${late ? ' late' : ''}`} data-testid="desk-incident-countdown" title={`Resolve by ${new Date(resolveBy).toLocaleString()}`}>
+          {late ? 'Breached ' : 'Resolve in '}<b>{countdown(resolveBy, now).replace(/^-/, '')}</b>{late ? ' ago' : ` · by ${clock24(resolveBy)}`}
+        </span>
+      )}
       <span className="dq-tm" title={`Raised ${new Date(started).toLocaleString()}`}>{clock(started, now)}</span>
       {d.data ? <WarRoomButton w={d.data} /> : <button type="button" className="dq-war" disabled>War room</button>}
     </div>

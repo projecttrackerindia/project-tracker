@@ -319,7 +319,7 @@ try {
     // Print / export: motion becomes stills, the embed says to open it online.
     await page.emulateMedia({ media: 'print' });
     assert.equal(await page.locator('.mo-sandbox .mo-still').isVisible(), true);
-    assert.match(await page.locator('.mo-sandbox .mo-still').innerText(), /Interactive embed · Isolation check - open online/);
+    assert.match(await page.locator('.mo-sandbox .mo-still').textContent(), /Interactive embed · Isolation check - open online/);
     assert.equal(await page.locator('.mo-sandbox .mo-stage').isVisible(), false);
     assert.equal(await page.locator('.mo-video .mo-still img').isVisible(), true, 'the video prints its poster');
     assert.match(await page.locator('.mo-lottie .mo-still').innerText(), /Animation · How a request flows/);

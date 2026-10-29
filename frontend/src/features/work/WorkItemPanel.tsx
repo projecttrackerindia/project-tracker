@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, download, uploadFile } from '../../api/client';
 import { projectApi, workApi, workspaceApi } from '../../api/endpoints';
 import type { Priority, WorkSla } from '../../api/types';
@@ -22,7 +22,9 @@ import { formatMinutes } from '../time/time';
 import { IncidentStrip, ReplyHelper, TriageChips } from './Desk';
 import { SlaChip } from './Sla';
 import { SupportResolution } from './SupportResolution';
-import { KIND_LONG, dueText, refreshWork } from './workUi';
+import { KIND_LONG, dueText, dueWithTime, refreshWork } from './workUi';
+import { clock24, dueMovesLater, hm, slaCountdown, toApiTime } from './dueTime';
+import { useNow } from '../time/time';
 import { historyApi } from '../../api/platformApi';
 import { HistoryList } from '../platform/HistoryList';
 import './work.css';
@@ -178,8 +180,8 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
   const current = statusValue(w);
   const statusOptions = statuses.some((s) => s.id === current) ? statuses : [{ id: current, label: w.status }, ...statuses];
 
-  // Pushing a task's due date later needs a reason (the Portfolio shows why delivery moved): asked for right here before saving.
-  const [dueAsk, setDueAsk] = useState<{ to: string | null } | null>(null);
+  // Pushing a task's due date (or its time) later needs a reason (the Portfolio shows why delivery moved): asked for right here before saving.
+  const [dueAsk, setDueAsk] = useState<{ to: string | null; time?: string | null } | null>(null);
   useEffect(() => { setDueAsk(null); }, [w.id]);
   const setDue = (to: string | null) => {
     if (to === w.dueDate) return;
@@ -187,6 +189,17 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
     if (w.kind === 'task' && later) { setDueAsk({ to }); return; }
     void save({ dueDate: to });
   };
+  // The time of day on the due date: "" clears it (due by the end of the day).
+  const setDueTime = (value: string) => {
+    const time = value ? toApiTime(value) : null;
+    if (value && !time) return;
+    if (hm(time) === hm(w.dueTime)) return;
+    if (w.kind === 'task' && dueMovesLater(w.dueDate, w.dueTime, w.dueDate, time)) { setDueAsk({ to: w.dueDate, time }); return; }
+    void save({ dueTime: time });
+  };
+  // A ticket with no due time of its own is due at its SLA resolve-by.
+  const dueValue = w.dueDate ? dueWithTime(w.dueDate, w.dueTime, w.isOverdue) + (hm(w.dueTime) || (daysUntil(w.dueDate) ?? 0) > 1 ? '' : ` · ${formatDate(w.dueDate).slice(0, 6)}`)
+    : w.dueFromSla && w.dueAt ? `SLA · ${clock24(w.dueAt)}` : 'No date';
   const setStatus = (v: string) => void save(w.kind === 'task' ? { statusId: v } : { status: v });
 
   return (
@@ -214,12 +227,21 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
             {people.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}{m.userId === me?.id ? ' (you)' : ''}</option>)}
           </select>
         </Tile>
-        <Tile label="Due" value={w.dueDate ? `${dueText(w.dueDate, w.isOverdue)}${daysUntil(w.dueDate)! > 1 ? '' : ` · ${formatDate(w.dueDate).slice(0, 6)}`}` : 'No date'} tone={w.isOverdue ? 'late' : undefined} disabled={!editable}>
+        <Tile label="Due" value={<span data-testid="wkp-due">{dueValue}</span>} tone={w.isOverdue ? 'late' : undefined} disabled={!editable}>
           <input type="date" aria-label="Due date" value={w.dueDate ?? ''} disabled={!editable} onChange={(e) => setDue(e.target.value || null)} />
         </Tile>
       </div>
+      {w.dueDate && editable && (
+        <div className="wkp-duetime">
+          <label><span>Due time</span>
+            <input type="time" aria-label="Due time" step={300} value={hm(w.dueTime) ?? ''} onChange={(e) => setDueTime(e.target.value)} /></label>
+          {w.dueTime ? <button type="button" className="wkp-link" onClick={() => setDueTime('')}>End of day</button>
+            : <span className="wkp-duetime-hint">{w.dueFromSla && w.dueAt ? `Held to the SLA: ${clock24(w.dueAt)}` : 'By the end of the day'}</span>}
+        </div>
+      )}
       {(w.kind === 'task' || w.kind === 'ticket') && <PanelPrs id={w.id} />}
-      {dueAsk && <DueReason from={w.dueDate} to={dueAsk.to} onCancel={() => setDueAsk(null)} onSave={async (reason) => { if (await save({ dueDate: dueAsk.to, dueDateReason: reason })) setDueAsk(null); }} />}
+      {dueAsk && <DueReason from={w.dueDate} to={dueAsk.to} fromTime={w.dueTime} toTime={dueAsk.time === undefined ? w.dueTime : dueAsk.time} onCancel={() => setDueAsk(null)}
+        onSave={async (reason) => { if (await save({ dueDate: dueAsk.to, ...(dueAsk.time !== undefined ? { dueTime: dueAsk.time } : {}), dueDateReason: reason })) setDueAsk(null); }} />}
 
       <Copilot w={w} me={me?.id ?? null} save={save} onDueAsk={(to) => setDueAsk({ to })} onStatus={setStatus} statuses={statuses} refetch={refetch} />
 
@@ -253,13 +275,16 @@ function Tile({ label, value, tone, disabled, children }: { label: string; value
   );
 }
 
-function DueReason({ from, to, onCancel, onSave }: { from: string | null; to: string | null; onCancel: () => void; onSave: (reason: string) => Promise<void> }) {
+function DueReason({ from, to, fromTime, toTime, onCancel, onSave }: {
+  from: string | null; to: string | null; fromTime?: string | null; toTime?: string | null; onCancel: () => void; onSave: (reason: string) => Promise<void>;
+}) {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const days = from && to ? Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) : null;
+  const at = (t: string | null | undefined) => (hm(t) ? ` ${hm(t)}` : from === to && from ? ' (end of day)' : '');
   return (
     <form className="wkp-due-ask" onSubmit={(e) => { e.preventDefault(); if (!reason.trim()) return; setBusy(true); void onSave(reason.trim()).finally(() => setBusy(false)); }}>
-      <span>Due moves from <s>{formatDate(from)}</s> to <b>{to ? formatDate(to) : 'no date'}</b>{days ? ` (+${days} day${days === 1 ? '' : 's'})` : ''}. Why?</span>
+      <span>Due moves from <s>{formatDate(from)}{at(fromTime)}</s> to <b>{to ? `${formatDate(to)}${at(toTime)}` : 'no date'}</b>{days ? ` (+${days} day${days === 1 ? '' : 's'})` : ''}. Why?</span>
       <input autoFocus value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Waiting for the client's sign-off" aria-label="Reason for moving the due date" />
       <div className="wkp-due-acts">
         <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Keep the date</button>
@@ -334,6 +359,22 @@ function fixBy(iso: string) {
   return formatDateTime(iso);
 }
 
+/** "Resolve by 14:29 · 3h 52m left" (red under an hour or once breached) beside the SLA chip; a finished clock keeps "fix by". */
+function SlaRow({ sla }: { sla: WorkSla }) {
+  const res = sla.resolution;
+  const live = !!res && ['OnTrack', 'AtRisk', 'Breached', 'Paused'].includes(res.state);
+  const now = useNow(live);
+  if (!res || !live) return <span className="wkp-sla"><SlaChip sla={sla} />{res && <small>fix by {fixBy(res.dueAt)}</small>}</span>;
+  const c = slaCountdown(res.dueAt, res.state, now);
+  return (
+    <span className="wkp-sla">
+      <span className={`wkp-sla-left t-${c.tone}`} data-testid="sla-countdown" title={`Resolve by ${formatDateTime(res.dueAt)} · ${res.state === 'AtRisk' ? 'at risk' : res.state === 'OnTrack' ? 'on track' : res.state.toLowerCase()}`}>
+        <Icon name={c.tone === 'late' ? 'alert' : c.tone === 'paused' ? 'pause' : 'timer'} size={13} />{c.text}
+      </span>
+    </span>
+  );
+}
+
 const CHANNEL_LABEL: Record<string, string> = { app: 'In the app', email: 'E-mail', whatsapp: 'WhatsApp', phone: 'Phone call', webhook: 'Webhook', ai: 'Aura' };
 
 function TicketFields({ w, editable, save }: { w: WorkItemDetail; editable: boolean; save: (f: Omit<WorkItemPatch, 'version'>) => Promise<boolean> }) {
@@ -344,7 +385,7 @@ function TicketFields({ w, editable, save }: { w: WorkItemDetail; editable: bool
   const sla = d.sla ?? null;
   return (
     <dl className="wkp-fields">
-      <div><dt>SLA</dt><dd>{sla ? <span className="wkp-sla"><SlaChip sla={sla} />{sla.resolution && <small>fix by {fixBy(sla.resolution.dueAt)}</small>}</span> : <span className="muted">No target for this type and priority</span>}</dd></div>
+      <div><dt>SLA</dt><dd>{sla ? <SlaRow sla={sla} /> : <span className="muted">No target for this type and priority{editable ? <> · <Link className="wkp-link" to="/settings/work-types">Set targets</Link></> : null}</span>}</dd></div>
       <div><dt>Channel</dt><dd><span className={`wkp-channel c-${channel}`}>{CHANNEL_LABEL[channel] ?? channel}</span></dd></div>
       <div><dt>Type</dt><dd className="wkp-inline">
         <span>{d.workType ?? '—'}</span>

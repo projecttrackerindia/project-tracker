@@ -218,7 +218,8 @@ public class SlackMessageDispatcher(IServiceScopeFactory scopes, ILogger<SlackMe
             var link = links.FirstOrDefault(l => l.UserId == n.UserId && l.TenantId == n.TenantId);
             if (link is null || !bots.TryGetValue(n.TenantId, out var bot)) continue;
             var url = web + NotificationEmailService.OrgLink(slugs.GetValueOrDefault(n.TenantId), n.Link);
-            var text = $"*{Escape(n.Title)}*" + (string.IsNullOrWhiteSpace(n.Body) ? "" : "\n" + Escape(n.Body)) + $"\n<{url}|Open in Project Tracker>";
+            var (why, rest) = ProjectManagement.Application.Features.Reminders.DueReminderRules.SplitReason(n.Body);
+            var text = $"*{Escape(n.Title)}*" + (string.IsNullOrWhiteSpace(rest) ? "" : "\n" + Escape(rest!)) + (why is null ? "" : $"\n_{Escape(why)}_") + $"\n<{url}|Open in Project Tracker>";
             try
             {
                 var token = secrets.Unprotect(bot);
