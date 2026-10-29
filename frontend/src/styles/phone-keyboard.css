@@ -23,7 +23,9 @@
   html .m-shell.m-conversation .talk-thread .chat-messages { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   html .m-shell.m-conversation .talk-thread .talk-head, html .m-shell.m-conversation .talk-thread .composer { flex-shrink: 0; }
   /* The tab bar under the conversation owns the home-indicator inset; with the keyboard up there is no inset at all. */
-  html .m-shell.m-conversation .talk-thread .composer, html .m-shell.m-conversation .composer { padding-bottom: 8px; }
+  /* Clear of the home indicator; with the keyboard up the composer sits right on it. */
+  html .m-shell.m-conversation .talk-thread .composer, html .m-shell.m-conversation .composer { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+  html .m-shell.m-conversation.keyboard-open .composer, html.kb-open .m-shell.m-conversation .composer, html.composing .m-shell.m-conversation .composer { padding-bottom: 8px; }
   html .m-shell.m-conversation.keyboard-open .m-top, html.kb-open .m-shell.m-conversation .m-top { display: none; }
   html .m-shell.m-conversation.keyboard-open .content, html.kb-open .m-shell.m-conversation .content { padding: 0; }
   html .m-shell.m-conversation.keyboard-open .talk-shell, html.kb-open .m-shell.m-conversation .talk-shell { border-radius: 0; }
