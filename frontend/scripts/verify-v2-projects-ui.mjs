@@ -276,7 +276,8 @@ try {
   checks.push('decision-accept-team-told');
   await page.getByRole('button', { name: 'More on Portfolio' }).click();
   const pmenu = (await page.getByRole('menu', { name: 'More on Portfolio' }).getByRole('menuitem').locator('b').allInnerTexts()).join(' | ');
-  for (const want of ['Filters', 'Export to Excel', 'Export to PDF', 'Action items', 'Send me this', 'Risk review']) assert.ok(pmenu.includes(want), `portfolio ··· has ${want}: ${pmenu}`);
+  for (const want of ['Filters', 'Export to Excel', 'Export to PDF', 'Send me this', 'Risk review']) assert.ok(pmenu.includes(want), `portfolio ··· has ${want}: ${pmenu}`);
+  assert.ok(!pmenu.includes('Action items'), 'Action items moved to the Plan sheet tab');
   await page.keyboard.press('Escape');
   checks.push('portfolio-menu');
 
