@@ -1,0 +1,252 @@
+/* Plan sheet v4 (designs plansheet4–8): project tints, rounded project cards, full height behind the Aura bar, folder tabs with Action items first,
+   the colour filter, the project focus tree with curved lines, the Action items page, the calendar glyph and the Notify sheet.
+   Radii 16 / 10 / 8 (card, row, cell). Tints: --pc accent, --pt header tint, --pr row tint. */
+.ps4, .ps3-float, .ps4-notify {
+  --r-card: 16px; --r-row: 10px; --r-cell: 8px;
+  --sh-card: 0 1px 2px rgba(0, 0, 0, .04), 0 4px 14px rgba(0, 0, 0, .05);
+}
+html[data-theme='dark'] .ps4, html[data-theme='dark'] .ps3-float, html[data-theme='dark'] .ps4-notify { --sh-card: 0 0 0 .5px rgba(255, 255, 255, .06), 0 6px 20px rgba(0, 0, 0, .35); }
+.pc-blue { --pc: #3b82f6; --pt: rgba(59, 130, 246, .08); --pr: rgba(59, 130, 246, .025); }
+.pc-teal { --pc: #14b8a6; --pt: rgba(20, 184, 166, .09); --pr: rgba(20, 184, 166, .028); }
+.pc-violet { --pc: #8b5cf6; --pt: rgba(139, 92, 246, .08); --pr: rgba(139, 92, 246, .025); }
+.pc-amber { --pc: #f59e0b; --pt: rgba(245, 158, 11, .10); --pr: rgba(245, 158, 11, .03); }
+.pc-rose { --pc: #f43f5e; --pt: rgba(244, 63, 94, .08); --pr: rgba(244, 63, 94, .025); }
+.pc-none { --pc: #8e8e93; --pt: rgba(0, 0, 0, .035); --pr: transparent; }
+.pc-ai { --pc: var(--p-ink, #1d1d1f); --pt: rgba(0, 0, 0, .035); --pr: transparent; }
+html[data-theme='dark'] .pc-blue { --pt: rgba(59, 130, 246, .16); --pr: rgba(59, 130, 246, .05); }
+html[data-theme='dark'] .pc-teal { --pt: rgba(20, 184, 166, .16); --pr: rgba(20, 184, 166, .05); }
+html[data-theme='dark'] .pc-violet { --pt: rgba(139, 92, 246, .17); --pr: rgba(139, 92, 246, .05); }
+html[data-theme='dark'] .pc-amber { --pt: rgba(245, 158, 11, .16); --pr: rgba(245, 158, 11, .05); }
+html[data-theme='dark'] .pc-rose { --pt: rgba(244, 63, 94, .16); --pr: rgba(244, 63, 94, .05); }
+html[data-theme='dark'] .pc-none, html[data-theme='dark'] .pc-ai { --pt: rgba(255, 255, 255, .05); }
+
+/* ---- folder tabs */
+.ps4-tabs { display: flex; align-items: flex-end; gap: 4px; height: 40px; padding: 10px 24px 0 26px; box-sizing: content-box; position: relative; z-index: 2; min-width: 0; }
+.ps4-tabs .ft { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border: 0; cursor: pointer; border-radius: 12px 12px 0 0; flex: none;
+  background: color-mix(in srgb, var(--pc) 17%, var(--p-bg)); color: color-mix(in srgb, var(--pc) 55%, var(--p-ink)); font-weight: 550; white-space: nowrap; font-size: 12.5px;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--pc) 22%, transparent); position: relative; transition: height .15s ease; }
+.ps4-tabs .ft .c { font-size: 11px; padding: 0 6px; border-radius: 99px; background: color-mix(in srgb, var(--p-solid) 70%, transparent); color: var(--p-ink2); }
+.ps4-tabs .ft .hd { width: 7px; height: 7px; border-radius: 50%; background: var(--pc); flex: none; }
+.ps4-tabs .ft .pin { font-size: 11px; }
+.ps4-tabs .ft .nm { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+.ps4-tabs .ft.on { height: 40px; background: var(--pg); color: var(--p-ink); box-shadow: none; font-weight: 650; --pg: color-mix(in srgb, var(--pc) 11%, var(--p-bg)); }
+.ps4-tabs .ft.on::before, .ps4-tabs .ft.on::after { content: ""; position: absolute; bottom: 0; width: 12px; height: 12px; pointer-events: none; }
+.ps4-tabs .ft.on::after { right: -12px; background: radial-gradient(circle at 100% 0, transparent 11.5px, var(--pg) 12px); background: radial-gradient(circle at 0 0, transparent 11.5px, var(--pg) 12px); }
+.ps4-tabs .ft.on::before { left: -12px; background: radial-gradient(circle at 100% 0, transparent 11.5px, var(--pg) 12px); }
+.ps4-tabs .ft.first::before { display: none; }
+.ps4-tabs .ft.ai { background: var(--p-ink); color: var(--p-bg); box-shadow: none; --pc: var(--p-ink); }
+.ps4-tabs .ft.ai .c { background: rgba(255, 255, 255, .2); color: var(--p-bg); }
+.ps4-tabs .ft.ai.on { --pg: color-mix(in srgb, var(--p-ink) 6%, var(--p-bg)); }
+.ps4-tabs .ft.ai .lock { font-size: 10px; opacity: .6; }
+.ps4-tabs .ft.mini { padding: 0 10px; gap: 5px; }
+.ps4-tabs .ft.plus { padding: 0 12px; background: var(--p-fill); color: var(--p-ink2); box-shadow: none; font-size: 15px; }
+.ps4-tabs .ft.plus[aria-expanded='true'] { background: var(--p-solid); color: var(--p-ink); box-shadow: var(--sh-card); }
+.ps4-tabs .ft:focus-visible { outline: 2px solid var(--p-blue); outline-offset: -2px; }
+.ps4-tabs .sep { width: 1px; height: 20px; background: var(--p-line); margin: 0 4px 7px; flex: none; }
+.ps4-tabs .tscroll { display: flex; align-items: flex-end; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; padding: 0 2px; height: 40px; }
+.ps4-tabs .tscroll::-webkit-scrollbar { display: none; }
+.ps4-tabs .tscroll.fl { -webkit-mask: linear-gradient(90deg, transparent, #000 22px); mask: linear-gradient(90deg, transparent, #000 22px); }
+.ps4-tabs .tscroll.fr { -webkit-mask: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
+.ps4-tabs .tscroll.fl.fr { -webkit-mask: linear-gradient(90deg, transparent, #000 22px, #000 calc(100% - 40px), transparent); mask: linear-gradient(90deg, transparent, #000 22px, #000 calc(100% - 40px), transparent); }
+.ps4-tabs .nud { width: 24px; height: 24px; border-radius: 50%; background: var(--p-solid); box-shadow: var(--sh-card); display: flex; align-items: center; justify-content: center; color: var(--p-ink2); flex: none; margin-bottom: 6px; font-size: 14px; border: 0; cursor: pointer; }
+.ps4-rename { width: 150px; font: inherit; border: 0; border-radius: 6px; padding: 2px 6px; background: var(--p-solid); color: var(--p-ink); box-shadow: 0 0 0 2px var(--p-blue); }
+
+/* the page under the tabs: the chosen tab's tint, joined to it */
+.ps4-page { --pg: color-mix(in srgb, var(--pc) 11%, var(--p-bg)); background: var(--pg); margin: 0 16px; border-radius: 18px 18px 0 0; padding-top: 2px; position: relative;
+  box-shadow: inset 0 3px 0 -1px color-mix(in srgb, var(--pc) 45%, transparent); min-height: 0; }
+.ps4-page.pc-none { --pg: transparent; box-shadow: none; }
+.ps4-page.pc-ai { --pg: color-mix(in srgb, var(--p-ink) 6%, var(--p-bg)); box-shadow: inset 0 3px 0 -1px color-mix(in srgb, var(--p-ink) 30%, transparent); }
+.ps4-page.first { border-top-left-radius: 0; }
+html[data-theme='dark'] .ps4-page { --pg: color-mix(in srgb, var(--pc) 14%, var(--p-bg)); }
+.ps4-page .ps3-cmdrow { padding: 14px 16px 12px; }
+.ps4-page .ps3-cmd { background: var(--p-solid); box-shadow: var(--sh-card); border-radius: 12px; }
+.ps4-page .ps3-body { border-top: 0; }
+
+/* ---- the colour filter */
+.ps4-sw { display: flex; gap: 6px; align-items: center; height: 38px; padding: 0 10px; border-radius: 11px; background: var(--p-solid); box-shadow: var(--sh-card); font-size: 12px; color: var(--p-ink2); flex: none; }
+.ps4-sw > button:not(.x), .ps4-pal > button { width: 18px; height: 18px; border-radius: 50%; background: var(--pc); opacity: .45; border: 0; padding: 0; cursor: pointer; flex: none; }
+.ps4-sw > button.on, .ps4-pal > button.on { opacity: 1; box-shadow: 0 0 0 2px var(--p-solid), 0 0 0 3.5px var(--pc); }
+.ps4-sw b { color: var(--p-ink); font-weight: 550; }
+.ps4-sw .x { border: 0; background: none; cursor: pointer; color: var(--p-ink2); padding: 0 2px; }
+.ps4-pal { display: flex; gap: 7px; padding: 6px 10px 8px; }
+.ps4-pal > button { width: 20px; height: 20px; opacity: 1; }
+.ps4-mh { font-size: 11px; color: var(--p-ink2); padding: 4px 10px 4px; }
+.ps4-fcol { display: flex; align-items: center; gap: 6px; padding: 10px 4px 6px; }
+.ps4-fcol .ps4-pal { padding: 0; }
+.ps4-sq { width: 10px; height: 10px; border-radius: 3px; background: var(--pc); flex: none; }
+
+/* ---- the sheet: one rounded tinted card per project (a tbody each), full height, the end scrolling behind the Aura bar */
+.ps4 .ps3-scroll { -webkit-mask: linear-gradient(#000 calc(100% - 14px), transparent); mask: linear-gradient(#000 calc(100% - 14px), transparent); padding: 0 16px 96px; }
+.ps4 .ps3-table { border-spacing: 0; }
+.ps4 .ps3-table thead th { background: var(--pg, var(--p-bg)); }
+.ps4 tbody.ps4-card td { background: var(--pr); border-bottom: 0; }
+.ps4 tbody.ps4-card td:first-child { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--pc) 85%, transparent); }
+.ps4 tbody.ps4-card tr.g td { background: color-mix(in srgb, var(--pt) 100%, var(--p-solid)); padding-top: 11px; padding-bottom: 11px; border-bottom: 0; }
+.ps4 tbody.ps4-card tr:not(.g) td { background: color-mix(in srgb, var(--pr) 100%, var(--p-solid)); }
+.ps4 tbody.ps4-card tr:not(.g) + tr:not(.g) td { border-top: 1px solid var(--p-line2); }
+.ps4 tbody.ps4-card tr:first-child td:first-child { border-top-left-radius: var(--r-card); }
+.ps4 tbody.ps4-card tr:first-child td:last-child { border-top-right-radius: var(--r-card); }
+.ps4 tbody.ps4-card tr:last-child td:first-child { border-bottom-left-radius: var(--r-card); }
+.ps4 tbody.ps4-card tr:last-child td:last-child { border-bottom-right-radius: var(--r-card); }
+.ps4 tbody.ps4-card tr:last-child td { padding-bottom: 10px; }
+.ps4 tbody.ps4-gap td { height: 12px; padding: 0; border: 0; background: none; }
+.ps4 .ps3-table tbody.ps4-card tr:not(.g):hover td { background: color-mix(in srgb, var(--pc) 5%, var(--p-solid)); }
+/* the selected row: a rounded ring in the project colour; the editing cell: a rounded blue ring */
+.ps4 .ps3-table tbody.ps4-card tr.sel td { background: color-mix(in srgb, var(--pc) 10%, var(--p-solid)) !important; box-shadow: inset 0 1px 0 color-mix(in srgb, var(--pc) 28%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--pc) 28%, transparent); }
+.ps4 .ps3-table tbody.ps4-card tr.sel td:first-child { border-radius: var(--r-row) 0 0 var(--r-row); box-shadow: inset 1px 0 0 color-mix(in srgb, var(--pc) 28%, transparent), inset 0 1px 0 color-mix(in srgb, var(--pc) 28%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--pc) 28%, transparent), inset 3px 0 0 var(--pc); }
+.ps4 .ps3-table tbody.ps4-card tr.sel td:last-child { border-radius: 0 var(--r-row) var(--r-row) 0; box-shadow: inset -1px 0 0 color-mix(in srgb, var(--pc) 28%, transparent), inset 0 1px 0 color-mix(in srgb, var(--pc) 28%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--pc) 28%, transparent); }
+.ps4 .ps3-table td.act { border-radius: var(--r-cell); box-shadow: 0 0 0 2px var(--p-blue), 0 0 0 5px rgba(10, 132, 255, .15) !important; background: var(--p-solid) !important; z-index: 1; }
+.ps4 tbody.ps4-tail td { border: 0; height: 1px; padding: 0; }
+.ps4-pname { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; font-size: 13.5px; color: var(--p-ink); cursor: pointer; }
+.ps4-pname:hover { color: var(--pc); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---- the calendar glyph and its hover card */
+.cg { display: inline-block; width: 11px; height: 11px; border-radius: 3px; border: 1.3px solid var(--p-blue); border-top-width: 3px; margin-left: 5px; vertical-align: -1px; opacity: .9; box-sizing: border-box; }
+.ps4-cal { border-radius: 7px; cursor: default; }
+.ps4-cal.hov { background: color-mix(in srgb, var(--p-blue) 10%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--p-blue) 45%, transparent); padding: 2px 6px; margin: -2px -6px; }
+.ps4-sync { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--p-ink2); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--p-line); }
+.ps4-sync .dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--p-ink3); flex: none; }
+.ps4-sync .dot.on { border-color: var(--p-green); }
+.ps3-float a.ps3-qc { text-decoration: none; }
+
+/* ---- the focus view: breadcrumb, hero, tree */
+.ps4-focus { padding: 12px 16px 0; }
+.ps4-focus .ps3-cmdrow { padding: 12px 0; }
+.ps4-crumbs { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--p-ink2); padding-bottom: 10px; }
+.ps4-crumbs b { color: var(--p-ink); font-weight: 600; }
+.ps4-crumbs .back { width: 28px; height: 28px; border-radius: 8px; background: var(--p-solid); box-shadow: var(--sh-card); display: inline-flex; align-items: center; justify-content: center; color: var(--p-ink); font-size: 16px; border: 0; cursor: pointer; }
+.ps4-hero { border-radius: 18px; background: linear-gradient(135deg, var(--pt), color-mix(in srgb, var(--pc) 4%, var(--p-solid))); box-shadow: var(--sh-card); padding: 16px 20px; display: flex; gap: 22px; align-items: center; position: relative; overflow: hidden; }
+.ps4-hero::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--pc); }
+.ps4-hero .bigring { width: 52px; height: 52px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; position: relative; }
+.ps4-hero .bigring span { position: absolute; inset: 5px; border-radius: 50%; background: var(--p-solid); display: flex; align-items: center; justify-content: center; font-weight: 650; font-size: 13px; }
+.ps4-hero .ttl { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ps4-hero .ttl b { font-size: 18px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ps4-hero .ttl span { font-size: 12px; }
+.ps4-hero .hk { font-size: 11px; color: var(--p-ink2); margin-bottom: 3px; }
+.ps4-hero .hv { font-weight: 600; font-size: 13px; white-space: nowrap; }
+.ps4-hero .mtl { position: relative; height: 34px; flex: 1; min-width: 200px; }
+.ps4-hero .mtl .tr { position: absolute; left: 0; right: 0; top: 11px; height: 4px; border-radius: 2px; background: var(--p-fill); }
+.ps4-hero .mtl .tseg { position: absolute; top: 9px; height: 8px; border-radius: 4px; background: var(--pc); opacity: .8; }
+.ps4-hero .mtl .tseg.risk { background: var(--p-orange); } .ps4-hero .mtl .tseg.late { background: var(--p-red); }
+.ps4-hero .mtl .now { position: absolute; top: 2px; height: 22px; width: 2px; border-radius: 1px; background: var(--p-red); }
+.ps4-hero .mtl .lb { position: absolute; top: 22px; font-size: 10px; color: var(--p-ink3); }
+.ps4-tbody { display: flex; gap: 16px; min-height: 0; align-items: flex-start; }
+.ps4-tree { flex: 1; min-width: 0; padding-bottom: 96px; }
+.ps4-tree .colh, .ps4-tree .trow { display: grid; grid-template-columns: minmax(0, 33fr) minmax(0, 13fr) minmax(0, 13fr) minmax(0, 10fr) minmax(0, 12fr) minmax(0, 19fr); gap: 0 10px; align-items: center; }
+.ps4-tree.narrow .colh, .ps4-tree.narrow .trow { grid-template-columns: minmax(0, 44fr) minmax(0, 18fr) minmax(0, 22fr) minmax(0, 16fr); }
+.ps4-tree.narrow .colh > :nth-child(n+5), .ps4-tree.narrow .trow > :nth-child(n+5) { display: none; }
+.ps4-tree .trow .ps3-num { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.ps4-tree .colh { padding: 0 16px 6px 18px; font-size: 11.5px; color: var(--p-ink2); font-weight: 500; }
+.ps4-tcard { background: var(--p-solid); border-radius: var(--r-card); box-shadow: var(--sh-card); overflow: hidden; position: relative; padding: 4px 6px 6px; }
+.ps4-tcard::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--pc); opacity: .85; }
+.ps4-tree .trow { border-radius: var(--r-row); padding: 7px 10px 7px 12px; position: relative; min-height: 40px; cursor: default; }
+.ps4-tree .trow:not(.ph):not(.add):hover { background: var(--p-hover); }
+.ps4-tree .trow.ph { background: var(--pt); margin: 4px 0; }
+.ps4-tree .trow.ph b { font-weight: 600; }
+.ps4-tree .trow.sel { background: color-mix(in srgb, var(--pc) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 28%, transparent); }
+.ps4-tree .trow.add { min-height: 30px; padding-top: 0; padding-bottom: 4px; }
+.ps4-tree .trow > span { min-width: 0; cursor: pointer; }
+.ps4-tree .tw { display: flex; align-items: center; min-width: 0; align-self: stretch; }
+.ps4-tree .tw b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ps4-tree .tw .ps3-key { margin-right: 8px; white-space: nowrap; }
+.ps4-tree .tchev { width: 18px; flex: none; color: var(--p-ink3); font-size: 10px; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; }
+.ps4-tree .tchev.hl { color: var(--pc); }
+.ps4-tree .cnt { font-size: 11px; color: var(--p-ink2); background: var(--p-fill); border-radius: 99px; padding: 1px 7px; margin-left: 8px; flex: none; }
+/* curved connector lines (plansheet6): v = a line passing down, e = an elbow with more below, l = the last elbow, n = nothing; hf = the chosen branch */
+.ps4-tree .guide { width: 20px; align-self: stretch; flex: none; position: relative; --lc: color-mix(in srgb, var(--pc) 40%, transparent); --hc: var(--pc); }
+.ps4-tree .guide::before, .ps4-tree .guide::after { content: ""; position: absolute; pointer-events: none; }
+.ps4-tree .guide.v::before, .ps4-tree .guide.e::before { left: 9px; top: -12px; bottom: -12px; width: 1px; background: var(--lc); }
+.ps4-tree .guide.e::after, .ps4-tree .guide.l::after { left: 9px; width: 10px; height: 14px; top: calc(50% - 14px); border-left: 1px solid var(--lc); border-bottom: 1px solid var(--lc); border-bottom-left-radius: 9px; }
+.ps4-tree .guide.l::after { top: -12px; height: calc(50% + 12px); -webkit-mask: linear-gradient(transparent, #000 10px); mask: linear-gradient(transparent, #000 10px); }
+.ps4-tree .guide.hf::after { border-color: var(--hc); border-width: 1.5px; }
+.ps4-tree .guide.e.hf::before { background: linear-gradient(var(--hc) 0 calc(50% - 6px), var(--lc) 0); width: 1.5px; }
+.ps4-add { flex: 1; font: inherit; border: 0; border-radius: 8px; padding: 3px 8px; background: var(--p-solid); color: var(--p-ink); box-shadow: 0 0 0 2px var(--p-blue), 0 0 0 5px rgba(10, 132, 255, .15); outline: 0; }
+.ps4-inspwrap { width: 380px; flex: none; position: sticky; top: 0; }
+.ps4-inspwrap .ps3-insp { position: static; max-height: none; width: 100%; }
+.ps4-path { font-size: 11.5px; color: var(--p-ink2); padding: 0 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- Action items */
+.ps4-ai { padding: 0 16px; }
+.ps4-ai .ps3-cmdrow { padding: 14px 0 12px; }
+.ps4-ai .ps3-cmd input { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: var(--p-ink); outline: 0; }
+.ps4-aibar { display: flex; gap: 12px; align-items: center; padding: 0 0 12px; }
+.ps4-aigrid { padding-bottom: 96px; display: flex; flex-direction: column; gap: 12px; }
+.ps4-aigrid .colh.ai, .ps4-ai .ai-row { display: grid; grid-template-columns: 26px minmax(0, 34fr) minmax(0, 14fr) minmax(0, 9fr) minmax(0, 14fr) minmax(0, 10fr); gap: 0 10px; align-items: center; }
+.ps4-aigrid .colh.ai { padding: 0 16px 0 18px; font-size: 11.5px; color: var(--p-ink2); font-weight: 500; }
+.ps4-card { background: var(--p-solid); border-radius: var(--r-card); box-shadow: var(--sh-card); overflow: hidden; position: relative; }
+.ps4-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--pc); opacity: .85; }
+.ps4-card .gh { display: flex; align-items: center; gap: 10px; padding: 11px 16px 11px 18px; background: var(--pt); font-size: 13px; }
+.ps4-card .gh b { font-weight: 600; font-size: 13.5px; }
+.ps4-card .gh .tw { border: 0; background: none; color: var(--p-ink3); font-size: 10px; cursor: pointer; padding: 0; width: 10px; }
+.ps4-card .gh .dia { color: var(--pc); }
+.ps4-card .rows { padding: 4px 6px 6px; background: var(--pr); }
+.ps4-ai .ai-row { border-radius: var(--r-row); padding: 7px 10px 7px 12px; min-height: 42px; position: relative; }
+.ps4-ai .ai-row + .ai-row::before { content: ""; position: absolute; top: 0; left: 12px; right: 12px; height: 1px; background: var(--p-line); }
+.ps4-ai .ai-row:hover { background: var(--p-hover); }
+.ps4-ai .ai-row.sel { background: color-mix(in srgb, var(--pc) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 28%, transparent); }
+.ps4-ai .ai-row .t { border: 0; background: none; padding: 0; text-align: left; cursor: pointer; font: inherit; color: var(--p-ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps4-ai .ai-row.done .t { text-decoration: line-through; color: var(--p-ink3); }
+.ps4-ai .ai-row .late { color: var(--p-red); }
+.ps4-ai .cb { width: 16px; height: 16px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--p-ink3); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; border: 0; background: none; cursor: pointer; padding: 0; }
+.ps4-ai .cb.on { background: var(--p-green); box-shadow: none; }
+.rv { font-size: 10.5px; font-weight: 600; color: var(--p-purple); background: rgba(139, 92, 246, .1); border-radius: 99px; padding: 1px 7px; margin-left: 6px; white-space: nowrap; }
+.pchip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 99px; background: var(--pt); font-size: 12px; font-weight: 500; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.pchip b { width: 7px; height: 7px; border-radius: 3px; background: var(--pc); flex: none; }
+.rvcard { background: var(--p-solid); border-radius: 12px; padding: 14px 16px; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--pc) 45%, transparent), 0 8px 24px rgba(0, 0, 0, .07); margin-bottom: 12px; }
+.rvcard .quote { margin: 10px 0 0; padding: 9px 12px; border-radius: 10px; background: var(--pt); font-size: 12.5px; line-height: 1.55; color: var(--p-ink2); }
+.rvcard .kbs { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.rvcard .kb { display: inline-flex; gap: 6px; align-items: center; padding: 5px 10px 5px 6px; border-radius: 9px; background: var(--p-fill); font-size: 12.5px; font-weight: 500; border: 0; cursor: pointer; }
+.rvcard .kb.on { background: var(--p-blue); color: #fff; }
+.rvcard kbd, .ps4-ai kbd { font-family: inherit; font-size: 10.5px; color: inherit; box-shadow: inset 0 0 0 1px var(--p-line); border-radius: 5px; padding: 1px 5px; }
+.rvcard .kb.on kbd { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .4); }
+
+/* ---- toast with the diff */
+.ps3-toast .diff { font-variant-numeric: tabular-nums; }
+.ps3-toast .diff s { opacity: .55; }
+.ps3-toast .diff .d { color: var(--p-orange); }
+.ps3-toast small { display: block; font-size: 11.5px; opacity: .7; }
+
+/* ---- Notify */
+.ps4-notify { --p-ink2: #6e6e73; --p-line: rgba(0, 0, 0, .07); --p-fill: rgba(0, 0, 0, .06); --p-solid: var(--ds-surface, #fff); --p-ink: var(--ds-text, #1d1d1f); --p-green: #30b158; font-size: 13.5px; }
+html[data-theme='dark'] .ps4-notify { --p-ink2: #9a9aa0; --p-line: rgba(255, 255, 255, .08); --p-fill: rgba(255, 255, 255, .1); --p-solid: #1c1c1f; --p-ink: #f5f5f7; --p-green: #32d74b; }
+.ps4-notify .hk { font-size: 11px; color: var(--p-ink2); margin: 16px 0 2px; letter-spacing: .02em; }
+.ps4-notify .srow { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid var(--p-line); }
+.ps4-notify .ps3-dim { color: var(--p-ink2); }
+.ps4-notify .ps3-vsw { display: flex; background: var(--p-fill); border-radius: 9px; padding: 2px; height: 30px; align-items: center; }
+.ps4-notify .ps3-vsw button { padding: 4px 10px; border-radius: 7px; color: var(--p-ink2); font-size: 12.5px; font-weight: 500; border: 0; background: transparent; cursor: pointer; }
+.ps4-notify .ps3-vsw button[aria-selected='true'] { background: var(--p-solid); color: var(--p-ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .1); }
+.ps4-notify-f { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.ps4-tg { width: 34px; height: 20px; border-radius: 99px; background: var(--p-fill); position: relative; flex: none; border: 0; cursor: pointer; padding: 0; }
+.ps4-tg::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .2); transition: left .15s ease; }
+.ps4-tg.on { background: var(--p-green); }
+.ps4-tg.on::after { left: 16px; }
+.ps4-tg:disabled { opacity: .5; }
+
+/* ---- phone: tabs become a row of pills; the page drops its folder edge */
+@media (max-width: 760px) {
+  .ps4-tabs { height: auto; padding: 8px 16px 6px; overflow-x: auto; scrollbar-width: none; align-items: center; gap: 6px; }
+  .ps4-tabs::-webkit-scrollbar { display: none; }
+  .ps4-tabs .tscroll { overflow: visible; height: auto; align-items: center; gap: 6px; -webkit-mask: none !important; mask: none !important; flex: none; }
+  .ps4-tabs .ft { height: 32px !important; border-radius: 99px; padding: 0 13px; box-shadow: none; }
+  .ps4-tabs .ft.on { background: var(--pc); color: #fff; }
+  .ps4-tabs .ft.on .c { color: #fff; background: rgba(255, 255, 255, .25); }
+  .ps4-tabs .ft.ai.on { background: var(--p-ink); color: var(--p-bg); }
+  .ps4-tabs .ft.on::before, .ps4-tabs .ft.on::after, .ps4-tabs .nud, .ps4-tabs .sep, .ps4-tabs .lock { display: none; }
+  .ps4-page { margin: 0; border-radius: 0; box-shadow: none; }
+  .ps4-page .ps3-cmdrow { padding: 8px 16px; }
+  .ps4-sw { overflow-x: auto; }
+  .ps4-hero { flex-wrap: wrap; gap: 12px; padding: 14px 16px; }
+  .ps4-hero .mtl, .ps4-hero .hcal { display: none; }
+  .ps4-focus, .ps4-ai { padding: 8px 12px 0; }
+  .ps4-tree .colh { display: none; }
+  .ps4-tree .trow { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+  .ps4-tree .trow > span:nth-child(2), .ps4-tree .trow > span:nth-child(5), .ps4-tree .trow > span:nth-child(6) { display: none; }
+  .ps4-tree .trow > span:nth-child(4) { display: none; }
+  .ps4-tbody { flex-direction: column; }
+  .ps4-inspwrap { width: 100%; position: static; }
+  .ps4-aigrid .colh.ai { display: none; }
+  .ps4-ai .ai-row { grid-template-columns: 26px minmax(0, 1fr) auto; }
+  .ps4-ai .ai-row > :nth-child(3), .ps4-ai .ai-row > :nth-child(5), .ps4-ai .ai-row > :nth-child(6) { display: none; }
+  .ps4-aibar { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { .ps4-tabs .ft, .ps4-tg::after { transition: none; } }

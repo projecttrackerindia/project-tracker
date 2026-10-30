@@ -44,9 +44,9 @@ const sheetRows = [
   task(AA, 3, 'AA-06', 'Production cut-over and smoke tests', 'RM', '2026-11-06', '2026-11-14', 0, 0, { dependsOn: ['AA-05'], estimatedHours: 24 }),
   mtg(AA, 1, 'Review', '2026-10-30T05:30:00Z'),
   proj(CB, 'CB', 'Credit Bureau Integration', 'TO', '2026-10-09', '2026-11-24', 'At risk', 'AtRisk', 47, { atRisk: true }),
-  task(CB, 4, 'CB-01', 'UAT SSL certificate configuration', 'TO', '2026-10-09', '2026-10-13', 3, 100, { notes: 'Rotated in UAT and pre-prod' }),
-  task(CB, 5, 'CB-02', 'Consumer report and score parsing for v2 schema', 'AK', '2026-10-22', '2026-10-27', 1, 35, { dependsOn: ['CB-01'], atRisk: true, notes: 'Waiting on bureau field mapping sheet', checklistTotal: 7, checklistDone: 3 }),
-  task(CB, 6, 'CB-03', 'Bulk enquiry batch job with retry policy', 'JW', '2026-11-03', '2026-11-24', 1, 10, { dependsOn: ['CB-02'], checklistTotal: 9, checklistDone: 1, estimatedHours: 30 }),
+  task(CB, 4, 'CB-01', 'UAT SSL certificate configuration', 'TO', '2026-10-09', '2026-10-13', 3, 100, { notes: 'Rotated in UAT and pre-prod', stageId: g(851), stage: 'Report parsing' }),
+  task(CB, 5, 'CB-02', 'Consumer report and score parsing for v2 schema', 'AK', '2026-10-22', '2026-10-27', 1, 35, { dependsOn: ['CB-01'], atRisk: true, notes: 'Waiting on bureau field mapping sheet', checklistTotal: 7, checklistDone: 3, stageId: g(851), stage: 'Report parsing' }),
+  task(CB, 6, 'CB-03', 'Bulk enquiry batch job with retry policy', 'JW', '2026-11-03', '2026-11-24', 1, 10, { dependsOn: ['CB-02'], checklistTotal: 9, checklistDone: 1, estimatedHours: 30, stageId: g(852), stage: 'Batch & go-live' }),
   mtg(CB, 2, 'Sync', '2026-11-02T05:30:00Z'),
   proj(UP, 'UP', 'UPI AutoPay', 'MC', '2026-08-05', '2026-10-18', 'Late', 'Delayed', 45, { late: true }),
   task(UP, 7, 'UP-01', 'Mandate registration and revoke callbacks', 'MC', '2026-08-05', '2026-10-18', 1, 45, { late: true, notes: 'Bank simulator unstable; escalated to @Ravi', estimatedHours: 30 }),
@@ -58,7 +58,22 @@ const sheetRows = [
   task(PR, 10, 'PR-01', 'Checkout flow API contract and mocks', 'AK', '2026-10-27', '2026-11-07', 1, 20, { estimatedHours: 24 }),
   mtg(PR, 4, 'Design crit', '2026-11-03T08:30:00Z'),
 ];
-const sheet = () => ({ asOf: today, timeZone: 'Asia/Kolkata', rows: sheetRows, people, statuses, truncated: false, canEdit: true, meetings: true,
+// Action items from meetings (the review of all projects): two meetings, three new ones that need review.
+const ai = (n, key, title, k, due, pid, pname, state, meeting, occurrence, created, extra = {}) => ({ id: g(1000 + n), key, title, projectId: pid, projectName: pname, owner: { id: S[k][0], name: S[k][1] }, dueDate: due,
+  isOverdue: due < today && state !== 'done', daysOverdue: 0, state, statusLabel: state, sourceTitle: meeting, sourceOccurrence: occurrence, seriesRef: `meeting:${meeting}`, latestNote: null, lastUpdateAt: null,
+  noUpdateDays: 0, noUpdate: false, ownerLeft: false, canEdit: true, decision: null, createdAt: created, ...extra });
+const actionItems = [
+  ai(1, 'AA-11', 'Confirm re-consent copy with legal', 'LP', '2026-10-31', AA, 'Account Aggregator', 'in_progress', 'AA consent review', '2026-10-30T05:30:00Z', ago(20), { latestNote: 'Legal wants the expiry wording to match the FIU contract.' }),
+  ai(2, 'AA-12', 'Share expired-artefact samples with QA', 'RM', today, AA, 'Account Aggregator', 'done', 'AA consent review', '2026-10-30T05:30:00Z', ago(200)),
+  ai(3, 'AA-13', 'Ask FIU partner for prod key rotation date', 'TO', '2026-11-03', AA, 'Account Aggregator', 'open', 'AA consent review', '2026-10-30T05:30:00Z', ago(18)),
+  ai(4, 'CB-11', 'Send field mapping sheet to bureau', 'AK', '2026-10-28', CB, 'Credit Bureau Integration', 'open', 'Credit Bureau weekly sync', '2026-10-27T10:30:00Z', ago(300)),
+  ai(5, 'CB-12', 'Book load-test window with infra', 'TO', '2026-11-05', CB, 'Credit Bureau Integration', 'open', 'Credit Bureau weekly sync', '2026-10-27T10:30:00Z', ago(40)),
+];
+const review = () => ({ sessionId: g(1100), scope: 'all', seriesRef: null, title: 'All projects', cadence: '', occurrence: null, previousSession: null, nextSession: null, attendees: 0,
+  counts: { total: actionItems.length, reviewed: 0, done: 1, inProgress: 1, overdue: 1, blocked: 0, noUpdate: 0 }, items: actionItems, finished: false, sent: false, draft: [], projectId: null });
+const reminderSettings = { workDays: [1, 2, 3, 4, 5], workStart: '09:00', workEnd: '18:00', quietStart: '20:00', quietEnd: '08:00', defaultTime: '09:00', autoEnabled: true, dueLeads: [1], overdueSteps: [1],
+  dailyAutoLimit: 5, briefingEnabled: false, briefingTime: '08:30', digestTime: null, followDeviceTimeZone: true, muteNudges: false, timeZone: 'Asia/Kolkata' };
+const sheet = () => ({ asOf: today, timeZone: 'Asia/Kolkata', rows: sheetRows, people, statuses, truncated: false, canEdit: true, meetings: true, calendarFeed: true, calendarSyncedAt: ago(1),
   scopes: [{ id: 'all', label: 'Everything I can see', allowed: true, why: null, teamId: null }, { id: 'mine', label: 'My work', allowed: true, why: null, teamId: null }] });
 // The capacity plan for the people picker: booked vs capacity in the week of 2 Nov.
 const load = { RM: 120, LP: 85, JW: 60, TO: 40, MC: 95, AK: 70, AR: 30 };
@@ -130,6 +145,11 @@ async function context(theme, width) {
       });
       data = { projectId: b.projectId, projectKey: 'CB', projectName: 'Credit Bureau Integration', committed: !!b.commit, ready: rows.filter((r) => r.ready).length, problems: rows.filter((r) => !r.ready).length, saved: rows.filter((r) => r.saved).length, rows };
     } else if (ep === '/api/v1/saved-views' && method === 'POST') { const b = req.postDataJSON(); writes.push({ ep, b }); const v = { id: g(700 + views.length), scope: 'portfolio', name: b.name, sharing: 'private', teamId: null, teamName: null, ownerId: user.id, ownerName: 'Asha Rao', mine: true, config: b.config, createdAt: NOW.toISOString() }; views.push(v); data = v; }
+    else if (ep === '/api/v1/meet/review' && method === 'POST') data = review();
+    else if (/\/api\/v1\/meet\/review\/[^/]+\/decide$/.test(ep) && method === 'POST') { writes.push({ ep, b: req.postDataJSON() }); data = review(); }
+    else if (ep === '/api/v1/me/ui/plansheetnotify' && method === 'PUT') { writes.push({ ep, b: req.postDataJSON() }); data = { key: 'plansheetnotify', value: req.postDataJSON().value, updatedAt: NOW.toISOString() }; }
+    else if (ep === '/api/v1/reminders/settings' && method === 'PUT') { writes.push({ ep, b: req.postDataJSON() }); data = req.postDataJSON(); }
+    else if (/\/api\/v1\/projects\/[^/]+\/tasks$/.test(ep) && method === 'POST') { writes.push({ ep, b: req.postDataJSON() }); data = { id: g(990), key: 'CB-7', title: req.postDataJSON().title }; }
     else if (ep === '/api/v1/me/ui/plansheet' && method === 'PUT') { writes.push({ ep, b: req.postDataJSON() }); data = { key: 'plansheet', value: req.postDataJSON().value, updatedAt: NOW.toISOString() }; }
     else if (/\/api\/v1\/tasks\/[^/]+\/checklist\/[^/]+$/.test(ep) && method === 'PUT') { writes.push({ ep, b: req.postDataJSON() }); data = checklist; }
     else {
@@ -145,6 +165,8 @@ async function context(theme, width) {
       else if (/\/api\/v1\/work-items\/[^/]+\/history$/.test(ep)) data = history;
       else if (ep === '/api/v1/saved-views') data = views;
       else if (ep === '/api/v1/me/ui/plansheet') data = { key: 'plansheet', value: null, updatedAt: null };
+      else if (ep === '/api/v1/me/ui/plansheetnotify') data = { key: 'plansheetnotify', value: null, updatedAt: null };
+      else if (ep === '/api/v1/reminders/settings') data = reminderSettings;
       else if (ep === '/api/v1/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };
       else if (ep.endsWith('/ai/status')) data = { enabled: true, configured: true, entitled: true, allowedHere: true };
       else if (ep === '/api/v1/notifications/counts') data = { unread: 0, needsYou: 0, forInfo: 0, snoozed: 0 };
@@ -181,10 +203,10 @@ try {
 
   // 1. The grid: six proportional columns that fill the width, five project rows with ring and summary, meetings folded into the Task cell.
   assert.deepEqual(await grid.locator('thead th').allInnerTexts(), ['Task', 'Owner', 'Dates', 'Status', 'Progress', 'Notes']);
-  const widths = await page.evaluate(() => { const t = document.querySelector('.ps3-table'); return { table: t.getBoundingClientRect().width, frame: t.parentElement.getBoundingClientRect().width }; });
+  const widths = await page.evaluate(() => { const t = document.querySelector('.ps3-table'); const f = t.parentElement, cs = getComputedStyle(f); return { table: t.getBoundingClientRect().width, frame: f.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) }; });
   assert.ok(Math.abs(widths.table - widths.frame) < 2, `the grid fills its width (${JSON.stringify(widths)})`);
   assert.equal(await grid.locator('tr.g').count(), 5);
-  assert.match(await grid.locator('tr.g').first().innerText(), /Account Aggregator\s*3 · 58%[\s\S]*1 at risk[\s\S]*Ends 14 Nov/);
+  assert.match(await grid.locator('tr.g').first().innerText(), /Account Aggregator\s*3 tasks · 58%[\s\S]*1 at risk[\s\S]*Ends 14 Nov/);
   assert.match(await grid.locator('tr.g', { hasText: 'UPI AutoPay' }).innerText(), /1 late/);
   assert.equal(await grid.locator('tr[data-row]').count(), 10, 'meeting rows are folded into tasks, not rows');
   assert.match(await cellOf(page, 'AA-05', 'task').innerText(), /AA-05\s*Validate skip-consent flow for repeat lenders\s*↳ after AA-04\s*◆ Review · Fri 30 Oct/);
@@ -411,6 +433,127 @@ try {
   await page.getByRole('tablist', { name: 'Sheet layout' }).getByRole('tab', { name: 'Sheet' }).click();
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
   checks.push('split-timeline-dark');
+  assert.deepEqual(errors, []);
+
+  // ------------------------------------------------------------------ Plan sheet v4 (designs plansheet4–8)
+  // Full height to the window's bottom (the last rows scroll behind the Aura bar); one rounded tinted card per project, colours cycling.
+  const fit = await page.evaluate(() => { const r = document.querySelector('.ps3-scroll').getBoundingClientRect(); return { bottom: r.bottom, vh: window.innerHeight, pad: parseFloat(getComputedStyle(document.querySelector('.ps3-scroll')).paddingBottom) }; });
+  assert.ok(Math.abs(fit.bottom - fit.vh) <= 2 && fit.pad >= 80, `the sheet reaches the bottom and scrolls behind the Aura bar (${JSON.stringify(fit)})`);
+  assert.equal(await grid.locator('tbody.ps4-card').count(), 5);
+  assert.deepEqual(await grid.locator('tbody.ps4-card').evaluateAll((els) => els.map((e) => [...e.classList].find((c) => c.startsWith('pc-')))), ['pc-blue', 'pc-teal', 'pc-violet', 'pc-amber', 'pc-rose']);
+  assert.equal(await grid.locator('tbody.ps4-card tr.g td').first().evaluate((e) => getComputedStyle(e).borderTopLeftRadius), '16px');
+  // The tabs: Action items first (ink, its count), then the projects; ⌘2 opens the first project; the tab is in the address.
+  const strip = page.getByRole('tablist', { name: 'Plan sheet tabs' });
+  const tabNames = await strip.getByRole('tab').allInnerTexts();
+  assert.match(tabNames[0], /✓ Action items\s*4/);
+  assert.match(tabNames[1], /Account Aggregator\s*3/);
+  assert.equal(await page.getByRole('button', { name: 'More', exact: true }).count(), 0, 'no More dropdown');
+  // Calendar glyph and its hover card.
+  await cellOf(page, 'CB-02', 'dates').locator('.ps4-cal').hover();
+  const calCard = page.getByRole('dialog', { name: 'On calendar' });
+  await calCard.waitFor();
+  assert.match(await calCard.innerText(), /On calendar · Tue 27 Oct · Aisha Khan[\s\S]*Open in Calendar[\s\S]*Synced/);
+  await shot(page, '10-calendar-hover-light-1440.png');
+  await page.mouse.move(700, 120); await calCard.waitFor({ state: 'detached' });
+  // Right-click a tab: pin it, recolour it; the choice is saved with the account.
+  await strip.getByRole('tab', { name: /^UPI AutoPay/ }).click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: 'UPI AutoPay tab' });
+  await menu.waitFor();
+  assert.match(await menu.innerText(), /Pin tab[\s\S]*Rename[\s\S]*Colour[\s\S]*Hide tab[\s\S]*Filter to this colour/);
+  await shot(page, '11-tab-menu-light-1440.png');
+  n = writes.length; await menu.getByRole('menuitem', { name: /Pin tab/ }).click();
+  const pinW = await waitWrite((w) => w.ep === '/api/v1/me/ui/plansheet' && w.b.value?.tabs, n);
+  assert.deepEqual(pinW.b.value.tabs.pins, [UP]);
+  assert.match((await strip.getByRole('tab').allInnerTexts())[1], /📌\s*UPI AutoPay/);
+  // The colour filter: teal and blue leave two project cards.
+  const cf = page.getByRole('group', { name: 'Filter projects by colour' });
+  await cf.getByRole('button', { name: 'Teal' }).click(); await cf.getByRole('button', { name: 'Blue' }).click();
+  await page.waitForTimeout(200); assert.equal(new URL(page.url()).searchParams.get('pc'), 'teal,blue', page.url());
+  assert.equal(await grid.locator('tbody.ps4-card').count(), 2);
+  assert.equal(new URL(page.url()).searchParams.get('pc'), 'teal,blue');
+  await shot(page, '12-colour-filter-light-1440.png');
+  await cf.getByRole('button', { name: 'Clear the colour filter' }).click();
+  // The finder.
+  await strip.getByRole('button', { name: 'Find a project' }).click();
+  const finder = page.getByRole('dialog', { name: 'Find a project' });
+  await finder.getByRole('textbox', { name: 'Project name or key' }).fill('pay');
+  assert.match(await finder.innerText(), /Payments Revamp/);
+  await page.keyboard.press('Escape');
+  checks.push('v4-cards-tabs-pin-colour-finder-calendar');
+
+  // The focus view: a project's tab opens breadcrumb, hero (ring, mini timeline), the tree Phase › Task with curved lines; ‹ goes back.
+  await strip.getByRole('tab', { name: /^Credit Bureau Integration/ }).click();
+  await page.locator('.ps4-hero').waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('pt'), CB);
+  assert.match(await page.locator('.ps4-crumbs').innerText(), /Plan\s*›\s*Credit Bureau Integration/);
+  assert.match(await page.locator('.ps4-hero').innerText(), /47%[\s\S]*Credit Bureau Integration[\s\S]*9 Oct → 24 Nov/);
+  assert.ok(await page.locator('.ps4-hero .mtl .now').isVisible(), 'today on the mini timeline');
+  const tree = page.getByRole('treegrid', { name: 'Credit Bureau Integration tree' });
+  assert.deepEqual(await tree.locator('.trow.ph .tw b').allInnerTexts(), ['Report parsing', 'Batch & go-live']);
+  assert.ok(await tree.locator('.guide.e, .guide.l').count() >= 3, 'curved connector lines');
+  await tree.locator(`[data-row="${T['CB-02']}"] .tw b`).click();
+  assert.equal(await tree.locator('.guide.hf').count(), 1, 'the chosen branch is highlighted');
+  assert.match(await page.locator('.ps4-path').innerText(), /Credit Bureau Integration › Report parsing/);
+  await page.getByRole('complementary', { name: 'CB-02 details' }).waitFor();
+  await shot(page, '13-focus-tree-inspector-light-1440.png');
+  await tree.getByRole('button', { name: '＋ Add subtask' }).click();
+  await tree.getByRole('textbox', { name: 'New subtask title' }).fill('Map v2 fields to internal model');
+  n = writes.length; await tree.getByRole('textbox', { name: 'New subtask title' }).press('Enter');
+  const sub = await waitWrite((w) => /\/projects\/[^/]+\/tasks$/.test(w.ep), n);
+  assert.deepEqual([sub.b.title, sub.b.parentTaskId], ['Map v2 fields to internal model', T['CB-02']]);
+  // A date change from the tree: the toast says it as the others are told it, with Undo.
+  await tree.locator(`[data-row="${T['CB-03']}"] .ps3-num`).click();
+  const dp2 = page.getByRole('dialog', { name: 'Dates of CB-03' });
+  await dp2.waitFor();
+  await dp2.getByRole('button', { name: '20 Nov', exact: true }).click().catch(async () => { await dp2.getByRole('button', { name: 'Next month' }).click(); await dp2.getByRole('button', { name: '20 Nov', exact: true }).click(); });
+  n = writes.length; await dp2.getByRole('button', { name: 'Save', exact: true }).click();
+  await bulkAfter(n);
+  const t2 = page.locator('.ps3-toast', { hasText: 'You moved CB-03' });
+  await t2.waitFor();
+  assert.match(await t2.innerText(), /You moved CB-03 due 24 Nov → 20 Nov \(-4d\) · Credit Bureau Integration[\s\S]*Owner, watchers and lead told[\s\S]*Undo/);
+  // Notify settings: who is told, e-mail digest, quiet hours.
+  await page.getByRole('button', { name: '🔔 Notify' }).click();
+  const nd = page.getByRole('dialog', { name: 'Notify' });
+  await nd.waitFor();
+  assert.match(await nd.innerText(), /WHO GETS TOLD[\s\S]*Task owner[\s\S]*Watchers[\s\S]*Project lead[\s\S]*Whole team[\s\S]*CHANNELS[\s\S]*In-app[\s\S]*Email[\s\S]*QUIET HOURS[\s\S]*20:00 – 08:00/);
+  await nd.getByRole('switch', { name: 'Whole team' }).click();
+  await nd.getByRole('tab', { name: /Daily digest/ }).click();
+  await shot(page, '14-notify-settings-light-1440.png');
+  n = writes.length; await nd.getByRole('button', { name: 'Save' }).click();
+  const nw = await waitWrite((w) => w.ep === '/api/v1/me/ui/plansheetnotify', n);
+  assert.deepEqual(nw.b.value, { owner: true, watchers: true, lead: true, team: true, inApp: true, email: 'digest' });
+  assert.equal((await waitWrite((w) => w.ep === '/api/v1/reminders/settings', n)).b.digestTime, '09:00');
+  await page.locator('.ps4-crumbs').getByRole('button', { name: /Back to all projects/ }).click();
+  await grid.waitFor();
+  checks.push('v4-focus-tree-subtask-toast-notify');
+
+  // Action items: the first tab (⌘1), grouped by meeting, Needs review, and the review flow (A accepts).
+  await grid.focus(); await page.keyboard.press('Control+1');
+  await page.locator('.ps4-ai').waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('pt'), 'actions');
+  const aiText = await page.locator('.ps4-aigrid').innerText();
+  assert.match(aiText, /AA consent review[\s\S]*Confirm re-consent copy with legal\s*Needs review[\s\S]*Credit Bureau weekly sync[\s\S]*Send field mapping sheet to bureau/);
+  assert.equal(await page.locator('.ps4-aigrid .rv').count(), 3);
+  await shot(page, '15-action-items-by-meeting-light-1440.png');
+  await page.getByRole('button', { name: 'Review 3 new' }).click();
+  const rv = page.getByRole('dialog', { name: /^Review / });
+  await rv.waitFor();
+  assert.match(await rv.innerText(), /Needs review · 1 of 3[\s\S]*A\s*Accept[\s\S]*R\s*Reassign[\s\S]*S\s*Snooze[\s\S]*⌫\s*Discard/);
+  await shot(page, '16-action-items-review-light-1440.png');
+  n = writes.length; await page.keyboard.press('a');
+  const dec = await waitWrite((w) => /\/decide$/.test(w.ep), n);
+  assert.equal(dec.b.decision, 'carry');
+  await page.getByRole('tablist', { name: 'Group action items' }).getByRole('tab', { name: 'By owner' }).click();
+  assert.match(await page.locator('.ps4-aigrid').innerText(), /Tomás Ortega/);
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  await shot(page, '17-action-items-by-owner-dark-1440.png');
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+  checks.push('v4-action-items-review');
+  // The old Portfolio "Action items" link opens this tab.
+  await page.goto(`${origin}/preview-org/work/projects?actions=1`);
+  await page.waitForURL(/pt=actions/);
+  await page.locator('.ps4-ai').waitFor();
+  checks.push('v4-old-action-items-link');
   assert.deepEqual(errors, []);
 
   // ------------------------------------------------------------------ Timeline

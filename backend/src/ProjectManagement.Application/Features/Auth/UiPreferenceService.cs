@@ -12,7 +12,7 @@ public record UiPreferenceDto(string Key, JsonElement? Value, DateTime? UpdatedA
 /// <summary>A person's own app layout (the sidebar), saved with their account: the app reads it at start and writes it as they change it.</summary>
 public class UiPreferenceService(IAppDbContext db, ICurrentContext ctx, AppClock clock)
 {
-    public static readonly string[] Keys = ["sidebar", "operations", "pins", "mywork", "profile", "conversations", "plansheet"];
+    public static readonly string[] Keys = ["sidebar", "operations", "pins", "mywork", "profile", "conversations", "plansheet", "plansheetnotify"];
     public const int MaxLength = 8000;
     /// <summary>Keys that may hold more than <see cref="MaxLength"/>: Messages' pinned and hidden conversations (one id and time per hidden chat).</summary>
     private static int LimitFor(string key) => key == "conversations" ? 32000 : MaxLength;

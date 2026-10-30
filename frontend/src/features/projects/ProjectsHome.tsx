@@ -41,6 +41,8 @@ export function ProjectsHome() {
     const actions = params.get('actions') === '1';
     return <Navigate to={`/work/projects/${encodeURIComponent(picked)}${actions ? '?tab=work&kind=action' : ''}`} replace />;
   }
+  // The old Portfolio "Action items" link: they are the Plan sheet's first tab now.
+  if (!picked && params.get('actions') === '1') return <Navigate to="/work/projects?view=portfolio&mode=sheet&pt=actions" replace />;
   if (!portfolio) return <ProjectsView />;
   const place: Place = 'portfolio';
   const switcher = (

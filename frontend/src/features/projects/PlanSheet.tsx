@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ApiError, get, put } from '../../api/client';
 import { resourcesApi } from '../../api/endpoints';
@@ -23,12 +23,18 @@ import { DateEditor, NotesEditor, PeoplePicker, ProgressEditor, StatusPicker } f
 import { PasteModal } from './planSheetPaste';
 import { Inspector, type EditCol, type LinkedMeeting } from './planSheetInspector';
 import { ReasonModal } from './planSheetReason';
+import { ColourFilter, colourOf, COLOURS, TabStrip, useTabPrefs, type Colour, type TabId } from './planSheetTabs';
+import { FocusView } from './planSheetFocus';
+import { ActionItemsTab, needsReview, useActionReview } from './planSheetActions';
+import { CalendarDate } from './planSheetCalendar';
+import { NotifySheet } from './planSheetNotify';
 import './planSheet.css';
+import './planSheetTabs.css';
 
 type Layout = 'sheet' | 'split' | 'timeline';
 type ColId = 'task' | 'owner' | 'dates' | 'due' | 'status' | 'progress' | 'notes' | 'gantt';
 const COLS: Record<'sheet' | 'narrow' | 'split' | 'timeline', [ColId, string, number][]> = {
-  sheet: [['task', 'Task', 33], ['owner', 'Owner', 13], ['dates', 'Dates', 13], ['status', 'Status', 10], ['progress', 'Progress', 12], ['notes', 'Notes', 19]],
+  sheet: [['task', 'Task', 31], ['owner', 'Owner', 13], ['dates', 'Dates', 15], ['status', 'Status', 10], ['progress', 'Progress', 12], ['notes', 'Notes', 19]],
   narrow: [['task', 'Task', 46], ['owner', 'Owner', 20], ['due', 'Due', 15], ['status', 'Status', 19]],
   split: [['task', 'Task', 30], ['owner', 'Owner', 14], ['dates', 'Dates', 14], ['status', 'Status', 11], ['gantt', 'Timeline', 31]],
   timeline: [['task', 'Task', 30], ['gantt', 'Timeline', 70]],
@@ -38,7 +44,7 @@ const FILLABLE: ColId[] = ['owner', 'dates', 'due', 'status', 'progress'];
 const REASON_UNDO = 'Undone on the plan sheet';
 const EXPORT_COLUMNS = ['Key', 'Title', 'Owner', 'Start', 'Due', 'Status', 'Progress', 'Depends on', 'Notes'];
 
-interface EditEntry { id: number; label: string; at: number; count: number; inverse: SheetChange[] | null; move?: { id: string; projectId: string; afterId: string | null; beforeId: string | null } }
+interface EditEntry { id: number; label: string; at: number; count: number; inverse: SheetChange[] | null; move?: { id: string; projectId: string; afterId: string | null; beforeId: string | null }; projectId?: string | null }
 type Display = { type: 'g'; p: SheetRow; all: SheetRow[]; shown: number } | { type: 'r'; r: SheetRow; level: number };
 interface Prefs { defaultView?: string | null }
 
@@ -74,7 +80,16 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
   const [paste, setPaste] = useState<string[][] | null>(null);
   const [reasonAsk, setReasonAsk] = useState<{ changes: SheetChange[]; label: string; moves: { key: string; from: string; to: string; days: number | null }[] } | null>(null);
   const [edits, setEdits] = useState<EditEntry[]>([]);
-  const [toastAt, setToastAt] = useState<{ text: string; at: number; undo: boolean } | null>(null);
+  const [toastAt, setToastAt] = useState<{ text: ReactNode; at: number; undo: boolean; projectId?: string | null } | null>(null);
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const { prefs: tabPrefs, save: saveTabs } = useTabPrefs();
+  const review = useActionReview();
+  // The tab is kept in the address (?pt=actions or a project id) and the colour filter too (?pc=teal,blue).
+  const tab: TabId | null = params.get('pt');
+  const setTab = useCallback((t: TabId | null) => { const n = new URLSearchParams(params); if (t) n.set('pt', t); else n.delete('pt'); setParams(n); }, [params, setParams]);
+  const colours = useMemo(() => (params.get('pc') ?? '').split(',').filter((c): c is Colour => (COLOURS as readonly string[]).includes(c)), [params]);
+  const setColours = useCallback((c: Colour[]) => { const n = new URLSearchParams(params); if (c.length) n.set('pc', c.join(',')); else n.delete('pc'); setParams(n, { replace: true }); }, [params, setParams]);
+  useEffect(() => { const on = (e: Event) => setColours((e as CustomEvent<Colour[]>).detail); window.addEventListener('ps4-colour', on); return () => window.removeEventListener('ps4-colour', on); }, [setColours]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [warn, setWarn] = useState<string | null>(null);
   const views = useWsQuery(['saved-views', 'portfolio'], () => savedViewApi.list('portfolio'), { staleTime: 60_000, retry: false });
@@ -111,6 +126,7 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
     const on = active.length > 0;
     const pass = new Set(matching.map((r) => r.id));
     for (const p of projects) {
+      if (colours.length && !colours.includes(colourOf(tabPrefs, projects, p.id))) continue;
       const all = work.filter((r) => r.projectId === p.id);
       const shown = new Set(all.filter((r) => pass.has(r.id)).map((r) => r.id));
       for (const r of all) if (shown.has(r.id) && r.parentId) shown.add(r.parentId);
@@ -120,7 +136,7 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
       for (const r of all) if (!on || shown.has(r.id)) out.push({ type: 'r', r, level: r.kind === 'subtask' ? 1 : 0 });
     }
     return out;
-  }, [projects, work, matching, active.length, collapsed]);
+  }, [projects, work, matching, active.length, collapsed, colours, tabPrefs]);
 
   // ---- views
   const applyView = useCallback((v: SavedView) => {
@@ -171,10 +187,10 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
     if (c.notes !== undefined) inv.notes = r.notes ?? '';
     return inv;
   };
-  const pushEdit = (e: Omit<EditEntry, 'id' | 'at'>) => {
+  const pushEdit = (e: Omit<EditEntry, 'id' | 'at'>, text?: ReactNode) => {
     const at = Date.now();
     setEdits((list) => [{ ...e, id: at + Math.random(), at }, ...list].slice(0, 30));
-    setToastAt({ text: e.label, at, undo: true });
+    setToastAt({ text: text ?? e.label, at, undo: true, projectId: e.projectId });
   };
   const save = useCallback(async (changes: SheetChange[], label: string, opts: { reason?: string; dependency?: string; undo?: boolean } = {}) => {
     if (!data || changes.length === 0) return;
@@ -214,7 +230,15 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
       }
       if (res.changed) {
         if (opts.undo) setToastAt({ text: `Undone · ${label}`, at: Date.now(), undo: false });
-        else pushEdit({ label, count: res.changed, inverse: changes.filter((c) => ok.has(c.id)).map((c) => inverseOf(before.get(c.id)!, c)) });
+        else {
+          // One row's date, owner or status: say it as the others are told it ("You moved CB-02 due 28 Oct → 30 Oct (+2d) · Project").
+          const one = changes.length === 1 && ok.has(changes[0].id) ? before.get(changes[0].id) : undefined, c0 = changes[0];
+          const proj = one ? rows.find((x) => x.id === one.projectId)?.title : undefined;
+          const text = one && c0.dueDate && one.due && c0.dueDate !== one.due
+            ? <>You moved <b>{one.key}</b> due <span className="diff"><s>{dm(one.due)}</s> → <b>{dm(c0.dueDate)}</b>{' '}<b className="d">({dayNum(c0.dueDate) - dayNum(one.due) > 0 ? '+' : ''}{dayNum(c0.dueDate) - dayNum(one.due)}d)</b></span>{proj ? ` · ${proj}` : ''}<small>Owner, watchers and lead told</small></>
+            : one && (c0.assigneeId || c0.statusId) ? <>{label}{proj ? ` · ${proj}` : ''}<small>Owner, watchers and lead told</small></> : undefined;
+          pushEdit({ label, count: res.changed, inverse: changes.filter((c) => ok.has(c.id)).map((c) => inverseOf(before.get(c.id)!, c)), projectId: one?.projectId ?? null }, text);
+        }
       }
       await q.refetch();
       setOverrides(new Map());
@@ -312,6 +336,22 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
   const focusCell = useCallback((cell: string | null) => { if (liveKey && isLiveConnected()) hubInvoke('SheetFocus', liveKey, cell); }, [liveKey]);
   const others = Object.entries(viewers).map(([id, v]) => ({ id, ...v }));
 
+  // ⌘1–9: the tabs in order (Action items, the pinned projects, the rest).
+  const tabOrder = useMemo(() => {
+    const vis = projects.filter((p) => !tabPrefs.hidden.includes(p.id));
+    return ['actions', ...tabPrefs.pins.filter((id) => vis.some((p) => p.id === id)), ...vis.filter((p) => !tabPrefs.pins.includes(p.id)).map((p) => p.id)];
+  }, [projects, tabPrefs]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || !/^[1-9]$/.test(e.key) || editableTarget(e.target)) return;
+      const id = tabOrder[Number(e.key) - 1]; if (!id) return;
+      e.preventDefault(); setTab(id);
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [tabOrder, setTab]);
+  const counts = useMemo(() => { const m = new Map<string, number>(); for (const r of work) m.set(r.projectId, (m.get(r.projectId) ?? 0) + 1); return m; }, [work]);
+
   if (q.isLoading) return <PageLoader />;
   if (q.isError || !data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
 
@@ -320,6 +360,7 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
     { label: 'Export to Excel', icon: 'download', hint: active.length ? 'The rows the filter shows' : 'The whole sheet', onSelect: () => void exportAs('xlsx') },
     { label: 'Export as CSV', icon: 'download', onSelect: () => void exportAs('csv') },
     { label: 'Present', icon: 'present', onSelect: onPresent },
+    { label: 'Notify', icon: 'bell', hint: 'Who your changes tell, e-mail and quiet hours', onSelect: () => setNotifyOpen(true) },
     ...(activeView ? [{ label: prefs.data?.defaultView === activeView ? 'Stop opening this view first' : 'Open this view first', icon: 'star' as const, onSelect: () => void setDefault(prefs.data?.defaultView === activeView ? null : activeView) }] : []),
     ...extraMenu,
   ];
@@ -338,27 +379,50 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
       count={matching.length} total={work.length} filtering={active.length > 0} people={people} projects={projects} work={work} ctx={ctx} compact={phone}
       views={sheetViews} activeView={activeView} defaultView={prefs.data?.defaultView ?? null} onApplyView={applyView} onSaveView={(n) => void saveView(n)} />
   );
+  const focus = tab && tab !== 'actions' ? projects.find((p) => p.id === tab) ?? null : null;
+  const pageColour: Colour | 'ai' | 'none' = tab === 'actions' ? 'ai' : focus ? colourOf(tabPrefs, projects, focus.id) : 'none';
+  const colourOfProject = (id: string | null) => (id && projects.some((p) => p.id === id) ? colourOf(tabPrefs, projects, id) : null);
+  const reviewItems = review.data?.items ?? [];
+  const actionCount = review.data ? reviewItems.filter((i) => i.state !== 'done' && i.state !== 'cancelled').length : null;
+  const calendar = { feed: !!data.calendarFeed, syncedAt: data.calendarSyncedAt ?? null };
+  const swatch = <ColourFilter on={colours} set={setColours} />;
+  const focusWork = focus ? (active.length ? work.filter((r) => r.projectId === focus.id && (matching.some((m) => m.id === r.id) || matching.some((m) => m.parentId === r.id))) : work) : work;
+  const strip = <TabStrip projects={projects} counts={counts} actionCount={actionCount} active={tab} onPick={setTab} prefs={tabPrefs} save={saveTabs} compact={phone} />;
   return (
-    <div className={`ps3 ${phone ? 'ps3-phone' : ''}`}>
+    <div className={`ps3 ps4 ${phone ? 'ps3-phone' : ''}`}>
       {head}
-      {phone ? <>
+      {strip}
+      <div className={`ps4-page pc-${pageColour} ${tab ? 'tabbed' : ''} ${tab === tabOrder[0] ? 'first' : ''}`}>
+      {tab === 'actions' ? (
+        <ActionItemsTab review={review} colourOfProject={colourOfProject} colours={colours} text={text} people={people}
+          command={<><div className="ps3-cmd"><span className="ic" aria-hidden="true">⌕</span><input aria-label="Search action items" placeholder="Search action items" value={text} onChange={(e) => setText(e.target.value)} />
+            <span className="ps3-count">{reviewItems.length} items{reviewItems.some((i) => needsReview(i)) ? ` · ${reviewItems.filter((i) => needsReview(i)).length} to review` : ''}</span></div>{swatch}</>} />
+      ) : focus ? (
+        <FocusView key={focus.id} project={focus} data={data} rows={rows} work={focusWork} today={today} colour={colourOf(tabPrefs, projects, focus.id)} name={tabPrefs.names[focus.id] || focus.title}
+          statusesBy={statusesBy} meeting={meetings.byProject.get(focus.id) ?? null} save={save} refresh={() => q.refetch()} onBack={() => setTab(null)} onWarn={setWarn} calendar={calendar}
+          command={<>{command}<button type="button" className="ps3-qc" onClick={() => setNotifyOpen(true)} title="Who your changes tell">🔔 Notify</button></>} />
+      ) : phone ? <>
         <div className="ps3-cmdrow">{command}</div>
+        <div className="ps3-cmdrow">{swatch}</div>
         <PhoneCards display={display} data={data} rows={rows} today={today} statusesBy={statusesBy} save={save} />
       </> : <>
-        <div className="ps3-cmdrow">{command}
+        <div className="ps3-cmdrow">{command}{swatch}
           <div className="ps3-vsw" role="tablist" aria-label="Sheet layout">
             {(['sheet', 'split', 'timeline'] as Layout[]).map((l) => <button key={l} type="button" role="tab" aria-selected={layout === l} onClick={() => setLayout(l)}>{l === 'sheet' ? 'Sheet' : l === 'split' ? 'Split' : 'Timeline'}</button>)}
           </div>
         </div>
         <SheetGrid data={data} display={display} rows={rows} work={work} today={today} layout={layout} inspectId={inspect} setInspect={setInspect} collapsed={collapsed}
           toggle={(id) => setCollapsed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} statusesBy={statusesBy} meetings={meetings}
-          save={save} move={move} others={others} focusCell={focusCell} onWarn={setWarn} refresh={() => q.refetch()} />
+          save={save} move={move} others={others} focusCell={focusCell} onWarn={setWarn} refresh={() => q.refetch()}
+          colourOf={(id) => colourOf(tabPrefs, projects, id)} names={tabPrefs.names} onOpenProject={setTab} calendar={calendar} />
       </>}
+      </div>
       {toastAt && !historyOpen && (
         <div className="ps3-toast" role="status">
           <span>{toastAt.text}</span>
           {toastAt.undo && (() => { const n = edits.filter((e) => Date.now() - e.at < 60_000).length; return n > 1 ? <span className="m" style={{ cursor: 'default' }}>· {n} edits this minute</span> : null; })()}
           {toastAt.undo && <button type="button" className="b" onClick={undo}>Undo ⌘Z</button>}
+          {toastAt.projectId && tab !== toastAt.projectId && <button type="button" className="b" onClick={() => { const id = toastAt.projectId!; setToastAt(null); setTab(id); }}>View</button>}
           <button type="button" className="m" onClick={() => setHistoryOpen(true)}>History</button>
         </div>
       )}
@@ -371,6 +435,7 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
         </Floating>
       )}
       {warn && <div className="ps3-toast warn" role="alert">{warn}</div>}
+      {notifyOpen && <NotifySheet project={focus ? { title: tabPrefs.names[focus.id] || focus.title, colour: colourOf(tabPrefs, projects, focus.id) } : null} lead={focus?.owner ?? null} onClose={() => setNotifyOpen(false)} />}
       {reasonAsk && <ReasonModal moves={reasonAsk.moves} onClose={() => setReasonAsk(null)}
         onSave={(reason, dep) => { const a = reasonAsk; setReasonAsk(null); void save(a.changes, a.label, { reason, dependency: dep }); }} />}
       {paste && <PasteModal grid={paste} data={data} today={today} onClose={() => setPaste(null)}
@@ -380,6 +445,8 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
   );
 }
 
+/** The display cut into one run per project: its header and its rows (one rounded card each). */
+const segments = (display: Display[]) => { const out: Display[][] = []; for (const d of display) { if (d.type === 'g' || out.length === 0) out.push([d]); else out[out.length - 1].push(d); } return out; };
 const firstProject = (display: Display[]) => { for (const d of display) if (d.type === 'g') return d.p.id; return null; };
 
 // ---------------------------------------------------------------- the command field
@@ -468,11 +535,12 @@ function CommandField({ toks, setToks, text, setText, interpreted, count, total,
 
 // ---------------------------------------------------------------- the grid
 
-function SheetGrid({ data, display, rows, work, today, layout, inspectId, setInspect, collapsed, toggle, statusesBy, meetings, save, move, others, focusCell, onWarn, refresh }: {
+function SheetGrid({ data, display, rows, work, today, layout, inspectId, setInspect, collapsed, toggle, statusesBy, meetings, save, move, others, focusCell, onWarn, refresh, colourOf: colourFor, names, onOpenProject, calendar }: {
   data: PlanSheetData; display: Display[]; rows: SheetRow[]; work: SheetRow[]; today: string; layout: Layout; inspectId: string | null; setInspect: (id: string | null) => void;
   collapsed: Set<string>; toggle: (id: string) => void; statusesBy: Map<string, SheetStatus[]>; meetings: { byProject: Map<string, LinkedMeeting>; byTask: Map<string, LinkedMeeting> };
   save: (c: SheetChange[], label: string) => Promise<void>; move: (m: { id: string; projectId: string; afterId: string | null; beforeId: string | null }) => Promise<void>;
   others: { id: string; name: string; cell: string | null }[]; focusCell: (cell: string | null) => void; onWarn: (t: string | null) => void; refresh: () => Promise<unknown>;
+  colourOf: (projectId: string) => Colour; names: Record<string, string>; onOpenProject: (id: string) => void; calendar: { feed: boolean; syncedAt: string | null };
 }) {
   const inspected = inspectId ? rows.find((r) => r.id === inspectId) ?? null : null;
   const cols = COLS[inspected ? 'narrow' : layout];
@@ -489,8 +557,9 @@ function SheetGrid({ data, display, rows, work, today, layout, inspectId, setIns
     // The grid scrolls inside itself and the page never does: its height is what the window has left below it, less what the layout puts after it.
     const fit = () => {
       const el = wrap.current; if (!el) return;
-      const top = el.getBoundingClientRect().top + window.scrollY, after = Math.max(0, document.documentElement.scrollHeight - (top + el.offsetHeight));
-      setH(Math.max(360, window.innerHeight - top - after));
+      // Full height: down to the window's bottom edge; the last rows scroll behind the frosted Aura bar (the grid pads its end for it).
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setH(Math.max(360, window.innerHeight - top));
     };
     fit(); const t = window.setTimeout(fit, 120); window.addEventListener('resize', fit);
     return () => { window.clearTimeout(t); window.removeEventListener('resize', fit); };
@@ -656,7 +725,7 @@ function SheetGrid({ data, display, rows, work, today, layout, inspectId, setIns
       case 'owner': return <Owner id={r.ownerId} name={r.owner} />;
       case 'dates': {
         const s = slipDays(r, today);
-        return <span className="ps3-num">{r.start && <span className="ps3-dim">{dm(r.start)} → </span>}<span style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{dm(r.due) || <span className="ps3-dim">No date</span>}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}</span>;
+        return <span className="ps3-num">{r.start && <span className="ps3-dim">{dm(r.start)} → </span>}<span style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{r.due ? <CalendarDate r={r} calendar={calendar} late={k === 'late'} /> : <span className="ps3-dim">No date</span>}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}</span>;
       }
       case 'due': { const s = slipDays(r, today); return <><span className="ps3-num" style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{dm(r.due) || '—'}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}</>; }
       case 'status': return <Status r={r} />;
@@ -683,9 +752,9 @@ function SheetGrid({ data, display, rows, work, today, layout, inspectId, setIns
             <colgroup>{cols.map(([id, , w]) => <col key={id} style={{ width: `${w}%` }} />)}</colgroup>
             <thead><tr role="row">{cols.map(([id, label]) => <th key={id} role="columnheader">{id === 'gantt' && gantt
               ? <span className="ps3-gantt-h"><span>{dm(new Date(gantt.a * 86_400_000).toISOString().slice(0, 10))}</span><span>Today</span><span>{dm(new Date(gantt.b * 86_400_000).toISOString().slice(0, 10))}</span></span> : label}</th>)}</tr></thead>
-            <tbody>
-              {display.length === 0 && <tr><td colSpan={cols.length} className="ps3-empty">Nothing matches the filter.</td></tr>}
-              {display.map((d) => {
+            {display.length === 0 && <tbody><tr><td colSpan={cols.length} className="ps3-empty">Nothing matches the filter.</td></tr></tbody>}
+            {segments(display).map((seg, si) => <Fragment key={seg[0].type === 'g' ? seg[0].p.id : 'x'}>{si > 0 && <tbody className="ps4-gap" aria-hidden="true"><tr><td colSpan={cols.length} /></tr></tbody>}<tbody className={`ps4-card pc-${seg[0].type === 'g' ? colourFor(seg[0].p.id) : 'none'} ${seg.length === 1 ? 'col' : ''}`}>
+              {seg.map((d) => {
                 if (d.type === 'g') {
                   const p = d.p, open0 = d.all.filter(isOpen);
                   const late = open0.filter((x) => x.late).length, risk = open0.filter((x) => !x.late && x.atRisk).length;
@@ -698,7 +767,7 @@ function SheetGrid({ data, display, rows, work, today, layout, inspectId, setIns
                     <tr key={p.id} className="g" role="row" data-group={p.id} data-project={p.id} aria-level={1}>
                       <td colSpan={half}><div className="ps3-gt">
                         <button type="button" className="tw" aria-expanded={!collapsed.has(p.id)} aria-label={`${collapsed.has(p.id) ? 'Expand' : 'Collapse'} ${p.title}`} onClick={() => toggle(p.id)}>{collapsed.has(p.id) ? '▸' : '▾'}</button>
-                        <Ring pct={pct} color={tone} />{p.title}<span className="ps3-gm">{d.shown} · {pct}%</span></div></td>
+                        <Ring pct={pct} color={tone} /><button type="button" className="ps4-pname" title="Open the project’s tree" onClick={() => onOpenProject(p.id)}>{names[p.id] || p.title}</button><span className="ps3-gm">{d.shown} tasks · {pct}%</span></div></td>
                       <td colSpan={cols.length - half}><div className="ps3-gm" style={{ justifyContent: 'flex-end' }}>
                         <span style={{ color: tone }}>{summary}</span>{p.due && <span>Ends {dm(p.due)}</span>}
                         <span className="ps3-pres">{[...owners.entries()].map(([id, name]) => <Av key={id} id={id} name={name} size={18} />)}</span></div></td>
@@ -731,7 +800,8 @@ function SheetGrid({ data, display, rows, work, today, layout, inspectId, setIns
                   </tr>
                 );
               })}
-            </tbody>
+            </tbody></Fragment>)}
+            <tbody aria-hidden="true" className="ps4-tail"><tr><td colSpan={cols.length} /></tr></tbody>
           </table>
         </div>
       </div>
