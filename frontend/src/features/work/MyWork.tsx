@@ -175,8 +175,17 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
     week: openItems.filter((w) => bucket(w) === 'week'),
     later: openItems.filter((w) => bucket(w) === 'later'),
   };
-  const stack = openItems.filter((w) => !later.includes(w.id) || openItems.every((x) => later.includes(x.id)));
-  const front = stack[0] ?? null;
+  // Started from the card: it leaves the stack (it is open in its panel, and still in the lists) so the next one rises.
+  const [started, setStarted] = useState<string[]>([]);
+  const stack = openItems.filter((w) => !later.includes(w.id) || openItems.every((x) => later.includes(x.id))).filter((w, _, all) => !started.includes(w.id) || all.every((x) => started.includes(x.id)));
+  // ← / → and a swipe peek ahead in the stack ("1 of N"); the front card's actions apply to the card in front.
+  const [peek, setPeek] = useState(0);
+  const deckSize = Math.min(stack.length, 5);
+  const at = Math.min(peek, Math.max(0, deckSize - 1));
+  const deck = stack.slice(at);
+  const front = deck[0] ?? null;
+  const [fan, setFan] = useState(false);
+  const swipe = useRef<{ x: number; y: number } | null>(null);
   const overdue = openItems.filter((w) => w.isOverdue).length;
   const todayTotal = cols.today.length;
   const done = doneToday.length;
@@ -204,12 +213,16 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
     moveTo(w, 'Done').then(() => refreshWork(wid)).catch((e: unknown) => { setTicked((t) => { const n = { ...t }; delete n[w.id]; return n; }); toast(e instanceof Error ? e.message : 'Could not complete it.', 'error'); }); } };
   const start = (w: WorkRow) => {
     onOpen(w.id);
+    setStarted((s) => [...s, w.id]); setPeek(0);
     if (w.category === 'Todo') moveTo(w, 'Active').then(() => { refreshWork(wid); toast(`Started ${w.key}.`); }).catch((e: unknown) => toast(e instanceof Error ? e.message : 'Could not start it.', 'error'));
   };
   const moveLater = (id: string) => { laterStore.add(id); toast(`Moved to Later for a week. It comes back on its own.`, 'info'); };
 
   const fly: Transition = reduce ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 26 };
-  const POS = [{ y: 0, scale: 1, opacity: 1 }, { y: 17, scale: 0.955, opacity: 0.9 }, { y: 32, scale: 0.91, opacity: 0.7 }];
+  // The next one or two sit under the card, smaller and faded but readable; on hover they fan out.
+  const POS = fan
+    ? [{ y: 0, scale: 1, opacity: 1, rotate: 0 }, { y: 66, scale: 0.97, opacity: 0.92, rotate: 0.6 }, { y: 124, scale: 0.94, opacity: 0.8, rotate: -0.6 }]
+    : [{ y: 0, scale: 1, opacity: 1, rotate: 0 }, { y: 46, scale: 0.955, opacity: 0.78, rotate: 0 }, { y: 84, scale: 0.91, opacity: 0.55, rotate: 0 }];
   const loading = open.isLoading;
   const ringPct = todayTotal ? done / todayTotal : 0;
   const small = useIsSmallPhone();
@@ -249,9 +262,21 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
       <SavedViewsBar scope="mywork" current={{ sort, filter: filter === 'all' ? undefined : filter }}
         onApply={(c) => { setSort((['smart', 'due', 'priority'] as Sort[]).includes(c.sort as Sort) ? (c.sort as Sort) : 'smart'); setFilter(typeof c.filter === 'string' ? c.filter : 'all'); }} />
       {small ? <FocusNow w={front} onOpen={onOpen} /> : <div className="mw-top">
-        <section className="mw-stack" aria-label="Do this now">
+        <section className={`mw-stack ${fan ? 'fan' : ''}`} aria-label="Do this now" tabIndex={0} aria-roledescription="card stack"
+          onMouseEnter={() => setFan(true)} onMouseLeave={() => setFan(false)}
+          onKeyDown={(e) => {
+            if ((e.target as HTMLElement) !== e.currentTarget) return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); setPeek(Math.min(deckSize - 1, at + 1)); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); setPeek(Math.max(0, at - 1)); }
+          }}
+          onTouchStart={(e) => { const t = e.touches[0]; swipe.current = { x: t.clientX, y: t.clientY }; }}
+          onTouchEnd={(e) => {
+            const st = swipe.current; swipe.current = null; if (!st) return;
+            const t = e.changedTouches[0], dx = t.clientX - st.x;
+            if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(t.clientY - st.y)) setPeek(dx < 0 ? Math.min(deckSize - 1, at + 1) : Math.max(0, at - 1));
+          }}>
           <AnimatePresence initial={false}>
-            {stack.slice(0, 3).map((w, i) => {
+            {deck.slice(0, 3).map((w, i) => {
               const isFront = i === 0;
               const ticking = drawing === w.id;
               return (
@@ -261,6 +286,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
                   exit={{ y: -140, rotate: -4, opacity: 0, scale: 1.02, zIndex: 5, transition: reduce ? { duration: 0 } : { ...fly, opacity: { duration: 0.32 } } }}
                   transition={reduce ? { duration: 0 } : { ...spring.panel, delay: i * 0.04 }}
                   aria-hidden={isFront ? undefined : true}>
+                  {!isFront && <div className="mw-next"><span className="mw-next-l">Next</span><span className="mw-next-t">{w.title}</span>{w.dueDate && <span className="mw-next-d">· Due {dayText(w.dueDate)}</span>}</div>}
                   {isFront && (
                     <div className="mw-fc-in">
                       <div className="mw-lab"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor" /></svg>Do this now<PrChips pulls={prs.get(w.id)} compact /></div>
@@ -296,6 +322,14 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
             </div></div>
           )}
           {loading && <div className="mw-fc front mw-skel" aria-busy="true" aria-label="Loading work" />}
+          {deckSize > 1 && (
+            <div className="mw-dots" role="group" aria-label={`Card ${at + 1} of ${deckSize}`}>
+              <button type="button" aria-label="Previous card" disabled={at === 0} onClick={() => setPeek(at - 1)}>‹</button>
+              {Array.from({ length: deckSize }, (_, i) => <button key={i} type="button" className={i === at ? 'on' : ''} aria-label={`Card ${i + 1}`} aria-current={i === at} onClick={() => setPeek(i)} />)}
+              <span>{at + 1} of {deckSize}</span>
+              <button type="button" aria-label="Next card" disabled={at >= deckSize - 1} onClick={() => setPeek(at + 1)}>›</button>
+            </div>
+          )}
         </section>
 
         <div className="mw-side">

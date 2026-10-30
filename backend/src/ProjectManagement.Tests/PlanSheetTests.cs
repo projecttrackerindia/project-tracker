@@ -120,6 +120,30 @@ public class PlanSheetTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task A_date_or_owner_change_on_the_sheet_tells_the_owner_with_before_and_after()
+    {
+        var s = await SeedAsync();
+        var ravi = await s.C.AddMemberAsync(factory, TenantRole.Member, "Ravi Menon");
+        var key = S((await s.C.Get($"/api/v1/work-items/{s.B}")).Data!["key"]);
+        var res = await s.C.Post("/api/v1/portfolio/sheet/bulk", new
+        {
+            dueDateReason = "Bureau mapping sheet late",
+            changes = new object[] { new { id = s.B, version = await Version(s.C, s.B), dueDate = Iso(Today.AddDays(2)), assigneeId = ravi.UserId } },
+        });
+        Assert.True(res.Data!["rows"]![0]!["ok"]!.GetValue<bool>(), res.ToString());
+        var items = (await ravi.Get("/api/v1/notifications")).Data!["items"]!.AsArray();
+        var note = items.Single(n => n!["title"]!.GetValue<string>().Contains($"moved {key} due"))!;
+        Assert.Contains("Asha Rao", S(note["title"]));
+        Assert.EndsWith("· Card Vault", S(note["title"]));
+        Assert.Contains("Assignee: ", S(note["body"]));
+        Assert.Contains(" → ", S(note["body"]));
+
+        // Notify settings: who is told is the actor's choice (saved like any other layout).
+        Assert.True((await s.C.Put("/api/v1/me/ui/plansheetnotify", new { value = new { owner = false, watchers = false, lead = false, team = false, inApp = true, email = "digest" } })).Ok);
+        Assert.Equal("digest", S((await s.C.Get("/api/v1/me/ui/plansheetnotify")).Data!["value"]!["email"]));
+    }
+
+    [Fact]
     public async Task Progress_and_notes_are_edited_on_the_sheet_and_kept_with_the_task()
     {
         var s = await SeedAsync();

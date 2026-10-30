@@ -225,6 +225,16 @@ try {
     assert.match(await front.locator('.mw-meta').innerText(), /Due[\s\S]*Payments Core/);
     assert.equal(await front.locator('.mw-av .avatar').count(), 1);
     assert.equal(await stack.locator('.mw-fc.behind').count(), 2);
+    // The next two show under it, readable ("Next: … · Due …"); ← / → peek ahead with "1 of N"; hover fans the stack.
+    assert.match(await stack.locator('.mw-fc.behind .mw-next').first().innerText(), /^next\s*\S/i);
+    assert.match(await stack.locator('.mw-dots').innerText(), /1 of \d/);
+    const firstTitle = await front.locator('.mw-ti').innerText();
+    await stack.focus(); await page.keyboard.press('ArrowRight');
+    await stack.locator('.mw-dots', { hasText: /^[\s\S]*2 of \d/ }).waitFor();
+    await page.waitForTimeout(700); assert.notEqual(await stack.locator('.mw-fc.front .mw-ti').last().innerText(), firstTitle, 'peeking brings the next card to the front');
+    await stack.hover(); await page.waitForTimeout(400);
+    if (width >= 1200) await page.screenshot({ path: path.join(out, `mywork-stack-${tag}.png`) });
+    await page.keyboard.press('ArrowLeft'); await stack.locator('.mw-dots', { hasText: /1 of \d/ }).waitFor();
     await page.locator('.mw-ring .mw-n', { hasText: /^0 of \d+$/ }).waitFor();
     await page.locator('.mw-ai .mw-orb').waitFor();
     const list = page.getByRole('region', { name: 'Work list' });

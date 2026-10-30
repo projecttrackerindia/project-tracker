@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { SheetChange, SheetRow, SheetStatus } from './portfolioApi';
 import { addDays, dayNum, dm } from './planSheet';
 import { checklistPct, parseNatural, type Load, type StatusKey } from './planSheetQuery';
@@ -216,9 +216,11 @@ export function NotesEditor({ r, people, anchor, onSave, onClose }: { r: SheetRo
     if (!at) return;
     const before = v.slice(0, caret - at[2].length - 1), after = v.slice(caret);
     const text = `${before}@${p.name.split(' ')[0]} `;
-    setV(text + after); setCaret(text.length);
-    requestAnimationFrame(() => { ta.current?.focus(); ta.current?.setSelectionRange(text.length, text.length); });
+    setV(text + after); setCaret(text.length); pendingCaret.current = text.length;
   };
+  // Put the caret after the inserted name as soon as the new text is in (before the next keystroke can land elsewhere).
+  const pendingCaret = useRef<number | null>(null);
+  useLayoutEffect(() => { const at0 = pendingCaret.current; if (at0 == null) return; pendingCaret.current = null; ta.current?.focus(); ta.current?.setSelectionRange(at0, at0); }, [v]);
   return (
     <Floating anchor={anchor} onClose={onClose} width={340} label={`Notes of ${r.key}`} style={{ padding: '12px 14px' }}>
       <textarea ref={ta} autoFocus className="ps3-notes-in" aria-label="Note" value={v} maxLength={300} placeholder="Add a note… @ to mention, paste a link"

@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { AiCard } from '../../components/v2/AiCard';
 import { ErrorState, PageHead, PageLoader, Segmented } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
@@ -9,7 +9,6 @@ import { useAuth } from '../../stores/auth';
 import { aiWorkspaceApi } from '../ai/aiApi';
 import { useAi, useAssistant } from '../ai/Assistant';
 import { DotsMenu } from '../talk/DotsMenu';
-import { PortfolioActionItems } from './PortfolioActionItems';
 import { CapacityPlanView } from './CapacityPlan';
 import { CapacitySection, filterCount, MoneySection, PortfolioFilters } from './PortfolioBoard';
 import { BoardColumns, DecisionCard, PresentOverlay, isoWeek } from './PortfolioViews';
@@ -48,7 +47,6 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   const mode: Mode = v === 'timeline' ? 'timeline' : v === 'sheet' ? 'sheet' : v === 'capacity' ? 'capacity' : v === 'present' ? 'present' : 'board';
   const setMode = (m: Mode) => { const n = new URLSearchParams(params); n.set('view', 'portfolio'); if (m === 'board') n.delete('mode'); else n.set('mode', m); setParams(n, { replace: true }); };
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [itemsOpen, setItemsOpen] = useState(false);
   const [timelineRange, setTimelineRange] = useState<string | null>(null);
   const q = useWsQuery(['portfolio', 'board', filter], () => portfolioApi.board(filter), { refetchInterval: 120_000, staleTime: 60_000, placeholderData: (prev) => prev });
   const nFilters = filterCount(filter);
@@ -68,6 +66,11 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   const projectsN = b ? b.onTrack + b.atRisk + b.delayed + b.onHold : 0;
   const keysOf = (h: string) => (b?.ranked ?? []).filter((r) => r.health === h).slice(0, 2).map((r) => r.key).join(' · ');
   const eyebrow = mode === 'capacity' ? 'Next 6 weeks' : mode === 'timeline' && timelineRange ? timelineRange : `${b?.projects ?? projectsN} projects · Week ${isoWeek(asOf ? new Date(asOf) : new Date())}`;
+  // Action items live only as the Plan sheet's first tab: an old link (?mode=actions, ?actions=1) opens it there.
+  if (v === 'actions' || params.get('actions') === '1') {
+    const n = new URLSearchParams(params); n.set('view', 'portfolio'); n.set('mode', 'sheet'); n.set('pt', 'actions'); n.delete('actions');
+    return <Navigate to={`?${n}`} replace />;
+  }
   const tabs = (
     <Segmented<Mode> label="Portfolio view" value={mode} onChange={setMode}
       options={[{ id: 'board', label: 'Board' }, { id: 'timeline', label: 'Timeline' }, { id: 'sheet', label: 'Plan sheet' }, { id: 'capacity', label: 'Capacity' }, { id: 'present', label: 'Present' }]} />
@@ -76,12 +79,10 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   if (mode === 'sheet') return (
     <div className="pj2 pj2-portfolio pf pf-sheetmode">
       <PlanSheetView filter={filter} tabs={tabs} onPresent={() => setMode('present')} extraMenu={[
-        { label: 'Action items', icon: 'flag', hint: b?.openActionItems ? `${b.openActionItems} open across projects` : 'Follow-ups across projects', onSelect: () => setItemsOpen(true) },
         { label: 'Send me this', icon: 'send', hint: 'The brief, in the app and by e-mail', onSelect: () => void sendBrief() },
         { label: 'Risk review', icon: 'sparkle', hint: 'Ask Aura which projects will miss their dates', hidden: !ai,
           onSelect: () => useAssistant.getState().ask('Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.') },
       ]} />
-      {itemsOpen && <PortfolioActionItems onClose={() => setItemsOpen(false)} />}
     </div>
   );
   return (
@@ -97,7 +98,6 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
             { label: nFilters ? `Filters · ${nFilters}` : 'Filters', icon: 'search', hint: 'Owner, group, health and due dates', onSelect: () => setFiltersOpen((x) => !x) },
             { label: 'Export to Excel', icon: 'download', onSelect: () => void exportAs('xlsx') },
             { label: 'Export to PDF', icon: 'download', onSelect: () => void exportAs('pdf') },
-            { label: 'Action items', icon: 'flag', hint: b?.openActionItems ? `${b.openActionItems} open across projects` : 'Follow-ups across projects', onSelect: () => setItemsOpen(true) },
             { label: 'Send me this', icon: 'send', hint: 'The brief, in the app and by e-mail', onSelect: () => void sendBrief() },
             { label: 'Risk review', icon: 'sparkle', hint: 'Ask Aura which projects will miss their dates', hidden: !ai,
               onSelect: () => useAssistant.getState().ask('Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.') },
@@ -146,7 +146,6 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
           {mode === 'present' && <PresentOverlay items={items} filter={filter} brief={b} asOf={asOf ?? null} onClose={() => setMode('board')} />}
         </>
       )}
-      {itemsOpen && <PortfolioActionItems onClose={() => setItemsOpen(false)} />}
     </div>
   );
 }

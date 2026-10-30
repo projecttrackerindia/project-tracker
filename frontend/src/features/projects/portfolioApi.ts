@@ -42,10 +42,12 @@ export interface SheetRow {
   /** Additive (plan sheet v3): estimate for the workload bars, checklist counts for the smart fill, progress set by hand. */
   estimatedHours?: number | null; checklistTotal?: number | null; checklistDone?: number | null; manualProgress?: boolean;
   /** Days the due date has moved from the first one it had. */ slipDays?: number | null;
+  /** The phase (project stage) a task sits in: the first level of the focus view's tree. */ stageId?: string | null; stage?: string | null;
 }
 export interface SheetStatus { id: string; projectId: string; name: string; category: string }
 export interface SheetScope { id: 'all' | 'mine' | 'managed' | 'team'; label: string; allowed: boolean; why: string | null; teamId: string | null }
-export interface PlanSheet { asOf: string; timeZone: string; rows: SheetRow[]; people: PortfolioChoice[]; statuses: SheetStatus[]; scopes: SheetScope[]; truncated: boolean; canEdit: boolean; meetings: boolean }
+export interface PlanSheet { asOf: string; timeZone: string; rows: SheetRow[]; people: PortfolioChoice[]; statuses: SheetStatus[]; scopes: SheetScope[]; truncated: boolean; canEdit: boolean; meetings: boolean;
+  /** The viewer has a calendar feed (dated tasks reach their own calendar), and when it last read it. */ calendarFeed?: boolean; calendarSyncedAt?: string | null }
 export interface SheetChange { id: string; version?: number; assigneeId?: string; unassign?: boolean; startDate?: string; clearStart?: boolean; dueDate?: string; dueTime?: string; clearDueTime?: boolean; statusId?: string; title?: string;
   progress?: number; clearProgress?: boolean; notes?: string }
 export interface SheetMove { id: string; projectId?: string; afterId?: string | null; beforeId?: string | null; version?: number }

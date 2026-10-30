@@ -608,6 +608,15 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
 
     private static string WebNet(string s) => WebUtility.HtmlEncode(s);
 
+    /// <summary>A Plan sheet change notice ("Due: 28 Oct → 30 Oct (+2d)" per line): its email shows each line as a before → after row.</summary>
+    public static IReadOnlyList<(string Label, string Value)>? ChangeDetails(Notification n)
+    {
+        if (n.DedupeKey?.StartsWith(ProjectManagement.Application.Features.Projects.PlanSheetService.ChangeDedupePrefix, StringComparison.Ordinal) != true || string.IsNullOrEmpty(n.Body)) return null;
+        var rows = n.Body.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(l => l.IndexOf(": ", StringComparison.Ordinal) is var i and > 0 ? (l[..i], l[(i + 2)..]) : ("Change", l)).ToList();
+        return rows.Count == 0 ? null : rows;
+    }
+
     public async Task<int> SendPendingAsync(int batch = 50, CancellationToken ct = default)
     {
         var chatCutoff = clock.Now.AddMinutes(-ChatEmailDelayMinutes);
@@ -684,7 +693,8 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
                 await email.SendAsync(new EmailMessage(user.Email, workspace is null ? n.Title : $"{n.Title} · {workspace}",
                     EmailTemplates.Wrap(n.Title, WebNet($"Hi {user.DisplayName},"), body, n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? "Done, snooze or open" : "Open in the app", link,
                         "You get this email because of your notification settings. Change them under Notification Center → Preferences.", body.Length > 90 ? body[..90] : body, headers is null ? null : links!.PageUrl(links.Token(n.UserId, n.Type)),
-                        n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? EmailKind.Reminder : n.Type == NotificationType.Subscription ? EmailKind.Billing : EmailKind.Update),
+                        n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? EmailKind.Reminder : n.Type == NotificationType.Subscription ? EmailKind.Billing : EmailKind.Update,
+                        ChangeDetails(n)),
                     $"{n.Title}\n{body}\n{link}", Headers: headers), ct).WaitAsync(EmailSenderExtensions.DefaultSendTimeout, ct);
                 n.EmailPending = false;
                 n.EmailedAt = clock.Now;

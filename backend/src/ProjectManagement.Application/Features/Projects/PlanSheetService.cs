@@ -24,12 +24,14 @@ namespace ProjectManagement.Application.Features.Projects;
 public record PlanSheetRowDto(string Kind, Guid Id, Guid ProjectId, Guid? ParentId, int Level, string Key, string Title, Guid? OwnerId, string? Owner,
     DateOnly? Start, DateOnly? Due, string? DueTime, int? DurationDays, string Status, string Category, Guid? StatusId, int? Progress, IReadOnlyList<string> DependsOn,
     string? Cadence, DateTime? NextAt, DateTime? UpdatedAt, string? UpdatedBy, string? Notes, bool Late, bool AtRisk, int Version, bool CanEdit, DateOnly? Forecast = null,
-    decimal? EstimatedHours = null, int? ChecklistTotal = null, int? ChecklistDone = null, bool ManualProgress = false, int? SlipDays = null);
+    decimal? EstimatedHours = null, int? ChecklistTotal = null, int? ChecklistDone = null, bool ManualProgress = false, int? SlipDays = null,
+    Guid? StageId = null, string? Stage = null);
 public record PlanSheetStatusDto(Guid Id, Guid ProjectId, string Name, string Category);
 /// <summary>A "Viewing" choice. Only what exists today is allowed (everything I can see, my work, one team of the team lens); team-scoped views come later.</summary>
 public record PlanSheetScopeDto(string Id, string Label, bool Allowed, string? Why = null, Guid? TeamId = null);
 public record PlanSheetDto(DateOnly AsOf, string TimeZone, IReadOnlyList<PlanSheetRowDto> Rows, IReadOnlyList<PortfolioChoiceDto> People, IReadOnlyList<PlanSheetStatusDto> Statuses,
-    IReadOnlyList<PlanSheetScopeDto> Scopes, bool Truncated, bool CanEdit, bool Meetings);
+    IReadOnlyList<PlanSheetScopeDto> Scopes, bool Truncated, bool CanEdit, bool Meetings,
+    bool CalendarFeed = false, DateTime? CalendarSyncedAt = null);
 
 /// <summary>One row's change. Send only what changes; <see cref="Version"/> is the version the sheet last read (a newer one is a conflict for that row only).</summary>
 public record PlanSheetChange(Guid Id, int? Version = null, Guid? AssigneeId = null, bool Unassign = false, DateOnly? StartDate = null, bool ClearStart = false,
@@ -64,7 +66,7 @@ public record PlanSheetPasteResultDto(Guid ProjectId, string ProjectKey, string 
 /// workflow, the due-date reason rule and version checks apply exactly as when the row is edited on its own. What fails is reported per row.
 /// </summary>
 public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock clock, AiPortfolio portfolio, ProjectAccess access, WorkItemApiService work,
-    ProjectService projects, Recorder recorder, PermissionService permissions)
+    ProjectService projects, Recorder recorder, PermissionService permissions, ProjectManagement.Application.Features.Notifications.NotificationService notifications)
 {
     public const int MaxRows = 5000, MaxBulk = 500, MaxPaste = 500;
 
@@ -91,7 +93,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         var tasks = ids.Count == 0 ? [] : await access.VisibleTasks().AsNoTracking().Where(t => ids.Contains(t.ProjectId))
             .OrderBy(t => t.ProjectId).ThenBy(t => t.Position).ThenBy(t => t.Number)
             .Select(t => new { t.Id, t.ProjectId, t.ParentTaskId, t.Number, t.Title, t.AssigneeId, t.StartDate, t.DueDate, t.DueTime, t.StatusId, StatusName = t.Status!.Name,
-                Cat = t.Status.Category, t.Version, t.UpdatedAt, t.UpdatedBy, t.CreatedAt, t.CreatedBy, t.Description, t.EstimatedHours, t.ManualProgress })
+                Cat = t.Status.Category, t.Version, t.UpdatedAt, t.UpdatedBy, t.CreatedAt, t.CreatedBy, t.Description, t.EstimatedHours, t.ManualProgress, t.StageId })
             .Take(MaxRows + 1).ToListAsync(ct);
         var truncated = tasks.Count > MaxRows || brief.Truncated;
         tasks = tasks.Take(MaxRows).ToList();
@@ -134,6 +136,10 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         foreach (var missing in await db.Users.AsNoTracking().Where(u => nameIds.Contains(u.Id)).Select(u => new { u.Id, u.DisplayName }).ToListAsync(ct)) names[missing.Id] = missing.DisplayName;
         string? Name(Guid? id) => id is { } x ? names.GetValueOrDefault(x) : null;
 
+        // Phases (project stages): the first level of a project's tree in the focus view.
+        var stageIds = tasks.Where(t => t.StageId != null).Select(t => t.StageId!.Value).Distinct().ToList();
+        var stageNames = stageIds.Count == 0 ? new Dictionary<Guid, string>()
+            : await db.ProjectStages.AsNoTracking().Where(s => stageIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
         var byParent = tasks.Where(t => t.ParentTaskId != null).GroupBy(t => t.ParentTaskId!.Value).ToDictionary(g => g.Key, g => g.ToList());
         var rows = new List<PlanSheetRowDto>();
         foreach (var r in ranked)
@@ -165,7 +171,8 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                         t.StartDate, t.DueDate, t.DueTime?.ToString("HH:mm", CultureInfo.InvariantCulture), PlanSheetMath.Duration(t.StartDate, t.DueDate), t.StatusName, t.Cat.ToString(), t.StatusId, progress,
                         depsBy.GetValueOrDefault(t.Id) ?? [], null, null, t.UpdatedAt ?? t.CreatedAt, Name(t.UpdatedBy ?? t.CreatedBy), PlanSheetMath.FirstLine(t.Description), late, risk, t.Version, canEdit, null,
                         t.EstimatedHours, check?.Total, check?.Done, t.ManualProgress is not null && t.Cat != StatusCategory.Done,
-                        t.DueDate is { } due && originalDue.TryGetValue(t.Id, out var first) && due > first ? due.DayNumber - first.DayNumber : null));
+                        t.DueDate is { } due && originalDue.TryGetValue(t.Id, out var first) && due > first ? due.DayNumber - first.DayNumber : null,
+                        t.StageId, t.StageId is { } sg ? stageNames.GetValueOrDefault(sg) : null));
                 }
                 foreach (var s in subs) AddTask(s.Id, level + 1);
             }
@@ -185,7 +192,9 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
             new("managed", "Teams I manage", false, "Comes with the organisation tree"),
         };
         foreach (var t in await access.LensTeamsAsync(ct)) scopes.Add(new PlanSheetScopeDto("team", t.Name, true, null, t.Id));
-        return new PlanSheetDto(today, clock.ZoneId, rows, people, statuses, scopes, truncated, canEdit, meetings.Count > 0);
+        // Dated tasks are on the app's calendar; with a calendar feed they are also in the person's own calendar (synced when it last read the feed).
+        var feed = await db.CalendarFeeds.AsNoTracking().Where(f => f.UserId == me).OrderByDescending(f => f.LastUsedAt).Select(f => new { f.LastUsedAt }).FirstOrDefaultAsync(ct);
+        return new PlanSheetDto(today, clock.ZoneId, rows, people, statuses, scopes, truncated, canEdit, meetings.Count > 0, feed is not null, feed?.LastUsedAt);
     }
 
     // ---------------------------------------------------------------- bulk edit
@@ -229,6 +238,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                 else if (items.TryGetValue(c.Id, out var item) && item is TaskItem)
                 {
                     var version = c.Version ?? item.Version;
+                    var since = clock.Now;
                     var progressOnly = c.Progress is not null || c.ClearProgress;
                     if (progressOnly && c.Progress is { } pv && (pv < 0 || pv > 100)) throw new ValidationException("progress", "Progress is between 0 and 100.");
                     var body = Body(c with { Version = version }, item.Version, reason, dependency, item.Description, allowEmpty: progressOnly);
@@ -255,6 +265,8 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                     }
                     recorder.Audit("plansheet.row_updated", "WorkItem", c.Id, newValue: new { c.AssigneeId, c.Unassign, c.StartDate, c.DueDate, c.DueTime, c.StatusId, c.Progress, c.ClearProgress, Notes = c.Notes is not null, Reason = c.DueDate is null ? null : reason });
                     await db.SaveChangesAsync(ct);
+                    if (c.AssigneeId is not null || c.Unassign || c.StartDate is not null || c.ClearStart || c.DueDate is not null || c.StatusId is not null)
+                        await TellChangeAsync((TaskItem)item, key, since, ct);
                     results.Add(new(c.Id, key, true, Version: version));
                 }
                 else throw new NotFoundException("Not found, or you cannot see it.");
@@ -270,6 +282,88 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         }
         return new PlanSheetBulkResultDto(changed, results.Count(r => !r.Ok), results);
     }
+
+    // ---------------------------------------------------------------- change notifications
+
+    /// <summary>Who the person's own changes on the sheet tell (Notify settings, saved as the "plansheetnotify" layout). Channels, digest and quiet hours
+    /// are each recipient's own notification settings (the router applies them); the email choice here is kept for the sheet.</summary>
+    public record NotifySettings(bool Owner = true, bool Watchers = true, bool Lead = true, bool Team = false, bool InApp = true, string Email = "instant");
+
+    public async Task<NotifySettings> NotifySettingsAsync(Guid userId, CancellationToken ct = default)
+    {
+        var raw = await db.UserUiPreferences.AsNoTracking().Where(p => p.UserId == userId && p.Key == "plansheetnotify").Select(p => p.Value).FirstOrDefaultAsync(ct);
+        if (raw is null) return new NotifySettings();
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var r = doc.RootElement;
+            bool B(string name, bool fallback) => r.TryGetProperty(name, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : fallback;
+            return new NotifySettings(B("owner", true), B("watchers", true), B("lead", true), B("team", false), B("inApp", true),
+                r.TryGetProperty("email", out var e) && e.ValueKind == JsonValueKind.String && e.GetString() == "digest" ? "digest" : "instant");
+        }
+        catch (JsonException) { return new NotifySettings(); }
+    }
+
+    /// <summary>
+    /// A task's due or start date, assignee, status or project changed on the sheet: tell its owner, its watchers (the person who raised it) and the
+    /// project lead, as the actor chose in Notify, with one line ("Asha moved CB-02 due 28 Oct → 30 Oct (+2d) · Credit Bureau") and the before → after
+    /// lines. The task's own update has already told its assignee and reporter that it changed: those notices become this one instead of a second.
+    /// </summary>
+    private async Task TellChangeAsync(TaskItem before, string? key, DateTime since, CancellationToken ct, Guid? fromProject = null)
+    {
+        var uid = ctx.RequireUserId();
+        var after = await db.Tasks.AsNoTracking().Where(t => t.Id == before.Id)
+            .Select(t => new { t.ProjectId, t.AssigneeId, t.ReporterId, t.StartDate, t.DueDate, t.StatusId, t.Number }).FirstOrDefaultAsync(ct);
+        if (after is null) return;
+        var userIds = new[] { before.AssigneeId, after.AssigneeId, uid }.Where(x => x != null).Select(x => x!.Value).Distinct().ToList();
+        var names = await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var statusIds = new[] { before.StatusId, after.StatusId }.Distinct().ToList();
+        var statusNames = await db.WorkflowStatuses.AsNoTracking().Where(s => statusIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        var projectIds = new[] { before.ProjectId, after.ProjectId, fromProject ?? after.ProjectId }.Distinct().ToList();
+        var projectsBy = await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => new { p.Name, p.Key, p.OwnerId }, ct);
+        if (!projectsBy.TryGetValue(after.ProjectId, out var project)) return;
+        key ??= $"{project.Key}-{after.Number}";
+        static string D(DateOnly? d) => d?.ToString("d MMM", CultureInfo.InvariantCulture) ?? "no date";
+        string P(Guid? id) => id is { } x ? names.GetValueOrDefault(x) ?? "someone" : "nobody";
+
+        var diff = new List<(string Label, string Verb, string Before, string After, string Extra)>();
+        if (before.DueDate != after.DueDate)
+            diff.Add(("Due", "moved", D(before.DueDate), D(after.DueDate),
+                before.DueDate is { } b && after.DueDate is { } a ? $" ({(a.DayNumber - b.DayNumber >= 0 ? "+" : "")}{a.DayNumber - b.DayNumber}d)" : ""));
+        if (before.StartDate != after.StartDate) diff.Add(("Start", "moved", D(before.StartDate), D(after.StartDate), ""));
+        if (before.AssigneeId != after.AssigneeId) diff.Add(("Assignee", "reassigned", P(before.AssigneeId), P(after.AssigneeId), ""));
+        if (before.StatusId != after.StatusId && statusNames.GetValueOrDefault(before.StatusId) != statusNames.GetValueOrDefault(after.StatusId)) diff.Add(("Status", "set", statusNames.GetValueOrDefault(before.StatusId) ?? "—", statusNames.GetValueOrDefault(after.StatusId) ?? "—", ""));
+        var oldProject = fromProject ?? before.ProjectId;
+        if (oldProject != after.ProjectId && projectsBy.TryGetValue(oldProject, out var was)) diff.Add(("Project", "moved", was.Name, project.Name, ""));
+        if (diff.Count == 0) return;
+
+        var prefs = await NotifySettingsAsync(uid, ct);
+        var who = new HashSet<Guid>();
+        if (prefs.Owner && after.AssigneeId is { } owner) who.Add(owner);
+        if (prefs.Owner && before.AssigneeId is { } previous) who.Add(previous);
+        if (prefs.Watchers)
+        {
+            // Watchers: who raised it, and anyone with an active "tell me when…" watch on it.
+            who.Add(after.ReporterId);
+            foreach (var watcher in await db.AiWatches.AsNoTracking().Where(aw => aw.TargetId == before.Id && aw.State == "active").Select(aw => aw.UserId).Distinct().Take(100).ToListAsync(ct)) who.Add(watcher);
+        }
+        if (prefs.Lead) who.Add(project.OwnerId);
+        if (prefs.Team) foreach (var member in await db.ProjectMembers.AsNoTracking().Where(pm => pm.ProjectId == after.ProjectId).Select(pm => pm.UserId).Take(200).ToListAsync(ct)) who.Add(member);
+        who.Remove(uid);
+
+        var f = diff[0];
+        var title = $"{P(uid)} {f.Verb} {key} {f.Label.ToLowerInvariant()} {f.Before} → {f.After}{f.Extra} · {project.Name}";
+        var body = string.Join("\n", diff.Select(d => $"{d.Label}: {d.Before} → {d.After}{d.Extra}"));
+        var link = $"/projects/{after.ProjectId}?task={before.Id}";
+        var dedupe = $"{ChangeDedupePrefix}{before.Id:N}:{since.Ticks}";
+        var earlier = await db.Notifications.Where(n => n.Link == link && n.CreatedAt >= since && n.Type == NotificationType.TaskUpdated && n.UserId != uid).ToListAsync(ct);
+        foreach (var note in earlier) { note.Title = ProjectManagement.Application.Common.Text.Truncate(title, 200)!; note.Body = ProjectManagement.Application.Common.Text.Truncate(body, 500); note.DedupeKey = dedupe; who.Remove(note.UserId); }
+        if (prefs.InApp) foreach (var u in who) await notifications.AddAsync(u, NotificationType.TaskUpdated, title, body, link, dedupe, ct: ct);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Marks a sheet change notice: its email lists the before → after lines as a table.</summary>
+    public const string ChangeDedupePrefix = "plansheet-change:";
 
     private static JsonElement? Body(PlanSheetChange c, int currentVersion, string? reason, string? dependency, string? description = null, bool allowEmpty = false)
     {
@@ -319,6 +413,9 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         var target = req.ProjectId ?? task.ProjectId;
         var moved = target != task.ProjectId;
         var oldKey = $"{source.Key}-{task.Number}";
+        var snapshot = new TaskItem { Id = task.Id, ProjectId = task.ProjectId, AssigneeId = task.AssigneeId, ReporterId = task.ReporterId, StatusId = task.StatusId,
+            StartDate = task.StartDate, DueDate = task.DueDate, Number = task.Number };
+        var since = clock.Now;
         var dest = source;
         if (moved)
         {
@@ -353,6 +450,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         if (moved) recorder.Activity("task.moved", "Task", task.Id, $"Moved {oldKey} to {dest.Name} as {key}", target, oldKey, key);
         recorder.Audit("plansheet.row_moved", "WorkItem", task.Id, new { fromProject = source.Id, oldKey }, new { to = target, key, task.Position });
         await db.SaveChangesAsync(ct);
+        if (moved) await TellChangeAsync(snapshot, key, since, ct);
         return new PlanSheetMoveResultDto(task.Id, key, target, task.Version, task.Position, moved);
     }
 
