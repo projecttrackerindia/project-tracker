@@ -252,6 +252,7 @@ html .talk-thread .msg .bubble.files-only { background: transparent !important; 
 .talk-thread .composer { padding: 8px 16px 14px; border-top: 0; background: var(--talk-bg); }
 .talk-composer .composer-row { position: relative; align-items: flex-end; gap: 6px; padding: 0; border-radius: 0; box-shadow: none; }
 .talk-composer .composer-row::before { content: ''; position: absolute; top: 0; bottom: 0; left: 40px; right: 0; border-radius: 18px; box-shadow: inset 0 0 0 1px var(--talk-line2); background: var(--talk-bg); pointer-events: none; transition: box-shadow .2s ease; }
+.talk-composer.is-editing .composer-row::before { left: 0; }
 .talk-composer .composer-row:focus-within::before { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--talk-sel) 70%, transparent), 0 0 0 3px color-mix(in srgb, var(--talk-sel) 18%, transparent); }
 html .talk-composer .composer-pill, html .talk-composer .composer-pill:focus-within { position: relative; z-index: 1; flex: 1; min-width: 0; padding: 0; gap: 6px; align-items: flex-end; background: transparent; border: 0; box-shadow: none; }
 html .talk-composer .composer-pill .pill-btn { width: 30px; height: 30px; min-height: 30px; margin: 3px 0; border-radius: 50%; background: transparent; color: var(--talk-t2); }
@@ -396,3 +397,4 @@ html .talk-composer .send-btn svg { width: 16px; height: 16px; stroke-width: 2.4
 @media (min-width: 1100px) { body:has(.talk-shell) .v2-tb-new { background: #007aff; } body:has(.talk-shell) .v2-tb-new:hover { background: #0062cc; } }
 html[data-theme='dark'] body:has(.talk-shell) .v2-tb-new { background: #0a84ff; }
 .talk-thread .talk-head .status-on, .talk-thread .talk-head .status-away { color: var(--talk-t3); font-weight: 400; }
+

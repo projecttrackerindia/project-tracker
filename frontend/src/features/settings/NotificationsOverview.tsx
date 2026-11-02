@@ -96,9 +96,9 @@ export function NotificationsOverview({ more }: { more: { id: string; label: str
         <SRow icon={<STile color="#ff9500">⌂</STile>} title="Home inbox" sub="Collect everything in Today › Needs you">
           <SSwitch on={all('inApp')} label="Home inbox" disabled={!rows.length} onChange={(v) => setChannel('inApp', v)} />
         </SRow>
-        <SRow icon={<STile color="#28cd41">▯</STile>} title="Push to phone"
-          sub={devices ? `${devices} device${devices === 1 ? '' : 's'} · ${user?.displayName ?? ''}` : 'Set up push on your phone in This device'}>
-          <SSwitch on={all('browser')} label="Push to phone" disabled={!rows.length} onChange={(v) => setChannel('browser', v)} />
+        <SRow icon={<STile color="#28cd41">▯</STile>} title="Desktop & phone push"
+          sub={devices ? `${devices} device${devices === 1 ? '' : 's'} · ${user?.displayName ?? ''}` : 'Set up notifications on this computer or phone in This device'}>
+          <SSwitch on={all('browser')} label="Desktop & phone push" disabled={!rows.length} onChange={(v) => setChannel('browser', v)} />
         </SRow>
         <SRow icon={<STile color="#30b0c7">✉</STile>} title="Email digest" sub={user?.email}>
           {s?.digestTime && (
@@ -149,3 +149,4 @@ export function NotificationsOverview({ more }: { more: { id: string; label: str
     </div>
   );
 }
+

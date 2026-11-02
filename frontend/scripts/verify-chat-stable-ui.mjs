@@ -8,7 +8,7 @@ import { appCsp } from './lib/csp.mjs';
 // previews loaded; a new message left no badge on Messages). Checks, on a 390x844 iPhone (light and dark) and at 1440:
 //  - opening a chat lands on the newest message at once; while slow pictures (1.2s) and file previews load the composer never moves,
 //    the view stays pinned to the bottom, and layout shift inside the thread stays <= 0.02 (PerformanceObserver 'layout-shift');
-//  - scrolled up, a new message does not move what is on screen and shows a "1 new" jump pill; day labels stick; pictures open full screen
+//  - scrolled up, a new message does not move what is on screen and shows a "1 new" jump pill; time separators do not overlay bubbles; pictures open full screen
 //    and step with the arrow keys; Find in conversation finds a message;
 //  - a message arriving over the (mocked) live connection puts a badge on Messages in the tab bar / sidebar and "(1)" in the title with no
 //    reload, a muted chat only lights a grey dot, and opening the chat (or reading it on another device) clears it.
@@ -219,7 +219,7 @@ const phoneRun = async (theme) => {
   assert.equal(await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth), true, `${tag}: no sideways scroll`);
   await page.screenshot({ path: path.join(out, `${tag}-thread.png`) });
 
-  // ---- scrolled up: a new message does not move the view, a "1 new" pill appears; the day label sticks
+  // ---- scrolled up: a new message does not move the view, a "1 new" pill appears; time separators stay in flow
   await page.evaluate(() => { const l = document.querySelector('.talk-thread .chat-messages'); l.scrollTop = l.scrollHeight - l.clientHeight - 900; l.dispatchEvent(new Event('scroll')); });
   await page.waitForTimeout(300);
   const before = await page.evaluate(() => { const l = document.querySelector('.talk-thread .chat-messages'); const row = [...l.querySelectorAll('[data-msg]')].find((r) => r.getBoundingClientRect().top > l.getBoundingClientRect().top + 40); return { id: row.dataset.msg, top: Math.round(row.getBoundingClientRect().top) }; });
@@ -228,8 +228,8 @@ const phoneRun = async (theme) => {
   await pill.filter({ hasText: '1 new' }).waitFor({ timeout: 4000 });
   const still = await page.evaluate((id) => Math.round(document.querySelector(`[data-msg="${id}"]`).getBoundingClientRect().top), before.id);
   assert.ok(Math.abs(still - before.top) <= 1, `${tag}: what I was reading did not move (${before.top} -> ${still})`);
-  const stuck = await page.evaluate(() => { const l = document.querySelector(".talk-thread .chat-messages").getBoundingClientRect().top; const ds = [...document.querySelectorAll(".day-sep.sticky")].map((d) => Math.round(d.getBoundingClientRect().top - l)); return ds.some((t) => t >= 0 && t <= 20); });   // 12px list padding + 6px
-  assert.ok(stuck, `${tag}: a day label sticks to the top`);
+  const inFlow = await page.locator('.talk-thread .day-sep').evaluateAll((els) => els.length > 0 && els.every((el) => getComputedStyle(el).position === 'static'));
+  assert.ok(inFlow, `${tag}: time separators scroll with their messages without covering another bubble`);
   await page.screenshot({ path: path.join(out, `${tag}-pill.png`) });
   await pill.click();
   await page.waitForFunction(() => { const l = document.querySelector('.talk-thread .chat-messages'); return l.scrollHeight - l.scrollTop - l.clientHeight < 4; }, null, { timeout: 3000 });
@@ -285,3 +285,4 @@ try {
 } finally { await browser.close(); }
 assert.deepEqual(errors, [], errors.join('\n'));
 console.log(`chat stable + live badges ok -> ${out}`);
+

@@ -41,14 +41,12 @@ import { AuraWatcher } from '../components/aura/AuraWatcher';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
-const REMINDER_TYPES = new Set(['Reminder', 'Nudge', 'DueSoon', 'Overdue']);
-
 // ------------------------------------------------------------------ desktop notifications
 /**
  * Shows a system notification (and plays the alert sound) for new items the user opted into (Settings › Notifications › Delivery) while
  * the app is open - also when they are in another tab, window or app. Looks every 15 seconds, and straight away when the live connection
  * says someone else changed something or a mention arrived. When push is on for this device, the push already brings the notification
- * (and the page plays the sound when it arrives), so this only covers devices without push.
+ * (and the page plays the sound when it arrives), so a short grace period avoids duplicates; missing delivery still gets a page fallback.
  * Nothing is shown for older items on first run, and nothing works until the browser permission has been granted.
  */
 function DesktopNotifier() {
@@ -71,12 +69,15 @@ function DesktopNotifier() {
         const times = page.items.map((n) => Date.parse(n.createdAt));
         const last = read() || openedAt;
         const newest = Math.max(last, ...times, 0);
-        const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type) && !isRingNotice(x) && !isViewing(x.link) && firstTime(`dn-${x.id}`, 120_000)).reverse();
+        const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !isRingNotice(x) && !isViewing(x.link) && firstTime(`dn-${x.id}`, 120_000)).reverse();
         for (const n of fresh) {
           const kind = kindForType(n.type);
           announce(n);
           if (isMuted() || getAlertPrefs().dnd) continue;   // muted here: it waits in the Notification Centre
-          if (!pushCoversThisDevice()) void systemNotification(n.title, n.body, n.id, n.link ?? '/', { sticky: kind === 'urgent' });
+          void systemNotification(n.title, n.body, n.id, n.link ?? '/', {
+            sticky: kind === 'urgent', waitForPush: pushCoversThisDevice(),
+            shouldShow: () => !stopped && !isMuted() && !getAlertPrefs().dnd && !isViewing(n.link),
+          });
         }
         write(newest);
       } catch { /* offline or signed out: try again next time */ }
@@ -195,3 +196,4 @@ function ShortcutNew() {
   }, [params, setParams]);
   return null;
 }
+

@@ -1,6 +1,6 @@
 /* Project Tracker service worker: the app shell for offline start, push notifications, and opening them.
  * Data from the API is never cached here - it belongs to whoever is signed in. */
-const SHELL = 'pm-shell-v9';
+const SHELL = 'pm-shell-v10';
 
 /** The page and the scripts and styles it names, so the app can start without a connection. */
 async function cacheShell() {
@@ -124,18 +124,27 @@ self.addEventListener('push', (event) => {
       return self.registration.showNotification(data.title || 'Incoming call', {
         body: data.body || '', tag: `call-${call}`, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
         data: { link: data.link || '/', call }, requireInteraction: true, renotify: true, silent: played,
-        vibrate: [500, 250, 500, 250, 500, 250, 500],
+        ...(played ? {} : { vibrate: [500, 250, 500, 250, 500, 250, 500] }),
         actions: [{ action: 'answer', title: 'Answer' }, { action: 'decline', title: 'Decline' }],
       });
     }
-    return self.registration.showNotification(data.title || 'Project Tracker', {
+    const delivered = () => {
+      for (const page of pages) page.postMessage({ type: 'pm-push-delivered', tag: data.tag || '' });
+    };
+    // A foreground fallback may already have displayed this exact notice while the worker was delayed.
+    if (data.tag && self.registration.getNotifications) {
+      const existing = await self.registration.getNotifications({ tag: data.tag });
+      if (existing.length) { delivered(); return; }
+    }
+    await self.registration.showNotification(data.title || 'Project Tracker', {
       body: data.body || '', tag: data.tag || undefined, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
       data: { link: data.link || '/', token: data.token || null },
       // Urgent ones stay on screen until dismissed; a repeated tag pops up again instead of updating quietly.
       requireInteraction: urgent || signIn, silent: played && !signIn, renotify: !!data.tag,
-      vibrate: signIn ? [200, 80, 200, 80, 400] : urgent ? [300, 100, 300, 100, 300] : [120, 60, 120],
+      ...((played && !signIn) ? {} : { vibrate: signIn ? [200, 80, 200, 80, 400] : urgent ? [300, 100, 300, 100, 300] : [120, 60, 120] }),
       actions: reminder ? [{ action: 'done', title: '✓ Done' }, { action: 'snooze', title: 'Snooze 1 hour' }] : [],
     });
+    delivered();
   }));
 });
 
@@ -175,3 +184,4 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'pm-badge') event.waitUntil(setBadge(event.data.count));
   if (event.data && event.data.type === 'pm-read') event.waitUntil(closeRead(event.data.tags, event.data.links));
 });
+
