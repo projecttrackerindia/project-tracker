@@ -1,6 +1,6 @@
 // Current phone bar and Aura Create sheet replace the retired capsule/FAB.
 import assert from 'node:assert/strict';
-import { go, start } from './support.mjs';
+import { go, start, waitFor } from './support.mjs';
 const s = await start('demo@example.com', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 try {
   await go(s);
@@ -11,7 +11,7 @@ try {
   assert.equal(await s.page.locator('.v2-side').count(), 0);
   await bar.getByRole('link', { name: /Projects/ }).click();
   await s.page.waitForURL(/\/work\/projects/);
-  assert.equal(await bar.getByRole('link', { name: /Projects/ }).getAttribute('aria-current'), 'page');
+  await waitFor(async () => await bar.getByRole('link', { name: /Projects/ }).getAttribute('aria-current') === 'page', 'Projects becomes the current phone destination');
   await bar.getByRole('button', { name: /More/ }).click();
   const more = s.page.getByRole('dialog'); await more.waitFor();
   await more.getByRole('button', { name: /Library/ }).waitFor();

@@ -1,13 +1,13 @@
 // Current signed-in shell and main places, against the seeded disposable API.
 import assert from 'node:assert/strict';
-import { go, start } from './support.mjs';
+import { go, start, waitFor } from './support.mjs';
 const s = await start();
 try {
   await go(s);
   await s.page.getByRole('region', { name: 'Your day', exact: true }).waitFor();
   assert.equal(await s.page.getByRole('tab', { name: 'For me', exact: true }).getAttribute('aria-selected'), 'true');
   await s.page.getByRole('tab', { name: 'My team', exact: true }).click();
-  assert.equal(await s.page.getByRole('tab', { name: 'My team', exact: true }).getAttribute('aria-selected'), 'true');
+  await waitFor(async () => await s.page.getByRole('tab', { name: 'My team', exact: true }).getAttribute('aria-selected') === 'true', 'My team becomes selected');
   await s.page.getByRole('tab', { name: 'For me', exact: true }).click();
   for (const path of ['/work', '/work/projects', '/work/projects?view=portfolio', '/insights', '/people', '/people/teams', '/settings/profile', '/library', '/meetings']) {
     await go(s, path);

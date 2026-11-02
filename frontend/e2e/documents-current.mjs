@@ -19,7 +19,7 @@ async function core(s) {
   const projects = await s.api('/projects?pageSize=100');
   assert.ok(projects.items.length, 'A seeded project exists');
   await modal.locator('.ss-trigger').first().click();
-  await s.page.getByRole('option', { name: new RegExp(projects.items[0].key) }).first().click();
+  await s.page.getByRole('listbox', { name: 'Project', exact: true }).getByRole('option', { name: new RegExp(projects.items[0].key) }).click();
   await modal.getByRole('button', { name: /^Next/ }).click();
   const content = modal.locator('.rte-content').first();
   await content.click(); await s.page.keyboard.insertText('Employees must see their payslip online.');
