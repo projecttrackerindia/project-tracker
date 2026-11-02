@@ -15,6 +15,8 @@ export function mutationFamilies(method: string, path: string): string[] {
 }
 export function mutationCommitted(method: string, path: string, workspaceId: string | null) {
   const families = mutationFamilies(method, path);
-  if (workspaceId && families.length && typeof window !== 'undefined')
-    window.dispatchEvent(new CustomEvent<MutationCommitted>(MUTATION_COMMITTED, { detail: { workspaceId, families } }));
+  if (workspaceId && families.length && typeof window !== 'undefined') {
+    try { window.dispatchEvent(new CustomEvent<MutationCommitted>(MUTATION_COMMITTED, { detail: { workspaceId, families } })); }
+    catch { /* A cache listener must never turn a committed save into an apparent failed request. */ }
+  }
 }

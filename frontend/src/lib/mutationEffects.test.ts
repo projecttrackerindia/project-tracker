@@ -11,6 +11,10 @@ describe('successful mutation refresh routing', () => {
     for (const [method, path] of [['GET', '/tasks'], ['POST', '/time/words'], ['POST', '/auth/refresh'], ['POST', '/ai/ask']])
       expect(mutationFamilies(method, path)).toEqual([]);
   });
+  it('does not fail a saved request when a cache listener throws', () => {
+    vi.stubGlobal('window', { dispatchEvent: () => { throw new Error('listener failure'); } });
+    expect(() => mutationCommitted('DELETE', '/tasks/id', 'workspace')).not.toThrow();
+  });
   it('preserves the initiating workspace and skips anonymous changes', () => {
     const dispatchEvent = vi.fn();
     vi.stubGlobal('window', { dispatchEvent });

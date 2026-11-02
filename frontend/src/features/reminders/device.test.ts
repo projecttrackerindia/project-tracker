@@ -16,7 +16,7 @@ it('keeps fallback notifications until the server acknowledges an existing brows
   const device = await import('./device');
   expect(await device.deviceAlerts()).toBe('on');
   expect(device.pushCoversThisDevice()).toBe(false);
-  vi.mocked(pushApi.subscribe).mockResolvedValue(undefined);
+  vi.mocked(pushApi.subscribe).mockResolvedValue({ publicKey: 'public', devices: 1 });
   await device.enableDeviceAlerts();
   expect(pushApi.subscribe).toHaveBeenCalledWith(sub.toJSON());
   expect(device.pushCoversThisDevice()).toBe(true);
