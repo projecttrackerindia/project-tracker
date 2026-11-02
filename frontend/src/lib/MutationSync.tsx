@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { queryClient, useWorkspaceId } from '../stores/auth';
 import { MUTATION_COMMITTED, type MutationCommitted } from './mutationEffects';
+import { refreshMutationFamilies } from './queryRefresh';
 
 /** Coalesce successful writes, refresh mounted views, and leave unopened views stale until navigation. */
 export function MutationSync() {
@@ -16,7 +17,7 @@ export function MutationSync() {
       if (timer !== undefined) return;
       timer = setTimeout(() => {
         const families = new Set(pending); pending.clear(); timer = undefined;
-        void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === wid && families.has(String(q.queryKey[1])), refetchType: 'active' });
+        void refreshMutationFamilies(queryClient, wid, families);
       }, 50);
     };
     window.addEventListener(MUTATION_COMMITTED, onCommit);
