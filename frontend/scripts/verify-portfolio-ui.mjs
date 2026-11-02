@@ -162,7 +162,7 @@ try{
  // Round 3 timeline: one bar per project, the slip to the forecast hatched with +Nd, a labelled today line (details: verify-plan-sheet-ui.mjs).
  await tl.locator('.ptl-bar').first().waitFor();
  assert.equal(await tl.locator('.ptl-bar').count(),2);
- assert.equal(await tl.locator('.ptl-slip').count(),1);
+ assert.equal(await tl.locator('.ptl-slip').count(),2,'both late forecasts are shown even when one health label is manually OnTrack');
  assert.equal(await tl.locator('.ptl-todayline').count(),1);
  await shot(page,'timeline-1440.png');
  checks.push('timeline');
