@@ -5,6 +5,10 @@ describe('successful mutation refresh routing', () => {
   it('refreshes task lists, project details and calendars after writes', () => {
     expect(mutationFamilies('DELETE', '/tasks/id')).toEqual(expect.arrayContaining(['tasks', 'project', 'timeline', 'work']));
     expect(mutationFamilies('PATCH', '/work-tasks/id')).toContain('work-items');
+    expect(mutationFamilies('POST', '/tasks/id/time')).toEqual(expect.arrayContaining(['time', 'timesheet', 'portfolio']));
+    expect(mutationFamilies('POST', '/work-tasks/id/time')).toContain('time');
+    expect(mutationFamilies('DELETE', '/tasks/id')).toContain('timesheet');
+    expect(mutationFamilies('POST', '/time/grid')).toContain('portfolio');
     expect(mutationFamilies('POST', '/time/grid')).toEqual(expect.arrayContaining(['time', 'timesheet', 'timeline']));
   });
   it('does not turn reads, previews or auth into refresh loops', () => {
