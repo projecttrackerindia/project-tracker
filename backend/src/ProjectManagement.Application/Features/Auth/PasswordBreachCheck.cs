@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using ProjectManagement.Application.Common;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -20,12 +21,18 @@ public class PasswordBreachOptions
 /// nothing. The match is made here. When the service cannot be reached the answer is "not known to be breached": choosing a password is never
 /// blocked by someone else's outage.
 /// </summary>
+public record PasswordBreachResult(int? Count, string Status, DateTime? CheckedAt);
+
 public class PasswordBreachCheck(IHttpClientFactory http, IOptions<PasswordBreachOptions> options, ILogger<PasswordBreachCheck> log)
 {
     /// <summary>How many times it was seen in breaches (0 when not found, or when the check could not run).</summary>
-    public async Task<int> TimesSeenAsync(string password, CancellationToken ct = default)
+    // Authentication policy retains its availability behavior; callers presenting results must use CheckAsync.
+    public async Task<int> TimesSeenAsync(string password, CancellationToken ct = default) => (await CheckAsync(password, ct)).Count ?? 0;
+
+    public async Task<PasswordBreachResult> CheckAsync(string password, CancellationToken ct = default)
     {
-        if (!options.Value.Enabled || string.IsNullOrEmpty(password)) return 0;
+        if (!options.Value.Enabled) return new(null, "disabled", null);
+        if (string.IsNullOrEmpty(password)) return new(null, "not_checked", null);
         var hash = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(password)));
         var (prefix, suffix) = (hash[..5], hash[5..]);
         try
@@ -35,15 +42,16 @@ public class PasswordBreachCheck(IHttpClientFactory http, IOptions<PasswordBreac
             using var req = new HttpRequestMessage(HttpMethod.Get, options.Value.RangeUrl.TrimEnd('/') + "/" + prefix);
             req.Headers.TryAddWithoutValidation("Add-Padding", "true");
             req.Headers.TryAddWithoutValidation("User-Agent", "ProjectTracker-password-check");
-            using var res = await http.CreateClient("pwned-passwords").SendAsync(req, timeout.Token);
-            if (!res.IsSuccessStatusCode) { log.LogInformation("Password breach check unavailable ({Status})", (int)res.StatusCode); return 0; }
-            var body = await res.Content.ReadAsStringAsync(timeout.Token);
-            return Count(body, suffix);
+            using var res = await http.CreateClient("pwned-passwords").SendAsync(req, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+            if (!res.IsSuccessStatusCode) { log.LogInformation("Password breach check unavailable ({Status})", (int)res.StatusCode); return new(null, "unavailable", null); }
+            var body = await BoundedHttpContent.ReadUtf8Async(res.Content, 2_000_000, timeout.Token);
+            if (string.IsNullOrWhiteSpace(body)) return new(null, "unavailable", null);
+            return new(Count(body, suffix), "checked", DateTime.UtcNow);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or OperationCanceledException && !ct.IsCancellationRequested)
         {
             log.LogInformation("Password breach check unavailable ({Reason})", e.GetType().Name);
-            return 0;
+            return new(null, "unavailable", null);
         }
     }
 
@@ -61,9 +69,9 @@ public class PasswordBreachCheck(IHttpClientFactory http, IOptions<PasswordBreac
             using var req = new HttpRequestMessage(HttpMethod.Get, options.Value.RangeUrl.TrimEnd('/') + "/" + prefix);
             req.Headers.TryAddWithoutValidation("Add-Padding", "true");
             req.Headers.TryAddWithoutValidation("User-Agent", "ProjectTracker-password-check");
-            using var res = await http.CreateClient("pwned-passwords").SendAsync(req, timeout.Token);
+            using var res = await http.CreateClient("pwned-passwords").SendAsync(req, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             if (!res.IsSuccessStatusCode) return "";
-            var body = await res.Content.ReadAsStringAsync(timeout.Token);
+            var body = await BoundedHttpContent.ReadUtf8Async(res.Content, 2_000_000, timeout.Token);
             return body.Length > 2_000_000 ? "" : body;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or OperationCanceledException && !ct.IsCancellationRequested)

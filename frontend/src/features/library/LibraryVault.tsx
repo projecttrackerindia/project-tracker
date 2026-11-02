@@ -192,8 +192,8 @@ function VaultTab() {
     const total = o.health.total + s.length;
     const healthy = Math.round((o.health.score / 100) * o.health.total) + s.filter((x) => x.health.length === 0).length;
     return { total, weak: o.health.weak + c('weak'), reused: o.health.reused + c('reused'), breached: o.health.breached + c('breached'), expired: o.health.expired + c('expired'), old: o.health.old + c('old'),
-      toRotate: o.health.toRotate + c('rotate'), score: total === 0 ? 100 : Math.round((100 * healthy) / total) };
-  }, [o.health, sealedRows]);
+      unchecked: (o.health.unchecked ?? 0) + sealedRows.filter((r) => r.s.payload?.fields.some((f) => f.key === 'password' && f.value) && !breached.has(r.s.row.id)).length, toRotate: o.health.toRotate + c('rotate'), score: total === 0 ? 100 : Math.round((100 * healthy) / total) };
+  }, [o.health, sealedRows, breached]);
   const reusedN = health2.reused, breachedN = health2.breached;
   const insight = reusedN > 0 ? { text: `${reusedN} item${reusedN === 1 ? ' uses' : 's use'} a password that is used elsewhere in the vault.`, act: () => go({ view: null, show: null, health: 'reused', item: null, c: null }) } : null;
 
@@ -269,8 +269,8 @@ function VaultTab() {
     : view === 'health' ? <HealthView health={health2} onFilter={(f) => go({ view: null, show: null, health: f, item: null, c: null })}
         extra={unlocked && sealedRows.length > 0 ? <button className="btn btn-ghost btn-sm" onClick={async () => {
           const next = new Map(breached);
-          for (const r of sealedRows) { const p = r.s.payload?.fields.find((f) => f.key === 'password')?.value; if (p) next.set(r.s.row.id, await sealed.breachesFor(p).catch(() => 0)); }
-          setBreached(next); toast('Sealed passwords checked against breach lists (only hash prefixes were sent).');
+          for (const r of sealedRows) { const p = r.s.payload?.fields.find((f) => f.key === 'password')?.value; if (p) { const n = await sealed.breachesFor(p).catch(() => null); if (n == null) next.delete(r.s.row.id); else next.set(r.s.row.id, n); } }
+          setBreached(next); toast('Breach check results updated. Unavailable results remain not checked.');
         }}><Icon name="shield" size={14} /> Check sealed items for breaches</button> : null} />
     : view === 'admin' ? <AdminView policy={o.policy} onPolicy={refresh} />
     : view === 'collections' ? <CollectionsView collections={o.collections} onOpen={(cid) => go({ view: null, c: cid, show: null, item: null })}
@@ -344,6 +344,7 @@ function VaultTab() {
             <button type="button" onClick={() => go({ health: health === 'reused' ? null : 'reused', view: null, item: null })} aria-pressed={health === 'reused'}><b className="warn">{reusedN}</b><span>Reused</span></button>
             <button type="button" onClick={() => go({ health: health === 'breached' ? null : 'breached', view: null, item: null })} aria-pressed={health === 'breached'}><b className={breachedN ? 'bad' : 'ok'}>{breachedN}</b><span>Breached</span></button>
           </div>
+          {(health2.unchecked ?? 0) > 0 && <p className="muted" role="status">{health2.unchecked} passwords have no completed breach check.</p>}
           {view === 'bin' ? (
             <div className="lib-vault-mode"><button type="button" className="btn btn-link btn-sm" onClick={() => go({ view: null, item: null })}><Icon name="arrowLeft" size={14} /> All items</button><b>Bin</b></div>
           ) : showTabs && (

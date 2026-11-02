@@ -290,4 +290,31 @@ public class WebhooksIncomingTests(ApiFactory factory)
         Assert.True(WebhookFilters.StatusMatches("Done", "Completed"));
         Assert.False(WebhookFilters.StatusMatches("Done", "In Progress"));
     }
+
+    [Fact]
+    public async Task A_suspended_actor_cannot_raise_work_through_an_existing_webhook()
+    {
+        var c = await Owner();
+        var created = await c.Post("/api/v1/incoming-webhooks", new
+        {
+            name = "Suspension regression", target = "ticket", requireSecret = true,
+            mapping = new { title = "{{title}}" },
+        });
+        Assert.True(created.Ok, created.ToString());
+        var url = S(created.Data!["hook"]!["url"]);
+        var secret = S(created.Data["secret"]);
+        factory.WithDb(db => db.TenantMembers.IgnoreQueryFilters().Where(m => m.UserId == c.UserId)
+            .ExecuteUpdate(s => s.SetProperty(m => m.Status, MemberStatus.Suspended)));
+        try
+        {
+            using var response = await PostIn(url, "{\"title\":\"Suspended actor test\"}", secret: secret);
+            Assert.Equal("failed", S((await Json(response))["data"]!["status"]));
+        }
+        finally
+        {
+            factory.WithDb(db => db.TenantMembers.IgnoreQueryFilters().Where(m => m.UserId == c.UserId)
+                .ExecuteUpdate(s => s.SetProperty(m => m.Status, MemberStatus.Active)));
+        }
+        Assert.Empty((await c.Get("/api/v1/work-tasks?q=Suspended%20actor%20test")).Data!["items"]!.AsArray());
+    }
 }

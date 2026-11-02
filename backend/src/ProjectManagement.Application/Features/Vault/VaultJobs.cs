@@ -183,7 +183,8 @@ public class VaultJobs(IAppDbContext db, AppClock clock, VaultCrypto crypto, Pas
                     var values = await crypto.OpenAsync(i.TenantId, i.Id, i.Cipher, i.WrappedItemKey, i.KeyVersion, ct);
                     var password = values.GetValueOrDefault("password") ?? values.GetValueOrDefault("key") ?? values.GetValueOrDefault("pin");
                     if (password is null) { i.BreachCheckedAt = clock.Now; continue; }
-                    var seen = await breaches.TimesSeenAsync(password, ct);
+                    var result = await breaches.CheckAsync(password, ct);
+                    if (result.Count is not { } seen) continue; // Outages must not erase a known breach or mark a check successful.
                     if (seen > 0 && i.BreachCount is null or 0)
                     {
                         found++;
@@ -191,9 +192,9 @@ public class VaultJobs(IAppDbContext db, AppClock clock, VaultCrypto crypto, Pas
                         if (i.OwnerUserId is { } o)
                             await notifications.AddAsync(o, NotificationType.Security, $"The password of “{i.Title}” is in a public breach list", "Change it now.", $"/vault?item={i.Id}", toSelf: true, ct: ct);
                     }
-                    i.BreachCount = seen; i.BreachCheckedAt = clock.Now;
+                    i.BreachCount = seen; i.BreachCheckedAt = result.CheckedAt;
                 }
-                catch (Exception e) when (e is CryptographicException or FormatException or InvalidOperationException) { i.BreachCheckedAt = clock.Now; }
+                catch (Exception e) when (e is CryptographicException or FormatException or InvalidOperationException) { /* No completed check: retain the last known result and timestamp. */ }
             }
             await sdb.SaveChangesAsync(ct);
         }, ct);

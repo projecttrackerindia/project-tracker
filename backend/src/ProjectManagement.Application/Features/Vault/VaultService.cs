@@ -32,20 +32,20 @@ public record VaultCollectionDto(Guid Id, string Name, string? Description, Vaul
     VaultAccess MyAccess, int Items, int AtRisk, bool RequireStepUp, int? RotateEveryDays, bool Locked, IReadOnlyList<VaultShareDto>? Shares,
     bool Sealed = false, bool RekeyNeeded = false, int KeyVersion = 0, bool RequireApproval = false, bool Requestable = false);
 public record VaultPolicyDto(bool StepUpAlways, int ClipboardSeconds, int RevealSeconds, bool SharedAdminsOnly);
-public record VaultHealthDto(int Total, int Weak, int Reused, int Breached, int Expired, int Old, int ToRotate, int Score);
+public record VaultHealthDto(int Total, int Weak, int Reused, int Breached, int Expired, int Old, int ToRotate, int Score, int Unchecked = 0);
 public record VaultOverviewDto(IReadOnlyList<VaultCollectionDto> Collections, VaultPolicyDto Policy, bool CanAdmin, bool CanCreateShared, VaultHealthDto Health, bool MfaEnabled,
     VaultIdentityDto? Identity = null, bool HasPasskeys = false);
 public record VaultRevealDto(string Value, int RevealSeconds, int ClipboardSeconds);
 public record VaultTotpDto(string Code, int SecondsLeft, int Period, int Digits);
-public record VaultCheckDto(int Strength, int BreachCount);
+public record VaultCheckDto(int Strength, int? BreachCount, string Status = "checked", DateTime? CheckedAt = null);
 public record VaultActivityDto(DateTime At, string Action, UserRefDto? By, string? Field, string? IpAddress);
 
 public record SaveVaultCollectionRequest(string? Name, string? Description, VaultCollectionKind Kind, Guid? ProjectId, Guid? TeamId, bool RequireStepUp = false,
-    int? RotateEveryDays = null, VaultAccess? ShareWithMembers = null, bool Sealed = false, bool RequireApproval = false, bool Requestable = false);
+    int? RotateEveryDays = null, VaultAccess? ShareWithMembers = null, bool Sealed = false, bool RequireApproval = false, bool Requestable = false, string? StepUp = null);
 public record VaultShareInput(VaultPrincipal PrincipalType, Guid? PrincipalId, TenantRole? Role, VaultAccess Access, DateTime? ExpiresAt);
 public record SaveVaultSharesRequest(IReadOnlyList<VaultShareInput>? Shares);
 public record SaveVaultItemRequest(Guid CollectionId, VaultItemKind Kind, string? Title, string? Url, IReadOnlyList<string>? Tags, SensitivityClass Class,
-    bool UseOnly, Guid? OwnerUserId, int? RotateEveryDays, DateTime? ExpiresAt, IReadOnlyList<VaultFieldInput>? Fields, IReadOnlyList<VaultLinkDto>? Links, string? Reason);
+    bool UseOnly, Guid? OwnerUserId, int? RotateEveryDays, DateTime? ExpiresAt, IReadOnlyList<VaultFieldInput>? Fields, IReadOnlyList<VaultLinkDto>? Links, string? Reason, string? StepUp = null);
 public record VaultRevealRequest(string? Field, string? StepUp, bool Copy = false, bool ForEdit = false);
 public record VaultStepUpRequest(string? StepUp);
 public record VaultAdminAccessRequest(string? Reason, string? StepUp);
@@ -53,7 +53,7 @@ public record VaultImportRow(string? Title, string? Url, string? Username, strin
 public record VaultImportRequest(Guid CollectionId, IReadOnlyList<VaultImportRow>? Rows);
 public record VaultImportResult(int Imported, int Skipped, int Weak);
 public record VaultCheckRequest(string? Password);
-public record VaultPolicyRequest(bool StepUpAlways, int ClipboardSeconds, bool SharedAdminsOnly);
+public record VaultPolicyRequest(bool StepUpAlways, int ClipboardSeconds, bool SharedAdminsOnly, string? StepUp = null);
 public record VaultAccessReviewDto(UserRefDto Person, IReadOnlyList<VaultAccessReviewCollection> Collections, IReadOnlyList<VaultAccessReviewUse> Used);
 public record VaultAccessReviewCollection(Guid Id, string Name, VaultAccess Access, int Items);
 public record VaultAccessReviewUse(Guid ItemId, string Title, string Collection, int Times, DateTime Last);
@@ -230,7 +230,8 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var total = items.Count;
         var healthy = flags.Values.Count(x => x.Count == 0);
         return new VaultHealthDto(total, Count("weak"), Count("reused"), Count("breached"), Count("expired"), Count("old"), Count("rotate"),
-            total == 0 ? 100 : (int)Math.Round(100.0 * healthy / total));
+            total == 0 ? 100 : (int)Math.Round(100.0 * healthy / total),
+            items.Count(i => i.PasswordFingerprint != null && i.BreachCount == null));
     }
 
     private static HashSet<Guid> ReusedSet(IEnumerable<VaultItem> items) =>
@@ -297,6 +298,8 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
     {
         await RequireUseAsync(ct);
         var (c, _) = await CollectionAsync(id, VaultAccess.Manage, ct);
+        if ((c.RequireStepUp && !req.RequireStepUp) || (c.RequireApproval && !req.RequireApproval))
+            await RequireProtectionChangeAsync(req.StepUp, "VaultCollection", c.Id, ct);
         var before = new { c.Name, c.RequireStepUp, c.RotateEveryDays };
         if (c.Sealed && req.RequireApproval) throw new ValidationException("requireApproval", "The two-person rule needs a guarded collection: in a sealed one, whoever holds the key can read without asking.");
         if (c.Kind == VaultCollectionKind.Personal && req.Requestable) throw new ValidationException("requestable", "Nobody can ask for a personal vault.");
@@ -509,6 +512,16 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var (tid, me) = Who();
         var (item, c, _) = await ItemAsync(id, VaultAccess.Manage, ct);
         RejectSealed(item);
+        var currentDefs = ReadDefs(item.FieldsJson);
+        var policy = await PolicyAsync(ct);
+        var old = await crypto.OpenAsync(tid, item.Id, item.Cipher, item.WrappedItemKey, item.KeyVersion, ct);
+        var (defs, values) = Merge(req, currentDefs, old);
+        var fieldDowngrade = currentDefs.Any(d => d.Secret
+            && defs.Any(n => n.Key == d.Key && !n.Secret && values.ContainsKey(n.Key)));
+        if ((item.Class == SensitivityClass.Confidential && req.Class != SensitivityClass.Confidential)
+            || (item.UseOnly && !req.UseOnly) || fieldDowngrade
+            || (req.CollectionId != item.CollectionId && (NeedsStepUp(item, c, policy) || item.UseOnly || c.RequireApproval)))
+            await RequireProtectionChangeAsync(req.StepUp, "VaultItem", item.Id, ct);
         if (req.CollectionId != item.CollectionId)
         {
             // Moving it: the person must manage both collections. Moving out of a personal vault shares it, which is what they asked for.
@@ -517,8 +530,6 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
             recorder.Audit("vault.item_moved", "VaultItem", item.Id, new { from = c.Name }, new { to = target.Name });
             item.CollectionId = target.Id; c = target;
         }
-        var old = await crypto.OpenAsync(tid, item.Id, item.Cipher, item.WrappedItemKey, item.KeyVersion, ct);
-        var (defs, values) = Merge(req, ReadDefs(item.FieldsJson), old);
         var secretChanged = defs.Where(d => d.Secret).Any(d => values.GetValueOrDefault(d.Key) != old.GetValueOrDefault(d.Key))
             || old.Keys.Except(values.Keys).Any(k => ReadDefs(item.FieldsJson).Any(d => d.Key == k && d.Secret));
         var anyChanged = secretChanged || values.Count != old.Count || values.Any(kv => old.GetValueOrDefault(kv.Key) != kv.Value);
@@ -604,7 +615,8 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
             {
                 item.Strength = PasswordStrength.Score(password);
                 item.PasswordFingerprint = await crypto.FingerprintAsync(tid, password, ct);
-                item.BreachCount = await breaches.TimesSeenAsync(password, ct); item.BreachCheckedAt = clock.Now;
+                var result = await breaches.CheckAsync(password, ct);
+                item.BreachCount = result.Count; item.BreachCheckedAt = result.CheckedAt;
             }
             else { item.Strength = null; item.PasswordFingerprint = null; item.BreachCount = null; item.BreachCheckedAt = null; }
         }
@@ -884,7 +896,18 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         await RequireUseAsync(ct);
         var p = req.Password ?? "";
         if (p.Length is 0 or > 500) throw new ValidationException("password", "Enter a password to check.");
-        return new VaultCheckDto(PasswordStrength.Score(p), await breaches.TimesSeenAsync(p, ct));
+        var result = await breaches.CheckAsync(p, ct);
+        return new VaultCheckDto(PasswordStrength.Score(p), result.Count, result.Status, result.CheckedAt);
+    }
+
+    // Check the OLD protection before mutating it; otherwise a manager could remove the check and read the same value.
+    private async Task RequireProtectionChangeAsync(string? token, string entity, Guid id, CancellationToken ct)
+    {
+        var (tenant, me) = Who();
+        if (await stepUp.IsFreshAsync(me, token, ct)) return;
+        recorder.Audit("vault.protection_change_denied", entity, id, null, new { reason = "fresh verification required" }, tenantId: tenant);
+        await db.SaveChangesAsync(ct);
+        throw new ForbiddenException("Reducing protection needs a fresh two-step check.", "STEP_UP_REQUIRED");
     }
 
     public async Task<VaultPolicyDto> SavePolicyAsync(VaultPolicyRequest req, CancellationToken ct = default)
@@ -895,6 +918,8 @@ public partial class VaultService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var (tid, _) = Who();
         var s = await db.TenantSecuritySettings.FirstOrDefaultAsync(t => t.TenantId == tid, ct);
         if (s is null) db.TenantSecuritySettings.Add(s = new TenantSecuritySettings { TenantId = tid });
+        if ((s.VaultStepUpAlways && !req.StepUpAlways) || (s.VaultSharedAdminsOnly && !req.SharedAdminsOnly))
+            await RequireProtectionChangeAsync(req.StepUp, "Tenant", tid, ct);
         var before = new { s.VaultStepUpAlways, s.VaultClipboardSeconds, s.VaultSharedAdminsOnly };
         s.VaultStepUpAlways = req.StepUpAlways; s.VaultClipboardSeconds = req.ClipboardSeconds; s.VaultSharedAdminsOnly = req.SharedAdminsOnly;
         recorder.Audit("vault.policy_changed", "Tenant", tid, before, new { req.StepUpAlways, req.ClipboardSeconds, req.SharedAdminsOnly }, tenantId: tid);

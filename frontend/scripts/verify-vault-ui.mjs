@@ -504,7 +504,7 @@ try {
   await page.getByText('Two-step check for every reveal, copy and code').click();
   await page.getByRole('button', { name: 'Save rules' }).click();
   await waitFor(() => writes.some((w) => w.ep === '/api/v1/vault/policy'), 'policy');
-  assert.deepEqual(writes.find((w) => w.ep === '/api/v1/vault/policy').body, { stepUpAlways: true, clipboardSeconds: 5, sharedAdminsOnly: false });
+  assert.deepEqual(writes.find((w) => w.ep === '/api/v1/vault/policy').body, { stepUpAlways: true, clipboardSeconds: 5, sharedAdminsOnly: false, stepUp: STEP });
   await page.getByLabel('Person to review').selectOption('u2');
   await page.locator('.vlt-review').getByText('Ops break-glass').waitFor();
   await page.getByRole('button', { name: 'Take 24-hour access' }).click();

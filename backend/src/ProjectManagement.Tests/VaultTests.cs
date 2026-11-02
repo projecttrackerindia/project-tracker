@@ -647,4 +647,35 @@ public class VaultTests(ApiFactory factory)
         Assert.True(review.Ok, review.ToString());
         Assert.Contains(review.Data!["used"]!.AsArray(), u => S(u!["title"]) == "Firewall admin");
     }
+
+    [Fact]
+    public async Task Confidential_values_cannot_be_downgraded_without_fresh_verification()
+    {
+        var owner = await Owner("Protection regression");
+        var mine = await MyVault(owner);
+        var id = await AddItem(owner, Login(mine, cls: "Confidential"));
+        var denied = await owner.Put($"/api/v1/vault/items/{id}", Login(mine, cls: "Secret"));
+        Assert.Equal("STEP_UP_REQUIRED", denied.ErrorCode);
+        Assert.Equal("Confidential", S((await owner.Get($"/api/v1/vault/items/{id}")).Data!["item"]!["class"]));
+        Assert.False((await Reveal(owner, id, copy: true)).Ok);
+        var secret = await EnableMfa(owner);
+        var body = System.Text.Json.JsonSerializer.SerializeToNode(Login(mine, cls: "Secret"))!.AsObject();
+        body["stepUp"] = await StepUp(owner, secret);
+        var allowed = await owner.Put($"/api/v1/vault/items/{id}", body);
+        Assert.True(allowed.Ok, allowed.ToString());
+        Assert.True((await Reveal(owner, id, copy: true)).Ok);
+    }
+
+    [Fact]
+    public async Task Secret_field_metadata_cannot_expose_an_unchanged_value()
+    {
+        var owner = await Owner("Field protection regression");
+        var mine = await MyVault(owner);
+        var body = System.Text.Json.JsonSerializer.SerializeToNode(Login(mine))!.AsObject();
+        body["fields"]!.AsArray().Add(new JsonObject { ["key"] = "custom", ["value"] = Password, ["secret"] = true });
+        var id = await AddItem(owner, body);
+        body["fields"] = new JsonArray(new JsonObject { ["key"] = "custom", ["keep"] = true, ["type"] = "text", ["secret"] = false });
+        Assert.Equal("STEP_UP_REQUIRED", (await owner.Put($"/api/v1/vault/items/{id}", body)).ErrorCode);
+        Assert.DoesNotContain(Password, (await owner.Get($"/api/v1/vault/items/{id}")).Data!.ToJsonString());
+    }
 }

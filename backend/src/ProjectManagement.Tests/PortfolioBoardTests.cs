@@ -119,4 +119,29 @@ public class PortfolioBoardTests(ApiFactory factory)
         }
         Assert.Equal(422, (int)(await c.Get("/api/v1/portfolio/export?format=csv")).Status);
     }
+
+    [Fact]
+    public async Task Missing_rates_leave_the_cost_forecast_unknown()
+    {
+        var (c, project, tasks) = await LateProject();
+        Assert.True((await c.Post($"/api/v1/tasks/{tasks[0]["id"]}/time", new { minutes = 60, workDate = Iso(Today) })).Ok);
+        var money = (await c.Get("/api/v1/portfolio/board")).Data!["money"]!;
+        var row = money["projects"]!.AsArray().Single(p => S(p!["projectId"]) == project.ToString())!;
+        Assert.Equal(1, row["peopleWithoutRate"]!.GetValue<int>());
+        Assert.Null(row["forecast"]);
+        Assert.Contains("unknown", S(row["basis"]));
+        Assert.Contains(money["notes"]!.AsArray(), n => S(n).Contains("costs are unknown"));
+    }
+
+    [Fact]
+    public async Task Completed_work_is_counted_separately_from_unrated_projects()
+    {
+        var (c, project, tasks) = await LateProject();
+        var done = S((await c.Get($"/api/v1/projects/{project}/statuses")).Data!.AsArray().First(s => S(s!["name"]) == "Done")!["id"]);
+        foreach (var task in tasks) Assert.True((await c.Send(HttpMethod.Patch, $"/api/v1/tasks/{task["id"]}/move", new { statusId = done })).Ok);
+        var brief = (await c.Get("/api/v1/portfolio/board")).Data!["brief"]!;
+        Assert.Equal(1, brief["workComplete"]!.GetValue<int>());
+        Assert.Contains(brief["headlines"]!.AsArray(), n => S(n).Contains("work complete"));
+        Assert.DoesNotContain(brief["headlines"]!.AsArray(), n => S(n).Contains("not rated yet"));
+    }
 }

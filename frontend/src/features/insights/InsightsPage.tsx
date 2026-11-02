@@ -200,14 +200,14 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
   const lastW = weeks[weeks.length - 1];
   const half = Math.floor(weeks.length / 2);
   const gap = (ws: typeof weeks) => ws.reduce((a, w) => a + (w.created - w.completed), 0) / Math.max(1, ws.length);
-  const trendLine = lastW ? `${weeks.length >= 4 ? (gap(weeks.slice(half)) <= gap(weeks.slice(0, half)) ? 'Gap narrowing' : 'Gap widening') + ' — ' : ''}${lastW.completed} of ${lastW.created} items last week` : '';
+  const trendLine = lastW ? lastW.created === 0 ? (lastW.completed === 0 ? 'No planned or completed items last week' : `${lastW.completed} completed; no items were added last week`) : `${weeks.length >= 4 ? (gap(weeks.slice(half)) <= gap(weeks.slice(0, half)) ? 'Gap narrowing' : 'Gap widening') + ' — ' : ''}${lastW.completed} of ${lastW.created} items last week` : '';
   const scope = workload.data ? SCOPE_TEXT[workload.data.scope] ?? 'Your team' : 'Your team';
 
   return (
     <>
       <PageHead eyebrow={`${scope} · as of ${dayMonth(today)}`} title="Insights">{tabs}</PageHead>
       <div className="ins-rings">
-        <Ring index={0} tone="pink" label="Delivery on time" value={delivery} to="/work/projects"
+        <Ring index={0} tone="pink" label="Projects on track" value={delivery} to="/work/projects"
           sub={projects.data ? `${onTrack} of ${live.length} projects on track` : projects.isLoading ? 'Reading…' : projects.isError ? 'Projects could not be loaded — open to retry' : 'No projects yet'}
           foot={projects.data && live.length ? (delayed.length ? <><span aria-hidden="true">↓ </span>{delayed.length} delayed</> : 'None delayed') : undefined} />
         <Ring index={1} tone="orange" label="Load balance" value={balance} to="/work?tab=team&s=workload"

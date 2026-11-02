@@ -5,6 +5,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
+using ProjectManagement.Application.Features.Integrations;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Domain.Entities;
 
@@ -46,10 +48,10 @@ public class ConnectorCaller(IHttpClientFactory http, ISecretProtector secrets)
             req.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
         }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(8));
-        using var res = await http.CreateClient("voice-connector").SendAsync(req, timeout.Token);
-        var body = await res.Content.ReadAsStringAsync(timeout.Token);
-        if (body.Length > 6000) body = body[..6000];
-        return res.IsSuccessStatusCode ? body : $"(the API answered {(int)res.StatusCode})";
+        using var res = await http.CreateClient("voice-connector").SendAsync(req, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        if (!res.IsSuccessStatusCode) return $"(the API answered {(int)res.StatusCode})";
+        try { var body = await BoundedHttpContent.ReadUtf8Async(res.Content, 24_000, timeout.Token); return body.Length > 6000 ? body[..6000] : body; }
+        catch (HttpBodyTooLargeException) { throw new ConflictException("The connector response exceeds the allowed size."); }
     }
 
     /// <summary>Another connector a flow chains to, by name (only enabled ones).</summary>
@@ -57,11 +59,5 @@ public class ConnectorCaller(IHttpClientFactory http, ISecretProtector secrets)
         connectors.FirstOrDefault(c => c.Name == name && c.Enabled) is { } c ? SendAsync(c, args, VoiceFlowRunner.Parse(c.FlowJson), ct)
             : Task.FromResult($"(no connector named {name})");
 
-    public static bool Private(IPAddress a)
-    {
-        if (a.IsIPv4MappedToIPv6) a = a.MapToIPv4();
-        if (a.AddressFamily == AddressFamily.InterNetworkV6) return a.IsIPv6LinkLocal || a.IsIPv6SiteLocal || a.IsIPv6UniqueLocal || a.Equals(IPAddress.IPv6Loopback);
-        var b = a.GetAddressBytes();
-        return b[0] == 10 || b[0] == 127 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168) || (b[0] == 169 && b[1] == 254) || b[0] == 0 || (b[0] == 100 && b[1] >= 64 && b[1] <= 127);
-    }
+    public static bool Private(IPAddress a) => WebhookUrlRules.IsBlocked(a);
 }

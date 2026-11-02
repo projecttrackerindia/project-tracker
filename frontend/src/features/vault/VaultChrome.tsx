@@ -20,7 +20,7 @@ export function PostureStrip({ health, active, onFilter }: { health: VaultHealth
       </svg>
       <div className="vlt-posture-text">
         <b>{health.score}</b>
-        <span>{parts.length === 0 ? `All ${health.total} items healthy` : `${Math.round((health.score / 100) * health.total)} of ${health.total} healthy`}</span>
+        <span>{(health.unchecked ?? 0) > 0 ? `${health.unchecked} passwords not checked` : parts.length === 0 ? `All ${health.total} items healthy` : `${Math.round((health.score / 100) * health.total)} of ${health.total} healthy`}</span>
       </div>
       {parts.length > 0 && (
         <div className="vlt-posture-flags" role="group" aria-label="Show items with a problem">

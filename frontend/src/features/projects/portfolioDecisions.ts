@@ -41,7 +41,7 @@ export function decisionItems(decisions: PortfolioDecision[], brief: PortfolioBr
   for (const r of brief.ranked) {
     if (r.score < 2 || seen.has(r.projectId)) continue;
     seen.set(r.projectId, {
-      projectId: r.projectId, key: r.key, name: r.name, due: r.dueDate, forecast: r.projectedFinish, slipDays: r.projectedSlipDays ?? r.delayedDays,
+      projectId: r.projectId, key: r.key, name: r.name, due: r.dueDate, forecast: r.projectedFinish, slipDays: r.projectedSlipDays ?? 0,
       decision: null, acceptOpt: null, why: r.reasons[0] ?? `${r.level} risk.`, changes: r.reasons,
     });
   }
@@ -84,4 +84,5 @@ export function useDecisionActions(item: DecisionItem, filter: PortfolioFilter) 
   const canAct = !isGuest && !!d && !!item.acceptOpt && !!item.forecast;
   return { busy, done, propose, accept, canAct, waiting: d?.waitingProposals ?? 0 };
 }
+
 

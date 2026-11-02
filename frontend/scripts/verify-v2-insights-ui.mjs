@@ -27,7 +27,7 @@ const workload = {
   members: people.map(([name, open, overdue], i) => ({ userId: g(10 + i), name, email: `p${i}@example.test`, jobRole: null, level: 0, reportsTo: null, open, overdue, doneLast30Days: 3, loggedMinutesLast7Days: 0, nextUp: [], dueThisWeek: 1, openByKind: null })),
   totals: { people: 4, open: 10, overdue: 2 },
 };
-const ops = { days: 30, open: 4, unassigned: 0, breached: 0, atRisk: 1, compliance: 1, medianResolutionHours: 6, medianResponseMinutes: 20, createdInPeriod: 8, completedInPeriod: 6, weeks: [], aging: [], byTeam: [], byType: [], byPerson: [] };
+const ops = { days: 30, open: 4, unassigned: 0, breached: 0, atRisk: 1, compliance: 1, medianResolutionHours: 6, medianResponseMinutes: 20, createdInPeriod: 8, completedInPeriod: 6, weeks: [0, 1, 2, 3].map((i) => ({ weekStart: wday(-28 + i * 7), created: 0, completed: 0, breached: 0, compliance: null })), aging: [], byTeam: [], byType: [], byPerson: [] };
 const workRows = [['CIBIL-2', 'CreditVision API'], ['AA-5', 'UAT validation'], ['IQCA-1', 'Routing for 1rupee'], ['SIA-4', 'GoCollect QR split'], ['WT-5', 'MuleSoft server outage']];
 const days = [0, 1, 2, 3, 4, 5, 6].map((i) => ({ date: wday(i), minutes: 0, targetMinutes: i < 5 ? 480 : 0, weekend: i >= 5, leave: false, leaveNote: null, future: wday(i) > today, meetings: 0, meetingMinutes: 0 }));
 const gridOf = (logged) => ({
@@ -115,15 +115,18 @@ try {
     await page.goto(`${origin}/preview-org/insights`);
     await page.getByRole('heading', { level: 1, name: 'Insights' }).waitFor();
     for (const t of ['Overview', 'Time', 'Reports']) await page.getByRole('tab', { name: t }).waitFor();
-    // Three rings: Delivery on time, Load balance, Time logged.
-    for (const label of ['Delivery on time', 'Load balance', 'Time logged']) await page.locator('.ins-ring', { hasText: label }).first().waitFor();
+    // Three rings: Projects on track, Load balance, Time logged.
+    for (const label of ['Projects on track', 'Load balance', 'Time logged']) await page.locator('.ins-ring', { hasText: label }).first().waitFor();
     assert.equal(await page.locator('.ins-ring').count(), 3);
-    const deliveryRing = page.locator('.ins-ring', { hasText: 'Delivery on time' });
+    const deliveryRing = page.locator('.ins-ring', { hasText: 'Projects on track' });
     assert.match(await deliveryRing.innerText(), /5 of 8 projects on track/);
     assert.match(await deliveryRing.innerText(), /2 delayed/);
     await deliveryRing.getByText(/^63\s*%$/).waitFor();
     assert.match(await page.locator('.ins-ring', { hasText: 'Time logged' }).innerText(), /0h of 160h expected this week/);
-    await page.getByRole('region', { name: 'Done vs planned' }).waitFor();
+    const trend = page.getByRole('region', { name: 'Done vs planned' });
+    await trend.waitFor();
+    await trend.getByText('No planned or completed items last week').waitFor();
+    assert.doesNotMatch(await trend.innerText(), /Gap widening|0 of 0/);
     const load = page.getByRole('region', { name: 'Workload' });
     assert.equal(await load.locator('.ins-bars li').count(), 4);
     assert.match(await load.locator('.ins-bars li').first().locator('.ins-name').innerText(), /Siva Reddy$/);

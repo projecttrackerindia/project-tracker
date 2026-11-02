@@ -84,7 +84,7 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         var filtered = brief with
         {
             Ranked = ranked, Projects = ranked.Count, OnTrack = ranked.Count(x => x.Health == "OnTrack"), AtRisk = ranked.Count(x => x.Health == "AtRisk"),
-            Delayed = ranked.Count(x => x.Health == "Delayed"), OverdueTasks = ranked.Sum(x => x.OverdueTasks), BlockedTasks = ranked.Sum(x => x.BlockedTasks),
+            Delayed = ranked.Count(x => x.Health == "Delayed"), WorkComplete = ranked.Count(x => x.Health == "Completed"), OverdueTasks = ranked.Sum(x => x.OverdueTasks), BlockedTasks = ranked.Sum(x => x.BlockedTasks),
             OpenActionItems = ranked.Sum(x => x.OpenActionItems), OverdueActionItems = ranked.Sum(x => x.OverdueActionItems),
             RecentSlips = brief.RecentSlips.Where(s => ranked.Any(r => r.ProjectId == s.ProjectId)).ToList(),
         };
@@ -105,7 +105,7 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
     {
         if (b.Projects == 0) return "No active projects match.";
         var sb = new StringBuilder();
-        sb.Append($"{Plural(b.Projects, "active project", "active projects")}: {b.OnTrack} on track, {b.AtRisk} at risk, {b.Delayed} delayed. ");
+        sb.Append($"{Plural(b.Projects, "active project", "active projects")}: {b.OnTrack} on track, {b.AtRisk} at risk, {b.Delayed} delayed, {b.WorkComplete} work complete (check sign-offs). ");
         if (decisions.Count > 0) sb.Append($"{Plural(decisions.Count, "decision", "decisions")} this week, the biggest: {decisions[0].Headline} ");
         else sb.Append("No project is forecast to miss its date. ");
         if (money.ShowMoney && money.Overrunning > 0) sb.Append($"{Plural(money.Overrunning, "project is", "projects are")} forecast to go over budget. ");
@@ -315,21 +315,24 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
             var left = remaining.GetValueOrDefault(p.Id);
             decimal? forecast = null; string basis;
             if (left is not null && left.Hours > 0 && left.Unestimated == 0) { forecast = Math.Round(spent + left.Hours * avgRate, 2); basis = "spent so far plus the open estimates"; }
-            else if (left is not null && left.Hours > 0) { forecast = Math.Round(spent + (left.Hours + left.Unestimated * DefaultTaskMinutes / 60m) * avgRate, 2); basis = $"spent plus open estimates ({left.Unestimated} unestimated tasks counted at {DefaultTaskMinutes / 60} h)"; }
+            else if (left is not null && left.Unestimated > 0) { forecast = Math.Round(spent + (left.Hours + left.Unestimated * DefaultTaskMinutes / 60m) * avgRate, 2); basis = $"spent plus open estimates ({left.Unestimated} unestimated tasks counted at {DefaultTaskMinutes / 60} h)"; }
             else if (p.StartDate is { } s && p.DueDate is { } d && d > s && clock.Today > s)
             {
                 var elapsed = Math.Clamp((decimal)(clock.Today.DayNumber - s.DayNumber) / (d.DayNumber - s.DayNumber), 0.05m, 1m);
                 forecast = spent > 0 ? Math.Round(spent / elapsed, 2) : null; basis = "the pace so far, to the due date";
             }
             else basis = "not enough to forecast";
+            if (noRate > 0 || (avgRate <= 0 && left is not null)) { forecast = null; basis = "unknown: cost rates are incomplete"; }
             decimal? overrun = p.BudgetAmount is > 0 && forecast is { } fc && fc > p.BudgetAmount ? Math.Round(fc - p.BudgetAmount.Value, 2) : null;
             string? warning = overrun is { } o ? $"Forecast {Math.Round(forecast!.Value):N0} {currency} is {Math.Round(o / p.BudgetAmount!.Value * 100):0}% over the {Math.Round(p.BudgetAmount.Value):N0} budget"
-                : p.BudgetAmount is > 0 && spent > p.BudgetAmount ? "Already over budget" : null;
+                : noRate > 0 ? "Cost incomplete: one or more people have no cost rate" : p.BudgetAmount is > 0 && spent > p.BudgetAmount ? "Already over budget" : null;
             list.Add(new ProjectMoneyDto(p.Id, p.Key, p.Name, p.BudgetAmount, spent, forecast, overrun, p.BudgetAmount is > 0 ? Math.Round(spent / p.BudgetAmount.Value, 4) : null,
                 burn, warning, p.BudgetHours, hoursUsed, left?.Hours, noRate, basis));
         }
         var notes = new List<string>();
-        if (list.Sum(x => x.PeopleWithoutRate) > 0) notes.Add($"{Plural(list.Sum(x => x.PeopleWithoutRate), "person has", "people have")} logged time without a cost rate; their hours count as 0. Set rates in Settings › Rates.");
+        var unestimated = remaining.Values.Sum(x => x.Unestimated);
+        if (unestimated > 0) notes.Add($"{unestimated} open tasks have no estimate; forecasts assume {DefaultTaskMinutes / 60} hours each. These are assumptions, not measured work.");
+        if (list.Sum(x => x.PeopleWithoutRate) > 0) notes.Add($"{Plural(list.Sum(x => x.PeopleWithoutRate), "person has", "people have")} logged time without a cost rate; their costs are unknown and excluded from the known subtotal. Set rates in Settings › Rates.");
         if (list.All(x => x.Budget is null)) notes.Add("No project has a budget yet. Set one in the project's settings to see burn against it.");
         var burnAll = months.Select(m => new MoneyMonthDto(Month(m), list.Sum(x => x.Burn.First(b => b.Month == Month(m)).Cost))).ToList();
         return new PortfolioMoneyDto(true, true, currency, list.Sum(x => x.Budget ?? 0), list.Sum(x => x.Spent), list.Sum(x => x.Forecast ?? x.Spent), list.Count(x => x.Overrun is > 0),
@@ -495,7 +498,7 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         };
         if (b.Money.ShowMoney && b.Money.Entitled)
             sections.Add(new ReportSection($"Money ({b.Money.Currency})", ["Key", "Project", "Budget", "Spent", "Forecast at completion", "Over by", "Hours used", "Warning"],
-                b.Money.Projects.Select(m => (IReadOnlyList<object?>)[m.Key, m.Name, m.Budget, m.Spent, m.Forecast, m.Overrun, m.HoursUsed, m.Warning]).ToList()));
+                b.Money.Projects.Select(m => (IReadOnlyList<object?>)[m.Key, m.Name, m.Budget, m.PeopleWithoutRate > 0 ? null : (decimal?)m.Spent, m.Forecast, m.Overrun, m.HoursUsed, m.Warning]).ToList()));
         sections.Add(new ReportSection($"Capacity, {b.Capacity.From:d MMM} to {b.Capacity.To:d MMM}", ["Person", "Load %", "Weeks over 100%", "Projects"],
             b.Capacity.Over.Select(p => (IReadOnlyList<object?>)[p.Name, p.Load, p.Weeks.Count(w => w.Load > 100), string.Join(", ", p.Projects.Select(x => x.Key))]).ToList()));
         var doc = new ReportDocument("Portfolio", $"As of {b.AsOf:d MMM yyyy} · {b.Summary}", sections);
@@ -553,4 +556,5 @@ public static class CapacityPlan
     public static int? Load(int demandMinutes, int capacityMinutes) =>
         capacityMinutes > 0 ? (int)Math.Round(demandMinutes * 100.0 / capacityMinutes) : null;
 }
+
 

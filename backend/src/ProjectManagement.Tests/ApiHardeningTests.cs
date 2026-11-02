@@ -165,4 +165,18 @@ public class ApiHardeningTests(ApiFactory factory)
         Assert.True(me.Ok);
         Assert.Equal(allowed, me.Data!["current"] is not null);
     }
+
+    [Fact]
+    public async Task Error_responses_keep_security_headers_after_response_clear()
+    {
+        var c = await TestClient.RegisterAsync(factory, "Error headers");
+        await c.CreateOrgAsync();
+        var error = await c.Post("/api/v1/projects", new { name = "" });
+        Assert.False(error.Ok);
+        Assert.Equal("nosniff", error.Header("X-Content-Type-Options"));
+        Assert.Equal("DENY", error.Header("X-Frame-Options"));
+        Assert.Equal("no-referrer", error.Header("Referrer-Policy"));
+        Assert.Contains("frame-ancestors 'none'", error.Header("Content-Security-Policy"));
+        Assert.Contains("no-store", error.Header("Cache-Control"));
+    }
 }

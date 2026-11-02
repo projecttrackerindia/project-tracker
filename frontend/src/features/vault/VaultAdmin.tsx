@@ -29,8 +29,9 @@ export function HealthView({ health, onFilter, extra }: { health: VaultHealth; o
         <b>{health.score}</b><span>health</span>
       </div>
       <div className="vlt-health-text">
-        <h3>{health.total === 0 ? 'Nothing stored yet' : health.score >= 85 ? 'In good shape' : health.score >= 60 ? 'Some things to fix' : 'Needs attention'}</h3>
+        <h3>{health.total === 0 ? 'Nothing stored yet' : (health.unchecked ?? 0) > 0 ? 'Breach checks incomplete' : health.score >= 85 ? 'In good shape' : health.score >= 60 ? 'Some things to fix' : 'Needs attention'}</h3>
         <p className="muted">{health.total} item{health.total === 1 ? '' : 's'} you can open. Breach checks run when a password is saved and again every month (only the first five characters of its hash are sent).</p>
+        {(health.unchecked ?? 0) > 0 && <p role="status">{health.unchecked} passwords have no completed breach check. Zero known matches does not mean they are safe.</p>}
         {extra}
       </div>
       <ul className="vlt-health-list">
@@ -50,6 +51,7 @@ export function HealthView({ health, onFilter, extra }: { health: VaultHealth; o
 
 /** For vault admins: the workspace's rules, and who can open what (and what they used), with announced 24-hour access when someone is away. */
 export function AdminView({ policy, onPolicy }: { policy: VaultPolicy; onPolicy: () => void }) {
+  const step = useStepUp();
   const [stepUpAlways, setStepUpAlways] = useState(policy.stepUpAlways);
   const [clipboard, setClipboard] = useState(policy.clipboardSeconds);
   const [adminsOnly, setAdminsOnly] = useState(policy.sharedAdminsOnly);
@@ -73,7 +75,7 @@ export function AdminView({ policy, onPolicy }: { policy: VaultPolicy; onPolicy:
           <p className="vlt-small muted">Revealed values hide again after {policy.revealSeconds} seconds (Settings → Documents → Security sets that for the whole workspace).</p>
           <div><button className="btn btn-primary btn-sm" disabled={!dirty || saving} onClick={async () => {
             setSaving(true);
-            try { await vaultApi.savePolicy({ stepUpAlways, clipboardSeconds: clipboard, sharedAdminsOnly: adminsOnly }); toast('Vault rules saved.'); onPolicy(); }
+            try { const saved = await step.run((token) => vaultApi.savePolicy({ stepUpAlways, clipboardSeconds: clipboard, sharedAdminsOnly: adminsOnly, stepUp: token })); if (!saved) return; toast('Vault rules saved.'); onPolicy(); }
             catch (e) { toast(errText(e, 'Could not save.'), 'error'); } finally { setSaving(false); }
           }}>{saving && <span className="spinner" />}Save rules</button></div>
         </div>

@@ -116,7 +116,7 @@ function SecretInput({ field, value, onChange, existing, clipboardSeconds, revea
     return () => { window.clearTimeout(t); window.removeEventListener('blur', off); document.removeEventListener('visibilitychange', onHidden); };
   }, [visible, revealSeconds]);
   const [gen, setGen] = useState(false);
-  const [check, setCheck] = useState<{ strength: number; breachCount: number } | null>(null);
+  const [check, setCheck] = useState<{ strength: number; breachCount: number | null } | null>(null);
   const [checking, setChecking] = useState(false);
   const canLoad = existing && value === '' && !!onLoadCurrent;
   const placeholder = existing ? (canLoad ? 'Unchanged — type to replace it, or show the current value' : 'Unchanged — type to replace it') : field.type === 'totp' ? 'Setup key (JBSW Y3DP …) or otpauth:// address' : '';
@@ -163,7 +163,9 @@ function SecretInput({ field, value, onChange, existing, clipboardSeconds, revea
             setChecking(true);
             try { setCheck({ strength: strength(value), breachCount: await sealed.breachesFor(value) }); } catch (e) { toast(errText(e, 'Could not check it.'), 'error'); } finally { setChecking(false); }
           }}>{checking ? <Spinner /> : <Icon name="shield" size={13} />} Check breaches</button>
-          {check && (check.breachCount > 0
+          {check && (check.breachCount == null
+            ? <span className="vlt-check" role="status">Breach check unavailable. This password has not been checked.</span>
+            : check.breachCount > 0
             ? <span className="vlt-check bad" role="status">Seen {check.breachCount.toLocaleString()} times in public breaches — choose another.</span>
             : <span className="vlt-check ok" role="status">Not found in public breaches.</span>)}
         </div>
@@ -266,7 +268,8 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
       return;
     }
     try {
-      const res = existing ? await vaultApi.update(existing.item.id, body) : await vaultApi.create(body);
+      const res = existing ? await step.run((token) => vaultApi.update(existing.item.id, { ...body, stepUp: token })) : await vaultApi.create(body);
+      if (!res) { setBusy(false); return; }
       toast(existing ? 'Saved.' : 'Saved in the vault, encrypted.');
       onSaved(res.item.id);
     } catch (e) { setError(errText(e, 'Could not save it.')); setBusy(false); }
@@ -367,6 +370,7 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
 export function CollectionEditor({ existing, canSeal, onClose, onSaved, onSeal }: {
   existing: VaultCollection | null; canSeal: boolean; onClose: () => void; onSaved: (id: string | null) => void; onSeal?: (c: VaultCollection) => void;
 }) {
+  const step = useStepUp();
   const [sealedNew, setSealedNew] = useState(canSeal);
   const [name, setName] = useState(existing?.name ?? '');
   const [description, setDescription] = useState(existing?.description ?? '');
@@ -392,7 +396,8 @@ export function CollectionEditor({ existing, canSeal, onClose, onSaved, onSeal }
           requireStepUp, rotateEveryDays: rotate || null, shareWithMembers: !existing && kind !== 'Shared' ? (sealedNew && share === 'UseOnly' ? 'View' : share) : null, sealed: !existing && sealedNew,
           requireApproval: isSealed ? false : requireApproval, requestable: personal ? false : requestable };
         try {
-          const c = existing ? await vaultApi.updateCollection(existing.id, body) : await vaultApi.createCollection(body);
+          const c = existing ? await step.run((token) => vaultApi.updateCollection(existing.id, { ...body, stepUp: token })) : await vaultApi.createCollection(body);
+          if (!c) { setBusy(false); return; }
           if (!existing && sealedNew) await sealed.firstKey(c.id);   // its key is made here and wrapped to me; the server never sees it
           toast(existing ? 'Saved.' : sealedNew ? 'Sealed collection made. People you add get its key from your browser.' : 'Collection made. Add people to it under Access.');
           onSaved(c.id);
