@@ -22,8 +22,8 @@ import { emitReminders, emitSheetFocus, emitViewing, notifyLiveConnected, setLiv
 
 /** Screens that show work: refreshed (if open) when someone else changes something. Chat, settings and the like have their own events or none. */
 const LIVE_KEYS = new Set(['action-items', 'activity', 'approvals', 'calendar', 'dashboard', 'dashboard-report', 'dev-links', 'issues', 'milestones', 'my-work',
-  'project', 'project-status', 'projects', 'sprint-tasks', 'sprints', 'task', 'timesheet', 'work', 'workload', 'capacity']);
-const LIVE_THROTTLE_MS = 1200;
+  'project', 'project-status', 'projects', 'sprint-tasks', 'sprints', 'task', 'tasks', 'time', 'timer', 'timesheet', 'timeline', 'work-items', 'work', 'workload', 'capacity', 'portfolio', 'plan-sheet']);
+const LIVE_THROTTLE_MS = 150;
 
 /** The person is in another tab, another window or another app. */
 const away = () => document.hidden || !document.hasFocus();
@@ -118,8 +118,7 @@ export function ChatRealtime() {
       }, LIVE_THROTTLE_MS);
     };
     connection.on('changed', (changes: { actorId: string | null }[]) => {
-      // This tab already refreshed what it changed itself; other people's changes (and my other tabs') are news.
-      if (changes.every((c) => c.actorId === me) && !document.hidden) return;
+      // Same actor does not mean same tab: another visible tab or an AI action may have made this change.
       if (changes.some((c) => c.actorId !== me)) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));   // someone else's change may have notified me
       refreshWork();
     });

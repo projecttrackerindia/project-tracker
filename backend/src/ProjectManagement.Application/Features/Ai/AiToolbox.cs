@@ -85,6 +85,11 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         actionsAllowed &= !AiExecutionPolicy.IsReadOnlyRequest(text);
         var all = Definitions(actionsAllowed);
         var lower = text.ToLowerInvariant();
+        // A focused time-log follow-up does not need the entire portfolio, mail, Vault and meeting catalogs.
+        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(log|record)\b")
+            && System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(time|hours?|minutes?|timesheet|calendar)\b")
+            && !System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(create|assign|invite|email|mail|send|message|leave|delete|update|meeting|call|report|project|portfolio)\b"))
+            return all.Where(t => new[] { LogTime, FindWork, ListPeople, AiWorkdayTools.MyTime, AiPowerTools.ListMyTimeEntries, AiPowerTools.ManualOnly }.Contains(t.Name)).ToList();
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(leave|timesheet|absence|time off|log|logged|spent|hours)\b")) return all;
         // Running the day from Home: what needs the person, chat catch-up and threads, pages, portfolio options, the vault.
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(needs? (me|you)|waiting (on|for) me|my inbox|catch (me )?up|unread|thread|reply|replied|what did .{1,40} say|what was (said|agreed)|agreed|snooze|mark .{0,30}\bdone|submit (my|the|this|last) week|approve|dismiss|send (it |them )?back|proposals?|portfolio decision|decision option|section|comment on|vault|password|credential|api key|rotate|rotation)\b")) return all;
@@ -188,8 +193,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         if (!actionsAllowed) return tools;
         tools.AddRange(
         [
-            new(LogTime, "Propose logging the signed-in person's own worked time in the native timesheet: one to ten entries, each a work item key (ATL-12 a project task, WT-3 operational work, AI-4 an action item), the minutes spent, the day it was spent (yyyy-MM-dd, today or earlier, never in the future) and an optional note. Resolve relative days like 'yesterday' from today's date. Only their own time; the person confirms first.",
-                """{"type":"object","properties":{"entries":{"type":"array","items":{"type":"object","properties":{"key":{"type":"string"},"minutes":{"type":"integer","minimum":1,"maximum":1440},"work_date":{"type":"string","description":"yyyy-mm-dd"},"note":{"type":"string","maxLength":500}},"required":["key","minutes","work_date"]}}},"required":["entries"]}"""),
+            new(LogTime, "Propose logging the signed-in person's own worked time in the native timesheet: one to ten entries, each a work item key (ATL-12 a project task, WT-3 operational work, AI-4 an action item), the minutes spent, the day it was spent (yyyy-MM-dd, today or earlier, never in the future) and an optional note. Resolve relative days like 'yesterday' from today's date. When the person supplies a clock interval, preserve it using start_time and end_time (HH:mm in their time zone); do not replace it with a duration ending now. Only their own time; the person confirms first.",
+                """{"type":"object","properties":{"entries":{"type":"array","items":{"type":"object","properties":{"key":{"type":"string"},"minutes":{"type":"integer","minimum":1,"maximum":1440},"work_date":{"type":"string","description":"yyyy-mm-dd"},"start_time":{"type":"string","description":"Optional local HH:mm, paired with end_time"},"end_time":{"type":"string","description":"Optional local HH:mm, same day as start_time"},"note":{"type":"string","maxLength":500}},"required":["key","minutes","work_date"]}}},"required":["entries"]}"""),
             new(PlanLeave, "Propose planned leave in the native Project Tracker timesheet. Resolve every named person, use explicit yyyy-MM-dd dates, and require confirmation. Does not approve HR leave, send email or count as worked/billable hours. Do not assume another person's dates or HR approval.",
                 """{"type":"object","properties":{"people":{"type":"array","items":{"type":"string"}},"from_date":{"type":"string"},"to_date":{"type":"string"},"note":{"type":"string","maxLength":1000}},"required":["people","from_date","to_date"]}"""),
             new(UpdateWork, "Propose changing existing work by its key (ATL-12 for a project task, WT-3 operational work, AI-4 an action item): status, assignee (or \"none\"), due date, priority, and/or add a comment. A later due date needs a reason. The person confirms first.",
@@ -319,7 +324,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             {
                 ListReminders => await ListRemindersAsync(ct),
                 PlanLeave => await ProposeLeaveAsync(a, ct),
-                LogTime => await ProposeLogTimeAsync(a, ct),
+                LogTime => await ProposeLogTimeAsync(a, timeZone, ct),
                 ListLeave => await ListLeaveAsync(a, ct),
                 ReviseReminder => await ReviseReminderAsync(a, conversationId, timeZone, ct),
                 UpdateReminder => await UpdateReminderAsync(a, timeZone, ct),
@@ -1013,7 +1018,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         return Propose("planned_leave", "Plan leave in timesheets", $"{string.Join(", ", people.Select(p => p.Name))}: {from:dd MMM yyyy} – {to:dd MMM yyyy}. Planned only; HR approval is separate.",
             new { userIds = people.Select(p => p.Id).ToArray(), from, to, note = Str(a, "note") }, Str(a, "note"));
     }
-    private async Task<AiToolOutcome> ProposeLogTimeAsync(JsonElement a, CancellationToken ct)
+    private async Task<AiToolOutcome> ProposeLogTimeAsync(JsonElement a, string? timeZone, CancellationToken ct)
     {
         if (!a.TryGetProperty("entries", out var list) || list.ValueKind != JsonValueKind.Array || list.GetArrayLength() is < 1 or > 10)
             throw new AiToolException("Give one to ten time entries.");
@@ -1029,8 +1034,11 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             var date = Date(e, "work_date") ?? today;
             if (date > today) throw new AiToolException("Time can only be logged for today or earlier days.");
             if (date < today.AddDays(-92)) throw new AiToolException("That day is too long ago to log time from here.");
-            entries.Add(new { kind = kind == "Task" ? "task" : "work", id, key, minutes, date, note = Str(e, "note") });
+            var zone = ZoneTime.IsKnown(timeZone) ? ZoneTime.Find(timeZone!.Trim()) : clock.Zone;
+            var interval = AiWorkedInterval.Resolve(date, Str(e, "start_time"), Str(e, "end_time"), minutes, zone);
+            entries.Add(new { kind = kind == "Task" ? "task" : "work", id, key, minutes, date, note = Str(e, "note"), startedAt = interval?.Start, endedAt = interval?.End });
             lines.Add($"{ProjectManagement.Application.Features.Time.TimeService.Format(minutes)} on {key} “{title}” ({(date == today ? "today" : date.ToString("ddd d MMM"))})");
+            if (interval is not null) lines[^1] += $" · {Str(e, "start_time")}–{Str(e, "end_time")} ({zone.Id})";
             total += minutes;
         }
         return Propose("log_time", $"Log {ProjectManagement.Application.Features.Time.TimeService.Format(total)} in your timesheet", string.Join("; ", lines), new { entries });

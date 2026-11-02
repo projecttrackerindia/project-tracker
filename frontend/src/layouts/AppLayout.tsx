@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react';
 import { isViewing } from '../features/notifications/centre/readSync';
 import { prefetchPages } from '../lib/prefetchPages';
+import { MutationSync } from '../lib/MutationSync';
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import { openNew } from '../components/v2/state';
 import { notificationApi } from '../api/endpoints';
@@ -52,21 +53,24 @@ const REMINDER_TYPES = new Set(['Reminder', 'Nudge', 'DueSoon', 'Overdue']);
  */
 function DesktopNotifier() {
   const wid = useAuth((s) => s.ctx?.current?.id);
+  const userId = useAuth((s) => s.ctx?.user.id);
   useEffect(() => {
-    if (!wid) return;
-    const key = `pm_desktop_seen_${wid}`;
+    if (!wid || !userId) return;
+    const key = `pm_desktop_seen_${userId}_${wid}`;
     const read = () => { try { return Number(localStorage.getItem(key) ?? 0); } catch { return 0; } };
     const write = (v: number) => { try { localStorage.setItem(key, String(v)); } catch { /* storage unavailable */ } };
+    const openedAt = Date.now();
     let running = false;
+    let stopped = false;
     const tick = async () => {
       if (running || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
       running = true;
       try {
         const page = await notificationApi.list(1, true);
+        if (stopped) return;
         const times = page.items.map((n) => Date.parse(n.createdAt));
-        const last = read();
+        const last = read() || openedAt;
         const newest = Math.max(last, ...times, 0);
-        if (last === 0) { write(newest || Date.now()); return; } // first run: do not replay history
         const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !REMINDER_TYPES.has(x.type) && !isRingNotice(x) && !isViewing(x.link) && firstTime(`dn-${x.id}`, 120_000)).reverse();
         for (const n of fresh) {
           const kind = kindForType(n.type);
@@ -82,8 +86,8 @@ function DesktopNotifier() {
     const timer = setInterval(() => { void tick(); }, 15_000);
     const now = () => { void tick(); };
     window.addEventListener(CHECK_NOTIFICATIONS, now);
-    return () => { clearInterval(timer); window.removeEventListener(CHECK_NOTIFICATIONS, now); };
-  }, [wid]);
+    return () => { stopped = true; clearInterval(timer); window.removeEventListener(CHECK_NOTIFICATIONS, now); };
+  }, [wid, userId]);
   return null;
 }
 
@@ -113,7 +117,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
   useEffect(() => { window.scrollTo({ top: 0, left: 0 }); }, [loc.pathname]);   // left too: a page never stays shifted sideways
-  // Every page's code, fetched quietly once the app is idle, so a click shows the next page at once instead of a blank pause.
+  // Warm likely destinations on hover/focus; unopened features stay off the network.
   useEffect(() => { prefetchPages(); }, []);
   // The page content fades in when the place changes (the rail and the Ask bar stay put). A class on the existing main element, not a
   // wrapper: an extra box would break the phone layout's height chain, and a transform would trap position:fixed panels inside it.
@@ -161,6 +165,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && <IncomingCallHost />}
       <ToastRoot />
       <ConfirmRoot />
+      <MutationSync />
       <DesktopNotifier />
       <AccessWatcher />
       <CommandPalette />

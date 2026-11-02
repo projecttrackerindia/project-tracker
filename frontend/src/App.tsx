@@ -43,7 +43,7 @@ function Moved({ to, prefix, rename, keep }: { to: string; prefix?: string; /** 
  */
 function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>>>, name: K) {
   // Sign-in pages are not wanted by someone already in; everything else is fetched ahead while idle.
-  if (load !== loadAuthPages) registerPage(load);
+  if (load !== loadAuthPages) registerPage(load, ({ WorkPage: ['/work'], ProjectsHome: ['/work/projects'], TalkPage: ['/messages'], LibraryPage: ['/library'], InsightsPage: ['/insights'], PeoplePage: ['/people'], SettingsPage: ['/settings'], DeskPage: ['/desk'], QualityPage: ['/quality'] } as Record<string, string[]>)[name] ?? []);
   return lazy(() => load().then((m) => ({ default: m[name] })));
 }
 // The sign-in pages (and the form and validation libraries only they use) are not needed by someone already signed in. They are fetched
