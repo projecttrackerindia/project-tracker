@@ -264,7 +264,7 @@ try {
   const dm = (iso) => { const [, m, d] = iso.split('-').map(Number); return `${d} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]}`; };
   assert.equal(await dec.locator('.pf-dec-dates s').innerText(), dm(day(6)), 'the old date');
   assert.equal(await dec.locator('.pf-dec-dates b').innerText(), dm(day(53)), 'the forecast');
-  { const t = await dec.innerText(); assert.match(t, /47 days late/); assert.match(t, /s-internal-api/); }
+  { const t = await dec.innerText(); assert.match(t, /Forecast 47 days after due/); assert.match(t, /s-internal-api/); }
   assert.equal(await page.locator('.pj2-portfolio .pj2-dupe').count(), 0, 'dismissed duplicates stay dismissed on Portfolio too');
   await shot(page, 'portfolio-1440-light.png', true);
   await dec.getByRole('button', { name: 'Add people' }).click();
