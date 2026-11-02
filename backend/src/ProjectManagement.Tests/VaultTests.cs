@@ -671,9 +671,10 @@ public class VaultTests(ApiFactory factory)
     {
         var owner = await Owner("Field protection regression");
         var mine = await MyVault(owner);
-        var id = await AddItem(owner, Login(mine));
         var body = System.Text.Json.JsonSerializer.SerializeToNode(Login(mine))!.AsObject();
-        body["fields"] = new JsonArray(new JsonObject { ["key"] = "password", ["value"] = "", ["secret"] = false });
+        body["fields"]!.AsArray().Add(new JsonObject { ["key"] = "custom", ["value"] = Password, ["secret"] = true });
+        var id = await AddItem(owner, body);
+        body["fields"] = new JsonArray(new JsonObject { ["key"] = "custom", ["keep"] = true, ["type"] = "text", ["secret"] = false });
         Assert.Equal("STEP_UP_REQUIRED", (await owner.Put($"/api/v1/vault/items/{id}", body)).ErrorCode);
         Assert.DoesNotContain(Password, (await owner.Get($"/api/v1/vault/items/{id}")).Data!.ToJsonString());
     }

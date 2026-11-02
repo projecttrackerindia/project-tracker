@@ -60,7 +60,7 @@ export function MoneySection({ m }: { m: PortfolioMoney }) {
             {m.projects.map((p) => (
               <tr key={p.projectId} className={p.warning ? 'warn' : ''}>
                 <td><b>{p.key}</b> {p.name}{p.warning && <div className="pb-warn"><Icon name="alert" size={12} /> {p.warning}</div>}</td>
-                <td>{money(p.budget, '')}</td><td>{p.peopleWithoutRate > 0 ? 'Unknown' : money(p.spent, '')}</td><td title={p.basis}>{money(p.forecast, '')}</td>
+                <td>{money(p.budget, '')}</td><td>{p.peopleWithoutRate > 0 ? 'Unknown' : money(p.spent, '')}</td><td>{money(p.forecast, '')}<div className="muted">{p.basis}</div></td>
                 <td className="pb-used">{p.peopleWithoutRate > 0 ? <span className="muted">rates missing</span> : p.budget ? <span className="pb-meter"><i className={(p.forecast ?? 0) > p.budget ? 'over' : ''} style={{ width: `${Math.min(100, (p.spent / p.budget) * 100)}%` }} /></span> : <span className="muted">no budget</span>}</td>
               </tr>
             ))}

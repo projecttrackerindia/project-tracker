@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { AiCard } from '../../components/v2/AiCard';
 import { ErrorState, PageHead, PageLoader, Segmented } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';

@@ -315,7 +315,7 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
             var left = remaining.GetValueOrDefault(p.Id);
             decimal? forecast = null; string basis;
             if (left is not null && left.Hours > 0 && left.Unestimated == 0) { forecast = Math.Round(spent + left.Hours * avgRate, 2); basis = "spent so far plus the open estimates"; }
-            else if (left is not null && left.Hours > 0) { forecast = Math.Round(spent + (left.Hours + left.Unestimated * DefaultTaskMinutes / 60m) * avgRate, 2); basis = $"spent plus open estimates ({left.Unestimated} unestimated tasks counted at {DefaultTaskMinutes / 60} h)"; }
+            else if (left is not null && left.Unestimated > 0) { forecast = Math.Round(spent + (left.Hours + left.Unestimated * DefaultTaskMinutes / 60m) * avgRate, 2); basis = $"spent plus open estimates ({left.Unestimated} unestimated tasks counted at {DefaultTaskMinutes / 60} h)"; }
             else if (p.StartDate is { } s && p.DueDate is { } d && d > s && clock.Today > s)
             {
                 var elapsed = Math.Clamp((decimal)(clock.Today.DayNumber - s.DayNumber) / (d.DayNumber - s.DayNumber), 0.05m, 1m);
@@ -330,6 +330,8 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
                 burn, warning, p.BudgetHours, hoursUsed, left?.Hours, noRate, basis));
         }
         var notes = new List<string>();
+        var unestimated = remaining.Values.Sum(x => x.Unestimated);
+        if (unestimated > 0) notes.Add($"{unestimated} open tasks have no estimate; forecasts assume {DefaultTaskMinutes / 60} hours each. These are assumptions, not measured work.");
         if (list.Sum(x => x.PeopleWithoutRate) > 0) notes.Add($"{Plural(list.Sum(x => x.PeopleWithoutRate), "person has", "people have")} logged time without a cost rate; their costs are unknown and excluded from the known subtotal. Set rates in Settings › Rates.");
         if (list.All(x => x.Budget is null)) notes.Add("No project has a budget yet. Set one in the project's settings to see burn against it.");
         var burnAll = months.Select(m => new MoneyMonthDto(Month(m), list.Sum(x => x.Burn.First(b => b.Month == Month(m)).Cost))).ToList();
