@@ -176,15 +176,20 @@ try {
   checks.push('actions-beside-bubble');
 
   // Regression: Edit hides +, so the input frame must start at the text, including on iPhone with a short keyboard viewport.
-  await mine.locator('.bubble').hover();
-  await mine.getByRole('button', { name: 'More actions' }).click();
-  await page.getByRole('menu', { name: 'More actions' }).getByRole('menuitem', { name: 'Edit', exact: true }).click();
   const editingBox = page.locator('.composer.is-editing .composer-editable');
-  await editingBox.waitFor();
-  await editingBox.fill('Yesterday it was a hard deployment. I do not want to see these issues next time. '.repeat(4));
-  for (const viewport of [{ width: 1440, height: 960 }, { width: 393, height: 852 }, { width: 393, height: 420 }, { width: 852, height: 393 }]) {
+  // The phone and desktop route shells mount separate thread trees. Open Edit in each layout;
+  // this check measures composer geometry, rather than assuming component state survives a shell replacement.
+  const openEdit = async (viewport) => {
     await page.setViewportSize(viewport);
-    await page.locator('.composer.is-editing').waitFor();
+    await page.goto(`${origin}/preview-org/messages/${direct.id}`);
+    await mine.locator('.bubble').hover();
+    await mine.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menu', { name: 'More actions' }).getByRole('menuitem', { name: 'Edit', exact: true }).click();
+    await editingBox.waitFor();
+    await editingBox.fill('Yesterday it was a hard deployment. I do not want to see these issues next time. '.repeat(4));
+  };
+  for (const viewport of [{ width: 1440, height: 960 }, { width: 393, height: 852 }, { width: 393, height: 420 }, { width: 852, height: 393 }]) {
+    await openEdit(viewport);
     const geometry = await editingBox.evaluate((el) => {
       const row = el.closest('.composer-row'), frame = getComputedStyle(row, '::before');
       const r = el.getBoundingClientRect(), parent = row.getBoundingClientRect();
@@ -197,7 +202,7 @@ try {
     if (viewport.width <= 760) assert.ok(geometry.font >= 16, 'iOS editing does not zoom');
     assert.ok(await page.getByRole('button', { name: 'Save', exact: true }).isVisible(), 'save stays available');
   }
-  await page.setViewportSize({ width: 393, height: 852 });
+  await openEdit({ width: 393, height: 852 });
   assert.equal(await page.locator('.talk-thread .day-sep').evaluateAll((els) => els.every((el) => getComputedStyle(el).position === 'static')), true,
     'timestamp separators stay in message flow instead of overlaying bubbles');
   await shot(page, 'edit-393-light.png');
