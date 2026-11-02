@@ -10,7 +10,7 @@ import { clearOfflineData, readOfflineSnapshot } from '../features/offline/stora
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 20_000, refetchOnWindowFocus: false,
+      staleTime: 20_000, refetchOnWindowFocus: true, refetchOnReconnect: true,
       retry: (count, err: any) => count < 1 && !(err?.status >= 400 && err?.status < 500),
     },
   },

@@ -31,11 +31,11 @@ export function AlertsSetup() {
     let cancelled = false;
     void deviceAlerts().then(async (s) => {
       // Allowed, but not signed up for push yet (a new device, or an older version): sign up quietly.
-      if (!cancelled && s === 'tab-only' && !isDesktopApp()) s = await enableDeviceAlerts();
+      if (!cancelled && (s === 'tab-only' || s === 'on') && !isDesktopApp()) s = await enableDeviceAlerts();
       if (!cancelled) setState(s);
     });
     return () => { cancelled = true; };
-  }, [enabled]);
+  }, [enabled, user?.id]);
 
   useEffect(() => {
     if (!enabled || !('serviceWorker' in navigator)) return;

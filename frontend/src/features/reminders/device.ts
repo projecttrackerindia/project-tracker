@@ -27,6 +27,8 @@ const canNotify = () => typeof Notification !== 'undefined';
 const canPush = () => typeof navigator !== 'undefined' && 'serviceWorker' in navigator && typeof window !== 'undefined' && 'PushManager' in window;
 
 let subscribed: boolean | null = null;
+// A local browser subscription may outlive its server registration (sign-out, cleanup or another account).
+let serverConfirmed = false;
 let lastReason: string | null = null;
 const listeners = new Set<(s: DeviceAlerts) => void>();
 export const onDeviceAlerts = (l: (s: DeviceAlerts) => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
@@ -71,7 +73,7 @@ export async function deviceDetail(): Promise<DeviceDetail> {
   if (!canPush()) { subscribed = false; return { state: 'tab-only', reason: 'This browser has no push service, so notifications appear only while a Project Tracker tab is open.', canFixHere: false }; }
   const reg = (await navigator.serviceWorker.getRegistration()) ?? null;
   subscribed = !!(reg && (await reg.pushManager.getSubscription()));
-  if (subscribed) return { state: 'on', reason: null, canFixHere: true };
+  if (subscribed && serverConfirmed) return { state: 'on', reason: null, canFixHere: true };
   return { state: 'tab-only', reason: lastReason, canFixHere: !!reg || import.meta.env.PROD };
 }
 
@@ -81,9 +83,11 @@ export async function deviceDetail(): Promise<DeviceDetail> {
  */
 export async function enableDeviceAlerts(): Promise<DeviceAlerts> {
   lastReason = null;
+  serverConfirmed = false;
   if (isNativeApp()) {
     const r = await enableNativePush((token) => pushApi.subscribeNative(token));
     subscribed = r === 'on';
+    serverConfirmed = subscribed;
     if (r === 'blocked') lastReason = 'Notifications are turned off for Project Tracker in Android Settings → Apps → Project Tracker → Notifications.';
     else if (r !== 'on') lastReason = 'Push is not set up in this build of the app. Update the app from the website.';
     return announce(r === 'on' ? 'on' : r === 'blocked' ? 'blocked' : 'off');
@@ -114,6 +118,7 @@ export async function enableDeviceAlerts(): Promise<DeviceAlerts> {
       }
       const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
       await pushApi.subscribe({ endpoint: json.endpoint, keys: json.keys });
+      serverConfirmed = true;
     }
   } catch (e) {
     lastReason = e instanceof ApiError ? `The server refused the push sign-up: ${e.message}`
@@ -127,6 +132,7 @@ export async function enableDeviceAlerts(): Promise<DeviceAlerts> {
 /** Turns push off for this device (the browser permission stays as it is - only the browser can take that back). */
 export async function disableDeviceAlerts(): Promise<DeviceAlerts> {
   lastReason = null;
+  serverConfirmed = false;
   try {
     const reg = canPush() ? await navigator.serviceWorker.getRegistration() : undefined;
     const sub = await reg?.pushManager.getSubscription();
@@ -140,7 +146,7 @@ export async function disableDeviceAlerts(): Promise<DeviceAlerts> {
 export const lastDeviceError = () => lastReason;
 
 /** Whether a push will already bring this reminder to the device (then the page does not add a second notification). */
-export const pushCoversThisDevice = () => subscribed === true;
+export const pushCoversThisDevice = () => subscribed === true && serverConfirmed;
 
 /** A notification from the operating system, shown by the page itself (the tab is open but someone is in another app). */
 export async function systemNotification(title: string, body: string | null, tag: string, link = '/reminders', opts: { sticky?: boolean } = {}): Promise<boolean> {

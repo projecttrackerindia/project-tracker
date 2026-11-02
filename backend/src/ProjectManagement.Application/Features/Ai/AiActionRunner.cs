@@ -256,7 +256,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                 {
                     var id = Guid(e, "id") ?? throw new ValidationException("entries", "An entry has no work item.");
                     var date = Date(e, "date") ?? throw new ValidationException("entries", "An entry has no day.");
-                    var req = new ProjectManagement.Application.Features.Time.LogTimeRequest(e.GetProperty("minutes").GetInt32(), date, Str(e, "note"));
+                    var req = new ProjectManagement.Application.Features.Time.LogTimeRequest(e.GetProperty("minutes").GetInt32(), date, Str(e, "note"), StartedAt: e.TryGetProperty("startedAt", out var start) && start.ValueKind == JsonValueKind.String ? start.GetDateTime() : null, EndedAt: e.TryGetProperty("endedAt", out var end) && end.ValueKind == JsonValueKind.String ? end.GetDateTime() : null);
                     var saved = Str(e, "kind") == "work" ? await time.LogOnWorkTaskAsync(id, req, ct) : await time.LogAsync(id, req, ct);
                     first ??= saved.Id; day ??= date; logged.Add(saved.Id);
                 }

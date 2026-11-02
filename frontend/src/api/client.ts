@@ -1,6 +1,7 @@
 import type { ApiErrorItem, AuthResponse } from './types';
 import { saveFile } from '../lib/native';
 import { lensHeaders } from '../lib/lensState';
+import { mutationCommitted } from '../lib/mutationEffects';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
@@ -180,6 +181,7 @@ export async function api<T = void>(method: string, path: string, body?: unknown
 
 async function send<T>(method: string, path: string, body: unknown, opts: Options, idempotencyKey?: string): Promise<T> {
   const { auth = true, retry = true, signal } = opts;
+  const workspaceAtStart = tabWorkspaceId;
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
@@ -190,7 +192,10 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
     method, headers, credentials: 'include', signal, body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const { data, error } = await parse(res);
-  if (!error) return data as T;
+  if (!error) {
+    if (auth) mutationCommitted(method, path, workspaceAtStart);
+    return data as T;
+  }
 
   if (error.status === 401 && auth && retry && !path.startsWith('/auth/')) {
     const renewed = await refreshSession();

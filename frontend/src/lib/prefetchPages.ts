@@ -1,26 +1,29 @@
-/**
- * Page modules are split so the first visit downloads a fraction of the app. Their loaders are registered here as they are declared, and
- * fetched one by one once the app is idle: after that a click renders the next page straight away (no blank pause while its code
- * arrives). Skipped when the person asked their browser to save data or is on a very slow connection.
- */
-const loaders: (() => Promise<unknown>)[] = [];
+/** Load likely destinations on navigation intent, never download every feature while idle. */
+type Loader = () => Promise<unknown>;
+const pages: { path: string; load: Loader }[] = [];
+const loaded = new Set<Loader>();
 let started = false;
-
-export function registerPage(load: () => Promise<unknown>) {
-  loaders.push(load);
+let attempts = 0;
+export function registerPage(load: Loader, paths: readonly string[] = []) {
+  for (const path of paths) pages.push({ path, load });
 }
-
 export function prefetchPages() {
   if (started || typeof window === 'undefined') return;
   started = true;
-  const c = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
-  if (c?.saveData || c?.effectiveType === '2g' || c?.effectiveType === 'slow-2g') return;
-  const idle = (fn: () => void) => { if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(fn, { timeout: 4000 }); else globalThis.setTimeout(fn, 1500); };
-  const queue = [...new Set(loaders)];
-  const next = () => {
-    const load = queue.shift();
-    if (!load) return;
-    load().catch(() => undefined).finally(() => idle(next));
+  const intent = (event: Event) => {
+    const c = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    if (document.hidden || c?.saveData || /^(slow-)?2g$/.test(c?.effectiveType ?? '') || attempts >= 4) return;
+    const target = event.target as Element | null;
+    const link = target?.closest?.('a[href]') as HTMLAnchorElement | null;
+    if (!link || link.hasAttribute('download')) return;
+    const url = new URL(link.href, window.location.href);
+    if (url.origin !== window.location.origin) return;
+    const match = pages.filter((p) => url.pathname === p.path || url.pathname.endsWith(p.path) || url.pathname.includes(p.path + '/'))
+      .sort((a, b) => b.path.length - a.path.length)[0];
+    if (!match || loaded.has(match.load)) return;
+    loaded.add(match.load); attempts++;
+    void match.load().catch(() => loaded.delete(match.load));
   };
-  window.setTimeout(() => idle(next), 2500);   // after the first page has settled
+  document.addEventListener('pointerover', intent, { passive: true });
+  document.addEventListener('focusin', intent);
 }

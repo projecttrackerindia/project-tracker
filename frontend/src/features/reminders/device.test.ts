@@ -1,0 +1,28 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { pushApi } from '../../api/endpoints';
+vi.mock('../../api/endpoints', () => ({ pushApi: { subscribe: vi.fn(), status: vi.fn(), unsubscribe: vi.fn() } }));
+vi.mock('../../api/client', () => ({ ApiError: class ApiError extends Error {} }));
+vi.mock('../../lib/orgPath', () => ({ orgHref: (s: string) => s }));
+vi.mock('../../lib/attention', () => ({ playSound: vi.fn(), primeSound: vi.fn(), setSoundOn: vi.fn(), soundOn: vi.fn() }));
+vi.mock('../../lib/desktop', () => ({ isDesktopApp: () => false }));
+vi.mock('../../lib/native', () => ({ isNativeApp: () => false, enableNativePush: vi.fn(), nativeEndpoint: vi.fn(), nativePermission: vi.fn() }));
+afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); vi.clearAllMocks(); });
+it('keeps fallback notifications until the server acknowledges an existing browser subscription', async () => {
+  const sub = { toJSON: () => ({ endpoint: 'https://push.example.test/device', keys: { p256dh: 'key', auth: 'auth' } }) };
+  const reg = { active: {}, pushManager: { getSubscription: async () => sub } };
+  vi.stubGlobal('Notification', { permission: 'granted' });
+  vi.stubGlobal('window', { PushManager: function () {}, dispatchEvent: vi.fn() });
+  vi.stubGlobal('navigator', { serviceWorker: { getRegistration: async () => reg, ready: Promise.resolve(reg) } });
+  const device = await import('./device');
+  expect(await device.deviceAlerts()).toBe('tab-only');
+  expect(device.pushCoversThisDevice()).toBe(false);
+  vi.mocked(pushApi.subscribe).mockResolvedValue({ publicKey: 'public', devices: 1 });
+  await device.enableDeviceAlerts();
+  expect(pushApi.subscribe).toHaveBeenCalledWith(sub.toJSON());
+  expect(device.pushCoversThisDevice()).toBe(true);
+  vi.mocked(pushApi.subscribe).mockRejectedValue(new Error('offline'));
+  await device.enableDeviceAlerts();
+  expect(device.pushCoversThisDevice()).toBe(false);
+  expect(await device.deviceAlerts()).toBe('tab-only');
+  expect(device.lastDeviceError()).toContain('offline');
+});

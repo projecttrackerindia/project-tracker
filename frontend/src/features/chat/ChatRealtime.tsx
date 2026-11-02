@@ -7,6 +7,7 @@ import type { ChatMessage, ChatThread, Conversation, PresenceStatus } from '../.
 import { appPath } from '../../lib/orgPath';
 import { firstTime, getAttention } from '../../lib/attention';
 import { trackIdle } from '../../lib/idle';
+import { createRefreshQueue, type RefreshQueue } from '../../lib/refreshQueue';
 import { CHECK_NOTIFICATIONS } from '../notifications/events';
 import { readFromServer } from '../notifications/centre/readSync';
 import { pushCoversThisDevice, systemNotification } from '../reminders/device';
@@ -22,8 +23,8 @@ import { emitReminders, emitSheetFocus, emitViewing, notifyLiveConnected, setLiv
 
 /** Screens that show work: refreshed (if open) when someone else changes something. Chat, settings and the like have their own events or none. */
 const LIVE_KEYS = new Set(['action-items', 'activity', 'approvals', 'calendar', 'dashboard', 'dashboard-report', 'dev-links', 'issues', 'milestones', 'my-work',
-  'project', 'project-status', 'projects', 'sprint-tasks', 'sprints', 'task', 'timesheet', 'work', 'workload', 'capacity']);
-const LIVE_THROTTLE_MS = 1200;
+  'project', 'project-status', 'projects', 'sprint-tasks', 'sprints', 'task', 'tasks', 'time', 'timer', 'timesheet', 'timeline', 'work-items', 'work', 'workload', 'capacity', 'portfolio', 'plan-sheet']);
+const LIVE_THROTTLE_MS = 150;
 
 /** The person is in another tab, another window or another app. */
 const away = () => document.hidden || !document.hasFocus();
@@ -108,18 +109,16 @@ export function ChatRealtime() {
     const sendIdle = (idle: boolean) => { if (connection.state === hub.HubConnectionState.Connected) void connection.invoke('SetIdle', idle).catch(() => { /* best effort */ }); };
     const idle = trackIdle(sendIdle);
 
-    // Live updates: someone changed something - refresh the work screens that are open (at most about once a second).
-    let liveTimer: number | undefined;
-    const refreshWork = () => {
-      if (liveTimer) return;
-      liveTimer = window.setTimeout(() => {
-        liveTimer = undefined;
-        void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === wid && LIVE_KEYS.has(String(q.queryKey[1])) });
-      }, LIVE_THROTTLE_MS);
-    };
+    // Serialize refreshes for open work screens; bursts queue one catch-up without restarting in-flight reads.
+    const matchesWork = (q: { queryKey: readonly unknown[] }) => q.queryKey[0] === wid && LIVE_KEYS.has(String(q.queryKey[1]));
+    const liveQueue: RefreshQueue = createRefreshQueue(async () => {
+      const wasFetching = queryClient.getQueryCache().findAll({ predicate: (q) => matchesWork(q) && q.isActive() }).some((q) => q.state.fetchStatus === 'fetching');
+      await queryClient.invalidateQueries({ predicate: matchesWork }, { cancelRefetch: false });
+      if (wasFetching) liveQueue.request();
+    }, LIVE_THROTTLE_MS);
+    const refreshWork = liveQueue.request;
     connection.on('changed', (changes: { actorId: string | null }[]) => {
-      // This tab already refreshed what it changed itself; other people's changes (and my other tabs') are news.
-      if (changes.every((c) => c.actorId === me) && !document.hidden) return;
+      // Same actor does not mean same tab: another visible tab or an AI action may have made this change.
       if (changes.some((c) => c.actorId !== me)) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));   // someone else's change may have notified me
       refreshWork();
     });
@@ -279,7 +278,7 @@ export function ChatRealtime() {
     return () => {
       stopped = true;
       window.clearTimeout(retry);
-      window.clearTimeout(liveTimer);
+      liveQueue.dispose();
       idle.stop();
       if (current === connection) { current = null; setLiveConnection(null); }
       void connection.stop();
