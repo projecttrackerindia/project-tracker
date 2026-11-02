@@ -1,3 +1,4 @@
+import { deliveryTime } from '../features/notifications/deliveryTime';
 import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react';
 import { isViewing } from '../features/notifications/centre/readSync';
 import { prefetchPages } from '../lib/prefetchPages';
@@ -66,10 +67,11 @@ function DesktopNotifier() {
       try {
         const page = await notificationApi.list(1, true);
         if (stopped) return;
-        const times = page.items.map((n) => Date.parse(n.createdAt));
+        const now = Date.now();
+        const times = page.items.map(deliveryTime).filter((at) => Number.isFinite(at) && at <= now);
         const last = read() || openedAt;
         const newest = Math.max(last, ...times, 0);
-        const fresh = page.items.filter((x) => x.browser && Date.parse(x.createdAt) > last && !isRingNotice(x) && !isViewing(x.link) && firstTime(`dn-${x.id}`, 120_000)).reverse();
+        const fresh = page.items.filter((x) => x.browser && deliveryTime(x) > last && deliveryTime(x) <= now && !isRingNotice(x) && !isViewing(x.link) && firstTime(`dn-${x.id}`, 120_000)).reverse();
         for (const n of fresh) {
           const kind = kindForType(n.type);
           announce(n);
