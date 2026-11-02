@@ -42,7 +42,7 @@ function Moved({ to, prefix, rename, keep }: { to: string; prefix?: string; /** 
  * module exports its page by name; `page` picks that export for React.lazy.
  */
 function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>>>, name: K) {
-  // Sign-in pages are not wanted by someone already in; everything else is fetched ahead while idle.
+  // Signed-in destinations may warm on navigation intent; sign-in pages are excluded.
   if (load !== loadAuthPages) registerPage(load, ({ WorkPage: ['/work'], ProjectsHome: ['/work/projects'], TalkPage: ['/messages'], LibraryPage: ['/library'], InsightsPage: ['/insights'], PeoplePage: ['/people'], SettingsPage: ['/settings'], DeskPage: ['/desk'], QualityPage: ['/quality'] } as Record<string, string[]>)[name] ?? []);
   return lazy(() => load().then((m) => ({ default: m[name] })));
 }

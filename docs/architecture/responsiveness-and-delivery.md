@@ -65,4 +65,6 @@ This change does not yet implement a single combined create-ticket + time-log + 
 
 ## Validation
 
+Live and local refreshes use a serialized queue with one dirty follow-up and do not cancel in-flight reads; events during older reads trigger a catch-up. This avoids request-cancellation starvation under sustained changes.
+
 Local execution against the actual TypeScript modules passed mutation-family routing, tenant binding, read-loop avoidance, zero startup speculative downloads and deduplicated navigation intent. Whitespace/diff checks passed. Added frontend regressions cover prefetch, mutation routing and push-server acknowledgment; backend regressions cover interval validation and confirmed timestamp persistence. Full CI and production verification are tracked in the pull request; they are not claimed passed by this document.
