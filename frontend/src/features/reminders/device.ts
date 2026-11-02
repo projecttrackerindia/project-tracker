@@ -73,7 +73,7 @@ export async function deviceDetail(): Promise<DeviceDetail> {
   if (!canPush()) { subscribed = false; return { state: 'tab-only', reason: 'This browser has no push service, so notifications appear only while a Project Tracker tab is open.', canFixHere: false }; }
   const reg = (await navigator.serviceWorker.getRegistration()) ?? null;
   subscribed = !!(reg && (await reg.pushManager.getSubscription()));
-  if (subscribed) return { state: 'on', reason: null, canFixHere: true };
+  if (subscribed && serverConfirmed) return { state: 'on', reason: null, canFixHere: true };
   return { state: 'tab-only', reason: lastReason, canFixHere: !!reg || import.meta.env.PROD };
 }
 

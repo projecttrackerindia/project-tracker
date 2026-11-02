@@ -14,7 +14,7 @@ it('keeps fallback notifications until the server acknowledges an existing brows
   vi.stubGlobal('window', { PushManager: function () {}, dispatchEvent: vi.fn() });
   vi.stubGlobal('navigator', { serviceWorker: { getRegistration: async () => reg, ready: Promise.resolve(reg) } });
   const device = await import('./device');
-  expect(await device.deviceAlerts()).toBe('on');
+  expect(await device.deviceAlerts()).toBe('tab-only');
   expect(device.pushCoversThisDevice()).toBe(false);
   vi.mocked(pushApi.subscribe).mockResolvedValue({ publicKey: 'public', devices: 1 });
   await device.enableDeviceAlerts();
@@ -23,4 +23,6 @@ it('keeps fallback notifications until the server acknowledges an existing brows
   vi.mocked(pushApi.subscribe).mockRejectedValue(new Error('offline'));
   await device.enableDeviceAlerts();
   expect(device.pushCoversThisDevice()).toBe(false);
+  expect(await device.deviceAlerts()).toBe('tab-only');
+  expect(device.lastDeviceError()).toContain('offline');
 });
