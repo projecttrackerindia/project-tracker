@@ -19,6 +19,10 @@ async function core(s) {
   const projects = await s.api('/projects?pageSize=100');
   assert.ok(projects.items.length, 'A seeded project exists');
   await modal.locator('.ss-trigger').first().click();
+  const popup = s.page.locator('.ss-pop.doc-scope');
+  await popup.waitFor();
+  const bounds = await popup.boundingBox();
+  assert.ok(bounds && bounds.y >= 0 && bounds.y + bounds.height <= s.page.viewportSize().height, 'The themed project dropdown stays inside the viewport');
   await s.page.getByRole('listbox', { name: 'Project', exact: true }).getByRole('option', { name: new RegExp(projects.items[0].key) }).click();
   await modal.getByRole('button', { name: /^Next/ }).click();
   const content = modal.locator('.rte-content').first();

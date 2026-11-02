@@ -26,6 +26,9 @@
   min-height: calc(100vh - var(--topbar-h, 64px));
 }
 
+/* Portaled selects carry the Documents theme, but are compact popups rather than page roots. */
+.ss-pop.doc-scope { min-height: 0; }
+
 /* ============================================================
    DOCUMENTS SIDEBAR — pinned scopes + a project tree, DocTracker's layout
    ============================================================ */
