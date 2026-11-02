@@ -1,10 +1,14 @@
 name: Browser smoke test
 
-# Opens the real app in a browser after every push to main and checks the pages people use most. It reports problems but never blocks:
-# the CI workflow stays the gate. Run it by hand from the Actions tab too.
+# Seeded live-API browser journeys for the current UI. Failures are visible as failures; no continue-on-error.
+# PRs changing these journeys validate them before merge; main and manual runs remain supported.
 on:
   push:
     branches: [main]
+  pull_request:
+    paths:
+      - 'frontend/e2e/**'
+      - '.github/workflows/smoke.yml'
   workflow_dispatch:
 
 permissions:
@@ -13,8 +17,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    continue-on-error: true
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -42,6 +45,8 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:5173/ && break; sleep 2; done
       - name: Smoke test
         working-directory: frontend
+        env:
+          SHOTS: ${{ runner.temp }}/smoke-shots
         run: |
           npm i --no-save playwright-core
           npx playwright-core install chromium
@@ -64,3 +69,22 @@ jobs:
       - name: Logs
         if: failure()
         run: tail -n 60 "$RUNNER_TEMP/api.log" "$RUNNER_TEMP/vite.log" || true
+
+
+      - name: Keep seeded browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seeded-browser-smoke
+          path: |
+            ${{ runner.temp }}/smoke-shots/
+            ${{ runner.temp }}/smoke.log
+            ${{ runner.temp }}/invitations.log
+            ${{ runner.temp }}/public.log
+            ${{ runner.temp }}/mobile.log
+            ${{ runner.temp }}/documents.log
+            ${{ runner.temp }}/documents-api.log
+            ${{ runner.temp }}/documents-review.log
+            ${{ runner.temp }}/documents-secrets.log
+            ${{ runner.temp }}/documents-pdf.log
+          if-no-files-found: ignore

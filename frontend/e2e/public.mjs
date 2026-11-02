@@ -39,7 +39,14 @@ for (const [path, title] of [['/features/', 'Features | Project Tracker'], ['/pr
 }
 await page.goto(`${BASE}/pricing/`);
 await page.waitForTimeout(800);
-check('pricing shows the live Pro price per person', /₹\s?349/.test(await page.locator('[data-price=PRO]').first().innerText()));
+const pricingResponse = await page.request.get(`${BASE}/api/v1/public/pricing`);
+check('the public price list answers', pricingResponse.ok());
+const pricingJson = await pricingResponse.json(), pricing = pricingJson.data ?? pricingJson;
+const pro = pricing.plans.find((p) => p.code === 'PRO');
+check('Pro has a per-person monthly price', !!pro && pro.perSeat && pro.priceMonthly > 0);
+const formattedPrice = new Intl.NumberFormat('en-IN', { style: 'currency', currency: pro.currency || 'INR', maximumFractionDigits: 0 }).format(pro.priceMonthly);
+await page.waitForFunction((expected) => document.querySelector('[data-price=PRO]')?.textContent === expected, formattedPrice);
+check('pricing shows the configured Pro price per person', (await page.locator('[data-price=PRO]').first().innerText()) === formattedPrice);
 for (const f of ['/sitemap.xml', '/robots.txt', '/favicon.ico', '/favicon.svg', '/og-image.png']) {
   const r = await page.request.get(`${BASE}${f}`);
   check(`${f} is served`, r.ok(), String(r.status()));
@@ -86,3 +93,4 @@ check('live session without the hint still opens the app', await page.locator('#
 check('no script errors', errors.length === 0, errors.join(' | '));
 await browser.close();
 process.exit(results.every(Boolean) ? 0 : 1);
+
