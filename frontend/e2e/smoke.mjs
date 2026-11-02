@@ -11,7 +11,8 @@ try {
   await s.page.getByRole('tab', { name: 'For me', exact: true }).click();
   for (const path of ['/work', '/work/projects', '/work/projects?view=portfolio', '/insights', '/people', '/people/teams', '/settings/profile', '/library', '/meetings']) {
     await go(s, path);
-    await s.page.locator('main h1').first().waitFor();
+    if (path === '/settings/profile') await s.page.locator('main').getByRole('heading', { name: 'Profile & sign-in', exact: true }).waitFor();
+    else await s.page.locator('main').getByRole('heading', { level: 1 }).first().waitFor();
     assert.equal(await s.page.getByText('Something went wrong', { exact: true }).count(), 0, path + ' has no crash screen');
     assert.equal(await s.page.getByText('Page not found', { exact: true }).count(), 0, path + ' resolves');
     assert.ok(await s.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), path + ' fits');
