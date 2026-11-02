@@ -42,7 +42,7 @@ export function DecisionCard({ item, filter, owner }: { item: DecisionItem; filt
   const [open, setOpen] = useState(false);
   const others = otherOptions(item.decision);
   const tone = item.slipDays > 14 ? 'late' : 'risk';
-  const late = item.slipDays > 0 ? `Forecast ${plural(item.slipDays, 'day')} after due` : item.health === 'Delayed' ? 'Past due' : 'Needs review';
+  const late = item.slipDays > 0 ? `Forecast ${plural(item.slipDays, 'day')} after due` : item.health === 'Delayed' ? 'Marked delayed' : 'Needs review';
   const causes = item.decision?.causes.length ? item.decision.causes.map(cap) : item.changes.length ? item.changes : [item.why];
   // Late only because of sign-offs: every task is done, but stages are still unsigned. Then the move is asking for the sign-offs.
   const detail = useWsQuery(['project', item.projectId], () => projectApi.get(item.projectId), { staleTime: 60_000, retry: false });

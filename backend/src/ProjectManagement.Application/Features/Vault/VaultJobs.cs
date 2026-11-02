@@ -194,7 +194,7 @@ public class VaultJobs(IAppDbContext db, AppClock clock, VaultCrypto crypto, Pas
                     }
                     i.BreachCount = seen; i.BreachCheckedAt = result.CheckedAt;
                 }
-                catch (Exception e) when (e is CryptographicException or FormatException or InvalidOperationException) { i.BreachCheckedAt = clock.Now; }
+                catch (Exception e) when (e is CryptographicException or FormatException or InvalidOperationException) { /* No completed check: retain the last known result and timestamp. */ }
             }
             await sdb.SaveChangesAsync(ct);
         }, ct);

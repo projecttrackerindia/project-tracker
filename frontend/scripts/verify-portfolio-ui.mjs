@@ -18,7 +18,7 @@ const day=(n)=>new Date(Date.now()+n*86400000).toISOString().slice(0,10);
 const risk=(id,key,name,health,slip,level)=>({projectId:id,key,name,group:'Delivery',health,progress:40,owner:'Asha Rao',startDate:day(-40),dueDate:day(7),delayedDays:0,openTasks:8,overdueTasks:2,blockedTasks:1,
  openActionItems:0,overdueActionItems:0,finishedLast28Days:6,inProgressTasks:2,projectedFinish:day(7+slip),projectedSlipDays:slip,confidence:'medium',score:level==='High'?6:1,level,reasons:['2 overdue tasks of 8 open']});
 const brief={asOf:day(0),projects:2,onTrack:1,atRisk:1,delayed:0,onHold:0,overdueTasks:2,blockedTasks:1,openActionItems:0,overdueActionItems:0,dateChangesLast30Days:0,headlines:['2 active projects: 1 on track, 1 at risk, 0 delayed.'],
- ranked:[risk(pay,'PAY','Payments','AtRisk',6,'High'),risk(web,'WEB','Website','OnTrack',-2,'Low')],recentSlips:[],stretched:[]};
+ ranked:[risk(pay,'PAY','Payments','AtRisk',6,'High'),{...risk(web,'WEB','Website','OnTrack',5,'Low'),reasons:[],dueDate:day(40),projectedFinish:day(45)}],recentSlips:[],stretched:[]};
 const decision={projectId:pay,key:'PAY',name:'Payments',headline:'PAY finishes 6 days late (6 Nov, due 31 Oct): Ravi Kumar is on leave from 3 Nov (4 days) with 5 open tasks and 2 tasks were added in the last 2 weeks and 1 finished.',
  causes:['Ravi Kumar is on leave from 3 Nov (4 days) with 5 open tasks','2 tasks were added in the last 2 weeks and 1 finished','1 task waits on unfinished work'],slipDays:6,dueDate:day(7),finish:day(13),confidence:'medium',waitingProposals:0,
  options:[{id:'move_person',kind:'move_person',title:'Move Jyothsna Reddy onto PAY for a week',effect:'1 day late (1 Nov)',finish:day(8),slipDays:1,steps:['Give PAY-14 “Bank certification” to Jyothsna Reddy','Give PAY-15 “Refund report” to Jyothsna Reddy'],why:'Jyothsna Reddy is at 30% over the next 2 weeks.',personId:'j1'},
@@ -33,7 +33,7 @@ const board=()=>({asOf:day(0),filter:{},brief,decisions:[decision],summary:'2 ac
   weeks:[0,1,2,3].map(i=>({weekStart:day(-2+i*7),capacityMinutes:2400,demandMinutes:[3600,3000,2000,900][i],load:[150,125,83,38][i]}))}],projectsAtRisk:[{projectId:pay,key:'PAY',name:'Payments',minutes:3600,tasks:5}],notes:['1 task has no estimate and counts as 4 hours.']}});
 const timeline={from:day(-40),to:day(60),projects:[
  {id:pay,key:'PAY',name:'Payments',health:'AtRisk',group:'Delivery',start:day(-40),due:day(7),originalDue:day(0),forecast:day(13),progress:40,milestones:[{id:'m1',name:'UAT',due:day(2),status:'InProgress'}],dependsOn:[web]},
- {id:web,key:'WEB',name:'Website',health:'OnTrack',group:'Delivery',start:day(-10),due:day(40),originalDue:null,forecast:day(35),progress:20,milestones:[],dependsOn:[]}]};
+ {id:web,key:'WEB',name:'Website',health:'OnTrack',group:'Delivery',start:day(-10),due:day(40),originalDue:null,forecast:day(45),progress:20,milestones:[],dependsOn:[]}]};
 const writes=[],errors=[],checks=[],boardQueries=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
@@ -93,13 +93,16 @@ try{
  assert.ok(await page.getByRole('tablist',{name:'Portfolio view'}).isVisible(),'Board · Timeline · Present');
  assert.ok(await page.locator('.pf-tile').count()===3,'three status tiles');
  assert.equal(await page.getByRole('region',{name:'Projects that need attention'}).count(),0,'no separate Needs attention');
- checks.push('summary');
+ // Manual OnTrack health must not claim a forecast after the deadline is on time.
+ await page.locator('.pf-colwrap.ok .pf-card').getByText('Website',{exact:true}).waitFor();
+ assert.match(await page.locator('.pf-colwrap.ok .pf-card').getAttribute('title'), /is after the due date/);
+ checks.push('summary-and-truthful-forecast');
 
  // Decisions: how late, the project, why in one line, and the date change as the hero; the other ways to recover with their effect.
  const decisions=page.getByRole('region',{name:'Decisions this week'});
  const dec=decisions.locator('.pf-dec[data-project="PAY"]');
  assert.equal(await decisions.locator('.pf-dec[data-project="PAY"]').count(),1,'one card per project');
- await dec.getByText('PAY · 6 days late',{exact:true}).waitFor();
+ await dec.getByText('PAY · Forecast 6 days after due',{exact:true}).waitFor();
  assert.ok(await dec.getByRole('heading',{name:/Payments/}).isVisible());
  assert.ok(await dec.locator('.pf-dec-dates s').isVisible()&&await dec.locator('.pf-dec-dates b').isVisible(),'due and forecast dates');
  assert.ok(await dec.getByRole('button',{name:/^Propose /}).isVisible(),'Propose the forecast date');
