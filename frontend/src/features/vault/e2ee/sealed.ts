@@ -415,10 +415,10 @@ export async function sealCollection(c: VaultCollection, stepUp: string | undefi
 
 // ------------------------------------------------------------------ breach check without sending the password
 
-export async function breachesFor(password: string): Promise<number> {
+export async function breachesFor(password: string): Promise<number | null> {
   const { prefix, suffix } = breachParts(password);
   const { body } = await vaultApi.breachRange(prefix);
-  return breachCount(body, suffix);
+  return body.trim() ? breachCount(body, suffix) : null;
 }
 
 export type { Identity };

@@ -32,7 +32,7 @@ export interface VaultCollection {
   sealed: boolean; rekeyNeeded: boolean; keyVersion: number; requireApproval: boolean; requestable: boolean;
 }
 export interface VaultPolicy { stepUpAlways: boolean; clipboardSeconds: number; revealSeconds: number; sharedAdminsOnly: boolean }
-export interface VaultHealth { total: number; weak: number; reused: number; breached: number; expired: number; old: number; toRotate: number; score: number }
+export interface VaultHealth { total: number; weak: number; reused: number; breached: number; expired: number; old: number; toRotate: number; score: number; unchecked?: number }
 export interface VaultIdentity { userId: string; x25519Public: string; mlKemPublic: string; ed25519Public: string; selfSignature: string; fingerprint: string; generation: number }
 export interface VaultOverview { collections: VaultCollection[]; policy: VaultPolicy; canAdmin: boolean; canCreateShared: boolean; health: VaultHealth; mfaEnabled: boolean; identity: VaultIdentity | null; hasPasskeys: boolean }
 export type UnlockKind = 'Passkey' | 'RecoveryKey';
@@ -89,11 +89,11 @@ export const activeGrant = (r: VaultRequest) => r.status === 'Approved' && !!r.g
 export interface FieldInput { key: string; label?: string | null; type?: FieldType | null; secret: boolean; value?: string | null; keep?: boolean }
 export interface SaveItem {
   collectionId: string; kind: VaultItemKind; title: string; url?: string | null; tags?: string[]; class: VaultClass; useOnly: boolean;
-  ownerUserId?: string | null; rotateEveryDays?: number | null; expiresAt?: string | null; fields: FieldInput[]; links?: VaultLink[]; reason?: string | null;
+  ownerUserId?: string | null; rotateEveryDays?: number | null; expiresAt?: string | null; fields: FieldInput[]; links?: VaultLink[]; reason?: string | null; stepUp?: string;
 }
 export interface SaveCollection {
   name: string; description?: string | null; kind: VaultCollectionKind; projectId?: string | null; teamId?: string | null; requireStepUp?: boolean;
-  rotateEveryDays?: number | null; shareWithMembers?: VaultAccess | null; sealed?: boolean; requireApproval?: boolean; requestable?: boolean;
+  rotateEveryDays?: number | null; shareWithMembers?: VaultAccess | null; sealed?: boolean; requireApproval?: boolean; requestable?: boolean; stepUp?: string;
 }
 export interface ShareInput { principalType: VaultPrincipal; principalId?: string | null; role?: string | null; access: VaultAccess; expiresAt?: string | null }
 export interface ImportRow { title?: string | null; url?: string | null; username?: string | null; password?: string | null; totp?: string | null; notes?: string | null }
@@ -138,8 +138,8 @@ export const vaultApi = {
   download: (attachmentId: string, fileName: string, stepUp?: string) => downloadPost(`/vault/attachments/${attachmentId}/download`, { stepUp }, fileName),
   removeAttachment: (attachmentId: string) => del(`/vault/attachments/${attachmentId}`),
   importRows: (collectionId: string, rows: ImportRow[]) => post<{ imported: number; skipped: number; weak: number }>('/vault/import', { collectionId, rows }),
-  check: (password: string) => post<{ strength: number; breachCount: number }>('/vault/check', { password }),
-  savePolicy: (b: { stepUpAlways: boolean; clipboardSeconds: number; sharedAdminsOnly: boolean }) => put<VaultPolicy>('/vault/policy', b),
+  check: (password: string) => post<{ strength: number; breachCount: number | null; status: string; checkedAt: string | null }>('/vault/check', { password }),
+  savePolicy: (b: { stepUp?: string; stepUpAlways: boolean; clipboardSeconds: number; sharedAdminsOnly: boolean }) => put<VaultPolicy>('/vault/policy', b),
   accessReview: (userId: string) => get<VaultAccessReview>(`/vault/access-review/${userId}`),
 
   // ---- sealed (zero-knowledge): the server only ever sees public keys, wrapped keys and ciphertext

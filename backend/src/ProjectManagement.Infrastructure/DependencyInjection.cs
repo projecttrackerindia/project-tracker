@@ -119,7 +119,9 @@ public static class DependencyInjection
         services.AddHttpClient("github-app", c => c.Timeout = TimeSpan.FromSeconds(20));
         // API drift "Check against live": no redirects (an answer cannot send the call on to another host), no request logging (headers carry the stored credential).
         services.AddHttpClient("api-live", c => c.Timeout = TimeSpan.FromSeconds(10))
-            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => PublicNetworkHandler.Create());
+        services.AddHttpClient("voice-connector", c => c.Timeout = TimeSpan.FromSeconds(10))
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => PublicNetworkHandler.Create());
         services.AddHttpClient("meetbot", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddHttpClient("whatsapp-installation", c => c.Timeout = TimeSpan.FromSeconds(20))
@@ -225,3 +227,4 @@ public static class DependencyInjection
         return services;
     }
 }
+

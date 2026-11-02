@@ -16,7 +16,7 @@ public sealed record PortfolioRiskDto(Guid ProjectId, string Key, string Name, s
 public sealed record PortfolioSlipDto(Guid ProjectId, string ProjectKey, string Project, DateOnly? Previous, DateOnly? Revised, int? DaysShifted, string? Reason, string? Dependency, string? By, DateTime At);
 public sealed record PortfolioPersonDto(string Name, int Projects, int OpenTasks, int OverdueTasks);
 public sealed record PortfolioBriefDto(DateOnly AsOf, int Projects, int OnTrack, int AtRisk, int Delayed, int OnHold, int OverdueTasks, int BlockedTasks, int OpenActionItems, int OverdueActionItems,
-    int DateChangesLast30Days, IReadOnlyList<string> Headlines, IReadOnlyList<PortfolioRiskDto> Ranked, IReadOnlyList<PortfolioSlipDto> RecentSlips, IReadOnlyList<PortfolioPersonDto> Stretched, bool Truncated = false);
+    int DateChangesLast30Days, IReadOnlyList<string> Headlines, IReadOnlyList<PortfolioRiskDto> Ranked, IReadOnlyList<PortfolioSlipDto> RecentSlips, IReadOnlyList<PortfolioPersonDto> Stretched, bool Truncated = false, int WorkComplete = 0);
 
 public sealed record ScenarioRequest(Guid ProjectId, int SlipDays = 0, int AddPeople = 0, int CutTasks = 0, Guid? TeamId = null);
 public sealed record ScenarioOutcomeDto(DateOnly? Finish, int? SlipDays, string Confidence, int OpenTasks);
@@ -269,8 +269,9 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         else
         {
             // The parts always add up to the whole: anything not yet rated (on hold, or no health yet) is named too.
-            var other = ranked.Count - onTrack - atRisk - late;
-            headlines.Add($"{ranked.Count} active project{(ranked.Count == 1 ? "" : "s")}: {onTrack} on track, {atRisk} at risk, {late} delayed{(other > 0 ? $", {other} not rated yet" : "")}.");
+            var complete = ranked.Count(x => x.Health == "Completed");
+            var other = ranked.Count - onTrack - atRisk - late - complete;
+            headlines.Add($"{ranked.Count} active project{(ranked.Count == 1 ? "" : "s")}: {onTrack} on track, {atRisk} at risk, {late} delayed{(complete > 0 ? $", {complete} work complete (check sign-offs)" : "")}{(other > 0 ? $", {other} not rated yet" : "")}.");
             if (totalOverdue > 0) { var worst = ranked.OrderByDescending(x => x.OverdueTasks).First(); headlines.Add($"{totalOverdue} tasks are overdue; {worst.OverdueTasks} of them in {worst.Name}."); }
             foreach (var p in ranked.Where(x => x.ProjectedSlipDays is > 0 && x.Confidence != "low").OrderByDescending(x => x.ProjectedSlipDays).Take(2))
                 headlines.Add($"{p.Name} is likely to finish about {p.ProjectedSlipDays} days after its due date ({p.Confidence} confidence).");
@@ -278,7 +279,7 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             if (changes.Count(c => c.TaskId is null) is > 0 and var moved) headlines.Add($"{moved} project delivery date{(moved == 1 ? " was" : "s were")} moved in the last 30 days.");
         }
         return new PortfolioBriefDto(today, ranked.Count, onTrack, atRisk, late, rows.Count(r => r.Status == ProjectStatus.OnHold), totalOverdue, ranked.Sum(x => x.BlockedTasks),
-            ranked.Sum(x => x.OpenActionItems), ranked.Sum(x => x.OverdueActionItems), changes.Count(c => c.TaskId is null), headlines, ranked, slips, stretched, truncated);
+            ranked.Sum(x => x.OpenActionItems), ranked.Sum(x => x.OverdueActionItems), changes.Count(c => c.TaskId is null), headlines, ranked, slips, stretched, truncated, ranked.Count(x => x.Health == "Completed"));
     }
 
     /// <summary>The brief as text for the model: the headline numbers, the projects that need attention with their reasons and forecast, slips and who is stretched.</summary>
@@ -306,3 +307,4 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         return sb.ToString();
     }
 }
+

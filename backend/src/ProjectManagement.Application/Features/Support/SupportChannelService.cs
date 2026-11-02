@@ -952,6 +952,22 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         try { return JsonSerializer.Deserialize<Dictionary<string, string>>(secrets.Unprotect(p)) ?? []; } catch (JsonException) { return []; }
     }
 
+    public static bool MatchesVerifiedScope(IReadOnlyDictionary<string, string> bound, IReadOnlyDictionary<string, string> args, VoiceFlow flow)
+    {
+        if (bound.Count == 0) return false;
+        // Every verified input must still exist in this flow and request, including optional bindings.
+        foreach (var (key, value) in bound)
+        {
+            var input = flow.Inputs.FirstOrDefault(i => i.Name == key);
+            if (input is null || !args.TryGetValue(key, out var given)
+                || VoiceFlowRunner.Clean(input, given) is not { } clean || clean != value) return false;
+        }
+        // Additional account inputs cannot borrow a grant from a different connector's schema.
+        foreach (var input in flow.Inputs)
+            if ((input.Required || args.ContainsKey(input.Name)) && !bound.ContainsKey(input.Name)) return false;
+        return true;
+    }
+
     private string VerifiedText(SupportConversation c) => string.Join(", ", VerifiedFor(c).Select(x => $"{x.Key} ending {Last4(x.Value)}"));
 
     private static string Last4(string v) => v.Length <= 4 ? v : v[^4..];
@@ -1013,12 +1029,8 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
                     var t = tools.FirstOrDefault(x => x.Name == tool["args"]?["connector"]?.ToString());
                     if (t is null) return new("No such connector.");
                     if (VoiceFlowRunner.Parse(t.FlowJson) is not { } flow) return new("That connector cannot answer customers on WhatsApp.");
-                    var verified = c.VerifiedUntil > now;
-                    // Verified for one loan is not verified for another: every value they were verified for must be the same here.
-                    if (verified)
-                        foreach (var (k, v) in VerifiedFor(c))
-                            if (args.TryGetValue(k, out var given) && flow.Inputs.FirstOrDefault(i => i.Name == k) is { } input && VoiceFlowRunner.Clean(input, given) is { } clean && clean != v)
-                                verified = false;
+                    // A timestamp alone is not an account grant. Unknown connector schemas fail closed.
+                    var verified = c.VerifiedUntil > now && MatchesVerifiedScope(VerifiedFor(c), args, flow);
                     if (flow.RequiresVerifiedCaller && !verified) return new("The person is not verified for these details yet: use verify first.");
                     var r = await VoiceFlowRunner.RunAsync(flow, args, t.Name, verified, c.Language,
                         (n, a, tk) => n == t.Name ? connectors.SendAsync(t, a, flow, tk) : connectors.SendOtherAsync(tools, n, a, tk), ct);

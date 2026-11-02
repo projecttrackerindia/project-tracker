@@ -35,7 +35,7 @@ export interface PortfolioRisk {
 export interface PortfolioSlip { projectId: string; projectKey: string; project: string; previous: string | null; revised: string | null; daysShifted: number | null; reason: string | null; dependency: string | null; by: string | null; at: string }
 export interface PortfolioPerson { name: string; projects: number; openTasks: number; overdueTasks: number }
 export interface PortfolioBrief {
-  asOf: string; projects: number; onTrack: number; atRisk: number; delayed: number; onHold: number; overdueTasks: number; blockedTasks: number; openActionItems: number; overdueActionItems: number;
+  asOf: string; projects: number; workComplete?: number; onTrack: number; atRisk: number; delayed: number; onHold: number; overdueTasks: number; blockedTasks: number; openActionItems: number; overdueActionItems: number;
   dateChangesLast30Days: number; headlines: string[]; ranked: PortfolioRisk[]; recentSlips: PortfolioSlip[]; stretched: PortfolioPerson[];
 }
 export interface ScenarioOutcome { finish: string | null; slipDays: number | null; confidence: string; openTasks: number }

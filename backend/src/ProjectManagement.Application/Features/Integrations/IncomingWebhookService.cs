@@ -442,7 +442,7 @@ public class IncomingWebhookService(IAppDbContext db, ICurrentContext ctx, AppCl
         var cc = sp.GetRequiredService<CurrentContext>();
         var member = await db.TenantMembers.IgnoreQueryFilters().AsNoTracking().Include(x => x.User)
             .FirstOrDefaultAsync(x => x.TenantId == hook.TenantId && x.UserId == hook.ActingUserId, ct);
-        if (member is null || member.User is null || !member.User.IsActive)
+        if (member is null || member.Status != MemberStatus.Active || member.User is null || !member.User.IsActive)
         { var r2 = Done("failed", "The person this address raises work as is no longer a member. An admin can open it and choose “Raise as me”."); await db.SaveChangesAsync(ct); return r2; }
         var original = (cc.TenantId, cc.UserId, cc.Role, cc.WorkspaceType);
         cc.TenantId = hook.TenantId; cc.UserId = member.UserId; cc.Role = member.Role;

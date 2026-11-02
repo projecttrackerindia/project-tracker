@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Services;
@@ -124,11 +125,11 @@ public class ApiDriftService(IAppDbContext db, AppClock clock, Recorder recorder
             using var res = await http.CreateClient("api-live").SendAsync(msg, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             var status = (int)res.StatusCode;
             if (status >= 300) return Fail(status is 401 or 403 ? $"The API refused the stored credential ({status})." : $"The API answered {status}.", status);
-            var text = await res.Content.ReadAsStringAsync(timeout.Token);
-            if (text.Length > MaxBody) text = text[..MaxBody];
+            var text = await BoundedHttpContent.ReadUtf8Async(res.Content, MaxBody, timeout.Token);
             return Compare(sample.Status, sample.Body, text, status, env, "live");
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return Fail("The API did not answer within 8 seconds."); }
+        catch (HttpBodyTooLargeException) { return Fail("The API response exceeds the comparison size limit."); }
         catch (HttpRequestException) { return Fail("The API could not be reached."); }
     }
 
@@ -188,3 +189,4 @@ public class ApiDriftService(IAppDbContext db, AppClock clock, Recorder recorder
         return servers.Count <= 3 && k >= 0 && k < order.Length ? order[k] : $"ENV {i + 1}";
     }
 }
+

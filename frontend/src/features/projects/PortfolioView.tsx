@@ -63,7 +63,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   const items: DecisionItem[] = useMemo(() => board && b ? decisionItems(board.decisions, b) : [], [board, b]);
   const asOf = board?.asOf ?? b?.asOf;
   const rankedOwner = useMemo(() => new Map((b?.ranked ?? []).map((r) => [r.projectId, r.owner])), [b]);
-  const projectsN = b ? b.onTrack + b.atRisk + b.delayed + b.onHold : 0;
+  const projectsN = b ? b.onTrack + b.atRisk + b.delayed + b.onHold + (b.workComplete ?? 0) : 0;
   const keysOf = (h: string) => (b?.ranked ?? []).filter((r) => r.health === h).slice(0, 2).map((r) => r.key).join(' · ');
   const eyebrow = mode === 'capacity' ? 'Next 6 weeks' : mode === 'timeline' && timelineRange ? timelineRange : `${b?.projects ?? projectsN} projects · Week ${isoWeek(asOf ? new Date(asOf) : new Date())}`;
   // Action items live only as the Plan sheet's first tab: an old link (?mode=actions, ?actions=1) opens it there.
@@ -127,12 +127,13 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
       ) : (
         <>
           <div className="pf-big">
-            <div className="pf-tile ok"><b>{b.onTrack}</b><span><strong>On track</strong><small>of {b.projects} projects{b.projects > projectsN ? ` · ${b.projects - projectsN} without a health yet` : ''}</small></span></div>
+            <div className="pf-tile ok"><b>{b.onTrack}</b><span><strong>On track</strong><small>of {b.projects} projects{(b.workComplete ?? 0) > 0 ? ` · ${b.workComplete} work complete; check sign-offs` : ''}{b.projects > projectsN ? ` · ${b.projects - projectsN} without a health yet` : ''}</small></span></div>
             <div className="pf-tile risk"><b>{b.atRisk}</b><span><strong>At risk</strong><small>{keysOf('AtRisk') || 'None at risk'}</small></span></div>
             <div className="pf-tile late"><b>{b.delayed}</b><span><strong>Late</strong><small>{keysOf('Delayed') || 'None late'}</small></span></div>
             <Summary summary={b.headlines[0] ?? board.summary} filter={filter} ai={ai} />
           </div>
 
+          {(b.workComplete ?? 0) > 0 && <section className="card" aria-label="Work complete, check sign-offs"><h3>Work complete · check release sign-offs</h3><ul>{b.ranked.filter((r) => r.health === 'Completed').map((r) => <li key={r.projectId}><Link to={`/work/projects/${r.projectId}`}>{r.key} · {r.name}</Link></li>)}</ul></section>}
           <div className="pf-lay">
             <BoardColumns filter={filter} brief={b} items={items} />
             <section aria-label="Decisions this week" className="pf-rail">
@@ -168,3 +169,4 @@ function Summary({ summary, filter, ai }: { summary: string; filter: PortfolioFi
     </section>
   );
 }
+

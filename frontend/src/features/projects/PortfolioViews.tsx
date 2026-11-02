@@ -42,7 +42,7 @@ export function DecisionCard({ item, filter, owner }: { item: DecisionItem; filt
   const [open, setOpen] = useState(false);
   const others = otherOptions(item.decision);
   const tone = item.slipDays > 14 ? 'late' : 'risk';
-  const late = item.slipDays > 0 ? `${plural(item.slipDays, 'day')} late` : 'On the edge';
+  const late = item.slipDays > 0 ? `Forecast ${plural(item.slipDays, 'day')} after due` : item.health === 'Delayed' ? 'Past due' : 'Needs review';
   const causes = item.decision?.causes.length ? item.decision.causes.map(cap) : item.changes.length ? item.changes : [item.why];
   // Late only because of sign-offs: every task is done, but stages are still unsigned. Then the move is asking for the sign-offs.
   const detail = useWsQuery(['project', item.projectId], () => projectApi.get(item.projectId), { staleTime: 60_000, retry: false });
@@ -108,8 +108,8 @@ const SHOWN = 4;
 
 function explain(p: TimelineProject, r: PortfolioRisk | undefined, col: Col) {
   if (r?.reasons[0]) return r.reasons[0];
-  if (col === 'ok') return p.forecast && p.due ? `Forecast ${dayMonth(p.forecast)} is on or before the due date ${dayMonth(p.due)}.` : 'Work is moving at the pace the due date needs.';
-  if (p.forecast && p.due && p.forecast > p.due) return `Forecast ${dayMonth(p.forecast)} is after the due date ${dayMonth(p.due)}.`;
+  if (p.forecast && p.due) return `Forecast ${dayMonth(p.forecast)} is ${p.forecast > p.due ? 'after' : p.forecast < p.due ? 'before' : 'on'} the due date ${dayMonth(p.due)}.`;
+  if (col === 'ok') return 'Marked on track; no dated forecast is available.';
   return col === 'late' ? 'The due date has passed or overdue work is piling up.' : 'Work is slower than the due date needs.';
 }
 
@@ -240,7 +240,7 @@ function Slide({ item, filter, active }: { item: DecisionItem; filter: Portfolio
   const b = otherOptions(item.decision)[0];
   const tone = decisionTone(item);
   const status = item.health === 'OnTrack' ? 'On track' : item.health === 'AtRisk' ? 'At risk' : item.health === 'Delayed' ? 'Late' : null;
-  const lead = item.slipDays > 0 ? (tone === 'ok' ? `Forecast ${plural(item.slipDays, 'day')} past due` : `Late by ${plural(item.slipDays, 'day')}`) : 'On the edge';
+  const lead = item.slipDays > 0 ? `Forecast ${plural(item.slipDays, 'day')} past due` : 'On the edge';
   return (
     <section className={`pf-slide pf-slide-split ${active ? 'on' : ''}`} aria-hidden={!active} aria-label={item.name}>
       <div className="pf-slide-main">
@@ -422,3 +422,4 @@ export function PresentOverlay({ items, filter, brief, asOf, onClose }: { items:
     document.body,
   );
 }
+

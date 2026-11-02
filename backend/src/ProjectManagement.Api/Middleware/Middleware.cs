@@ -386,23 +386,21 @@ public class SecurityHeadersMiddleware(RequestDelegate next)
 {
     public Task InvokeAsync(HttpContext http)
     {
-        var h = http.Response.Headers;
-        h["X-Content-Type-Options"] = "nosniff";
-        h["X-Frame-Options"] = "DENY";
-        h["Referrer-Policy"] = "no-referrer";
-        h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
-        if (!http.Request.Path.StartsWithSegments("/swagger") && !http.Request.Path.StartsWithSegments("/api/docs"))
-            h["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
-        if (http.Request.Path.StartsWithSegments("/api") && !http.Request.Path.StartsWithSegments("/api/docs") && !http.Request.Path.StartsWithSegments("/api/openapi"))
+        http.Response.OnStarting(() =>
         {
-            h["Cache-Control"] = "no-store";
-            // Error handlers and file results may reset the headers: make sure every API answer still goes out as no-store.
-            http.Response.OnStarting(() =>
+            var h = http.Response.Headers;
+            h["X-Content-Type-Options"] = "nosniff";
+            h["X-Frame-Options"] = "DENY";
+            h["Referrer-Policy"] = "no-referrer";
+            h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+            if (!h.ContainsKey("Content-Security-Policy") && !http.Request.Path.StartsWithSegments("/swagger") && !http.Request.Path.StartsWithSegments("/api/docs"))
+                h["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
+            if (http.Request.Path.StartsWithSegments("/api") && !http.Request.Path.StartsWithSegments("/api/docs") && !http.Request.Path.StartsWithSegments("/api/openapi"))
             {
-                if (string.IsNullOrEmpty(http.Response.Headers.CacheControl)) http.Response.Headers.CacheControl = "no-store";
-                return Task.CompletedTask;
-            });
-        }
+                if (string.IsNullOrEmpty(h.CacheControl)) h.CacheControl = "no-store";
+            }
+            return Task.CompletedTask;
+        });
         return next(http);
     }
 }
@@ -431,3 +429,4 @@ public class McpChallengeMiddleware(RequestDelegate next)
         return next(http);
     }
 }
+

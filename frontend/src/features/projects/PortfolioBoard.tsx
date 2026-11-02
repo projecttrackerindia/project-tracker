@@ -38,18 +38,21 @@ export function PortfolioFilters({ board, filter, onChange }: { board: Portfolio
 export function MoneySection({ m }: { m: PortfolioMoney }) {
   if (!m.entitled || !m.showMoney) return m.notes.length ? <section className="pb-money" aria-label="Money"><h3>Money</h3><p className="muted">{m.notes[0]}</p></section> : null;
   const max = Math.max(1, ...m.burn.map((b) => b.cost));
+  const incomplete = m.projects.some((p) => p.peopleWithoutRate > 0);
+  const budgetsKnown = m.projects.some((p) => p.budget != null);
+  const forecastsKnown = m.projects.length > 0 && m.projects.every((p) => p.forecast != null);
   return (
     <section className="pb-money" aria-label="Money">
       <h3>Money <em>{m.currency}</em></h3>
       <div className="pi-kpis">
-        <div className="pi-kpi"><label>Budget</label><b>{money(m.budget, '')}</b></div>
-        <div className="pi-kpi"><label>Spent</label><b>{money(m.spent, '')}</b></div>
-        <div className="pi-kpi"><label>Forecast at completion</label><b className={m.forecast > m.budget && m.budget > 0 ? 'bad' : ''}>{money(m.forecast, '')}</b></div>
-        <div className="pi-kpi"><label>Forecast to overrun</label><b className={m.overrunning ? 'bad' : 'ok'}>{m.overrunning}</b></div>
+        <div className="pi-kpi"><label>Budget</label><b>{budgetsKnown ? money(m.budget, '') : 'Not set'}</b></div>
+        <div className="pi-kpi"><label>Spent</label><b>{incomplete ? 'Unknown (rates missing)' : money(m.spent, '')}</b></div>
+        <div className="pi-kpi"><label>Forecast at completion</label><b className={m.forecast > m.budget && m.budget > 0 ? 'bad' : ''}>{forecastsKnown ? money(m.forecast, '') : 'Unknown'}</b></div>
+        <div className="pi-kpi"><label>Forecast to overrun</label><b className={m.overrunning ? 'bad' : 'ok'}>{forecastsKnown ? m.overrunning : 'Unknown'}</b></div>
       </div>
-      <div className="pb-burn" role="img" aria-label="Cost by month">
+      {!incomplete && <div className="pb-burn" role="img" aria-label="Cost by month">
         {m.burn.map((b) => <div key={b.month} title={`${b.month}: ${money(b.cost, m.currency)}`}><i style={{ height: `${(b.cost / max) * 100}%` }} /><span>{b.month.slice(0, 3)}</span></div>)}
-      </div>
+      </div>}
       {m.projects.length > 0 && (
         <table className="ops-table-narrow pb-money-table">
           <thead><tr><th>Project</th><th>Budget</th><th>Spent</th><th>Forecast</th><th aria-label="Used" /></tr></thead>
@@ -57,8 +60,8 @@ export function MoneySection({ m }: { m: PortfolioMoney }) {
             {m.projects.map((p) => (
               <tr key={p.projectId} className={p.warning ? 'warn' : ''}>
                 <td><b>{p.key}</b> {p.name}{p.warning && <div className="pb-warn"><Icon name="alert" size={12} /> {p.warning}</div>}</td>
-                <td>{money(p.budget, '')}</td><td>{money(p.spent, '')}</td><td title={p.basis}>{money(p.forecast, '')}</td>
-                <td className="pb-used">{p.budget ? <span className="pb-meter"><i className={(p.forecast ?? 0) > p.budget ? 'over' : ''} style={{ width: `${Math.min(100, (p.spent / p.budget) * 100)}%` }} /></span> : <span className="muted">no budget</span>}</td>
+                <td>{money(p.budget, '')}</td><td>{p.peopleWithoutRate > 0 ? 'Unknown' : money(p.spent, '')}</td><td title={p.basis}>{money(p.forecast, '')}</td>
+                <td className="pb-used">{p.peopleWithoutRate > 0 ? <span className="muted">rates missing</span> : p.budget ? <span className="pb-meter"><i className={(p.forecast ?? 0) > p.budget ? 'over' : ''} style={{ width: `${Math.min(100, (p.spent / p.budget) * 100)}%` }} /></span> : <span className="muted">no budget</span>}</td>
               </tr>
             ))}
           </tbody>
@@ -140,3 +143,4 @@ export function TimelineView({ filter, onPick }: { filter: PortfolioFilter; onPi
     </section>
   );
 }
+
