@@ -112,7 +112,7 @@ export function ChatRealtime() {
     // Serialize refreshes for open work screens; bursts queue one catch-up without restarting in-flight reads.
     const matchesWork = (q: { queryKey: readonly unknown[] }) => q.queryKey[0] === wid && LIVE_KEYS.has(String(q.queryKey[1]));
     const liveQueue: RefreshQueue = createRefreshQueue(async () => {
-      const wasFetching = queryClient.getQueryCache().findAll({ predicate: matchesWork }).some((q) => q.state.fetchStatus === 'fetching');
+      const wasFetching = queryClient.getQueryCache().findAll({ predicate: (q) => matchesWork(q) && q.isActive() }).some((q) => q.state.fetchStatus === 'fetching');
       await queryClient.invalidateQueries({ predicate: matchesWork }, { cancelRefetch: false });
       if (wasFetching) liveQueue.request();
     }, LIVE_THROTTLE_MS);

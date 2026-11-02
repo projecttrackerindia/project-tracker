@@ -12,7 +12,7 @@ export function MutationSync() {
     const pending = new Set<string>();
     const queue: RefreshQueue = createRefreshQueue(async () => {
       const families = new Set(pending); pending.clear();
-      const wasFetching = queryClient.getQueryCache().findAll({ predicate: (q) => q.queryKey[0] === wid && families.has(String(q.queryKey[1])) }).some((q) => q.state.fetchStatus === 'fetching');
+      const wasFetching = queryClient.getQueryCache().findAll({ predicate: (q) => q.queryKey[0] === wid && families.has(String(q.queryKey[1])) && q.isActive() }).some((q) => q.state.fetchStatus === 'fetching');
       await refreshMutationFamilies(queryClient, wid, families);
       if (wasFetching) { for (const f of families) pending.add(f); queue.request(); }
     }, 50);
