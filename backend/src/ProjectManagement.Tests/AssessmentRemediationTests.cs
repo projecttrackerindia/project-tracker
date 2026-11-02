@@ -1,6 +1,9 @@
 using System.Net;
 using System.Text;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using ProjectManagement.Application.Features.Auth;
 using ProjectManagement.Api.Extensions;
 using ProjectManagement.Application.Common;
 using ProjectManagement.Application.Features.Support;
@@ -61,6 +64,29 @@ public class AssessmentRemediationTests
             ["Email:Provider"] = "Smtp", ["Billing:Provider"] = "Razorpay", ["Mfa:EncryptionKey"] = "test-only-independent-key"
         }).Build();
         Assert.Empty(ProductionSafety.Problems(configured, "Production"));
+    }
+
+
+    [Fact]
+    public async Task Breach_service_outages_are_unknown_rather_than_zero_matches()
+    {
+        using var client = new HttpClient(new UnavailableHandler());
+        var check = new PasswordBreachCheck(new ClientFactory(client), Options.Create(new PasswordBreachOptions()), NullLogger<PasswordBreachCheck>.Instance);
+        var result = await check.CheckAsync("test-only-sample");
+        Assert.Null(result.Count);
+        Assert.Null(result.CheckedAt);
+        Assert.Equal("unavailable", result.Status);
+        Assert.Equal("", await check.RangeAsync("ABCDE"));
+    }
+
+    private sealed class ClientFactory(HttpClient client) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => client;
+    }
+    private sealed class UnavailableHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
     }
 
     private sealed class NonSeekableStream(byte[] bytes) : MemoryStream(bytes)

@@ -344,6 +344,7 @@ function VaultTab() {
             <button type="button" onClick={() => go({ health: health === 'reused' ? null : 'reused', view: null, item: null })} aria-pressed={health === 'reused'}><b className="warn">{reusedN}</b><span>Reused</span></button>
             <button type="button" onClick={() => go({ health: health === 'breached' ? null : 'breached', view: null, item: null })} aria-pressed={health === 'breached'}><b className={breachedN ? 'bad' : 'ok'}>{breachedN}</b><span>Breached</span></button>
           </div>
+          {(health2.unchecked ?? 0) > 0 && <p className="muted" role="status">{health2.unchecked} passwords have no completed breach check.</p>}
           {view === 'bin' ? (
             <div className="lib-vault-mode"><button type="button" className="btn btn-link btn-sm" onClick={() => go({ view: null, item: null })}><Icon name="arrowLeft" size={14} /> All items</button><b>Bin</b></div>
           ) : showTabs && (
