@@ -61,11 +61,11 @@ export function useMainNav(): NavGroup[] {
   return [
     { title: 'Places', items: [
       { id: 'home', to: '/', label: 'Home', icon: 'radar', end: true, hint: 'What needs you today, and your calendar',
-        match: (p) => p === '/' || p === '/dashboard' || p.startsWith('/approve/') },
+        match: (p) => p === '/' || p === '/dashboard' },
       { id: 'work', to: '/work', label: 'Work', icon: 'checkCircle', show: work, hint: 'Tasks, issues, actions and tickets in one list, and every project',
         match: under('/work') },
       { id: 'talk', to: '/messages', label: 'Messages', icon: 'message', show: talk, hint: 'Chats and groups',
-        match: (p) => under('/messages')(p) || p.startsWith('/calls/') },
+        match: under('/messages') },
       { id: 'library', to: '/library', label: 'Library', icon: 'note', show: library, hint: 'Documents, API docs, files and the vault',
         match: under('/library') },
       { id: 'insights', to: '/insights', label: 'Insights', icon: 'chart', show: insights, hint: 'How it is going: workload, time and reports',
@@ -73,6 +73,9 @@ export function useMainNav(): NavGroup[] {
     ] },
     // Pages inside the places: found by searching (Ctrl K), never listed twice.
     { title: 'Go to', items: [
+      { to: '/approvals', label: 'Approvals', icon: 'checkCircle', show: !ctx?.user.isPlatformAdmin, paletteOnly: true, hint: 'Approvals, access requests, decisions and reviews waiting on you' },
+      { to: '/reminders', label: 'Reminders', icon: 'alarm', show: !ctx?.user.isPlatformAdmin, paletteOnly: true, hint: 'Your reminders: today, upcoming and done' },
+      { to: '/notes', label: 'Notes', icon: 'note', show: !ctx?.user.isPlatformAdmin, paletteOnly: true, hint: 'Your private notes' },
       { to: '/mail', label: 'Mail', icon: 'mail', show: !ctx?.user.isPlatformAdmin, paletteOnly: true, hint: 'Your Gmail, Outlook and company mail, with an assistant built in' },
       { to: '/work', label: 'My work', icon: 'inbox', show: work, paletteOnly: true },
       { to: '/work?tab=tickets', label: 'Tickets', icon: 'bolt', show: lv('work') > 0, paletteOnly: true, hint: 'Support and operational work, queues and service levels' },
