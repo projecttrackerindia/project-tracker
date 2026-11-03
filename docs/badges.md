@@ -36,6 +36,36 @@ The number is shown as `1`…`99`, then `99+`. No number and `mutedActivity` →
 Chat notices are one per conversation, so using the chat number makes the bell, the title and the app icon agree with the
 Messages badge; the `max` keeps project-chat mentions and thread replies (notices that are not chat-unread) visible.
 
+## Every notification on one sidebar place
+
+Each unread notification counts on exactly **one** place in the sidebar (and the phone tab bar), so the places add up to the bell, the tab
+title `(3)`, the PWA icon (`navigator.setAppBadge`) and the Electron dock / taskbar badge. The server decides
+(`NotificationDestinations.Of` in `NotificationService.cs`) and sends `tabs` with `/notifications/counts`: unread per
+`"destination:category"`; the client keeps the same rules in `features/notifications/centre/tabBadges.ts` (for optimistic updates and
+older servers). Both are pinned by tests with the same table.
+
+| Notification (type, link) | Place (sidebar `data-badge`) | Shows |
+|---|---|---|
+| `Meeting` (invites, changes, started), a `Reminder` linking `/meet?open=`, `/meetings?open=`, `/calls/meeting/` (starting soon) | Meetings (`meetings`) | red number |
+| any link under `/mail` | Mail (`mail`) | red number; with none, the calm grey unread-mail count |
+| a link to `/?tab=calendar` or `/calendar` | Calendar (`calendar`) | red number |
+| `Message`, `Call`; a `Mention` in a chat (`/chat/…`, `/messages`, `?chat=1`) | Messages (`talk`) | `max(notices, unread chat messages)`; a muted chat adds only a grey dot unless it @mentions you |
+| `Document`; any link under `/documents` or `/library` (shares, comments, reviews) | Library (`library`) | red number |
+| `PortfolioDigest`; a link under `/portfolio` or with `view=portfolio` (action items needing review) | Portfolio (`portfolio`) | red number |
+| `ServiceLevel`, `Support`; a link under `/desk` or `/operations` | Desk (`desk`) | red number; with none, the calm open-ticket count |
+| `TaskAssigned`, `TaskUpdated` (change alerts), `Comment`, `Mention` elsewhere, `Issue`, `ProjectUpdated` | My Work (`work`) | red number; with none, the calm open-work count |
+| everything else: `DueSoon`, `Overdue`, `Reminder`, `Nudge`, `Approval`, `TimesheetReminder`, `Security`, `Invitation`, `Subscription`, `ReportReady`, `Briefing`, agent alerts | Today (`home`) - the inbox | red number; with none, the calm "waiting on you" count |
+| (the bell, Inbox) | all of the above | the sum |
+
+Rules:
+- **Red = notifications, grey = context.** A red number is unread notifications for that place and is in the total. A grey (calm) number
+  is what is open there (open tasks, unread mail, open tickets); it is not a notification and is never in the total.
+- **The total is the sum.** `totalBadge()` = `sumTabs(tabCounts())`. A category whose *Badge* switch is off (Settings › Notifications ›
+  Sounds & alerts) leaves every place and the total.
+- **Phone:** the four tabs (Today, Work, Messages, Projects) carry their own number; *More* carries the red numbers of the places inside it.
+- **Reading clears it everywhere:** opening, marking read, or reading on another device (the hub's `notification` `{ read }` event) takes
+  it off its place at once (`markReadLocally` adjusts `tabs` too), then the server's counts settle it.
+
 ## Real time
 
 | Event | What happens |
@@ -60,6 +90,11 @@ Messages badge; the `max` keeps project-chat mentions and thread replies (notice
 5. Muted conversations hid @mentions of me entirely; a mention now always counts.
 
 ## Tests
+
+- API (`NotificationBadgeAndPushTestTests.cs`): every kind has one destination; `tabs` adds up to `unread`.
+- Unit (`tabBadges.test.ts`): the same table client side, the sum equals the bell, badge switches, older servers, read and mark-all-read.
+- Screen (`scripts/verify-notify-badges-ui.mjs`): a notification over the mocked hub lights My Work, Library and Meetings with no reload
+  (1440) and the Work tab and More (390); `(3)` in the title; a read event from another device clears it.
 
 - API (`ChatTests.cs`): arrive → +1 and own messages never count; muted → dot only, mention in muted counts, unmute counts all;
   hide (read) clears and the next message returns; read on one device sends `read` to my other connection and clears the count;

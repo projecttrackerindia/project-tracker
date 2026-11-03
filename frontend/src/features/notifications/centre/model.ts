@@ -4,6 +4,7 @@ import type { Cue } from '../../../lib/attention';
 import type { IconName } from '../../../components/Icon';
 import type { AlertPrefs } from './prefs';
 import { CATEGORIES } from './prefs';
+import { sumTabs, tabCounts } from './tabBadges';
 
 const MESSAGE_TYPES = new Set<NotificationType>(['Message', 'Mention', 'Call'] as NotificationType[]);
 const REMINDER_TYPES = new Set<NotificationType>(['Reminder', 'Nudge', 'DueSoon', 'Overdue', 'TimesheetReminder', 'CertificationExpiry'] as NotificationType[]);
@@ -40,13 +41,13 @@ const TYPE_ICON: Partial<Record<NotificationType, IconName>> = {
 };
 export const iconOf = (n: AppNotification): IconName => (n.type === 'Reminder' && isMeetingLink(n.link) ? 'video' : TYPE_ICON[n.type] ?? 'bell');
 
-const CRITICAL = new Set<NotificationType>(['ServiceLevel', 'Security', 'Support', 'Overdue'] as NotificationType[]);
-/** Which sound a notification gets. */
+const CRITICAL = new Set<NotificationType>(['ServiceLevel', 'Security', 'Support', 'Overdue', 'Approval', 'SignInRequest'] as NotificationType[]);
+/** Which sound a notification gets (docs/notification-sounds.md). */
 export function cueOf(n: Pick<AppNotification, 'type' | 'link' | 'category'>): Cue {
-  if (CRITICAL.has(n.type)) return 'critical';
+  if (CRITICAL.has(n.type)) return 'critical';   // approval needed, security, SLA: distinct and a little more urgent
   if (n.type === 'Mention') return 'mention';
   const c = categoryOf(n);
-  return c === 'messages' ? 'message' : c === 'meetings' ? 'meeting' : c === 'reminders' ? 'reminder' : 'message';
+  return c === 'messages' ? 'message' : c === 'meetings' ? 'meeting' : c === 'reminders' ? 'reminder' : 'task';
 }
 
 /** The conversation a message notification is about (direct and group chats: /chat/{id}). */
@@ -100,17 +101,12 @@ export function badgeCount(c: NotificationCounts | undefined, prefs: AlertPrefs)
 }
 
 /**
- * The one total for the bell, the tab title, the app icon and the desktop app (docs/badges.md). Its message part is the Messages badge's
- * own number (unread chat messages), so the two never disagree; notices that are not in that number (project-chat mentions, thread replies)
- * still count when there are more of them than chat messages.
+ * The one total for the bell, the tab title, the app icon and the desktop app (docs/badges.md): the sum of the sidebar places' red numbers
+ * (tabBadges.ts), so the places always add up to it. Its message part is the Messages badge's own number (unread chat messages); notices
+ * that are not in that number (project-chat mentions, thread replies) still count when there are more of them than chat messages.
  */
 export function totalBadge(c: NotificationCounts | undefined, prefs: AlertPrefs, chatUnread: number): number {
-  const chat = Math.max(0, chatUnread);
-  if (!c) return prefs.cats.messages.badge ? chat : 0;
-  const split = CATEGORIES.map((k) => c[k]);
-  if (split.some((v) => typeof v !== 'number')) return Math.max(c.unread, chat);
-  const rest = CATEGORIES.reduce((sum, k) => sum + (k !== 'messages' && prefs.cats[k].badge ? (c[k] ?? 0) : 0), 0);
-  return rest + (prefs.cats.messages.badge ? Math.max(c.messages ?? 0, chat) : 0);
+  return sumTabs(tabCounts(c, prefs, chatUnread));
 }
 
 export const badgeText = (n: number) => (n > 99 ? '99+' : String(n));

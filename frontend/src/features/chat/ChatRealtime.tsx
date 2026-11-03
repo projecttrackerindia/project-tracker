@@ -6,6 +6,7 @@ import { chatApi } from '../../api/endpoints';
 import type { ChatMessage, ChatThread, Conversation, PresenceStatus } from '../../api/types';
 import { appPath } from '../../lib/orgPath';
 import { firstTime, getAttention } from '../../lib/attention';
+import { getAlertPrefs, isMuted, maySound } from '../notifications/centre/prefs';
 import { trackIdle } from '../../lib/idle';
 import { createRefreshQueue, type RefreshQueue } from '../../lib/refreshQueue';
 import { CHECK_NOTIFICATIONS } from '../notifications/events';
@@ -153,15 +154,16 @@ export function ChatRealtime() {
 
     // Do not disturb: no toasts or system pop-ups for messages (they are still in the list and the bell).
     const quiet = () => !!queryClient.getQueryData<{ dnd?: boolean }>(chatKeys.myStatus(wid))?.dnd;
-    const notify = (conversationId: string, message: ChatMessage) => {
+    const notify = (conversationId: string, message: ChatMessage, mentioned: boolean) => {
       if (quiet()) return;
       const conversation = queryClient.getQueryData<Conversation[]>(chatKeys.conversations(wid))?.find((c) => c.id === conversationId);
-      if (conversation?.isMuted) return;
+      if (conversation?.isMuted && !mentioned) return;   // a muted chat stays silent - unless it @mentions me
       const text = message.body.length > 120 ? `${message.body.slice(0, 119)}…` : message.body;
       const title = conversation && conversation.type === 'Group' ? `${message.senderName} in ${conversation.name}` : (message.senderName ?? 'New message');
       const open = () => { window.focus(); navigate.current(`/messages/${conversationId}`); };
       if (!firstTime(`chat-${message.id}`)) return;
-      getAttention({ kind: 'message' });
+      const p = getAlertPrefs();
+      getAttention({ kind: 'message', cue: mentioned ? 'mention' : 'message', mention: mentioned, mutedChat: !!conversation?.isMuted, dnd: p.dnd, muted: isMuted(p), categoryOn: p.cats.messages.sound && maySound('messages', p) });
       // DesktopNotifier uses the server notice id and channel preference for coordinated OS delivery.
       if (away()) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));
       else if (!appPath(useAuth.getState().ctx?.current?.slug).startsWith('/messages')) {
@@ -176,7 +178,8 @@ export function ChatRealtime() {
       const title = `${message.senderName ?? 'Someone'} mentioned you in ${projectName}`;
       const open = () => { window.focus(); useProjectChat.getState().openChat(projectId, projectName); };
       if (!firstTime(`chat-${message.id}`)) return;
-      getAttention({ kind: 'message' });
+      const p = getAlertPrefs();
+      getAttention({ kind: 'message', cue: 'mention', mention: true, dnd: p.dnd, muted: isMuted(p), categoryOn: maySound('messages', p) });
       if (away()) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));
       else toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
     };
@@ -205,7 +208,7 @@ export function ChatRealtime() {
       refreshLists();
       if (e.message.kind !== 'User' || e.message.senderId === me || viewing) return;
       if (e.projectId) { if (e.mentioned?.includes(me)) notifyMention(e.projectId, e.conversationName ?? 'a project', e.message); return; }
-      notify(e.conversationId, e.message);
+      notify(e.conversationId, e.message, !!e.mentioned?.includes(me));
     });
     // Somebody just created a notification for me (a mention): refresh the bell now instead of at the next poll.
     // A WhatsApp support chat changed (a message came in or went out, someone took it): the desk refreshes at once.

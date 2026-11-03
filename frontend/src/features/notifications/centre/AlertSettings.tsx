@@ -7,7 +7,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { meApi } from '../../../api/endpoints';
 import type { NotificationCategory, NotificationPreference } from '../../../api/types';
 import { Icon } from '../../../components/Icon';
-import { playCue, unlockSound, type Cue } from '../../../lib/attention';
+import { useState } from 'react';
+import { playCue, setSoundVolume, soundVolume, unlockSound, type Cue } from '../../../lib/attention';
 import { queryClient } from '../../../stores/auth';
 import { toast } from '../../../stores/ui';
 import { CATEGORY_META, categoryOf } from './model';
@@ -15,13 +16,14 @@ import '../../../styles/notification-centre-apple.css';
 import { CATEGORIES, isMuted, muteUntil, setAlertPrefs, setCategoryPref, useAlertPrefs, type CategoryPrefs, type MuteFor } from './prefs';
 
 const PREFS_KEY = ['notification-prefs'];
-const CUE_OF: Record<NotificationCategory, Cue> = { messages: 'message', reminders: 'reminder', meetings: 'meeting', work: 'message' };
+const CUE_OF: Record<NotificationCategory, Cue> = { messages: 'message', reminders: 'reminder', meetings: 'meeting', work: 'task' };
 const SOUNDS: { cue: Cue; label: string; hint: string }[] = [
   { cue: 'message', label: 'Message', hint: 'Soft pop' },
   { cue: 'mention', label: 'Mention', hint: 'Brighter, two notes' },
   { cue: 'meeting', label: 'Meeting starting', hint: 'Gentle chime' },
   { cue: 'reminder', label: 'Reminder', hint: 'Two falling notes' },
-  { cue: 'critical', label: 'Critical ticket / incident', hint: 'Short alert' },
+  { cue: 'task', label: 'Task assigned', hint: 'One soft note' },
+  { cue: 'critical', label: 'Approval needed / security', hint: 'Distinct, a little urgent' },
   { cue: 'sent', label: 'Reply sent', hint: 'Whoosh' },
 ];
 
@@ -37,6 +39,7 @@ function mutedText(until: number | null) {
 
 export function AlertSettings() {
   const prefs = useAlertPrefs();
+  const [volume, setVolume] = useState(() => Math.round(soundVolume() * 100));
   const muted = isMuted(prefs);
   const server = useQuery({ queryKey: PREFS_KEY, queryFn: meApi.notificationPrefs });
   const pushOf = (cat: NotificationCategory) => {
@@ -91,6 +94,15 @@ export function AlertSettings() {
           );
         })}
       </div>
+      <div className="ncx-set-row">
+        <span><b>Volume</b><small>{volume === 0 ? 'Silent' : `${volume}%`} · every cue on this device</small></span>
+        <span className="ncx-set-volume">
+          <input type="range" min={0} max={100} step={5} value={volume} aria-label="Notification volume"
+            onChange={(e) => { const v = Number(e.target.value); setVolume(v); setSoundVolume(v / 100); }}
+            onPointerUp={() => { unlockSound(); playCue('message'); }} onKeyUp={() => { unlockSound(); playCue('message'); }} />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { unlockSound(); playCue('message'); }}><Icon name="play" size={12} /> Preview</button>
+        </span>
+      </div>
       <div className="ncx-set-sounds">
         {SOUNDS.map((s) => (
           <button key={s.cue} type="button" className="nc-sound" onClick={() => { unlockSound(); playCue(s.cue); }} aria-label={`Play the ${s.label} sound`}>
@@ -98,7 +110,7 @@ export function AlertSettings() {
           </button>
         ))}
       </div>
-      <p className="ncx-set-foot">Sounds play only while Project Tracker is open and in front; when it is closed your device&rsquo;s own notification sound is used. A muted conversation never sounds (mute it from its menu in Messages).</p>
+      <p className="ncx-set-foot">Sounds are short and rare: at most one every few seconds, none for your own actions, the conversation you are looking at, quiet hours or Do Not Disturb. While Project Tracker is in front it plays its own cue and the system notification stays silent; when it is closed your device&rsquo;s own sound is used - never both. A muted conversation only sounds when it @mentions you.</p>
       </div>
     </section>
   );

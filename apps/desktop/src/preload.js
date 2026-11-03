@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('ptDesktop', {
   openConnectedAccounts: (workspaceSlug) => ipcRenderer.send('open-connected-accounts', workspaceSlug),
   protectContent: (on) => { ipcRenderer.send('protect-content', on === true); },
   setBadge: (count) => { ipcRenderer.send('badge', Number(count) || 0); },
+  notify: (n) => { if (n && typeof n === 'object') ipcRenderer.send('notify', { title: String(n.title || ''), body: String(n.body || ''), link: String(n.link || '/'), tag: String(n.tag || ''), silent: n.silent === true, urgent: n.urgent === true }); },
+  closeNotifications: (tags) => { if (Array.isArray(tags)) ipcRenderer.send('notify-close', tags.map(String).slice(0, 100)); },
   attention: (kind) => { ipcRenderer.send('attention', kind === 'urgent' ? 'urgent' : 'normal'); },
   windowControl: (action) => { if (action === 'minimize' || action === 'maximize' || action === 'close') ipcRenderer.send('win-control', action); },
   onMaximizeChange: (cb) => { ipcRenderer.on('win-maximized', (_e, maximized) => cb(!!maximized)); ipcRenderer.send('win-control', 'query'); },

@@ -77,10 +77,11 @@ function DesktopNotifier() {
         const fresh = page.items.filter((x) => x.browser && deliveryTime(x) > last && deliveryTime(x) <= now && !isRingNotice(x) && !isViewing(x.link) && firstTime(`dn-${x.id}`, 120_000)).reverse();
         for (const n of fresh) {
           const kind = kindForType(n.type);
-          announce(n);
+          const played = announce(n);
           if (isMuted() || getAlertPrefs().dnd) continue;   // muted here: it waits in the Notification Centre
+          // The page played its cue: the OS notification stays silent (one sound per alert); otherwise the OS plays its own.
           void systemNotification(n.title, n.body, n.id, n.link ?? '/', {
-            sticky: kind === 'urgent', waitForPush: pushCoversThisDevice(),
+            sticky: kind === 'urgent', waitForPush: pushCoversThisDevice(), osSound: !played,
             shouldShow: () => !stopped && !isMuted() && !getAlertPrefs().dnd && !isViewing(n.link),
           });
         }
