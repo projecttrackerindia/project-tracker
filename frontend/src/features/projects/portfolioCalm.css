@@ -274,3 +274,36 @@ html[data-theme='dark'] .pfc .cp-cell:not(.leave) span, html[data-theme='dark'] 
   .pfc .cps-t-table tr.cps-r td:nth-child(1) .cps-t { font-weight: 400; }
   .pfc .cps-t-table tr.cps-ph, .pfc .cps-t-table tr.cps-ph td { box-shadow: none; }
 }
+
+/* The search icon that opens the field bar on the calm tabs. */
+.pfc-find { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--calm-fill); color: var(--calm-ink2); font-size: 17px; cursor: pointer; display: grid; place-items: center; flex: none; }
+.pfc-find[aria-pressed='true'] { background: var(--calm-solid); color: var(--calm-ink); box-shadow: var(--calm-sh-sm); }
+@media (max-width: 760px) { .pfc-find { width: 44px; height: 44px; } }
+/* Timeline: the Aura line with the zoom links under the frame (demo shot 14). */
+.ptl-aura { display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+.ptl-zoom { display: inline-flex; gap: 4px; }
+.ptl-zoom button { border: 0; background: none; font: inherit; font-size: 14px; color: var(--calm-accent-text); cursor: pointer; padding: 6px 8px; border-radius: 99px; min-height: 36px; }
+.ptl-zoom button[aria-pressed='true'] { background: var(--calm-accent-soft); font-weight: 600; }
+.pfc .cp-head { display: none; }
+/* Present (demo shot 17): only the slide on a dark ambient glow; the presenter bar and strip appear on hover or focus, so they stay reachable. */
+html body .pf-present.pf-present { background: radial-gradient(45% 40% at 70% 10%, rgba(120, 80, 220, .35), transparent 70%), radial-gradient(40% 40% at 5% 100%, rgba(40, 90, 200, .30), transparent 70%), #0b0b0e; }
+html body .pf-present:not(.phone) .pf-present-top, html body .pf-present:not(.phone) .pf-strip, html body .pf-present:not(.phone) .pf-count { opacity: 0; transition: opacity var(--motion-standard, 200ms) ease; background: transparent; border: 0; }
+html body .pf-present:not(.phone):hover .pf-present-top, html body .pf-present:not(.phone):hover .pf-strip, html body .pf-present:not(.phone) .pf-strip:focus-within { opacity: 1; }
+html body .pf-present:not(.phone) .pf-slide { padding-left: 80px; }
+.pf-present::after { content: "ProjectTracker · ← → · Esc"; position: absolute; left: 140px; bottom: 46px; font-size: 13px; color: #7d7d86; pointer-events: none; }
+.pf-present.phone::after { display: none; }
+
+/* The overview slide is the title and one line; its headlines are the presenter notes in the strip. */
+.pf-slide[aria-label='Overview'] .pf-slide-why { display: none; }
+/* Full height, no dead space (the user's rule): the Timeline frame and the Capacity grid fill the page, as in demo shots 14 and 15; the
+   meeting cards share the width. */
+.pfa-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.pfc .pfx-stage > .ptl { padding-bottom: 24px; }
+.pfc .pfx-stage > .cp { padding-bottom: 24px; }
+.pfc .cp-card { flex: 1; display: flex; flex-direction: column; }
+.pfc .cp-grid { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.pfc .cp-grid > .cp-row:not(.cp-th) { flex: 1; align-items: stretch; }
+.pfc .cp-grid > .cp-row:not(.cp-th) > [role='cell'] { display: flex; }
+.pfc .cp-grid > .cp-row:not(.cp-th) .cp-cell { flex: 1; min-height: 44px; }
+.pfc .cp-grid > .cp-row:not(.cp-th) .cp-who, .pfc .cp-grid > .cp-row:not(.cp-th) .cp-load { align-self: center; }
+@media (max-width: 760px) { .pfc .pfx-stage > .ptl { padding-bottom: 0; } }

@@ -57,7 +57,9 @@ export function CalmPlanSheet() {
   const tab = url.tab === 'all' ? 'all' : shown.find((p) => p.id === url.tab)?.id ?? shown[0]?.id ?? 'all';
   const name = (id: string) => tabPrefs.names[id] || projects.find((p) => p.id === id)?.title || '';
   const statusesBy = useMemo(() => { const m = new Map<string, SheetStatus[]>(); for (const s of sheet.data?.statuses ?? []) m.set(s.projectId, [...(m.get(s.projectId) ?? []), s]); return m; }, [sheet.data]);
-  const scope = tab === 'all' ? work : work.filter((r) => r.projectId === tab);
+  // Phase rows are headers, not tasks: the counts are the tasks under them (and lone tasks).
+  const parents = useMemo(() => new Set(work.map((r) => r.parentId).filter(Boolean)), [work]);
+  const scope = (tab === 'all' ? work : work.filter((r) => r.projectId === tab)).filter((r) => !parents.has(r.id) && r.kind !== 'meeting');
   const open = scope.filter((r) => !done(r)).length, nBlocked = scope.filter(blocked).length + scope.filter((r) => !blocked(r) && late(r, today)).length;
   useShellLine(projects.length ? `${tab === 'all' ? 'All projects' : short(name(tab))} · ${open} open, ${nBlocked} blocked.` : null);
   const full = () => setParams((cur) => { const n = new URLSearchParams(cur); n.set('classic', '1'); return n; });

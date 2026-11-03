@@ -632,10 +632,10 @@ try {
   const tlr = page.getByRole('region', { name: 'Timeline' });
   await tlr.locator('.ptl-bar').first().waitFor();
   assert.equal(new URL(page.url()).searchParams.get('mode'), 'timeline');
-  assert.ok(await page.getByRole('button', { name: /Fit · Sep–Dec/ }).isVisible(), 'fit to the data range');
-  assert.ok(await tlr.getByText('Range fitted to your data: 1 Sep – 31 Dec 2026').isVisible());
+  // The calm Timeline: Fit is the default, in the Aura line's zoom links; grouping is in ⋯.
+  assert.equal(await tlr.getByRole('group', { name: 'Zoom' }).getByRole('button', { name: 'Fit' }).getAttribute('aria-pressed'), 'true', 'fit to the data range');
   assert.equal(await tlr.locator('.ptl-bar').count(), 7, 'one bar per project');
-  assert.equal(await tlr.locator('.ptl-grow').count(), 4, 'team groups');
+  assert.equal(await tlr.locator('.ptl-grow').count(), 0, 'no group rows by default (Group by is in ⋯)');
   assert.ok(await tlr.locator('.ptl-today-pill', { hasText: 'Today 29 Oct' }).isVisible());
   assert.deepEqual((await tlr.locator('.ptl-slipchip').allInnerTexts()).sort(), ['+11d', '+6d'], 'slip tags');
   assert.ok(await tlr.getByText('forecast 20 Nov · Lena').isVisible() && await tlr.getByText('due 5 Dec · Ravi').isVisible() && await tlr.getByText('Done 24 Oct · Jonas').isVisible());
@@ -680,14 +680,15 @@ try {
   checks.push('timeline-drag-reason');
   // Quarter (dark): one column per quarter with month ticks; a collapsed group.
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
-  // Zoom and Fit sit in the Portfolio shell's command row (the tab's tools).
-  const tlt = page.getByRole('toolbar', { name: 'Timeline tools' });
-  await tlt.getByRole('tab', { name: 'Quarter' }).click();
+  // Zoom and Fit are the Aura line's links; grouping is in ⋯ (the calm Timeline).
+  const zoom = tlr.getByRole('group', { name: 'Zoom' });
+  await zoom.getByRole('button', { name: 'Quarters' }).click();
   assert.ok(await tlr.locator('.ptl-tier1', { hasText: 'Q4' }).isVisible());
   assert.ok(await tlr.locator('.ptl-tier2.m', { hasText: 'Nov' }).isVisible());
+  await page.getByRole('button', { name: /More on Portfolio/ }).click(); await page.getByRole('menuitem', { name: /Group by team/ }).click();
   await tlr.getByRole('button', { name: 'Collapse Team Merchant' }).click();
   await shot(page, 'timeline-quarter-dark-1440.png');
-  await tlt.getByRole('button', { name: /Fit ·/ }).click(); await tlt.getByRole('tab', { name: 'Week' }).click(); await tlt.getByRole('button', { name: /Fit ·/ }).click();
+  await zoom.getByRole('button', { name: 'Fit' }).click(); await zoom.getByRole('button', { name: '6 weeks' }).click(); await zoom.getByRole('button', { name: 'Fit' }).click();
   await tlr.getByRole('button', { name: 'Expand Team Merchant' }).click();
   await shot(page, 'timeline-dark-1440.png');
   checks.push('timeline-quarter-dark');

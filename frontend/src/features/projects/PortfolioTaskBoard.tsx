@@ -50,8 +50,10 @@ export function PortfolioTaskBoard() {
   const name = (pid: string) => { const p = projects.find((x) => x.id === pid); return (tabPrefs.names[pid] || p?.title || '').split(/\s+/)[0]; };
   const cols = useMemo(() => {
     const m: Record<Col, SheetRow[]> = { todo: [], prog: [], review: [], done: [] };
+    // Tasks, not their phases: a task that carries sub-items is a phase header on the Plan sheet, not a card.
+    const parents = new Set(work.map((x) => x.parentId).filter(Boolean));
     for (const r of work) {
-      if (r.kind === 'meeting') continue;
+      if (r.kind === 'meeting' || parents.has(r.id)) continue;
       if (colours.length && !colours.includes(colourOf(r.projectId))) continue;
       if (active.length && !matchesAll(r, active, qctx)) continue;
       const c = colOf(r); if (c) m[c].push(r);

@@ -13,10 +13,10 @@ import { CapacitySection, filterCount, MoneySection, PortfolioFilters } from './
 import { BoardColumns, DecisionCard, PresentOverlay, useProjects } from './PortfolioViews';
 import { PortfolioPulse } from './PortfolioPulse';
 import { PortfolioOverview } from './PortfolioOverview';
-import { ActionItemsTab } from './planSheetActions';
+import { ActionItemsTab, type Group } from './planSheetActions';
 import { decisionItems, type DecisionItem } from './portfolioDecisions';
 import { portfolioApi, type PortfolioAiSummary, type PortfolioFilter } from './portfolioApi';
-import { PortfolioShell, PortfolioSkeleton, usePortfolio } from './PortfolioShell';
+import { PortfolioShell, PortfolioSkeleton, usePortfolio, useShellMenu } from './PortfolioShell';
 import { portfolioKeys, type PortfolioUrlState } from './portfolioShared';
 import { errText } from './projectParts';
 import './portfolio.css';
@@ -90,8 +90,15 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
 /** Portfolio › Action items (design shot 12): one card per meeting, with the review (A / R / S) over them. */
 function ActionsTab() {
   const { review, colourOf, projects, url, text, people } = usePortfolio();
+  const [group, setGroup] = useState<Group>('meeting');
+  const [sig, setSig] = useState(0);
   const colourOrNull = (id: string | null) => (id && projects.some((p) => p.id === id) ? colourOf(id) : null);
-  return <div className="pfa"><ActionItemsTab layout="cards" review={review} colourOfProject={colourOrNull} colours={url.colours} text={text} people={people} /></div>;
+  // The calm tab (demo shot 12) has no tool bar: grouping and "Review all new" are in ⋯.
+  useShellMenu([
+    { label: 'Review all new', icon: 'checkCircle', onSelect: () => setSig((n) => n + 1) },
+    ...(['meeting', 'owner', 'project'] as Group[]).map((g) => ({ label: `Group by ${g}`, icon: 'list' as const, hint: g === group ? 'Shown now' : undefined, onSelect: () => setGroup(g) })),
+  ]);
+  return <div className="pfa"><ActionItemsTab layout="cards" review={review} colourOfProject={colourOrNull} colours={url.colours} text={text} people={people} groupBy={group} reviewSignal={sig} /></div>;
 }
 
 /** The server-side filters (lead, group, health, due dates) under ⋯ › Filters: the same panel on every tab, kept in the address. */

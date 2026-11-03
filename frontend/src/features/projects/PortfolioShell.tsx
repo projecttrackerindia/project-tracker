@@ -129,6 +129,7 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
   const colourOf = useCallback((id: string) => projectColour(tabPrefs, projects, id), [tabPrefs, projects]);
   const review = useActionReview(mode === 'sheet' || mode === 'actions' || mode === 'overview');
   const [tabLine, setLine] = useState<string | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
   const [slots, setSlots] = useState<ShellSlots>({ tools: null, presence: null });
   const toolsRef = useCallback((el: HTMLElement | null) => setSlots((s) => (s.tools === el ? s : { ...s, tools: el })), []);
   const presenceRef = useCallback((el: HTMLElement | null) => setSlots((s) => (s.presence === el ? s : { ...s, presence: el })), []);
@@ -267,13 +268,15 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
           </div>
           <span className="ps3-sp" />
           <span className="pfx-presence" ref={presenceRef} />
+          {!classic && mode !== 'sheet' && mode !== 'present' && <button type="button" className="pfc-find" aria-label="Search and filter" aria-pressed={findOpen} onClick={() => setFindOpen((x) => !x)}>⌕</button>}
           <DotsMenu label={mode === 'sheet' ? 'More on the plan sheet' : 'More on Portfolio'} items={menu} />
           {!phone && <button type="button" className="pfc-week" onClick={() => url.setMode('present')} title="Present the week">Week {weekNo(today)} ›</button>}
         </div>
         {classic && <TabStrip projects={projects} counts={counts} actionCount={actionCount} active={tab} onPick={pick} prefs={tabPrefs} save={saveTabs} compact={phone} />}
         <div ref={pageRef} className={`ps4-page pfx-page pc-${pageColour} ${mode === 'sheet' && (tab || folderProject) ? 'tabbed' : ''} ${mode === 'sheet' && tab === tabOrder0 ? 'first' : ''} ${classic ? 'pfc-sheetpage' : 'pfc-plain'}`}>
           {/* The field shows on Overview only while a filter is on, so an active filter is never invisible. */}
-          {mode !== 'present' && (mode !== 'sheet' || classic) && (mode !== 'overview' || toks.length > 0 || colours.length > 0) && <>
+          {/* The calm tabs show no field bar (design #portfolio): it opens from the search icon, and stays while a filter is on. The full sheet always has it. */}
+          {mode !== 'present' && (classic || (mode !== 'sheet' && (findOpen || toks.length > 0 || colours.length > 0))) && <>
             <div className="ps3-cmdrow pfx-cmdrow">{field}{!phone && swatch}<span className="pfx-tools" ref={toolsRef} /></div>
             {phone && <div className="ps3-cmdrow pfx-cmdrow2">{swatch}</div>}
           </>}

@@ -159,7 +159,7 @@ try {
       await goTab(page, label);
       const s = await shell(page);
       assert.equal(s.heads, 1, `${label} phone: one head`);
-      assert.equal(s.fields, mode === 'overview' || mode === 'sheet' ? 0 : 1, `${label} phone: one field (none on a calm Overview without a filter)`);
+      assert.equal(s.fields, 0, `${label} phone: one field (none on a calm Overview without a filter)`);
       assert.ok(await tabsOf(page).isVisible(), `${label} phone: the tabs show`);
       await fitsPhone(page, `${label} phone`, assert);
       await shot(page, `${mode}-390.png`);

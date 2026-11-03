@@ -11,7 +11,7 @@ import { addDays, dm } from './planSheet';
 import { Av, Floating } from './planSheetParts';
 import type { Colour } from './planSheetTabs';
 
-type Group = 'meeting' | 'owner' | 'project';
+export type Group = 'meeting' | 'owner' | 'project';
 const REVIEW_DAYS = 7;
 const isDone = (i: ReviewItem) => i.state === 'done' || i.state === 'cancelled';
 /** Needs review: raised in the last week (by a meeting or its notes) and nobody has decided on it yet. */
@@ -28,14 +28,16 @@ export function useActionReview(enabled = true) {
  * its owner, due date, project and status; tick to finish one. New ones that nobody has looked at carry "Needs review": Review walks them one at a
  * time — A accept, R reassign, S snooze a day, ⇧S snooze to a date you pick, ⌫ discard, J/K next and previous.
  */
-export function ActionItemsTab({ review, colourOfProject, colours, text, people, command, layout = 'list' }: {
+export function ActionItemsTab({ review, colourOfProject, colours, text, people, command, layout = 'list', groupBy, reviewSignal }: {
   review: ReturnType<typeof useActionReview>; colourOfProject: (id: string | null) => Colour | null; colours: Colour[]; text: string;
   people: { id: string; name: string }[]; command?: React.ReactNode;
+  /** The grouping, when the page holds it (Portfolio › Action items puts it in ⋯). */ groupBy?: Group; /** Bumped to start the review. */ reviewSignal?: number;
   /** `cards` (Portfolio › Action items, design shot 12): one calm card per meeting; `list` the Plan sheet's first folder tab. */ layout?: 'list' | 'cards';
 }) {
   const nav = useNavigate();
   const wid = useWorkspaceId();
-  const [group, setGroup] = useState<Group>('meeting');
+  const [ownGroup, setGroup] = useState<Group>('meeting');
+  const group = groupBy ?? ownGroup;
   const [reviewing, setReviewing] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [reassign, setReassign] = useState<{ item: ReviewItem; anchor: HTMLElement | null } | null>(null);
@@ -63,6 +65,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
       toast(label ?? `${i.key} updated`);
     } catch (e) { toast(e instanceof ApiError ? e.message : 'That could not be saved.', 'error'); }
   };
+  useEffect(() => { if (reviewSignal) setReviewing(0); }, [reviewSignal]);
   const cur = reviewing != null ? queue[Math.min(reviewing, queue.length - 1)] : null;
   useEffect(() => {
     if (reviewing == null) return;
@@ -103,12 +106,12 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
   return (
     <div className="ps4-ai">
       {command && <div className="ps3-cmdrow">{command}</div>}
-      <div className="ps4-aibar">
+      {layout !== 'cards' && <div className="ps4-aibar">
         <div className="ps3-vsw" role="tablist" aria-label="Group action items">{(['meeting', 'owner', 'project'] as Group[]).map((g) => <button key={g} type="button" role="tab" aria-selected={group === g} onClick={() => setGroup(g)}>By {g}</button>)}</div>
         <span className="ps3-dim" style={{ fontSize: 12 }}>{items.filter((i) => !isDone(i)).length} open · {items.length} items</span>
         <span className="ps3-sp" />
         {queue.length > 0 && <button type="button" className="ps3-qc pri" onClick={() => setReviewing(0)}>Review {queue.length} new</button>}
-      </div>
+      </div>}
       {cur && (
         <div className={`rvcard pc-${colourOfProject(cur.projectId) ?? 'blue'}`} role="dialog" aria-label={`Review ${cur.title}`}>
           <div className="ps3-dim" style={{ fontSize: 12 }}>Needs review · {Math.min(reviewing ?? 0, queue.length - 1) + 1} of {queue.length}{cur.sourceTitle ? ` · from ${cur.sourceTitle}` : ''}</div>

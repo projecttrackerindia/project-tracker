@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { PortfolioSkeleton, ShellTools, usePhone, useProjectColour, useProjectFilter } from './PortfolioShell';
+import { PortfolioSkeleton, usePhone, useProjectColour, useProjectFilter, useShellMenu } from './PortfolioShell';
+import { AuraLine } from '../../components/calm';
+import { PortfolioPulse } from './PortfolioPulse';
 import { portfolioKeys, refreshPortfolio } from './portfolioShared';
 import { portfolioApi, type PortfolioFilter, type TimelineProject } from './portfolioApi';
 import {
   dmy, dn, fitRange, iso, mergeMilestones, placeLabel, PX_PER_DAY, slipOf, startOf, statusOf, textW, ticks, TONE, type Zoom,
 } from './timelineLayout';
-import { PortfolioPulse } from './PortfolioPulse';
 import './timeline.css';
 
 type GroupBy = 'team' | 'group' | 'owner' | 'status' | 'none';
@@ -51,7 +52,7 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   const today = new Date().toISOString().slice(0, 10);
   const [zoom, setZoom] = useState<Zoom>('week');
   const [fit, setFit] = useState(true);
-  const [group, setGroup] = useState<GroupBy>('team');
+  const [group, setGroup] = useState<GroupBy>('none');
   const [menu, setMenu] = useState<null | 'group'>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -171,21 +172,18 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   };
   useEffect(() => { const el = box.current?.querySelector<HTMLElement>(`[data-row="${focus}"]`); if (el && box.current?.contains(document.activeElement)) el.focus(); }, [focus]);
 
+  // The calm Timeline (demo shot 14): no tool bar; grouping and Fit live in ⋯, the zoom is the Aura line's links.
+  useShellMenu([
+    ...(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => ({ label: `Group by ${GROUP_LABEL[g].toLowerCase()}`, icon: 'list' as const, hint: g === group ? 'Shown now' : undefined, onSelect: () => setGroup(g) })),
+    { label: `Fit to the data · ${monthsLabel}`, icon: 'search' as const, onSelect: () => setFit(true) },
+  ]);
+  const toolbar = null;
+  void menu; void setMenu;
   if (q.isLoading) return <PortfolioSkeleton label="Loading the timeline" />;
   if (!q.data || projects.length === 0) return <section className="ptl" aria-label="Timeline"><p className="ptl-empty">No projects match.</p></section>;
 
-  const toolbar = (
-    <ShellTools><div className="ptl-toolbar pfx-ttools" role="toolbar" aria-label="Timeline tools">
-      <span className="ptl-rel"><button type="button" className="ptl-btn" aria-expanded={menu === 'group'} onClick={() => setMenu(menu === 'group' ? null : 'group')}>Group: {GROUP_LABEL[group]} ▾</button>
-        {menu === 'group' && <Menu label="Group by" onClose={() => setMenu(null)}>{(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => <button key={g} type="button" role="menuitemradio" aria-checked={g === group} className={g === group ? 'on' : ''} onClick={() => { setGroup(g); setMenu(null); }}>{GROUP_LABEL[g]}</button>)}</Menu>}</span>
-      <div className="ptl-seg" role="tablist" aria-label="Zoom">
-        {(['week', 'month', 'quarter'] as Zoom[]).map((z) => <button key={z} type="button" role="tab" aria-selected={z === zoom} className={z === zoom ? 'on' : ''} onClick={() => { setZoom(z); setFit(false); }}>{z[0].toUpperCase() + z.slice(1)}</button>)}
-      </div>
-      <button type="button" className={`ptl-btn fit ${fit ? 'pri' : ''}`} aria-pressed={fit} onClick={() => setFit(true)}>⤢ Fit · {monthsLabel}</button>
-    </div></ShellTools>
-  );
 
-  if (phone) return <PhoneTimeline groups={groups} today={today} range={range} monthsLabel={monthsLabel} colourOf={colourOf} />;
+  if (phone) return <div className="ptl ptl-phonewrap"><PhoneTimeline groups={groups} today={today} range={range} monthsLabel={monthsLabel} colourOf={colourOf} /><PortfolioPulse projects={projects} today={today} kinds={['coming', 'attention']} /></div>;
 
   const hp = hover ? all.find((p) => p.id === hover.id) : null;
   const height = rows.length * ROW_H;
@@ -239,12 +237,12 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
           </div>
         </div>
       </div>
-      <div className="ptl-foot">
-        <TimelineLegend />
-        <span>{plural(projects.length, 'project')} · {late} late · {risk} at risk</span><span>Drag a bar to move it, or its end to re-plan; dependents ripple</span><span>Click a bar to open the project</span>
-        <span>{fit ? `Range fitted to your data: ${rangeLabel}` : `${rangeLabel} · ${zoom}`}</span>
-        {days > 400 && zoom !== 'quarter' && <span className="ptl-hint">Long range: try Quarter</span>}
+      <div className="ptl-aura">
+        <AuraLine text={<>Drag a bar to move it; dependents ripple. {plural(projects.length, 'project')} · {late} late · {risk} at risk.</>} />
+        <span className="ptl-zoom" role="group" aria-label="Zoom">{(['week', 'month', 'quarter'] as Zoom[]).map((z) => <button key={z} type="button" aria-pressed={!fit && z === zoom} onClick={() => { setZoom(z); setFit(false); }}>{z === 'week' ? '6 weeks' : z === 'month' ? '14 weeks' : 'Quarters'}</button>)}
+          <button type="button" aria-pressed={fit} onClick={() => setFit(true)}>Fit</button></span>
       </div>
+      {/* What is coming and what needs attention, under the frame, so the page has no empty band. */}
       <PortfolioPulse projects={projects} today={today} kinds={['coming', 'attention', 'months']} />
     </section>
   );
@@ -254,17 +252,6 @@ function TeamFaces({ items }: { items: TimelineProject[] }) {
   // The owners who carry the team's projects (the org tree's team lead arrives with the team-scoped step).
   const names = [...new Set(items.map((p) => p.owner).filter((x): x is string => !!x))].slice(0, 2);
   return <span className="ptl-faces">{names.map((n) => <i key={n} title={n}>{initials(n)}</i>)}</span>;
-}
-
-function Menu({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const down = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node) && !(e.target as HTMLElement).closest?.('[aria-expanded="true"]')) onClose(); };
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('mousedown', down); document.addEventListener('keydown', key);
-    return () => { document.removeEventListener('mousedown', down); document.removeEventListener('keydown', key); };
-  }, [onClose]);
-  return <div ref={ref} role="menu" aria-label={label} className="ptl-menu">{children}</div>;
 }
 
 function GroupBar({ items, y, X, W, todayX }: { items: TimelineProject[]; y: number; X: (s: string) => number; W: number; todayX: number }) {

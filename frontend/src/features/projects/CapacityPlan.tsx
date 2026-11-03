@@ -3,11 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../stores/auth';
 import { resourcesApi } from '../../api/endpoints';
 import type { CapacityPlan, CapacityPlanCell, WorkloadScope } from '../../api/types';
-import { Avatar, EmptyState, ErrorState, Modal, Segmented } from '../../components/ui';
+import { Avatar, EmptyState, ErrorState, Modal } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useRebalance } from '../insights/rebalance';
 import { isoWeek } from './PortfolioViews';
-import { PortfolioSkeleton, ShellTools, usePortfolio, useShellLine } from './PortfolioShell';
+import { PortfolioSkeleton, usePortfolio, useShellLine, useShellMenu } from './PortfolioShell';
 import { AuraLine } from '../../components/calm';
 import { portfolioKeys } from './portfolioShared';
 import { PulseCard } from './PortfolioPulse';
@@ -68,6 +68,11 @@ export function CapacityPlanView() {
   const ppl = q.data?.people ?? [];
   const ranked = ppl.map((x) => ({ n: x.name.split(' ')[0], l: loadOf(x) })).filter((x): x is { n: string; l: number } => x.l != null).sort((a, b) => b.l - a.l);
   const over = ranked[0] && ranked[0].l > 100 ? ranked[0] : null, room = ranked.length > 1 && ranked[ranked.length - 1]!.l < 75 ? ranked[ranked.length - 1] : null;
+  // The calm Capacity (demo shot 15): no tool bar; whose capacity and hours / % are in ⋯.
+  useShellMenu([
+    ...((q.data?.available ?? []).length > 1 ? (q.data?.available ?? []).map((x) => ({ label: `Show ${SCOPE_LABEL[x].toLowerCase()}`, icon: 'users' as const, hint: x === q.data?.scope ? 'Shown now' : undefined, onSelect: () => setScope(x) })) : []),
+    { label: unit === 'hours' ? 'Show as % of capacity' : 'Show in hours', icon: 'gauge' as const, onSelect: () => setUnit(unit === 'hours' ? 'pct' : 'hours') },
+  ]);
   useShellLine(q.data ? over && room ? `${over.n} is over, ${room.n} has room.` : over ? `${over.n} is over.` : room ? `${room.n} has room.` : 'Everyone is in the healthy band.' : null);
 
   if (q.isLoading) return <PortfolioSkeleton label="Loading capacity" />;
@@ -88,10 +93,7 @@ export function CapacityPlanView() {
         <ul className="cp-legend" aria-label="Legend">
           <li><i className="cap" />Capacity</li><li><i className="booked" />Booked</li><li><i className="over" />Over-booked</li><li><i className="leave" />Leave</li>
         </ul>
-        <ShellTools><div className="cp-tools">
-          {p.available.length > 1 && <Segmented<WorkloadScope> label="Whose capacity" value={p.scope} onChange={setScope} options={p.available.map((x) => ({ id: x, label: SCOPE_LABEL[x] }))} />}
-          <Segmented<Unit> label="Show as" value={unit} onChange={setUnit} options={[{ id: 'hours', label: 'Hours' }, { id: 'pct', label: '%' }]} />
-        </div></ShellTools>
+
       </div>
 
       <div className="card cp-card">
@@ -124,7 +126,7 @@ export function CapacityPlanView() {
         <span>{plural(t.overWeeks, 'over-booked week')} · {plural(t.leaveWeeks, 'leave week')} · {plural(t.publicHolidays, 'public holiday')}{holidayWeeks.length > 0 && ` (${holidayWeeks.join(', ')})`}{canHolidays && <> · <Link className="link" to="/settings/general/holidays">Holidays ›</Link></>}</span>
       </div>
 
-      {p.people.length > 0 && <CapacityPulse p={p} />}
+      {/* The pulse below the grid is not in the calm design; the same numbers are the foot line and the Aura sentence. */}
 
       {preview && s && (
         <Modal title="Suggested move" size="sm" onClose={() => setPreview(false)}
@@ -140,7 +142,7 @@ export function CapacityPlanView() {
 }
 
 /** Under the grid, the room it leaves: the team's load week by week, who is most booked, and who has room to take work. */
-function CapacityPulse({ p }: { p: CapacityPlan }) {
+export function CapacityPulse({ p }: { p: CapacityPlan }) {
   const weeks = p.weekStarts.map((w, i) => {
     const booked = p.people.reduce((a, x) => a + (x.weeks[i]?.bookedMinutes ?? 0), 0), cap = p.people.reduce((a, x) => a + (x.weeks[i]?.capacityMinutes ?? 0), 0);
     return { w, pct: cap > 0 ? Math.round((booked / cap) * 100) : 0 };

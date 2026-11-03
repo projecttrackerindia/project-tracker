@@ -62,7 +62,7 @@ try {
       await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=${m}`);
       await page.locator('.pfx-stage').first().waitFor();
       await page.waitForTimeout(700);
-      if (scope) { await page.getByRole('radio', { name: 'My reports' }).or(page.getByRole('button', { name: 'My reports' })).or(page.getByRole('tab', { name: 'My reports' })).first().click(); await page.waitForTimeout(600); }
+      if (scope) { await page.getByRole('button', { name: /More on Portfolio/ }).click(); await page.getByRole('menuitem', { name: /my reports/i }).click(); await page.waitForTimeout(600); }
       await page.evaluate(() => document.fonts.ready);
       if (mode === 'timeline' && width > 500) {
         // One colour per row: the project's square only; the status is the bar's style and a word.
