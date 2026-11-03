@@ -19,7 +19,19 @@ export const orgApi = {
   resetAccess: (roleId: string) => del<AccessMatrix>(`/org/roles/${roleId}/access`),
   /** What every person can open and do right now, and which rule decided it (job role or access level). */
   effectiveAccess: () => get<EffectiveAccessList>('/org/access/effective'),
+  /** The reporting tree for the org chart canvas (people with their manager and teams; teams with their parent). */
+  tree: () => get<OrgTree>('/org/tree'),
+  /** What a move would change; changes nothing. */
+  previewMove: (b: OrgMove) => post<OrgMoveImpact>('/org/move/preview', b),
+  /** Confirm a move (audit-logged). */
+  move: (b: OrgMove) => post<OrgMoveImpact>('/org/move', b),
 };
+
+export type OrgTreePerson = { userId: string; displayName: string; roleName: string | null; accessRole: string; managerId: string | null; teamIds: string[]; reportCount: number };
+export type OrgTreeTeam = { id: string; name: string; parentTeamId: string | null; memberCount: number };
+export type OrgTree = { people: OrgTreePerson[]; teams: OrgTreeTeam[]; canManage: boolean };
+export type OrgMove = { kind: 'person' | 'team'; id: string; newParentId: string | null };
+export type OrgMoveImpact = { kind: string; id: string; name: string; fromParentId: string | null; fromParentName: string | null; toParentId: string | null; toParentName: string | null; movesWith: number; effects: string[] };
 
 /** The workspace's master list of project groups. */
 export const projectGroupApi = {
