@@ -189,6 +189,7 @@ try {
       await shot(page, `approvals-chain-${tag}.png`);
       await page.getByRole('button', { name: 'Close details' }).click();
       await page.getByRole('button', { name: 'History' }).click(); await page.locator('.ap-hrow').first().waitFor();
+      for (let i = 0; i < 40 && (await page.locator('.ap-hrow').count()) !== history.length; i++) await page.waitForTimeout(100);   // the list keeps the previous rows while History loads
       assert.equal(await page.locator('.ap-hrow').count(), history.length);
       await shot(page, `approvals-history-${tag}.png`);
       await page.getByRole('button', { name: 'Request approval' }).click(); await page.locator('.apq-types').waitFor();

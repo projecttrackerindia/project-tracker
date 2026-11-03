@@ -278,7 +278,7 @@ try {
   assert.match((await waitWrite((w) => w.ep === '/api/v1/portfolio/sheet/export', n)).q, /format=xlsx/);
   await page.locator('body').click({ position: { x: 700, y: 870 } });
   // ⌘K goes to Aura's dock; pressed again it opens the command palette, which carries the sheet's commands.
-  await page.keyboard.press('Control+k'); await page.waitForTimeout(150); await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+k');
   const pal = page.getByRole('dialog', { name: 'Command palette' });
   await pal.waitFor();
   await pal.getByRole('textbox').fill('paste');

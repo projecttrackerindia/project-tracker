@@ -1,5 +1,5 @@
 import { deliveryTime } from '../features/notifications/deliveryTime';
-import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, type ComponentType, type ReactNode } from 'react';
 import { isViewing } from '../features/notifications/centre/readSync';
 import { prefetchPages } from '../lib/prefetchPages';
 import { MutationSync } from '../lib/MutationSync';
@@ -28,7 +28,7 @@ import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
 import { firstTime, kindForType } from '../lib/attention';
 import { announce } from '../features/notifications/centre/announce';
 import { getAlertPrefs, isMuted } from '../features/notifications/centre/prefs';
-import { BadgeSync, NotificationBell, NotificationCentreHost } from '../features/notifications/centre/NotificationCentre';
+import { BadgeSync, NotificationCentreHost } from '../features/notifications/centre/NotificationCentre';
 import { pushCoversThisDevice, systemNotification } from '../features/reminders/device';
 import { useReminderComposer } from '../features/reminders/store';
 import { LiveCallsBar } from '../features/calls/LiveCallsBar';
@@ -37,11 +37,20 @@ import { IncomingCallHost } from '../features/calls/IncomingCall';
 import { isRingNotice } from '../features/calls/incomingCalls';
 import { ScheduleHost } from '../features/meet/ScheduleSheet';
 import { MeetTimePrompt } from '../features/meet/MeetTime';
-import { AskBar, GrootChatHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
+import { AuraKeys, GrootChatHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
+import { Fab } from '../components/shell/Fab';
+import { ApprovalRequestHost } from '../features/approvals/host';
+import '../components/shell/shell.css';
 import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
 import { AuraWatcher } from '../components/aura/AuraWatcher';
 import { ChangeUndoPrompt } from '../features/projects/ChangeUndoPrompt';
+
+// The calm create sheets (New task / New project from the + menu), mounted once for every page. Loaded through a glob so the shell
+// builds before that feature lands and wires it up by itself once features/calm/createSheets.tsx exists.
+const calmCreate = import.meta.glob<{ CalmCreateHost: ComponentType }>('../features/calm/createSheets.tsx');
+const calmCreateLoad = Object.values(calmCreate)[0];
+const CalmCreateHost = calmCreateLoad ? lazy(() => calmCreateLoad().then((m) => ({ default: m.CalmCreateHost }))) : null;
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -105,8 +114,9 @@ function ComposerSlot() {
 }
 
 /**
- * The v2 shell: the 84px rail on the left (the phone bar at the bottom of a phone), the page, Aura's dock floating at the bottom, and the
- * things every page can open: the create sheet (from the dock's chips), the Aura chat, the command palette, calls, reminders and toasts.
+ * The calm shell: the sidebar on the left (an icon rail when collapsed; the tab bar at the bottom of a phone), the header (check-in, bell,
+ * Aura orb, avatar), the page, the floating + button, and the things every page can open: the create sheet, the Aura panel (⌘K), the
+ * command palette, calls, reminders and toasts.
  */
 export function AppLayout({ children }: { children?: ReactNode }) {
   const loc = useLocation();
@@ -154,13 +164,15 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           <div className="main v2-main">
             <PlatformBanner />
             {!admin && <Toolbar />}
-            {!admin && <NotificationBell variant="float" />}
             <main id="main-content" className="content" ref={main} tabIndex={-1}>{page}</main>
           </div>
         </>
       )}
-      {/* Aura's dock: every page, except inside a conversation (its composer owns the bottom edge; on a phone all of Messages) */}
-      {!admin && !(phone && conversation) && !/^\/messages\/[^/]+/.test(loc.pathname) && <AskBar />}
+      {/* The floating + (bottom right; above the tab bar on a phone) and ⌘K for the Aura panel (the header orb). No bottom Aura capsule. */}
+      {!admin && !(phone && conversation) && <Fab />}
+      {!admin && <AuraKeys />}
+      {!admin && <ApprovalRequestHost />}
+      {!admin && CalmCreateHost && <Suspense fallback={null}><CalmCreateHost /></Suspense>}
       {!admin && <NewSheetHost />}
       {!admin && <ScheduleHost />}
       {!admin && <MeetTimePrompt />}
