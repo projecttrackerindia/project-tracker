@@ -1,0 +1,17 @@
+/* Calm sign-in (shot 31): a soft gradient panel on the left, the form card on the right */
+.auth-calm .auth-bg .auth-grid, .auth-calm .auth-bg .auth-grain, .auth-calm .auth-beam, .auth-calm .auth-glow { display: none; }
+.auth-calm-panel { position: relative; margin: 22px 0 22px 22px; border-radius: 34px; padding: 56px; display: none; flex-direction: column; overflow: hidden; color: var(--calm-ink, #1d1d1f);
+  background: radial-gradient(60% 50% at 75% 15%, rgba(175, 140, 255, .45), transparent 70%), radial-gradient(50% 45% at 10% 95%, rgba(120, 170, 255, .45), transparent 70%),
+    radial-gradient(45% 40% at 95% 95%, rgba(255, 190, 160, .45), transparent 70%), rgba(255, 255, 255, .55); }
+.acp-brand { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 15px; }
+.acp-mark { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: linear-gradient(150deg, #a98bff, #7c5cf5); color: #fff; }
+.auth-calm-panel h2 { margin: auto 0 0; font-size: clamp(40px, 4.2vw, 60px); font-weight: 300; letter-spacing: -.035em; line-height: 1.08; }
+.auth-calm-panel h2 em { display: block; font-style: normal; color: var(--calm-ink3, #8e8e93); }
+.auth-calm-panel p { margin: auto 0 0; font-size: 13px; color: var(--calm-ink2, #6e6e73); }
+.auth-calm .auth-title { font-size: 44px; font-weight: 300; letter-spacing: -.03em; line-height: 1.1; }
+.auth-calm .auth-title em { display: block; font-style: normal; color: var(--calm-ink3, #8e8e93); }
+[data-theme='dark'] .auth-calm-panel { background: radial-gradient(60% 50% at 75% 15%, rgba(130, 100, 230, .35), transparent 70%), radial-gradient(50% 45% at 10% 95%, rgba(70, 110, 220, .3), transparent 70%), rgba(255, 255, 255, .04); }
+@media (min-width: 1040px) { .auth-calm-panel { display: flex; } }
+@media (max-width: 900px) {
+  .auth-calm .auth-title { font-size: 34px; }
+}

@@ -275,19 +275,19 @@ export function LoginPage() {
     </AuthLayout>
   );
   return (
-    <AuthLayout title="Welcome back" sub="Sign in to continue to your workspace." shake={shaking}
-      footer={<>New here? <Link className="link" to={`/register${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Create an account</Link>
+    <AuthLayout calm title="Welcome back." second="Sign in to ProjectTracker." shake={shaking}
+      footer={<>New here? <Link className="link" to={`/register${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Create a workspace</Link>
         <span className="auth-foot-sep">·</span><a className="link" href="/security/">Security</a></>}>
       <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); setSigningIn(true); m.mutate(v); }, () => shake())} noValidate>
         {notice && !error && <div className="auth-notice" role="status"><Icon name="info" size={15} />{notice}</div>}
         {error && <div className="form-error" role="alert">{error}{unverified && <> <button type="button" className="link" onClick={() => resend.mutate()}>Resend verification email</button></>}</div>}
-        <FloatingField id="email" icon="mail" label="Email address" type="email" autoComplete="email" autoFocus error={errors.email?.message} {...register('email')} />
+        <FloatingField id="email" icon="mail" label="Work email" type="email" autoComplete="email" autoFocus error={errors.email?.message} {...register('email')} />
         <PasswordField id="password" label="Password" autoComplete="current-password" error={errors.password?.message} {...register('password')} />
         <div className="auth-row">
           <label className="auth-remember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Remember me</label>
           <Link className="link" to="/forgot-password" style={{ fontSize: 13.5 }}>Forgot password?</Link>
         </div>
-        <AuthSubmitButton busy={m.isPending}>Sign in<Icon name="arrowRight" /></AuthSubmitButton>
+        <AuthSubmitButton busy={m.isPending}>Continue</AuthSubmitButton>
         <div className={`auth-alts ${passkeysSupported() ? 'two' : ''}`}>
           {passkeysSupported() && <button type="button" className="auth-alt auth-passkey" disabled={passkeyBusy} onClick={() => void signInWithPasskey()}><Icon name="key" size={18} />Passkey</button>}
           <button type="button" className="auth-alt auth-phone" onClick={() => {
