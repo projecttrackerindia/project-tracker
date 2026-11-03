@@ -24,7 +24,7 @@ const row = (n, title, prio, due, ch) => ({ kind: 'ticket', id: id(200 + n), key
 const tickets = [row(1, 'Sign-in loops after a password reset', 'Critical', 70, 'whatsapp'), row(2, 'Export fails for large files', 'High', 180, 'email'), row(3, 'Invoice sync is late', 'Medium', 300, 'email')];
 const detail = (r) => ({ ...r, description: 'Forty people cannot sign in since 10:00. The redirect address changed on Monday.', reporter: { id: id(300), name: 'Contoso Support' }, version: 1, createdAt: iso(-200),
   completedAt: null, loggedMinutes: 0, detail: { can: { edit: true } }, activity: [], channel: r._ch });
-let moved = null, role = 'Owner';
+let moved = null, role = 'Owner', policyPut = null;
 const errors = [];
 
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
@@ -71,6 +71,8 @@ const handler = async (route) => {
   else if (ep === `/api/v1/documents/${id(500)}`) data = { item: { id: id(500), key: 'DOC-1', title: 'Payments spec', typeCode: 'PAGE', status: 'Published', updatedAt: iso(-90) }, revision: 1, versionLabel: '1.0', can: { edit: true, delete: true, link: true, share: true, publish: true }, publishedLabel: null, hasUnpublishedChanges: false, viewingPublished: false, sections: [{ key: 'body', title: 'Body', kind: 'Rich', sortOrder: 0, content: '<p>Refunds and idempotency.</p>' }] };
   else if (ep === '/api/v1/documents/inbox') data = { toReview: [], submitted: [], accessToDecide: [], myAccessRequests: [], waiting: 0 };
   else if (ep === '/api/v1/documents/search') data = { hits: [], total: 0 };
+  else if (ep === '/api/v1/approvals/policies') data = [{ type: 'Leave', steps: [{ role: 'Manager' }], expiryHours: null, custom: false }, { type: 'Deployment', steps: [], expiryHours: 48, custom: false }];
+  else if (ep.startsWith('/api/v1/approvals/policies/') && method === 'PUT') { policyPut = { ep, b: req.postDataJSON() }; data = { type: ep.split('/').pop(), ...policyPut.b, custom: true }; }
   else if (ep.endsWith('/matrix')) data = { runs: [], cases: [], results: [] };
   else if (ep === '/api/v1/settings/health') data = { score: 90, checks: [] };
   else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
@@ -112,6 +114,15 @@ try {
     await page.getByRole('button', { name: /^Move Dev/ }).click();
     await page.waitForTimeout(300);
     assert.deepEqual(moved, { kind: 'person', id: id(13), newParentId: id(12) }, 'org move posted');
+    await c.close(); }
+
+  // Approval policies (shot 56b): add a step to Deployment, saved through PUT /approvals/policies/Deployment.
+  { const { c, page } = await open('light', 1440, 900);
+    await go(page, '/settings/approvals');
+    await page.getByTestId('approval-policies').locator('.cs-policy').nth(1).locator('select').selectOption('role:Admin');
+    await page.getByText('✓ Saved').waitFor();
+    assert.deepEqual(policyPut, { ep: '/api/v1/approvals/policies/Deployment', b: { steps: [{ role: 'Admin' }], expiryHours: 48 } }, 'policy saved');
+    await page.screenshot({ path: path.join(out, 'approval-policies-1440-light.png') });
     await c.close(); }
 
   // Settings by role: a member sees Personal only (no Workspace, no Billing).

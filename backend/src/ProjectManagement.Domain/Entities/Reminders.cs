@@ -76,6 +76,10 @@ namespace ProjectManagement.Domain.Entities
         public DateTime? CompletedAt { get; set; }
         /// <summary>For an occurrence of a repeating reminder that was completed: the series it came from.</summary>
         public Guid? SeriesId { get; set; }
+        /// <summary>Flagged by the person (the Flagged smart list).</summary>
+        public bool Flagged { get; set; }
+        /// <summary>The person's own list ("Work", "Home"); null = no list.</summary>
+        public string? ListName { get; set; }
 
         /// <summary>Automatic reminders: "auto:{kind}:{item}:{user}:{step}:{due}". Unique per workspace.</summary>
         public string? SystemKey { get; set; }

@@ -60,7 +60,7 @@ import { ConnectedAccountsSection } from './ConnectedAccounts';
 import { MailIntegrationSettings } from './MailIntegration';
 import { SlackSettings } from './SlackSettings';
 import { WhatsAppSettings } from './WhatsAppSettings';
-import { ApprovalPoliciesPane, approvalPoliciesEnabled } from './ApprovalPolicies';
+import { ApprovalPoliciesPane } from './ApprovalPolicies';
 import { CalmSettingsNav } from './CalmSettingsNav';
 
 
@@ -130,6 +130,8 @@ export function SettingsPage() {
   // Roles & access moved to People & Roles (the old ?view= keeps working there).
   if (section === 'access' || (section === 'security' && asked === 'access')) return <Navigate to={`/people/roles${loc.search}${loc.hash}`} replace />;
   if (!section || (section !== 'profile' && section !== 'appearance' && !(section === 'security' && asked === 'account') && isPlatformAdmin)) return <Navigate to={`/settings/profile${loc.search}${loc.hash}`} replace />;
+  const earlyPlaces = WORKSPACE_PLACES.filter((p) => PLACE_LEAVES[p].some((l) => leaves.some((x) => x.id === l)));
+  if (section === 'approvals') return <SettingsShell nav={nav} places={earlyPlaces} current="approvals" isPlatformAdmin={isPlatformAdmin}>{(ctx?.current?.role === 'Owner' || ctx?.current?.role === 'Admin') ? <ApprovalPoliciesPane /> : <Navigate to="/settings/profile" replace />}</SettingsShell>;
   // An old section id: its new section and tab, keeping anything else in the address.
   if (!PLACE_IDS.has(section) && section !== 'appearance') {
     const leaf = section as WorkspaceSection;
@@ -143,7 +145,6 @@ export function SettingsPage() {
   const open = new Set(leaves.map((l) => l.id));
   // Integrations is open to everyone (their own mail accounts live there); its workspace pages stay for admins.
   const places = WORKSPACE_PLACES.filter((p) => PLACE_LEAVES[p].some((l) => open.has(l)) || (p === 'integrations' && !isPlatformAdmin));
-  if (section === 'approvals') return <SettingsShell nav={nav} places={places} current="approvals" isPlatformAdmin={isPlatformAdmin}>{approvalPoliciesEnabled() && (ctx?.current?.role === 'Owner' || ctx?.current?.role === 'Admin') ? <ApprovalPoliciesPane /> : <Navigate to="/settings/profile" replace />}</SettingsShell>;
   // Billing is for owners only.
   if (section === 'billing' && ctx?.current?.role !== 'Owner') return <Navigate to="/settings/profile" replace />;
   if (section === 'appearance') return <SettingsShell nav={nav} places={places} current="appearance" isPlatformAdmin={isPlatformAdmin}><AppearancePane /></SettingsShell>;

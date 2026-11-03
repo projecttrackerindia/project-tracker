@@ -1,6 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth, useModule } from '../../stores/auth';
-import { approvalPoliciesEnabled } from './ApprovalPolicies';
 import { leafHref, useWorkspaceSections, type WorkspaceSection } from './sections';
 import { SettingsSearch } from './SettingsCenter';
 import './calm-settings.css';
@@ -35,7 +34,7 @@ export function CalmSettingsNav({ places, isPlatformAdmin }: { places: readonly 
     leaf('members', 'Members & invites'),
     mTeams > 0 ? { label: 'Teams', to: '/people/teams' } : null,
     { label: 'Roles & permissions', to: '/people/roles' },
-    approvalPoliciesEnabled() ? { label: 'Approval policies', to: '/settings/approvals' } : null,
+    { label: 'Approval policies', to: '/settings/approvals' },
     leaf('attendance', 'Attendance & leave'),
     places.includes('integrations') ? { label: 'Integrations', to: '/settings/integrations', match: (p: string) => p.startsWith('/settings/integrations') && !p.endsWith('/mail') } : null,
     owner && places.includes('billing') ? { label: 'Billing', to: '/settings/billing' } : null,

@@ -109,7 +109,7 @@ try{
   await page.close();
  }
  const logo=await ctx.newPage();await logo.goto(origin+'/preview-org/calendar');await logo.locator('[data-testid="week-planner"]').waitFor();
- await logo.emulateMedia({reducedMotion:'reduce'});assert.ok(await logo.locator('.v2-tb .aura-hint').count(),'v2: Aura\'s hint is on every page');
+ await logo.emulateMedia({reducedMotion:'reduce'});assert.ok(await logo.locator('.v2-tb .shell-orb').count(),'calm shell: the Aura orb is on every page');
  await logo.screenshot({path:path.join(out,'header-agent.png'),animations:'disabled'});await logo.close();checks.push('header-and-reduced-motion');
  assert.deepEqual(errors,[]);await fs.writeFile(path.join(out,'checks.json'),JSON.stringify({checks,saves:saves.length,errors,scope:'Built frontend with synthetic fixtures; no external invitations or AI calls.'},null,2));console.log(JSON.stringify({checks,saves:saves.length,errors}));
 }finally{await browser.close();}

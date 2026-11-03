@@ -13,6 +13,8 @@ export interface Reminder {
   timeZone: string; localAt: string | null; anchorDays: number | null; anchorTime: string | null; recurrence: string | null; recurrenceText: string | null;
   onlyIfOpen: boolean; exact: boolean; nextFireAt: string | null; isSnoozed: boolean; snoozeCount: number; fireCount: number; lastFiredAt: string | null; quiet: boolean;
   completedAt: string | null; seriesId: string | null; from: UserRef | null; for: UserRef | null; canEdit: boolean; createdAt: string;
+  /** The Flagged smart list. */ flagged?: boolean;
+  /** The person's own list ("Work", "Home"). */ list?: string | null;
 }
 export interface ReminderCounts { now: number; today: number; upcoming: number; completed: number }
 export interface ReminderList {
@@ -73,6 +75,8 @@ export const reminderApi = {
   /** Finishes the occurrence the person saw: with `seen`, a stale second tap is refused (409) instead of skipping the next one. */
   done: (id: string, seen?: ReminderSeen) => post<Reminder>(`/reminders/${id}/done`, expectation(seen)),
   reopen: (id: string) => post<Reminder>(`/reminders/${id}/reopen`),
+  /** Flag it, or file it in one of the person's lists (an empty list clears it). */
+  meta: (id: string, b: { flagged?: boolean; list?: string }) => put<Reminder>(`/reminders/${id}/meta`, b),
   remove: (id: string) => del(`/reminders/${id}`),
   settings: () => get<ReminderSettings>('/reminders/settings'),
   saveSettings: (s: ReminderSettings) => put<ReminderSettings>('/reminders/settings', s),

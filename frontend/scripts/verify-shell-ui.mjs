@@ -2,11 +2,11 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { invokeAura, openAuraPanel } from './lib/aura.mjs';
+import { openAuraPanel } from './lib/aura.mjs';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
-// The v2 shell: the 84px rail (logo, + New, the five places, the avatar menu), old addresses landing on their new places with query and
+// The calm shell: the 236px sidebar (logo, the places, the avatar menu), the floating +, the Aura orb, old addresses landing on their new places with query and
 // #anchor kept, + New ("I understood this as a ticket" with chips, creating through /work-items and opening it), the Ask bar (and "Ask about
 // <project>" on a project page, opening the copilot panel), the phone's bottom bar, and Settings: ten sections and the AI control centre
 // (agent levels, "Draft it from my projects"). Built frontend with synthetic API fixtures only.
@@ -84,23 +84,24 @@ try {
 
   // The sidebar: workspace, + New, the places in sections with their labels, the avatar; no old sidebar, no top bar, no Customize.
   await page.goto(`${origin}/preview-org/`); await page.locator('.v2-rail').waitFor();
-  // The 220px calm sidebar: Today, then Work / Plan / Together sections (only places this person may open).
+  // The 236px calm sidebar: Today, Approvals, My work, Reminders, Notes, then Work / Communicate / Know (only places this person may open).
   { const labels = await page.locator('.v2-rail-item .v2-rail-label').allTextContents();
-    for (const l of ['Today', 'My Work', 'Messages', 'Library', 'Insights']) assert.ok(labels.includes(l), `sidebar has ${l}: ${labels}`);
+    for (const l of ['Today', 'Approvals', 'My work', 'Messages', 'Library', 'Insights']) assert.ok(labels.includes(l), `sidebar has ${l}: ${labels}`);
     assert.equal(labels[0], 'Today'); }
   await page.waitForTimeout(500); if (!(await page.locator('.v2-rail').count())) { await page.getByText('Details').click().catch(()=>{}); console.log('ERRORS', errors, await page.locator('body').innerText()); await shot(page, 'fail.png'); }
-  assert.equal(Math.round((await page.locator('.v2-rail').boundingBox()).width), 220);
+  assert.equal(Math.round((await page.locator('.v2-rail').boundingBox()).width), 236);
   assert.equal(await page.locator('.sidebar, .topbar').count(), 0, 'no sidebar or top bar');
   assert.equal(await page.getByRole('button', { name: 'Customize' }).count(), 0);
   assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'Today' }).isVisible());
-  // The wide layout: Aura's "⌘K" hint in the header (its capsule only when invoked); the header has no Ask field and no + New; no + New in the sidebar either.
-  assert.ok(await page.locator('.v2-tb .aura-hint').isVisible(), "Aura's hint");
-  assert.equal(await page.locator('form.v2-ask').count(), 0, 'no Aura bar at rest');
+  // The header: the Aura orb (its panel only when opened), no Ask field; the floating + is the one create entry.
+  assert.ok(await page.locator('.v2-tb .shell-orb').isVisible(), "Aura's orb");
+  assert.equal(await page.locator('form.v2-ask, .groot-chat').count(), 0, 'no Aura at rest');
   assert.equal(await page.locator('.v2-tb-ask, .v2-tb-new').count(), 0, 'no Ask field or + New in the header');
   assert.equal(await page.locator('.v2-side .v2-new, .v2-rail-new').count(), 0, 'no + New in the sidebar');
+  assert.ok(await page.getByTestId('fab').isVisible(), 'the floating +');
   await shot(page, 'rail-home-1440.png'); checks.push('rail');
-  await page.locator('.v2-rail-item', { hasText: 'My Work' }).click(); await page.waitForTimeout(400);
-  assert.equal(at(), '/work'); assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'My Work' }).isVisible()); checks.push('rail-navigates');
+  await page.locator('.v2-rail-item', { hasText: 'My work' }).click(); await page.waitForTimeout(400);
+  assert.equal(at(), '/work'); assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'My work' }).isVisible()); checks.push('rail-navigates');
 
   // The slim avatar menu: Profile, Workspaces, Settings, People, Help, Sign out (dark mode and team view live in Settings now).
   await page.locator('.acct-row').first().click();
@@ -115,7 +116,7 @@ try {
   const moved = [
     ['/projects/' + project.id + '?task=7#c-1', '/work?item=7#c-1'], ['/projects/' + project.id + '?tab=issues&issue=8', '/work?item=8'], ['/projects/' + project.id + '?tab=board', `/work/projects/${project.id}?tab=board`],
     ['/operations?task=12', '/work?tab=tickets&item=12'], ['/operations?project=p1', '/work?project=p1&tab=tickets&view=queue'], ['/tasks/7', '/work?item=7'], ['/my-work', '/work'],
-    ['/chat', '/messages?f=chat'], ['/mailbox', '/mail'], ['/talk?f=mail', '/mail'], ['/settings/mail', '/settings/integrations/mail'], ['/meet/past', '/meetings?s=past'], ['/talk?f=meetings&s=past#x', '/meetings?s=past#x'], ['/messages?f=meetings&meeting=p:7&at=x', '/meetings?at=x&open=p%3A7'], ['/talk/c-9?f=chat&q=hi', '/messages/c-9?f=chat&q=hi'], ['/calendar', '/?tab=calendar'], ['/reminders', '/?tab=reminders'],
+    ['/chat', '/messages?f=chat'], ['/mailbox', '/mail'], ['/talk?f=mail', '/mail'], ['/settings/mail', '/settings/integrations/mail'], ['/meet/past', '/meetings?s=past'], ['/talk?f=meetings&s=past#x', '/meetings?s=past#x'], ['/messages?f=meetings&meeting=p:7&at=x', '/meetings?at=x&open=p%3A7'], ['/talk/c-9?f=chat&q=hi', '/messages/c-9?f=chat&q=hi'], ['/calendar', '/?tab=calendar'], ['/reminders/x', '/reminders'], ['/inbox', '/approvals'], ['/calls', '/meetings'],
     ['/agents', '/'], ['/project-agent/assigned', '/?tab=given'], ['/ai/operations', '/insights?tab=workflows'], ['/agent-tracker', '/settings/ai/tracker'],
     ['/doctracker?p=1&t=documents', '/library/docs?p=1&t=documents'], ['/vault', '/library/vault'], ['/timesheet/approvals', '/insights?tab=time&s=approvals'],
     ['/workload', '/insights'], ['/reports', '/insights?tab=reports'], ['/portfolio', '/work/projects?view=portfolio'], ['/account/security#s-account.twoStep', '/settings/security/account#s-account.twoStep'], ['/settings/profile/security', '/settings/security/account'],
@@ -155,12 +156,12 @@ try {
   assert.ok(await page.getByTestId('own-key-status').filter({ hasText: 'Gemini' }).isVisible(), 'Gemini until a Claude key is added');
   await shot(page, 'ai-control-centre-1440.png'); checks.push('ai-control-centre');
 
-  // The create sheet (the capsule's More… chip): words in, "I understood this as a ticket" with chips, created through the one Work API and opened in the side panel.
-  await page.goto(`${origin}/preview-org/`); await invokeAura(page); await page.locator('.aura-chip[data-chip="more"]').click();
+  // The create sheet (the floating + › New task, then Ticket): words in, chips, created through the one Work API and opened in the side panel.
+  await page.goto(`${origin}/preview-org/`); await page.locator('.shell-fab-btn').click(); await page.getByRole('menuitem', { name: 'New task' }).click();
+  await page.locator('.v2-new-sheet').waitFor(); await page.locator('.v2-new-type', { hasText: 'Ticket' }).click();
   await page.locator('.v2-new-input input').fill('VPN down for collections team, critical, give to Priya');
   await page.waitForTimeout(300);
   assert.equal(await page.locator('.v2-new-type.on').innerText(), 'Ticket');
-  assert.match(await page.locator('.v2-understood-label').textContent(), /Understood as\s*a ticket/);
   const chips = await page.locator('.v2-new-chip b').allInnerTexts();
   assert.ok(chips.includes('Critical') && chips.includes('Priya Nair'), `chips: ${chips}`);
   assert.equal(await page.getByText('Notify on WhatsApp').count(), 0, 'no WhatsApp toggle in + New');
@@ -170,13 +171,14 @@ try {
   assert.equal(made.b.kind, 'ticket'); assert.equal(made.b.priority, 'Critical'); assert.equal(made.b.assigneeId, '00000000-0000-0000-0000-0000000000b2'); assert.equal(made.b.workTypeId, '00000000-0000-0000-0000-0000000000c1');
   assert.equal(await page.locator('.v2-new-sheet').count(), 0);
   await page.locator('.v2-panel').getByText('WT-9 · Ticket').waitFor(); assert.equal(at(), '/work?item=00000000-0000-0000-0000-0000000000f1'); checks.push('new-sheet');
-  await page.keyboard.press('Control+k'); await page.locator('form.v2-ask input').waitFor(); await page.waitForTimeout(100); assert.ok(await page.locator('form.v2-ask input').evaluate((el) => el === document.activeElement), "Ctrl K invokes Aura with the cursor in its capsule");
-  await page.keyboard.press('Control+k'); await page.locator('.cmdk').waitFor(); await page.keyboard.press('Escape'); checks.push('ctrl-k');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  await page.keyboard.press('Control+k'); await page.locator('.groot-chat.float textarea').waitFor(); await page.waitForTimeout(150);
+  assert.ok(await page.locator('.groot-chat.float textarea').evaluate((el) => el === document.activeElement), 'Ctrl K opens the Aura panel with the cursor in its field');
+  await page.keyboard.press('Control+k'); await page.locator('.groot-chat').waitFor({ state: 'detached' });
+  await page.keyboard.press('Control+Shift+k'); await page.locator('.cmdk').waitFor(); await page.waitForTimeout(150); await page.keyboard.press('Escape'); checks.push('ctrl-k');
 
-  // On a project page the capsule is "Ask Aura about <project>"; its orb opens the Aura chat about that project.
-  await page.goto(`${origin}/preview-org/work/projects/${project.id}`); await page.locator('.v2-tb .aura-hint').waitFor(); await page.waitForTimeout(600);
-  await invokeAura(page);
-  await page.locator('form.v2-ask input[placeholder="Ask Aura about Razor pay"]').waitFor();
+  // On a project page the orb opens Aura about that project.
+  await page.goto(`${origin}/preview-org/work/projects/${project.id}`); await page.locator('.v2-tb .shell-orb').waitFor(); await page.waitForTimeout(800);
   await openAuraPanel(page); await page.locator('.groot-chat').waitFor();
   assert.ok((await page.locator('.groot-chat .gc-empty').innerText()).includes('Razor pay'));
   assert.ok((await page.locator('.groot-chat .gc-sugg').innerText()).includes('What is at risk on Razor pay?'));
@@ -187,9 +189,9 @@ try {
 
   // Phone: the five places and Aura's orb in the top bar, nothing cut off.
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto(`${origin}/preview-org/work`); await page.locator('.v2-phone-bar').waitFor(); await page.waitForTimeout(500);
-  // Four places and More (the same on iPhone and Android); no + New (Aura's capsule, from the top bar's orb, creates); More opens every other place as tiles.
-  assert.deepEqual(await page.locator('.v2-phone-tab .v2-rail-label').allTextContents(), ['Today', 'Work', 'Messages', 'Projects', 'More']);
-  assert.equal(await page.getByRole('button', { name: 'New', exact: true }).count(), 0);
+  // Four places and More (the same on iPhone and Android); the floating + above the bar creates; More opens every other place as tiles.
+  assert.deepEqual(await page.locator('.v2-phone-tab .v2-rail-label').allTextContents(), ['Today', 'Work', 'Approvals', 'Messages', 'More']);
+  await page.getByTestId('fab').waitFor();
   await page.locator('.m-top .m-aura-orb').waitFor();
   await page.locator('.v2-phone-tab', { hasText: 'More' }).click();
   const more = page.getByRole('dialog', { name: 'All places' }); await more.waitFor();

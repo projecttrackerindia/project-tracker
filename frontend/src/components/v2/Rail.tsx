@@ -3,9 +3,11 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { insightApi, projectApi } from '../../api/endpoints';
 import type { Project } from '../../api/types';
-import { usePins, useContextMenu } from './pins';
+import { usePins } from './pins';
 import { Icon, type IconName } from '../Icon';
-import { BrandMark } from '../BrandMark';
+import { Logo, BRAND } from '../Logo';
+import { reminderApi } from '../../features/reminders/api';
+import { approvalsApi } from '../../features/approvals/api';
 import { useAvatarUrl } from '../ui';
 import { initials } from '../../lib/format';
 import { haptic } from '../../lib/mobile';
@@ -48,7 +50,8 @@ function useInboxOpen() {
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
   const q = useWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { enabled: !admin, refetchInterval: 90_000, staleTime: 30_000 });
   const rows = q.data?.rows ?? [];
-  return { count: q.data?.counts?.all ?? rows.length, urgent: rows.some((r) => r.urgent), tickets: rows.filter((r) => r.kind === 'ticket').length };
+  return { count: q.data?.counts?.all ?? rows.length, urgent: rows.some((r) => r.urgent), tickets: rows.filter((r) => r.kind === 'ticket').length,
+    approvals: rows.filter((r) => r.kind === 'approval' || r.kind === 'access' || r.kind === 'decision' || r.kind === 'review').length };
 }
 
 const isOn = (i: NavDef, path: string) => (i.match ? i.match(path) : i.end ? path === i.to : path === i.to || path.startsWith(`${i.to}/`));
@@ -62,14 +65,9 @@ function usePlaces() {
     .map((i) => (i.id === 'talk' ? { ...i, badge: talk.n, dot: talk.dot } : i.id === 'home' ? { ...i, badge: inbox.count, calm: !inbox.urgent } : i)) as (NavDef & { calm?: boolean; dot?: boolean })[];
 }
 
-type SideItem = { key: string; to: string; label: string; icon: IconName; tint: string; on: boolean; badge?: number; calm?: boolean; hint?: string; /** No number, but something new (muted chats): a grey dot. */ dot?: boolean };
+type SideItem = { key: string; to: string; label: string; icon: IconName; tint: string; on: boolean; badge?: number; calm?: boolean; /** The blue count (Approvals). */ blue?: boolean; hint?: string; /** No number, but something new (muted chats): a grey dot. */ dot?: boolean };
 type SideGroup = { title: string | null; items: SideItem[] };
 
-const TINT = {
-  blue: 'linear-gradient(180deg,#3a9bff,#0071e3)', orange: 'linear-gradient(180deg,#ffb340,#ff9500)', red: 'linear-gradient(180deg,#ff6b6b,#ff3b30)',
-  indigo: 'linear-gradient(180deg,#7d7bff,#5856d6)', teal: 'linear-gradient(180deg,#4fd1e0,#30b0c7)', green: 'linear-gradient(180deg,#5de06f,#28cd41)',
-  amber: 'linear-gradient(180deg,#c9a77a,#a2845e)', gray: 'linear-gradient(180deg,#a3a3a8,#636366)', pink: 'linear-gradient(180deg,#ff6482,#ff2d55)',
-};
 const PIN_DOTS = ['#5856d6', '#ff9500', '#30b0c7'];
 
 /** The projects this person opened most recently on this device (newest first, at most 10), per workspace. */
@@ -109,6 +107,7 @@ function useSideGroups(): SideGroup[] {
   const canProjects = (useAuth((s) => s.ctx?.current?.modules?.projects) ?? 0) > 0;
   const dash = useWsQuery(['dashboard', null], () => insightApi.dashboard(null), { staleTime: 60_000, retry: false, enabled: !admin });
   const projectList = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false, enabled: !admin && canProjects });
+  const reminders = useWsQuery(['reminders', 'list'], reminderApi.list, { staleTime: 60_000, retry: false, enabled: !admin });
   const myOpen = dash.data?.counts?.myOpen ?? 0;
   const deskOpen = inbox.tickets;
   const projectCount = (projectList.data?.items ?? []).filter((p) => p.status !== 'Completed' && p.status !== 'Cancelled' && p.status !== 'Archived').length;
@@ -116,39 +115,51 @@ function useSideGroups(): SideGroup[] {
   const has = (to: string) => all.find((i) => i.to === to);
   const q = new URLSearchParams(search);
   const tab = q.get('tab');
-  const onProjects = pathname === '/work/projects' || pathname.startsWith('/work/projects/');
+  const under = (root: string) => pathname === root || pathname.startsWith(`${root}/`);
+  const onProjects = under('/work/projects');
   const portfolio = onProjects && q.get('view') === 'portfolio';
-  const vault = pathname === '/library/vault' || pathname.startsWith('/library/vault/');
-  const mk = (to: string, key: string, label: string, icon: IconName, tint: string, on: boolean, extra?: Partial<SideItem>): SideItem | null => {
+  const insights = under('/insights');
+  const mk = (to: string, key: string, label: string, icon: IconName, on: boolean, extra?: Partial<SideItem>): SideItem | null => {
     const d = has(to);
-    return d ? { key, to, label, icon, tint, on, hint: d.hint, ...extra } : null;
+    return d ? { key, to, label, icon, tint: '', on, hint: d.hint, ...extra } : null;
   };
   const clean = (g: SideGroup) => ({ ...g, items: g.items.filter(Boolean) as SideItem[] });
-  const home = pathname === '/' || pathname === '/dashboard' || pathname.startsWith('/approve/');
+  const home = (pathname === '/' || pathname === '/dashboard') && tab !== 'calendar' && tab !== 'reminders';
   // docs/badges.md: a red number = unread notifications that belong to this place (they add up to the bell); with none, a place may keep
-  // a calm grey count of what is open there (not a notification, not in the total).
+  // a calm grey count of what is open there (not a notification, not in the total). Approvals is the one blue count (the demo).
   const tabs = useTabBadges();
   const red = (d: Destination, calm?: number): Partial<SideItem> => (tabs[d] > 0 ? { badge: tabs[d], calm: false } : calm ? { badge: calm, calm: true } : {});
+  const remindersOpen = reminders.data?.open?.length ?? 0;
+  // The same query as the Approvals page's useApprovalCounts (shared cache), without loading the page's chunk.
+  const approvals = useWsQuery(['approvals', 'counts'], approvalsApi.counts, { refetchInterval: 60_000, staleTime: 30_000, enabled: !admin }).data?.needsMe ?? 0;
   return [
-    clean({ title: null, items: [mk('/', 'home', 'Today', 'sun', TINT.blue, home && tab !== 'calendar', red('today', inbox.count))] as SideItem[] }),
+    clean({ title: null, items: [
+      mk('/', 'home', 'Today', 'sun', home, red('today')),
+      mk('/approvals', 'approvals', 'Approvals', 'checkCircle', under('/approvals') || pathname.startsWith('/approve/'), approvals ? { badge: approvals, blue: true } : {}),
+      mk('/work', 'work', 'My work', 'inbox', pathname === '/work', red('work', myOpen)),
+      mk('/reminders', 'reminders', 'Reminders', 'alarm', under('/reminders') || (pathname === '/' && tab === 'reminders'), remindersOpen ? { badge: remindersOpen, calm: true } : {}),
+      mk('/notes', 'notes', 'Notes', 'note', under('/notes')),
+    ] as SideItem[] }),
+    // The demo's order (scratchpad/demo shots 01, 32): the spec.
     clean({ title: 'Work', items: [
-      mk('/work', 'work', 'My Work', 'checkCircle', TINT.orange, pathname === '/work', red('work', myOpen)),
-      mk('/desk', 'desk', 'Desk', 'target', TINT.red, pathname === '/desk' || pathname.startsWith('/desk/'), red('desk', deskOpen)),
-      mk('/quality', 'quality', 'Quality', 'bug', 'linear-gradient(180deg,#cf7bf0,#af52de)', pathname === '/quality' || pathname.startsWith('/quality/')),
+      mk('/work/projects', 'projects', 'Projects', 'folder', onProjects && !portfolio, projectCount ? { badge: projectCount, calm: true } : {}),
+      mk('/work/projects?view=portfolio', 'portfolio', 'Portfolio', 'grid', portfolio, red('portfolio')),
+      mk('/desk', 'desk', 'Desk', 'target', under('/desk'), red('desk', deskOpen)),
+      mk('/quality', 'quality', 'Quality', 'shield', under('/quality')),
+      mk('/?tab=calendar', 'calendar', 'Calendar', 'calendar', pathname === '/' && tab === 'calendar', red('calendar')),
+      mk('/meetings', 'meetings', 'Meetings', 'video', under('/meetings') || pathname.startsWith('/calls/'), red('meetings')),
     ] as SideItem[] }),
-    clean({ title: 'Plan', items: [
-      mk('/work/projects', 'projects', 'Projects', 'folder', TINT.indigo, onProjects && !portfolio, { badge: projectCount, calm: true }),
-      mk('/work/projects?view=portfolio', 'portfolio', 'Portfolio', 'monitor', TINT.teal, portfolio, red('portfolio')),
-      mk('/?tab=calendar', 'calendar', 'Calendar', 'calendar', TINT.red, home && tab === 'calendar', red('calendar')),
+    clean({ title: 'Communicate', items: [
+      mk('/messages', 'talk', 'Messages', 'message', under('/messages'), { ...red('messages'), dot: tabs.messages === 0 && talk.dot }),
+      mk('/mail', 'mail', 'Mail', 'mail', under('/mail'), red('mail', mailUnread)),
     ] as SideItem[] }),
-    clean({ title: 'Together', items: [
-      mk('/meetings', 'meetings', 'Meetings', 'video', TINT.teal, pathname === '/meetings' || pathname.startsWith('/calls/meeting/'), red('meetings')),
-      mk('/messages', 'talk', 'Messages', 'message', TINT.green, pathname === '/messages' || pathname.startsWith('/messages/') || (pathname.startsWith('/calls/') && !pathname.startsWith('/calls/meeting/')), { ...red('messages'), dot: tabs.messages === 0 && talk.dot }),
-      mk('/mail', 'mail', 'Mail', 'mail', TINT.blue, pathname === '/mail' || pathname.startsWith('/mail/'), red('mail', mailUnread)),
-      mk('/library', 'library', 'Library', 'note', TINT.amber, (pathname === '/library' || pathname.startsWith('/library/')) && !vault, red('library')),
-      mk('/library/vault', 'vault', 'Vault', 'key', TINT.gray, vault),
-      mk('/people', 'people', 'People & Roles', 'users', 'linear-gradient(180deg,#7d7bff,#5e5ce6)', pathname === '/people' || pathname.startsWith('/people/')),
-      mk('/insights', 'insights', 'Insights', 'chart', TINT.pink, pathname === '/insights' || pathname.startsWith('/insights/') || pathname === '/activity'),
+    clean({ title: 'Know', items: [
+      mk('/library', 'library', 'Library', 'layers', under('/library'), red('library')),
+      mk('/insights?tab=reports', 'reports', 'Reports', 'list', insights && tab === 'reports'),
+      mk('/insights', 'insights', 'Insights', 'chart', insights && tab !== 'reports' && tab !== 'time'),
+      mk('/activity', 'activity', 'Activity', 'activity', pathname === '/activity'),
+      mk('/people', 'people', 'People', 'users', under('/people')),
+      mk('/time', 'time', 'Time', 'clock', under('/time') || (insights && tab === 'time')),
     ] as SideItem[] }),
   ].filter((g) => g.items.length > 0);
 }
@@ -168,78 +179,106 @@ function usePinned(enabled: boolean) {
   return { list: sidebarProjects(q.data?.items ?? [], recent, pins.pinned, pins.hidden), pins };
 }
 
+/** The sidebar collapsed to its icon rail (the toggle at the top; remembered on this device). Below 1100px it is always the rail. */
+const COLLAPSE_KEY = 'pt_side_collapsed';
+const readCollapsed = () => { try { return localStorage.getItem(COLLAPSE_KEY) === '1'; } catch { return false; } };
+export function useSideCollapsed(): [boolean, (v: boolean) => void] {
+  const [v, setV] = useState(readCollapsed);
+  useEffect(() => {
+    document.documentElement.classList.toggle('side-collapsed', v);
+    return () => document.documentElement.classList.remove('side-collapsed');
+  }, [v]);
+  return [v, (n: boolean) => { setV(n); try { localStorage.setItem(COLLAPSE_KEY, n ? '1' : '0'); } catch { /* private window */ } }];
+}
+
 /**
- * The v2 left sidebar (236px; the 84px icon rail below 1100px): the workspace and role, + New, the places in macOS-style sections with a
- * coloured tile each, pinned projects, and the avatar at the bottom whose menu holds Profile, Workspaces, Settings, People, Help and Sign out.
+ * The calm sidebar (236px; a 68px icon rail when collapsed or below 1100px): the workspace switcher with the ProjectTracker logo and the
+ * collapse toggle, the places in captioned sections (fine line icons; the selected one a white raised pill with an accent icon; small pill
+ * badges), and at the bottom the profile (its menu holds Profile, Workspaces, Settings, People, Appearance, Help and Sign out) and Settings.
  */
 export function Rail() {
   const { pathname } = useLocation();
-  const nav = useNavigate();
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
-  const ctx = useAuth((s) => s.ctx);
   const places = usePlaces();
   const groups = useSideGroups();
-  const canProjects = (ctx?.current?.modules?.projects ?? 0) > 0;
-  const { list: pinned, pins } = usePinned(!admin && canProjects);
-  const ctxMenu = useContextMenu();
-  const [drag, setDrag] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useSideCollapsed();
+  const badgeLabel = (i: SideItem) => (!i.calm && !i.blue ? `${i.badge} new` : i.key === 'approvals' ? `${i.badge} waiting on you` : i.key === 'talk' || i.key === 'mail' ? `${i.badge} unread` : `${i.badge} open`);
   return (
-    <aside className="v2-rail v2-side" aria-label="Main">
-      <div className="v2-side-ws">
-        <button type="button" className="v2-rail-logo" aria-label="Home" title="Home" onClick={() => nav(admin ? '/admin' : '/')}><BrandMark size={20} /></button>
-        <span className="v2-side-ws-text"><b>{admin ? 'Platform' : ctx?.current?.name ?? 'Workspace'}</b><small>{admin ? 'Administrator' : ctx?.current?.role ?? ''}</small></span>
+    <aside className={`v2-rail v2-side shell-side${collapsed ? ' collapsed' : ''}`} aria-label="Main">
+      <div className="v2-side-ws shell-ws">
+        <WorkspaceSwitcher />
+        <button type="button" className="shell-ib shell-collapse" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-pressed={collapsed} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={() => setCollapsed(!collapsed)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="3" /><path d="M9.5 5v14" /></svg>
+        </button>
       </div>
-      <nav className="v2-rail-nav">
+      <nav className="v2-rail-nav shell-nav">
         {admin ? places.map((i) => (
           <NavLink key={i.id ?? i.to} to={i.to} end={i.end} className={() => `v2-rail-item ${isOn(i, pathname) ? 'on' : ''}`} aria-current={isOn(i, pathname) ? 'page' : undefined} title={i.hint ?? i.label}>
-            <span className="v2-tile" style={{ background: TINT.gray }}><Icon name={i.icon} size={13} /></span>
+            <span className="shell-ico"><Icon name={i.icon} size={17} /></span>
             <span className="v2-rail-label">{i.label}</span>
           </NavLink>
         )) : groups.map((g) => (
-          <div key={g.title ?? 'top'} className="v2-side-group" role="group" aria-label={g.title ?? 'Today'}>
+          <div key={g.title ?? 'top'} className="v2-side-group" role="group" aria-label={g.title ?? 'Your day'}>
             {g.title && <div className="v2-side-sl">{g.title}</div>}
             {g.items.map((i) => (
               <Link key={i.key} to={i.to} className={`v2-rail-item ${i.on ? 'on' : ''}`} aria-current={i.on ? 'page' : undefined} title={i.hint ?? i.label} data-place={i.key}>
-                <span className="v2-tile" style={{ background: i.tint }}><Icon name={i.icon} size={13} /></span>
+                <span className="shell-ico"><Icon name={i.icon} size={17} /></span>
                 <span className="v2-rail-label">{i.label}</span>
-                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} data-badge={i.key} aria-label={!i.calm ? `${i.badge} new` : i.key === 'home' ? `${i.badge} waiting on you` : i.key === 'talk' || i.key === 'mail' ? `${i.badge} unread` : `${i.badge} open`}>{i.badge > 99 ? '99+' : i.badge}</em>}
+                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}${i.blue ? ' blue' : ''}`} data-badge={i.key} aria-label={badgeLabel(i)}>{i.badge > 99 ? '99+' : i.badge}</em>}
                 {!i.badge && i.dot && <em className="v2-badge-dot" data-badge={i.key} aria-label="New messages in muted conversations" />}
               </Link>
             ))}
           </div>
         ))}
-        {canProjects && !admin && pinned.length === 0 && (
-          <div className="v2-side-group v2-side-pins" role="group" aria-label="Pinned projects">
-            <div className="v2-side-sl">Pinned projects</div>
-            <p className="v2-side-pin-empty" data-testid="pins-empty">Pin a project from its ··· menu to keep it here.</p>
-          </div>
-        )}
-        {pinned.length > 0 && (
-          <div className="v2-side-group v2-side-pins" role="group" aria-label="Pinned projects">
-            <div className="v2-side-sl">Pinned projects</div>
-            {pinned.map(({ project: p, pinned: explicit }, n) => (
-              <div key={p.id} className={`v2-side-pin-row${drag === p.id ? ' dragging' : ''}`} data-pin={p.id} data-pinned={explicit ? 'true' : 'false'}
-                draggable={explicit} onDragStart={(e) => { if (!explicit) return; setDrag(p.id); e.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => setDrag(null)}
-                onDragOver={(e) => { if (drag && explicit && drag !== p.id) e.preventDefault(); }}
-                onDrop={(e) => { e.preventDefault(); if (drag && explicit) pins.move(drag, pins.pinned.indexOf(p.id)); setDrag(null); }}
-                onContextMenu={(e) => ctxMenu.open(e, [explicit ? { label: 'Unpin from sidebar', icon: 'pinOff', onSelect: () => pins.unpin(p.id) } : { label: 'Pin to sidebar', icon: 'pin', onSelect: () => pins.pin(p.id) },
-                  ...(!explicit ? [{ label: 'Hide from recents', icon: 'eyeOff' as const, onSelect: () => pins.unpin(p.id) }] : [])])}>
-                <Link to={`/work/projects/${p.id}`} className={`v2-side-pin ${pathname === `/work/projects/${p.id}` ? 'on' : ''}`} title={p.name}>
-                  <i style={{ background: PIN_DOTS[n % PIN_DOTS.length] }} /><span>{p.name}</span>
-                </Link>
-                <button type="button" className="v2-side-unpin" aria-label={explicit ? `Unpin ${p.name}` : `Hide ${p.name} from recents`} title={explicit ? 'Unpin' : 'Hide from recents'}
-                  onClick={() => pins.unpin(p.id)}><Icon name="pinOff" size={12} /></button>
-              </div>
-            ))}
-            {ctxMenu.menu}
-          </div>
-        )}
       </nav>
-      <div className="v2-rail-foot">
+      <div className="v2-rail-foot shell-foot">
         {!admin && <RunningTimer />}
-        <div className="v2-side-me"><AvatarMenu variant="row" /></div>
+        <div className="v2-side-me shell-me">
+          <AvatarMenu variant="row" />
+          {!admin && <Link to="/settings" className="shell-ib shell-gear" aria-label="Settings" title="Settings"><Icon name="settings" size={17} /></Link>}
+        </div>
       </div>
     </aside>
+  );
+}
+
+/** The workspace switcher at the top of the sidebar: the logo, ProjectTracker and the workspace; a menu to switch or create one. */
+function WorkspaceSwitcher() {
+  const ctx = useAuth((s) => s.ctx)!;
+  const switchWorkspace = useAuth((s) => s.switchWorkspace);
+  const nav = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const admin = ctx.user.isPlatformAdmin;
+  const cur = ctx.current;
+  const pick = async (id: string) => {
+    setOpen(false);
+    if (id === cur?.id) return;
+    try { await switchWorkspace(id); toast('Workspace switched.', 'info'); } catch { toast('Could not switch workspace.', 'error'); }
+  };
+  return (
+    <>
+      <button type="button" ref={trigger} className="shell-ws-btn" aria-haspopup="menu" aria-expanded={open} title={admin ? BRAND : `${BRAND} · ${cur?.name ?? ''}`}
+        onClick={() => (admin ? nav('/admin') : setOpen((o) => !o))}>
+        <Logo size={28} />
+        <span className="v2-side-ws-text shell-wn"><b>{BRAND}</b><small>{admin ? 'Platform administration' : `${cur?.name ?? 'Workspace'} workspace`}</small></span>
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} anchorRef={trigger} role="menu" aria-label="Workspaces" className="acct-menu shell-ws-menu" side="bottom" align="start" gap={6}>
+        <div className="acct-items">
+          {ctx.workspaces.map((w) => (
+            <button key={w.id} type="button" role="menuitem" className="v2-menu-item" aria-current={w.id === cur?.id ? 'true' : undefined} title={w.name} onClick={() => void pick(w.id)}>
+              <span className="v2-ws">{w.name[0]?.toUpperCase()}</span><span className="grow">{w.name}<small className="shell-ws-sub">{w.type === 'Personal' ? 'Personal' : w.role}</small></span>{w.id === cur?.id && <Icon name="tick" size={15} />}
+            </button>
+          ))}
+          <div className="v2-menu-sep" />
+          <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { setOpen(false); setCreating(true); }}><Icon name="plus" size={16} /><span className="grow">Create organization</span></button>
+          <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { setOpen(false); nav('/settings/general'); }}><Icon name="settings" size={16} /><span className="grow">Workspace settings</span></button>
+        </div>
+      </Popover>
+      {creating && <CreateOrganizationModal onClose={() => setCreating(false)} />}
+    </>
   );
 }
 
@@ -337,7 +376,7 @@ export function AvatarMenu({ variant = 'icon' }: { variant?: 'row' | 'icon' }) {
 }
 
 /**
- * The phone's tab bar, the same on iPhone and Android: four places (Today, My Work, Messages, Projects) and More, which opens every other
+ * The phone's tab bar, the same on iPhone and Android: four places (Today, Work, Approvals, Messages) and More, which opens every other
  * place as a grid of app tiles with your pinned projects. + New lives in the top bar, so the tabs stay calm and equal. A solid frosted
  * bar with a hairline: nothing scrolls visibly through it.
  */
@@ -351,7 +390,7 @@ export function PhoneBar() {
   useEffect(() => setMore(false), [pathname, search]);
   const all = groups.flatMap((g) => g.items);
   const pick = (key: string) => all.find((i) => i.key === key);
-  const primary = admin ? [] : (['home', 'work', 'talk', 'projects'].map(pick).filter(Boolean) as SideItem[]);
+  const primary = admin ? [] : (['home', 'work', 'approvals', 'talk'].map(pick).filter(Boolean) as SideItem[]);
   const rest = all.filter((i) => !primary.includes(i));
   const moreOn = !admin && rest.some((i) => i.on);
   const restBadge = rest.reduce((n, i) => n + (i.calm ? 0 : i.badge ?? 0), 0);
@@ -372,7 +411,7 @@ export function PhoneBar() {
         {primary.map((i) => (
           <Link key={i.key} to={i.to} className={`v2-phone-tab ${i.on && !more ? 'on' : ''}`} aria-current={i.on ? 'page' : undefined} onClick={() => haptic(6)}>
             <span className="v2-phone-ic"><Icon name={i.icon} size={24} />{!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} data-badge={i.key} aria-label={i.key === 'talk' ? `${i.badge} unread` : undefined}>{i.badge > 99 ? '99+' : i.badge}</em>}{!i.badge && i.dot && <em className="v2-badge-dot" data-badge={i.key} aria-label="New messages in muted conversations" />}</span>
-            <span className="v2-rail-label">{i.label === 'My Work' ? 'Work' : i.label}</span>
+            <span className="v2-rail-label">{i.key === 'work' ? 'Work' : i.label}</span>
           </Link>
         ))}
         <button type="button" className={`v2-phone-tab ${moreOn || more ? 'on' : ''}`} aria-expanded={more} aria-haspopup="dialog" onClick={() => { haptic(6); setMore(true); }}>
@@ -385,7 +424,7 @@ export function PhoneBar() {
           <div className="v2-more-grid">
             {rest.map((i) => (
               <button key={i.key} type="button" className={`v2-more-tile${i.on ? ' on' : ''}`} onClick={() => { haptic(6); setMore(false); nav(i.to); }}>
-                <span className="v2-tile lg" style={{ background: i.tint }}><Icon name={i.icon} size={22} /></span>
+                <span className="v2-tile lg shell-tile"><Icon name={i.icon} size={22} /></span>
                 <span>{i.label}</span>
                 {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`}>{i.badge > 99 ? '99+' : i.badge}</em>}
               </button>

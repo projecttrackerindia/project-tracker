@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { useUi } from '../stores/ui';
-import { BrandMark } from '../components/BrandMark';
+import { Logo } from '../components/Logo';
 import { AuthVisual } from '../components/AuthVisual';
 import { ToastRoot } from '../components/ui';
 import { PlatformBanner } from '../components/PlatformBanner';
@@ -39,7 +39,7 @@ function useSystemTheme() {
 function CalmAuthPanel() {
   return (
     <aside className="auth-calm-panel" aria-hidden="true">
-      <div className="acp-brand"><span className="acp-mark"><BrandMark size={22} /></span>ProjectTracker</div>
+      <div className="acp-brand"><Logo size={38} className="pt-logo" />ProjectTracker</div>
       <h2>Your work,<em>calmly in one place.</em></h2>
       <p>Projects, desk, meetings and your day, with Aura beside you.</p>
     </aside>
@@ -63,7 +63,7 @@ export function AuthLayout({ title, second, sub, children, footer, shake, calm }
       {calm ? <CalmAuthPanel /> : <AuthVisual />}
       {calm ? (
         <div className="auth-wrap auth-calm-wrap">
-          <span className="acp-mark lg" aria-hidden="true"><BrandMark size={30} /></span>
+          <Logo size={52} className="pt-logo acp-logo" />
           <h1 className="auth-title">{title}{second && <em>{second}</em>}</h1>
           {sub && <p className="auth-sub">{sub}</p>}
           <div className={`auth-card ${shake ? 'shake' : ''}`}>{children}</div>
@@ -75,7 +75,7 @@ export function AuthLayout({ title, second, sub, children, footer, shake, calm }
           <div className={`auth-card ${shake ? 'shake' : ''}`}>
             <span className="auth-beam" aria-hidden="true" />
             <div className="auth-brand">
-              <div className="brand-mark"><BrandMark /></div>
+              <Logo size={44} className="pt-logo auth-logo" />
               <div><strong>ProjectTracker</strong><span>Project management</span></div>
             </div>
             <h1 className="auth-title">{title}{second && <em>{second}</em>}</h1>

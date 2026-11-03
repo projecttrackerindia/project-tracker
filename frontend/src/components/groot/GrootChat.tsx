@@ -19,6 +19,7 @@ import { AuraOrb } from '../aura/AuraOrb';
 import { flashAura, setAuraMood } from '../aura/mood';
 import { DEFAULT_DAY, dayPart, greeting, grootCheckout, suggestionsFor, workingHours, type GrootSuggestion, type OrgDay } from './grootTime';
 import { useAuraInvoke, useGroot, type GrootTurn } from './store';
+import { AURA_TABS, AuraTabBody, type AuraTab } from './AuraTabs';
 import './groot.css';
 
 const WIDTH_KEY = 'pm_groot_width';
@@ -64,6 +65,9 @@ function GrootChat() {
   // Asked from the floating capsule: an answer card that rises above it (the capsule is its field), not the side panel.
   const card = useGroot((s) => s.card);
   const phone = useIsMobile() && !card;
+  // On a wide screen the chat is the floating Aura panel that grows from the header orb (calm shell), with its four tabs.
+  const float = !phone && !card;
+  const [tab, setTab] = useState<AuraTab>('chat');
   const still = useReducedMotion();
   const nav = useNavigate();
   const org = useAuth((s) => s.ctx?.current?.name) ?? 'your organization';
@@ -125,7 +129,7 @@ function GrootChat() {
   useEffect(() => { const q = take(); if (q) ask(q); }, [pendingTs]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => { body.current?.scrollTo({ top: body.current.scrollHeight, behavior: still ? 'auto' : 'smooth' }); }, [turns, still]);
-  useEffect(() => { if (!phone && !card) window.setTimeout(() => input.current?.focus({ preventScroll: true }), 60); }, [phone, card]);
+  useEffect(() => { if (!phone && !card && tab === 'chat') window.setTimeout(() => input.current?.focus({ preventScroll: true }), 60); }, [phone, card, tab]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); close(); } };
     document.addEventListener('keydown', onKey);
@@ -133,11 +137,28 @@ function GrootChat() {
   }, [close]);
   // Desktop: the page makes room for the panel instead of being covered.
   useEffect(() => {
-    if (phone || card) return;
+    if (phone || card || float) return;
     const root = document.documentElement;
     root.classList.add('groot-docked'); root.style.setProperty('--groot-w', `${width}px`);
     return () => { root.classList.remove('groot-docked'); root.style.removeProperty('--groot-w'); };
-  }, [phone, card, width]);
+  }, [phone, card, float, width]);
+
+  useEffect(() => {
+    if (!float) return;
+    document.documentElement.classList.add('groot-open-float');
+    return () => document.documentElement.classList.remove('groot-open-float');
+  }, [float]);
+  // The floating panel goes away on a click outside it (not on the orb that toggles it, nor on toasts and confirmations it raised).
+  useEffect(() => {
+    if (!float) return;
+    const onDown = (e: PointerEvent) => {
+      const el = e.target as Element | null;
+      if (!el || !el.isConnected || el.closest('.groot-chat, [data-aura-entry], .toast-root, .confirm-root, [role="alertdialog"], .modal-overlay, .v2-new-scrim')) return;
+      close();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [float, close]);
 
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -213,24 +234,32 @@ function GrootChat() {
   const firstName = me.split(' ')[0] || null;
 
   const panel = (
-    <motion.aside className={`groot-chat${phone ? ' phone' : ''}${card ? ' card' : ''}`} role="dialog" aria-modal={phone ? true : undefined} aria-label="Aura"
-      style={phone || card ? undefined : { width }} data-state={state} data-testid="groot-chat"
-      initial={card ? false /* the card rises with CSS (aura-card-rise), in step with the capsule */ : still ? { opacity: 0 } : phone ? { y: 24, opacity: 0 } : { x: 24, opacity: 0 }} animate={{ x: 0, y: 0, opacity: 1 }}
-      exit={still ? { opacity: 0 } : phone || card ? { y: card ? 12 : 24, opacity: 0, transition: t.sheetExit } : { x: 24, opacity: 0, transition: t.sheetExit }} transition={still ? instant : card ? t.emphasised : t.sheet}>
-      {!phone && !card && <div className="gc-resize" role="separator" aria-orientation="vertical" aria-label="Resize Aura" onPointerDown={startResize} />}
+    <motion.aside className={`groot-chat${phone ? ' phone' : ''}${card ? ' card' : ''}${float ? ' float' : ''}`} role="dialog" aria-modal={phone ? true : undefined} aria-label="Aura"
+      style={phone || card || float ? undefined : { width }} data-state={state} data-testid="groot-chat" data-tab={tab}
+      initial={card ? false /* the card rises with CSS (aura-card-rise), in step with the capsule */ : still ? { opacity: 0 } : float ? { scale: 0.3, opacity: 0 } : phone ? { y: 24, opacity: 0 } : { x: 24, opacity: 0 }}
+      animate={{ x: 0, y: 0, scale: 1, opacity: 1 }}
+      exit={still ? { opacity: 0 } : float ? { scale: 0.3, opacity: 0, transition: t.sheetExit } : phone || card ? { y: card ? 12 : 24, opacity: 0, transition: t.sheetExit } : { x: 24, opacity: 0, transition: t.sheetExit }}
+      transition={still ? instant : card ? t.emphasised : float ? t.spring : t.sheet}>
+      {!phone && !card && !float && <div className="gc-resize" role="separator" aria-orientation="vertical" aria-label="Resize Aura" onPointerDown={startResize} />}
       {phone && <span className="gc-grab" aria-hidden="true" />}
       <header className="gc-head">
-        <GrootAvatar state={state} size={34} />
+        {float || phone ? <span className="calm-orb gc-orb" aria-hidden="true" /> : <GrootAvatar state={state} size={34} />}
         <div className="gc-title"><b>Aura</b><small aria-live="polite">{status}</small></div>
-        {turns.length > 0 && <button type="button" className="gc-icon" title="New chat" aria-label="New chat" onClick={() => { abort.current?.abort(); reset(); setFlash('greeting'); }}><Icon name="plus" size={16} /></button>}
-        <button type="button" className="gc-icon" title="All conversations" aria-label="All conversations" onClick={() => { close(); nav(conversationId ? `/?tab=assistant&c=${encodeURIComponent(conversationId)}` : '/?tab=assistant'); }}><Icon name="clock" size={16} /></button>
+        {!phone && <kbd className="gc-kbd" aria-hidden="true">{/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K'}</kbd>}
+        {turns.length > 0 && tab === 'chat' && <button type="button" className="gc-icon" title="New chat" aria-label="New chat" onClick={() => { abort.current?.abort(); reset(); setFlash('greeting'); }}><Icon name="plus" size={16} /></button>}
+        {!float && !phone && <button type="button" className="gc-icon" title="All conversations" aria-label="All conversations" onClick={() => { close(); nav(conversationId ? `/?tab=assistant&c=${encodeURIComponent(conversationId)}` : '/?tab=assistant'); }}><Icon name="clock" size={16} /></button>}
         <button type="button" className="gc-icon" aria-label="Close Aura" onClick={close}><Icon name="close" size={16} /></button>
       </header>
-
+      {!card && (
+        <div className="gc-tabs" role="tablist" aria-label="Aura">
+          {AURA_TABS.map((x) => <button key={x.id} type="button" role="tab" aria-selected={tab === x.id} className={tab === x.id ? 'on' : ''} onClick={() => setTab(x.id)}>{x.label}</button>)}
+        </div>
+      )}
+      {tab !== 'chat' && !card ? <AuraTabBody tab={tab} conversationId={conversationId} onGo={(to) => { close(); nav(to); }} /> : <>
       <div className="gc-body" ref={body} aria-live="polite">
         {turns.length === 0 ? (
           <div className="gc-empty" data-part={part}>
-            <GrootAvatar state={flash === 'greeting' ? 'greeting' : state} size={phone ? 96 : 112} />
+            <GrootAvatar state={flash === 'greeting' ? 'greeting' : state} size={phone ? 96 : float ? 72 : 112} />
             <h3>{greeting(part, now, day.zone, firstName)}</h3>
             <p>I'm Aura, {org}'s assistant. {about ? `Ask me anything about ${about}.` : 'Ask me anything, or tell me what to do.'}</p>
             <p className="gc-when">{part === 'off' ? 'Not a working day' : `Working hours ${workingHours(day)}`} · {day.zone}</p>
@@ -257,6 +286,7 @@ function GrootChat() {
           ? <button type="button" className="gc-send stop" aria-label="Stop" onClick={() => abort.current?.abort()}><span /></button>
           : <button type="submit" className="gc-send" aria-label="Send" disabled={!text.trim()}><Icon name="arrowUp" size={16} /></button>}
       </form>}
+      </>}
     </motion.aside>
   );
   return createPortal(<>{phone && <div className="gc-scrim" onMouseDown={close} aria-hidden="true" />}{panel}</>, document.body);

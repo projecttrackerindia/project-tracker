@@ -276,9 +276,8 @@ function Slide({ item, filter, active }: { item: DecisionItem; filter: Portfolio
 function Overview({ brief, n, active }: { brief: PortfolioBrief; n: number; active: boolean }) {
   return (
     <section className={`pf-slide ${active ? 'on' : ''}`} aria-hidden={!active} aria-label="Overview">
-      <p className="pf-slide-ey ok">Portfolio · {plural(brief.projects, 'project')}</p>
-      <h2>{n === 0 ? 'No decisions this week' : `${plural(n, 'decision')} this week`}</h2>
-      <p className="pf-slide-dates"><b>{brief.onTrack}</b> on track · <b>{brief.atRisk}</b> at risk · <span className="fc late">{brief.delayed} late</span></p>
+      <h2 className="pf-calm-t">Week {isoWeek(brief.asOf ? new Date(brief.asOf) : new Date())}.<em>Portfolio review.</em></h2>
+      <p className="pf-calm-p">{plural(brief.projects, 'project')} · {brief.onTrack} on track · {brief.atRisk} at risk · <span className="fc late">{brief.delayed} late</span> · {n === 0 ? 'no decisions this week' : `${plural(n, 'decision')} this week`}.</p>
       {brief.headlines.length > 0 && <div className="pf-slide-why">{brief.headlines.slice(0, 3).map((h, k) => <div key={h}><span>{String(k + 1).padStart(2, '0')}</span>{h}</div>)}</div>}
     </section>
   );
