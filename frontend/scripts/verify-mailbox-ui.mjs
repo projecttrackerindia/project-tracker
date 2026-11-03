@@ -94,20 +94,27 @@ try{
  // Focused / Other: the no-reply payslip goes to Other; the subtitle counts unread mail, sorted by the assistant (needs-reply first).
  assert.equal(await page.locator('[data-testid="ml-row"]').count(),2);
  assert.equal(await page.getByTestId('ml-subtitle').innerText(),'2 unread · sorted by AI');
- await page.getByTestId('ml-lanes').getByRole('tab',{name:/^Other/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
+ await page.getByRole('button',{name:'Mailboxes'}).click();await page.getByRole('menuitem',{name:/^Other/}).click();await page.getByTestId('ml-lane-on').waitFor();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
  assert.match(await page.locator('[data-testid="ml-row"]').first().innerText(),/Payroll/);assert.equal(await page.getByTestId('ml-subtitle').innerText(),'0 unread · sorted by AI');
- await page.getByTestId('ml-lanes').getByRole('tab',{name:'Focused'}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);checks.push('focused-other');
+ await page.getByRole('button',{name:'Mailboxes'}).click();await page.getByRole('menuitem',{name:/Focused/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);checks.push('focused-other');
  assert.match(await page.locator('[data-testid="ml-row"]').first().innerText(),/Ravi Kumar[\s\S]*Needs reply/);
  assert.match(await page.locator('[data-testid="ml-row"]').nth(1).innerText(),/Kiran[\s\S]*Invoice/);
  assert.equal(await page.locator('.ml-row.unread').count(),2);
- for(const b of ['Inbox','Needs reply','Waiting on others','Snoozed','Sent','Drafts','Archive'])assert.ok(await page.locator('.ml-side').getByRole('button',{name:new RegExp(`^${b}`)}).isVisible(),b);
- assert.ok(await page.locator('.ml-side').getByRole('button',{name:/Rediffmail/}).isVisible());
+ // The calm list head: Inbox · Sent · Drafts as pills; every other mailbox and each account in "Mailboxes".
+ const pills=page.getByRole('group',{name:'Mailbox pills'});
+ for(const b of ['Inbox','Sent','Drafts'])assert.ok(await pills.getByRole('button',{name:new RegExp(`^${b}`)}).isVisible(),b);
+ await page.getByRole('button',{name:'Mailboxes'}).click();const mm=page.getByRole('menu',{name:'Mailboxes'});await mm.waitFor();
+ for(const b of ['Needs reply','Waiting on others','Snoozed','Archive','Rediffmail','Manage accounts'])assert.ok(await mm.getByRole('menuitem',{name:new RegExp(b)}).isVisible(),b);
+ await page.keyboard.press('Escape');await mm.waitFor({state:'detached'});
+ const mbox=async(name)=>{if(['Inbox','Sent','Drafts'].includes(name)){await pills.getByRole('button',{name:new RegExp(`^${name}`)}).click();return;}
+  await page.getByRole('button',{name:'Mailboxes'}).click();await page.getByRole('menu',{name:'Mailboxes'}).getByRole('menuitem',{name:new RegExp(`^${name}`)}).click();};
  // Waiting on others: my mail to CRIF five days ago with no answer; the inbox offers the nudge.
- assert.match(await page.getByTestId('ml-nudge').innerText(),/No reply from CRIF Ops in 5 days/);
- await page.locator('.ml-side').getByRole('button',{name:/^Needs reply/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
- await page.locator('.ml-side').getByRole('button',{name:/^Waiting on others/}).click();await page.locator('[data-testid="ml-row"]',{hasText:'CRIF'}).waitFor();
+ // The follow-up nudge sits in ⋯ (demo 23 shows none in the list).
+ await page.getByRole('button',{name:'Mailboxes'}).click();assert.match(await page.getByRole('menuitem',{name:/No reply from CRIF Ops/}).innerText(),/5 days/);await page.keyboard.press('Escape');
+ await mbox('Needs reply');await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
+ await mbox('Waiting on others');await page.locator('[data-testid="ml-row"]',{hasText:'CRIF'}).waitFor();
  await page.locator('[data-testid="ml-row"]').first().click();await page.getByTestId('ml-followup').waitFor();assert.match(await page.getByTestId('ml-followup').innerText(),/No reply from CRIF Ops in 5 days — remind\?/);
- await page.locator('.ml-side').getByRole('button',{name:/^Inbox/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);checks.push('mailboxes');
+ await mbox('Inbox');await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);checks.push('mailboxes');
  // Reading renders mail as text, never HTML; the assistant reads it on opening: summary, action items, three reply chips.
  await page.locator('[data-testid="ml-row"]').first().click();await page.locator('.ml-msg-body').waitFor();
  assert.match(await page.locator('.ml-msg-body').innerText(),/<script>/);assert.equal(await page.evaluate(()=>window.mailUnsafe),undefined);
@@ -137,9 +144,9 @@ try{
  checks.push('reply-all');
  // Archive takes it out of the inbox (and Archive holds it).
  await page.getByTestId('ml-reader').getByRole('button',{name:'Archive',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
- await page.locator('.ml-side').getByRole('button',{name:/^Archive/}).click();await page.locator('[data-testid="ml-row"]',{hasText:'Ravi'}).waitFor();checks.push('archive');
+ await mbox('Archive');await page.locator('[data-testid="ml-row"]',{hasText:'Ravi'}).waitFor();checks.push('archive');
  // Natural-language search: what it understood, then the matches.
- await page.getByLabel('Search mail').fill('mails from kiran about invoice');await page.getByLabel('Search mail').press('Enter');
+ await page.getByRole('button',{name:'Search',exact:true}).click();await page.getByLabel('Search mail').fill('mails from kiran about invoice');await page.getByLabel('Search mail').press('Enter');
  await page.getByTestId('ml-understood').waitFor();assert.match(await page.getByTestId('ml-understood').innerText(),/From “kiran”[\s\S]*About “invoice”/);
  await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);assert.match(await page.locator('[data-testid="ml-row"]').first().innerText(),/Invoice 4471/);
  await page.getByRole('button',{name:'Clear'}).click();checks.push('search');
@@ -160,8 +167,8 @@ try{
  await page.getByTestId('ml-new').click();await comp.waitFor();
  await comp.locator('.mb-line',{hasText:'To'}).locator('input').fill('ops@crif.test');await comp.getByLabel('Message',{exact:true}).fill('Reminder about the UAT window.');
  await page.getByLabel('When to send').click();await page.getByRole('option',{name:'Tomorrow 9:00 AM'}).click();await page.getByTestId('ml-send').click();
- await page.locator('.ml-side').getByRole('button',{name:/^Drafts/}).click();await page.locator('.ml-tag.t-sched').waitFor();checks.push('schedule');
- await page.locator('.ml-side').getByRole('button',{name:/^Inbox/}).click();await page.locator('[data-testid="ml-row"]').first().click();await page.getByTestId('ml-summary').waitFor();
+ await mbox('Drafts');await page.locator('.ml-tag.t-sched').waitFor();checks.push('schedule');
+ await mbox('Inbox');await page.locator('[data-testid="ml-row"]').first().click();await page.getByTestId('ml-summary').waitFor();
  await page.evaluate(()=>{document.documentElement.setAttribute('data-theme','dark');});await shot(page,'dark-1440.png');
  await page.close();await ctx.close();
  // AI off: no assistant summary or reply chips, the rest still works.

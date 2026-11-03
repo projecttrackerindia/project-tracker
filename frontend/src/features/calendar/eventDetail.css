@@ -134,3 +134,30 @@ html[data-theme='dark'] .ed-note.warn { color: #ffb340; }
 .ed-overlap-t b { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--ed-orange, #ff9500); color: #fff; font-size: 10px; flex: none; }
 .ed-overlap-a { display: inline-flex; gap: 6px; }
 .ed-overlap-a .ed-btn { padding: 4px 10px; font-size: 12px; }
+
+/* calm popover (demo 18d): a solid card, a larger title, a blue Join pill with a quiet Copy link, attendee chips, a numbered agenda, the linked task */
+html .ed.ed-pop, html .ed.ed-inline { --ed-bg: var(--calm-solid); background: var(--calm-solid); border-radius: var(--calm-r-card); box-shadow: var(--calm-sh-sheet); -webkit-backdrop-filter: none; backdrop-filter: none; }
+html .ed.ed-pop { width: 340px; padding: 20px 20px 18px; }
+html .ed .ed-title { font-size: 21px; font-weight: 600; letter-spacing: -.02em; }
+html .ed .ed-when { font-size: 13.5px; color: var(--calm-ink2); }
+html .ed .ed-why { background: var(--calm-fill); box-shadow: none; }
+html .ed .ed-join { flex: none; height: 34px; padding: 0 18px; border-radius: var(--calm-r-pill); background: var(--calm-accent); font-size: 14px; }
+html .ed .ed-join:hover { background: var(--calm-accent); filter: brightness(1.08); }
+.ed-join-row { align-items: center; }
+.ed-text-btn { border: 0; background: none; padding: 0 6px; height: 34px; font: inherit; font-size: 14px; color: var(--calm-ink2); cursor: pointer; }
+.ed-text-btn:hover { color: var(--calm-ink); }
+.ed-att, .ed-linked { margin-top: 12px; }
+.ed-att > b, .ed-linked > b, html .ed .ed-agenda b { display: block; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--calm-ink3-text); margin-bottom: 6px; }
+.ed-att > b .ed-faint { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.ed-att ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.ed-att li { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 3px 12px 3px 4px; border-radius: var(--calm-r-pill); box-shadow: inset 0 0 0 1px var(--calm-fill-2); font-size: 13.5px; max-width: 100%; }
+.ed-att li .ed-av { width: 24px; height: 24px; font-size: 9.5px; }
+.ed-att li em { font-style: normal; font-size: 12px; color: var(--calm-ink3-text); }
+.ed-att li em.ok { color: var(--calm-green); }
+html .ed .ed-agenda ol { padding-left: 20px; font-size: 13.5px; line-height: 1.6; }
+.ed-linked button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; border-radius: var(--calm-r-row); background: var(--calm-fill); font: inherit; color: var(--calm-ink); text-align: left; cursor: pointer; }
+.ed-linked button i { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 1.5px solid var(--calm-ink3); }
+.ed-linked button span { flex: 1; min-width: 0; display: grid; }
+.ed-linked strong { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-linked small { font-size: 12px; color: var(--calm-ink2); }
+.ed-linked button:hover { background: var(--calm-fill-2); }

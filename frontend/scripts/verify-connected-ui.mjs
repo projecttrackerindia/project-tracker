@@ -135,7 +135,7 @@ try{
   assert.match(await ready.locator('code').innerText(),/\/preview-org\/calls\/meeting\/w\/m1$/);
   await shot(page,'schedule-ready.png');
   await ready.getByRole('link',{name:'Join Meeting'}).click();
-  await page.waitForURL(/\/calls\/c1$/);
+  await page.waitForURL(/\/meetings\?call=c1$/);
   assert.ok(writes.some(w=>w.ep==='/api/v1/calls/meeting/w/m1'));
   checks.push('schedule-names-service-and-joins-our-call');
  }catch(e){await page.screenshot({path:path.join(out,'failure.png')}).catch(()=>{});console.error('page errors:',errors);throw e;}

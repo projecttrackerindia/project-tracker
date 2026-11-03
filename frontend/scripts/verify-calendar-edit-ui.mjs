@@ -183,8 +183,11 @@ try {
     await page.goto(origin + '/preview-org/calendar');
     await page.locator('[data-testid="week-planner"]').waitFor({ timeout: 15000 });
     await page.locator('[data-type="time"]').first().waitFor();
+    // The Day panel is the Day view's right column (the week opens a block's card as a popover).
+    if (width >= 760) await view('Day');
     await page.locator('[data-testid="day-panel"]').waitFor();
   }
+  async function view(name) { await page.getByRole('tab', { name, exact: true }).click(); await page.waitForTimeout(250); }
   const block = (type, text) => page.locator(`[data-type="${type}"].wp-e, .wp-rem[data-type="${type}"]`).filter({ hasText: text }).first();
   const panel = () => page.locator('[data-testid="day-panel"]');
   const scrollTo = async (h) => { await page.locator('[data-testid="wp-scroll"]').evaluate((el, y) => { el.scrollTop = y; }, h * HR - 10); await page.waitForTimeout(100); };
@@ -211,6 +214,7 @@ try {
   assert.equal(await p.getByTestId('day-empty').count(), 0, 'no empty state on a full day');
   await shot('day-panel-1440');
   checks.push('panel: all types');
+  await view('Week');
 
   // Overlap: the two meetings at 15:00 share the column; logged time beside a meeting is packed beside it (never under its text); approximate time is marked.
   const col = page.locator(`.wp-col[data-day="${today}"]`);
@@ -257,7 +261,7 @@ try {
   await block('time', 'Lamp sensor outage').click();
   const card = page.locator('[data-testid="event-detail"]');
   await card.waitFor();
-  assert.equal(await card.evaluate((el) => !!el.closest('[data-testid="day-panel"]')), true, 'the card opens in the Day panel on a wide window');
+  assert.equal(await card.evaluate((el) => !el.closest('[data-testid="day-panel"]') && el.classList.contains('ed-pop')), true, 'the week opens the card as a popover beside the block');
   await card.getByLabel('Note').fill('Gateway restarted twice');
   await card.getByTestId('ed-save').click();
   await card.waitFor({ state: 'detached' });
@@ -290,7 +294,6 @@ try {
   await page.mouse.up();
   await card.waitFor();
   assert.equal(await card.getAttribute('data-kind'), 'create');
-  assert.match(await page.locator('[data-testid="day-panel"] .dp-hd h2').innerText(), /Tue/);
   await shot('create-chooser-1440');
   await card.getByLabel('Work item').selectOption({ label: /OPS-21/ }).catch(async () => { const v = await card.getByLabel('Work item').locator('option', { hasText: 'OPS-21' }).getAttribute('value'); await card.getByLabel('Work item').selectOption(v); });
   await card.getByTestId('ed-save').click();
@@ -350,6 +353,7 @@ try {
   w = lastWrite((x) => x.method === 'PUT' && x.ep === '/api/v1/reminders/r1');
   assert.equal(w?.body.when.at, `${today}T17:30`);
   await page.waitForTimeout(400);
+  await view('Day');
   await panel().getByRole('region', { name: 'Reminders' }).getByRole('button', { name: 'Done' }).click();
   await page.waitForTimeout(300);
   assert.ok(writes.some((x) => x.ep === '/api/v1/reminders/r1/done'), 'reminder done');
@@ -359,11 +363,12 @@ try {
   assert.ok(writes.some((x) => x.ep === `/api/v1/work-tasks/${ids.w1}/status` && x.body.status === 'Completed'), 'completed from the panel');
   checks.push('reminder + complete');
 
-  // A day header chooses the Day panel's day; an empty day says so.
-  await page.locator(`.wp-dh[data-day="${mon}"] .wp-dh-pick`).click();
+  // The Day view walks day by day; an empty day says so.
+  await page.getByRole('button', { name: 'Previous day' }).click(); await page.getByRole('button', { name: 'Previous day' }).click();
   await panel().getByText('Nothing on Monday 26 October.').waitFor();
-  checks.push('day header selects day');
-  await page.locator(`.wp-dh[data-day="${today}"] .wp-dh-pick`).click();
+  checks.push('day view: an empty day');
+  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await view('Week');
   await shot('calendar-edit-1440');
   await page.close(); await ctx.close();
 
@@ -391,6 +396,68 @@ try {
   await sheet.getByTestId('ed-time-form').waitFor();
   await shot('time-sheet-390');
   await page.close(); await ctx.close();
+
+  // ---------------------------------------------------------------- the calm calendar (demo 18–18g): week, popover, resize tooltip, agenda, month, rail sheet
+  for (const [theme, width] of [['light', 1440], ['dark', 1440], ['light', 1920]]) {
+    ctx = await context(theme);
+    page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+    await page.setViewportSize({ width, height: width > 1500 ? 1080 : 900 });
+    await page.goto(origin + '/preview-org/calendar');
+    await page.locator('[data-type="time"]').first().waitFor({ timeout: 15000 });
+    const sfx = `${width}-${theme}`;
+    assert.equal(await page.locator('.wp-col').count(), 7, 'the week has seven days');
+    assert.ok(await page.getByTestId('wp-upcoming').getByText('Pier lighting sync').count() > 0, 'Upcoming lists the next meeting');
+    assert.ok(await page.getByTestId('wp-free').count() > 0, 'free time is hinted');
+    const noScroll = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+    assert.ok(noScroll, 'no sideways scroll');
+    // the header is one line: the title, the arrows, the views and + New event share a row
+    const tops = await page.locator('.wp-top > .wp-title, .wp-top > .wp-seg, .wp-top > .wp-new').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top + e.getBoundingClientRect().height / 2)));
+    assert.ok(Math.max(...tops) - Math.min(...tops) < 12, `the header is one row (${tops})`);
+    await shot(`calm-week-${sfx}`);
+    await scrollTo(13);
+    await block('meeting', 'Lamp design review').click();
+    await page.locator('[data-testid="event-detail"]').waitFor(); await page.waitForTimeout(300);
+    await shot(`calm-popover-${sfx}`);
+    await page.keyboard.press('Escape');
+    if (theme === 'light' && width === 1440) {
+      // resize from the bottom edge: the live tooltip says where it ends and how long it is, and the drop saves through the meeting API
+      const lb = await block('meeting', 'Lamp design review').boundingBox();
+      await page.mouse.move(lb.x + lb.width / 2, lb.y + lb.height - 2); await page.mouse.down();
+      for (let i = 1; i <= 6; i++) await page.mouse.move(lb.x + lb.width / 2, lb.y + lb.height - 2 + (HR / 2) * i / 6);
+      const tip = page.getByTestId('wp-snap');
+      await tip.waitFor();
+      assert.match(await tip.innerText(), /Ends 16:30/);
+      await shot(`calm-resize-${sfx}`);
+      await page.mouse.up(); await page.waitForTimeout(300);
+      const rw = lastWrite((x) => x.ep === `/api/v1/meetings/${ids.m2}/reschedule`);
+      assert.equal(rw?.body.endTime, at(today, '16:30'), 'resize saves the new end');
+    }
+    await view('Agenda');
+    await page.getByTestId('wp-agenda').waitFor();
+    assert.ok(await page.getByTestId('wp-agenda').getByText('Supplier call').count() > 0, 'the agenda lists the meetings');
+    await shot(`calm-agenda-${sfx}`);
+    await view('Month'); await page.waitForTimeout(400);
+    await shot(`calm-month-${sfx}`);
+    await view('Day'); await page.locator('[data-testid="day-panel"]').waitFor();
+    await shot(`calm-day-${sfx}`);
+    await page.close(); await ctx.close();
+  }
+  for (const theme of ['light', 'dark']) {
+    ctx = await context(theme);
+    page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(origin + '/preview-org/calendar');
+    await page.locator('[data-type="time"]').first().waitFor({ timeout: 15000 });
+    await fitsPhone(page, 'Calm calendar day', assert);
+    await shot(`calm-day-390-${theme}`);
+    await page.getByRole('button', { name: 'Calendars ›' }).click();
+    await page.getByRole('dialog', { name: 'Calendars' }).waitFor(); await page.waitForTimeout(450);
+    await shot(`calm-rail-390-${theme}`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await view('Agenda'); await fitsPhone(page, 'Calm agenda', assert);
+    await shot(`calm-agenda-390-${theme}`);
+    await page.close(); await ctx.close();
+  }
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log(JSON.stringify({ ok: true, checks, out }, null, 1));

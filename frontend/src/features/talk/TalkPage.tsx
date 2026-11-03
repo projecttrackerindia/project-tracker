@@ -75,6 +75,7 @@ function TalkHome() {
   const filter = (FILTERS.some((x) => x.id === params.get('f')) ? params.get('f') : 'all') as TalkFilter;
   const chatId = (() => { const m = /\/messages\/([^/?#]+)/.exec(location.pathname); return m ? decodeURIComponent(m[1]) : null; })();
   const [search, setSearch] = useState('');
+  const [searching, setSearching] = useState(false);
   const [panel, setPanel] = useState<'info' | 'files' | 'saved' | 'scheduled' | null>(null);
   const [dialog, setDialog] = useState<null | 'catchup' | 'ask' | 'new'>(null);
 
@@ -170,15 +171,15 @@ function TalkHome() {
   return (
     <div className={`talk-shell${opened ? ' is-open' : ''}`} data-testid="talk">
       <h1 className="sr-only">Messages</h1>
-      <ToolbarSlot title={<span className="tb-big" aria-hidden="true">Messages</span>} />
+      <ToolbarSlot title={<span className="tb-crumb" aria-hidden="true">Messages</span>} />
       <aside className="talk-list" aria-label="Conversations">
-        <div className="talk-large" aria-hidden="true">Messages</div>
-        <div className="talk-list-top">
-          <label className="talk-search"><Icon name="search" size={14} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats" aria-label="Search Messages" />
-          </label>
+        {/* The demo's list head: a light "Messages", with search behind its icon and the filters and the rest in ⋯. */}
+        <div className="talk-large-row">
+          <div className="talk-large" aria-hidden="true">Messages</div>
+          <button type="button" className="talk-search-btn" aria-label="Search" aria-expanded={searching || !!search} onClick={() => setSearching((v) => !v)}><Icon name="search" size={15} /></button>
           {chatUsable && <StatusButton />}
           <DotsMenu label="More in Messages" items={[
+            ...FILTERS.map((x) => ({ label: `${filter === x.id ? '✓ ' : ''}Show ${x.id === 'all' ? 'all' : x.label.toLowerCase()}`, hint: x.id === 'unread' && unreadCount > 0 ? `${unreadCount} unread` : undefined, icon: (x.id === 'unread' ? 'bell' : x.id === 'chat' ? 'message' : 'list') as 'bell', onSelect: () => setParam({ f: x.id === 'all' ? null : x.id }) })),
             { label: 'New conversation', hint: 'Message a colleague or start a group', icon: 'plus', onSelect: () => setDialog('new'), hidden: !chatUsable },
             { label: 'Catch me up', hint: 'What you missed across your chats', icon: 'sparkle', onSelect: () => setDialog('catchup'), hidden: !chatUsable },
             { label: 'Ask the chat', hint: 'Answers from your conversations, with links', icon: 'search', onSelect: () => setDialog('ask'), hidden: !chatUsable },
@@ -186,37 +187,24 @@ function TalkHome() {
             { label: 'Scheduled messages', icon: 'clock', onSelect: () => setPanel('scheduled'), hidden: !chatUsable },
           ]} />
         </div>
-        {/* A small segmented control, as Messages' filters. */}
-        <div className="talk-filters talk-seg" role="group" aria-label="Show">
-          {FILTERS.map((x) => (
-            <button key={x.id} type="button" className={`ds-chip talk-chip${filter === x.id ? ' on' : ''}`} aria-pressed={filter === x.id}
-              onClick={() => setParam({ f: x.id === 'all' ? null : x.id })}>
-              {filter === x.id && <motion.span className="talk-seg-thumb" layoutId={reduce ? undefined : 'talk-seg'} transition={sharedLayout} aria-hidden="true" />}
-              <span className="talk-seg-label">{x.label}{x.id === 'unread' && unreadCount > 0 ? ` ${unreadCount}` : ''}</span>
-            </button>
-          ))}
-        </div>
+        {(searching || !!search) && (
+          <div className="talk-list-top">
+            <label className="talk-search"><Icon name="search" size={14} />
+              <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') { setSearch(''); setSearching(false); } }} placeholder="Search chats" aria-label="Search Messages" />
+            </label>
+          </div>
+        )}
+        {filter !== 'all' && <div className="talk-filter-on" data-testid="talk-filter-on">{FILTERS.find((x) => x.id === filter)?.label}<button type="button" onClick={() => setParam({ f: null })} aria-label="Show all"><Icon name="close" size={11} /></button></div>}
         <div className="talk-scroll" onScroll={swiped ? () => setSwiped(null) : undefined}>
           {talk.isError && <div className="talk-note" role="alert">{talk.error instanceof ApiError ? talk.error.message : 'Messages could not be loaded.'} <button type="button" className="link-btn" onClick={() => void talk.refetch()}>Try again</button></div>}
           {/* Questions colleagues asked you in chat and are waiting on (cleared by replying). */}
           {chatUsable && !needle && (filter === 'all' || filter === 'chat') && <QuestionsBox />}
-          {pinnedRows.length > 0 && (
-            <ul className="talk-pins" aria-label="Pinned conversations">
-              {pinnedRows.slice(0, 8).map((r) => (
-                <li key={r.id}>
-                  <button type="button" className={`talk-pin${r.id === activeId ? ' active' : ''}`} onClick={() => open(r)} aria-current={r.id === activeId ? 'true' : undefined} data-pin={r.title}
-                    onContextMenu={(e) => { e.preventDefault(); prefs.togglePin(r.id); }} title={`${r.title} (right-click to unpin)`}>
-                    <span className="talk-gl"><RowAvatar r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} />{r.unread > 0 && <span className="talk-pin-dot" aria-label={`${r.unread} unread`} />}</span>
-                    <span className="talk-pin-name">{r.title.replace(/^#/, '').split(' ')[0]}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
           <LayoutGroup>
             {/* Keyed by the filter: a new filter swaps the list at once (no outgoing rows fading over the new list or its empty state). */}
             <ul className="talk-rows" key={`${filter}:${needle}`}>
               <AnimatePresence initial={false}>
+                {pinnedRows.slice(0, 8).map((r) => <Row key={`pin:${r.id}`} r={r} pinned conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} active={r.id === activeId} onOpen={() => open(r)} actions={rowActions(r)} reduce={!!reduce}
+                  side={null} onSide={() => {}} />)}
                 {shown.map((r) => <Row key={r.id} r={r} conversation={r.kind === 'chat' ? live.find((c) => c.id === r.id) : undefined} active={r.id === activeId} onOpen={() => open(r)} actions={rowActions(r)} reduce={!!reduce}
                   side={swiped?.startsWith(`${r.id}|`) ? (swiped.endsWith('|l') ? 'l' : 'r') : null} onSide={(sd) => setSwiped(sd ? `${r.id}|${sd}` : null)} />)}
               </AnimatePresence>
@@ -366,8 +354,8 @@ const FULL = 0.6;          // share of the row width that triggers the primary a
  * distance and velocity, a full swipe runs the outermost action (Pin on the right swipe, Hide on the left) with Undo, and only one
  * row is open at a time (the list owns which one, and closes it on a tap elsewhere, a scroll, or a filter or route change).
  */
-function Row({ r, conversation, active, onOpen, actions, reduce, side, onSide }: {
-  r: TalkRow; conversation?: Conversation; active: boolean; onOpen: () => void; actions: RowAction[]; reduce: boolean;
+function Row({ r, conversation, active, onOpen, actions, reduce, side, onSide, pinned = false }: {
+  r: TalkRow; conversation?: Conversation; active: boolean; onOpen: () => void; actions: RowAction[]; reduce: boolean; /** A pinned chat: a row at the top with a pin. */ pinned?: boolean;
   side: 'l' | 'r' | null; onSide: (s: 'l' | 'r' | null) => void;
 }) {
   const channel = r.kind === 'chat' && (conversation ? conversation.type !== 'Direct' : r.group);
@@ -446,11 +434,12 @@ function Row({ r, conversation, active, onOpen, actions, reduce, side, onSide }:
       <div className={`talk-row-swipe${dx !== 0 ? ' swiping' : ''}${drag !== null ? ' dragging' : ''}`} ref={anchor} data-swipe-row={r.id} data-swipe={side ?? (drag ? 'drag' : 'closed')}>
         {dx > 0 && <div className="talk-swipe-acts l" style={{ width: Math.max(leftW, dx) }}>{left.map((a, i) => <button key={a.id} type="button" className={`sw-${a.id}${i === 0 && dx > leftW ? ' grow' : ''}`} onClick={() => run(a)}><Icon name={a.icon} size={18} />{a.label}</button>)}</div>}
         {dx < 0 && <div className="talk-swipe-acts r" style={{ width: Math.max(rightW, -dx) }}>{right.map((a, i) => <button key={a.id} type="button" className={`sw-${a.id}${i === right.length - 1 && -dx > rightW ? ' grow' : ''}`} onClick={() => run(a)}><Icon name={a.icon} size={18} />{a.label}</button>)}</div>}
-        <button ref={btn} type="button" className={`talk-row k-${r.kind}${active ? ' active' : ''}${r.unread > 0 ? ' unread' : ''}`} aria-current={active ? 'true' : undefined} data-row={r.title}
+        <button ref={btn} type="button" className={`talk-row k-${r.kind}${active ? ' active' : ''}${r.unread > 0 ? ' unread' : ''}${pinned ? ' pinned' : ''}`} aria-current={active ? 'true' : undefined} data-row={r.title} data-pin={pinned ? r.title : undefined}
           onClick={() => { if (swallowClick.current) return; if (side) { onSide(null); return; } onOpen(); }}
           style={dx ? { transform: `translate3d(${dx}px,0,0)`, transition: drag !== null || reduce ? 'none' : undefined } : undefined}
           onContextMenu={(e) => { e.preventDefault(); setMenu(true); }}>
           {r.unread > 0 && <span className="talk-dot" aria-label={`${r.unread} unread`} />}
+          {pinned && <span className="talk-pin-mark" aria-label="Pinned"><Icon name="pin" size={10} /></span>}
           <span className="talk-gl">
             <RowAvatar r={r} conversation={conversation} />
             {/* Meetings keep their ▶ badge. A person shows a dot only for their real status (green active, amber away, nothing when
