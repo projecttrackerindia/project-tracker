@@ -151,7 +151,9 @@ export function FocusView({ project, data, rows, work, today, colour, name, stat
                 <div key={n.id}>
                   <div className={`trow ${sel === r.id ? 'sel' : ''}`} role="row" aria-level={depth + 1} aria-selected={sel === r.id} data-row={r.id} tabIndex={0}
                     onClick={() => setSel(sel === r.id ? null : r.id)} onKeyDown={(e) => { if (e.key === 'Enter') setSel(r.id); }}>
-                    <div className="tw">{lines}{chev}<span className="ps3-key">{r.key}</span><b title={r.title}>{r.title}</b></div>
+                    <div className="tw">{lines}{chev}<span className="ps3-key">{r.key}</span><b title={r.title}>{r.title}</b>
+                      {r.canEdit && r.kind === 'task' && adding !== r.id && <button type="button" className="ps4-hadd" aria-label={`Add a subtask to ${r.key}`} title="Add subtask"
+                        onClick={(e) => { e.stopPropagation(); setAdding(r.id); }}>＋ Subtask</button>}</div>
                     <span onClick={(e) => { if (!r.canEdit) return; e.stopPropagation(); setEdit({ id: r.id, col: 'owner', anchor: e.currentTarget }); }}><Owner id={r.ownerId} name={r.owner} /></span>
                     <span className="ps3-num" onClick={(e) => { if (!r.canEdit) return; e.stopPropagation(); setEdit({ id: r.id, col: 'dates', anchor: e.currentTarget }); }}>
                       {r.start && <span className="ps3-dim">{dm(r.start)} → </span>}
@@ -161,7 +163,7 @@ export function FocusView({ project, data, rows, work, today, colour, name, stat
                     <span onClick={(e) => { if (!r.canEdit || ru) return; e.stopPropagation(); setEdit({ id: r.id, col: 'progress', anchor: e.currentTarget }); }}><Progress value={ru ? ru.pct : r.progress} k={k} /></span>
                     <span className="ps3-note">{ru ? <span className="ps3-dim">Rolled up from {n.kids.length}</span> : r.notes ? <NoteText text={r.notes} /> : <span className="ph">Add a note…</span>}</span>
                   </div>
-                  {sel === r.id && r.canEdit && (adding === r.id
+                  {r.canEdit && (adding === r.id || sel === r.id) && (adding === r.id
                     ? <div className="trow add" role="row"><div className="tw">{guides.map((_, i) => <span key={i} className="guide n" aria-hidden="true" />)}<span className="guide l" aria-hidden="true" /><AddInput onDone={(t) => { if (t) void addSub(r, t); else setAdding(null); }} /></div></div>
                     : <div className="trow add" role="row"><div className="tw">{guides.map((_, i) => <span key={i} className="guide n" aria-hidden="true" />)}<span className="guide l" aria-hidden="true" />
                       <button type="button" className="ps3-link" onClick={(e) => { e.stopPropagation(); setAdding(r.id); }}>＋ Add subtask</button></div></div>)}

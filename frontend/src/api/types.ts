@@ -220,7 +220,9 @@ export interface AppNotification { id: string; type: NotificationType; title: st
   /** What can be done from it without opening it. */ actions?: NotificationAction[];
   /** The Notification Centre filter it belongs to. */ category?: NotificationCategory;
   /** A meeting's start (UTC) and where to join it, for meeting reminders. */ startsAt?: string | null; joinLink?: string | null;
-  /** Why a reminder came, in a few words ("Due today · no time set"). */ reason?: string | null }
+  /** Why a reminder came, in a few words ("Due today · no time set"). */ reason?: string | null;
+  /** It was (or is about to be) e-mailed too. */ emailed?: boolean;
+  /** A Plan sheet change notice whose change still stands: Undo puts the task back. */ canUndo?: boolean }
 export type NotificationCategory = 'messages' | 'reminders' | 'meetings' | 'work';
 export type NotificationAction = 'done' | 'take' | 'reply' | 'approve' | 'reject' | 'snooze';
 /** Unread overall and in each lane of the inbox. */

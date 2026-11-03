@@ -124,6 +124,8 @@ public interface IAppDbContext
     DbSet<TaskItem> Tasks { get; }
     DbSet<TaskLabel> TaskLabels { get; }
     DbSet<TaskDependency> TaskDependencies { get; }
+    DbSet<TaskWatcher> TaskWatchers { get; }
+    DbSet<TaskChange> TaskChanges { get; }
     DbSet<Milestone> Milestones { get; }
     DbSet<TenantFeatureOverride> TenantFeatureOverrides { get; }
     DbSet<PlatformSetting> PlatformSettings { get; }

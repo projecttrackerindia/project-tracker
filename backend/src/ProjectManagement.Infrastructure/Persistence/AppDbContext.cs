@@ -90,6 +90,8 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
     public DbSet<TaskLabel> TaskLabels => Set<TaskLabel>();
     public DbSet<TaskDependency> TaskDependencies => Set<TaskDependency>();
+    public DbSet<TaskWatcher> TaskWatchers => Set<TaskWatcher>();
+    public DbSet<TaskChange> TaskChanges => Set<TaskChange>();
     public DbSet<Milestone> Milestones => Set<Milestone>();
     public DbSet<TenantFeatureOverride> TenantFeatureOverrides => Set<TenantFeatureOverride>();
     public DbSet<PlatformSetting> PlatformSettings => Set<PlatformSetting>();

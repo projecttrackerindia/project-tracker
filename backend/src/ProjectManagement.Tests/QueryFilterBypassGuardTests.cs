@@ -76,7 +76,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Integrations/IncomingWebhookService.cs", // anonymous incoming webhook: the address is found by the token in its URL (and its secret, when set); everything after runs in that workspace as the member who set it up
         "ProjectManagement.Application/Features/Chat/ChatService.Upgrades.cs", // scheduled send: finds due rows (ids, workspace and sender only), then sends each as its sender inside that workspace
         "ProjectManagement.Application/Features/Issues/IssueService.cs",
-        "ProjectManagement.Application/Features/Notifications/NotificationService.cs",
+        "ProjectManagement.Application/Features/Notifications/NotificationService.cs", // the e-mail worker (no signed-in workspace): pending notices, and for a Plan sheet change notice its kept change, task, project and statuses, each looked up by id with the notice's own tenant id named
         "ProjectManagement.Application/Features/Notifications/PushService.cs",
         "ProjectManagement.Application/Features/Organization/AccessService.cs",
         "ProjectManagement.Application/Features/Organization/OrgGrantGuard.cs", // invite acceptance runs before the joiner has a workspace context: org roles and overrides are read for the invite's own tenant (TenantId == tid, !IsDeleted)

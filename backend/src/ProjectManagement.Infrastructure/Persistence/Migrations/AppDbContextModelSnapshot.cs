@@ -11642,6 +11642,114 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("TaskLabels");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.TaskChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AfterAssigneeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("AfterDue")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("AfterStart")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("AfterStatusId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BeforeAssigneeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("BeforeDue")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("BeforeStart")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("BeforeStatusId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Effect")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid?>("FromProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UndoneAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "TaskId", "CreatedAt");
+
+                    b.ToTable("TaskChanges");
+                });
+
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.TaskWatcher", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UserId");
+
+                    b.HasIndex("TenantId", "TaskId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("TaskWatchers");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.Team", b =>
                 {
                     b.Property<Guid>("Id")

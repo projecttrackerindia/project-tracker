@@ -234,9 +234,12 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
           // One row's date, owner or status: say it as the others are told it ("You moved CB-02 due 28 Oct → 30 Oct (+2d) · Project").
           const one = changes.length === 1 && ok.has(changes[0].id) ? before.get(changes[0].id) : undefined, c0 = changes[0];
           const proj = one ? rows.find((x) => x.id === one.projectId)?.title : undefined;
+          // How many people the server told, and how many of them by e-mail ("3 people told · 2 emailed").
+          const told = res.rows.reduce((n, x) => n + (x.ok ? x.told ?? 0 : 0), 0), mailed = res.rows.reduce((n, x) => n + (x.ok ? x.emailed ?? 0 : 0), 0);
+          const toldText = told === 0 ? 'Nobody else to tell' : `${told} ${told === 1 ? 'person' : 'people'} told${mailed ? ` · ${mailed} emailed` : ''}`;
           const text = one && c0.dueDate && one.due && c0.dueDate !== one.due
-            ? <>You moved <b>{one.key}</b> due <span className="diff"><s>{dm(one.due)}</s> → <b>{dm(c0.dueDate)}</b>{' '}<b className="d">({dayNum(c0.dueDate) - dayNum(one.due) > 0 ? '+' : ''}{dayNum(c0.dueDate) - dayNum(one.due)}d)</b></span>{proj ? ` · ${proj}` : ''}<small>Owner, watchers and lead told</small></>
-            : one && (c0.assigneeId || c0.statusId) ? <>{label}{proj ? ` · ${proj}` : ''}<small>Owner, watchers and lead told</small></> : undefined;
+            ? <>You moved <b>{one.key}</b> due <span className="diff"><s>{dm(one.due)}</s> → <b>{dm(c0.dueDate)}</b>{' '}<b className="d">({dayNum(c0.dueDate) - dayNum(one.due) > 0 ? '+' : ''}{dayNum(c0.dueDate) - dayNum(one.due)}d)</b></span>{proj ? ` · ${proj}` : ''}<small data-testid="ps-told">{toldText}</small></>
+            : one && (c0.assigneeId || c0.statusId) ? <>{label}{proj ? ` · ${proj}` : ''}<small data-testid="ps-told">{toldText}</small></> : undefined;
           pushEdit({ label, count: res.changed, inverse: changes.filter((c) => ok.has(c.id)).map((c) => inverseOf(before.get(c.id)!, c)), projectId: one?.projectId ?? null }, text);
         }
       }

@@ -18,7 +18,8 @@ namespace ProjectManagement.Application.Features.Notifications;
 /// <param name="Actions">What can be done straight from it: done, take, reply, approve, reject, snooze (worked out per person when listed).</param>
 public record NotificationDto(Guid Id, NotificationType Type, string Title, string? Body, string? Link, bool IsRead, DateTime CreatedAt, bool Browser, bool NeedsYou = false,
     bool Archived = false, DateTime? SnoozedUntil = null, DateTime? ShownAt = null, IReadOnlyList<string>? Actions = null,
-    string Category = NotificationCategories.Work, DateTime? StartsAt = null, string? JoinLink = null, string? Reason = null, DateTime? DeliverAfter = null);
+    string Category = NotificationCategories.Work, DateTime? StartsAt = null, string? JoinLink = null, string? Reason = null, DateTime? DeliverAfter = null,
+    bool Emailed = false, bool CanUndo = false);
 /// <summary>
 /// The inbox at a glance: unread overall, in each lane, and in each category of the Notification Centre (the badges on the bell, the app
 /// icon and the tabs all read this one answer).
@@ -392,9 +393,15 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
         var total = await q.CountAsync(ct);
         var ordered = snoozed ? q.OrderBy(n => n.SnoozedUntil) : q.OrderByDescending(n => n.SnoozedUntil ?? n.CreatedAt);
         var rows = await ordered.Skip((p.SafePage - 1) * p.SafeSize()).Take(p.SafeSize()).ToListAsync(ct);
+        // A Plan sheet change notice can be undone from here while the change still stands (see PlanSheetService.UndoAsync).
+        var changeIds = rows.Select(n => ProjectManagement.Application.Features.Projects.PlanSheetService.ChangeIdOf(n.DedupeKey)).Where(x => x != null).Select(x => x!.Value).ToList();
+        var undoFrom = now.AddDays(-ProjectManagement.Application.Features.Projects.PlanSheetService.UndoDays);
+        var undoable = changeIds.Count == 0 ? new HashSet<Guid>() : (await db.TaskChanges.AsNoTracking().Where(c => changeIds.Contains(c.Id) && c.UndoneAt == null && c.FromProjectId == null && c.CreatedAt >= undoFrom).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
+        bool CanUndo(Notification n) => ProjectManagement.Application.Features.Projects.PlanSheetService.ChangeIdOf(n.DedupeKey) is { } cid && undoable.Contains(cid);
         return new PagedResult<NotificationDto>(
             rows.Select(n => new NotificationDto(n.Id, n.Type, n.Title, ProjectManagement.Application.Features.Reminders.DueReminderRules.SplitReason(n.Body).Body, n.Link, n.ReadAt != null, n.CreatedAt, n.Browser, NotificationLanes.IsNeedsYou(n.Type), n.ArchivedAt != null,
-                n.SnoozedUntil > now ? n.SnoozedUntil : null, n.SnoozedUntil is { } back && back <= now ? back : n.CreatedAt, null, NotificationCategories.Of(n.Type, n.Link), Reason: ProjectManagement.Application.Features.Reminders.DueReminderRules.SplitReason(n.Body).Reason, DeliverAfter: n.DeliverAfter)).ToList(),
+                n.SnoozedUntil > now ? n.SnoozedUntil : null, n.SnoozedUntil is { } back && back <= now ? back : n.CreatedAt, null, NotificationCategories.Of(n.Type, n.Link), Reason: ProjectManagement.Application.Features.Reminders.DueReminderRules.SplitReason(n.Body).Reason, DeliverAfter: n.DeliverAfter,
+                Emailed: n.EmailedAt != null || n.EmailPending, CanUndo: CanUndo(n))).ToList(),
             p.SafePage, p.SafeSize(), total);
     }
 
@@ -617,6 +624,67 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
         return rows.Count == 0 ? null : rows;
     }
 
+    private static readonly (string Accent, string Tint)[] ProjectTints = [("#0a84ff", "#e8f1ff"), ("#14b8a6", "#e6f6f4"), ("#8b5cf6", "#f1ecff"), ("#f59e0b", "#fdf3e2"), ("#f43f5e", "#fdecef")];
+
+    /// <summary>
+    /// A Plan sheet change notice gets its own e-mail (design plansheet8/06) built from the kept change: before → after, who and when, the effect on other
+    /// work, Open, a signed and expiring "Undo change" link (it opens the task with an undo prompt; undoing still needs the person signed in with edit
+    /// rights) and "Switch to digest". Null for every other notice, or when the change or its task is gone (the plain layout is used then).
+    /// </summary>
+    private async Task<string?> ChangeHtmlAsync(Notification n, User user, string? workspace, string? slug, string baseUrl, string openUrl, string? unsubscribeUrl, CancellationToken ct)
+    {
+        if (ProjectManagement.Application.Features.Projects.PlanSheetService.ChangeIdOf(n.DedupeKey) is not { } cid) return null;
+        var c = await db.TaskChanges.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(x => x.Id == cid && x.TenantId == n.TenantId, ct);
+        if (c is null) return null;
+        var task = await db.Tasks.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == c.TaskId && t.TenantId == n.TenantId && !t.IsDeleted).Select(t => new { t.Number, t.Title, t.AssigneeId }).FirstOrDefaultAsync(ct);
+        var project = await db.Projects.IgnoreQueryFilters().AsNoTracking().Where(p => p.Id == c.ProjectId && p.TenantId == n.TenantId).Select(p => new { p.Name, p.Key }).FirstOrDefaultAsync(ct);
+        if (task is null || project is null) return null;
+        var ids = new[] { c.ActorId, c.BeforeAssigneeId, c.AfterAssigneeId, task.AssigneeId }.Where(x => x != null).Select(x => x!.Value).Distinct().ToList();
+        var names = await db.Users.IgnoreQueryFilters().AsNoTracking().Where(u => ids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var statusIds = new[] { c.BeforeStatusId, c.AfterStatusId }.Distinct().ToList();
+        var statuses = await db.WorkflowStatuses.IgnoreQueryFilters().AsNoTracking().Where(s => statusIds.Contains(s.Id) && s.TenantId == n.TenantId).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        string? fromProject = c.FromProjectId is { } fp ? await db.Projects.IgnoreQueryFilters().AsNoTracking().Where(p => p.Id == fp && p.TenantId == n.TenantId).Select(p => p.Name).FirstOrDefaultAsync(ct) : null;
+        string Name(Guid? id) => id is { } x ? names.GetValueOrDefault(x) ?? "Someone" : "Nobody";
+        var actor = Name(c.ActorId);
+        var first = actor.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? actor;
+        var key = $"{project.Key}-{task.Number}";
+        static string Day(DateOnly? d) => d?.ToString("ddd d MMM", System.Globalization.CultureInfo.InvariantCulture) ?? "No date";
+        static string Short(DateOnly? d) => d?.ToString("d MMM", System.Globalization.CultureInfo.InvariantCulture) ?? "no date";
+
+        // The main change goes in the BEFORE / AFTER cards; the rest are facts underneath.
+        var changes = new List<(string Label, string Headline, string Before, string After, string? Delta)>();
+        if (c.BeforeDue != c.AfterDue)
+            changes.Add(("Due", $"{first} moved a due date", Day(c.BeforeDue), Day(c.AfterDue),
+                c.BeforeDue is { } b && c.AfterDue is { } a ? $"{(a.DayNumber - b.DayNumber >= 0 ? "+" : "")}{a.DayNumber - b.DayNumber}d" : null));
+        if (c.BeforeStart != c.AfterStart) changes.Add(("Start", $"{first} moved a start date", Day(c.BeforeStart), Day(c.AfterStart), null));
+        if (c.BeforeAssigneeId != c.AfterAssigneeId)
+            changes.Add(("Owner", c.AfterAssigneeId == user.Id ? $"{first} assigned {key} to you" : $"{first} reassigned a task", Name(c.BeforeAssigneeId), Name(c.AfterAssigneeId), null));
+        if (c.BeforeStatusId != c.AfterStatusId) changes.Add(("Status", $"{first} changed a status", statuses.GetValueOrDefault(c.BeforeStatusId) ?? "—", statuses.GetValueOrDefault(c.AfterStatusId) ?? "—", null));
+        if (fromProject is not null) changes.Add(("Project", $"{first} moved a task to another project", fromProject, project.Name, null));
+        if (changes.Count == 0) return null;
+        var main = changes[0];
+
+        var tz = ProjectManagement.Application.Features.Reminders.ZoneTime.Find(user.TimeZone);
+        var local = NodaTime.Instant.FromDateTimeUtc(DateTime.SpecifyKind(c.CreatedAt, DateTimeKind.Utc)).InZone(tz).ToDateTimeUnspecified();
+        var facts = new List<(string Label, string Value)> { ("Owner", Name(task.AssigneeId)), ("Changed by", $"{actor} · {local.ToString("d MMM HH:mm", System.Globalization.CultureInfo.InvariantCulture)}") };
+        foreach (var more in changes.Skip(1)) facts.Add((more.Label, $"{more.Before} → {more.After}"));
+        if (!string.IsNullOrWhiteSpace(c.Effect)) facts.Add(("Effect", c.Effect));
+        if (main.Label == "Due" && c.AfterDue is { } dueDay) facts.Add(("Calendar", $"Due {Short(dueDay)} in your calendar"));
+
+        string? undo = null;
+        if (links is not null && c.UndoneAt is null && c.FromProjectId is null)
+        {
+            var token = links.UndoToken(c.Id, user.Id, c.CreatedAt.AddDays(ProjectManagement.Application.Features.Projects.PlanSheetService.UndoDays));
+            undo = baseUrl + OrgLink(slug, $"/projects/{c.ProjectId}?task={c.TaskId}&undo={Uri.EscapeDataString(token)}");
+        }
+        var (accent, tint) = ProjectTints[c.ProjectId.ToByteArray()[0] % ProjectTints.Length];
+        var mine = task.AssigneeId == user.Id || c.BeforeAssigneeId == user.Id;
+        return EmailTemplates.Change(new ChangeEmail(project.Name, accent, main.Headline, $"{key} · {task.Title}", main.Before, main.After, main.Delta, facts, openUrl, undo,
+            baseUrl + OrgLink(slug, "/settings/notifications?digest=on"), "9:00", baseUrl + OrgLink(slug, "/settings/notifications"), unsubscribeUrl,
+            mine ? $"You get this because {key} is yours." : $"You get this because you watch or lead {project.Name}.",
+            $"{main.Label}: {main.Before} → {main.After}{(main.Delta is null ? "" : " (" + main.Delta + ")")}", workspace, tint));
+    }
+
     public async Task<int> SendPendingAsync(int batch = 50, CancellationToken ct = default)
     {
         var chatCutoff = clock.Now.AddMinutes(-ChatEmailDelayMinutes);
@@ -690,8 +758,9 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
             var headers = links?.Headers(n.UserId, n.Type);
             try
             {
+                var changeHtml = await ChangeHtmlAsync(n, user, workspace, tenants.GetValueOrDefault(n.TenantId)?.Slug, baseUrl, link, headers is null ? null : links!.PageUrl(links.Token(n.UserId, n.Type)), ct);
                 await email.SendAsync(new EmailMessage(user.Email, workspace is null ? n.Title : $"{n.Title} · {workspace}",
-                    EmailTemplates.Wrap(n.Title, WebNet($"Hi {user.DisplayName},"), body, n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? "Done, snooze or open" : "Open in the app", link,
+                    changeHtml ?? EmailTemplates.Wrap(n.Title, WebNet($"Hi {user.DisplayName},"), body, n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? "Done, snooze or open" : "Open in the app", link,
                         "You get this email because of your notification settings. Change them under Notification Center → Preferences.", body.Length > 90 ? body[..90] : body, headers is null ? null : links!.PageUrl(links.Token(n.UserId, n.Type)),
                         n.Link?.StartsWith("/r/", StringComparison.Ordinal) == true ? EmailKind.Reminder : n.Type == NotificationType.Subscription ? EmailKind.Billing : EmailKind.Update,
                         ChangeDetails(n)),

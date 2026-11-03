@@ -233,3 +233,11 @@ html[data-theme='dark'] .ps3, html[data-theme='dark'] .ps3-float, html[data-them
   .ps3-modal { top: 16px; max-height: calc(100vh - 32px); }
   .ps3-mt { min-width: 640px; }
 }
+
+/* Watch (the eye in the inspector) and who watches. */
+.ps3-insp-h .ps3-eye { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; }
+.ps3-insp-h .ps3-eye.on { color: var(--p-blue, #0a84ff); background: color-mix(in srgb, var(--p-blue, #0a84ff) 12%, transparent); }
+.ps3-insp-h .ps3-eye:disabled { opacity: .5; cursor: default; }
+.ps3-watchers { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ps3-watchers > span[title] { display: inline-flex; margin-right: -6px; }
+.ps3-watchers > span[title] + .ps3-dim { margin-left: 10px; }

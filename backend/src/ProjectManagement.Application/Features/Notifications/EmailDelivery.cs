@@ -142,6 +142,29 @@ public class EmailLinks(IConfiguration config, IOptions<AppOptions> app)
         return !NotificationCatalog.For(type).Locked;
     }
 
+    private byte[] UndoKey => Encoding.UTF8.GetBytes("change-undo:" + (config["Jwt:SigningKey"] ?? ""));
+
+    /// <summary>
+    /// "Undo change" in a change e-mail: names the change and the person it was sent to, and expires. It only opens the task with an undo prompt; the
+    /// undo itself still needs that person signed in with the right to edit the task, so a forwarded e-mail cannot undo anything for someone else.
+    /// </summary>
+    public string UndoToken(Guid changeId, Guid userId, DateTime expiresUtc)
+    {
+        var payload = $"{changeId:N}.{userId:N}.{new DateTimeOffset(DateTime.SpecifyKind(expiresUtc, DateTimeKind.Utc)).ToUnixTimeSeconds()}";
+        var sig = Convert.ToHexString(HMACSHA256.HashData(UndoKey, Encoding.UTF8.GetBytes(payload)))[..32];
+        return $"{payload}.{sig}";
+    }
+
+    public bool TryReadUndo(string? token, DateTime nowUtc, out Guid changeId, out Guid userId)
+    {
+        changeId = default; userId = default;
+        var parts = (token ?? "").Split('.');
+        if (parts.Length != 4 || !Guid.TryParseExact(parts[0], "N", out changeId) || !Guid.TryParseExact(parts[1], "N", out userId) || !long.TryParse(parts[2], out var exp)) return false;
+        var expected = Convert.ToHexString(HMACSHA256.HashData(UndoKey, Encoding.UTF8.GetBytes($"{parts[0]}.{parts[1]}.{parts[2]}")))[..32];
+        if (!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(expected), Encoding.ASCII.GetBytes(parts[3]))) return false;
+        return DateTimeOffset.FromUnixTimeSeconds(exp).UtcDateTime > nowUtc;
+    }
+
     public string PageUrl(string token) => $"{app.Value.WebBaseUrl.TrimEnd('/')}/unsubscribe?token={Uri.EscapeDataString(token)}";
     public string ApiUrl(string token) => $"{(app.Value.ApiBaseUrl ?? app.Value.WebBaseUrl).TrimEnd('/')}/api/v1/email/unsubscribe?token={Uri.EscapeDataString(token)}";
 
