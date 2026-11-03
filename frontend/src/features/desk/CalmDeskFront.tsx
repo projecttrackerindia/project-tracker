@@ -65,7 +65,7 @@ export function CalmDeskFront({ rows, detailOf, now, meId, onOpen, onAssign, onS
           {firstLine(d?.description, 220) && <p>{firstLine(d?.description, 220)}</p>}
           <div className="calm-hero-acts">
             <CalmGo onClick={() => onOpen(first.id)}>Open &amp; reply</CalmGo>
-            {meId && first.assignee?.id !== meId && <CalmLink onClick={() => !busy && onAssign(first)}>Assign to me</CalmLink>}
+            {meId && first.assignee?.id !== meId && <CalmLink onClick={() => !busy && onAssign(first)}>Assign</CalmLink>}
             <CalmLink onClick={() => !busy && onSnooze(first)}>Snooze</CalmLink>
           </div>
         </CalmCard>

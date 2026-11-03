@@ -91,7 +91,7 @@ export function CalmOrgChart() {
   const reports = data?.people.filter((p) => p.managerId === person?.userId) ?? [];
   const panel = person && (
     <CalmCard className="co-panel" aria-label={`${person.displayName}'s place`}>
-      <div className="co-ph"><Face userId={person.userId} name={person.displayName} className="co-face lg" /><h2>{person.displayName}</h2></div>
+      <div className="co-ph"><Face userId={person.userId} name={person.displayName} className="co-face lg" /><h2><Link to={`/people/${person.userId}`}>{person.displayName}</Link></h2></div>
       <dl className="co-kv">
         <div><dt>Role</dt><dd>{person.roleName ?? '—'}</dd></div>
         <div><dt>Team</dt><dd>{person.teamIds.map((t) => teamName.get(t)).filter(Boolean)[0] ?? '—'}</dd></div>
@@ -106,7 +106,6 @@ export function CalmOrgChart() {
       <div className="co-acts">
         <CalmGo href={`/messages?to=${person.userId}`}>Message</CalmGo>
         {data?.canManage && <CalmLink onClick={() => setPicking(true)}>Change manager</CalmLink>}
-        <Link className="calm-link" to={`/people/${person.userId}`}>Profile ›</Link>
       </div>
     </CalmCard>
   );

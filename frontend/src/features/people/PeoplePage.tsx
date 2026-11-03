@@ -49,8 +49,9 @@ function PeopleBody({ section, sections }: { section: PeopleSection; sections: R
         {main.length > 1 && <CalmPills label="People views" value={(main as readonly string[]).includes(section) ? section : 'directory'}
           options={main.map((id) => ({ value: id, label: id === 'org' ? 'Org chart' : id === 'teams' ? 'Teams' : 'People' }))}
           onChange={(v) => nav(sections.find((s) => s.id === v)!.to)} />}
-        {others.map((s) => <Link key={s.id} className="calm-link" to={s.to}>{s.label} ›</Link>)}
-        {section === 'org' && <Link className="calm-link" to="/people/org?view=lines">Job roles &amp; lines ›</Link>}
+        <details className="cp-more"><summary aria-label="More in People">⋯</summary>
+          <div>{others.map((s) => <Link key={s.id} to={s.to}>{s.label}</Link>)}<Link to="/people/org?view=lines">Job roles &amp; lines</Link></div>
+        </details>
       </div>
       {section === 'org' ? <CalmOrgChart /> : (
         <Embedded>

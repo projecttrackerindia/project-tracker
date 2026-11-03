@@ -77,3 +77,10 @@
 }
 .co-face, .cd-face, .calm-act-face { border-radius: 50%; display: inline-grid !important; place-items: center; background: var(--calm-accent); color: #fff; font-weight: 600; overflow: hidden; }
 .co-face .face-img, .cd-face .face-img, .calm-act-face .face-img { width: 100%; height: 100%; object-fit: cover; }
+.co-ph h2 a { color: inherit; text-decoration: none; }
+.cp-more { position: relative; margin-left: auto; }
+.cp-more summary { list-style: none; cursor: pointer; width: 44px; height: 36px; display: grid; place-items: center; border-radius: 99px; background: var(--calm-card); box-shadow: var(--calm-sh-sm); color: var(--calm-ink2); }
+.cp-more summary::-webkit-details-marker { display: none; }
+.cp-more > div { position: absolute; right: 0; top: 42px; z-index: 20; min-width: 200px; padding: 6px; border-radius: 14px; background: var(--calm-solid); box-shadow: var(--calm-sh-sheet); display: grid; }
+.cp-more > div a { padding: 10px 12px; min-height: 44px; display: flex; align-items: center; border-radius: 10px; color: var(--calm-ink); text-decoration: none; font-size: 14px; }
+.cp-more > div a:hover { background: var(--calm-fill); }

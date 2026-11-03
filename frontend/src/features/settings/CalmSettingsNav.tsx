@@ -28,7 +28,7 @@ export function CalmSettingsNav({ places, isPlatformAdmin }: { places: readonly 
     ...(!isPlatformAdmin ? [{ label: 'Notifications', to: '/settings/notifications', match: (p: string) => p.startsWith('/settings/notifications') }] : []),
     { label: 'Appearance', to: '/settings/appearance' },
     { label: 'Security & sessions', to: '/settings/security/account' },
-    ...(!isPlatformAdmin ? [{ label: 'Connected apps', to: '/settings/profile/accounts' }, { label: 'Mail', to: '/settings/integrations/mail' }] : []),
+    ...(!isPlatformAdmin ? [{ label: 'Connected apps', to: '/settings/profile/accounts' }] : []),
   ];
   const workspace: Item[] = admin ? [
     places.includes('general') ? { label: 'General', to: '/settings/general', match: (p: string) => /^\/settings\/(general|fields|timelines)/.test(p) } : null,
@@ -38,12 +38,9 @@ export function CalmSettingsNav({ places, isPlatformAdmin }: { places: readonly 
     approvalPoliciesEnabled() ? { label: 'Approval policies', to: '/settings/approvals' } : null,
     leaf('attendance', 'Attendance & leave'),
     places.includes('integrations') ? { label: 'Integrations', to: '/settings/integrations', match: (p: string) => p.startsWith('/settings/integrations') && !p.endsWith('/mail') } : null,
-    places.includes('ai') ? { label: 'AI', to: '/settings/ai', match: (p: string) => p.startsWith('/settings/ai') } : null,
     owner && places.includes('billing') ? { label: 'Billing', to: '/settings/billing' } : null,
     leaf('audit', 'Audit log'),
-    leaf('security', 'Security policy'),
-    leaf('sso', 'Single sign-on'),
-    leaf('data', 'Data & retention'),
+    leaf('security', 'Security policy') && { label: 'Security policy', to: leafHref('security'), match: (p: string) => p.startsWith('/settings/security') && !p.endsWith('/account') },
   ].filter((x): x is Item => !!x) : [];
   const teams: Item[] = manager ? [
     { label: 'My team', to: '/insights?tab=team' },
