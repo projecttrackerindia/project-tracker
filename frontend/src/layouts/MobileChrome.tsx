@@ -4,7 +4,7 @@ import { Icon } from '../components/Icon';
 import { BrandMark } from '../components/BrandMark';
 import { Sheet } from '../components/Sheet';
 import { openPalette } from '../components/CommandPalette';
-import { AvatarMenu } from '../components/v2';
+import { AuraPhoneOrb, AvatarMenu } from '../components/v2';
 import { initials } from '../lib/format';
 import { haptic } from '../lib/mobile';
 import { useTeamLens } from '../lib/teamLens';
@@ -46,6 +46,7 @@ export function MobileTopBar() {
             {team ? <span className="lens-chip" style={{ '--h': hue(team.name) } as React.CSSProperties}>{initials(team.name)}</span> : <Icon name="users" size={21} />}
           </button>
         )}
+        {!admin && <AuraPhoneOrb />}
         <button type="button" className="m-icon" onClick={() => { haptic(); openPalette(); }} aria-label="Search"><Icon name="search" size={21} /></button>
         {!admin && <AttendanceCapsule compact />}
         {!admin && <NotificationBell variant="phone" />}

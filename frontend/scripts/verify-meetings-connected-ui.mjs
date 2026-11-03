@@ -10,6 +10,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { invokeAura, openAuraPanel } from './lib/aura.mjs';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
@@ -137,7 +138,7 @@ try {
 
   // The Aura chip reads the sentence into the sheet.
   const dock = page.getByTestId('aura-dock');
-  await dock.locator('input').first().click();
+  await invokeAura(page);
   await dock.locator('input').first().fill('weekly sandbox sync with Ravi tomorrow 11:30 for 45m');
   await page.locator('[data-chip="meeting"]').click();
   const sheet = page.getByTestId('schedule-sheet');
@@ -216,7 +217,7 @@ try {
   await page.goto(origin + '/preview-org/work');
   await page.getByTestId('my-work-meeting').first().waitFor({ timeout: 15000 });
   await page.screenshot({ path: path.join(out, 'mywork-dark-1440.png'), animations: 'disabled' });
-  await page.locator('button[aria-label^="Ask Aura"], [data-testid="aura-dock"] input').first().click().catch(() => {});
+  await invokeAura(page).catch(() => {});
   await page.goto(origin + '/preview-org/work');
   await page.getByRole('button', { name: 'Schedule a meeting' }).first().click();
   await page.getByTestId('schedule-sheet').waitFor();

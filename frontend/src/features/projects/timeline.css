@@ -9,7 +9,7 @@ html[data-theme='dark'] .ptl, html[data-theme='dark'] .ptl-pop, html[data-theme=
   --tl-ok: #2f8cff; --tl-ok-soft: #16304f; --tl-risk: #ff9f0a; --tl-risk-soft: #3a2a10; --tl-late: #ff5a4f; --tl-late-soft: #3a1a18; --tl-done: #34c759; --tl-done-soft: #123222;
   --tl-ns: #8e8e93; --tl-ns-soft: #2c2c30; --tl-violet: #7d7aff; --tl-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -12px rgba(0,0,0,.7); --tl-sel: #16304f;
 }
-.ptl { color: var(--tl-text); padding-bottom: 120px; }
+.ptl { color: var(--tl-text); padding-bottom: 24px; }
 .ptl-empty { padding: 24px; color: var(--tl-t3); }
 .ptl-sp { flex: 1; }
 .ptl-rel { position: relative; display: inline-flex; }
@@ -131,7 +131,7 @@ html[data-theme='dark'] .ptl, html[data-theme='dark'] .ptl-pop, html[data-theme=
 .ptl-hint { color: var(--tl-risk); }
 
 /* phone */
-.ptl-phone { padding-bottom: 120px; }
+.ptl-phone { padding-bottom: 16px; }
 .ptl-phone-sub { color: var(--tl-t3); font-size: 13px; margin: -4px 0 10px; }
 .ptl-phone-chips { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }
 .ptl-phone-chips .ptl-chip { height: 32px; padding: 0 14px; font-size: 14px; }

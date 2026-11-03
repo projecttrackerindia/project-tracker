@@ -9,7 +9,7 @@
   /* While a conversation is open the page itself never scrolls or bounces; only the message list does. */
   html.conv-lock, html.conv-lock body { overflow: hidden; overscroll-behavior: none; height: 100%; }
 
-  /* Typing anywhere: the tab bar and the floating Ask bar step aside so the field is never covered. */
+  /* Typing anywhere: the tab bar and Aura's capsule (unless it is the field) step aside so the field is never covered. */
   html.kb-open .m-tabs, html.composing .m-tabs { display: none !important; }
   html.kb-open .aura-dock-wrap:not(:focus-within), html.composing .aura-dock-wrap { display: none !important; }
   /* typing in the dock itself: it rides on top of the keyboard */

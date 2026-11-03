@@ -1,4 +1,4 @@
-/* Plan sheet v4 (designs plansheet4–8): project tints, rounded project cards, full height behind the Aura bar, folder tabs with Action items first,
+/* Plan sheet v4 (designs plansheet4–8): project tints, rounded project cards, full height, folder tabs with Action items first,
    the colour filter, the project focus tree with curved lines, the Action items page, the calendar glyph and the Notify sheet.
    Radii 16 / 10 / 8 (card, row, cell). Tints: --pc accent, --pt header tint, --pr row tint. */
 .ps4, .ps3-float, .ps4-notify {
@@ -75,7 +75,7 @@ html[data-theme='dark'] .ps4-page { --pg: color-mix(in srgb, var(--pc) 14%, var(
 .ps4-fcol .ps4-pal { padding: 0; }
 .ps4-sq { width: 10px; height: 10px; border-radius: 3px; background: var(--pc); flex: none; }
 
-/* ---- the sheet: one rounded tinted card per project (a tbody each), full height, the end scrolling behind the Aura bar */
+/* ---- the sheet: one rounded tinted card per project (a tbody each), full height, the end scrolling to the bottom edge */
 .ps4 .ps3-scroll { -webkit-mask: linear-gradient(#000 calc(100% - 14px), transparent); mask: linear-gradient(#000 calc(100% - 14px), transparent); padding: 0 16px 96px; }
 .ps4 .ps3-table { border-spacing: 0; }
 .ps4 .ps3-table thead th { background: var(--pg, var(--p-bg)); }
@@ -131,7 +131,7 @@ html[data-theme='dark'] .ps4-page { --pg: color-mix(in srgb, var(--pc) 14%, var(
 .ps4-hero .mtl .now { position: absolute; top: 2px; height: 22px; width: 2px; border-radius: 1px; background: var(--p-red); }
 .ps4-hero .mtl .lb { position: absolute; top: 22px; font-size: 10px; color: var(--p-ink3); }
 .ps4-tbody { display: flex; gap: 16px; min-height: 0; align-items: flex-start; }
-.ps4-tree { flex: 1; min-width: 0; padding-bottom: 96px; }
+.ps4-tree { flex: 1; min-width: 0; padding-bottom: 24px; }
 .ps4-tree .colh, .ps4-tree .trow { display: grid; grid-template-columns: minmax(0, 33fr) minmax(0, 13fr) minmax(0, 13fr) minmax(0, 10fr) minmax(0, 12fr) minmax(0, 19fr); gap: 0 10px; align-items: center; }
 .ps4-tree.narrow .colh, .ps4-tree.narrow .trow { grid-template-columns: minmax(0, 44fr) minmax(0, 18fr) minmax(0, 22fr) minmax(0, 16fr); }
 .ps4-tree.narrow .colh > :nth-child(n+5), .ps4-tree.narrow .trow > :nth-child(n+5) { display: none; }
@@ -170,7 +170,7 @@ html[data-theme='dark'] .ps4-page { --pg: color-mix(in srgb, var(--pc) 14%, var(
 .ps4-ai .ps3-cmdrow { padding: 14px 0 12px; }
 .ps4-ai .ps3-cmd input { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: var(--p-ink); outline: 0; }
 .ps4-aibar { display: flex; gap: 12px; align-items: center; padding: 0 0 12px; }
-.ps4-aigrid { padding-bottom: 96px; display: flex; flex-direction: column; gap: 12px; }
+.ps4-aigrid { padding-bottom: 24px; display: flex; flex-direction: column; gap: 12px; }
 .ps4-aigrid .colh.ai, .ps4-ai .ai-row { display: grid; grid-template-columns: 26px minmax(0, 34fr) minmax(0, 14fr) minmax(0, 9fr) minmax(0, 14fr) minmax(0, 10fr); gap: 0 10px; align-items: center; }
 .ps4-aigrid .colh.ai { padding: 0 16px 0 18px; font-size: 11.5px; color: var(--p-ink2); font-weight: 500; }
 .ps4-card { background: var(--p-solid); border-radius: var(--r-card); box-shadow: var(--sh-card); overflow: hidden; position: relative; }

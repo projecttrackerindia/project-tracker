@@ -18,7 +18,7 @@ import { GrootAvatar, type GrootState } from './GrootAvatar';
 import { AuraOrb } from '../aura/AuraOrb';
 import { flashAura, setAuraMood } from '../aura/mood';
 import { DEFAULT_DAY, dayPart, greeting, grootCheckout, suggestionsFor, workingHours, type GrootSuggestion, type OrgDay } from './grootTime';
-import { useGroot, type GrootTurn } from './store';
+import { useAuraInvoke, useGroot, type GrootTurn } from './store';
 import './groot.css';
 
 const WIDTH_KEY = 'pm_groot_width';
@@ -61,7 +61,9 @@ export function GrootChatHost() {
 function GrootChat() {
   const { turns, context, about, conversationId, close, reset, update, setConversation, take } = useGroot();
   const pendingTs = useGroot((s) => s.pending?.ts ?? 0);
-  const phone = useIsMobile();
+  // Asked from the floating capsule: an answer card that rises above it (the capsule is its field), not the side panel.
+  const card = useGroot((s) => s.card);
+  const phone = useIsMobile() && !card;
   const still = useReducedMotion();
   const nav = useNavigate();
   const org = useAuth((s) => s.ctx?.current?.name) ?? 'your organization';
@@ -123,7 +125,7 @@ function GrootChat() {
   useEffect(() => { const q = take(); if (q) ask(q); }, [pendingTs]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => { body.current?.scrollTo({ top: body.current.scrollHeight, behavior: still ? 'auto' : 'smooth' }); }, [turns, still]);
-  useEffect(() => { if (!phone) window.setTimeout(() => input.current?.focus({ preventScroll: true }), 60); }, [phone]);
+  useEffect(() => { if (!phone && !card) window.setTimeout(() => input.current?.focus({ preventScroll: true }), 60); }, [phone, card]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); close(); } };
     document.addEventListener('keydown', onKey);
@@ -131,11 +133,11 @@ function GrootChat() {
   }, [close]);
   // Desktop: the page makes room for the panel instead of being covered.
   useEffect(() => {
-    if (phone) return;
+    if (phone || card) return;
     const root = document.documentElement;
     root.classList.add('groot-docked'); root.style.setProperty('--groot-w', `${width}px`);
     return () => { root.classList.remove('groot-docked'); root.style.removeProperty('--groot-w'); };
-  }, [phone, width]);
+  }, [phone, card, width]);
 
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -202,7 +204,8 @@ function GrootChat() {
       }
     } finally { setActing(null); }
   };
-  const editPlan = (turn: GrootTurn) => { setText(turn.q); window.setTimeout(() => input.current?.focus(), 30); };
+  // Edit: the request goes back into the field to change (the capsule's, when this is the answer card).
+  const editPlan = (turn: GrootTurn) => { if (card) { useAuraInvoke.getState().show(turn.q); return; } setText(turn.q); window.setTimeout(() => input.current?.focus(), 30); };
 
   const go = (to: string) => { if (phone) close(); nav(to); };
   const send = () => { const q = text.trim(); if (!q || streaming) return; setText(''); ask(q); };
@@ -210,11 +213,11 @@ function GrootChat() {
   const firstName = me.split(' ')[0] || null;
 
   const panel = (
-    <motion.aside className={`groot-chat${phone ? ' phone' : ''}`} role="dialog" aria-modal={phone ? true : undefined} aria-label="Aura"
-      style={phone ? undefined : { width }} data-state={state} data-testid="groot-chat"
-      initial={still ? { opacity: 0 } : phone ? { y: 24, opacity: 0 } : { x: 24, opacity: 0 }} animate={{ x: 0, y: 0, opacity: 1 }}
-      exit={still ? { opacity: 0 } : phone ? { y: 24, opacity: 0, transition: t.sheetExit } : { x: 24, opacity: 0, transition: t.sheetExit }} transition={still ? instant : t.sheet}>
-      {!phone && <div className="gc-resize" role="separator" aria-orientation="vertical" aria-label="Resize Aura" onPointerDown={startResize} />}
+    <motion.aside className={`groot-chat${phone ? ' phone' : ''}${card ? ' card' : ''}`} role="dialog" aria-modal={phone ? true : undefined} aria-label="Aura"
+      style={phone || card ? undefined : { width }} data-state={state} data-testid="groot-chat"
+      initial={card ? false /* the card rises with CSS (aura-card-rise), in step with the capsule */ : still ? { opacity: 0 } : phone ? { y: 24, opacity: 0 } : { x: 24, opacity: 0 }} animate={{ x: 0, y: 0, opacity: 1 }}
+      exit={still ? { opacity: 0 } : phone || card ? { y: card ? 12 : 24, opacity: 0, transition: t.sheetExit } : { x: 24, opacity: 0, transition: t.sheetExit }} transition={still ? instant : card ? t.emphasised : t.sheet}>
+      {!phone && !card && <div className="gc-resize" role="separator" aria-orientation="vertical" aria-label="Resize Aura" onPointerDown={startResize} />}
       {phone && <span className="gc-grab" aria-hidden="true" />}
       <header className="gc-head">
         <GrootAvatar state={state} size={34} />
@@ -240,20 +243,20 @@ function GrootChat() {
               ))}
             </div>
           </div>
-        ) : turns.map((t) => (
+        ) : (card ? turns.slice(-1) : turns).map((t) => (
           <Turn key={t.id} t={t} acting={acting} still={!!still} onAsk={ask} onGo={go}
             onRun={(list) => void runPlan(t, list)} onCancel={(list) => void cancelPlan(t, list)} onUndo={(list) => void undoAll(t, list)} onEdit={() => editPlan(t)} />
         ))}
       </div>
 
-      <form className="gc-compose" onSubmit={(e) => { e.preventDefault(); send(); }}>
+      {!card && <form className="gc-compose" onSubmit={(e) => { e.preventDefault(); send(); }}>
         <textarea ref={input} rows={1} data-aura-input="" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask Aura…" aria-label="Ask Aura"
           onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
         {streaming
           ? <button type="button" className="gc-send stop" aria-label="Stop" onClick={() => abort.current?.abort()}><span /></button>
           : <button type="submit" className="gc-send" aria-label="Send" disabled={!text.trim()}><Icon name="arrowUp" size={16} /></button>}
-      </form>
+      </form>}
     </motion.aside>
   );
   return createPortal(<>{phone && <div className="gc-scrim" onMouseDown={close} aria-hidden="true" />}{panel}</>, document.body);

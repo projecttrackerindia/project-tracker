@@ -101,7 +101,7 @@
 
 /* the page beside the rail */
 .v2-shell > .main.v2-main { margin-left: var(--rail-w); min-height: 100vh; min-width: 0; }
-.v2-shell > .main.v2-main > .content { padding-bottom: 128px; }
+.v2-shell > .main.v2-main > .content { padding-bottom: 28px; }
 
 /* ------------------------------------------------------------------ the phone bar: the five places and + New */
 .v2-phone-bar.m-tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; display: grid; grid-template-columns: repeat(6, 1fr); align-items: center; gap: 0; pointer-events: auto;
@@ -121,48 +121,87 @@
 .v2-place-link { font-size: 14px; font-weight: 500; color: var(--ds-accent); text-decoration: none; padding: 6px 4px; }
 .v2-place-link:hover { text-decoration: underline; }
 
-/* ------------------------------------------------------------------ Aura's dock (AskBar.tsx): bottom centre of every page */
-.aura-dock-wrap { position: fixed; z-index: 55; bottom: 24px; left: calc(var(--rail-w, 0px) + (100vw - var(--rail-w, 0px)) / 2); transform: translateX(-50%);
-  width: min(620px, calc(100vw - var(--rail-w, 0px) - 48px)); display: flex; flex-direction: column; align-items: center; gap: 10px;
-  transition: opacity var(--motion-standard) var(--ds-ease), translate var(--motion-emphasised) var(--ds-ease); pointer-events: none; }
+/* ------------------------------------------------------------------ Aura, Siri style (AskBar.tsx): nothing at rest, invoked on demand */
+/* At rest: the "Aura ⌘K" hint in the toolbar (wide) and the orb in the phone's top bar. */
+.aura-hint { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px 0 11px; border: 0; border-radius: 15px; font: inherit; font-size: 13px; font-weight: 500;
+  color: var(--ds-text-2); background: var(--ds-surface); box-shadow: 0 0 0 .5px var(--ds-line), 0 1px 2px rgba(0, 0, 0, .04); cursor: pointer;
+  transition: color var(--motion-micro) var(--ds-ease), box-shadow var(--motion-micro) var(--ds-ease); }
+.aura-hint:hover, .aura-hint.on { color: var(--ds-text); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--ds-violet) 45%, transparent), 0 4px 14px -6px color-mix(in srgb, var(--ds-violet) 55%, transparent); }
+.aura-hint:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.aura-hint-spark, .aura-spark { color: var(--ds-violet); font-size: 11px; }
+.aura-hint kbd { font-family: inherit; font-size: 11.5px; font-weight: 500; line-height: 1; color: var(--ds-text-3); padding: 4px 6px; border-radius: 6px; background: rgba(118, 118, 128, .12); }
+.m-aura-orb { display: grid; place-items: center; touch-action: manipulation; -webkit-touch-callout: none; user-select: none; }
+.m-aura-orb.on { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ds-violet) 40%, transparent); border-radius: 50%; }
+
+/* Invoked: the edge glow, in the mood's colours. It lights the viewport's edge only and never takes a pointer. */
+@property --glow-a { syntax: '<angle>'; inherits: false; initial-value: 210deg; }
+.aura-glow { position: fixed; inset: 0; z-index: 54; pointer-events: none; animation: aura-glow-in var(--motion-emphasised) var(--ds-ease) both; }
+.aura-glow::before { content: ''; position: absolute; inset: 0; padding: 4px; filter: blur(2px);
+  background: conic-gradient(from var(--glow-a), var(--g1), var(--g2), var(--g3), var(--g4), var(--g1));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+.aura-glow::after { content: ''; position: absolute; inset: 0;
+  box-shadow: inset 0 0 60px 8px color-mix(in srgb, var(--g2) 26%, transparent), inset 0 0 18px 2px color-mix(in srgb, var(--g3) 22%, transparent); }
+.aura-glow.soft::before { opacity: .55; } .aura-glow.soft::after { opacity: .6; }
+@keyframes aura-glow-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .aura-glow { animation: none; } }
+
+/* The floating glass capsule: bottom centre of the page, suggestions and the create chips under it. */
+.aura-dock-wrap { position: fixed; z-index: 93; bottom: 28px; left: calc(var(--rail-w, 0px) + (100vw - var(--rail-w, 0px)) / 2); transform: translateX(-50%);
+  width: min(580px, calc(100vw - var(--rail-w, 0px) - 48px)); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none;
+  --aura-cap-h: 52px; animation: aura-rise var(--motion-emphasised) var(--ds-ease) both; }
 .aura-dock-wrap > * { pointer-events: auto; }
-.aura-dock-wrap.away:not(.focused) { opacity: 0; translate: 0 24px; }
-.aura-dock-wrap.away:not(.focused) > * { pointer-events: none; }
-.aura-dock-wrap.chat-open { display: none; }   /* the chat has its own field */
-@media (prefers-reduced-motion: reduce) { .aura-dock-wrap { transition: opacity var(--motion-micro) linear; } .aura-dock-wrap.away:not(.focused) { translate: none; } }
-.v2-ask { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 6px 8px 6px 6px; border-radius: 29px;
-  background: rgba(255, 255, 255, .72); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8);
-  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1), 0 12px 40px rgba(0, 0, 0, .14); }
-html[data-theme='dark'] .v2-ask { background: rgba(44, 44, 46, .72); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .12), 0 12px 40px rgba(0, 0, 0, .5); }
-.v2-ask:focus-within { box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1), 0 0 0 4px rgba(94, 92, 230, .14), 0 12px 40px rgba(0, 0, 0, .16); }
-.aura-dock-orb { width: 46px; height: 46px; border: 0; padding: 0; background: none; display: grid; place-items: center; border-radius: 50%; cursor: pointer; flex: none; }
+.aura-dock-wrap.answering { width: min(620px, calc(100vw - var(--rail-w, 0px) - 48px)); }
+.v2-ask { width: 100%; display: flex; align-items: center; gap: 10px; min-height: var(--aura-cap-h, 52px); padding: 5px 6px 5px 6px; border-radius: 999px;
+  background: rgba(255, 255, 255, .78); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .08), 0 14px 44px -8px rgba(80, 50, 180, .28); }
+html[data-theme='dark'] .v2-ask { background: rgba(44, 44, 46, .76); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .12), 0 14px 44px rgba(0, 0, 0, .5); }
+.aura-dock-orb { width: 40px; height: 40px; border: 0; padding: 0; background: none; display: grid; place-items: center; border-radius: 50%; cursor: pointer; flex: none; }
 .aura-dock-orb:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 .v2-orb { width: 26px; height: 26px; border-radius: 50%; flex: none; background: radial-gradient(circle at 30% 30%, #8E8CF5, var(--ds-violet) 55%, #3A39B8); box-shadow: 0 0 12px -2px color-mix(in srgb, var(--ds-violet) 70%, transparent); }
 .v2-ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 15px; color: var(--ds-text); }
 .v2-ask input::placeholder { color: var(--ds-text-3); }
-.v2-ask kbd { font-family: inherit; font-size: 12px; font-weight: 500; line-height: 1; color: var(--ds-text-2); padding: 4px 7px; border-radius: 6px; background: rgba(118, 118, 128, .12); white-space: nowrap; }
-.v2-ask-send { width: 40px; height: 40px; border-radius: 50%; border: 0; display: grid; place-items: center; background: var(--ds-dark); color: var(--ds-on-dark); cursor: pointer; flex: none; }
+.v2-ask kbd { font-family: inherit; font-size: 11.5px; font-weight: 500; line-height: 1; color: var(--ds-text-3); padding: 4px 7px; border-radius: 6px; background: rgba(118, 118, 128, .12); white-space: nowrap; }
+.v2-ask-send { width: 36px; height: 36px; border-radius: 50%; border: 0; display: grid; place-items: center; background: var(--ds-dark); color: var(--ds-on-dark); cursor: pointer; flex: none; }
 .v2-ask-send:disabled { opacity: .35; cursor: default; }
-.aura-above { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; animation: aura-rise var(--motion-standard) var(--ds-ease) both; }
-@keyframes aura-rise { from { opacity: 0; transform: translateY(6px); } }
-@media (prefers-reduced-motion: reduce) { .aura-above { animation: none; } }
+.aura-under { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+@keyframes aura-rise { from { opacity: 0; translate: 0 10px; } }
+@media (prefers-reduced-motion: reduce) { .aura-dock-wrap { animation: aura-fade var(--motion-micro) linear both; } }
+@keyframes aura-fade { from { opacity: 0; } }
 .aura-find.gq-pop { position: static; width: min(520px, 100%); }
-.aura-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-.aura-chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border: 0; border-radius: 16px; font: inherit; font-size: 13px; color: var(--ds-text); cursor: pointer;
-  background: rgba(255, 255, 255, .85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .08), 0 4px 14px rgba(0, 0, 0, .06); white-space: nowrap; }
+.aura-chips { display: flex; flex-wrap: nowrap; justify-content: safe center; gap: 6px; width: 100%; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+.aura-chips::-webkit-scrollbar { display: none; }
+.aura-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 0; border-radius: 15px; font: inherit; font-size: 13px; color: var(--ds-text); cursor: pointer;
+  background: rgba(255, 255, 255, .86); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .08), 0 4px 14px rgba(0, 0, 0, .06); white-space: nowrap;
+  transition: background-color var(--motion-micro) var(--ds-ease); }
 .aura-chip:hover { background: #fff; }
 .aura-chip:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 .aura-chip svg { color: var(--ds-text-2); }
-html[data-theme='dark'] .aura-chip { background: rgba(58, 58, 60, .85); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .1), 0 4px 14px rgba(0, 0, 0, .3); }
-/* phone: above the tab bar, full width less the gutters; it steps aside while the page scrolls down */
-.m-shell .aura-dock-wrap { --rail-w: 0px; bottom: calc(var(--m-tab, 62px) + 12px + env(safe-area-inset-bottom)); width: calc(100vw - 32px); z-index: 44; }   /* under full-screen panels (z 50) like the bar */
-.m-shell .v2-ask { min-height: 52px; border-radius: 26px; padding: 5px 6px 5px 5px; }
-.m-shell .aura-dock-orb { width: 40px; height: 40px; }
+html[data-theme='dark'] .aura-chip { background: rgba(58, 58, 60, .86); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .1), 0 4px 14px rgba(0, 0, 0, .3); }
+/* The answer card rises above the capsule (GrootChat in card mode; the capsule is its field). */
+.groot-chat.card { top: auto; right: auto; left: var(--aura-cap-x, 50vw); bottom: var(--aura-cap-gap, 100px); translate: -50% 0;
+  width: min(var(--aura-cap-w, 620px), calc(100vw - 24px)); max-height: min(calc(100vh - var(--aura-cap-gap, 100px) - 16px), 560px); border-radius: 22px; z-index: 93;
+  background: var(--ds-surface, #fff); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 24px 70px -12px rgba(60, 40, 140, .3), 0 0 0 .5px rgba(0, 0, 0, .08); }
+html[data-theme='dark'] .groot-chat.card { background: var(--ds-surface-2, #1c1c1e); box-shadow: 0 24px 70px -12px rgba(0, 0, 0, .6), 0 0 0 .5px rgba(255, 255, 255, .1); }
+.groot-chat.card { animation: aura-card-rise var(--motion-emphasised) var(--ds-ease) both; }
+@keyframes aura-card-rise { from { opacity: 0; transform: translateY(12px); } }
+@media (prefers-reduced-motion: reduce) { .groot-chat.card { animation: aura-fade var(--motion-micro) linear both; } }
+.groot-chat.card .gc-head, .groot-chat.card .gc-grab { display: none; }
+.groot-chat.card .gc-body { padding: 14px 18px 16px; }
+.groot-chat.card .gc-turn { margin-bottom: 0; }
+.groot-chat.card .gc-me { align-self: stretch; max-width: none; display: flex; align-items: center; gap: 8px; }
+.groot-chat.card .gc-me::before { content: ''; width: 22px; height: 22px; border-radius: 50%; flex: none; background: radial-gradient(circle at 32% 30%, #b9b6ff, #3a39d8 55%, #1d1c8a);
+  box-shadow: 0 0 10px -2px color-mix(in srgb, var(--ds-violet) 80%, transparent); }
+.groot-chat.card .gc-me p { padding: 0; border-radius: 0; background: none; color: var(--ds-text-3); font-size: 13px; }
+.groot-chat.card .gc-md { font-size: 15px; }
+/* phone: the capsule sits above the tab bar, and above the keyboard while typing (phone-keyboard.css) */
+.m-shell .aura-dock-wrap { --rail-w: 0px; bottom: calc(var(--m-tab, 62px) + 12px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); }
+.m-shell .v2-ask { min-height: 50px; padding: 4px 5px 4px 4px; }
+.m-shell .aura-dock-orb { width: 42px; height: 42px; }
 .m-shell .v2-ask input { font-size: 16px; }
-.m-shell .v2-ask kbd { display: none; }
-.m-shell .v2-ask-send { width: 36px; height: 36px; }
+.m-shell .v2-ask-send { width: 38px; height: 38px; }
 .m-shell .aura-chips { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; width: 100%; scrollbar-width: none; padding: 2px; }
 .m-shell .aura-chips::-webkit-scrollbar { display: none; }
+.m-shell .aura-under { gap: 6px; }
 
 /* ------------------------------------------------------------------ the side panel: right, saves as you go, no footer */
 .v2-panel-scrim { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, .12); animation: ds-fade var(--motion-micro) var(--ds-ease) both; }
@@ -337,7 +376,7 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
     background: color-mix(in srgb, var(--ds-bg) 82%, transparent); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
   .v2-tb-sp { flex: 1; }
   .v2-side .v2-new { display: none; }
-  html .v2-shell > .main.v2-main > .content { padding: 6px 34px 128px; }
+  html .v2-shell > .main.v2-main > .content { padding: 6px 34px 28px; }
 }
 /* Very wide windows: the page keeps a readable width and sits centred; below 1680px it fills the main area edge to edge (34px gutters). */
 @media (min-width: 1680px) {
@@ -375,12 +414,12 @@ html:has(.v2-new-scrim:not(.flying)) .v2-shell > .v2-main, html:has(.v2-new-scri
 @media (prefers-reduced-motion: reduce) { .v2-more-tile { animation: none; } }
 
 /* ------------------------------------------------------------------ phone: nothing hides under the bars */
-/* Pages end above the tab bar, the Ask bar and the home indicator, so the last row can always be scrolled into view. */
+/* Pages end above the tab bar and the home indicator, so the last row can always be scrolled into view. */
 @media (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
-  :root { --m-ask: 72px; }
-  html .m-shell.v2-shell .m-main > .content { padding-bottom: calc(var(--m-tab, 62px) + var(--m-ask) + env(safe-area-inset-bottom, 0px) + 20px); }
+  :root { --m-ask: 0px; }   /* Aura takes no space at rest: nothing is reserved for it */
+  html .m-shell.v2-shell .m-main > .content { padding-bottom: calc(var(--m-tab, 62px) + var(--m-ask) + env(safe-area-inset-bottom, 0px) + 12px); }
   html .m-shell.m-conversation .m-main > .content { padding-bottom: 0; }
-  /* toasts and live banners sit just above the Ask bar, never over a page's header */
+  /* toasts and live banners sit just above the tab bar, never over a page's header */
   html .m-shell .toast-root, html .toast-root { top: auto !important; bottom: calc(var(--m-tab, 62px) + var(--m-ask) + env(safe-area-inset-bottom, 0px) + 8px) !important; }
   html .m-shell.m-conversation .toast-root { bottom: calc(var(--m-tab, 62px) + 72px + env(safe-area-inset-bottom, 0px)) !important; }
   html .m-shell .toast { animation-name: v2-toast-rise; }
@@ -448,7 +487,7 @@ html[data-theme='dark'] .acct-seg i.on { background: #636366; }
 .v2-rail .v2-rail-nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
 .v2-rail .v2-rail-foot { flex: none; }
 .floating.floating-sheet.acct-menu { z-index: 1000; }
-.m-shell.m-thread .aura-dock-wrap { display: none; }   /* a full-screen conversation on a phone (talk.css hides the bars there too) */
+.m-shell.m-thread .aura-dock-wrap, .m-shell.m-thread ~ .aura-glow { display: none; }   /* a full-screen conversation on a phone (talk.css hides the bars there too) */
 
 /* Messages: only muted conversations have news - a small grey dot instead of a number (docs/badges.md). */
 .v2-badge-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ds-text-3, #8e8e93); font-style: normal; flex: none; }

@@ -5,12 +5,12 @@ import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
-// Aura, the assistant as a glowing orb (mock.html §1–4, 6; orb.html): the dock at the bottom centre of every page (glass pill: orb + "Ask Aura
-// or tell it what to do"), on desktop and phone; no + New anywhere (header, sidebar, phone top bar); Ctrl K focuses the dock; the chips above
+// Aura, the assistant as a glowing orb (mock.html §1–4, 6; orb.html), invoked Siri style (verify-aura-siri-ui.mjs has the glow and capsule
+// layout): the "Aura ⌘K" hint on every page, no + New anywhere (header, sidebar, phone top bar); Ctrl K brings up the capsule; the chips under
 // it (Create a task, Log time, Schedule a meeting, Raise a ticket, Write a doc, More…) open the create flows; asking shows the orb thinking with
 // step lines at once; a proposal is a plan card (Do it / Edit / Cancel), unknown action kinds shown by title; the header's check-in capsule in
-// its five states (not checked in, office, home, overtime, done); Reduce Motion still draws the orb; the phone dock sits above the tab bar,
-// steps aside while scrolling down, comes back on scroll up, and is hidden in a Messages conversation. Built frontend, synthetic API only.
+// its five states (not checked in, office, home, overtime, done); Reduce Motion still draws the orb; on the phone the orb in the top bar
+// invokes it above the tab bar, and a Messages conversation has no capsule. Built frontend, synthetic API only.
 const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/aura-ui');
 await fs.mkdir(out, { recursive: true });
 const csp = await appCsp();
@@ -89,6 +89,8 @@ const newCtx = async ({ theme = 'light', phone = false, reduced = false } = {}) 
 const shot = async (page, name) => { await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(400); await page.screenshot({ path: path.join(out, name) }); };
 const dock = (page) => page.getByTestId('aura-dock');
 const field = (page) => dock(page).getByPlaceholder('Ask Aura or tell it what to do');
+/** Invoke Aura: the toolbar hint on desktop, the top bar's orb on a phone. */
+const invoke = async (page) => { await page.locator('.v2-tb .aura-hint, .m-top .m-aura-orb').first().click(); await field(page).waitFor(); };
 /** Visible buttons or links that are a generic "+ New" (the create sheet with no kind): there must be none. */
 const plusNew = (page) => page.evaluate(() => [...document.querySelectorAll('button, a, [role="button"]')].filter((el) => {
   const r = el.getBoundingClientRect(); if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') return false;
@@ -104,36 +106,39 @@ try {
     const { ctx, page } = await newCtx();
     for (const where of ['', 'calendar', 'work', 'desk', 'messages']) {
       await page.goto(`${origin}/preview-org/${where}`); await page.locator('.v2-rail').waitFor();
-      await field(page).waitFor();
+      await page.locator('.v2-tb .aura-hint').waitFor();
+      assert.equal(await dock(page).count(), 0, `/${where}: nothing of Aura at rest`);
+      await invoke(page);
       await page.waitForTimeout(600);
       const box = await dock(page).locator('form.v2-ask').boundingBox();
-      assert.ok(box.y + box.height > 900 - 40 && box.y + box.height <= 900, `/${where}: the dock sits at the bottom (${box.y + box.height})`);
+      assert.ok(box.y + box.height > 900 - 140 && box.y + box.height <= 900, `/${where}: the capsule floats at the bottom (${box.y + box.height})`);
       const main = await page.locator('.v2-main').boundingBox();
       assert.ok(Math.abs(box.x + box.width / 2 - (main.x + main.width / 2)) < 12, `/${where}: centred in the main area (${box.x + box.width / 2} vs ${main.x + main.width / 2})`);
-      assert.ok(box.width >= 560 && box.width <= 624, `/${where}: ~620px wide (${box.width})`);
+      assert.ok(box.width >= 520 && box.width <= 624, `/${where}: ~580px wide (${box.width})`);
       assert.equal(await dock(page).locator('[data-testid="aura-orb"] canvas').count(), 1, `/${where}: the orb in the dock`);
       assert.deepEqual(await plusNew(page), [], `/${where}: no + New`);
       assert.equal(await page.locator('.v2-tb input, .v2-tb [role="search"]').count(), 0, `/${where}: no Ask bar in the header`);
       await page.locator('.v2-tb [data-ncx-bell]').waitFor();
       if (!where) await shot(page, 'dock-today-1440.png');
+      await page.keyboard.press('Escape'); await dock(page).waitFor({ state: 'detached' });
     }
-    checks.push('dock on Today, Calendar, Work, Desk, Messages; no + New; header without Ask');
+    checks.push('hint and capsule on Today, Calendar, Work, Desk, Messages; no + New; header without Ask');
 
     // Ctrl K focuses the dock (⌘K on a Mac); the orb listens; chips appear above.
-    await page.goto(`${origin}/preview-org/`); await field(page).waitFor();
-    for (let i = 0; i < 10 && !(await field(page).evaluate((el) => el === document.activeElement)); i++) { await page.keyboard.press('Control+k'); await page.waitForTimeout(300); }
-    assert.ok(await field(page).evaluate((el) => el === document.activeElement), 'Ctrl K focuses the dock');
+    await page.goto(`${origin}/preview-org/`); await page.locator('.v2-tb .aura-hint').waitFor();
+    for (let i = 0; i < 10 && !(await field(page).evaluate((el) => el === document.activeElement).catch(() => false)); i++) { await page.keyboard.press('Control+k'); await page.waitForTimeout(300); }
+    assert.ok(await field(page).evaluate((el) => el === document.activeElement).catch(() => false), 'Ctrl K opens the capsule, focused');
     assert.equal(await dock(page).locator('[data-testid="aura-orb"]').getAttribute('data-mood'), 'listen', 'the orb listens');
+    await page.keyboard.type('Move LUM-14 to Friday');
     const chips = await page.locator('.aura-chip').allTextContents();
     assert.deepEqual(chips, ['Create a task', 'Log time', 'Schedule a meeting', 'Raise a ticket', 'Write a doc', 'More…']);
-    await page.keyboard.type('Move LUM-14 to Friday');
     await shot(page, 'dock-typing-1440.png');
     checks.push('Ctrl K, listen, chips');
 
     // Each chip opens its create flow (the words typed carry over).
     const kinds = [['task', 'Task'], ['meeting', 'Meeting'], ['ticket', 'Ticket'], ['doc', 'Doc'], ['time', null], ['more', null]];
     for (const [chip, radio] of kinds) {
-      if (!(await field(page).evaluate((el) => el === document.activeElement))) await field(page).click();
+      if (!(await dock(page).count())) { await invoke(page); await field(page).fill('Move LUM-14 to Friday'); }
       await page.locator(`.aura-chip[data-chip="${chip}"]`).click();
       if (chip === 'meeting') {
         // A meeting opens the one schedule sheet straight away, with the words shown as where it came from (design: meet-schedule).
@@ -150,12 +155,11 @@ try {
     }
     checks.push('chips open task, the schedule sheet, ticket, doc, time and the full chooser');
 
-    // Asking: the chat opens on the right with the orb thinking and step lines at once; then a plan card.
-    await field(page).click(); await field(page).fill('Move LUM-14 to Friday and tell Tomas'); await page.keyboard.press('Enter');
+    // Asking: the answer card rises above the capsule with the orb thinking and step lines at once; then a plan card.
+    await invoke(page); await field(page).fill('Move LUM-14 to Friday and tell Tomas'); await page.keyboard.press('Enter');
     const chat = page.locator('.groot-chat'); await chat.waitFor();
     await chat.locator('[data-testid="aura-thinking"] [data-testid="aura-orb"][data-mood="think"]').waitFor({ timeout: 500 });
     assert.ok((await chat.locator('[data-testid="aura-thinking"] .gc-steps li').count()) >= 1, 'step lines while waiting');
-    assert.equal(await dock(page).isVisible(), false, 'the dock steps aside while the chat is open');
     await shot(page, 'chat-thinking-1440.png');
     const plan = chat.locator('[data-testid="aura-plan"]'); await plan.waitFor();
     assert.match(await plan.innerText(), /3 changes/i);
@@ -163,7 +167,7 @@ try {
     await plan.locator('[data-testid="aura-action"][data-kind="future_thing_aura_learns"]', { hasText: 'Archive the old sprint board' }).waitFor();
     for (const b of ['Do it', 'Edit', 'Cancel']) await plan.getByRole('button', { name: b }).waitFor();
     await plan.getByRole('button', { name: 'Edit' }).click();
-    assert.equal(await chat.getByRole('textbox', { name: 'Ask Aura' }).inputValue(), 'Move LUM-14 to Friday and tell Tomas', 'Edit puts the request back to change');
+    assert.equal(await field(page).inputValue(), 'Move LUM-14 to Friday and tell Tomas', 'Edit puts the request back to change');
     await shot(page, 'chat-plan-1440.png');
     checks.push('chat: think at once, plan card with unknown kinds, Edit');
     await ctx.close();
@@ -196,10 +200,9 @@ try {
   // ---------------------------------------------------------------- dark mode
   {
     const { ctx, page } = await newCtx({ theme: 'dark' });
-    await page.goto(`${origin}/preview-org/`); await field(page).waitFor();
+    await page.goto(`${origin}/preview-org/`); await invoke(page);
     const bg = await dock(page).locator('form.v2-ask').evaluate((el) => getComputedStyle(el).backgroundColor);
     const [r, g, b] = bg.match(/\d+/g).map(Number); assert.ok(r + g + b < 200, `dark glass dock (${bg})`);
-    await field(page).click();
     await shot(page, 'dock-dark-1440.png');
     checks.push('dark');
     await ctx.close();
@@ -208,7 +211,7 @@ try {
   // ---------------------------------------------------------------- reduced motion: the orb is still drawn
   {
     const { ctx, page } = await newCtx({ reduced: true });
-    await page.goto(`${origin}/preview-org/`); await field(page).waitFor();
+    await page.goto(`${origin}/preview-org/`); await invoke(page);
     const cv = dock(page).locator('[data-testid="aura-orb"] canvas');
     await page.waitForTimeout(800);
     assert.ok((await lit(cv)) > 300, 'the orb is drawn with Reduce Motion');
@@ -219,42 +222,32 @@ try {
   // ---------------------------------------------------------------- phone
   {
     const { ctx, page } = await newCtx({ phone: true });
-    await page.goto(`${origin}/preview-org/`); await field(page).waitFor();
-    const d = await dock(page).locator('form.v2-ask').boundingBox(), tabs = await page.locator('.v2-phone-bar').boundingBox();
-    assert.ok(d.y + d.height <= tabs.y - 4, `the dock sits above the tab bar (${d.y + d.height} / ${tabs.y})`);
-    assert.ok(d.x >= 15 && d.x + d.width <= 375, 'the dock keeps the 16px gutters');
+    await page.goto(`${origin}/preview-org/`); await page.locator('.m-top .m-aura-orb').waitFor();
+    assert.equal(await dock(page).count(), 0, 'nothing of Aura at rest on the phone');
     assert.deepEqual(await plusNew(page), [], 'no + New on the phone');
     await page.locator('.m-top [data-testid="att-capsule"]').waitFor();
     assert.match(await page.locator('.m-top [data-testid="att-capsule"]').innerText(), /^\s*5h 50m\s*$/, 'phone capsule: ring and hours');
-    await fitsPhone(page, 'Today with the dock', assert);
+    await invoke(page);
+    const d = await dock(page).locator('form.v2-ask').boundingBox(), tabs = await page.locator('.v2-phone-bar').boundingBox();
+    assert.ok(d.y + d.height <= tabs.y - 4, `the capsule sits above the tab bar (${d.y + d.height} / ${tabs.y})`);
+    assert.ok(d.x >= 11 && d.x + d.width <= 379, 'the capsule keeps its gutters');
+    await fitsPhone(page, 'Today with the capsule', assert);
     await shot(page, 'dock-phone-390.png');
-    // the page ends above the dock: the content's bottom padding covers the tab bar and the dock
-    const pad = await page.locator('main.content').evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
-    assert.ok(pad >= 844 - d.y, `the page has room under its last row (${pad} ≥ ${844 - d.y})`);
-    // scrolling down hides it, scrolling up brings it back
-    await page.evaluate(() => { const s = document.createElement('div'); s.style.height = '3000px'; s.id = 'aura-spacer'; document.querySelector('main.content').appendChild(s); });
-    await page.mouse.wheel(0, 0);
-    for (let i = 0; i < 6; i++) { await page.evaluate(() => window.scrollBy(0, 120)); await page.waitForTimeout(60); }
-    await page.waitForTimeout(400);
-    assert.equal(await dock(page).evaluate((el) => getComputedStyle(el).opacity), '0', 'hidden while scrolling down');
-    for (let i = 0; i < 3; i++) { await page.evaluate(() => window.scrollBy(0, -120)); await page.waitForTimeout(60); }
-    await page.waitForTimeout(400);
-    assert.equal(await dock(page).evaluate((el) => getComputedStyle(el).opacity), '1', 'back on scroll up');
-    // the chips on a phone, and the chat as a full sheet
-    await field(page).click();
+    // the chips on a phone, and the answer card above the capsule
+    await field(page).fill('Move LUM-14 to Friday');
     assert.equal(await page.locator('.aura-chip').count(), 6);
     await shot(page, 'dock-chips-phone-390.png');
-    await field(page).fill('Move LUM-14 to Friday'); await page.keyboard.press('Enter');
-    const sheet = page.locator('.groot-chat.phone'); await sheet.waitFor();
+    await page.keyboard.press('Enter');
+    const sheet = page.locator('.groot-chat.card'); await sheet.waitFor();
     await sheet.locator('[data-testid="aura-thinking"]').waitFor({ timeout: 500 });
     await sheet.locator('[data-testid="aura-plan"]').waitFor();
-    await fitsPhone(page, 'Aura sheet', assert);
+    await fitsPhone(page, 'Aura answer card', assert);
     await shot(page, 'chat-plan-phone-390.png');
-    await page.locator('.gc-head').getByRole('button', { name: 'Close Aura' }).click();
+    await page.keyboard.press('Escape'); await sheet.waitFor({ state: 'detached' });
     // a Messages conversation: no dock
     await page.goto(`${origin}/preview-org/messages/00000000-0000-0000-0000-0000000000d1`); await page.waitForTimeout(1200);
     assert.equal(await dock(page).count(), 0, 'no dock inside a conversation');
-    checks.push('phone: above the tab bar, padding, hides on scroll, chips, sheet, not in a conversation');
+    checks.push('phone: orb invokes, above the tab bar, chips, answer card, not in a conversation');
     await ctx.close();
   }
 

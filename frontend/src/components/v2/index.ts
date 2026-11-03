@@ -2,7 +2,7 @@
 export { Rail, PhoneBar, AvatarMenu } from './Rail';
 export { NewSheetHost } from './NewSheet';
 export { GrootChatHost } from '../groot/GrootChat';
-export { AskBar, CopilotHost, Toolbar } from './AskBar';
+export { AskBar, AuraHint, AuraPhoneOrb, CopilotHost, Toolbar } from './AskBar';
 export { SidePanel } from './SidePanel';
 export { InboxRow, type InboxKind } from './InboxRow';
 export { AiCard } from './AiCard';

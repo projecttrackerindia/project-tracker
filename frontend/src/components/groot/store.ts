@@ -13,9 +13,9 @@ export interface GrootTurn {
  * and opened again), and a question waiting to be asked when it opens.
  */
 interface GrootStore {
-  open: boolean; about: string | null; context: string | null; conversationId: string | null; turns: GrootTurn[];
+  open: boolean; /** Opened from the floating capsule: the answer card above it, not the side panel. */ card: boolean; about: string | null; context: string | null; conversationId: string | null; turns: GrootTurn[];
   pending: { text: string; ts: number } | null;
-  show: (question?: string | null, context?: string | null, about?: string | null) => void;
+  show: (question?: string | null, context?: string | null, about?: string | null, card?: boolean) => void;
   close: () => void;
   reset: () => void;
   take: () => string | null;
@@ -24,9 +24,9 @@ interface GrootStore {
 }
 
 export const useGroot = create<GrootStore>((set, get) => ({
-  open: false, about: null, context: null, conversationId: null, turns: [], pending: null,
-  show: (question, context = null, about = null) => set((s) => ({
-    open: true, context, about,
+  open: false, card: false, about: null, context: null, conversationId: null, turns: [], pending: null,
+  show: (question, context = null, about = null, card = false) => set((s) => ({
+    open: true, card, context, about,
     pending: question?.trim() ? { text: question.trim(), ts: Date.now() } : s.pending,
   })),
   close: () => set({ open: false }),
@@ -38,3 +38,17 @@ export const useGroot = create<GrootStore>((set, get) => ({
 
 /** Opens Aura from anywhere, optionally with a question to ask straight away. */
 export const openGroot = (question?: string | null, context?: string | null, about?: string | null) => useGroot.getState().show(question, context, about);
+
+/**
+ * Aura invoked (⌘K, the "Aura ⌘K" hint, the phone's orb): the edge glow and the floating capsule are up. Nothing of Aura takes space at
+ * rest; this is the only switch.
+ */
+export const useAuraInvoke = create<{ open: boolean; draft: string | null; show: (draft?: string) => void; hide: () => void; takeDraft: () => string | null }>((set, get) => ({
+  open: false, draft: null,
+  show: (draft) => set({ open: true, ...(draft != null ? { draft } : {}) }),
+  hide: () => set({ open: false }),
+  takeDraft: () => { const d = get().draft; if (d != null) set({ draft: null }); return d; },
+}));
+export const invokeAura = () => useAuraInvoke.getState().show();
+/** Puts Aura away: the capsule, the glow and the answer card (the side panel, when that is what is open, stays). */
+export const dismissAura = () => { useAuraInvoke.getState().hide(); if (useGroot.getState().card) useGroot.getState().close(); };
