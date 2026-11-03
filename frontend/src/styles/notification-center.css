@@ -434,3 +434,14 @@ html .tzp-city em { background: var(--ds-success-bg); color: var(--ds-success); 
 }
 /* Why a reminder came ("Due today · no time set"): one quiet line between the title and the body. */
 .nc-item-reason { display: block; font-size: 12px; font-weight: 500; color: var(--ds-text-3, var(--text-2)); letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Send test notification: one row per step (permission, subscription, server, delivery). */
+.nc-pushcheck { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.nc-pushcheck li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--ds-fill-quaternary, rgba(120, 120, 128, .08)); }
+.nc-pushcheck li > span { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.nc-pushcheck li small { color: var(--ds-label-secondary, var(--text-muted)); font-size: 12px; line-height: 1.4; }
+.nc-pushcheck li.is-ok svg, .nc-pushcheck li.is-skip svg { color: var(--success); }
+.nc-pushcheck li.is-fail svg { color: var(--danger, #ff3b30); }
+.nc-pushcheck li.is-warn svg { color: var(--warning, #ff9500); }
+.nc-pushcheck li.is-wait svg { color: var(--ds-label-tertiary, var(--text-muted)); }
+.nc-pushcheck-others { margin: 10px 0 0; padding-left: 18px; font-size: 12px; color: var(--ds-label-secondary, var(--text-muted)); }

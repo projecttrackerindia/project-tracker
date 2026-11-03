@@ -24,7 +24,10 @@ public record NotificationDto(Guid Id, NotificationType Type, string Title, stri
 /// The inbox at a glance: unread overall, in each lane, and in each category of the Notification Centre (the badges on the bell, the app
 /// icon and the tabs all read this one answer).
 /// </summary>
-public record NotificationCountsDto(int Unread, int NeedsYou, int ForInfo, int Snoozed = 0, int Messages = 0, int Reminders = 0, int Meetings = 0, int Work = 0);
+/// <param name="Tabs">Unread per sidebar destination and category, keyed "destination:category" (see <see cref="NotificationDestinations"/>,
+/// docs/badges.md). Their sum is <paramref name="Unread"/>: every notification lands on exactly one tab.</param>
+public record NotificationCountsDto(int Unread, int NeedsYou, int ForInfo, int Snoozed = 0, int Messages = 0, int Reminders = 0, int Meetings = 0, int Work = 0,
+    IReadOnlyDictionary<string, int>? Tabs = null);
 /// <param name="Category">messages, reminders, meetings or work; empty for every category.</param>
 /// <param name="Ids">These notifications only (a stacked group cleared at once). Wins over the category.</param>
 public record NotificationClearRequest(string? Category = null, IReadOnlyList<Guid>? Ids = null);
@@ -66,6 +69,34 @@ public static class NotificationCategories
             Work => q.Where(n => n.Type != NotificationType.Meeting && !msg.Contains(n.Type) && !rem.Contains(n.Type)),
             _ => q,
         };
+    }
+}
+
+/// <summary>
+/// Which sidebar place a notification belongs to, so its unread count shows on that place's badge (docs/badges.md has the table). One
+/// destination per notification: the badges add up to the bell. The same rules are in frontend/src/features/notifications/centre/tabBadges.ts.
+/// </summary>
+public static class NotificationDestinations
+{
+    public const string Messages = "messages", Meetings = "meetings", Calendar = "calendar", Work = "work", Today = "today", Mail = "mail",
+        Library = "library", Portfolio = "portfolio", Desk = "desk";
+    public static readonly string[] All = [Today, Work, Desk, Portfolio, Calendar, Meetings, Messages, Mail, Library];
+
+    private static bool Starts(string? link, string prefix) => link is not null && link.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+
+    public static string Of(NotificationType type, string? link)
+    {
+        if (NotificationCategories.Of(type, link) == NotificationCategories.Meetings) return Meetings;
+        if (Starts(link, "/mail")) return Mail;
+        if (Starts(link, "/?tab=calendar") || Starts(link, "/calendar")) return Calendar;
+        if (type is NotificationType.Message or NotificationType.Call) return Messages;
+        if (type == NotificationType.Mention && (Starts(link, "/chat/") || Starts(link, "/messages") || (link?.Contains("chat=1", StringComparison.Ordinal) ?? false))) return Messages;
+        if (type is NotificationType.Document || Starts(link, "/documents") || Starts(link, "/library")) return Library;
+        if (type is NotificationType.PortfolioDigest || Starts(link, "/portfolio") || (link?.Contains("view=portfolio", StringComparison.Ordinal) ?? false)) return Portfolio;
+        if (type is NotificationType.ServiceLevel or NotificationType.Support || Starts(link, "/desk") || Starts(link, "/operations")) return Desk;
+        if (type is NotificationType.TaskAssigned or NotificationType.TaskUpdated or NotificationType.Comment or NotificationType.Mention
+            or NotificationType.Issue or NotificationType.ProjectUpdated) return Work;
+        return Today;   // due and overdue, reminders, approvals, security, invitations, reports, agents: what needs you today
     }
 }
 
@@ -412,6 +443,8 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
         return new UnreadCountDto(await db.Notifications.CountAsync(n => n.UserId == uid && n.InApp && n.ReadAt == null && n.ArchivedAt == null && (n.SnoozedUntil == null || n.SnoozedUntil <= now), ct));
     }
 
+    private const int TabCap = 2000;
+
     public async Task<NotificationCountsDto> CountsAsync(CancellationToken ct = default)
     {
         var uid = ctx.RequireUserId();
@@ -435,7 +468,17 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
             }
         }
         var resting = await db.Notifications.CountAsync(n => n.UserId == uid && n.InApp && n.ArchivedAt == null && n.SnoozedUntil != null && n.SnoozedUntil > now, ct);
-        return new NotificationCountsDto(total, needing, total - needing, resting, messages, reminders, meetings, work);
+        // Per sidebar place: the link decides where some kinds go, so (type, link) of what is unread, grouped here. Unread piles stay small;
+        // past the cap the rest counts on Today, so the tabs still add up to the total.
+        var rows = await unread.Select(n => new { n.Type, n.Link }).Take(TabCap).ToListAsync(ct);
+        var tabs = new Dictionary<string, int>();
+        foreach (var r in rows)
+        {
+            var key = $"{NotificationDestinations.Of(r.Type, r.Link)}:{NotificationCategories.Of(r.Type, r.Link)}";
+            tabs[key] = tabs.GetValueOrDefault(key) + 1;
+        }
+        if (rows.Count < total) { var k = $"{NotificationDestinations.Today}:{NotificationCategories.Work}"; tabs[k] = tabs.GetValueOrDefault(k) + total - rows.Count; }
+        return new NotificationCountsDto(total, needing, total - needing, resting, messages, reminders, meetings, work, tabs);
     }
 
     /// <summary>Back to unread (the blue dot), as if it had just arrived.</summary>

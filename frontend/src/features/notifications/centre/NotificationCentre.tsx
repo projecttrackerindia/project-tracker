@@ -26,6 +26,7 @@ import { applyBadge, clearBadge } from './badge';
 import { arrange, badgeText, totalBadge, canJoin, CATEGORY_META, categoryOf, changeLines, conversationOf, FILTERS, iconOf, shortTime, snoozePresets, type Stack } from './model';
 import { portfolioApi } from '../../projects/portfolioApi';
 import { maySound, useAlertPrefs } from './prefs';
+import { applyTabDelta, clearTabs, destinationOf, tabCounts, tabKey, type TabCounts } from './tabBadges';
 import '../../../styles/notification-centre-apple.css';
 import { lockScroll } from '../../../lib/scrollLock';
 
@@ -59,6 +60,14 @@ export function useBadge(): number {
   const counts = useNotificationCounts();
   const chat = useChatUnread();
   return totalBadge(counts.data, prefs, chat.count);
+}
+
+/** The red number on each sidebar place (and phone tab), from the same answer as the bell: they add up to it (docs/badges.md). */
+export function useTabBadges(): TabCounts {
+  const prefs = useAlertPrefs();
+  const counts = useNotificationCounts();
+  const chat = useChatUnread();
+  return tabCounts(counts.data, prefs, chat.count);
 }
 
 /**
@@ -141,6 +150,7 @@ type Pages = InfiniteData<Paged<AppNotification>, number>;
 /** Changes notifications in every loaded list at once (optimistic), and the counts with them; the server's answer then refreshes both. */
 function patchLists(wid: string | null, ids: Set<string>, change: (n: AppNotification) => AppNotification | null) {
   let readDelta: Partial<Record<NotificationCategory, number>> = {};
+  const tabDelta: Record<string, number> = {};
   const seen = new Set<string>();
   queryClient.setQueriesData<Pages>({ queryKey: [wid, 'notifications', 'centre'] }, (data) => {
     if (!data) return data;
@@ -157,6 +167,8 @@ function patchLists(wid: string | null, ids: Set<string>, change: (n: AppNotific
             const after = next && !next.isRead ? 1 : 0;
             const c = categoryOf(n);
             readDelta = { ...readDelta, [c]: (readDelta[c] ?? 0) + after - before };
+            const k = tabKey(destinationOf(n.type, n.link), c);
+            tabDelta[k] = (tabDelta[k] ?? 0) + after - before;
           }
           return next ? [next] : [];
         }),
@@ -169,6 +181,7 @@ function patchLists(wid: string | null, ids: Set<string>, change: (n: AppNotific
     let total = 0;
     for (const [k, d] of Object.entries(readDelta) as [NotificationCategory, number][]) { next[k] = Math.max(0, (c[k] ?? 0) + d); total += d; }
     next.unread = Math.max(0, c.unread + total);
+    next.tabs = applyTabDelta(c.tabs, tabDelta);
     return next;
   });
 }
@@ -194,8 +207,8 @@ function useActions() {
       readAll: (f: Filter) => {
         queryClient.setQueriesData<Pages>({ queryKey: [wid, 'notifications', 'centre'] }, (d) => d && ({ ...d, pages: d.pages.map((p) => ({ ...p, items: p.items.map((n) => (f === 'all' || categoryOf(n) === f ? { ...n, isRead: true } : n)) })) }));
         queryClient.setQueryData<NotificationCounts>([wid, 'notifications', 'counts'], (c) => c && (f === 'all'
-          ? { ...c, unread: 0, needsYou: 0, forInfo: 0, messages: 0, reminders: 0, meetings: 0, work: 0 }
-          : { ...c, unread: Math.max(0, c.unread - (c[f] ?? 0)), [f]: 0 }));
+          ? { ...c, unread: 0, needsYou: 0, forInfo: 0, messages: 0, reminders: 0, meetings: 0, work: 0, tabs: clearTabs(c.tabs, 'all') }
+          : { ...c, unread: Math.max(0, c.unread - (c[f] ?? 0)), [f]: 0, tabs: clearTabs(c.tabs, f) }));
         void notificationApi.readAll(f === 'all' ? undefined : f).catch(() => toast('Could not mark them read.', 'error')).finally(() => settle(wid));
       },
       clearAll: async (f: Filter) => {

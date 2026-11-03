@@ -11,6 +11,8 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const BASE = appUrl();
 let win = null, tray = null, quitting = false, pendingLink = null;
+/** The page's notifications still on screen, by tag (so a repeat replaces, and reading closes them). */
+const shown = new Map();
 const stateFile = () => path.join(app.getPath('userData'), 'window.json');
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 const WIN = process.platform === 'win32', MAC = process.platform === 'darwin';
@@ -281,6 +283,28 @@ else {
       if (!win || win.isDestroyed() || e.sender !== win.webContents || !isInternal(e.sender.getURL(), BASE)) return;
       pageBadges = true;
       showBadge(count);
+    });
+    // System notifications for the page. Electron cannot show a service worker's notifications (registration.showNotification does
+    // nothing here) and the page's own `new Notification()` loses its click when the window is hidden, so the page hands them to the main
+    // process: a native toast / Notification Center entry with the app's name and icon (AppUserModelID on Windows), that opens the link.
+    ipcMain.on('notify', (e, n) => {
+      if (!win || win.isDestroyed() || e.sender !== win.webContents || !isInternal(e.sender.getURL(), BASE) || !n || typeof n !== 'object') return;
+      if (!Notification.isSupported()) return;
+      const title = String(n.title || 'Project Tracker').slice(0, 120);
+      const body = String(n.body || '').slice(0, 300);
+      const link = typeof n.link === 'string' && n.link.startsWith('/') && !n.link.startsWith('//') ? n.link : '/';
+      const tag = typeof n.tag === 'string' ? n.tag.slice(0, 80) : '';
+      // One entry per tag: a repeat replaces the earlier toast instead of stacking.
+      if (tag && shown.has(tag)) { try { shown.get(tag).close(); } catch { /* already gone */ } }
+      const note = new Notification({ title, body, silent: n.silent === true, urgency: n.urgent ? 'critical' : 'normal', timeoutType: n.urgent ? 'never' : 'default' });
+      note.on('click', () => { go(link); if (tag) shown.delete(tag); });
+      note.on('close', () => { if (tag && shown.get(tag) === note) shown.delete(tag); });
+      if (tag) shown.set(tag, note);
+      note.show();
+    });
+    ipcMain.on('notify-close', (e, tags) => {
+      if (!win || win.isDestroyed() || e.sender !== win.webContents || !Array.isArray(tags)) return;
+      for (const t of tags) { const note = shown.get(String(t)); if (note) { try { note.close(); } catch { /* gone */ } shown.delete(String(t)); } }
     });
     // A new page (signed out, reloaded) starts from the title again until it reports its number.
     ipcMain.on('attention', (e, kind) => {

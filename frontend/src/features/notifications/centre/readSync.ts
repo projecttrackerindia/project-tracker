@@ -10,6 +10,7 @@ import { queryClient } from '../../../stores/auth';
 import { useChat } from '../../chat/chatStore';
 import { useProjectChat } from '../../chat/projectChatStore';
 import { categoryOf, conversationOf } from './model';
+import { applyTabDelta, destinationOf, tabKey } from './tabBadges';
 
 type Pages = InfiniteData<Paged<AppNotification>, number>;
 
@@ -27,6 +28,8 @@ export function isAboutConversation(link: string | null | undefined, conversatio
 export function closeSystemNotifications(ids: string[], links: string[] = []) {
   if (ids.length === 0 && links.length === 0) return;
   try { navigator.serviceWorker?.controller?.postMessage({ type: 'pm-read', tags: ids, links }); } catch { /* no worker */ }
+  // The desktop app shows its own native notifications (no service worker there): close those too.
+  try { (window as unknown as { ptDesktop?: { closeNotifications?: (t: string[]) => void } }).ptDesktop?.closeNotifications?.(ids); } catch { /* not the desktop app */ }
 }
 
 /**
@@ -46,12 +49,17 @@ export function markReadLocally(wid: string | null | undefined, match: (n: AppNo
   }));
   if (changed.size > 0) {
     const delta: Partial<Record<NotificationCategory, number>> = {};
-    for (const n of changed.values()) { const c = categoryOf(n); delta[c] = (delta[c] ?? 0) + 1; }
+    const tabs: Record<string, number> = {};
+    for (const n of changed.values()) {
+      const c = categoryOf(n); delta[c] = (delta[c] ?? 0) + 1;
+      const k = tabKey(destinationOf(n.type, n.link), c); tabs[k] = (tabs[k] ?? 0) - 1;
+    }
     queryClient.setQueryData<NotificationCounts>([wid, 'notifications', 'counts'], (c) => {
       if (!c) return c;
       const next = { ...c };
       for (const [k, d] of Object.entries(delta) as [NotificationCategory, number][]) next[k] = Math.max(0, (c[k] ?? 0) - d);
       next.unread = Math.max(0, c.unread - changed.size);
+      next.tabs = applyTabDelta(c.tabs, tabs);   // the sidebar place's badge drops with it
       return next;
     });
     closeSystemNotifications([...changed.keys()], [...new Set([...changed.values()].map((n) => n.link).filter((l): l is string => !!l))]);

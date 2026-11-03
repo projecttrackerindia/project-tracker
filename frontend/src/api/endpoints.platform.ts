@@ -89,11 +89,15 @@ export const consentApi = {
 };
 
 // ---- push notifications on this person's devices
+export interface PushTestDevice { device: string; thisDevice: boolean; status: number | null; accepted: boolean; message: string }
+export interface PushTestResult { keysReady: boolean; devices: number; thisDeviceKnown: boolean; results: PushTestDevice[]; tag: string }
 export const pushApi = {
   status: () => get<{ publicKey: string; devices: number }>('/push'),
   subscribe: (b: { endpoint: string; keys: { p256dh: string; auth: string } }) => post<{ publicKey: string; devices: number }>('/push/subscriptions', b),
   subscribeNative: (token: string) => post<{ publicKey: string; devices: number; nativeEnabled: boolean }>('/push/native', { token }),
   unsubscribe: (endpoint: string) => post<{ publicKey: string; devices: number }>('/push/unsubscribe', { endpoint }),
+  /** Pushes a test notification to every device of mine now; each push service's answer comes back. */
+  test: (endpoint: string | null) => post<PushTestResult>('/push/test', { endpoint }),
   signInStatus: (endpoint?: string | null) => get<SignInDevice>('/push/sign-in', { endpoint: endpoint ?? undefined }),
   setSignIn: (endpoint: string, enabled: boolean) => put<SignInDevice>('/push/sign-in', { endpoint, enabled }),
 };
