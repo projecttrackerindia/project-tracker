@@ -4,3 +4,5 @@
 .calm-act .calm-row-t b { font-weight: 600; }
 .calm-act-face { width: 28px !important; height: 28px !important; font-size: 10px !important; flex: none; }
 @media (max-width: 600px) { .calm-act .calm-hero-title { font-size: 34px; } }
+.co-face, .cd-face, .calm-act-face { border-radius: 50%; display: inline-grid !important; place-items: center; background: var(--calm-accent); color: #fff; font-weight: 600; overflow: hidden; }
+.co-face .face-img, .cd-face .face-img, .calm-act-face .face-img { width: 100%; height: 100%; object-fit: cover; }

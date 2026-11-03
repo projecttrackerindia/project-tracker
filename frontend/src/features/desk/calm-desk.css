@@ -36,3 +36,6 @@
   .cd-then .cd-more { margin-left: 0; }
   .cd-then button { min-height: 44px; }
 }
+.cd-side .calm-row-t small { display: block; margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; }
+.co-face, .cd-face, .calm-act-face { border-radius: 50%; display: inline-grid !important; place-items: center; background: var(--calm-accent); color: #fff; font-weight: 600; overflow: hidden; }
+.co-face .face-img, .cd-face .face-img, .calm-act-face .face-img { width: 100%; height: 100%; object-fit: cover; }
