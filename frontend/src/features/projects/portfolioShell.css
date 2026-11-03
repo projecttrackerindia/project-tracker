@@ -1,0 +1,83 @@
+/* Portfolio shell (PortfolioShell.tsx): the Plan sheet's language (design plansheet4–8) on every tab — one head, the folder tabs, one tinted page with
+   the command field, the same skeleton, the same tab-switch fade, full height, radius 16 / 10 / 8 and the project tints (.pc-*, planSheetTabs.css).
+   Tokens come from .ps3 / .ps4 (planSheet.css, planSheetTabs.css), so dark follows the app theme. */
+
+.pj2.pf-shell { display: block; }
+.pfx { display: flex; flex-direction: column; min-width: 0; }
+.pfx-head { flex-wrap: nowrap; min-width: 0; }
+.pfx-head .ps3-tabs { min-width: 0; }
+.pfx-presence:empty { display: none; }
+.pfx-presence { display: inline-flex; }
+
+/* The tinted page: always reaches the window's bottom (--pfx-fill is measured), whatever the tab. */
+.pfx .ps4-page.pfx-page { display: flex; flex-direction: column; min-height: var(--pfx-fill, calc(100vh - 160px)); }
+.pfx .ps4-page.pfx-page.pc-none { background: transparent; }
+.pfx-cmdrow { flex-wrap: nowrap; }
+.pfx-tools { display: inline-flex; align-items: center; gap: 10px; flex: none; }
+.pfx-tools:empty { display: none; }
+.pfx-filters { padding: 0 24px 12px; }
+
+/* The tab: one fade-and-rise on every switch, then it fills what is left. */
+.pfx-stage { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; animation: pfx-in .22s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes pfx-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .pfx-stage { animation: none; } }
+.pfx-stage > * { min-width: 0; }
+.pfx-stage > .pfx-board, .pfx-stage > .ptl, .pfx-stage > .cp, .pfx-stage > .ps3-sheet { flex: 1; display: flex; flex-direction: column; }
+.pfx-stage > .pfx-board, .pfx-stage > .ptl, .pfx-stage > .cp { padding: 2px 24px 92px; gap: 16px; }
+
+/* One skeleton: tinted project cards with shimmering rows (the Plan sheet's shapes). */
+.pfx-skel { display: flex; flex-direction: column; gap: 12px; padding: 4px 24px 24px; flex: 1; }
+.pfx-skel-card { border-radius: var(--r-card, 16px); background: var(--pt); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--pc) 70%, transparent); padding: 14px 18px; display: grid; gap: 12px; }
+.pfx-skel-card i { display: block; height: 10px; border-radius: 6px; background: linear-gradient(90deg, var(--p-fill, rgba(0,0,0,.05)) 0%, color-mix(in srgb, var(--pc) 16%, transparent) 50%, var(--p-fill, rgba(0,0,0,.05)) 100%);
+  background-size: 200% 100%; animation: pfx-shim 1.2s ease-in-out infinite; }
+.pfx-skel-card i.h { width: 34%; height: 13px; }
+@keyframes pfx-shim { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .pfx-skel-card i { animation: none; } }
+
+/* ---- Board in the Plan sheet language: the same radius, project tints and type. */
+.pfx .pf-big { margin: 0; }
+.pfx .pf-tile, .pfx .pf-summary .v2-ai-card, .pfx .pf-rail, .pfx .pf-col, .pfx .pb-money, .pfx .pb-capacity, .pfx .card { border-radius: var(--r-card); }
+.pfx .pf-tile { box-shadow: var(--sh-card); background: var(--p-solid); }
+.pfx .pf-tile > b { font-size: 44px; }
+.pfx .pf-lay { flex: 1; margin: 0; align-items: stretch; }
+.pfx .pf-board { align-items: stretch; }
+.pfx .pf-colwrap { display: flex; flex-direction: column; min-height: 0; }
+.pfx .pf-col { flex: 1; background: var(--p-fill); }
+.pfx .pf-card[class*='pc-'] { border-radius: var(--r-row); background: color-mix(in srgb, var(--pc) 7%, var(--p-solid)); box-shadow: inset 3px 0 0 var(--pc), var(--sh-card); padding-left: 14px; }
+.pfx .pf-key[class*='pc-'], .pfx .pf-card[class*='pc-'] .pf-key { background: var(--pc); color: #fff; }
+.pfx .pf-card-name { font-size: 13.5px; font-weight: 600; }
+html[data-theme='dark'] .pfx .pf-card[class*='pc-'] { background: color-mix(in srgb, var(--pc) 12%, var(--p-solid)); }
+.pf-drop .pf-key[class*='pc-'] { background: var(--pc); }
+
+/* ---- Timeline: its tools sit in the command row; the frame fills the page; each project carries its colour. */
+.pfx .ptl-toolbar.pfx-ttools { margin: 0; padding: 0; flex-wrap: nowrap; gap: 8px; }
+.pfx .ptl-frame { flex: 1; border-radius: var(--r-card); box-shadow: var(--sh-card); }
+.pfx .ptl-prow .ps4-sq, .pfx .ptl-prow-ph .ps4-sq { width: 8px; height: 8px; border-radius: 3px; display: inline-block; margin-right: 2px; vertical-align: 1px; }
+.pfx .ptl-foot { flex-wrap: wrap; align-items: center; }
+.pfx .ptl-foot .ptl-legend { margin-right: 8px; }
+
+/* ---- Capacity: tools in the command row; the grid card fills the page. */
+.pfx .cp-tools { display: inline-flex; align-items: center; gap: 10px; margin: 0; }
+.pfx .cp-card { flex: 1; border-radius: var(--r-card); box-shadow: var(--sh-card); }
+.pfx .cp-head { margin: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* ---- Phone: the same shell, stacked; the tabs scroll sideways. */
+.pfx.pfx-phone .ps3-head.pfx-head { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 2px; }
+.pfx-phone .pfx-head .ps3-crumb { flex: 1 1 100%; }
+.pfx-phone .pfx-head h1 { flex: 1 1 auto; min-width: 0; }
+.pfx-phone .pfx-head .ps3-sp { display: none; }
+.pfx-phone .pfx-head .v2-dots { order: 3; flex: none; }
+.pfx-phone .pfx-head .pfx-tabs { order: 4; flex: 1 1 100%; }
+.pfx-phone .pfx-tabs { margin: 8px -16px 4px; padding: 0 16px; overflow-x: auto; scrollbar-width: none; }
+.pfx-phone .pfx-tabs::-webkit-scrollbar { display: none; }
+.pfx-phone .pfx-cmdrow { flex-wrap: wrap; }
+.pfx-phone .pfx-tools { flex: 1 1 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.pfx-phone .pfx-tools::-webkit-scrollbar { display: none; }
+
+.pfx-phone .pfx-stage > .pfx-board, .pfx-phone .pfx-stage > .ptl, .pfx-phone .pfx-stage > .cp { padding: 2px 16px 24px; }
+.pfx-phone .pfx-skel { padding: 4px 16px 24px; }
+.pfx-phone .pfx-filters { padding: 0 16px 12px; }
+.pfx-phone .pf-big { flex-wrap: wrap; }
+.pfx-phone .pf-lay { display: flex; flex-direction: column; }
+.pfx-phone .pf-board { display: flex; flex-direction: column; }
+@media (max-width: 1100px) { .pfx .pf-lay { grid-template-columns: minmax(0, 1fr); } }

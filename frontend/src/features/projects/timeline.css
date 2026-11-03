@@ -1,10 +1,10 @@
 /* Portfolio › Timeline (design apple2 section 8: professional Gantt). */
-.ptl, .ptl-pop, .ptl-menu {
+.ptl, .ptl-pop, .ptl-menu, .pfx-ttools {
   --tl-surface: var(--ds-surface, #fff); --tl-fill: #f2f2f4; --tl-fill2: #e8e8ed; --tl-line: #e3e3e8; --tl-text: var(--ds-text, #1d1d1f); --tl-t2: #515154; --tl-t3: #86868b; --tl-t4: #aeaeb2;
   --tl-ok: #0071e3; --tl-ok-soft: #e8f1fd; --tl-risk: #e07b00; --tl-risk-soft: #fff3e0; --tl-late: #e5342b; --tl-late-soft: #fdecea; --tl-done: #1f9d55; --tl-done-soft: #e6f6ec;
   --tl-ns: #86868b; --tl-ns-soft: #e8e8ed; --tl-violet: #5e5ce6; --tl-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 28px -12px rgba(0,0,0,.18); --tl-sel: #e8f1fd;
 }
-html[data-theme='dark'] .ptl, html[data-theme='dark'] .ptl-pop, html[data-theme='dark'] .ptl-menu {
+html[data-theme='dark'] .ptl, html[data-theme='dark'] .ptl-pop, html[data-theme='dark'] .ptl-menu, html[data-theme='dark'] .pfx-ttools {
   --tl-surface: #1c1c1e; --tl-fill: #242427; --tl-fill2: #2c2c30; --tl-line: #333337; --tl-text: #f5f5f7; --tl-t2: #c7c7cc; --tl-t3: #8e8e93; --tl-t4: #636366;
   --tl-ok: #2f8cff; --tl-ok-soft: #16304f; --tl-risk: #ff9f0a; --tl-risk-soft: #3a2a10; --tl-late: #ff5a4f; --tl-late-soft: #3a1a18; --tl-done: #34c759; --tl-done-soft: #123222;
   --tl-ns: #8e8e93; --tl-ns-soft: #2c2c30; --tl-violet: #7d7aff; --tl-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -12px rgba(0,0,0,.7); --tl-sel: #16304f;

@@ -49,7 +49,7 @@ export function rollup(rows: SheetRow[]) {
 export function FocusView({ project, data, rows, work, today, colour, name, statusesBy, meeting, save, refresh, onBack, onWarn, calendar, command }: {
   project: SheetRow; data: PlanSheetData; rows: SheetRow[]; work: SheetRow[]; today: string; colour: Colour; name: string; statusesBy: Map<string, SheetStatus[]>;
   meeting: LinkedMeeting | null; save: (c: SheetChange[], label: string) => Promise<void>; refresh: () => Promise<unknown>; onBack: () => void; onWarn: (t: string | null) => void;
-  calendar: { feed: boolean; syncedAt: string | null }; command: ReactNode;
+  calendar: { feed: boolean; syncedAt: string | null }; command?: ReactNode;
 }) {
   const tree = useMemo(() => buildTree(project, work), [project, work]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -122,7 +122,7 @@ export function FocusView({ project, data, rows, work, today, colour, name, stat
           <span className="lb" style={{ right: 0 }}>{dm(new Date(span.b * 86_400_000).toISOString().slice(0, 10))}</span></div>}
         <div className="hcal"><div className="hk">On calendar</div><div className="hv">{work.filter((r) => r.projectId === project.id && r.due).length} dates{meeting ? ' · 1 meeting' : ''}</div></div>
       </div>
-      <div className="ps3-cmdrow">{command}</div>
+      {command && <div className="ps3-cmdrow">{command}</div>}
       <div className="ps4-tbody">
         <div className={`ps4-tree ${inspected ? 'narrow' : ''}`} role="treegrid" aria-label={`${name} tree`}>
           <div className="colh" role="row"><span>Task</span><span>Owner</span><span>Dates</span><span>Status</span><span>Progress</span><span>Notes</span></div>

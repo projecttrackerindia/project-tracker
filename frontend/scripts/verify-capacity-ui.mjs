@@ -116,7 +116,8 @@ try{
  assert.match(foot,/Team total · 6 weeks: 330h booked \/ 360h available \(92%\)/);assert.match(foot,/3 over-booked weeks · 1 leave week · 0 public holidays/);
  checks.push('heatmap');
  await shot(page,'capacity-1440.png');
- await cap.getByRole('tablist',{name:'Show as'}).getByRole('tab',{name:'%'}).click();
+ // The Hours / % switch sits in the Portfolio shell's command row (the tab's tools), not inside the grid's region.
+ await page.getByRole('tablist',{name:'Show as'}).getByRole('tab',{name:'%'}).click();
  assert.ok((await leo.locator('.cp-cell.over').first().innerText()).includes('135%'));
  checks.push('percent');
  await cap.getByRole('button',{name:'Preview'}).click();

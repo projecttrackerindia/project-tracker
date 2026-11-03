@@ -2,10 +2,13 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Keyboard
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { useWsQuery } from '../../lib/hooks';
+import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
+import { PortfolioSkeleton, ShellTools, usePhone, useProjectColour, useProjectFilter } from './PortfolioShell';
+import { portfolioKeys, refreshPortfolio } from './portfolioShared';
 import { portfolioApi, type PortfolioFilter, type TimelineProject } from './portfolioApi';
 import {
-  dmy, dn, fitRange, iso, mergeMilestones, placeLabel, PX_PER_DAY, slipOf, startOf, statusOf, textW, ticks, TONE, type TStatus, type Zoom,
+  dmy, dn, fitRange, iso, mergeMilestones, placeLabel, PX_PER_DAY, slipOf, startOf, statusOf, textW, ticks, TONE, type Zoom,
 } from './timelineLayout';
 import './timeline.css';
 
@@ -17,12 +20,6 @@ const first = (s: string | null | undefined) => (s ?? '').split(' ')[0];
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
 
-function usePhone() {
-  const q = '(max-width: 760px)';
-  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches);
-  useEffect(() => { const m = window.matchMedia(q); const on = () => setPhone(m.matches); m.addEventListener('change', on); return () => m.removeEventListener('change', on); }, []);
-  return phone;
-}
 
 export function TimelineLegend() {
   return (
@@ -43,16 +40,18 @@ interface Pending { p: TimelineProject; to: string; x: number; y: number }
  * a reason and saves through the project's own due-date change. On a phone: a grouped list with mini bars.
  */
 export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter; onRange?: (label: string) => void }) {
-  const q = useWsQuery(['portfolio', 'timeline', filter], () => portfolioApi.timeline(filter), { placeholderData: (p) => p });
+  // The Board's key too: one cached copy, refreshed by an edit on any tab.
+  const q = useWsQuery(portfolioKeys.timeline(filter), () => portfolioApi.timeline(filter), { placeholderData: (p) => p });
+  const wid = useWorkspaceId();
+  const passes = useProjectFilter();
+  const colourOf = useProjectColour();
   const phone = usePhone();
   const navigate = useNavigate();
   const today = new Date().toISOString().slice(0, 10);
   const [zoom, setZoom] = useState<Zoom>('week');
   const [fit, setFit] = useState(true);
   const [group, setGroup] = useState<GroupBy>('team');
-  const [statusF, setStatusF] = useState<TStatus | null>(null);
-  const [ownerF, setOwnerF] = useState<string | null>(null);
-  const [menu, setMenu] = useState<null | 'group' | 'status' | 'owner'>(null);
+  const [menu, setMenu] = useState<null | 'group'>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<{ id: string; to: string } | null>(null);
@@ -69,7 +68,8 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   }, [phone, q.data]);
 
   const all = useMemo(() => q.data?.projects ?? [], [q.data]);
-  const projects = useMemo(() => all.filter((p) => (!statusF || statusOf(p, today) === statusF) && (!ownerF || p.owner === ownerF)), [all, statusF, ownerF, today]);
+  // Owner, status, dates, project, colour and text: the shell's one field (in the address), the same on every tab.
+  const projects = useMemo(() => all.filter((p) => passes({ id: p.id, name: p.name, key: p.key, ownerId: p.ownerId, owner: p.owner, health: p.health, due: p.due })), [all, passes]);
   const range = useMemo(() => fitRange(projects.length ? projects : all, today), [projects, all, today]);
   const days = range.to - range.from;
   const px = fit ? avail / days : PX_PER_DAY[zoom];
@@ -96,7 +96,6 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   const dependents = (id: string) => all.filter((x) => x.dependsOn.includes(id)).length;
   const late = projects.filter((p) => statusOf(p, today) === 'Late').length, risk = projects.filter((p) => statusOf(p, today) === 'At risk').length;
   const todayX = X(today);
-  const owners = [...new Set(all.map((p) => p.owner).filter((x): x is string => !!x))].sort();
 
   const save = async (p: TimelineProject, to: string, reason: string | null) => {
     try {
@@ -104,7 +103,8 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
       const row = res.rows[0];
       if (!row?.ok) { toast(row?.error ?? 'The new date could not be saved.', 'error'); return false; }
       toast(`${p.key} re-planned to ${dmy(to)}.`, 'success');
-      await q.refetch();
+      // Every tab: the Board's cards and the Plan sheet's project row show the new date without a reload.
+      await refreshPortfolio(wid);
       return true;
     } catch (e) { toast(e instanceof ApiError ? e.message : 'The new date could not be saved.', 'error'); return false; }
   };
@@ -139,27 +139,21 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   };
   useEffect(() => { const el = box.current?.querySelector<HTMLElement>(`[data-row="${focus}"]`); if (el && box.current?.contains(document.activeElement)) el.focus(); }, [focus]);
 
-  if (q.isLoading) return <p className="muted" role="status">Loading the timeline…</p>;
-  if (!q.data || all.length === 0) return <section className="ptl" aria-label="Timeline"><p className="ptl-empty">No projects match.</p></section>;
+  if (q.isLoading) return <PortfolioSkeleton label="Loading the timeline" />;
+  if (!q.data || projects.length === 0) return <section className="ptl" aria-label="Timeline"><p className="ptl-empty">No projects match.</p></section>;
 
   const toolbar = (
-    <div className="ptl-toolbar" role="toolbar" aria-label="Timeline tools">
+    <ShellTools><div className="ptl-toolbar pfx-ttools" role="toolbar" aria-label="Timeline tools">
       <span className="ptl-rel"><button type="button" className="ptl-btn" aria-expanded={menu === 'group'} onClick={() => setMenu(menu === 'group' ? null : 'group')}>Group: {GROUP_LABEL[group]} ▾</button>
         {menu === 'group' && <Menu label="Group by" onClose={() => setMenu(null)}>{(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => <button key={g} type="button" role="menuitemradio" aria-checked={g === group} className={g === group ? 'on' : ''} onClick={() => { setGroup(g); setMenu(null); }}>{GROUP_LABEL[g]}</button>)}</Menu>}</span>
-      <span className="ptl-rel"><button type="button" className={`ptl-chip ${statusF ? 'on' : ''}`} aria-expanded={menu === 'status'} onClick={() => setMenu(menu === 'status' ? null : 'status')}>Status: {statusF ?? 'any'}</button>
-        {menu === 'status' && <Menu label="Status" onClose={() => setMenu(null)}>{([null, 'On track', 'At risk', 'Late', 'Done', 'Not started'] as (TStatus | null)[]).map((s) => <button key={s ?? 'any'} type="button" role="menuitemradio" aria-checked={s === statusF} className={s === statusF ? 'on' : ''} onClick={() => { setStatusF(s); setMenu(null); }}>{s ?? 'Any status'}</button>)}</Menu>}</span>
-      <span className="ptl-rel"><button type="button" className={`ptl-chip ${ownerF ? 'on' : ''}`} aria-expanded={menu === 'owner'} onClick={() => setMenu(menu === 'owner' ? null : 'owner')}>Owner: {ownerF ? first(ownerF) : 'any'}</button>
-        {menu === 'owner' && <Menu label="Owner" onClose={() => setMenu(null)}>{[null, ...owners].map((o) => <button key={o ?? 'any'} type="button" role="menuitemradio" aria-checked={o === ownerF} className={o === ownerF ? 'on' : ''} onClick={() => { setOwnerF(o); setMenu(null); }}>{o ?? 'Anyone'}</button>)}</Menu>}</span>
-      <span className="ptl-sp" />
-      <TimelineLegend />
       <div className="ptl-seg" role="tablist" aria-label="Zoom">
         {(['week', 'month', 'quarter'] as Zoom[]).map((z) => <button key={z} type="button" role="tab" aria-selected={z === zoom} className={z === zoom ? 'on' : ''} onClick={() => { setZoom(z); setFit(false); }}>{z[0].toUpperCase() + z.slice(1)}</button>)}
       </div>
       <button type="button" className={`ptl-btn fit ${fit ? 'pri' : ''}`} aria-pressed={fit} onClick={() => setFit(true)}>⤢ Fit · {monthsLabel}</button>
-    </div>
+    </div></ShellTools>
   );
 
-  if (phone) return <PhoneTimeline groups={groups} today={today} range={range} monthsLabel={monthsLabel} />;
+  if (phone) return <PhoneTimeline groups={groups} today={today} range={range} monthsLabel={monthsLabel} colourOf={colourOf} />;
 
   const hp = hover ? all.find((p) => p.id === hover.id) : null;
   const height = rows.length * ROW_H;
@@ -189,6 +183,7 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
               <div key={r.p.id} role="row" aria-level={2} tabIndex={projRows.findIndex((x) => x.i === i) === focus ? 0 : -1} data-row={projRows.findIndex((x) => x.i === i)}
                 className={`ptl-prow ${hover?.id === r.p.id || drag?.id === r.p.id || pending?.p.id === r.p.id ? 'on' : ''}`}
                 onFocus={() => setFocus(projRows.findIndex((x) => x.i === i))} onClick={() => navigate(`/work/projects/${r.p.id}`)}>
+                <i className={`ps4-sq pc-${colourOf(r.p.id)}`} aria-hidden="true" />
                 <i className={`ptl-dot ${TONE[statusOf(r.p, today)]}`} title={statusOf(r.p, today)} aria-label={statusOf(r.p, today)} />
                 <span className="ptl-pname" title={r.p.name}>{r.p.name}</span>
               </div>
@@ -211,6 +206,7 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
         </div>
       </div>
       <div className="ptl-foot">
+        <TimelineLegend />
         <span>{plural(projects.length, 'project')} · {late} late · {risk} at risk</span><span>Drag a bar end to re-plan</span><span>Click a bar to open the project</span>
         <span>{fit ? `Range fitted to your data: ${rangeLabel}` : `${rangeLabel} · ${zoom}`}</span>
         {days > 400 && zoom !== 'quarter' && <span className="ptl-hint">Long range: try Quarter</span>}
@@ -354,7 +350,7 @@ function ReplanPop({ pending, W, y, dependents, onCancel, onSave }: { pending: P
   );
 }
 
-function PhoneTimeline({ groups, today, range, monthsLabel }: { groups: { name: string; items: TimelineProject[] }[]; today: string; range: { from: number; to: number }; monthsLabel: string }) {
+function PhoneTimeline({ groups, today, range, monthsLabel, colourOf }: { groups: { name: string; items: TimelineProject[] }[]; today: string; range: { from: number; to: number }; monthsLabel: string; colourOf: (id: string) => string }) {
   const [lateFirst, setLateFirst] = useState(false);
   const navigate = useNavigate();
   const w = 150, px = w / (range.to - range.from);
@@ -375,7 +371,7 @@ function PhoneTimeline({ groups, today, range, monthsLabel }: { groups: { name: 
                 const st = statusOf(p, today); const slip = slipOf(p); const s = startOf(p);
                 return (
                   <button key={p.id} type="button" className="ptl-prow-ph" onClick={() => navigate(`/work/projects/${p.id}`)}>
-                    <span className="ptl-row"><b>{p.name}</b>{slip > 0 ? <em className="ptl-slipchip big">+{slip}d</em> : <span className="ptl-pcs">{p.progress}%</span>}</span>
+                    <span className="ptl-row"><b><i className={`ps4-sq pc-${colourOf(p.id)}`} aria-hidden="true" /> {p.name}</b>{slip > 0 ? <em className="ptl-slipchip big">+{slip}d</em> : <span className="ptl-pcs">{p.progress}%</span>}</span>
                     <span className="ptl-row">
                       <span className={`ptl-dates ${slip > 0 ? 'late' : ''}`}>{dmy(s)} → {dmy(slip > 0 ? p.forecast : p.due)}</span>
                       <span className="ptl-mini" aria-hidden="true">
