@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { invokeAura } from './lib/aura.mjs';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 import { assertFills, assertFillsMain, assertInToolbar } from './lib/fit.mjs';
@@ -439,7 +440,7 @@ try {
     // ---------------------------------------------------------------- the create sheet (dock › More…): a ticket from words, with chips, opened in the panel
     await page.goto(`${origin}/preview-org/work`);
     await list.locator('.mw-r').first().waitFor();
-    await page.locator('form.v2-ask input').click(); await page.locator('.aura-chip[data-chip="more"]').click();   // + New is gone: the dock's More… chip
+    await invokeAura(page); await page.locator('.aura-chip[data-chip="more"]').click();   // + New is gone: the capsule's More… chip
     const sheet = page.getByRole('dialog', { name: 'New' });
     await sheet.getByLabel('What to create').fill('VPN down for collections team, critical, give to Ravi');
     await sheet.locator('.v2-understood-label', { hasText: /Understood as\s*a ticket/ }).waitFor();
@@ -471,7 +472,7 @@ try {
       const kept = errors.length;
       const newSheet = async (words, tile) => {
         await page.goto(`${origin}/preview-org/work`); await page.locator('.mw-r').first().waitFor();
-        await page.locator('form.v2-ask input').click(); await page.locator('.aura-chip[data-chip="more"]').click();
+        await invokeAura(page); await page.locator('.aura-chip[data-chip="more"]').click();
         await sheet.getByLabel('What to create').fill(words);
         if (tile) await sheet.getByRole('radio', { name: tile }).click();
         await sheet.getByRole('button', { name: /^Create / }).click();
@@ -494,7 +495,7 @@ try {
       await page.keyboard.press('Escape');
       // A task needs its project: the Project chip asks for one, then it is made through /work-items too.
       await page.goto(`${origin}/preview-org/work`); await page.locator('.mw-r').first().waitFor();
-      await page.locator('form.v2-ask input').click(); await page.locator('.aura-chip[data-chip="more"]').click();
+      await invokeAura(page); await page.locator('.aura-chip[data-chip="more"]').click();
       await sheet.getByLabel('What to create').fill('Write the settlement runbook');
       await sheet.getByRole('radio', { name: 'Task' }).click();
       await sheet.getByLabel('Change project').selectOption(pid);

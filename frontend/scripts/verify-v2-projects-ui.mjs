@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { invokeAura, openAuraPanel } from './lib/aura.mjs';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
@@ -426,10 +427,11 @@ try {
   await shot(page, 'settings-project-agent-1440.png', true);
   checks.push('agent-settings-in-settings-ai');
 
-  // Ask Aura about <project>: the dock asks about it; its orb opens the Aura chat about it.
+  // Ask Aura about <project>: the capsule asks about it; its orb opens the Aura chat about it.
   await page.goto(`${origin}/preview-org/work/projects/${rp.id}`); await page.locator('.pp-head h1').waitFor();
+  await invokeAura(page);
   await page.locator('form.v2-ask input[placeholder="Ask Aura about Razor pay"]').waitFor();
-  await page.getByRole('button', { name: 'Open Aura' }).click(); await page.locator('.groot-chat').waitFor();
+  await openAuraPanel(page); await page.locator('.groot-chat').waitFor();
   assert.match(await page.locator('.groot-chat .gc-empty').innerText(), /Ask me anything about Razor pay/);
   await page.keyboard.press('Escape'); await page.locator('.groot-chat').waitFor({ state: 'detached' });
   checks.push('ask-about-project');
@@ -490,13 +492,13 @@ try {
   for (const t of ['', '?tab=work', '?tab=docs', '?tab=time', '?tab=activity']) {
     await page.goto(`${origin}/preview-org/work/projects/${rp.id}${t}`); await page.locator('.pp-head h1').waitFor(); await page.waitForTimeout(500);
     await fitsPhone(page, `project ${t || 'overview'}`, assert);
-    // Nothing covers content: the dock clears the project's head actions.
+    // Nothing covers content: Aura takes no space at rest, and nothing sits over the project's head actions.
     const covered = await page.evaluate(() => {
       const pill = document.querySelector('form.v2-ask')?.getBoundingClientRect();
       const actions = document.querySelector('.pp-actions')?.getBoundingClientRect();
       return !!pill && !!actions && pill.top < actions.bottom && pill.bottom > actions.top;
     });
-    assert.equal(covered, false, 'the dock does not cover the head');
+    assert.equal(covered, false, 'nothing of Aura covers the head');
   }
   await page.goto(`${origin}/preview-org/work/projects/${rp.id}`); await page.locator('.pp-journey').waitFor(); await shot(page, 'project-390.png', true);
   checks.push('phone-390');

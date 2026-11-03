@@ -17,7 +17,7 @@ html[data-theme='dark'] .ps3, html[data-theme='dark'] .ps3-float, html[data-them
 .ps3 *, .ps3-float *, .ps3-modal * { box-sizing: border-box; }
 .ps3 button, .ps3-float button, .ps3-modal button { font: inherit; color: inherit; }
 .ps3 { position: relative; }
-.ps3.ps3-phone { padding-bottom: 110px; }
+.ps3.ps3-phone { padding-bottom: 16px; }
 .ps3-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .ps3-sp { flex: 1; }
 .ps3-dim { color: var(--p-ink2); }
@@ -76,7 +76,7 @@ html[data-theme='dark'] .ps3, html[data-theme='dark'] .ps3-float, html[data-them
 /* body: grid + inspector */
 .ps3-body { display: flex; min-height: 0; border-top: 1px solid var(--p-line); }
 .ps3-sheet { flex: 1; min-width: 0; position: relative; }
-.ps3-scroll { overflow: auto; outline: 0; max-height: var(--ps3-h, none); padding-bottom: 88px; overscroll-behavior: contain; }
+.ps3-scroll { overflow: auto; outline: 0; max-height: var(--ps3-h, none); padding-bottom: 16px; overscroll-behavior: contain; }
 .ps3-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
 .ps3 .ps3-table th, html[data-theme='dark'] .ps3 .ps3-table thead th { position: sticky; top: 0; z-index: 2; height: 34px; font-size: 11.5px; font-weight: 500; color: var(--p-ink2); text-align: left; padding: 0 12px; border-bottom: 1px solid var(--p-line); background: var(--p-bg); white-space: nowrap; }
 .ps3-table th:first-child, .ps3-table td:first-child { padding-left: 24px; }

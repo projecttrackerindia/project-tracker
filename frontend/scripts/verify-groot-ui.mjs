@@ -3,9 +3,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
+import { invokeAura, openAuraPanel } from './lib/aura.mjs';
 import { appCsp } from './lib/csp.mjs';
 
-// Aura (formerly Aura), the assistant: the dock at the bottom ("Ask Aura or tell it what to do") shows quick-find results while typing and
+// Aura (formerly Aura), the assistant: the capsule invoked with Ctrl K ("Ask Aura or tell it what to do") shows quick-find results while typing and
 // opens the Aura chat; the empty chat's suggestions follow the organization's clock (morning: "Plan my day"; evening: "Wrap up my day" and
 // "Check out", which fires the groot:checkout hook); a question shows the orb thinking with step lines at once, then streams an answer with
 // steps, sources and a plan card whose Do it calls the action endpoint (and Undo while the server allows it); the orb's mood changes
@@ -114,10 +115,10 @@ try {
     const { ctx, page } = await newCtx();
     await page.goto(`${origin}/preview-org/`); await page.locator('.v2-rail').waitFor();
     const field = page.getByTestId('aura-dock').getByPlaceholder('Ask Aura or tell it what to do');
-    await field.waitFor();
+    await page.locator('.v2-tb .aura-hint').waitFor();
     assert.equal(await page.locator('.v2-tb input').count(), 0, 'no Ask field in the header');
     // Ctrl K lands in the dock; typing shows quick find above it.
-    for (let i = 0; i < 10 && !(await field.evaluate((el) => el === document.activeElement)); i++) { await page.keyboard.press('Control+k'); await page.waitForTimeout(300); }
+    for (let i = 0; i < 10 && !(await field.evaluate((el) => el === document.activeElement).catch(() => false)); i++) { await page.keyboard.press('Control+k'); await page.waitForTimeout(300); }
     assert.ok(await field.evaluate((el) => el === document.activeElement), 'Ctrl K puts the cursor in the dock');
     await field.fill('fire');
     await page.locator('#aura-quick-find .gq-row', { hasText: 'Firewall refresh' }).waitFor();
@@ -125,7 +126,7 @@ try {
     await page.keyboard.press('Escape'); checks.push('quick find');
 
     // The avatar opens the empty chat: a greeting by the organization's clock and morning suggestions.
-    await page.getByRole('button', { name: 'Open Aura' }).click();
+    await openAuraPanel(page);
     const chat = page.locator('.groot-chat'); await chat.waitFor();
     assert.equal(await mascot(page).getAttribute('data-state'), 'greeting', 'Aura says hello');
     await chat.getByText('Good morning, Lena').waitFor();
@@ -185,13 +186,13 @@ try {
     checks.push('identity');
     // History is kept for the session: close and open again.
     await page.keyboard.press('Escape'); await chat.waitFor({ state: 'detached' });
-    await page.getByRole('button', { name: 'Open Aura' }).click();
+    await openAuraPanel(page);
     await page.locator('.groot-chat .gc-me', { hasText: 'who are you?' }).waitFor();
     checks.push('session history');
     await page.keyboard.press('Escape');
 
     // The dock's "Create a task" chip with a pasted paragraph: a short title, the paragraph in the description, and a 422 "too long" shown as sent.
-    await field.click(); await field.fill(PARA);
+    await invokeAura(page); await field.fill(PARA);
     await page.locator('.aura-chip[data-chip="task"]').click();
     assert.equal(await page.getByLabel('What to create').inputValue(), PARA, 'the words typed in the dock carry into the create sheet');
     await page.getByRole('radio', { name: 'Task' }).click();
@@ -219,7 +220,7 @@ try {
     await ctx.route('**/api/v1/ai/title', (r) => r.fulfill({ status: 500, contentType: 'application/json', body: '{}' }));
     failFirstCreate = false;
     await page.goto(`${origin}/preview-org/`);
-    await page.getByTestId('aura-dock').getByRole('combobox').click();
+    await invokeAura(page);
     await page.locator('.aura-chip[data-chip="more"]').click();
     await page.getByLabel('What to create').fill(PARA);
     await page.getByRole('radio', { name: 'Task' }).click();
@@ -237,7 +238,7 @@ try {
   // ---------------------------------------------------------------- evening (18:15), dark: wrap up and the check-out hook
   {
     const { ctx, page } = await newCtx({ theme: 'dark', at: '2026-10-28T12:45:00Z' });
-    await page.goto(`${origin}/preview-org/`); await page.getByRole('button', { name: 'Open Aura' }).click();
+    await page.goto(`${origin}/preview-org/`); await openAuraPanel(page);
     const chat = page.locator('.groot-chat'); await chat.waitFor();
     await chat.getByText('Good evening, Lena').waitFor();
     const evening = await chat.locator('.gc-sugg .gc-chip').allTextContents();
@@ -256,7 +257,7 @@ try {
   // ---------------------------------------------------------------- reduced motion
   {
     const { ctx, page } = await newCtx({ reduced: true });
-    await page.goto(`${origin}/preview-org/`); await page.getByRole('button', { name: 'Open Aura' }).click();
+    await page.goto(`${origin}/preview-org/`); await openAuraPanel(page);
     await page.locator('.groot-chat').waitFor();
     const orb = page.locator('.gc-empty [data-testid="aura-orb"] canvas');
     await orb.waitFor();
@@ -274,15 +275,16 @@ try {
   {
     const { ctx, page } = await newCtx({ phone: true });
     await page.goto(`${origin}/preview-org/`);
+    await invokeAura(page);
     const bar = page.locator('form.v2-ask'); await bar.waitFor();
     await bar.getByPlaceholder('Ask Aura or tell it what to do').fill('Plan my day');
     await bar.getByRole('button', { name: 'Send to Aura' }).click();
-    const sheet = page.locator('.groot-chat.phone'); await sheet.waitFor();
-    const box = await sheet.boundingBox(); assert.ok(box.width >= 389 && box.x <= 1, 'full-width sheet');
+    const sheet = page.locator('.groot-chat.card'); await sheet.waitFor();
+    const box = await sheet.boundingBox(); assert.ok(box.width >= 360 && box.x >= 11 && box.x + box.width <= 379, 'the answer card, edge to edge less the gutters');
     await sheet.locator('.gc-md', { hasText: 'is blocking the firewall change' }).waitFor();
     await fitsPhone(page, 'Aura sheet', assert);
     await shot(page, 'aura-phone-390.png');
-    checks.push('phone sheet');
+    checks.push('phone answer card');
     await ctx.close();
   }
 

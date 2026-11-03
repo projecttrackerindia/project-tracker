@@ -125,7 +125,7 @@ const make = async (device, theme) => {
   return ctx;
 };
 
-/** Visible things in the page (not fixed bars or sheets) that sit under the tab bar or the Ask bar once the page is scrolled to its end. */
+/** Visible things in the page (not fixed bars or sheets) that sit under the tab bar (or Aura's capsule, when up) once the page is scrolled to its end. */
 const underBars = (page) => page.evaluate(() => {
   scrollTo(0, document.documentElement.scrollHeight);
   const bar = document.querySelector('.v2-phone-bar')?.getBoundingClientRect();
@@ -207,18 +207,9 @@ try {
     await focus.getByRole('button', { name: 'Log time' }).click(); await page.waitForURL(/\/insights\?tab=time&log=ORL-21/);
     await page.evaluate(() => localStorage.removeItem('pm_focus_until'));
 
-    // Aura's dock steps aside while scrolling down a long page, and comes back on scroll up.
-    await page.goto(`${origin}/preview-org/?tab=calendar`); await page.locator('.v2-ask').waitFor();
-    const dockOp = () => page.getByTestId('aura-dock').evaluate((el) => getComputedStyle(el).opacity);
-    for (let i = 0; i < 6; i++) { await page.evaluate(() => scrollBy(0, 100)); await page.waitForTimeout(60); }
-    await page.waitForTimeout(500);
-    if (await page.evaluate(() => document.documentElement.scrollHeight > innerHeight + 200)) {
-      assert.equal(await dockOp(), '0', 'the dock steps aside while scrolling down');
-      await page.screenshot({ path: path.join(out, `ask-pill-${tag}.png`) }); shots.push(path.join(out, `ask-pill-${tag}.png`));
-      for (let i = 0; i < 3; i++) { await page.evaluate(() => scrollBy(0, -100)); await page.waitForTimeout(60); }
-      await page.waitForTimeout(500);
-      assert.equal(await dockOp(), '1', 'the dock is back on scroll up');
-    }
+    // Aura takes no space at rest: no capsule on the page until it is invoked (verify-aura-siri-ui.mjs covers the invoked flow).
+    await page.goto(`${origin}/preview-org/?tab=calendar`); await page.locator('.m-top .m-aura-orb').waitFor();
+    assert.equal(await page.getByTestId('aura-dock').count(), 0, 'no Aura bar at rest');
 
     // Desk: each row has a visible ⋯ with Assign and Resolve as full-size buttons.
     await page.goto(`${origin}/preview-org/desk`); await page.locator('.dq-t').first().waitFor();
