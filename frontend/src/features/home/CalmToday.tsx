@@ -106,7 +106,7 @@ export function CalmToday() {
 
   // The ribbon: meetings and calls, focus blocks, logged time; past ones faded.
   const segs: CalmSeg[] = [
-    ...meets.map((m) => ({ key: m.key, start: m.start, end: m.end, label: m.e.title, color: ribbonColors.meet, past: m.end <= nowH, onClick: () => nav(m.e.joinUrl ? `/meetings?open=${m.e.projectId ? 'p' : 'w'}:${m.e.id}` : '/meetings') })),
+    ...meets.map((m) => ({ key: m.key, start: m.start, end: m.end, label: m.e.title, color: /\b1:1\b|one-on-one/i.test(m.e.title) ? ribbonColors.review : /\b(sync|call|client)\b/i.test(m.e.title) ? ribbonColors.admin : ribbonColors.meet, past: m.end <= nowH, onClick: () => nav(m.e.joinUrl ? `/meetings?open=${m.e.projectId ? 'p' : 'w'}:${m.e.id}` : '/meetings') })),
     ...(day?.focus ?? []).map((f) => ({ key: f.key, start: f.start, end: f.end, label: `${f.e.key ? `${f.e.key} ` : ''}${f.e.title}`, color: ribbonColors.focus, past: f.end <= nowH })),
     ...(day?.time ?? []).filter((t) => t.start && t.end).map((t) => {
       const s = hourIn(new Date(t.start)), e = hourIn(new Date(t.end!));
@@ -114,7 +114,7 @@ export function CalmToday() {
     }),
   ];
   const ribbonHead = nextMeet
-    ? <><b>{nextMeet.e.title}{nextMeet.e.projectName ? ` · ${nextMeet.e.projectName}` : ''}</b> {nextIn! <= 0 ? 'now' : `in ${hm(nextIn!)}`}</>
+    ? <><b>{nextMeet.e.title}{nextMeet.e.projectName ? ` · ${nextMeet.e.projectName}` : ''}</b> {nextIn! <= 0 ? 'now' : nextIn! < 60 ? `in ${nextIn} min` : `in ${hm(nextIn!)}`}</>
     : state === 'evening' ? <>Day ends at <b>{hhmm(workEnd)}</b></> : <>No more meetings today</>;
   const join = nextMeet?.e.joinUrl;
 

@@ -99,7 +99,7 @@ export function CalmProjects() {
 
   return (
     <CalmSplit crumb={crumb} label="Projects">
-      <header className="cp-hero">
+      <header className={`cp-hero${mode === 'folders' ? ' sm' : ''}`}>
         {mode === 'folders' ? <h1>Browse projects.<em>Double-click a folder to open it.</em></h1>
           : <h1>{all.data ? `${live.length} project${live.length === 1 ? '' : 's'}.` : 'Projects.'}<em>{needs ? `${needs.name} needs you this week.` : live.length ? 'Everything is on track.' : 'Start your first one.'}</em></h1>}
       </header>
@@ -119,7 +119,7 @@ export function CalmProjects() {
         <div className={`pj3-split${selected ? '' : ' solo'}`}>
           <div className="pj3-folders" role="listbox" aria-label="Project folders">
             {shown.map((p) => <Folder key={p.id} p={p} on={selected?.id === p.id} onPick={() => setSel(p.id)} onOpen={() => nav(`/work/projects/${p.id}`)} />)}
-            {canCreate && <button type="button" className="pj3-folder new" onClick={() => openCalmNew({ type: 'project' })}><span><b>+ New project</b>Blank or from a template</span></button>}
+            {canCreate && <button type="button" className="pj3-folder add" onClick={() => openCalmNew({ type: 'project' })}><span className="fr"><b>+ New project</b><span>Blank or from a template</span></span></button>}
           </div>
           {selected && <InfoPanel p={selected} onClose={() => set('browse', null)} onEdit={() => setEditing(selected)} />}
         </div>
@@ -169,10 +169,10 @@ function Milestones({ projects }: { projects: Project[] }) {
 function Folder({ p, on, onPick, onOpen }: { p: Project; on: boolean; onPick: () => void; onOpen: () => void }) {
   const c = projectColor(p.id);
   return (
-    <button type="button" role="option" aria-selected={on} className={`pj3-folder${on ? ' on' : ''}`} style={{ '--fc': c } as CSSProperties} onClick={onPick} onDoubleClick={onOpen}
+    <button type="button" role="option" aria-selected={on} className={`pj3-folder${on ? ' on' : ''}`} style={{ '--pc': c } as CSSProperties} onClick={onPick} onDoubleClick={onOpen}
       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onOpen(); } }} aria-label={`${p.name}, ${open(p)} open tasks. Enter opens it.`}>
-      <span className="tab" aria-hidden="true" /><span className="sheet" aria-hidden="true" />
-      <span className="front"><b><CalmDot color={c} />{p.name}</b><small>{open(p)} open task{open(p) === 1 ? '' : 's'}</small><span>{p.progress}% done{p.dueDate ? ` · due ${shortDay(p.dueDate)}` : ''}</span></span>
+      <i className="pp" aria-hidden="true" /><i className="pp p2" aria-hidden="true" />
+      <span className="fr"><b><i className="dt" />{p.name}</b><span>{open(p)} open task{open(p) === 1 ? '' : 's'}</span><small>{p.progress}% done{p.dueDate ? ` · due ${shortDay(p.dueDate)}` : ''}</small></span>
     </button>
   );
 }
