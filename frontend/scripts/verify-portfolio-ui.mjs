@@ -173,8 +173,11 @@ try{
  // Drag a card to another column: a sheet explains and does the real thing (flag the risk as a follow-up on the project).
  await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Overview'}).click();await page.locator('.pf-board .pf-card[draggable="true"]').first().waitFor();
  {const card=page.locator('.pf-board .pf-card[draggable="true"]',{hasText:'Payments'}).first();
-  {const target=page.locator('.pf-colwrap.late');await card.dragTo(target);
-   const sheet=page.getByRole('dialog',{name:/Move Payments to Late/});await sheet.waitFor();
+  {const target=page.locator('.pf-colwrap.late');
+   // On the Overview the project columns sit below the fold: bring them into view, and drag again if the first drop was lost.
+   const sheet=page.getByRole('dialog',{name:/Move Payments to Late/});
+   for(let k=0;k<3&&!(await sheet.isVisible());k++){await card.scrollIntoViewIfNeeded();await page.waitForTimeout(300);await card.dragTo(target);await sheet.waitFor({timeout:4000}).catch(()=>{});}
+   await sheet.waitFor();
    await sheet.getByLabel('What is the risk?').fill('Bank sandbox keys not shared');await shot(page,'board-drop-1440.png');
    await sheet.getByRole('button',{name:'Flag it'}).click();await sheet.waitFor({state:'detached'});
    assert.ok(writes.some(w=>w.ep===`/api/v1/projects/${pay}/action-items`&&/Late: Bank sandbox keys/.test(w.b.title)&&w.b.priority==='Critical'),'the drop flags the project with a follow-up');
