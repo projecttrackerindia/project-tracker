@@ -1,7 +1,8 @@
 import { useQueries } from '@tanstack/react-query';
+import { CalmJourney, calmStepPos, type CalmStep } from '../../components/calm';
 import { openSchedule } from '../meet/scheduleStore';
 import { motion, useReducedMotion } from 'framer-motion';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { agentApi, documentApi, projectApi, timeApi } from '../../api/endpoints';
@@ -312,16 +313,13 @@ function Journey({ detail, still, canSign, meId, plan, onPlan, signOff, releases
   const done = (s: Stage) => signedOff(s) || signed.includes(s.id);
   const curIdx = stages.findIndex((s) => !done(s));
   const cur = curIdx >= 0 ? stages[curIdx] : null;
-  let lead = 0; while (lead < stages.length && done(stages[lead])) lead++;
   const n = stages.length;
-  const pos = (i: number) => (n > 1 ? (i / (n - 1)) * 100 : 50);
   const signer = cur ? signerOf(cur, p) : null;
   const since = cur ? (curIdx > 0 ? stages[curIdx - 1].actualEnd : null) ?? cur.actualStart ?? cur.plannedStart : null;
   const waitDays = since ? -(daysUntil(since) ?? 0) : null;
   const note = !n ? 'No stages yet' : !cur ? 'Every stage is signed off'
     : awaiting(cur) ? `${cur.name} is waiting on ${signer ? (signer.id === meId ? 'your' : `${signer.name}’s`) : 'a'} sign-off${waitDays && waitDays > 0 ? ` · ${plural(waitDays, 'day')}` : ''}`
     : `${cur.name} · ${cur.taskDone} of ${plural(cur.taskTotal, 'item')} done${cur.plannedEnd ? ` · ends ${dayMonth(cur.plannedEnd)}` : ''}`;
-  const ref = useRef<HTMLDivElement>(null);
   return (
     <motion.section className="card pp-journey" aria-label="Journey" layoutId={still ? undefined : `pdots-${p.id}`}>
       <div className="pp-stages-head pp-journey-head">
@@ -332,34 +330,23 @@ function Journey({ detail, still, canSign, meId, plan, onPlan, signOff, releases
         </span>
       </div>
       {n > 0 && (
-        <div className="pp-jl-scroll">
-          <div className="pp-jl" ref={ref} style={{ ['--n' as string]: n }}>
-            <div className="pp-rail" />
-            <div className="pp-done" style={{ width: lead > 1 ? `${pos(lead - 1)}%` : 0 }} />
-            <ol>
-              {stages.map((s, i) => {
-                const isDone = done(s), isCur = i === curIdx;
-                const who = signerOf(s, p);
-                const sub = isDone ? dayMonth(signedOff(s) ? s.actualEnd ?? s.plannedEnd : todayIso())
-                  : isCur ? (awaiting(s) ? 'Awaiting sign-off' : s.effectiveStatus === 'Delayed' ? 'Late' : s.effectiveStatus === 'InProgress' ? 'In progress' : s.plannedStart ? dayMonth(s.plannedStart) : 'Next')
-                  : i === n - 1 && s.plannedEnd ? `to ${dayMonth(s.plannedEnd)}` : dayMonth(s.plannedStart ?? s.plannedEnd);
-                return (
-                  <li key={s.id} className={`pp-nd ${isDone ? 's' : ''} ${isCur ? 'cur' : ''} ${isCur && awaiting(s) ? 'wait' : ''} ${signing === s.id ? 'press' : ''}`} style={{ left: `${pos(i)}%` }}
-                    data-stage={s.name} aria-label={`${s.name}: ${isDone ? `signed off ${sub}` : isCur ? sub : `stage ${i + 1}, ${sub}`}`}>
-                    <span className="pp-nd-c">
-                      {isDone ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg> : i + 1}
-                      {isDone && who && <Initials name={who.name} seed={who.id} userId={who.id} className="pp-nd-av" />}
-                    </span>
-                    <b>{s.name}</b>
-                    <small>{sub}</small>
-                    {isCur && canSign && awaiting(s) && !s.locked && <button type="button" className="pp-sr" onClick={() => void sign(s)}>Sign off {s.name}</button>}
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-          {releases && <JourneyReleases projectId={p.id} stages={stages} n={n} pos={pos} />}
-        </div>
+        <CalmJourney label="Stages" scrollClassName="pp-jl-scroll" className="pp-jl" color="var(--pa-tint)"
+          steps={stages.map((s, i): CalmStep => {
+            const isDone = done(s), isCur = i === curIdx;
+            const who = signerOf(s, p);
+            const sub = isDone ? dayMonth(signedOff(s) ? s.actualEnd ?? s.plannedEnd : todayIso())
+              : isCur ? (awaiting(s) ? 'Awaiting sign-off' : s.effectiveStatus === 'Delayed' ? 'Late' : s.effectiveStatus === 'InProgress' ? 'In progress' : s.plannedStart ? dayMonth(s.plannedStart) : 'Next')
+              : i === n - 1 && s.plannedEnd ? `to ${dayMonth(s.plannedEnd)}` : dayMonth(s.plannedStart ?? s.plannedEnd);
+            return {
+              key: s.id, label: s.name, sub, state: isDone ? 'done' : isCur ? 'current' : 'next',
+              className: `pp-nd ${isDone ? 's' : ''} ${isCur ? 'cur' : ''} ${isCur && awaiting(s) ? 'wait' : ''} ${signing === s.id ? 'press' : ''}`,
+              dotClassName: 'pp-nd-c', data: { 'data-stage': s.name },
+              ariaLabel: `${s.name}: ${isDone ? `signed off ${sub}` : isCur ? sub : `stage ${i + 1}, ${sub}`}`,
+              badge: isDone && who ? <Initials name={who.name} seed={who.id} userId={who.id} className="pp-nd-av" /> : undefined,
+              extra: isCur && canSign && awaiting(s) && !s.locked ? <button type="button" className="pp-sr" onClick={() => void sign(s)}>Sign off {s.name}</button> : undefined,
+            };
+          })}
+          after={releases ? <JourneyReleases projectId={p.id} stages={stages} n={n} pos={(i) => calmStepPos(i, n)} /> : undefined} />
       )}
       {n === 0 && releases && <div className="pp-jl-scroll"><JourneyReleases projectId={p.id} stages={[]} n={1} pos={() => 50} /></div>}
     </motion.section>

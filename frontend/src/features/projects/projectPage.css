@@ -122,23 +122,10 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 .pp-journey-head h3 { font-size: 17px; }
 .pp-journey-note { display: inline-flex; align-items: baseline; gap: 12px; font-size: 12.5px; color: var(--ds-text-3); text-align: right; }
 .pp-journey-note .link-btn { font-size: 12.5px; }
-/* overflow-x: auto also clips vertically, so the scroller keeps room above the 46px nodes for their ring, glow and the signer's photo. */
-.pp-jl-scroll { overflow-x: auto; scrollbar-width: none; padding: 14px 0 6px; }
-.pp-jl-scroll::-webkit-scrollbar { display: none; }
-.pp-jl { position: relative; height: 108px; margin: 4px 40px 0; min-width: calc(var(--n) * 64px); }
-.pp-jl ol { list-style: none; margin: 0; padding: 0; }
-.pp-rail, .pp-done { position: absolute; top: 22px; height: 3px; border-radius: 2px; left: 0; }
-.pp-rail { right: 0; background: var(--ds-fill); }
-.pp-done { background: var(--pa-tint); transition: width var(--motion-emphasised) var(--ease-standard); }
-.pp-nd { position: absolute; top: 0; width: 120px; margin-left: -60px; text-align: center; }
-.pp-nd-c { position: relative; width: 46px; height: 46px; border-radius: 50%; margin: 0 auto; display: grid; place-items: center; background: var(--ds-surface); color: var(--ds-text-3);
-  box-shadow: inset 0 0 0 2px var(--ds-fill-strong); font-size: 11px; font-weight: 700; transition: background var(--motion-standard) ease-out, color var(--motion-standard) ease-out, box-shadow var(--motion-emphasised) ease-out .5s, transform var(--motion-micro); }
-.pp-nd.s .pp-nd-c { background: var(--pa-tint); color: #fff; box-shadow: 0 0 0 4px var(--ds-surface); transition: background var(--motion-standard) ease-out .5s, color var(--motion-standard) ease-out .5s, box-shadow var(--motion-standard) ease-out .5s, transform var(--motion-micro); }
-.pp-nd.cur .pp-nd-c { color: var(--pa-tint); box-shadow: inset 0 0 0 2.5px var(--pa-tint), 0 0 0 6px color-mix(in srgb, var(--pa-tint) 14%, transparent), 0 0 22px 6px color-mix(in srgb, var(--pa-tint) 28%, transparent); }
-.pp-nd.press .pp-nd-c { transform: scale(.92); }
-.pp-nd-av.pa-av { position: absolute; right: -8px; bottom: -4px; width: 20px; height: 20px; font-size: 8.5px; border: 2px solid var(--ds-surface); }
-.pp-nd b { display: block; font-size: 13px; font-weight: 600; margin-top: 10px; color: var(--ds-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pp-nd small { font-size: 11.5px; color: var(--ds-text-2); }
+/* the Journey is the calm kit's CalmJourney; only the project's own touches here */
+.pp-journey .calm-journey { padding-top: 10px; }
+.pp-nd-c .pp-nd-av.pa-av { width: 16px; height: 16px; font-size: 7px; box-shadow: 0 0 0 2px var(--calm-solid); }
+.pp-nd.press .pp-nd-c { transform: scale(.85); }
 .pp-nd.cur.wait small { color: #a35c00; font-weight: 600; }
 [data-theme='dark'] .pp-nd.cur.wait small { color: #ffb340; }
 .pp-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; padding: 0; }
@@ -199,7 +186,6 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
   .pp-ov { grid-template-columns: minmax(0, 1fr); }
   .pp-journey { padding: 16px; }
   .pp-journey-head { flex-wrap: wrap; }
-  .pp-jl { margin: 4px 30px 0; min-width: calc(var(--n) * 84px); }
 }
 @media (prefers-reduced-motion: reduce) { .pp-done, .pp-nd-c, .pp-nd.s .pp-nd-c { transition: none; } }
 .pp-box[aria-label='Risks'] .pp-tx b { white-space: normal; }
@@ -226,7 +212,7 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 .wr-text { width: 100%; box-sizing: border-box; padding: 14px; border: 0; border-radius: 12px; background: var(--ds-fill); color: var(--ds-text); font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
 
 /* Releases on the Journey: a lane under the stages; a flag per release at its date, its go/no-go under the name. */
-.pp-jr { position: relative; height: 74px; margin: 2px 40px 0; min-width: calc(var(--n) * 64px); }
+.pp-jr { position: relative; height: 74px; margin: 2px 0 0; min-width: calc(var(--n) * 84px); }
 .pp-jr ol { list-style: none; margin: 0; padding: 0; }
 .pp-jr-rail { position: absolute; left: 0; right: 0; top: 21px; border-top: 1.5px dashed var(--ds-fill-strong); }
 .pp-rel { position: absolute; top: 0; width: 112px; margin-left: -56px; text-align: center; }
@@ -243,7 +229,7 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 .pp-rel.done .pp-rel-flag { background: var(--ds-text-3); box-shadow: 0 0 0 3px var(--ds-surface); }
 .pp-rel.low b { margin-top: 30px; }
 .pp-jr:has(.pp-rel.low) { height: 104px; }
-@media (max-width: 700px) { .pp-jr { margin: 2px 30px 0; min-width: calc(var(--n) * 84px); } }
+
 /* At the ends of the lane the label hangs inward so it is never cut off by the scroller. */
 .pp-rel.start { margin-left: -11px; text-align: left; } .pp-rel.start a { align-items: flex-start; }
 .pp-rel.end { margin-left: -101px; text-align: right; } .pp-rel.end a { align-items: flex-end; }
