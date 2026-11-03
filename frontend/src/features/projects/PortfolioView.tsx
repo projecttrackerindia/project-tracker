@@ -1,16 +1,18 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { AiCard } from '../../components/v2/AiCard';
+import { Icon } from '../../components/Icon';
 import { ErrorState } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useTeamLens } from '../../lib/teamLens';
 import { toast } from '../../stores/ui';
-import { aiWorkspaceApi } from '../ai/aiApi';
+import { aiWorkspaceApi, type PortfolioBrief } from '../ai/aiApi';
 import { useAi, useAssistant } from '../ai/Assistant';
 import type { DotsItem } from '../talk/DotsMenu';
 import { CapacityPlanView } from './CapacityPlan';
 import { CapacitySection, filterCount, MoneySection, PortfolioFilters } from './PortfolioBoard';
-import { BoardColumns, DecisionCard, PresentOverlay } from './PortfolioViews';
+import { BoardColumns, DecisionCard, PresentOverlay, useProjects } from './PortfolioViews';
+import { PortfolioPulse } from './PortfolioPulse';
 import { PortfolioTimeline } from './PortfolioTimeline';
 import { PlanSheetView } from './PlanSheet';
 import { decisionItems, type DecisionItem } from './portfolioDecisions';
@@ -108,20 +110,49 @@ function BoardTab({ ai }: { ai: boolean }) {
         <div className="pf-tile late"><b>{b.delayed}</b><span><strong>Late</strong><small>{keysOf('Delayed') || 'None late'}</small></span></div>
         <Summary summary={b.headlines[0] ?? board.summary} filter={filter} ai={ai} />
       </div>
-      {(b.workComplete ?? 0) > 0 && <section className="card" aria-label="Work complete, check sign-offs"><h3>Work complete · check release sign-offs</h3><ul>{ranked.filter((r) => r.health === 'Completed').map((r) => <li key={r.projectId}><Link to={`/work/projects/${r.projectId}`}>{r.key} · {r.name}</Link></li>)}</ul></section>}
+      <SignOffNote done={ranked.filter((r) => r.health === 'Completed')} />
       <div className="pf-lay">
         <BoardColumns filter={filter} brief={b} items={items} />
         <section aria-label="Decisions this week" className="pf-rail">
           <h3 className="pf-rail-head">Decisions this week <em>{items.length}</em></h3>
-          {items.length === 0 ? <p className="pf-calm">No project is forecast to miss its date.</p>
+          {items.length === 0 ? <div className="pf-calm pf-calm-empty"><Icon name="checkCircle" size={22} /><b>Nothing to decide</b><span>No project is forecast to miss its date.</span></div>
             : <div className="pf-decs">{items.map((it) => <DecisionCard key={it.projectId} item={it} filter={filter} owner={rankedOwner.get(it.projectId) ?? null} />)}</div>}
         </section>
       </div>
+      <BoardPulse filter={filter} brief={b} />
       <MoneySection m={board.money} />
       <CapacitySection c={board.capacity} />
       {mode === 'present' && <PresentOverlay items={items} filter={filter} brief={b} asOf={asOf ?? null} onClose={() => setMode('board')} />}
     </div>
   );
+}
+
+/**
+ * When the work is done but release sign-offs are still open: one calm inline status in the shell's card language — an icon, one sentence,
+ * one action. It names the projects; the action opens the first one, where the stages are signed off.
+ */
+function SignOffNote({ done }: { done: { projectId: string; name: string }[] }) {
+  if (done.length === 0) return null;
+  const [first] = done;
+  const names = done.length === 1 ? first!.name : `${done.length} projects`;
+  return (
+    <section className="pfx-note" role="status" aria-label="Work complete, check sign-offs">
+      <span className="pfx-note-ic" aria-hidden="true"><Icon name="checkCircle" size={18} /></span>
+      <span className="pfx-note-txt">
+        <b>All work is done on {names}.</b>
+        <span>{done.length > 1 ? <>{done.map((d, i) => <span key={d.projectId}>{i > 0 && ', '}<Link to={`/work/projects/${d.projectId}`}>{d.name}</Link></span>)} — release</> : 'Release'} sign-offs are still open.</span>
+      </span>
+      <Link className="pfx-note-act" to={`/work/projects/${first!.projectId}`}>Review sign-offs</Link>
+    </section>
+  );
+}
+
+/** Under the columns, the room they leave: the next dates and when work lands, each project in its one colour. */
+function BoardPulse({ filter, brief }: { filter: PortfolioFilter; brief: PortfolioBrief }) {
+  const { projects } = useProjects(filter, brief);
+  const today = brief.asOf?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+  if (projects.length === 0) return null;
+  return <PortfolioPulse projects={projects} today={today} kinds={['coming', 'months']} />;
 }
 
 /** ✦ One sentence: from the brief, or written by the AI for the meeting. */
