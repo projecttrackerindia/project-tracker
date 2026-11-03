@@ -53,6 +53,7 @@ export function DocsHub() {
   const wid = useWorkspaceId();
   const [q, setQ] = useState('');
   const [asking, setAsking] = useState(false);
+  const [finding, setFinding] = useState(() => new URLSearchParams(window.location.search).get('find') === '1');
   const [asked, setAsked] = useState<string | null>(null);
   const [kind, setKind] = useState<KindFilter>('all');
   const [modal, setModal] = useState<null | 'flows' | 'required' | 'wizard' | 'ai'>(null);
@@ -79,10 +80,14 @@ export function DocsHub() {
     <div className="page dx dx-hub">
       <section className="dx-hero dx-hero-big" aria-label="Search and ask">
         <div className="dx-hero-top">
-          <p className="dx-eyebrow">Documentation</p>
           <div className="dx-hub-tools">
             {canCreate && <NewDocMenu onAi={() => setModal('ai')} onBlank={() => void newPage.create()} onTemplate={() => setModal('wizard')} />}
             <DotsMenu label="More in Library" items={[
+              { label: 'Search or ask', hint: 'Pages, endpoints and diagrams', icon: 'search', onSelect: () => setFinding((v) => !v) },
+              ...(canCreate ? [
+                { label: 'New architecture', hint: 'A diagram for a project', icon: 'layers' as const, onSelect: () => navigate(docsPath.architecture(projects[0]?.id ?? null)) },
+                { label: 'Attach a Figma design', hint: 'Link a design to a space', icon: 'link' as const, onSelect: () => navigate(docsPath.designs(projects[0]?.id ?? null)) },
+              ] : []),
               { label: 'Security Center', hint: 'Masking, reveals, access requests and the audit trail', icon: 'shield', onSelect: () => navigate(docsPath.security()) },
               { label: 'Approval workflows', hint: 'Who reviews before a document is published', icon: 'checks', onSelect: () => setModal('flows') },
               { label: 'Required documents', hint: 'Documents every project must have', icon: 'flag', onSelect: () => setModal('required'), hidden: !c?.isAdmin },
@@ -99,15 +104,7 @@ export function DocsHub() {
             <CalmGo onClick={() => navigate(docsPath.doc(shelf[0].id))}>Resume</CalmGo>
           </CalmCard>
         )}
-        <AskDocs hero typeOf={(id) => types.get(id)} onAsking={onAsking} onQuery={setQ} onAsked={setAsked} placeholder="Search pages, endpoints and diagrams — or ask a question" />
-        {canCreate && (
-          <div className="dx-quick" role="group" aria-label="Quick actions">
-            <button type="button" className="dx-chip primary" onClick={() => void newPage.create()}>New page</button>
-            <button type="button" className="dx-chip" onClick={() => navigate(docsPath.architecture(projects[0]?.id ?? null))}>New architecture</button>
-            <button type="button" className="dx-chip" onClick={() => navigate(docsPath.designs(projects[0]?.id ?? null))}>Attach a Figma design</button>
-            <button type="button" className="dx-chip" onClick={() => document.querySelector<HTMLElement>('[data-testid="paste-curl"]')?.click()}>Paste a cURL → API page</button>
-          </div>
-        )}
+        {(finding || q) && <AskDocs hero typeOf={(id) => types.get(id)} onAsking={onAsking} onQuery={setQ} onAsked={setAsked} placeholder="Search pages, endpoints and diagrams — or ask a question" />}
       </section>
 
       {searching && c ? <SearchResults catalog={c} q={q} /> : (

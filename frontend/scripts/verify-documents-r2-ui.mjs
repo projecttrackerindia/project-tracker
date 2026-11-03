@@ -205,7 +205,7 @@ try{
  await page.setViewportSize({width:1440,height:1000});checks.push('phone-page');
 
  // Library's documentation hub: ask the pages (the answer unfurls with its sources), words inside pages, drafts to approve, write with AI.
- await page.goto(origin+'/preview-org/library');
+ await page.goto(origin+'/preview-org/library?find=1');
  const search=page.getByRole('searchbox',{name:'Ask your docs'});
  await search.fill('How long do refunds take?');await search.press('Enter');
  const answer=page.locator('.lb-ans');
@@ -266,7 +266,7 @@ try{
  await shot(page,'tree-1440.png');checks.push('drag-reorder');
 
  await page.setViewportSize({width:390,height:844});
- await page.goto(origin+'/preview-org/library');await page.getByTestId('needs-review').waitFor();
+ await page.goto(origin+'/preview-org/library?find=1');await page.getByTestId('needs-review').waitFor();
  await fitsPhone(page,'Library on a phone',assert);
  await shot(page,'library-390.png');checks.push('phone-home');
  // The topic navigator on a phone, in dark mode.

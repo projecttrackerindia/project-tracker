@@ -38,6 +38,7 @@ const handler = async (route) => {
     return;
   }
   let data = [];
+  if (process.env.DBG) console.log('api:', method, ep);
   if (ep.endsWith('/auth/refresh')) data = { accessToken: token, expiresAt: '2099-01-01T00:00:00Z', user };
   else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, role, reportCount: role === 'Manager' ? 2 : 0,
     permissions: role === 'Owner' ? ['projects.view', 'tasks.view', 'work.view', 'work.create', 'org.manage', 'org.structure', 'members.invite', 'members.manage', 'audit.view', 'reports.view', 'vault.use', 'access.manage'] : ['projects.view', 'tasks.view', 'work.view'],
@@ -57,6 +58,19 @@ const handler = async (route) => {
   else if (ep.startsWith('/api/v1/work-items/')) { const t = tickets.find((r) => ep.endsWith(r.id)); data = t ? detail(t) : null; }
   else if (ep === '/api/v1/activity' || ep.endsWith('/insights/activity')) data = { items: [{ id: id(400), action: 'task.created', summary: 'added the release checklist', actor: { id: id(12), name: 'Cara Lund' }, createdAt: iso(-10) }], page: 1, totalPages: 1, totalItems: 1 };
   else if (ep.endsWith('/projects') || ep.endsWith('/tasks') || ep.endsWith('/work-tasks')) data = { items: [], page: 1, totalPages: 0, totalItems: 0 };
+  else if (ep === '/api/v1/documents') data = { items: [{ id: id(500), title: 'Payments spec', key: 'DOC-1', number: 1, typeId: 't-PAGE', typeCode: 'PAGE', typeName: 'Page', typeColor: '#4f46e5', typeIcon: 'file', status: 'Published', projectId: null, projectKey: null, projectName: null, teamId: null, teamName: null, owner: { id: user.id, name: 'Asha Rao' }, visibility: 'Workspace', classification: 'Internal', tags: [], updatedAt: iso(-90), createdAt: iso(-900), linkedCount: 0 }], nextCursor: null, total: 1 };
+  else if (ep === '/api/v1/doctracker/catalog') data = { projects: [{ id: id(600), name: 'Atlas', key: 'AT', endpoints: [], definitions: [], documents: [], diagrams: 0 }], canCreate: true, isAdmin: true, truncated: 0 };
+  else if (ep === '/api/v1/documents/dashboard') data = { total: 1, byStatus: [], byType: [], mine: 1, waitingForMe: 0, updatedThisWeek: 1, notUpdatedIn90Days: 0, unpublished: 0, recent: [] };
+  else if (ep === '/api/v1/vault/overview') data = { collections: [{ id: 'c1', name: 'My vault', description: null, kind: 'Personal', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 0, atRisk: 0, requireStepUp: false, rotateEveryDays: null, locked: false, shares: null, sealed: false, rekeyNeeded: false, keyVersion: 0, requireApproval: false, requestable: false }], policy: { stepUpAlways: false, clipboardSeconds: 30, revealSeconds: 10, sharedAdminsOnly: false }, canAdmin: true, canCreateShared: true, health: { total: 0, weak: 0, reused: 0, breached: 0, expired: 0, old: 0, toRotate: 0, score: 100 }, mfaEnabled: true, identity: null, hasPasskeys: false };
+  else if (ep === '/api/v1/vault/requests') data = { mine: [], toDecide: [] };
+  else if (ep === '/api/v1/vault/keys/circle') data = { circle: null };
+  else if (ep === '/api/v1/vault/keys/me') data = { identity: null, unlocks: [] };
+  else if (ep === '/api/v1/workload') data = { scope: 'Everyone', available: ['Everyone'], members: people.map((p, i) => ({ userId: p.userId, name: p.displayName, email: `p${i}@example.test`, jobRole: null, level: 0, reportsTo: null, open: 2 + i, overdue: i % 2, doneLast30Days: 3, loggedMinutesLast7Days: 60, nextUp: [], dueThisWeek: 1, openByKind: null })), totals: { people: 5, open: 20, overdue: 2 } };
+  else if (ep === '/api/v1/operations/insights') data = { days: 30, open: 3, unassigned: 1, breached: 0, atRisk: 1, compliance: 1, medianResolutionHours: 6, medianResponseMinutes: 18, createdInPeriod: 8, completedInPeriod: 6, weeks: [], aging: [], byTeam: [], byType: [], byPerson: [] };
+  else if (ep === '/api/v1/reports/exports' || ep === '/api/v1/ai/operations/jobs' || ep === '/api/v1/ai/operations/schedules') data = [];
+  else if (ep === `/api/v1/documents/${id(500)}`) data = { item: { id: id(500), key: 'DOC-1', title: 'Payments spec', typeCode: 'PAGE', status: 'Published', updatedAt: iso(-90) }, revision: 1, versionLabel: '1.0', can: { edit: true, delete: true, link: true, share: true, publish: true }, publishedLabel: null, hasUnpublishedChanges: false, viewingPublished: false, sections: [{ key: 'body', title: 'Body', kind: 'Rich', sortOrder: 0, content: '<p>Refunds and idempotency.</p>' }] };
+  else if (ep === '/api/v1/documents/inbox') data = { toReview: [], submitted: [], accessToDecide: [], myAccessRequests: [], waiting: 0 };
+  else if (ep === '/api/v1/documents/search') data = { hits: [], total: 0 };
   else if (ep.endsWith('/matrix')) data = { runs: [], cases: [], results: [] };
   else if (ep === '/api/v1/settings/health') data = { score: 90, checks: [] };
   else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
@@ -70,7 +84,7 @@ const open = async (theme, w, h) => {
   const c = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', viewport: { width: w, height: h }, isMobile: w < 500, hasTouch: w < 500 });
   await c.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); localStorage.setItem('pm_home_mode', 'classic'); }, theme);
   await c.route('**/*', handler);
-  const page = await c.newPage(); page.on('pageerror', (e) => errors.push(String(e)));
+  const page = await c.newPage(); page.on('pageerror', (e) => errors.push(String(e))); page.on('console', (m) => { if (m.type() === 'error' && process.env.DBG) console.log('console:', m.text().slice(0, 300)); });
   return { c, page };
 };
 const go = async (page, url) => { await page.goto(`${origin}/preview-org${url}`); await page.waitForLoadState('networkidle').catch(() => {}); await page.waitForTimeout(700); };
@@ -79,6 +93,7 @@ try {
     const { c, page } = await open(theme, w, h);
     for (const [name, url, headline] of screens) {
       await go(page, url);
+      assert.equal(await page.getByText('Something went wrong').count(), 0, `${name} ${suffix}: page crashed`);
       if (headline) assert.match(await page.locator('.calm-hero-title').first().innerText(), headline, `${name}: calm headline`);
       if (w < 500) await fitsPhone(page, `${name} ${suffix}`, assert).catch((e) => { throw new Error(`${name} ${suffix}: ${e.message.split('\n').slice(0, 6).join(' ')}`); });
       const file = path.join(out, `${name}-${suffix}.png`); await page.screenshot({ path: file }); console.log(file);

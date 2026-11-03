@@ -82,7 +82,7 @@ export function QualityPage() {
       </ToolbarSeg>
       <div className="dq-hd qa-hd">
         <div>
-          <div className="dq-eyebrow">{[project, current ? releaseOf(current.name) : null].filter(Boolean).join(' · ') || 'Test cases and runs'}</div>
+          {(project || current) && <div className="dq-eyebrow">{[project, current ? releaseOf(current.name) : null].filter(Boolean).join(' · ')}</div>}
           <CalmHero title={failingCount === 0 ? (m.cases.length ? 'Everything passing.' : 'Quality.') : `${failingCount} failing ${failingCount === 1 ? 'case' : 'cases'}.`}
             second={firstFailed ? `${firstFailed.title} first.` : current ? `${current.name} is clear.` : undefined} />
         </div>

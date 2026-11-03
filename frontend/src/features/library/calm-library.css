@@ -16,3 +16,5 @@
 }
 .pw-top .pw-calm { flex: 1; min-width: 0; }
 @media (max-width: 600px) { .pw-top .pw-calm .calm-hero-title { font-size: 34px; } }
+.dx-hub .dx-hero.dx-hero-big { background: none; box-shadow: none; border: 0; padding: 0; }
+.dx-hub .dx-hero.dx-hero-big::before, .dx-hub .dx-hero.dx-hero-big::after { display: none; }
