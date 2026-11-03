@@ -131,7 +131,12 @@ export function refreshSession(): Promise<AuthResponse | null> {
           try { res = await fetch(`${BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include', headers }); } catch { res = null; }
           if (res && !transientStatus(res.status)) {
             const { data, error } = await parse(res);
-            if (error || !data) { lastRefreshRefused = true; return null; }
+            if (error || !data) {
+              lastRefreshRefused = true;
+              // Signed out because the account signed in on another device ("Single active session"): the sign-in page says so once.
+              if (error?.code === 'SESSION_REPLACED') { try { sessionStorage.setItem('pm_signed_out_reason', error.message); } catch { /* storage unavailable */ } }
+              return null;
+            }
             lastRefreshRefused = false;
             remember();
             return data as AuthResponse;
@@ -187,6 +192,8 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
   if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
   Object.assign(headers, lensHeaders(method, path));
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+  // Sign-in requests say which time zone this device is in: a sign-in waiting for approval shows its approximate region (no IP lookups).
+  if (path.startsWith('/auth/')) { try { headers['X-Client-Zone'] = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* no Intl */ } }
 
   const res = await fetch(`${BASE}/api/v1${path}`, {
     method, headers, credentials: 'include', signal, body: body !== undefined ? JSON.stringify(body) : undefined,

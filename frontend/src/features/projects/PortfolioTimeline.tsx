@@ -10,6 +10,7 @@ import { portfolioApi, type PortfolioFilter, type TimelineProject } from './port
 import {
   dmy, dn, fitRange, iso, mergeMilestones, placeLabel, PX_PER_DAY, slipOf, startOf, statusOf, textW, ticks, TONE, type Zoom,
 } from './timelineLayout';
+import { PortfolioPulse } from './PortfolioPulse';
 import './timeline.css';
 
 type GroupBy = 'team' | 'group' | 'owner' | 'status' | 'none';
@@ -24,7 +25,7 @@ const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((
 export function TimelineLegend() {
   return (
     <span className="ptl-legend" aria-label="Legend">
-      <span><i className="plan" />Planned</span><span><i className="done" />Done so far</span><span><i className="slip" />Slip to forecast</span>
+      <span><i className="plan" />Planned</span><span><i className="done" />Done so far</span><span><i className="risk" />At risk</span><span><i className="slip" />Slip to forecast</span>
       <span><i className="ms" />Milestone</span><span><i className="today" />Today</span>
     </span>
   );
@@ -33,7 +34,7 @@ export function TimelineLegend() {
 interface Pending { p: TimelineProject; to: string; x: number; y: number }
 
 /**
- * Portfolio › Timeline (design section 8): one bar per project from its planned start to its due date, tinted by status, filled by progress with the
+ * Portfolio › Timeline (design section 8): one bar per project from its planned start to its due date, in the project's one colour (status is the bar's style and a word), filled by progress with the
  * % label, a red hatched slip out to the forecast with "+Nd", milestones as violet diamonds and a labelled today line; group rows (team, group, owner,
  * status) with a thin roll-up bar, collapsible. Week / Month / Quarter zoom, and Fit (the default: the range of the data padded to whole months).
  * Hover shows the details and how the forecast was worked out; click opens the project; drag a bar's end (or Alt + ← / →) to re-plan, which asks for
@@ -176,7 +177,7 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
                 <button type="button" className="ptl-tw" aria-label={`${collapsed.has(r.name) ? 'Expand' : 'Collapse'} ${r.name}`}
                   onClick={() => setCollapsed((s) => { const n = new Set(s); if (n.has(r.name)) n.delete(r.name); else n.add(r.name); return n; })}>{collapsed.has(r.name) ? '▸' : '▾'}</button>
                 <b>{r.name}</b><span className="ptl-n">{r.items.length}</span><span className="ptl-sp" />
-                {r.items.some((p) => statusOf(p, today) === 'Late') && <i className="ptl-dot late" title="Something here is late" aria-label="Something here is late" />}
+                {(() => { const n = r.items.filter((p) => statusOf(p, today) === 'Late').length; return n > 0 && <span className="ptl-gflag">{n} late</span>; })()}
                 {group === 'team' && <TeamFaces items={r.items} />}
               </div>
             ) : (
@@ -184,7 +185,6 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
                 className={`ptl-prow ${hover?.id === r.p.id || drag?.id === r.p.id || pending?.p.id === r.p.id ? 'on' : ''}`}
                 onFocus={() => setFocus(projRows.findIndex((x) => x.i === i))} onClick={() => navigate(`/work/projects/${r.p.id}`)}>
                 <i className={`ps4-sq pc-${colourOf(r.p.id)}`} aria-hidden="true" />
-                <i className={`ptl-dot ${TONE[statusOf(r.p, today)]}`} title={statusOf(r.p, today)} aria-label={statusOf(r.p, today)} />
                 <span className="ptl-pname" title={r.p.name}>{r.p.name}</span>
               </div>
             ))}
@@ -195,7 +195,7 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
             {todayX > 0 && <i className="ptl-past" style={{ width: Math.min(W, todayX) }} />}
             {rows.map((r, i) => r.type === 'group'
               ? <GroupBar key={`gb${r.name}`} items={r.items} y={i * ROW_H} X={X} W={W} todayX={todayX} />
-              : <Bar key={r.p.id} p={r.p} y={i * ROW_H} X={X} W={W} px={px} today={today} todayX={todayX} labels={zoom === 'quarter'}
+              : <Bar key={r.p.id} p={r.p} colour={colourOf(r.p.id)} y={i * ROW_H} X={X} W={W} px={px} today={today} todayX={todayX} labels={zoom === 'quarter'}
                   drag={drag?.id === r.p.id ? drag.to : pending?.p.id === r.p.id ? pending.to : null} dragging={drag?.id === r.p.id}
                   onHover={(x, y) => setHover({ id: r.p.id, x, y })} onOpen={() => navigate(`/work/projects/${r.p.id}`)} onDragStart={(e) => startDrag(e, r.p)} />)}
             {todayX >= 0 && todayX <= W && <i className="ptl-todayline" style={{ left: todayX }} />}
@@ -211,6 +211,7 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
         <span>{fit ? `Range fitted to your data: ${rangeLabel}` : `${rangeLabel} · ${zoom}`}</span>
         {days > 400 && zoom !== 'quarter' && <span className="ptl-hint">Long range: try Quarter</span>}
       </div>
+      <PortfolioPulse projects={projects} today={today} kinds={['coming', 'attention', 'months']} />
     </section>
   );
 }
@@ -248,8 +249,8 @@ function GroupBar({ items, y, X, W, todayX }: { items: TimelineProject[]; y: num
   );
 }
 
-function Bar({ p, y, X, W, px, today, todayX, labels, drag, dragging, onHover, onOpen, onDragStart }: {
-  p: TimelineProject; y: number; X: (s: string) => number; W: number; px: number; today: string; todayX: number; labels: boolean; drag: string | null; dragging: boolean;
+function Bar({ p, colour, y, X, W, px, today, todayX, labels, drag, dragging, onHover, onOpen, onDragStart }: {
+  p: TimelineProject; colour: string; y: number; X: (s: string) => number; W: number; px: number; today: string; todayX: number; labels: boolean; drag: string | null; dragging: boolean;
   onHover: (x: number, y: number) => void; onOpen: () => void; onDragStart: (e: ReactPointerEvent<HTMLSpanElement>) => void;
 }) {
   const st = statusOf(p, today);
@@ -264,7 +265,9 @@ function Bar({ p, y, X, W, px, today, todayX, labels, drag, dragging, onHover, o
   const fill = (bw * Math.min(100, p.progress)) / 100;
   const by = y + 11;
   const owner = first(p.owner);
-  const after = st === 'Done' ? `Done ${dmy(p.due)}${owner ? ` · ${owner}` : ''}` : slip > 0 ? `forecast ${dmy(p.forecast)}${owner ? ` · ${owner}` : ''}` : `due ${dmy(due)}${owner ? ` · ${owner}` : ''}`;
+  // The bar is the project's colour; the status is its style (dashed when at risk, the slip hatched when late) and a word in the label.
+  const word = st === 'Late' ? 'Late · ' : st === 'At risk' ? 'At risk · ' : '';
+  const after = word + (st === 'Done' ? `Done ${dmy(p.due)}${owner ? ` · ${owner}` : ''}` : slip > 0 ? `forecast ${dmy(p.forecast)}${owner ? ` · ${owner}` : ''}` : `due ${dmy(due)}${owner ? ` · ${owner}` : ''}`);
   const chipW = slip > 0 ? textW(`+${slip}d`) + 10 : 0;
   const end = slip > 0 ? fx : x1;
   const lw = textW(after) + chipW;
@@ -276,7 +279,7 @@ function Bar({ p, y, X, W, px, today, todayX, labels, drag, dragging, onHover, o
   const delta = drag && drag !== p.due ? dn(drag) - dn(p.due) : 0;
   return (
     <>
-      <div className={`ptl-bar ${tone} ${dragging || drag ? 'drag' : ''}`} role="button" tabIndex={-1} aria-label={sentence} style={{ top: by, left: Math.max(0, x0), width: Math.min(W, x1) - Math.max(0, x0) }}
+      <div className={`ptl-bar pc-${colour} ${tone} ${dragging || drag ? 'drag' : ''}`} role="button" tabIndex={-1} aria-label={sentence} style={{ top: by, left: Math.max(0, x0), width: Math.min(W, x1) - Math.max(0, x0) }}
         onMouseMove={(e) => { const r = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect(); onHover(e.clientX - r.left, y); }} onClick={onOpen}>
         <i className="ptl-fill" style={{ width: Math.max(0, fill - Math.max(0, -x0)) }} />
         <span className={`ptl-pc ${fill > 40 ? 'in' : ''}`} style={fill > 40 ? undefined : { left: fill + 6 }}>{p.progress}%</span>
@@ -295,7 +298,7 @@ function Bar({ p, y, X, W, px, today, todayX, labels, drag, dragging, onHover, o
       ))}
       {!dragging && (
         <span className={`ptl-label ${flipped ? 'flip' : ''}`} style={{ top: by + 1, left: lx, width: lw }} data-label={p.id}>
-          {slip > 0 && <em className="ptl-slipchip">+{slip}d</em>}{after}
+          {slip > 0 && <em className="ptl-slipchip">+{slip}d</em>}{word && <b className={`ptl-st ${tone}`}>{word.slice(0, -3)}</b>}{word ? after.slice(word.length - 3) : after}
         </span>
       )}
     </>
@@ -373,9 +376,9 @@ function PhoneTimeline({ groups, today, range, monthsLabel, colourOf }: { groups
                   <button key={p.id} type="button" className="ptl-prow-ph" onClick={() => navigate(`/work/projects/${p.id}`)}>
                     <span className="ptl-row"><b><i className={`ps4-sq pc-${colourOf(p.id)}`} aria-hidden="true" /> {p.name}</b>{slip > 0 ? <em className="ptl-slipchip big">+{slip}d</em> : <span className="ptl-pcs">{p.progress}%</span>}</span>
                     <span className="ptl-row">
-                      <span className={`ptl-dates ${slip > 0 ? 'late' : ''}`}>{dmy(s)} → {dmy(slip > 0 ? p.forecast : p.due)}</span>
+                      <span className={`ptl-dates ${slip > 0 ? 'late' : ''}`}>{dmy(s)} → {dmy(slip > 0 ? p.forecast : p.due)}{(st === 'Late' || st === 'At risk') && <> · <b className={`ptl-st ${TONE[st]}`}>{st}</b></>}</span>
                       <span className="ptl-mini" aria-hidden="true">
-                        {s && p.due && <i className={`ptl-mbar ${TONE[st]}`} style={{ left: X(s), width: Math.max(4, X(p.due) - X(s)) }}><b style={{ width: `${p.progress}%` }} /></i>}
+                        {s && p.due && <i className={`ptl-mbar pc-${colourOf(p.id)} ${TONE[st]}`} style={{ left: X(s), width: Math.max(4, X(p.due) - X(s)) }}><b style={{ width: `${p.progress}%` }} /></i>}
                         {slip > 0 && p.due && p.forecast && <i className="ptl-mslip" style={{ left: X(p.due), width: Math.max(3, X(p.forecast) - X(p.due)) }} />}
                         <i className="ptl-mtoday" style={{ left: X(today) }} />
                       </span>

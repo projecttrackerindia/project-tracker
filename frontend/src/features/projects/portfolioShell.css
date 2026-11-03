@@ -49,16 +49,16 @@
 html[data-theme='dark'] .pfx .pf-card[class*='pc-'] { background: color-mix(in srgb, var(--pc) 12%, var(--p-solid)); }
 .pf-drop .pf-key[class*='pc-'] { background: var(--pc); }
 
-/* ---- Timeline: its tools sit in the command row; the frame fills the page; each project carries its colour. */
+/* ---- Timeline: its tools sit in the command row; the frame is as tall as its rows and the pulse takes the rest; each project carries its colour. */
 .pfx .ptl-toolbar.pfx-ttools { margin: 0; padding: 0; flex-wrap: nowrap; gap: 8px; }
-.pfx .ptl-frame { flex: 1; border-radius: var(--r-card); box-shadow: var(--sh-card); }
+.pfx .ptl-frame { flex: none; border-radius: var(--r-card); box-shadow: var(--sh-card); }
 .pfx .ptl-prow .ps4-sq, .pfx .ptl-prow-ph .ps4-sq { width: 8px; height: 8px; border-radius: 3px; display: inline-block; margin-right: 2px; vertical-align: 1px; }
 .pfx .ptl-foot { flex-wrap: wrap; align-items: center; }
 .pfx .ptl-foot .ptl-legend { margin-right: 8px; }
 
-/* ---- Capacity: tools in the command row; the grid card fills the page. */
+/* ---- Capacity: tools in the command row; the grid is as tall as its people and the pulse takes the rest. */
 .pfx .cp-tools { display: inline-flex; align-items: center; gap: 10px; margin: 0; }
-.pfx .cp-card { flex: 1; border-radius: var(--r-card); box-shadow: var(--sh-card); }
+.pfx .cp-card { flex: none; border-radius: var(--r-card); box-shadow: var(--sh-card); }
 .pfx .cp-head { margin: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
 /* ---- Phone: the same shell, stacked; the tabs scroll sideways. */
@@ -81,3 +81,28 @@ html[data-theme='dark'] .pfx .pf-card[class*='pc-'] { background: color-mix(in s
 .pfx-phone .pf-lay { display: flex; flex-direction: column; }
 .pfx-phone .pf-board { display: flex; flex-direction: column; }
 @media (max-width: 1100px) { .pfx .pf-lay { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- Board: the columns are as tall as their cards (with room to drop one); the pulse under them takes the rest of the page. */
+.pfx .pfx-board > .pf-lay { flex: none; }
+.pfx .pf-col { min-height: 168px; }
+.pfx .pf-card[class*='pc-'] .pf-bar i { background: var(--pc); }
+.pfx .pf-calm-empty { margin: 0; flex: 1; display: grid; place-content: center; justify-items: center; gap: 4px; padding: 24px 8px; text-align: center; color: var(--ds-text-3); }
+.pfx .pf-calm-empty svg { color: var(--ds-success); margin-bottom: 4px; }
+.pfx .pf-calm-empty b { font-size: 14px; font-weight: 600; color: var(--ds-text); }
+.pfx .pf-calm-empty span { font-size: 12.5px; }
+.pfx .pf-rail { display: flex; flex-direction: column; }
+
+/* ---- One calm inline status (work done, sign-offs open): a quiet card, an icon, one sentence, one action. */
+.pfx-note { display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 12px; border-radius: var(--r-card, 16px); background: var(--p-solid, var(--ds-surface)); box-shadow: var(--sh-card); }
+.pfx-note-ic { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: var(--ds-success); background: color-mix(in srgb, var(--ds-success) 12%, transparent); }
+.pfx-note-txt { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; font-size: 13.5px; line-height: 1.4; color: var(--ds-text-2); }
+.pfx-note-txt b { font-weight: 600; color: var(--ds-text); }
+.pfx-note-txt a { color: inherit; text-decoration: underline; text-decoration-color: var(--ds-text-4, currentColor); text-underline-offset: 2px; }
+.pfx-note-act { flex: none; height: 30px; padding: 0 14px; border-radius: 999px; display: inline-flex; align-items: center; font-size: 13px; font-weight: 600; color: var(--ds-accent); background: color-mix(in srgb, var(--ds-accent) 10%, transparent); text-decoration: none; }
+.pfx-note-act:hover { background: color-mix(in srgb, var(--ds-accent) 16%, transparent); }
+.pfx-note-act:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+@media (max-width: 760px) {
+  .pfx-note { flex-wrap: wrap; align-items: flex-start; row-gap: 10px; }
+  .pfx-note-txt { flex: 1 1 calc(100% - 48px); flex-direction: column; }
+  .pfx-note-act { margin-left: 44px; }
+}

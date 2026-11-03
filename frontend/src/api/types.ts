@@ -20,7 +20,7 @@ export interface AuthResponse { accessToken: string; expiresAt: string; user: Us
 export interface MfaChallenge { mfaRequired: true; challenge: string }
 export interface MfaStatus { enabled: boolean; enabledAt: string | null; recoveryCodesLeft: number }
 export interface MfaSetup { secret: string; otpAuthUri: string }
-export interface Session { id: string; createdAt: string; lastSeenAt: string; ipAddress: string | null; userAgent: string | null; isCurrent: boolean; authMethod?: string | null }
+export interface Session { id: string; createdAt: string; lastSeenAt: string; ipAddress: string | null; userAgent: string | null; isCurrent: boolean; authMethod?: string | null; device?: string | null; location?: string | null }
 export interface Passkey { id: string; name: string; createdAt: string; lastUsedAt: string | null; backedUp: boolean }
 /** WebAuthn options as the server sends them: bytes are base64url text. */
 export interface PasskeyOptions {

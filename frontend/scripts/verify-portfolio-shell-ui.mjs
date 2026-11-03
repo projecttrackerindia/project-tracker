@@ -131,7 +131,7 @@ try {
     assert.equal(state.writes[0]?.b.changes[0].statusId, `${state.rows.find((r) => r.key === 'UP').id}-s3`);
     await goTab(page, 'Board');
     await page.waitForFunction(() => !document.querySelector('.pf-colwrap.late .pf-card[data-project="UP"]'), null, { timeout: 5000 });
-    await page.getByRole('region', { name: 'Work complete, check sign-offs' }).getByText('UP · UPI AutoPay').waitFor();
+    await page.getByRole('status', { name: 'Work complete, check sign-offs' }).getByText('All work is done on UPI AutoPay.').waitFor();
     await goTab(page, 'Timeline');
     await page.waitForFunction(() => [...document.querySelectorAll('.ptl-bar')].some((e) => /UPI AutoPay.*100% done/.test(e.getAttribute('aria-label') ?? '')), null, { timeout: 5000 });
     assert.equal(await page.evaluate(() => window.__sameDocument), true, 'no reload');

@@ -12,7 +12,7 @@ public class PasskeySignInController(PasskeyService passkeys) : ApiControllerBas
     [HttpPost("options"), AllowAnonymous, EnableRateLimiting("auth")]
     public async Task<IActionResult> Options([FromBody] PasskeyLoginOptionsRequest req, CancellationToken ct) => Ok(await passkeys.BeginSignInAsync(req, ct));
 
-    [HttpPost("verify"), AllowAnonymous, EnableRateLimiting("auth")]
+    [HttpPost("verify"), AllowAnonymous, EnableRateLimiting("auth"), SessionApprovalResult]
     public async Task<IActionResult> Verify([FromBody] PasskeyFinishRequest req, CancellationToken ct)
     {
         var s = await passkeys.FinishSignInAsync(req, ct);

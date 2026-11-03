@@ -19,6 +19,8 @@ import { useIsMobile } from '../lib/mobile';
 import { useConversationViewport } from '../lib/conversationViewport';
 import { NetworkPill } from '../components/AppSplash';
 import { SignInIsland } from '../components/SignInIsland';
+// "Single active session": a new device of mine asking to sign in (loaded beside the app, not in its first bundle).
+const SessionApprovalHost = lazy(() => import('../features/auth/SessionApproval').then((m) => ({ default: m.SessionApprovalHost })));
 import { CommandPalette } from '../components/CommandPalette';
 import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
 import { AlertsSetup } from '../features/notifications/AlertsSetup';
@@ -165,6 +167,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && <GrootChatHost />}
       {!admin && <CopilotHost />}
       <SignInIsland />
+      <Suspense fallback={null}><SessionApprovalHost /></Suspense>
       <NetworkPill />
       <CallHost />
       {!admin && <IncomingCallHost />}
