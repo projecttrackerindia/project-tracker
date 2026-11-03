@@ -12,3 +12,13 @@ export async function invokeAura(page) {
 export async function openAuraPanel(page) {
   await invokeAura(page);
 }
+/** Opens the classic + New sheet (it understands the words: "Understood as a ticket") from the command palette's "Create…". The floating +'s
+ *  New task now opens the calm New task sheet (features/calm/createSheets). */
+export async function openCreate(page) {
+  await page.locator('.v2-rail, .v2-phone-bar').first().waitFor(); await page.waitForTimeout(300);
+  const pal = page.getByRole('dialog', { name: 'Command palette' });
+  for (let i = 0; i < 5 && !(await pal.count()); i++) { await page.keyboard.press('Control+Shift+k'); await page.waitForTimeout(300); }
+  await pal.waitFor();
+  await page.waitForTimeout(100); await page.keyboard.type('Create'); await pal.getByText(/^Create… \(task/).first().click();
+  await page.locator('.v2-new-sheet').waitFor();
+}

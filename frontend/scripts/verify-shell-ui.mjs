@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { openAuraPanel } from './lib/aura.mjs';
+import { openAuraPanel, openCreate } from './lib/aura.mjs';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
@@ -157,7 +157,7 @@ try {
   await shot(page, 'ai-control-centre-1440.png'); checks.push('ai-control-centre');
 
   // The create sheet (the floating + › New task, then Ticket): words in, chips, created through the one Work API and opened in the side panel.
-  await page.goto(`${origin}/preview-org/`); await page.locator('.shell-fab-btn').click(); await page.getByRole('menuitem', { name: 'New task' }).click();
+  await page.goto(`${origin}/preview-org/`); await openCreate(page);
   await page.locator('.v2-new-sheet').waitFor(); await page.locator('.v2-new-type', { hasText: 'Ticket' }).click();
   await page.locator('.v2-new-input input').fill('VPN down for collections team, critical, give to Priya');
   await page.waitForTimeout(300);

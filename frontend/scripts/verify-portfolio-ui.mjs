@@ -179,7 +179,7 @@ try{
    for(let k=0;k<3&&!(await sheet.isVisible());k++){await card.scrollIntoViewIfNeeded();await page.waitForTimeout(300);
     {const dt=await page.evaluateHandle(()=>new DataTransfer());await card.dispatchEvent('dragstart',{dataTransfer:dt});await target.dispatchEvent('dragover',{dataTransfer:dt});await target.dispatchEvent('drop',{dataTransfer:dt});await card.dispatchEvent('dragend',{dataTransfer:dt});}await sheet.waitFor({timeout:4000}).catch(()=>{});}
    await sheet.waitFor();
-   await sheet.getByLabel('What is the risk?').fill('Bank sandbox keys not shared');await shot(page,'board-drop-1440.png');
+   await sheet.getByLabel('What is the risk?').fill('Bank sandbox keys not shared');await page.screenshot({path:path.join(out,'board-drop-1440.png')});/* not full-page: resizing the viewport for a full-page shot can re-render the board under the open sheet */
    await sheet.getByRole('button',{name:'Flag it'}).evaluate((b)=>b.click());await sheet.waitFor({state:'detached'});
    assert.ok(writes.some(w=>w.ep===`/api/v1/projects/${pay}/action-items`&&/Late: Bank sandbox keys/.test(w.b.title)&&w.b.priority==='Critical'),'the drop flags the project with a follow-up');
    await page.locator('.pf-flag').first().waitFor();checks.push('board-drag-flag');}}
