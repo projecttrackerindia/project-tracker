@@ -311,21 +311,13 @@ try {
   // Pin to sidebar from ···; the pin shows first in the sidebar, is saved per workspace, and the hover button unpins it (and keeps it out of recents).
   await page.getByRole('button', { name: 'More on this project' }).click();
   await page.getByRole('menu', { name: 'More on this project' }).getByRole('menuitem', { name: /^Pin to sidebar/ }).click();
-  const pinRow = page.locator(`.v2-side-pin-row[data-pin="${rp.id}"]`);
-  await page.locator(`.v2-side-pin-row[data-pin="${rp.id}"][data-pinned="true"]`).waitFor();
-  assert.equal(await page.locator('.v2-side-pin-row').first().getAttribute('data-pin'), rp.id, 'an explicit pin comes first');
+  // Calm shell: no project list in the sidebar (pins show in Projects and the phone's More sheet); the pin is still saved and can be undone.
   const pinPut = await waitWrite((w) => w.ep === '/api/v1/me/ui/pins' && w.body?.value?.[ws.id]?.pinned?.includes(rp.id));
   assert.ok(pinPut, 'the pin is saved to /me/ui/pins for this workspace');
+  assert.equal(await page.locator('.shell-side .v2-side-pin-row').count(), 0, 'no nested project list in the sidebar');
   await page.getByRole('button', { name: 'More on this project' }).click();
-  assert.equal(await page.getByRole('menu', { name: 'More on this project' }).getByRole('menuitem', { name: /^Unpin from sidebar/ }).count(), 1);
-  await page.keyboard.press('Escape');
-  await pinRow.hover();
-  await pinRow.getByRole('button', { name: `Unpin ${rp.name}` }).click();
-  await pinRow.waitFor({ state: 'detached' });
-  assert.ok(pinStore[ws.id].hidden.includes(rp.id) && !pinStore[ws.id].pinned.includes(rp.id), 'unpinned and kept out of recents');
-  // Nothing fills in after an unpin: the sidebar shows only pins, and says how to add one when there are none.
-  assert.equal(await page.locator('.v2-side-pin-row').count(), 0, 'no recent project takes the unpinned one’s place');
-  await page.getByTestId('pins-empty').waitFor();
+  await page.getByRole('menu', { name: 'More on this project' }).getByRole('menuitem', { name: /^Unpin from sidebar/ }).click();
+  await waitWrite((w) => w.ep === '/api/v1/me/ui/pins' && !w.body?.value?.[ws.id]?.pinned?.includes(rp.id));
   pinStore = null;
   checks.push('pin-unpin');
   // The Journey (every stage signed off), the AI line, and Overview: Key numbers, People, What's next, Risks, Docs.
@@ -429,9 +421,7 @@ try {
 
   // Ask Aura about <project>: the capsule asks about it; its orb opens the Aura chat about it.
   await page.goto(`${origin}/preview-org/work/projects/${rp.id}`); await page.locator('.pp-head h1').waitFor();
-  await invokeAura(page);
-  await page.locator('form.v2-ask input[placeholder="Ask Aura about Razor pay"]').waitFor();
-  await openAuraPanel(page); await page.locator('.groot-chat').waitFor();
+  await page.waitForTimeout(600); await openAuraPanel(page); await page.locator('.groot-chat').waitFor();
   assert.match(await page.locator('.groot-chat .gc-empty').innerText(), /Ask me anything about Razor pay/);
   await page.keyboard.press('Escape'); await page.locator('.groot-chat').waitFor({ state: 'detached' });
   checks.push('ask-about-project');

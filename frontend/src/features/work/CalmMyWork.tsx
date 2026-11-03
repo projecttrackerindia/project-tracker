@@ -13,7 +13,7 @@ import { useAi, useAssistant } from '../ai/Assistant';
 import { useTodayFocus } from '../calendar/useToday';
 import { WeekCard } from '../calm/WeekCard';
 import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
-import { CalmCreateHost, openCalmNew } from '../calm/createSheets';
+import { openCalmNew } from '../calm/createSheets';
 import { completedToday, myWorkBucket, weekEndOf } from './myWorkRules';
 import { dayText, moveTo, smart } from './workActions';
 import { refreshWork, useWorkList } from './workUi';
@@ -85,7 +85,7 @@ export function CalmMyWork({ onOpen, more }: { onOpen: (id: string) => void; mor
 
   const dots = <DotsMenu label="More in My work" items={[{ label: 'Focus stack', hint: 'The earlier My work, with Do this now', icon: 'target', onSelect: () => nav('/work?classic=1') }, ...more]} />;
   return (
-    <CalmSplit crumb={<><span>My work</span><span style={{ flex: 1 }} />{dots}</>} label="My work" rail={<MyWorkRail waiting={waiting} doneWeek={doneWeek} first={first ?? null} onOpen={onOpen} onDone={() => setTab('done')} />}>
+    <CalmSplit className="cp-page" crumb={<><span>My work</span><span style={{ flex: 1 }} />{dots}</>} label="My work" rail={<MyWorkRail waiting={waiting} doneWeek={doneWeek} first={first ?? null} onOpen={onOpen} onDone={() => setTab('done')} />}>
       <header className="cp-hero"><h1>{title}<em>{second}</em></h1></header>
       <div className="cp-tools">
         <CalmPills label="Show" value={tab} onChange={setTab} options={[{ value: 'week', label: 'This week' }, { value: 'later', label: 'Later' }, { value: 'done', label: 'Done' }, { value: 'waiting', label: 'Waiting on others' }]} />
@@ -130,7 +130,6 @@ export function CalmMyWork({ onOpen, more }: { onOpen: (id: string) => void; mor
         <AuraLine text={lateOne ? `${shortTitle(lateOne.title)} is overdue. Moving it to a free afternoon keeps the week honest.` : completedToday(doneWeek[0] ?? {}, today) ? 'You finished something today. Nice.' : undefined}
           action={lateOne ? 'Open it' : undefined} onAction={() => lateOne && onOpen(lateOne.id)} />
       </CalmFoot>
-      <CalmCreateHost />
     </CalmSplit>
   );
 }

@@ -3,12 +3,15 @@
 import { chromium } from 'playwright-core';
 import { writeFileSync } from 'node:fs';
 
-const GRAD = `<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c3aed"/><stop offset=".55" stop-color="#a855f7"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient>`;
-// A heavier glyph than the app icon so it stays legible at 16 px.
-const mark = (r) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs>${GRAD}</defs><rect width="32" height="32" rx="${r}" fill="url(#g)"/>
-<path d="M7.3 16.7l5.3 5.3L18.7 13.3" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M18.7 13.3l4.3-4.8" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="24.4" cy="7.6" r="2.8" fill="#fff"/></svg>`;
+// The calm ProjectTracker logo: the purple check in a rounded square (components/Logo.tsx, from the calm demo).
+const GRAD = `<linearGradient id="g" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8b6cf6"/><stop offset=".55" stop-color="#a27cf8"/><stop offset="1" stop-color="#b996fb"/></linearGradient><linearGradient id="h" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>`;
+const GLYPH = `<path d="M20 34l8 8L43 24" fill="none" stroke="#fff" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="44.5" cy="22.5" r="4.4" fill="#fff"/>`;
+// `full`: the square edge to edge (maskable, Apple touch: the platform rounds it); otherwise the rounded square with its hairline.
+const mark = (_r, full = false) => full
+  ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs>${GRAD}</defs><rect width="64" height="64" fill="url(#g)"/><rect width="64" height="64" fill="url(#h)"/><g transform="translate(9.6 9.6) scale(.7)">${GLYPH}</g></svg>`
+  : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs>${GRAD}</defs><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#g)"/><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#h)"/><rect x="2.5" y="2.5" width="59" height="59" rx="15.5" fill="none" stroke="#fff" stroke-opacity=".35"/>${GLYPH}</svg>`;
 writeFileSync('public/favicon.svg', mark(9));
+writeFileSync('public/icons/icon.svg', mark(9));
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
 const shot = async (html, w, h) => {
@@ -23,6 +26,11 @@ const icon = (n) => shot(mark(9).replace('<svg ', `<svg width="${n}" height="${n
 const png = {};
 for (const n of [16, 32, 48]) png[n] = await icon(n);
 writeFileSync('public/favicon-48x48.png', png[48]);
+writeFileSync('public/icons/icon-192.png', await icon(192));
+writeFileSync('public/icons/icon-512.png', await icon(512));
+const fullIcon = (n) => shot(mark(9, true).replace('<svg ', `<svg width="${n}" height="${n}" `), n, n);
+writeFileSync('public/icons/icon-maskable-512.png', await fullIcon(512));
+writeFileSync('public/icons/apple-touch-icon.png', await fullIcon(180));
 
 // ICO container holding PNG images (supported everywhere that still asks for /favicon.ico).
 const sizes = [16, 32, 48];
@@ -39,7 +47,7 @@ writeFileSync('public/favicon.ico', Buffer.concat([head, ...dirs, ...sizes.map((
 
 // Social preview (Open Graph / Twitter): shown when the link is shared and in some search features.
 const og = `<div style="width:1200px;height:630px;box-sizing:border-box;padding:84px 96px;display:flex;flex-direction:column;justify-content:center;font-family:Inter,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#fff;background:radial-gradient(circle at 85% 15%,#a855f7 0,rgba(168,85,247,0) 45%),linear-gradient(135deg,#4c1d95 0,#6d28d9 55%,#7c3aed 100%)">
-  <div style="display:flex;align-items:center;gap:26px"><div style="width:112px;height:112px">${mark(9).replace('<svg ', '<svg width="112" height="112" ')}</div><div style="font-size:54px;font-weight:700;letter-spacing:-.5px">Project Tracker</div></div>
+  <div style="display:flex;align-items:center;gap:26px"><div style="width:112px;height:112px">${mark(9).replace('<svg ', '<svg width="112" height="112" ')}</div><div style="font-size:54px;font-weight:700;letter-spacing:-.5px">ProjectTracker</div></div>
   <div style="margin-top:56px;font-size:76px;line-height:1.08;font-weight:800;letter-spacing:-1.5px;max-width:960px">Plan the work.<br/>Track it across every team.</div>
   <div style="margin-top:36px;font-size:32px;color:#ede9fe;max-width:900px">Projects, tasks, timesheets and portfolio reporting in one secure workspace.</div>
   <div style="position:absolute;right:96px;top:112px;font-size:28px;color:#ddd6fe;font-weight:600">projecttracker.in</div></div>`;

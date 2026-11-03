@@ -67,6 +67,11 @@ const HomePage = page(() => import('./features/home/HomePage'), 'HomePage');
 const WorkPage = page(() => import('./features/work/WorkPage'), 'WorkPage');
 // Release 1: the support desk and Quality (testers) as their own places.
 const DeskPage = page(() => import('./features/desk/DeskPage'), 'DeskPage');
+// The calm shell's new places: Approvals (formerly Inbox), Reminders and Notes (their page agents fill them in).
+const ApprovalsPage = page(() => import('./features/approvals/ApprovalsPage'), 'ApprovalsPage');
+const RemindersPlace = page(() => import('./features/reminders/RemindersPage'), 'RemindersPage');
+const NotesPage = page(() => import('./features/notes/NotesPage'), 'NotesPage');
+const TimePage = page(() => import('./features/time/TimePage'), 'TimePage');
 const DeskIntegrations = page(() => import('./features/desk/DeskIntegrations'), 'DeskIntegrations');
 const QualityPage = page(() => import('./features/quality/QualityPage'), 'QualityPage');
 const ProjectsHome = page(() => import('./features/projects/ProjectsHome'), 'ProjectsHome');
@@ -423,6 +428,12 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         {/* ---------------------------------------------------------------- the five places (V2-PLAN §1) */}
         <Route index element={<HomePage />} />
         <Route path="approve/:id" element={<ApprovePage />} />
+        <Route path="approvals" element={<ApprovalsPage />} />
+        <Route path="inbox" element={<Moved to="/approvals" />} />
+        <Route path="inbox/*" element={<Moved to="/approvals" />} />
+        <Route path="notes" element={<NotesPage />} />
+        <Route path="notes/:id" element={<NotesPage />} />
+        <Route path="time" element={<TimePage />} />
         <Route path="work" element={<Guard allow={work}><WorkPage /></Guard>} />
         <Route path="work/projects" element={<Guard allow={mProjects}><ProjectsHome /></Guard>} />
         <Route path="desk" element={<Guard allow={mWork}><DeskPage /></Guard>} />
@@ -444,6 +455,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="library/p/:projectId/*" element={<Guard allow={mDocuments}><LibraryPage /></Guard>} />
         <Route path="insights" element={<Guard allow={insights}><InsightsPage /></Guard>} />
         <Route path="activity" element={<Guard allow={mActivity}><ActivityPage /></Guard>} />
+        {/* Calls live in Meetings now (no Calls place): the bare list address goes there; a live call's address keeps the call open. */}
+        <Route path="calls" element={<Moved to="/meetings" />} />
         <Route path="calls/:id" element={<CallRoute />} />
         <Route path="calls/meeting/:meetingId" element={<MeetingCallRoute />} />
         <Route path="calls/meeting/w/:meetingId" element={<MeetingCallRoute workspace />} />
@@ -467,8 +480,8 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="dashboard" element={<Moved to="/" />} />
         <Route path="command-center" element={<Moved to="/" />} />
         <Route path="calendar" element={<Moved to="/?tab=calendar" />} />
-        <Route path="reminders" element={<Moved to="/?tab=reminders" />} />
-        <Route path="reminders/*" element={<Moved to="/?tab=reminders" />} />
+        <Route path="reminders" element={<RemindersPlace />} />
+        <Route path="reminders/*" element={<Moved to="/reminders" />} />
         <Route path="agents/*" element={<Moved to="/" />} />
         <Route path="project-agent" element={<Moved to="/?tab=proposals" />} />
         <Route path="project-agent/assigned" element={<Moved to="/?tab=given" />} />

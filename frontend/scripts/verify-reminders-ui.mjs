@@ -68,44 +68,34 @@ try{
 
  // Light, desktop, with reminders.
  let ctx=await make('light',full);let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+'/preview-org/reminders');await page.locator('.rp-card').first().waitFor();
- assert.equal(await page.locator('.page-title').innerText(),'Reminders');
- assert.match(await page.locator('.page-sub').innerText(),/^Times in Asia\/Kolkata\.$/);
- const kv=await page.locator('.rp-kpi .v').allInnerTexts(),kl=await page.locator('.rp-kpi .l').allInnerTexts();
- assert.deepEqual(kl,['Need attention','Still today','Completed','Your usual time']);assert.deepEqual([kv[0],kv[2],kv[3]],['1','2','12:00']);
- assert.ok(await page.locator('.rp-kpi.danger').count()===1,'something waiting shows its count in red');
- assert.equal(await page.getByRole('tab',{name:'Upcoming'}).getAttribute('aria-selected'),'true');
- assert.equal(await page.getByRole('tab',{name:'Completed · 2'}).count(),1);
- assert.deepEqual(await page.locator('.rp-group h3').allInnerTexts().then(t=>t.map(x=>x.replace(/\s+\d+$/,''))),['Needs attention','Tomorrow','Next 7 days']);
+ await page.goto(origin+'/preview-org/reminders');await page.locator('.rm-row').first().waitFor();
+ assert.equal(await page.locator('.rm-tile').count(),5);
+ assert.equal(await page.locator('.rm-h h1').innerText(),'Today');
  checks.push('layout');
  await shot(page,'reminders-1440.png');
 
- // A suggestion chip fills the input; Add sets it (plain words, parsed here).
- await page.getByRole('button',{name:'Every Friday 4pm submit my timesheet'}).click();
- assert.equal(await page.locator('#rp-quick-input').inputValue(),'Every Friday 4pm submit my timesheet');
- await page.locator('.rp-quick-parse b').waitFor();
- await page.locator('.rp-quick button[type=submit]').click();
+ // Plain words with live chips; Enter sets it.
+ await page.locator('#rp-quick-input').fill('Every Friday 4pm submit my timesheet');
+ await page.locator('.rm-chips .rm-pc').first().waitFor();
+ await page.locator('#rp-quick-input').press('Enter');
  for(let i=0;i<40&&!writes.length;i++)await page.waitForTimeout(100);
  assert.equal(writes[0]?.b.title.toLowerCase(),'submit my timesheet');assert.match(writes[0].b.when.recurrence,/FREQ=WEEKLY/);
- checks.push('quick-add-from-chip');
+ checks.push('quick-add');
 
- // Filter chips: dark when chosen; From others shows only the nudge.
- await page.getByRole('button',{name:'From others'}).click();
- assert.equal(await page.getByRole('button',{name:'From others'}).getAttribute('aria-pressed'),'true');
- assert.deepEqual(await page.locator('.rp-card .rp-title').allInnerTexts(),['Send Meena the vendor contract']);
- await page.getByRole('button',{name:'All',exact:true}).click();checks.push('filters');
+ // People › From others shows only the nudge.
+ await page.getByRole('button',{name:/From others/}).click();
+ assert.deepEqual(await page.locator('.rm-row .rm-t b').allInnerTexts(),['Send Meena the vendor contract']);
+ checks.push('filters');
 
- // Completed through the segmented control.
- await page.getByRole('tab',{name:'Completed · 2'}).click();
- await page.locator('.rp-card.is-done').first().waitFor();
- assert.equal(await page.locator('.rp-card.is-done').count(),2);
- assert.equal(await page.locator('.ds-seg-thumb').count(),1,'the thumb glides under the chosen view');
+ // Done tile.
+ await page.getByRole('button',{name:/Done/}).filter({has:page.locator('.rm-ic')}).click();
+ assert.equal(await page.locator('.rm-row.dn').count(),2);
  await shot(page,'reminders-completed-1440.png');checks.push('completed');
  await ctx.close();
 
  // Dark, desktop.
  ctx=await make('dark',full);page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+'/preview-org/reminders');await page.locator('.rp-card').first().waitFor();
+ await page.goto(origin+'/preview-org/reminders');await page.locator('.rm-row').first().waitFor();
  await shot(page,'reminders-dark-1440.png');checks.push('dark');
  // Tablet.
  await page.setViewportSize({width:820,height:1100});await shot(page,'reminders-dark-820.png');
@@ -113,18 +103,18 @@ try{
 
  // Empty, light, desktop: "Nothing coming up".
  ctx=await make('light',empty);page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:960});
- await page.goto(origin+'/preview-org/reminders');await page.locator('.rp-empty-card').waitFor();
- assert.equal(await page.locator('.rp-empty-card h4').innerText(),'Nothing coming up');
+ await page.goto(origin+'/preview-org/reminders');await page.locator('.rm-empty').waitFor();
+ assert.match(await page.locator('.rm-empty b').innerText(),/Nothing left today/);
  await shot(page,'reminders-empty-1440.png');checks.push('empty');
  // The Add button with nothing typed opens the full form.
- await page.locator('.rp-quick button[type=submit]').click();
- await page.locator('.modal').first().waitFor();checks.push('add-opens-form');
+ await page.locator('.rm-qa-go').click();
+ await page.locator('.modal, [role=dialog]').first().waitFor();checks.push('add-opens-form');
  await ctx.close();
 
  // Phone, light and dark.
  for(const theme of ['light','dark']){
   ctx=await make(theme,full);page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
-  await page.goto(origin+'/preview-org/reminders');await page.locator('.rp-card').first().waitFor();
+  await page.goto(origin+'/preview-org/reminders');await page.locator('.rm-row').first().waitFor();
   await fitsPhone(page,`reminders ${theme}`,assert);
   await shot(page,`reminders-${theme}-390.png`);
   await ctx.close();

@@ -11,7 +11,7 @@ import { useDebounced, useWsQuery } from '../../lib/hooks';
 import { shiftIsoDate } from '../../lib/zone';
 import { useAuth, useCan, useIsPersonal } from '../../stores/auth';
 import { DotsMenu } from '../talk/DotsMenu';
-import { CalmCreateHost, openCalmNew, ProjectSheet, shortDay } from '../calm/createSheets';
+import { openCalmNew, ProjectSheet, shortDay } from '../calm/createSheets';
 import { isFinished, useAllProjects } from './projectParts';
 import '../calm/calm-pages.css';
 
@@ -98,7 +98,7 @@ export function CalmProjects() {
     <button type="button" className="cp-lk" onClick={() => set('browse', mode === 'folders' ? null : 'folders')}>{mode === 'folders' ? '‹ List' : 'Browse ›'}</button>{dots}</>;
 
   return (
-    <CalmSplit crumb={crumb} label="Projects">
+    <CalmSplit className="cp-page" crumb={crumb} label="Projects">
       <header className={`cp-hero${mode === 'folders' ? ' sm' : ''}`}>
         {mode === 'folders' ? <h1>Browse projects.<em>Double-click a folder to open it.</em></h1>
           : <h1>{all.data ? `${live.length} project${live.length === 1 ? '' : 's'}.` : 'Projects.'}<em>{needs ? `${needs.name} needs you this week.` : live.length ? 'Everything is on track.' : 'Start your first one.'}</em></h1>}
@@ -125,7 +125,6 @@ export function CalmProjects() {
         </div>
       )}
       <ProjectSheet open={!!editing} project={editing} onClose={() => setEditing(null)} />
-      <CalmCreateHost />
     </CalmSplit>
   );
 }

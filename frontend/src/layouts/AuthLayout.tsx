@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { useUi } from '../stores/ui';
-import { BrandMark } from '../components/BrandMark';
+import { Logo } from '../components/Logo';
 import { AuthVisual } from '../components/AuthVisual';
 import { ToastRoot } from '../components/ui';
 import { PlatformBanner } from '../components/PlatformBanner';
@@ -54,8 +54,8 @@ export function AuthLayout({ title, sub, children, footer, shake }: { title: str
         <div className={`auth-card ${shake ? 'shake' : ''}`}>
           <span className="auth-beam" aria-hidden="true" />
           <div className="auth-brand">
-            <div className="brand-mark"><BrandMark /></div>
-            <div><strong>Project Tracker</strong><span>Project management</span></div>
+            <Logo size={44} className="pt-logo auth-logo" />
+            <div><strong>ProjectTracker</strong><span>Project management</span></div>
           </div>
           <h1 className="auth-title">{title}</h1>
           {sub && <p className="auth-sub">{sub}</p>}

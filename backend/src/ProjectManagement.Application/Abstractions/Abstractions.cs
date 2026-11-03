@@ -9,6 +9,11 @@ namespace ProjectManagement.Application.Abstractions;
 public interface IAppDbContext
 {
     DbSet<PlannedLeave> PlannedLeaves { get; }
+    DbSet<ApprovalRequest> ApprovalRequests { get; }
+    DbSet<ApprovalRequestStep> ApprovalRequestSteps { get; }
+    DbSet<ApprovalRequestEvent> ApprovalRequestEvents { get; }
+    DbSet<ApprovalPolicy> ApprovalPolicies { get; }
+    DbSet<Note> Notes { get; }
     DbSet<OperationsSettings> OperationsSettings { get; }
     DbSet<MailAccount> MailAccounts { get; }
     DbSet<CompanyMailSettings> CompanyMailSettings { get; }

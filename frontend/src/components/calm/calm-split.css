@@ -1,34 +1,24 @@
 /* Calm kit, part two: the full-width split with its right panel (CalmSplit, CalmRailCard, CalmRailRow), the day ribbon and the week strip. */
 
-.calm-split { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; min-height: calc(100vh - 56px - 34px); color: var(--calm-ink); }
-.calm-split.solo { grid-template-columns: minmax(0, 1fr); }
-.calm-split-main { min-width: 0; display: flex; flex-direction: column; gap: 22px; min-height: 100%; }
 .calm-split-crumb { margin: 0; }
-.calm-split-rail { min-width: 0; display: flex; flex-direction: column; gap: 14px; position: sticky; top: 12px; padding-bottom: 96px; }
-@media (min-width: 1800px) { .calm-split { grid-template-columns: minmax(0, 1fr) 380px; gap: 36px; } }
-@media (max-width: 1180px) { .calm-split { grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; } }
-@media (max-width: 960px) {
-  .calm-split { grid-template-columns: minmax(0, 1fr); min-height: 0; }
-  .calm-split-rail { position: static; padding-bottom: 88px; }
-}
 
-.calm-rc { background: var(--calm-card); border-radius: var(--calm-r-card); box-shadow: var(--calm-sh); padding: 14px 18px 10px; min-width: 0; }
+
+.calm-rc > h4 a, .calm-rc > h4 button { border: 0; background: none; padding: 0; font: inherit; color: var(--calm-ink2); text-decoration: none; cursor: pointer; white-space: nowrap; }
+.calm-split-crumb { margin: 0 0 6px; }
+.cp-page .calm-split-main { gap: 22px; }
+.cp-page .calm-rail { padding-bottom: 88px; margin-top: 46px; }
+a.calm-rr { cursor: pointer; text-decoration: none; }
+.cp-page .calm-rr { min-height: 44px; }
 .calm-rc-h { margin: 0 0 6px; display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 500; color: var(--calm-ink3-text); }
 .calm-rc-h > span { flex: 1; min-width: 0; }
 .calm-rc-h a, .calm-rc-h button { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--calm-ink2); text-decoration: none; cursor: pointer; white-space: nowrap; }
 .calm-rc-h a:hover, .calm-rc-h button:hover { color: var(--calm-ink); }
-.calm-rr { display: flex; align-items: center; gap: 12px; padding: 9px 0; width: 100%; border: 0; background: none; font: inherit; color: var(--calm-ink); text-align: left; text-decoration: none; min-width: 0; min-height: 44px; }
-.calm-rr + .calm-rr { box-shadow: 0 -1px 0 var(--calm-fill); }
 a.calm-rr, button.calm-rr { cursor: pointer; border-radius: 10px; }
 a.calm-rr:hover .calm-rr-t b, button.calm-rr:hover .calm-rr-t b { color: var(--calm-accent-text); }
 a.calm-rr:focus-visible, button.calm-rr:focus-visible { outline: 2px solid var(--calm-accent); outline-offset: 2px; }
-.calm-rr-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .calm-rr-t b { font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color var(--motion-micro) var(--ease-standard); }
-.calm-rr-t small { font-size: 12.5px; color: var(--calm-ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.calm-rr-r { font-size: 13px; color: var(--calm-ink2); white-space: nowrap; flex: none; display: inline-flex; gap: 8px; align-items: center; }
 .calm-rr-r.hot { color: var(--calm-red-text); font-weight: 600; }
 .calm-rr-bar { width: 4px; align-self: stretch; border-radius: 2px; background: var(--calm-dot, var(--calm-p1)); flex: none; margin: 2px 0; }
-.calm-av { display: inline-grid; place-items: center; border-radius: 50%; color: #fff; font-weight: 600; flex: none; letter-spacing: .02em; }
 .calm-join { display: inline-flex; align-items: center; padding: 5px 14px; border-radius: 99px; background: var(--calm-accent); color: #fff; font-weight: 600; font-size: 13px; border: 0; cursor: pointer; text-decoration: none; min-height: 28px; }
 .calm-join:hover { opacity: .9; }
 
@@ -73,3 +63,4 @@ button.calm-day-seg:hover { transform: translateY(-1px); }
 }
 .calm-day-a a.calm-join, .calm-rr-r a.calm-join, .pd-line a.calm-join { color: #fff; }
 .calm-pills button { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 1100px) { .cp-page .calm-rail { margin-top: 0; } }

@@ -15,7 +15,7 @@ import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
 import { CalmTaskSheet } from '../tasks/CalmTaskSheet';
 import { refreshWork } from '../work/workUi';
 import { dayText } from '../work/workActions';
-import { CalmCreateHost, openCalmNew, ProjectSheet, shortDay } from '../calm/createSheets';
+import { openCalmNew, ProjectSheet, shortDay } from '../calm/createSheets';
 import { healthOf } from './CalmProjects';
 import '../calm/calm-pages.css';
 
@@ -76,7 +76,7 @@ export function CalmProject({ detail, menu, canEdit, addWork, onHealth, onFullTa
     </>
   );
   return (
-    <CalmSplit crumb={crumb} label={p.name}>
+    <CalmSplit className="cp-page" crumb={crumb} label={p.name}>
       <header className="cp-hero sm" data-testid="project-hero"><h1>{title}<em>{second}</em></h1></header>
       {steps.length > 0 && <CalmCard className="pd-journey" aria-label="Journey"><CalmJourney steps={steps} color={color} label={`${p.name} journey`} /></CalmCard>}
       <div className="pd-bar">
@@ -125,7 +125,6 @@ export function CalmProject({ detail, menu, canEdit, addWork, onHealth, onFullTa
       </div>
       <CalmTaskSheet taskId={taskId} onClose={() => setTaskId(null)} onFull={(id) => { setTaskId(null); onFullTask(id); }} />
       <ProjectSheet open={editing} project={p} onClose={() => setEditing(false)} />
-      <CalmCreateHost project={{ id: p.id, name: p.name }} />
     </CalmSplit>
   );
 }

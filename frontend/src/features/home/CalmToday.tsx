@@ -24,7 +24,7 @@ import { useToday, useNow } from '../calendar/useToday';
 import { reminderApi, type Reminder } from '../reminders/api';
 import { refreshWork, useWorkList } from '../work/workUi';
 import { dayText, smart } from '../work/workActions';
-import { CalmCreateHost, openCalmNew } from '../calm/createSheets';
+import { openCalmNew } from '../calm/createSheets';
 import { WeekCard } from '../calm/WeekCard';
 import { inboxApi } from './inboxApi';
 import '../calm/calm-pages.css';
@@ -141,7 +141,7 @@ export function CalmToday() {
         ]} />
   );
   return (
-    <CalmSplit crumb={<><span>{headDay(today)}</span><span style={{ flex: 1 }} />{dots}</>} label="Today" rail={<TodayRail meets={meets} nowH={nowH} freeMin={day?.freeMin ?? 0} hero={hero} />}>
+    <CalmSplit className="cp-page" crumb={<><span>{headDay(today)}</span><span style={{ flex: 1 }} />{dots}</>} label="Today" rail={<TodayRail meets={meets} nowH={nowH} freeMin={day?.freeMin ?? 0} hero={hero} />}>
       <header className="cp-hero" data-testid="today-hero"><h1>{title}<em>{second}</em></h1></header>
       {state === 'morning' ? <CheckInCard planned={planned} usual={a?.workStart} />
         : state === 'evening' ? <EveningCard logged={logged} planned={planned} />
@@ -168,7 +168,6 @@ export function CalmToday() {
           onAction={() => (waiting?.href ? nav(waiting.href) : ask('What should I do next today?'))} />
       </CalmFoot>
       <InsightSheet open={sheet} onClose={() => setSheet(false)} logged={logged} planned={planned} open_={open} doneToday={day?.done ?? []} meets={meets.length} free={day?.freeMin ?? 0} />
-      <CalmCreateHost />
       <span hidden data-testid="today-state">{state}</span>
     </CalmSplit>
   );

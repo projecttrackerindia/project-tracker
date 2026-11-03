@@ -440,7 +440,7 @@ try {
     // ---------------------------------------------------------------- the create sheet (dock › More…): a ticket from words, with chips, opened in the panel
     await page.goto(`${origin}/preview-org/work`);
     await list.locator('.mw-r').first().waitFor();
-    await invokeAura(page); await page.locator('.aura-chip[data-chip="more"]').click();   // + New is gone: the capsule's More… chip
+    await page.locator('.shell-fab-btn').click(); await page.getByRole('menuitem', { name: 'New task' }).click();   // the floating + › New task
     const sheet = page.getByRole('dialog', { name: 'New' });
     await sheet.getByLabel('What to create').fill('VPN down for collections team, critical, give to Ravi');
     await sheet.locator('.v2-understood-label', { hasText: /Understood as\s*a ticket/ }).waitFor();
@@ -472,7 +472,7 @@ try {
       const kept = errors.length;
       const newSheet = async (words, tile) => {
         await page.goto(`${origin}/preview-org/work`); await page.locator('.mw-r').first().waitFor();
-        await invokeAura(page); await page.locator('.aura-chip[data-chip="more"]').click();
+        await page.locator('.shell-fab-btn').click(); await page.getByRole('menuitem', { name: 'New task' }).click();
         await sheet.getByLabel('What to create').fill(words);
         if (tile) await sheet.getByRole('radio', { name: tile }).click();
         await sheet.getByRole('button', { name: /^Create / }).click();
@@ -495,7 +495,7 @@ try {
       await page.keyboard.press('Escape');
       // A task needs its project: the Project chip asks for one, then it is made through /work-items too.
       await page.goto(`${origin}/preview-org/work`); await page.locator('.mw-r').first().waitFor();
-      await invokeAura(page); await page.locator('.aura-chip[data-chip="more"]').click();
+      await page.locator('.shell-fab-btn').click(); await page.getByRole('menuitem', { name: 'New task' }).click();
       await sheet.getByLabel('What to create').fill('Write the settlement runbook');
       await sheet.getByRole('radio', { name: 'Task' }).click();
       await sheet.getByLabel('Change project').selectOption(pid);

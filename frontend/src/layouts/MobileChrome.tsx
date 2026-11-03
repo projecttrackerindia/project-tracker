@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NotificationBell } from '../features/notifications/centre/NotificationCentre';
 import { Icon } from '../components/Icon';
-import { BrandMark } from '../components/BrandMark';
+import { Logo } from '../components/Logo';
 import { Sheet } from '../components/Sheet';
 import { openPalette } from '../components/CommandPalette';
 import { AuraPhoneOrb, AvatarMenu } from '../components/v2';
@@ -36,7 +36,7 @@ export function MobileTopBar() {
   return (
     <header className={`m-top ${scrolled ? 'scrolled' : ''}`}>
       <button type="button" className="m-org" onClick={() => { haptic(); setSheet('org'); }} aria-label="Switch workspace">
-        <span className="m-org-mark">{admin ? <BrandMark size={16} /> : (cur?.name ?? '?')[0].toUpperCase()}</span>
+        <span className="m-org-mark"><Logo size={30} /></span>
         <span className="m-org-text"><b>{admin ? 'Platform' : cur?.name ?? 'Workspace'}</b><small>{admin ? 'Administration' : cur?.type === 'Personal' ? 'Personal' : cur?.role}</small></span>
         {!admin && <Icon name="chevronD" size={14} />}
       </button>

@@ -19,7 +19,9 @@ public record ReminderDto(Guid Id, ReminderSource Source, ReminderState State, s
     ReminderTarget TargetType, Guid? TargetId, string? TargetKey, string? TargetTitle, string? Link,
     string TimeZone, string? LocalAt, int? AnchorDays, string? AnchorTime, string? Recurrence, string? RecurrenceText,
     bool OnlyIfOpen, bool Exact, DateTime? NextFireAt, bool IsSnoozed, int SnoozeCount, int FireCount, DateTime? LastFiredAt, bool Quiet,
-    DateTime? CompletedAt, Guid? SeriesId, UserRefDto? From, UserRefDto? For, bool CanEdit, DateTime CreatedAt);
+    DateTime? CompletedAt, Guid? SeriesId, UserRefDto? From, UserRefDto? For, bool CanEdit, DateTime CreatedAt, bool Flagged = false, string? List = null);
+/// <summary>The Reminders page's own marks: flagged (the Flagged smart list) and the person's list ("Work", "Home"); an empty list clears it.</summary>
+public record ReminderMetaRequest(bool? Flagged, string? List);
 
 public record ReminderCountsDto(int Now, int Today, int Upcoming, int Completed);
 public record ReminderLimitsDto(long Open, long Recurring, int OpenUsed, int RecurringUsed);
@@ -271,6 +273,21 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (r.SeriesId is not null) { r.SeriesId = null; r.State = ReminderState.Fired; r.NextFireAt = null; }   // an occurrence comes back on its own
         else r.State = r.NextFireAt is { } next && next > now ? ReminderState.Scheduled : ReminderState.Fired;
         r.CompletedAt = null;
+        await db.SaveChangesAsync(ct);
+        return Dto(r, await NamesAsync([r], ct));
+    }
+
+    /// <summary>Flags a reminder or files it in one of the person's lists (their own reminders only; nothing about when it goes off changes).</summary>
+    public async Task<ReminderDto> SetMetaAsync(Guid id, ReminderMetaRequest req, CancellationToken ct = default)
+    {
+        var r = await OwnAsync(id, ct, finished: true);
+        if (req.Flagged is { } f) r.Flagged = f;
+        if (req.List is not null)
+        {
+            var list = req.List.Trim();
+            if (list.Length > 40) throw new ValidationException("list", "Keep the list name under 40 characters.");
+            r.ListName = list.Length == 0 ? null : list;
+        }
         await db.SaveChangesAsync(ct);
         return Dto(r, await NamesAsync([r], ct));
     }
@@ -589,7 +606,7 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var canEdit = !Automatic.Contains(r.Source) && r.Source != ReminderSource.Meeting && r.State is ReminderState.Scheduled or ReminderState.Fired && (r.UserId == uid || r.CreatedBy == uid && r.State == ReminderState.Scheduled);
         return new ReminderDto(r.Id, r.Source, r.State, r.Title, r.Note, r.TargetType, r.TargetId, r.TargetKey, r.TargetTitle, r.Link,
             r.TimeZone, r.LocalAt, r.AnchorDays, r.AnchorTime?.ToString("HH:mm"), r.Recurrence, text, r.OnlyIfOpen, r.Exact, r.NextFireAt, r.IsSnoozed,
-            r.SnoozeCount, r.FireCount, r.LastFiredAt, r.Quiet, r.CompletedAt, r.SeriesId, from, forUser, canEdit, r.CreatedAt);
+            r.SnoozeCount, r.FireCount, r.LastFiredAt, r.Quiet, r.CompletedAt, r.SeriesId, from, forUser, canEdit, r.CreatedAt, r.Flagged, r.ListName);
     }
 
     /// <summary>Reads what a reminder would point at, as the caller: work they cannot see cannot be the subject of a reminder.</summary>
