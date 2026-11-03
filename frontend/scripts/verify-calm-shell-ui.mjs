@@ -117,7 +117,7 @@ try {
     const c = await ctxFor('light', 1440, 900); const page = await c.newPage(); page.on('pageerror', (e) => errors.push(e.message));
     await go(page, '/');
     const labels = await page.locator('.shell-side .v2-rail-item .v2-rail-label').allTextContents();
-    assert.deepEqual(labels, ['Today', 'Approvals', 'My work', 'Reminders', 'Notes', 'Desk', 'Quality', 'Projects', 'Portfolio', 'Calendar', 'Meetings', 'Messages', 'Mail', 'Library', 'Insights', 'Reports', 'Activity', 'People'], `sidebar: ${labels}`);
+    assert.deepEqual(labels, ['Today', 'Approvals', 'My work', 'Reminders', 'Notes', 'Projects', 'Portfolio', 'Desk', 'Quality', 'Calendar', 'Meetings', 'Messages', 'Mail', 'Library', 'Reports', 'Insights', 'Activity', 'People', 'Time'], `sidebar: ${labels}`);
     assert.deepEqual(await page.locator('.shell-side .v2-side-sl').allTextContents(), ['Work', 'Communicate', 'Know']);
     assert.equal(await page.locator('.shell-side .v2-rail-item', { hasText: /^Calls$/ }).count(), 0, 'no Calls');
     assert.equal(await page.locator('.shell-side .v2-side-pin, .shell-side .v2-side-pins').count(), 0, 'no nested project list');
@@ -155,7 +155,7 @@ try {
     assert.equal(await fab.locator('.shell-fab-btn').getAttribute('aria-label'), 'Close');
     assert.ok(Number(await fab.locator('.shell-fab-scrim').evaluate((e) => getComputedStyle(e).opacity)) > .9, 'the page blurs');
     await snap(page, 'shell-fab-1440-light');
-    await fab.getByRole('menuitem', { name: 'New task' }).click(); await page.locator('.v2-new-sheet').waitFor(); assert.equal(await page.locator('.v2-new-type.on').innerText(), 'Task');
+    await fab.getByRole('menuitem', { name: 'New task' }).click(); await page.locator('.v2-new-sheet').waitFor();
     await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     // the hook: a page agent's handler takes over an item
     await fab.locator('.shell-fab-btn').click(); await page.waitForTimeout(300);

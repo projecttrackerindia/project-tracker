@@ -137,24 +137,26 @@ function useSideGroups(): SideGroup[] {
       mk('/reminders', 'reminders', 'Reminders', 'alarm', under('/reminders') || (pathname === '/' && tab === 'reminders'), remindersOpen ? { badge: remindersOpen, calm: true } : {}),
       mk('/notes', 'notes', 'Notes', 'note', under('/notes')),
     ] as SideItem[] }),
+    // The demo's order (scratchpad/demo shots 01, 32): the spec.
     clean({ title: 'Work', items: [
-      mk('/desk', 'desk', 'Desk', 'target', under('/desk'), red('desk', deskOpen)),
-      mk('/quality', 'quality', 'Quality', 'shield', under('/quality')),
       mk('/work/projects', 'projects', 'Projects', 'folder', onProjects && !portfolio, projectCount ? { badge: projectCount, calm: true } : {}),
       mk('/work/projects?view=portfolio', 'portfolio', 'Portfolio', 'grid', portfolio, red('portfolio')),
+      mk('/desk', 'desk', 'Desk', 'target', under('/desk'), red('desk', deskOpen)),
+      mk('/quality', 'quality', 'Quality', 'shield', under('/quality')),
       mk('/?tab=calendar', 'calendar', 'Calendar', 'calendar', pathname === '/' && tab === 'calendar', red('calendar')),
+      mk('/meetings', 'meetings', 'Meetings', 'video', under('/meetings') || pathname.startsWith('/calls/'), red('meetings')),
     ] as SideItem[] }),
     clean({ title: 'Communicate', items: [
-      mk('/meetings', 'meetings', 'Meetings', 'video', under('/meetings') || pathname.startsWith('/calls/'), red('meetings')),
       mk('/messages', 'talk', 'Messages', 'message', under('/messages'), { ...red('messages'), dot: tabs.messages === 0 && talk.dot }),
       mk('/mail', 'mail', 'Mail', 'mail', under('/mail'), red('mail', mailUnread)),
     ] as SideItem[] }),
     clean({ title: 'Know', items: [
       mk('/library', 'library', 'Library', 'layers', under('/library'), red('library')),
-      mk('/insights', 'insights', 'Insights', 'chart', insights && tab !== 'reports'),
       mk('/insights?tab=reports', 'reports', 'Reports', 'list', insights && tab === 'reports'),
+      mk('/insights', 'insights', 'Insights', 'chart', insights && tab !== 'reports' && tab !== 'time'),
       mk('/activity', 'activity', 'Activity', 'activity', pathname === '/activity'),
       mk('/people', 'people', 'People', 'users', under('/people')),
+      mk('/insights?tab=time', 'time', 'Time', 'clock', insights && tab === 'time'),
     ] as SideItem[] }),
   ].filter((g) => g.items.length > 0);
 }

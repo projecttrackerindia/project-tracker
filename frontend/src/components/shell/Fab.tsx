@@ -36,7 +36,7 @@ export function Fab() {
   // A conversation on a phone owns the bottom edge (its composer): no + there.
   if (phone && /^\/messages\/[^/]+/.test(pathname)) return null;
   const all: Item[] = [
-    { kind: 'task', label: 'New task', icon: 'checkCircle', show: true, run: () => openNew('task') },
+    { kind: 'task', label: 'New task', icon: 'checkCircle', show: true, run: () => openNew(null) /* the sheet still understands the words (a task unless they say otherwise) */ },
     { kind: 'project', label: 'New project', icon: 'folder', show: canProject, run: () => nav('/work/projects?new=1') },
     { kind: 'meeting', label: 'Schedule meeting', icon: 'calendar', show: true, run: () => openSchedule() },
     { kind: 'doc', label: 'New doc', icon: 'layers', show: docs, run: () => openNew('doc') },
