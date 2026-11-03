@@ -150,6 +150,8 @@ public class AccountSecurityTests(ApiFactory factory)
         await owner.UpgradeAsync("BUSINESS");
         var member = await owner.AddMemberAsync(factory, TenantRole.Member, "Needs Two Step");
         Assert.Equal(HttpStatusCode.Forbidden, (await member.Get("/api/v1/workspace/security/members")).Status);
+        // Sign-up now needs 12+ characters: this member stands for someone whose 10-character password predates the rule.
+        factory.WithDb(db => { db.Users.First(u => u.Id == member.UserId).PasswordLength = 10; return db.SaveChanges(); });
 
         var view = (await owner.Get("/api/v1/workspace/security/members")).Data!;
         Assert.Equal(2, view["members"]!.GetValue<int>());
