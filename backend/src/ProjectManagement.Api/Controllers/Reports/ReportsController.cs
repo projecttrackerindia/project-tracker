@@ -19,7 +19,7 @@ public class ReportsController(ReportService reports, ReportExportService export
     [HttpGet("exports")]
     public async Task<IActionResult> Exports(CancellationToken ct) => Ok(await exports.ListAsync(ct));
 
-    [HttpPost("exports")]
+    [HttpPost("exports"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> RequestExport([FromBody] RequestExportRequest req, CancellationToken ct) =>
         StatusCode(StatusCodes.Status202Accepted, await exports.RequestAsync(req, ct));
 

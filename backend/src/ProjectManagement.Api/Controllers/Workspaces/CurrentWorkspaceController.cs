@@ -105,7 +105,7 @@ public class CurrentWorkspaceController(WorkspaceService workspaces, ProjectMana
     [HttpGet("invitations"), RequireModule(Modules.Members)]
     public async Task<IActionResult> Invitations(CancellationToken ct) => Ok(await workspaces.GetInvitationsAsync(ct));
 
-    [HttpPost("invitations")]
+    [HttpPost("invitations"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> Invite([FromBody] InviteRequest req, CancellationToken ct) =>
         Created(await workspaces.InviteAsync(req, ct));
 

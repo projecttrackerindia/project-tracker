@@ -351,7 +351,7 @@ public class NotificationTests(ApiFactory factory)
         await c.CreateOrgAsync();
         await SetPrefs(c, ("Security", false, false, false));
 
-        var res = await c.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!x", newPassword = "Another1!pass" });
+        var res = await c.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!xKey", newPassword = "Another1!pass" });
         Assert.Equal(HttpStatusCode.NoContent, res.Status);
         var relog = await c.LoginAsync("Another1!pass");
         Assert.True(relog.Ok, relog.ToString());

@@ -11,10 +11,11 @@ using ProjectManagement.Application.Features.Auth;
 namespace ProjectManagement.Application.Features.Organization;
 
 public record OrgSecurityDto(bool RequireMfa, bool IpAllowlistEnabled, IReadOnlyList<string> IpRanges, string? MyIp, bool Entitled,
-    int MinPasswordLength = 0, int SessionHours = 0, IReadOnlyList<string>? AllowedSignIn = null, int PlatformMinPasswordLength = 8);
+    int MinPasswordLength = 0, int SessionHours = 0, IReadOnlyList<string>? AllowedSignIn = null, int PlatformMinPasswordLength = 12,
+    IReadOnlyList<string>? AllowedEmailDomains = null);
 /// <summary>The newer rules are optional: left out, they keep their current values.</summary>
 public record SetOrgSecurityRequest(bool RequireMfa, bool IpAllowlistEnabled, IReadOnlyList<string>? IpRanges,
-    int? MinPasswordLength = null, int? SessionHours = null, IReadOnlyList<string>? AllowedSignIn = null);
+    int? MinPasswordLength = null, int? SessionHours = null, IReadOnlyList<string>? AllowedSignIn = null, IReadOnlyList<string>? AllowedEmailDomains = null);
 /// <summary>How the sign-in being checked was made, for the workspace's own rules.</summary>
 public record SignInFacts(string? Method, DateTime OpenedAt, int? PasswordLength);
 /// <summary>One member in the admin's security view: what protects their account and what does not.</summary>
@@ -49,7 +50,7 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
         var platformMin = (await platform.GetPasswordPolicyAsync(ct)).MinLength;
         return new OrgSecurityDto(row?.RequireMfa ?? false, row?.IpAllowlistEnabled ?? false,
             row is null ? [] : IpAllowlist.ParseEntries(row.IpRanges), ctx.IpAddress, entitled,
-            row?.MinPasswordLength ?? 0, row?.SessionHours ?? 0, Methods(row?.AllowedSignIn), platformMin);
+            row?.MinPasswordLength ?? 0, row?.SessionHours ?? 0, Methods(row?.AllowedSignIn), platformMin, EmailDomains.Parse(row?.AllowedEmailDomains));
     }
 
     public async Task<OrgSecurityDto> SetAsync(SetOrgSecurityRequest req, CancellationToken ct = default)
@@ -95,8 +96,16 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
             && ctx.SessionId is { } sid && Category(await db.UserSessions.AsNoTracking().Where(s => s.Id == sid).Select(s => s.AuthMethod).FirstOrDefaultAsync(ct)) == "password")
             throw new ValidationException("minPasswordLength", $"Your own password is shorter than {min} characters. Change it first (My account → Sign-in & security), or you would be locked out.");
 
+        List<string>? domains = null;
+        if (req.AllowedEmailDomains is { } wantedDomains)
+        {
+            domains = wantedDomains.Select(d => (d ?? "").Trim().TrimStart('@').TrimEnd('.').ToLowerInvariant()).Where(d => d.Length > 0).Distinct().ToList();
+            if (domains.Count > EmailDomains.MaxEntries) throw new ValidationException("allowedEmailDomains", $"List at most {EmailDomains.MaxEntries} domains.");
+            if (domains.FirstOrDefault(d => !EmailDomains.IsValid(d)) is { } bad) throw new ValidationException("allowedEmailDomains", $"\"{bad}\" is not a domain name.");
+        }
+
         var row = await db.TenantSecuritySettings.FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
-        var before = row is null ? null : new { row.RequireMfa, row.IpAllowlistEnabled, row.IpRanges, row.MinPasswordLength, row.SessionHours, row.AllowedSignIn };
+        var before = row is null ? null : new { row.RequireMfa, row.IpAllowlistEnabled, row.IpRanges, row.MinPasswordLength, row.SessionHours, row.AllowedSignIn, row.AllowedEmailDomains };
         if (row is null) db.TenantSecuritySettings.Add(row = new TenantSecuritySettings { TenantId = tenantId });
         row.RequireMfa = req.RequireMfa;
         row.IpAllowlistEnabled = req.IpAllowlistEnabled;
@@ -104,8 +113,9 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
         if (req.MinPasswordLength is { } ml) row.MinPasswordLength = ml;
         if (req.SessionHours is { } sh) row.SessionHours = sh;
         if (methods is not null) row.AllowedSignIn = methods.Count == AllMethods.Length ? "" : string.Join(',', methods);
+        if (domains is not null) row.AllowedEmailDomains = string.Join(',', domains);
         recorder.Audit("org.security_changed", "Tenant", tenantId, oldValue: before,
-            newValue: new { row.RequireMfa, row.IpAllowlistEnabled, row.IpRanges, row.MinPasswordLength, row.SessionHours, row.AllowedSignIn }, tenantId: tenantId);
+            newValue: new { row.RequireMfa, row.IpAllowlistEnabled, row.IpRanges, row.MinPasswordLength, row.SessionHours, row.AllowedSignIn, row.AllowedEmailDomains }, tenantId: tenantId);
         await db.SaveChangesAsync(ct);
         return await GetAsync(ct);
     }
@@ -254,5 +264,29 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
         if (row.MinPasswordLength > 0 && method == "password" && signIn.PasswordLength is { } length && length < row.MinPasswordLength)
             return new AccessBlockedDto(tenantId, "ORG_PASSWORD_TOO_SHORT", $"This organization needs passwords of at least {row.MinPasswordLength} characters. Change your password in My account → Sign-in & security to continue.");
         return null;
+    }
+}
+
+/// <summary>An organization's invitation allowlist of email domains (TenantSecuritySettings.AllowedEmailDomains).</summary>
+public static partial class EmailDomains
+{
+    public const int MaxEntries = 50;
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$")]
+    private static partial System.Text.RegularExpressions.Regex Shape();
+
+    public static bool IsValid(string domain) => domain.Length <= 253 && Shape().IsMatch(domain);
+
+    public static List<string> Parse(string? stored) =>
+        string.IsNullOrWhiteSpace(stored) ? [] : stored.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    /// <summary>True when the list is empty, or the address's domain is on it (exactly; list subdomains separately).</summary>
+    public static bool Allows(string? stored, string email)
+    {
+        var list = Parse(stored);
+        if (list.Count == 0) return true;
+        var at = email.LastIndexOf('@');
+        var domain = at < 0 ? "" : email[(at + 1)..].Trim().TrimEnd('.').ToLowerInvariant();
+        return list.Contains(domain, StringComparer.OrdinalIgnoreCase);
     }
 }

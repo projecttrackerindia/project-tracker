@@ -53,7 +53,7 @@ public class MfaService(IAppDbContext db, ICurrentContext ctx, IPasswordHasher h
     {
         if (++user.FailedLoginCount >= _opt.MaxFailedLogins)
         {
-            user.LockoutEnd = clock.Now.AddMinutes(_opt.LockoutMinutes);
+            user.LockoutEnd = LockoutPolicy.Next(user, clock.Now, _opt.LockoutMinutes);
             user.FailedLoginCount = 0;
             recorder.Audit("user.locked_out", "User", user.Id, newValue: new { Reason = $"wrong {what}" }, userId: user.Id);
         }

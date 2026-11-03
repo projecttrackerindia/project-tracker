@@ -11,6 +11,7 @@ import { invalidateWorkspace, useWsQuery } from '../../../lib/hooks';
 import { useWorkspaceId } from '../../../stores/auth';
 import { confirmDialog, toast } from '../../../stores/ui';
 import { plural } from './shared';
+import { safeHref } from '../../../lib/sanitize';
 
 type Design = DtDiagram & { data: DesignData };
 const asDesign = (d: DtDiagram) => d as unknown as Design;
@@ -245,7 +246,7 @@ function Viewer({ designs, index, canEdit, onIndex, onClose, onChange, onDelete 
         <label className="dz-note">Note<textarea rows={4} value={note} disabled={!canEdit} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="What to build, what is still open, who signed it off…" /></label>
         {canEdit && note !== (d.data.note ?? '') && <button type="button" className="dx-btn pri sm" onClick={() => onChange({ ...d, data: { ...d.data, note: note.trim() || undefined } })}>Save note</button>}
         <div className="dz-actions">
-          {d.data.source === 'figma' && d.data.url && <a className="dx-btn" href={d.data.url} target="_blank" rel="noreferrer noopener">Open in Figma</a>}
+          {d.data.source === 'figma' && safeHref(d.data.url) && <a className="dx-btn" href={safeHref(d.data.url)} target="_blank" rel="noreferrer noopener">Open in Figma</a>}
           {canEdit && <button type="button" className="dx-btn" onClick={() => onDelete(d)}>Remove</button>}
         </div>
       </aside>

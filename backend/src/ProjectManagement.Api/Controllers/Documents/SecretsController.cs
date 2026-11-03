@@ -37,7 +37,7 @@ public class SecretsController(SecretService secrets, StepUpService stepUp, Docu
     [HttpDelete("documents/{id:guid}/secrets/{secretId:guid}")]
     public async Task<IActionResult> Delete(Guid id, Guid secretId, CancellationToken ct) => Ok(await secrets.DeleteAsync(id, secretId, ct));
 
-    [HttpPost("documents/{id:guid}/secrets/{secretId:guid}/reveal"), SecretResponse]
+    [HttpPost("documents/{id:guid}/secrets/{secretId:guid}/reveal"), SecretResponse, Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> Reveal(Guid id, Guid secretId, [FromBody] RevealRequest req, CancellationToken ct)
     {
         Response.Headers.CacheControl = "no-store";

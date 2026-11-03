@@ -40,7 +40,7 @@ public static class AuthCookies
 }
 
 [Route("api/v1/auth")]
-public class AuthController(AuthService auth, PasswordPolicyService passwordPolicy) : ApiControllerBase
+public class AuthController(AuthService auth, PasswordPolicyService passwordPolicy, SignupGuard signupGuard) : ApiControllerBase
 {
     /// <summary>The rules a new password must meet (anyone may read them: the sign-up form shows them).</summary>
     [HttpGet("password-policy"), AllowAnonymous]
@@ -58,6 +58,10 @@ public class AuthController(AuthService auth, PasswordPolicyService passwordPoli
     }
 
     private void ClearCookie() => Response.Cookies.Delete(CookieName, new CookieOptions { Path = "/api/v1/auth", Secure = AuthCookies.IsSecure(Request), SameSite = SameSiteMode.Strict });
+
+    /// <summary>What the sign-up form needs before it is shown: a signed form token (time to submit is checked against it) and the Turnstile site key when on.</summary>
+    [HttpGet("signup-form"), AllowAnonymous, EnableRateLimiting("auth")]
+    public IActionResult SignupForm() => Ok(signupGuard.FormConfig());
 
     [HttpPost("register"), AllowAnonymous, EnableRateLimiting("auth")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest req, CancellationToken ct) =>

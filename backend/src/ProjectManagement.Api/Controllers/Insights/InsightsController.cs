@@ -31,7 +31,7 @@ public class InsightsController(DashboardService dashboard, CalendarService cale
     [HttpGet("today/signals")]
     public async Task<IActionResult> TodaySignals([FromServices] TodaySignalsService signals, CancellationToken ct) => Ok(await signals.GetAsync(ct));
 
-    [HttpGet("search")]
+    [HttpGet("search"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("search")]
     public async Task<IActionResult> Search([FromQuery] string q, CancellationToken ct) => Ok(await search.SearchAsync(q ?? "", ct));
 
     [HttpGet("activity"), RequireModule(Modules.Activity)]

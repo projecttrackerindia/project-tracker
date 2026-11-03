@@ -20,6 +20,8 @@ public class TenantSecuritySettings : TenantEntity, ITenantScoped
     public int SessionHours { get; set; }
     /// <summary>The ways in this workspace accepts, comma separated: password, passkey, google, microsoft, github, apple, sso. Empty = all.</summary>
     public string AllowedSignIn { get; set; } = "";
+    /// <summary>Invitations may only go to these email domains, comma separated (e.g. "fivestar.in,fivestar.co.in"). Empty = any domain.</summary>
+    public string AllowedEmailDomains { get; set; } = "";
 
     /// <summary>How long a revealed secret stays on screen before it is masked again (10, 15, 30, 60 or a custom 5-300). Business plans can change it; others use the default.</summary>
     public int RevealSeconds { get; set; } = 15;

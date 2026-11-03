@@ -10,7 +10,7 @@ public class AuthTests(ApiFactory factory)
     public async Task Login_is_blocked_until_email_is_verified()
     {
         var c = new TestClient(factory) { Email = $"u-{Guid.NewGuid():N}@example.com" };
-        var reg = await c.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = c.Email, password = "Passw0rd!x", displayName = "Al", acceptedTerms = true }, true);
+        var reg = await c.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = c.Email, password = "Passw0rd!xKey", displayName = "Al", acceptedTerms = true }, true);
         Assert.Equal(HttpStatusCode.Created, reg.Status);
 
         var blocked = await c.LoginAsync();
@@ -25,12 +25,12 @@ public class AuthTests(ApiFactory factory)
     public async Task Register_rejects_weak_passwords_and_duplicate_emails()
     {
         var c = new TestClient(factory);
-        var weak = await c.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = "weak@example.com", password = "short", displayName = "W", acceptedTerms = true }, true);
+        var weak = await c.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = "weak@example.com", password = "short", displayName = "Wendy Weak", acceptedTerms = true }, true);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, weak.Status);
         Assert.Equal("password", weak.Json!["errors"]![0]!["field"]!.GetValue<string>());
 
         var first = await TestClient.RegisterAsync(factory);
-        var dup = await c.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = first.Email.ToUpperInvariant(), password = "Passw0rd!x", displayName = "Dup", acceptedTerms = true }, true);
+        var dup = await c.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = first.Email.ToUpperInvariant(), password = "Passw0rd!xKey", displayName = "Dup", acceptedTerms = true }, true);
         Assert.Equal(HttpStatusCode.Conflict, dup.Status);
         Assert.Equal("EMAIL_TAKEN", dup.ErrorCode);
     }
@@ -59,7 +59,7 @@ public class AuthTests(ApiFactory factory)
         var c = await TestClient.RegisterAsync(factory);
         for (var i = 0; i < 5; i++)
             Assert.Equal(HttpStatusCode.UnprocessableEntity, (await c.Post("/api/v1/me/password", new { currentPassword = "wrong-password-1", newPassword = "N3w#Passw0rd!x" })).Status);
-        var locked = await c.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!x", newPassword = "N3w#Passw0rd!x" });
+        var locked = await c.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!xKey", newPassword = "N3w#Passw0rd!x" });
         Assert.Equal(HttpStatusCode.TooManyRequests, locked.Status);
         Assert.Equal("ACCOUNT_LOCKED", locked.ErrorCode);
     }
@@ -201,7 +201,7 @@ public class AuthTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.NoContent, reset.Status);
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await c.Get("/api/v1/me")).Status); // old session revoked
-        Assert.Equal(HttpStatusCode.Unauthorized, (await c.LoginAsync("Passw0rd!x")).Status);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await c.LoginAsync("Passw0rd!xKey")).Status);
         Assert.True((await c.LoginAsync("NewPassw0rd!y")).Ok);
 
         var again = await c.Send(HttpMethod.Post, "/api/v1/auth/reset-password", new { token, password = "Another1Pass!" }, true);

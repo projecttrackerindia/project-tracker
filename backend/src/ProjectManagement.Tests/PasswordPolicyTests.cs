@@ -24,7 +24,7 @@ public class PasswordRulesTests
         Assert.True(PasswordRules.IsCommon(password), password);
 
     [Theory]
-    [InlineData("Passw0rd!x")]
+    [InlineData("Passw0rd!xKey")]
     [InlineData("Correct-Horse-9")]
     [InlineData("Str0ng&Unique#Pass")]
     public void Ordinary_strong_passwords_pass(string password) =>
@@ -52,7 +52,7 @@ public class PasswordRulesTests
         Assert.Equal(Default, PasswordRules.Parse("not json"));
         Assert.Equal(Default, PasswordRules.Parse(null));
         var clamped = PasswordRules.Parse("""{"minLength":3,"historyCount":99,"requireDigit":true}""");
-        Assert.Equal(8, clamped.MinLength);
+        Assert.Equal(12, clamped.MinLength);
         Assert.Equal(10, clamped.HistoryCount);
     }
 }
@@ -96,29 +96,29 @@ public class PasswordPolicyTests(ApiFactory factory)
             Assert.Equal(HttpStatusCode.UnprocessableEntity, res.Status);
             Assert.Equal("password", res.Json!["errors"]![0]!["field"]!.GetValue<string>());
         }
-        Assert.Equal(HttpStatusCode.Created, (await Register("Passw0rd!x")).Status);
+        Assert.Equal(HttpStatusCode.Created, (await Register("Passw0rd!xKey")).Status);
     }
 
     [Fact]
     public async Task Anyone_can_read_the_rules_and_a_stricter_policy_applies_at_once_without_locking_anyone_out()
     {
         var rules = (await new TestClient(factory).Send(HttpMethod.Get, "/api/v1/auth/password-policy", anonymous: true)).Data!;
-        Assert.Equal(8, rules["minLength"]!.GetValue<int>());
+        Assert.Equal(12, rules["minLength"]!.GetValue<int>());
         Assert.True(rules["requireDigit"]!.GetValue<bool>());
 
-        var existing = await TestClient.RegisterAsync(factory);            // chose "Passw0rd!x" under the old rules
+        var existing = await TestClient.RegisterAsync(factory);            // chose "Passw0rd!xKey" under the old rules
         var admin = await Admin();
-        await WithPolicy(admin, PasswordPolicyDto.Default with { MinLength = 12, RequireUppercase = true, RequireSymbol = true }, async () =>
+        await WithPolicy(admin, PasswordPolicyDto.Default with { MinLength = 16, RequireUppercase = true, RequireSymbol = true }, async () =>
         {
-            Assert.Equal(12, (await new TestClient(factory).Send(HttpMethod.Get, "/api/v1/auth/password-policy", anonymous: true)).Data!["minLength"]!.GetValue<int>());
+            Assert.Equal(16, (await new TestClient(factory).Send(HttpMethod.Get, "/api/v1/auth/password-policy", anonymous: true)).Data!["minLength"]!.GetValue<int>());
 
-            var tooShort = await Register("Passw0rd!x");
+            var tooShort = await Register("Passw0rd!xKey");
             Assert.Equal(HttpStatusCode.UnprocessableEntity, tooShort.Status);
-            Assert.Contains("12 characters", tooShort.Json!["errors"]![0]!["message"]!.GetValue<string>());
+            Assert.Contains("16 characters", tooShort.Json!["errors"]![0]!["message"]!.GetValue<string>());
             Assert.Equal(HttpStatusCode.Created, (await Register("Longer-Passw0rd!")).Status);
 
             Assert.True((await existing.LoginAsync()).Ok);                  // an old password keeps working until it is changed
-            var change = await existing.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!x", newPassword = "alllowercase-but-long1" });
+            var change = await existing.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!xKey", newPassword = "alllowercase-but-long1" });
             Assert.Equal(HttpStatusCode.UnprocessableEntity, change.Status);
             Assert.Equal("newPassword", change.Json!["errors"]![0]!["field"]!.GetValue<string>());
         });
@@ -129,7 +129,7 @@ public class PasswordPolicyTests(ApiFactory factory)
     {
         var admin = await Admin();
         var user = await TestClient.RegisterAsync(factory);
-        const string a = "Passw0rd!x", b = "Second-Pass-22", c = "Third-Pass-33", d = "Fourth-Pass-44";
+        const string a = "Passw0rd!xKey", b = "Second-Pass-22", c = "Third-Pass-33", d = "Fourth-Pass-44";
         Task<ApiResult> Change(string from, string to) => user.Post("/api/v1/me/password", new { currentPassword = from, newPassword = to });
 
         await WithPolicy(admin, PasswordPolicyDto.Default with { HistoryCount = 3 }, async () =>
@@ -175,7 +175,7 @@ public class PasswordPolicyTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await admin.Put("/api/v1/admin/password-policy", Policy(PasswordPolicyDto.Default with { MinLength = 4 }))).Status);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await admin.Put("/api/v1/admin/password-policy", Policy(PasswordPolicyDto.Default with { HistoryCount = 50 }))).Status);
 
-        await WithPolicy(admin, PasswordPolicyDto.Default with { MinLength = 10 }, () => Task.CompletedTask);
+        await WithPolicy(admin, PasswordPolicyDto.Default with { MinLength = 14 }, () => Task.CompletedTask);
         var audit = factory.WithDb(db => db.AuditLogs.IgnoreQueryFilters().Count(x => x.Action == "admin.password_policy" && x.UserId == admin.UserId));
         Assert.Equal(2, audit);   // the change and the restore
     }

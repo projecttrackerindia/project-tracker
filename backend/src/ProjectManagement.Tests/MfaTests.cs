@@ -11,7 +11,7 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public class MfaTests(ApiFactory factory)
 {
-    private const string Password = "Passw0rd!x";
+    private const string Password = "Passw0rd!xKey";
 
     private static string CodeNow(string secret, int stepOffset = 0) =>
         Totp.Compute(secret, Totp.StepOf(DateTime.UtcNow) + stepOffset);

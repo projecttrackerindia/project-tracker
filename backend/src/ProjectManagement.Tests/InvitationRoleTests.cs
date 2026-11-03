@@ -25,7 +25,7 @@ public class InvitationRoleTests(ApiFactory factory)
         var person = new TestClient(factory) { Email = $"user-{Guid.NewGuid():N}@example.com" };
         var invite = await owner.Post("/api/v1/workspace/invitations", new { email = person.Email, role = tier.ToString(), orgRoleId = role, reportsToUserId = boss });
         if (!invite.Ok || !accept) return (invite, null);
-        var reg = await person.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = person.Email, password = "Passw0rd!x", displayName = "Newcomer", acceptedTerms = true }, true);
+        var reg = await person.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = person.Email, password = "Passw0rd!xKey", displayName = "Newcomer", acceptedTerms = true }, true);
         Assert.Equal(HttpStatusCode.Created, reg.Status);
         await person.VerifyEmailAsync();
         await person.LoginAsync();
@@ -102,7 +102,7 @@ public class InvitationRoleTests(ApiFactory factory)
         Assert.True((await owner.Delete($"/api/v1/org/roles/{dev}")).Ok);
         Assert.Equal(HttpStatusCode.NoContent, (await owner.Delete($"/api/v1/workspace/members/{boss.UserId}")).Status);
 
-        var reg = await person.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = person.Email, password = "Passw0rd!x", displayName = "Late", acceptedTerms = true }, true);
+        var reg = await person.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = person.Email, password = "Passw0rd!xKey", displayName = "Late", acceptedTerms = true }, true);
         Assert.Equal(HttpStatusCode.Created, reg.Status);
         await person.VerifyEmailAsync();
         await person.LoginAsync();

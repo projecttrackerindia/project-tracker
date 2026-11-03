@@ -39,7 +39,7 @@ public class DocumentSecretTests(ApiFactory factory)
 
     private static async Task<string> EnableMfa(TestClient c)
     {
-        var setup = await c.Post("/api/v1/me/mfa/setup", new { password = "Passw0rd!x" });
+        var setup = await c.Post("/api/v1/me/mfa/setup", new { password = "Passw0rd!xKey" });
         var secret = setup.Data!["secret"]!.GetValue<string>().Replace(" ", "");
         Assert.True((await c.Post("/api/v1/me/mfa/enable", new { code = CodeNow(secret) })).Ok);
         return secret;

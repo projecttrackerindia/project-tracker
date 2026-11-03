@@ -120,6 +120,8 @@ public static class ServiceCollectionExtensions
         int authed = config.GetValue("RateLimiting:AuthenticatedPerMinute", 300);
         int auth = config.GetValue("RateLimiting:AuthPerMinute", 10);
         int scim = config.GetValue("RateLimiting:ScimPerMinute", 600);
+        int sensitive = config.GetValue("RateLimiting:SensitivePerMinute", 20);
+        int searchPerMinute = config.GetValue("RateLimiting:SearchPerMinute", 60);
 
         FixedWindowRateLimiterOptions Window(int limit) => new() { PermitLimit = limit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 };
         static string Ip(HttpContext http) => http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -131,8 +133,9 @@ public static class ServiceCollectionExtensions
             o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             o.OnRejected = async (context, _) =>
             {
-                if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retry))
-                    context.HttpContext.Response.Headers.RetryAfter = ((int)retry.TotalSeconds).ToString();
+                // Every 429 says when to come back (RFC 9110 Retry-After); a limiter that cannot tell answers with its window.
+                context.HttpContext.Response.Headers.RetryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retry)
+                    ? Math.Max(1, (int)Math.Ceiling(retry.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture) : "60";
                 await ErrorWriter.WriteAsync(context.HttpContext, 429, "Too many requests. Please slow down.", [new ApiError("TOO_MANY_REQUESTS", "Too many requests. Please slow down.")]);
             };
             // With Redis the counters are shared by every API instance; without it each instance counts for itself.
@@ -163,6 +166,10 @@ public static class ServiceCollectionExtensions
             });
             // Login, registration and password flows: brute-force protection per client address.
             o.AddPolicy("auth", http => enabled ? Limited(http, $"auth:{Ip(http)}", auth) : RateLimitPartition.GetNoLimiter("off"));
+            // Reveals, exports and invitations: small allowance per person and workspace (or per address when anonymous), on top of the global one.
+            static string Who(HttpContext http) => http.User.FindFirst("sub")?.Value is { } sub ? $"{sub}:{http.User.FindFirst("wid")?.Value ?? "-"}" : $"ip:{Ip(http)}";
+            o.AddPolicy("sensitive", http => enabled ? Limited(http, $"sensitive:{Who(http)}", sensitive) : RateLimitPartition.GetNoLimiter("off"));
+            o.AddPolicy("search", http => enabled ? Limited(http, $"search:{Who(http)}", searchPerMinute) : RateLimitPartition.GetNoLimiter("off"));
         });
         return services;
     }

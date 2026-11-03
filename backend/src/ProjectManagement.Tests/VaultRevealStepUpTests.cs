@@ -15,7 +15,7 @@ namespace ProjectManagement.Tests;
 public class VaultRevealStepUpTests(ApiFactory factory)
 {
     private const string Password = "Tq7#vLm2!pZx9@Rk";
-    private const string Account = "Passw0rd!x";
+    private const string Account = "Passw0rd!xKey";
     private static string S(JsonNode? n) => n!.GetValue<string>();
     private static Guid G(JsonNode? n) => Guid.Parse(S(n));
 

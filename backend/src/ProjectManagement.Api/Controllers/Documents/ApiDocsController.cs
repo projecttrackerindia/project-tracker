@@ -33,7 +33,7 @@ public class ApiDocsController(ApiDocService api, ApiTransferService transfer, P
     public async Task<IActionResult> Endpoint(Guid id, Guid endpointId, [FromQuery] Guid? versionId, CancellationToken ct) => Ok(await api.GetAsync(id, endpointId, versionId, ct));
 
     /// <summary>The endpoint with its masked values shown: "edit" (to change it) or "read" (needs the reveal permission and a reason). Audited.</summary>
-    [HttpPost("documents/{id:guid}/api/endpoints/{endpointId:guid}/reveal")]
+    [HttpPost("documents/{id:guid}/api/endpoints/{endpointId:guid}/reveal"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> RevealEndpoint(Guid id, Guid endpointId, [FromBody] ProjectManagement.Application.Features.Documents.DocumentRevealRequest req, CancellationToken ct) => Ok(await api.RevealAsync(id, endpointId, req, ct));
 
     [HttpPost("documents/{id:guid}/api/endpoints")]
@@ -53,7 +53,7 @@ public class ApiDocsController(ApiDocService api, ApiTransferService transfer, P
     [HttpPost("documents/{id:guid}/api/import"), RequestSizeLimit(7_000_000)]
     public async Task<IActionResult> Import(Guid id, [FromBody] ImportApiRequest req, CancellationToken ct) { var r = await transfer.ImportAsync(id, req, ct); await proposals.SuggestAsync("api-reference", id, ct); return Ok(r); }
 
-    [HttpGet("documents/{id:guid}/api/export")]
+    [HttpGet("documents/{id:guid}/api/export"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> Export(Guid id, [FromQuery] string? format, [FromQuery] Guid? definitionId, [FromQuery] Guid? versionId, CancellationToken ct)
     {
         var f = await transfer.ExportAsync(id, format, definitionId, versionId, ct);

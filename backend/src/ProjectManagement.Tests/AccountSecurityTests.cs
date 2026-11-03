@@ -63,9 +63,9 @@ public class AccountSecurityTests(ApiFactory factory)
             Assert.DoesNotContain(factory.Pwned.Asked, url => url.Contains(breached));
 
             var owner = await TestClient.RegisterAsync(factory, "Not Breached");
-            var change = await owner.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!x", newPassword = breached });
+            var change = await owner.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!xKey", newPassword = breached });
             Assert.Equal(HttpStatusCode.UnprocessableEntity, change.Status);
-            Assert.True((await owner.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!x", newPassword = "Quiet-Orchard-Lantern-58" })).Ok);
+            Assert.True((await owner.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!xKey", newPassword = "Quiet-Orchard-Lantern-58" })).Ok);
             var u = factory.WithDb(db => db.Users.Single(x => x.Id == owner.UserId));
             Assert.Equal(20, u.PasswordLength);   // capped
             Assert.NotNull(u.PasswordChangedAt);
@@ -86,7 +86,7 @@ public class AccountSecurityTests(ApiFactory factory)
         var tooStrict = await owner.Put("/api/v1/workspace/security", Rules(14));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, tooStrict.Status);
         Assert.Contains("Your own password", tooStrict.ToString());
-        Assert.True((await owner.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!x", newPassword = "Copper-Harbour-Window-91" })).Ok);
+        Assert.True((await owner.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!xKey", newPassword = "Copper-Harbour-Window-91" })).Ok);
         await owner.LoginAsync("Copper-Harbour-Window-91");
         await owner.SwitchToAsync(owner.WorkspaceId);
         var saved = await owner.Put("/api/v1/workspace/security", Rules(14));
@@ -96,7 +96,7 @@ public class AccountSecurityTests(ApiFactory factory)
         var me = await member.Get("/api/v1/me");
         Assert.Null(me.Data!["current"]);
         Assert.Equal("ORG_PASSWORD_TOO_SHORT", me.Data["blocked"]!["code"]!.GetValue<string>());
-        Assert.True((await member.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!x", newPassword = "Saffron-Meadow-Bridge-24" })).Ok);
+        Assert.True((await member.Post("/api/v1/me/password", new { currentPassword = "Passw0rd!xKey", newPassword = "Saffron-Meadow-Bridge-24" })).Ok);
         await member.LoginAsync("Saffron-Meadow-Bridge-24");
         Assert.True((await member.Post($"/api/v1/workspaces/{owner.WorkspaceId}/switch")).Ok);
 

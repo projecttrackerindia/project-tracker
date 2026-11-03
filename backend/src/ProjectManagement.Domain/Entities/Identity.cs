@@ -23,6 +23,8 @@ public class User : AuditableEntity
     public bool MustChangePassword { get; set; }
     public int FailedLoginCount { get; set; }
     public DateTime? LockoutEnd { get; set; }
+    /// <summary>Lockouts in a row without a successful sign-in: each one doubles the next lockout (exponential backoff, capped at a day).</summary>
+    public int LockoutStreak { get; set; }
     public DateTime? LastLoginAt { get; set; }
     public string TimeZone { get; set; } = "Asia/Kolkata";
     /// <summary>When the password was last chosen, and how long it was (capped at 20): for workspace rules and the admin's security view.

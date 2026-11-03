@@ -521,7 +521,7 @@ public class SsoTests(ApiFactory factory)
     public async Task People_with_two_step_verification_still_enter_their_code_after_google()
     {
         var c = await TestClient.RegisterAsync(factory, "Careful");
-        var setup = await c.Post("/api/v1/me/mfa/setup", new { password = "Passw0rd!x" });
+        var setup = await c.Post("/api/v1/me/mfa/setup", new { password = "Passw0rd!xKey" });
         var secret = S(setup.Data!["secret"]);
         Assert.True((await c.Post("/api/v1/me/mfa/enable", new { code = ProjectManagement.Application.Common.Totp.Compute(secret, ProjectManagement.Application.Common.Totp.StepOf(DateTime.UtcNow)) })).Ok);
 
