@@ -79,7 +79,7 @@ try {
     for (const [name, url, headline] of screens) {
       await go(page, url);
       if (headline) assert.match(await page.locator('.calm-hero-title').first().innerText(), headline, `${name}: calm headline`);
-      if (w < 500) await fitsPhone(page, `${name} ${suffix}`, assert);
+      if (w < 500) await fitsPhone(page, `${name} ${suffix}`, assert).catch((e) => { throw new Error(`${name} ${suffix}: ${e.message.split('\n').slice(0, 6).join(' ')}`); });
       const file = path.join(out, `${name}-${suffix}.png`); await page.screenshot({ path: file }); console.log(file);
     }
     await c.close();
