@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { ApiError, get, put } from '../../api/client';
 import { savedViewApi, type SavedView } from '../../api/platformApi';
-import { Segmented } from '../../components/ui';
+import '../../components/calm/calm-kit.css';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -15,11 +15,12 @@ import { interpret, isWork, matchesAll, DUE_LABEL, type QueryCtx, type Tok } fro
 import { ColourFilter, TabStrip, useTabPrefs, type Colour, type TabPrefs } from './planSheetTabs';
 import { needsReview, useActionReview } from './planSheetActions';
 import {
-  MODE_LABEL, MODES, portfolioKeys, projectColour, projectPasses, sheetProjects, usePortfolioUrl, type PortfolioMode, type PortfolioUrlState, type ProjectLike, type SheetLayout,
+  MODE_LABEL, MODES, portfolioKeys, projectColour, projectPasses, sheetProjects, usePortfolioUrl, type PortfolioUrlState, type ProjectLike, type SheetLayout,
 } from './portfolioShared';
 import './planSheet.css';
 import './planSheetTabs.css';
 import './portfolioShell.css';
+import './portfolioCalm.css';
 export { PortfolioSkeleton } from './portfolioSkeleton';
 
 /**
@@ -35,6 +36,7 @@ export interface PortfolioCtxValue {
   today: string; me: string | null; qctx: QueryCtx; text: string; setText: (t: string) => void; interpreted: Tok[];
   /** Tokens typed and committed (what the tabs filter by), plus the project folder tab on the project tabs. */ active: Tok[];
   colourOf: (projectId: string) => Colour; tabPrefs: TabPrefs; saveTabs: (p: TabPrefs) => void; review: ReturnType<typeof useActionReview>;
+  /** The grey second line of the title; a tab may set its own (useShellLine). */ setLine: (l: string | null) => void;
   phone: boolean; slots: ShellSlots; setTabMenu: (items: DotsItem[]) => void; activeView: string | null; defaultView: string | null; setDefaultView: (id: string | null) => Promise<void>;
   /** Whether a project passes the field, the colour filter and the folder tab (Board, Timeline, Present, Capacity). */ passes: (p: ProjectLike) => boolean;
 }
@@ -73,6 +75,20 @@ export function ShellPresence({ children }: { children: ReactNode }) {
   const { slots } = usePortfolio();
   return slots.presence ? createPortal(children, slots.presence) : null;
 }
+/** The tab's own second line under the title ("Sofia is over, Tom has room."). */
+export function useShellLine(line: string | null) {
+  const { setLine } = usePortfolio();
+  useEffect(() => { setLine(line); }, [line, setLine]);
+  useEffect(() => () => setLine(null), [setLine]);
+}
+/** The ISO week number of a date. */
+export function weekNo(isoDay: string): number {
+  const d = new Date(`${isoDay}T00:00:00Z`); const day = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - day + 3);
+  const y = new Date(Date.UTC(d.getUTCFullYear(), 0, 4)); return 1 + Math.round(((d.getTime() - y.getTime()) / 86_400_000 - 3 + ((y.getUTCDay() + 6) % 7)) / 7);
+}
+const firstWord = (t: string) => t.split(/\s+/)[0] ?? t;
+const fmtDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).replace(/(\d+) (\w+)/, '$2 $1');
+
 /** The tab's own ⋯ items, listed above the Portfolio's. */
 export function useShellMenu(items: DotsItem[]) {
   const { setTabMenu } = usePortfolio();
@@ -111,7 +127,8 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
   const qctx = useMemo(() => ({ today, me }), [today, me]);
   const { prefs: tabPrefs, save: saveTabs } = useTabPrefs();
   const colourOf = useCallback((id: string) => projectColour(tabPrefs, projects, id), [tabPrefs, projects]);
-  const review = useActionReview(mode === 'sheet');
+  const review = useActionReview(mode === 'sheet' || mode === 'actions' || mode === 'overview');
+  const [tabLine, setLine] = useState<string | null>(null);
   const [slots, setSlots] = useState<ShellSlots>({ tools: null, presence: null });
   const toolsRef = useCallback((el: HTMLElement | null) => setSlots((s) => (s.tools === el ? s : { ...s, tools: el })), []);
   const presenceRef = useCallback((el: HTMLElement | null) => setSlots((s) => (s.presence === el ? s : { ...s, presence: el })), []);
@@ -177,7 +194,8 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
 
   // ---- what the field means on each tab
   const onProjectTab = mode !== 'sheet';
-  const folderProject = tab && tab !== 'actions' && projects.some((p) => p.id === tab) ? tab : null;
+  // The folder tabs belong to the Plan sheet (design #portfolio): on the other tabs a folder left in the address does not filter.
+  const folderProject = mode === 'sheet' && tab && tab !== 'actions' && projects.some((p) => p.id === tab) ? tab : null;
   const active = useMemo(() => (onProjectTab && folderProject && !typed.some((t) => t.kind === 'project' && t.value === folderProject)
     ? [...typed, { kind: 'project' as const, value: folderProject, label: projects.find((p) => p.id === folderProject)?.title ?? '' }] : typed), [onProjectTab, folderProject, typed, projects]);
   const passes = useCallback((p: ProjectLike) => (!colours.length || colours.includes(colourOf(p.id))) && projectPasses(p, active, qctx, work), [colours, colourOf, active, qctx, work]);
@@ -188,7 +206,7 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
   const actionCount = review.data ? reviewItems.filter((i) => i.state !== 'done' && i.state !== 'cancelled').length : null;
   const filtering = typed.length > 0 || colours.length > 0 || !!folderProject;
   const nProjects = projectLikes.filter(passes).length;
-  const countText = mode === 'sheet' && tab === 'actions'
+  const countText = (mode === 'sheet' && tab === 'actions') || mode === 'actions'
     ? `${reviewItems.length} items${reviewItems.some((i) => needsReview(i)) ? ` · ${reviewItems.filter((i) => needsReview(i)).length} to review` : ''}`
     : mode === 'sheet' ? undefined
     : mode === 'capacity' ? `${people.length} people`
@@ -201,36 +219,62 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
   };
   const tabOrder0 = 'actions';
   const pageColour: Colour | 'ai' | 'none' = mode === 'sheet' && tab === 'actions' ? 'ai' : folderProject ? colourOf(folderProject) : 'none';
-  const title = mode === 'sheet' ? 'Plan' : MODE_LABEL[mode];
+  // ---- the calm title: one sentence and a grey second line, from the real data (a tab can set its own second line)
+  const atRisk = projects.filter((p) => p.category === 'AtRisk' || p.category === 'Delayed');
+  const openWork = (pid?: string) => work.filter((r) => (!pid || r.projectId === pid) && r.category !== 'Done');
+  const blocked = (pid?: string) => openWork(pid).filter((r) => r.late).length;
+  const decisionN = reviewItems.filter((i) => needsReview(i)).length;
+  const fp = folderProject ? projects.find((p) => p.id === folderProject) : null;
+  const latest = [...projects].filter((p) => p.due).sort((a, b) => (b.due ?? '').localeCompare(a.due ?? ''))[0];
+  const inReview = openWork().filter((r) => /review/i.test(r.status)).length;
+  const head: [string, string] = mode === 'overview'
+    ? atRisk.length === 0 ? (projects.length ? ['Everything is on track.', `${projects.length} projects this week.`] : ['Portfolio.', 'No projects yet.'])
+      : atRisk.length === 1 ? [`${firstWord(atRisk[0]!.title)} is at risk.`, projects.length > 1 ? 'Everything else is on track.' : 'Its plan needs a look.']
+      : [`${atRisk.length} projects are at risk.`, `${atRisk.slice(0, 2).map((p) => firstWord(p.title)).join(' and ')} need a look.`]
+    : mode === 'actions' ? [`${reviewItems.length} action item${reviewItems.length === 1 ? '' : 's'}.`, decisionN ? `${decisionN} need${decisionN === 1 ? 's' : ''} a decision.` : 'Nothing waits on a decision.']
+    : mode === 'sheet' ? ['Plan sheet.', fp ? `${firstWord(tabPrefs.names[fp.id] || fp.title)} · ${openWork(fp.id).length} open, ${blocked(fp.id)} late.` : tab === 'actions' ? 'Action items first.' : `${projects.length} projects · ${openWork().length} open.`]
+    : mode === 'timeline' ? ['Timeline.', latest?.due ? `${firstWord(latest.title)} drives ${fmtDay(latest.due)}.` : 'No dates yet.']
+    : mode === 'capacity' ? ['Capacity.', `${people.length} people.`]
+    : mode === 'board' ? ['Board.', `${inReview} in review, ${blocked()} late.`]
+    : ['Present.', `Week ${weekNo(today)}.`];
+  const second = tabLine ?? head[1];
+  const onPills = mode === 'present' ? 'overview' : mode;
 
   const value: PortfolioCtxValue = {
     url, sheet, projects, work, people, today, me, qctx, text, setText, interpreted, active, colourOf, tabPrefs, saveTabs, review, phone, slots, setTabMenu,
-    activeView, defaultView: prefs.data?.defaultView ?? null, setDefaultView, passes,
+    activeView, defaultView: prefs.data?.defaultView ?? null, setDefaultView, passes, setLine,
   };
   const field = (
     <CommandField toks={toks} setToks={(t) => { url.setToks(t); setActiveView(null); }} text={text} setText={(t) => { setText(t); if (t) setActiveView(null); }} interpreted={interpreted}
       count={matchingTasks} total={work.length} filtering={typed.length > 0} people={people} projects={projects} work={work} ctx={qctx} compact={phone}
       views={sheetViews} activeView={activeView} defaultView={prefs.data?.defaultView ?? null} onApplyView={applyView} onSaveView={(n) => void saveView(n)}
-      countText={countText} {...(mode === 'sheet' && tab === 'actions' ? { label: 'Search action items', placeholder: 'Search action items' } : {})} />
+      countText={countText} {...((mode === 'sheet' && tab === 'actions') || mode === 'actions' ? { label: 'Search action items', placeholder: 'Search action items' } : {})} />
   );
   const swatch = <ColourFilter on={colours} set={url.setColours} />;
   const menu = [...tabMenu, ...baseMenu(url)];
   return (
     <Ctx.Provider value={value}>
-      <div className={`ps3 ps4 pfx ${phone ? 'ps3-phone pfx-phone' : ''}`} data-mode={mode}>
-        <div className="ps3-head pfx-head">
-          <div className="ps3-crumb">Portfolio</div><h1>{title}</h1>
-          <div className="ps3-tabs pfx-tabs">
-            <Segmented<PortfolioMode> label="Portfolio view" value={mode} onChange={url.setMode} options={MODES.map((m) => ({ id: m, label: MODE_LABEL[m] }))} />
+      <div className={`ps3 ps4 pfx pfc ${phone ? 'ps3-phone pfx-phone' : ''}`} data-mode={mode}>
+        <header className="pfc-head">
+          <div className="pfc-crumb">Portfolio{mode !== 'overview' && <> › {MODE_LABEL[mode]}</>}</div>
+          <h1 className="pfc-title">{head[0]}<em>{second}</em></h1>
+        </header>
+        <div className="pfc-bar">
+          <div className="calm-pills pfc-pills" role="tablist" aria-label="Portfolio view">
+            {MODES.map((m) => <button key={m} type="button" role="tab" aria-selected={m === onPills} onClick={() => url.setMode(m)}>{MODE_LABEL[m]}</button>)}
           </div>
           <span className="ps3-sp" />
           <span className="pfx-presence" ref={presenceRef} />
           <DotsMenu label={mode === 'sheet' ? 'More on the plan sheet' : 'More on Portfolio'} items={menu} />
+          {!phone && <button type="button" className="pfc-week" onClick={() => url.setMode('present')} title="Present the week">Week {weekNo(today)} ›</button>}
         </div>
-        <TabStrip projects={projects} counts={counts} actionCount={actionCount} active={mode === 'sheet' ? tab : folderProject} onPick={pick} prefs={tabPrefs} save={saveTabs} compact={phone} />
-        <div ref={pageRef} className={`ps4-page pfx-page pc-${pageColour} ${tab || folderProject ? 'tabbed' : ''} ${tab === tabOrder0 ? 'first' : ''}`}>
-          <div className="ps3-cmdrow pfx-cmdrow">{field}{!phone && swatch}<span className="pfx-tools" ref={toolsRef} /></div>
-          {phone && <div className="ps3-cmdrow pfx-cmdrow2">{swatch}</div>}
+        {mode === 'sheet' && <TabStrip projects={projects} counts={counts} actionCount={actionCount} active={tab} onPick={pick} prefs={tabPrefs} save={saveTabs} compact={phone} />}
+        <div ref={pageRef} className={`ps4-page pfx-page pc-${pageColour} ${mode === 'sheet' && (tab || folderProject) ? 'tabbed' : ''} ${mode === 'sheet' && tab === tabOrder0 ? 'first' : ''} ${mode === 'sheet' ? 'pfc-sheetpage' : 'pfc-plain'}`}>
+          {/* The field shows on Overview only while a filter is on, so an active filter is never invisible. */}
+          {mode !== 'present' && (mode !== 'overview' || toks.length > 0 || colours.length > 0) && <>
+            <div className="ps3-cmdrow pfx-cmdrow">{field}{!phone && swatch}<span className="pfx-tools" ref={toolsRef} /></div>
+            {phone && <div className="ps3-cmdrow pfx-cmdrow2">{swatch}</div>}
+          </>}
           {filters?.(url)}
           <div key={`${mode}:${mode === 'sheet' ? tab ?? '' : ''}`} className="pfx-stage">{children(value)}</div>
         </div>
