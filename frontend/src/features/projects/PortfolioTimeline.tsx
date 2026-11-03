@@ -31,7 +31,7 @@ export function TimelineLegend() {
   );
 }
 
-interface Pending { p: TimelineProject; to: string; x: number; y: number }
+interface Pending { p: TimelineProject; to: string; x: number; y: number; /** a whole-bar move also moves the start */ start?: string }
 
 /**
  * Portfolio › Timeline (design section 8): one bar per project from its planned start to its due date, in the project's one colour (status is the bar's style and a word), filled by progress with the
@@ -55,7 +55,7 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   const [menu, setMenu] = useState<null | 'group'>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
-  const [drag, setDrag] = useState<{ id: string; to: string } | null>(null);
+  const [drag, setDrag] = useState<{ id: string; to: string; start?: string } | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [focus, setFocus] = useState(0);
   const box = useRef<HTMLDivElement>(null);
@@ -98,9 +98,9 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   const late = projects.filter((p) => statusOf(p, today) === 'Late').length, risk = projects.filter((p) => statusOf(p, today) === 'At risk').length;
   const todayX = X(today);
 
-  const save = async (p: TimelineProject, to: string, reason: string | null) => {
+  const save = async (p: TimelineProject, to: string, reason: string | null, start?: string) => {
     try {
-      const res = await portfolioApi.sheetBulk([{ id: p.id, version: p.version, dueDate: to }], reason);
+      const res = await portfolioApi.sheetBulk([{ id: p.id, version: p.version, dueDate: to, ...(start ? { startDate: start } : {}) }], reason);
       const row = res.rows[0];
       if (!row?.ok) { toast(row?.error ?? 'The new date could not be saved.', 'error'); return false; }
       toast(`${p.key} re-planned to ${dmy(to)}.`, 'success');
@@ -125,6 +125,37 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
     };
     el.addEventListener('pointermove', moveH); el.addEventListener('pointerup', up);
   };
+  // Drag the whole bar (design: "Drag a bar to move it; dependents ripple"): start and due move together; past 4px it is a drag, not a click.
+  const moved = useRef(false);
+  const startMove = (e: ReactPointerEvent<HTMLDivElement>, p: TimelineProject) => {
+    const s0 = startOf(p);
+    if (!p.due || !s0 || e.button !== 0) return;
+    const el = e.currentTarget; const x0 = e.clientX; const due0 = dn(p.due), st0 = dn(s0);
+    let d = 0; moved.current = false;
+    const moveH = (ev: PointerEvent) => {
+      if (!moved.current && Math.abs(ev.clientX - x0) < 4) return;
+      if (!moved.current) { moved.current = true; try { el.setPointerCapture(ev.pointerId); } catch { /* the pointer already left */ } }
+      d = Math.round((ev.clientX - x0) / px); setDrag({ id: p.id, to: iso(due0 + d), start: iso(st0 + d) });
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', moveH); window.removeEventListener('pointerup', up);
+      if (!moved.current) return;
+      setDrag(null);
+      if (d !== 0) setPending({ p, to: iso(due0 + d), start: iso(st0 + d), x: X(iso(due0 + d)), y: ev.clientY });
+    };
+    window.addEventListener('pointermove', moveH); window.addEventListener('pointerup', up);
+  };
+  // Ripple: while a bar moves later, every project that depends on it (and on those, in turn) slides by the same days.
+  const live = drag ?? (pending ? { id: pending.p.id, to: pending.to } : null);
+  const ripple = useMemo(() => {
+    const m = new Map<string, number>();
+    const src = live ? all.find((x) => x.id === live.id) : null;
+    const d = src?.due && live ? dn(live.to) - dn(src.due) : 0;
+    if (!src || d <= 0) return m;
+    const q = [src.id];
+    while (q.length) { const id = q.shift()!; for (const x of all) if ((x.dependsOn ?? []).includes(id) && !m.has(x.id) && x.id !== src.id) { m.set(x.id, d); q.push(x.id); } }
+    return m;
+  }, [live, all]);
 
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const cur = projRows[Math.min(focus, projRows.length - 1)]?.p;
@@ -197,17 +228,20 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
               ? <GroupBar key={`gb${r.name}`} items={r.items} y={i * ROW_H} X={X} W={W} todayX={todayX} />
               : <Bar key={r.p.id} p={r.p} colour={colourOf(r.p.id)} y={i * ROW_H} X={X} W={W} px={px} today={today} todayX={todayX} labels={zoom === 'quarter'}
                   drag={drag?.id === r.p.id ? drag.to : pending?.p.id === r.p.id ? pending.to : null} dragging={drag?.id === r.p.id}
-                  onHover={(x, y) => setHover({ id: r.p.id, x, y })} onOpen={() => navigate(`/work/projects/${r.p.id}`)} onDragStart={(e) => startDrag(e, r.p)} />)}
+                  dragStart={drag?.id === r.p.id ? drag.start ?? null : pending?.p.id === r.p.id ? pending.start ?? null : null} shift={(ripple.get(r.p.id) ?? 0) * px}
+                  onHover={(x, y) => setHover({ id: r.p.id, x, y })} onOpen={() => { if (!moved.current) navigate(`/work/projects/${r.p.id}`); moved.current = false; }}
+                  onDragStart={(e) => startDrag(e, r.p)} onMoveStart={(e) => startMove(e, r.p)} />)}
             {todayX >= 0 && todayX <= W && <i className="ptl-todayline" style={{ left: todayX }} />}
             {hp && !drag && !pending && <HoverCard p={hp} today={today} x={hover!.x} y={hover!.y} W={W} />}
             {pending && <ReplanPop pending={pending} W={W} y={rows.findIndex((r) => r.type === 'p' && r.p.id === pending.p.id) * ROW_H} dependents={dependents(pending.p.id)}
-              onCancel={() => setPending(null)} onSave={async (reason) => { const ok = await save(pending.p, pending.to, reason); if (ok) setPending(null); }} />}
+              onCancel={() => setPending(null)} onSave={async (reason) => { const ok = await save(pending.p, pending.to, reason, pending.start); if (ok) setPending(null); }} />}
+            {ripple.size > 0 && <span className="ptl-ripnote" role="status">{ripple.size} dependent{ripple.size === 1 ? '' : 's'} ripple +{[...ripple.values()][0]}d</span>}
           </div>
         </div>
       </div>
       <div className="ptl-foot">
         <TimelineLegend />
-        <span>{plural(projects.length, 'project')} · {late} late · {risk} at risk</span><span>Drag a bar end to re-plan</span><span>Click a bar to open the project</span>
+        <span>{plural(projects.length, 'project')} · {late} late · {risk} at risk</span><span>Drag a bar to move it, or its end to re-plan; dependents ripple</span><span>Click a bar to open the project</span>
         <span>{fit ? `Range fitted to your data: ${rangeLabel}` : `${rangeLabel} · ${zoom}`}</span>
         {days > 400 && zoom !== 'quarter' && <span className="ptl-hint">Long range: try Quarter</span>}
       </div>
@@ -249,13 +283,14 @@ function GroupBar({ items, y, X, W, todayX }: { items: TimelineProject[]; y: num
   );
 }
 
-function Bar({ p, colour, y, X, W, px, today, todayX, labels, drag, dragging, onHover, onOpen, onDragStart }: {
+function Bar({ p, colour, y, X, W, px, today, todayX, labels, drag, dragging, dragStart, shift, onHover, onOpen, onDragStart, onMoveStart }: {
   p: TimelineProject; colour: string; y: number; X: (s: string) => number; W: number; px: number; today: string; todayX: number; labels: boolean; drag: string | null; dragging: boolean;
-  onHover: (x: number, y: number) => void; onOpen: () => void; onDragStart: (e: ReactPointerEvent<HTMLSpanElement>) => void;
+  dragStart: string | null; shift: number;
+  onHover: (x: number, y: number) => void; onOpen: () => void; onDragStart: (e: ReactPointerEvent<HTMLSpanElement>) => void; onMoveStart: (e: ReactPointerEvent<HTMLDivElement>) => void;
 }) {
   const st = statusOf(p, today);
   const tone = TONE[st];
-  const s = startOf(p);
+  const s = dragStart ?? startOf(p);
   if (!s || !p.due) return null;
   const due = drag ?? p.due;
   const x0 = X(s), x1 = Math.max(x0 + 8, X(due) + px);   // the due day is included
@@ -278,8 +313,8 @@ function Bar({ p, colour, y, X, W, px, today, todayX, labels, drag, dragging, on
   const sentence = `${p.name}, ${p.owner ?? 'no owner'}, ${st.toLowerCase()}, planned ${dmy(s)} to ${dmy(p.due)}${p.forecast ? `, forecast ${dmy(p.forecast)}` : ''}, ${p.progress}% done`;
   const delta = drag && drag !== p.due ? dn(drag) - dn(p.due) : 0;
   return (
-    <>
-      <div className={`ptl-bar pc-${colour} ${tone} ${dragging || drag ? 'drag' : ''}`} role="button" tabIndex={-1} aria-label={sentence} style={{ top: by, left: Math.max(0, x0), width: Math.min(W, x1) - Math.max(0, x0) }}
+    <div className={`ptl-rip ${shift ? 'on' : ''}`} style={shift ? { transform: `translateX(${shift}px)` } : undefined}>
+      <div className={`ptl-bar pc-${colour} ${tone} ${dragging || drag ? 'drag' : ''}`} onPointerDown={onMoveStart} role="button" tabIndex={-1} aria-label={sentence} style={{ top: by, left: Math.max(0, x0), width: Math.min(W, x1) - Math.max(0, x0) }}
         onMouseMove={(e) => { const r = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect(); onHover(e.clientX - r.left, y); }} onClick={onOpen}>
         <i className="ptl-fill" style={{ width: Math.max(0, fill - Math.max(0, -x0)) }} />
         <span className={`ptl-pc ${fill > 40 ? 'in' : ''}`} style={fill > 40 ? undefined : { left: fill + 6 }}>{p.progress}%</span>
@@ -301,7 +336,7 @@ function Bar({ p, colour, y, X, W, px, today, todayX, labels, drag, dragging, on
           {slip > 0 && <em className="ptl-slipchip">+{slip}d</em>}{word && <b className={`ptl-st ${tone}`}>{word.slice(0, -3)}</b>}{word ? after.slice(word.length - 3) : after}
         </span>
       )}
-    </>
+    </div>
   );
 }
 
