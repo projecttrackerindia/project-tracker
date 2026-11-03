@@ -1,0 +1,6 @@
+/* Calm Activity (shot 63): the sentence, then one list card of rows with faces */
+.calm-act { display: flex; flex-direction: column; gap: 22px; padding: 0 clamp(16px, 2.6vw, 40px) 28px; }
+.calm-act .calm-row-t { white-space: normal; }
+.calm-act .calm-row-t b { font-weight: 600; }
+.calm-act-face { width: 28px !important; height: 28px !important; font-size: 10px !important; flex: none; }
+@media (max-width: 600px) { .calm-act .calm-hero-title { font-size: 34px; } }

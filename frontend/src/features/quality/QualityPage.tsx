@@ -7,6 +7,7 @@ import { projectApi, workspaceApi } from '../../api/endpoints';
 import { qualityApi, releaseApi, type CasePriority, type ResultStatus, type TestCase, type TestMatrix, type TestResult, type TestRun } from '../../api/qualityApi';
 import { Field, Modal } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
+import { CalmHero } from '../../components/calm';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { commonCause, evidenceLines, releaseOf, runHeading, stepsOf } from './qualityLogic';
@@ -68,6 +69,7 @@ export function QualityPage() {
   };
 
   const empty = !matrix.isLoading && m.cases.length === 0;
+  const failingCount = m.cases.filter(failedHere).length;
 
   return (
     <div className="dq-page qa">
@@ -81,7 +83,8 @@ export function QualityPage() {
       <div className="dq-hd qa-hd">
         <div>
           <div className="dq-eyebrow">{[project, current ? releaseOf(current.name) : null].filter(Boolean).join(' · ') || 'Test cases and runs'}</div>
-          <h1 className="dq-h1">Quality</h1>
+          <CalmHero title={failingCount === 0 ? (m.cases.length ? 'Everything passing.' : 'Quality.') : `${failingCount} failing ${failingCount === 1 ? 'case' : 'cases'}.`}
+            second={firstFailed ? `${firstFailed.title} first.` : current ? `${current.name} is clear.` : undefined} />
         </div>
         <div className="dq-row" style={{ gap: 8 }}>
           {current && <button type="button" className="dq-btn sm" onClick={() => void rerunFailed()}>▶ Re‑run failed</button>}

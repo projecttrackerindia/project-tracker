@@ -11,6 +11,7 @@ import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, PageHead, PageLoader, Segmented } from '../../components/ui';
 import { MONTHS, formatDate, timeAgo, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { CalmHero } from '../../components/calm';
 import { useAuth, useCan, useModule, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { Markdown } from '../ai/Markdown';
@@ -206,7 +207,11 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
 
   return (
     <>
-      <PageHead eyebrow={`${scope} · as of ${dayMonth(today)}`} title="Insights">{tabs}</PageHead>
+      <div className="calm-ins-head">
+        <CalmHero title={delivery == null ? 'Insights.' : delayed.length ? `${delayed.length} ${delayed.length === 1 ? 'project needs' : 'projects need'} a look.` : 'Everything on track.'}
+          second={delayed[0] ? `${delayed[0].name} first.` : `${scope} · as of ${dayMonth(today)}.`} />
+        {tabs}
+      </div>
       <div className="ins-rings">
         <Ring index={0} tone="pink" label="Projects on track" value={delivery} to="/work/projects"
           sub={projects.data ? `${onTrack} of ${live.length} projects on track` : projects.isLoading ? 'Reading…' : projects.isError ? 'Projects could not be loaded — open to retry' : 'No projects yet'}
@@ -489,7 +494,7 @@ function Reports({ tabs }: { tabs: React.ReactNode }) {
 
   return (
     <>
-      <PageHead eyebrow="Insights" title="Reports">{tabs}</PageHead>
+      <div className="calm-ins-head"><CalmHero title="Reports." second="Generate, schedule and share." />{tabs}</div>
       {canReports && (
         <>
           <form className="ds-command ins-say" onSubmit={(e) => { e.preventDefault(); describe(); }}>

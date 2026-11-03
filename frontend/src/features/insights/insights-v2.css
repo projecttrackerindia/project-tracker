@@ -162,3 +162,8 @@ a.ins-ring:hover, a.ins-ring:focus-visible { box-shadow: 0 4px 16px rgba(0,0,0,.
 .ins-table tfoot td { text-align: center; font-size: 12.5px; padding: 8px 6px; font-variant-numeric: tabular-nums; }
 .ins-table .tsg-ovl { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 600; color: #a35c00; text-decoration: none; }
 html[data-theme='dark'] .ins-table .tsg-ovl { color: #ffb340; }
+
+/* calm headline (shots 27, 61): the sentence on the left, the tabs beside it, wrapping on a phone */
+.calm-ins-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin: 0 0 22px; }
+.calm-ins-head .calm-hero { min-width: 0; flex: 1 1 420px; }
+@media (max-width: 600px) { .calm-ins-head .calm-hero-title { font-size: 34px; } }
