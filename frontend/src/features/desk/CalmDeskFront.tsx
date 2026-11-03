@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import type { WorkItemDetail, WorkRow } from '../../api/workItemsApi';
 import { AuraLine, CalmCard, CalmGo, CalmHero, CalmLink, CalmRow } from '../../components/calm';
 import { Face } from '../../components/Face';
@@ -115,7 +114,6 @@ export function CalmDeskFront({ rows, detailOf, now, meId, onOpen, onAssign, onS
             {agents.map((a) => <CalmRow key={a.id} lead={<Face userId={a.id} name={a.name} className="cd-face" />} title={<>{a.name}<small>{a.id === meId ? 'You · ' : ''}{a.n} open</small></>} />)}
           </CalmCard>
         )}
-        <Link className="calm-link cd-int" to="/desk/integrations">Integrations ›</Link>
       </aside>
     </section>
   );

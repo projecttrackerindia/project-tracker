@@ -332,8 +332,8 @@ public class OrgChartTests(ApiFactory factory)
 
         var team = await owner.Post("/api/v1/teams", new { name = "Platform" });
         var dept = await owner.Post("/api/v1/teams", new { name = "Engineering" });
-        var teamId = team.Data!["id"]!.GetValue<string>();
-        var deptId = dept.Data!["id"]!.GetValue<string>();
+        var teamId = team.Data!["team"]!["id"]!.GetValue<string>();
+        var deptId = dept.Data!["team"]!["id"]!.GetValue<string>();
         Assert.True((await owner.Post("/api/v1/org/move", new { kind = "team", id = teamId, newParentId = deptId })).Ok);
 
         // A member without the org-structure permission cannot move anyone.
