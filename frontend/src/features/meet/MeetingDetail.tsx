@@ -13,6 +13,10 @@ import { BriefModal, DelegateModal, ReportModal } from '../command/CommandParts'
 import { meetApi, type MeetItem, type Rsvp } from './meetApi';
 import { wallInZone, zonedTimeToUtc } from './timezone';
 import { MeetingCapture, OccurrenceEditor } from './MeetingWork';
+import { CalmCard, CalmHero } from '../../components/calm';
+import { Face } from '../../components/Face';
+import { connectApi } from './meetApi';
+import { dayWord, hm } from './meetFormat';
 import './meet.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -41,9 +45,10 @@ type People = MeetingParticipant[];
  * calls; Google and Teams keep replies in their calendar), send the agent in my place, read the brief, and for the organizer move, invite,
  * remove, post the stand-up summary or cancel.
  */
-export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false, headerExtra }: {
+export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false, headerExtra, page = false }: {
   kind: 'project' | 'workspace'; id: string; at: string | null; onClose: () => void; onProject: (projectId: string) => void;
   /** Draw it in a page's own pane (Talk) instead of a dialog. */ inline?: boolean; headerExtra?: React.ReactNode;
+  /** Meetings: the meeting as its own page (hero, the meeting on the left, its action items and facts on the right). */ page?: boolean;
 }) {
   const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx?.user.id);
@@ -195,6 +200,30 @@ export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false
       {report && <ReportModal id={report} onClose={() => setReport(null)} />}
     </>
   );
+  if (page) {
+    const ref = session?.ref ?? `${kind === 'project' ? 'p' : 'w'}:${id}`;
+    const second = base?.status === 'Cancelled' ? 'Cancelled.' : start ? `${dayWord(start)} · ${hm(start)}–${hm(end ?? start)}${session?.live ? ' · live now' : ''}.` : '';
+    return (
+      <div className="mz mz-page" data-testid="meeting-page">
+        <div className="mz-main">
+          <nav className="mz-crumb" aria-label="Breadcrumb"><button type="button" onClick={onClose}>Meetings</button><span>›</span><b>{title}</b></nav>
+          <CalmHero title={`${title}.`} second={second} />
+          <CalmCard className="mz-card mt-dcard">{content}</CalmCard>
+        </div>
+        <aside className="mz-side mz-detail-side">
+          <CalmCard className="mz-card">
+            <dl className="mz-dl wide">
+              <dt>When</dt><dd>{start ? `${dayWord(start)} · ${hm(start)}–${hm(end ?? start)}` : '—'}</dd>
+              <dt>People</dt><dd className="mz-faces">{people.slice(0, 6).map((x) => <Face key={x.userId ?? x.email} userId={x.userId} name={x.name} className="mz-av" title={x.name} />)}{people.length > 6 && <span className="mz-av more">+{people.length - 6}</span>}</dd>
+              <dt>Notetaker</dt><dd>{NOTETAKER_LABEL[notetaker] ?? (notetaker === 'project' && kind === 'project' ? 'Project settings' : 'Off')}{session?.notes === 'done' ? ' · notes ready' : ''}</dd>
+              {p && <><dt>Project</dt><dd><button type="button" className="mz-link" onClick={() => onProject(p.projectId)}>{session?.projectName ?? 'Project'} ›</button></dd></>}
+            </dl>
+          </CalmCard>
+          <MeetingItemsCard meetingRef={ref} at={session?.originalStart ?? session?.start ?? at} />
+        </aside>
+      </div>
+    );
+  }
   if (inline) return (
     <section className="mt-inline" aria-label={title}>
       <header className="mt-inline-head">
@@ -237,5 +266,25 @@ export function MoveForm({ kind, id, start, end, zone, onDone, onCancel }: { kin
       <p className="mt-hint">In {zone}, the zone it was scheduled in.</p>
       <div className="mt-row"><button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Keep the time</button><button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void save()}>{busy && <span className="spinner" />}Save new time</button></div>
     </div>
+  );
+}
+
+/** The action items agreed in this meeting (work items with it as their source): owner, title and where each stands. */
+function MeetingItemsCard({ meetingRef, at }: { meetingRef: string; at: string | null }) {
+  const q = useWsQuery(['meet', 'items', meetingRef, at ?? ''], () => connectApi.items(meetingRef, at), { staleTime: 30_000, retry: false });
+  const rows = q.data?.createdHere ?? [];
+  const noOwner = rows.filter((r) => !r.owner && r.status !== 'Done').length;
+  return (
+    <CalmCard className="mz-card" title={`Action items · ${rows.length}`} aside={q.data?.openInSeries ? <span>{q.data.openInSeries} open in the series</span> : undefined}>
+      {rows.length === 0 ? <p className="mz-none">{q.isLoading ? 'Reading…' : 'Nothing agreed yet. Capture one in the meeting.'}</p> : (
+        <ul className="mz-actions">
+          {rows.map((r) => (
+            <li key={r.id}><Face userId={r.owner?.id} name={r.owner?.name ?? '?'} className="mz-av sm" /><Link to={`/work?item=${r.id}`}>{r.title}</Link>
+              <em className={r.status === 'Done' || r.status === 'Completed' ? 'ok' : r.isOverdue ? 'late' : ''}>{r.status === 'Done' || r.status === 'Completed' ? 'Done' : r.isOverdue ? 'Overdue' : r.dueDate ? new Date(`${r.dueDate}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : r.status}</em></li>
+          ))}
+        </ul>
+      )}
+      {noOwner > 0 && <p className="mz-aura"><span className="calm-orb" aria-hidden="true" />{noOwner === 1 ? 'One item has' : `${noOwner} items have`} no owner yet.</p>}
+    </CalmCard>
   );
 }

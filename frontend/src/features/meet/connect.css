@@ -370,3 +370,27 @@ a.mw-pill { display: inline-flex; align-items: center; text-decoration: none; }
 .ms-notetaker .mt-choice.on b { font-weight: 600; }
 .ms-notetaker .mt-choice small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .ms-notetaker .mt-choice:has(input:focus-visible) { outline: 2px solid var(--ds-accent); }
+
+/* calm schedule sheet (demo 21): the form on the left, availability on the right, sliding in from the right as a tall sheet */
+.ms-overlay.modal-overlay { justify-content: flex-end; align-items: stretch; padding: 20px; }
+.ms-overlay .modal.lg { max-width: 860px; width: min(860px, calc(100vw - 40px)); max-height: none; border-radius: var(--calm-r-hero); box-shadow: var(--calm-sh-sheet); }
+.ms-overlay .modal-head h3 { font-size: var(--calm-sheet-title); font-weight: 600; color: var(--calm-ink); letter-spacing: -.02em; }
+.ms-2col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 28px; align-items: start; }
+.ms-avail { display: grid; gap: 10px; min-width: 0; }
+.ms-av-h { font-size: 12.5px; font-weight: 500; color: var(--calm-ink3-text); }
+.ms-av-rows { display: grid; gap: 10px; }
+.ms-av-r { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 10px; }
+.ms-av-n { display: flex; align-items: center; gap: 7px; font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms-av-t { position: relative; height: 22px; border-radius: 11px; background: var(--calm-fill); overflow: hidden; }
+.ms-av-t i { position: absolute; top: 3px; bottom: 3px; border-radius: 8px; }
+.ms-av-t i.busy { background: color-mix(in srgb, var(--calm-ink) 22%, transparent); }
+.ms-av-t i.slot { top: 0; bottom: 0; background: color-mix(in srgb, var(--calm-green) 22%, transparent); box-shadow: inset 0 0 0 1.5px var(--calm-green); }
+.ms-av-t i.slot.clash { background: color-mix(in srgb, var(--calm-red) 18%, transparent); box-shadow: inset 0 0 0 1.5px var(--calm-red); }
+.ms-av-x { position: relative; height: 14px; margin-left: 94px; font-size: 10.5px; color: var(--calm-ink3-text); }
+.ms-av-x b { position: absolute; transform: translateX(-50%); font-weight: 500; }
+.ms-av-aura { display: flex; align-items: center; gap: 9px; margin: 4px 0; padding: 12px 14px; border-radius: var(--calm-r-row); background: var(--calm-accent-soft); font-size: 13.5px; }
+.ms-av-o { display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 14px; border-radius: var(--calm-r-row); background: var(--calm-fill); font-size: 13.5px; }
+.ms-av-o button { border: 0; background: none; font: inherit; font-weight: 600; color: var(--calm-accent-text); cursor: pointer; min-height: 36px; }
+@media (max-width: 900px) { .ms-2col { grid-template-columns: minmax(0, 1fr); } .ms-overlay.modal-overlay { padding: 0; align-items: flex-end; } .ms-overlay .modal.lg { width: 100%; } }
+.ms-overlay .modal.lg { max-height: calc(100dvh - 40px); } @media (max-width: 900px) { .ms-overlay .modal.lg { max-height: 92dvh; } }
+.ms-2col > .ms { position: relative; z-index: 1; } .ms-avail { position: relative; z-index: 0; }

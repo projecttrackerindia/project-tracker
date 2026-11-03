@@ -14,11 +14,13 @@ import { CalendarView } from './CalendarView';
 import { EventDetail, type DetailActions } from './EventDetail';
 import { DayPanel } from './DayPanel';
 import { canMoveDue, editError, moveDue, overlapText, refreshAfterEdit } from './calendarEdit';
+import { openSchedule } from '../meet/scheduleStore';
+import { instantIn } from '../../lib/zone';
 import { useClearOnRefresh, useDayEdit } from './useDayEdit';
 import type { WorkChoice } from './TimeEntryEditor';
 import { AttendanceRow } from '../attendance/AttendanceCalendar';
 import {
-  DOW3, HR, MONTHS, SNAP, addDays, clockH, dateOf, dayLabel, fmtMins, hourOf, isDeadline, isDone, isWorkItem, iso, mondayOf, planKey, RANK,
+  DOW3, HR, MONTHS, SNAP, addDays, clockH, countdown, dateOf, dayLabel, fmtMins, hourOf, isDeadline, isDone, isWorkItem, iso, mondayOf, planKey, RANK,
   type Detail, type Focus, type Meet, type PlanOverrides,
 } from './plannerModel';
 import { useTodaySignals } from '../home/Signals';
@@ -28,20 +30,23 @@ import { dayMarks, type DayMark } from './deadline';
 import { packColumns, packStyle, type Packed } from './pack';
 import { clock24 } from '../work/dueTime';
 import './planner.css';
-import { ZoneBadge } from '../../components/ZoneBadge';
+import { CalmSheet } from '../../components/calm';
+import { Face } from '../../components/Face';
 
-/** ISO week number. */
-const weekNo = (s: string) => { const d = dateOf(s); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); const w1 = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d.getTime() - w1.getTime()) / 864e5 - 3 + ((w1.getDay() + 6) % 7)) / 7); };
 
 /** Project colours in the order the filter lists them (the design: indigo, orange, teal …); meetings without a project are green. */
 const TINTS = ['i', 'o', 't', 'p', 'b', 'r'] as const;
-const DOT: Record<string, string> = { i: '#5856d6', o: '#ff9500', t: '#30b0c7', p: '#af52de', b: '#0071e3', r: '#ff2d55', g: '#28cd41' };
+const DOT: Record<string, string> = { i: 'var(--calm-p1)', o: 'var(--calm-p4)', t: 'var(--calm-p2)', p: 'var(--calm-p3)', b: 'var(--calm-p6)', r: 'var(--calm-p5)', g: 'var(--calm-ink3)' };
 
 /** The grid shows the whole day (midnight to midnight) and scrolls to the first thing on it, or 8 AM. */
 const G0 = 0, G1 = 24, FIRST_HOUR = 8;
-const hourLabel = (h: number) => (h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`);
+const hourLabel = (h: number) => `${h}:00`;
+/** "09:30": the design's 24-hour clock. */
+const hm = (h: number) => { const m = Math.round(h * 60); return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+/** Free time worth a hint: a quarter hour or more between 9:00 and 18:00, from now on. */
+const FREE0 = 9, FREE1 = 18, FREE_MIN = .25, FREE_MAX = 2;
 
-type View = 'day' | 'week' | 'month';
+type View = 'day' | 'week' | 'month' | 'agenda';
 type Layer = 'meetings' | 'calls' | 'logged' | 'done' | 'focus' | 'deadlines' | 'reminders';
 const LAYERS: [Layer, string][] = [['meetings', 'Meetings'], ['calls', 'Calls'], ['logged', 'Logged time'], ['done', 'Done'], ['focus', 'Focus'], ['deadlines', 'Deadlines'], ['reminders', 'Reminders']];
 
@@ -104,6 +109,8 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const [mini, setMini] = useState(() => { const d = dateOf(today); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [layers, setLayers] = useState<Record<Layer, boolean>>({ meetings: true, calls: true, logged: true, done: true, focus: true, deadlines: true, reminders: true });
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [railOpen, setRailOpen] = useState(false);
+  const [showLayers, setShowLayers] = useState(false);
   const [plan, setPlan] = useState<PlanOverrides>(() => readPlan(wid));
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<{ d: Detail; el: HTMLElement | null } | null>(null);
@@ -116,7 +123,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
 
   const monday = mondayOf(anchor);
   const sunday = addDays(monday, 6);
-  const week = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(monday, i)), [monday]);
+  const week = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(monday, i)), [monday]);
   const days = useMemo(() => (view === 'day' ? [anchor] : week), [view, anchor, week]);
   // The Day panel's day: today when it is on screen, else the first day shown; a click on a day header or empty time chooses another.
   const [selDay, setSelDay] = useState(today);
@@ -137,7 +144,8 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const raw = useMemo(() => applyEdits((tl.data?.events ?? []).filter((t) => !(t.type === 'due' && doneIds.has(t.sourceId)))), [tl.data, doneIds, applyEdits]);
   const projects = useMemo(() => [...new Set(raw.map((e) => e.projectName).filter((n): n is string => !!n))].slice(0, 6), [raw]);
   const tintOf = useCallback((name: string | null) => (name && projects.includes(name) ? TINTS[projects.indexOf(name) % TINTS.length] : 'g'), [projects]);
-  const timeline = useMemo(() => raw.filter((t) => !t.projectName || !hidden.has(t.projectName)), [raw, hidden]);
+  const timeline = useMemo(() => raw.filter((t) => (t.projectName ? !hidden.has(t.projectName) : !(hidden.has(PERSONAL) && (t.type === 'meeting' || t.type === 'call')))), [raw, hidden]);
+  const calCount = useCallback((p: string | null) => raw.filter((t) => (p ? t.projectName === p : !t.projectName && (t.type === 'meeting' || t.type === 'call'))).length, [raw]);
   const wv = useMemo(() => buildWeek(timeline, week, today, nowQ, plan, nowH), [timeline, week, today, nowQ, plan, nowH]);
   const openItems = useMemo(() => wv.days.flatMap((d) => d.due).filter((e) => isWorkItem(e) && !isDone(e)), [wv]);
   const choices = useMemo<WorkChoice[]>(() => {
@@ -194,7 +202,13 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     else if (it.kind === 'reminder') { const t = raw.find((x) => `reminder:${x.date}:${x.id}` === it.key); if (t) void moveRem(t, day, start); }
   };
   const live = useRef({ down: (_e: ReactPointerEvent, _it: DragItem, _mode: DragMode) => {}, open: (_d: Detail, _el: HTMLElement) => {}, alt: (_it: DragItem, _up: boolean) => {},
-    create: (_e: ReactPointerEvent, _day: string) => {}, flag: (_e: ReactPointerEvent, _f: CalendarEvent) => {} });
+    create: (_e: ReactPointerEvent, _day: string) => {}, flag: (_e: ReactPointerEvent, _f: CalendarEvent) => {}, free: (_d: string, _a: number, _b: number) => {} });
+  live.current.free = (day, a, b) => {
+    if (justDragged.current) return;
+    const end = Math.min(b, a + 1);
+    setSelDay(day); setPick({ day, a, b: end });
+    setOpen({ d: { kind: 'create', key: `create:${day}:${a}-${end}`, day, start: a, end }, el: null });
+  };
   live.current.down = (ev, it, mode) => {
     if (ev.button !== 0) return;
     ev.stopPropagation();
@@ -283,6 +297,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const handlers = useMemo<ColHandlers>(() => ({
     down: (e, it, mode) => live.current.down(e, it, mode), open: (d, el) => live.current.open(d, el), alt: (it, up) => live.current.alt(it, up),
     create: (e, day) => live.current.create(e, day),
+    free: (day, start, end) => live.current.free(day, start, end),
   }), []);
   const closeDetail = useCallback(() => { setOpen(null); setPick(null); }, []);
   const openKey = open?.d.key ?? null;
@@ -324,7 +339,21 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
     ];
     // Deadlines with a time (a due time, or an open ticket's SLA breach): a chip in the day's due strip, a thin line at its hour.
     const marks = layers.deadlines ? dayMarks(d, dv?.due ?? [], now.getTime()) : [];
-    return { d, meets: ms, calls, pack: packColumns(spans, PILL_H), focus: fs, logged, done, reminders, marks, overlaps: dv?.overlaps ?? new Map() };
+    // Work due at a time is drawn in the grid as a task chip at that hour, packed with everything else.
+    for (const m of marks) spans.push({ key: `task:${d}:${m.key}`, start: m.at, end: m.at + TASK_H });
+    // Free time: the gaps of a quarter hour or more between 9:00 and 18:00 (from now on today), as dashed hints that open "new" there.
+    const free: { start: number; end: number }[] = [];
+    if (d >= today && dateOf(d).getDay() % 6 !== 0 && !(dv?.off.length)) {
+      const busy = spans.filter((x) => !x.key.startsWith('reminder:') && !x.key.startsWith('done:')).map((x) => [x.start, x.end] as const).sort((a, b) => a[0] - b[0]);
+      let cur = d === today ? Math.max(FREE0, Math.ceil(nowH * 4) / 4) : FREE0;
+      for (const [a, b] of [...busy, [FREE1, FREE1] as const]) {
+        const gapEnd = Math.min(a, FREE1);
+        if (gapEnd - cur >= FREE_MIN - 1e-9 && gapEnd - cur <= FREE_MAX + 1e-9) free.push({ start: cur, end: gapEnd });
+        cur = Math.max(cur, b);
+        if (cur >= FREE1) break;
+      }
+    }
+    return { d, meets: ms, calls, pack: packColumns(spans, PILL_H), focus: fs, logged, done, reminders, marks, free: free.slice(0, 3), overlaps: dv?.overlaps ?? new Map() };
   }), [days, wv, timeline, today, nowQ, nowH, plan, meets, layers, focus, now]);
   // ---- each day's due strip: the flagged deadlines (overdue first) and every deadline with a time, at most three chips and "+N"
   const strips = useMemo(() => cols.map((c) => {
@@ -401,68 +430,143 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
   const callsN = wv.days.reduce((n, d) => n + d.calls.length, 0);
   const loggedM = wv.days.reduce((n, d) => n + d.loggedMin, 0);
   const doneN = wv.days.reduce((n, d) => n + d.done.length, 0);
-  const perDay = week.map((d) => ({ d, h: weekMeets.filter((m) => m.day === d).reduce((n, m) => n + (m.end - m.start), 0) }));
+  const perDay = week.slice(0, 5).map((d) => ({ d, h: weekMeets.filter((m) => m.day === d).reduce((n, m) => n + (m.end - m.start), 0) }));
   const busiest = perDay.reduce((a, b) => (b.h > a.h ? b : a), perDay[0]);
   const longest = weekMeets.filter((m) => m.day === busiest?.d).sort((a, b) => (b.end - b.start) - (a.end - a.start))[0];
   const fmtH = (h: number) => `${Math.round(h * 10) / 10}h`.replace('.0h', 'h');
   const capOf = (d: string) => grid.data?.days?.find((x) => x.date === d)?.targetMinutes ?? (dateOf(d).getDay() % 6 === 0 ? 0 : 480);
   const weekCap = week.reduce((n, d) => n + capOf(d), 0);
 
-  const title = view === 'day'
-    ? `${DOW3[dateOf(anchor).getDay()]} ${dateOf(anchor).getDate()} ${MONTHS[dateOf(anchor).getMonth()]}`
-    : (() => { const a = dateOf(week[0]), b = dateOf(week[4]); return a.getMonth() === b.getMonth() ? `${a.getDate()} – ${b.getDate()} ${MONTHS[b.getMonth()]}` : `${a.getDate()} ${MONTHS[a.getMonth()].slice(0, 3)} – ${b.getDate()} ${MONTHS[b.getMonth()].slice(0, 3)}`; })();
+  const md = dateOf(anchor);
+  const title: ReactNode = view === 'day'
+    ? <>{md.toLocaleDateString('en-GB', { weekday: 'long' })} <em>{md.getDate()} {MONTHS[md.getMonth()].slice(0, 3)} {md.getFullYear()}</em></>
+    : view === 'month' ? <>{MONTHS[md.getMonth()]} <em>{md.getFullYear()}</em></>
+      : view === 'agenda' ? <>Agenda <em>· {week.includes(today) ? 'this week' : `week of ${dateOf(monday).getDate()} ${MONTHS[dateOf(monday).getMonth()].slice(0, 3)}`}</em></>
+        : (() => { const a = dateOf(week[0]), b = dateOf(week[6]); return a.getMonth() === b.getMonth() ? <>{MONTHS[a.getMonth()]} <em>{a.getDate()} – {b.getDate()}, {b.getFullYear()}</em></> : <>{MONTHS[a.getMonth()].slice(0, 3)} {a.getDate()} <em>– {MONTHS[b.getMonth()].slice(0, 3)} {b.getDate()}, {b.getFullYear()}</em></>; })();
+  const titleText = view === 'day' ? `${DOW3[md.getDay()]} ${md.getDate()} ${MONTHS[md.getMonth()]}` : `Week of ${dateOf(monday).getDate()} ${MONTHS[dateOf(monday).getMonth()]}`;
+  const step = view === 'day' ? 1 : 7;
+  const shift = (n: number) => {
+    if (view === 'month') { const d = new Date(md.getFullYear(), md.getMonth() + n, 1); setAnchor(iso(d)); setMini({ y: d.getFullYear(), m: d.getMonth() }); return; }
+    setAnchor(addDays(anchor, n * step));
+  };
 
   const seg = (
-    <div className="tb-seg" role="tablist" aria-label="Calendar view">
-      {(['day', 'week', 'month'] as const).map((v) => <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}>{v[0].toUpperCase() + v.slice(1)}</button>)}
+    <div className="tb-seg wp-seg" role="tablist" aria-label="Calendar view">
+      {(['day', 'week', 'month', 'agenda'] as const).map((v) => <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}>{v[0].toUpperCase() + v.slice(1)}</button>)}
     </div>
   );
-  const detail = open && <EventDetail key={open.d.key} detail={open.d} anchor={open.el} today={today} nowH={nowH} days={week} actions={actions} onClose={closeDetail} inline={wide && view !== 'month'} />;
+  const newEvent = () => {
+    const d = days.includes(today) ? today : selDay;
+    const s0 = d === today ? Math.min(22, Math.max(9, Math.ceil(nowH * 4) / 4)) : 10;
+    if (view === 'month' || view === 'agenda') { openSchedule({ start: instantIn(d, s0).toISOString(), minutes: 30 }); return; }
+    setSelDay(d); setPick({ day: d, a: s0, b: s0 + 1 });
+    setOpen({ d: { kind: 'create', key: `create:${d}:${s0}-${s0 + 1}`, day: d, start: s0, end: s0 + 1 }, el: null });
+  };
+  const inlineDetail = wide && view === 'day';
+  const detail = open && <EventDetail key={open.d.key} detail={open.d} anchor={open.el} today={today} nowH={nowH} days={week} actions={actions} onClose={closeDetail} inline={inlineDetail} />;
   const selDv = wv.byDay.get(selDay) ?? buildWeek(timeline, [selDay], today, nowQ, plan, nowH).byDay.get(selDay);
   const overdue = useMemo(() => wv.days.flatMap((d) => d.due).filter((e) => e.overdue && e.date < today), [wv, today]);
 
+  // ---- the left rail: what is next, and the first free time today worth holding
+  const upcoming = useMemo(() => meets.filter((m) => m.day > today || (m.day === today && m.end > nowH)).sort((a, b) => a.day.localeCompare(b.day) || a.start - b.start).slice(0, 5), [meets, today, nowH]);
+  const firstFree = cols.find((c) => c.d === today)?.free[0] ?? null;
+  const joinOf = (m: Meet) => m.e.joinUrl ?? m.feed?.joinUrl ?? null;
+  const join = (m: Meet) => { const u = joinOf(m); if (!u) return; if (/^https?:/i.test(u)) window.open(u, '_blank', 'noopener'); else navigate(u); };
+  const canJoin = (m: Meet) => !!joinOf(m) && m.day === today && m.start - nowH <= .25 && m.end > nowH;
+  const toggleCal = (p: string) => setHidden((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+  const rail = (
+    <>
+      <MiniMonth y={mini.y} m={mini.m} today={today} week={view === 'day' ? [anchor] : week} onPick={(d) => { setAnchor(d); if (view === 'month') setView('week'); }}
+        onShift={(n) => setMini(({ y, m }) => { const d = new Date(y, m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; })} />
+      <section className="wp-rc wp-filters" aria-label="Calendars" data-testid="wp-layers">
+        <div className="wp-ft wp-ft-row">Calendars<button type="button" className="wp-show-dots" aria-expanded={showLayers} aria-label="Show layers" title="Show: meetings, calls, logged time, done, focus, deadlines, reminders" onClick={() => setShowLayers((v) => !v)}>⋯</button></div>
+        {projects.map((p) => (
+          <label key={p} className={`wp-fr${hidden.has(p) ? ' off' : ''}`}><input type="checkbox" className="sr-only" checked={!hidden.has(p)} onChange={() => toggleCal(p)} />
+            <i className="wp-ck" style={{ ['--ck' as string]: DOT[tintOf(p)] }} aria-hidden="true" /><span>{p}</span><em>{calCount(p) || ''}</em></label>
+        ))}
+        <label className={`wp-fr${hidden.has(PERSONAL) ? ' off' : ''}`}><input type="checkbox" className="sr-only" checked={!hidden.has(PERSONAL)} onChange={() => toggleCal(PERSONAL)} />
+          <i className="wp-ck" style={{ ['--ck' as string]: DOT.g }} aria-hidden="true" /><span>Personal</span><em>{calCount(null) || ''}</em></label>
+        {showLayers && LAYERS.map(([k, label]) => (
+          <label key={k} className={`wp-fr sub${layers[k] ? '' : ' off'}`} data-layer={k}><input type="checkbox" className="sr-only" checked={layers[k]} onChange={(e) => setLayers((s) => ({ ...s, [k]: e.target.checked }))} /><i className={`k-${k}`} aria-hidden="true" /><span>{label}</span></label>
+        ))}
+        {showLayers && extra && <div className="wp-extra-in">{extra}</div>}
+      </section>
+      <section className="wp-rc wp-up" aria-label="Upcoming" data-testid="wp-upcoming">
+        <div className="wp-ft">Upcoming</div>
+        {upcoming.length === 0 && <p className="wp-up-none">{tl.isLoading ? 'Reading the week…' : 'Nothing else this week.'}</p>}
+        {upcoming.map((m) => {
+          const cd = countdown(m.day, m.start, m.end, today, nowH);
+          return (
+            <div key={m.key} className="wp-up-r" style={{ ['--ck' as string]: DOT[tintOf(m.e.projectName)] }}>
+              <button type="button" className="wp-up-t" onClick={(ev) => { if (!days.includes(m.day)) setAnchor(m.day); live.current.open({ kind: 'meeting', key: `meeting:${m.day}:${m.key}`, m }, ev.currentTarget); }}>
+                <b>{m.e.title}</b><small>{m.day === today ? '' : `${DOW3[dateOf(m.day).getDay()]} `}{hm(m.start)}{cd && cd !== 'ended' ? ` · ${cd}` : m.feed?.providerName ? ` · ${m.feed.providerName}` : m.e.projectName ? ` · ${m.e.projectName}` : ''}</small>
+              </button>
+              {canJoin(m) && <button type="button" className="wp-join-pill" onClick={() => join(m)}>Join</button>}
+            </div>
+          );
+        })}
+      </section>
+      <section className="wp-ai" aria-label="This week" data-testid="wp-week-summary">
+        <span className="wp-orb" aria-hidden="true" />
+        <div>
+          {firstFree && <p className="wp-ai-free">{fmtMins(Math.round((firstFree.end - firstFree.start) * 60))} free at {hm(firstFree.start)}.{' '}
+            <button type="button" className="wp-ai-act" onClick={() => { setRailOpen(false); live.current.free(today, firstFree.start, firstFree.end); }}>Hold it?</button></p>}
+          {!firstFree && <p>{tl.isLoading ? 'Reading the week…' : <>This week: <b>{fmtH(meetH)} meetings</b>{callsN > 0 && <>, {callsN} call{callsN === 1 ? '' : 's'}</>}, {fmtH(focusH)} focus{loggedM > 0 && <>, {fmtMins(loggedM)} logged</>}{doneN > 0 && <>, {doneN} done</>}.{' '}
+            {busiest && busiest.h >= 4 && longest ? <>{dateOf(busiest.d).toLocaleDateString('en-GB', { weekday: 'long' })} is overbooked — move {longest.e.title}?</>
+              : perDay.length > 0 && <>{dateOf(perDay.reduce((a, b) => (b.h < a.h ? b : a), perDay[0]).d).toLocaleDateString('en-GB', { weekday: 'long' })} is clearest for focused work.</>}</>}</p>}
+        </div>
+      </section>
+    </>
+  );
+
+  // ---- the day at a glance (Day view)
+  const dayMeets = meets.filter((m) => m.day === selDay && layers.meetings);
+  const glanceLogged = layers.logged ? loggedMinutesOf(selDv?.time ?? []) : 0;
+  const glance = (
+    <section className="wp-glance" aria-label={`${dayLabel(selDay, today)} at a glance`} data-testid="wp-glance">
+      <div className="wp-ft">{dateOf(selDay).toLocaleDateString('en-GB', { weekday: 'long' })} at a glance</div>
+      <div className="wp-glance-g">
+        <span><b>{dayMeets.length + (selDv?.calls.length ?? 0) + (selDv?.focus.length ?? 0)}</b><small>events</small></span>
+        <span><b>{fmtMins(Math.round(dayMeets.reduce((n, m) => n + (m.end - m.start), 0) * 60))}</b><small>meetings</small></span>
+        <span><b>{fmtMins(Math.round((selDv?.focus ?? []).reduce((n, f) => n + (f.end - f.start), 0) * 60))}</b><small>focus</small></span>
+      </div>
+      {glanceLogged > 0 && (
+        <button type="button" className={`wp-glance-logged${openKey === `loggedDay:${selDay}` ? ' open' : ''}`} data-testid="wp-logged" data-block={`loggedDay:${selDay}`} data-day={selDay}
+          aria-label={`${fmtMins(glanceLogged)} logged`} title="The day's logged time — click for the entries"
+          onClick={(ev) => handlers.open({ kind: 'loggedDay', key: `loggedDay:${selDay}`, day: selDay, entries: layers.logged ? selDv?.time ?? [] : [] }, ev.currentTarget)}>
+          <Icon name="timer" size={12} />{fmtMins(glanceLogged)} logged<Icon name="chevronR" size={12} />
+        </button>
+      )}
+    </section>
+  );
+
   return (
     <div className={`wp wp-${view}`} data-testid="week-planner">
-      <ToolbarSlot title={<h1>Calendar</h1>}>{seg}</ToolbarSlot>
-      <div className="wp-phone-head tb-wide-hide">
-        <h1>Calendar <ZoneBadge /></h1>
-        {onTab && <Segmented label="Home" value="calendar" onChange={onTab} options={[{ id: 'for-you', label: 'For me' }, { id: 'calendar', label: 'Calendar' }]} />}
-        {seg}
-      </div>
+      <ToolbarSlot title={<h1 className="tb-crumb">Calendar</h1>} />
+      <aside className="wp-left" aria-label="Month and calendars">{rail}</aside>
 
-      <aside className="wp-left" aria-label="Month and filters">
-        <MiniMonth y={mini.y} m={mini.m} today={today} week={view === 'day' ? [anchor] : week} onPick={(d) => setAnchor(d)}
-          onShift={(n) => setMini(({ y, m }) => { const d = new Date(y, m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; })} />
-        <div className="wp-filters" data-testid="wp-layers">
-          <div className="wp-ft">Show</div>
-          {LAYERS.map(([k, label]) => (
-            <label key={k} className={`wp-fr${layers[k] ? '' : ' off'}`} data-layer={k}><input type="checkbox" className="sr-only" checked={layers[k]} onChange={(e) => setLayers((s) => ({ ...s, [k]: e.target.checked }))} /><i className={`k-${k}`} aria-hidden="true" />{label}</label>
-          ))}
-          {projects.length > 0 && <div className="wp-ft">Projects</div>}
-          {projects.map((p) => (
-            <label key={p} className={`wp-fr${hidden.has(p) ? ' off' : ''}`}><input type="checkbox" className="sr-only" checked={!hidden.has(p)} onChange={() => setHidden((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; })} /><i style={{ background: DOT[tintOf(p)] }} aria-hidden="true" />{p}</label>
-          ))}
+      <header className="wp-top">
+        <h1 className="wp-h1">Calendar</h1>
+        <h2 className="wp-title" aria-label={titleText}>{title}</h2>
+        <div className="wp-navs">
+          <button type="button" className="wp-nav" aria-label={view === 'day' ? 'Previous day' : view === 'month' ? 'Previous month' : 'Previous week'} onClick={() => shift(-1)}><Icon name="chevronL" size={14} /></button>
+          <button type="button" className="wp-today" onClick={() => { setAnchor(today); const d = dateOf(today); setMini({ y: d.getFullYear(), m: d.getMonth() }); }}>Today</button>
+          <button type="button" className="wp-nav" aria-label={view === 'day' ? 'Next day' : view === 'month' ? 'Next month' : 'Next week'} onClick={() => shift(1)}><Icon name="chevronR" size={14} /></button>
         </div>
-        <section className="wp-ai" aria-label="This week" data-testid="wp-week-summary">
-          <span className="wp-orb" aria-hidden="true" />
-          <p>{tl.isLoading ? 'Reading the week…' : <>This week: <b>{fmtH(meetH)} meetings</b>{callsN > 0 && <>, {callsN} call{callsN === 1 ? '' : 's'}</>}, {fmtH(focusH)} focus{loggedM > 0 && <>, {fmtMins(loggedM)} logged</>}{doneN > 0 && <>, {doneN} done</>}.{' '}
-            {busiest && busiest.h >= 4 && longest ? <>{dateOf(busiest.d).toLocaleDateString('en-GB', { weekday: 'long' })} is overbooked — move {longest.e.title}?</>
-              : perDay.length > 0 && <>{dateOf(perDay.reduce((a, b) => (b.h < a.h ? b : a), perDay[0]).d).toLocaleDateString('en-GB', { weekday: 'long' })} is clearest for focused work.</>}</>}</p>
-        </section>
-        {extra && <div className="wp-extra">{extra}</div>}
-      </aside>
+        <span className="wp-sp" />
+        {seg}
+        <button type="button" className="wp-new" data-testid="wp-new" onClick={newEvent}><Icon name="plus" size={13} />New event</button>
+        <button type="button" className="wp-rail-btn" onClick={() => setRailOpen(true)} aria-haspopup="dialog">Calendars ›</button>
+        {onTab && <span className="wp-hometab"><Segmented label="Home" value="calendar" onChange={onTab} options={[{ id: 'for-you', label: 'For me' }, { id: 'calendar', label: 'Calendar' }]} /></span>}
+      </header>
 
       {view === 'month' ? (
         <section className="wp-month" aria-label="Month"><CalendarView mine onOpenTask={(id) => navigate(`/work?item=${id}`)} /></section>
+      ) : view === 'agenda' ? (
+        <Agenda week={week} today={today} nowH={nowH} cols={cols} tintOf={tintOf} canJoin={canJoin} onJoin={join}
+          onOpen={(d, el) => live.current.open(d, el)} loading={tl.isLoading} />
       ) : (
-        <section className="wp-main" aria-label={view === 'day' ? 'Day' : `Week of ${title}`}>
-          <div className="wp-whd">
-            <h2>{title}</h2><ZoneBadge />{view === 'week' && <span className="wp-wk">Week {weekNo(monday)}</span>}
-            <span className="wp-sp" />
-            <button type="button" className="wp-nav" aria-label={view === 'day' ? 'Previous day' : 'Previous week'} onClick={() => setAnchor(addDays(anchor, view === 'day' ? -1 : -7))}><Icon name="chevronL" size={14} /></button>
-            <button type="button" className="wp-today" onClick={() => { setAnchor(today); const d = dateOf(today); setMini({ y: d.getFullYear(), m: d.getMonth() }); }}>Today</button>
-            <button type="button" className="wp-nav" aria-label={view === 'day' ? 'Next day' : 'Next week'} onClick={() => setAnchor(addDays(anchor, view === 'day' ? 1 : 7))}><Icon name="chevronR" size={14} /></button>
-          </div>
+        <section className="wp-main" aria-label={view === 'day' ? 'Day' : titleText}>
           {!tl.isLoading && !tl.isError && !meets.some((m) => days.includes(m.day)) && (
             <NoMeetings scope={view === 'day' ? 'day' : 'week'} focusCount={wv.focus.filter((f) => days.includes(f.day)).length}
               onPlanFocus={() => {
@@ -478,34 +582,26 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                 <span />
                 {days.map((d) => {
                   const dv = wv.byDay.get(d);
-                  const ents = layers.logged ? dv?.time ?? [] : [];
-                  const mins = loggedMinutesOf(ents);
                   const lv = dv?.off[0] ?? null;
-                  const lk = `loggedDay:${d}`, vk = `leave:${d}`;
+                  const vk = `leave:${d}`;
                   return (
                     <div key={d} className={`wp-dh${d === today ? ' tdy' : ''}${d === selDay ? ' sel' : ''}${flagOver === d ? ' drop' : ''}`} data-day={d} data-sig={dv ? daySignature(dv) : ''}
                       onClick={(ev) => { if (!(ev.target as HTMLElement).closest('button')) setSelDay(d); }}>
-                      <button type="button" className="wp-dh-pick" aria-pressed={d === selDay} aria-label={`Show ${dateOf(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} in the Day panel`} onClick={() => setSelDay(d)}>
-                        {DOW3[dateOf(d).getDay()]}<b>{dateOf(d).getDate()}</b>
+                      <button type="button" className="wp-dh-pick" aria-pressed={d === selDay} aria-label={`Show ${dateOf(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}`}
+                        onClick={() => { setSelDay(d); if (view === 'week' && !wide) { setAnchor(d); setView('day'); } }}>
+                        {view === 'day' ? dateOf(d).toLocaleDateString('en-GB', { weekday: 'long' }) : DOW3[dateOf(d).getDay()]}<b>{dateOf(d).getDate()}</b>
                       </button>
-                      {mins > 0 && (
-                        <button type="button" className={`wp-logged${openKey === lk ? ' open' : ''}`} data-testid="wp-logged" data-block={lk} data-day={d} data-start={-2}
-                          aria-label={`${fmtMins(mins)} logged`} aria-expanded={openKey === lk} title={`Logged ${fmtMins(mins)} — click for the entries`}
-                          onClick={(ev) => handlers.open({ kind: 'loggedDay', key: lk, day: d, entries: ents }, ev.currentTarget)}>
-                          <Icon name="timer" size={10} />{fmtMins(mins)}
-                        </button>
-                      )}
                       {lv && <button type="button" className={`wp-leave${openKey === vk ? ' open' : ''}`} data-block={vk} data-day={d} data-start={-3} aria-expanded={openKey === vk}
-                        onClick={(ev) => handlers.open({ kind: 'leave', key: vk, day: d, note: lv.type === 'holiday' ? lv.title : lv.note }, ev.currentTarget)}>{lv.type === 'holiday' ? 'Holiday' : 'Leave'}</button>}
+                        onClick={(ev) => handlers.open({ kind: 'leave', key: vk, day: d, note: lv.type === 'holiday' ? lv.title : lv.note }, ev.currentTarget)}>{lv.type === 'holiday' ? lv.title || 'Holiday' : 'Leave'}</button>}
                     </div>
                   );
                 })}
               </div>
-              {/* The all-day / due strip (Google Calendar's all-day row): each day's deadlines as chips, never on top of the day's blocks. A chip
-                  drags to another day to move the date; a timed one shows its time (its line is on the grid at that hour). */}
+              {/* The all-day row (Google Calendar's): each day's deadlines as chips, never on top of the day's blocks. A chip drags to another day to
+                  move the date; a timed one shows its time (it is in the grid at that hour too). */}
               {layers.deadlines && strips.some((x) => x.chips.length > 0) && (
                 <div className="wp-allday" data-testid="wp-allday">
-                  <span className="wp-allday-l">Due</span>
+                  <span className="wp-allday-l">all-day</span>
                   {strips.map(({ d, chips, more }) => (
                     <div key={d} className={`wp-allday-d${flagOver === d ? ' drop' : ''}`} data-day={d}>
                       {chips.map((c) => {
@@ -535,7 +631,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                     {Array.from({ length: G1 - G0 }, (_, i) => G0 + i).map((h) => (
                       <span key={h} data-hour={h} style={{ top: (h - G0) * HR, opacity: h === G0 ? 0 : 1 }}>{hourLabel(h)}</span>
                     ))}
-                    {days.includes(today) && <span className="wp-nowl" style={{ top: (nowH - G0) * HR - 7 }}>{clockH(nowH)}</span>}
+                    {days.includes(today) && <span className="wp-nowl" style={{ top: (nowH - G0) * HR - 8 }}>{hm(nowH)}</span>}
                     {marginTags.map((t) => <span key={t.at} className={`wp-dl-tag${t.sla ? ' sla' : ''}${t.late ? ' late' : ''}`} data-testid="wp-dl-tag" style={{ top: (t.h - G0) * HR - 7 }} title={t.tip}>{t.at}</span>)}
                   </div>
                   {cols.map((c) => (
@@ -552,22 +648,69 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
         </section>
       )}
 
-      {view !== 'month' && (
-        <DayPanel day={selDay} today={today} nowH={nowH} dv={selDv} meets={meets.filter((m) => m.day === selDay && layers.meetings)} focus={(wv.byDay.get(selDay)?.focus ?? []).filter(() => layers.focus)}
-          overdue={overdue} peopleOf={(id) => peopleById.get(id) ?? []} entries={entries} capacityMin={capOf(selDay)}
-          detail={wide ? detail : null} detailKey={open?.d.key ?? null}
-          week={<WeekStrip week={week} today={today} sel={selDay} onPick={setSelDay} wv={wv} meets={weekMeets} capOf={capOf} loggedM={loggedM} weekCap={weekCap} doneN={doneN} callsN={callsN} meetH={meetH} />}
-          onOpen={(d, el) => live.current.open(d, el)}
-          onCreate={(d) => {
-            const s0 = d === today ? Math.max(G0, Math.floor(nowH * 4) / 4 - 1) : 9;
-            setSelDay(d); setPick({ day: d, a: s0, b: s0 + 1 });
-            setOpen({ d: { kind: 'create', key: `create:${d}:${s0}-${s0 + 1}`, day: d, start: s0, end: s0 + 1 }, el: null });
-          }}
-          onDone={(e) => setDoneIds((s) => new Set(s).add(e.id))} />
+      {view === 'day' && (
+        <div className="wp-side">
+          {glance}
+          <DayPanel day={selDay} today={today} nowH={nowH} dv={selDv} meets={dayMeets} focus={(wv.byDay.get(selDay)?.focus ?? []).filter(() => layers.focus)}
+            overdue={overdue} peopleOf={(id) => peopleById.get(id) ?? []} entries={entries} capacityMin={capOf(selDay)}
+            detail={inlineDetail ? detail : null} detailKey={open?.d.key ?? null}
+            week={<WeekStrip week={week.slice(0, 5)} today={today} sel={selDay} onPick={(d) => { setSelDay(d); setAnchor(d); }} wv={wv} meets={weekMeets} capOf={capOf} loggedM={loggedM} weekCap={weekCap} doneN={doneN} callsN={callsN} meetH={meetH} />}
+            onOpen={(d, el) => live.current.open(d, el)}
+            onCreate={(d) => {
+              const s0 = d === today ? Math.max(G0, Math.floor(nowH * 4) / 4 - 1) : 9;
+              setSelDay(d); setPick({ day: d, a: s0, b: s0 + 1 });
+              setOpen({ d: { kind: 'create', key: `create:${d}:${s0}-${s0 + 1}`, day: d, start: s0, end: s0 + 1 }, el: null });
+            }}
+            onDone={(e) => setDoneIds((s) => new Set(s).add(e.id))} />
+        </div>
       )}
-      {!(wide && view !== 'month') && detail}
+      {!inlineDetail && detail}
       {dueAsk && <DueReason e={dueAsk.e} date={dueAsk.date} today={today} onCancel={() => setDueAsk(null)} onSave={(reason) => { const a = dueAsk; setDueAsk(null); void shiftDue(a.e, a.date, reason); }} />}
+      <CalmSheet open={railOpen} onClose={() => setRailOpen(false)} title="Calendars" kind="side" width={360}><div className="wp-left in-sheet">{rail}</div></CalmSheet>
     </div>
+  );
+}
+
+/** Agenda: the week as a list, day by day: time, a colour bar, what, where, who, and Join when it is about to start. */
+function Agenda({ week, today, nowH, cols, tintOf, canJoin, onJoin, onOpen, loading }: {
+  week: string[]; today: string; nowH: number; cols: { d: string; meets: Meet[]; calls: TimelineEvent[]; focus: Focus[]; marks: DayMark[] }[];
+  tintOf: (p: string | null) => string; canJoin: (m: Meet) => boolean; onJoin: (m: Meet) => void; onOpen: (d: Detail, el: HTMLElement) => void; loading: boolean;
+}) {
+  type Row = { key: string; start: number; end: number; title: string; where: string; people: string[]; tint: string; open: () => Detail; meet?: Meet; past: boolean };
+  const days = week.map((d) => {
+    const c = cols.find((x) => x.d === d);
+    const past = (end: number) => d < today || (d === today && end <= nowH);
+    const rows: Row[] = c ? [
+      ...c.meets.map((m): Row => ({ key: m.key, start: m.start, end: m.end, title: m.e.title, where: [m.feed?.providerName ?? (m.e.joinUrl ? 'Video' : null)].filter(Boolean).join(' · ') || (m.e.projectName ?? ''),
+        people: m.e.people ?? [], tint: DOT[tintOf(m.e.projectName)], meet: m, past: past(m.end), open: () => ({ kind: 'meeting', key: `meeting:${d}:${m.key}`, m }) })),
+      ...c.calls.map((t): Row => { const h = hoursOf(t); return { key: t.id, start: h.start, end: Math.max(h.end, h.start + .25), title: t.title, where: 'Call', people: t.people, tint: DOT.g, past: past(h.end), open: () => ({ kind: 'call', key: `call:${d}:${t.id}`, t }) }; }),
+      ...c.focus.map((f): Row => ({ key: f.key, start: f.start, end: f.end, title: `Focus · ${focusLabel(f.e)}`, where: 'Desk', people: [], tint: DOT[tintOf(f.e.projectName)], past: past(f.end), open: () => ({ kind: 'focus', key: f.key, f }) })),
+      ...c.marks.map((m): Row => ({ key: m.key, start: m.at, end: m.at + TASK_H, title: `${m.e.key ? `${m.e.key} ` : ''}${m.e.title}`, where: m.kind === 'sla' ? 'SLA' : 'Task', people: [], tint: DOT[tintOf(m.e.projectName)], past: past(m.at),
+        open: () => ({ kind: 'deadline', key: `deadline:${d}:${m.e.type}:${m.e.id}`, e: m.e, others: [] }) })),
+    ].sort((a, b) => a.start - b.start) : [];
+    return { d, rows };
+  }).filter((x) => x.rows.length > 0 && x.d >= (week.includes(today) ? today : week[0]));
+  return (
+    <section className="wp-agenda" aria-label="Agenda" data-testid="wp-agenda">
+      {loading && <p className="wp-up-none">Reading the week…</p>}
+      {!loading && days.length === 0 && <p className="wp-up-none">Nothing else on the calendar this week.</p>}
+      {days.map(({ d, rows }) => (
+        <div key={d} className="wp-ag-day">
+          <div className={`wp-ag-date${d === today ? ' tdy' : ''}`}><small>{dateOf(d).toLocaleDateString('en-GB', { weekday: 'long' })}</small><b>{dateOf(d).getDate()} {MONTHS[dateOf(d).getMonth()].slice(0, 3)}</b></div>
+          <ul>
+            {rows.map((r) => (
+              <li key={r.key} className={r.past ? 'past' : ''} style={{ ['--ck' as string]: r.tint }}>
+                <button type="button" className="wp-ag-main" data-block={r.open().key} onClick={(ev) => onOpen(r.open(), ev.currentTarget)}>
+                  <span className="wp-ag-t">{hm(r.start)} – {hm(r.end)}</span><i aria-hidden="true" /><b>{r.title}</b><span className="wp-ag-w">{r.where}</span>
+                </button>
+                <span className="wp-ag-p">{r.people.slice(0, 4).map((p) => <Face key={p} byName name={p} className="wp-ag-av" title={p} text={p.split(/\s+/).map((x) => x[0]).join('').slice(0, 2).toUpperCase()} />)}</span>
+                <span className="wp-ag-j">{r.meet && canJoin(r.meet) && <button type="button" className="wp-join-pill" onClick={() => onJoin(r.meet!)}>Join</button>}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -623,14 +766,20 @@ function WeekStrip({ week, today, sel, onPick, wv, meets, capOf, loggedM, weekCa
 interface ColHandlers {
   down: (e: ReactPointerEvent, it: DragItem, mode: DragMode) => void; open: (d: Detail, el: HTMLElement) => void; alt: (it: DragItem, up: boolean) => void;
   create: (e: ReactPointerEvent, day: string) => void;
+  /** A free-time hint: start something new there. */
+  free: (day: string, start: number, end: number) => void;
 }
 interface ColData {
   d: string; meets: Meet[]; calls: TimelineEvent[]; pack: Map<string, Packed>; focus: Focus[];
-  logged: TimelineEvent[]; done: TimelineEvent[]; reminders: TimelineEvent[]; marks: DayMark[]; overlaps: Map<string, TimelineEvent[]>;
+  logged: TimelineEvent[]; done: TimelineEvent[]; reminders: TimelineEvent[]; marks: DayMark[]; free: { start: number; end: number }[]; overlaps: Map<string, TimelineEvent[]>;
 }
 const top = (h: number) => (h - G0) * HR;
 /** Point-like items (a reminder, a done check) take a quarter hour of the column: the height their pill is drawn with. */
 const PILL_H = .25;
+/** A task due at a time: a chip half an hour tall. */
+const TASK_H = .5;
+/** Meetings and calls without a project: the "Personal" calendar. */
+const PERSONAL = '__personal';
 const narrowOf = (p: Packed | undefined) => !!p && p.width < 1 - 1e-9;
 
 /** The drag handles on a block's top and bottom edges (resize, 15-minute steps). */
@@ -654,14 +803,19 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
   // Where a block is drawn: where it is, or where it is being dragged to.
   const at = (key: string, start: number, end: number) => (drag && drag.item.key === key ? (drag.day === d ? { start: drag.start, end: drag.end, lifted: true } : null) : { start, end, lifted: false });
   const ghost = drag && drag.item.day === d ? <div className="wp-ghost" style={{ top: top(drag.item.start), height: (drag.item.end - drag.item.start) * HR - 2 }} aria-hidden="true" /> : null;
-  const snap = drag && drag.day === d ? <span className="wp-snap" style={{ top: top(drag.start) - 22 }}>{clockH(drag.start)} – {clockH(drag.end)}</span> : null;
+  // The live tooltip while a block is dragged: its new span, or (resizing from the bottom edge) where it now ends and how long it is.
+  const snap = drag && drag.day === d ? (drag.mode === 'bottom'
+    ? <span className="wp-snap end" data-testid="wp-snap" style={{ top: top(drag.end) + 4 }}>Ends {hm(drag.end)}<em>{fmtMins(Math.round((drag.end - drag.start) * 60))}</em></span>
+    : drag.mode === 'top'
+      ? <span className="wp-snap" data-testid="wp-snap" style={{ top: top(drag.start) - 26 }}>Starts {hm(drag.start)}<em>{fmtMins(Math.round((drag.end - drag.start) * 60))}</em></span>
+      : <span className="wp-snap" data-testid="wp-snap" style={{ top: top(drag.start) - 26 }}>{DOW3[dateOf(d).getDay()]} {hm(drag.start)} – {hm(drag.end)}</span>) : null;
   // A block dragged in from another day is drawn here.
   const visitor = drag && drag.day === d && drag.item.day !== d;
   return (
     <div className={`wp-col${sel ? ' sel' : ''}`} data-day={d} onPointerDown={(e) => h.create(e, d)}>
       {nowTop != null && <div className="wp-now" style={{ top: nowTop }} aria-label={`Now, ${nowLabel}`} data-testid="wp-now" />}
       {ghost}{snap}
-      {pick && <div className="wp-pick" data-block={pick.key ?? undefined} data-day={d} data-start={pick.start} style={{ top: top(pick.start), height: (pick.end - pick.start) * HR - 2 }}><span>{clockH(pick.start)} – {clockH(pick.end)}</span></div>}
+      {pick && <div className="wp-pick" data-block={pick.key ?? undefined} data-day={d} data-start={pick.start} style={{ top: top(pick.start), height: (pick.end - pick.start) * HR - 2 }}><span>{hm(pick.start)} – {hm(pick.end)}</span></div>}
       {col.logged.map((t) => {
         const sp = hoursOf(t);
         const key = `time:${d}:${t.id}`;
@@ -675,11 +829,11 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
           <button key={t.id} type="button" className={`wp-e lg${narrowOf(pk) && !pos.lifted ? ' narrow' : ''}${ov.length ? ' ovl' : ''}${t.running ? ' run' : ''}${t.approximated ? ' ap' : ''}${openKey === key ? ' open' : ''}${why ? '' : ' movable'}${pos.lifted ? ' lift' : ''}`}
             aria-label={`Logged ${fmtMins(t.minutes ?? 0)} · ${t.title}${t.approximated ? ' (approximate time)' : ''}${ov.length ? ` · ${overlapText(ov[0])}` : ''}`} data-block={key} data-day={d} data-start={sp.start} data-type="time" data-id={t.id}
             data-overlaps={ov.length || undefined} aria-expanded={openKey === key} style={{ top: top(pos.start), height: Math.max(16, (pos.end - pos.start) * HR - 2), ...(pos.lifted ? {} : packStyle(pk)) }}
-            title={`${t.approximated ? '≈ Typed in as minutes, placed on the day' : 'Logged'} · ${t.title} · ${clockH(sp.start)}–${clockH(sp.end)}${ov.length ? ` · ${overlapText(ov[0])}` : ''}${why ? ` · ${why}` : ' · drag to move, drag an edge to resize'}`}
+            title={`${t.approximated ? '≈ Typed in as minutes, placed on the day' : 'Logged'} · ${t.title} · ${hm(sp.start)}–${hm(sp.end)}${ov.length ? ` · ${overlapText(ov[0])}` : ''}${why ? ` · ${why}` : ' · drag to move, drag an edge to resize'}`}
             onPointerDown={why ? undefined : (e) => h.down(e, it, 'move')}
             onKeyDown={(ev) => { if (!why && ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) { ev.preventDefault(); h.alt(it, ev.key === 'ArrowUp'); } }}
             onClick={(ev) => h.open({ kind: 'time', key, t }, ev.currentTarget)}>
-            <span className="wp-lbl">{ov.length > 0 && <b className="wp-ovl" aria-hidden="true">!</b>}{t.running ? 'Running · ' : ''}{t.title}</span><small>{t.approximated ? '≈ ' : ''}{clockH(pos.start)}{t.running ? '' : ` – ${clockH(pos.end)}`}</small>
+            <span className="wp-lbl">{ov.length > 0 && <b className="wp-ovl" aria-hidden="true">!</b>}{t.running ? 'Running · ' : ''}{t.title}</span><small>{t.approximated ? '≈ ' : ''}{hm(pos.start)}{t.running ? '' : ` – ${hm(pos.end)}`}</small>
             {!why && <Edges it={it} h={h} />}
           </button>
         );
@@ -695,7 +849,7 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
             onPointerDown={(e) => h.down(e, it, 'move')}
             onKeyDown={(ev) => { if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) { ev.preventDefault(); h.alt(it, ev.key === 'ArrowUp'); } }}
             onClick={(ev) => h.open({ kind: 'focus', key: f.key, f }, ev.currentTarget)}>
-            <span className="wp-f-k">{nowAt != null && f.start <= nowAt && nowAt < f.end ? 'Focus now' : 'Focus'}</span><span className="wp-lbl">{focusLabel(f.e)}</span><small>{clockH(pos.start)} – {clockH(pos.end)}</small>
+            <span className="wp-f-k">{nowAt != null && f.start <= nowAt && nowAt < f.end ? 'Focus now' : 'Focus'}</span><span className="wp-lbl">{focusLabel(f.e)}</span><small>{hm(pos.start)} – {hm(pos.end)}</small>
             <Edges it={it} h={h} />
           </button>
         );
@@ -709,8 +863,8 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
         return (
           <button key={t.id} type="button" className={`wp-e c${xs ? ' xs' : ''}${narrowOf(pk) ? ' narrow' : ''}${t.running ? ' run' : ''}${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={sp.start} data-type="call"
             aria-expanded={openKey === key} style={{ top: top(sp.start), height: (end - sp.start) * HR - 2, ...packStyle(pk) }}
-            title={`Call · ${t.title} · ${clockH(sp.start)}–${clockH(end)}`} onClick={(ev) => h.open({ kind: 'call', key, t }, ev.currentTarget)}>
-            <Icon name="phone" size={10} /><span className="wp-lbl">{t.title}</span>{!xs && <small>{clockH(sp.start)}{t.running ? ' · live' : ` – ${clockH(sp.end)}`}{t.people.length ? ` · ${t.people.length} people` : ''}</small>}
+            title={`Call · ${t.title} · ${hm(sp.start)}–${hm(end)}`} onClick={(ev) => h.open({ kind: 'call', key, t }, ev.currentTarget)}>
+            <Icon name="phone" size={10} /><span className="wp-lbl">{t.title}</span>{!xs && <small>{hm(sp.start)}{t.running ? ' · live' : ` – ${hm(sp.end)}`}{t.people.length ? ` · ${t.people.length} people` : ''}</small>}
           </button>
         );
       })}
@@ -723,7 +877,7 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
         const xs = len <= .3;
         const pk = col.pack.get(m.key);
         const people = (m.e.people ?? []).slice(1, 3).map((p) => p.split(' ')[0]).join(', ');
-        const sub = len >= 1.25 ? `${clockH(pos.start)} – ${clockH(pos.end)}` : `${clockH(pos.start)}${people ? ` · ${people}` : m.e.projectName ? ` · ${m.e.projectName}` : ''}`;
+        const sub = len >= 1.25 ? `${hm(pos.start)} – ${hm(pos.end)}` : `${hm(pos.start)}${people ? ` · ${people}` : m.e.projectName ? ` · ${m.e.projectName}` : ''}`;
         const it: DragItem = { kind: 'meeting', key: m.key, day: d, start: m.start, end: m.end, resizable: true, label: m.e.title, cls: tintOf(m.e.projectName) };
         return (
           <button key={m.key} type="button" className={`wp-e ${tintOf(m.e.projectName)}${xs ? ' xs' : ''}${narrowOf(pk) && !pos.lifted ? ' narrow' : ''}${pos.lifted ? ' lift' : ''}${why ? '' : ' movable'}${openKey === key ? ' open' : ''}`}
@@ -744,7 +898,7 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
         const key = `done:${d}:${t.id}`;
         return (
           <button key={t.id} type="button" className={`wp-done${openKey === key ? ' open' : ''}`} data-block={key} data-day={d} data-start={at0} data-type="done" aria-expanded={openKey === key}
-            style={{ top: top(at0), ...packStyle(col.pack.get(key)) }} title={`Done ${clockH(at0)} · ${t.key ? `${t.key} ` : ''}${t.title}`}
+            style={{ top: top(at0), ...packStyle(col.pack.get(key)) }} title={`Done ${hm(at0)} · ${t.key ? `${t.key} ` : ''}${t.title}`}
             onClick={(ev) => h.open({ kind: 'done', key, t }, ev.currentTarget)}>
             <Icon name="check" size={9} />{t.key ?? t.title}
           </button>
@@ -759,7 +913,7 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
         const it: DragItem = { kind: 'reminder', key, day: d, start: hr, end: hr + .25, resizable: false, label: t.title, cls: 'rem' };
         return (
           <button key={t.id} type="button" className={`wp-rem${t.status !== 'scheduled' ? ' fired' : ''}${openKey === key ? ' open' : ''}${movable ? ' movable' : ''}${pos.lifted ? ' lift' : ''}`} data-block={key} data-day={d} data-start={hr} data-type="reminder" aria-expanded={openKey === key}
-            style={{ top: top(pos.start), ...(pos.lifted ? {} : packStyle(col.pack.get(key))) }} title={`Reminder · ${clockH(hr)} · ${t.title}${movable ? ' · drag to move' : ''}`}
+            style={{ top: top(pos.start), ...(pos.lifted ? {} : packStyle(col.pack.get(key))) }} title={`Reminder · ${hm(hr)} · ${t.title}${movable ? ' · drag to move' : ''}`}
             onPointerDown={movable ? (e) => h.down(e, it, 'move') : undefined}
             onClick={(ev) => h.open({ kind: 'reminder', key, t }, ev.currentTarget)}>
             <i aria-hidden="true" />{t.title}
@@ -767,6 +921,27 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
         );
       })}
       {/* a deadline with a time: a thin line at its hour (its chip is in the day's due strip, its time in the margin), never over a block's text */}
+      {!dragging && col.free.map((f) => {
+        const mins = Math.round((f.end - f.start) * 60);
+        return (
+          <button key={`free:${f.start}`} type="button" className={`wp-free${mins < 45 ? ' xs' : ''}`} data-testid="wp-free" data-day={d} style={{ top: top(f.start) + 1, height: Math.max(14, (f.end - f.start) * HR - 3) }}
+            title={`${fmtMins(mins)} free from ${hm(f.start)} · click to plan something here`} onClick={() => h.free(d, f.start, f.end)}>
+            <span>{fmtMins(mins)} free</span>{mins >= 60 && <small>Good for focus</small>}
+          </button>
+        );
+      })}
+      {col.marks.map((m) => {
+        const key = `task:${d}:${m.key}`;
+        const fk = `deadline:${d}:${m.e.type}:${m.e.id}`;
+        return (
+          <button key={key} type="button" className={`wp-task${m.late ? ' late' : ''}${m.kind === 'sla' ? ' sla' : ''}${openKey === fk ? ' open' : ''}`} data-testid="wp-task" data-block={fk} data-day={d} data-start={m.at}
+            aria-expanded={openKey === fk} style={{ top: top(m.at), height: TASK_H * HR - 2, ...packStyle(col.pack.get(key)) }}
+            title={`${m.kind === 'sla' ? 'SLA' : 'Due'} ${clock24(m.iso)} · ${m.e.key ? `${m.e.key} ` : ''}${m.e.title}`}
+            onClick={(ev) => h.open({ kind: 'deadline', key: fk, e: m.e, others: [] }, ev.currentTarget)}>
+            <i aria-hidden="true" /><span className="wp-lbl">{m.e.key ? `${m.e.key} ` : ''}{m.e.title}</span>
+          </button>
+        );
+      })}
       {col.marks.map((m) => <i key={m.key} className={`wp-dl-line ${m.kind}${m.late ? ' late' : ''}`} data-testid="wp-dl-line" data-kind={m.kind} data-day={d} data-at={clock24(m.iso)} style={{ top: top(m.at) }} aria-hidden="true" />)}
     </div>
   );

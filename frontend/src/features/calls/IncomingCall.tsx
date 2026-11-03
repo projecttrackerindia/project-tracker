@@ -8,7 +8,7 @@ import { orgHref } from '../../lib/orgPath';
 import { useAuth } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { CHECK_NOTIFICATIONS } from '../notifications/events';
-import { callsApi } from './callsApi';
+import { callLink, callsApi } from './callsApi';
 import { CALL_EVENT, expire, onRinging, ring, ringingCalls, stopRinging, type CallEventDetail, type IncomingCall } from './incomingCalls';
 import './calls.css';
 
@@ -19,7 +19,7 @@ const swReady = () => typeof navigator !== 'undefined' && 'serviceWorker' in nav
 /** A system notification for a ringing call, with Answer and Decline (the service worker handles the buttons). */
 async function showSystemRing(c: IncomingCall) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  const link = orgHref(`/calls/${c.callId}`);
+  const link = orgHref(callLink(c.callId));
   const options: NotificationOptions & { renotify?: boolean; vibrate?: number[]; actions?: { action: string; title: string }[] } = {
     body: c.title, tag: `call-${c.callId}`, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', requireInteraction: true, renotify: true,
     // The page rings by itself when it can; when it cannot yet (no tap on it so far), the system notification makes the sound.
@@ -115,7 +115,7 @@ export function IncomingCallHost() {
       const d = e.data;
       if (d?.type === 'pm-call' && d.callId) {
         if (d.action === 'decline') { stopRinging(d.callId); void callsApi.decline(d.callId).catch(() => undefined); }
-        else if (d.action === 'answer') { stopRinging(d.callId); nav(`/calls/${d.callId}`); }
+        else if (d.action === 'answer') { stopRinging(d.callId); nav(callLink(d.callId)); }
       } else if (d?.type === 'pm-push' && d.notificationType === 'Call' && d.call) {
         ring({ callId: d.call, fromName: d.title?.replace(/ is calling$/, '') });
         e.ports[0]?.postMessage({ played: playRing() });
@@ -154,7 +154,7 @@ export function IncomingCallHost() {
     if (m) stopRinging(m[1]);
   }, [pathname]);
 
-  const answer = (c: IncomingCall) => { stopRinging(c.callId); void closeSystemRing(c.callId); nav(`/calls/${c.callId}`); };
+  const answer = (c: IncomingCall) => { stopRinging(c.callId); void closeSystemRing(c.callId); nav(callLink(c.callId)); };
   const decline = (c: IncomingCall) => {
     stopRinging(c.callId); void closeSystemRing(c.callId);
     void callsApi.decline(c.callId).catch(() => undefined);
