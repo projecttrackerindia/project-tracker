@@ -208,7 +208,7 @@ try {
   }
   // A call that is over has no page of its own: Meetings shows it, with Aura writing up its notes (the agent was in it).
   assert.match(await page.locator('[data-testid="call-detail"]').innerText(), /Atlas stand-up/);
-  assert.match(await page.locator('[data-testid="call-detail"]').innerText(), /Aura is writing/);
+  await page.locator('[data-testid="call-detail"]').getByText(/Aura is writing/).first().waitFor();
   await shot(page, 'ended-1440.png'); checks.push('ended');
 
   // An incoming call rings on any page: the card with who is calling, Answer and Decline. (Here it is found by the safety-net check of
