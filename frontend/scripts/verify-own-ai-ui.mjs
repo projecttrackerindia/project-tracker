@@ -127,7 +127,7 @@ try{
   await shot(page,'admin-saved.png');
   // Settings search finds it.
   await page.goto(origin+'/preview-org/settings');
-  const search=page.getByRole('combobox',{name:'Find a setting'}).last();await search.waitFor();await search.fill('chatgpt key');
+  await page.locator('.cs-find summary').click(); const search=page.getByRole('combobox',{name:'Find a setting'}).last();await search.waitFor();await search.fill('chatgpt key');
   await page.getByRole('listbox',{name:'Settings found'}).getByRole('option').first().getByText('Use your own Claude or ChatGPT key').waitFor();
   await search.press('Enter');await page.waitForURL(/\/settings\/ai#s-ai\.ownKey$/);
   await page.waitForFunction(()=>document.querySelector('[data-setting="ai.ownKey"]')?.classList.contains('setting-flash'));

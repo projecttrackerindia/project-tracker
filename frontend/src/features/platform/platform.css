@@ -157,3 +157,16 @@
 .pv-comp-name { height: 28px; min-height: 28px; max-width: 280px; font-size: 13px; }
 .st-45 { display: none; }
 @media (max-width: 720px) { .st-90 { display: none; } .st-45 { display: inline; } }
+
+/* calm status headline (shot 62): the page's name, the state as the grey second line */
+.st-head h1.st-calm { font-size: clamp(34px, 4vw, 54px); font-weight: 300; letter-spacing: -.035em; line-height: 1.08; }
+.st-head h1.st-calm em { display: block; font-style: normal; color: var(--calm-ink3, #8e8e93); }
+/* calm status (shot 62): banner folded into the headline, one white card of components with green day bars */
+.st-banner-calm { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.st-page .st-card { background: var(--calm-solid, #fff); border: 0; border-radius: 22px; box-shadow: var(--calm-sh, 0 10px 30px rgba(0,0,0,.06)); padding: 22px 28px; }
+.st-page .st-comp { padding: 12px 0; box-shadow: 0 1px 0 var(--calm-fill, rgba(0,0,0,.05)); border: 0; }
+.st-page .st-bars { gap: 2px; height: 26px; }
+.st-page .st-bars i { border-radius: 3px; background: color-mix(in srgb, var(--calm-green, #30b158) 70%, transparent); }
+.st-page .st-h2 { font-size: 12px; font-weight: 600; color: var(--calm-ink3-text, #8e8e93); margin: 22px 0 8px; }
+.st-page .st-bars i.down { background: var(--calm-red, #ff3b30); }
+.st-page .st-bars i.degraded { background: var(--calm-orange, #ff9500); }

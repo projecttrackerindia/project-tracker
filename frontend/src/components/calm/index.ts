@@ -11,3 +11,4 @@ export { CalmJourney, calmStepPos, type CalmStep, type CalmStepState } from './C
 export { CalmInsights, CalmFoot, type CalmInsight } from './CalmInsights';
 export { CalmSplit, CalmRailCard, CalmRailRow, CalmAvatar, CalmBar, CalmAv } from './CalmRail';
 export { CalmDayRibbon, CalmWeek, type CalmSeg, type CalmWeekDay } from './CalmDayRibbon';
+export { CalmMeter, CalmChip } from './CalmMeter';

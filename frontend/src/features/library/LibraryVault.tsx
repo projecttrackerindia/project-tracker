@@ -1,3 +1,4 @@
+import { CalmHero } from '../../components/calm';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -28,6 +29,7 @@ import { StepUpProvider } from '../vault/stepUp';
 import { useStepUp } from '../vault/stepUpContext';
 import '../vault/vault.css';
 import '../vault/vault-ds.css';
+import './calm-library.css';
 
 type Show = 'all' | 'mine' | 'shared' | 'requests';
 type View = 'items' | 'health' | 'bin' | 'keys' | 'links' | 'admin' | 'collections';
@@ -329,7 +331,7 @@ function VaultTab() {
   return (
     <div className={`page lib lib-vault-page pw-page vlt-scope${itemId || view !== 'items' ? ' has-item' : ''}`}>
       <div className="pw-top">
-        <h1 className="pw-h1">Vault</h1>
+        <CalmHero className="pw-calm" title="Vault." second={`${list.length} ${list.length === 1 ? 'secret' : 'secrets'}, sealed.`} />
         {menu}
       </div>
       <ShieldOnce info={shield} />

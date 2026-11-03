@@ -8,7 +8,9 @@ import { formatDateTime, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { activityIcon } from '../dashboard/DashboardPage';
+import { CalmCard, CalmHero, CalmRow } from '../../components/calm';
+import { Face } from '../../components/Face';
+import './calm-activity.css';
 
 export function ActivityPage() {
   const [page, setPage] = useState(1);
@@ -16,28 +18,24 @@ export function ActivityPage() {
   if (q.isLoading) return <PageLoader />;
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const d = q.data;
+  const today = new Date().toDateString();
+  const todayCount = d.items.filter((a) => new Date(a.createdAt).toDateString() === today).length;
   return (
-    <>
-      <PageHead title="Activity" sub="Everything that happened in this workspace" />
-      <div className="card">
-        <div className="card-body">
+    <div className="calm-act">
+      <CalmHero title={d.items.length === 0 ? 'Quiet so far.' : todayCount ? `${todayCount} ${todayCount === 1 ? 'thing' : 'things'} happened today.` : 'Nothing new today.'}
+        second={d.items[0] ? `Latest: ${d.items[0].actor ? `${d.items[0].actor.name.split(' ')[0]} ` : ''}${d.items[0].summary}`.slice(0, 80) : 'Everything that happens here shows up here.'} />
+      <CalmCard variant="list" aria-label="Workspace activity">
           {d.items.length === 0 ? <EmptyState icon="activity" title="No activity yet" text="Actions in projects and tasks will appear here. History is kept according to your plan." /> : (
             <div className="activity-list">
-              {d.items.map((a) => {
-                const ic = activityIcon(a.action);
-                return (
-                  <div className="act-item" key={a.id}>
-                    <div className={`act-ico ${ic.tone}`}><Icon name={ic.icon} /></div>
-                    <div className="act-body"><div className="act-text">{a.actor && <b>{a.actor.name} </b>}{a.summary}</div><div className="act-time" title={formatDateTime(a.createdAt)}>{timeAgo(a.createdAt)}</div></div>
-                  </div>
-                );
-              })}
+              {d.items.map((a) => (
+                <CalmRow key={a.id} lead={<Face userId={a.actor?.id} name={a.actor?.name ?? 'System'} className="calm-act-face" />}
+                  title={<>{a.actor && <b>{a.actor.name} </b>}{a.summary}</>} right={<span title={formatDateTime(a.createdAt)}>{timeAgo(a.createdAt)}</span>} />
+              ))}
             </div>
           )}
-        </div>
         <Pager page={d.page} totalPages={d.totalPages} totalItems={d.totalItems} onPage={setPage} />
-      </div>
-    </>
+      </CalmCard>
+    </div>
   );
 }
 

@@ -100,7 +100,7 @@ public class EmailDeliveryTests(ApiFactory factory)
         var prefs = (await c.Get("/api/v1/me/notification-preferences")).Data!.AsArray();
         Assert.False(prefs.Single(p => p!["type"]!.ToString() == "Mention")!["email"]!.GetValue<bool>());
 
-        Assert.Equal(HttpStatusCode.NotFound, (await anon.Send(HttpMethod.Post, $"/api/v1/email/unsubscribe?token={Uri.EscapeDataString(token[..^3] + "000")}", new { }, true)).Status);
+        Assert.Equal(HttpStatusCode.NotFound, (await anon.Send(HttpMethod.Post, $"/api/v1/email/unsubscribe?token={Uri.EscapeDataString(Forge(token))}", new { }, true)).Status);
         var security = links.Token(c.UserId, NotificationType.Security);
         Assert.Equal(HttpStatusCode.NotFound, (await anon.Send(HttpMethod.Post, $"/api/v1/email/unsubscribe?token={Uri.EscapeDataString(security)}", new { }, true)).Status);
         Assert.Null(links.Headers(c.UserId, NotificationType.Security));
@@ -281,4 +281,7 @@ public class EmailDeliveryTests(ApiFactory factory)
         Assert.Contains("https://app.test/account/notifications", html);
         Assert.DoesNotContain("<Works>", html);
     }
+
+    /// <summary>The token with its signature's last three characters changed, so it is always different from the real one.</summary>
+    private static string Forge(string token) => token[..^3] + (token.EndsWith("000", StringComparison.OrdinalIgnoreCase) ? "111" : "000");
 }

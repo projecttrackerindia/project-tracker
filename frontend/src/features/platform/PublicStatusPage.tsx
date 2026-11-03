@@ -33,10 +33,10 @@ function StatusBody({ s }: { s: PublicStatus }) {
     <main className="st-page">
       <div className="st-wrap">
         <header className="st-head">
-          <div><h1>{s.title}</h1><p>{s.workspace}</p></div>
+          <div><h1 className="st-calm">{BANNER[s.state].replace(/\.?$/, '.')}<em>Public status for {s.workspace}.</em></h1></div>
           <p>Updated {formatDateTime(s.updatedAt)}</p>
         </header>
-        <div className={`st-banner ${s.state}`} role="status"><span className="st-dot" aria-hidden="true" />{BANNER[s.state]}</div>
+        <div className={`st-banner st-banner-calm ${s.state}`} role="status"><span className="st-dot" aria-hidden="true" />{BANNER[s.state]}</div>
 
         <section className="st-card" aria-label="Components">
           {s.components.length === 0 && <p className="st-empty">Nothing is listed yet.</p>}

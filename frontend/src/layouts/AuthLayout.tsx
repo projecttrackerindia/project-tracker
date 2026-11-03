@@ -6,6 +6,7 @@ import { ToastRoot } from '../components/ui';
 import { PlatformBanner } from '../components/PlatformBanner';
 import { ThemeSwitch } from '../components/ThemeSwitch';
 import { SUPPORT_EMAIL, supportMailto } from '../lib/support';
+import './auth-calm.css';
 
 /**
  * Sign-in, sign-up and the other account screens follow the system's light or dark setting until the person picks one with the switch
@@ -34,10 +35,21 @@ function useSystemTheme() {
   }, []);
 }
 
-export function AuthLayout({ title, sub, children, footer, shake }: { title: string; sub?: string; children: ReactNode; footer?: ReactNode; shake?: boolean }) {
+/** The calm sign-in panel (shot 31): the brand, one large sentence, and a quiet line. No numbers are shown before sign-in. */
+function CalmAuthPanel() {
+  return (
+    <aside className="auth-calm-panel" aria-hidden="true">
+      <div className="acp-brand"><Logo size={38} className="pt-logo" />ProjectTracker</div>
+      <h2>Your work,<em>calmly in one place.</em></h2>
+      <p>Projects, desk, meetings and your day, with Aura beside you.</p>
+    </aside>
+  );
+}
+
+export function AuthLayout({ title, second, sub, children, footer, shake, calm }: { title: string; second?: string; sub?: string; children: ReactNode; footer?: ReactNode; shake?: boolean; calm?: boolean }) {
   useSystemTheme();
   return (
-    <div className="auth-shell auth-split">
+    <div className={`auth-shell auth-split${calm ? ' auth-calm' : ''}`}>
       <div className="auth-bg" aria-hidden="true">
         <span className="auth-blob b1" />
         <span className="auth-blob b2" />
@@ -48,22 +60,32 @@ export function AuthLayout({ title, sub, children, footer, shake }: { title: str
       </div>
       <PlatformBanner />
       <ThemeSwitch className="auth-theme-btn" />
-      <AuthVisual />
-      <div className="auth-wrap">
-        <span className="auth-glow" aria-hidden="true" />
-        <div className={`auth-card ${shake ? 'shake' : ''}`}>
-          <span className="auth-beam" aria-hidden="true" />
-          <div className="auth-brand">
-            <Logo size={44} className="pt-logo auth-logo" />
-            <div><strong>ProjectTracker</strong><span>Project management</span></div>
-          </div>
-          <h1 className="auth-title">{title}</h1>
+      {calm ? <CalmAuthPanel /> : <AuthVisual />}
+      {calm ? (
+        <div className="auth-wrap auth-calm-wrap">
+          <Logo size={52} className="pt-logo acp-logo" />
+          <h1 className="auth-title">{title}{second && <em>{second}</em>}</h1>
           {sub && <p className="auth-sub">{sub}</p>}
-          {children}
+          <div className={`auth-card ${shake ? 'shake' : ''}`}>{children}</div>
           {footer && <div className="auth-foot">{footer}</div>}
-          <p className="auth-help">Need help? <a href={supportMailto('Help with Project Tracker')}>{SUPPORT_EMAIL}</a></p>
         </div>
-      </div>
+      ) : (
+      <div className="auth-wrap">
+          <span className="auth-glow" aria-hidden="true" />
+          <div className={`auth-card ${shake ? 'shake' : ''}`}>
+            <span className="auth-beam" aria-hidden="true" />
+            <div className="auth-brand">
+              <Logo size={44} className="pt-logo auth-logo" />
+              <div><strong>ProjectTracker</strong><span>Project management</span></div>
+            </div>
+            <h1 className="auth-title">{title}{second && <em>{second}</em>}</h1>
+            {sub && <p className="auth-sub">{sub}</p>}
+            {children}
+            {footer && <div className="auth-foot">{footer}</div>}
+            <p className="auth-help">Need help? <a href={supportMailto('Help with Project Tracker')}>{SUPPORT_EMAIL}</a></p>
+          </div>
+        </div>
+      )}
       <ToastRoot />
     </div>
   );

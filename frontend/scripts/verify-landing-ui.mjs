@@ -216,7 +216,7 @@ try {
     for (const [w, h] of [[1440, 900], [390, 844]]) {
       const { ctx, page } = await make({ w, h, theme, mobile: w < 500 });
       await page.goto(`${origin}/login`); await page.locator('input[type=password]').waitFor(); await page.waitForTimeout(900);
-      for (const t of ['Remember me', 'Forgot password?', 'Phone', 'Google', 'GitHub', 'SSO']) await page.getByText(t, { exact: true }).first().waitFor();
+      for (const t of ['Remember me', 'Forgot password?', 'Approve on my phone', 'Continue with Google', 'Continue with GitHub', 'Continue with single sign-on']) await page.getByText(t, { exact: true }).first().waitFor();
       assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), theme);
       assert.match(await page.locator('.auth-title').evaluate((e) => getComputedStyle(e).fontFamily), /Bricolage/);
       await noSideways(page, `/login ${theme} ${w}`);

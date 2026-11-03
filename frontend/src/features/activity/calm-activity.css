@@ -1,0 +1,10 @@
+/* Calm Activity (shot 63): the sentence, then one list card of rows with faces */
+.calm-act { display: flex; flex-direction: column; gap: 22px; padding: 0 clamp(16px, 2.6vw, 40px) 96px; }
+.calm-act .calm-row-t { white-space: normal; }
+.calm-act .calm-row-t b { font-weight: 600; }
+.calm-act-face { width: 28px !important; height: 28px !important; font-size: 10px !important; flex: none; }
+@media (max-width: 600px) { .calm-act .calm-hero-title { font-size: 34px; } }
+.co-face, .cd-face, .calm-act-face { border-radius: 50%; display: inline-grid !important; place-items: center; background: var(--calm-accent); color: #fff; font-weight: 600; overflow: hidden; }
+.co-face .face-img, .cd-face .face-img, .calm-act-face .face-img { width: 100%; height: 100%; object-fit: cover; }
+.calm-act .pager { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+.calm-act .pager .row { flex-wrap: wrap; }

@@ -65,10 +65,14 @@ export const PROVIDER_ICON: Record<ExternalProvider['id'], ReactNode> = {
  * in place), and "Sign in with SSO" for organizations with their own identity provider. Each one sends the browser away to sign in and
  * back through /auth/complete.
  */
-function SocialButtons({ redirect, email, onSso }: { redirect: string; email: string; onSso: () => void }) {
+function SocialButtons({ redirect, email, onSso, calm }: { redirect: string; email: string; onSso: () => void; calm?: boolean }) {
   const q = useQuery({ queryKey: ['auth', 'providers'], queryFn: authApi.providers, staleTime: 5 * 60_000, retry: false });
   const providers = q.data?.providers ?? [];
   const go = (id: string) => void startOutsideSignIn(apiUrl(`/auth/external/${id}/start?returnUrl=${encodeURIComponent(redirect)}`));
+  // The calm sign-in has single sign-on as its own pill; outside providers (Google, Microsoft…) show only when the workspace offers them.
+  if (calm) return providers.length ? (
+    <div className="auth-calm-alts">{providers.map((p) => <button key={p.id} type="button" className="auth-calm-pill" onClick={() => go(p.id)}>{PROVIDER_ICON[p.id]}Continue with {p.name}</button>)}</div>
+  ) : null;
   return (
     <>
       <div className="auth-divider">or continue with</div>
@@ -275,28 +279,28 @@ export function LoginPage() {
     </AuthLayout>
   );
   return (
-    <AuthLayout title="Welcome back" sub="Sign in to continue to your workspace." shake={shaking}
-      footer={<>New here? <Link className="link" to={`/register${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Create an account</Link>
-        <span className="auth-foot-sep">·</span><a className="link" href="/security/">Security</a></>}>
+    <AuthLayout calm title="Welcome back." second="Sign in to ProjectTracker." shake={shaking}
+      footer={<>New here? <Link className="link" to={`/register${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Create a workspace</Link></>}>
       <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); setSigningIn(true); m.mutate(v); }, () => shake())} noValidate>
         {notice && !error && <div className="auth-notice" role="status"><Icon name="info" size={15} />{notice}</div>}
         {error && <div className="form-error" role="alert">{error}{unverified && <> <button type="button" className="link" onClick={() => resend.mutate()}>Resend verification email</button></>}</div>}
-        <FloatingField id="email" icon="mail" label="Email address" type="email" autoComplete="email" autoFocus error={errors.email?.message} {...register('email')} />
+        <FloatingField id="email" icon="mail" label="Work email" type="email" autoComplete="email" autoFocus error={errors.email?.message} {...register('email')} />
         <PasswordField id="password" label="Password" autoComplete="current-password" error={errors.password?.message} {...register('password')} />
-        <div className="auth-row">
-          <label className="auth-remember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Remember me</label>
-          <Link className="link" to="/forgot-password" style={{ fontSize: 13.5 }}>Forgot password?</Link>
-        </div>
-        <AuthSubmitButton busy={m.isPending}>Sign in<Icon name="arrowRight" /></AuthSubmitButton>
-        <div className={`auth-alts ${passkeysSupported() ? 'two' : ''}`}>
-          {passkeysSupported() && <button type="button" className="auth-alt auth-passkey" disabled={passkeyBusy} onClick={() => void signInWithPasskey()}><Icon name="key" size={18} />Passkey</button>}
-          <button type="button" className="auth-alt auth-phone" onClick={() => {
+        <label className="auth-remember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Remember me</label>
+        <AuthSubmitButton busy={m.isPending}>Continue</AuthSubmitButton>
+        <div className="auth-calm-alts">
+          <button type="button" className="auth-calm-pill" onClick={() => { setError(null); setSso(true); }}>Continue with single sign-on</button>
+          <button type="button" className="auth-calm-pill auth-phone" onClick={() => {
             const e = getValues('email').trim();
             if (!z.string().email().safeParse(e).success) { setError('Enter your email above, then choose your phone.'); shake(); return; }
             setError(null); setPhoneEmail(e);
-          }}><Icon name="bell" size={18} />Phone</button>
+          }}>Approve on my phone</button>
         </div>
-        <SocialButtons redirect={redirect} email={getValues('email')} onSso={() => { setError(null); setSso(true); }} />
+        <div className="auth-row">
+          <Link className="auth-calm-quiet" to="/forgot-password">Forgot password?</Link>
+          {passkeysSupported() && <button type="button" className="link auth-passkey" disabled={passkeyBusy} onClick={() => void signInWithPasskey()}>Use a passkey</button>}
+        </div>
+        <SocialButtons calm redirect={redirect} email={getValues('email')} onSso={() => { setError(null); setSso(true); }} />
       </form>
       <DevHint />
     </AuthLayout>

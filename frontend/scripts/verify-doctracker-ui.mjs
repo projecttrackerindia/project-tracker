@@ -132,12 +132,12 @@ try{
  await page.goto(origin+'/preview-org/library/docs?view=home');await page.waitForURL(/\/library$/);checks.push('legacy-redirect');
 
  // The hub: collections with their health, Start something, search across endpoints, and no DocTracker screens behind ···.
- const coll=page.getByTestId('collection').filter({hasText:'Payments Core'});await coll.waitFor();
+ await page.goto(origin+'/preview-org/library?find=1'); const coll=page.getByTestId('collection').filter({hasText:'Payments Core'});await coll.waitFor();
  assert.match(await page.getByTestId('collection-missing').first().innerText(),/^(Missing: |Complete)/);   // the space names what its docs are missing
  assert.match(await coll.innerText(),/3 pages · 3 endpoints · 1 diagram/);
  assert.equal(await page.locator('.dx-start').count(),5,'write with AI, a blank page and three templates');
  await page.getByRole('button',{name:'More in Library'}).click();
- assert.deepEqual(await page.getByRole('menu',{name:'More in Library'}).getByRole('menuitem').evaluateAll((els)=>els.map((e)=>e.querySelector('b').textContent)),['Security Center','Approval workflows','Required documents']);
+ assert.deepEqual(await page.getByRole('menu',{name:'More in Library'}).getByRole('menuitem').evaluateAll((els)=>els.map((e)=>e.querySelector('b').textContent)),['Search or ask','New architecture','Attach a Figma design','Security Center','Approval workflows','Required documents']);
  await page.keyboard.press('Escape');
  await page.getByRole('searchbox',{name:'Ask your docs'}).fill('refunds');
  const hit=page.locator('.dx-results .dx-li',{hasText:'/refunds'});await hit.waitFor();
@@ -257,7 +257,7 @@ try{
  await page.locator('.dx-sheet header').getByRole('button',{name:'Done'}).click();checks.push('swagger');
 
  // Security Center: masking rules, audit log.
- await page.goto(origin+'/preview-org/library');await page.getByRole('button',{name:'More in Library'}).click();await page.getByRole('menuitem',{name:/Security Center/}).click();
+ await page.goto(origin+'/preview-org/library?find=1');await page.getByRole('button',{name:'More in Library'}).click();await page.getByRole('menuitem',{name:/Security Center/}).click();
  await page.getByTestId('security-center').locator('.dx-h1',{hasText:'Security Center'}).waitFor();
  await page.locator('.dx-sec-body',{hasText:'Mobile number'}).waitFor();
  await page.getByRole('tab',{name:'Audit log'}).click();await page.locator('.dx-events code',{hasText:'api.pii_revealed'}).waitFor();
@@ -267,7 +267,7 @@ try{
  await page.goto(origin+`/preview-org/library/p/${pid}/d/d3`);await page.locator('.rd-title',{hasText:'Payments BRD'}).waitFor();
  assert.deepEqual(await page.getByTestId('doc-crumb').locator('a').allInnerTexts(),['Library','Payments Core']);
  assert.equal(await page.getByTestId('doc-crumb').locator('a').nth(1).getAttribute('href'),`/preview-org/library/p/${pid}`);
- await page.getByTestId('topic-nav').locator('.dx-nav-row.on',{hasText:'Payments BRD'}).waitFor();
+ await page.locator('.rd-title',{hasText:'Payments BRD'}).waitFor();
  await page.locator('.dv-mask').getByRole('button',{name:'Reveal'}).click();
  const d2=page.getByRole('dialog');await d2.getByLabel('Why do you need to see them?').fill('Escalation review');await d2.getByRole('button',{name:'Reveal'}).click();
  await page.locator('.dv-mask.revealed').waitFor();checks.push('document-reveal');
@@ -298,7 +298,7 @@ try{
 
  // Freshness on every page, API drift on the endpoint and in Out of date, and a link to one diagram.
  ctx=await make();await ctx.grantPermissions(['clipboard-read','clipboard-write'],{origin});page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
- await page.goto(origin+'/preview-org/library');
+ await page.goto(origin+'/preview-org/library?find=1');
  const ood=page.getByTestId('out-of-date');await ood.waitFor();
  assert.match(await ood.innerText(),/GET \/payments\/\{id\} — Docs differ from live API \(3 fields on UAT\)/);
  assert.equal(await ood.getByRole('link',{name:'Review it ›'}).getAttribute('href'),`/preview-org/library/p/${pid}/api/e2`);checks.push('out-of-date-drift');
@@ -340,7 +340,7 @@ try{
  await noScroll(page);await shot(page,'project-390.png');
  await page.getByTestId('topic-nav').locator('.dx-nav-row.ep',{hasText:'/refunds'}).click();await page.getByTestId('api-symbol').waitFor();await noScroll(page);
  await shot(page,'endpoint-390.png');
- await page.goto(origin+'/preview-org/library');await page.getByTestId('collection').first().waitFor();await noScroll(page);checks.push('phone');
+ await page.goto(origin+'/preview-org/library?find=1');await page.getByTestId('collection').first().waitFor();await noScroll(page);checks.push('phone');
  await page.close();await ctx.close();
  assert.deepEqual(errors,[]);
  console.log(JSON.stringify({checks,errors}));

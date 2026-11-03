@@ -207,6 +207,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.ApiDocs.ApiTransferService>();
         services.AddScoped<ProjectManagement.Application.Features.DocTracker.DocTrackerService>();
         services.AddScoped<OrgService>();
+        services.AddScoped<ProjectManagement.Application.Features.Organization.OrgMoveService>();
         services.AddScoped<ProjectManagement.Application.Features.Organization.OrgGrantGuard>();
         services.AddScoped<AccessService>();
         services.AddScoped<ProjectService>();
