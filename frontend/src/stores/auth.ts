@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
 import { refreshWasRefused, setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkspaceMismatchHandler, transientStatus } from '../api/client';
 import { authApi, meApi, pushApi, workspaceApi } from '../api/endpoints';
+import { isApprovalStart, type ApprovalStart } from '../api/endpoints.sessionApproval';
 import { disableNativePush } from '../lib/native';
 import { setAppZones } from '../lib/zone';
 import type { AppContext, AuthResponse } from '../api/types';
@@ -23,10 +24,10 @@ interface AuthState {
   status: 'loading' | 'authenticated' | 'anonymous' | 'offline';
   ctx: AppContext | null;
   bootstrap: () => Promise<void>;
-  /** Resolves with a challenge when two-step verification is on; finish with `loginMfa`. */
-  login: (email: string, password: string) => Promise<{ mfaChallenge?: string }>;
+  /** Resolves with a challenge when two-step verification is on (finish with `loginMfa`), or with a request to approve on the signed-in device. */
+  login: (email: string, password: string) => Promise<{ mfaChallenge?: string; approval?: ApprovalStart }>;
   completeSession: (auth: AuthResponse) => Promise<void>;
-  loginMfa: (challenge: string, code: string) => Promise<void>;
+  loginMfa: (challenge: string, code: string) => Promise<{ approval?: ApprovalStart }>;
   logout: () => Promise<void>;
   reloadContext: () => Promise<AppContext>;
   /** Moves to another organization and its address (/acme/…), for when the person chooses one, creates one or joins one. */
@@ -62,6 +63,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   login: async (email, password) => {
     const res = await authApi.login({ email, password });
     if ('mfaRequired' in res) return { mfaChallenge: res.challenge };
+    if (isApprovalStart(res)) return { approval: res };
     setAccessToken(res.accessToken);
     queryClient.clear();
     await get().reloadContext();
@@ -77,9 +79,11 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   loginMfa: async (challenge, code) => {
     const auth = await authApi.loginMfa({ challenge, code });
+    if (isApprovalStart(auth)) return { approval: auth };
     setAccessToken(auth.accessToken);
     queryClient.clear();
     await get().reloadContext();
+    return {};
   },
 
   logout: async () => {

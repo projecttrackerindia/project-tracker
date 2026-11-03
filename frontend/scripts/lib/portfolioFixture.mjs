@@ -76,9 +76,12 @@ const board = (s) => { const b = brief(s); return { asOf: today, filter: {}, bri
   money: { entitled: false, showMoney: false, currency: 'INR', budget: 0, spent: 0, forecast: 0, overrunning: 0, projects: [], burn: [], notes: [] }, capacity: { from: today, to: today, people: 7, over: [], projectsAtRisk: [], notes: [] } }; };
 const mon = '2026-10-26';
 const wk = (i) => new Date(Date.parse(mon) + i * 7 * 86_400_000).toISOString().slice(0, 10);
-const plan = () => ({ from: mon, weeks: 6, scope: 'Everyone', available: ['Everyone', 'Me'], entitled: true, weekStarts: [0, 1, 2, 3, 4, 5].map(wk), suggestion: null,
+const withTotals = (pl) => { const c = pl.people.flatMap((x) => x.weeks); return { ...pl, totals: { ...pl.totals, capacityMinutes: c.reduce((a, w) => a + w.capacityMinutes, 0), bookedMinutes: c.reduce((a, w) => a + w.bookedMinutes, 0),
+  booked: c.reduce((a, w) => a + w.bookedMinutes, 0) / Math.max(1, c.reduce((a, w) => a + w.capacityMinutes, 0)), overWeeks: c.filter((w) => w.over).length } }; };
+// scope=Reports is a lead's two direct reports (Lena, Jonas): the short grid that left the page half empty.
+const plan = (scope = 'Everyone') => withTotals({ from: mon, weeks: 6, scope, available: ['Everyone', 'Reports', 'Me'], entitled: true, weekStarts: [0, 1, 2, 3, 4, 5].map(wk), suggestion: null,
   totals: { capacityMinutes: 7 * 6 * 2400, bookedMinutes: 7 * 6 * 2000, booked: 0.83, overWeeks: 2, leaveWeeks: 0, publicHolidays: 0 },
-  people: people.map((p, k) => ({ userId: p.id, name: p.name, weeklyCapacityMinutes: 2400, weeks: [0, 1, 2, 3, 4, 5].map((i) => { const b = [2600, 2100, 1700, 2300, 1500, 2000, 900][k] - i * 120; return { weekStart: wk(i), capacityMinutes: 2400, bookedMinutes: b, leaveDays: 0, workingDays: 5, onLeave: false, over: b > 2400, holidayDays: 0 }; }) })) });
+  people: people.map((p, k) => [p, k]).filter(([p]) => scope !== 'Reports' || [S.LP[0], S.JW[0]].includes(p.id)).map(([p, k]) => ({ userId: p.id, name: p.name, weeklyCapacityMinutes: 2400, weeks: [0, 1, 2, 3, 4, 5].map((i) => { const b = [2600, 2100, 1700, 2300, 1500, 2000, 900][k] - i * 120; return { weekStart: wk(i), capacityMinutes: 2400, bookedMinutes: b, leaveDays: 0, workingDays: 5, onLeave: false, over: b > 2400, holidayDays: 0 }; }) })) });
 
 /** A browser context that serves dist and answers the API from `state`. `delay` (ms) holds every portfolio read back, to see the loading state. */
 export async function portfolioContext(browser, { theme = 'light', width = 1440, state, delay = 0 }) {
@@ -120,7 +123,7 @@ export async function portfolioContext(browser, { theme = 'light', width = 1440,
       else if (ep === '/api/v1/portfolio/board') data = board(state);
       else if (ep === '/api/v1/portfolio/sheet') data = sheet(state);
       else if (ep === '/api/v1/portfolio/timeline') data = timeline(state);
-      else if (ep === '/api/v1/resources/plan') data = plan();
+      else if (ep === '/api/v1/resources/plan') data = plan(url.searchParams.get('scope') || 'Everyone');
       else if (ep === '/api/v1/saved-views') data = [];
       else if (ep === '/api/v1/me/ui/plansheet') data = { key: 'plansheet', value: null, updatedAt: null };
       else if (ep === '/api/v1/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };

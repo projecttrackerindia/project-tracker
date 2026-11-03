@@ -46,6 +46,10 @@ public class User : AuditableEntity
     public string? MfaPendingSecret { get; set; }
     /// <summary>Latest time step already accepted, so a code cannot be used twice.</summary>
     public long MfaLastStep { get; set; }
+
+    /// <summary>The person's own "Single active session" choice: a sign-in on a new device must be approved on the device already signed in,
+    /// and that device is then signed out. An organization can require the same for its members (TenantSecuritySettings.SingleActiveSession).</summary>
+    public bool SingleSession { get; set; }
 }
 
 /// <summary>One-time recovery code for when the authenticator app is lost. Only a hash is kept.</summary>
@@ -79,6 +83,8 @@ public class UserSession : Entity
     public bool NewDevice { get; set; }
     /// <summary>The person said "this wasn't me": the session was ended at once.</summary>
     public DateTime? ReportedAt { get; set; }
+    /// <summary>Why the session ended, in words for the person ("Signed out because you signed in on Chrome on Windows"). Null = signed out normally.</summary>
+    public string? EndedReason { get; set; }
 }
 
 public class RefreshToken : Entity
@@ -244,6 +250,47 @@ public class DeviceLoginRequest : Entity
     public DateTime? DecidedAt { get; set; }
     public string? RequesterIp { get; set; }
     public string? RequesterAgent { get; set; }
+}
+
+public enum SessionApprovalStatus { Pending = 0, Approved = 1, Rejected = 2, Redeemed = 3, Reported = 4 }
+
+/// <summary>
+/// A sign-in on a new device, held until a device that is already signed in allows it ("Single active session"). The password and any
+/// two-step code were already checked. The new device holds a secret (only its hash is kept) to watch and redeem it; the signed-in devices see
+/// who is asking (device, app, network, approximate place) and the same two-digit code. Pending past ExpiresAt = timed out = denied, after which
+/// the person may still approve it themselves with an emailed link or an authenticator code (never locked out). Not tied to an organization:
+/// it happens before a workspace is chosen, and only the account's own sessions may answer it.
+/// </summary>
+public class SessionApproval : Entity
+{
+    public Guid UserId { get; set; }
+    public Guid? WorkspaceId { get; set; }
+    public Guid? SsoTenantId { get; set; }
+    /// <summary>How the person authenticated on the new device (password, password+mfa, passkey, sso, google ...).</summary>
+    public string Method { get; set; } = "";
+    public string SecretHash { get; set; } = "";
+    public int Code { get; set; }
+    public SessionApprovalStatus Status { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime ExpiresAt { get; set; }
+    public DateTime? DecidedAt { get; set; }
+    /// <summary>The signed-in session that allowed or rejected it (null when decided by an emailed link or a code).</summary>
+    public Guid? DecidedBySessionId { get; set; }
+    /// <summary>session, email or code.</summary>
+    public string? DecidedVia { get; set; }
+    public string? IpAddress { get; set; }
+    public string? UserAgent { get; set; }
+    /// <summary>"Chrome on Windows".</summary>
+    public string Device { get; set; } = "";
+    /// <summary>web, desktop or phone.</summary>
+    public string App { get; set; } = "web";
+    /// <summary>Approximate place ("Hyderabad, India") or region; null when nothing trustworthy is known.</summary>
+    public string? Location { get; set; }
+    public string? EmailTokenHash { get; set; }
+    public DateTime? EmailSentAt { get; set; }
+    public int FallbackFailures { get; set; }
+    /// <summary>The session opened when it was redeemed.</summary>
+    public Guid? ResultSessionId { get; set; }
 }
 
 /// <summary>

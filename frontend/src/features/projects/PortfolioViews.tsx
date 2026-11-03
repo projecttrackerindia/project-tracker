@@ -112,7 +112,7 @@ function explain(p: TimelineProject, r: PortfolioRisk | undefined, col: Col) {
   return col === 'late' ? 'The due date has passed or overdue work is piling up.' : 'Work is slower than the due date needs.';
 }
 
-const useProjects = (filter: PortfolioFilter, brief: PortfolioBrief) => {
+export const useProjects = (filter: PortfolioFilter, brief: PortfolioBrief) => {
   // The same key as the Timeline tab: one cached copy, refreshed together.
   const q = useWsQuery(portfolioKeys.timeline(filter), () => portfolioApi.timeline(filter), { placeholderData: (p) => p });
   const passes = useProjectFilter();

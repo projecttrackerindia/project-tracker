@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError, apiUrl } from '../../api/client';
-import type { ExternalProvider } from '../../api/types';
+import type { AuthResponse, ExternalProvider } from '../../api/types';
 import { authApi, consentApi, passkeyApi, workspaceApi } from '../../api/endpoints';
 import { passkeysSupported, requestPasskey, wasCancelled } from '../../lib/passkeys';
 import { Field, Modal, PageLoader, PasswordInput, SubmitButton, applyServerErrors } from '../../components/ui';
@@ -17,6 +17,8 @@ import { celebrate, firstName, originOf, useCelebration, type CelebrationKind } 
 import { toast } from '../../stores/ui';
 import { startOutsideSignIn } from '../../lib/native';
 import { PhoneStep } from './PhoneSignIn';
+import { ApprovalWait, ApprovalWaitFromRedirect, takeSignedOut } from './SessionApproval';
+import { isApprovalStart, type ApprovalStart } from '../../api/endpoints.sessionApproval';
 import { AuthSubmitButton, FloatingField, PasswordField, useShake } from './AuthFields';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './passwordPolicy';
 import { safeRedirect } from './redirect';
@@ -155,6 +157,11 @@ export function LoginPage() {
   // A redirect sign-in that needs the second step (Google ... for someone with two-step verification) comes back with its challenge.
   const [challenge, setChallenge] = useState<string | null>(() => params.get('mfa_challenge'));
   const [code, setCode] = useState('');
+  // "Single active session": the password was right, and a device already signed in must allow this one (a redirect sign-in brings only the id).
+  const [approval, setApproval] = useState<ApprovalStart | null>(null);
+  const [redirectApproval, setRedirectApproval] = useState<string | null>(() => params.get('approval'));
+  // Why this browser was signed out (it signed in somewhere else), said once.
+  const [notice] = useState(() => takeSignedOut());
   const nav = useNavigate();
   const [error, setError] = useState<string | null>(() => params.get('sso_error') ? params.get('message') ?? 'Sign-in could not be completed.' : null);
   // "Single sign-on" on the website opens this page at the SSO step.
@@ -177,8 +184,8 @@ export function LoginPage() {
   const redirect = safeRedirect(params.get('redirect') ?? params.get('to'));
   // The hand-off parameters are read once; keep them out of the address bar (and out of a reload).
   useEffect(() => {
-    if (!params.has('sso_error') && !params.has('mfa_challenge')) return;
-    const n = new URLSearchParams(params); ['sso_error', 'message', 'mfa_challenge', 'via'].forEach((k) => n.delete(k));
+    if (!params.has('sso_error') && !params.has('mfa_challenge') && !params.has('approval')) return;
+    const n = new URLSearchParams(params); ['sso_error', 'message', 'mfa_challenge', 'via', 'approval'].forEach((k) => n.delete(k));
     setParams(n, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -204,6 +211,7 @@ export function LoginPage() {
       const response = await requestPasskey(options);
       setSigningIn(true);
       const auth = await passkeyApi.signIn(challengeId, response);
+      if (isApprovalStart(auth)) { setSigningIn(false); setApproval(auth); return; }
       await useAuth.getState().completeSession(auth);
       enterApp('signin');
     } catch (e) {
@@ -217,6 +225,7 @@ export function LoginPage() {
     onSuccess: (r, v) => {
       try { if (remember) localStorage.setItem(REMEMBERED_EMAIL_KEY, v.email); else localStorage.removeItem(REMEMBERED_EMAIL_KEY); } catch { /* storage unavailable */ }
       if (r.mfaChallenge) { setSigningIn(false); setChallenge(r.mfaChallenge); setCode(''); return; }
+      if (r.approval) { setSigningIn(false); setApproval(r.approval); return; }
       enterApp('signin');
     },
     onError: (e, v) => {
@@ -234,7 +243,10 @@ export function LoginPage() {
   });
   const verify = useMutation({
     mutationFn: () => loginMfa(challenge!, code),
-    onSuccess: () => enterApp('verified'),
+    onSuccess: (r) => {
+      if (r.approval) { setSigningIn(false); setChallenge(null); setApproval(r.approval); return; }
+      enterApp('verified');
+    },
     onError: (e) => {
       setSigningIn(false);
       if (e instanceof ApiError && e.code === 'MFA_CHALLENGE_INVALID') { setChallenge(null); setError(e.message); return; }
@@ -247,6 +259,9 @@ export function LoginPage() {
   if (status === 'authenticated' && !signingIn && !celebrating) return <Navigate to={redirect} replace />;
   if (phoneEmail) return <PhoneStep email={phoneEmail} onBack={() => setPhoneEmail(null)}
     onApproved={(auth) => { setSigningIn(true); void useAuth.getState().completeSession(auth).then(() => enterApp('signin')); }} />;
+  const approved = (auth: AuthResponse) => { setSigningIn(true); void useAuth.getState().completeSession(auth).then(() => enterApp('signin')); };
+  if (approval) return <ApprovalWait start={approval} onApproved={approved} onBack={() => { setApproval(null); setError(null); }} />;
+  if (redirectApproval) return <ApprovalWaitFromRedirect id={redirectApproval} onApproved={approved} onBack={() => setRedirectApproval(null)} />;
   if (sso) return <SsoStep email={getValues('email')} redirect={redirect} onBack={() => setSso(false)} />;
   if (challenge) return (
     <AuthLayout title="Two-step verification" sub="Enter the 6-digit code from your authenticator app, or one of your recovery codes." shake={shaking}
@@ -264,6 +279,7 @@ export function LoginPage() {
       footer={<>New here? <Link className="link" to={`/register${redirect !== '/' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}>Create an account</Link>
         <span className="auth-foot-sep">·</span><a className="link" href="/security/">Security</a></>}>
       <form className="auth-form" onSubmit={handleSubmit((v) => { setError(null); setSigningIn(true); m.mutate(v); }, () => shake())} noValidate>
+        {notice && !error && <div className="auth-notice" role="status"><Icon name="info" size={15} />{notice}</div>}
         {error && <div className="form-error" role="alert">{error}{unverified && <> <button type="button" className="link" onClick={() => resend.mutate()}>Resend verification email</button></>}</div>}
         <FloatingField id="email" icon="mail" label="Email address" type="email" autoComplete="email" autoFocus error={errors.email?.message} {...register('email')} />
         <PasswordField id="password" label="Password" autoComplete="current-password" error={errors.password?.message} {...register('password')} />

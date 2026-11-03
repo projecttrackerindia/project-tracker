@@ -9,7 +9,7 @@ export const passkeyApi = {
   rename: (id: string, name: string) => put<void>(`/me/passkeys/${id}`, { name }),
   remove: (id: string) => del(`/me/passkeys/${id}`),
   signInOptions: (email: string) => post<PasskeyChallenge>('/auth/passkey/options', { email }, { auth: false }),
-  signIn: (challengeId: string, response: Record<string, unknown>) => post<AuthResponse>('/auth/passkey/verify', { challengeId, response }, { auth: false }),
+  signIn: (challengeId: string, response: Record<string, unknown>) => post<AuthResponse | import('./endpoints.sessionApproval').ApprovalStart>('/auth/passkey/verify', { challengeId, response }, { auth: false }),
 };
 
 export const invoiceSellerApi = {

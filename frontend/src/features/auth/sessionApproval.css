@@ -1,0 +1,72 @@
+/* "Single active session": the approval sheet on a signed-in device, and the waiting screen's extras on the new one. */
+.sa-scrim {
+  position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 16px;
+  background: rgba(0, 0, 0, .32); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  animation: saFade .22s var(--ds-ease) both;
+}
+.sa-sheet, .sa-card {
+  width: min(100%, 400px); display: grid; justify-items: center; gap: 10px; text-align: center;
+  padding: 26px 22px 18px; border-radius: var(--ds-r-hero); background: var(--ds-surface); color: var(--ds-text);
+  border: 1px solid var(--ds-line); box-shadow: var(--ds-e3);
+}
+.sa-sheet { animation: saRise .32s var(--ds-spring) both; }
+.sa-sheet h2, .sa-card h2 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
+.sa-device {
+  display: inline-grid; place-items: center; width: 60px; height: 60px; border-radius: 20px;
+  background: var(--ds-accent-soft); color: var(--ds-accent);
+}
+.sa-device.ok { background: var(--ds-success-bg); color: var(--ds-success); }
+.sa-lede { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ds-text-2); max-width: 32ch; }
+.sa-code { display: grid; gap: 2px; justify-items: center; padding: 6px 0 2px; }
+.sa-code span { font-size: 40px; font-weight: 800; letter-spacing: .04em; font-variant-numeric: tabular-nums; color: var(--ds-text); line-height: 1; }
+.sa-code small { font-size: 12px; color: var(--ds-text-3); }
+.sa-facts {
+  width: 100%; margin: 2px 0 0; display: grid; border-radius: var(--ds-r-card); background: var(--ds-surface-2); overflow: hidden; text-align: left;
+}
+.sa-facts > div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 14px; font-size: 13.5px; }
+.sa-facts > div + div { border-top: 1px solid var(--ds-separator); }
+.sa-facts dt { color: var(--ds-text-3); flex: none; }
+.sa-facts dd { margin: 0; color: var(--ds-text); text-align: right; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.sa-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.sa-actions.one { grid-template-columns: 1fr; }
+.sa-actions .btn { justify-content: center; min-height: 44px; border-radius: 14px; font-weight: 650; }
+.sa-foot { margin: 0; font-size: 12px; color: var(--ds-text-3); }
+.sa-err { margin: 0; font-size: 13px; color: var(--ds-danger); }
+.sa-notme {
+  display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 8px 10px; cursor: pointer;
+  color: var(--ds-danger); font: inherit; font-size: 13.5px; font-weight: 600; border-radius: 10px;
+}
+.sa-notme:hover { background: var(--ds-danger-bg); }
+.sa-notme:disabled { opacity: .5; cursor: default; }
+
+/* The waiting screen (new device). */
+.saw-device {
+  display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 auto 2px; padding: 7px 12px; width: fit-content; max-width: 100%;
+  border-radius: var(--ds-r-pill); background: var(--ds-fill); color: var(--ds-text-2); font-size: 13px;
+}
+.saw-device span { overflow-wrap: anywhere; }
+.saw-device b { color: var(--ds-text); font-weight: 650; }
+.saw-fallback { display: grid; gap: 12px; margin-top: 10px; }
+.saw-hint { margin: 0; font-size: 13px; color: var(--ds-text-2); text-align: center; }
+.saw-code { display: grid; gap: 6px; }
+.saw-code label { font-size: 13px; color: var(--ds-text-2); }
+.saw-code-row { display: flex; gap: 8px; }
+.saw-code-row .input { flex: 1; min-width: 0; }
+
+@keyframes saFade { from { opacity: 0; } }
+@keyframes saRise { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+
+/* A phone: the sheet rises from the bottom edge, thumb-reachable, clear of the home indicator. */
+@media (max-width: 560px) {
+  .sa-scrim { place-items: end center; padding: 0; }
+  .sa-sheet { width: 100%; border-radius: var(--ds-r-hero) var(--ds-r-hero) 0 0; border-bottom: 0; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+  .sa-sheet::before { content: ""; width: 36px; height: 5px; border-radius: 3px; background: var(--ds-fill-strong); margin: -12px 0 4px; }
+}
+@media (prefers-reduced-motion: reduce) { .sa-scrim, .sa-sheet { animation: none; } }
+
+/* The sign-in page, after this browser was signed out because the account signed in elsewhere. */
+.auth-notice {
+  display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 12px; font-size: 13.5px; line-height: 1.4;
+  background: var(--ds-info-bg); color: var(--ds-text);
+}
+.auth-notice svg { flex: none; margin-top: 2px; color: var(--ds-info); }

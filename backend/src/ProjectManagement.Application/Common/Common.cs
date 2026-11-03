@@ -52,7 +52,7 @@ public static class WorkspaceSlugs
     public static readonly IReadOnlySet<string> Reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         // pages that need no workspace
-        "login", "register", "verify-email", "forgot-password", "reset-password", "invite", "auth", "security", "r", "dev", "logout", "sso",
+        "login", "register", "verify-email", "forgot-password", "reset-password", "invite", "auth", "security", "r", "dev", "logout", "sso", "approve-sign-in",
         // pages inside a workspace (older links to these have no workspace in front, and are sent on to the right one)
         "my-work", "ai", "reminders", "timesheet", "calendar", "chat", "projects", "portfolio", "operations", "workload", "reports", "activity", "people",
         "settings", "account", "notifications", "admin", "work", "my-team", "project-status", "project-groups", "members", "teams", "organization", "billing", "audit",
