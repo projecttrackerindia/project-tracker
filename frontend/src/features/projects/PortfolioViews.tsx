@@ -17,6 +17,8 @@ import { ProjectFacts } from './PortfolioFacts';
 import { HealthSheet } from './ProjectHealth';
 import type { PortfolioBrief, PortfolioRisk } from '../ai/aiApi';
 import { lockScroll } from '../../lib/scrollLock';
+import { useProjectColour, useProjectFilter } from './PortfolioShell';
+import { portfolioKeys } from './portfolioShared';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -28,9 +30,6 @@ export function isoWeek(d: Date) {
   return Math.ceil(((t.getTime() - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86_400_000 + 1) / 7);
 }
 
-/** The key chip colour: stable per project key, from the design's palette. */
-const CHIP = ['#30b0c7', '#28cd41', '#af52de', '#5856d6', '#0a84ff', '#8ac43f', '#ff9500', '#ff375f', '#a2845e', '#00c7be'];
-const chipColour = (key: string) => { let h = 0; for (const c of key) h = (h * 31 + c.charCodeAt(0)) >>> 0; return CHIP[h % CHIP.length]; };
 const otherOptions = (d: PortfolioDecision | null): DecisionOption[] => d?.options.filter((o) => o.kind !== 'accept_date') ?? [];
 
 /**
@@ -114,16 +113,20 @@ function explain(p: TimelineProject, r: PortfolioRisk | undefined, col: Col) {
 }
 
 const useProjects = (filter: PortfolioFilter, brief: PortfolioBrief) => {
-  const q = useWsQuery(['portfolio', 'timeline', filter], () => portfolioApi.timeline(filter), { placeholderData: (p) => p });
-  const projects: TimelineProject[] = q.data?.projects ?? brief.ranked.map((r) => ({
+  // The same key as the Timeline tab: one cached copy, refreshed together.
+  const q = useWsQuery(portfolioKeys.timeline(filter), () => portfolioApi.timeline(filter), { placeholderData: (p) => p });
+  const passes = useProjectFilter();
+  const all: TimelineProject[] = q.data?.projects ?? brief.ranked.map((r) => ({
     id: r.projectId, key: r.key, name: r.name, health: r.health, group: r.group, start: r.startDate, due: r.dueDate, originalDue: null, forecast: r.projectedFinish, progress: r.progress, milestones: [], dependsOn: [],
   }));
+  const projects = all.filter((p) => passes({ id: p.id, name: p.name, key: p.key, ownerId: p.ownerId, owner: p.owner, health: p.health, due: p.due }));
   return { q, projects };
 };
 
 /** Three calm columns, On track / At risk / Late, of compact cards: key chip, name, progress, owner and forecast. */
 export function BoardColumns({ filter, brief, items = [] }: { filter: PortfolioFilter; brief: PortfolioBrief; items?: DecisionItem[] }) {
   const { projects } = useProjects(filter, brief);
+  const colourOf = useProjectColour();
   const ranked = new Map(brief.ranked.map((r) => [r.projectId, r]));
   const [all, setAll] = useState<Col | null>(null);
   // Drag a card to another column: the columns follow each project's dates and progress, so a drop opens what really moves it there —
@@ -150,9 +153,9 @@ export function BoardColumns({ filter, brief, items = [] }: { filter: PortfolioF
                 const why = explain(p, r, c.id);
                 const end = p.forecast ?? p.due;
                 return (
-                  <Link key={p.id} to={`/work/projects/${p.id}`} className={`pf-card${drag?.id === p.id ? ' lifted' : ''}`} title={why} aria-describedby={`pf-why-${p.id}`}
+                  <Link key={p.id} to={`/work/projects/${p.id}`} className={`pf-card pc-${colourOf(p.id)}${drag?.id === p.id ? ' lifted' : ''}`} data-project={p.key} title={why} aria-describedby={`pf-why-${p.id}`}
                     draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', p.key); setDrag({ id: p.id, from: c.id }); }} onDragEnd={() => { setDrag(null); setOver(null); }}>
-                    <span className="pf-card-t"><span className="pf-key" style={{ background: chipColour(p.key) }}>{p.key}</span><b className="pf-card-name">{p.name}</b></span>
+                    <span className="pf-card-t"><span className="pf-key">{p.key}</span><b className="pf-card-name">{p.name}</b></span>
                     <span className="pf-bar" aria-label={`${p.progress}% done`}><i style={{ width: `${Math.min(100, Math.max(0, p.progress))}%` }} /></span>
                     {flagged.has(p.id) && <span className="pf-flag">⚑ Flagged</span>}
                     <span className="pf-card-f"><span>{r?.owner ?? 'No owner'}</span><span>{p.progress >= 100 ? 'Done' : end ? `→ ${dayMonth(end)}` : 'No date'}</span></span>
@@ -182,6 +185,7 @@ const COL_NAME: Record<Col, string> = { ok: 'On track', risk: 'At risk', late: '
 function DropSheet({ p, from, to, item, filter, onClose, onFlagged }: { p: TimelineProject; from: Col; to: Col; item: DecisionItem | null; filter: PortfolioFilter; onClose: () => void; onFlagged: (id: string) => void }) {
   const wid = useWorkspaceId();
   const navigate = useNavigate();
+  const colourOf = useProjectColour();
   const a = useDecisionActions(item ?? { projectId: p.id, key: p.key, name: p.name, due: p.due, forecast: p.forecast, why: '', slipDays: 0, decision: null, acceptOpt: null, changes: [] }, filter);
   const [reason, setReason] = useState('');
   const [due, setDue] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); });
@@ -202,7 +206,7 @@ function DropSheet({ p, from, to, item, filter, onClose, onFlagged }: { p: Timel
   return createPortal(
     <div className="pf-drop-back" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <section className="pf-drop" role="dialog" aria-modal="true" aria-label={`Move ${p.name} to ${COL_NAME[to]}`}>
-        <p className="pf-drop-ey"><span className="pf-key" style={{ background: chipColour(p.key) }}>{p.key}</span> {COL_NAME[from]} → <b>{COL_NAME[to]}</b></p>
+        <p className="pf-drop-ey"><span className={`pf-key pc-${colourOf(p.id)}`}>{p.key}</span> {COL_NAME[from]} → <b>{COL_NAME[to]}</b></p>
         <h3>{to === 'ok' ? `Bring ${p.name} back on track` : `Flag ${p.name} as ${COL_NAME[to].toLowerCase()}`}</h3>
         <p className="pf-drop-why">Columns follow each project’s dates and progress{p.due ? ` (due ${dayMonth(p.due)}${p.forecast ? `, forecast ${dayMonth(p.forecast)}` : ''})` : ''}, so moving a card does what really moves it.</p>
         {to === 'ok' ? (

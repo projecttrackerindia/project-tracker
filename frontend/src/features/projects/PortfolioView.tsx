@@ -1,152 +1,125 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { AiCard } from '../../components/v2/AiCard';
-import { ErrorState, PageHead, PageLoader, Segmented } from '../../components/ui';
+import { ErrorState } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useTeamLens } from '../../lib/teamLens';
 import { toast } from '../../stores/ui';
-import { useAuth } from '../../stores/auth';
 import { aiWorkspaceApi } from '../ai/aiApi';
 import { useAi, useAssistant } from '../ai/Assistant';
-import { DotsMenu } from '../talk/DotsMenu';
+import type { DotsItem } from '../talk/DotsMenu';
 import { CapacityPlanView } from './CapacityPlan';
 import { CapacitySection, filterCount, MoneySection, PortfolioFilters } from './PortfolioBoard';
-import { BoardColumns, DecisionCard, PresentOverlay, isoWeek } from './PortfolioViews';
+import { BoardColumns, DecisionCard, PresentOverlay } from './PortfolioViews';
 import { PortfolioTimeline } from './PortfolioTimeline';
 import { PlanSheetView } from './PlanSheet';
-import { Icon } from '../../components/Icon';
 import { decisionItems, type DecisionItem } from './portfolioDecisions';
 import { portfolioApi, type PortfolioAiSummary, type PortfolioFilter } from './portfolioApi';
+import { PortfolioShell, PortfolioSkeleton, usePortfolio } from './PortfolioShell';
+import { portfolioKeys, type PortfolioUrlState } from './portfolioShared';
 import { errText } from './projectParts';
 import './portfolio.css';
-import { SavedViewsBar } from '../platform/SavedViews';
 import './projectsHome.css';
 
-type Mode = 'board' | 'timeline' | 'sheet' | 'capacity' | 'present';
 const sentences = (t: string) => t.trim().split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
+const RISK_REVIEW = 'Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.';
 
 /**
- * Projects › Portfolio: as-of line, title, Board · Timeline · Present (kept in ?view=portfolio&mode=timeline|present), three status tiles and one
- * AI sentence. Then one list of decisions this week (de-duplicated by project, each with a forecast or "No forecast yet" and an action),
- * then the chosen view. Present is a full-screen run-through of the decisions.
+ * Projects › Portfolio: Board · Timeline · Plan sheet · Capacity · Present in one shell (PortfolioShell: the Plan sheet's head, folder tabs and
+ * command field, shared by every tab). The mode is kept in the address (?view=portfolio&mode=timeline|sheet|capacity|present) with the filter, so a
+ * switch keeps it; every tab reads the same `portfolio` queries, so an edit on one shows on the others.
  */
 // The Projects · Portfolio switch is not shown here: the rail carries both Projects and Portfolio (design s-portfolio).
 export function PortfolioView(_props: { switcher?: ReactNode }) {
   const ai = useAi();
-  const wsName = useAuth((s) => s.ctx?.current?.name);
   const { teamId } = useTeamLens();
-  const [params, setParams] = useSearchParams();
-  const filter: PortfolioFilter = { teamId, ownerId: params.get('owner'), groupId: params.get('group'), health: params.get('health'), dueFrom: params.get('from'), dueTo: params.get('to') };
-  const setFilter = (f: PortfolioFilter) => {
-    const n = new URLSearchParams(params);
-    for (const [k, v] of [['owner', f.ownerId], ['group', f.groupId], ['health', f.health], ['from', f.dueFrom], ['to', f.dueTo]] as const) { if (v) n.set(k, v); else n.delete(k); }
-    setParams(n, { replace: true });
-  };
-  // ?view=portfolio&mode=timeline|present (the rail keys Portfolio on view=portfolio); old ?view=timeline|present links still open.
-  const v = params.get('mode') ?? params.get('view');
-  const mode: Mode = v === 'timeline' ? 'timeline' : v === 'sheet' ? 'sheet' : v === 'capacity' ? 'capacity' : v === 'present' ? 'present' : 'board';
-  const setMode = (m: Mode) => { const n = new URLSearchParams(params); n.set('view', 'portfolio'); if (m === 'board') n.delete('mode'); else n.set('mode', m); setParams(n, { replace: true }); };
+  const [params] = useSearchParams();
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [timelineRange, setTimelineRange] = useState<string | null>(null);
-  const q = useWsQuery(['portfolio', 'board', filter], () => portfolioApi.board(filter), { refetchInterval: 120_000, staleTime: 60_000, placeholderData: (prev) => prev });
-  const nFilters = filterCount(filter);
-  const sendBrief = async () => {
-    try { const r = await aiWorkspaceApi.sendBrief(teamId); toast(r.sent ? 'The brief is on its way to you, in the app and by e-mail.' : r.reason ?? 'Nothing was sent.', r.sent ? 'success' : 'info'); }
-    catch { toast('Could not send the brief.', 'error'); }
-  };
-  const exportAs = async (format: 'xlsx' | 'pdf') => {
-    try { await portfolioApi.export(filter, format); }
-    catch { toast('The export could not be made.', 'error'); }
-  };
-  const board = q.data;
-  const b = board?.brief;
-  const items: DecisionItem[] = useMemo(() => board && b ? decisionItems(board.decisions, b) : [], [board, b]);
-  const asOf = board?.asOf ?? b?.asOf;
-  const rankedOwner = useMemo(() => new Map((b?.ranked ?? []).map((r) => [r.projectId, r.owner])), [b]);
-  const projectsN = b ? b.onTrack + b.atRisk + b.delayed + b.onHold + (b.workComplete ?? 0) : 0;
-  const keysOf = (h: string) => (b?.ranked ?? []).filter((r) => r.health === h).slice(0, 2).map((r) => r.key).join(' · ');
-  const eyebrow = mode === 'capacity' ? 'Next 6 weeks' : mode === 'timeline' && timelineRange ? timelineRange : `${b?.projects ?? projectsN} projects · Week ${isoWeek(asOf ? new Date(asOf) : new Date())}`;
+  const v = params.get('mode') ?? params.get('view');
   // Action items live only as the Plan sheet's first tab: an old link (?mode=actions, ?actions=1) opens it there.
   if (v === 'actions' || params.get('actions') === '1') {
     const n = new URLSearchParams(params); n.set('view', 'portfolio'); n.set('mode', 'sheet'); n.set('pt', 'actions'); n.delete('actions');
     return <Navigate to={`?${n}`} replace />;
   }
-  const tabs = (
-    <Segmented<Mode> label="Portfolio view" value={mode} onChange={setMode}
-      options={[{ id: 'board', label: 'Board' }, { id: 'timeline', label: 'Timeline' }, { id: 'sheet', label: 'Plan sheet' }, { id: 'capacity', label: 'Capacity' }, { id: 'present', label: 'Present' }]} />
-  );
-  // The Plan sheet has its own head (Portfolio · Plan, the tabs inline, who else is here, ⋯) and needs neither the board's numbers nor its filters.
-  if (mode === 'sheet') return (
-    <div className="pj2 pj2-portfolio pf pf-sheetmode">
-      <PlanSheetView filter={filter} tabs={tabs} onPresent={() => setMode('present')} extraMenu={[
-        { label: 'Send me this', icon: 'send', hint: 'The brief, in the app and by e-mail', onSelect: () => void sendBrief() },
-        { label: 'Risk review', icon: 'sparkle', hint: 'Ask Aura which projects will miss their dates', hidden: !ai,
-          onSelect: () => useAssistant.getState().ask('Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.') },
-      ]} />
+  const sendBrief = async () => {
+    try { const r = await aiWorkspaceApi.sendBrief(teamId); toast(r.sent ? 'The brief is on its way to you, in the app and by e-mail.' : r.reason ?? 'Nothing was sent.', r.sent ? 'success' : 'info'); }
+    catch { toast('Could not send the brief.', 'error'); }
+  };
+  const exportAs = async (filter: PortfolioFilter, format: 'xlsx' | 'pdf') => {
+    try { await portfolioApi.export(filter, format); }
+    catch { toast('The export could not be made.', 'error'); }
+  };
+  // ⋯: the Portfolio's own items on every tab (the Plan sheet lists its own above them and exports the sheet itself).
+  const baseMenu = (url: PortfolioUrlState): DotsItem[] => {
+    const n = filterCount(url.filter);
+    const shared: DotsItem[] = [
+      { label: 'Send me this', icon: 'send', hint: 'The brief, in the app and by e-mail', onSelect: () => void sendBrief() },
+      { label: 'Risk review', icon: 'sparkle', hint: 'Ask Aura which projects will miss their dates', hidden: !ai, onSelect: () => useAssistant.getState().ask(RISK_REVIEW) },
+    ];
+    if (url.mode === 'sheet') return shared;
+    return [
+      { label: n ? `Filters · ${n}` : 'Filters', icon: 'search', hint: 'Lead, group, health and due dates', onSelect: () => setFiltersOpen((x) => !x) },
+      { label: 'Export to Excel', icon: 'download', onSelect: () => void exportAs(url.filter, 'xlsx') },
+      { label: 'Export to PDF', icon: 'download', onSelect: () => void exportAs(url.filter, 'pdf') },
+      ...shared,
+    ];
+  };
+  return (
+    <div className="pj2 pj2-portfolio pf pf-shell">
+      <PortfolioShell teamId={teamId} baseMenu={baseMenu} filters={(url) => <ServerFilters url={url} open={filtersOpen} />}>
+        {({ url }) => url.mode === 'sheet' ? <PlanSheetView onPresent={() => url.setMode('present')} />
+          : url.mode === 'timeline' ? <PortfolioTimeline filter={url.filter} />
+          : url.mode === 'capacity' ? <CapacityPlanView />
+          : <BoardTab ai={ai} />}
+      </PortfolioShell>
     </div>
   );
+}
+
+/** The server-side filters (lead, group, health, due dates) under ⋯ › Filters: the same panel on every tab, kept in the address. */
+function ServerFilters({ url, open }: { url: PortfolioUrlState; open: boolean }) {
+  const show = open || filterCount(url.filter) > 0;
+  const q = useWsQuery(portfolioKeys.board(url.filter), () => portfolioApi.board(url.filter), { staleTime: 60_000, placeholderData: (p) => p, enabled: show });
+  if (!show || !q.data) return null;
+  return <div className="pj2-pfilters pfx-filters"><PortfolioFilters board={q.data} filter={url.filter} onChange={url.setFilter} /></div>;
+}
+
+/** Board (and Present over it): the three numbers and one AI sentence, the columns, the decisions, money and capacity. */
+function BoardTab({ ai }: { ai: boolean }) {
+  const { url, passes } = usePortfolio();
+  const { filter, mode, setMode } = url;
+  const q = useWsQuery(portfolioKeys.board(filter), () => portfolioApi.board(filter), { refetchInterval: 120_000, staleTime: 60_000, placeholderData: (prev) => prev });
+  const board = q.data;
+  const b = board?.brief;
+  const ranked = useMemo(() => (b?.ranked ?? []).filter((r) => passes({ id: r.projectId, name: r.name, key: r.key, owner: r.owner, health: r.health, due: r.dueDate })), [b, passes]);
+  const shownIds = useMemo(() => new Set(ranked.map((r) => r.projectId)), [ranked]);
+  const items: DecisionItem[] = useMemo(() => board && b ? decisionItems(board.decisions, b).filter((i) => shownIds.has(i.projectId)) : [], [board, b, shownIds]);
+  const asOf = board?.asOf ?? b?.asOf;
+  const rankedOwner = useMemo(() => new Map(ranked.map((r) => [r.projectId, r.owner])), [ranked]);
+  if (q.isLoading) return <PortfolioSkeleton label="Loading the board" />;
+  if (q.isError || !board || !b) return <ErrorState error={q.error} retry={() => q.refetch()} />;
+  const projectsN = b.onTrack + b.atRisk + b.delayed + b.onHold + (b.workComplete ?? 0);
+  const keysOf = (h: string) => ranked.filter((r) => r.health === h).slice(0, 2).map((r) => r.key).join(' · ');
   return (
-    <div className="pj2 pj2-portfolio pf">
-      <PageHead eyebrow={mode === 'timeline' ? undefined : eyebrow} title={mode === 'capacity' ? 'Capacity' : 'Portfolio'}
-        sub={mode === 'timeline' ? `${wsName ? `${wsName} · ` : ''}${b?.projects ?? projectsN} projects · week ${isoWeek(asOf ? new Date(asOf) : new Date())}` : undefined}>
-        <div className="pj2-heads pf-heads">
-          {mode === 'timeline' && <>
-            <button type="button" className="pf-hbtn" onClick={() => void exportAs('xlsx')}><Icon name="download" size={14} />Export</button>
-            <button type="button" className="pf-hbtn" onClick={() => setMode('present')}><Icon name="play" size={14} />Present</button>
-          </>}
-          <DotsMenu label="More on Portfolio" items={[
-            { label: nFilters ? `Filters · ${nFilters}` : 'Filters', icon: 'search', hint: 'Owner, group, health and due dates', onSelect: () => setFiltersOpen((x) => !x) },
-            { label: 'Export to Excel', icon: 'download', onSelect: () => void exportAs('xlsx') },
-            { label: 'Export to PDF', icon: 'download', onSelect: () => void exportAs('pdf') },
-            { label: 'Send me this', icon: 'send', hint: 'The brief, in the app and by e-mail', onSelect: () => void sendBrief() },
-            { label: 'Risk review', icon: 'sparkle', hint: 'Ask Aura which projects will miss their dates', hidden: !ai,
-              onSelect: () => useAssistant.getState().ask('Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.') },
-          ]} />
-        </div>
-      </PageHead>
-      <div className="pf-tabs">{tabs}</div>
-
-      {mode !== 'present' && mode !== 'timeline' && (
-        <div className="pf-views">
-          <SavedViewsBar scope="portfolio" only="portfolio" current={{ mode: mode === 'board' ? undefined : mode, owner: filter.ownerId ?? undefined, group: filter.groupId ?? undefined,
-            health: filter.health ?? undefined, from: filter.dueFrom ?? undefined, to: filter.dueTo ?? undefined }}
-            onApply={(c) => {
-              const n = new URLSearchParams(params);
-              n.set('view', 'portfolio');
-              for (const k of ['mode', 'owner', 'group', 'health', 'from', 'to']) { const val = c[k]; if (typeof val === 'string' && val) n.set(k, val); else n.delete(k); }
-              setParams(n, { replace: true });
-            }} />
-        </div>
-      )}
-      {board && (filtersOpen || nFilters > 0) && <div className="pj2-pfilters"><PortfolioFilters board={board} filter={filter} onChange={setFilter} /></div>}
-
-      {q.isLoading ? <PageLoader /> : q.isError || !board || !b ? <ErrorState error={q.error} retry={() => q.refetch()} /> : mode === 'capacity' ? (
-        <CapacityPlanView />
-      ) : mode === 'timeline' ? (
-        <PortfolioTimeline filter={filter} onRange={setTimelineRange} />
-      ) : (
-        <>
-          <div className="pf-big">
-            <div className="pf-tile ok"><b>{b.onTrack}</b><span><strong>On track</strong><small>of {b.projects} projects{(b.workComplete ?? 0) > 0 ? ` · ${b.workComplete} work complete; check sign-offs` : ''}{b.projects > projectsN ? ` · ${b.projects - projectsN} without a health yet` : ''}</small></span></div>
-            <div className="pf-tile risk"><b>{b.atRisk}</b><span><strong>At risk</strong><small>{keysOf('AtRisk') || 'None at risk'}</small></span></div>
-            <div className="pf-tile late"><b>{b.delayed}</b><span><strong>Late</strong><small>{keysOf('Delayed') || 'None late'}</small></span></div>
-            <Summary summary={b.headlines[0] ?? board.summary} filter={filter} ai={ai} />
-          </div>
-
-          {(b.workComplete ?? 0) > 0 && <section className="card" aria-label="Work complete, check sign-offs"><h3>Work complete · check release sign-offs</h3><ul>{b.ranked.filter((r) => r.health === 'Completed').map((r) => <li key={r.projectId}><Link to={`/work/projects/${r.projectId}`}>{r.key} · {r.name}</Link></li>)}</ul></section>}
-          <div className="pf-lay">
-            <BoardColumns filter={filter} brief={b} items={items} />
-            <section aria-label="Decisions this week" className="pf-rail">
-              <h3 className="pf-rail-head">Decisions this week <em>{items.length}</em></h3>
-              {items.length === 0 ? <p className="pf-calm">No project is forecast to miss its date.</p>
-                : <div className="pf-decs">{items.map((it) => <DecisionCard key={it.projectId} item={it} filter={filter} owner={rankedOwner.get(it.projectId) ?? null} />)}</div>}
-            </section>
-          </div>
-          <MoneySection m={board.money} />
-          <CapacitySection c={board.capacity} />
-          {mode === 'present' && <PresentOverlay items={items} filter={filter} brief={b} asOf={asOf ?? null} onClose={() => setMode('board')} />}
-        </>
-      )}
+    <div className="pfx-board">
+      <div className="pf-big">
+        <div className="pf-tile ok"><b>{b.onTrack}</b><span><strong>On track</strong><small>of {b.projects} projects{(b.workComplete ?? 0) > 0 ? ` · ${b.workComplete} work complete; check sign-offs` : ''}{b.projects > projectsN ? ` · ${b.projects - projectsN} without a health yet` : ''}</small></span></div>
+        <div className="pf-tile risk"><b>{b.atRisk}</b><span><strong>At risk</strong><small>{keysOf('AtRisk') || 'None at risk'}</small></span></div>
+        <div className="pf-tile late"><b>{b.delayed}</b><span><strong>Late</strong><small>{keysOf('Delayed') || 'None late'}</small></span></div>
+        <Summary summary={b.headlines[0] ?? board.summary} filter={filter} ai={ai} />
+      </div>
+      {(b.workComplete ?? 0) > 0 && <section className="card" aria-label="Work complete, check sign-offs"><h3>Work complete · check release sign-offs</h3><ul>{ranked.filter((r) => r.health === 'Completed').map((r) => <li key={r.projectId}><Link to={`/work/projects/${r.projectId}`}>{r.key} · {r.name}</Link></li>)}</ul></section>}
+      <div className="pf-lay">
+        <BoardColumns filter={filter} brief={b} items={items} />
+        <section aria-label="Decisions this week" className="pf-rail">
+          <h3 className="pf-rail-head">Decisions this week <em>{items.length}</em></h3>
+          {items.length === 0 ? <p className="pf-calm">No project is forecast to miss its date.</p>
+            : <div className="pf-decs">{items.map((it) => <DecisionCard key={it.projectId} item={it} filter={filter} owner={rankedOwner.get(it.projectId) ?? null} />)}</div>}
+        </section>
+      </div>
+      <MoneySection m={board.money} />
+      <CapacitySection c={board.capacity} />
+      {mode === 'present' && <PresentOverlay items={items} filter={filter} brief={b} asOf={asOf ?? null} onClose={() => setMode('board')} />}
     </div>
   );
 }
@@ -169,4 +142,3 @@ function Summary({ summary, filter, ai }: { summary: string; filter: PortfolioFi
     </section>
   );
 }
-

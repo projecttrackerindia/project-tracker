@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../stores/auth';
 import { resourcesApi } from '../../api/endpoints';
 import type { CapacityPlan, CapacityPlanCell, WorkloadScope } from '../../api/types';
-import { Avatar, EmptyState, ErrorState, Modal, PageLoader, Segmented } from '../../components/ui';
+import { Avatar, EmptyState, ErrorState, Modal, Segmented } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useRebalance } from '../insights/InsightsPage';
 import { isoWeek } from './PortfolioViews';
+import { PortfolioSkeleton, ShellTools, usePortfolio } from './PortfolioShell';
+import { portfolioKeys } from './portfolioShared';
 import './capacityPlan.css';
 
 type Unit = 'hours' | 'pct';
@@ -47,12 +49,21 @@ export function CapacityPlanView() {
   const [scope, setScope] = useState<WorkloadScope | undefined>(undefined);
   const [preview, setPreview] = useState(false);
   const canHolidays = useAuth((x) => x.ctx?.current?.role === 'Owner' || x.ctx?.current?.role === 'Admin');
-  const q = useWsQuery(['capacity', 'plan', scope ?? ''], () => resourcesApi.plan({ weeks: 6, scope }), { staleTime: 60_000, placeholderData: (p) => p });
+  const q = useWsQuery(portfolioKeys.capacity(scope ?? ''), () => resourcesApi.plan({ weeks: 6, scope }), { staleTime: 60_000, placeholderData: (p) => p });
+  // The shell's field on Capacity: owners are the people, a project (token or folder tab) or a colour keeps the people with work in it, text their names.
+  const { active, work, me, colourOf, url } = usePortfolio();
+  const ownerIds = active.filter((t) => t.kind === 'owner').map((t) => (t.value === 'me' ? me : t.value));
+  const projIds = active.filter((t) => t.kind === 'project').map((t) => t.value);
+  const words = active.filter((t) => t.kind === 'text').map((t) => t.value.toLowerCase());
+  const shows = (userId: string, name: string) => (!ownerIds.length || ownerIds.includes(userId))
+    && (!projIds.length || work.some((r) => r.ownerId === userId && projIds.includes(r.projectId)))
+    && (!url.colours.length || work.some((r) => r.ownerId === userId && url.colours.includes(colourOf(r.projectId))))
+    && words.every((w) => name.toLowerCase().includes(w));
   const { busy, rebalance } = useRebalance((job) => navigate(`/insights?tab=reports&job=${encodeURIComponent(job)}`));
 
-  if (q.isLoading) return <PageLoader />;
+  if (q.isLoading) return <PortfolioSkeleton label="Loading capacity" />;
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => void q.refetch()} />;
-  const p: CapacityPlan = q.data;
+  const p: CapacityPlan = { ...q.data, people: q.data.people.filter((x) => shows(x.userId, x.name)) };
   if (!p.entitled) return <div className="card"><div className="card-body"><EmptyState icon="gauge" title="Capacity planning comes with the Business plan" text="See each person's booked work against their capacity for the weeks ahead, with leave taken into account." /></div></div>;
 
   const s = p.suggestion;
@@ -65,13 +76,13 @@ export function CapacityPlanView() {
     <section className="cp" aria-label="Capacity">
       <div className="cp-head">
         <div className="cp-eyebrow">{SCOPE_LABEL[p.scope]} · {p.people.length === 1 ? '1 person' : `${p.people.length} people`}</div>
-        <div className="cp-tools">
-          <ul className="cp-legend" aria-label="Legend">
-            <li><i className="cap" />Capacity</li><li><i className="booked" />Booked</li><li><i className="over" />Over-booked</li><li><i className="leave" />Leave</li>
-          </ul>
+        <ul className="cp-legend" aria-label="Legend">
+          <li><i className="cap" />Capacity</li><li><i className="booked" />Booked</li><li><i className="over" />Over-booked</li><li><i className="leave" />Leave</li>
+        </ul>
+        <ShellTools><div className="cp-tools">
           {p.available.length > 1 && <Segmented<WorkloadScope> label="Whose capacity" value={p.scope} onChange={setScope} options={p.available.map((x) => ({ id: x, label: SCOPE_LABEL[x] }))} />}
           <Segmented<Unit> label="Show as" value={unit} onChange={setUnit} options={[{ id: 'hours', label: 'Hours' }, { id: 'pct', label: '%' }]} />
-        </div>
+        </div></ShellTools>
       </div>
 
       {s && (

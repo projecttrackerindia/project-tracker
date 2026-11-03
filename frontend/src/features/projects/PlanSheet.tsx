@@ -1,33 +1,29 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { ApiError, get, put } from '../../api/client';
+import { ApiError } from '../../api/client';
 import { resourcesApi } from '../../api/endpoints';
-import { savedViewApi, type SavedView } from '../../api/platformApi';
-import { openPalette } from '../../components/CommandPalette';
 import { registerPaletteCommands } from '../../components/paletteRegistry';
-import { ErrorState, PageLoader } from '../../components/ui';
-import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
-import { useAuth, useWorkspaceId } from '../../stores/auth';
+import { ErrorState } from '../../components/ui';
+import { useWsQuery } from '../../lib/hooks';
+import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { hubInvoke, isLiveConnected, onLiveConnected, onSheetFocus, onViewing } from '../live/bus';
-import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
+import type { DotsItem } from '../talk/DotsMenu';
 import { dueChange } from './DueChangeFields';
-import { portfolioApi, type PlanSheet as PlanSheetData, type PortfolioFilter, type SheetChange, type SheetRow, type SheetStatus } from './portfolioApi';
+import { portfolioApi, type PlanSheet as PlanSheetData, type SheetChange, type SheetRow, type SheetStatus } from './portfolioApi';
 import { addDays, dayNum, dm, isOpen, parseTsv } from './planSheet';
-import {
-  checklistPct, DUE_LABEL, estimateLoad, interpret, isWork, matchesAll, slipDays, STATUS_KEYS, STATUS_LABEL, statusKey, weekLabel, weekStart,
-  type DueKey, type Load, type StatusKey, type Tok,
-} from './planSheetQuery';
+import { checklistPct, estimateLoad, isWork, matchesAll, slipDays, statusKey, weekLabel, weekStart, type Load } from './planSheetQuery';
 import { Av, Dot, Floating, NoteText, Owner, personColor, Progress, Ring, Status } from './planSheetParts';
 import { DateEditor, NotesEditor, PeoplePicker, ProgressEditor, StatusPicker } from './planSheetEditors';
 import { PasteModal } from './planSheetPaste';
 import { Inspector, type EditCol, type LinkedMeeting } from './planSheetInspector';
 import { ReasonModal } from './planSheetReason';
-import { ColourFilter, colourOf, COLOURS, TabStrip, useTabPrefs, type Colour, type TabId } from './planSheetTabs';
+import type { Colour } from './planSheetTabs';
 import { FocusView } from './planSheetFocus';
-import { ActionItemsTab, needsReview, useActionReview } from './planSheetActions';
+import { ActionItemsTab } from './planSheetActions';
 import { CalendarDate } from './planSheetCalendar';
 import { NotifySheet } from './planSheetNotify';
+import { PortfolioSkeleton, ShellPresence, ShellTools, usePortfolio, useShellMenu } from './PortfolioShell';
+import { patchPortfolio, refreshPortfolio } from './portfolioShared';
 import './planSheet.css';
 import './planSheetTabs.css';
 
@@ -46,14 +42,6 @@ const EXPORT_COLUMNS = ['Key', 'Title', 'Owner', 'Start', 'Due', 'Status', 'Prog
 
 interface EditEntry { id: number; label: string; at: number; count: number; inverse: SheetChange[] | null; move?: { id: string; projectId: string; afterId: string | null; beforeId: string | null }; projectId?: string | null }
 type Display = { type: 'g'; p: SheetRow; all: SheetRow[]; shown: number } | { type: 'r'; r: SheetRow; level: number };
-interface Prefs { defaultView?: string | null }
-
-function usePhone() {
-  const q = '(max-width: 760px)';
-  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches);
-  useEffect(() => { const m = window.matchMedia(q); const on = () => setPhone(m.matches); m.addEventListener('change', on); return () => m.removeEventListener('change', on); }, []);
-  return phone;
-}
 const editableTarget = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]');
 
 /**
@@ -63,17 +51,14 @@ const editableTarget = (t: EventTarget | null) => !!(t as HTMLElement | null)?.c
  * value down a column (with a smart fill from checklists); every edit can be undone (⌘Z) from the toast. A task opens the inspector on the
  * right; rows drag to a new place or into another project; others on the sheet show live. On a phone each project is a card.
  */
-export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: PortfolioFilter; tabs: ReactNode; extraMenu: DotsItem[]; onPresent: () => void }) {
-  const phone = usePhone();
+export function PlanSheetView({ onPresent }: { onPresent: () => void }) {
+  // The head, the folder tabs, the command field, the colour filter, saved views and the data come from the Portfolio shell, shared with every tab.
+  const pf = usePortfolio();
+  const { phone, today, me, text, review, tabPrefs, colourOf: colourOfProject, activeView, defaultView, setDefaultView } = pf;
+  const { filter, colours, tab, setTab, layout, setLayout } = pf.url;
   const wid = useWorkspaceId();
-  const me = useAuth((s) => s.ctx?.user?.id) ?? null;
-  const [params, setParams] = useSearchParams();
-  const q = useWsQuery(['portfolio', 'sheet', filter], () => portfolioApi.sheet(filter), { staleTime: 30_000, placeholderData: (p) => p });
-  const data = q.data;
-  const today = data?.asOf ?? new Date().toISOString().slice(0, 10);
-  const [toks, setToks] = useState<Tok[]>([]);
-  const [text, setText] = useState('');
-  const [layout, setLayout] = useState<Layout>('sheet');
+  const q = pf.sheet;
+  const data = q.data && !Array.isArray(q.data) ? q.data : undefined;
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<Map<string, Partial<SheetRow>>>(new Map());
   const [inspect, setInspect] = useState<string | null>(null);
@@ -82,28 +67,15 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
   const [edits, setEdits] = useState<EditEntry[]>([]);
   const [toastAt, setToastAt] = useState<{ text: ReactNode; at: number; undo: boolean; projectId?: string | null } | null>(null);
   const [notifyOpen, setNotifyOpen] = useState(false);
-  const { prefs: tabPrefs, save: saveTabs } = useTabPrefs();
-  const review = useActionReview();
-  // The tab is kept in the address (?pt=actions or a project id) and the colour filter too (?pc=teal,blue).
-  const tab: TabId | null = params.get('pt');
-  const setTab = useCallback((t: TabId | null) => { const n = new URLSearchParams(params); if (t) n.set('pt', t); else n.delete('pt'); setParams(n); }, [params, setParams]);
-  const colours = useMemo(() => (params.get('pc') ?? '').split(',').filter((c): c is Colour => (COLOURS as readonly string[]).includes(c)), [params]);
-  const setColours = useCallback((c: Colour[]) => { const n = new URLSearchParams(params); if (c.length) n.set('pc', c.join(',')); else n.delete('pc'); setParams(n, { replace: true }); }, [params, setParams]);
-  useEffect(() => { const on = (e: Event) => setColours((e as CustomEvent<Colour[]>).detail); window.addEventListener('ps4-colour', on); return () => window.removeEventListener('ps4-colour', on); }, [setColours]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [warn, setWarn] = useState<string | null>(null);
-  const views = useWsQuery(['saved-views', 'portfolio'], () => savedViewApi.list('portfolio'), { staleTime: 60_000, retry: false });
-  const prefs = useWsQuery(['ui', 'plansheet'], async () => { try { return (await get<{ value: Prefs | null }>('/me/ui/plansheet'))?.value ?? {}; } catch { return {}; } }, { staleTime: 300_000 });
-  const sheetViews = useMemo(() => (views.data ?? []).filter((v) => v.config.list === 'sheet'), [views.data]);
-  const [activeView, setActiveView] = useState<string | null>(null);
 
   const rows = useMemo(() => (data?.rows ?? []).map((r) => { const o = overrides.get(r.id); return o ? { ...r, ...o } : r; }), [data, overrides]);
   const projects = useMemo(() => rows.filter((r) => r.kind === 'project'), [rows]);
   const work = useMemo(() => rows.filter(isWork), [rows]);
   const people = useMemo(() => data?.people ?? [], [data]);
-  const interpreted = useMemo(() => (text.trim() ? interpret(text, people, projects) : []), [text, people, projects]);
-  const active = useMemo(() => [...toks, ...interpreted], [toks, interpreted]);
-  const ctx = useMemo(() => ({ today, me }), [today, me]);
+  const active = pf.active;
+  const ctx = pf.qctx;
   const matching = useMemo(() => work.filter((r) => matchesAll(r, active, ctx)), [work, active, ctx]);
   const statusesBy = useMemo(() => { const m = new Map<string, SheetStatus[]>(); for (const s of data?.statuses ?? []) m.set(s.projectId, [...(m.get(s.projectId) ?? []), s]); return m; }, [data]);
 
@@ -126,7 +98,7 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
     const on = active.length > 0;
     const pass = new Set(matching.map((r) => r.id));
     for (const p of projects) {
-      if (colours.length && !colours.includes(colourOf(tabPrefs, projects, p.id))) continue;
+      if (colours.length && !colours.includes(colourOfProject(p.id))) continue;
       const all = work.filter((r) => r.projectId === p.id);
       const shown = new Set(all.filter((r) => pass.has(r.id)).map((r) => r.id));
       for (const r of all) if (shown.has(r.id) && r.parentId) shown.add(r.parentId);
@@ -136,42 +108,7 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
       for (const r of all) if (!on || shown.has(r.id)) out.push({ type: 'r', r, level: r.kind === 'subtask' ? 1 : 0 });
     }
     return out;
-  }, [projects, work, matching, active.length, collapsed, colours, tabPrefs]);
-
-  // ---- views
-  const applyView = useCallback((v: SavedView) => {
-    const c = v.config as { tokens?: Tok[]; layout?: Layout | 'grid' | 'gridTimeline'; filters?: { ownerMe?: boolean; lateOnly?: boolean; notDone?: boolean; due30?: boolean } };
-    const t: Tok[] = c.tokens ?? [];
-    if (!c.tokens && c.filters) {
-      if (c.filters.ownerMe) t.push({ kind: 'owner', value: 'me', label: 'Me' });
-      if (c.filters.lateOnly) t.push({ kind: 'status', value: 'late', label: 'Late' });
-      if (c.filters.notDone) t.push({ kind: 'status', value: 'open', label: 'Not done' });
-      if (c.filters.due30) t.push({ kind: 'due', value: 'next-30', label: DUE_LABEL['next-30'] });
-    }
-    setToks(t); setText('');
-    setLayout(c.layout === 'gridTimeline' ? 'split' : c.layout === 'split' || c.layout === 'timeline' ? c.layout : 'sheet');
-    setActiveView(v.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only setters (the linter reads `c.layout` as the `layout` state)
-  }, []);
-  const applied = useRef(false);
-  useEffect(() => {
-    if (applied.current || !views.data || !prefs.data) return;
-    const id = params.get('v') ?? prefs.data.defaultView ?? null;
-    const v = sheetViews.find((x) => x.id === id);
-    applied.current = true;
-    if (v) applyView(v);
-  }, [views.data, prefs.data, sheetViews, params, applyView]);
-  const saveView = async (name: string) => {
-    try {
-      const v = await savedViewApi.create({ scope: 'portfolio', name, sharing: 'private', config: { list: 'sheet', tokens: active, layout } });
-      setActiveView(v.id); setToks(active); setText(''); void invalidateWorkspace(wid, 'saved-views'); toast(`Saved the view “${name}”.`);
-      const n = new URLSearchParams(params); n.set('v', v.id); setParams(n, { replace: true });
-    } catch (e) { toast(e instanceof ApiError ? e.message : 'The view could not be saved.', 'error'); }
-  };
-  const setDefault = async (id: string | null) => {
-    try { await put('/me/ui/plansheet', { value: { ...(prefs.data ?? {}), defaultView: id } }); void prefs.refetch(); toast(id ? 'This view now opens first.' : 'No default view.'); }
-    catch { toast('Could not set the default view.', 'error'); }
-  };
+  }, [projects, work, matching, active.length, collapsed, colours, colourOfProject]);
 
   // ---- saving: optimistic through the bulk endpoint (one row at a time on the server), one reason for later due dates, and an undo entry
   const nameOf = useCallback((id: string | null | undefined) => people.find((p) => p.id === id)?.name ?? null, [people]);
@@ -219,6 +156,8 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
       patch.set(c.id, o);
     }
     setOverrides(patch);
+    // Every tab's cached copy at once (the Timeline's project dates too); the refresh below brings the server's roll-up to all of them.
+    patchPortfolio(wid, changes, (_r, c) => patch.get(c.id) ?? {});
     try {
       const withVersions = changes.map((c) => ({ ...c, version: c.version ?? before.get(c.id)?.version }));
       const res = await portfolioApi.sheetBulk(withVersions, opts.reason, opts.dependency);
@@ -243,13 +182,14 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
           pushEdit({ label, count: res.changed, inverse: changes.filter((c) => ok.has(c.id)).map((c) => inverseOf(before.get(c.id)!, c)), projectId: one?.projectId ?? null }, text);
         }
       }
-      await q.refetch();
+      await refreshPortfolio(wid);
       setOverrides(new Map());
     } catch (e) {
       setOverrides(new Map(overrides));
+      void refreshPortfolio(wid);
       toast(e instanceof ApiError ? e.message : 'The change could not be saved.', 'error');
     }
-  }, [data, rows, overrides, nameOf, today, q]);
+  }, [data, rows, overrides, nameOf, today, wid]);
 
   const move = useCallback(async (m: { id: string; projectId: string; afterId: string | null; beforeId: string | null }, undo = false) => {
     const r = rows.find((x) => x.id === m.id); if (!r) return;
@@ -262,9 +202,9 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
       const to = projects.find((p) => p.id === m.projectId);
       if (undo) setToastAt({ text: `Moved ${res.key} back`, at: Date.now(), undo: false });
       else pushEdit({ label: res.movedProject ? `Moved ${r.key} to ${to?.title ?? 'another project'} as ${res.key}` : `Moved ${r.key}`, count: 1, inverse: null, move: back });
-      await q.refetch();
+      await refreshPortfolio(wid);
     } catch (e) { toast(e instanceof ApiError ? e.message : 'The task could not be moved.', 'error'); }
-  }, [rows, projects, q]);
+  }, [rows, projects, wid]);
 
   const undo = useCallback(() => {
     const [last, ...rest] = edits;
@@ -353,73 +293,47 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, [tabOrder, setTab]);
-  const counts = useMemo(() => { const m = new Map<string, number>(); for (const r of work) m.set(r.projectId, (m.get(r.projectId) ?? 0) + 1); return m; }, [work]);
-
-  if (q.isLoading) return <PageLoader />;
-  if (q.isError || !data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
-
-  const menu: DotsItem[] = [
+  const refresh = useCallback(() => refreshPortfolio(wid), [wid]);
+  const menu: DotsItem[] = useMemo(() => [
     { label: 'Paste from Excel', icon: 'upload', hint: 'Or ⌘V anywhere on the sheet', onSelect: () => setPaste([]) },
     { label: 'Export to Excel', icon: 'download', hint: active.length ? 'The rows the filter shows' : 'The whole sheet', onSelect: () => void exportAs('xlsx') },
     { label: 'Export as CSV', icon: 'download', onSelect: () => void exportAs('csv') },
     { label: 'Present', icon: 'present', onSelect: onPresent },
     { label: 'Notify', icon: 'bell', hint: 'Who your changes tell, e-mail and quiet hours', onSelect: () => setNotifyOpen(true) },
-    ...(activeView ? [{ label: prefs.data?.defaultView === activeView ? 'Stop opening this view first' : 'Open this view first', icon: 'star' as const, onSelect: () => void setDefault(prefs.data?.defaultView === activeView ? null : activeView) }] : []),
-    ...extraMenu,
-  ];
-  const head = (
-    <div className="ps3-head">
-      <div className="ps3-crumb">Portfolio</div><h1>Plan</h1>
-      {!phone && <div className="ps3-tabs">{tabs}</div>}
-      <span className="ps3-sp" />
-      {!phone && others.length > 0 && <div className="ps3-pres" aria-label={`Also on the sheet: ${others.map((o) => o.name).join(', ')}`} title={`Also here: ${others.map((o) => o.name).join(', ')}`}>
-        {others.slice(0, 4).map((o) => <Av key={o.id} id={o.id} name={o.name} size={24} />)}</div>}
-      {!phone && <DotsMenu label="More on the plan sheet" items={menu} />}
-    </div>
-  );
-  const command = (
-    <CommandField toks={toks} setToks={(t) => { setToks(t); setActiveView(null); }} text={text} setText={(t) => { setText(t); if (t) setActiveView(null); }} interpreted={interpreted}
-      count={matching.length} total={work.length} filtering={active.length > 0} people={people} projects={projects} work={work} ctx={ctx} compact={phone}
-      views={sheetViews} activeView={activeView} defaultView={prefs.data?.defaultView ?? null} onApplyView={applyView} onSaveView={(n) => void saveView(n)} />
-  );
+    ...(activeView ? [{ label: defaultView === activeView ? 'Stop opening this view first' : 'Open this view first', icon: 'star' as const, onSelect: () => void setDefaultView(defaultView === activeView ? null : activeView) }] : []),
+  ], [active.length, exportAs, onPresent, activeView, defaultView, setDefaultView]);
+  useShellMenu(menu);
+
+  if (q.isLoading || (!data && q.isFetching)) return <PortfolioSkeleton label="Loading the plan sheet" />;
+  if (q.isError || !data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
+
   const focus = tab && tab !== 'actions' ? projects.find((p) => p.id === tab) ?? null : null;
-  const pageColour: Colour | 'ai' | 'none' = tab === 'actions' ? 'ai' : focus ? colourOf(tabPrefs, projects, focus.id) : 'none';
-  const colourOfProject = (id: string | null) => (id && projects.some((p) => p.id === id) ? colourOf(tabPrefs, projects, id) : null);
-  const reviewItems = review.data?.items ?? [];
-  const actionCount = review.data ? reviewItems.filter((i) => i.state !== 'done' && i.state !== 'cancelled').length : null;
+  const colourOrNull = (id: string | null) => (id && projects.some((p) => p.id === id) ? colourOfProject(id) : null);
   const calendar = { feed: !!data.calendarFeed, syncedAt: data.calendarSyncedAt ?? null };
-  const swatch = <ColourFilter on={colours} set={setColours} />;
   const focusWork = focus ? (active.length ? work.filter((r) => r.projectId === focus.id && (matching.some((m) => m.id === r.id) || matching.some((m) => m.parentId === r.id))) : work) : work;
-  const strip = <TabStrip projects={projects} counts={counts} actionCount={actionCount} active={tab} onPick={setTab} prefs={tabPrefs} save={saveTabs} compact={phone} />;
   return (
-    <div className={`ps3 ps4 ${phone ? 'ps3-phone' : ''}`}>
-      {head}
-      {strip}
-      <div className={`ps4-page pc-${pageColour} ${tab ? 'tabbed' : ''} ${tab === tabOrder[0] ? 'first' : ''}`}>
+    <div className="ps3-sheet">
+      {!phone && others.length > 0 && <ShellPresence><div className="ps3-pres" aria-label={`Also on the sheet: ${others.map((o) => o.name).join(', ')}`} title={`Also here: ${others.map((o) => o.name).join(', ')}`}>
+        {others.slice(0, 4).map((o) => <Av key={o.id} id={o.id} name={o.name} size={24} />)}</div></ShellPresence>}
       {tab === 'actions' ? (
-        <ActionItemsTab review={review} colourOfProject={colourOfProject} colours={colours} text={text} people={people}
-          command={<><div className="ps3-cmd"><span className="ic" aria-hidden="true">⌕</span><input aria-label="Search action items" placeholder="Search action items" value={text} onChange={(e) => setText(e.target.value)} />
-            <span className="ps3-count">{reviewItems.length} items{reviewItems.some((i) => needsReview(i)) ? ` · ${reviewItems.filter((i) => needsReview(i)).length} to review` : ''}</span></div>{swatch}</>} />
-      ) : focus ? (
-        <FocusView key={focus.id} project={focus} data={data} rows={rows} work={focusWork} today={today} colour={colourOf(tabPrefs, projects, focus.id)} name={tabPrefs.names[focus.id] || focus.title}
-          statusesBy={statusesBy} meeting={meetings.byProject.get(focus.id) ?? null} save={save} refresh={() => q.refetch()} onBack={() => setTab(null)} onWarn={setWarn} calendar={calendar}
-          command={<>{command}<button type="button" className="ps3-qc" onClick={() => setNotifyOpen(true)} title="Who your changes tell">🔔 Notify</button></>} />
-      ) : phone ? <>
-        <div className="ps3-cmdrow">{command}</div>
-        <div className="ps3-cmdrow">{swatch}</div>
+        <ActionItemsTab review={review} colourOfProject={colourOrNull} colours={colours} text={text} people={people} />
+      ) : focus ? <>
+        <ShellTools><button type="button" className="ps3-qc" onClick={() => setNotifyOpen(true)} title="Who your changes tell">🔔 Notify</button></ShellTools>
+        <FocusView key={focus.id} project={focus} data={data} rows={rows} work={focusWork} today={today} colour={colourOfProject(focus.id)} name={tabPrefs.names[focus.id] || focus.title}
+          statusesBy={statusesBy} meeting={meetings.byProject.get(focus.id) ?? null} save={save} refresh={refresh} onBack={() => setTab(null)} onWarn={setWarn} calendar={calendar} />
+      </> : phone ? (
         <PhoneCards display={display} data={data} rows={rows} today={today} statusesBy={statusesBy} save={save} />
-      </> : <>
-        <div className="ps3-cmdrow">{command}{swatch}
+      ) : <>
+        <ShellTools>
           <div className="ps3-vsw" role="tablist" aria-label="Sheet layout">
             {(['sheet', 'split', 'timeline'] as Layout[]).map((l) => <button key={l} type="button" role="tab" aria-selected={layout === l} onClick={() => setLayout(l)}>{l === 'sheet' ? 'Sheet' : l === 'split' ? 'Split' : 'Timeline'}</button>)}
           </div>
-        </div>
+        </ShellTools>
         <SheetGrid data={data} display={display} rows={rows} work={work} today={today} layout={layout} inspectId={inspect} setInspect={setInspect} collapsed={collapsed}
           toggle={(id) => setCollapsed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} statusesBy={statusesBy} meetings={meetings}
-          save={save} move={move} others={others} focusCell={focusCell} onWarn={setWarn} refresh={() => q.refetch()}
-          colourOf={(id) => colourOf(tabPrefs, projects, id)} names={tabPrefs.names} onOpenProject={setTab} calendar={calendar} />
+          save={save} move={move} others={others} focusCell={focusCell} onWarn={setWarn} refresh={refresh}
+          colourOf={colourOfProject} names={tabPrefs.names} onOpenProject={setTab} calendar={calendar} />
       </>}
-      </div>
       {toastAt && !historyOpen && (
         <div className="ps3-toast" role="status">
           <span>{toastAt.text}</span>
@@ -438,12 +352,12 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
         </Floating>
       )}
       {warn && <div className="ps3-toast warn" role="alert">{warn}</div>}
-      {notifyOpen && <NotifySheet project={focus ? { title: tabPrefs.names[focus.id] || focus.title, colour: colourOf(tabPrefs, projects, focus.id) } : null} lead={focus?.owner ?? null} onClose={() => setNotifyOpen(false)} />}
+      {notifyOpen && <NotifySheet project={focus ? { title: tabPrefs.names[focus.id] || focus.title, colour: colourOfProject(focus.id) } : null} lead={focus?.owner ?? null} onClose={() => setNotifyOpen(false)} />}
       {reasonAsk && <ReasonModal moves={reasonAsk.moves} onClose={() => setReasonAsk(null)}
         onSave={(reason, dep) => { const a = reasonAsk; setReasonAsk(null); void save(a.changes, a.label, { reason, dependency: dep }); }} />}
       {paste && <PasteModal grid={paste} data={data} today={today} onClose={() => setPaste(null)}
         defaultProject={(inspect ? rows.find((r) => r.id === inspect)?.projectId : null) ?? firstProject(display)}
-        onDone={() => { setPaste(null); void q.refetch(); }} />}
+        onDone={() => { setPaste(null); void refresh(); }} />}
     </div>
   );
 }
@@ -451,90 +365,6 @@ export function PlanSheetView({ filter, tabs, extraMenu, onPresent }: { filter: 
 /** The display cut into one run per project: its header and its rows (one rounded card each). */
 const segments = (display: Display[]) => { const out: Display[][] = []; for (const d of display) { if (d.type === 'g' || out.length === 0) out.push([d]); else out[out.length - 1].push(d); } return out; };
 const firstProject = (display: Display[]) => { for (const d of display) if (d.type === 'g') return d.p.id; return null; };
-
-// ---------------------------------------------------------------- the command field
-
-function CommandField({ toks, setToks, text, setText, interpreted, count, total, filtering, people, projects, work, ctx, compact, views, activeView, defaultView, onApplyView, onSaveView }: {
-  toks: Tok[]; setToks: (t: Tok[]) => void; text: string; setText: (t: string) => void; interpreted: Tok[]; count: number; total: number; filtering: boolean;
-  people: { id: string; name: string }[]; projects: SheetRow[]; work: SheetRow[]; ctx: { today: string; me: string | null }; compact: boolean;
-  views: SavedView[]; activeView: string | null; defaultView: string | null; onApplyView: (v: SavedView) => void; onSaveView: (name: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [naming, setNaming] = useState<string | null>(null);
-  const [custom, setCustom] = useState<{ from: string; to: string } | null>(null);
-  const box = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLInputElement>(null);
-  const word = text.trim().split(/\s+/).pop()?.toLowerCase() ?? '';
-  const byOwner = useMemo(() => { const m = new Map<string, number>(); for (const r of work) if (r.ownerId && isOpen(r)) m.set(r.ownerId, (m.get(r.ownerId) ?? 0) + 1); return m; }, [work]);
-  const ppl = useMemo(() => {
-    const list = people.filter((p) => !toks.some((t) => t.kind === 'owner' && t.value === p.id));
-    const hit = word.length >= 2 ? list.filter((p) => p.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(word))) : [];
-    return (hit.length ? hit : list.filter((p) => byOwner.has(p.id)).sort((a, b) => (byOwner.get(b.id) ?? 0) - (byOwner.get(a.id) ?? 0))).slice(0, hit.length ? 4 : 2);
-  }, [people, toks, word, byOwner]);
-  const statusCount = useMemo(() => { const m: Record<StatusKey, number> = { late: 0, risk: 0, prog: 0, todo: 0, done: 0 }; for (const r of work) m[statusKey(r)]++; return m; }, [work]);
-  const [hi, setHi] = useState(0);
-  const add = (t: Tok) => { setToks([...toks.filter((x) => !(x.kind === t.kind && x.value === t.value)), t]); setText(''); input.current?.focus(); };
-  const has = (k: Tok['kind'], v: string) => [...toks, ...interpreted].some((t) => t.kind === k && t.value === v);
-  const commit = () => { if (interpreted.length) { setToks([...toks, ...interpreted.filter((t) => !toks.some((x) => x.kind === t.kind && x.value === t.value))]); setText(''); } };
-  const tokLabel = (t: Tok) => t.kind === 'text' ? <>{t.label}</> : <><span className="k">{t.kind} </span>{t.label}</>;
-  const person = (id: string) => people.find((p) => p.id === id);
-  return (
-    <>
-      <div ref={box} className={`ps3-cmd ${open ? 'focus' : ''}`} onMouseDown={(e) => { if (e.target === e.currentTarget) { e.preventDefault(); input.current?.focus(); } }}>
-        <span className="ic" aria-hidden="true">⌕</span>
-        {toks.map((t, i) => (
-          <span key={`${t.kind}:${t.value}`} className="ps3-tok">{t.kind === 'owner' && t.value !== 'me' && <Av id={t.value} name={person(t.value)?.name} size={16} />}{tokLabel(t)}
-            <button type="button" className="x" aria-label={`Remove ${t.kind} ${t.label}`} onClick={() => setToks(toks.filter((_, j) => j !== i))}>✕</button></span>
-        ))}
-        <input ref={input} aria-label="Filter, search or ask" placeholder={toks.length ? '' : compact ? 'Filter or ask' : 'Filter, search or ask — try “late this week”'} value={text}
-          onFocus={() => setOpen(true)} onChange={(e) => { setText(e.target.value); setHi(0); }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); if (interpreted.length) commit(); else if (ppl[hi]) add({ kind: 'owner', value: ppl[hi].id, label: ppl[hi].name }); }
-            else if (e.key === 'Backspace' && !text && toks.length) setToks(toks.slice(0, -1));
-            else if (e.key === 'ArrowDown') { e.preventDefault(); setHi((x) => Math.min(ppl.length - 1, x + 1)); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((x) => Math.max(0, x - 1)); }
-            else if (e.key === 'Escape') { setOpen(false); input.current?.blur(); }
-          }} />
-        <span className={`ps3-count ${filtering ? 'on' : ''}`} aria-live="polite">{compact ? (filtering ? count : total) : filtering ? `${count} of ${total} tasks` : `${total} tasks`}</span>
-        {!compact && <kbd role="button" tabIndex={-1} title="Commands (⌘K)" onMouseDown={(e) => { e.preventDefault(); openPalette(); }}>⌘K</kbd>}
-      </div>
-      {open && !compact && <div className="ps3-cmd-scrim" aria-hidden="true" />}
-      {open && (
-        <Floating anchor={box.current} onClose={() => { setOpen(false); setNaming(null); setCustom(null); }} width={compact ? 358 : 560} label="Filter suggestions" style={{ paddingBottom: 8 }}>
-          {interpreted.length > 0 && <>
-            <div style={{ display: 'flex', gap: 8, padding: '12px 14px 6px', alignItems: 'center', flexWrap: 'wrap' }}><span className="ps3-dim" style={{ fontSize: 12 }}>Aura read this as</span>
-              {interpreted.map((t) => <button key={`${t.kind}:${t.value}`} type="button" className="ps3-tok aura" onClick={commit} title="Keep these filters (↵)">{tokLabel(t)}</button>)}</div>
-            <div className="hr" />
-          </>}
-          {ppl.length > 0 && <><div className="ph">People</div>
-            {ppl.map((p, i) => <button key={p.id} type="button" className={`it ${i === hi ? 'on' : ''}`} onMouseEnter={() => setHi(i)} onClick={() => add({ kind: 'owner', value: p.id, label: p.name })}>
-              <Av id={p.id} name={p.name} /><span style={{ flex: 1 }}>{p.name}</span><span className="ps3-dim">{byOwner.get(p.id) ?? 0} task{byOwner.get(p.id) === 1 ? '' : 's'}</span>{i === hi && <span aria-hidden="true">↵</span>}</button>)}</>}
-          <div className="ph">Status</div>
-          <div className="row">{STATUS_KEYS.map((k) => <button key={k} type="button" className="ps3-tok" style={has('status', k) ? { boxShadow: '0 0 0 1px var(--p-blue)' } : undefined}
-            onClick={() => add({ kind: 'status', value: k, label: STATUS_LABEL[k] })}><span className="ps3-st"><Dot k={k} />{STATUS_LABEL[k]}</span><span className="ps3-dim" style={{ fontWeight: 400 }}>{statusCount[k]}</span></button>)}</div>
-          <div className="ph">Dates</div>
-          <div className="row">{(['overdue', 'this-week', 'next-2-weeks', 'slipped'] as DueKey[]).map((k) => <button key={k} type="button" className={`ps3-qc ${has('due', k) ? 'on' : ''}`} onClick={() => add({ kind: 'due', value: k, label: DUE_LABEL[k] })}>{DUE_LABEL[k]}</button>)}
-            <button type="button" className={`ps3-qc ${custom ? 'on' : ''}`} onClick={() => setCustom(custom ? null : { from: ctx.today, to: addDays(ctx.today, 14) })}>Custom…</button>
-            {custom && <span className="ps3-save-view"><input type="date" aria-label="From" value={custom.from} onChange={(e) => setCustom({ ...custom, from: e.target.value })} style={{ width: 130 }} />
-              <input type="date" aria-label="To" value={custom.to} onChange={(e) => setCustom({ ...custom, to: e.target.value })} style={{ width: 130 }} />
-              <button type="button" className="ps3-qc pri" disabled={!custom.from || !custom.to || custom.to < custom.from} onClick={() => { add({ kind: 'due', value: `${custom.from}..${custom.to}`, label: `${dm(custom.from)} – ${dm(custom.to)}` }); setCustom(null); }}>Add</button></span>}</div>
-          <div className="ph">Projects</div>
-          <div className="row" style={{ paddingBottom: 8 }}>{projects.map((p) => <button key={p.id} type="button" className={`ps3-qc ${has('project', p.id) ? 'on' : ''}`} onClick={() => add({ kind: 'project', value: p.id, label: p.title })}>{p.title}</button>)}</div>
-          <div className="hr" />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px 2px', flexWrap: 'wrap' }}><span className="ps3-dim" style={{ fontSize: 12 }}>Saved views</span>
-            {views.length === 0 && <span className="ps3-dim" style={{ fontSize: 12 }}>none yet</span>}
-            {views.slice(0, 6).map((v) => <button key={v.id} type="button" className={`ps3-qc ${activeView === v.id ? 'on' : ''}`} onClick={() => { onApplyView(v); setOpen(false); }}>{defaultView === v.id ? '★ ' : ''}{v.name}</button>)}
-            <span className="ps3-sp" />
-            {naming === null ? <button type="button" className="ps3-link" disabled={!filtering} title={filtering ? undefined : 'Add a filter first'} style={filtering ? undefined : { opacity: .5 }} onClick={() => setNaming('')}>＋ Save as view</button>
-              : <form className="ps3-save-view" onSubmit={(e) => { e.preventDefault(); if (naming.trim()) { onSaveView(naming.trim()); setNaming(null); setOpen(false); } }}>
-                <input autoFocus aria-label="Name for the view" placeholder="Name the view" value={naming} onChange={(e) => setNaming(e.target.value)} maxLength={80} />
-                <button type="submit" className="ps3-qc pri" disabled={!naming.trim()}>Save</button></form>}
-          </div>
-        </Floating>
-      )}
-    </>
-  );
-}
 
 // ---------------------------------------------------------------- the grid
 

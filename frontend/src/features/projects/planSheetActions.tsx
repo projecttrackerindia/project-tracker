@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { ErrorState, PageLoader } from '../../components/ui';
+import { ErrorState } from '../../components/ui';
+import { PortfolioSkeleton } from './portfolioSkeleton';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -18,8 +19,8 @@ export const needsReview = (i: ReviewItem, now = Date.now()) => !isDone(i) && !i
 const STATE: Record<ReviewItem['state'], string> = { open: 'Not started', in_progress: 'In progress', blocked: 'Blocked', done: 'Done', cancelled: 'Dropped' };
 const dot = (i: ReviewItem) => (i.state === 'done' ? 'done' : i.isOverdue ? 'late' : i.state === 'in_progress' ? 'prog' : i.state === 'blocked' ? 'late' : 'todo');
 
-export function useActionReview() {
-  return useWsQuery(['meet', 'review', 'plansheet'], () => connectApi.openReview({ scope: 'all' }), { staleTime: 30_000, retry: false });
+export function useActionReview(enabled = true) {
+  return useWsQuery(['meet', 'review', 'plansheet'], () => connectApi.openReview({ scope: 'all' }), { staleTime: 30_000, retry: false, enabled });
 }
 
 /**
@@ -29,7 +30,7 @@ export function useActionReview() {
  */
 export function ActionItemsTab({ review, colourOfProject, colours, text, people, command }: {
   review: ReturnType<typeof useActionReview>; colourOfProject: (id: string | null) => Colour | null; colours: Colour[]; text: string;
-  people: { id: string; name: string }[]; command: React.ReactNode;
+  people: { id: string; name: string }[]; command?: React.ReactNode;
 }) {
   const nav = useNavigate();
   const wid = useWorkspaceId();
@@ -81,7 +82,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
     return () => window.removeEventListener('keydown', key);
   });
 
-  if (review.isLoading) return <PageLoader />;
+  if (review.isLoading) return <PortfolioSkeleton label="Loading action items" />;
   if (review.isError) return <ErrorState error={review.error} retry={() => void review.refetch()} />;
   const row = (i: ReviewItem) => {
     const c = colourOfProject(i.projectId);
@@ -100,7 +101,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
   };
   return (
     <div className="ps4-ai">
-      <div className="ps3-cmdrow">{command}</div>
+      {command && <div className="ps3-cmdrow">{command}</div>}
       <div className="ps4-aibar">
         <div className="ps3-vsw" role="tablist" aria-label="Group action items">{(['meeting', 'owner', 'project'] as Group[]).map((g) => <button key={g} type="button" role="tab" aria-selected={group === g} onClick={() => setGroup(g)}>By {g}</button>)}</div>
         <span className="ps3-dim" style={{ fontSize: 12 }}>{items.filter((i) => !isDone(i)).length} open · {items.length} items</span>

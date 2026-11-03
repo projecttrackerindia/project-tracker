@@ -261,7 +261,8 @@ try {
   assert.equal(sv.b.config.list, 'sheet');
   // Typed tokens work too.
   await page.locator('.ps3-cmd').getByRole('button', { name: /Remove/ }).first().waitFor();
-  while (await page.locator('.ps3-cmd .ps3-tok .x').count()) await page.locator('.ps3-cmd .ps3-tok .x').first().click();
+  // Tokens live in the address (shared by every Portfolio tab): let each removal land before the next.
+  while (await page.locator('.ps3-cmd .ps3-tok .x').count()) { await page.locator('.ps3-cmd .ps3-tok .x').first().click(); await page.waitForTimeout(120); }
   await field.fill('status:late');
   await field.press('Enter');
   assert.equal(await page.locator('.ps3-count').innerText(), '1 of 10 tasks');
@@ -679,12 +680,14 @@ try {
   checks.push('timeline-drag-reason');
   // Quarter (dark): one column per quarter with month ticks; a collapsed group.
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
-  await tlr.getByRole('tab', { name: 'Quarter' }).click();
+  // Zoom and Fit sit in the Portfolio shell's command row (the tab's tools).
+  const tlt = page.getByRole('toolbar', { name: 'Timeline tools' });
+  await tlt.getByRole('tab', { name: 'Quarter' }).click();
   assert.ok(await tlr.locator('.ptl-tier1', { hasText: 'Q4' }).isVisible());
   assert.ok(await tlr.locator('.ptl-tier2.m', { hasText: 'Nov' }).isVisible());
   await tlr.getByRole('button', { name: 'Collapse Team Merchant' }).click();
   await shot(page, 'timeline-quarter-dark-1440.png');
-  await tlr.getByRole('button', { name: /Fit ·/ }).click(); await tlr.getByRole('tab', { name: 'Week' }).click(); await tlr.getByRole('button', { name: /Fit ·/ }).click();
+  await tlt.getByRole('button', { name: /Fit ·/ }).click(); await tlt.getByRole('tab', { name: 'Week' }).click(); await tlt.getByRole('button', { name: /Fit ·/ }).click();
   await tlr.getByRole('button', { name: 'Expand Team Merchant' }).click();
   await shot(page, 'timeline-dark-1440.png');
   checks.push('timeline-quarter-dark');
