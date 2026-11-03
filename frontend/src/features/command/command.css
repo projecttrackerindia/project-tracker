@@ -308,7 +308,7 @@
 /* quick asks: white pills, no icons */
 .aih-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 860px; }
 .aih-chips button { display: inline-flex; align-items: center; height: 40px; padding: 0 17px; border: 0; border-radius: 980px; background: var(--ds-surface); color: var(--ds-text); font: inherit; font-size: 14.5px; font-weight: 500; cursor: pointer;
-  box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow .16s var(--ds-ease), transform .12s var(--ds-ease); }
+  box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow var(--motion-micro) var(--ds-ease), transform var(--motion-micro) var(--ds-ease); }
 .aih-chips button:hover { box-shadow: var(--ds-e2), 0 0 0 1px var(--ds-line); }
 .aih-chips button:active { transform: scale(.98); }
 /* Recent: a line of blue links */
@@ -326,7 +326,7 @@
 .aih-glance > header span { font-size: 13px; color: var(--ds-text-3); }
 .aih-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .aih-tile { display: grid; justify-items: start; align-content: start; gap: 2px; padding: 22px 22px 20px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); color: var(--ds-text); font: inherit; text-align: left; cursor: pointer;
-  box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow .16s var(--ds-ease), transform .16s var(--ds-ease); min-width: 0; }
+  box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow var(--motion-micro) var(--ds-ease), transform var(--motion-micro) var(--ds-ease); min-width: 0; }
 @media (hover: hover) { .aih-tile:hover { transform: translateY(-2px); box-shadow: var(--ds-hover-lift); } }
 .aih-tile-icon { width: 34px; height: 34px; margin-bottom: 18px; border-radius: 10px; }
 .aih-tile b { font-size: clamp(32px, 3vw, 42px); font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 8px; }

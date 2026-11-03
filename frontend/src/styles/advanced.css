@@ -6,9 +6,9 @@
 .kbd-btn { cursor: pointer; border: 0; }
 .kbd-btn:hover { color: var(--primary); }
 .cmdk-overlay { position: fixed; inset: 0; z-index: 400; display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px;
-  background: var(--modal-overlay); animation: cmdk-fade .14s ease-out; }
+  background: var(--modal-overlay); animation: cmdk-fade var(--motion-micro) ease-out; }
 .cmdk { width: min(640px, 100%); border-radius: 18px; overflow: hidden; background: var(--panel-solid); border: 1px solid var(--modal-border); box-shadow: 0 30px 80px rgba(16, 24, 40, .35);
-  animation: cmdk-rise .18s cubic-bezier(.2, .9, .3, 1.2); display: flex; flex-direction: column; max-height: 70vh; }
+  animation: cmdk-rise var(--motion-standard) var(--ease-decel); display: flex; flex-direction: column; max-height: 70vh; }
 @keyframes cmdk-fade { from { opacity: 0; } }
 @keyframes cmdk-rise { from { opacity: 0; transform: translateY(-8px) scale(.98); } }
 .cmdk-input { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); color: var(--text-3); }
@@ -32,13 +32,13 @@
 .asst-sparkle { color: var(--primary-fill); flex-shrink: 0; }
 .asst-top-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(var(--accent-rgb), .35);
   background: linear-gradient(135deg, rgba(var(--accent-rgb), .12), rgba(var(--accent-rgb), .10)); color: var(--primary); font: 600 13px var(--font); cursor: pointer; position: relative; overflow: hidden; }
-.asst-top-btn::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .45) 50%, transparent 70%); transform: translateX(-100%); animation: asst-sheen 4.5s ease-in-out infinite; }
+.asst-top-btn::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .45) 50%, transparent 70%); transform: translateX(-100%); animation: none; }
 @keyframes asst-sheen { 60%, 100% { transform: translateX(100%); } }
 .asst-top-btn:hover { border-color: var(--primary-fill); }
 .asst-ghost .asst-sparkle { color: var(--primary-fill); }
-.asst-overlay { position: fixed; inset: 0; z-index: 380; background: var(--modal-overlay); animation: cmdk-fade .15s ease-out; }
+.asst-overlay { position: fixed; inset: 0; z-index: 380; background: var(--modal-overlay); animation: cmdk-fade var(--motion-micro) ease-out; }
 .asst-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(480px, 100%); display: flex; flex-direction: column; background: var(--modal-bg); border-left: 1px solid var(--modal-border);
-  box-shadow: -24px 0 60px rgba(16, 24, 40, .25); animation: asst-slide .22s cubic-bezier(.2, .9, .3, 1); }
+  box-shadow: -24px 0 60px rgba(16, 24, 40, .25); animation: asst-slide var(--motion-standard) var(--ease-standard); }
 @keyframes asst-slide { from { transform: translateX(40px); opacity: 0; } }
 .asst-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--border); }
 .asst-title { display: flex; gap: 10px; align-items: center; }
@@ -94,7 +94,7 @@
 
 /* ---- Who else is here ---- */
 .viewers { display: inline-flex; align-items: center; gap: 8px; margin: -4px 0 12px; padding: 5px 10px 5px 8px; border-radius: 999px; font-size: 12px; color: var(--text-2);
-  background: var(--success-soft); border: 1px solid color-mix(in srgb, var(--success) 25%, transparent); animation: cmdk-fade .3s ease-out; }
+  background: var(--success-soft); border: 1px solid color-mix(in srgb, var(--success) 25%, transparent); animation: cmdk-fade var(--motion-emphasised) ease-out; }
 .viewers-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 60%, transparent); animation: viewers-ping 1.8s ease-out infinite; }
 @keyframes viewers-ping { 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 .viewers-faces { display: flex; }

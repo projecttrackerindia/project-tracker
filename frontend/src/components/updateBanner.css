@@ -7,7 +7,7 @@
   background: var(--panel-solid); color: var(--text); border: 1px solid var(--border); border-radius: 14px;
   box-shadow: 0 12px 32px rgba(16, 24, 40, .16), 0 2px 6px rgba(16, 24, 40, .06);
   font-size: 13.5px; line-height: 1.35;
-  animation: updIn .32s cubic-bezier(.2, .9, .3, 1) both;
+  animation: updIn var(--motion-sheet) var(--ease-standard) both;
 }
 .upd-ico {
   flex-shrink: 0; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%;
@@ -19,7 +19,7 @@
 .upd-actions { display: flex; gap: 6px; flex-shrink: 0; margin-left: 4px; }
 .upd-btn {
   height: 32px; padding: 0 14px; border-radius: 9px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
-  border: 1px solid transparent; transition: background-color .15s ease, border-color .15s ease, opacity .15s ease;
+  border: 1px solid transparent; transition: background-color var(--motion-micro) ease, border-color var(--motion-micro) ease, opacity var(--motion-micro) ease;
 }
 .upd-btn:disabled { opacity: .6; cursor: default; }
 .upd-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

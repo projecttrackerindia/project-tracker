@@ -5,7 +5,7 @@ import { attachmentApi, opsApi, projectApi, workApi, workspaceApi } from '../../
 import type { Priority } from '../../api/types';
 import { workItemsApi, type WorkKind } from '../../api/workItemsApi';
 import { motion, useAnimationControls, useReducedMotion } from 'framer-motion';
-import { spring } from '../../lib/motion';
+import { duration, ease, instant, staggerDelay, t } from '../../lib/motion';
 import { conciseTitle, needsShortTitle, TITLE_MAX } from '../../lib/conciseTitle';
 import { aiWorkspaceApi } from '../../features/ai/aiApi';
 import { useAi } from '../../features/ai/Assistant';
@@ -115,7 +115,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   const sheetAnim = useAnimationControls();
   const [flying, setFlying] = useState(false);
   useEffect(() => { setTimeout(() => input.current?.focus(), 20); }, []);
-  useEffect(() => { void sheetAnim.start({ opacity: 1, y: 0, scale: 1 }, still ? { duration: 0 } : spring.panel); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void sheetAnim.start({ opacity: 1, y: 0, scale: 1 }, still ? instant : t.sheet); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 5 * 60_000 });
   const people: QuickPerson[] = useMemo(() => (members.data ?? []).filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => ({ id: m.userId, name: m.displayName })), [members.data]);
@@ -192,7 +192,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
     // Never let the flourish hold the sheet open: a busy or background tab can stall the animation, so cap the wait.
     await Promise.race([
       sheetAnim.start({ x: to.left + to.width / 2 - (box.left + box.width / 2), y: to.top + to.height / 2 - (box.top + box.height / 2), scale: 0.08, opacity: 0.35, borderRadius: 60 },
-        { duration: 0.42, ease: [0.3, 0, 0.2, 1] }),
+        { duration: duration.emphasised, ease: ease.accelerate }),
       new Promise((r) => window.setTimeout(r, 700)),
     ]);
     target!.classList.add('v2-landed');
@@ -322,7 +322,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
 
   return (
     <motion.div className={`v2-new-scrim${flying ? ' flying' : ''}`} onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}
-      animate={flying ? { backgroundColor: 'rgba(30,30,40,0.06)' } : undefined} transition={{ duration: 0.42 }}>
+      animate={flying ? { backgroundColor: 'rgba(30,30,40,0.06)' } : undefined} transition={t.emphasised}>
       <motion.div ref={sheetRef} className="v2-new-sheet" role="dialog" aria-modal="true" aria-labelledby="v2-new-title" onKeyDown={onKey}
         style={{ ['--kind' as string]: color }}
         initial={still ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.98 }} animate={sheetAnim}>
@@ -335,7 +335,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
             <span className="v2-understood-label"><span className="v2-orb" aria-hidden="true" />Understood as{understood ? <span className="sr-only"> {/^[aeiou]/.test(shownLabel) ? 'an' : 'a'} {shownLabel}</span> : null}</span>
             {chips.map((c, i) => (
               <motion.span key={(c as React.ReactElement).key} className="v2-new-chip-wrap" initial={still ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.18, delay: still ? 0 : 0.06 * i }}>{c}</motion.span>
+                transition={still ? instant : { ...t.enter, delay: staggerDelay(i) }}>{c}</motion.span>
             ))}
             {!understood && <span className="v2-new-shim" aria-hidden="true" />}
           </div>

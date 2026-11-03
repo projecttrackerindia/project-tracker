@@ -9,7 +9,7 @@
 .wk-heads .ds-seg { --seg-h: 40px; }
 .wk-heads .ds-seg button { height: 34px; padding: 0 16px; font-size: 14px; }
 .wk-projects { display: inline-flex; align-items: center; gap: 4px; height: 40px; padding: 0 14px; border-radius: 12px; background: var(--ds-fill); color: var(--ds-text-2);
-  font-size: 14px; font-weight: 500; text-decoration: none; transition: background .15s var(--ds-ease), color .15s var(--ds-ease); }
+  font-size: 14px; font-weight: 500; text-decoration: none; transition: background var(--motion-micro) var(--ds-ease), color var(--motion-micro) var(--ds-ease); }
 .wk-projects:hover { background: var(--ds-fill-strong); color: var(--ds-text); }
 .wk-projects span { color: var(--ds-text-3); font-size: 16px; line-height: 1; }
 .wk-back { display: inline-flex; align-items: center; gap: 4px; margin: 0 0 10px; padding: 4px 0; border: 0; background: none; color: var(--ds-accent); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; }
@@ -26,7 +26,7 @@
 .wk-bar { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 4px 8px 12px; }
 .wk-kchips { display: flex; flex-wrap: wrap; gap: 6px; }
 .wk-kchip { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: var(--ds-r-pill); border: 0; background: var(--ds-fill); color: var(--ds-text);
-  font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; transition: background .15s var(--ds-ease), color .15s var(--ds-ease); }
+  font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; transition: background var(--motion-micro) var(--ds-ease), color var(--motion-micro) var(--ds-ease); }
 .wk-kchip:hover { background: var(--ds-fill-strong); }
 .wk-kchip.on { background: var(--ds-dark); color: var(--ds-on-dark); }
 .wk-kchip.on.danger { background: var(--ds-danger); color: #fff; }
@@ -55,7 +55,7 @@
 .wk-group-head em { font-style: normal; font-weight: 500; color: var(--ds-text-4); }
 .wk-group-head.late span { color: var(--ds-danger); }
 .wk-row { width: 100%; display: grid; grid-template-columns: 10px 84px minmax(0, 1fr) 72px 28px 76px; grid-template-areas: 'dot key title kind owner due'; align-items: center; gap: 14px; min-height: 56px; padding: 8px 14px;
-  border: 0; border-radius: 14px; background: transparent; color: var(--ds-text); font: inherit; text-align: left; cursor: pointer; transition: background .12s var(--ds-ease); }
+  border: 0; border-radius: 14px; background: transparent; color: var(--ds-text); font: inherit; text-align: left; cursor: pointer; transition: background var(--motion-micro) var(--ds-ease); }
 .wk-row + .wk-row { box-shadow: 0 -1px 0 var(--ds-line); }
 .wk-row:hover { background: var(--ds-surface-2); }
 [data-theme='dark'] .wk-row:hover { background: var(--ds-fill); }
@@ -111,7 +111,7 @@
 .wkp-conflict .btn-icon { color: var(--ds-text-3); }
 
 .wkp-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.wkp-tile { position: relative; display: grid; gap: 2px; padding: 11px 14px; border-radius: 14px; background: var(--ds-fill); cursor: pointer; min-width: 0; transition: background .15s var(--ds-ease); }
+.wkp-tile { position: relative; display: grid; gap: 2px; padding: 11px 14px; border-radius: 14px; background: var(--ds-fill); cursor: pointer; min-width: 0; transition: background var(--motion-micro) var(--ds-ease); }
 .wkp-tile:hover:not(.ro) { background: var(--ds-fill-strong); }
 .wkp-tile.ro { cursor: default; }
 .wkp-tile-l { font-size: 13px; color: var(--ds-text-3); }
@@ -194,7 +194,7 @@
 .wkp-note { margin-top: 4px; font-size: 13px; color: var(--ds-text-3); white-space: pre-wrap; overflow-wrap: anywhere; }
 .wkp-empty { margin: 0; font-size: 13.5px; color: var(--ds-text-3); }
 .wkp-compose { display: grid; gap: 6px; margin-top: 4px; }
-.wkp-compose-box { display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 16px; border-radius: 22px; background: var(--ds-fill); transition: box-shadow .15s var(--ds-ease), background .15s var(--ds-ease); }
+.wkp-compose-box { display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 16px; border-radius: 22px; background: var(--ds-fill); transition: box-shadow var(--motion-micro) var(--ds-ease), background var(--motion-micro) var(--ds-ease); }
 .wkp-compose-box:focus-within { background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent); }
 .wkp-compose-box.logs:focus-within { box-shadow: 0 0 0 2px var(--ds-info); }
 .wkp-compose-box textarea { flex: 1; min-width: 0; min-height: 32px; max-height: 160px; resize: none; border: 0; outline: 0; background: transparent; padding: 6px 0; font: inherit; font-size: 15px; line-height: 1.35; color: var(--ds-text); }
@@ -273,7 +273,7 @@ html .mw-tbslot .mw-seg .ds-seg-thumb { border-radius: 7px; top: 2px; bottom: 2p
 .mw-h1 { font-size: 34px; font-weight: 700; letter-spacing: -.025em; line-height: 1.1; margin: 0; }
 .mw-pills { display: flex; gap: 8px; align-items: center; }
 .mw-pill { height: 26px; padding: 0 11px; border-radius: 13px; border: 0; background: rgba(118, 118, 128, .12); color: var(--ds-text); font: inherit; font-size: 12px; font-weight: 500;
-  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; transition: background .15s var(--ds-ease); }
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; transition: background var(--motion-micro) var(--ds-ease); }
 .mw-pill:hover { background: rgba(118, 118, 128, .2); }
 .mw-pill.on { background: var(--ds-dark); color: var(--ds-on-dark); }
 .mw-pill.white { background: var(--ds-surface); }
@@ -285,7 +285,7 @@ html .mw-tbslot .mw-seg .ds-seg-thumb { border-radius: 7px; top: 2px; bottom: 2p
 .mw-pop button:hover, .mw-pop button[aria-checked='true'] { background: var(--ds-fill); }
 
 .mw-top { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 20px; margin-bottom: 22px; }
-.mw-stack { position: relative; height: 372px; outline: 0; transition: height .25s ease; }
+.mw-stack { position: relative; height: 372px; outline: 0; transition: height var(--motion-emphasised) ease; }
 .mw-stack.fan { height: 410px; }
 .mw-stack:focus-visible .mw-fc.front { box-shadow: 0 0 0 3px color-mix(in srgb, var(--mw-tint) 45%, transparent), 0 10px 30px rgba(0, 0, 0, .08); }
 /* the next cards under "Do this now": their title along the bottom edge, readable */
@@ -319,7 +319,7 @@ html .mw-tbslot .mw-seg .ds-seg-thumb { border-radius: 7px; top: 2px; bottom: 2p
 .mw-av { margin-left: auto; display: flex; }
 .mw-av .avatar { width: 26px; height: 26px; font-size: 11px; }
 .mw-bigchk { position: absolute; right: 24px; top: 22px; width: 34px; height: 34px; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }
-.mw-bigchk circle { fill: none; stroke: rgba(0, 0, 0, .18); stroke-width: 2; transition: fill .2s, stroke .2s; }
+.mw-bigchk circle { fill: none; stroke: rgba(0, 0, 0, .18); stroke-width: 2; transition: fill var(--motion-standard), stroke var(--motion-standard); }
 [data-theme='dark'] .mw-bigchk circle { stroke: rgba(255, 255, 255, .28); }
 .mw-bigchk path { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .mw-bigchk:hover circle { stroke: var(--mw-green); }
@@ -347,7 +347,7 @@ html .mw-tbslot .mw-seg .ds-seg-thumb { border-radius: 7px; top: 2px; bottom: 2p
 .mw-grp.g-today h2 { color: var(--mw-tint); }
 .mw-r { display: flex; gap: 12px; padding: 13px 12px 13px 0; position: relative; align-items: flex-start; }
 .mw-r + .mw-r::before { content: ''; position: absolute; left: 32px; right: 12px; top: 0; height: .5px; background: var(--ds-separator); }
-.mw-chk { width: 20px; height: 20px; margin-top: 1px; border-radius: 50%; border: 1.5px solid rgba(0, 0, 0, .22); background: none; flex: none; padding: 0; cursor: pointer; position: relative; transition: background .2s, border-color .2s; }
+.mw-chk { width: 20px; height: 20px; margin-top: 1px; border-radius: 50%; border: 1.5px solid rgba(0, 0, 0, .22); background: none; flex: none; padding: 0; cursor: pointer; position: relative; transition: background var(--motion-standard), border-color var(--motion-standard); }
 [data-theme='dark'] .mw-chk { border-color: rgba(255, 255, 255, .3); }
 .mw-chk:hover { border-color: var(--mw-tint); }
 .mw-chk.on { background: var(--mw-tint); border-color: var(--mw-tint); cursor: default; }

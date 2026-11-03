@@ -62,13 +62,13 @@
 .cs .cs-main { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 8px 16px 0; }
 .cs .cs-grid { flex: 1; min-width: 0; height: 100%; padding: 0; gap: 10px; }
 .cs .lk-participant-tile { position: relative; background: #3c4043; border-radius: 12px; overflow: hidden; padding: 0; display: block; }
-.cs .lk-participant-tile::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 0 #8ab4f8; transition: box-shadow .15s ease; pointer-events: none; }
+.cs .lk-participant-tile::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 0 #8ab4f8; transition: box-shadow var(--motion-micro) ease; pointer-events: none; }
 .cs .lk-participant-tile[data-lk-speaking="true"]:not([data-lk-source="screen_share"])::after { box-shadow: inset 0 0 0 3px #8ab4f8; }
 .cs .cs-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 0; }
 .cs .cs-video.contain { object-fit: contain; background: #000; }
 .cs .cs-avatar-wrap { position: absolute; inset: 0; display: grid; place-items: center; }
 .cs .cs-avatar { --h: 210; width: clamp(56px, 28%, 128px); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; font-size: clamp(20px, 4.5vw, 44px); font-weight: 500;
-  letter-spacing: .02em; color: #fff; background: hsl(var(--h) 45% 42%); transition: box-shadow .2s ease; user-select: none; }
+  letter-spacing: .02em; color: #fff; background: hsl(var(--h) 45% 42%); transition: box-shadow var(--motion-standard) ease; user-select: none; }
 .cs .cs-avatar.agent { background: linear-gradient(135deg, #4f6bed, #8a5cf6); }
 .cs .lk-participant-tile[data-lk-speaking="true"] .cs-avatar { box-shadow: 0 0 0 6px rgba(138, 180, 248, .32), 0 0 0 12px rgba(138, 180, 248, .14); }
 .cs .cs-name { position: absolute; left: 10px; bottom: 8px; right: 40px; display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 500; color: #fff;
@@ -104,13 +104,13 @@
 .cs .cs-bar-left span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs .cs-bar-right { justify-content: flex-end; }
 .cs .cs-bar-mid { display: flex; align-items: center; gap: 10px; }
-.cs .cs-btn { width: 48px; height: 48px; border-radius: 50%; border: 0; padding: 0; gap: 0; display: grid; place-items: center; background-color: #3c4043; color: #e8eaed; cursor: pointer; transition: background-color .15s ease; }
+.cs .cs-btn { width: 48px; height: 48px; border-radius: 50%; border: 0; padding: 0; gap: 0; display: grid; place-items: center; background-color: #3c4043; color: #e8eaed; cursor: pointer; transition: background-color var(--motion-micro) ease; }
 .cs .cs-btn:not(:disabled):hover { background-color: #4a4e51; }
 .cs .cs-btn .on, .cs .cs-btn .off { place-items: center; }
 .cs .cs-btn .off { display: none; }
 .cs .cs-btn[data-lk-enabled="false"] .on { display: none; }
 .cs .cs-btn[data-lk-enabled="false"] .off { display: grid; }
-.cs .cs-pair { display: flex; align-items: center; border-radius: 999px; background-color: #3c4043; transition: background-color .15s ease; }
+.cs .cs-pair { display: flex; align-items: center; border-radius: 999px; background-color: #3c4043; transition: background-color var(--motion-micro) ease; }
 .cs .cs-pair > .cs-btn, .cs .cs-pair > .cs-btn[aria-pressed], .cs .cs-pair > .cs-btn:not(:disabled):hover { background-color: transparent; }
 .cs .cs-pair:hover { background-color: #4a4e51; }
 .cs .cs-pair:has(> .cs-btn[data-lk-enabled="false"]) { background-color: #ea4335; color: #fff; }
@@ -127,11 +127,11 @@
 .cs .lk-toast-connection-state { top: 72px; }
 /* Raised hands: a badge on the tile (with its place in line when there are several) and a list at the bottom left. */
 .cs .cs-hand { position: absolute; top: 10px; left: 10px; z-index: 2; display: inline-flex; align-items: center; gap: 4px; height: 30px; min-width: 30px; padding: 0 8px;
-  border-radius: 999px; background: #fdd663; color: #202124; font-size: 13px; box-shadow: 0 2px 8px rgba(0, 0, 0, .3); animation: cs-pop .28s cubic-bezier(.3, 1.6, .5, 1); }
+  border-radius: 999px; background: #fdd663; color: #202124; font-size: 13px; box-shadow: 0 2px 8px rgba(0, 0, 0, .3); animation: cs-pop var(--motion-emphasised) var(--ease-decel); }
 .cs .cs-hand b { font-weight: 700; }
 .cs .lk-participant-tile:has(.cs-hand)::after { box-shadow: inset 0 0 0 3px #fdd663; }
 .cs .cs-hands { position: absolute; left: 24px; bottom: 12px; z-index: 4; min-width: 220px; max-width: min(320px, 70%); border-radius: 14px; background: #fff; color: #202124;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, .35); overflow: hidden; animation: cs-pop .25s ease-out; }
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .35); overflow: hidden; animation: cs-pop var(--motion-emphasised) ease-out; }
 .cs .cs-hands-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
 .cs .cs-hands-head > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs .cs-hands-icon { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #fdd663; flex: none; }
@@ -147,15 +147,15 @@
 /* Reactions: the bar of emoji above the controls, and each reaction floating up the left of the call with its sender's name. */
 .cs .cs-react { position: relative; }
 .cs .cs-react-bar { position: absolute; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 6px; border-radius: 999px;
-  background: #3c4043; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); animation: cs-rise-in .18s ease-out; z-index: 5; }
-.cs .cs-react-bar button { width: 42px; height: 42px; border: 0; border-radius: 50%; background: transparent; font-size: 24px; line-height: 1; cursor: pointer; transition: transform .12s ease, background-color .12s ease; }
+  background: #3c4043; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); animation: cs-rise-in var(--motion-standard) ease-out; z-index: 5; }
+.cs .cs-react-bar button { width: 42px; height: 42px; border: 0; border-radius: 50%; background: transparent; font-size: 24px; line-height: 1; cursor: pointer; transition: transform var(--motion-micro) ease, background-color var(--motion-micro) ease; }
 .cs .cs-react-bar button:hover, .cs .cs-react-bar button:focus-visible { background: rgba(255, 255, 255, .12); transform: scale(1.18); outline: none; }
 @media (max-width: 420px) { .cs .cs-react-bar { position: fixed; left: 12px; right: 12px; bottom: calc(96px + env(safe-area-inset-bottom)); transform: none; flex-wrap: wrap; justify-content: center; } .cs .cs-react-bar button { width: 36px; height: 36px; font-size: 20px; } }
 .cs .cs-react-bar button:active { transform: scale(.92); }
 .cs .cs-main { position: relative; }
 .cs .cs-reactions { position: absolute; left: 24px; bottom: 40px; top: 0; width: 160px; pointer-events: none; z-index: 3; overflow: hidden; }
 .cs .cs-float { --lane: 0; position: absolute; bottom: 0; left: calc(var(--lane) * 22px); display: grid; justify-items: center; gap: 2px;
-  animation: cs-float 4.2s cubic-bezier(.25, .6, .3, 1) forwards; }
+  animation: cs-float 4.2s var(--ease-standard) forwards; }
 .cs .cs-float .emoji { font-size: 38px; line-height: 1; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .35)); animation: cs-sway 1.4s ease-in-out infinite alternate; }
 .cs .cs-float small { padding: 2px 8px; border-radius: 999px; background: rgba(32, 33, 36, .82); color: #fff; font-size: 11.5px; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
 .cs .cs-hand ~ .cs-tile-react { top: 46px; }
@@ -164,7 +164,7 @@
   80% { opacity: 1; } 100% { transform: translateY(calc(-1 * min(68vh, 520px))); opacity: 0; } }
 @keyframes cs-sway { from { transform: translateX(-6px) rotate(-6deg); } to { transform: translateX(6px) rotate(6deg); } }
 @keyframes cs-tile-react { 0% { transform: scale(.4); opacity: 0; } 8% { transform: scale(1.25); opacity: 1; } 16% { transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes cs-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cs-pop { from { transform: scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes cs-rise-in { from { transform: translate(-50%, 8px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .cs .cs-float { animation: cs-fade 4.2s linear forwards; bottom: 40%; }
@@ -240,7 +240,7 @@
 .call-invite legend { font-size: 13px; font-weight: 500; color: var(--ds-text-3); padding: 0; float: left; width: 100%; margin-bottom: 8px; }
 .call-invite-item { min-height: 36px; padding: 0 8px; border-radius: 10px; font-size: 14px; }
 .call-invite-item:hover { background: var(--ds-surface); }
-.call-agent { padding: 14px 16px; border-radius: 16px; background: var(--ds-fill); transition: box-shadow .2s var(--ds-ease), background-color .16s var(--ds-ease); }
+.call-agent { padding: 14px 16px; border-radius: 16px; background: var(--ds-fill); transition: box-shadow var(--motion-standard) var(--ds-ease), background-color var(--motion-micro) var(--ds-ease); }
 .call-agent:has(input:checked) { background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
 .call-agent b { font-weight: 600; }
 .call-agent small { color: var(--ds-text-3); }
@@ -276,7 +276,7 @@
 .cs .cs-bar-left b { font-weight: 600; color: #F5F5F7; }
 .cs .cs-bar-left i { background: #3A3A3C; }
 .cs .cs-bar-mid { gap: 12px; }
-.cs .cs-btn { background-color: rgba(255, 255, 255, .12); color: #F5F5F7; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); transition: background-color .16s var(--ds-ease), transform .12s var(--ds-ease); }
+.cs .cs-btn { background-color: rgba(255, 255, 255, .12); color: #F5F5F7; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); transition: background-color var(--motion-micro) var(--ds-ease), transform var(--motion-micro) var(--ds-ease); }
 .cs .cs-btn:not(:disabled):hover { background-color: rgba(255, 255, 255, .2); }
 .cs .cs-btn:not(:disabled):active { transform: scale(.94); }
 .cs .cs-pair { background-color: rgba(255, 255, 255, .12); }
@@ -312,7 +312,7 @@
 
 /* ---- An incoming call: a card at the top of the screen on every page and layout, above everything but dialogs. ---- */
 .call-incoming-stack { position: fixed; top: max(16px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 1200; display: flex; flex-direction: column; gap: 10px; width: min(500px, calc(100vw - 32px)); pointer-events: none; }
-.call-incoming { pointer-events: auto; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 18px; background: var(--surface, #fff); color: var(--text, inherit); border: 1px solid var(--border, rgba(0,0,0,.08)); box-shadow: 0 18px 50px rgba(0,0,0,.22); animation: call-incoming-in .22s ease-out; }
+.call-incoming { pointer-events: auto; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 18px; background: var(--surface, #fff); color: var(--text, inherit); border: 1px solid var(--border, rgba(0,0,0,.08)); box-shadow: 0 18px 50px rgba(0,0,0,.22); animation: call-incoming-in var(--motion-standard) ease-out; }
 .call-incoming-ico { flex-shrink: 0; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--success, #1a9e55); animation: call-incoming-pulse 1.4s ease-out infinite; }
 .call-incoming-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .call-incoming-text b { font-size: 15px; line-height: 1.25; overflow-wrap: anywhere; }

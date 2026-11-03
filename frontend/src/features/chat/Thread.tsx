@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { instant, sharedLayout, staggerDelay, t } from '../../lib/motion';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { chatApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
@@ -554,7 +555,7 @@ function AwayChip({ conversation, count, lastMsgId, onCatchUp }: { conversation:
     <AnimatePresence initial={false}>
       {!gone && (
         <motion.div className={`talk-away-chip${open ? ' open' : ''}`} data-testid="away-chip" layout={!reduce}
-          initial={false} exit={reduce ? { opacity: 0 } : { opacity: 0, scale: .92, height: 0, marginTop: 0, marginBottom: 0 }} transition={{ type: 'spring', stiffness: 420, damping: 34 }}>
+          initial={false} exit={reduce ? { opacity: 0 } : { opacity: 0, scale: .98, transition: t.exit }} transition={reduce ? instant : sharedLayout}>
           <div className="talk-away-row">
             <button type="button" className="talk-away-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
               <span className="talk-away-spark" aria-hidden="true">✦</span>
@@ -566,7 +567,7 @@ function AwayChip({ conversation, count, lastMsgId, onCatchUp }: { conversation:
           <AnimatePresence initial={false}>
             {open && (
               <motion.div className="talk-away-body" key="body" initial={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} animate={reduce ? { opacity: 1 } : { opacity: 1, height: 'auto' }}
-                exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} transition={{ type: 'spring', stiffness: 380, damping: 36 }}>
+                exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} transition={reduce ? instant : t.standard}>
                 <div className="talk-away-in">
                   {q.isLoading ? <p className="talk-away-note"><Spinner /> Reading the conversation…</p>
                     : q.isError ? <p className="talk-away-note">{q.error instanceof ApiError ? q.error.message : 'No summary right now.'}</p>
@@ -973,10 +974,10 @@ function MessageRow({ m, mine, grouped, tail, showName, canModerate, ticks, abou
             {tapback && (
               <motion.div className="tapback-bar" role="group" aria-label="Tapback" key="tb"
                 initial={reduce ? { opacity: 0 } : { opacity: 0, scale: .4, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={reduce ? { opacity: 0 } : { opacity: 0, scale: .6, y: 6 }}
-                transition={reduce ? { duration: .12 } : { type: 'spring', stiffness: 520, damping: 26 }} style={{ transformOrigin: mine ? '90% 100%' : '10% 100%' }}>
+                transition={reduce ? t.micro : t.spring} style={{ transformOrigin: mine ? '90% 100%' : '10% 100%' }}>
                 {(allEmoji ? [...TAPBACKS, ...REACTIONS.filter((x) => !TAPBACKS.includes(x))] : TAPBACKS).map((emoji, i) => (
                   <motion.button key={emoji} type="button" className={m.reactions?.find((r) => r.emoji === emoji)?.mine ? 'on' : ''} aria-label={`Tapback ${emoji}`}
-                    initial={reduce ? false : { scale: .3, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 600, damping: 22, delay: i * .022 }}
+                    initial={reduce ? false : { scale: .98, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={reduce ? instant : { ...t.enter, delay: staggerDelay(i) }}
                     onClick={() => { setTapback(false); haptic(8); toggleReaction(emoji); }}>{emoji}</motion.button>
                 ))}
                 {!allEmoji && <button type="button" className="tapback-more" aria-label="More tapbacks" onClick={() => setAllEmoji(true)}><Icon name="plus" size={14} /></button>}

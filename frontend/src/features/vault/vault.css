@@ -331,7 +331,7 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
 /* ---- screen sharing */
 .vlt-shield.ok { display: flex; align-items: center; gap: 6px; margin: -6px 0 12px; font-size: 12.5px; color: var(--success); }
 .vlt-cover { position: fixed; inset: 0; z-index: 1300; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-  background: var(--bg); color: var(--text-2); font-size: 14px; animation: vlt-cover-in .08s linear; }
+  background: var(--bg); color: var(--text-2); font-size: 14px; animation: vlt-cover-in var(--motion-micro) linear; }
 .vlt-cover b { font-size: 18px; color: var(--text); }
 @keyframes vlt-cover-in { from { opacity: .6; } to { opacity: 1; } }
 @media print { .vlt-scope .vlt-secret, .vlt-scope .vlt-secret-input { visibility: hidden; } }
@@ -378,7 +378,7 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
 .vlt-ok { color: var(--success); }
 .vlt-circle-progress { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .vlt-circle-dots { display: flex; gap: 8px; }
-.vlt-circle-dots span { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--primary-fill); transition: background .3s; }
+.vlt-circle-dots span { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--primary-fill); transition: background var(--motion-emphasised); }
 .vlt-circle-dots span.on { background: var(--primary-fill); box-shadow: 0 0 0 4px var(--vlt-glow); }
 
 /* ---- one-time links */
@@ -409,7 +409,7 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
 .vlt-row { position: relative; }
 .vlt-row .vlt-item { padding-right: 46px; }
 .vlt-quick { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border);
-  background: var(--surface-solid); color: var(--text-2); display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity .12s; }
+  background: var(--surface-solid); color: var(--text-2); display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity var(--motion-micro); }
 .vlt-row:hover .vlt-quick, .vlt-row:focus-within .vlt-quick { opacity: 1; }
 .vlt-quick:hover { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
 @media (hover: none) { .vlt-quick { opacity: 1; } }
@@ -423,7 +423,7 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
 .vlt-posture-ring { width: 44px; height: 44px; flex-shrink: 0; }
 .vlt-posture-ring circle { fill: none; stroke-width: 4; }
 .vlt-posture-ring .track { stroke: var(--border); }
-.vlt-posture-ring .value { stroke: var(--success); stroke-linecap: round; transition: stroke-dasharray .6s ease; }
+.vlt-posture-ring .value { stroke: var(--success); stroke-linecap: round; transition: stroke-dasharray var(--motion-emphasised) ease; }
 .vlt-posture.fair .vlt-posture-ring .value { stroke: var(--warning); }
 .vlt-posture.poor .vlt-posture-ring .value { stroke: var(--danger); }
 .vlt-posture-text { display: flex; flex-direction: column; line-height: 1.15; }
@@ -452,7 +452,7 @@ li.has .vlt-health-dot { background: var(--warning); } li.has .vlt-health-dot.br
 .vlt-clip svg { width: 22px; height: 22px; }
 .vlt-clip circle { fill: none; stroke-width: 3; }
 .vlt-clip .track { stroke: var(--border); }
-.vlt-clip .value { stroke: var(--primary-fill); stroke-linecap: round; transition: stroke-dasharray .25s linear; }
+.vlt-clip .value { stroke: var(--primary-fill); stroke-linecap: round; transition: stroke-dasharray var(--motion-emphasised) linear; }
 .vlt-clip b { font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .vlt-posture-ring .value, .vlt-clip .value, .vlt-quick { transition: none; } }
 @media (max-width: 640px) {

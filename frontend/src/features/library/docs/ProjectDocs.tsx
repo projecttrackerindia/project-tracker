@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { instant, t } from '../../../lib/motion';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../../api/client';
@@ -61,8 +62,8 @@ export function ProjectDocs() {
       <Navigator p={p} catalog={c} topic={topic} />
       <AnimatePresence initial={false} mode="popLayout">
         <motion.div key={key} className="dx-stage"
-          initial={still ? false : { opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={still ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, x: -12, transition: { duration: 0.14 } }}
-          transition={still ? { duration: 0 } : { type: 'spring', duration: 0.34, bounce: 0.08 }}>
+          initial={still ? false : { opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={still ? { opacity: 0, transition: instant } : { opacity: 0, transition: t.exit }}
+          transition={still ? instant : t.enter}>
           <Topic p={p} catalog={c} topic={topic} />
         </motion.div>
       </AnimatePresence>

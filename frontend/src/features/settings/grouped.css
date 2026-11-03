@@ -22,9 +22,9 @@
 .sg-end { display: flex; align-items: center; gap: 10px; flex: none; font-size: 12px; color: var(--ds-text-4); }
 
 .sg-sw { width: 38px; height: 22px; border-radius: 11px; background: rgba(120, 120, 128, .24); position: relative; flex: none; border: 0; padding: 0; cursor: pointer;
-  transition: background .25s var(--ds-ease); }
+  transition: background var(--motion-emphasised) var(--ds-ease); }
 .sg-sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 9px; background: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, .2), 0 0 0 .5px rgba(0, 0, 0, .04); transition: left .25s var(--ds-spring), width .15s var(--ds-ease); }
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .2), 0 0 0 .5px rgba(0, 0, 0, .04); transition: left var(--motion-emphasised) var(--ds-spring), width var(--motion-micro) var(--ds-ease); }
 .sg-sw.on { background: #34c759; }
 .sg-sw.on::after { left: 18px; }
 .sg-sw:active:not(:disabled)::after { width: 24px; }

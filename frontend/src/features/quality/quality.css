@@ -4,7 +4,7 @@
 .qa-hd { margin: 6px 0 16px; }
 .qa-ready { display: flex; align-items: center; gap: 22px; padding: 16px 22px; margin-bottom: 16px; }
 .qa-ring { position: relative; width: 96px; height: 96px; flex: none; }
-.qa-ring svg circle { transition: stroke-dashoffset .4s ease-out; }
+.qa-ring svg circle { transition: stroke-dashoffset var(--motion-emphasised) ease-out; }
 .qa-ring span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
 .qa-ready-t { flex: 1; min-width: 0; }
 .qa-big { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
@@ -32,7 +32,7 @@
 .qa-mx tr.sel td { background: rgba(175, 82, 222, .06); }
 .qa-mx td.run { background: rgba(175, 82, 222, .04); }
 .qa-ct { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.qa-d { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: middle; border: 0; padding: 0; cursor: pointer; transition: transform .2s; flex: none; }
+.qa-d { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: middle; border: 0; padding: 0; cursor: pointer; transition: transform var(--motion-standard); flex: none; }
 button.qa-d:hover { transform: scale(1.2); }
 button.qa-d:focus-visible { outline: 2px solid #af52de; outline-offset: 3px; }
 .qa-d.p { background: #34c759; }
@@ -88,7 +88,7 @@ button.qa-d:focus-visible { outline: 2px solid #af52de; outline-offset: 3px; }
 .rl-st { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--ds-fill); color: var(--ds-text-2); }
 .rl-st.s-approved { background: rgba(10, 132, 255, .14); color: #0a64c8; } .rl-st.s-shipped { background: rgba(40, 205, 65, .15); color: #127a26; }
 .rl-main { display: grid; gap: 16px; min-width: 0; }
-.rl-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; animation: rl-in .45s cubic-bezier(.32, .72, 0, 1) both; }
+.rl-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; animation: rl-in var(--motion-emphasised) var(--ease-standard) both; }
 @keyframes rl-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .rl-eyebrow { font-size: 12.5px; font-weight: 600; color: var(--ds-text-2); }
 .rl-top h1 { margin: 2px 0 0; font-size: 30px; font-weight: 800; letter-spacing: -.03em; }

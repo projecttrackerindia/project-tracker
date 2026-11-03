@@ -133,8 +133,8 @@ code.vlt2-value { font-family: var(--mono); letter-spacing: .12em; }
 .lb-book:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 4px; border-radius: 12px; }
 .lb-cov { display: block; position: relative; aspect-ratio: 3 / 3.6; overflow: hidden; padding: 12px 12px 0; border-radius: 6px 12px 12px 6px; background: var(--lb-cover);
   border-top: 5px solid var(--c); box-shadow: 0 1px 1px rgba(0, 0, 0, .05), 0 10px 24px rgba(0, 0, 0, .10), inset 3px 0 0 rgba(0, 0, 0, .05);
-  transition: transform .25s var(--ds-ease), box-shadow .25s var(--ds-ease); }
-.lb-book:hover .lb-cov { transform: translateY(-3px); box-shadow: 0 1px 1px rgba(0, 0, 0, .05), 0 16px 32px rgba(0, 0, 0, .14), inset 3px 0 0 rgba(0, 0, 0, .05); }
+  transition: transform var(--motion-emphasised) var(--ds-ease), box-shadow var(--motion-emphasised) var(--ds-ease); }
+.lb-book:hover .lb-cov { transform: translateY(-2px); box-shadow: 0 1px 1px rgba(0, 0, 0, .05), 0 16px 32px rgba(0, 0, 0, .14), inset 3px 0 0 rgba(0, 0, 0, .05); }
 .lb-book.s-api, .lb-mc.s-api { --c: var(--s-api); --k: var(--s-api); }
 .lb-book.s-brd, .lb-mc.s-brd { --c: var(--s-brd); --k: var(--k-brd); }
 .lb-book.s-spec, .lb-mc.s-spec { --c: var(--s-spec); --k: var(--k-spec); }
@@ -170,7 +170,7 @@ code.vlt2-value { font-family: var(--mono); letter-spacing: .12em; }
 /* right column */
 
 .lb-q { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 8px 0 14px; border-radius: 12px; background: var(--ds-surface);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, .06), 0 0 0 .5px rgba(0, 0, 0, .06), 0 0 0 3px var(--lb-tint-soft); transition: box-shadow .2s var(--ds-ease); }
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .06), 0 0 0 .5px rgba(0, 0, 0, .06), 0 0 0 3px var(--lb-tint-soft); transition: box-shadow var(--motion-standard) var(--ds-ease); }
 .lb-q:focus-within { box-shadow: 0 4px 16px rgba(0, 0, 0, .06), 0 0 0 .5px rgba(0, 0, 0, .06), 0 0 0 4px rgba(162, 132, 94, .35); }
 .lb-q input { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 14px; color: var(--ds-text); outline: none; caret-color: var(--lb-tint); }
 .lb-q input::placeholder { color: var(--ds-text-3); }
@@ -280,17 +280,17 @@ html code.pw-pw { font: 500 16px ui-monospace, Menlo, monospace; letter-spacing:
 .pw-dots { letter-spacing: .2em; font-size: 18px; line-height: 1; }
 .pw-ch { position: relative; display: inline-block; }
 .pw-ch i { position: absolute; left: 0; top: 50%; transform: translateY(-50%); letter-spacing: 0 !important; }
-.pw-ch b { font-weight: 500; animation: pw-in .26s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--i) * 18ms + 300ms); }
-.pw-ch i { font-style: normal; font-size: 18px; letter-spacing: .2em; animation: pw-out .2s linear both; animation-delay: calc(var(--i) * 18ms + 300ms); }
+.pw-ch b { font-weight: 500; animation: pw-in var(--motion-emphasised) var(--ease-standard) both; animation-delay: calc(var(--i) * 18ms + 300ms); }
+.pw-ch i { font-style: normal; font-size: 18px; letter-spacing: .2em; animation: pw-out var(--motion-standard) linear both; animation-delay: calc(var(--i) * 18ms + 300ms); }
 @keyframes pw-in { from { opacity: 0; filter: blur(4px); } to { opacity: 1; filter: blur(0); } }
 @keyframes pw-out { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
 .pw-ch:not(:has(b)) { width: 0; overflow: hidden; }
 .pw-ch:not(:has(b)) i { animation-name: pw-gone; }
 @keyframes pw-gone { from { opacity: 1; } to { opacity: 0; } }
 .pw-pw + .pw-hide { animation-delay: .66s !important; }
-.pw-hide { flex: none; display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 12px; color: var(--ds-text-2); font-variant-numeric: tabular-nums; animation: pw-fade .2s ease both; }
+.pw-hide { flex: none; display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 12px; color: var(--ds-text-2); font-variant-numeric: tabular-nums; animation: pw-fade var(--motion-standard) ease both; }
 @keyframes pw-fade { from { opacity: 0; } }
-.pw-cring circle { fill: none; transition: stroke-dasharray .25s linear; }
+.pw-cring circle { fill: none; transition: stroke-dasharray var(--motion-emphasised) linear; }
 .pw-cring-track { stroke: var(--ds-fill-strong); } .pw-cring.grey .pw-cring-left { stroke: #636366; } .pw-cring.green .pw-cring-left { stroke: var(--pw-green); }
 [data-theme='dark'] .pw-cring.grey .pw-cring-left { stroke: #aeaeb2; }
 .pw-otp-ring { margin-left: 12px; font-size: 13px; }

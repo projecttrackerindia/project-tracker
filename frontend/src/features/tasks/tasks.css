@@ -6,7 +6,7 @@
 .tsg-strip-head svg { color: var(--primary); }
 .tsg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .tsg-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: 99px;
-  background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; cursor: pointer; transition: border-color .15s, background .15s; }
+  background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; cursor: pointer; transition: border-color var(--motion-micro), background var(--motion-micro); }
 .tsg-chip:hover { border-color: var(--primary); background: var(--primary-soft); }
 .tsg-chip svg { color: var(--text-3); flex: none; }
 .tsg-chip b { font-weight: 650; white-space: nowrap; }
@@ -16,7 +16,7 @@
 
 /* Quick add: one line of plain words, with what was understood shown as chips before it is saved */
 .qa { display: grid; gap: 8px; margin: 0 0 14px; }
-.qa-box { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 6px 0 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text-3); transition: border-color .15s, box-shadow .15s; }
+.qa-box { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 6px 0 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text-3); transition: border-color var(--motion-micro), box-shadow var(--motion-micro); }
 .qa-box:focus-within { border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .10); }
 .qa-box input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 14px; }
 .qa-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 4px; font-size: 12.5px; }
@@ -92,7 +92,7 @@ html[data-theme='dark'] .task-sheet .form-grid > .field:not(.full) :is(.input, .
 .task-sheet .checklist-text { font-size: 14.5px; }
 .task-sheet .checklist-item input[type=checkbox], .task-sheet .ts-subtasks .check {
   appearance: none; -webkit-appearance: none; width: 22px; height: 22px; margin: 0; flex: none; border-radius: 50%; border: 1.5px solid var(--ds-outline);
-  background: var(--ds-surface); display: grid; place-items: center; cursor: pointer; box-shadow: none; transition: background-color .16s var(--ds-ease), border-color .16s var(--ds-ease);
+  background: var(--ds-surface); display: grid; place-items: center; cursor: pointer; box-shadow: none; transition: background-color var(--motion-micro) var(--ds-ease), border-color var(--motion-micro) var(--ds-ease);
 }
 .task-sheet .checklist-item input[type=checkbox]:checked { background: var(--primary-fill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center / 14px no-repeat; border-color: transparent; }
 .task-sheet .ts-subtasks .check svg { width: 13px; height: 13px; opacity: 0; }

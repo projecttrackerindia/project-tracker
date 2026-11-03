@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion, type Transition } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ApiError, get, put } from '../../api/client';
 import { projectApi, timeApi } from '../../api/endpoints';
 import type { TimeEntry } from '../../api/types';
@@ -12,7 +12,7 @@ import { Avatar } from '../../components/ui';
 import { openNew } from '../../components/v2/state';
 import { DOW, daysUntil, formatDateShort, todayISO } from '../../lib/format';
 import { refreshTime, useWsQuery } from '../../lib/hooks';
-import { spring } from '../../lib/motion';
+import { duration, ease, instant, staggerDelay, t } from '../../lib/motion';
 import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { PRIORITY_ORDER, refreshWork, useWorkList } from './workUi';
@@ -218,7 +218,6 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
   };
   const moveLater = (id: string) => { laterStore.add(id); toast(`Moved to Later for a week. It comes back on its own.`, 'info'); };
 
-  const fly: Transition = reduce ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 26 };
   // The next one or two sit under the card, smaller and faded but readable; on hover they fan out.
   const POS = fan
     ? [{ y: 0, scale: 1, opacity: 1, rotate: 0 }, { y: 66, scale: 0.97, opacity: 0.92, rotate: 0.6 }, { y: 124, scale: 0.94, opacity: 0.8, rotate: -0.6 }]
@@ -281,10 +280,10 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
               const ticking = drawing === w.id;
               return (
                 <motion.article key={w.id} className={`mw-fc ${isFront ? 'front' : 'behind'} ${ticking ? 'done' : ''}`} style={{ zIndex: 4 - i, transformOrigin: '50% 100%' }}
-                  initial={{ opacity: 0, y: 40, scale: 0.86 }}
+                  initial={reduce ? false : { opacity: 0, y: 8, scale: 0.98 }}
                   animate={POS[i]}
-                  exit={{ y: -140, rotate: -4, opacity: 0, scale: 1.02, zIndex: 5, transition: reduce ? { duration: 0 } : { ...fly, opacity: { duration: 0.32 } } }}
-                  transition={reduce ? { duration: 0 } : { ...spring.panel, delay: i * 0.04 }}
+                  exit={{ y: -24, opacity: 0, scale: 0.98, zIndex: 5, transition: reduce ? instant : { duration: duration.emphasised, ease: ease.accelerate } }}
+                  transition={reduce ? instant : { ...t.spring, delay: staggerDelay(i) }}
                   aria-hidden={isFront ? undefined : true}>
                   {!isFront && <div className="mw-next"><span className="mw-next-l">Next</span><span className="mw-next-t">{w.title}</span>{w.dueDate && <span className="mw-next-d">· Due {dayText(w.dueDate)}</span>}</div>}
                   {isFront && (
@@ -293,7 +292,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
                       <button type="button" className="mw-bigchk" aria-label={`Complete ${w.title}`} onClick={() => complete(w)} disabled={!!drawing}>
                         <svg viewBox="0 0 34 34" width="34" height="34" aria-hidden="true">
                           <circle cx="17" cy="17" r="15" />
-                          <motion.path d="M10.5 17.5l4.5 4.5 8.5-9.5" initial={false} animate={{ pathLength: ticking ? 1 : 0 }} transition={reduce ? { duration: 0 } : { duration: 0.22, ease: 'easeOut' }} />
+                          <motion.path d="M10.5 17.5l4.5 4.5 8.5-9.5" initial={false} animate={{ pathLength: ticking ? 1 : 0 }} transition={reduce ? instant : t.standard} />
                         </svg>
                       </button>
                       <button type="button" className="mw-ti" onClick={() => onOpen(w.id)}>{w.title}</button>
@@ -337,7 +336,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
             <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
               <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,149,0,.16)" strokeWidth="9" />
               <motion.circle cx="32" cy="32" r="26" fill="none" stroke="#ff9500" strokeWidth="9" strokeLinecap="round" strokeDasharray="163.4" transform="rotate(-90 32 32)"
-                initial={false} animate={{ strokeDashoffset: 163.4 * (1 - ringPct) }} transition={reduce ? { duration: 0 } : spring.gentle} style={{ opacity: ringPct ? 1 : 0 }} />
+                initial={false} animate={{ strokeDashoffset: 163.4 * (1 - ringPct) }} transition={reduce ? instant : t.emphasised} style={{ opacity: ringPct ? 1 : 0 }} />
             </svg>
             <div>
               <div className="mw-n">{done} of {todayTotal}</div>

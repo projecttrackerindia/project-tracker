@@ -70,7 +70,7 @@
 .arch-frame { width: 100%; height: 100%; border-radius: 14px; border: 1.6px dashed color-mix(in srgb, var(--c) 60%, transparent); background: color-mix(in srgb, var(--c) 5%, transparent); }
 .arch-frame.sel { border-style: solid; border-color: var(--arch-accent); }
 .arch-frame-title { position: absolute; top: -11px; left: 12px; padding: 1px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 700; color: var(--c); background: var(--arch-bg); }
-.arch-h { width: 9px !important; height: 9px !important; background: var(--arch-panel) !important; border: 1.6px solid var(--arch-accent) !important; opacity: 0; transition: opacity .12s; }
+.arch-h { width: 9px !important; height: 9px !important; background: var(--arch-panel) !important; border: 1.6px solid var(--arch-accent) !important; opacity: 0; transition: opacity var(--motion-micro); }
 .react-flow__node:hover .arch-h, .react-flow__node.selected .arch-h, .react-flow.connecting .arch-h { opacity: 1; }
 .arch-h.hidden { opacity: 0 !important; pointer-events: none; }
 .arch-rs-line { border-color: var(--arch-accent) !important; }
@@ -112,7 +112,7 @@
 .react-flow__edge.sim-wait path.react-flow__edge-path { opacity: .25; }
 .react-flow__edge.sim-now path.react-flow__edge-path { stroke: #0a84ff !important; stroke-width: 3; stroke-dasharray: 8 6; animation: arch-flow .6s linear infinite; filter: drop-shadow(0 0 6px rgba(10, 132, 255, .7)); }
 .react-flow__edge.sim-done path.react-flow__edge-path { stroke: #30d158 !important; }
-.react-flow__node.sim { transition: opacity .3s, box-shadow .3s; opacity: .45; }
+.react-flow__node.sim { transition: opacity var(--motion-emphasised), box-shadow var(--motion-emphasised); opacity: .45; }
 .react-flow__node.sim-hit { opacity: 1; box-shadow: 0 0 0 2px #0a84ff, 0 0 22px rgba(10, 132, 255, .35); border-radius: 12px; }
 @keyframes arch-flow { to { stroke-dashoffset: -28; } }
 @media (prefers-reduced-motion: reduce) { .arch-ask.busy .arch-orb, .react-flow__edge.sim-now path.react-flow__edge-path { animation: none; } }

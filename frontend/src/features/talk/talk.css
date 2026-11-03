@@ -4,7 +4,7 @@
 .talk-shell { display: grid; grid-template-columns: 330px minmax(0, 1fr) auto; gap: 0; height: calc(100vh - var(--topbar-h, 64px) - 64px); min-height: 480px;
   --talk-tint: #007aff; --talk-sel: #0a84ff; --talk-in: #e9e9eb; --talk-in-text: #000; --talk-bg: var(--ds-surface);
   --talk-line: rgba(0, 0, 0, .08); --talk-line2: rgba(0, 0, 0, .14); --talk-fill: rgba(118, 118, 128, .12); --talk-fill2: rgba(118, 118, 128, .08); --talk-t2: #6e6e73; --talk-t3: #8a8a8e;
-  --talk-spring: cubic-bezier(.34, 1.4, .64, 1); }
+  --talk-spring: var(--ease-decel); }
 html[data-theme='dark'] .talk-shell { --talk-tint: #0a84ff; --talk-in: #26252a; --talk-in-text: #f5f5f7; --talk-line: rgba(255, 255, 255, .1); --talk-line2: rgba(255, 255, 255, .16);
   --talk-fill: rgba(118, 118, 128, .24); --talk-fill2: rgba(118, 118, 128, .16); --talk-t2: #a1a1a6; --talk-t3: #8e8e93; }
 @media (min-width: 1100px) {
@@ -15,7 +15,7 @@ html[data-theme='dark'] .talk-shell { --talk-tint: #0a84ff; --talk-in: #26252a; 
 .talk-list { display: flex; flex-direction: column; background: color-mix(in srgb, var(--ds-surface) 45%, transparent); border-right: .5px solid var(--talk-line); }
 .talk-large { display: none; }
 .talk-list-top { display: flex; align-items: center; gap: 4px; padding: 14px 16px 0; }
-.talk-search { flex: 1; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 9px; background: var(--talk-fill); color: var(--talk-t3); min-width: 0; transition: box-shadow .2s ease; }
+.talk-search { flex: 1; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 9px; background: var(--talk-fill); color: var(--talk-t3); min-width: 0; transition: box-shadow var(--motion-standard) ease; }
 .talk-search input { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 13px; color: var(--ds-text); outline: none; padding: 0; }
 .talk-search input::placeholder { color: var(--talk-t3); }
 .talk-search:focus-within { box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--talk-tint) 35%, transparent); }
@@ -38,7 +38,7 @@ html[data-theme='dark'] .talk-seg-thumb { background: #636366; box-shadow: none;
 
 /* pinned conversations: round avatars, one row at most */
 .talk-pins { list-style: none; margin: 0; padding: 6px 12px 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); grid-template-rows: auto; grid-auto-rows: 0; row-gap: 0; overflow: hidden; }
-.talk-pin { width: 100%; display: grid; justify-items: center; gap: 5px; padding: 6px 2px; border-radius: 12px; color: var(--ds-text); transition: background-color .18s ease; }
+.talk-pin { width: 100%; display: grid; justify-items: center; gap: 5px; padding: 6px 2px; border-radius: 12px; color: var(--ds-text); transition: background-color var(--motion-standard) ease; }
 .talk-pin .talk-av { width: 52px; height: 52px; font-size: 18px; }
 .talk-pin .talk-av.square { border-radius: 16px; }
 .talk-pin:hover { background: var(--talk-fill2); }
@@ -49,7 +49,7 @@ html[data-theme='dark'] .talk-seg-thumb { background: #636366; box-shadow: none;
 /* a row; its swipe actions live underneath it */
 .talk-row-swipe { position: relative; overflow: hidden; margin: 0 8px; border-radius: 10px; }
 .talk-row { position: relative; width: 100%; display: flex; align-items: flex-start; gap: 11px; padding: 9px 12px 9px 16px; border-radius: 10px; text-align: left; color: var(--ds-text); background: transparent;
-  transition: background-color .2s ease, color .2s ease, transform .3s cubic-bezier(.2, .9, .25, 1); touch-action: pan-y; -webkit-touch-callout: none; }
+  transition: background-color var(--motion-standard) ease, color var(--motion-standard) ease, transform var(--motion-emphasised) var(--ease-standard); touch-action: pan-y; -webkit-touch-callout: none; }
 .talk-row-swipe.swiping .talk-row { background: var(--talk-bg); }
 .talk-row:hover { background: var(--talk-fill2); }
 .talk-row.active, .talk-row.active:hover { background: var(--talk-sel); color: #fff; }
@@ -81,7 +81,7 @@ html[data-theme='dark'] .talk-seg-thumb { background: #636366; box-shadow: none;
 .talk-note { padding: 10px 16px; font-size: 13px; color: var(--talk-t3); list-style: none; }
 .talk-swipe-acts { position: absolute; top: 0; bottom: 0; display: flex; }
 .talk-swipe-acts.l { left: 0; } .talk-swipe-acts.r { right: 0; }
-.talk-swipe-acts button { flex: 0 0 74px; transition: flex-basis .18s ease; display: grid; place-content: center; justify-items: center; gap: 3px; color: #fff; font-size: 11.5px; font-weight: 500; }
+.talk-swipe-acts button { flex: 0 0 74px; transition: flex-basis var(--motion-standard) ease; display: grid; place-content: center; justify-items: center; gap: 3px; color: #fff; font-size: 11.5px; font-weight: 500; }
 .talk-swipe-acts .sw-read { background: #0a84ff; } .talk-swipe-acts .sw-pin { background: #ff9f0a; } .talk-swipe-acts .sw-mute { background: #5e5ce6; } .talk-swipe-acts .sw-hide { background: #ff3b30; }
 .talk-swipe-acts button.grow { flex: 1 1 auto; }
 .talk-row-swipe.dragging .talk-swipe-acts button { transition: none; }
@@ -121,7 +121,7 @@ html[data-theme='dark'] .talk-seg-thumb { background: #636366; box-shadow: none;
 .talk-ppl { display: flex; }
 .talk-ppl > * { width: 24px !important; height: 24px !important; font-size: 10px !important; margin-left: -6px; box-shadow: 0 0 0 2px var(--talk-bg); border-radius: 50%; }
 .talk-ppl > *:first-child { margin-left: 0; }
-html .talk-head .talk-ib, html .talk-head .talk-info .v2-dots-btn { width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: transparent; color: var(--talk-sel); border: 0; transition: background-color .15s ease; }
+html .talk-head .talk-ib, html .talk-head .talk-info .v2-dots-btn { width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: transparent; color: var(--talk-sel); border: 0; transition: background-color var(--motion-micro) ease; }
 html .talk-head .talk-ib:hover, html .talk-head .talk-info .v2-dots-btn:hover, html .talk-head .talk-ib.on { background: var(--talk-fill); }
 html .talk-head .talk-ib svg { width: 17px; height: 17px; }
 .talk-thread .talk-head .chat-back { display: none; }
@@ -200,7 +200,7 @@ html .talk-thread .msg.mine .reply-quote { background: none; border-left-color: 
 .msg:not(.mine) .tapbacks { right: -12px; }
 .msg.mine .tapbacks { left: -12px; flex-direction: row-reverse; }
 .tapback { min-width: 28px; height: 28px; padding: 0 6px; margin-left: -8px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; border-radius: 14px; font-size: 14px; line-height: 1;
-  background: var(--talk-in); box-shadow: 0 0 0 2px var(--talk-bg); transition: transform .2s var(--talk-spring); }
+  background: var(--talk-in); box-shadow: 0 0 0 2px var(--talk-bg); transition: transform var(--motion-standard) var(--talk-spring); }
 .msg.mine .tapback { margin-left: 0; margin-right: -8px; }
 .tapback:first-child { margin: 0; }
 .tapback.on { background: var(--talk-sel); }
@@ -211,22 +211,22 @@ html .talk-thread .msg.mine .reply-quote { background: none; border-left-color: 
   box-shadow: 0 10px 30px rgba(0, 0, 0, .16), 0 0 0 .5px rgba(0, 0, 0, .08); white-space: nowrap; }
 html[data-theme='dark'] .tapback-bar { background: #2c2c2e; box-shadow: 0 10px 30px rgba(0, 0, 0, .5), 0 0 0 .5px rgba(255, 255, 255, .1); }
 .msg:not(.mine) .tapback-bar { left: 0; } .msg.mine .tapback-bar { right: 0; }
-.tapback-bar button { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 19px; line-height: 1; transition: background-color .12s ease; }
+.tapback-bar button { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 19px; line-height: 1; transition: background-color var(--motion-micro) ease; }
 .tapback-bar button:hover { background: var(--talk-fill); }
 .tapback-bar button.on { background: var(--talk-sel); }
 .tapback-more { color: var(--talk-t2); }
 
 /* typing: three dots in a grey bubble */
 .talk-typing { display: flex; padding: 8px 0 2px 38px; }
-.talk-typing-bubble { position: relative; display: inline-flex; gap: 4px; padding: 11px 13px; border-radius: 18px; background: var(--talk-in); animation: talkPopIn .32s var(--talk-spring) both; }
+.talk-typing-bubble { position: relative; display: inline-flex; gap: 4px; padding: 11px 13px; border-radius: 18px; background: var(--talk-in); animation: talkPopIn var(--motion-emphasised) var(--talk-spring) both; }
 .talk-typing-bubble::after { content: ''; position: absolute; left: -4px; bottom: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--talk-in); }
 .talk-typing-bubble i { width: 7px; height: 7px; border-radius: 50%; background: var(--talk-t3); animation: talkDot 1.3s infinite ease-in-out; }
 .talk-typing-bubble i:nth-child(2) { animation-delay: .16s; } .talk-typing-bubble i:nth-child(3) { animation-delay: .32s; }
 @keyframes talkDot { 0%, 60%, 100% { opacity: .35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 
 /* new bubbles: mine rise from the composer ("swoosh"), theirs pop in from their side */
-.talk-thread .msg.fresh.mine .bubble-wrap { animation: talkSwoosh .46s var(--talk-spring) both; transform-origin: 100% 100%; }
-.talk-thread .msg.fresh:not(.mine) .bubble-wrap { animation: talkPopIn .38s var(--talk-spring) both; transform-origin: 0 100%; }
+.talk-thread .msg.fresh.mine .bubble-wrap { animation: talkSwoosh var(--motion-emphasised) var(--talk-spring) both; transform-origin: 100% 100%; }
+.talk-thread .msg.fresh:not(.mine) .bubble-wrap { animation: talkPopIn var(--motion-emphasised) var(--talk-spring) both; transform-origin: 0 100%; }
 @keyframes talkSwoosh { 0% { opacity: 0; transform: translateY(46px) scale(.9); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
 @keyframes talkPopIn { 0% { opacity: 0; transform: scale(.9); } 100% { opacity: 1; transform: none; } }
 
@@ -251,7 +251,7 @@ html .talk-thread .msg .bubble.files-only { background: transparent !important; 
 /* composer: ＋ outside, then a rounded "Message …" field holding emoji / ✦ and the blue send arrow */
 .talk-thread .composer { padding: 8px 16px 14px; border-top: 0; background: var(--talk-bg); }
 .talk-composer .composer-row { position: relative; align-items: flex-end; gap: 6px; padding: 0; border-radius: 0; box-shadow: none; }
-.talk-composer .composer-row::before { content: ''; position: absolute; top: 0; bottom: 0; left: 40px; right: 0; border-radius: 18px; box-shadow: inset 0 0 0 1px var(--talk-line2); background: var(--talk-bg); pointer-events: none; transition: box-shadow .2s ease; }
+.talk-composer .composer-row::before { content: ''; position: absolute; top: 0; bottom: 0; left: 40px; right: 0; border-radius: 18px; box-shadow: inset 0 0 0 1px var(--talk-line2); background: var(--talk-bg); pointer-events: none; transition: box-shadow var(--motion-standard) ease; }
 .talk-composer.is-editing .composer-row::before { left: 0; }
 .talk-composer .composer-row:focus-within::before { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--talk-sel) 70%, transparent), 0 0 0 3px color-mix(in srgb, var(--talk-sel) 18%, transparent); }
 html .talk-composer .composer-pill, html .talk-composer .composer-pill:focus-within { position: relative; z-index: 1; flex: 1; min-width: 0; padding: 0; gap: 6px; align-items: flex-end; background: transparent; border: 0; box-shadow: none; }
@@ -265,7 +265,7 @@ html .talk-composer .composer-pill .composer-editable { flex: 1; min-width: 0; p
 .talk-draft:hover:not(:disabled) { background: color-mix(in srgb, var(--talk-sel) 17%, transparent); }
 .talk-draft-spark { font-size: 12px; }
 html .talk-composer .send-btn { position: relative; z-index: 1; width: 28px; height: 28px; margin: 4px 4px 4px 0; border-radius: 50%; background: var(--talk-sel); color: #fff; opacity: 1; box-shadow: none; }
-html .talk-composer .send-btn.talk-send { animation: talkSendIn .3s var(--talk-spring) both; }
+html .talk-composer .send-btn.talk-send { animation: talkSendIn var(--motion-emphasised) var(--talk-spring) both; }
 html .talk-composer .send-btn:active { transform: scale(.88); }
 html .talk-composer .send-btn:disabled { opacity: .5; }
 html .talk-composer .send-btn.mic { background: transparent; color: var(--talk-t2); }
@@ -319,8 +319,8 @@ html .talk-composer .send-btn svg { width: 16px; height: 16px; stroke-width: 2.4
   .talk-shell.is-open .talk-list { display: none; }
   .talk-shell:not(.is-open) .talk-pane { display: none; }
   /* iOS push: the conversation slides in from the right, the list settles back from the left */
-  .talk-shell.is-open .talk-pane { animation: talkPush .42s cubic-bezier(.2, .9, .25, 1) both; }
-  .talk-shell:not(.is-open) .talk-list { animation: talkPopBack .36s cubic-bezier(.2, .9, .25, 1) both; }
+  .talk-shell.is-open .talk-pane { animation: talkPush var(--motion-emphasised) var(--ease-standard) both; }
+  .talk-shell:not(.is-open) .talk-list { animation: talkPopBack var(--motion-emphasised) var(--ease-standard) both; }
   .talk-list { background: var(--talk-bg); border-right: 0; }
   .talk-large { display: block; padding: 4px 16px 2px; font-size: 32px; font-weight: 700; letter-spacing: -.02em; color: var(--ds-text); }
   .talk-list-top { padding-top: 6px; }

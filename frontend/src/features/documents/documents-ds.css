@@ -178,7 +178,7 @@ button.ct-quote:hover { background: color-mix(in srgb, #FFB340 30%, transparent)
 
 /* --------------------------------------------------------------------------------------- AI draft and wizard */
 .aid-sources { gap: 10px; }
-.aid-src { gap: 3px; padding: 16px; border: 0; border-radius: 18px; background: var(--ds-fill); text-align: left; transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+.aid-src { gap: 3px; padding: 16px; border: 0; border-radius: 18px; background: var(--ds-fill); text-align: left; transition: background-color var(--motion-micro) var(--ds-ease), box-shadow var(--motion-standard) var(--ds-ease); }
 .aid-src:hover { background: var(--ds-fill-strong); }
 .aid-src.on { border: 0; background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
 .aid-src-icon.ds-tile-ico { width: 36px; height: 36px; border-radius: 11px; margin-bottom: 10px; font-size: 0; }
@@ -187,7 +187,7 @@ button.ct-quote:hover { background: color-mix(in srgb, #FFB340 30%, transparent)
 .aid-files li { display: flex; align-items: center; gap: 6px; }
 .aid-rec { border-radius: 980px; }
 .doc-types { gap: 10px; padding: 4px; }
-.doc-type { gap: 12px; padding: 14px; border: 0; border-radius: 16px; background: var(--ds-fill); transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+.doc-type { gap: 12px; padding: 14px; border: 0; border-radius: 16px; background: var(--ds-fill); transition: background-color var(--motion-micro) var(--ds-ease), box-shadow var(--motion-standard) var(--ds-ease); }
 .doc-type:hover { background: var(--ds-fill-strong); }
 .doc-type.on { border: 0; background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
 .doc-type b { font-size: 14.5px; font-weight: 600; }

@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { instant, presets, t } from '../../../lib/motion';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
@@ -59,7 +60,7 @@ function CodeTabs({ tabs, label }: { tabs: { id: string; label: string; code: st
         <button type="button" className="dx-code-copy" onClick={() => { void navigator.clipboard?.writeText(cur.code).then(() => toast('Copied.'), () => toast('Could not copy.', 'error')); }}><Icon name="copy" size={12} /> Copy</button>
       </div>
       <AnimatePresence initial={false} mode="wait">
-        <motion.pre key={cur.id} initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={still ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0 }} transition={{ duration: still ? 0 : 0.16 }}>{cur.code}</motion.pre>
+        <motion.pre key={cur.id} initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={still ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0 }} transition={still ? instant : t.standard}>{cur.code}</motion.pre>
       </AnimatePresence>
     </div>
   );
@@ -287,7 +288,7 @@ function TryIt({ def, ep, base, envLabel }: { def: ApiDefinition | undefined; ep
       <div className="dx-sect-h"><h2 className="dx-h2">Try it</h2><button type="button" className={`dx-btn sm${open ? '' : ' tint'}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}>{open ? 'Close' : 'Try it'}</button></div>
       <AnimatePresence initial={false}>
         {open && (
-          <motion.div className="dx-try" data-testid="try-it" initial={still ? false : { height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={still ? { opacity: 0, transition: { duration: 0 } } : { height: 0, opacity: 0 }} transition={still ? { duration: 0 } : { type: 'spring', duration: 0.36, bounce: 0.06 }}>
+          <motion.div className="dx-try" data-testid="try-it" initial={still ? false : { height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={still ? { opacity: 0, transition: { duration: 0 } } : { height: 0, opacity: 0 }} transition={still ? instant : t.emphasised}>
             <div className="dx-try-grid">
               {inputs.map((x) => (
                 <label key={`${x.in}:${x.name}`} className="dx-try-f"><span>{x.name}<small>{IN_LABEL[x.in]}{x.required ? ' · required' : ''}</small></span>
@@ -304,7 +305,7 @@ function TryIt({ def, ep, base, envLabel }: { def: ApiDefinition | undefined; ep
             </div>
             <AnimatePresence initial={false}>
               {ran && (
-                <motion.div key={ran.at} className="dx-resp" data-testid="try-response" initial={still ? false : { clipPath: 'inset(0 0 100% 0 round 14px)', opacity: 0.5 }} animate={{ clipPath: 'inset(0 0 0% 0 round 14px)', opacity: 1 }} exit={{ opacity: 0 }} transition={still ? { duration: 0 } : { type: 'spring', duration: 0.42, bounce: 0.1 }}>
+                <motion.div key={ran.at} className="dx-resp" data-testid="try-response" initial={still ? false : presets.fade.initial} animate={presets.fade.animate} exit={{ opacity: 0, transition: t.exit }} transition={still ? instant : t.enter}>
                   <div className="dx-resp-h"><span className={`dx-sc s${ran.status[0]}`}>{ran.status}</span><b>{resp?.description || 'Response'}</b><span className="dx-note">documented · {envLabel}</span></div>
                   <dl className="dx-resp-hd"><dt>content-type</dt><dd>{resp?.contentType ?? 'application/json'}</dd></dl>
                   <pre>{pretty(resp?.example || resp?.schema) || 'No example body is documented for this status.'}</pre>

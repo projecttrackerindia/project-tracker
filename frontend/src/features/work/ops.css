@@ -1,7 +1,7 @@
 /* Operations: views, bulk bar, board, triage, insights, settings */
 .ops-pick { width: 34px; text-align: center; }
 .ops-bulk { position: fixed; z-index: 60; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: calc(100vw - 32px);
-  padding: 8px 10px 8px 16px; border-radius: 16px; background: var(--panel-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg); animation: opsIn .18s ease; }
+  padding: 8px 10px 8px 16px; border-radius: 16px; background: var(--panel-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg); animation: opsIn var(--motion-standard) ease; }
 .ops-bulk b { font-size: 13px; margin-right: 4px; }
 .ops-bulk .select { width: auto; min-width: 112px; height: 32px; }
 @media (min-width: 761px) { .ops-bulk { flex-wrap: nowrap; white-space: nowrap; } }
@@ -10,7 +10,7 @@
 @keyframes opsIn { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
 
 .ops-board { display: grid; grid-template-columns: repeat(4, minmax(240px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 4px; }
-.ops-col { display: flex; flex-direction: column; min-height: 320px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--border); transition: border-color .12s ease, background .12s ease; }
+.ops-col { display: flex; flex-direction: column; min-height: 320px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--border); transition: border-color var(--motion-micro) ease, background var(--motion-micro) ease; }
 .ops-col.over { border-color: var(--primary); background: rgba(var(--accent-rgb), .06); }
 .ops-col header { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; font-size: 13px; }
 .ops-col header em { font-style: normal; font-size: 11.5px; color: var(--text-3); background: var(--surface-3); padding: 1px 8px; border-radius: 999px; }
@@ -21,7 +21,7 @@
 .ops-col-alert { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--danger-text); background: var(--danger-soft); padding: 1px 7px; border-radius: 999px; }
 .ops-col-body { display: grid; gap: 8px; padding: 4px 10px 12px; align-content: start; max-height: 70vh; overflow-y: auto; }
 .ops-col-empty { font-size: 12px; color: var(--text-3); text-align: center; padding: 22px 8px; border: 1px dashed var(--border); border-radius: 12px; margin: 0; }
-.ops-card { position: relative; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm); cursor: grab; transition: transform .12s ease, box-shadow .12s ease; touch-action: manipulation; }
+.ops-card { position: relative; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm); cursor: grab; transition: transform var(--motion-micro) ease, box-shadow var(--motion-micro) ease; touch-action: manipulation; }
 .ops-card:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
 .ops-card:before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--border); }
 .ops-card.p-Critical:before { background: #ef4444; } .ops-card.p-High:before { background: #f59e0b; } .ops-card.p-Medium:before { background: #38bdf8; }
@@ -120,7 +120,7 @@
 /* ---- the page: three places, a strip of counts that filter, one toolbar row, a lean table */
 .ops-tabs { margin-bottom: 16px; }
 .ops-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
-.ops-stat { display: flex; align-items: baseline; gap: 8px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color .15s, background .15s; }
+.ops-stat { display: flex; align-items: baseline; gap: 8px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text-2); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--motion-micro), background var(--motion-micro); }
 .ops-stat b { font-size: 22px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1; }
 .ops-stat span { font-size: 13px; font-weight: 550; }
 .ops-stat:hover { border-color: var(--primary); }
@@ -185,7 +185,7 @@
    ringed in blue; insights as white KPI cards without stripes; suggestions as soft pills.
    ===================================================================================================================== */
 .ops-strip { gap: 14px; }
-.ops-stat { flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 20px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); color: var(--ds-text); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow .16s var(--ds-ease), transform .16s var(--ds-ease); }
+.ops-stat { flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 20px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); color: var(--ds-text); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow var(--motion-micro) var(--ds-ease), transform var(--motion-micro) var(--ds-ease); }
 .ops-stat b { font-size: clamp(28px, 2.4vw, 36px); letter-spacing: -.03em; }
 .ops-stat span { font-size: 14px; font-weight: 500; color: var(--ds-text-2); }
 @media (hover: hover) { .ops-stat:hover { border-color: transparent; transform: translateY(-2px); box-shadow: var(--ds-hover-lift); } }

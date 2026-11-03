@@ -129,11 +129,11 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 .pp-jl ol { list-style: none; margin: 0; padding: 0; }
 .pp-rail, .pp-done { position: absolute; top: 22px; height: 3px; border-radius: 2px; left: 0; }
 .pp-rail { right: 0; background: var(--ds-fill); }
-.pp-done { background: var(--pa-tint); transition: width .5s cubic-bezier(.2,.8,.2,1); }
+.pp-done { background: var(--pa-tint); transition: width var(--motion-emphasised) var(--ease-standard); }
 .pp-nd { position: absolute; top: 0; width: 120px; margin-left: -60px; text-align: center; }
 .pp-nd-c { position: relative; width: 46px; height: 46px; border-radius: 50%; margin: 0 auto; display: grid; place-items: center; background: var(--ds-surface); color: var(--ds-text-3);
-  box-shadow: inset 0 0 0 2px var(--ds-fill-strong); font-size: 11px; font-weight: 700; transition: background .2s ease-out, color .2s ease-out, box-shadow .3s ease-out .5s, transform .15s; }
-.pp-nd.s .pp-nd-c { background: var(--pa-tint); color: #fff; box-shadow: 0 0 0 4px var(--ds-surface); transition: background .2s ease-out .5s, color .2s ease-out .5s, box-shadow .2s ease-out .5s, transform .15s; }
+  box-shadow: inset 0 0 0 2px var(--ds-fill-strong); font-size: 11px; font-weight: 700; transition: background var(--motion-standard) ease-out, color var(--motion-standard) ease-out, box-shadow var(--motion-emphasised) ease-out .5s, transform var(--motion-micro); }
+.pp-nd.s .pp-nd-c { background: var(--pa-tint); color: #fff; box-shadow: 0 0 0 4px var(--ds-surface); transition: background var(--motion-standard) ease-out .5s, color var(--motion-standard) ease-out .5s, box-shadow var(--motion-standard) ease-out .5s, transform var(--motion-micro); }
 .pp-nd.cur .pp-nd-c { color: var(--pa-tint); box-shadow: inset 0 0 0 2.5px var(--pa-tint), 0 0 0 6px color-mix(in srgb, var(--pa-tint) 14%, transparent), 0 0 22px 6px color-mix(in srgb, var(--pa-tint) 28%, transparent); }
 .pp-nd.press .pp-nd-c { transform: scale(.92); }
 .pp-nd-av.pa-av { position: absolute; right: -8px; bottom: -4px; width: 20px; height: 20px; font-size: 8.5px; border: 2px solid var(--ds-surface); }
@@ -205,14 +205,14 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 .pp-box[aria-label='Risks'] .pp-tx b { white-space: normal; }
 
 /* A status set by hand: one quiet line under the header; the sheet's three-way choice. */
-.ph-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: -4px 0 14px; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; background: var(--ds-fill); animation: ph-in .35s cubic-bezier(.32, .72, 0, 1) both; }
+.ph-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: -4px 0 14px; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; background: var(--ds-fill); animation: ph-in var(--motion-sheet) var(--ease-standard) both; }
 @keyframes ph-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .ph-banner b { font-weight: 700; } .ph-banner span { color: var(--ds-text-2); flex: 1; min-width: 200px; }
 .ph-banner.ok { background: rgba(40, 205, 65, .1); } .ph-banner.ok b { color: #127a26; }
 .ph-banner.risk { background: rgba(255, 159, 10, .12); } .ph-banner.risk b { color: #a35c00; }
 .ph-banner.late { background: rgba(255, 59, 48, .1); } .ph-banner.late b { color: #c11b10; }
 .ph-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
-.ph-seg button { height: 40px; border: 0; border-radius: 10px; background: var(--ds-fill); color: var(--ds-text); font: inherit; font-weight: 600; cursor: pointer; transition: background .2s, box-shadow .2s; }
+.ph-seg button { height: 40px; border: 0; border-radius: 10px; background: var(--ds-fill); color: var(--ds-text); font: inherit; font-weight: 600; cursor: pointer; transition: background var(--motion-standard), box-shadow var(--motion-standard); }
 .ph-seg button.on.ok { background: rgba(40, 205, 65, .18); box-shadow: inset 0 0 0 1.5px #28cd41; }
 .ph-seg button.on.risk { background: rgba(255, 159, 10, .2); box-shadow: inset 0 0 0 1.5px #ff9f0a; }
 .ph-seg button.on.late { background: rgba(255, 59, 48, .14); box-shadow: inset 0 0 0 1.5px #ff3b30; }

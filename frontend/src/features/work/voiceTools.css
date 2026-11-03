@@ -30,7 +30,7 @@
 .va-calls.compact li button { padding: 8px 6px; }
 
 .va-savebar { position: sticky; bottom: 12px; margin-top: 4px; display: flex; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; border-radius: 14px;
-  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,.12)); transform: translateY(12px); opacity: 0; pointer-events: none; transition: .18s ease; z-index: 3; }
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,.12)); transform: translateY(12px); opacity: 0; pointer-events: none; transition: var(--motion-standard) ease; z-index: 3; }
 .va-savebar.show { transform: none; opacity: 1; pointer-events: auto; }
 .va-savebar span { flex: 1; font-weight: 600; font-size: 13.5px; }
 
@@ -102,7 +102,7 @@
 
 .vb-rail { position: sticky; top: 72px; display: flex; flex-direction: column; }
 .vb-rail-item { display: flex; flex-direction: column; align-items: stretch; }
-.vb-node { display: flex; gap: 10px; align-items: center; text-align: left; padding: 10px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); font: inherit; color: var(--text); cursor: pointer; transition: .15s; }
+.vb-node { display: flex; gap: 10px; align-items: center; text-align: left; padding: 10px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); font: inherit; color: var(--text); cursor: pointer; transition: var(--motion-micro); }
 .vb-node:hover { border-color: color-mix(in srgb, var(--primary) 50%, var(--border)); }
 .vb-node.on { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent); }
 .vb-node-ic { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); flex: none; }

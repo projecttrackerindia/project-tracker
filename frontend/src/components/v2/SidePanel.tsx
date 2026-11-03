@@ -2,7 +2,7 @@ import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, useDragControls, useReducedMotion } from 'framer-motion';
 import { Icon } from '../Icon';
-import { spring } from '../../lib/motion';
+import { instant, presets, t } from '../../lib/motion';
 import type { SaveState } from './state';
 import './v2.css';
 
@@ -43,7 +43,7 @@ export function SidePanel({ title, eyebrow, ai, state = 'idle', width, flush, do
     <>
       {!docked && <div className="v2-panel-scrim" onMouseDown={onClose} aria-hidden="true" />}
       <motion.aside className={`v2-panel ${docked ? 'docked' : ''}`}
-        initial={still ? { opacity: 0 } : { x: 48, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={still ? { duration: 0 } : spring.panel}
+        initial={still ? { opacity: 0 } : presets.panel.initial} animate={presets.panel.animate} transition={still ? instant : t.sheet}
         // Drag the head to the right (past 120px) to close; the body keeps its own scrolling and text selection.
         drag={still ? false : 'x'} dragListener={false} dragControls={drag} dragConstraints={{ left: 0, right: 0 }} dragElastic={{ left: 0, right: 0.9 }} dragMomentum={false}
         onDragEnd={(_, info) => { if (info.offset.x > 120) closeRef.current(); }}

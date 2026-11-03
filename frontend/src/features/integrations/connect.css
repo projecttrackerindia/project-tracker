@@ -43,7 +43,7 @@ html .cn-sub { color: var(--ds-text-3); font-size: 15px; line-height: 1.5; }
 html .cn-field { font-size: 13px; font-weight: 500; color: var(--ds-text-3); }
 html .cn-app, html .cn-us { border-radius: 16px; }
 html .cn-scopes { gap: 10px; }
-html .cn-scopes button { border: 0; border-radius: 18px; background: var(--ds-fill); padding: 16px 18px; transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+html .cn-scopes button { border: 0; border-radius: 18px; background: var(--ds-fill); padding: 16px 18px; transition: background-color var(--motion-micro) var(--ds-ease), box-shadow var(--motion-standard) var(--ds-ease); }
 html .cn-scopes button:hover:not(.on) { background: var(--ds-fill-strong); }
 html .cn-scopes button b, html .cn-scopes button strong { font-size: 15px; font-weight: 600; }
 html .cn-scopes button small { font-size: 13px; color: var(--ds-text-3); }

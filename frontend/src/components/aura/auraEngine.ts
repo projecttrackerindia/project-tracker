@@ -42,6 +42,11 @@ export const auraReduced = () => !!reducedQuery?.matches;
 
 /** The canvas is larger than the orb's box (the glow and the rings spill past it): the sphere's diameter is this share of the canvas. */
 export const AURA_SPHERE = 0.44;
+/** Idle motion: the orb is drawn at most this many frames a second, and its clock runs at this share of real time. */
+export const AURA_FPS = 30;
+export const AURA_FRAME_MS = 1000 / AURA_FPS;
+export const AURA_TIME = 0.45;
+export const AURA_MAX_SPD = 1.2;
 
 export class AuraRenderer {
   readonly cv: HTMLCanvasElement;
@@ -67,7 +72,7 @@ export class AuraRenderer {
     if (now) this.cur = stateOf(m);
     this.dirty = true; wake();
   }
-  kick(v = 1) { this.pulse = Math.min(1.5, this.pulse + v); this.dirty = true; wake(); }
+  kick(v = 1) { this.pulse = Math.min(.6, this.pulse + v * .5); this.dirty = true; wake(); }
   /** Whether the colours are still on their way to the mood's (Reduce Motion keeps drawing only until they arrive). */
   settling() { const a = this.cur, b = this.target; return Math.abs(a.glow - b.glow) > .01 || a.pal.some((p, i) => Math.abs(p[0] - b.pal[i][0]) + Math.abs(p[1] - b.pal[i][1]) + Math.abs(p[2] - b.pal[i][2]) > 2) || this.pulse > .02; }
 
@@ -76,8 +81,9 @@ export class AuraRenderer {
     const c = this.cur, g = this.target, k = 1 - Math.pow(.02, dt);
     c.pal = c.pal.map((p, i) => mix(p, g.pal[i], k));
     c.spd += (g.spd - c.spd) * k; c.amp += (g.amp - c.amp) * k; c.glow += (g.glow - c.glow) * k; c.rings += (g.rings - c.rings) * k;
-    const spd = still ? .05 : c.spd, amp = still ? .02 : c.amp;
-    this.t += dt * (.4 + spd * 1.6);
+    const spd = still ? .05 : c.spd, amp = still ? .02 : Math.min(c.amp, .14) * .7;
+    // Slow, liquid idle: time runs at a fraction of the mood's speed, and even the busiest mood never spins fast.
+    this.t += dt * AURA_TIME * (.4 + Math.min(spd, AURA_MAX_SPD) * 1.2);
     this.pulse *= Math.pow(.08, dt);
     const lk = 1 - Math.pow(.01, dt);
     this.lean = [this.lean[0] + (this.leanT[0] - this.lean[0]) * lk, this.lean[1] + (this.leanT[1] - this.lean[1]) * lk];
@@ -156,13 +162,14 @@ function aim(o: AuraRenderer) {
 
 function loop(now: number) {
   raf = 0;
-  const dt = Math.min(.05, (now - last) / 1000 || .016); last = now;
   if (typeof document !== 'undefined' && document.hidden) return;   // visibilitychange wakes it again
   const still = auraReduced();
+  // Skipped frames (the 30fps cap) do not advance the clock: dt is measured between drawn frames, so motion stays even.
+  if (!still && now - lastDraw < AURA_FRAME_MS - 1) { raf = requestAnimationFrame(loop); return; }
+  const dt = Math.min(.05, (now - last) / 1000 || .016); last = now;
   let more = false;
   // Reduce Motion: about 8 frames a second, and only while the colour is still changing.
   const throttled = still && now - lastStill < 120;
-  if (!still && now - lastDraw < 30) { raf = requestAnimationFrame(loop); return; }   // about 30 frames a second is plenty for slow liquid
   if (!still) lastDraw = now;
   for (const o of orbs) {
     if (!o.visible) continue;

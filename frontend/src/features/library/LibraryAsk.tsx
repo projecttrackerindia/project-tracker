@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { instant, presets, staggerDelay, t } from '../../lib/motion';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -53,7 +54,7 @@ export function AskDocs({ typeOf, onAsking, onQuery, onAsked, placeholder = 'Ask
   useEffect(() => { onAsked?.(asked); }, [asked, onAsked]);
   const a = state.answer;
   const cites = a ? a.citations.filter((c, i, all) => all.findIndex((x) => x.documentId === c.documentId) === i).slice(0, 3) : [];
-  const spring = still ? { duration: 0 } : { type: 'spring' as const, duration: 0.38, bounce: 0.12 };
+  const spring = still ? instant : t.emphasised;
   return (
     <div className={`lb-askwrap${hero ? ' hero' : ''}`}>
       <form className={`lb-q${asked ? ' on' : ''}`} role="search" onSubmit={(e) => { e.preventDefault(); const t = q.trim(); if (t.length >= 3) setAsked(t); }}>
@@ -65,10 +66,10 @@ export function AskDocs({ typeOf, onAsking, onQuery, onAsked, placeholder = 'Ask
       <AnimatePresence initial={false}>
         {asked && (
           <motion.section key={asked} className="lb-ans" aria-live="polite" aria-label="Answer from your docs"
-            initial={still ? false : { clipPath: 'inset(0 0 100% 0 round 18px)', opacity: 0.6, scaleY: 0.97 }}
-            animate={{ clipPath: 'inset(0 0 0% 0 round 18px)', opacity: 1, scaleY: 1 }}
-            exit={still ? { opacity: 0 } : { clipPath: 'inset(0 0 100% 0 round 18px)', opacity: 0 }} transition={spring} style={{ transformOrigin: 'top center' }}>
-            <motion.div initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={still ? { duration: 0 } : { duration: 0.2, delay: 0.12 }}>
+            initial={still ? false : presets.fadeScale.initial}
+            animate={presets.fadeScale.animate}
+            exit={still ? { opacity: 0 } : presets.fadeScale.exit} transition={spring} style={{ transformOrigin: 'top center' }}>
+            <motion.div initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={still ? instant : t.enter}>
               {state.busy ? <p className="lb-ans-busy"><Spinner /> Reading the pages you can open…</p>
                 : state.error ? <p className="lb-ans-err" role="alert">{state.error}</p>
                   : a && (
@@ -78,8 +79,8 @@ export function AskDocs({ typeOf, onAsking, onQuery, onAsked, placeholder = 'Ask
                       {cites.length > 0 && (
                         <ul className="lb-cites" aria-label="Sources">
                           {cites.map((c, i) => (
-                            <motion.li key={c.n} initial={still ? false : { opacity: 0, y: 26, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-                              transition={still ? { duration: 0 } : { type: 'spring', duration: 0.38, bounce: 0.15, delay: 0.18 + i * 0.06 }}>
+                            <motion.li key={c.n} initial={still ? false : presets.slideUp.initial} animate={presets.slideUp.animate}
+                              transition={still ? instant : { ...t.enter, delay: staggerDelay(i) }}>
                               <Link className="lb-cite" to={`/library/docs/${c.documentId}#b-${c.block}`} title={c.snippet}>
                                 <span className={`lb-mc s-${shelfOf(typeOf(c.documentId) ?? '')}`} aria-hidden="true" />
                                 <span><b>{c.title}</b><small>§ {c.key}</small></span>

@@ -30,7 +30,7 @@ html[data-theme='dark'] .hm-ai-brow { color: #A5A3FF; }
 .hm-week { padding: 14px; }
 .hm-week-nav { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-bottom: 10px; }
 .hm-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
-.hm-day { min-height: 260px; padding: 10px 8px; border-radius: 16px; background: var(--ds-surface-2); display: flex; flex-direction: column; min-width: 0; border: 1.5px solid transparent; transition: border-color .2s var(--ds-ease), background .2s var(--ds-ease); }
+.hm-day { min-height: 260px; padding: 10px 8px; border-radius: 16px; background: var(--ds-surface-2); display: flex; flex-direction: column; min-width: 0; border: 1.5px solid transparent; transition: border-color var(--motion-standard) var(--ds-ease), background var(--motion-standard) var(--ds-ease); }
 .hm-day.today { border-color: var(--ds-accent); background: var(--ds-surface); }
 .hm-day.focus { border-color: var(--hm-violet); background: var(--hm-violet-soft); }
 .hm-dow { font-size: 12px; color: var(--ds-text-3); }
@@ -84,7 +84,7 @@ html[data-theme='dark'] .hm { --t2: #a1a1a6; --t3: #8e8e93; --fill: rgba(118, 11
 /* the briefing: a light AI card */
 .hm-brief { display: flex; gap: 12px; align-items: center; padding: 14px 18px; margin-bottom: 18px; border-radius: 18px;
   background: linear-gradient(135deg, rgba(94, 92, 230, .10), rgba(191, 90, 242, .07) 55%, rgba(255, 55, 95, .05)); box-shadow: inset 0 0 0 .5px rgba(94, 92, 230, .22);
-  animation: ds-enter .3s var(--ds-ease) both; }
+  animation: ds-enter var(--motion-emphasised) var(--ds-ease) both; }
 .hm-brief p { flex: 1; margin: 0; font-size: 15px; line-height: 1.45; color: var(--ds-text); min-width: 0; }
 .hm-brief p b { font-weight: 600; }
 .hm-brief.loading p { color: var(--t3); }
@@ -111,7 +111,7 @@ html[data-theme='dark'] .hm { --t2: #a1a1a6; --t3: #8e8e93; --fill: rgba(118, 11
 .hm-day-track { position: relative; height: 84px; }
 .hm-lane { position: absolute; left: 0; right: 0; height: 38px; border-radius: 12px; background: var(--fill2); }
 .hm-lane.a { top: 0; } .hm-lane.b { top: 46px; }
-.hm-cap { position: absolute; height: 38px; border-radius: 11px; padding: 6px 10px; font-size: 12px; font-weight: 600; line-height: 1.25; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-decoration: none; transition: transform .15s var(--ds-ease); }
+.hm-cap { position: absolute; height: 38px; border-radius: 11px; padding: 6px 10px; font-size: 12px; font-weight: 600; line-height: 1.25; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-decoration: none; transition: transform var(--motion-micro) var(--ds-ease); }
 .hm-cap small { display: block; font-weight: 500; opacity: .8; font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
 a.hm-cap:hover { transform: translateY(-1px); }
 .hm-cap[class*=' m-'] { min-width: 96px; }
@@ -133,7 +133,7 @@ html[data-theme='dark'] .hm-cap.inc { color: #ff6961; } html[data-theme='dark'] 
 .hm-lh .hm-faint { font-size: 12.5px; }
 .hm-inbox .hm-chips { padding: 0 20px; }
 .hm-rows { list-style: none; margin: 0; padding: 0; }
-.hm-row { display: flex; align-items: center; gap: 14px; padding: 11px 20px; position: relative; transition: opacity .5s var(--ds-ease); }
+.hm-row { display: flex; align-items: center; gap: 14px; padding: 11px 20px; position: relative; transition: opacity var(--motion-emphasised) var(--ds-ease); }
 .hm-row + .hm-row::before { content: ''; position: absolute; left: 54px; right: 20px; top: 0; height: .5px; background: rgba(0, 0, 0, .08); }
 html[data-theme='dark'] .hm-row + .hm-row::before { background: rgba(255, 255, 255, .1); }
 .hm-row.done { opacity: .35; }
@@ -149,7 +149,7 @@ a.hm-row-title:hover { color: var(--ds-accent); }
 .hm-breach { font-style: normal; font-weight: 600; color: var(--ds-text-2, var(--t2)); font-variant-numeric: tabular-nums; }
 .hm-breach.soon { color: var(--ds-danger); }
 .hm-row-acts { display: flex; gap: 6px; align-items: center; flex: none; }
-.hm-later { background: none; color: var(--t2); opacity: 0; transition: opacity .15s var(--ds-ease); }
+.hm-later { background: none; color: var(--t2); opacity: 0; transition: opacity var(--motion-micro) var(--ds-ease); }
 .hm-row:hover .hm-later, .hm-row:focus-within .hm-later { opacity: 1; }
 .hm-later:hover:not(:disabled) { background: var(--fill2); }
 @media (hover: none) { .hm-later { opacity: 1; } }

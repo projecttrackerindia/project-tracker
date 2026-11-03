@@ -3,6 +3,15 @@
    Ported from the reference productivity app.
    ============================================================ */
 :root {
+  /* ---- Motion: one calm system (mirrors src/lib/motion.ts). Transform and opacity only; nothing overshoots. ---- */
+  --motion-micro: 120ms;              /* hovers, presses, toggles */
+  --motion-standard: 200ms;           /* most UI: menus, tabs, popovers, toasts */
+  --motion-emphasised: 280ms;         /* cards and panels that change place */
+  --motion-sheet: 340ms;              /* large sheets and side panels */
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-decel: cubic-bezier(0, 0, 0, 1);      /* entering */
+  --ease-accel: cubic-bezier(.3, 0, 1, 1);     /* leaving */
+  --motion-stagger: 30ms;
   /* ---- Professional theme: neutral slate surfaces, solid (no glass), one restrained indigo accent. ---- */
   --bg: #f4f6f9;
   --chrome: #ffffff;                  /* sidebar and top bar */

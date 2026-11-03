@@ -13,7 +13,7 @@
 /* ------------------------------------------------------------------ status counts (also the filter) */
 .pj2-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
 .pj2-stat { display: grid; gap: 6px; justify-items: start; padding: 22px 24px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); color: var(--ds-text);
-  font: inherit; text-align: left; cursor: pointer; box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow .18s var(--ds-ease), transform .18s var(--ds-ease); }
+  font: inherit; text-align: left; cursor: pointer; box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow var(--motion-standard) var(--ds-ease), transform var(--motion-standard) var(--ds-ease); }
 .pj2-stat:hover { box-shadow: var(--ds-hover-lift); }
 .pj2-stat:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 .pj2-stat.on, .pj2-stat[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--ds-text); }
@@ -29,7 +29,7 @@
 /* ------------------------------------------------------------------ simple cards */
 .pj2-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
 .pj2-card { display: grid; gap: 10px; padding: 22px 24px 20px; border-radius: var(--ds-r-card); background: var(--ds-surface); color: var(--ds-text); text-decoration: none; min-width: 0;
-  box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow .18s var(--ds-ease), transform .18s var(--ds-ease); }
+  box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow var(--motion-standard) var(--ds-ease), transform var(--motion-standard) var(--ds-ease); }
 .pj2-card:hover { box-shadow: var(--ds-hover-lift); transform: translateY(-1px); }
 .pj2-card:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 .pj2-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
@@ -38,7 +38,7 @@
 .pj2-foot { font-size: 14px; color: var(--ds-text-3); font-variant-numeric: tabular-nums; }
 .pj2-foot .late { color: var(--ds-danger); }
 .pj2-bar { display: block; height: 6px; border-radius: 3px; background: var(--ds-fill); overflow: hidden; margin-top: 6px; }
-.pj2-bar > i { display: block; height: 100%; border-radius: 3px; background: var(--ds-text-4); max-width: 100%; transition: width .5s var(--ds-ease); }
+.pj2-bar > i { display: block; height: 100%; border-radius: 3px; background: var(--ds-text-4); max-width: 100%; transition: width var(--motion-emphasised) var(--ds-ease); }
 .pj2-bar.ok > i { background: var(--ds-success); } .pj2-bar.risk > i { background: #E8A33D; } .pj2-bar.late > i { background: var(--ds-danger); } .pj2-bar.done > i { background: var(--ds-accent-fill); }
 .pj2-pill { flex: none; display: inline-flex; align-items: center; padding: 3px 10px; border-radius: var(--ds-r-pill); font-size: 12.5px; font-weight: 600; white-space: nowrap; background: var(--ds-fill); color: var(--ds-text-2); }
 .pj2-pill.ok { background: var(--ds-success-bg); color: var(--ds-success); }
@@ -175,7 +175,7 @@
 /* passes */
 .pa-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .pa-pass { position: relative; display: block; height: 282px; border-radius: 20px; color: #fff; padding: 18px 18px 0; overflow: hidden; text-decoration: none; min-width: 0;
-  box-shadow: 0 10px 24px -12px var(--c), 0 1px 2px rgba(0,0,0,.08); transition: box-shadow .3s; cursor: pointer; }
+  box-shadow: 0 10px 24px -12px var(--c), 0 1px 2px rgba(0,0,0,.08); transition: box-shadow var(--motion-emphasised); cursor: pointer; }
 .pa-pass:after { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 60% at 0% 0%, rgba(255,255,255,.22), transparent 60%); pointer-events: none; }
 .pa-pass:hover { box-shadow: 0 16px 30px -14px var(--c), 0 1px 2px rgba(0,0,0,.08); }
 .pa-pass.lifted { z-index: 6; box-shadow: 0 30px 50px -20px var(--c); }
@@ -216,7 +216,7 @@
 
 /* board: status columns of compact cards */
 .pb-board { display: grid; grid-template-columns: repeat(5, minmax(176px, 1fr)); gap: 14px; overflow-x: auto; padding-bottom: 6px; align-items: start; }
-.pb-col { background: color-mix(in srgb, var(--ds-text) 4%, transparent); border-radius: 16px; padding: 10px; min-height: 180px; transition: background .15s, box-shadow .15s; }
+.pb-col { background: color-mix(in srgb, var(--ds-text) 4%, transparent); border-radius: 16px; padding: 10px; min-height: 180px; transition: background var(--motion-micro), box-shadow var(--motion-micro); }
 .pb-col.can-drop { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ds-accent) 35%, transparent); }
 .pb-col.no-drop { opacity: .55; }
 .pb-col.over { background: color-mix(in srgb, var(--ds-accent) 10%, transparent); box-shadow: inset 0 0 0 2px var(--ds-accent); }
@@ -244,7 +244,7 @@
 
 /* Stage names under the pass dots (apple/s-projects) */
 .pa-foot > span:first-child { min-width: 0; flex: 1; }
-.pa-gn { display: flex; gap: 6px; flex-wrap: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); margin-top: 5px; font-size: 10.5px; font-weight: 500; line-height: 1.2; opacity: .75; max-width: 100%; animation: pa-gn-in .3s ease both; }
+.pa-gn { display: flex; gap: 6px; flex-wrap: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); margin-top: 5px; font-size: 10.5px; font-weight: 500; line-height: 1.2; opacity: .75; max-width: 100%; animation: pa-gn-in var(--motion-emphasised) ease both; }
 .pa-gn span { white-space: nowrap; }
 .pa-gn span.f { display: none; }
 .pa-gn span.cur { opacity: 1; font-weight: 700; }

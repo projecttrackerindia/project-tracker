@@ -7,7 +7,7 @@
 .auth-shell .auth-bg, .auth-shell .auth-glow, .auth-shell .auth-beam, .auth-card::before, .auth-card::after, .auth-submit::before, .auth-submit::after, .auth-ripple { display: none !important; }
 
 /* the card */
-.auth-shell .auth-card { border: 0; border-radius: var(--ds-r-hero); background: var(--ds-surface); box-shadow: var(--ds-e4); padding: 40px 36px 32px; animation: ds-enter .3s var(--ds-ease) both; }
+.auth-shell .auth-card { border: 0; border-radius: var(--ds-r-hero); background: var(--ds-surface); box-shadow: var(--ds-e4); padding: 40px 36px 32px; animation: ds-enter var(--motion-emphasised) var(--ds-ease) both; }
 html[data-theme='dark'] .auth-shell .auth-card { background: var(--ds-surface); }
 .auth-shell .auth-brand { gap: 12px; margin-bottom: 30px; }
 .auth-shell .auth-brand .brand-mark { background: var(--ds-dark); color: var(--ds-on-dark); border-radius: 10px; }
@@ -67,7 +67,7 @@ html[data-theme='dark'] .auth-shell .auth-field:hover { background: var(--ds-sur
   --av-window: #161618; --av-card: #2C2C2E; --av-card-border: rgba(255, 255, 255, .06); --av-lane: #1C1C1E; --av-widget: #1C1C1E;
 }
 @media (min-width: 1040px) {
-  .auth-split > .auth-visual { background: #000; border: 0; animation: ds-fade .4s var(--ds-ease) both; padding: clamp(28px, 3vw, 48px) clamp(28px, 3.4vw, 56px); }
+  .auth-split > .auth-visual { background: #000; border: 0; animation: ds-fade var(--motion-emphasised) var(--ds-ease) both; padding: clamp(28px, 3vw, 48px) clamp(28px, 3.4vw, 56px); }
   /* two quiet pools of light: blue at the top right, violet at the bottom left */
   .auth-split > .auth-visual::before { background: radial-gradient(55% 45% at 85% 0%, rgba(41, 151, 255, .28), transparent 70%), radial-gradient(50% 45% at 0% 100%, rgba(94, 92, 230, .26), transparent 70%); }
   .auth-split > .auth-visual::after, [data-theme='dark'] .auth-split > .auth-visual::after { display: none; }
@@ -76,7 +76,7 @@ html[data-theme='dark'] .auth-shell .auth-field:hover { background: var(--ds-sur
 .auth-visual .av-brand .brand-mark { background: #2C2C2E; color: #fff; }
 .auth-visual .av-trust li { color: #A1A1A6; font-weight: 500; }
 .auth-visual .av-trust li svg, [data-theme='dark'] .auth-visual .av-trust li svg { color: #30D158; }
-.auth-visual .av-copy > * { animation: ds-enter .5s var(--ds-ease) both; }
+.auth-visual .av-copy > * { animation: ds-enter var(--motion-emphasised) var(--ds-ease) both; }
 .auth-visual .av-eyebrow { display: block; margin-bottom: 14px; font-size: 15px; font-weight: 600; color: #2997FF; }
 .auth-visual .av-copy h2 { display: flex; flex-direction: column; font-size: clamp(36px, min(4.4vw, 6.4vh), 72px); font-weight: 700; letter-spacing: -.035em; line-height: 1.04; color: #F5F5F7; margin: 0 0 18px; }
 .auth-visual .av-copy h2 .av-quiet { color: #86868B; }

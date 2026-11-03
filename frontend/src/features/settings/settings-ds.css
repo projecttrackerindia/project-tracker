@@ -72,7 +72,7 @@ html .section-body .card-head h3 > svg { color: var(--ds-accent); }
 /* choices: soft tiles; the chosen one white with a blue ring and a soft glow */
 html .method-picker { gap: 12px; }
 html .method-option, html .vis-option, html .own-key-provider {
-  border: 0; border-radius: 18px; background: var(--ds-fill); padding: 18px 20px; gap: 4px; box-shadow: none; transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+  border: 0; border-radius: 18px; background: var(--ds-fill); padding: 18px 20px; gap: 4px; box-shadow: none; transition: background-color var(--motion-micro) var(--ds-ease), box-shadow var(--motion-standard) var(--ds-ease); }
 html .method-option:hover:not(.on):not(:disabled), html .vis-option:hover:not(.on):not(:disabled), html .own-key-provider:hover:not(.on) { background: var(--ds-fill-strong); }
 html .method-option b, html .vis-option b, html .own-key-provider b { font-size: 15px; font-weight: 600; color: var(--ds-text); }
 html .method-option span, html .vis-option span, html .own-key-provider small { font-size: 13px; color: var(--ds-text-3); line-height: 1.45; }
@@ -84,7 +84,7 @@ html .vis-options { gap: 14px; }
 
 /* members' account security: the four counts as KPI tiles that filter the table below */
 html .mss-kpis { gap: 14px; }
-html .mss-kpi { border: 0; border-radius: 18px; background: var(--ds-fill); padding: 16px 18px; gap: 4px; box-shadow: none; transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+html .mss-kpi { border: 0; border-radius: 18px; background: var(--ds-fill); padding: 16px 18px; gap: 4px; box-shadow: none; transition: background-color var(--motion-micro) var(--ds-ease), box-shadow var(--motion-standard) var(--ds-ease); }
 html .mss-kpi:hover:not(.on) { background: var(--ds-fill-strong); }
 html .mss-kpi b { font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1.05; }
 html .mss-kpi span { font-size: 13px; color: var(--ds-text-3); }
@@ -99,8 +99,8 @@ html .own-key-toggle b { font-size: 15px; font-weight: 500; }
 html .own-key-toggle small { font-size: 13px; color: var(--ds-text-3); }
 html .own-key-toggle input[type='checkbox'] {
   appearance: none; -webkit-appearance: none; position: relative; flex: none; order: 2; margin: 0 0 0 auto; width: 46px; height: 28px; border-radius: 999px;
-  background: var(--ds-fill-strong); cursor: pointer; transition: background-color .2s var(--ds-ease); }
-html .own-key-toggle input[type='checkbox']::after { content: ''; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, .18); transition: transform .26s var(--ds-spring); }
+  background: var(--ds-fill-strong); cursor: pointer; transition: background-color var(--motion-standard) var(--ds-ease); }
+html .own-key-toggle input[type='checkbox']::after { content: ''; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, .18); transition: transform var(--motion-emphasised) var(--ds-spring); }
 html .own-key-toggle input[type='checkbox']:checked { background: #34C759; }
 html[data-theme='dark'] .own-key-toggle input[type='checkbox'] { background: #39393D; }
 html[data-theme='dark'] .own-key-toggle input[type='checkbox']:checked { background: #30D158; }
@@ -111,8 +111,8 @@ html .own-key-state, html .own-key-ok { border: 0; border-radius: 14px; }
 /* notification defaults for members: the channel grid uses switches like the person's own delivery grid */
 html .nd-table input[type='checkbox'] {
   appearance: none; -webkit-appearance: none; position: relative; width: 46px; height: 28px; margin: 0; border-radius: 999px; vertical-align: middle;
-  background: var(--ds-fill-strong); cursor: pointer; transition: background-color .2s var(--ds-ease); }
-html .nd-table input[type='checkbox']::after { content: ''; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, .18); transition: transform .26s var(--ds-spring); }
+  background: var(--ds-fill-strong); cursor: pointer; transition: background-color var(--motion-standard) var(--ds-ease); }
+html .nd-table input[type='checkbox']::after { content: ''; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, .18); transition: transform var(--motion-emphasised) var(--ds-spring); }
 html .nd-table input[type='checkbox']:checked { background: #34C759; }
 html[data-theme='dark'] .nd-table input[type='checkbox'] { background: #39393D; }
 html[data-theme='dark'] .nd-table input[type='checkbox']:checked { background: #30D158; }
@@ -169,7 +169,7 @@ html .plan-price { font-size: 34px; font-weight: 700; letter-spacing: -.03em; }
 html .ca-meetings { border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); }
 html .ca-meetings-head { font-size: 14px; color: var(--ds-text-3); }
 html .ca-services { gap: 12px; }
-html .ca-service { border: 0; border-radius: 18px; background: var(--ds-fill); box-shadow: none; transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+html .ca-service { border: 0; border-radius: 18px; background: var(--ds-fill); box-shadow: none; transition: background-color var(--motion-micro) var(--ds-ease), box-shadow var(--motion-standard) var(--ds-ease); }
 html .ca-service:hover:not(:disabled):not(.on):not([aria-pressed='true']):not([aria-checked='true']) { background: var(--ds-fill-strong); }
 html .ca-service.on, html .ca-service[aria-pressed='true'], html .ca-service[aria-checked='true'] { background: var(--ds-surface); border: 0; box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
 html .ca-service:disabled, html .ca-service[aria-disabled='true'] { opacity: .55; }

@@ -152,7 +152,7 @@ html[data-theme='dark'] .mt-kind button[aria-pressed=true] { background: #636366
 .mt-notetaker { border: 0; padding: 0; margin: 0 0 16px; }
 .mt-notetaker legend { padding: 0; margin-bottom: 8px; font-size: 13px; font-weight: 500; color: var(--ds-text-3); }
 .mt-choices { gap: 8px; }
-.mt-choice { gap: 12px; padding: 14px 16px; border: 0; border-radius: 16px; background: var(--ds-fill); transition: background-color .16s var(--ds-ease), box-shadow .2s var(--ds-ease); }
+.mt-choice { gap: 12px; padding: 14px 16px; border: 0; border-radius: 16px; background: var(--ds-fill); transition: background-color var(--motion-micro) var(--ds-ease), box-shadow var(--motion-standard) var(--ds-ease); }
 .mt-choice:hover:not(.off) { background: var(--ds-fill-strong); }
 .mt-choice.on, .mt-choice.on:hover { background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
 .mt-choice input { accent-color: var(--ds-accent); }

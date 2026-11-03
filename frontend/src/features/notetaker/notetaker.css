@@ -94,7 +94,7 @@ html[data-theme='dark'] .nt-field input, html[data-theme='dark'] .nt-field texta
 .nt-toggle { border: 0; border-radius: 16px; background: var(--ds-fill); padding: 14px 16px; }
 .nt-toggle small { color: var(--ds-text-3); font-size: 13px; }
 .nt-presets { gap: 10px; }
-.nt-presets button { border: 0; border-radius: 16px; background: var(--ds-fill); padding: 14px 16px; transition: box-shadow .2s var(--ds-ease), background-color .16s var(--ds-ease); }
+.nt-presets button { border: 0; border-radius: 16px; background: var(--ds-fill); padding: 14px 16px; transition: box-shadow var(--motion-standard) var(--ds-ease), background-color var(--motion-micro) var(--ds-ease); }
 .nt-presets button:hover:not(:disabled) { background: var(--ds-fill-strong); }
 .nt-presets button b, .nt-presets button > span:first-child { font-weight: 600; }
 .nt-presets button small { color: var(--ds-text-3); font-size: 13px; }

@@ -14,7 +14,7 @@ body {
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color .3s ease, color .25s ease;
+  transition: background-color var(--motion-emphasised) ease, color var(--motion-emphasised) ease;
 }
 #root { min-height: 100%; }
 h1, h2, h3, h4, h5, h6, p, ul, ol { margin: 0; padding: 0; }
@@ -54,7 +54,7 @@ svg { display: block; flex-shrink: 0; }
   position: fixed;
   inset: 0 auto 0 0;
   z-index: 60;
-  transition: width .22s ease, transform .22s ease;
+  transition: width var(--motion-standard) ease, transform var(--motion-standard) ease;
 }
 .sidebar-brand {
   display: flex; align-items: center; gap: 10px;
@@ -80,7 +80,7 @@ svg { display: block; flex-shrink: 0; }
   padding: 9px 11px; border-radius: 11px;
   color: var(--text-2); font-weight: 500; font-size: 13.5px;
   width: 100%; text-align: left;
-  transition: background .12s, color .12s;
+  transition: background var(--motion-micro), color var(--motion-micro);
   white-space: nowrap; overflow: hidden; position: relative;
 }
 .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
@@ -110,7 +110,7 @@ svg { display: block; flex-shrink: 0; }
 .sidebar-overlay.show { display: block; }
 
 /* ---------------- MAIN + TOPBAR ---------------- */
-.main { flex: 1; min-width: 0; margin-left: var(--sidebar-w); display: flex; flex-direction: column; transition: margin-left .22s ease; }
+.main { flex: 1; min-width: 0; margin-left: var(--sidebar-w); display: flex; flex-direction: column; transition: margin-left var(--motion-standard) ease; }
 .main.expanded { margin-left: var(--sidebar-w-collapsed); }
 
 .topbar {
@@ -122,7 +122,7 @@ svg { display: block; flex-shrink: 0; }
 }
 .icon-btn {
   width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center;
-  color: var(--text-2); position: relative; transition: background .16s, color .16s, box-shadow .16s; flex-shrink: 0;
+  color: var(--text-2); position: relative; transition: background var(--motion-micro), color var(--motion-micro), box-shadow var(--motion-micro); flex-shrink: 0;
 }
 .icon-btn:hover { background: var(--hover-bg); color: var(--text); box-shadow: none; }
 .icon-btn svg { width: 19px; height: 19px; }
@@ -132,7 +132,7 @@ svg { display: block; flex-shrink: 0; }
 .global-search input {
   width: 100%; height: 38px; padding: 0 14px 0 38px; border-radius: 11px;
   border: 1px solid var(--field-border); background: var(--field-bg);
-  font-size: 13.5px; outline: none; transition: border-color .16s, box-shadow .16s, background .16s;
+  font-size: 13.5px; outline: none; transition: border-color var(--motion-micro), box-shadow var(--motion-micro), background var(--motion-micro);
 }
 .global-search input::placeholder { color: var(--text-3); }
 .global-search input:focus { border-color: rgba(var(--accent-rgb), .55); background: var(--field-focus-bg); box-shadow: none; }
@@ -151,7 +151,7 @@ svg { display: block; flex-shrink: 0; }
 /* The bell's panel: held to the window's right edge (the bell sits near it) so it never runs off screen; tall enough to read a few items. */
 .dropdown-panel.notif-panel { position: fixed; top: calc(var(--topbar-h, 60px) + 6px); right: 12px; width: min(400px, calc(100vw - 24px)); max-height: min(600px, calc(100vh - var(--topbar-h, 60px) - 24px)); }
 .sr-group-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); padding: 9px 10px 5px; }
-.sr-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; width: 100%; text-align: left; transition: background .14s; }
+.sr-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; width: 100%; text-align: left; transition: background var(--motion-micro); }
 .sr-item:hover, .sr-item.active { background: rgba(var(--accent-rgb), .12); }
 .sr-item svg { width: 16px; height: 16px; color: var(--text-3); }
 .sr-item-main { min-width: 0; flex: 1; }
@@ -168,7 +168,7 @@ svg { display: block; flex-shrink: 0; }
 .dropdown { position: relative; }
 .dp-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
 .dp-head strong { font-size: 13.5px; }
-.dp-item { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 10px; font-size: 12.5px; width: 100%; text-align: left; transition: background .14s; }
+.dp-item { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 10px; font-size: 12.5px; width: 100%; text-align: left; transition: background var(--motion-micro); }
 .dp-item:hover { background: rgba(var(--accent-rgb), .10); }
 .dp-item.unread { background: var(--primary-soft); }
 .dp-item .dp-ico { font-size: 15px; line-height: 1.3; }
@@ -268,12 +268,15 @@ svg { display: block; flex-shrink: 0; }
   .page-head { margin-bottom: 16px; }
   .stat-grid, .grid-2, .grid-3 { gap: 12px; margin-bottom: 16px; }
 }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important; }
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .001ms !important; transition-delay: 0s !important; }
+}
 
 /* Switching between light and dark: the whole page cross-fades (view transitions), or, where those are not supported, every colour fades. */
-::view-transition-old(root), ::view-transition-new(root) { animation-duration: .34s; animation-timing-function: ease; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--motion-emphasised); animation-timing-function: ease; }
 html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
-  transition: background-color .32s ease, border-color .32s ease, color .32s ease, fill .32s ease, stroke .32s ease, box-shadow .32s ease !important;
+  transition: background-color var(--motion-emphasised) ease, border-color var(--motion-emphasised) ease, color var(--motion-emphasised) ease, fill var(--motion-emphasised) ease, stroke var(--motion-emphasised) ease, box-shadow var(--motion-emphasised) ease !important;
 }
 
 /* <Face>: a person's photo inside any page's own avatar circle (the circle keeps its size, shape and border). */
@@ -285,10 +288,10 @@ html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
 .floating:focus-visible { outline: none; }
 
 /* Phones: menus open as bottom sheets — full width, a grab handle, the safe area respected, a dimmed page behind. */
-.floating-scrim { position: fixed; inset: 0; z-index: 999; background: rgba(0, 0, 0, .28); animation: fl-fade .2s ease-out both; }
+.floating-scrim { position: fixed; inset: 0; z-index: 999; background: rgba(0, 0, 0, .28); animation: fl-fade var(--motion-standard) ease-out both; }
 .floating.floating-sheet { z-index: 1000; width: auto !important; max-width: none !important; max-height: 72vh; overflow-y: auto; overscroll-behavior: contain;
   border-radius: 20px 20px 0 0 !important; padding: 6px 10px calc(12px + env(safe-area-inset-bottom)) !important; background: var(--ds-surface, #fff);
-  box-shadow: 0 -10px 40px rgba(0, 0, 0, .2); animation: fl-up .32s cubic-bezier(.32, .72, 0, 1) both; }
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, .2); animation: fl-up var(--motion-sheet) var(--ease-standard) both; }
 .floating-sheet > :not(.floating-grab) { width: auto !important; position: static !important; box-shadow: none !important; border: 0 !important; }
 .floating-sheet [role='menuitem'], .floating-sheet button { min-height: 44px; }
 .floating-grab { display: block; width: 36px; height: 5px; border-radius: 3px; margin: 4px auto 8px; background: var(--ds-fill-strong, rgba(0, 0, 0, .2)); }
