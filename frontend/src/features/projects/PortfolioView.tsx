@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { AiCard } from '../../components/v2/AiCard';
 import { Icon } from '../../components/Icon';
@@ -9,19 +9,25 @@ import { toast } from '../../stores/ui';
 import { aiWorkspaceApi, type PortfolioBrief } from '../ai/aiApi';
 import { useAi, useAssistant } from '../ai/Assistant';
 import type { DotsItem } from '../talk/DotsMenu';
-import { CapacityPlanView } from './CapacityPlan';
 import { CapacitySection, filterCount, MoneySection, PortfolioFilters } from './PortfolioBoard';
 import { BoardColumns, DecisionCard, PresentOverlay, useProjects } from './PortfolioViews';
 import { PortfolioPulse } from './PortfolioPulse';
-import { PortfolioTimeline } from './PortfolioTimeline';
-import { PlanSheetView } from './PlanSheet';
+import { PortfolioOverview } from './PortfolioOverview';
+import { ActionItemsTab, type Group } from './planSheetActions';
 import { decisionItems, type DecisionItem } from './portfolioDecisions';
 import { portfolioApi, type PortfolioAiSummary, type PortfolioFilter } from './portfolioApi';
-import { PortfolioShell, PortfolioSkeleton, usePortfolio } from './PortfolioShell';
+import { PortfolioShell, PortfolioSkeleton, usePortfolio, useShellMenu } from './PortfolioShell';
 import { portfolioKeys, type PortfolioUrlState } from './portfolioShared';
 import { errText } from './projectParts';
 import './portfolio.css';
 import './projectsHome.css';
+
+// Each tab is its own chunk: only the one on screen loads.
+const PlanSheetView = lazy(() => import('./PlanSheet').then((m) => ({ default: m.PlanSheetView })));
+const PortfolioTimeline = lazy(() => import('./PortfolioTimeline').then((m) => ({ default: m.PortfolioTimeline })));
+const CapacityPlanView = lazy(() => import('./CapacityPlan').then((m) => ({ default: m.CapacityPlanView })));
+const CalmPlanSheet = lazy(() => import('./CalmPlanSheet').then((m) => ({ default: m.CalmPlanSheet })));
+const PortfolioTaskBoard = lazy(() => import('./PortfolioTaskBoard').then((m) => ({ default: m.PortfolioTaskBoard })));
 
 const sentences = (t: string) => t.trim().split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
 const RISK_REVIEW = 'Portfolio risk review: rank the projects most likely to miss their dates, explain the causes using the history of date changes, and recommend one concrete action for each.';
@@ -38,9 +44,9 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   const [params] = useSearchParams();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const v = params.get('mode') ?? params.get('view');
-  // Action items live only as the Plan sheet's first tab: an old link (?mode=actions, ?actions=1) opens it there.
-  if (v === 'actions' || params.get('actions') === '1') {
-    const n = new URLSearchParams(params); n.set('view', 'portfolio'); n.set('mode', 'sheet'); n.set('pt', 'actions'); n.delete('actions');
+  // Action items are a Portfolio tab (and the Plan sheet's first folder tab): an old link (?actions=1) opens the tab.
+  if (v !== 'actions' && params.get('actions') === '1') {
+    const n = new URLSearchParams(params); n.set('view', 'portfolio'); n.set('mode', 'actions'); n.delete('actions');
     return <Navigate to={`?${n}`} replace />;
   }
   const sendBrief = async () => {
@@ -69,13 +75,30 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   return (
     <div className="pj2 pj2-portfolio pf pf-shell">
       <PortfolioShell teamId={teamId} baseMenu={baseMenu} filters={(url) => <ServerFilters url={url} open={filtersOpen} />}>
-        {({ url }) => url.mode === 'sheet' ? <PlanSheetView onPresent={() => url.setMode('present')} />
+        {({ url }) => <Suspense fallback={<PortfolioSkeleton label="Loading" />}>{url.mode === 'sheet' && params.get('classic') !== '1' ? <CalmPlanSheet />
+          : url.mode === 'sheet' ? <PlanSheetView onPresent={() => url.setMode('present')} />
+          : url.mode === 'actions' ? <ActionsTab />
           : url.mode === 'timeline' ? <PortfolioTimeline filter={url.filter} />
           : url.mode === 'capacity' ? <CapacityPlanView />
-          : <BoardTab ai={ai} />}
+          : url.mode === 'board' ? <PortfolioTaskBoard />
+          : <PortfolioOverview ai={ai} more={<BoardTab ai={ai} />} />}</Suspense>}
       </PortfolioShell>
     </div>
   );
+}
+
+/** Portfolio › Action items (design shot 12): one card per meeting, with the review (A / R / S) over them. */
+function ActionsTab() {
+  const { review, colourOf, projects, url, text, people } = usePortfolio();
+  const [group, setGroup] = useState<Group>('meeting');
+  const [sig, setSig] = useState(0);
+  const colourOrNull = (id: string | null) => (id && projects.some((p) => p.id === id) ? colourOf(id) : null);
+  // The calm tab (demo shot 12) has no tool bar: grouping and "Review all new" are in ⋯.
+  useShellMenu([
+    { label: 'Review all new', icon: 'checkCircle', onSelect: () => setSig((n) => n + 1) },
+    ...(['meeting', 'owner', 'project'] as Group[]).map((g) => ({ label: `Group by ${g}`, icon: 'list' as const, hint: g === group ? 'Shown now' : undefined, onSelect: () => setGroup(g) })),
+  ]);
+  return <div className="pfa"><ActionItemsTab layout="cards" review={review} colourOfProject={colourOrNull} colours={url.colours} text={text} people={people} groupBy={group} reviewSignal={sig} /></div>;
 }
 
 /** The server-side filters (lead, group, health, due dates) under ⋯ › Filters: the same panel on every tab, kept in the address. */
@@ -104,12 +127,8 @@ function BoardTab({ ai }: { ai: boolean }) {
   const keysOf = (h: string) => ranked.filter((r) => r.health === h).slice(0, 2).map((r) => r.key).join(' · ');
   return (
     <div className="pfx-board">
-      <div className="pf-big">
-        <div className="pf-tile ok"><b>{b.onTrack}</b><span><strong>On track</strong><small>of {b.projects} projects{(b.workComplete ?? 0) > 0 ? ` · ${b.workComplete} work complete; check sign-offs` : ''}{b.projects > projectsN ? ` · ${b.projects - projectsN} without a health yet` : ''}</small></span></div>
-        <div className="pf-tile risk"><b>{b.atRisk}</b><span><strong>At risk</strong><small>{keysOf('AtRisk') || 'None at risk'}</small></span></div>
-        <div className="pf-tile late"><b>{b.delayed}</b><span><strong>Late</strong><small>{keysOf('Delayed') || 'None late'}</small></span></div>
-        <Summary summary={b.headlines[0] ?? board.summary} filter={filter} ai={ai} />
-      </div>
+      <h2 className="pfo-sec">This week in detail <small>{b.onTrack} on track · {b.atRisk} at risk · {b.delayed} late{(b.workComplete ?? 0) > 0 ? ` · ${b.workComplete} work complete` : ''}{b.projects > projectsN ? ` · ${b.projects - projectsN} without a health yet` : ''}{keysOf('Delayed') ? ` (${keysOf('Delayed')})` : ''}</small></h2>
+      <Summary summary={b.headlines[0] ?? board.summary} filter={filter} ai={ai} />
       <SignOffNote done={ranked.filter((r) => r.health === 'Completed')} />
       <div className="pf-lay">
         <BoardColumns filter={filter} brief={b} items={items} />
@@ -122,7 +141,7 @@ function BoardTab({ ai }: { ai: boolean }) {
       <BoardPulse filter={filter} brief={b} />
       <MoneySection m={board.money} />
       <CapacitySection c={board.capacity} />
-      {mode === 'present' && <PresentOverlay items={items} filter={filter} brief={b} asOf={asOf ?? null} onClose={() => setMode('board')} />}
+      {mode === 'present' && <PresentOverlay items={items} filter={filter} brief={b} asOf={asOf ?? null} onClose={() => setMode('overview')} />}
     </div>
   );
 }

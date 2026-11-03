@@ -65,6 +65,7 @@ export function PlanSheetView({ onPresent }: { onPresent: () => void }) {
   const [paste, setPaste] = useState<string[][] | null>(null);
   const [reasonAsk, setReasonAsk] = useState<{ changes: SheetChange[]; label: string; moves: { key: string; from: string; to: string; days: number | null }[] } | null>(null);
   const [edits, setEdits] = useState<EditEntry[]>([]);
+  const [justSaved, setJustSaved] = useState<Map<string, 'date' | 'other'>>(new Map());
   const [toastAt, setToastAt] = useState<{ text: ReactNode; at: number; undo: boolean; projectId?: string | null } | null>(null);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -163,6 +164,11 @@ export function PlanSheetView({ onPresent }: { onPresent: () => void }) {
       const res = await portfolioApi.sheetBulk(withVersions, opts.reason, opts.dependency);
       const failed = res.rows.filter((x) => !x.ok);
       const ok = new Set(res.rows.filter((x) => x.ok).map((x) => x.id));
+      // The "✓ Saved" tick beside what changed (next to the date when a date moved), for a moment.
+      if (ok.size) {
+        const kinds = new Map(changes.filter((c) => ok.has(c.id)).map((c) => [c.id, c.dueDate || c.startDate || c.clearStart ? 'date' as const : 'other' as const]));
+        setJustSaved(kinds); const at = kinds; window.setTimeout(() => setJustSaved((x) => (x === at ? new Map() : x)), 1800);
+      }
       if (failed.length) {
         const first = failed[0];
         toast(failed.length === 1 ? `${first.key ?? 'A row'}: ${first.error ?? 'not saved'}` : `${res.changed} saved · ${failed.length} not saved (${first.key ?? 'a row'}: ${first.error})`, 'error');
@@ -332,7 +338,8 @@ export function PlanSheetView({ onPresent }: { onPresent: () => void }) {
         <SheetGrid data={data} display={display} rows={rows} work={work} today={today} layout={layout} inspectId={inspect} setInspect={setInspect} collapsed={collapsed}
           toggle={(id) => setCollapsed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} statusesBy={statusesBy} meetings={meetings}
           save={save} move={move} others={others} focusCell={focusCell} onWarn={setWarn} refresh={refresh}
-          colourOf={colourOfProject} names={tabPrefs.names} onOpenProject={setTab} calendar={calendar} />
+          colourOf={colourOfProject} names={tabPrefs.names} onOpenProject={setTab} calendar={calendar} justSaved={justSaved} />
+        <div className="ps3-hint">Click any date to edit · changes save instantly</div>
       </>}
       {toastAt && !historyOpen && (
         <div className="ps3-toast" role="status">
@@ -368,12 +375,12 @@ const firstProject = (display: Display[]) => { for (const d of display) if (d.ty
 
 // ---------------------------------------------------------------- the grid
 
-function SheetGrid({ data, display, rows, work, today, layout, inspectId, setInspect, collapsed, toggle, statusesBy, meetings, save, move, others, focusCell, onWarn, refresh, colourOf: colourFor, names, onOpenProject, calendar }: {
+function SheetGrid({ data, display, rows, work, today, layout, inspectId, setInspect, collapsed, toggle, statusesBy, meetings, save, move, others, focusCell, onWarn, refresh, colourOf: colourFor, names, onOpenProject, calendar, justSaved }: {
   data: PlanSheetData; display: Display[]; rows: SheetRow[]; work: SheetRow[]; today: string; layout: Layout; inspectId: string | null; setInspect: (id: string | null) => void;
   collapsed: Set<string>; toggle: (id: string) => void; statusesBy: Map<string, SheetStatus[]>; meetings: { byProject: Map<string, LinkedMeeting>; byTask: Map<string, LinkedMeeting> };
   save: (c: SheetChange[], label: string) => Promise<void>; move: (m: { id: string; projectId: string; afterId: string | null; beforeId: string | null }) => Promise<void>;
   others: { id: string; name: string; cell: string | null }[]; focusCell: (cell: string | null) => void; onWarn: (t: string | null) => void; refresh: () => Promise<unknown>;
-  colourOf: (projectId: string) => Colour; names: Record<string, string>; onOpenProject: (id: string) => void; calendar: { feed: boolean; syncedAt: string | null };
+  colourOf: (projectId: string) => Colour; names: Record<string, string>; onOpenProject: (id: string) => void; calendar: { feed: boolean; syncedAt: string | null }; justSaved: Map<string, 'date' | 'other'>;
 }) {
   const inspected = inspectId ? rows.find((r) => r.id === inspectId) ?? null : null;
   const cols = COLS[inspected ? 'narrow' : layout];
@@ -537,17 +544,19 @@ function SheetGrid({ data, display, rows, work, today, layout, inspectId, setIns
   }, [nav, today]);
   const cursorAt = (id: string, col: ColId) => others.filter((o) => o.cell === `${id}:${col}`);
 
+  const tick = (id: string, kind: 'date' | 'other') => justSaved.get(id) === kind ? <span className="ps3-saved" role="status">✓ Saved</span> : null;
   const cell = (r: SheetRow, col: ColId, level: number): ReactNode => {
     const k = statusKey(r);
     switch (col) {
       case 'task': {
         const mt = meetings.byTask.get(r.id);
         return (
-          <div className="ps3-task" style={{ paddingLeft: level * 18 }}>
+          <div className={`ps3-task ps3-tree lv${level}`} style={{ paddingLeft: level * 18 + 18 }}>
+            <i className="ps3-curve" style={{ left: level * 18 + 2 }} aria-hidden="true" />
             <div style={{ minWidth: 0 }}>
               <div className="ps3-ttl"><span className="ps3-key">{r.key}</span>{edit?.id === r.id && edit.col === 'title'
                 ? <TitleInput r={r} draft={edit.draft} onDone={(t) => done(t !== null && t !== r.title ? [{ id: r.id, title: t }] : null, `Renamed ${r.key}`)} />
-                : <b title={r.title}>{r.title}</b>}</div>
+                : <b title={r.title}>{r.title}</b>}{tick(r.id, 'other')}</div>
               {(r.dependsOn.length > 0 || mt) && <div className="ps3-sub" style={{ paddingLeft: r.key.length * 6.6 + 8 }}>
                 {r.dependsOn.length > 0 && <span>↳ after {r.dependsOn.join(', ')}</span>}
                 {mt && <span className="m">◆ {mt.title}{mt.nextAt ? ` · ${new Date(mt.nextAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}` : ''}</span>}</div>}
@@ -558,9 +567,9 @@ function SheetGrid({ data, display, rows, work, today, layout, inspectId, setIns
       case 'owner': return <Owner id={r.ownerId} name={r.owner} />;
       case 'dates': {
         const s = slipDays(r, today);
-        return <span className="ps3-num">{r.start && <span className="ps3-dim">{dm(r.start)} → </span>}<span style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{r.due ? <CalendarDate r={r} calendar={calendar} late={k === 'late'} /> : <span className="ps3-dim">No date</span>}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}</span>;
+        return <span className="ps3-num">{r.start && <span className="ps3-dim">{dm(r.start)} → </span>}<span style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{r.due ? <CalendarDate r={r} calendar={calendar} late={k === 'late'} /> : <span className="ps3-dim">No date</span>}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}{tick(r.id, 'date')}</span>;
       }
-      case 'due': { const s = slipDays(r, today); return <><span className="ps3-num" style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{dm(r.due) || '—'}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}</>; }
+      case 'due': { const s = slipDays(r, today); return <><span className="ps3-num" style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{dm(r.due) || '—'}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}{tick(r.id, 'date')}</>; }
       case 'status': return <Status r={r} />;
       case 'progress': {
         const pv = smart && smart.targets.some((t) => t.id === r.id) ? smartValue(r) : fill?.col === 'progress' && fill.to.includes(r.id) ? rows.find((x) => x.id === fill.src)?.progress ?? r.progress : r.progress;
