@@ -16,6 +16,12 @@ public interface IAppDbContext
     DbSet<VoiceConnector> VoiceConnectors { get; }
     DbSet<VoiceCall> VoiceCalls { get; }
     DbSet<SupportChannel> SupportChannels { get; }
+    DbSet<DeskSettings> DeskSettings { get; }
+    DbSet<DeskInboundEvent> DeskInboundEvents { get; }
+    DbSet<DeskEngineer> DeskEngineers { get; }
+    DbSet<DeskAssignment> DeskAssignments { get; }
+    DbSet<DeskTicketInsight> DeskTicketInsights { get; }
+    DbSet<DeskVoiceSession> DeskVoiceSessions { get; }
     DbSet<SupportConversation> SupportConversations { get; }
     DbSet<DocumentMaskingSettings> DocumentMaskingSettings { get; }
     DbSet<MaskingRule> MaskingRules { get; }

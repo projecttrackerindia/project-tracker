@@ -355,6 +355,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureResumes(b);
         ConfigureSupport(b);
         ConfigureSupportWorkflows(b);
+        ConfigureDesk(b);
         ConfigureAgent(b);
         ConfigureUpi(b);
         ConfigureVault(b);

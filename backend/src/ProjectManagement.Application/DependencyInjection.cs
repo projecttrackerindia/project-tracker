@@ -154,6 +154,16 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Documents.DocumentMaskingService>();
         services.AddScoped<ProjectManagement.Application.Features.Documents.LibraryDesignService>();
         services.AddSingleton<ProjectManagement.Application.Features.Support.SupportReplyProcessor>();
+        // Desk omnichannel (phase 1): WhatsApp intake queue, AI triage and routing, Sarvam voice intake. Every part is off until a workspace turns it on.
+        services.AddScoped<ProjectManagement.Application.Features.Desk.DeskInboundQueue>();
+        services.AddScoped<ProjectManagement.Application.Features.Desk.DeskSettingsService>();
+        services.AddScoped<ProjectManagement.Application.Features.Desk.DeskClassifier>();
+        services.AddScoped<ProjectManagement.Application.Features.Desk.DeskRoutingService>();
+        services.AddScoped<ProjectManagement.Application.Features.Desk.DeskIntakeService>();
+        services.AddScoped<ProjectManagement.Application.Features.Desk.DeskVoiceService>();
+        services.AddScoped<ProjectManagement.Application.Features.Desk.ISpeechProvider, ProjectManagement.Application.Features.Desk.SarvamSpeechProvider>();
+        services.AddSingleton<ProjectManagement.Application.Features.Desk.ITelephonyProvider, ProjectManagement.Application.Features.Desk.NotConfiguredTelephony>();
+        services.AddSingleton<ProjectManagement.Application.Features.Desk.DeskQueueProcessor>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.AgentSlackReader>();
         services.AddScoped<ProjectManagement.Application.Features.Admin.DeployAlertService>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.AgentMinutesService>();

@@ -65,6 +65,7 @@ const HomePage = page(() => import('./features/home/HomePage'), 'HomePage');
 const WorkPage = page(() => import('./features/work/WorkPage'), 'WorkPage');
 // Release 1: the support desk and Quality (testers) as their own places.
 const DeskPage = page(() => import('./features/desk/DeskPage'), 'DeskPage');
+const DeskIntegrations = page(() => import('./features/desk/DeskIntegrations'), 'DeskIntegrations');
 const QualityPage = page(() => import('./features/quality/QualityPage'), 'QualityPage');
 const ProjectsHome = page(() => import('./features/projects/ProjectsHome'), 'ProjectsHome');
 const ProjectPage = page(() => import('./features/projects/ProjectPage'), 'ProjectPage');
@@ -422,6 +423,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="work" element={<Guard allow={work}><WorkPage /></Guard>} />
         <Route path="work/projects" element={<Guard allow={mProjects}><ProjectsHome /></Guard>} />
         <Route path="desk" element={<Guard allow={mWork}><DeskPage /></Guard>} />
+        <Route path="desk/integrations" element={<Guard allow={mWork}><DeskIntegrations /></Guard>} />
         <Route path="quality" element={<Guard allow={mWork}><QualityPage /></Guard>} />
         <Route path="work/projects/:id" element={<Guard allow={mProjects}><ProjectPage /></Guard>} />
         <Route path="work/projects/:id/report" element={<Guard allow={mProjects}><WeeklyReportPage /></Guard>} />
