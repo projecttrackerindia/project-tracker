@@ -246,3 +246,7 @@ html[data-theme='dark'] .ncx-diff-row .ncx-delta { color: #ffb340; }
 .ncx-read .ncx-card { opacity: .78; }
 /* Why a reminder came ("Due today · no time set"): a quiet line under the title. */
 .ncx-why { display: block; margin-top: 1px; font-size: 12px; font-weight: 500; color: var(--ds-text-3, rgba(60, 60, 67, .6)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Sounds & alerts: the master volume slider and its preview. */
+.ncx-set-volume { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.ncx-set-volume input[type="range"] { width: min(180px, 40vw); accent-color: var(--ds-accent, #0a84ff); }

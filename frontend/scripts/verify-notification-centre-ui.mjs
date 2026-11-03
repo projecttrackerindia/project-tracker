@@ -288,7 +288,7 @@ try {
   const put = await waitFor((w) => w.method === 'PUT' && w.ep === '/api/v1/me/notification-preferences', 'push toggle');
   assert.equal(put.b.items.find((i) => i.type === 'TaskAssigned').browser, true);
   assert.equal(put.b.items.find((i) => i.type === 'Message').browser, true, 'other categories unchanged');
-  for (const s of ['Message', 'Mention', 'Meeting starting', 'Reminder', 'Critical ticket / incident', 'Reply sent']) await panel.getByRole('button', { name: `Play the ${s} sound` }).click();
+  for (const s of ['Message', 'Mention', 'Meeting starting', 'Reminder', 'Task assigned', 'Approval needed / security', 'Reply sent']) await panel.getByRole('button', { name: `Play the ${s} sound` }).click();
   checks.push('settings-mute-dnd', 'settings-sound-banner-badge', 'settings-push', 'sound-previews');
   await ctx.close();
 

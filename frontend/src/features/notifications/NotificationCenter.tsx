@@ -18,7 +18,10 @@ import { toast } from '../../stores/ui';
 import { reminderApi, type ReminderSettings } from '../reminders/api';
 import { refreshReminders } from '../reminders/store';
 import { addMinutes, iso, wall } from '../reminders/time';
-import { deviceDetail, disableDeviceAlerts, enableDeviceAlerts, lastDeviceError, onDeviceAlerts, systemNotification, type DeviceAlerts, type DeviceDetail } from '../reminders/device';
+import { deviceDetail, disableDeviceAlerts, enableDeviceAlerts, lastDeviceError, onDeviceAlerts, systemNotification, thisEndpoint, type DeviceAlerts, type DeviceDetail } from '../reminders/device';
+import { checkSteps, verdict, type Step } from './pushCheck';
+import { waitForPushReceipt } from './pushReceipts';
+import type { PushTestResult } from '../../api/endpoints.platform';
 import { WhatsAppContactSection } from '../settings/WhatsAppContactSection';
 import { whatsAppPrefsUrl, type WhatsAppPreferences } from '../settings/WhatsAppNotificationPreferences';
 import { get } from '../../api/client';
@@ -592,6 +595,8 @@ function ThisDevice() {
         </Panel>
       )}
 
+      <PushCheck onChanged={() => void devices.refetch()} />
+
       <Panel title="Sound" icon="play" sub="Alerts get a sound on this device so they stand out from other apps. Choose which ones below."
         actions={<Switch on={sound} label="Play alert sounds" onChange={(v) => { setSound(v); setSoundOn(v); if (v) { unlockSound(); playSound('message'); } }} />}>
         <p className="ncx-set-foot">{sound ? 'Sounds are on for this device.' : 'All sounds are off on this device.'}</p>
@@ -615,6 +620,69 @@ function ThisDevice() {
         <button className="btn btn-ghost btn-sm" onClick={() => nav('/settings/profile/mobile')}><Icon name="phone" size={13} /> Get the mobile app</button>
       </Panel>
     </>
+  );
+}
+
+// ------------------------------------------------------------------ send test notification
+
+const STEP_ICON: Record<Step['state'], IconName> = { ok: 'checkCircle', fail: 'alert', warn: 'info', skip: 'checkCircle', wait: 'clock' };
+
+/**
+ * "Send test notification": checks the four links a desktop notification travels (permission, subscription, server, delivery), each with
+ * its status, and fixes what can be fixed here (ask for permission, sign this device up again). The server pushes a real test to every
+ * device of yours; this device then reports whether it appeared (pushCheck.ts).
+ */
+function PushCheck({ onChanged }: { onChanged: () => void }) {
+  const where = isNativeApp() ? 'android' : isDesktopApp() ? 'desktop' : 'browser';
+  const pushSupported = typeof navigator !== 'undefined' && 'serviceWorker' in navigator && typeof window !== 'undefined' && 'PushManager' in window;
+  const perm = () => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission) as NotificationPermission | 'unsupported';
+  const [state, setState] = useState<{ server: PushTestResult | null; serverError: string | null; shown: boolean | null; subscribed: boolean }>({ server: null, serverError: null, shown: null, subscribed: false });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void thisEndpoint().then((e) => setState((x) => ({ ...x, subscribed: !!e }))); }, []);
+  const steps = checkSteps({ where, permission: perm(), subscribed: state.subscribed, pushSupported, server: state.server, serverError: state.serverError, shown: state.shown });
+
+  const run = async () => {
+    setBusy(true); unlockSound();
+    try {
+      if (perm() === 'default') await enableDeviceAlerts();
+      const endpoint = await thisEndpoint();
+      let server: PushTestResult | null = null, serverError: string | null = null;
+      try { server = await pushApi.test(endpoint); } catch (e) { serverError = e instanceof ApiError ? e.message : 'The server could not be reached.'; }
+      let shown: boolean | null = null;
+      if (perm() === 'granted') {
+        const mine = server?.results.find((r) => r.thisDevice);
+        if (where === 'browser' && mine?.accepted && server) shown = await waitForPushReceipt(server.tag, 10_000);
+        else if (where !== 'browser' || !endpoint) shown = await systemNotification('Test notification', 'Notifications work on this device.', server?.tag ?? 'pt-test-now', '/settings/notifications/device', { sticky: false, osSound: true });
+        else shown = false;
+      }
+      setState({ server, serverError, shown, subscribed: !!endpoint });
+      onChanged();
+    } finally { setBusy(false); }
+  };
+  const fix = async (f: Step['fix']) => {
+    if (f === 'os') return;
+    setBusy(true);
+    try { await enableDeviceAlerts(); const e = await thisEndpoint(); setState((x) => ({ ...x, subscribed: !!e, server: null, shown: null })); onChanged(); } finally { setBusy(false); }
+  };
+  return (
+    <Panel title="Send test notification" icon="bell" sub="Checks every step a desktop notification takes to reach this device, and says where it stops."
+      actions={<button className="btn btn-primary btn-sm" data-testid="push-test" disabled={busy} onClick={() => void run()}>{busy && <span className="spinner" />}<Icon name="send" size={13} /> Send test notification</button>}>
+      <ol className="nc-pushcheck" aria-live="polite">
+        {steps.map((st) => (
+          <li key={st.id} className={`is-${st.state}`} data-step={st.id} data-state={st.state}>
+            <Icon name={STEP_ICON[st.state]} size={15} />
+            <span><b>{st.label}</b><small>{st.detail}</small></span>
+            {st.state === 'fail' && st.fix && st.fix !== 'os' && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void fix(st.fix)}>{st.fix === 'allow' ? 'Allow' : 'Sign up again'}</button>}
+          </li>
+        ))}
+      </ol>
+      {state.server && state.server.results.filter((r) => !r.thisDevice).length > 0 && (
+        <ul className="nc-pushcheck-others">
+          {state.server.results.filter((r) => !r.thisDevice).map((r, i) => <li key={i}><b>{r.device}</b> · {r.message}</li>)}
+        </ul>
+      )}
+      <p className="ncx-set-foot" role="status">{verdict(steps)}</p>
+    </Panel>
   );
 }
 

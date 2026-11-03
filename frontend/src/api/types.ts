@@ -227,7 +227,8 @@ export type NotificationCategory = 'messages' | 'reminders' | 'meetings' | 'work
 export type NotificationAction = 'done' | 'take' | 'reply' | 'approve' | 'reject' | 'snooze';
 /** Unread overall and in each lane of the inbox. */
 export interface NotificationCounts { unread: number; needsYou: number; forInfo: number; snoozed?: number;
-  /** Unread in each Notification Centre category (the bell's filters). */ messages?: number; reminders?: number; meetings?: number; work?: number }
+  /** Unread in each Notification Centre category (the bell's filters). */ messages?: number; reminders?: number; meetings?: number; work?: number;
+  /** Unread per sidebar place and category, "destination:category" (docs/badges.md). */ tabs?: Record<string, number> }
 export interface NotificationPreference { type: NotificationType; label: string; description: string; inApp: boolean; email: boolean; browser: boolean; locked: boolean }
 export interface TestEmailResult { provider: string; delivered: boolean; message: string }
 

@@ -8,6 +8,7 @@ import type { AppNotification } from '../../../api/types';
 import { categoryOf, cueOf } from './model';
 import { flashAura } from '../../../components/aura/mood';
 import { isMuted, getAlertPrefs, maySound } from './prefs';
+import { isViewing } from './readSync';
 
 type Arrival = Pick<AppNotification, 'type' | 'link'> & { id?: string | null; category?: AppNotification['category'] };
 
@@ -19,5 +20,7 @@ export function announce(n: Arrival, opts: { silent?: boolean } = {}): boolean {
   const cat = categoryOf({ type: n.type, link: n.link ?? null, category: n.category });
   const silent = !!opts.silent || !maySound(cat, p);
   if (isMuted(p) || p.dnd) return false;   // muted: not even a buzz or a flashing title
-  return getAttention({ kind: kindForType(n.type), cue: cueOf({ type: n.type, link: n.link ?? null, category: n.category }), silent });
+  // The rules (own action, the conversation on screen, bursts, quiet hours) are lib/soundPolicy.ts, applied by getAttention.
+  return getAttention({ kind: kindForType(n.type), cue: cueOf({ type: n.type, link: n.link ?? null, category: n.category }), silent,
+    viewingSame: isViewing(n.link), mention: n.type === 'Mention', categoryOn: p.cats[cat].sound });
 }
