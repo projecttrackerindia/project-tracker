@@ -209,7 +209,7 @@ let page, n;
 try {
   ({ page } = await context('light', 1440));
   // Deep link: the old /portfolio?view=sheet lands on Portfolio › Plan sheet; the tabs sit in the head.
-  await page.goto(`${origin}/preview-org/portfolio?view=sheet`);
+  await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=sheet&classic=1`);
   await page.waitForURL(/\/work\/projects\?view=portfolio&mode=sheet/);
   const tabs = page.getByRole('tablist', { name: 'Portfolio view' });
   const grid = page.getByRole('grid', { name: 'Plan sheet' });
@@ -599,7 +599,7 @@ try {
   checks.push('v4-action-items-review');
   // The old Portfolio "Action items" link opens this tab.
   await page.goto(`${origin}/preview-org/work/projects?actions=1`);
-  await page.waitForURL(/pt=actions/);
+  await page.waitForURL(/mode=actions/);
   await page.locator('.ps4-ai').waitFor();
   checks.push('v4-old-action-items-link');
   // The Notification Centre (design plansheet8/05): a change shows before → after, "emailed", View and Undo.
@@ -618,7 +618,7 @@ try {
   await page.keyboard.press('Escape');
   checks.push('notification-centre-change-diff-undo');
   // "Undo change" in the e-mail: the signed link opens the app and asks first.
-  await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=sheet&undo=signed-token-123`);
+  await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=sheet&classic=1&undo=signed-token-123`);
   const ask = page.getByRole('dialog', { name: 'Undo this change?' });
   await ask.waitFor();
   n = writes.length; await ask.getByRole('button', { name: 'Undo change' }).click();
@@ -696,7 +696,7 @@ try {
   // ------------------------------------------------------------------ Phone
   const phone = await context('light', 390);
   page = phone.page;
-  await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=sheet`);
+  await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=sheet&classic=1`);
   await page.locator('.ps3-card').first().waitFor();
   const pf = page.getByRole('textbox', { name: 'Filter, search or ask' });
   await pf.fill('late or at risk'); await pf.press('Enter'); await pf.press('Escape');

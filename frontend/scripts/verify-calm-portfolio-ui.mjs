@@ -17,8 +17,10 @@ const checks = [], errorsAll = [];
 const look = (page) => page.evaluate(() => ({
   sideways: document.documentElement.scrollWidth > innerWidth + 1,
   title: document.querySelector('.pfc-title')?.textContent ?? '',
-  folder: !!document.querySelector('[role="tablist"][aria-label="Plan sheet tabs"]'),
-  firstFolder: document.querySelector('[role="tablist"][aria-label="Plan sheet tabs"] [role="tab"]')?.textContent ?? null,
+  folder: !!document.querySelector('[role="tablist"][aria-label="Plan sheet projects"]'),
+  folderTabs: [...document.querySelectorAll('[role="tablist"][aria-label="Plan sheet projects"] [role="tab"]')].map((e) => e.textContent),
+  cols: [...document.querySelectorAll('table[aria-label="Plan sheet"] th')].map((e) => e.textContent),
+  field: !!document.querySelector('.pfc .ps3-cmd'),
   pills: [...document.querySelectorAll('[role="tablist"][aria-label="Portfolio view"] [role="tab"]')].map((e) => e.textContent),
   // Nothing interactive under the floating + button (bottom-right 88px square).
   underFab: (() => { const fab = document.querySelector('.v2-fab, .fab, [aria-label="New"]'); if (!fab) return 0; const f = fab.getBoundingClientRect();
@@ -26,7 +28,10 @@ const look = (page) => page.evaluate(() => ({
 }));
 try {
   for (const theme of ['light', 'dark']) for (const width of [1440, 1920, 390]) {
-    const { ctx, page, errors } = await portfolioContext(browser, { width, theme, state: makeState() });
+    // A phase on the sheet: AA-04 carries AA-05 and AA-06 (so the bold phase header and the curved connectors show).
+    const state = makeState(); const ph = state.rows.find((r) => r.key === 'AA-04');
+    for (const r of state.rows) if (ph && (r.key === 'AA-05' || r.key === 'AA-06')) { r.parentId = ph.id; r.level = 2; }
+    const { ctx, page, errors } = await portfolioContext(browser, { width, theme, state });
     for (const [m] of TABS) {
       await page.goto(url(m)); await page.locator('.pfx-stage').first().waitFor(); await page.waitForTimeout(700);
       const s = await look(page);
@@ -34,7 +39,11 @@ try {
       assert.deepEqual(s.pills, ['Overview', 'Action items', 'Plan sheet', 'Timeline', 'Capacity', 'Board', 'Present']);
       assert.ok(s.title.length > 3, `${m}: a title`);
       assert.equal(s.folder, m === 'sheet', `${m}: folder tabs only on the Plan sheet`);
-      if (m === 'sheet') assert.match(s.firstFolder ?? '', /Action items/, 'Action items is the fixed first folder tab');
+      if (m === 'sheet') {
+        // The approved design: one folder tab per project by its short name, All last, no Action items tab; exactly five columns; no field bar.
+        assert.equal(s.folderTabs.at(-1), 'All'); assert.ok(!s.folderTabs.some((t) => /Action items/.test(t)));
+        assert.deepEqual(s.cols, ['Task', 'Owner', 'Start', 'Due', 'Status']); assert.equal(s.field, false);
+      }
       if (width !== 390) assert.equal(s.underFab, 0, `${m} ${width}: nothing under the + button`);
       await page.screenshot({ path: path.join(out, `${m}-${width}-${theme}.png`), fullPage: false });
       checks.push(`${m} ${width} ${theme}`);
@@ -44,6 +53,10 @@ try {
       await page.goto(url('present')); await page.locator('.pf-present').waitFor(); await page.waitForTimeout(500);
       assert.match(await page.locator('.pf-slide.on .pf-calm-t').innerText(), /Week \d+\.\s*Portfolio review\./);
       await page.screenshot({ path: path.join(out, `present-1440-light.png`) }); await page.keyboard.press('Escape');
+      // Plan sheet: a Due date opens the rounded calendar with the slip preview.
+      await page.goto(url('sheet')); await page.locator('.cps-dc').first().waitFor();
+      await page.locator('.cps-dc:not([disabled])').first().click(); await page.locator('.ps3-datepop').waitFor();
+      await page.screenshot({ path: path.join(out, 'sheet-date-1440-light.png') }); await page.keyboard.press('Escape');
       // Board: drag a card from To do to In progress — optimistic, "✓ Saved".
       await page.goto(url('board')); await page.locator('.pfb-card').first().waitFor();
       const src = page.locator('.pfb-col').nth(0).locator('.pfb-card').first();

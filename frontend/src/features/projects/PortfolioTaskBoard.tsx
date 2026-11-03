@@ -51,7 +51,7 @@ export function PortfolioTaskBoard() {
   const cols = useMemo(() => {
     const m: Record<Col, SheetRow[]> = { todo: [], prog: [], review: [], done: [] };
     for (const r of work) {
-      if (r.kind === 'meeting' || r.level > 1) continue;
+      if (r.kind === 'meeting') continue;
       if (colours.length && !colours.includes(colourOf(r.projectId))) continue;
       if (active.length && !matchesAll(r, active, qctx)) continue;
       const c = colOf(r); if (c) m[c].push(r);

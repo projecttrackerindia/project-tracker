@@ -26,6 +26,7 @@ import './projectsHome.css';
 const PlanSheetView = lazy(() => import('./PlanSheet').then((m) => ({ default: m.PlanSheetView })));
 const PortfolioTimeline = lazy(() => import('./PortfolioTimeline').then((m) => ({ default: m.PortfolioTimeline })));
 const CapacityPlanView = lazy(() => import('./CapacityPlan').then((m) => ({ default: m.CapacityPlanView })));
+const CalmPlanSheet = lazy(() => import('./CalmPlanSheet').then((m) => ({ default: m.CalmPlanSheet })));
 const PortfolioTaskBoard = lazy(() => import('./PortfolioTaskBoard').then((m) => ({ default: m.PortfolioTaskBoard })));
 
 const sentences = (t: string) => t.trim().split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
@@ -74,7 +75,8 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   return (
     <div className="pj2 pj2-portfolio pf pf-shell">
       <PortfolioShell teamId={teamId} baseMenu={baseMenu} filters={(url) => <ServerFilters url={url} open={filtersOpen} />}>
-        {({ url }) => <Suspense fallback={<PortfolioSkeleton label="Loading" />}>{url.mode === 'sheet' ? <PlanSheetView onPresent={() => url.setMode('present')} />
+        {({ url }) => <Suspense fallback={<PortfolioSkeleton label="Loading" />}>{url.mode === 'sheet' && params.get('classic') !== '1' ? <CalmPlanSheet />
+          : url.mode === 'sheet' ? <PlanSheetView onPresent={() => url.setMode('present')} />
           : url.mode === 'actions' ? <ActionsTab />
           : url.mode === 'timeline' ? <PortfolioTimeline filter={url.filter} />
           : url.mode === 'capacity' ? <CapacityPlanView />

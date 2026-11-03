@@ -40,7 +40,7 @@ try {
   // ---------------------------------------------------------------- one shell, one filter, kept across tabs (1440, light)
   {
     const { ctx, page, errors } = await portfolioContext(browser, { width: 1440, state: makeState() });
-    await page.goto(url('&mode=sheet')); await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
+    await page.goto(url('&mode=sheet&classic=1')); await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
     // A sentence in the one field becomes tokens; a colour joins them; both go into the address.
     const field = page.getByRole('textbox', { name: 'Filter, search or ask' });
     await field.fill('late or at risk'); await field.press('Enter');
@@ -78,7 +78,7 @@ try {
     checks.push('one-shell-filter-persists');
 
     // A project folder tab on the Plan sheet opens that project; Action items stay the fixed first folder tab.
-    await page.goto(url('&mode=sheet')); await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
+    await page.goto(url('&mode=sheet&classic=1')); await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
     assert.match(await page.getByRole('tablist', { name: 'Plan sheet tabs' }).getByRole('tab').first().innerText(), /Action items/);
     await page.getByRole('tablist', { name: 'Plan sheet tabs' }).getByRole('tab', { name: /Credit Bureau Integration/ }).click();
     await page.waitForFunction(() => new URL(location.href).searchParams.get('pt') !== null);
@@ -90,7 +90,7 @@ try {
     checks.push('folder-tabs-on-the-plan-sheet');
 
     // One colour per project, the Plan sheet's: UP is the third tab (violet) on the sheet, the Board and the Timeline.
-    await page.goto(url('&mode=sheet')); await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
+    await page.goto(url('&mode=sheet&classic=1')); await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
     const sheetColours = await page.locator('tbody.ps4-card').evaluateAll((els) => els.map((e) => [...e.classList].find((c) => c.startsWith('pc-'))));
     assert.deepEqual(sheetColours, ['pc-blue', 'pc-teal', 'pc-violet', 'pc-amber', 'pc-rose']);
     await goTab(page, 'Overview');
@@ -125,6 +125,9 @@ try {
     assert.match(await page.locator('.ptl-bar', { hasText: '45%' }).first().getAttribute('aria-label'), /UPI AutoPay.*45% done/);
     await page.evaluate(() => { window.__sameDocument = true; });
     await goTab(page, 'Plan sheet');
+    // The calm Plan sheet; the full grid (with every editor) is ⋯ › Open the full sheet.
+    await page.getByRole('button', { name: /More on the plan sheet/ }).click(); await page.getByRole('menuitem', { name: /Open the full sheet/ }).click();
+    await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
     // The calm head is taller, so UP-01 starts below the grid's fold: bring it into view first (the grid scrolls inside itself).
     { const td = page.locator(`td[data-cell="${T['UP-01']}:status"]`); await td.scrollIntoViewIfNeeded(); await page.waitForTimeout(250); await td.click();
       if (!(await page.getByRole('listbox', { name: 'Status of UP-01' }).isVisible().catch(() => false))) { await page.waitForTimeout(250); await td.click(); } }
@@ -156,7 +159,7 @@ try {
       await goTab(page, label);
       const s = await shell(page);
       assert.equal(s.heads, 1, `${label} phone: one head`);
-      assert.equal(s.fields, mode === 'overview' ? 0 : 1, `${label} phone: one field (none on a calm Overview without a filter)`);
+      assert.equal(s.fields, mode === 'overview' || mode === 'sheet' ? 0 : 1, `${label} phone: one field (none on a calm Overview without a filter)`);
       assert.ok(await tabsOf(page).isVisible(), `${label} phone: the tabs show`);
       await fitsPhone(page, `${label} phone`, assert);
       await shot(page, `${mode}-390.png`);

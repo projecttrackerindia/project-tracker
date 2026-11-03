@@ -218,6 +218,8 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
     url.setTab(t);
   };
   const tabOrder0 = 'actions';
+  // The calm Plan sheet (the approved design) draws its own folder tabs and page; ?classic=1 is the full sheet with every tool.
+  const classic = mode === 'sheet' && params.get('classic') === '1';
   const pageColour: Colour | 'ai' | 'none' = mode === 'sheet' && tab === 'actions' ? 'ai' : folderProject ? colourOf(folderProject) : 'none';
   // ---- the calm title: one sentence and a grey second line, from the real data (a tab can set its own second line)
   const atRisk = projects.filter((p) => p.category === 'AtRisk' || p.category === 'Delayed');
@@ -251,7 +253,7 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
       countText={countText} {...((mode === 'sheet' && tab === 'actions') || mode === 'actions' ? { label: 'Search action items', placeholder: 'Search action items' } : {})} />
   );
   const swatch = <ColourFilter on={colours} set={url.setColours} />;
-  const menu = [...tabMenu, ...baseMenu(url)];
+  const menu = [...(classic ? [{ label: 'Back to the plan sheet', icon: 'list' as const, onSelect: () => setParams((cur) => { const n = new URLSearchParams(cur); n.delete('classic'); return n; }) }] : []), ...tabMenu, ...baseMenu(url)];
   return (
     <Ctx.Provider value={value}>
       <div className={`ps3 ps4 pfx pfc ${phone ? 'ps3-phone pfx-phone' : ''}`} data-mode={mode}>
@@ -268,10 +270,10 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
           <DotsMenu label={mode === 'sheet' ? 'More on the plan sheet' : 'More on Portfolio'} items={menu} />
           {!phone && <button type="button" className="pfc-week" onClick={() => url.setMode('present')} title="Present the week">Week {weekNo(today)} ›</button>}
         </div>
-        {mode === 'sheet' && <TabStrip projects={projects} counts={counts} actionCount={actionCount} active={tab} onPick={pick} prefs={tabPrefs} save={saveTabs} compact={phone} />}
-        <div ref={pageRef} className={`ps4-page pfx-page pc-${pageColour} ${mode === 'sheet' && (tab || folderProject) ? 'tabbed' : ''} ${mode === 'sheet' && tab === tabOrder0 ? 'first' : ''} ${mode === 'sheet' ? 'pfc-sheetpage' : 'pfc-plain'}`}>
+        {classic && <TabStrip projects={projects} counts={counts} actionCount={actionCount} active={tab} onPick={pick} prefs={tabPrefs} save={saveTabs} compact={phone} />}
+        <div ref={pageRef} className={`ps4-page pfx-page pc-${pageColour} ${mode === 'sheet' && (tab || folderProject) ? 'tabbed' : ''} ${mode === 'sheet' && tab === tabOrder0 ? 'first' : ''} ${classic ? 'pfc-sheetpage' : 'pfc-plain'}`}>
           {/* The field shows on Overview only while a filter is on, so an active filter is never invisible. */}
-          {mode !== 'present' && (mode !== 'overview' || toks.length > 0 || colours.length > 0) && <>
+          {mode !== 'present' && (mode !== 'sheet' || classic) && (mode !== 'overview' || toks.length > 0 || colours.length > 0) && <>
             <div className="ps3-cmdrow pfx-cmdrow">{field}{!phone && swatch}<span className="pfx-tools" ref={toolsRef} /></div>
             {phone && <div className="ps3-cmdrow pfx-cmdrow2">{swatch}</div>}
           </>}
