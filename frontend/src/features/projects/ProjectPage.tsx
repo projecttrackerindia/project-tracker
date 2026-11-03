@@ -392,7 +392,7 @@ function JourneyReleases({ projectId, stages, n, pos }: { projectId: string; sta
     .filter((a): a is { d: string; at: number } => !!a.d).map((a) => ({ day: dayNum(a.d), at: a.at })).sort((a, b) => a.day - b.day);
   const placed = shown.map((r, k) => {
     const when = r.status === 'Shipped' ? r.shippedAt?.slice(0, 10) ?? r.targetDate : r.targetDate;
-    return { r, when, at: journeyPos(when ?? null, anchors, shown.length === 1 ? 50 : (k / (shown.length - 1)) * 100) };
+    return { r, when, at: journeyPos(when ?? null, anchors, shown.length === 1 ? 50 : 8 + (k / (shown.length - 1)) * 84) };
   }).sort((a, b) => a.at - b.at);
   // Flags closer than ~a label apart alternate above and below the lane, so their names never sit on each other.
   let last = -Infinity, flip = false;
@@ -404,7 +404,7 @@ function JourneyReleases({ projectId, stages, n, pos }: { projectId: string; sta
         {rows.map(({ r, when, at, low }) => {
           const st = relState(r, goOf(r.id));
           return (
-            <li key={r.id} className={`pp-rel ${st.tone} ${low ? 'low' : ''} ${at < 6 ? 'start' : at > 94 ? 'end' : ''}`} style={{ left: `${at}%` }}>
+            <li key={r.id} className={`pp-rel ${st.tone} ${low ? 'low' : ''} ${at < 9 ? 'start' : at > 91 ? 'end' : ''}`} style={{ left: `${at}%` }}>
               <Link to={`/quality?release=${encodeURIComponent(r.id)}`} aria-label={`Release ${r.name}: ${st.label}${when ? `, ${dayMonth(when)}` : ''}`}>
                 <span className="pp-rel-flag" aria-hidden="true" />
                 <b>{r.name}</b>

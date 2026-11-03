@@ -8,7 +8,7 @@ export type CalmStep = {
   state: CalmStepState;
   /** A quiet line under the label (a date, "Awaiting sign-off"). */
   sub?: ReactNode;
-  /** Put inside the dot (e.g. the signer's photo); positioned at its lower right. */
+  /** A small mark before the sub line (e.g. the signer's photo). */
   badge?: ReactNode;
   /** Anything after the labels (a visually hidden action button). */
   extra?: ReactNode;
@@ -44,9 +44,9 @@ export function CalmJourney({ steps, color, className = '', scrollClassName = ''
         {steps.map((s) => (
           <li key={s.key} className={`calm-step ${s.state === 'next' ? '' : s.state} ${s.className ?? ''}`.replace(/\s+/g, ' ').trim()}
             aria-current={s.state === 'current' ? 'step' : undefined} aria-label={s.ariaLabel} {...s.data}>
-            <span className={`calm-step-dot ${s.dotClassName ?? ''}`.trim()} aria-hidden="true">{s.badge && <span className="calm-step-av">{s.badge}</span>}</span>
+            <span className={`calm-step-dot ${s.dotClassName ?? ''}`.trim()} aria-hidden="true" />
             <b className="calm-step-label">{s.label}</b>
-            {s.sub != null && <small className="calm-step-sub">{s.sub}</small>}
+            {(s.sub != null || s.badge) && <small className="calm-step-sub">{s.badge && <span className="calm-step-av">{s.badge}</span>}{s.sub}</small>}
             {s.extra}
           </li>
         ))}

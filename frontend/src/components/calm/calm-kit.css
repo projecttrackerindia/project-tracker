@@ -99,7 +99,8 @@ a.calm-row:focus-visible, button.calm-row:focus-visible { outline: 2px solid var
 .calm-step-label { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-width: 112px; overflow-wrap: anywhere; font-weight: inherit; }
 .calm-step-sub { display: block; font-size: 11px; color: var(--calm-ink3-text); font-weight: 400; margin-top: -6px; }
 .calm-step.current .calm-step-sub { color: var(--calm-ink2); }
-.calm-step-av { position: absolute; right: -11px; bottom: -8px; }
+.calm-step-sub { display: inline-flex; align-items: center; gap: 5px; }
+.calm-step-av { display: inline-flex; }
 .calm-step-extra:empty { display: none; }
 
 /* CalmSheet: a side or bottom sheet over the blurred page */

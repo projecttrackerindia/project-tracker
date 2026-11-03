@@ -84,12 +84,12 @@ try {
 
   // The sidebar: workspace, + New, the places in sections with their labels, the avatar; no old sidebar, no top bar, no Customize.
   await page.goto(`${origin}/preview-org/`); await page.locator('.v2-rail').waitFor();
-  // The 236px sidebar: Today, then Work / Plan / Together sections (only places this person may open).
+  // The 220px calm sidebar: Today, then Work / Plan / Together sections (only places this person may open).
   { const labels = await page.locator('.v2-rail-item .v2-rail-label').allTextContents();
     for (const l of ['Today', 'My Work', 'Messages', 'Library', 'Insights']) assert.ok(labels.includes(l), `sidebar has ${l}: ${labels}`);
     assert.equal(labels[0], 'Today'); }
   await page.waitForTimeout(500); if (!(await page.locator('.v2-rail').count())) { await page.getByText('Details').click().catch(()=>{}); console.log('ERRORS', errors, await page.locator('body').innerText()); await shot(page, 'fail.png'); }
-  assert.equal(Math.round((await page.locator('.v2-rail').boundingBox()).width), 236);
+  assert.equal(Math.round((await page.locator('.v2-rail').boundingBox()).width), 220);
   assert.equal(await page.locator('.sidebar, .topbar').count(), 0, 'no sidebar or top bar');
   assert.equal(await page.getByRole('button', { name: 'Customize' }).count(), 0);
   assert.ok(await page.locator('.v2-rail-item.on', { hasText: 'Today' }).isVisible());

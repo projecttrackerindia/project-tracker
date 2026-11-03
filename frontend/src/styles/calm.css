@@ -267,3 +267,6 @@ html body .m-shell .page-title { font-size: 34px; }
   html body .card, html body .v2-rail.v2-side, html body .aura-hint, html body .v2-ask { -webkit-backdrop-filter: none; backdrop-filter: none; }
   :root { --calm-card: var(--calm-solid); }
 }
+
+/* the ambient glow shows through the shell: the page areas themselves stay transparent */
+html body .main, html body .app-shell, html body .v2-main, html body .content { background: transparent; }

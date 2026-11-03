@@ -124,7 +124,7 @@ html .pp-add.btn { min-height: 44px; padding: 0 20px; border-radius: var(--ds-r-
 .pp-journey-note .link-btn { font-size: 12.5px; }
 /* the Journey is the calm kit's CalmJourney; only the project's own touches here */
 .pp-journey .calm-journey { padding-top: 10px; }
-.pp-nd-c .pp-nd-av.pa-av { width: 16px; height: 16px; font-size: 7px; box-shadow: 0 0 0 2px var(--calm-solid); }
+.pp-nd .pp-nd-av.pa-av { width: 16px; height: 16px; font-size: 7px; box-shadow: 0 0 0 2px var(--calm-solid); }
 .pp-nd.press .pp-nd-c { transform: scale(.85); }
 .pp-nd.cur.wait small { color: #a35c00; font-weight: 600; }
 [data-theme='dark'] .pp-nd.cur.wait small { color: #ffb340; }
