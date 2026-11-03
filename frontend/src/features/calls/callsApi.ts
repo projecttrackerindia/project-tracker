@@ -11,7 +11,7 @@ export interface CallJoin { callId: string; url: string; token: string; room: st
 export interface StartCall { title?: string; projectId?: string | null; meetingId?: string | null; conversationId?: string | null; invite?: string[]; agent?: boolean }
 
 /** Where a call is opened: Meetings, with the call drawn over it while it is live (its notes, transcript and recording there after). */
-export const callLink = (id: string) => `/meetings?call=${encodeURIComponent(id)}`;
+export const callLink = (id: string, audio = false) => `/meetings?call=${encodeURIComponent(id)}${audio ? '&audio=1' : ''}`;
 
 /** The project agent joins with an identity of its own kind, so everyone's screen can mark it. */
 export const isAgent = (identity: string) => identity.startsWith('agent:');

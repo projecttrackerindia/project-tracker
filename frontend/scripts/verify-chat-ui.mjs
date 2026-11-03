@@ -99,13 +99,13 @@ try {
  checks.push('reply-clears-waiting-question');
  // A call on elsewhere shows as a bar with Join; starting one here notifies everyone in the chat and opens the camera check.
  assert.match(await page.locator('[data-testid="call-live-bar"]').innerText(),/Sam Rivera.*is in “Payments sync”/s);
- assert.equal(await page.locator('[data-testid="call-live-bar"] a').getAttribute('href'),'/preview-org/calls/c-live');
+ assert.equal(await page.locator('[data-testid="call-live-bar"] a').getAttribute('href'),'/preview-org/meetings?call=c-live');
  await page.locator('[data-testid="call-live-bar"]').getByRole('button',{name:'Not now'}).click();assert.equal(await page.locator('[data-testid="call-live-bar"]').count(),0);
  await page.locator('.chat-head [data-testid="start-call"]').click();const dlg=page.getByRole('dialog');await dlg.waitFor();
  assert.match(await dlg.innerText(),/Everyone in this chat gets a notification to join/);
  assert.equal(await dlg.locator('.call-agent').count(),0,'the project agent is offered only in projects');
  await page.waitForTimeout(400);await page.screenshot({path:path.join(artifacts,'start-call.png')});
- await dlg.locator('[data-testid="start-call-go"]').click();await page.waitForURL(/\/calls\/c-new$/);
+ await dlg.locator('[data-testid="start-call-go"]').click();await page.waitForURL(/\/meetings\?call=c-new$/);
  assert.deepEqual(started,{projectId:null,conversationId:conversation.id,invite:[],agent:false});   // the server notifies everyone in the chat
  await page.locator('[data-testid="call-prejoin"]').waitFor();checks.push('start-call-from-chat');
  await page.close();await context.close();

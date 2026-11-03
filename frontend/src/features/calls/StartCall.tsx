@@ -14,23 +14,24 @@ interface Person { userId: string; name: string }
  * Starts one of our own video calls - in a project (with its people, and optionally the project agent taking notes) or in a chat - and opens it.
  * Shown only where calls are set up.
  */
-export function StartCallButton({ projectId, conversationId, people = [], label = 'Start a call', compact = false, agentAvailable = false, className }: {
+export function StartCallButton({ projectId, conversationId, people = [], label = 'Start a call', compact = false, agentAvailable = false, className, audio = false }: {
   projectId?: string; conversationId?: string; people?: Person[]; label?: string; compact?: boolean; agentAvailable?: boolean; className?: string;
+  /** A voice call: the camera starts off (it can be turned on in the call). */ audio?: boolean;
 }) {
   const status = useWsQuery(['calls', 'status'], callsApi.status, { staleTime: 600_000, retry: false });
   const [open, setOpen] = useState(false);
   if (!status.data?.available) return null;
   return (
     <>
-      <button type="button" className={className ?? (compact ? 'btn btn-ghost btn-icon' : 'btn btn-sm')} onClick={() => setOpen(true)} aria-label={label} title={label} data-testid="start-call">
-        <Icon name="video" size={compact ? 17 : 14} />{!compact && <span>{label}</span>}
+      <button type="button" className={className ?? (compact ? 'btn btn-ghost btn-icon' : 'btn btn-sm')} onClick={() => setOpen(true)} aria-label={label} title={label} data-testid={audio ? 'start-voice-call' : 'start-call'}>
+        <Icon name={audio ? 'phone' : 'video'} size={compact ? 17 : 14} />{!compact && <span>{label}</span>}
       </button>
-      {open && <StartCallModal projectId={projectId} conversationId={conversationId} people={people} agentAvailable={agentAvailable} onClose={() => setOpen(false)} />}
+      {open && <StartCallModal projectId={projectId} conversationId={conversationId} people={people} agentAvailable={agentAvailable} audio={audio} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-export function StartCallModal({ projectId, conversationId, people, agentAvailable, onClose, preselect = true }: { projectId?: string; conversationId?: string; people: Person[]; agentAvailable: boolean; onClose: () => void; /** Invite everyone listed to start with (a project's or chat's people); off for Call now. */ preselect?: boolean }) {
+export function StartCallModal({ projectId, conversationId, people, agentAvailable, onClose, preselect = true, audio = false }: { projectId?: string; conversationId?: string; people: Person[]; agentAvailable: boolean; onClose: () => void; /** Invite everyone listed to start with (a project's or chat's people); off for Call now. */ preselect?: boolean; audio?: boolean }) {
   const nav = useNavigate();
   const me = useAuth((s) => s.ctx?.user.id);
   const others = useMemo(() => people.filter((p) => p.userId !== me), [people, me]);
@@ -43,7 +44,7 @@ export function StartCallModal({ projectId, conversationId, people, agentAvailab
     try {
       const call = await callsApi.start({ title: title.trim() || undefined, projectId: projectId ?? null, conversationId: conversationId ?? null, invite: [...invite], agent: !!projectId && agent });
       if (agent && projectId && !call.agentEnabled && call.agentStatus) toast(call.agentStatus, 'info');
-      nav(callLink(call.id));
+      nav(callLink(call.id, audio));
     } catch (e) { toast(e instanceof ApiError ? e.message : 'The call could not be started.', 'error'); setBusy(false); }
   };
   const toggle = (id: string) => setInvite((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });

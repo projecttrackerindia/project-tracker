@@ -22,7 +22,7 @@ const FullScreen = ({ children }: { children: ReactNode }) => createPortal(child
  * the call chat and device choices. If the project agent was asked along it appears as a participant marked "Agent" - it joined by itself,
  * and everyone can see that it is listening. The host can end the call for everyone; anyone can leave.
  */
-export function CallPage({ id }: { id: string }) {
+export function CallPage({ id, audio = false }: { id: string; /** A voice call: the camera starts off. */ audio?: boolean }) {
   const nav = useNavigate();
   const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx?.user.displayName ?? '');
@@ -61,7 +61,7 @@ export function CallPage({ id }: { id: string }) {
             <p>{call.people.filter((p) => p.inCall).length > 0 ? `${call.people.filter((p) => p.inCall).map((p) => p.name).slice(0, 4).join(', ')} ${call.people.filter((p) => p.inCall).length === 1 ? 'is' : 'are'} in the call.` : `Started by ${call.startedByName}.`}</p>
             {call.agentEnabled && <p className="call-agent-note"><Icon name="sparkle" size={14} /><span>The project agent is in this call taking notes. It writes down who said what and sends the minutes afterwards.</span></p>}
           </div>
-          <PreJoin defaults={{ username: me, videoEnabled: true, audioEnabled: true }} joinLabel={joining ? 'Joining…' : 'Join the call'} userLabel="Your name" onSubmit={(v) => void enter(v)} onError={() => toast('The camera or microphone could not be opened. You can still join and turn them on later.', 'warning')} />
+          <PreJoin defaults={{ username: me, videoEnabled: !audio, audioEnabled: true }} joinLabel={joining ? 'Joining…' : 'Join the call'} userLabel="Your name" onSubmit={(v) => void enter(v)} onError={() => toast('The camera or microphone could not be opened. You can still join and turn them on later.', 'warning')} />
         </div>
       </div></FullScreen>
     );

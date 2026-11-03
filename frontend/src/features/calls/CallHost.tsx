@@ -21,7 +21,7 @@ export function CallHost() {
   const { pathname, search } = useLocation();
   const id = callIdAt(pathname, search);
   if (!id) return null;
-  return <Suspense fallback={null}><CallPage key={id} id={id} /></Suspense>;
+  return <Suspense fallback={null}><CallPage key={id} id={id} audio={new URLSearchParams(search).has('audio')} /></Suspense>;
 }
 
 /** The route itself holds nothing: the call is drawn by {@link CallHost}. */

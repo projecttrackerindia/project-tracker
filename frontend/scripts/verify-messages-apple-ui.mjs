@@ -159,7 +159,8 @@ try {
   await page.locator(`[data-msg="${ID(8)}"]`).waitFor();
   await page.waitForTimeout(400);   // the selection highlight fades in
   // Selection and bubbles are blue; theirs grey; nothing green anywhere.
-  assert.equal(await bg(page.locator('.talk-row.active')), 'rgb(10, 132, 255)', 'selected row is Apple blue');
+  // The calm design: the selected chat sits in a quiet fill (not a solid blue row); my bubbles stay blue.
+  assert.notEqual(await bg(page.locator('.talk-row.active')), 'rgb(10, 132, 255)', 'the selected row is a quiet fill');
   assert.equal(await bg(page.locator(`[data-msg="${ID(8)}"] .bubble`)), 'rgb(0, 122, 255)', 'my bubble is iMessage blue');
   assert.equal(await page.locator(`[data-msg="${ID(8)}"] .bubble`).evaluate((e) => getComputedStyle(e).color), 'rgb(255, 255, 255)');
   assert.equal(await bg(page.locator(`[data-msg="${ID(6)}"] .bubble`)), 'rgb(233, 233, 235)', 'their bubble is grey');
@@ -322,7 +323,7 @@ try {
   await page.waitForTimeout(400);
   assert.equal(await bg(page.locator(`[data-msg="${ID(8)}"] .bubble`)), 'rgb(10, 132, 255)', 'dark: blue bubble');
   assert.equal(await bg(page.locator(`[data-msg="${ID(6)}"] .bubble`)), 'rgb(38, 37, 42)', 'dark: grey bubble');
-  assert.equal(await bg(page.locator('.talk-row.active')), 'rgb(10, 132, 255)');
+  assert.notEqual(await bg(page.locator('.talk-row.active')), 'rgb(10, 132, 255)', 'dark: the selected row is a quiet fill');
   assert.deepEqual(await greens(page), [], 'dark: no green');
   await page.getByTestId('away-chip').getByRole('button', { name: 'Dismiss the summary' }).click();
   await page.reload();

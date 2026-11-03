@@ -398,3 +398,40 @@ html .talk-composer .send-btn svg { width: 16px; height: 16px; stroke-width: 2.4
 html[data-theme='dark'] body:has(.talk-shell) .v2-tb-new { background: #0a84ff; }
 .talk-thread .talk-head .status-on, .talk-thread .talk-head .status-away { color: var(--talk-t3); font-weight: 400; }
 
+
+/* =====================================================================================================================
+   CALM MESSAGES (demo shot 22): the chat list and the conversation as two floating cards, a light "Messages" title in the list, the
+   selected chat in a quiet fill, the header with the person's avatar, Call · Video pills and Info ›. Layout and colour only: the
+   conversation's stable layout (#99) and the live badges (#118) are untouched.
+   ===================================================================================================================== */
+@media (min-width: 861px) {
+  html .v2-shell > .main.v2-main > .content:has(> .talk-shell), html .v2-shell > .main.v2-main > .content:has(> * > .talk-shell) { padding: 6px 28px 22px; }
+  .talk-shell { gap: 20px; border-top: 0; height: calc(100vh - 52px - 28px); }
+  .talk-list, .talk-pane { background: var(--calm-card); border: 0; border-right: 0; border-radius: var(--calm-r-pane); box-shadow: var(--calm-sh); }
+  .talk-large { display: block; padding: 18px 20px 4px; font-size: 30px; font-weight: 400; letter-spacing: -.025em; color: var(--calm-ink); }
+  .talk-list-top { padding-top: 6px; }
+  .talk-row { padding: 10px 12px 10px 16px; }
+  .talk-row.active, .talk-row.active:hover { background: var(--calm-fill); color: var(--calm-ink); }
+  .talk-row.active .talk-preview, .talk-row.active .talk-top time, .talk-row.active .talk-muted { color: var(--calm-ink2); }
+  .talk-row.active .talk-dot { background: var(--calm-accent); }
+  .talk-pin.active { background: var(--calm-fill); color: var(--calm-ink); }
+  .talk-thread .talk-head { height: 68px; min-height: 68px; padding: 0 20px 0 24px; border-bottom: 0; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .talk-who-av { display: block; line-height: 0; }
+  .talk-who-av .avatar, .talk-who-av .talk-head-gl { width: 36px !important; height: 36px !important; }
+  .talk-to { display: none; }
+  .talk-thread .talk-head h2 { font-size: 17px; }
+  .talk-thread .talk-head .chat-sub { font-size: 12.5px; color: var(--calm-ink2); }
+  .talk-thread .chat-messages { background: transparent; padding: 14px 28px 10px; }
+}
+html .talk-head .talk-ib.talk-pill { width: auto; height: 30px; min-height: 30px; padding: 0 14px; gap: 6px; display: inline-flex; align-items: center; border-radius: var(--calm-r-pill);
+  background: var(--calm-solid); box-shadow: var(--calm-sh-sm); color: var(--calm-ink); font-size: 13px; font-weight: 500; }
+html .talk-head .talk-ib.talk-pill:hover { background: var(--calm-solid); filter: brightness(.97); }
+html .talk-head .talk-ib.talk-pill svg { width: 14px; height: 14px; }
+html .talk-head .talk-ib.talk-info-link { width: auto; padding: 0 6px 0 10px; gap: 2px; display: inline-flex; align-items: center; color: var(--calm-ink2); font-size: 13.5px; border-radius: 15px; }
+html .talk-head .talk-ib.talk-info-link svg { width: 12px; height: 12px; }
+@media (max-width: 860px) {
+  html .talk-head .talk-ib.talk-pill { width: 44px; min-width: 44px; height: 44px; padding: 0; justify-content: center; box-shadow: none; background: transparent; color: var(--talk-sel); }
+  html .talk-head .talk-ib.talk-pill span { display: none; }
+  html .talk-head .talk-ib.talk-pill svg { width: 18px; height: 18px; }
+}
+@media (max-width: 860px) { html .talk-head .talk-ib.talk-pill.talk-video { display: none; } }
