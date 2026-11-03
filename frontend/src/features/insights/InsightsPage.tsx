@@ -23,6 +23,7 @@ import { ReviewDrawer, TargetExplain, useTimesheetReview } from '../time/ReviewD
 import { Term } from '../../components/Term';
 import { useOverlapsByDay } from '../calendar/timeline';
 import './insights-v2.css';
+import { useRebalance } from './rebalance';
 
 type Tab = 'overview' | 'time' | 'reports';
 const TS_SECTIONS = ['week', 'insights', 'entries', 'approvals'];
@@ -257,19 +258,7 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
 }
 
 /** "Suggest a rebalance": starts the AI workload and capacity review; `onStarted` gets the job id (Insights opens it under Reports). */
-export function useRebalance(onStarted: (job: string) => void) {
-  const [busy, setBusy] = useState(false);
-  const rebalance = async () => {
-    setBusy(true);
-    try {
-      const job = await post<{ id: string }>('/ai/operations/jobs', { kind: 'workload', title: 'Workload and capacity review', idempotencyKey: crypto.randomUUID() });
-      toast('Started a workload review. It appears under Reports when ready.');
-      onStarted(job.id);
-    } catch (e) { toast(errText(e, 'Could not start the review.'), 'error'); }
-    finally { setBusy(false); }
-  };
-  return { busy, rebalance };
-}
+export { useRebalance };
 
 // ------------------------------------------------------------------------------------------------------------------------ Time
 

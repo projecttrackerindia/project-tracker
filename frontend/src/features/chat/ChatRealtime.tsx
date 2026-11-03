@@ -18,6 +18,7 @@ import { markAnswered, putMessage } from './chatCache';
 import { useProjectChat } from './projectChatStore';
 import { bumpUnread, dropUnread, useUnreadCatchUp } from './unreadBadge';
 import { emitCallEvent } from '../calls/incomingCalls';
+import { committedHereRecently } from '../../lib/mutationEffects';
 import { emitReminders, emitSheetFocus, emitViewing, notifyLiveConnected, setLiveConnection, type ReminderEvent, type SheetFocusEvent, type ViewingEvent } from '../live/bus';
 
 /** Screens that show work: refreshed (if open) when someone else changes something. Chat, settings and the like have their own events or none. */
@@ -119,6 +120,8 @@ export function ChatRealtime() {
     connection.on('changed', (changes: { actorId: string | null }[]) => {
       // Same actor does not mean same tab: another visible tab or an AI action may have made this change.
       if (changes.some((c) => c.actorId !== me)) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));   // someone else's change may have notified me
+      // My own save from this tab: already refreshed by MutationSync, so the echo would only read every open view a second time.
+      if (changes.length && changes.every((c) => c.actorId === me) && committedHereRecently()) return;
       refreshWork();
     });
     connection.on('viewing', (e: ViewingEvent) => emitViewing(e));

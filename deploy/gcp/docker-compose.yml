@@ -9,7 +9,8 @@ services:
     image: mirror.gcr.io/library/caddy:2.8-alpine
     restart: unless-stopped
     depends_on: [web]
-    ports: ["80:80", "443:443"]
+    # 443/udp is HTTP/3 (QUIC): Caddy serves it by itself; browsers fall back to HTTP/2 over TCP when UDP is blocked.
+    ports: ["80:80", "443:443", "443:443/udp"]
     environment:
       DOMAIN: ${DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL}

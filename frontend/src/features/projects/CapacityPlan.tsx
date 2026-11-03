@@ -5,7 +5,7 @@ import { resourcesApi } from '../../api/endpoints';
 import type { CapacityPlan, CapacityPlanCell, WorkloadScope } from '../../api/types';
 import { Avatar, EmptyState, ErrorState, Modal, Segmented } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
-import { useRebalance } from '../insights/InsightsPage';
+import { useRebalance } from '../insights/rebalance';
 import { isoWeek } from './PortfolioViews';
 import { PortfolioSkeleton, ShellTools, usePortfolio } from './PortfolioShell';
 import { portfolioKeys } from './portfolioShared';

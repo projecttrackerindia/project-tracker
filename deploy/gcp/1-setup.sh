@@ -43,7 +43,7 @@ fi
 echo "== Fixed public address and firewall"
 gcloud compute addresses describe pt-ip --region="$REGION" >/dev/null 2>&1 || gcloud compute addresses create pt-ip --region="$REGION"
 gcloud compute firewall-rules describe pt-web >/dev/null 2>&1 || \
-  gcloud compute firewall-rules create pt-web --allow=tcp:80,tcp:443 --target-tags=pt-web --description="HTTPS for ProjectTracker"
+  gcloud compute firewall-rules create pt-web --allow=tcp:80,tcp:443,udp:443 --target-tags=pt-web --description="HTTPS for ProjectTracker"
 
 echo "== Server"
 if ! gcloud compute instances describe "$VM_NAME" --zone="$ZONE" >/dev/null 2>&1; then
