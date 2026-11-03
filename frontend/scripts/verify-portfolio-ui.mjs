@@ -176,7 +176,8 @@ try{
   {const target=page.locator('.pf-colwrap.late');
    // On the Overview the project columns sit below the fold: bring them into view, and drag again if the first drop was lost.
    const sheet=page.getByRole('dialog',{name:/Move Payments to Late/});
-   for(let k=0;k<3&&!(await sheet.isVisible());k++){await card.scrollIntoViewIfNeeded();await page.waitForTimeout(300);await card.dragTo(target);await sheet.waitFor({timeout:4000}).catch(()=>{});}
+   for(let k=0;k<3&&!(await sheet.isVisible());k++){await card.scrollIntoViewIfNeeded();await page.waitForTimeout(300);
+    if(k===0)await card.dragTo(target);else{const dt=await page.evaluateHandle(()=>new DataTransfer());await card.dispatchEvent('dragstart',{dataTransfer:dt});await target.dispatchEvent('dragover',{dataTransfer:dt});await target.dispatchEvent('drop',{dataTransfer:dt});await card.dispatchEvent('dragend',{dataTransfer:dt});}await sheet.waitFor({timeout:4000}).catch(()=>{});}
    await sheet.waitFor();
    await sheet.getByLabel('What is the risk?').fill('Bank sandbox keys not shared');await shot(page,'board-drop-1440.png');
    await sheet.getByRole('button',{name:'Flag it'}).click();await sheet.waitFor({state:'detached'});
