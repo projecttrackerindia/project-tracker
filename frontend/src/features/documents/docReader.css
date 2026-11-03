@@ -133,3 +133,32 @@
 .rd-page.rd-page:not(:has(> .rd-toc-pane)) > .rd-col { grid-column: 1 / 3; }
 @media (max-width: 1180px) { .rd-page.rd-page > .rd-col, .rd-page.rd-page:not(:has(> .rd-toc-pane)) > .rd-col { grid-column: 1; } }
 .rd-page.rd-page { align-content: start; }
+.rd-page.rd-page > .rd-toc-pane, .rd-page.rd-page > .rd-col, .rd-page.rd-page > .rd-rail { grid-row: 2; }
+.dx-read.dx-read > .rd-toc-pane, .dx-read.dx-read > .dx-col { grid-row: 2; }
+@media (max-width: 1180px) { .rd-page.rd-page > .rd-rail { grid-row: 2; } }
+@media (max-width: 860px) { .rd-page.rd-page > .rd-rail { grid-row: 3; } }
+/* read bar (outline pane), "Outline" button and sheet below 1180px, "Comment…" at the panel's foot */
+.rd-read { margin: 16px 8px 0; font-size: 12px; color: var(--calm-ink2); display: grid; gap: 6px; }
+.rd-read-h { display: flex; justify-content: space-between; }
+.rd-read-h b { color: var(--calm-ink); }
+.rd-read .calm-mbar { flex: none; }
+.rd-outline-btn { display: none; }
+.rd-toc-sheet ul { list-style: none; margin: 0; padding: 0; border: 0; }
+.rd-toc-sheet li a { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 10px; color: var(--calm-ink2); text-decoration: none; font-size: 15px; }
+.rd-toc-sheet li.on a { background: var(--calm-fill); color: var(--calm-ink); font-weight: 600; }
+.rd-comp { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 6px 6px 6px 16px; border-radius: 99px; background: var(--calm-fill); position: sticky; bottom: 0; }
+.rd-comp input { flex: 1; min-width: 0; border: 0; background: none; font: inherit; font-size: 14px; color: var(--calm-ink); height: 34px; outline: 0; }
+.rd-comp button { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--calm-accent); color: #fff; font-size: 16px; cursor: pointer; flex: none; }
+.rd-comp button:disabled { opacity: .45; cursor: default; }
+@media (max-width: 1180px) {
+  .rd-outline-btn { display: inline-flex; align-items: center; gap: 8px; grid-column: 1 / -1; justify-self: start; min-height: 44px; padding: 0 18px; margin-bottom: 12px; border: 0; border-radius: 99px;
+    background: var(--calm-card); box-shadow: var(--calm-sh-sm); font: inherit; font-size: 14px; font-weight: 500; color: var(--calm-ink); cursor: pointer; }
+  .dx-read.dx-read > .rd-outline-btn { grid-row: 2; }
+  .dx-read.dx-read > .dx-col { grid-row: 3; }
+  .rd-page.rd-page > .rd-outline-btn { grid-row: 2; }
+  .rd-page.rd-page > .rd-col, .rd-page.rd-page > .rd-rail { grid-row: 3; }
+}
+@media (max-width: 860px) { .rd-page.rd-page > .rd-rail { grid-row: 4; } }
+.rd-col .rd-sec + .rd-sec { margin-top: 26px; }
+.rd-page.rd-page > .rd-rail { overflow-x: hidden; }
+.rd-rail .rd-comp { margin-left: 0; margin-right: 0; }
