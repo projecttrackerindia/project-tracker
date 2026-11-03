@@ -20,7 +20,7 @@ import { PAGE_CODE, useNewPage } from '../../documents/pages';
 import { RichEditor } from '../../documents/RichEditor';
 import { AskDocs } from '../LibraryAsk';
 import { ContinueShelf } from '../LibraryShelf';
-import { CalmCard, CalmGo, CalmHero } from '../../../components/calm';
+import { CalmAvatar, CalmCard, CalmGo, CalmHero, CalmRailCard, CalmRailRow } from '../../../components/calm';
 import '../calm-library.css';
 import { chipOf, inFilter, KIND_FILTERS, type KindFilter } from '../libraryKinds';
 import { docsPath } from './nav';
@@ -75,9 +75,12 @@ export function DocsHub() {
   const dash = useWsQuery(['documents', 'dashboard'], documentApi.dashboard, { staleTime: 60_000 });
   const attention = dash.data ? (dash.data.projectsMissingRequired ?? 0) + dash.data.notUpdatedIn90Days + dash.data.unpublished : 0;
   const searching = q.trim().length >= 2 && asked !== q.trim();
+  const inbox = useWsQuery(['documents', 'inbox'], documentApi.inbox, { staleTime: 60_000, retry: false });
+  const waiting = inbox.data?.toReview ?? [];
+  const recentDocs = all.filter((d) => d.typeCode !== 'ARTIFACT').slice(0, 10);
 
   return (
-    <div className="page dx dx-hub">
+    <div className={`page dx dx-hub${finding ? " finding" : ""}`}>
       <section className="dx-hero dx-hero-big" aria-label="Search and ask">
         <div className="dx-hero-top">
           <div className="dx-hub-tools">
@@ -95,6 +98,7 @@ export function DocsHub() {
           </div>
         </div>
         <CalmHero title={shelf[0] ? 'Continue reading.' : 'Library.'} second={shelf[0] ? `${shelf[0].title}.` : 'Everything your team knows, in one place.'} />
+        <div className="lib-top">
         {shelf[0] && (
           <CalmCard variant="hero" className="lib-resume" aria-label="Continue reading">
             <div className="lib-resume-t">
@@ -104,6 +108,15 @@ export function DocsHub() {
             <CalmGo onClick={() => navigate(docsPath.doc(shelf[0].id))}>Resume</CalmGo>
           </CalmCard>
         )}
+        {waiting.length > 0 && (
+          <CalmRailCard className="lib-wait" title={`Waiting for you · ${waiting.length}`} aside={<button type="button" className="calm-link" onClick={() => setFinding(true)}>All ›</button>}>
+            {waiting.slice(0, 2).map((w) => (
+              <CalmRailRow key={w.approvalId} onClick={() => navigate(docsPath.doc(w.document.id))} lead={<CalmAvatar userId={w.submittedBy.id} name={w.submittedBy.name} />}
+                title={w.document.title} sub={`${w.submittedBy.name.split(' ')[0]} asked for a ${w.step.toLowerCase() || 'review'}`} right={timeAgo(w.submittedAt)} />
+            ))}
+          </CalmRailCard>
+        )}
+        </div>
         {(finding || q) && <AskDocs hero typeOf={(id) => types.get(id)} onAsking={onAsking} onQuery={setQ} onAsked={setAsked} placeholder="Search pages, endpoints and diagrams — or ask a question" />}
       </section>
 
@@ -121,13 +134,28 @@ export function DocsHub() {
               )}
             </section>
 
-            {shelf.length > 0 && (
+            {!finding && recentDocs.length > 0 && (
+              <section aria-label="Recently edited" className="dx-sect">
+                <div className="dx-sect-h"><h2>Recently edited</h2><button type="button" className="dx-link" onClick={() => setFinding(true)}>All docs ›</button></div>
+                <ul className="lib-dgrid">
+                  {recentDocs.map((d) => (
+                    <li key={d.id}>
+                      <Link className="lib-dcard" to={d.projectId ? docsPath.guide(d.projectId, d.id) : docsPath.doc(d.id)}>
+                        <span className="lib-cov"><span className="lib-cov-ty"><i style={{ background: d.typeColor ?? 'var(--calm-accent)' }} />{chipOf(d.typeCode)} · {d.projectName ?? d.teamName ?? 'General'}</span><b>{d.title}</b></span>
+                        <span className="lib-dmeta">{d.owner && <CalmAvatar userId={d.owner.id} name={d.owner.name} />}<span className="lib-dm-t">{[d.owner?.name.split(' ')[0], updated(d.updatedAt)].filter(Boolean).join(' · ')}</span><span className="lib-dm-r">{STATUS[d.status].label}</span></span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {finding && shelf.length > 0 && (
               <section aria-label="Recently viewed" className="dx-sect">
                 <ContinueShelf docs={shelf} onOpen={(id) => navigate(docsPath.doc(id))} />
               </section>
             )}
 
-            {canCreate && (
+            {finding && canCreate && (
               <section aria-label="Start a document" className="dx-sect">
                 <div className="dx-sect-h"><h2>Start something</h2><button type="button" className="dx-link" onClick={() => setModal('wizard')}>All templates</button></div>
                 <div className="dx-starts">
@@ -142,7 +170,7 @@ export function DocsHub() {
               </section>
             )}
 
-            <section aria-label="All documents" className="dx-sect">
+            {finding && <section aria-label="All documents" className="dx-sect">
               <div className="dx-sect-h"><h2>All documents</h2><Segmented label="Kind" value={kind} onChange={setKind} options={KIND_FILTERS} /></div>
               {docs.isLoading ? <PageLoader /> : docs.isError ? <ErrorState error={docs.error} retry={() => void docs.refetch()} /> : shown.length === 0 ? (
                 <EmptyState icon={kind === 'all' ? 'note' : 'search'} title={kind === 'all' ? 'No documents yet' : 'Nothing of this kind yet'} text={kind === 'all' ? 'Write one with AI, paste a cURL, or start from a template.' : undefined} />
@@ -162,10 +190,10 @@ export function DocsHub() {
                 </ul>
               )}
               {docs.data?.nextCursor && <p className="dx-note">Showing the latest {docs.data.items?.length ?? 0}. Search or open a collection to find older ones.</p>}
-            </section>
+            </section>}
           </div>
 
-          <aside className="dx-hub-side" aria-label="Review and import">
+          {finding && <aside className="dx-hub-side" aria-label="Review and import">
             <NeedsReview canCreate={canCreate} projects={projects} onChanged={() => void invalidateWorkspace(wid, 'documents')} />
             <OutOfDate docs={all} catalog={c} />
             <PasteCurl projectId={null} canCreate={canCreate} />
@@ -176,7 +204,7 @@ export function DocsHub() {
                 <NeedsAttention canCreate={canCreate} isAdmin={c.isAdmin} onRequired={() => setModal('required')} />
               </section>
             )}
-          </aside>
+          </aside>}
         </div>
       )}
 

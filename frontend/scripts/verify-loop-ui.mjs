@@ -264,7 +264,7 @@ try {
     await shot(page, `endpoint-tests-${tag}.png`);
 
     // ---- Library hub: named gaps instead of a bare percentage, each a link to fix.
-    await page.goto(`${origin}/preview-org/library`);
+    await page.goto(`${origin}/preview-org/library?find=1`);
     const miss = page.getByTestId('collection-missing').first();
     await miss.waitFor();
     await miss.getByRole('link', { name: '1 endpoint without tests' }).waitFor();

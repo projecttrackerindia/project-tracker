@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { WorkspaceLogoCard } from './WorkspaceLogo';
 import { ProfilePhotoCard } from './ProfilePhoto';
 import { ThemeSwitch } from '../../components/ThemeSwitch';
+import { CalmSheet } from '../../components/calm';
 import { TeamLensPicker } from '../../components/TeamLensPicker';
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
@@ -190,7 +191,7 @@ export function SettingsPage() {
   const headTitle = place === 'profile' ? PLACE_INFO.profile.label : info.label;
   return (
     <SettingsShell nav={nav} places={places} current={current} isPlatformAdmin={isPlatformAdmin}>
-      {place === 'notifications' && sub === 'overview' ? body : tabs.length > 1 ? (
+      {(place === 'notifications' && sub === 'overview') || (place === 'profile' && sub === 'profile') ? body : tabs.length > 1 ? (
         <div className="set-place">
           <div className="set-place-head">
             <SPaneHead icon={info.glyph} color={info.color} title={headTitle} sub={info.sub || PLACE_INFO[place].sub} />
@@ -260,33 +261,53 @@ function NotificationsTab({ sub }: { sub: string }) {
   }
 }
 
+/** Your profile (shot 54): "Your profile. Everything here saves as you type." One card: you, ✓ Saved, and the fields that save on their own. */
 function ProfileSection() {
   const ctx = useAuth((s) => s.ctx)!;
   const reload = useAuth((s) => s.reloadContext);
   const [name, setName] = useState(ctx.user.displayName);
-  const profile = useMutation({
-    mutationFn: () => meApi.updateProfile({ displayName: name.trim(), timeZone: ctx.user.timeZone }),
-    onSuccess: async () => { toast('Profile saved.'); await reload(); },
-    onError: (e) => toast(e instanceof ApiError ? e.message : 'Could not save your profile.', 'error'),
-  });
+  const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [more, setMore] = useState<null | 'photo' | 'delete'>(null);
+  useEffect(() => {
+    const v = name.trim();
+    if (!v || v === ctx.user.displayName) return;
+    setState('saving');
+    const t = setTimeout(() => {
+      meApi.updateProfile({ displayName: v, timeZone: ctx.user.timeZone })
+        .then(async () => { setState('saved'); await reload(); })
+        .catch((e) => { setState('idle'); toast(e instanceof ApiError ? e.message : 'Could not save your profile.', 'error'); });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [name, ctx.user.displayName, ctx.user.timeZone, reload]);
+  const role = ctx.current?.role;
+  const initials = ctx.user.displayName.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
   return (
-    <>
-      <PageHead title="Profile" sub="How you appear to others, and how dates are shown to you." />
-      <ProfilePhotoCard />
-      <div className="card mb-22">
-        <div className="card-head"><h3>Profile</h3></div>
-        <div className="card-body">
-          <form className="form-grid" onSubmit={(e) => { e.preventDefault(); if (name.trim()) profile.mutate(); }}>
-            <Field label="Full name" required><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} /></Field>
-            <Field label="Email" hint={ctx.user.emailVerified ? 'Verified' : 'Not verified yet'}><div style={{ display: 'flex', gap: 8 }}><input className="input" value={ctx.user.email} disabled />
-              {!ctx.user.emailVerified && <button type="button" className="btn btn-sm" onClick={() => void authApi.resendVerification(ctx.user.email).then(() => toast(`We sent a new link to ${ctx.user.email}.`, 'success')).catch(() => toast('Could not send the link. Try again in a minute.', 'error'))}>Send link again</button>}</div></Field>
-            <Field label="Time zone" hint="Every date, due date, reminder and chart follows it."><div className="input input-static">{ctx.user.timeZone} <Link className="link" to="/settings/notifications/schedule">Change</Link></div></Field>
-            <div className="full"><SubmitButton busy={profile.isPending}>Save profile</SubmitButton></div>
-          </form>
+    <div className="cs-pane" data-setting="me.profile">
+      <header className="cs-head"><h1>Your profile.<em>Everything here saves as you type.</em></h1></header>
+      <section className="calm-card cs-profile">
+        <div className="cs-me">
+          <button type="button" className="cs-me-av" onClick={() => setMore('photo')} aria-label="Change your photo">{initials}</button>
+          <div className="cs-me-t"><b>{ctx.user.displayName}</b><small>{[ctx.user.email, role].filter(Boolean).join(' · ')}</small></div>
+          {state === 'saved' && <span className="cs-saved">✓ Saved</span>}
+          {state === 'saving' && <span className="cs-note">Saving…</span>}
+          <details className="cs-more"><summary aria-label="More">⋯</summary><div>
+            <button type="button" onClick={() => setMore('photo')}>Profile photo</button>
+            {!ctx.user.emailVerified && <button type="button" onClick={() => void authApi.resendVerification(ctx.user.email).then(() => toast(`We sent a new link to ${ctx.user.email}.`, 'success')).catch(() => toast('Could not send the link. Try again in a minute.', 'error'))}>Verify e-mail</button>}
+            <Link to="/settings/profile/mobile">Mobile app</Link>
+            <Link to="/settings/profile/assistant">Aura</Link>
+            <button type="button" onClick={() => setMore('delete')}>Delete my account</button>
+          </div></details>
         </div>
-      </div>
-      <DeleteAccountCard />
-    </>
+        <div className="cs-grid">
+          <label className="cs-f"><span>Display name</span><input value={name} maxLength={100} onChange={(e) => setName(e.target.value)} /></label>
+          <label className="cs-f"><span>E-mail</span><input value={ctx.user.email} disabled /></label>
+          <div className="cs-f"><span>Time zone</span><Link className="cs-fv" to="/settings/notifications/schedule">{ctx.user.timeZone} ›</Link></div>
+          <div className="cs-f"><span>Workspace</span><div className="cs-fv">{ctx.current?.name ?? '—'}</div></div>
+        </div>
+      </section>
+      <CalmSheet open={more === 'photo'} onClose={() => setMore(null)} title="Profile photo"><ProfilePhotoCard /></CalmSheet>
+      <CalmSheet open={more === 'delete'} onClose={() => setMore(null)} title="Delete my account"><DeleteAccountCard /></CalmSheet>
+    </div>
   );
 }
 

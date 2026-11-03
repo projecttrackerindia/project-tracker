@@ -58,7 +58,7 @@ export function CalmSettingsNav({ places, isPlatformAdmin }: { places: readonly 
   );
   return (
     <nav className="set-mac-nav cs-nav" aria-label="Settings sections" data-testid="settings-nav">
-      <SettingsSearch compact />
+      <details className="cs-find"><summary aria-label="Find a setting">⋯</summary><div><SettingsSearch compact autoFocus /></div></details>
       {group('Personal', personal)}
       {group('My teams', teams)}
       {group('Workspace', workspace)}

@@ -22,6 +22,9 @@ const now = Date.now(), iso = (min) => new Date(now + min * 60e3).toISOString();
 const row = (n, title, prio, due, ch) => ({ kind: 'ticket', id: id(200 + n), key: `WT-${n}`, title, projectId: null, projectKey: null, projectName: null, status: 'To Do', category: 'Todo', priority: prio,
   dueDate: null, isOverdue: false, assignee: n === 1 ? null : { id: id(11), name: 'Ben Ito' }, typeName: 'Incident', updatedAt: iso(-60), slaStartAt: iso(-120), slaDueAt: iso(due), slaState: 'Running', _ch: ch });
 const tickets = [row(1, 'Sign-in loops after a password reset', 'Critical', 70, 'whatsapp'), row(2, 'Export fails for large files', 'High', 180, 'email'), row(3, 'Invoice sync is late', 'Medium', 300, 'email')];
+const bug = (n, title, prio, cat, status, who) => ({ kind: 'issue', id: id(700 + n), key: `BUG-${n}`, title, projectId: id(600), projectKey: 'AT', projectName: 'Atlas', status, category: cat, priority: prio, dueDate: null, isOverdue: false,
+  assignee: who ? { id: people[who].userId, name: people[who].displayName } : null, typeName: 'Bug', updatedAt: iso(-30 * n) });
+const bugs = [bug(12, 'Refund double-posts on retry', 'Critical', 'Active', 'In progress', 0), bug(9, 'Sign-in loop after password reset', 'Critical', 'Todo', 'Open', 1), bug(5, 'CSV export drops last row', 'Medium', 'Todo', 'Open', 3)];
 const detail = (r) => ({ ...r, description: 'Forty people cannot sign in since 10:00. The redirect address changed on Monday.', reporter: { id: id(300), name: 'Contoso Support' }, version: 1, createdAt: iso(-200),
   completedAt: null, loggedMinutes: 0, detail: { can: { edit: true } }, activity: [], channel: r._ch });
 let moved = null, role = 'Owner', policyPut = null;
@@ -53,13 +56,14 @@ const handler = async (route) => {
     data = { kind: 'person', id: b.id, name: p.displayName, fromParentId: p.managerId, fromParentName: people.find((x) => x.userId === p.managerId)?.displayName ?? null, toParentId: b.newParentId, toParentName: to?.displayName ?? null, movesWith: 0, effects: [`${p.displayName} will report to ${to?.displayName}.`] };
   }
   else if (ep === '/api/v1/org') data = { roles: [], people: [], canManage: true };
+  else if (ep === '/api/v1/work-items' && url.searchParams.get('kind') === 'issue') data = { items: url.searchParams.get('status') === 'closed' ? [] : bugs, offset: 0, limit: 200, hasMore: false };
   else if (ep === '/api/v1/work-items' && url.searchParams.get('status') === 'closed') data = { items: [], offset: 0, limit: 200, hasMore: false };
   else if (ep === '/api/v1/work-items') data = { items: tickets, offset: 0, limit: 200, hasMore: false };
   else if (ep.startsWith('/api/v1/work-items/')) { const t = tickets.find((r) => ep.endsWith(r.id)); data = t ? detail(t) : null; }
   else if (ep === '/api/v1/activity' || ep.endsWith('/insights/activity')) data = { items: [{ id: id(400), action: 'task.created', summary: 'added the release checklist', actor: { id: id(12), name: 'Cara Lund' }, createdAt: iso(-10) }], page: 1, totalPages: 1, totalItems: 1 };
   else if (ep.endsWith('/projects') || ep.endsWith('/tasks') || ep.endsWith('/work-tasks')) data = { items: [], page: 1, totalPages: 0, totalItems: 0 };
-  else if (ep === '/api/v1/documents') data = { items: [{ id: id(500), title: 'Payments spec', key: 'DOC-1', number: 1, typeId: 't-PAGE', typeCode: 'PAGE', typeName: 'Page', typeColor: '#4f46e5', typeIcon: 'file', status: 'Published', projectId: null, projectKey: null, projectName: null, teamId: null, teamName: null, owner: { id: user.id, name: 'Asha Rao' }, visibility: 'Workspace', classification: 'Internal', tags: [], updatedAt: iso(-90), createdAt: iso(-900), linkedCount: 0 }], nextCursor: null, total: 1 };
-  else if (ep === '/api/v1/doctracker/catalog') data = { projects: [{ id: id(600), name: 'Atlas', key: 'AT', endpoints: [], definitions: [], documents: [], diagrams: 0 }], canCreate: true, isAdmin: true, truncated: 0 };
+  else if (ep === '/api/v1/documents') data = { items: [{ id: id(500), title: 'Payments spec', key: 'DOC-1', number: 1, typeId: 't-TECH', typeCode: 'TECH', typeName: 'Technical documentation', typeColor: '#4f46e5', typeIcon: 'file', status: 'Published', projectId: id(600), projectKey: 'AT', projectName: 'Atlas', teamId: null, teamName: null, owner: { id: user.id, name: 'Asha Rao' }, visibility: 'Project', classification: 'Internal', tags: [], updatedAt: iso(-90), createdAt: iso(-900), linkedCount: 0 }], nextCursor: null, total: 1 };
+  else if (ep === '/api/v1/doctracker/catalog') data = { projects: [{ id: id(600), name: 'Atlas', key: 'AT', endpoints: [], definitions: [], documents: [{ id: id(500), key: 'DOC-1', title: 'Payments spec', typeCode: 'TECH', typeName: 'Technical documentation', typeColor: '#4f46e5', status: 'Published', classification: 'Internal', updatedAt: iso(-90), isApi: false, parentId: null, pageOrder: 0 }], diagrams: 0 }], canCreate: true, isAdmin: true, truncated: 0 };
   else if (ep === '/api/v1/documents/dashboard') data = { total: 1, byStatus: [], byType: [], mine: 1, waitingForMe: 0, updatedThisWeek: 1, notUpdatedIn90Days: 0, unpublished: 0, recent: [] };
   else if (ep === '/api/v1/vault/overview') data = { collections: [{ id: 'c1', name: 'My vault', description: null, kind: 'Personal', projectId: null, projectName: null, teamId: null, teamName: null, myAccess: 'Manage', items: 0, atRisk: 0, requireStepUp: false, rotateEveryDays: null, locked: false, shares: null, sealed: false, rekeyNeeded: false, keyVersion: 0, requireApproval: false, requestable: false }], policy: { stepUpAlways: false, clipboardSeconds: 30, revealSeconds: 10, sharedAdminsOnly: false }, canAdmin: true, canCreateShared: true, health: { total: 0, weak: 0, reused: 0, breached: 0, expired: 0, old: 0, toRotate: 0, score: 100 }, mfaEnabled: true, identity: null, hasPasskeys: false };
   else if (ep === '/api/v1/vault/requests') data = { mine: [], toDecide: [] };
@@ -68,20 +72,32 @@ const handler = async (route) => {
   else if (ep === '/api/v1/workload') data = { scope: 'Everyone', available: ['Everyone'], members: people.map((p, i) => ({ userId: p.userId, name: p.displayName, email: `p${i}@example.test`, jobRole: null, level: 0, reportsTo: null, open: 2 + i, overdue: i % 2, doneLast30Days: 3, loggedMinutesLast7Days: 60, nextUp: [], dueThisWeek: 1, openByKind: null })), totals: { people: 5, open: 20, overdue: 2 } };
   else if (ep === '/api/v1/operations/insights') data = { days: 30, open: 3, unassigned: 1, breached: 0, atRisk: 1, compliance: 1, medianResolutionHours: 6, medianResponseMinutes: 18, createdInPeriod: 8, completedInPeriod: 6, weeks: [], aging: [], byTeam: [], byType: [], byPerson: [] };
   else if (ep === '/api/v1/reports/exports' || ep === '/api/v1/ai/operations/jobs' || ep === '/api/v1/ai/operations/schedules') data = [];
-  else if (ep === `/api/v1/documents/${id(500)}`) data = { item: { id: id(500), key: 'DOC-1', title: 'Payments spec', typeCode: 'PAGE', status: 'Published', updatedAt: iso(-90) }, revision: 1, versionLabel: '1.0', can: { edit: true, delete: true, link: true, share: true, publish: true }, publishedLabel: null, hasUnpublishedChanges: false, viewingPublished: false, sections: [{ key: 'body', title: 'Body', kind: 'Rich', sortOrder: 0, content: '<p>Refunds and idempotency.</p>' }] };
-  else if (ep === '/api/v1/documents/inbox') data = { toReview: [], submitted: [], accessToDecide: [], myAccessRequests: [], waiting: 0 };
+  else if (ep === `/api/v1/documents/${id(500)}`) data = { item: { id: id(500), key: 'DOC-1', number: 1, title: 'Payments spec', typeId: 't-TECH', typeCode: 'TECH', typeName: 'Technical documentation', typeColor: '#4f46e5', typeIcon: 'file', projectId: id(600), projectKey: 'AT', projectName: 'Atlas', teamId: null, teamName: null, owner: { id: user.id, name: 'Asha Rao' }, status: 'Published', visibility: 'Project', classification: 'Internal', tags: [], updatedAt: iso(-90), createdAt: iso(-900), linkedCount: 0 }, revision: 1, versionLabel: '1.0', can: { edit: true, delete: true, link: true, share: true, publish: true }, publishedLabel: null, hasUnpublishedChanges: false, viewingPublished: false, sections: [{ key: 'body', title: 'Body', kind: 'Rich', sortOrder: 0, content: '<h2>Overview</h2><p>Every refund carries an idempotency key.</p><h2>Refunds and idempotency</h2><p>Retries never create a second refund.</p><blockquote>Ack first, then process on the queue.</blockquote><h2>Rollout</h2><p>Behind a flag for one week.</p>' }] };
+  else if (ep === `/api/v1/documents/${id(500)}/api`) data = { definitions: [], endpoints: [] };
+  else if (ep === `/api/v1/documents/${id(500)}/review`) data = { workflowApplies: false, workflowName: null, stepCount: 0, current: null, history: [], canSubmit: false };
+  else if (ep === `/api/v1/documents/${id(500)}/freshness`) data = { stale: false, since: null, reasons: [], lastEditedAt: iso(-90), verifiedAt: null, verifiedBy: null, canVerify: true, summary: 'Edited today' };
+  else if (ep === '/api/v1/documents/library-design') data = { customCss: false, sandboxEmbeds: false, canManage: true };
+  else if (ep === '/api/v1/document-types') data = [{ id: 't-TECH', code: 'TECH', name: 'Technical documentation', description: null, icon: 'file', color: '#475569', sections: [{ key: 'body', title: 'Body', kind: 'Rich', sortOrder: 0, content: '' }], sortOrder: 0 }];
+  else if (ep === '/api/v1/documents/inbox') data = { toReview: [{ approvalId: 'ap1', document: { id: id(500), title: 'Release checklist' }, step: 'Review', state: 'Pending', submittedBy: { id: id(12), name: 'Cara Lund' }, submittedAt: iso(-60), summary: '', dueAt: null, overdue: false }], submitted: [], accessToDecide: [], myAccessRequests: [], waiting: 0 };
   else if (ep === '/api/v1/documents/search') data = { hits: [], total: 0 };
   else if (ep === '/api/v1/approvals/policies') data = [{ type: 'Leave', steps: [{ role: 'Manager' }], expiryHours: null, custom: false }, { type: 'Deployment', steps: [], expiryHours: 48, custom: false }];
   else if (ep.startsWith('/api/v1/approvals/policies/') && method === 'PUT') { policyPut = { ep, b: req.postDataJSON() }; data = { type: ep.split('/').pop(), ...policyPut.b, custom: true }; }
-  else if (ep.endsWith('/matrix')) data = { runs: [], cases: [], results: [] };
+  else if (ep === '/api/v1/public/status/preview') data = { title: 'Preview APIs', workspace: 'Preview Workspace', state: 'operational', updatedAt: iso(-5), source: 'monitors',
+    components: ['Payments API', 'Customer portal', 'Webhooks'].map((name, k) => ({ name, state: 'operational', uptime: [99.98, 100, 99.9][k], days: Array.from({ length: 90 }, (_, i) => ({ date: new Date(now - (89 - i) * 864e5).toISOString().slice(0, 10), state: k === 2 && i === 40 ? 'degraded' : 'up' })) })),
+    incidents: [{ title: 'Webhook delays', severity: 'minor', startedAt: iso(-60 * 24 * 12), resolvedAt: iso(-60 * 24 * 12 + 18), components: ['Webhooks'] }] };
+  else if (ep === '/api/v1/releases') data = [{ id: id(800), name: '2.4', projectId: id(600), projectName: 'Atlas', targetDate: '2026-11-06', status: 'Planned', notes: null, items: 3, runs: 1, approvedBy: null, approvedAt: null, shippedAt: null, createdAt: iso(-9000) }];
+  else if (ep === `/api/v1/releases/${id(800)}`) data = { release: { id: id(800), name: '2.4', status: 'Planned' }, items: [{ id: id(712), kind: 'issue', key: 'BUG-12', title: 'Refund double-posts on retry', status: 'In progress', category: 'Active', assignee: null, dueDate: null, bug: true }], runs: [], tests: { run: null, cases: 50, ran: 48, passed: 46, failed: 2, blocked: 0, notRun: 2, passPercent: 96, blockers: [], ready: false }, done: 1, open: 2, openBugs: 1, checks: [], go: false, canApprove: true };
+  else if (ep.endsWith('/quality/readiness')) data = { run: null, cases: 1, ran: 1, passed: 1, failed: 0, blocked: 0, notRun: 0, passPercent: 100, blockers: [], ready: true };
+  else if (ep.endsWith('/matrix')) data = { runs: [{ id: id(900), name: 'Nightly · build 412', environment: 'staging', build: '412', status: 'Completed', projectId: id(600), createdAt: iso(-600), startedAt: iso(-600), completedAt: iso(-500) }], cases: [{ id: id(901), key: 'TC-1', title: 'Refund once', steps: null, expected: null, priority: 'High', tags: null, projectId: id(600), projectName: 'Atlas', createdAt: iso(-9000), updatedAt: null }], results: [{ id: id(902), runId: id(900), caseId: id(901), status: 'Pass', actual: null, evidence: null, runBy: null, at: iso(-500), linkedWorkItemId: null }] };
+  else if (ep.endsWith('/quality/coverage')) data = { days: 30, projects: [{ projectId: id(600), endpoints: 10, covered: 8, linked: 8, untested: 2, percent: 81, untestedIds: [] }] };
   else if (ep === '/api/v1/settings/health') data = { score: 90, checks: [] };
   else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
   else if (ep === '/api/v1/timer') data = null;
   else if (ep.includes('/counts') || ep.includes('/unread')) data = { count: 0, total: 0 };
   await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data }) });
 };
-const screens = [['desk', '/desk', /tickets? need/], ['quality', '/quality', null], ['insights', '/insights', null], ['reports', '/insights?tab=reports', null], ['activity', '/activity', /happened today|Nothing new|Quiet/],
-  ['library', '/library', null], ['vault', '/library/vault', null], ['people', '/people', /People\./], ['org-chart', '/people/org', /Org chart\./], ['teams', '/people/teams', /Teams\./], ['settings-owner', '/settings/profile', null]];
+const screens = [['desk', '/desk', /tickets? need/], ['quality', '/quality', /open P1 bugs/], ['quality-matrix', '/quality?tab=runs', null], ['insights', '/insights', null], ['reports', '/insights?tab=reports', null], ['activity', '/activity', /happened today|Nothing new|Quiet/],
+  ['library', '/library', /Continue reading/], ['doc-reader', `/library/docs/${id(500)}`, null], ['vault', '/library/vault', null], ['people', '/people', /People\./], ['org-chart', '/people/org', /Org chart\./], ['teams', '/people/teams', /Org chart\./], ['settings-owner', '/settings/profile', null], ['status-page', '/status/preview', null]];
 const open = async (theme, w, h) => {
   const c = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', viewport: { width: w, height: h }, isMobile: w < 500, hasTouch: w < 500 });
   await c.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); localStorage.setItem('pm_home_mode', 'classic'); }, theme);
@@ -89,20 +105,22 @@ const open = async (theme, w, h) => {
   const page = await c.newPage(); page.on('pageerror', (e) => errors.push(String(e))); page.on('console', (m) => { if (m.type() === 'error' && process.env.DBG) console.log('console:', m.text().slice(0, 300)); });
   return { c, page };
 };
-const go = async (page, url) => { await page.goto(`${origin}/preview-org${url}`); await page.waitForLoadState('networkidle').catch(() => {}); await page.waitForTimeout(700); };
+const go = async (page, url) => { await page.goto(`${origin}${url.startsWith('/status/') ? '' : '/preview-org'}${url}`); await page.waitForLoadState('networkidle').catch(() => {}); await page.waitForTimeout(700); };
 try {
-  for (const [theme, w, h, suffix] of [['light', 1440, 900, '1440-light'], ['light', 1920, 1080, '1920-light'], ['dark', 1440, 900, '1440-dark'], ['light', 390, 844, '390-light'], ['dark', 390, 844, '390-dark']]) {
+  for (const [theme, w, h, suffix] of (process.env.ONLY ? [['light', 1440, 900, '1440-light']] : null) ?? [['light', 1440, 900, '1440-light'], ['light', 1920, 1080, '1920-light'], ['dark', 1440, 900, '1440-dark'], ['light', 390, 844, '390-light'], ['dark', 390, 844, '390-dark']]) {
     const { c, page } = await open(theme, w, h);
-    for (const [name, url, headline] of screens) {
+    for (const [name, url, headline] of screens.filter(([n]) => !process.env.ONLY || process.env.ONLY.split(',').includes(n))) {
       await go(page, url);
       assert.equal(await page.getByText('Something went wrong').count(), 0, `${name} ${suffix}: page crashed`);
       if (headline) assert.match(await page.locator('.calm-hero-title').first().innerText(), headline, `${name}: calm headline`);
       if (w < 500) await fitsPhone(page, `${name} ${suffix}`, assert).catch((e) => { throw new Error(`${name} ${suffix}: ${e.message.split('\n').slice(0, 6).join(' ')}`); });
+      if (process.env.DUMP === name) console.log('DUMP', await page.evaluate(() => [...document.querySelector('.rd-page')?.children ?? []].map((e) => `${e.tagName}.${e.className} ${Math.round(e.getBoundingClientRect().top)} ${Math.round(e.getBoundingClientRect().height)}`).join(' | ')));
       const file = path.join(out, `${name}-${suffix}.png`); await page.screenshot({ path: file }); console.log(file);
     }
     await c.close();
   }
 
+  if (process.env.ONLY) { await browser.close(); console.log('calm-know UI checks passed'); process.exit(0); }
   // Org chart: change manager → impact sheet → confirm posts the move.
   { const { c, page } = await open('light', 1440, 900);
     await go(page, '/people/org');

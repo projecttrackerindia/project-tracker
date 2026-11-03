@@ -138,8 +138,8 @@ try {
   const sections = await page.locator('.cs-item').allInnerTexts();
   for (const want of ['Profile', 'Notifications', 'Appearance', 'Security & sessions', 'General', 'Integrations', 'Security policy', 'Billing']) assert.ok(sections.some((t) => t.trim() === want), `Settings has ${want}: ${sections}`);
   await page.getByRole('tab', { name: 'Single sign-on' }).click(); await page.waitForTimeout(300); assert.equal(at(), '/settings/security/sso');
-  await page.goto(`${origin}/preview-org/settings/profile`); await page.locator('.set-place-head').waitFor();
-  assert.ok(!(await page.locator('.set-place-head [role="tab"]').allInnerTexts()).some((t) => /Resume/.test(t)), 'no Resume studio');
+  await page.goto(`${origin}/preview-org/settings/profile`); await page.locator('.cs-head', { hasText: 'Your profile.' }).waitFor();
+  assert.equal(await page.getByText('Resume', { exact: true }).count(), 0, 'no Resume studio');
   await shot(page, 'settings-profile-1440.png'); checks.push('settings-sections');
 
   // The AI control centre: the four figures, agent levels saved at once, the model, Teach it with a draft, the MCP address.

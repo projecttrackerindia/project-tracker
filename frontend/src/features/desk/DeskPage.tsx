@@ -1,4 +1,3 @@
-import { ToolbarSeg } from '../../components/v2/ToolbarSeg';
 import { openNew } from '../../components/v2/state';
 import { Face } from '../../components/Face';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
@@ -174,7 +173,14 @@ export function DeskPage() {
 
   return (
     <div className="dq-page dq-desk">
-      <ToolbarSeg className="dq-tb">
+
+
+      <CalmDeskFront rows={openRows.filter((r) => !snoozed.has(r.id))} detailOf={detailOf} now={now} meId={me?.id ?? null} busy={!!busyRow}
+        onOpen={openTicket} onAssign={(r) => me && void quick(r, { assigneeId: me.id }, 'Assigned to you.')}
+        onSnooze={(r) => { setSnoozed((s) => new Set(s).add(r.id)); toast('Snoozed until you reload the desk.'); }} />
+
+      {critical && <Incident row={critical} now={now} />}
+      <div className="mw-tbslot inline dq-tb dq-tb-work">
         <div className="dq-seg" role="tablist" aria-label="Desk views">
           {(['queue', 'mine', 'solved'] as Tab[]).map((t) => (
             <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setSelected(null); setPicked(new Set()); }}>
@@ -184,14 +190,7 @@ export function DeskPage() {
         </div>
         <AvailabilitySwitch meId={me?.id ?? null} />
         {deskSettings && <Link className="dai-link dai-ilink" to="/desk/integrations" aria-label="Integrations" title="Desk integrations"><span aria-hidden="true">⚙︎</span><b>Integrations</b></Link>}
-      </ToolbarSeg>
-
-      {critical && <Incident row={critical} now={now} />}
-
-      <CalmDeskFront rows={openRows.filter((r) => !snoozed.has(r.id))} detailOf={detailOf} now={now} meId={me?.id ?? null} busy={!!busyRow}
-        onOpen={openTicket} onAssign={(r) => me && void quick(r, { assigneeId: me.id }, 'Assigned to you.')}
-        onSnooze={(r) => { setSnoozed((s) => new Set(s).add(r.id)); toast('Snoozed until you reload the desk.'); }} />
-
+      </div>
       <div className="dq-hd" ref={workRef}>
         <div>
           <div className={`dq-eyebrow${breaching > 0 ? ' hot' : ''}`}>{openRows.length === 0 ? 'All clear' : `${openRows.length} open`}{breaching > 0 ? ` · ${breaching} breaching within 1h` : openRows.length ? ' · none breaching' : ''}</div>

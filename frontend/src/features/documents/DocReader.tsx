@@ -91,11 +91,12 @@ export function ReaderRail({ outline, children }: { outline: OutlineItem[]; chil
     outline.forEach((o) => io.observe(o.el));
     return () => io.disconnect();
   }, [outline]);
+  const at = Math.max(0, outline.findIndex((o) => o.id === active));
   return (
-    <aside className="rd-rail" aria-label="About this document">
+    <>
       {outline.length > 1 && (
-        <nav className="rd-toc" aria-label="On this page" data-testid="doc-outline">
-          <div className="rd-rail-title">On this page</div>
+        <nav className="rd-toc rd-toc-pane" aria-label="On this page" data-testid="doc-outline">
+          <div className="rd-rail-title">Outline · {at + 1} of {outline.length}</div>
           <ul>{outline.map((o) => (
             <li key={o.id} className={`l${o.level}${active === o.id ? ' on' : ''}`}>
               <a href={`#${o.id}`} onClick={(e) => { e.preventDefault(); o.el.scrollIntoView({ behavior: 'smooth', block: 'start' }); setActive(o.id); }}>{o.text}</a>
@@ -103,8 +104,8 @@ export function ReaderRail({ outline, children }: { outline: OutlineItem[]; chil
           ))}</ul>
         </nav>
       )}
-      {children}
-    </aside>
+      {children && <aside className="rd-rail" aria-label="About this document">{children}</aside>}
+    </>
   );
 }
 

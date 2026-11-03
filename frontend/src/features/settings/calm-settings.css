@@ -33,3 +33,31 @@
   .cs-item { min-height: 44px; }
   .cs-head h1 { font-size: 34px; }
 }
+.cs-profile { padding: 26px 26px 30px; }
+.cs-me { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; position: relative; }
+.cs-me-av { width: 60px; height: 60px; border-radius: 50%; border: 0; background: var(--calm-accent); color: #fff; font: inherit; font-size: 20px; font-weight: 600; cursor: pointer; flex: none; }
+.cs-me-t { display: grid; min-width: 0; }
+.cs-me-t b { font-size: 21px; font-weight: 600; letter-spacing: -.01em; }
+.cs-me-t small { font-size: 13.5px; color: var(--calm-ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-me .cs-saved, .cs-me .cs-note { margin-left: auto; }
+.cs-more, .cs-find { position: relative; }
+.cs-more { margin-left: 8px; }
+.cs-me .cs-saved + .cs-more, .cs-me .cs-note + .cs-more { margin-left: 8px; }
+.cs-me > .cs-more:nth-child(3) { margin-left: auto; }
+.cs-more summary, .cs-find summary { list-style: none; cursor: pointer; width: 44px; height: 36px; display: grid; place-items: center; border-radius: 99px; color: var(--calm-ink2); }
+.cs-more summary:hover, .cs-find summary:hover { background: var(--calm-fill); }
+.cs-more summary::-webkit-details-marker, .cs-find summary::-webkit-details-marker { display: none; }
+.cs-more > div { position: absolute; right: 0; top: 40px; z-index: 30; min-width: 200px; padding: 6px; border-radius: 14px; background: var(--calm-solid); box-shadow: var(--calm-sh-sheet); display: grid; }
+.cs-more > div > * { min-height: 40px; padding: 0 12px; display: flex; align-items: center; border: 0; background: none; font: inherit; font-size: 14px; color: var(--calm-ink); text-decoration: none; border-radius: 10px; cursor: pointer; text-align: left; }
+.cs-more > div > *:hover { background: var(--calm-fill); }
+.cs-find { position: absolute; top: 8px; right: 8px; }
+.cs-find > div { position: absolute; left: 0; top: 40px; z-index: 30; width: 300px; padding: 8px; border-radius: 14px; background: var(--calm-solid); box-shadow: var(--calm-sh-sheet); }
+.set-mac-nav.cs-nav { position: sticky; }
+.cs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; }
+.cs-f { display: grid; gap: 7px; font-size: 13px; color: var(--calm-ink2); min-width: 0; }
+.cs-f input, .cs-fv { height: 42px; border: 0; border-radius: 12px; background: var(--calm-fill); padding: 0 16px; font: inherit; font-size: 15px; color: var(--calm-ink); display: flex; align-items: center; text-decoration: none; min-width: 0; }
+.cs-f input:focus { outline: 2px solid var(--calm-accent); outline-offset: 0; }
+.cs-f input:disabled { color: var(--calm-ink2); }
+@media (max-width: 700px) { .cs-grid { grid-template-columns: 1fr; } .cs-me-t b { font-size: 18px; } }
+.cs-pane:has(> .cs-profile) { min-height: calc(100vh - 150px); }
+.cs-pane > .cs-profile { flex: 1; }

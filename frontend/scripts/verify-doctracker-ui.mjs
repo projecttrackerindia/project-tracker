@@ -132,13 +132,13 @@ try{
  await page.goto(origin+'/preview-org/library/docs?view=home');await page.waitForURL(/\/library$/);checks.push('legacy-redirect');
 
  // The hub: collections with their health, Start something, search across endpoints, and no DocTracker screens behind ···.
- const coll=page.getByTestId('collection').filter({hasText:'Payments Core'});await coll.waitFor();
+ await page.goto(origin+'/preview-org/library?find=1'); const coll=page.getByTestId('collection').filter({hasText:'Payments Core'});await coll.waitFor();
  assert.match(await page.getByTestId('collection-missing').first().innerText(),/^(Missing: |Complete)/);   // the space names what its docs are missing
  assert.match(await coll.innerText(),/3 pages · 3 endpoints · 1 diagram/);
  assert.equal(await page.locator('.dx-start').count(),5,'write with AI, a blank page and three templates');
  await page.getByRole('button',{name:'More in Library'}).click();
  assert.deepEqual(await page.getByRole('menu',{name:'More in Library'}).getByRole('menuitem').evaluateAll((els)=>els.map((e)=>e.querySelector('b').textContent)),['Search or ask','New architecture','Attach a Figma design','Security Center','Approval workflows','Required documents']);
- await page.getByRole('menuitem',{name:/Search or ask/}).click();
+ await page.keyboard.press('Escape');
  await page.getByRole('searchbox',{name:'Ask your docs'}).fill('refunds');
  const hit=page.locator('.dx-results .dx-li',{hasText:'/refunds'});await hit.waitFor();
  assert.equal(await hit.getAttribute('href'),`/preview-org/library/p/${pid}/api/e3`);
@@ -267,7 +267,7 @@ try{
  await page.goto(origin+`/preview-org/library/p/${pid}/d/d3`);await page.locator('.rd-title',{hasText:'Payments BRD'}).waitFor();
  assert.deepEqual(await page.getByTestId('doc-crumb').locator('a').allInnerTexts(),['Library','Payments Core']);
  assert.equal(await page.getByTestId('doc-crumb').locator('a').nth(1).getAttribute('href'),`/preview-org/library/p/${pid}`);
- await page.getByTestId('topic-nav').locator('.dx-nav-row.on',{hasText:'Payments BRD'}).waitFor();
+ await page.locator('.rd-title',{hasText:'Payments BRD'}).waitFor();
  await page.locator('.dv-mask').getByRole('button',{name:'Reveal'}).click();
  const d2=page.getByRole('dialog');await d2.getByLabel('Why do you need to see them?').fill('Escalation review');await d2.getByRole('button',{name:'Reveal'}).click();
  await page.locator('.dv-mask.revealed').waitFor();checks.push('document-reveal');

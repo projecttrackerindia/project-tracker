@@ -11,7 +11,7 @@ import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, PageHead, PageLoader, Segmented } from '../../components/ui';
 import { MONTHS, formatDate, timeAgo, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
-import { CalmHero } from '../../components/calm';
+import { AuraLine, CalmCard, CalmHero } from '../../components/calm';
 import { useAuth, useCan, useModule, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { Markdown } from '../ai/Markdown';
@@ -137,6 +137,7 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
   const { busy, rebalance } = useRebalance(onReports);
   const [reminded, setReminded] = useState(false);
   const [reminding, setReminding] = useState(false);
+  const [more, setMore] = useState(false);
 
   const live = (projects.data?.items ?? []).filter((p) => p.status === 'Planning' || p.status === 'Active' || p.status === 'OnHold');
   const onTrack = live.filter((p) => p.health === 'OnTrack').length;
@@ -212,6 +213,43 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
           second={delayed[0] ? `${delayed[0].name} first.` : `${scope} · as of ${dayMonth(today)}.`} />
         {tabs}
       </div>
+      {notes[0] && notes[0].id !== 'calm' && (
+        <CalmCard variant="hero" className="ins-hero" aria-label="Highlight">
+          <div className="ins-hero-tag"><span className="calm-dot" />{scope} · as of {dayMonth(today)}</div>
+          <h2><b>{notes[0].lead}</b>{notes[0].rest}</h2>
+          {notes.slice(1, 3).map((n) => <p key={n.id} className="ins-hero-why"><b>{n.lead}</b>{n.rest}</p>)}
+          <div className="calm-hero-acts">{notes[0].action}<button type="button" className="calm-link" onClick={() => setMore((v) => !v)}>See why</button></div>
+        </CalmCard>
+      )}
+      <div className="ins-charts">
+        <section className="calm-card ins-chart" aria-label="Done per week">
+          <div className="l">{weeks.length ? `Done · ${weeks.length} weeks` : "Done per week"}</div>
+          <div className="v">{lastW ? lastW.completed : '—'}<small> items last week{trendLine ? '' : ''}</small></div>
+          {weeks.length > 1 && <Spark values={weeks.map((w) => w.completed)} color="var(--calm-p1)" />}
+          <Link className="a" to="/insights?tab=reports&s=operations">Open the trend ›</Link>
+        </section>
+        <section className="calm-card ins-chart" aria-label="Projects on track">
+          <div className="l">Projects on track</div>
+          <div className="v">{delivery == null ? '—' : `${delivery}%`}<small> {projects.data ? `${onTrack} of ${live.length}` : ''}</small></div>
+          <span className="calm-mbar ins-mbar" style={{ '--calm-dot': 'var(--calm-p2)' } as React.CSSProperties}><i style={{ width: `${delivery ?? 0}%` }} /></span>
+          <Link className="a" to="/work/projects">{delayed.length ? `Review ${delayed[0].key} ›` : 'See projects ›'}</Link>
+        </section>
+        <section className="calm-card ins-chart" aria-label="Logged vs target">
+          <div className="l">Logged vs target</div>
+          <div className="v">{timePct == null ? '—' : `${timePct}%`}<small> {workload.data ? `${Math.round(logged / 60)}h of ${Math.round(expected / 60)}h` : ''}</small></div>
+          <span className="calm-mbar ins-mbar" style={{ '--calm-dot': 'var(--calm-p6)' } as React.CSSProperties}><i style={{ width: `${Math.min(100, timePct ?? 0)}%` }} /></span>
+          <Link className="a" to="/insights?tab=time">See timesheets ›</Link>
+        </section>
+      </div>
+      <div className="calm-foot">
+        <div className="calm-ins">
+          <Link to="/work/projects">{live.length} projects</Link><i>·</i>
+          <span>{total} open · {overdueTotal} overdue</span><i>·</i>
+          <button type="button" onClick={() => setMore((v) => !v)}>{more ? 'Hide details' : 'See all insights ›'}</button>
+        </div>
+        {balance != null && top && members.length > 1 && <AuraLine text={`${top.name.split(' ')[0]} holds ${total ? Math.round((top.open / total) * 100) : 0}% of the open work.`} action="Rebalance?" onAction={() => void rebalance()} />}
+      </div>
+      {more && <div className="ins-more">
       <div className="ins-rings">
         <Ring index={0} tone="pink" label="Projects on track" value={delivery} to="/work/projects"
           sub={projects.data ? `${onTrack} of ${live.length} projects on track` : projects.isLoading ? 'Reading…' : projects.isError ? 'Projects could not be loaded — open to retry' : 'No projects yet'}
@@ -258,6 +296,7 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
           </div>
         )}
       </section>
+      </div>}
     </>
   );
 }
@@ -482,6 +521,7 @@ function Reports({ tabs }: { tabs: React.ReactNode }) {
   const kinds = TYPES.filter(([k]) => k !== 'WorkTasks' || seeWork);
   const [kind, setKind] = useState<ReportKind>('Project');
   const [words, setWords] = useState('');
+  const [saying, setSaying] = useState(false);
   const [exportKey, setExportKey] = useState(0);
   const generator = useRef<HTMLDivElement>(null);
   const describe = () => {
@@ -494,23 +534,26 @@ function Reports({ tabs }: { tabs: React.ReactNode }) {
 
   return (
     <>
-      <div className="calm-ins-head"><CalmHero title="Reports." second="Generate, schedule and share." />{tabs}</div>
+      <div className="calm-ins-head"><CalmHero title="Reports." second={`${KIND_INFO[kind].label} is ready to set up.`} />{tabs}</div>
       {canReports && (
         <>
-          <form className="ds-command ins-say" onSubmit={(e) => { e.preventDefault(); describe(); }}>
+          <div className="calm-bar-row ins-rep-links"><span className="calm-sp" /><button type="button" className="calm-link" onClick={() => setSaying((v) => !v)}>Describe a report ›</button><Link className="calm-link" to="/settings/integrations/status-page">Status page ›</Link></div>
+          {saying && <form className="ds-command ins-say" onSubmit={(e) => { e.preventDefault(); describe(); }}>
             <Icon name="search" size={18} />
             <input value={words} onChange={(e) => setWords(e.target.value)} aria-label="Describe a report" placeholder="Describe a report — e.g. hours by person this month, as Excel" />
             <button type="submit" className="btn btn-dark" disabled={!words.trim()}>Set up</button>
-          </form>
-          <div className="ds-choices ins-types" role="group" aria-label="Report type">
+          </form>}
+          <div className="ds-choices ins-types calm-rgrid" role="group" aria-label="Report type">
             {kinds.map(([k, icon, hint]) => (
               <button key={k} type="button" className={`ds-choice ${kind === k ? 'on' : ''}`} aria-pressed={kind === k} onClick={() => setKind(k)}>
                 <span className="ds-tile-ico"><Icon name={icon} /></span><b>{KIND_INFO[k].label}</b><span>{hint}</span>
               </button>
             ))}
           </div>
-          <div ref={generator} className="ins-gen"><ReportGenerator kind={kind} onRequested={() => setExportKey((n) => n + 1)} /></div>
-          <ExportList refreshKey={exportKey} />
+          <section className="calm-card ins-rep-main" aria-label="Report">
+            <div ref={generator} className="ins-gen"><ReportGenerator kind={kind} onRequested={() => setExportKey((n) => n + 1)} /></div>
+            <ExportList refreshKey={exportKey} />
+          </section>
         </>
       )}
       <Reviews selected={params.get('job')} onSelect={(job) => setParams((p) => { const n = new URLSearchParams(p); if (job) n.set('job', job); else n.delete('job'); return n; }, { replace: true })} />
@@ -569,5 +612,19 @@ function Reviews({ selected, onSelect }: { selected: string | null; onSelect: (i
         {job && !job.result && <p className="ins-p">{job.status === 'failed' ? 'This review could not finish.' : 'Still working on it…'}</p>}
       </section>
     </div>
+  );
+}
+
+/** A small sparkline for a chart card (area plus line), from a real weekly series. */
+function Spark({ values, color }: { values: number[]; color: string }) {
+  const w = 300, h = 70, mx = Math.max(1, ...values), mn = Math.min(...values) * 0.85;
+  const span = mx - mn || 1;
+  const pts = values.map((v, i) => [(i * w) / Math.max(1, values.length - 1), h - 6 - ((v - mn) / span) * (h - 16)]);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none" className="ins-spark" aria-hidden="true">
+      <path d={`${d} L${w} ${h} L0 ${h}Z`} fill={color} opacity=".12" />
+      <path d={d} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    </svg>
   );
 }

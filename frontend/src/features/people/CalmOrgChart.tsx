@@ -8,7 +8,8 @@ import { useWsQuery } from '../../lib/hooks';
 import { useIsMobile } from '../../lib/mobile';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { refreshPeople } from './peopleData';
+import { refreshPeople, useTeams } from './peopleData';
+import { projectColor } from '../../lib/calm';
 import './calm-people.css';
 
 type Node = { p: OrgTreePerson; kids: Node[] };
@@ -32,10 +33,11 @@ export function buildOrgNodes(people: OrgTreePerson[]): Node[] {
 const errText = (e: unknown) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not move them.');
 
 /** Org chart (shot 57): the reporting tree on a dotted canvas, a person panel on the right, drag a person onto a new manager → impact sheet (57b). */
-export function CalmOrgChart() {
+export function CalmOrgChart({ mode = 'tree' }: { mode?: 'tree' | 'teams' }) {
   const wid = useWorkspaceId();
   const phone = useIsMobile();
   const tree = useWsQuery(['org', 'tree'], orgApi.tree, { staleTime: 30_000 });
+  const teamsQ = useTeams();
   const [sel, setSel] = useState<string | null>(null);
   const [find, setFind] = useState('');
   const [zoom, setZoom] = useState(1);
@@ -115,19 +117,39 @@ export function CalmOrgChart() {
       <div className="co-main">
         <div className="co-tools">
           <input className="co-find" type="search" placeholder="Find a person" value={find} onChange={(e) => setFind(e.target.value)} aria-label="Find a person" />
-          {!phone && <span className="co-zoom" role="group" aria-label="Zoom">
+          {!phone && mode === 'tree' && <span className="co-zoom" role="group" aria-label="Zoom">
             <button type="button" onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(1)))} aria-label="Zoom out">–</button>
             <span>{Math.round(zoom * 100)}%</span>
             <button type="button" onClick={() => setZoom((z) => Math.min(1.5, +(z + 0.1).toFixed(1)))} aria-label="Zoom in">+</button>
             <button type="button" onClick={() => setZoom(1)}>Fit</button>
           </span>}
         </div>
+        {mode === 'teams' ? (
+          <div className="co-teams" data-testid="org-teams">
+            {(data?.teams ?? []).map((t) => {
+              const ms = (data?.people ?? []).filter((p) => p.teamIds.includes(t.id));
+              const lead = teamsQ.data?.find((x) => x.id === t.id)?.lead;
+              const projects = teamsQ.data?.find((x) => x.id === t.id)?.projectCount ?? 0;
+              return (
+                <section key={t.id} className="co-team" aria-label={t.name}>
+                  <div className="co-team-h"><span className="calm-dot" style={{ '--calm-dot': projectColor(t.id) } as React.CSSProperties} /><b>{t.name}</b><small>{ms.length} {ms.length === 1 ? 'person' : 'people'}</small></div>
+                  <p className="co-team-sub">{[lead ? `Lead ${lead.name}` : 'No lead', projects ? `${projects} ${projects === 1 ? 'project' : 'projects'}` : null].filter(Boolean).join(' · ')}</p>
+                  {ms.filter((p) => !q || p.displayName.toLowerCase().includes(q)).map((p) => (
+                    <button key={p.userId} type="button" className={`co-mini${person?.userId === p.userId ? ' on' : ''}`} onClick={() => setSel(p.userId)}><Face userId={p.userId} name={p.displayName} className="co-face sm" />{p.displayName}</button>
+                  ))}
+                </section>
+              );
+            })}
+            {data && data.teams.length === 0 && <p className="co-none">No teams yet.</p>}
+          </div>
+        ) : (
         <div className="co-canvas" data-testid="org-canvas">
           {tree.isLoading && <p className="co-none">Loading…</p>}
           {tree.isError && <p className="co-none">Could not load the org chart.</p>}
           <ul className="co-tree" style={{ transform: `scale(${zoom})` }}>{roots.map(branch)}</ul>
           {data?.canManage && !phone && <p className="co-hint">Drag a person onto a new manager to move them</p>}
         </div>
+        )}
       </div>
       {panel}
 
