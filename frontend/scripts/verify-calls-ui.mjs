@@ -68,6 +68,8 @@ try {
         else if (ep === '/api/v1/calls/live') data = ringing ? [incoming()] : [];
         else if (ep === '/api/v1/calls/c9') data = incoming();
         else if (ep === '/api/v1/calls/c1') data = call();
+        else if (ep === '/api/v1/calls/c1/notes') data = { callId: 'c1', status: 'writing', summary: null, actions: [], decisions: [], transcript: [], sessionId: 's1' };
+        else if (ep === '/api/v1/calls/history') data = [];
         else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
         else if (ep.endsWith('/ai/status')) data = { enabled: true, configured: true, entitled: true, allowedHere: true };
         else if (ep.endsWith('/workspace/logo')) data = { hasLogo: false };
@@ -196,16 +198,17 @@ try {
     // The host ends it for everyone.
     await page.locator('[data-testid="call-end-all"]').click();
     await page.getByRole('dialog').getByRole('button', { name: 'End call' }).click();
-    await page.locator('[data-testid="call-over"]').waitFor();
+    await page.waitForURL(/\/meetings\?call=c1&over=1$/); await page.locator('[data-testid="call-detail"]').waitFor();
     assert.ok(writes.includes('/api/v1/calls/c1/end'));
     await agentCtx.close(); checks.push('end-for-everyone');
   } else {
     status = 'ended';
     await page.goto(`${origin}/preview-org/calls/c1`);
-    await page.locator('[data-testid="call-over"]').waitFor();
+    await page.waitForURL(/\/meetings\?call=c1&over=1$/); await page.locator('[data-testid="call-detail"]').waitFor();
   }
-  assert.match(await page.locator('[data-testid="call-over"]').innerText(), /This call has ended/);
-  assert.match(await page.locator('[data-testid="call-over"]').innerText(), /Agent/);   // where the notes will be
+  // A call that is over has no page of its own: Meetings shows it, with Aura writing up its notes (the agent was in it).
+  assert.match(await page.locator('[data-testid="call-detail"]').innerText(), /Atlas stand-up/);
+  assert.match(await page.locator('[data-testid="call-detail"]').innerText(), /Aura is writing/);
   await shot(page, 'ended-1440.png'); checks.push('ended');
 
   // An incoming call rings on any page: the card with who is calling, Answer and Decline. (Here it is found by the safety-net check of
@@ -228,7 +231,7 @@ try {
   await fitsPhone(ringPhone, 'the incoming call on a phone', assert);
   await shot(ringPhone, 'incoming-390.png');
   await ringPhone.locator('[data-testid="incoming-call-answer"]').click();
-  await ringPhone.waitForURL(/\/preview-org\/calls\/c9$/);
+  await ringPhone.waitForURL(/\/preview-org\/meetings\?call=c9$/);
   await ringPhone.locator('[data-testid="incoming-call"]').waitFor({ state: 'detached' });
   await ringPhone.close(); ringing = false; checks.push('incoming-call-answer');
   await ctx.close();

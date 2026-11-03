@@ -6,7 +6,7 @@ import { Modal, Spinner } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { callsApi } from './callsApi';
+import { callLink, callsApi } from './callsApi';
 
 interface Person { userId: string; name: string }
 
@@ -30,12 +30,12 @@ export function StartCallButton({ projectId, conversationId, people = [], label 
   );
 }
 
-function StartCallModal({ projectId, conversationId, people, agentAvailable, onClose }: { projectId?: string; conversationId?: string; people: Person[]; agentAvailable: boolean; onClose: () => void }) {
+export function StartCallModal({ projectId, conversationId, people, agentAvailable, onClose, preselect = true }: { projectId?: string; conversationId?: string; people: Person[]; agentAvailable: boolean; onClose: () => void; /** Invite everyone listed to start with (a project's or chat's people); off for Call now. */ preselect?: boolean }) {
   const nav = useNavigate();
   const me = useAuth((s) => s.ctx?.user.id);
   const others = useMemo(() => people.filter((p) => p.userId !== me), [people, me]);
   const [title, setTitle] = useState('');
-  const [invite, setInvite] = useState<Set<string>>(() => new Set(others.length <= 12 ? others.map((p) => p.userId) : []));
+  const [invite, setInvite] = useState<Set<string>>(() => new Set(preselect && others.length <= 12 ? others.map((p) => p.userId) : []));
   const [agent, setAgent] = useState(agentAvailable);
   const [busy, setBusy] = useState(false);
   const start = async () => {
@@ -43,7 +43,7 @@ function StartCallModal({ projectId, conversationId, people, agentAvailable, onC
     try {
       const call = await callsApi.start({ title: title.trim() || undefined, projectId: projectId ?? null, conversationId: conversationId ?? null, invite: [...invite], agent: !!projectId && agent });
       if (agent && projectId && !call.agentEnabled && call.agentStatus) toast(call.agentStatus, 'info');
-      nav(`/calls/${call.id}`);
+      nav(callLink(call.id));
     } catch (e) { toast(e instanceof ApiError ? e.message : 'The call could not be started.', 'error'); setBusy(false); }
   };
   const toggle = (id: string) => setInvite((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });

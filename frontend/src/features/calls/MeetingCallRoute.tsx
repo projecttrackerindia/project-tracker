@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
-import { callsApi } from './callsApi';
+import { callLink, callsApi } from './callsApi';
 
 /**
  * /calls/meeting/:meetingId (and /calls/meeting/w/:meetingId for a workspace meeting): the join address of a meeting held as a Project
@@ -17,7 +17,7 @@ export function MeetingCallRoute({ workspace = false }: { workspace?: boolean })
     if (!meetingId || started.current) return;
     started.current = true;
     callsApi.openMeeting(meetingId, workspace)
-      .then((call) => navigate(`/calls/${call.id}`, { replace: true }))
+      .then((call) => navigate(callLink(call.id), { replace: true }))
       .catch((e) => setError(e instanceof ApiError ? e.message : 'Could not open the meeting. Try again in a moment.'));
   }, [meetingId, workspace, navigate]);
   return (
@@ -26,7 +26,7 @@ export function MeetingCallRoute({ workspace = false }: { workspace?: boolean })
         <>
           <Icon name="alert" size={28} />
           <p style={{ margin: 0, maxWidth: '52ch' }}>{error}</p>
-          <Link className="btn" to="/calendar">Back to the calendar</Link>
+          <Link className="btn" to="/meetings">Back to Meetings</Link>
         </>
       ) : (
         <>
