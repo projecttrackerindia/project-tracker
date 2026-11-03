@@ -17,7 +17,7 @@
 .pv-hist-new { color: var(--ds-text); font-weight: 500; overflow-wrap: anywhere; }
 .pv-hist-empty { margin: 4px 0; font-size: 13px; color: var(--ds-text-3); }
 .pv-hist-skel { display: grid; gap: 10px; padding: 6px 0; }
-.pv-hist-skel span { height: 34px; border-radius: 10px; background: var(--ds-fill); animation: pv-pulse 1.2s ease-in-out infinite; }
+.pv-hist-skel span { height: 34px; border-radius: 10px; background: var(--ds-fill); animation: pv-pulse 1.6s ease-in-out infinite; }
 @keyframes pv-pulse { 50% { opacity: .5; } }
 
 /* The Activity / History switch in the item panel and on a project. */
@@ -34,7 +34,7 @@
 .pv-views-scroll { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; padding: 2px; }
 .pv-views-scroll::-webkit-scrollbar { display: none; }
 .pv-chip { display: inline-flex; align-items: center; flex: none; height: 28px; border-radius: 14px; background: var(--ds-fill); color: var(--ds-text-2);
-  font-size: 12.5px; font-weight: 500; border: 0; font-family: inherit; transition: background .2s var(--ds-ease), color .2s var(--ds-ease); }
+  font-size: 12.5px; font-weight: 500; border: 0; font-family: inherit; transition: background var(--motion-standard) var(--ds-ease), color var(--motion-standard) var(--ds-ease); }
 .pv-chip > button { border: 0; background: none; color: inherit; font: inherit; height: 28px; padding: 0 12px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; border-radius: 14px; }
 .pv-chip .pv-chip-x { padding: 0 8px 0 0; margin-left: -6px; color: var(--ds-text-4); }
 .pv-chip .pv-chip-x:hover { color: var(--ds-text); }
@@ -51,7 +51,7 @@
 .wk-sel-row.sel { background: var(--ds-accent-soft); border-radius: 10px; }
 .pv-check { display: grid; place-items: center; height: 100%; cursor: pointer; }
 .pv-check input { appearance: none; -webkit-appearance: none; width: 20px; height: 20px; border-radius: 10px; margin: 0; cursor: pointer;
-  box-shadow: inset 0 0 0 1.5px var(--ds-text-4); transition: background .15s var(--ds-ease), box-shadow .15s var(--ds-ease); position: relative; }
+  box-shadow: inset 0 0 0 1.5px var(--ds-text-4); transition: background var(--motion-micro) var(--ds-ease), box-shadow var(--motion-micro) var(--ds-ease); position: relative; }
 .pv-check input:checked { background: var(--ds-accent); box-shadow: none; }
 .pv-check input:checked::after { content: ""; position: absolute; left: 7px; top: 3.5px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .pv-check input:indeterminate { background: var(--ds-accent); box-shadow: none; }
@@ -63,7 +63,7 @@
 .pv-bulk { position: fixed; z-index: 60; left: 50%; bottom: 22px; transform: translateX(-50%); width: min(980px, calc(100vw - 32px));
   background: color-mix(in srgb, var(--ds-surface) 88%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
   border-radius: 18px; box-shadow: 0 18px 50px rgba(0, 0, 0, .18), 0 0 0 .5px rgba(0, 0, 0, .1); padding: 10px 14px; display: grid; gap: 8px;
-  animation: pv-rise .28s var(--ds-spring); }
+  animation: pv-rise var(--motion-emphasised) var(--ds-spring); }
 [data-theme='dark'] .pv-bulk { box-shadow: 0 18px 50px rgba(0, 0, 0, .5), 0 0 0 .5px rgba(255, 255, 255, .12); }
 @keyframes pv-rise { from { transform: translate(-50%, 24px); opacity: 0; } }
 .pv-bulk-top { display: flex; align-items: center; gap: 12px; }

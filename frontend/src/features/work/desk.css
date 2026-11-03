@@ -113,7 +113,7 @@
 .au-dry-t b { font-size: 15px; font-weight: 600; }
 .au-dry-t span { font-size: 12.5px; color: var(--ds-text-3); }
 .au-bars { display: flex; gap: 6px; align-items: flex-end; height: 46px; margin-top: 12px; }
-.au-bars i { flex: 1; border-radius: 4px 4px 2px 2px; background: var(--au-tint); transition: height .3s var(--ds-ease, ease); }
+.au-bars i { flex: 1; border-radius: 4px 4px 2px 2px; background: var(--au-tint); transition: height var(--motion-emphasised) var(--ds-ease, ease); }
 .au-bars i.none { opacity: .3; }
 .au-bar-l { display: flex; justify-content: space-around; font-size: 11px; color: var(--ds-text-4); margin-top: 4px; }
 .au-bar-l span { flex: 1; text-align: center; white-space: nowrap; }
@@ -131,7 +131,7 @@
 .au-describe .btn { justify-self: end; }
 .au-orb { width: 18px; height: 18px; border-radius: 50%; flex: none; margin-top: 1px; background: conic-gradient(from 200deg, #5e5ce6, #bf5af2, #ff9f0a, #30d158, #0a84ff, #5e5ce6); box-shadow: 0 0 10px rgba(94,92,230,.35); }
 .au-recipes { display: grid; gap: 10px; }
-.au-rec { display: flex; gap: 12px; padding: 14px 16px; text-align: left; border-radius: var(--ds-r-card); border: .5px solid var(--ds-line); background: var(--ds-surface); box-shadow: var(--ds-e1); cursor: pointer; font: inherit; color: var(--ds-text); text-decoration: none; transition: transform .15s var(--ds-ease, ease); }
+.au-rec { display: flex; gap: 12px; padding: 14px 16px; text-align: left; border-radius: var(--ds-r-card); border: .5px solid var(--ds-line); background: var(--ds-surface); box-shadow: var(--ds-e1); cursor: pointer; font: inherit; color: var(--ds-text); text-decoration: none; transition: transform var(--motion-micro) var(--ds-ease, ease); }
 .au-rec:hover { transform: translateY(-1px); }
 .au-rec-i { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; flex: none; font-size: 15px; }
 .au-rec b { font-size: 13.5px; font-weight: 600; display: block; }

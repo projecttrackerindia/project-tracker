@@ -3,7 +3,7 @@
 .pr-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .pr-actions { display: flex; gap: 8px; margin-left: auto; }
 .pr-search { flex: 1 1 280px; min-width: 0; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 12px;
-  background: var(--ds-fill); color: var(--ds-text-3); transition: box-shadow .15s var(--ds-ease, ease), background .15s; }
+  background: var(--ds-fill); color: var(--ds-text-3); transition: box-shadow var(--motion-micro) var(--ds-ease, ease), background var(--motion-micro); }
 .pr-search:focus-within { background: var(--ds-surface); box-shadow: 0 0 0 3px var(--ds-accent-soft), 0 0 0 1px var(--ds-accent); }
 .pr-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ds-text); font-size: 14.5px; }
 .pr-search-count { font-size: 12px; color: var(--ds-text-3); white-space: nowrap; }
@@ -178,8 +178,8 @@
 .pr-modrow-main b, .pr-actrow b { font-size: 14px; color: var(--ds-text); font-weight: 600; }
 .pr-modrow-main small, .pr-actrow small { font-size: 12px; color: var(--ds-text-3); }
 .pr-actrow { cursor: pointer; }
-.pr-switch { appearance: none; -webkit-appearance: none; width: 44px; height: 26px; border-radius: 999px; background: var(--ds-fill-strong, #d1d1d6); position: relative; cursor: pointer; flex: 0 0 auto; transition: background .2s; margin: 0; }
-.pr-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s var(--ds-spring, ease); }
+.pr-switch { appearance: none; -webkit-appearance: none; width: 44px; height: 26px; border-radius: 999px; background: var(--ds-fill-strong, #d1d1d6); position: relative; cursor: pointer; flex: 0 0 auto; transition: background var(--motion-standard); margin: 0; }
+.pr-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform var(--motion-standard) var(--ds-spring, ease); }
 .pr-switch:checked { background: var(--ds-success, #34c759); }
 .pr-switch:checked::after { transform: translateX(18px); }
 .pr-switch:disabled { opacity: .5; cursor: default; }

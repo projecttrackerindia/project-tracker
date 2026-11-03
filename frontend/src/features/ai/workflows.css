@@ -1,7 +1,7 @@
 /* Agents → Workflows */
 .awf { display: grid; gap: 16px; }
 .awf-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.awf-kind { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); text-align: left; color: var(--text); cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; min-height: 44px; }
+.awf-kind { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); text-align: left; color: var(--text); cursor: pointer; transition: border-color var(--motion-micro) ease, box-shadow var(--motion-micro) ease, transform var(--motion-micro) ease; min-height: 44px; }
 .awf-kind:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .awf-kind.on { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 .awf-kind b { display: block; font-size: 13.5px; }
@@ -28,7 +28,7 @@
 .awf-status.failed { background: var(--danger-soft); color: var(--danger-text); }
 .awf-status.running, .awf-status.queued { background: var(--primary-soft); color: var(--primary); }
 .awf-progress { position: absolute; left: 50px; right: 10px; bottom: 4px; height: 3px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
-.awf-progress i { display: block; height: 100%; background: var(--primary); transition: width .4s ease; }
+.awf-progress i { display: block; height: 100%; background: var(--primary); transition: width var(--motion-emphasised) ease; }
 .awf-body { display: grid; gap: 12px; }
 .awf-body h4 { margin: 4px 0 0; font-size: 13px; }
 .awf-method summary { cursor: pointer; font-size: 12.5px; color: var(--text-2); font-weight: 600; }

@@ -163,7 +163,7 @@
 
 /* ---- editors: kind pills like the design's type picker; the generator like its card */
 .vlt-kinds { gap: 8px; }
-.vlt-kinds button { min-height: 40px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--ds-fill); color: var(--ds-text); font-size: 14px; font-weight: 500; transition: background-color .16s var(--ds-ease), box-shadow .16s var(--ds-ease); }
+.vlt-kinds button { min-height: 40px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--ds-fill); color: var(--ds-text); font-size: 14px; font-weight: 500; transition: background-color var(--motion-micro) var(--ds-ease), box-shadow var(--motion-micro) var(--ds-ease); }
 .vlt-kinds button:hover { background: var(--ds-fill-strong); }
 .vlt-kinds button.on { background: var(--ds-accent-soft); color: var(--ds-accent-text); box-shadow: 0 0 0 1.5px var(--ds-accent); }
 .vlt-gen { gap: 14px; padding: 18px; border: 0; border-radius: 18px; background: var(--ds-surface-2); box-shadow: 0 0 0 1px var(--ds-line); }

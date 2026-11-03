@@ -33,7 +33,7 @@
 .pl-empty { padding: 24px; text-align: center; color: var(--ds-text-3); font-family: inherit; }
 
 /* ---- suggestion over the composer */
-.pl-suggest { margin: 0 0 8px; padding: 10px 12px; border-radius: var(--ds-r-tile); background: var(--ds-surface); color: var(--ds-text); box-shadow: var(--ds-e3), 0 0 0 1px var(--ds-line); animation: pl-in .18s var(--ds-ease); }
+.pl-suggest { margin: 0 0 8px; padding: 10px 12px; border-radius: var(--ds-r-tile); background: var(--ds-surface); color: var(--ds-text); box-shadow: var(--ds-e3), 0 0 0 1px var(--ds-line); animation: pl-in var(--motion-standard) var(--ds-ease); }
 @keyframes pl-in { from { opacity: 0; transform: translateY(6px); } }
 .pl-suggest-head { display: flex; align-items: center; gap: 10px; }
 .pl-suggest-head p { flex: 1; margin: 0; font-size: 13.5px; color: var(--ds-text-2); }

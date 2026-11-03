@@ -14,7 +14,7 @@
 .mo-armed .ProseMirror [data-motion].mo-in,
 .mo-armed .ProseMirror .mo-auto.mo-in,
 .mo-armed .ProseMirror [data-motion='stagger'].mo-in > * {
-  transition: opacity var(--mo-dur) cubic-bezier(.2, .8, .2, 1) var(--mo-delay), transform var(--mo-dur) cubic-bezier(.2, .8, .2, 1) var(--mo-delay);
+  transition: opacity var(--mo-dur) var(--ease-standard) var(--mo-delay), transform var(--mo-dur) var(--ease-standard) var(--mo-delay);
 }
 .mo-armed .ProseMirror [data-motion-duration='200'] { --mo-dur: 200ms; }
 .mo-armed .ProseMirror [data-motion-duration='700'] { --mo-dur: 700ms; }
@@ -32,10 +32,10 @@
   content: ''; display: block; width: 56px; height: 3px; border-radius: 3px; margin-bottom: 14px; background: var(--ds-accent);
   transform: scaleX(0); transform-origin: left;
 }
-.mo-armed.mo-t-line .ProseMirror > h2.mo-sec.mo-in::before { transition: transform 700ms cubic-bezier(.2, .8, .2, 1); }
+.mo-armed.mo-t-line .ProseMirror > h2.mo-sec.mo-in::before { transition: transform var(--motion-emphasised) var(--ease-standard); }
 .mo-armed.mo-t-line .ProseMirror > h2.mo-sec.mo-in::before { transform: scaleX(1); }
 .mo-armed.mo-t-fade .ProseMirror > h2.mo-sec:not(.mo-in) { opacity: 0; }
-.mo-armed.mo-t-fade .ProseMirror > h2.mo-sec.mo-in { transition: opacity 600ms ease; }
+.mo-armed.mo-t-fade .ProseMirror > h2.mo-sec.mo-in { transition: opacity var(--motion-emphasised) ease; }
 
 @media (prefers-reduced-motion: reduce) {
   .mo-armed .ProseMirror *, .mo-armed .ProseMirror *::before { opacity: 1 !important; transform: none !important; transition: none !important; }

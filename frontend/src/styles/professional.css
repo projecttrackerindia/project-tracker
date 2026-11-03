@@ -56,7 +56,7 @@ body { font-size: 14px; }
 .cal-agenda .member-name,.cal-agenda .member-role{display:block;white-space:normal;overflow-wrap:anywhere;line-height:1.55}
 .cal-agenda .member-role{margin-top:4px}
 /* Restrained depth, consistent targets and clear focus across existing controls. */
-.btn{border-radius:var(--radius-sm);font-weight:650;gap:8px;transition:background .18s,border-color .18s,box-shadow .18s;white-space:nowrap}
+.btn{border-radius:var(--radius-sm);font-weight:650;gap:8px;transition: background var(--motion-standard),border-color var(--motion-standard),box-shadow var(--motion-standard);white-space:nowrap}
 .btn-primary{background:var(--primary-fill);border-color:var(--primary-fill);box-shadow:var(--shadow-sm)}
 .btn-ghost,.btn-soft{background:var(--surface-solid,var(--surface));border-color:var(--border)}
 .btn:hover:not(:disabled){box-shadow:0 3px 10px #243b5312;border-color:color-mix(in srgb,var(--primary) 35%,var(--border))}
@@ -64,7 +64,7 @@ body { font-size: 14px; }
 .btn:disabled{opacity:.55;box-shadow:none}.ps-viewbar{gap:12px}.ps-seg{padding:4px;border-radius:12px}.ps-seg button{min-height:34px;border-radius:9px}.ps-chips button{min-height:34px}
 .asst-top-btn{min-height:36px;gap:8px;border-radius:999px}
 @media(max-width:768px){.cal-agenda .cal-ev{font-size:10px;background:var(--warning-soft)!important}.btn{min-height:44px}.ps-seg{max-width:100%;overflow-x:auto}.ps-viewbar{align-items:flex-start}.ps-head-right{gap:12px}}
-@media(prefers-reduced-motion:reduce){.btn{transition:none}}
+@media(prefers-reduced-motion:reduce){.btn{transition: none}}
 
 @media(max-width:768px){.ps-table.rt{min-width:0}.ps-table.rt td{white-space:normal}.ps-table.rt .ps-date{white-space:nowrap}.ps-table.rt .ps-assignee{max-width:100%}.ai-budgets table.rt{min-width:0}.cal-agenda .cal-ev.blue{background:var(--primary-soft)!important}.cal-agenda .cal-ev.green{background:var(--success-soft)!important}}
 

@@ -32,7 +32,7 @@
 .dq-t small { font-size: 11.5px; color: var(--ds-text-3); display: flex; gap: 5px; align-items: center; margin-top: 3px; white-space: nowrap; overflow: hidden; }
 .dq-ring { position: relative; width: 38px; height: 38px; flex: none; display: block; }
 .dq-ring svg { position: absolute; inset: 0; width: 38px; height: 38px; }
-.dq-ring circle { transition: stroke .6s ease, stroke-dashoffset .6s ease; }
+.dq-ring circle { transition: stroke var(--motion-emphasised) ease, stroke-dashoffset var(--motion-emphasised) ease; }
 .dq-ring i { position: absolute; inset: 0; display: grid; place-items: center; font: 700 10px var(--font); font-style: normal; font-variant-numeric: tabular-nums; }
 .dq-ch { flex: none; display: block; }
 .dq-conv { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
@@ -89,8 +89,8 @@
 /* Desk › all clear: a calm check, the last week at a glance and the next step. */
 .dq-allclear { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; padding: 48px 32px; }
 .dq-allclear-mark { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 26px; font-weight: 700; color: #fff;
-  background: linear-gradient(180deg, #5de06f, #28cd41); box-shadow: 0 8px 24px rgba(40, 205, 65, .3); animation: dq-pop .5s cubic-bezier(.2, .9, .3, 1.3) both; }
-@keyframes dq-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+  background: linear-gradient(180deg, #5de06f, #28cd41); box-shadow: 0 8px 24px rgba(40, 205, 65, .3); animation: dq-pop var(--motion-emphasised) var(--ease-decel) both; }
+@keyframes dq-pop { from { transform: scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .dq-allclear-mark { animation: none; } }
 .dq-allclear h2 { margin: 6px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
 .dq-allclear p { margin: 0; max-width: 40ch; font-size: 14px; line-height: 1.45; color: var(--ds-text-2, #6e6e73); }

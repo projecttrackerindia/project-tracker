@@ -1,8 +1,8 @@
 .agent-mark.ai-orb { position:relative;display:inline-grid;place-items:center;flex-shrink:0;border-radius:50%;background:none;box-shadow:none;color:#d6f6ff;isolation:isolate; }
 .agent-mark > .agent-ribbon { width:100%;height:100%;overflow:visible;transform-origin:center; }
-.agent-mark.animated .agent-ribbon { animation:agent-ribbon-flow 12s linear infinite; }
-.agent-mark.busy .agent-ribbon { animation:agent-ribbon-flow 2.4s linear infinite; }
-.agent-mark.busy .agent-ribbon-light { animation:agent-ribbon-light 1.6s ease-in-out infinite; }
+.agent-mark.animated .agent-ribbon { animation: none; }
+.agent-mark.busy .agent-ribbon { animation: agent-ribbon-flow 2.4s linear infinite; }
+.agent-mark.busy .agent-ribbon-light { animation: agent-ribbon-light 1.6s ease-in-out infinite; }
 @keyframes agent-ribbon-flow { 50% { transform:rotate(180deg) scale(.95); } to { transform:rotate(360deg); } }
 @keyframes agent-ribbon-light { 50% { opacity:.3; } }
-@media (prefers-reduced-motion:reduce) { .agent-mark .agent-ribbon,.agent-mark .agent-ribbon-light { animation:none !important; } }
+@media (prefers-reduced-motion:reduce) { .agent-mark .agent-ribbon,.agent-mark .agent-ribbon-light { animation: none !important; } }

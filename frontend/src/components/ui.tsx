@@ -1,7 +1,7 @@
 import { cloneElement, createContext, forwardRef, isValidElement, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactElement, type ReactNode } from 'react';
 import { useSheetDrag } from './Sheet';
 import { animate, motion, useReducedMotion } from 'framer-motion';
-import { reveal } from '../lib/motion';
+import { duration, reveal, t } from '../lib/motion';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
 import type { Priority, ProjectHealth, ProjectStatus, ProjectType, Role, StageDisplayStatus, StatusCategory } from '../api/types';
@@ -105,7 +105,8 @@ export function Progress({ value, tone = 'auto', large, active = 0 }: { value: n
 function ProgressFill({ cls, p }: { cls: string; p: number }) {
   const still = useReducedMotion();
   if (still || AUTOMATED) return <div className={`progress-bar ${cls}`} style={{ width: `${p}%` }} />;
-  return <motion.div className={`progress-bar ${cls}`} initial={{ width: 0 }} whileInView={{ width: `${p}%` }} viewport={{ once: true }} transition={reveal} />;
+  // scaleX, not width: growing the width would relayout the row on every frame.
+  return <motion.div className={`progress-bar ${cls}`} style={{ width: `${p}%`, transformOrigin: '0 50%' }} initial={{ scaleX: 0 }} whileInView={{ scaleX: 1 }} viewport={{ once: true }} transition={t.emphasised} />;
 }
 
 /** userId -> the photo as an object URL, and when it was fetched (so a photo someone changed shows up again after a while). */
@@ -316,7 +317,7 @@ export function CountUp({ value }: { value: number }) {
   const [shown, setShown] = useState(skip ? value : 0);
   useEffect(() => {
     if (skip || done.current) { setShown(value); return; }
-    const c = animate(0, value, { ...reveal, duration: Math.min(0.9, 0.35 + Math.log10(Math.abs(value) + 1) * 0.2),
+    const c = animate(0, value, { ...reveal, duration: duration.sheet,
       onUpdate: (v) => setShown(Math.round(v)), onComplete: () => { done.current = true; } });
     return () => c.stop();
   }, [value, skip]);

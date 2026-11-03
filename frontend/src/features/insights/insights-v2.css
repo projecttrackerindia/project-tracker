@@ -19,16 +19,16 @@ html[data-theme='dark'] .ins { --ins-green: #30d158; --ins-red: #ff6961; --ins-s
 .ins .page-title { font-size: 34px; font-weight: 700; letter-spacing: -.025em; line-height: 1.1; }
 .ins .ins-card { border-radius: 18px; box-shadow: var(--ins-sh1); padding: 16px 20px; }
 .ins-rings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
-.ins-ring { display: flex; align-items: center; gap: 20px; padding: 24px 22px; border-radius: 18px; background: var(--ds-surface); box-shadow: var(--ins-sh1); color: var(--ds-text); text-decoration: none; min-width: 0; transition: box-shadow .2s var(--ds-ease); }
+.ins-ring { display: flex; align-items: center; gap: 20px; padding: 24px 22px; border-radius: 18px; background: var(--ds-surface); box-shadow: var(--ins-sh1); color: var(--ds-text); text-decoration: none; min-width: 0; transition: box-shadow var(--motion-standard) var(--ds-ease); }
 a.ins-ring:hover, a.ins-ring:focus-visible { box-shadow: 0 4px 16px rgba(0,0,0,.06), 0 0 0 .5px rgba(0,0,0,.06); }
 .ins-ring.pink { --c: var(--ins-pink); } .ins-ring.orange { --c: var(--ins-orange); } .ins-ring.green { --c: var(--ins-green); }
 .ins-ring-svg { flex: none; width: 112px; height: 112px; transform: rotate(-90deg); }
 .ins-ring-svg circle { fill: none; stroke-width: 16; }
 .ins-ring-svg .trk { stroke: color-mix(in srgb, var(--c) 18%, transparent); }
 .ins-ring-svg .arc { stroke: var(--c); stroke-linecap: round; stroke-dasharray: 314.16; stroke-dashoffset: calc(314.16px * (1 - var(--v)));
-  animation: ins-ring 900ms both; }
+  animation: ins-ring var(--motion-emphasised) both; }
 @keyframes ins-ring {
-  0% { stroke-dashoffset: 312.16px; animation-timing-function: cubic-bezier(.3,.7,.4,1); }
+  0% { stroke-dashoffset: 312.16px; animation-timing-function: var(--ease-standard); }
   70% { stroke-dashoffset: calc(314.16px * (1 - min(1, var(--v) * 1.07))); animation-timing-function: ease-in-out; }
   100% { stroke-dashoffset: calc(314.16px * (1 - var(--v))); }
 }
@@ -53,7 +53,7 @@ a.ins-ring:hover, a.ins-ring:focus-visible { box-shadow: 0 4px 16px rgba(0,0,0,.
 .ins-trend .grid { stroke: var(--ds-line); stroke-width: 1; }
 .ins-trend .area { fill: color-mix(in srgb, var(--ins-pink) 10%, transparent); }
 .ins-trend .plan { fill: none; stroke: #c7c7cc; stroke-width: 2; stroke-dasharray: 4 4; }
-.ins-trend .done { fill: none; stroke: var(--ins-pink); stroke-width: 2.5; stroke-linejoin: round; stroke-dasharray: 1; animation: ins-draw 900ms cubic-bezier(.3,.7,.4,1) both; }
+.ins-trend .done { fill: none; stroke: var(--ins-pink); stroke-width: 2.5; stroke-linejoin: round; stroke-dasharray: 1; animation: ins-draw var(--motion-emphasised) var(--ease-standard) both; }
 .ins-trend .end { fill: var(--ds-surface); stroke: var(--ins-pink); stroke-width: 2.5; }
 .ins-trend text { font-size: 12px; fill: var(--ds-text-2); font-family: inherit; }
 @keyframes ins-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
@@ -65,7 +65,7 @@ a.ins-ring:hover, a.ins-ring:focus-visible { box-shadow: 0 4px 16px rgba(0,0,0,.
 .ins-name { color: var(--ds-text); font-size: 12.5px; font-weight: 500; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ins-name:hover { color: var(--ins-tint); }
 .ins-bar { position: relative; display: flex; height: 8px; border-radius: 4px; background: var(--ins-fill2); }
-.ins-bar i { display: block; height: 100%; transform-origin: left; animation: ins-grow .6s cubic-bezier(.2,.8,.2,1) both; }
+.ins-bar i { display: block; height: 100%; transform-origin: left; animation: ins-grow var(--motion-emphasised) var(--ease-standard) both; }
 .ins-bar i.open { background: var(--ds-text); border-radius: 4px 0 0 4px; }
 .ins-bar i.late { background: var(--ins-red); border-radius: 0 4px 4px 0; }
 .ins-bar b.cap { position: absolute; top: -4px; bottom: -4px; width: 1.5px; background: var(--ds-text-3); }

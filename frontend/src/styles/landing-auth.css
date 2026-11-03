@@ -49,7 +49,7 @@ html[data-theme='dark'] .auth-shell .input { background: #1A1C21; border-color: 
 .auth-shell .input:focus { border-color: #0A84FF; box-shadow: 0 0 0 4px rgba(10, 132, 255, .18); }
 
 /* buttons: the blue pill, quiet pills for the alternatives */
-.auth-shell .auth-submit, .auth-shell .auth-form .btn-primary { background: #0A84FF; border-radius: 999px; font-family: var(--lp-body); font-weight: 500; transition: transform .25s, background .25s; }
+.auth-shell .auth-submit, .auth-shell .auth-form .btn-primary { background: #0A84FF; border-radius: 999px; font-family: var(--lp-body); font-weight: 500; transition: transform var(--motion-emphasised), background var(--motion-emphasised); }
 .auth-shell .auth-submit:hover:not(:disabled), .auth-shell .auth-form .btn-primary:hover:not(:disabled) { background: #0077ED; transform: scale(1.01); }
 .auth-shell .auth-alt, .auth-shell .auth-social { border-radius: 999px; min-height: 44px; }
 html[data-theme='dark'] .auth-shell .auth-alt, html[data-theme='dark'] .auth-shell .auth-social { background: #1A1C21; border-color: rgba(255, 255, 255, .1); color: #F5F5F7; }

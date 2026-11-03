@@ -24,7 +24,7 @@ html[data-theme='dark'] .pc-none, html[data-theme='dark'] .pc-ai { --pt: rgba(25
 .ps4-tabs { display: flex; align-items: flex-end; gap: 4px; height: 40px; padding: 10px 24px 0 26px; box-sizing: content-box; position: relative; z-index: 2; min-width: 0; }
 .ps4-tabs .ft { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border: 0; cursor: pointer; border-radius: 12px 12px 0 0; flex: none;
   background: color-mix(in srgb, var(--pc) 17%, var(--p-bg)); color: color-mix(in srgb, var(--pc) 55%, var(--p-ink)); font-weight: 550; white-space: nowrap; font-size: 12.5px;
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--pc) 22%, transparent); position: relative; transition: height .15s ease; }
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--pc) 22%, transparent); position: relative; transition: height var(--motion-micro) ease; }
 .ps4-tabs .ft .c { font-size: 11px; padding: 0 6px; border-radius: 99px; background: color-mix(in srgb, var(--p-solid) 70%, transparent); color: var(--p-ink2); }
 .ps4-tabs .ft .hd { width: 7px; height: 7px; border-radius: 50%; background: var(--pc); flex: none; }
 .ps4-tabs .ft .pin { font-size: 11px; }
@@ -217,7 +217,7 @@ html[data-theme='dark'] .ps4-notify { --p-ink2: #9a9aa0; --p-line: rgba(255, 255
 .ps4-notify .ps3-vsw button[aria-selected='true'] { background: var(--p-solid); color: var(--p-ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .1); }
 .ps4-notify-f { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 .ps4-tg { width: 34px; height: 20px; border-radius: 99px; background: var(--p-fill); position: relative; flex: none; border: 0; cursor: pointer; padding: 0; }
-.ps4-tg::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .2); transition: left .15s ease; }
+.ps4-tg::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .2); transition: left var(--motion-micro) ease; }
 .ps4-tg.on { background: var(--p-green); }
 .ps4-tg.on::after { left: 16px; }
 .ps4-tg:disabled { opacity: .5; }
@@ -256,7 +256,7 @@ html[data-theme='dark'] .ps4-notify { --p-ink2: #9a9aa0; --p-line: rgba(255, 255
 .ps4-snz input { flex: 1; min-width: 0; height: 32px; border-radius: 8px; border: .5px solid var(--ds-border, rgba(0, 0, 0, .12)); background: var(--ds-surface, transparent); color: inherit; font: inherit; padding: 0 8px; color-scheme: light dark; }
 
 /* "+ Subtask" on hover of any task in the tree (and on keyboard focus), not only the selected one. */
-.ps4-tree .tw .ps4-hadd { margin-left: auto; flex: none; border: 0; background: var(--p-fill); color: var(--p-ink2); border-radius: 6px; font: inherit; font-size: 11.5px; padding: 2px 7px; cursor: pointer; opacity: 0; transition: opacity .12s; }
+.ps4-tree .tw .ps4-hadd { margin-left: auto; flex: none; border: 0; background: var(--p-fill); color: var(--p-ink2); border-radius: 6px; font: inherit; font-size: 11.5px; padding: 2px 7px; cursor: pointer; opacity: 0; transition: opacity var(--motion-micro); }
 .ps4-tree .trow:hover .ps4-hadd, .ps4-tree .trow:focus-within .ps4-hadd, .ps4-tree .ps4-hadd:focus-visible { opacity: 1; }
 .ps4-tree .tw .ps4-hadd:hover { color: var(--pc, var(--p-blue)); }
 @media (hover: none) { .ps4-tree .trow.sel .ps4-hadd { opacity: 1; } }

@@ -12,7 +12,7 @@
 /* Windows: the app's own window buttons, transparent over the page. */
 #pt-drag { position: fixed; top: 0; left: 0; right: 0; height: 12px; z-index: 2147483000; -webkit-app-region: drag; }
 #pt-winctl { position: fixed; top: 0; right: 0; z-index: 2147483001; display: flex; height: 40px; -webkit-app-region: no-drag; }
-#pt-winctl button { width: 46px; height: 100%; display: grid; place-items: center; border: 0; background: transparent; color: var(--text-2, #5b5470); cursor: default; transition: background .12s, color .12s; }
+#pt-winctl button { width: 46px; height: 100%; display: grid; place-items: center; border: 0; background: transparent; color: var(--text-2, #5b5470); cursor: default; transition: background var(--motion-micro), color var(--motion-micro); }
 #pt-winctl button:hover { background: color-mix(in srgb, var(--text, #221a3a) 9%, transparent); color: var(--text, #221a3a); }
 #pt-winctl button.close:hover { background: #e81123; color: #fff; }
 .desktop-win .topbar { padding-right: 146px; }

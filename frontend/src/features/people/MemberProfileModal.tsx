@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, useReducedMotion } from 'framer-motion';
+import { instant, t } from '../../lib/motion';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { chatApi, workspaceApi } from '../../api/endpoints';
@@ -21,10 +22,6 @@ import './profileCard.css';
 
 const ROLE_LABEL: Record<string, string> = { Owner: 'Owner', Admin: 'Admin', Manager: 'Manager', Member: 'Member', Guest: 'Guest' };
 
-// Where the person last tapped, so the card can grow out of the avatar they tapped.
-let lastTap: { x: number; y: number } | null = null;
-if (typeof document !== 'undefined') document.addEventListener('pointerdown', (e) => { lastTap = { x: e.clientX, y: e.clientY }; }, true);
-
 /**
  * Someone's profile card, drawn as a compact Apple-style card: a mesh banner in their theme, their face over its corner, their team on a
  * glass pill, three work stats, quieter details (email, who they report to, joined, presence) and Message. On a phone it is a bottom
@@ -39,7 +36,6 @@ export function MemberProfileModal({ userId: firstId, onClose }: { userId: strin
   const reduce = useReducedMotion();
   const q = useQuery({ queryKey: ['member-profile', userId], queryFn: () => workspaceApi.memberProfile(userId), staleTime: 30_000 });
   const status = usePresence(userId, 'offline');
-  const origin = useRef(lastTap);
   const [closing, setClosing] = useState(false);
   const close = () => { if (reduce) onClose(); else setClosing(true); };
 
@@ -66,18 +62,17 @@ export function MemberProfileModal({ userId: firstId, onClose }: { userId: strin
   const direct = wid ? (queryClient.getQueryData<Conversation[]>(chatKeys.conversations(wid)) ?? []).find((c) => c.type === 'Direct' && c.otherUserId === userId) : undefined;
 
   // Spring in from the tapped point (desktop); slide up (phone).
-  const from = origin.current && !phone ? { x: origin.current.x - innerWidth / 2, y: origin.current.y - innerHeight / 2 } : { x: 0, y: 0 };
-  const hidden = phone ? { y: '100%' } : { opacity: 0, scale: .4, ...from };
+  const hidden = phone ? { y: '100%' } : { opacity: 0, scale: .98 };
   const shown = phone ? { y: 0 } : { opacity: 1, scale: 1, x: 0, y: 0 };
 
   return createPortal(
     <div className={`pcard-overlay${phone ? ' pcard-sheet' : ''}`} onClick={close} data-testid="profile-overlay">
-      <motion.div className="pcard-backdrop" initial={{ opacity: 0 }} animate={{ opacity: closing ? 0 : 1 }} transition={{ duration: reduce ? 0 : .2 }} />
+      <motion.div className="pcard-backdrop" initial={{ opacity: 0 }} animate={{ opacity: closing ? 0 : 1 }} transition={reduce ? instant : t.standard} />
       <motion.div className={`pcard t-${theme}`} role="dialog" aria-modal="true" aria-label={p ? `${p.displayName}'s profile` : 'Profile'}
         data-testid="profile-card" data-theme-id={theme}
         onClick={(e) => e.stopPropagation()}
         initial={reduce ? false : hidden} animate={closing ? hidden : shown}
-        transition={reduce ? { duration: 0 } : closing ? { duration: .18, ease: 'easeIn' } : { type: 'spring', stiffness: 420, damping: 32, mass: .8 }}
+        transition={reduce ? instant : closing ? (phone ? t.sheetExit : t.exit) : (phone ? t.sheet : t.emphasised)}
         onAnimationComplete={() => { if (closing) onClose(); }}>
         {phone && <span className="pcard-grabber" aria-hidden="true" />}
         <button type="button" className="pcard-x" onClick={close} aria-label="Close profile"><Icon name="close" size={14} /></button>

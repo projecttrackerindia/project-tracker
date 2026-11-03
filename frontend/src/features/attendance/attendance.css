@@ -2,17 +2,17 @@
    the settings pane. Light and dark. */
 .att-card, .att-cap-wrap, .att-row, .ed { --att-blue: #0071e3; --att-green: #28cd41; --att-orange: #ff9500; }
 .att-scrim { position: fixed; inset: 0; z-index: 1250; display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; background: rgba(0, 0, 0, .18);
-  animation: att-fade .2s ease-out both; }
+  animation: att-fade var(--motion-standard) ease-out both; }
 .att-scrim.phone { align-items: flex-end; padding: 0; background: rgba(0, 0, 0, .32); }
 @keyframes att-fade { from { background: transparent; } }
 .att-card { --att-bg: rgba(255, 255, 255, .9); --att-line: rgba(0, 0, 0, .08); --att-fill: rgba(118, 118, 128, .12); --att-t2: #6e6e73; --att-t3: #86868b;
   position: relative; width: 420px; max-width: 100%; max-height: calc(100vh - 24px); overflow: auto; padding: 22px 22px 18px; border-radius: 20px; outline: none;
   background: var(--att-bg); color: var(--ds-text); -webkit-backdrop-filter: saturate(180%) blur(28px); backdrop-filter: saturate(180%) blur(28px);
-  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12), 0 24px 60px rgba(0, 0, 0, .18), 0 2px 8px rgba(0, 0, 0, .06); animation: att-pop .38s cubic-bezier(.34, 1.4, .64, 1) both; }
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12), 0 24px 60px rgba(0, 0, 0, .18), 0 2px 8px rgba(0, 0, 0, .06); animation: att-pop var(--motion-emphasised) var(--ease-decel) both; }
 html[data-theme='dark'] .att-card { --att-bg: rgba(44, 44, 46, .92); --att-line: rgba(255, 255, 255, .1); --att-fill: rgba(118, 118, 128, .26); --att-t2: #a1a1a6; --att-t3: #8e8e93;
   box-shadow: 0 0 0 .5px rgba(255, 255, 255, .12), 0 24px 60px rgba(0, 0, 0, .55); }
-@keyframes att-pop { from { opacity: 0; transform: translateY(-8px) scale(.94); } to { opacity: 1; transform: none; } }
-.att-card.att-sheet { width: 100%; border-radius: 20px 20px 0 0; padding: 8px 18px calc(18px + env(safe-area-inset-bottom)); max-height: 90vh; animation: att-up .36s cubic-bezier(.2, .9, .25, 1) both; }
+@keyframes att-pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.att-card.att-sheet { width: 100%; border-radius: 20px 20px 0 0; padding: 8px 18px calc(18px + env(safe-area-inset-bottom)); max-height: 90vh; animation: att-up var(--motion-sheet) var(--ease-standard) both; }
 @keyframes att-up { from { transform: translateY(100%); } }
 .att-grab { width: 36px; height: 5px; border-radius: 3px; background: rgba(120, 120, 128, .4); margin: 0 auto 12px; }
 .att-x { position: absolute; top: 14px; right: 14px; width: 26px; height: 26px; border-radius: 13px; display: grid; place-items: center; background: var(--att-fill); color: var(--att-t2); }
@@ -25,12 +25,12 @@ html[data-theme='dark'] .att-card { --att-bg: rgba(44, 44, 46, .92); --att-line:
 /* The avatar slot: Aura's animated face is swapped in by another component; until then a soft gradient orb. */
 .groot-avatar { flex: none; width: 48px; height: 48px; border-radius: 50%; display: inline-block;
   background: radial-gradient(circle at 35% 30%, #a8f0c0, #34c759 45%, #1f8f5f 100%); box-shadow: inset 0 -4px 10px rgba(0, 0, 0, .15), 0 4px 14px rgba(52, 199, 89, .35); }
-.groot-avatar[data-state='greeting'] { animation: att-breathe 2.4s ease-in-out infinite; }
+.groot-avatar[data-state='greeting'] { animation: none; }
 @keyframes att-breathe { 50% { transform: scale(1.05); } }
 
 .att-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
 .att-mode { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 104px; padding: 12px 8px; border-radius: 16px; text-align: center;
-  background: var(--att-fill); color: var(--ds-text); border: 2px solid transparent; transition: transform .12s, background .15s, border-color .15s; }
+  background: var(--att-fill); color: var(--ds-text); border: 2px solid transparent; transition: transform var(--motion-micro), background var(--motion-micro), border-color var(--motion-micro); }
 .att-mode:hover { background: rgba(118, 118, 128, .18); }
 .att-mode:active { transform: scale(.97); }
 .att-mode.on { border-color: var(--att-blue); background: rgba(0, 113, 227, .1); }
@@ -49,7 +49,7 @@ html[data-theme='dark'] .att-card { --att-bg: rgba(44, 44, 46, .92); --att-line:
 .att-link { display: block; margin-top: 12px; font-size: 13px; font-weight: 500; color: var(--ds-accent); background: none; padding: 0; }
 .att-link.faint { margin: 14px auto 0; color: var(--att-t3); font-size: 12.5px; }
 .att-acts { display: flex; gap: 8px; margin-top: 16px; }
-.att-btn { flex: 1; height: 42px; border-radius: 12px; font-size: 15px; font-weight: 600; background: var(--att-fill); color: var(--ds-text); transition: filter .15s, transform .1s; }
+.att-btn { flex: 1; height: 42px; border-radius: 12px; font-size: 15px; font-weight: 600; background: var(--att-fill); color: var(--ds-text); transition: filter var(--motion-micro), transform var(--motion-micro); }
 .att-btn.primary { background: var(--att-blue); color: #fff; box-shadow: 0 1px 2px rgba(0, 113, 227, .3); }
 .att-btn:hover:not(:disabled) { filter: brightness(1.05); }
 .att-btn:active:not(:disabled) { transform: scale(.98); }
@@ -128,7 +128,7 @@ html[data-theme='dark'] .att-cap { background: rgba(255, 255, 255, .08); box-sha
 .att-cap-h { font-size: 13px; font-weight: 600; }
 .att-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 96; width: 340px; padding: 18px; border-radius: 18px; color: var(--ds-text, #1d1d1f);
   background: rgba(255, 255, 255, .97); backdrop-filter: blur(40px) saturate(1.8); -webkit-backdrop-filter: blur(40px) saturate(1.8);
-  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1), 0 20px 60px rgba(0, 0, 0, .18); animation: att-pop-in .2s cubic-bezier(.2, .9, .25, 1) both; }
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1), 0 20px 60px rgba(0, 0, 0, .18); animation: att-pop-in var(--motion-standard) var(--ease-standard) both; }
 html[data-theme='dark'] .att-pop { background: rgba(44, 44, 46, .97); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .12), 0 20px 60px rgba(0, 0, 0, .5); }
 @keyframes att-pop-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
 @media (prefers-reduced-motion: reduce) { .att-pop { animation: none; } }

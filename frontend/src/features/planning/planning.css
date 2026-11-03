@@ -6,7 +6,7 @@
 .sprint-list, .milestone-list { gap: 14px; }
 .sprint {
   border: 0; border-radius: var(--ds-r-card); padding: 18px 22px; background: var(--ds-surface);
-  box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow .2s var(--ds-ease);
+  box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); transition: box-shadow var(--motion-standard) var(--ds-ease);
 }
 .sprint.active { box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
 .sprint.completed { opacity: 1; background: var(--ds-surface-2); box-shadow: 0 0 0 1px var(--ds-line); }

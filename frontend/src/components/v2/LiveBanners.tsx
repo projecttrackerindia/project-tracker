@@ -7,7 +7,7 @@ import type { AppNotification } from '../../api/types';
 import { CHECK_NOTIFICATIONS } from '../../features/notifications/events';
 import { isRingNotice } from '../../features/calls/incomingCalls';
 import { useAuth } from '../../stores/auth';
-import { spring } from '../../lib/motion';
+import { instant, t } from '../../lib/motion';
 import { Icon } from '../Icon';
 import { liveBannersOn } from './liveBannersPref';
 import { toast } from '../../stores/ui';
@@ -108,7 +108,7 @@ function Banner({ n, onClose }: { n: AppNotification; onClose: () => void }) {
   return (
     <motion.div className="v2-live-card ncx-banner" role="status" layout={!still} data-cat={cat}
       initial={still ? { opacity: 0 } : { opacity: 0, y: -16, scale: 0.98 }} animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-      exit={still ? { opacity: 0 } : { opacity: 0, x: 40, transition: { duration: 0.18 } }} transition={still ? { duration: 0 } : spring.snappy}
+      exit={still ? { opacity: 0 } : { opacity: 0, x: 16, transition: t.exit }} transition={still ? instant : t.spring}
       drag={still ? false : 'x'} dragConstraints={{ left: 0, right: 0 }} dragElastic={0.6}
       onDragEnd={(_e, info) => { if (Math.abs(info.offset.x) > 80) onClose(); }}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)}

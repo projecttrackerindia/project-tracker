@@ -4,6 +4,7 @@ import { Term } from '../../components/Term';
 import { pinItem, useContextMenu, usePins } from '../../components/v2/pins';
 import { Face } from '../../components/Face';
 import { motion, useReducedMotion } from 'framer-motion';
+import { sharedLayout } from '../../lib/motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { projectApi, projectGroupApi, workspaceApi } from '../../api/endpoints';
@@ -284,8 +285,8 @@ function Pass({ p, cov, still, opening, duplicate, risk, onOpen, onMenu }: {
     <motion.a href={`/work/projects/${p.id}`} className={`pa-pass ${me ? 'lifted' : ''}`} data-project={p.name} data-testid="project-pass"
       style={{ background: `linear-gradient(150deg, ${from}, ${to})`, ['--c' as string]: to }}
       aria-label={`${p.name}, ${st.label}, ${p.progress}% done${p.dueDate ? `, due ${dayMonth(p.dueDate)}` : ''}, ${signed} of ${stages} stages signed off`}
-      animate={still ? undefined : me ? { scale: 1.04, y: -8, opacity: 1 } : { scale: 1, y: 0, opacity: other ? 0.6 : 1 }}
-      transition={{ type: 'spring', duration: 0.45, bounce: 0.15 }}
+      animate={still ? undefined : me ? { scale: 1.02, y: -4, opacity: 1 } : { scale: 1, y: 0, opacity: other ? 0.6 : 1 }}
+      transition={sharedLayout}
       onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); onOpen(p.id); }}
       onContextMenu={onMenu} onMouseEnter={() => setPeek(true)} onFocus={() => setPeek(true)}>
       <span className="pa-top">

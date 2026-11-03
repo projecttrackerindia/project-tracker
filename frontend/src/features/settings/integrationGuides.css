@@ -6,7 +6,7 @@
 .integration-access { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border-strong); border-radius: 999px; padding: 8px 11px; font-size: 11px; font-weight: 600; color: var(--text-2); background: var(--surface); }
 .integration-studio-grid { display: grid; grid-template-columns: 235px minmax(0, 1fr); }
 .integration-provider-list { padding: 20px 14px; display: flex; flex-direction: column; gap: 9px; border-right: 1px solid var(--border-strong); background: var(--surface-2); }
-.integration-provider { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 10px; text-align: left; border: 1px solid transparent; border-radius: 14px; transition: background .18s, border-color .18s; }
+.integration-provider { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 10px; text-align: left; border: 1px solid transparent; border-radius: 14px; transition: background var(--motion-standard), border-color var(--motion-standard); }
 .integration-provider:hover { background: var(--hover-bg); }
 .integration-provider.selected { border-color: var(--border-strong); background: var(--primary-soft); }
 .integration-provider:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
@@ -31,7 +31,7 @@
 .integration-studio-footer > p svg { flex: none; color: var(--primary); }
 .integration-slack-install > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; list-style: none; font-size: 12px; font-weight: 650; color: var(--primary); padding: 14px 0 0; }
 .integration-slack-install > summary::-webkit-details-marker { display: none; }
-.integration-slack-install > summary svg { transition: transform .18s; flex: none; }
+.integration-slack-install > summary svg { transition: transform var(--motion-standard); flex: none; }
 .integration-slack-install[open] > summary svg { transform: rotate(180deg); }
 .integration-slack-install > summary:focus-visible, .integration-inline-guide > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 4px; }
 .integration-slack-install > div { padding-top: 8px; }
@@ -52,7 +52,7 @@
 .integration-guide > summary::-webkit-details-marker { display: none; }
 .integration-guide > summary:hover { background: var(--hover-bg); }
 .integration-guide > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; border-radius: 14px; }
-.integration-guide > summary > svg { flex: none; color: var(--text-3); transition: transform .2s; }
+.integration-guide > summary > svg { flex: none; color: var(--text-3); transition: transform var(--motion-standard); }
 .integration-guide[open] > summary > svg { transform: rotate(180deg); }
 .integration-guide-icon { display: grid; place-items: center; flex: none; width: 40px; height: 40px; color: var(--primary); background: var(--primary-soft); border-radius: 12px; }
 .integration-guide-title { display: grid; flex: 1; min-width: 0; gap: 4px; }

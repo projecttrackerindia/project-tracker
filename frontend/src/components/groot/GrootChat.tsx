@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { instant, presets, staggerDelay, t, t as mt } from '../../lib/motion';
 import { ApiError } from '../../api/client';
 import { opsApi } from '../../api/endpoints';
 import { askAi, aiWorkspaceApi, type AiAction, type AiKnowledgeSource } from '../../features/ai/aiApi';
@@ -211,8 +212,8 @@ function GrootChat() {
   const panel = (
     <motion.aside className={`groot-chat${phone ? ' phone' : ''}`} role="dialog" aria-modal={phone ? true : undefined} aria-label="Aura"
       style={phone ? undefined : { width }} data-state={state} data-testid="groot-chat"
-      initial={still ? { opacity: 0 } : phone ? { y: 40, opacity: 0 } : { x: 40, opacity: 0 }} animate={{ x: 0, y: 0, opacity: 1 }}
-      exit={still ? { opacity: 0 } : phone ? { y: 40, opacity: 0 } : { x: 40, opacity: 0 }} transition={still ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 34 }}>
+      initial={still ? { opacity: 0 } : phone ? { y: 24, opacity: 0 } : { x: 24, opacity: 0 }} animate={{ x: 0, y: 0, opacity: 1 }}
+      exit={still ? { opacity: 0 } : phone ? { y: 24, opacity: 0, transition: t.sheetExit } : { x: 24, opacity: 0, transition: t.sheetExit }} transition={still ? instant : t.sheet}>
       {!phone && <div className="gc-resize" role="separator" aria-orientation="vertical" aria-label="Resize Aura" onPointerDown={startResize} />}
       {phone && <span className="gc-grab" aria-hidden="true" />}
       <header className="gc-head">
@@ -233,7 +234,7 @@ function GrootChat() {
             <div className="gc-sugg" role="list" aria-label="Suggestions">
               {suggestions.map((s, i) => (
                 <motion.button key={s.label} type="button" role="listitem" className="gc-chip" data-action={s.action}
-                  initial={still ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: still ? 0 : 0.08 * i }} onClick={() => pick(s)}>
+                  initial={still ? false : presets.slideUp.initial} animate={presets.slideUp.animate} transition={still ? instant : { ...t.enter, delay: staggerDelay(i) }} onClick={() => pick(s)}>
                   {s.label}
                 </motion.button>
               ))}
@@ -273,7 +274,7 @@ function Turn({ t, acting, still, onAsk, onGo, onRun, onCancel, onUndo, onEdit }
         {waiting ? <Thinking steps={steps} still={still} /> : steps.length > 0 && (
           <ol className="gc-steps" aria-label="What Aura did">
             {steps.map((s, i) => (
-              <motion.li key={s.id} className={s.state} initial={still ? false : { opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: still ? 0 : i * 0.05 }}>
+              <motion.li key={s.id} className={s.state} initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={still ? instant : { ...mt.enter, delay: staggerDelay(i) }}>
                 <span className="gc-step-dot" aria-hidden="true" />{s.label}{s.state === 'running' ? '…' : ''}
               </motion.li>
             ))}

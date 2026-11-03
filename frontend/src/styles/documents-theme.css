@@ -119,7 +119,7 @@ table.data-table th button:hover { opacity: 1; }
 table.data-table th[aria-sort] button { opacity: 1; }
 table.data-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text); }
 table.data-table tbody tr:last-child td { border-bottom: none; }
-table.data-table tbody tr { cursor: pointer; transition: background .12s; }
+table.data-table tbody tr { cursor: pointer; transition: background var(--motion-micro); }
 table.data-table tbody tr:hover { background: var(--hover-bg); }
 .cc-table-title-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .cc-table-title-cell > span { display: flex; flex-direction: column; min-width: 0; }
@@ -191,8 +191,8 @@ table.data-table tbody tr:hover { background: var(--hover-bg); }
 .doc-scope .doc-acc-head-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .doc-scope .doc-acc-caret {
   all: unset; display: grid; place-items: center; width: 20px; height: 20px; border-radius: var(--radius-sm);
-  color: var(--text-3); cursor: pointer; flex: none; transition: background .15s, color .15s;
+  color: var(--text-3); cursor: pointer; flex: none; transition: background var(--motion-micro), color var(--motion-micro);
 }
-.doc-scope .doc-acc-caret svg { transition: transform .15s ease; }
+.doc-scope .doc-acc-caret svg { transition: transform var(--motion-micro) ease; }
 .doc-scope .doc-acc-caret:hover { background: var(--hover-bg); color: var(--text); }
 .doc-scope .doc-acc-caret[aria-expanded="false"] svg { transform: rotate(-90deg); }

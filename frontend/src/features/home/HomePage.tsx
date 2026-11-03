@@ -32,7 +32,7 @@ import { DotsMenu } from '../talk/DotsMenu';
 import { formatMinutes } from '../time/time';
 import { KIND_LABEL, inboxApi, type InboxBriefing, type InboxFilter, type InboxKind, type InboxRow } from './inboxApi';
 import { AnimatePresence, motion } from 'framer-motion';
-import { itemVariants, listVariants } from '../../lib/motion';
+import { itemVariants, listVariants, sharedLayout } from '../../lib/motion';
 import { SignalsSection, signalsLine, useTodaySignals } from './Signals';
 import { Term } from '../../components/Term';
 import './home.css';
@@ -264,11 +264,11 @@ function InboxCard() {
       ) : (
         <motion.ul className="hm-rows" variants={listVariants} initial="hidden" animate="show">
           <AnimatePresence initial={false}>
-          {rows.map((r) => {
+          {rows.map((r, i) => {
             const b = rowButton(r);
             const off = busy === r.id || done.has(r.id);
             return (
-              <motion.li key={r.id} layout="position" variants={itemVariants} exit="exit" style={{ overflow: 'hidden' }} className={`hm-row ${done.has(r.id) ? 'done' : ''}`}
+              <motion.li key={r.id} layout="position" variants={itemVariants} custom={i} exit="exit" transition={sharedLayout} className={`hm-row ${done.has(r.id) ? 'done' : ''}`}
                 onContextMenu={(e) => { if (off) return; e.preventDefault(); void later(r); }}>
                 <span className={`hm-kind k-${r.kind}`} role="img" aria-label={KIND_LABEL[r.kind]} title={KIND_LABEL[r.kind]}>{KIND_GLYPH[r.kind]}</span>
                 <div className="hm-row-main">

@@ -60,7 +60,7 @@ html[data-theme='dark'] .wp-mm, html[data-theme='dark'] .wp-cal, html[data-theme
 .wp-dh b { display: block; font-size: 20px; font-weight: 600; color: var(--ds-text); letter-spacing: -.02em; line-height: 1.1; }
 .wp-dh.tdy b { color: #fff; background: var(--wp-red); border-radius: 14px; width: 30px; height: 28px; display: grid; place-items: center; margin-left: -4px; }
 .wp-flag { position: absolute; right: 6px; top: 30px; max-width: calc(100% - 44px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 3px;
-  font-size: 10px; font-weight: 700; color: var(--wp-red); background: rgba(255, 59, 48, .1); border-radius: 8px; padding: 2px 6px; transition: filter .15s, box-shadow .15s; }
+  font-size: 10px; font-weight: 700; color: var(--wp-red); background: rgba(255, 59, 48, .1); border-radius: 8px; padding: 2px 6px; transition: filter var(--motion-micro), box-shadow var(--motion-micro); }
 .wp-flag svg { flex: none; }
 .wp-flag em { font-style: normal; margin-left: 2px; opacity: .75; flex: none; }
 .wp-leave { position: absolute; right: 6px; top: 6px; height: 18px; padding: 0 7px; border-radius: 9px; font-size: 10px; font-weight: 700; color: var(--wp-t2); background: var(--wp-fill); }
@@ -73,7 +73,7 @@ html[data-theme='dark'] .wp-mm, html[data-theme='dark'] .wp-cal, html[data-theme
 .wp-col { position: relative; border-left: .5px solid var(--wp-line); min-width: 0; }
 .wp-slot { display: contents; }
 .wp-e { position: absolute; left: 3px; right: 3px; display: block; text-align: left; border-radius: 7px; padding: 4px 7px; font-size: 11px; font-weight: 600; line-height: 1.25; overflow: hidden;
-  border: 0; border-left: 3px solid; transition: top .25s cubic-bezier(.2, .8, .2, 1), height .25s cubic-bezier(.2, .8, .2, 1), opacity .2s, box-shadow .15s, transform .15s; font-family: inherit; }
+  border: 0; border-left: 3px solid; transition: top var(--motion-emphasised) var(--ease-standard), height var(--motion-emphasised) var(--ease-standard), opacity var(--motion-standard), box-shadow var(--motion-micro), transform var(--motion-micro); font-family: inherit; }
 .wp-e small { display: block; font-weight: 500; opacity: .8; font-size: 10px; }
 .wp-e.xs { padding: 1px 7px; font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
 .wp-e.g { background: rgba(40, 205, 65, .15); color: #127a26; border-color: #28cd41; }
@@ -103,7 +103,7 @@ html .wp .wp-e.sel { background: #30b0c7; color: #fff; border-color: #30b0c7; bo
 .wp-flag.open, .wp-logged.open, .wp-rem.open, .wp-leave.open { box-shadow: 0 0 0 2px var(--ds-surface), 0 0 0 3.5px rgba(0, 113, 227, .55); }
 .wp-e:focus-visible, .wp-flag:focus-visible, .wp-logged:focus-visible, .wp-rem:focus-visible, .wp-leave:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
 .wp-e.movable { cursor: grab; touch-action: none; }
-.wp-e.lift { z-index: 6; cursor: grabbing; transform: scale(1.06) rotate(-1deg); box-shadow: 0 16px 32px rgba(88, 86, 214, .38); transition: transform .15s ease-out, box-shadow .15s ease-out; }
+.wp-e.lift { z-index: 6; cursor: grabbing; transform: scale(1.06) rotate(-1deg); box-shadow: 0 16px 32px rgba(88, 86, 214, .38); transition: transform var(--motion-micro) ease-out, box-shadow var(--motion-micro) ease-out; }
 .wp-ghost { position: absolute; left: 3px; right: 3px; border-radius: 7px; border: 1.5px dashed rgba(88, 86, 214, .5); pointer-events: none; }
 .wp-snap { position: absolute; right: -4px; z-index: 7; font-size: 10px; font-weight: 700; color: #fff; background: #1d1d1f; border-radius: 6px; padding: 2px 6px; pointer-events: none; }
 .wp-rem { position: absolute; left: 5px; height: 18px; max-width: calc(100% - 8px); padding: 0 8px 0 5px; border-radius: 9px; background: var(--ds-surface); color: var(--ds-text);
@@ -143,7 +143,7 @@ html[data-theme='dark'] .wp-pill { color: #7fd7e6; }
 .wp-notes small { font-size: 11px; color: var(--wp-t3); }
 .wp-sw { width: 38px; height: 22px; border-radius: 11px; background: rgba(120, 120, 128, .32); position: relative; flex: none; padding: 0; cursor: pointer; }
 .wp-sw.on { background: #28cd41; }
-.wp-sw::after { content: ''; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); transition: left .2s; }
+.wp-sw::after { content: ''; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); transition: left var(--motion-standard); }
 .wp-sw.on::after { left: 18px; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -224,7 +224,7 @@ html[data-theme='dark'] .wp-col.sel { background: rgba(255, 255, 255, .03); }
 .wp-e.c svg + .wp-lbl { display: inline; }
 .wp-rs { position: absolute; left: 0; right: 0; height: 7px; cursor: ns-resize; z-index: 2; touch-action: none; }
 .wp-rs.t { top: -2px; } .wp-rs.b { bottom: -2px; }
-.wp-rs::after { content: ''; position: absolute; left: 50%; width: 18px; height: 3px; margin-left: -9px; border-radius: 2px; background: currentColor; opacity: 0; transition: opacity .15s; }
+.wp-rs::after { content: ''; position: absolute; left: 50%; width: 18px; height: 3px; margin-left: -9px; border-radius: 2px; background: currentColor; opacity: 0; transition: opacity var(--motion-micro); }
 .wp-rs.t::after { top: 2px; } .wp-rs.b::after { bottom: 2px; }
 @media (hover: hover) { .wp-e.movable:hover .wp-rs::after { opacity: .35; } }
 .wp-e.lg.thin .wp-rs { display: none; }
@@ -239,7 +239,7 @@ html[data-theme='dark'] .wp-pick span { color: #ff8a80; }
 
 /* ---- the Day panel (right): the day's everything, the chosen block's card on top, the week below */
 .wp-dayp { gap: 12px; padding: 16px 14px 14px; max-height: calc(100vh - 84px); overflow-y: auto; scrollbar-width: thin; }
-.wp-dayp > .ed.ed-inline { position: relative; width: auto; max-width: none; max-height: none; overflow: visible; margin: -4px -2px 4px; animation: dp-in .22s cubic-bezier(.2, .8, .2, 1) both;
+.wp-dayp > .ed.ed-inline { position: relative; width: auto; max-width: none; max-height: none; overflow: visible; margin: -4px -2px 4px; animation: dp-in var(--motion-standard) var(--ease-standard) both;
   background: var(--ds-surface); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .1), 0 6px 20px rgba(0, 0, 0, .08); -webkit-backdrop-filter: none; backdrop-filter: none; }
 html[data-theme='dark'] .wp-dayp > .ed.ed-inline { background: rgba(58, 58, 60, .6); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .12); }
 @keyframes dp-in { from { opacity: 0; transform: translateY(-6px); } }
@@ -268,7 +268,7 @@ html[data-theme='dark'] .wp-dayp > .ed.ed-inline { background: rgba(58, 58, 60, 
 .dp-dot.t { background: #30b0c7; } .dp-dot.g { background: #28cd41; } .dp-dot.r { background: var(--wp-red); } .dp-dot.b { background: #0071e3; }
 .dp-ring { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #ff9500; display: inline-block; }
 .dp-tick { width: 14px; height: 14px; border-radius: 50%; display: inline-grid; place-items: center; background: #28cd41; color: #fff; }
-.dp-check { width: 16px; height: 16px; flex: none; margin-left: 6px; border-radius: 50%; border: 1.5px solid var(--wp-t3); background: none; padding: 0; cursor: pointer; transition: background .15s, border-color .15s; }
+.dp-check { width: 16px; height: 16px; flex: none; margin-left: 6px; border-radius: 50%; border: 1.5px solid var(--wp-t3); background: none; padding: 0; cursor: pointer; transition: background var(--motion-micro), border-color var(--motion-micro); }
 .dp-check:hover { border-color: #28cd41; background: rgba(40, 205, 65, .15); }
 .dp-check:disabled { opacity: .5; }
 .dp-row.late .dp-check { border-color: var(--wp-red); }
@@ -326,7 +326,7 @@ html[data-theme='dark'] .wp-dayp > .ed.ed-inline { background: rgba(58, 58, 60, 
 .dp-main > .dp-t:first-child, .dp-main > .dp-t:first-child + small { grid-column: 1 / -1; }
 /* the empty week/day: what to do with the time */
 .wp-empty { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin: 0 0 10px; padding: 12px 14px; border-radius: 14px;
-  background: var(--ds-fill); animation: ds-enter .3s var(--ds-ease, ease-out) both; }
+  background: var(--ds-fill); animation: ds-enter var(--motion-emphasised) var(--ds-ease, ease-out) both; }
 .wp-empty-t { font-size: 14px; color: var(--ds-text); line-height: 1.4; }
 .wp-empty-t span { color: var(--ds-text-2); }
 .wp-empty-acts { display: flex; gap: 6px; flex-wrap: wrap; }

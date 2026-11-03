@@ -45,7 +45,7 @@
 @media (max-width: 640px) { .ag-edit { grid-template-columns: 1fr; } }
 .ag-card-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
 .ag-dismiss { color: var(--text-3); }
-.ag-reasons { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); animation: ag-in .18s ease-out; }
+.ag-reasons { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); animation: ag-in var(--motion-standard) ease-out; }
 .ag-reasons > span { font-size: 12px; font-weight: 600; color: var(--text-2); margin-right: 2px; }
 .ag-reason { height: 28px; padding: 0 11px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .ag-reason:hover:not(:disabled) { border-color: var(--danger, #e34948); color: var(--danger, #e34948); }
@@ -138,7 +138,7 @@
 .ag-credits-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--text-2); }
 .ag-credits-head b { color: var(--text); font-variant-numeric: tabular-nums; }
 .ag-credits-bar { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
-.ag-credits-bar i { display: block; height: 100%; border-radius: 99px; background: var(--brand-grad); transition: width .4s ease; }
+.ag-credits-bar i { display: block; height: 100%; border-radius: 99px; background: var(--brand-grad); transition: width var(--motion-emphasised) ease; }
 .ag-credits-bar.warn i { background: linear-gradient(90deg, #eda100, #eb6834); }
 .ag-credits-bar.bad i { background: linear-gradient(90deg, #eb6834, #e34948); }
 .ag-hint-bad { color: var(--danger, #e34948); }
@@ -253,7 +253,7 @@
 .ag-callout svg { color: var(--ds-info); }
 .ag-callout.ok { background: var(--ds-success-bg); }
 .ag-callout.ok svg { color: var(--ds-success); }
-.ag-provider { border: 0; border-radius: 16px; background: var(--ds-fill); padding: 14px 16px; transition: box-shadow .2s var(--ds-ease), background-color .16s var(--ds-ease); }
+.ag-provider { border: 0; border-radius: 16px; background: var(--ds-fill); padding: 14px 16px; transition: box-shadow var(--motion-standard) var(--ds-ease), background-color var(--motion-micro) var(--ds-ease); }
 .ag-provider.on { background: var(--ds-surface); box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-glow); }
 .ag-provider b { font-weight: 600; font-size: 14.5px; }
 .ag-provider small { font-size: 12.5px; color: var(--ds-text-3); }

@@ -1,6 +1,7 @@
 import { Face } from '../../components/Face';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'framer-motion';
+import { sharedLayout, t } from '../../lib/motion';
 import { queryClient } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { Popover } from '../../lib/popover';
@@ -190,7 +191,7 @@ function TalkHome() {
           {FILTERS.map((x) => (
             <button key={x.id} type="button" className={`ds-chip talk-chip${filter === x.id ? ' on' : ''}`} aria-pressed={filter === x.id}
               onClick={() => setParam({ f: x.id === 'all' ? null : x.id })}>
-              {filter === x.id && <motion.span className="talk-seg-thumb" layoutId={reduce ? undefined : 'talk-seg'} transition={{ type: 'spring', stiffness: 520, damping: 40 }} aria-hidden="true" />}
+              {filter === x.id && <motion.span className="talk-seg-thumb" layoutId={reduce ? undefined : 'talk-seg'} transition={sharedLayout} aria-hidden="true" />}
               <span className="talk-seg-label">{x.label}{x.id === 'unread' && unreadCount > 0 ? ` ${unreadCount}` : ''}</span>
             </button>
           ))}
@@ -441,7 +442,7 @@ function Row({ r, conversation, active, onOpen, actions, reduce, side, onSide }:
 
   const hover = actions.filter((a) => a.id === 'pin' || a.id === 'mute' || a.id === 'hide');
   return (
-    <motion.li layout={reduce ? false : 'position'} transition={{ type: 'spring', stiffness: 500, damping: 42 }} exit={reduce ? undefined : { opacity: 0, height: 0 }}>
+    <motion.li layout={reduce ? false : 'position'} transition={sharedLayout} exit={reduce ? undefined : { opacity: 0, transition: t.exit }}>
       <div className={`talk-row-swipe${dx !== 0 ? ' swiping' : ''}${drag !== null ? ' dragging' : ''}`} ref={anchor} data-swipe-row={r.id} data-swipe={side ?? (drag ? 'drag' : 'closed')}>
         {dx > 0 && <div className="talk-swipe-acts l" style={{ width: Math.max(leftW, dx) }}>{left.map((a, i) => <button key={a.id} type="button" className={`sw-${a.id}${i === 0 && dx > leftW ? ' grow' : ''}`} onClick={() => run(a)}><Icon name={a.icon} size={18} />{a.label}</button>)}</div>}
         {dx < 0 && <div className="talk-swipe-acts r" style={{ width: Math.max(rightW, -dx) }}>{right.map((a, i) => <button key={a.id} type="button" className={`sw-${a.id}${i === right.length - 1 && -dx > rightW ? ' grow' : ''}`} onClick={() => run(a)}><Icon name={a.icon} size={18} />{a.label}</button>)}</div>}

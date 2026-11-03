@@ -3,11 +3,11 @@
    gradients, no sheen; (2) layout fixes for text that overlapped (task table, calendar day list, AI mode switch). Sizes are
    left to the earlier sheets (mobile.css sets touch sizes), so nothing here sets a height.
    ===================================================================================================================== */
-:root { --fx-ease: cubic-bezier(.2, .8, .2, 1); }
+:root { --fx-ease: var(--ease-standard); }
 
 /* ---------------------------------------------------------------------------------------------- buttons */
 .btn { position: relative; border-radius: var(--radius-sm); font-weight: 600; letter-spacing: 0;
-  transition: background .15s, border-color .15s, color .15s, box-shadow .15s; }
+  transition: background var(--motion-micro), border-color var(--motion-micro), color var(--motion-micro), box-shadow var(--motion-micro); }
 .btn:focus-visible, .btn-icon:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px rgba(var(--accent-rgb), .45); }
 .btn:disabled, .btn[aria-disabled='true'] { opacity: .5; box-shadow: none !important; transform: none !important; cursor: not-allowed; }
 .btn:active:not(:disabled) { transform: none; }
@@ -40,11 +40,11 @@
 .btn-danger:hover:not(:disabled) { transform: none; filter: brightness(.94); box-shadow: var(--shadow-sm); }
 
 /* icon buttons */
-.btn-icon { border-radius: var(--radius-sm); transition: background .15s, color .15s; }
+.btn-icon { border-radius: var(--radius-sm); transition: background var(--motion-micro), color var(--motion-micro); }
 .btn-icon:hover:not(:disabled), [data-theme='dark'] .btn-icon:hover:not(:disabled) { color: var(--text); background: var(--hover-bg); box-shadow: none; }
 
 /* filter pills / segmented switches */
-.ps-filters button, .ai-mode { transition: background .15s, color .15s, border-color .15s; }
+.ps-filters button, .ai-mode { transition: background var(--motion-micro), color var(--motion-micro), border-color var(--motion-micro); }
 .ps-filters button { border-radius: 999px; }
 .ps-filters button.on { color: var(--primary); border-color: rgba(var(--accent-rgb), .35); background: var(--primary-soft); box-shadow: none; }
 .ps-filters button.on em { color: var(--primary); }
@@ -54,7 +54,7 @@
 
 /* "Ask Agent" in the top bar: a plain outlined capsule */
 .asst-top-btn, [data-theme='dark'] .asst-top-btn { height: 36px; padding: 0 14px 0 8px; gap: 8px; border-radius: 999px; border: 1px solid var(--border-strong);
-  color: var(--text); font-weight: 600; background: var(--surface); box-shadow: var(--shadow-sm); animation: none; transition: background .15s, border-color .15s; }
+  color: var(--text); font-weight: 600; background: var(--surface); box-shadow: var(--shadow-sm); animation: none; transition: background var(--motion-micro), border-color var(--motion-micro); }
 [data-theme='dark'] .asst-top-btn { background: var(--surface-2); }
 .asst-top-btn::after { content: none; display: none; }
 .asst-top-btn:hover { background: var(--hover-bg); border-color: var(--border-strong); transform: none; box-shadow: var(--shadow-sm); }

@@ -26,7 +26,7 @@
 .ps .ps-side-head h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
 .ps .ps-side-head span { display: block; margin-top: 2px; font-size: 13px; color: var(--ds-text-3); }
 .ps .ps-home { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 12px; margin-bottom: 14px; border: 0; border-radius: 12px; background: transparent;
-  color: var(--ds-text); font: inherit; font-size: 14.5px; font-weight: 500; text-align: left; cursor: pointer; transition: background-color .16s var(--ds-ease); }
+  color: var(--ds-text); font: inherit; font-size: 14.5px; font-weight: 500; text-align: left; cursor: pointer; transition: background-color var(--motion-micro) var(--ds-ease); }
 .ps .ps-home svg { display: none; }
 .ps .ps-home::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--ds-outline); flex: none; }
 .ps .ps-home:hover { background: rgba(0, 0, 0, .04); }
@@ -56,7 +56,7 @@
 
 /* ---------------------------------------------------------------------------------------- one project (focus) */
 /* the column scrolls, so the panel takes the height its content needs (the task list is never squeezed to nothing) */
-.ps .ps-panel { flex: none; min-height: auto; padding: 0 0 24px; gap: 20px; animation: ds-enter .24s var(--ds-ease) both; }
+.ps .ps-panel { flex: none; min-height: auto; padding: 0 0 24px; gap: 20px; animation: ds-enter var(--motion-standard) var(--ds-ease) both; }
 .ps .ps-head { align-items: flex-start; gap: 20px; }
 .ps .ps-title h1 { margin-top: 10px; font-size: clamp(28px, 2.8vw, 40px); font-weight: 700; letter-spacing: -.03em; line-height: 1.08; }
 .ps .ps-title p { margin-top: 10px; font-size: 15px; color: var(--ds-text-3); }
@@ -155,7 +155,7 @@
 .ps .ps-onschedule svg { color: var(--ds-success); }
 
 /* ------------------------------------------------------------------------------------------- Portfolio today */
-.pi { display: grid; gap: 24px; padding-bottom: 32px; animation: ds-enter .24s var(--ds-ease) both; }
+.pi { display: grid; gap: 24px; padding-bottom: 32px; animation: ds-enter var(--motion-standard) var(--ds-ease) both; }
 .pi .pi-head { align-items: flex-end; gap: 16px 24px; }
 .pi .pi-title { font-size: clamp(30px, 2.9vw, 40px); font-weight: 700; letter-spacing: -.03em; line-height: 1.06; }
 .pi .pi-ask { gap: 10px; align-items: center; }
@@ -216,7 +216,7 @@
 .pi .pb-meter { height: 6px; background: var(--ds-fill); }
 .pi .pi-headlines { padding: 18px 22px 18px 38px; border-radius: var(--ds-r-card); background: var(--ds-accent-soft); color: var(--ds-text); font-size: 14.5px; }
 .pi .pi-cards { gap: 14px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
-.pi .pi-card { padding: 20px 22px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); gap: 6px; transition: transform .16s var(--ds-ease), box-shadow .16s var(--ds-ease); }
+.pi .pi-card { padding: 20px 22px; border: 0; border-radius: var(--ds-r-card); background: var(--ds-surface); box-shadow: var(--ds-e1), 0 0 0 1px var(--ds-line); gap: 6px; transition: transform var(--motion-micro) var(--ds-ease), box-shadow var(--motion-micro) var(--ds-ease); }
 .pi .pi-card:hover { background: var(--ds-surface); transform: translateY(-2px); box-shadow: var(--ds-hover-lift); }
 .pi .pi-card-head b { font-size: 16px; font-weight: 600; }
 .pi .pi-card-meta { font-size: 13px; }
@@ -288,7 +288,7 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 .pf-summary .v2-ai-card-main b { font-weight: 600; }
 .pf-summary .pj2-summary-by { display: block; margin-top: 4px; font-size: 11.5px; color: var(--ds-text-3); }
 /* "Write it for the meeting" stays out of the design until the card is hovered or focused. */
-.pf-summary .btn-ai { position: absolute; right: 12px; bottom: 10px; opacity: 0; transition: opacity .15s var(--ds-ease); }
+.pf-summary .btn-ai { position: absolute; right: 12px; bottom: 10px; opacity: 0; transition: opacity var(--motion-micro) var(--ds-ease); }
 .pf-summary:hover .btn-ai, .pf-summary:focus-within .btn-ai { opacity: 1; }
 
 /* board + rail */
@@ -301,7 +301,7 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 .pf-col-head i { background: var(--pf-c); }
 .pf-col { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 16px; background: var(--pf-col); }
 .pf-empty { margin: 4px; color: var(--ds-text-3); font-size: 12.5px; }
-.pf-card { position: relative; display: block; width: 100%; padding: 11px 12px; border: 0; border-radius: 12px; background: var(--pf-card); color: var(--ds-text); text-align: left; font: inherit; text-decoration: none; box-shadow: var(--pf-sh1); cursor: pointer; transition: box-shadow .2s var(--ds-ease), transform .3s var(--ds-spring); }
+.pf-card { position: relative; display: block; width: 100%; padding: 11px 12px; border: 0; border-radius: 12px; background: var(--pf-card); color: var(--ds-text); text-align: left; font: inherit; text-decoration: none; box-shadow: var(--pf-sh1); cursor: pointer; transition: box-shadow var(--motion-standard) var(--ds-ease), transform var(--motion-emphasised) var(--ds-spring); }
 .pf-card:hover, .pf-card:focus-visible { box-shadow: 0 4px 16px rgba(0,0,0,.06), 0 0 0 .5px rgba(0,0,0,.06); transform: translateY(-1px); }
 .pf-card-t { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pf-key { flex: none; padding: 2px 5px; border-radius: 5px; font-size: 10px; font-weight: 700; color: #fff; line-height: 1.3; }
@@ -311,7 +311,7 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 .pf-bar i { display: block; height: 100%; border-radius: 3px; background: var(--pf-c); }
 .pf-card-f { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 11.5px; color: var(--ds-text-2); }
 .pf-card-f span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pf-tip { position: absolute; z-index: 5; left: 8px; right: 8px; top: calc(100% + 6px); padding: 8px 10px; border-radius: 10px; background: var(--ds-dark); color: var(--ds-on-dark); font-size: 12px; line-height: 1.4; opacity: 0; pointer-events: none; transform: translateY(-4px); transition: opacity .15s var(--ds-ease), transform .15s var(--ds-ease); }
+.pf-tip { position: absolute; z-index: 5; left: 8px; right: 8px; top: calc(100% + 6px); padding: 8px 10px; border-radius: 10px; background: var(--ds-dark); color: var(--ds-on-dark); font-size: 12px; line-height: 1.4; opacity: 0; pointer-events: none; transform: translateY(-4px); transition: opacity var(--motion-micro) var(--ds-ease), transform var(--motion-micro) var(--ds-ease); }
 .pf-card:hover .pf-tip, .pf-card:focus-visible .pf-tip { opacity: 1; transform: none; }
 
 .pf-rail { padding: 16px 18px; border-radius: 18px; background: var(--pf-card); box-shadow: var(--pf-sh1); min-width: 0; }
@@ -329,7 +329,7 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 .pf-dec-dates b { font-weight: 600; color: var(--pf-late); } .pf-dec-dates b.risk { color: var(--pf-risk-d); }
 .pf-dec-dates em { font-style: normal; color: var(--ds-text-3); font-weight: 600; }
 .pf-dec-acts { display: flex; flex-wrap: wrap; gap: 8px; }
-.pf-btn { display: inline-flex; align-items: center; height: 26px; padding: 0 11px; border: 0; border-radius: 13px; background: var(--pf-fill); color: var(--ds-text); font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; text-decoration: none; cursor: pointer; transition: filter .15s var(--ds-ease); }
+.pf-btn { display: inline-flex; align-items: center; height: 26px; padding: 0 11px; border: 0; border-radius: 13px; background: var(--pf-fill); color: var(--ds-text); font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; text-decoration: none; cursor: pointer; transition: filter var(--motion-micro) var(--ds-ease); }
 .pf-btn.pri { background: var(--pf-tint); color: #fff; }
 .pf-btn:hover:not(:disabled) { filter: brightness(.95); }
 .pf-btn:disabled { opacity: .55; cursor: default; }
@@ -369,14 +369,14 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 .pf-g-name small { flex: none; font-size: 11.5px; font-weight: 500; color: var(--ds-text-3); }
 .pf-g-track { position: relative; flex: 1; height: 100%; }
 .pf-g-plan { position: absolute; top: 11px; height: 24px; border-radius: 12px; background: rgba(0,0,0,.025); box-shadow: inset 0 0 0 1.5px rgba(128,128,128,.4); }
-.pf-g-fc { position: absolute; top: 17px; height: 12px; border-radius: 6px; background: var(--ds-text-4); transform-origin: left center; animation: pf-grow .6s cubic-bezier(.2,.8,.2,1) both; }
+.pf-g-fc { position: absolute; top: 17px; height: 12px; border-radius: 6px; background: var(--ds-text-4); transform-origin: left center; animation: pf-grow var(--motion-emphasised) var(--ease-standard) both; }
 .pf-g-fc.ok { background: var(--pf-ok); } .pf-g-fc.risk { background: var(--pf-risk); } .pf-g-fc.late { background: var(--pf-late); }
-.pf-g-ms { font-style: normal; position: absolute; top: 17px; width: 11px; height: 11px; margin-left: -5px; border: 2px solid var(--pf-card); border-radius: 2px; background: var(--ds-text); transform: rotate(45deg); animation: pf-pop .25s var(--ds-spring) both; z-index: 1; }
+.pf-g-ms { font-style: normal; position: absolute; top: 17px; width: 11px; height: 11px; margin-left: -5px; border: 2px solid var(--pf-card); border-radius: 2px; background: var(--ds-text); transform: rotate(45deg); animation: pf-pop var(--motion-emphasised) var(--ds-spring) both; z-index: 1; }
 .pf-g-row.on .pf-g-name b { color: var(--pf-tint); }
 .pf-g-todaywrap { position: absolute; top: -40px; bottom: -8px; left: var(--pf-name); right: 0; pointer-events: none; z-index: 3; }
 .pf-g-today { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--pf-late); }
 .pf-g-today span { position: absolute; bottom: -10px; left: -24px; padding: 2px 6px; border-radius: 6px; background: var(--pf-late); color: #fff; font-size: 10.5px; font-weight: 700; font-style: normal; white-space: nowrap; }
-.pf-hover { position: absolute; z-index: 4; width: 300px; padding: 14px 16px; border-radius: 14px; background: color-mix(in srgb, var(--pf-card) 96%, transparent); box-shadow: var(--pf-sh3); font-size: 12.5px; line-height: 1.45; pointer-events: none; animation: pf-fade .15s var(--ds-ease) both; }
+.pf-hover { position: absolute; z-index: 4; width: 300px; padding: 14px 16px; border-radius: 14px; background: color-mix(in srgb, var(--pf-card) 96%, transparent); box-shadow: var(--pf-sh3); font-size: 12.5px; line-height: 1.45; pointer-events: none; animation: pf-fade var(--motion-micro) var(--ds-ease) both; }
 .pf-hover-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .pf-hover-h b { font-size: 14px; }
 .pf-slip { flex: none; padding: 2px 9px; border-radius: 11px; font-size: 11.5px; font-weight: 600; color: var(--pf-late); background: color-mix(in srgb, var(--pf-late) 12%, transparent); }
@@ -391,7 +391,7 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 @keyframes pf-fade { from { opacity: 0; } to { opacity: 1; } }
 
 /* Present: always dark, over the whole window (sidebar and toolbar included). */
-.pf-present { position: fixed; inset: 0; z-index: 2000; display: flex; flex-direction: column; background: #0b0b0e; color: #f5f5f7; --pf-tint: #30b0c7; animation: pf-fade .25s var(--ds-ease) both; }
+.pf-present { position: fixed; inset: 0; z-index: 2000; display: flex; flex-direction: column; background: #0b0b0e; color: #f5f5f7; --pf-tint: #30b0c7; animation: pf-fade var(--motion-emphasised) var(--ds-ease) both; }
 .pf-present-top { flex: none; height: 46px; display: flex; align-items: center; gap: 14px; padding: 0 18px; font-size: 12.5px; color: #8e8e93; }
 .pf-present-top b { color: #f5f5f7; font-weight: 600; }
 .pf-exit { margin-left: auto; border: 0; background: none; color: #8e8e93; font: inherit; font-size: 12.5px; cursor: pointer; padding: 4px 6px; border-radius: 6px; }
@@ -399,8 +399,8 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 .pf-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .pf-count { position: absolute; right: 60px; top: 20px; z-index: 2; font-size: 14px; font-weight: 600; color: #8e8e93; }
 .pf-count b { color: #f5f5f7; }
-.pf-slide { position: absolute; inset: 0 60px; display: flex; flex-direction: column; justify-content: center; opacity: 0; visibility: hidden; transition: opacity .5s ease-out, visibility 0s linear .5s; }
-.pf-slide.on { opacity: 1; visibility: visible; transition: opacity .5s ease-out, visibility 0s; animation: pf-in .5s ease-out both; }
+.pf-slide { position: absolute; inset: 0 60px; display: flex; flex-direction: column; justify-content: center; opacity: 0; visibility: hidden; transition: opacity var(--motion-emphasised) ease-out, visibility 0s linear .5s; }
+.pf-slide.on { opacity: 1; visibility: visible; transition: opacity var(--motion-emphasised) ease-out, visibility 0s; animation: pf-in var(--motion-emphasised) ease-out both; }
 @keyframes pf-in { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: none; } }
 .pf-slide-ey { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #ff6961; }
 .pf-slide-ey.risk { color: #ffb340; } .pf-slide-ey.ok { color: var(--pf-tint); }
@@ -414,7 +414,7 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 .pf-slide-why span { display: block; margin-bottom: 4px; font-size: 13px; font-weight: 600; color: #8e8e93; }
 .pf-opts { display: flex; gap: 18px; flex-wrap: wrap; }
 .pf-opt { width: 420px; max-width: 100%; display: grid; gap: 0; padding: 22px 26px; border: 0; border-radius: 22px; text-align: left; font: inherit; color: #f5f5f7; text-decoration: none; cursor: pointer;
-  background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); transition: box-shadow .2s var(--ds-ease); }
+  background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); transition: box-shadow var(--motion-standard) var(--ds-ease); }
 .pf-opt:hover:not(:disabled), .pf-opt:focus-visible { outline: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); }
 .pf-opt:disabled { cursor: default; }
 .pf-opt.rec { background: linear-gradient(135deg, rgba(48,176,199,.32), rgba(48,176,199,.14)); box-shadow: inset 0 0 0 1px rgba(48,176,199,.6); }
@@ -513,14 +513,14 @@ html[data-theme='dark'] .pf { --pf-ok-d: #30d158; --pf-risk-d: #ffb340; --pf-lat
 }
 
 /* Board drag and drop: the card lifts, the column under it glows, a sheet says what the move does. */
-.pf-board .pf-card[draggable='true'] { cursor: grab; transition: transform .25s cubic-bezier(.32, .72, 0, 1), box-shadow .25s, opacity .2s; }
+.pf-board .pf-card[draggable='true'] { cursor: grab; transition: transform var(--motion-emphasised) var(--ease-standard), box-shadow var(--motion-emphasised), opacity var(--motion-standard); }
 .pf-board .pf-card.lifted { opacity: .45; transform: scale(.97); }
-.pf-board.dragging .pf-colwrap { transition: box-shadow .2s, background .2s; }
+.pf-board.dragging .pf-colwrap { transition: box-shadow var(--motion-standard), background var(--motion-standard); }
 .pf-colwrap.over { box-shadow: inset 0 0 0 2px var(--pf-tint, #0071e3); background: color-mix(in srgb, var(--pf-tint, #0071e3) 6%, transparent); }
 .pf-flag { align-self: flex-start; font-size: 11px; font-weight: 600; color: #c11b10; }
-.pf-drop-back { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, .28); backdrop-filter: blur(6px); animation: pf-fade .2s ease-out both; }
+.pf-drop-back { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, .28); backdrop-filter: blur(6px); animation: pf-fade var(--motion-standard) ease-out both; }
 @keyframes pf-fade { from { opacity: 0; } to { opacity: 1; } }
-.pf-drop { width: min(480px, 100%); display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: 20px; background: var(--ds-surface); box-shadow: 0 30px 80px rgba(0, 0, 0, .28); animation: pf-sheet .35s cubic-bezier(.32, .72, 0, 1) both; }
+.pf-drop { width: min(480px, 100%); display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: 20px; background: var(--ds-surface); box-shadow: 0 30px 80px rgba(0, 0, 0, .28); animation: pf-sheet var(--motion-emphasised) var(--ease-standard) both; }
 @keyframes pf-sheet { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
 .pf-drop h3 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
 .pf-drop-ey { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ds-text-2); }
