@@ -8,7 +8,7 @@ describe('sidebar destinations (same table as the server, docs/badges.md)', () =
     ['Message', '/chat/1b2c', 'messages'], ['Call', '/calls/x', 'messages'], ['Mention', '/projects/p?chat=1', 'messages'], ['Mention', '/projects/p/tasks/9', 'work'],
     ['Meeting', '/meet', 'meetings'], ['Reminder', '/meet?open=w:1', 'meetings'],
     ['TaskAssigned', '/projects/p', 'work'], ['TaskUpdated', '/projects/p', 'work'], ['Comment', '/projects/p', 'work'],
-    ['DueSoon', '/projects/p', 'today'], ['Overdue', '/projects/p', 'today'], ['Approval', '/timesheet', 'today'], ['Security', '/settings/security', 'today'],
+    ['DueSoon', '/projects/p', 'today'], ['Overdue', '/projects/p', 'today'], ['Approval', '/timesheet', 'today'], ['Approval', '/approvals?open=1', 'approvals'], ['Security', '/settings/security', 'today'],
     ['Document', '/documents/7', 'library'], ['Comment', '/library/pages/3', 'library'],
     ['PortfolioDigest', '/portfolio', 'portfolio'], ['ServiceLevel', '/desk/12', 'desk'],
     ['Reminder', '/mail/inbox', 'mail'], ['Reminder', '/?tab=calendar', 'calendar'],

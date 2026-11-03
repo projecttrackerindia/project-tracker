@@ -3,11 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../stores/auth';
 import { resourcesApi } from '../../api/endpoints';
 import type { CapacityPlan, CapacityPlanCell, WorkloadScope } from '../../api/types';
-import { Avatar, EmptyState, ErrorState, Modal, Segmented } from '../../components/ui';
+import { Avatar, EmptyState, ErrorState, Modal } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useRebalance } from '../insights/rebalance';
 import { isoWeek } from './PortfolioViews';
-import { PortfolioSkeleton, ShellTools, usePortfolio } from './PortfolioShell';
+import { PortfolioSkeleton, usePortfolio, useShellLine, useShellMenu } from './PortfolioShell';
+import { AuraLine } from '../../components/calm';
 import { portfolioKeys } from './portfolioShared';
 import { PulseCard } from './PortfolioPulse';
 import './capacityPlan.css';
@@ -25,10 +26,12 @@ function Cell({ c, unit }: { c: CapacityPlanCell; unit: Unit }) {
   if (c.onLeave) return <div className="cp-cell leave" title={`On leave ${c.leaveDays} day${c.leaveDays === 1 ? '' : 's'}`}>Leave</div>;
   const ratio = c.capacityMinutes > 0 ? c.bookedMinutes / c.capacityMinutes : c.bookedMinutes > 0 ? 2 : 0;
   const tone = c.over ? 'over' : c.capacityMinutes > 0 && ratio < 0.65 ? 'lo' : '';
+  // The calm heat (design shot 15): red when over, amber near full, green in the healthy band, pale blue with room.
+  const heat = ratio > 1.05 ? 'h-over' : ratio >= 0.95 ? 'h-full' : ratio >= 0.7 ? 'h-ok' : 'h-room';
   const hol = c.holidayDays ?? 0;
   const label = `${fmtH(c.bookedMinutes)} booked of ${fmtH(c.capacityMinutes)}${c.leaveDays ? `, ${c.leaveDays} day${c.leaveDays === 1 ? '' : 's'} leave` : ''}${hol ? `, ${hol} public holiday${hol === 1 ? '' : 's'}` : ''}`;
   return (
-    <div className={`cp-cell ${tone}`} title={label} aria-label={label}>
+    <div className={`cp-cell ${tone} ${heat}`} title={label} aria-label={label}>
       {unit === 'hours'
         ? <><b>{h(c.bookedMinutes)}</b><span> / {h(c.capacityMinutes)}h</span></>
         : <><b>{Math.round(ratio * 100)}%</b><span className="cp-sub"> of {h(c.capacityMinutes)}h</span></>}
@@ -61,6 +64,16 @@ export function CapacityPlanView() {
     && (!url.colours.length || work.some((r) => r.ownerId === userId && url.colours.includes(colourOf(r.projectId))))
     && words.every((w) => name.toLowerCase().includes(w));
   const { busy, rebalance } = useRebalance((job) => navigate(`/insights?tab=reports&job=${encodeURIComponent(job)}`));
+  const loadOf = (person: { weeks: CapacityPlanCell[] }) => { const cap = person.weeks.reduce((a, c) => a + c.capacityMinutes, 0); const b = person.weeks.reduce((a, c) => a + c.bookedMinutes, 0); return cap > 0 ? Math.round((b / cap) * 100) : null; };
+  const ppl = q.data?.people ?? [];
+  const ranked = ppl.map((x) => ({ n: x.name.split(' ')[0], l: loadOf(x) })).filter((x): x is { n: string; l: number } => x.l != null).sort((a, b) => b.l - a.l);
+  const over = ranked[0] && ranked[0].l > 100 ? ranked[0] : null, room = ranked.length > 1 && ranked[ranked.length - 1]!.l < 75 ? ranked[ranked.length - 1] : null;
+  // The calm Capacity (demo shot 15): no tool bar; whose capacity and hours / % are in ⋯.
+  useShellMenu([
+    ...((q.data?.available ?? []).length > 1 ? (q.data?.available ?? []).map((x) => ({ label: `Show ${SCOPE_LABEL[x].toLowerCase()}`, icon: 'users' as const, hint: x === q.data?.scope ? 'Shown now' : undefined, onSelect: () => setScope(x) })) : []),
+    { label: unit === 'hours' ? 'Show as % of capacity' : 'Show in hours', icon: 'gauge' as const, onSelect: () => setUnit(unit === 'hours' ? 'pct' : 'hours') },
+  ]);
+  useShellLine(q.data ? over && room ? `${over.n} is over, ${room.n} has room.` : over ? `${over.n} is over.` : room ? `${room.n} has room.` : 'Everyone is in the healthy band.' : null);
 
   if (q.isLoading) return <PortfolioSkeleton label="Loading capacity" />;
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => void q.refetch()} />;
@@ -80,25 +93,8 @@ export function CapacityPlanView() {
         <ul className="cp-legend" aria-label="Legend">
           <li><i className="cap" />Capacity</li><li><i className="booked" />Booked</li><li><i className="over" />Over-booked</li><li><i className="leave" />Leave</li>
         </ul>
-        <ShellTools><div className="cp-tools">
-          {p.available.length > 1 && <Segmented<WorkloadScope> label="Whose capacity" value={p.scope} onChange={setScope} options={p.available.map((x) => ({ id: x, label: SCOPE_LABEL[x] }))} />}
-          <Segmented<Unit> label="Show as" value={unit} onChange={setUnit} options={[{ id: 'hours', label: 'Hours' }, { id: 'pct', label: '%' }]} />
-        </div></ShellTools>
-      </div>
 
-      {s && (
-        <div className="v2-ai-card cp-ai" role="note">
-          <span className="v2-spark" aria-hidden="true">✦</span>
-          <div className="v2-ai-card-main"><span>
-            <b>{s.fromName} is {fmtH(s.overMinutes)} over in {weeksTxt(s.firstWeek, s.lastWeek)} while {s.toName} has {fmtH(s.freeMinutes)} free.</b>{' '}
-            Move {s.tasks.map((x, i) => <span key={x.id}>{i > 0 && (i === s.tasks.length - 1 ? ' and ' : ', ')}“{x.title}” ({fmtH(x.minutes)})</span>)} to {s.toName} — no dates change.
-          </span></div>
-          <div className="cp-ai-acts">
-            <button type="button" className="btn btn-sm" onClick={() => setPreview(true)}>Preview</button>
-            <button type="button" className="btn btn-sm btn-ai" disabled={busy} onClick={() => void rebalance()}>{busy ? 'Working…' : 'Rebalance'}</button>
-          </div>
-        </div>
-      )}
+      </div>
 
       <div className="card cp-card">
         {p.people.length === 0 ? <EmptyState icon="users" title="Nobody to show" /> : (
@@ -106,6 +102,7 @@ export function CapacityPlanView() {
             <div className="cp-row cp-th" role="row">
               <div className="cp-who" role="columnheader">Person</div>
               {p.weekStarts.map((w, i) => <div key={w} role="columnheader">{wk(w)}<small>{short(w)}{(p.people[0]?.weeks[i]?.holidayDays ?? 0) > 0 && <span className="cp-hol" title="Public holiday this week"> · holiday</span>}</small></div>)}
+              <div role="columnheader" className="cp-load">Load</div>
             </div>
             {p.people.map((person) => (
               <div className="cp-row" role="row" key={person.userId}>
@@ -114,18 +111,22 @@ export function CapacityPlanView() {
                   <div><b>{person.name}</b><small>{h(person.weeklyCapacityMinutes)}h a week</small></div>
                 </div>
                 {person.weeks.map((c) => <div role="cell" key={c.weekStart}><Cell c={c} unit={unit} /></div>)}
+                {(() => { const l = loadOf(person); return <div role="cell" className={`cp-load ${l != null && l > 100 ? 'hot' : ''}`}>{l == null ? '—' : `${l}%`}</div>; })()}
               </div>
             ))}
           </div>
         )}
       </div>
 
+      {s && <AuraLine className="cp-aura" text={<>{s.fromName} is {fmtH(s.overMinutes)} over in {weeksTxt(s.firstWeek, s.lastWeek)}. {s.toName} has {fmtH(s.freeMinutes)} free.</>}
+        action={busy ? 'Working…' : `Rebalance ${plural(s.tasks.length, 'task')}`} onAction={() => setPreview(true)} />}
+
       <div className="cp-foot">
         <span>Team total · {p.weeks} weeks: <b>{fmtH(t.bookedMinutes)} booked / {fmtH(t.capacityMinutes)} available</b>{t.booked !== null && ` (${Math.round(t.booked * 100)}%)`}</span>
         <span>{plural(t.overWeeks, 'over-booked week')} · {plural(t.leaveWeeks, 'leave week')} · {plural(t.publicHolidays, 'public holiday')}{holidayWeeks.length > 0 && ` (${holidayWeeks.join(', ')})`}{canHolidays && <> · <Link className="link" to="/settings/general/holidays">Holidays ›</Link></>}</span>
       </div>
 
-      {p.people.length > 0 && <CapacityPulse p={p} />}
+      {/* The pulse below the grid is not in the calm design; the same numbers are the foot line and the Aura sentence. */}
 
       {preview && s && (
         <Modal title="Suggested move" size="sm" onClose={() => setPreview(false)}
@@ -141,7 +142,7 @@ export function CapacityPlanView() {
 }
 
 /** Under the grid, the room it leaves: the team's load week by week, who is most booked, and who has room to take work. */
-function CapacityPulse({ p }: { p: CapacityPlan }) {
+export function CapacityPulse({ p }: { p: CapacityPlan }) {
   const weeks = p.weekStarts.map((w, i) => {
     const booked = p.people.reduce((a, x) => a + (x.weeks[i]?.bookedMinutes ?? 0), 0), cap = p.people.reduce((a, x) => a + (x.weeks[i]?.capacityMinutes ?? 0), 0);
     return { w, pct: cap > 0 ? Math.round((booked / cap) * 100) : 0 };

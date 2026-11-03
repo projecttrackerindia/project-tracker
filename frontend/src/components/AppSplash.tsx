@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { BrandMark } from './BrandMark';
+import { Logo, BRAND } from './Logo';
 import './splash.css';
 
 /**
- * While the app starts (or a whole screen loads): the logo breathing inside a soft ring and a thin bar sweeping under it - CSS only, no
- * images. After a few seconds it says it is still connecting; without a connection it says so and offers to try again the moment the
+ * While the app starts (or a whole screen loads): the purple ProjectTracker logo scales in with the spring, then pulses softly, with the name
+ * and a thin bar sweeping under it (calm demo ?splash=1) - CSS only, no images. After a few seconds it says it is still connecting; without a connection it says so and offers to try again the moment the
  * network is back.
  */
 export function AppSplash({ message = 'Loading your workspace' }: { message?: string }) {
@@ -18,8 +18,8 @@ export function AppSplash({ message = 'Loading your workspace' }: { message?: st
   }, []);
   return (
     <div className={`app-splash ${online ? '' : 'is-offline'}`} role="status" aria-live="polite">
-      <div className="as-mark" aria-hidden="true"><span className="as-ring" /><span className="as-ring as-ring-2" /><span className="as-badge"><BrandMark size={34} /></span></div>
-      <div className="as-name">Project Tracker</div>
+      <div className="as-mark" aria-hidden="true"><Logo size={96} className="pt-logo as-logo" /></div>
+      <div className="as-name">{BRAND}</div>
       <div className="as-bar" aria-hidden="true"><i /></div>
       <p className="as-text">{!online ? 'You are offline. It opens as soon as the connection is back.' : slow ? 'Still connecting - a slow network can take a moment.' : message}</p>
       {(!online || slow) && <button type="button" className="as-retry" onClick={() => window.location.reload()}>Try again</button>}

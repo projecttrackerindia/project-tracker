@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
-import { BrandMark } from './BrandMark';
+import { Logo } from './Logo';
 import { Icon, type IconName } from './Icon';
 
 /*
@@ -306,7 +306,7 @@ export function AuthVisual() {
   return (
     <div className="auth-visual" aria-hidden="true">
       <div className="av-top">
-        <div className="av-brand"><span className="brand-mark"><BrandMark size={18} /></span>Project Tracker</div>
+        <div className="av-brand"><Logo size={36} className="pt-logo av-logo" />ProjectTracker</div>
         <ul className="av-trust">
           {TRUST.map((t) => <li key={t.label}><Icon name={t.icon} size={13} />{t.label}</li>)}
         </ul>

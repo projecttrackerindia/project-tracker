@@ -49,6 +49,7 @@ older servers). Both are pinned by tests with the same table.
 | `Meeting` (invites, changes, started), a `Reminder` linking `/meet?open=`, `/meetings?open=`, `/calls/meeting/` (starting soon) | Meetings (`meetings`) | red number |
 | any link under `/mail` | Mail (`mail`) | red number; with none, the calm grey unread-mail count |
 | a link to `/?tab=calendar` or `/calendar` | Calendar (`calendar`) | red number |
+| any link under `/approvals` (a request waiting on you, a decision on yours) | Approvals (`approvals`) | red number; with none, the calm "needs you" count |
 | `Message`, `Call`; a `Mention` in a chat (`/chat/…`, `/messages`, `?chat=1`) | Messages (`talk`) | `max(notices, unread chat messages)`; a muted chat adds only a grey dot unless it @mentions you |
 | `Document`; any link under `/documents` or `/library` (shares, comments, reviews) | Library (`library`) | red number |
 | `PortfolioDigest`; a link under `/portfolio` or with `view=portfolio` (action items needing review) | Portfolio (`portfolio`) | red number |
