@@ -37,6 +37,10 @@
   --calm-blur: blur(30px);
   --calm-side-bg: color-mix(in srgb, #ffffff 40%, transparent);
 
+  /* ---- pastel ribbon segments (today2.html .seg: meeting, focus, light work, review, admin) ---- */
+  --calm-rib-meet: #14b8a6; --calm-rib-focus: #a78bfa; --calm-rib-light: #86d19a; --calm-rib-review: #fb7185; --calm-rib-admin: #fbbf24; --calm-rib-past: .35;
+  --calm-now: #ff3b30;
+
   /* ---- project colours (dots and ribbons only) ---- */
   --calm-p1: #3b82f6; --calm-p2: #14b8a6; --calm-p3: #8b5cf6; --calm-p4: #f59e0b; --calm-p5: #f43f5e; --calm-p6: #22c55e;
 
@@ -171,7 +175,7 @@ html body { background: var(--calm-amb), var(--calm-bg); background-attachment: 
 ::selection { background: color-mix(in srgb, var(--calm-accent) 22%, transparent); }
 
 /* headings: large and light, Apple display style */
-html body .page-title { font-size: clamp(32px, 3.3vw, 48px); font-weight: var(--calm-display-w); letter-spacing: var(--calm-display-ls); line-height: var(--calm-display-lh); color: var(--calm-ink); }
+html body .page-title { font-size: clamp(34px, 3.75vw, 54px); font-weight: var(--calm-display-w); letter-spacing: var(--calm-display-ls); line-height: var(--calm-display-lh); color: var(--calm-ink); }
 html body .page-sub { font-size: var(--calm-body); color: var(--calm-ink2); }
 html body .eyebrow { color: var(--calm-ink2); font-weight: 500; font-size: 13px; }
 html body .hub-section-title, html body .ds-section-title { font-weight: 600; letter-spacing: -.02em; }

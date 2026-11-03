@@ -134,3 +134,10 @@ a.calm-row:focus-visible, button.calm-row:focus-visible { outline: 2px solid var
   .calm-sheet-head { padding: 14px 20px 0; }
   .calm-sheet-body { padding: 16px 20px 24px; }
 }
+
+/* CalmInsights: the underlined insight line (today2.html .ins): quiet facts joined by dots, each a dotted-underlined link */
+.calm-ins { align-self: center; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; align-items: center; font-size: 14px; color: var(--calm-ink2); }
+.calm-ins > button, .calm-ins > a { border: 0; background: none; padding: 0 0 1px; font: inherit; color: var(--calm-ink); font-weight: 500; border-bottom: 1px dotted var(--calm-ink3); cursor: pointer; text-decoration: none; }
+.calm-ins > i { font-style: normal; color: var(--calm-ink3); }
+.calm-foot { display: flex; flex-direction: column; gap: 14px; align-items: center; margin-top: 24px; }
+@media (max-width: 768px) { .calm-ins { font-size: 12.5px; gap: 6px; } }

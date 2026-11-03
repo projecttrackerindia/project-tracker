@@ -50,3 +50,6 @@ export const calmType = {
 
 export const calmSpace = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 22, 6: 28, 7: 40 } as const;
 export const calmRadius = { row: 14, tile: 18, card: 22, pane: 24, hero: 28, pill: 999 } as const;
+
+/** Pastel ribbon segment colours (today2.html): meeting, focus, light work, review, admin; past segments at 35% opacity. */
+export const ribbonColors = { meet: '#14b8a6', focus: '#a78bfa', light: '#86d19a', review: '#fb7185', admin: '#fbbf24', pastOpacity: 0.35, now: '#ff3b30' } as const;
