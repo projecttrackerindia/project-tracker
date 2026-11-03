@@ -26,7 +26,7 @@
 .calm-link:hover { color: var(--calm-ink); }
 
 /* CalmCard: frosted surface, no border, soft depth */
-.calm-card { background: var(--calm-card); border-radius: var(--calm-r-card); box-shadow: var(--calm-sh); -webkit-backdrop-filter: var(--calm-blur); backdrop-filter: var(--calm-blur); padding: 22px 26px; min-width: 0; }
+.calm-card { background: var(--calm-card); border-radius: var(--calm-r-card); box-shadow: var(--calm-sh); padding: 22px 26px; min-width: 0; }  /* no backdrop-filter: it would trap position:fixed children */
 .calm-card.hero { border-radius: var(--calm-r-hero); padding: 30px 34px; }
 .calm-card.list { padding: 6px 10px; }
 .calm-card.flush { padding: 0; overflow: hidden; }

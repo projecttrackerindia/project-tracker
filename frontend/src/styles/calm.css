@@ -183,7 +183,7 @@ html body .hub-section-title, html body .ds-section-title { font-weight: 600; le
 /* ------------------------------------------------------------------------------------------------ surfaces: no borders, soft depth */
 html body .card, html body .stat-card, html body .project-card, html body .ds-kpi, html body .pp-box {
   border: 0; border-radius: var(--calm-r-card); background: var(--calm-card); box-shadow: var(--calm-sh);
-  -webkit-backdrop-filter: var(--calm-blur); backdrop-filter: var(--calm-blur);
+  /* no backdrop-filter on these: it would make every position:fixed child (drag overlays, popovers) relative to the card */
 }
 html[data-theme='dark'] body .card, html[data-theme='dark'] body .stat-card, html[data-theme='dark'] body .project-card { background: var(--calm-card); border: 0; box-shadow: var(--calm-sh); }
 html body .ds-kpi.tile { background: var(--calm-fill); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
