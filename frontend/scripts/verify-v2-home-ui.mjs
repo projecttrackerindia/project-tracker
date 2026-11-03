@@ -67,7 +67,7 @@ const make = async (theme, writes, opts = {}) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
   // The design's moment: 10:42 on today's date, so the now-line, Up next and the focus blocks are the same on every run.
   await ctx.clock.setFixedTime(new Date(at(today, 10, 42)));
-  await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); }, theme);
+  await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pt_classic_pages', '1'); localStorage.setItem('pm_theme', t); }, theme);
   await ctx.route('**/*', async (route) => {
     const req = route.request(), url = new URL(req.url()), ep = url.pathname, method = req.method();
     if (url.origin !== origin) { await route.abort(); return; }

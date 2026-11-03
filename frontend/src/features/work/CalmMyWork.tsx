@@ -89,7 +89,7 @@ export function CalmMyWork({ onOpen, more }: { onOpen: (id: string) => void; mor
       <header className="cp-hero"><h1>{title}<em>{second}</em></h1></header>
       <div className="cp-tools">
         <CalmPills label="Show" value={tab} onChange={setTab} options={[{ value: 'week', label: 'This week' }, { value: 'later', label: 'Later' }, { value: 'done', label: 'Done' }, { value: 'waiting', label: 'Waiting on others' }]} />
-        <span className="sp" />
+        <span className="cp-sp" />
         <span className={`cp-saved${saved ? ' on' : ''}`} aria-live="polite">{saved ? '✓ Saved' : ''}</span>
         <button type="button" className="cp-lk" onClick={() => setGroup(group === 'project' ? 'due' : 'project')}>Group: {group === 'project' ? 'Project' : 'Day'} ›</button>
         <button type="button" className="cp-go-sm" onClick={() => openCalmNew({ type: 'task' })}><Icon name="plus" size={13} /> New task</button>
@@ -135,7 +135,7 @@ export function CalmMyWork({ onOpen, more }: { onOpen: (id: string) => void; mor
   );
 }
 
-const shortTitle = (t: string) => (t.length > 48 ? `${t.slice(0, 46).trimEnd()}…` : t);
+const shortTitle = (t: string) => (t.length > 34 ? `${t.slice(0, 32).trimEnd()}…` : t);
 
 function MyWorkRail({ waiting, doneWeek, first, onOpen }: { waiting: WorkRow[]; doneWeek: WorkRow[]; first: WorkRow | null; onOpen: (id: string) => void }) {
   const nav = useNavigate();

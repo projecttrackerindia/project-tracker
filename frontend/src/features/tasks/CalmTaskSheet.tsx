@@ -97,7 +97,7 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
               </Link>
             ))}
             <button type="button" className="ts-link" onClick={() => onFull?.(t.id)}><Icon name="note" size={14} /><span><b>Open full task</b><small>Subtasks, labels, files, dependencies and history</small></span><Icon name="chevronR" size={13} /></button>
-            {left != null && <div className="ts-aura"><CalmOrb /><span>About {hm(left)} left{t.dueDate ? `, due ${shortDay(t.dueDate)}` : ''}.</span></div>}
+            {left != null && t.statusCategory !== 'Done' && <div className="ts-aura"><CalmOrb /><span>{left > 0 ? `About ${hm(left)} left${t.dueDate ? `, due ${shortDay(t.dueDate)}` : ''}.` : `${hm(loggedMin - estMin)} over the ${hm(estMin)} estimate.`}</span></div>}
           </div>
           <div className="ts-col">
             <div className="ts-lab" style={{ marginTop: 0 }}>Comments</div>

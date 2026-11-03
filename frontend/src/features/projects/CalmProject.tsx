@@ -81,7 +81,7 @@ export function CalmProject({ detail, menu, canEdit, addWork, onHealth, onFullTa
       {steps.length > 0 && <CalmCard className="pd-journey" aria-label="Journey"><CalmJourney steps={steps} color={color} label={`${p.name} journey`} /></CalmCard>}
       <div className="pd-bar">
         <CalmPills label="Show" size="lg" value={tab} onChange={setTab} options={[{ value: 'tasks', label: 'Tasks' }, { value: 'people', label: 'People' }, { value: 'files', label: 'Files' }]} />
-        <span className="sp" />
+        <span className="cp-sp" />
         <div className="cp-num" aria-label="Numbers">
           <div><b>{p.progress}</b><small>% done</small></div>
           <div><b>{p.stats.total - p.stats.done - p.stats.cancelled}</b><small>open tasks</small></div>

@@ -71,3 +71,5 @@ button.calm-day-seg:hover { transform: translateY(-1px); }
   .calm-day-seg-l { display: none; }
   .calm-rc { padding: 12px 16px 8px; }
 }
+.calm-day-a a.calm-join, .calm-rr-r a.calm-join, .pd-line a.calm-join { color: #fff; }
+.calm-pills button { display: inline-flex; align-items: center; gap: 6px; }

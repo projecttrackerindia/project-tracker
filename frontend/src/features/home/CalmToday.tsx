@@ -154,7 +154,7 @@ export function CalmToday() {
           {(state === 'morning' ? open.slice(0, 2) : then).map((w) => (
             <Link key={w.id} to={`/work?item=${w.id}`} className={w.isOverdue ? 'hot' : ''}>{w.title}<small>{w.isOverdue ? 'overdue' : w.dueTime ? w.dueTime.slice(0, 5) : dayText(w.dueDate)}</small></Link>
           ))}
-          <span className="sp" />
+          <span className="cp-sp" />
           <Link className="cp-lk" to="/work">All {open.length} ›</Link>
         </div>
       )}

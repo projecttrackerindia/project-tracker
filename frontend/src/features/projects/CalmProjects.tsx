@@ -83,7 +83,7 @@ export function CalmProjects() {
       ) : (
         <CalmPills label="Projects" value={scope} onChange={(v) => set('scope', v === 'all' ? null : v)} options={[{ value: 'all', label: 'All' }, { value: 'mine', label: 'Mine' }, { value: 'pinned', label: 'Pinned' }, { value: 'archived', label: 'Archived' }]} />
       )}
-      <span className="sp" />
+      <span className="cp-sp" />
       <label className="cp-search"><Icon name="search" size={13} /><input type="search" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search projects" /></label>
       <CalmPills label="Show as" value={mode} onChange={(v) => set('browse', v === 'folders' ? 'folders' : null)} options={[{ value: 'list', label: <><Icon name="list" size={13} /> List</> }, { value: 'folders', label: <><Icon name="folder" size={13} /> Folders</> }]} />
       {canCreate && <button type="button" className="cp-go-sm" onClick={() => openCalmNew({ type: 'project' })}><Icon name="plus" size={13} /> New project</button>}
