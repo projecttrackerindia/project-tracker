@@ -1,5 +1,5 @@
 /* Calm People: org chart canvas (shot 57), move sheet (57b), the People hero */
-.cp-page { padding: 0 clamp(16px, 2.6vw, 40px) 28px; display: flex; flex-direction: column; gap: 18px; min-height: calc(100vh - 90px); }
+.cp-page { padding: 0 clamp(16px, 2.6vw, 40px) 96px; display: flex; flex-direction: column; gap: 18px; min-height: calc(100vh - 90px); }
 .cp-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .cp-bar .calm-pills { flex: none; }
 

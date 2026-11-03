@@ -10,7 +10,7 @@
 .cs-item:hover { background: var(--calm-fill); }
 .cs-item.on { background: var(--calm-fill); font-weight: 600; }
 .cs-item:focus-visible { outline: 2px solid var(--calm-accent); outline-offset: -2px; }
-.set-calm .set-mac-pane { padding: 0; }
+.set-calm .set-mac-pane { padding: 0 0 96px; }  /* room to scroll clear of the floating + */
 
 /* panes built in the calm style (approval policies) */
 .cs-pane { display: flex; flex-direction: column; gap: 16px; }
