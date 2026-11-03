@@ -274,3 +274,9 @@ html body .m-shell .page-title { font-size: 34px; }
 
 /* the ambient glow shows through the shell: the page areas themselves stay transparent */
 html body .main, html body .app-shell, html body .v2-main, html body .content { background: transparent; }
+
+/* every screen's own big title reads as the light display type (today2.html .hello), whatever class it carries */
+html body #main-content h1, html body .auth-title { font-weight: 300; letter-spacing: -.03em; }
+/* sign-in: the primary action is the same ink pill */
+html body .auth-submit, html[data-theme='dark'] body .auth-submit { background: var(--calm-go-bg); color: var(--calm-go-fg); border-radius: var(--calm-r-pill); box-shadow: none; border: 0; }
+html body .auth-submit:hover:not(:disabled) { background: color-mix(in srgb, var(--calm-go-bg) 86%, var(--calm-bg)); }
