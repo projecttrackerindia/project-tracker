@@ -69,3 +69,13 @@
 }
 .cp-hol { color: #c77700; font-weight: 600; }
 .cp-hol-dot { position: absolute; top: 6px; right: 16px; width: 6px; height: 6px; border-radius: 3px; background: #ff9f0a; }
+
+/* The pulse under the grid (CapacityPulse): load by week against the 100% line, the busiest people, and who has room. */
+.cp-track::after { content: ""; position: absolute; left: -4px; right: -4px; bottom: var(--cap); border-top: 1px dashed var(--ds-text-3); opacity: .45; pointer-events: none; }
+.pfp-bar i.cp-ok { background: var(--ds-accent); }
+.pfp-bar i.cp-over { background: var(--ds-danger); }
+.cp-free { color: var(--ds-text); font-weight: 600; }
+.pfp.cp-pulse { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); grid-template-rows: auto auto; }
+.cp-pulse > .pfp-card:first-child { grid-row: span 2; }
+.cp-pulse .pfp-list li { min-height: 36px; }
+@media (max-width: 760px) { .pfp.cp-pulse { grid-template-columns: minmax(0, 1fr); } .cp-pulse > .pfp-card:first-child { grid-row: auto; } }

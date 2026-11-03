@@ -9,6 +9,7 @@ import { useRebalance } from '../insights/rebalance';
 import { isoWeek } from './PortfolioViews';
 import { PortfolioSkeleton, ShellTools, usePortfolio } from './PortfolioShell';
 import { portfolioKeys } from './portfolioShared';
+import { PulseCard } from './PortfolioPulse';
 import './capacityPlan.css';
 
 type Unit = 'hours' | 'pct';
@@ -124,6 +125,8 @@ export function CapacityPlanView() {
         <span>{plural(t.overWeeks, 'over-booked week')} · {plural(t.leaveWeeks, 'leave week')} · {plural(t.publicHolidays, 'public holiday')}{holidayWeeks.length > 0 && ` (${holidayWeeks.join(', ')})`}{canHolidays && <> · <Link className="link" to="/settings/general/holidays">Holidays ›</Link></>}</span>
       </div>
 
+      {p.people.length > 0 && <CapacityPulse p={p} />}
+
       {preview && s && (
         <Modal title="Suggested move" size="sm" onClose={() => setPreview(false)}
           footer={<><button type="button" className="btn" onClick={() => setPreview(false)}>Not now</button><button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setPreview(false); void rebalance(); }}>Rebalance</button></>}>
@@ -134,5 +137,61 @@ export function CapacityPlanView() {
         </Modal>
       )}
     </section>
+  );
+}
+
+/** Under the grid, the room it leaves: the team's load week by week, who is most booked, and who has room to take work. */
+function CapacityPulse({ p }: { p: CapacityPlan }) {
+  const weeks = p.weekStarts.map((w, i) => {
+    const booked = p.people.reduce((a, x) => a + (x.weeks[i]?.bookedMinutes ?? 0), 0), cap = p.people.reduce((a, x) => a + (x.weeks[i]?.capacityMinutes ?? 0), 0);
+    return { w, pct: cap > 0 ? Math.round((booked / cap) * 100) : 0 };
+  });
+  const top = Math.max(100, ...weeks.map((x) => x.pct));
+  const ratio = (c: CapacityPlanCell) => (c.capacityMinutes > 0 ? c.bookedMinutes / c.capacityMinutes : 0);
+  const busiest = p.people.map((x) => { const i = x.weeks.reduce((b, c, k) => (ratio(c) > ratio(x.weeks[b]!) ? k : b), 0); return { x, pct: Math.round(ratio(x.weeks[i]!) * 100), wk: x.weeks[i]?.weekStart }; })
+    .sort((a, b) => b.pct - a.pct).slice(0, 4);
+  const room = p.people.map((x) => ({ x, free: x.weeks.slice(0, 2).reduce((a, c) => a + Math.max(0, c.capacityMinutes - c.bookedMinutes), 0) }))
+    .filter((r) => r.free >= 60).sort((a, b) => b.free - a.free).slice(0, 4);
+  const two = p.weekStarts.length > 1 ? `${wk(p.weekStarts[0]!)}–${isoWeek(day(p.weekStarts[1]!))}` : wk(p.weekStarts[0] ?? p.from);
+  return (
+    <div className="pfp cp-pulse">
+      <PulseCard title="Team load by week" meta={`${p.people.length === 1 ? '1 person' : `${p.people.length} people`}`}>
+        <div className="pfp-chart" role="img" aria-label={weeks.map((x) => `${wk(x.w)} ${x.pct}%`).join(', ')}>
+          {weeks.map((x) => (
+            <div key={x.w} className="pfp-col">
+              <span className="pfp-track cp-track" style={{ ['--cap' as string]: `${(100 / top) * 100}%` }}>
+                <span className="pfp-bar" style={{ height: `${(x.pct / top) * 100}%` }}><span className="pfp-n">{x.pct}%</span><i className={x.pct > 100 ? 'cp-over' : 'cp-ok'} /></span>
+              </span>
+              <small>{wk(x.w)}</small>
+            </div>
+          ))}
+        </div>
+      </PulseCard>
+      <PulseCard title="Most booked" meta="peak week">
+        <ul className="pfp-list">
+          {busiest.map(({ x, pct, wk: w }) => (
+            <li key={x.userId}>
+              <Avatar name={x.name} userId={x.userId} size="sm" />
+              <span className="pfp-name">{x.name}</span>
+              <span className={`pfp-st ${pct > 100 ? 'late' : ''}`}>{pct}%</span>
+              <span className="pfp-what">{w ? wk(w) : ''}</span>
+            </li>
+          ))}
+        </ul>
+      </PulseCard>
+      <PulseCard title="Room to take work" meta={two}>
+        {room.length === 0 ? <p className="pfp-calm">Nobody has spare hours in the next two weeks.</p> : (
+          <ul className="pfp-list">
+            {room.map(({ x, free }) => (
+              <li key={x.userId}>
+                <Avatar name={x.name} userId={x.userId} size="sm" />
+                <span className="pfp-name">{x.name}</span>
+                <span className="pfp-what"><b className="cp-free">{fmtH(free)}</b> free</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </PulseCard>
+    </div>
   );
 }
