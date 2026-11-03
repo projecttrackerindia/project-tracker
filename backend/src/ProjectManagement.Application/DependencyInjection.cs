@@ -242,6 +242,8 @@ public static class DependencyInjection
         services.AddScoped<PlanningService>();
         services.AddScoped<TimeService>();
         services.AddScoped<PlannedLeaveService>();
+        services.AddScoped<ProjectManagement.Application.Features.Approvals.ApprovalService>();
+        services.AddScoped<ProjectManagement.Application.Features.Notes.NoteService>();
         services.AddScoped<TimesheetApprovalService>();
         services.AddScoped<TimesheetGridService>();
         services.AddScoped<TimesheetWordsService>();

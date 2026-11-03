@@ -24,6 +24,7 @@ public class NotificationBadgeAndPushTestTests(ApiFactory factory)
     [InlineData(NotificationType.TaskUpdated, "/projects/abc", "work")]
     [InlineData(NotificationType.DueSoon, "/projects/abc", "today")]
     [InlineData(NotificationType.Approval, "/timesheet", "today")]
+    [InlineData(NotificationType.Approval, "/approvals?open=1", "approvals")]
     [InlineData(NotificationType.Security, "/settings/security", "today")]
     [InlineData(NotificationType.Document, "/documents/7", "library")]
     [InlineData(NotificationType.Comment, "/library/pages/3", "library")]

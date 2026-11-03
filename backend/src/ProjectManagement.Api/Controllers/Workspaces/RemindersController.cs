@@ -52,6 +52,10 @@ public class RemindersController(ReminderService reminders, ReminderSuggestionSe
         return Ok(done);
     }
 
+    /// <summary>Flag it, or file it in one of your lists.</summary>
+    [HttpPut("{id:guid}/meta")]
+    public async Task<IActionResult> Meta(Guid id, [FromBody] ReminderMetaRequest req, CancellationToken ct) => Ok(await reminders.SetMetaAsync(id, req, ct));
+
     [HttpPost("{id:guid}/reopen")]
     public async Task<IActionResult> Reopen(Guid id, CancellationToken ct) => Ok(await reminders.ReopenAsync(id, ct));
 

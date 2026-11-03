@@ -680,6 +680,7 @@ public partial class AppDbContext
             e.HasIndex(x => new { x.TenantId, x.UserId, x.State });
             e.HasIndex(x => new { x.TenantId, x.SystemKey }).IsUnique();    // one automatic reminder per date and step
             e.HasIndex(x => new { x.TargetType, x.TargetId });
+            e.Property(x => x.ListName).HasMaxLength(40);
             e.HasIndex(x => x.ActionTokenHash);
             e.HasIndex(x => x.CreatedBy);
             e.Property(x => x.Title).HasMaxLength(200);
