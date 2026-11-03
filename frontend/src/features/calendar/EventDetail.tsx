@@ -8,9 +8,9 @@ import type { CalendarEvent, Task, TimeEntry, TimelineEvent, WorkTask } from '..
 import { Face } from '../../components/Face';
 import { Icon } from '../../components/Icon';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
-import { useWorkspaceId } from '../../stores/auth';
+import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { meetApi, type Rsvp } from '../meet/meetApi';
+import { connectApi, meetApi, type Rsvp } from '../meet/meetApi';
 import { reminderApi } from '../reminders/api';
 import { canComplete, canMoveDue, completeWork, editError, entryLock, isoAt as isoAtHour, moveDue, moveReminder, overlapText, refreshAfterEdit } from './calendarEdit';
 import { appZone } from '../../lib/zone';
@@ -280,6 +280,9 @@ function WorkBody({ e, focus, others, today, nowH = 0, days, actions, onClose }:
   );
 }
 
+const RSVP_SHORT: Record<Rsvp, string> = { Organizer: 'Organiser', Accepted: 'Accepted', Tentative: 'Maybe', Declined: 'Declined', NeedsAction: 'Not answered' };
+/** "14:00": the calendar's 24-hour clock. */
+const hm24 = (h: number) => { const x = Math.round(h * 60); return `${String(Math.floor(x / 60) % 24).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
 const RSVP_TEXT: Record<Rsvp, string> = { Organizer: 'You organise this', Accepted: 'You accepted', Tentative: 'You said maybe', Declined: 'You declined', NeedsAction: 'Not answered yet' };
 
 function MeetingBody({ m, today, nowH, days, actions, onClose }: { m: Meet; today: string; nowH: number; days: string[]; actions: DetailActions; onClose: () => void }) {
@@ -311,28 +314,45 @@ function MeetingBody({ m, today, nowH, days, actions, onClose }: { m: Meet; toda
     try { await navigator.clipboard.writeText(url); toast('Meeting link copied.', 'success'); } catch { toast(url, 'info'); }
   };
   const doJoin = () => { if (!join) return; onClose(); if (inApp) navigate(join); else window.open(join, '_blank', 'noopener'); };
+  // The work agreed in (or linked to) this meeting: the first open item is its linked task.
+  const items = useWsQuery(['meet', 'items', f?.ref ?? 'none', f?.originalStart ?? f?.start ?? ''], () => connectApi.items(f!.ref, f!.originalStart ?? f!.start), { enabled: !!f?.ref, staleTime: 60_000, retry: false });
+  const linked = (items.data?.createdHere ?? []).find((x) => x.status !== 'Done' && x.status !== 'Completed' && x.status !== 'Cancelled') ?? null;
+  const me = useAuth((s) => s.ctx?.user.displayName ?? '');
+  const statusOf = (p: string) => (p === organiser ? 'Organiser' : p === me && rsvp && rsvp !== 'Organizer' ? RSVP_SHORT[rsvp] : null);
   return (
     <>
-      <Head kind="meeting" title={e.title} when={<>{longDay(m.day)} · {clockAP(m.start)} – {clockAP(m.end)}</>} why={why}
+      <Head kind="meeting" title={e.title} when={<>{longDay(m.day)} · {hm24(m.start)} – {hm24(m.end)}</>} why={why}
         sub={cd && <span className={`ed-cd${cd === 'now' ? ' live' : ''}`} data-testid="ed-countdown">{cd}</span>} />
       {join && cd !== 'ended' && (
         <div className="ed-join-row">
-          <button type="button" className="ed-join" data-testid="ed-join" onClick={doJoin}><Icon name="video" size={15} />Join{provider ? ` ${provider}` : ''}</button>
-          <button type="button" className="ed-icon-btn" aria-label="Copy link" title="Copy link" onClick={() => void copy()}><Icon name="copy" size={14} /></button>
+          <button type="button" className="ed-join" data-testid="ed-join" onClick={doJoin} title={provider ? `Join on ${provider}` : undefined}>Join video</button>
+          <button type="button" className="ed-text-btn" aria-label="Copy link" onClick={() => void copy()}>Copy link</button>
         </div>
       )}
       <div className="ed-rows">
         {provider && <Row label="Where">{provider}{join && !inApp ? <span className="ed-faint ed-url"> · {join.replace(/^https?:\/\//, '')}</span> : null}</Row>}
         {organiser && <Row label="Organiser"><span className="ed-person"><Face byName name={organiser} className="ed-av" text={organiser.split(/\s+/).map((x) => x[0]).join('').slice(0, 2).toUpperCase()} />{organiser}</span></Row>}
-        {people.length > 1 && (
-          <Row label={`People · ${f?.invited ?? people.length}`}>
-            <span className="ed-faces">{people.slice(0, 5).map((p) => <Face key={p} byName name={p} className="ed-av" title={p} text={p.split(/\s+/).map((x) => x[0]).join('').slice(0, 2).toUpperCase()} />)}</span>
-            {f && <span className="ed-faint"> {f.accepted} accepted{f.declined ? ` · ${f.declined} declined` : ''}</span>}
-          </Row>
-        )}
+
         {e.projectName && <Row label="Project"><button type="button" className="link-btn" onClick={() => { onClose(); navigate(`/work/projects/${e.projectId}`); }}>{e.projectName}</button></Row>}
       </div>
+      {people.length > 1 && (
+        <div className="ed-att" data-testid="ed-attendees">
+          <b>Attendees · {f?.invited ?? people.length}{f ? <span className="ed-faint"> · {f.accepted} accepted{f.declined ? `, ${f.declined} declined` : ''}</span> : null}</b>
+          <ul>{people.slice(0, 8).map((p) => {
+            const st = statusOf(p);
+            return <li key={p}><Face byName name={p} className="ed-av" text={p.split(/\s+/).map((x) => x[0]).join('').slice(0, 2).toUpperCase()} />{p}{p === me ? ' (you)' : ''}{st && <em className={st === 'Organiser' || st === 'Accepted' ? 'ok' : ''}>{st}</em>}</li>;
+          })}</ul>
+        </div>
+      )}
       {agenda.length > 0 && <div className="ed-agenda"><b>Agenda</b><ol>{agenda.map((a) => <li key={a}>{a}</li>)}</ol></div>}
+      {linked && (
+        <div className="ed-linked" data-testid="ed-linked">
+          <b>Linked task</b>
+          <button type="button" onClick={() => { onClose(); navigate(`/work?item=${linked.id}`); }}>
+            <i aria-hidden="true" /><span><strong>{linked.key} · {linked.title}</strong><small>{linked.dueDate ? dueText(linked.dueDate, today) : 'No date'}{linked.owner ? ` · ${linked.owner.name.split(' ')[0]}` : ''}</small></span><Icon name="chevronR" size={13} />
+          </button>
+        </div>
+      )}
       {f && !f.isOrganizer && cd !== 'ended' && (
         <div className="ed-rsvp" role="group" aria-label="Going?">
           <span>{rsvp ? RSVP_TEXT[rsvp] : 'Going?'}</span>

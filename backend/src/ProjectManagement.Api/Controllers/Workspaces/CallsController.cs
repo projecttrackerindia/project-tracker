@@ -7,8 +7,16 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 
 /// <summary>Our own video calls: start one (in a project, a chat or on its own), join with a short-lived pass, end it for everyone.</summary>
 [Route("api/v1/calls"), RequireWorkspace]
-public sealed class CallsController(CallService calls, ProjectManagement.Application.Features.Notifications.NotificationService notifications) : ApiControllerBase
+public sealed class CallsController(CallService calls, ProjectManagement.Application.Features.Notifications.NotificationService notifications, CallHistoryService history) : ApiControllerBase
 {
+    /// <summary>My calls of the last days (ad-hoc, chat and project calls; missed ones marked), for Meetings › Past.</summary>
+    [HttpGet("history")]
+    public async Task<IActionResult> History([FromQuery] int days = 30, CancellationToken ct = default) => Ok(await history.HistoryAsync(days, ct));
+
+    /// <summary>A call's notes: the notetaker's summary and action items, and its transcript while it is kept.</summary>
+    [HttpGet("{id:guid}/notes")]
+    public async Task<IActionResult> Notes(Guid id, CancellationToken ct) => Ok(await history.NotesAsync(id, ct));
+
     [HttpGet("status")]
     public IActionResult Status() => Ok(calls.Status());
 

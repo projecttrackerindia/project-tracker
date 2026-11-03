@@ -363,8 +363,10 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
               {others.slice(0, 4).map((m) => <Avatar key={m.userId} name={m.name} size="sm" userId={m.userId} />)}
             </span>
           )}
-          <StartCallButton conversationId={conversation.id} label={conversation.type === 'Direct' ? 'Call' : 'Group call'} compact className="talk-ib talk-call" />
-          {onInfo && <button type="button" className={`talk-ib talk-details${infoOpen ? ' on' : ''}`} onClick={onInfo} aria-label="Details" aria-pressed={infoOpen} title="Details"><Icon name="info" size={15} /></button>}
+          {/* Call (voice) and Video, then Info ›: the conversation's calls start here and live in Meetings afterwards. */}
+          <StartCallButton conversationId={conversation.id} label="Call" audio className="talk-ib talk-call talk-pill" />
+          <StartCallButton conversationId={conversation.id} label="Video" className="talk-ib talk-video talk-pill" />
+          {onInfo && <button type="button" className={`talk-ib talk-details talk-info-link${infoOpen ? ' on' : ''}`} onClick={onInfo} aria-label="Details" aria-pressed={infoOpen} title="Details"><span>Info</span><Icon name="chevronR" size={12} /></button>}
           <DotsMenu label="Conversation actions" className="talk-info" items={[
             { label: 'Details', hint: 'People, pinned, files, mute', icon: 'info', onSelect: () => onInfo?.(), hidden: !onInfo },
             { label: 'Catch me up', hint: 'Decisions, questions and actions in this chat', icon: 'sparkle', onSelect: () => setDialog('catchup') },

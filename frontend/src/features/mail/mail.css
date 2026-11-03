@@ -173,3 +173,61 @@ html[data-theme='dark'] .ml-tag.t-waiting { color: #ffb340; }
 .ml-act-mk:disabled { opacity: .7; cursor: default; }
 html[data-theme='dark'] .ml-act-mk { color: #a5a3ff; }
 @media (max-width: 640px) { .ml-act { flex-wrap: wrap; } .ml-act-t { flex-basis: calc(100% - 26px); } .ml-act-meta { margin-left: 26px; } .ml-act-mk { margin-left: auto; } }
+
+/* =====================================================================================================================
+   CALM MAIL (demo shot 23): the list and the reading pane as two cards; Inbox · Sent · Drafts as pills with every other mailbox,
+   account and smart folder in "Mailboxes"; rows with the sender's initials; a large subject; Aura's summary in a soft box; Compose in the
+   header. Everything the three-pane Mail had stays reachable (the pills, the Mailboxes menu, the search, the reader's tools).
+   ===================================================================================================================== */
+.ml-side { display: none !important; }
+html .ml-boxchips { display: none !important; }
+.ml-pills-row { display: flex; align-items: center; gap: 8px; padding: 12px 12px 4px; }
+.ml-pills { flex: 1; min-width: 0; }
+.ml-pills-row .v2-dots-btn { width: 34px; height: 34px; border-radius: 17px; background: var(--calm-solid); box-shadow: var(--calm-sh-sm); }
+.ml-compose-top { height: 32px; padding: 0 18px; border: 0; border-radius: var(--calm-r-pill); background: var(--calm-go-bg); color: var(--calm-go-fg); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.ml-compose-top:disabled { opacity: .45; cursor: default; }
+@media (min-width: 761px) {
+  html .v2-shell > .main.v2-main > .content:has(> .ml-shell) { padding: 6px 28px 22px; }
+  .ml-shell { grid-template-columns: minmax(320px, 360px) minmax(0, 1fr); gap: 20px; border-top: 0; height: calc(100vh - 52px - 28px); }
+  .ml-list, .ml-reader { background: var(--calm-card); border: 0; border-right: 0; border-radius: var(--calm-r-pane); box-shadow: var(--calm-sh); }
+}
+@media (max-width: 1180px) and (min-width: 761px) { .ml-shell { grid-template-columns: 320px minmax(0, 1fr); } }
+.ml-search { margin: 8px 12px 0; height: 34px; border-radius: var(--calm-r-pill); background: var(--calm-fill); }
+.ml-list-h { padding: 10px 18px 4px; }
+.ml-list-h b { font-size: 13px; font-weight: 500; color: var(--calm-ink3-text); }
+.ml-row { padding: 10px 12px 10px 62px; min-height: 58px; }
+.ml-row + .ml-row::before { left: 62px; }
+.ml-av { position: absolute; left: 14px; top: 12px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; color: #fff; background: var(--calm-ink3); }
+.ml-row:nth-child(6n+1) .ml-av { background: var(--calm-p1); } .ml-row:nth-child(6n+2) .ml-av { background: var(--calm-p4); } .ml-row:nth-child(6n+3) .ml-av { background: var(--calm-p5); }
+.ml-row:nth-child(6n+4) .ml-av { background: var(--calm-p3); } .ml-row:nth-child(6n+5) .ml-av { background: var(--calm-p2); } .ml-row:nth-child(6n) .ml-av { background: var(--calm-p6); }
+.ml-dot { left: auto; right: 14px; top: auto; bottom: 14px; background: var(--calm-accent); }
+.ml-row-top b { font-size: 14.5px; }
+.ml-row-subject { font-size: 13.5px; font-weight: 400; color: var(--calm-ink2); }
+.ml-row-prev { display: none; }
+.ml-row.on, .ml-row.on:hover { background: var(--calm-fill); color: var(--calm-ink); }
+.ml-row.on time, .ml-row.on .ml-row-top svg, .ml-row.on .ml-row-prev { color: var(--calm-ink3-text); }
+.ml-row.on .ml-dot { background: var(--calm-accent); }
+.ml-row.on .ml-tag { background: var(--calm-fill-2); color: var(--calm-ink2) !important; }
+.ml-read-h { padding: 22px 28px 6px; border-bottom: 0; }
+.ml-read-h h2 { font-size: 24px; font-weight: 600; letter-spacing: -.02em; white-space: normal; }
+.ml-read-body { padding: 10px 28px 28px; }
+.ml-ai { background: var(--calm-accent-soft); box-shadow: none; border: 0; border-radius: var(--calm-r-row); }
+.ml-lanes { margin: 0 12px 8px; border-radius: var(--calm-r-pill); background: var(--calm-fill); }
+.ml-lanes button { border-radius: var(--calm-r-pill); }
+@media (max-width: 760px) {
+  .ml-pills-row .v2-dots-btn { width: 44px; height: 44px; border-radius: 22px; }
+  .ml-pills button { min-height: 40px; flex: 1; }
+  .ml-row { min-height: 64px; }
+  .ml-read-h { padding: 12px 14px 4px; }
+  .ml-read-h h2 { font-size: 20px; }
+}
+.ml-pills-row { order: -1; padding-top: 14px; }
+/* calm list head: search behind its icon; Focused / Other and the follow-up nudges are in ⋯ (Other shows as a removable chip) */
+html .ml-lanes, html .ml-list > .ml-nudge { display: none !important; }
+.ml-search-btn { width: 34px; height: 34px; border-radius: 17px; }
+.ml-lane-on { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; margin: 2px 14px 6px; height: 26px; padding: 0 4px 0 12px; border-radius: 13px; background: var(--calm-fill); font-size: 12.5px; font-weight: 500; }
+.ml-lane-on button { width: 20px; height: 20px; border: 0; border-radius: 10px; background: none; display: grid; place-items: center; color: var(--calm-ink2); cursor: pointer; }
+.ml-compose-narrow { display: none; height: 34px; padding: 0 16px; border: 0; border-radius: var(--calm-r-pill); background: var(--calm-go-bg); color: var(--calm-go-fg); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; flex: none; }
+.ml-compose-narrow:disabled { opacity: .45; }
+@media (max-width: 1099px) { .ml-compose-narrow { display: inline-flex; align-items: center; } }
+@media (max-width: 760px) { .ml-compose-narrow, .ml-search-btn { height: 44px; } .ml-search-btn { width: 44px; border-radius: 22px; } }

@@ -193,8 +193,8 @@ try {
   assert.equal(await page.locator('[data-testid="ed-countdown"]').innerText(), 'in 18 min');
   assert.match(await page.locator('[data-testid="ed-why"]').innerText(), /Meeting from Google Calendar · Rhea Kapoor invited you/);
   const join = page.locator('[data-testid="ed-join"]');
-  assert.match(await join.innerText(), /Join Google Meet/);
-  assert.equal(await join.evaluate((el) => getComputedStyle(el).backgroundColor), 'rgb(0, 113, 227)', 'Join is the big blue button');
+  assert.match(await join.innerText(), /Join video/);
+  assert.equal(await join.evaluate((el) => getComputedStyle(el).backgroundColor), 'rgb(10, 132, 255)', 'Join is the big blue button');
   await page.locator('.ed-rsvp button', { hasText: 'Yes' }).click();
   await page.waitForTimeout(150);
   assert.deepEqual(writes.find((w) => w.ep === `/api/v1/meet/w/${ids.m1}/rsvp`)?.body, { response: 'accepted' });
@@ -207,7 +207,7 @@ try {
   await page.locator('.wp-e', { hasText: 'Design review' }).focus();
   await page.keyboard.press('Enter');
   await card().waitFor();
-  assert.match(await page.locator('[data-testid="ed-join"]').innerText(), /Join Project Tracker call/);
+  assert.match(await page.locator('[data-testid="ed-join"]').innerText(), /Join video/);
   await page.keyboard.press('Escape');
   await card().waitFor({ state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement?.textContent?.includes('Design review')), true, 'focus goes back to the block');
@@ -230,7 +230,7 @@ try {
   checks.push('deadline: move date with reason');
 
   // logged time chip: the entries that make the total
-  await page.locator(`.wp-dh.tdy [data-testid="wp-logged"]`).click();
+  await page.getByRole('tab', { name: 'Day', exact: true }).click(); await page.getByTestId('wp-logged').click();
   await card().waitFor();
   assert.equal(await card().getAttribute('data-kind'), 'loggedDay');
   assert.equal(await page.locator('[data-testid="ed-entries"] li').count(), 2);
@@ -238,6 +238,7 @@ try {
   await capture('logged-card-1440');
   await page.keyboard.press('Escape');
   // leave (read-only) and reminder
+  await page.getByRole('tab', { name: 'Week', exact: true }).click();
   await page.locator('.wp-leave').click(); await card().waitFor();
   assert.equal(await card().getAttribute('data-kind'), 'leave'); assert.match(await card().innerText(), /Family function/);
   assert.equal(await card().locator('.ed-btn').count(), 0, 'leave is read-only');

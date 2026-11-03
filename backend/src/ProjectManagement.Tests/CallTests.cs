@@ -196,6 +196,34 @@ public class CallTests(ApiFactory factory)
         Assert.Contains((await manager.Get("/api/v1/notifications")).Data!["items"]!.AsArray(), n => S(n!["title"]) == "Missed call from Call Owner");
     }
 
+    [Fact]
+    public async Task The_call_log_lists_my_calls_marks_the_missed_ones_and_a_calls_notes_are_only_for_people_who_may_see_it()
+    {
+        var (owner, manager, project) = await SetupAsync();
+        var id = S((await owner.Post("/api/v1/calls", new { projectId = project, invite = new[] { manager.UserId } })).Data!["id"]);
+        Assert.True((await owner.Post($"/api/v1/calls/{id}/end")).Ok);
+
+        var mine = (await owner.Get("/api/v1/calls/history?days=7")).Data!.AsArray();
+        var row = Assert.Single(mine, c => S(c!["id"]) == id)!;
+        Assert.False(row["missed"]!.GetValue<bool>());
+        Assert.True(row["startedByMe"]!.GetValue<bool>());
+        Assert.Equal("ended", S(row["status"]));
+        Assert.Contains(row["people"]!.AsArray(), p => S(p) == "Call Owner");
+
+        var theirs = (await manager.Get("/api/v1/calls/history")).Data!.AsArray();
+        Assert.True(Assert.Single(theirs, c => S(c!["id"]) == id)!["missed"]!.GetValue<bool>());
+
+        var notes = await manager.Get($"/api/v1/calls/{id}/notes");
+        Assert.True(notes.Ok, notes.ToString());
+        Assert.Equal("none", S(notes.Data!["status"]));
+        Assert.Empty(notes.Data!["transcript"]!.AsArray());
+
+        var outsider = await TestClient.RegisterAsync(factory, "Log Outsider");
+        await outsider.CreateOrgAsync();
+        Assert.Equal(HttpStatusCode.NotFound, (await outsider.Get($"/api/v1/calls/{id}/notes")).Status);
+        Assert.DoesNotContain((await outsider.Get("/api/v1/calls/history")).Data!.AsArray(), c => S(c!["id"]) == id);
+    }
+
     private static string Pad(string s) { s = s.Replace('-', '+').Replace('_', '/'); return s.PadRight(s.Length + (4 - s.Length % 4) % 4, '='); }
 
     [Fact]
