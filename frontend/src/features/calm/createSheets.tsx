@@ -13,6 +13,7 @@ import { useAuth, useModule, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { refreshWork } from '../work/workUi';
 import { parseQuick } from './quickParse';
+import { openNew } from '../../components/v2/state';
 import './calm-pages.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -28,11 +29,14 @@ export type CalmNewDetail = { type: 'task' | 'project'; project?: { id: string; 
  */
 export const openCalmNew = (detail: CalmNewDetail) => window.dispatchEvent(new CustomEvent<CalmNewDetail>('pt:new', { detail }));
 
+/** The earlier pages are on (?classic=1, or pt_classic_pages): + keeps the earlier + New sheet. */
+const classicOn = () => { try { return new URLSearchParams(location.search).get('classic') === '1' || localStorage.getItem('pt_classic_pages') === '1'; } catch { return false; } };
+
 /** Listens for `pt:new` and shows the sheet. Mounted by the calm pages (Today, My work, Projects, a project). */
 export function CalmCreateHost({ project }: { project?: { id: string; name: string } | null }) {
   const [open, setOpen] = useState<CalmNewDetail | null>(null);
   useEffect(() => {
-    const on = (e: Event) => { const d = (e as CustomEvent<CalmNewDetail>).detail; if (d?.type === 'task' || d?.type === 'project') { e.preventDefault(); setOpen({ ...d, project: d.project ?? project ?? null }); } };
+    const on = (e: Event) => { if (classicOn()) return; const d = (e as CustomEvent<CalmNewDetail>).detail; if (d?.type === 'task' || d?.type === 'project') { e.preventDefault(); setOpen({ ...d, project: d.project ?? project ?? null }); } };
     window.addEventListener('pt:new', on);
     return () => window.removeEventListener('pt:new', on);
   }, [project]);
@@ -166,6 +170,7 @@ export function NewTaskSheet({ open, onClose, project, text }: { open: boolean; 
       <div className="cm-foot">
         <CalmGo onClick={() => void create()} disabled={busy}>{busy ? 'Creating…' : 'Create task'}</CalmGo>
         <CalmLink onClick={onClose}>Cancel</CalmLink>
+        <CalmLink onClick={() => { onClose(); openNew(null, quick); }}>Ticket, bug or other ›</CalmLink>
         <span className="cm-foot-r">⌘↵ create · Esc close</span>
       </div>
     </CalmSheet>
